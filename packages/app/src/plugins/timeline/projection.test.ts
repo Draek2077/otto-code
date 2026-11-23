@@ -152,21 +152,3 @@ describe("plugin timeline projection", () => {
     expect(filtered).toEqual([]);
   });
 });
-
-it("preserves a presentation-only action group without sending a synthetic row to plugins", () => {
-  const member = thought("Grouped", "ready");
-  if (member.kind !== "thought") throw new Error("Expected reasoning fixture");
-  const group: StreamItem = {
-    kind: "action_group",
-    id: "group",
-    turnId: "turn-a",
-    timestamp: member.timestamp,
-    items: [member],
-    timelineCursor: { epoch: "epoch-a", seq: 10 },
-  };
-  const transform: TimelineItemTransform = vi.fn(() => undefined);
-  const input = [group];
-  expect(projectPluginTimelineItems(input, transform)).toBe(input);
-  expect(transform).not.toHaveBeenCalled();
-  expect(group.items[0]).toBe(member);
-});

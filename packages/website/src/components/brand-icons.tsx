@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 // Third-party brand marks. Paths come from Simple Icons; Slack is the 13.x path,
 // kept here because Slack was pulled from later releases.
 

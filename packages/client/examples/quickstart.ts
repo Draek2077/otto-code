@@ -1,6 +1,6 @@
-import { createOttoClient } from "@otto-code/client";
+import { createPaseoClient } from "@getpaseo/client";
 
-const client = createOttoClient({ url: "ws://127.0.0.1:6868/ws" });
+const client = createPaseoClient({ url: "ws://127.0.0.1:6767/ws" });
 
 await client.connect();
 

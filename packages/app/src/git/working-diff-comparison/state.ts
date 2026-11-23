@@ -1,9 +1,10 @@
-import { withOttoComparisonScope } from "../otto/comparison-scope";
-
 export type WorkingDiffComparison = "uncommitted" | "base";
 
 export interface WorkingDiffComparisonOverride {
+  serverId: string;
+  cwd: string;
   comparison: WorkingDiffComparison;
+  isDirtyAtSelection: boolean;
 }
 
 export interface WorkingDiffComparisonState {
@@ -11,8 +12,6 @@ export interface WorkingDiffComparisonState {
 }
 
 export interface WorkingDiffCheckoutIdentity {
-  /** Otto allows an independent manual selection for each Changes surface. */
-  modeScope?: string;
   serverId: string;
   workspaceId?: string | null;
   cwd: string;
@@ -28,23 +27,24 @@ export function workingDiffComparisonKey(input: WorkingDiffCheckoutIdentity): st
   const checkout = workspaceId
     ? `workspace=${encodeURIComponent(workspaceId)}`
     : `cwd=${encodeURIComponent(normalizeCwd(input.cwd))}`;
-  return withOttoComparisonScope(
-    `working-diff:server=${encodeURIComponent(input.serverId.trim())}:${checkout}`,
-    input.modeScope,
-  );
+  return `working-diff:server=${encodeURIComponent(input.serverId.trim())}:${checkout}`;
 }
 
 export function selectWorkingDiffComparisonInState(
   state: WorkingDiffComparisonState,
   input: WorkingDiffCheckoutIdentity & {
     comparison: WorkingDiffComparison;
+    isDirty: boolean;
   },
 ): WorkingDiffComparisonState {
   return {
     overrides: {
       ...state.overrides,
       [workingDiffComparisonKey(input)]: {
+        serverId: input.serverId.trim(),
+        cwd: normalizeCwd(input.cwd),
         comparison: input.comparison,
+        isDirtyAtSelection: input.isDirty,
       },
     },
   };
@@ -55,8 +55,31 @@ export function resolveWorkingDiffComparisonFromState(
   input: WorkingDiffCheckoutIdentity & { isDirty: boolean },
 ): WorkingDiffComparison {
   const override = state.overrides[workingDiffComparisonKey(input)];
-  // Manual comparison is a reader choice, not an inference from live dirtiness.
-  // A commit may empty Uncommitted, but must not switch the reader to Base.
-  if (override) return override.comparison;
+  // Status can render before boundary expiry runs, so resolution must also mask a stale
+  // selection under any ordering of the two updates.
+  if (override?.isDirtyAtSelection === input.isDirty) {
+    return override.comparison;
+  }
   return input.isDirty ? "uncommitted" : "base";
+}
+
+export function expireWorkingDiffComparisonsInState(
+  state: WorkingDiffComparisonState,
+  input: { serverId: string; cwd: string; isDirty: boolean },
+): WorkingDiffComparisonState {
+  // Expire at the status boundary so selections cannot return after an unmounted surface
+  // misses a dirty-state transition.
+  const staleKeys = Object.entries(state.overrides)
+    .filter(
+      ([, override]) =>
+        override.serverId === input.serverId.trim() &&
+        override.cwd === normalizeCwd(input.cwd) &&
+        override.isDirtyAtSelection !== input.isDirty,
+    )
+    .map(([key]) => key);
+  if (staleKeys.length === 0) return state;
+
+  const overrides = { ...state.overrides };
+  for (const key of staleKeys) delete overrides[key];
+  return { overrides };
 }

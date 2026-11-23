@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Check, X, XCircle } from "@/components/icons/material-icons";
+import { Check, X, XCircle } from "lucide-react-native";
 import { useDownloadStore, formatSpeed, formatEta, type Download } from "@/stores/download-store";
 
 const AUTO_DISMISS_DELAY = 3000;
@@ -73,10 +73,10 @@ export function DownloadToast() {
           <LoadingSpinner size="small" color={theme.colors.foreground} />
         ) : null}
         {activeDownload.status === "complete" ? (
-          <Check size="mdPlus" color={theme.colors.primary} />
+          <Check size={18} color={theme.colors.primary} />
         ) : null}
         {activeDownload.status !== "downloading" && activeDownload.status !== "complete" ? (
-          <XCircle size="mdPlus" color={theme.colors.destructive} />
+          <XCircle size={18} color={theme.colors.destructive} />
         ) : null}
         <View style={styles.textContainer}>
           <Text style={styles.fileName} numberOfLines={1}>
@@ -91,7 +91,7 @@ export function DownloadToast() {
         </View>
         {activeDownload.status !== "downloading" && (
           <Pressable onPress={handleDismiss} hitSlop={8} style={styles.dismiss}>
-            <X size="md" color={theme.colors.foregroundMuted} />
+            <X size={16} color={theme.colors.foregroundMuted} />
           </Pressable>
         )}
       </View>
@@ -116,9 +116,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[3],
-    // surface1, not surface2: `border` is nearly identical to surface2 on this
-    // theme, which swallows the toast's own outline.
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
     borderRadius: theme.borderRadius.lg,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,

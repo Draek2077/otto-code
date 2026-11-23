@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { formatPairingInstructions } from "./pairing.js";
 
 const QR = "\u001b[47m\u001b[30m      \n ████ \n      \u001b[0m";
-const URL = "https://app.otto-code.me/#offer=pairing-offer";
+const URL = "https://app.paseo.sh/#offer=pairing-offer";
 
 describe("formatPairingInstructions", () => {
   it("prints the QR and an unmodified pairing-link line when the terminal is wide enough", () => {
@@ -29,5 +29,18 @@ describe("formatPairingInstructions", () => {
     expect(output).not.toContain(QR);
     expect(output).toContain("terminal width could not be detected");
     expect(output.split("\n")).toContain(URL);
+  });
+
+  it("redacts a password in a printed connection URI", () => {
+    const output = formatPairingInstructions({
+      qr: null,
+      url: URL,
+      connectionUri: "relay://relay.paseo.sh:443/srv_test?key=public&password=private-value",
+    });
+
+    expect(output).toContain(
+      "relay://relay.paseo.sh:443/srv_test?key=public&password=%5Bredacted%5D",
+    );
+    expect(output).not.toContain("private-value");
   });
 });

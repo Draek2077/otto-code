@@ -12,16 +12,12 @@ export function attachMutableProviderConfigOwner(options: {
   updateProviderRegistry: (state: AgentManagerProviderState) => void;
 }): () => void {
   let commitPendingProviderChange: (() => void) | null = null;
-  let appliedModelTierOverrides = options.store.get().modelTierOverrides;
-  let appliedModelVisibilityOverrides = options.store.get().modelVisibilityOverrides;
 
   const unsubscribeApply = options.store.onApply((config, previous, details) => {
     if (equal(config.providers, previous.providers)) return () => undefined;
 
     const previousAgentManagerState =
       options.providerSnapshotManager.getAgentManagerProviderState();
-    // Preparation leaves published catalogs and in-flight discovery untouched.
-    // The config store commits only after every live owner's apply succeeds.
     const prepared = options.providerSnapshotManager.prepareMutableProviderConfig(
       config.providers,
       {
@@ -32,16 +28,7 @@ export function attachMutableProviderConfigOwner(options: {
     try {
       options.updateProviderRegistry(prepared.agentManagerState);
     } catch (error) {
-      try {
-        options.updateProviderRegistry(previousAgentManagerState);
-      } catch (rollbackError) {
-        const failure = new AggregateError(
-          [error, rollbackError],
-          "Provider config apply failed and the previous agent registry could not be restored",
-          { cause: error },
-        );
-        throw failure;
-      }
+      options.updateProviderRegistry(previousAgentManagerState);
       throw error;
     }
     commitPendingProviderChange = prepared.commit;
@@ -51,24 +38,13 @@ export function attachMutableProviderConfigOwner(options: {
       options.updateProviderRegistry(previousAgentManagerState);
     };
   });
-  const unsubscribeChange = options.store.onChange((config) => {
+  const unsubscribeChange = options.store.onChange(() => {
     const commit = commitPendingProviderChange;
     commitPendingProviderChange = null;
     commit?.();
-    // Catalog metadata is derived from the saved overrides. Restamp only after
-    // the config transaction commits so rejected patches cannot leak into clients.
-    if (!equal(config.modelTierOverrides, appliedModelTierOverrides)) {
-      appliedModelTierOverrides = config.modelTierOverrides;
-      options.providerSnapshotManager.setModelTierOverrides(config.modelTierOverrides);
-    }
-    if (!equal(config.modelVisibilityOverrides, appliedModelVisibilityOverrides)) {
-      appliedModelVisibilityOverrides = config.modelVisibilityOverrides;
-      options.providerSnapshotManager.setModelVisibilityOverrides(config.modelVisibilityOverrides);
-    }
   });
 
   return () => {
-    commitPendingProviderChange = null;
     unsubscribeApply();
     unsubscribeChange();
   };

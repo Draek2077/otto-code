@@ -4,36 +4,18 @@ import { useGitActions } from "@/git/use-actions";
 
 interface WorkspaceActionsProps {
   serverId: string;
+  // OTTO(git-fetch): use the real workspace identity, never a client path lookup.
+  workspaceId: string;
   cwd: string;
-  hideLabels?: boolean;
-  // Stretch to fill the available width (content stays centered).
-  fill?: boolean;
-  /** Reports whether this workspace contributes a visible toolbar control. */
-  onAvailabilityChange?: (available: boolean) => void;
-  tooltipSide?: "top" | "bottom";
 }
 
-export function WorkspaceActions({
-  serverId,
-  cwd,
-  hideLabels,
-  fill,
-  onAvailabilityChange,
-  tooltipSide,
-}: WorkspaceActionsProps) {
+export function WorkspaceActions({ serverId, workspaceId, cwd }: WorkspaceActionsProps) {
   const { gitActions } = useGitActions({
     serverId,
+    workspaceId,
     cwd,
     icons: GIT_ACTION_ICONS,
   });
 
-  return (
-    <GitActionsSplitButton
-      gitActions={gitActions}
-      hideLabels={hideLabels}
-      fill={fill}
-      onAvailabilityChange={onAvailabilityChange}
-      tooltipSide={tooltipSide}
-    />
-  );
+  return <GitActionsSplitButton gitActions={gitActions} />;
 }

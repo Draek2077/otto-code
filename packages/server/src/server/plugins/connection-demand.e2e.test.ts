@@ -2,25 +2,22 @@ import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
-import { createOttoApi } from "@otto-code/client";
+import { createPaseoApi } from "@getpaseo/client";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
 test("an RPC-only plugin receives no agent, project or provider data", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "otto-quiet-plugin-"));
-  await writeFile(
-    path.join(directory, "otto-plugin.json"),
-    JSON.stringify({ id: "quiet", requirements: { paseo: ">=0.8.0" } }),
-  );
+  const directory = await mkdtemp(path.join(tmpdir(), "paseo-quiet-plugin-"));
+  await writeFile(path.join(directory, "paseo-plugin.json"), JSON.stringify({ id: "quiet" }));
   await writeFile(
     path.join(directory, "index.server.ts"),
     `
-import { defineRpc } from "@otto-code/plugin";
+import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 export default function contribute(server) {
   const counts = {};
   const observe = message => {
-    if (message.type !== "otto_frame" || typeof message.data !== "string") return;
+    if (message.type !== "paseo_frame" || typeof message.data !== "string") return;
     const frame = JSON.parse(message.data);
     const type = frame.message?.type;
     if (type) counts[type] = (counts[type] ?? 0) + 1;
@@ -30,7 +27,7 @@ export default function contribute(server) {
   return () => process.off("message", observe);
 }`,
   );
-  const daemon = await createTestOttoDaemon();
+  const daemon = await createTestPaseoDaemon();
   const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
   const idle = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
   const legacy = new DaemonClient({
@@ -52,7 +49,7 @@ export default function contribute(server) {
     await client.patchDaemonConfig({ pluginsEnabled: true });
     await client.installDirectoryPlugin(directory);
     const agent = await client.createAgent({ provider: "claude", cwd: directory });
-    const api = createOttoApi(client);
+    const api = createPaseoApi(client);
     const received: string[] = [];
     const release = api.agents
       .ref(agent.id)

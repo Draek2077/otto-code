@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { getBlockingColdCache, type WebsiteCacheContext } from "./github-cache";
 
 interface GitHubAsset {

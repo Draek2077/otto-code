@@ -22,6 +22,7 @@ describe("toggleDesktopSidebarsWithCheckoutIntent", () => {
     expect(result.handled).toBe(true);
     expect(result.closeAgentList).toHaveBeenCalledTimes(1);
     expect(result.openAgentList).not.toHaveBeenCalled();
+    // The explorer is already closed; toggling it would reopen it.
     expect(result.toggleExplorer).not.toHaveBeenCalled();
   });
 

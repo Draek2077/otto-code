@@ -13,7 +13,7 @@ export async function runKillCommand(
   options: TerminalCommandOptions,
   _command: Command,
 ): Promise<SingleResult<TerminalKillRow>> {
-  const { client, close } = await connectTerminalClient(options.host);
+  const { client, close } = await connectTerminalClient(options.daemonTarget);
 
   try {
     const resolvedId = await requireTerminalId(client, terminalId);
@@ -45,6 +45,7 @@ async function requireTerminalId(
   const error: CommandError = {
     code: "TERMINAL_NOT_FOUND",
     message: `No terminal found matching: ${terminalId}`,
+    // OTTO(identity)
     details: "Use `otto terminal ls --all` to list available terminals.",
   };
   throw error;

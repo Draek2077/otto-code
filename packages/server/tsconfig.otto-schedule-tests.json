@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.server.typecheck.json",
+  "compilerOptions": { "rootDir": ".", "noEmit": true, "types": ["node"] },
+  "include": [
+    "src/server/otto/schedules/**/*.test.ts",
+    "src/server/otto/schedule-continuity.test.ts",
+    "src/server/session/schedule/schedule-session.test.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

@@ -9,36 +9,21 @@ import {
   type PressableStateCallbackType,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useCallback, useMemo, useRef, useState, type ReactElement } from "react";
+import { useCallback, useMemo, useState, type ReactElement } from "react";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { formatTimeAgo } from "@/utils/time";
+import { useTimeAgo } from "@/hooks/use-time-ago";
 import { type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
-import { Archive, ChevronRight } from "@/components/icons/material-icons";
-import { getProviderIcon } from "@/components/provider-icons";
+import { Archive, ChevronRight } from "lucide-react-native";
+import { useProviderIcon } from "@/components/provider-icons";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
-import { useQueryClient } from "@tanstack/react-query";
-import { agentHistoryQueryKey } from "@/hooks/agent-history-query-key";
-import { useDeleteAgent } from "@/history/use-delete-agent";
-import { isHistoryDeleteSupported } from "@/history/use-history-delete-feature";
-import {
-  resolveDeleteAgentDialog,
-  resolveHistoryDeleteUnsupportedDialog,
-} from "@/history/delete-dialogs";
-import { alertDialog, confirmDialog } from "@/utils/confirm-dialog";
-import { useToast } from "@/contexts/toast-context";
-import { toErrorMessage } from "@/utils/error-messages";
-import { formatFileSize } from "@/utils/format-file-size";
 import { HighlightedText } from "@/components/ui/highlighted-text";
-import type { AgentSearchMatch } from "@otto-code/protocol/messages";
-import type { MatchRange } from "@otto-code/protocol/search/text-match";
-import type { IconSizeProp } from "@/components/icons/icon-size";
 import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { findHighlightRanges } from "@/components/ui/highlighted-text-segments";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -50,40 +35,7 @@ interface AgentListProps {
   listFooterComponent?: ReactElement | null;
   showAttentionIndicator?: boolean;
   showHostColumn?: boolean;
-  /**
-   * Where a search matched each row, keyed by `serverId:agentId`. Rows mark the
-   * spans so the list can explain why a result is in it — the subsequence and
-   * typo tiers match characters the eye would not find on its own.
-   */
-  searchMatchesByAgentKey?: Record<string, AgentSearchMatch[]>;
-  /**
-   * Renders one flat list in the given order instead of grouping by day. Day
-   * headings claim the list is chronological, which is a lie once the caller
-   * has ordered it by something else — relevance, for instance.
-   */
-  flat?: boolean;
-}
-
-export function AgentListColumnHeader({ showHostColumn }: { showHostColumn: boolean }) {
-  const isMobile = useIsCompactFormFactor();
-  const { t } = useTranslation();
-
-  if (isMobile) {
-    return null;
-  }
-
-  return (
-    <View style={styles.columnHeader} testID="agent-list-column-header">
-      <Text style={styles.columnHeaderPrimary}>{t("sessions.columns.conversation")}</Text>
-      <Text style={styles.columnHeaderMeta}>{t("sessions.columns.project")}</Text>
-      {showHostColumn ? (
-        <Text style={styles.columnHeaderHost}>{t("sessions.columns.host")}</Text>
-      ) : null}
-      <Text style={styles.columnHeaderMeta}>{t("sessions.columns.branch")}</Text>
-      <Text style={styles.columnHeaderFixed}>{t("sessions.columns.lastActive")}</Text>
-      <Text style={styles.columnHeaderFixed}>{t("sessions.columns.size")}</Text>
-    </View>
-  );
+  search?: string;
 }
 
 type DateSectionKey = "today" | "yesterday" | "thisWeek" | "thisMonth" | "older";
@@ -95,6 +47,8 @@ const DATE_SECTION_ORDER = [
   "thisMonth",
   "older",
 ] as const satisfies readonly DateSectionKey[];
+
+const HISTORY_MATCH_OPTIONS = { typoTolerant: true } as const;
 
 type FlatListItem =
   | { type: "header"; key: string; section: DateSectionKey }
@@ -158,39 +112,6 @@ function SessionBadge({
   return <StatusBadge label={label} variant={variant} leading={icon} />;
 }
 
-function WorkspaceTitlePrefix({
-  visible,
-  workspaceName,
-  ranges,
-  testID,
-  iconSize,
-  color,
-}: {
-  visible: boolean;
-  workspaceName: string;
-  ranges?: readonly MatchRange[];
-  testID: string;
-  iconSize: IconSizeProp;
-  color: string;
-}) {
-  if (!visible) {
-    return null;
-  }
-
-  return (
-    <>
-      <HighlightedText
-        text={workspaceName}
-        ranges={ranges}
-        style={styles.workspaceTitleText}
-        numberOfLines={1}
-        testID={testID}
-      />
-      <ChevronRight size={iconSize} color={color} />
-    </>
-  );
-}
-
 function SessionRowBadges({
   agent,
   archivedIcon,
@@ -221,56 +142,6 @@ function SessionRowBadges({
   );
 }
 
-function useSessionRowPressState({
-  isSelected,
-  isRestoring,
-  isLocked,
-}: {
-  isSelected: boolean;
-  isRestoring: boolean;
-  isLocked: boolean;
-}) {
-  const style = useCallback(
-    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.row,
-      (isSelected || isRestoring) && styles.rowSelected,
-      Boolean(hovered) && !isLocked && styles.rowHovered,
-      pressed && styles.rowPressed,
-      isLocked && styles.rowLocked,
-    ],
-    [isSelected, isRestoring, isLocked],
-  );
-  return {
-    style,
-    disabled: isLocked || isRestoring,
-    accessibilityState: isRestoring ? RESTORING_ACCESSIBILITY_STATE : undefined,
-  };
-}
-
-/**
- * The provider icon, or a same-size spinner in its place while the archived chat is
- * being restored, so the title does not shift when the restore settles.
- */
-function SessionRowLeadingIcon({
-  agent,
-  isRestoring,
-}: {
-  agent: AggregatedAgent;
-  isRestoring: boolean;
-}) {
-  const { theme } = useUnistyles();
-  const ProviderIcon = getProviderIcon(agent.provider, agent.serverId);
-  return (
-    <View style={styles.providerIconWrap}>
-      {isRestoring ? (
-        <LoadingSpinner size="sm" testID={`agent-row-restoring-${agent.serverId}-${agent.id}`} />
-      ) : (
-        <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-      )}
-    </View>
-  );
-}
-
 function SessionRowTrailingAttention({
   isMobile,
   showAttentionIndicator,
@@ -293,53 +164,55 @@ function SessionRowTrailingAttention({
 
 function SessionRow({
   agent,
-  searchMatches,
+  search,
   isMobile,
   selectedAgentId,
   showAttentionIndicator,
   showHostColumn,
-  isRestoring,
-  isLocked,
   onPress,
   onLongPress,
 }: {
   agent: AggregatedAgent;
-  searchMatches?: readonly AgentSearchMatch[];
+  search?: string;
   isMobile: boolean;
   selectedAgentId?: string;
   showAttentionIndicator: boolean;
   showHostColumn: boolean;
-  /** This row's archived chat is being restored; the spinner stands in for its provider icon. */
-  isRestoring: boolean;
-  /** Another row is restoring, so this one takes no presses until it settles. */
-  isLocked: boolean;
   onPress: (agent: AggregatedAgent) => void;
   onLongPress: (agent: AggregatedAgent) => void;
 }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const timeAgo = formatTimeAgo(agent.lastActivityAt);
   const agentKey = `${agent.serverId}:${agent.id}`;
   const isSelected = selectedAgentId === agentKey;
   const projectName = agent.projectPlacement?.projectName ?? "";
   const branch = agent.projectPlacement?.checkout.currentBranch ?? "";
   const workspaceName = agent.projectPlacement?.workspaceName ?? "";
+  const ProviderIcon = useProviderIcon(agent.provider, agent.serverId);
   const pendingPermissionCount = agent.pendingPermissionCount ?? 0;
-  const rangesFor = useCallback(
-    (field: AgentSearchMatch["field"]) =>
-      searchMatches?.find((match) => match.field === field)?.ranges,
-    [searchMatches],
+  const ranges = useMemo(
+    () => ({
+      // History search matches typo-tolerantly on the daemon, so the marks do too.
+      workspace: findHighlightRanges(search ?? "", workspaceName, HISTORY_MATCH_OPTIONS),
+      title: findHighlightRanges(search ?? "", agent.title ?? "", HISTORY_MATCH_OPTIONS),
+      branch: findHighlightRanges(search ?? "", branch, HISTORY_MATCH_OPTIONS),
+      project: findHighlightRanges(search ?? "", projectName, HISTORY_MATCH_OPTIONS),
+    }),
+    [search, workspaceName, agent.title, branch, projectName],
   );
 
-  const pressState = useSessionRowPressState({ isSelected, isRestoring, isLocked });
+  const pressableStyle = useCallback(
+    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.row,
+      isSelected && styles.rowSelected,
+      Boolean(hovered) && styles.rowHovered,
+      pressed && styles.rowPressed,
+    ],
+    [isSelected],
+  );
 
   const handlePress = useCallback(() => onPress(agent), [onPress, agent]);
   const handleLongPress = useCallback(() => onLongPress(agent), [onLongPress, agent]);
-
-  const sessionTitleStyle = useMemo(
-    () => [styles.sessionTitle, isSelected && styles.sessionTitleHighlighted],
-    [isSelected],
-  );
 
   const archivedIcon = useMemo(
     () => <Archive size={theme.fontSize.sm} color={theme.colors.foregroundMuted} />,
@@ -348,32 +221,44 @@ function SessionRow({
   const showDesktopAttention =
     !isMobile && showAttentionIndicator && Boolean(agent.requiresAttention);
 
+  const agentTitle = (
+    <View style={styles.agentTitleRow}>
+      <View style={styles.providerIconWrap}>
+        <ProviderIcon size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+      </View>
+      <HighlightedText
+        text={agent.title || t("agentList.fallbackTitle")}
+        ranges={ranges.title}
+        style={styles.sessionTitle}
+        numberOfLines={1}
+        testID={`agent-row-title-${agent.serverId}-${agent.id}`}
+      />
+    </View>
+  );
+
   return (
     <Pressable
-      style={pressState.style}
+      style={pressableStyle}
       onPress={handlePress}
       onLongPress={handleLongPress}
-      disabled={pressState.disabled}
-      accessibilityState={pressState.accessibilityState}
+      accessibilityRole="button"
       testID={`agent-row-${agent.serverId}-${agent.id}`}
     >
       <View style={styles.rowContent}>
         <View style={styles.rowTitleRow}>
-          <WorkspaceTitlePrefix
-            visible={!isMobile && Boolean(workspaceName)}
-            workspaceName={workspaceName}
-            ranges={rangesFor("workspace")}
-            testID={`agent-row-workspace-${agent.serverId}-${agent.id}`}
-            iconSize={theme.iconSize.xs}
-            color={theme.colors.foregroundMuted}
-          />
-          <SessionRowLeadingIcon agent={agent} isRestoring={isRestoring} />
           <HighlightedText
-            text={agent.title || t("agentList.fallbackTitle")}
-            ranges={agent.title ? rangesFor("title") : undefined}
-            style={sessionTitleStyle}
+            text={workspaceName || projectName}
+            ranges={workspaceName ? ranges.workspace : ranges.project}
+            style={styles.workspaceTitleText}
             numberOfLines={1}
+            testID={`agent-row-workspace-${agent.serverId}-${agent.id}`}
           />
+          {!isMobile ? (
+            <>
+              <ChevronRight size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />
+              {agentTitle}
+            </>
+          ) : null}
           <SessionRowBadges
             agent={agent}
             archivedIcon={archivedIcon}
@@ -381,11 +266,12 @@ function SessionRow({
             showDesktopAttention={showDesktopAttention}
           />
         </View>
+        {isMobile ? agentTitle : null}
         {isMobile ? (
           <View style={styles.rowMetaRow}>
             <HighlightedText
               text={projectName}
-              ranges={rangesFor("project")}
+              ranges={ranges.project}
               style={styles.sessionMetaText}
               numberOfLines={1}
               testID={`agent-row-project-${agent.serverId}-${agent.id}`}
@@ -393,21 +279,13 @@ function SessionRow({
             <Text style={styles.sessionMetaSeparator}>·</Text>
             <HighlightedText
               text={branch}
-              ranges={rangesFor("branch")}
+              ranges={ranges.branch}
               style={styles.sessionMetaText}
               numberOfLines={1}
               testID={`agent-row-branch-${agent.serverId}-${agent.id}`}
             />
             <Text style={styles.sessionMetaSeparator}>·</Text>
-            <HighlightedText
-              text={workspaceName}
-              ranges={rangesFor("workspace")}
-              style={styles.sessionMetaText}
-              numberOfLines={1}
-              testID={`agent-row-workspace-${agent.serverId}-${agent.id}`}
-            />
-            <Text style={styles.sessionMetaSeparator}>·</Text>
-            <Text style={styles.sessionMetaText}>{timeAgo}</Text>
+            <AgentActivityTime date={agent.lastActivityAt} isMobile />
             {showHostColumn && agent.serverLabel ? (
               <>
                 <Text style={styles.sessionMetaSeparator}>·</Text>
@@ -423,7 +301,7 @@ function SessionRow({
         <View style={styles.rowColumns}>
           <HighlightedText
             text={projectName}
-            ranges={rangesFor("project")}
+            ranges={ranges.project}
             style={styles.columnMeta}
             numberOfLines={1}
             testID={`agent-row-project-${agent.serverId}-${agent.id}`}
@@ -435,19 +313,12 @@ function SessionRow({
           ) : null}
           <HighlightedText
             text={branch}
-            ranges={rangesFor("branch")}
+            ranges={ranges.branch}
             style={styles.columnMeta}
             numberOfLines={1}
             testID={`agent-row-branch-${agent.serverId}-${agent.id}`}
           />
-          <Text style={styles.columnMetaFixed} numberOfLines={1}>
-            {timeAgo}
-          </Text>
-          <Text style={styles.columnMetaFixed} numberOfLines={1}>
-            {agent.archivedAt && agent.archiveBytes !== undefined
-              ? formatFileSize({ size: agent.archiveBytes })
-              : ""}
-          </Text>
+          <AgentActivityTime date={agent.lastActivityAt} isMobile={false} />
         </View>
       ) : null}
       <SessionRowTrailingAttention
@@ -456,6 +327,15 @@ function SessionRow({
         requiresAttention={agent.requiresAttention}
       />
     </Pressable>
+  );
+}
+
+function AgentActivityTime({ date, isMobile }: { date: Date; isMobile: boolean }) {
+  const label = useTimeAgo(date);
+  return (
+    <Text style={isMobile ? styles.sessionMetaText : styles.columnMetaFixed} numberOfLines={1}>
+      {label}
+    </Text>
   );
 }
 
@@ -468,8 +348,7 @@ export function AgentList({
   listFooterComponent,
   showAttentionIndicator = true,
   showHostColumn = false,
-  searchMatchesByAgentKey,
-  flat = false,
+  search,
 }: AgentListProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -477,9 +356,6 @@ export function AgentList({
   const [actionAgent, setActionAgent] = useState<AggregatedAgent | null>(null);
   const isMobile = useIsCompactFormFactor();
   const { archiveAgent } = useArchiveAgent();
-  const { deleteAgent } = useDeleteAgent();
-  const toast = useToast();
-  const queryClient = useQueryClient();
 
   const actionClient = useSessionStore((state) =>
     actionAgent?.serverId ? (state.sessions[actionAgent.serverId]?.client ?? null) : null,
@@ -488,101 +364,28 @@ export function AgentList({
   const isActionSheetVisible = actionAgent !== null;
   const isActionDaemonUnavailable = Boolean(actionAgent?.serverId && !actionClient);
 
-  /**
-   * Restoring an archived chat is a daemon round-trip that can take seconds, so it
-   * runs one at a time: the clicked row shows a spinner and every other row is
-   * locked until the restore settles and the view switches. The ref closes the
-   * double-click window before the state render lands.
-   */
-  const [restoringAgentKey, setRestoringAgentKey] = useState<string | null>(null);
-  const restoringAgentKeyRef = useRef<string | null>(null);
-
   const handleAgentPress = useCallback(
     (agent: AggregatedAgent) => {
-      if (isActionSheetVisible || restoringAgentKeyRef.current) {
+      if (isActionSheetVisible) {
         return;
       }
 
       const serverId = agent.serverId;
       const agentId = agent.id;
-      const openAgent = () => {
-        onAgentSelect?.();
-        navigateToAgent({
-          serverId,
-          agentId,
-          workspaceId: agent.workspaceId,
-          pin: false,
-        });
-      };
 
-      if (agent.archivedAt) {
-        const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
-        if (client) {
-          const agentKey = `${serverId}:${agentId}`;
-          restoringAgentKeyRef.current = agentKey;
-          setRestoringAgentKey(agentKey);
-          void client
-            .refreshAgent(agentId)
-            .then(() => {
-              openAgent();
-              return queryClient.invalidateQueries({
-                queryKey: agentHistoryQueryKey(serverId),
-              });
-            })
-            .catch((error: unknown) => {
-              toast.error(toErrorMessage(error));
-            })
-            .finally(() => {
-              restoringAgentKeyRef.current = null;
-              setRestoringAgentKey(null);
-            });
-        }
-        return;
-      }
-
-      openAgent();
+      onAgentSelect?.();
+      navigateToAgent({
+        serverId,
+        agentId,
+        workspaceId: agent.workspaceId,
+        pin: true,
+      });
     },
-    [isActionSheetVisible, onAgentSelect, queryClient, toast],
-  );
-
-  /**
-   * Long-press means "remove this from my list", and what that means depends on
-   * where the row already is. An unarchived chat archives (the fast path this has
-   * always had). An **already archived** chat has nowhere further to go by
-   * archiving - re-archiving it is a no-op that reads as a broken gesture - so it
-   * offers the hard delete instead, behind a destructive confirm that says what
-   * delete does and does not touch.
-   *
-   * Two-step destruction is deliberate: delete is unreachable for a chat that has
-   * not been archived first.
-   */
-  const requestDeleteAgent = useCallback(
-    async (agent: AggregatedAgent) => {
-      if (!isHistoryDeleteSupported(agent.serverId)) {
-        await alertDialog(resolveHistoryDeleteUnsupportedDialog());
-        return;
-      }
-      const confirmed = await confirmDialog(resolveDeleteAgentDialog({ title: agent.title }));
-      if (!confirmed) {
-        return;
-      }
-      try {
-        await deleteAgent({
-          serverId: agent.serverId,
-          agentId: agent.id,
-        });
-      } catch (error) {
-        toast.error(toErrorMessage(error));
-      }
-    },
-    [deleteAgent, toast],
+    [isActionSheetVisible, onAgentSelect],
   );
 
   const handleAgentLongPress = useCallback(
     (agent: AggregatedAgent) => {
-      if (restoringAgentKeyRef.current) {
-        return;
-      }
       const isRunning = agent.status === "running";
       if (isRunning) {
         setActionAgent(agent);
@@ -594,13 +397,9 @@ export function AgentList({
         setActionAgent(agent);
         return;
       }
-      if (agent.archivedAt) {
-        void requestDeleteAgent(agent);
-        return;
-      }
       void archiveAgent({ serverId: agent.serverId, agentId: agent.id }).catch(() => {});
     },
-    [archiveAgent, requestDeleteAgent],
+    [archiveAgent],
   );
 
   const handleCloseActionSheet = useCallback(() => {
@@ -611,20 +410,12 @@ export function AgentList({
     if (!actionAgent || !actionClient) {
       return;
     }
-    // Timeout errors are swallowed - the daemon will still process the archive
+    // Timeout errors are swallowed — the daemon will still process the archive
     void archiveAgent({ serverId: actionAgent.serverId, agentId: actionAgent.id }).catch(() => {});
     setActionAgent(null);
   }, [actionAgent, actionClient, archiveAgent]);
 
   const flatItems = useMemo((): FlatListItem[] => {
-    if (flat) {
-      return agents.map((agent) => ({
-        type: "agent" as const,
-        key: `${agent.serverId}:${agent.id}`,
-        agent,
-      }));
-    }
-
     const buckets = new Map<DateSectionKey, AggregatedAgent[]>();
     for (const agent of agents) {
       const section = deriveDateSectionKey(agent.lastActivityAt);
@@ -645,7 +436,7 @@ export function AgentList({
       }
     }
     return result;
-  }, [agents, flat]);
+  }, [agents]);
 
   const renderItem: ListRenderItem<FlatListItem> = useCallback(
     ({ item }) => {
@@ -659,13 +450,11 @@ export function AgentList({
       return (
         <SessionRow
           agent={item.agent}
-          searchMatches={searchMatchesByAgentKey?.[item.key]}
+          search={search}
           isMobile={isMobile}
           selectedAgentId={selectedAgentId}
           showAttentionIndicator={showAttentionIndicator}
           showHostColumn={showHostColumn}
-          isRestoring={restoringAgentKey === item.key}
-          isLocked={restoringAgentKey !== null && restoringAgentKey !== item.key}
           onPress={handleAgentPress}
           onLongPress={handleAgentLongPress}
         />
@@ -675,8 +464,7 @@ export function AgentList({
       handleAgentLongPress,
       handleAgentPress,
       isMobile,
-      restoringAgentKey,
-      searchMatchesByAgentKey,
+      search,
       selectedAgentId,
       showAttentionIndicator,
       showHostColumn,
@@ -720,7 +508,6 @@ export function AgentList({
         contentContainerStyle={styles.listContent}
         keyExtractor={keyExtractor}
         renderItem={renderItem}
-        extraData={restoringAgentKey}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         ListFooterComponent={listFooterComponent}
@@ -744,7 +531,7 @@ export function AgentList({
             </Text>
             <View style={styles.sheetButtonRow}>
               <Pressable
-                style={SHEET_CANCEL_BUTTON_STYLE}
+                style={[styles.sheetButton, styles.sheetCancelButton]}
                 onPress={handleCloseActionSheet}
                 testID="agent-action-cancel"
               >
@@ -752,7 +539,7 @@ export function AgentList({
               </Pressable>
               <Pressable
                 disabled={isActionDaemonUnavailable}
-                style={SHEET_ARCHIVE_BUTTON_STYLE}
+                style={[styles.sheetButton, styles.sheetArchiveButton]}
                 onPress={handleArchiveAgent}
                 testID="agent-action-archive"
               >
@@ -790,8 +577,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   sectionTitle: {
     fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.bold,
-    color: theme.colors.foreground,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foregroundMuted,
   },
   row: {
     flexDirection: "row",
@@ -819,16 +606,21 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
     overflow: "hidden",
   },
-  providerIconWrap: {
-    width: theme.iconSize.md,
+  agentTitleRow: {
+    flexDirection: "row",
     alignItems: "center",
-    justifyContent: "center",
+    gap: theme.spacing[2],
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  providerIconWrap: {
+    flexShrink: 0,
   },
   workspaceTitleText: {
-    flexShrink: 0,
-    maxWidth: 220,
+    flexShrink: { xs: 1, md: 0 },
+    maxWidth: { xs: "100%", md: 320 },
     fontSize: theme.fontSize.base,
-    color: theme.colors.foregroundMuted,
+    color: theme.colors.foreground,
   },
   rowMetaRow: {
     flexDirection: "row",
@@ -849,19 +641,12 @@ const styles = StyleSheet.create((theme) => ({
   rowPressed: {
     backgroundColor: theme.colors.surface2,
   },
-  rowLocked: {
-    opacity: 0.5,
-  },
   sessionTitle: {
     flexShrink: 1,
     minWidth: 0,
     fontSize: theme.fontSize.base,
     fontWeight: "400",
-    color: theme.colors.foreground,
-    opacity: 0.86,
-  },
-  sessionTitleHighlighted: {
-    opacity: 1,
+    color: theme.colors.foregroundMuted,
   },
   sessionMetaText: {
     maxWidth: "100%",
@@ -877,66 +662,27 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     flexShrink: 0,
-    gap: 10,
+    gap: theme.spacing[3],
   },
   columnMeta: {
     fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
-    width: 104,
-    textAlign: "right" as const,
+    width: 132,
   },
   columnMetaFixed: {
     fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
-    width: 68,
+    width: 72,
     textAlign: "right" as const,
   },
   columnMetaHost: {
     fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
-    width: 88,
-    textAlign: "right" as const,
-  },
-  columnHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: {
-      xs: theme.spacing[6],
-      md: theme.spacing[8] + theme.spacing[1],
-    },
-    paddingTop: theme.spacing[2],
-    paddingBottom: theme.spacing[2],
-    gap: 10,
-  },
-  columnHeaderPrimary: {
-    flex: 1,
-    minWidth: 0,
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foregroundMuted,
-  },
-  columnHeaderMeta: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foregroundMuted,
-    width: 104,
-    textAlign: "right" as const,
-  },
-  columnHeaderHost: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foregroundMuted,
-    width: 88,
-    textAlign: "right" as const,
-  },
-  columnHeaderFixed: {
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foregroundMuted,
-    width: 68,
+    width: 120,
+    marginLeft: theme.spacing[4],
     textAlign: "right" as const,
   },
   sheetOverlay: {
@@ -1004,8 +750,3 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
   },
 }));
-
-const RESTORING_ACCESSIBILITY_STATE = { busy: true } as const;
-
-const SHEET_CANCEL_BUTTON_STYLE = [styles.sheetButton, styles.sheetCancelButton];
-const SHEET_ARCHIVE_BUTTON_STYLE = [styles.sheetButton, styles.sheetArchiveButton];

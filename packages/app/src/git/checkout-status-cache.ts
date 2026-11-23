@@ -1,6 +1,5 @@
-import { isFailedCheckoutMeasurement } from "./otto/checkout-measurement";
 import type { QueryClient } from "@tanstack/react-query";
-import type { CheckoutStatusResponse, CheckoutStatusUpdate } from "@otto-code/protocol/messages";
+import type { CheckoutStatusResponse, CheckoutStatusUpdate } from "@getpaseo/protocol/messages";
 import equal from "fast-deep-equal/es6";
 import {
   checkoutCommitsQueryKey,
@@ -9,6 +8,8 @@ import {
   invalidatePrPaneTimelineForCheckout,
 } from "@/git/query-keys";
 import { type CheckoutPrStatusPayload, normalizeCheckoutPrStatusPayload } from "@/git/pr-status";
+import { resetDraftAgentCommandsForCheckout } from "@/hooks/agent-commands-query";
+import { expireWorkingDiffComparisons } from "@/git/working-diff-comparison";
 
 export type CheckoutStatusPayload = CheckoutStatusResponse["payload"];
 export type { CheckoutPrStatusPayload } from "@/git/pr-status";
@@ -17,11 +18,13 @@ export interface CheckoutStatusClient {
   getCheckoutStatus: (cwd: string) => Promise<CheckoutStatusPayload>;
 }
 
-// Status publication owns cached measurements. Manual comparison selection has its
-// own owner and is independent of a commit or a newly dirty working tree.
+// Checkout status enters the app through exactly two doors: daemon pushes
+// (applyCheckoutStatusUpdateFromEvent) and query fetches (fetchCheckoutStatus). Both run
+// the dirty-state reactions, so they hold regardless of which screens are mounted.
 
 export async function fetchCheckoutStatus({
   client,
+  serverId,
   cwd,
 }: {
   client: CheckoutStatusClient;
@@ -29,11 +32,7 @@ export async function fetchCheckoutStatus({
   cwd: string;
 }): Promise<CheckoutStatusPayload> {
   const payload = await client.getCheckoutStatus(cwd);
-  if (isFailedCheckoutMeasurement(payload)) {
-    // Rejecting keeps the last known-good status in the cache and lets the query
-    // retry, instead of caching "not a repository" forever.
-    throw new Error(payload.error?.message ?? "Checkout status is unavailable.");
-  }
+  expireWorkingDiffComparisons({ serverId, cwd, isDirty: payload.isGit && payload.isDirty });
   return payload;
 }
 
@@ -65,18 +64,25 @@ export function applyCheckoutStatusUpdateFromEvent({
   message: CheckoutStatusUpdate;
 }): void {
   const { payload } = message;
-  if (isFailedCheckoutMeasurement(payload)) return;
   const prStatus = payload.prStatus
     ? normalizeCheckoutPrStatusPayload(payload.prStatus)
     : undefined;
   const cachePayload = prStatus ? { ...payload, prStatus } : payload;
-  // A PR-only publication did not measure Git, so it cannot replace that cache.
-  if (!payload.prStatusOnly) {
-    queryClient.setQueryData(checkoutStatusQueryKey(serverId, payload.cwd), cachePayload);
-    void queryClient.invalidateQueries({
-      queryKey: checkoutCommitsQueryKey(serverId, payload.cwd),
-    });
+  const previousStatus = queryClient.getQueryData<CheckoutStatusPayload>(
+    checkoutStatusQueryKey(serverId, payload.cwd),
+  );
+  queryClient.setQueryData(checkoutStatusQueryKey(serverId, payload.cwd), cachePayload);
+  if (previousStatus?.currentBranch !== payload.currentBranch) {
+    void resetDraftAgentCommandsForCheckout(queryClient, { serverId, cwd: payload.cwd });
   }
+  void queryClient.invalidateQueries({
+    queryKey: checkoutCommitsQueryKey(serverId, payload.cwd),
+  });
+  expireWorkingDiffComparisons({
+    serverId,
+    cwd: payload.cwd,
+    isDirty: payload.isGit && payload.isDirty,
+  });
 
   if (!prStatus) {
     return;

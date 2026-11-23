@@ -12,7 +12,6 @@ function project(id: string, name: string, root: string): ProjectDescriptor {
     projectKey: `remote:github.com/${name}`,
     projectDisplayName: name,
     projectCustomName: null,
-    projectKanban: null,
     projectRootPath: root,
     projectKind: "git",
   };

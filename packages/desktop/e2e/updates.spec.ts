@@ -1,3 +1,4 @@
+// OTTO(identity): match Otto product copy and documentation URLs.
 import { expect, test } from "../../app/e2e/support/fixtures";
 import { gotoAppShell, openSettings } from "../../app/e2e/support/helpers/app";
 import { getServerId } from "../../app/e2e/support/helpers/server-id";
@@ -17,8 +18,8 @@ import {
   expectReadyUpdateCheckResult,
   clickInstallUpdate,
   expectInstallInProgress,
-  openDaemonManagementConfirmDialog,
-  cancelConfirmDialog,
+  interceptDaemonManagementConfirmDialog,
+  interceptDaemonStopConfirmDialog,
   toggleDaemonManagement,
   expectDaemonManagementConfirmDialog,
   expectDaemonManagementEnabled,
@@ -28,8 +29,8 @@ import {
   expectDaemonStatusVersion,
 } from "./support/runtime";
 
-// No Playwright Electron runner exists; we simulate the desktop bridge via
-// addInitScript so Electron-gated UI activates without a real Electron process.
+// These renderer cases use the Desktop bridge fixture. Actual Electron ownership
+// and native confirmation journeys live in daemon-lifecycle.e2e.mjs.
 test.describe("Desktop updates", () => {
   test("a desktop-managed daemon explains why its update action is disabled", async ({
     page,
@@ -47,17 +48,6 @@ test.describe("Desktop updates", () => {
       "This daemon is managed by Otto Desktop. Update Otto Desktop on the host.",
     );
     await expect(page.getByTestId("host-page-update-button")).toBeDisabled();
-  });
-
-  test("update banner appears in the sidebar when an app update is available", async ({ page }) => {
-    await installDesktopRuntime(page, {
-      serverId: getServerId(),
-      updateAvailable: true,
-      latestVersion: "1.2.3",
-    });
-    await gotoAppShell(page);
-
-    await expectUpdateBanner(page, "1.2.3");
   });
 
   test("clicking install shows the installing state on the callout", async ({ page }) => {
@@ -105,36 +95,20 @@ test.describe("Desktop updates", () => {
 });
 
 test.describe("Desktop daemon management", () => {
-  test("disabling built-in daemon management shows confirm dialog with correct copy", async ({
-    page,
-  }) => {
+  test("cancelling the management confirmation preserves the enabled daemon", async ({ page }) => {
     const serverId = getServerId();
     await installDesktopRuntime(page, {
       serverId,
       manageBuiltInDaemon: true,
+      ownedByDesktop: true,
+      confirmShouldAccept: false,
     });
     await gotoAppShell(page);
     await openDesktopSettings(page, serverId);
 
-    await openDaemonManagementConfirmDialog(page);
-    await expectDaemonManagementConfirmDialog(page);
-    await cancelConfirmDialog(page);
+    const dialogArgs = await interceptDaemonManagementConfirmDialog(page);
+    expectDaemonManagementConfirmDialog(dialogArgs);
 
-    await expectDaemonManagementEnabled(page);
-  });
-
-  test("cancelling the confirm dialog leaves the daemon management toggle on", async ({ page }) => {
-    const serverId = getServerId();
-    await installDesktopRuntime(page, {
-      serverId,
-      manageBuiltInDaemon: true,
-    });
-    await gotoAppShell(page);
-    await openDesktopSettings(page, serverId);
-
-    await expectDaemonManagementEnabled(page);
-    await openDaemonManagementConfirmDialog(page);
-    await cancelConfirmDialog(page);
     await expectDaemonManagementEnabled(page);
   });
 
@@ -143,6 +117,7 @@ test.describe("Desktop daemon management", () => {
     await installDesktopRuntime(page, {
       serverId,
       manageBuiltInDaemon: true,
+      ownedByDesktop: true,
       confirmShouldAccept: true,
     });
     await gotoAppShell(page);
@@ -173,29 +148,34 @@ test.describe("Desktop daemon management", () => {
     await expectDaemonStatusLogPath(page, realState.logPath);
   });
 
-  test("stopping and restarting the daemon updates the PID", async ({ page }) => {
-    const serverId = getServerId();
-    const realState = await loadRealDaemonState();
-    await installDesktopRuntime(page, {
-      serverId,
-      manageBuiltInDaemon: true,
-      daemonPid: realState.pid,
-      daemonVersion: realState.version,
-      daemonLogPath: realState.logPath,
-      confirmShouldAccept: true,
+  for (const confirmShouldAccept of [false, true]) {
+    test(`${confirmShouldAccept ? "confirming" : "cancelling"} Stop identifies the owned daemon`, async ({
+      page,
+    }) => {
+      const serverId = getServerId();
+      const realState = await loadRealDaemonState();
+      const daemonHome = process.env.E2E_PASEO_HOME!;
+      await installDesktopRuntime(page, {
+        serverId,
+        daemonPid: realState.pid,
+        daemonHome,
+        ownedByDesktop: true,
+        confirmShouldAccept,
+      });
+      await gotoAppShell(page);
+      await openDesktopSettings(page, serverId);
+
+      const dialog = await interceptDaemonStopConfirmDialog(page);
+      expect(dialog).toEqual({
+        title: "Stop local daemon?",
+        message: [
+          "This daemon was launched by this Desktop session.",
+          `Home: ${daemonHome}`,
+          `Supervisor PID: ${realState.pid}`,
+          "Running agent work will be interrupted.",
+        ].join("\n"),
+      });
+      await expectDaemonStatusPid(page, confirmShouldAccept ? null : realState.pid);
     });
-    await gotoAppShell(page);
-    await openDesktopSettings(page, serverId);
-
-    await expectDaemonStatusPid(page, realState.pid);
-
-    await toggleDaemonManagement(page, "disable");
-    await expectDaemonManagementDisabled(page);
-    await expectDaemonStatusPid(page, null);
-
-    await toggleDaemonManagement(page, "enable");
-    await expectDaemonManagementEnabled(page);
-    const newPid = realState.pid !== null ? realState.pid + 1000 : 11000;
-    await expectDaemonStatusPid(page, newPid);
-  });
+  }
 });

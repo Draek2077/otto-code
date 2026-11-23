@@ -1,45 +1,561 @@
 import { Platform } from "react-native";
-import { darkHighlightColors, lightHighlightColors } from "@otto-code/highlight";
-import { resolveChatMaxWidth, useIsCompactFormFactor } from "@/constants/layout";
-import {
-  BLACK_VARIANT_OVERRIDES,
-  baseColors,
-  buildDarkSemanticColors,
-  buildLightSemanticColors,
-  darkShadow,
-  daylightColors,
-  emberDarkColors,
-  evergreenDarkColors,
-  graphiteDarkColors,
-  horizonColors,
-  ivoryColors,
-  lightShadow,
-  meadowColors,
-  neotokyoDarkColors,
-  neutralDarkColors,
-  nightfallDarkColors,
-  obsidianDarkColors,
-  powderColors,
-  pureBlackDarkColors,
-  sherbetColors,
-  slateDarkColors,
-  terracottaColors,
-} from "./theme-palettes";
-import type { ThemeVariantName } from "./theme-palettes";
-export { buildDarkSemanticColors, buildLightSemanticColors } from "./theme-palettes";
-// PROVENANCE: Otto's theme set is authored locally in this fork and is NOT
-// inherited from upstream Paseo. `light`/`dark` predate the fork, but the theme
-// variants (`zinc`/`midnight`/`claude`/`ghostty`, added in 2f77674c5, plus
-// `daylight`/`evergreen`/`cyberpunk`/`pastel`, plus
-// `meadow`/`terracotta`/`horizon`/`powder`, plus the monochrome
-// `ivory`/`obsidian` pair) were created in Otto. During
-// upstream merges, resolve
-// conflicts in this file in favor of the Otto side - do not pull theme changes
-// from Paseo.
+import { darkHighlightColors, lightHighlightColors } from "@getpaseo/highlight";
+
+export const baseColors = {
+  // Base colors
+  white: "#ffffff",
+  black: "#000000",
+
+  // Zinc scale (primary gray palette)
+  zinc: {
+    50: "#fafafa",
+    100: "#f4f4f5",
+    200: "#e4e4e7",
+    300: "#d4d4d8",
+    400: "#a1a1aa",
+    500: "#71717a",
+    600: "#52525b",
+    700: "#3f3f46",
+    800: "#27272a",
+    850: "#1a1a1d",
+    900: "#18181b",
+    950: "#121214",
+  },
+
+  // Gray scale
+  gray: {
+    50: "#f9fafb",
+    100: "#f3f4f6",
+    200: "#e5e7eb",
+    300: "#d1d5db",
+    400: "#9ca3af",
+    500: "#6b7280",
+    600: "#4b5563",
+    700: "#374151",
+    800: "#1f2937",
+    900: "#111827",
+  },
+
+  // Slate scale
+  slate: {
+    200: "#e2e8f0",
+  },
+
+  // Blue scale
+  blue: {
+    50: "#eff6ff",
+    100: "#dbeafe",
+    200: "#bfdbfe",
+    300: "#93c5fd",
+    400: "#60a5fa",
+    500: "#3b82f6",
+    600: "#2563eb",
+    700: "#1d4ed8",
+    800: "#1e40af",
+    900: "#1e3a8a",
+    950: "#172554",
+  },
+
+  // Green scale
+  green: {
+    100: "#dcfce7",
+    200: "#bbf7d0",
+    400: "#4ade80",
+    500: "#22c55e",
+    600: "#16a34a",
+    800: "#166534",
+    900: "#14532d",
+  },
+
+  // Red scale
+  red: {
+    100: "#fee2e2",
+    200: "#fecaca",
+    300: "#fca5a5",
+    500: "#ef4444",
+    600: "#dc2626",
+    800: "#991b1b",
+    900: "#7f1d1d",
+  },
+
+  // Teal scale
+  teal: {
+    200: "#99f6e4",
+  },
+
+  // Amber scale
+  amber: {
+    500: "#f59e0b",
+    700: "#b45309",
+  },
+
+  // Yellow scale
+  yellow: {
+    400: "#fbbf24",
+  },
+
+  // Purple scale
+  purple: {
+    500: "#a855f7",
+    600: "#9333ea",
+  },
+
+  // Orange scale
+  orange: {
+    500: "#f97316",
+    600: "#ea580c",
+  },
+} as const;
+
+// Diff colors — the +/- inside a diff view, where the color *is* the signal and has to
+// survive being scanned line by line, so it stays saturated. Light uses muted tones, dark
+// uses the brighter palette values.
 //
-// Otto palettes and control geometry define the product appearance.
-// Adopt upstream theme contracts here while keeping palette policy in its
-// owned module; compare visible behavior instead of preserving old workarounds.
+// A diff *stat* — the "+12 −3" footnote next to a title — is not this. It is a status
+// signal, so it uses statusSuccess/statusDanger below rather than a tier of its own.
+const lightDiffColors = {
+  diffAddition: "#15803d", // green-700 — readable on white without screaming
+  diffDeletion: "#b91c1c", // red-700
+};
+
+const darkDiffColors = {
+  diffAddition: "#4ade80", // green-400
+  diffDeletion: "#ef4444", // red-500
+};
+
+// Status colors — semantic signals for success/danger/warning/merged. There is exactly one
+// token per signal, and every status surface uses it: PR state icons, CI check icons and
+// pies, diff stats, file-change icons, status badges, usage bars. Status *dots* are the
+// exception and have their own band below. A surface does not otherwise get a quieter or
+// louder variant of a status color because of where it sits — if a dense list feels loud,
+// that is a density or weight problem, not a color problem.
+//
+// The level is set by the densest consumer, the sidebar workspace list: quiet enough that a
+// column of green checks reads as one line of subtitle and the single red row still stands
+// out, saturated enough to name the state on its own. Every other surface follows it.
+//
+// Normalized, not hand-picked. Every color below shares one lightness and one chroma; only
+// the hue changes, and each hue is the one that family already had. Chroma is a fixed
+// fraction of what sRGB allows at that lightness and hue, because the gamut is lopsided —
+// amber runs out of room long before red does, so a literal equal-chroma set leaves amber
+// flat and red screaming. Equal fractions is what makes four hues read as one family.
+// Regenerate with the same rule rather than nudging one value.
+//
+// Hues are fixed per family across both themes: success 150, danger 27, warning 70.5,
+// merged 300.
+const lightStatusColors = {
+  // L=0.50, chroma 60% of gamut max
+  statusSuccess: "#3e704a",
+  statusDanger: "#9d433b",
+  statusWarning: "#7b5d39",
+  statusMerged: "#7347af",
+};
+
+const darkStatusColors = {
+  // L=0.70, chroma 55% of gamut max
+  statusSuccess: "#6cb17b",
+  statusDanger: "#d8847b",
+  statusWarning: "#c09664",
+  statusMerged: "#a890d5",
+};
+
+// Status tints — the fill of a status badge. The status color itself at low opacity, so a
+// badge takes its state's hue from the same source as its text and never drifts from it.
+// Dark surfaces swallow more of the tint, so the dark band runs a little stronger.
+function statusTints(colors: typeof lightStatusColors, alphaHex: string) {
+  return {
+    statusSuccessTint: `${colors.statusSuccess}${alphaHex}`,
+    statusDangerTint: `${colors.statusDanger}${alphaHex}`,
+    statusWarningTint: `${colors.statusWarning}${alphaHex}`,
+  };
+}
+
+const lightStatusTints = statusTints(lightStatusColors, "1f"); // 12%
+const darkStatusTints = statusTints(darkStatusColors, "29"); // 16%
+
+// Status *dot* colors — the small filled discs on a sidebar row, and the glyphs that stand in
+// for them. Same four hues and the same generation rule as the status colors above, but its
+// own band, because a dot is doing a different job than a check icon or a host badge.
+//
+// A dot is 6pt of solid color with no shape to read and no label attached. At the status
+// band's lightness the dots read dimmer than the static text and icons beside them on the same
+// row, which is backwards — the dot is the row's state. The loudness comes from chroma: 90% of
+// gamut max against the status family's 55-60%.
+//
+// Lightness is set by hue separation, not by distance from the surface. A dark dot on a light
+// surface has plenty of contrast but the four hues collapse into each other at 6pt — dark green,
+// dark red, dark amber and dark blue all read as "dark blob", and the point of the dot is telling
+// them apart at a glance. So the light band runs as bright as the contrast floor allows: L=0.62
+// is the last step where all four clear 3:1 against the sidebar's surface2 (success is the
+// binding one at 3.10, and drops under 3 by L=0.64), which is WCAG's non-text minimum for a
+// control that carries state.
+//
+// All four move together. A dot matching its siblings in lightness and chroma says only which
+// state the row is in; one that does not says "this row matters more", which is a claim the
+// color has no business making. Regenerate the set, never one hue.
+//
+// 90% and not 100%: at the gamut edge the lopsidedness is worst — green reaches C=0.215 while
+// blue manages 0.116 — so the set stops reading as one family and green wins. Red running out
+// of chroma as lightness climbs is what caps the dark band at L=0.72; higher turns the failed
+// dot pink, and the light band pastels out the same way just above its own cap. Running is blue
+// at hue 250, clear of
+// identity-colors' blue at 256.6 so a blue host badge and a working dot on the same row do not
+// read as related.
+const lightStatusDotColors = {
+  // L=0.62, chroma 90% of gamut max
+  statusDotSuccess: "#299f51",
+  statusDotDanger: "#f12e2f",
+  statusDotWarning: "#b37824",
+  statusDotRunning: "#268ae0",
+};
+
+const darkStatusDotColors = {
+  // L=0.72, chroma 90% of gamut max
+  statusDotSuccess: "#35c264",
+  statusDotDanger: "#f7796d",
+  statusDotWarning: "#db932e",
+  statusDotRunning: "#5caaf6",
+};
+
+export interface LightThemeConfig {
+  surface0: string;
+  surface1: string;
+  surface2: string;
+  surface3: string;
+  surface4: string;
+  surfaceDiffEmpty: string;
+  surfaceSidebar: string;
+  foreground: string;
+  foregroundMuted: string;
+  foregroundExtraMuted: string;
+  border: string;
+  borderAccent: string;
+  accent: string;
+  accentBright: string;
+  accentForeground?: string;
+  primary: string;
+  primaryForeground: string;
+  destructive: string;
+  terminalBlack: string;
+  terminalBrightBlack: string;
+  ring: string;
+}
+
+const lightTerminalAnsi = {
+  red: "#dc2626",
+  green: "#16a34a",
+  yellow: "#ca8a04",
+  blue: "#2563eb",
+  magenta: "#9333ea",
+  cyan: "#0891b2",
+  white: "#ffffff",
+  brightRed: "#ef4444",
+  brightGreen: "#22c55e",
+  brightYellow: "#f59e0b",
+  brightBlue: "#3b82f6",
+  brightMagenta: "#a855f7",
+  brightCyan: "#06b6d4",
+  brightWhite: "#fafafa",
+} as const;
+
+export function buildLightSemanticColors(tint: LightThemeConfig) {
+  return {
+    surface0: tint.surface0,
+    surface1: tint.surface1,
+    surface2: tint.surface2,
+    surface3: tint.surface3,
+    surface4: tint.surface4,
+    surfaceDiffEmpty: tint.surfaceDiffEmpty,
+    surfaceSidebar: tint.surfaceSidebar,
+    surfaceSidebarHover: tint.surface3,
+    surfaceSidebarSelected: tint.surface4,
+    surfaceWorkspace: tint.surface0,
+    interactionHighlight: "rgba(0, 0, 0, 0.06)",
+
+    foreground: tint.foreground,
+    foregroundMuted: tint.foregroundMuted,
+    foregroundExtraMuted: tint.foregroundExtraMuted,
+
+    border: tint.border,
+    borderAccent: tint.borderAccent,
+
+    accent: tint.accent,
+    accentBright: tint.accentBright,
+    accentForeground: tint.accentForeground ?? tint.surface0,
+
+    destructive: tint.destructive,
+    destructiveForeground: tint.surface0,
+    success: tint.accent,
+    successForeground: tint.surface0,
+
+    background: tint.surface0,
+    popover: tint.surface0,
+    popoverForeground: tint.foreground,
+    primary: tint.primary,
+    primaryForeground: tint.primaryForeground,
+    secondary: tint.surface2,
+    secondaryForeground: tint.foreground,
+    muted: tint.surface2,
+    mutedForeground: tint.foregroundMuted,
+    accentBorder: tint.borderAccent,
+    input: tint.surface2,
+    ring: tint.ring,
+
+    ...lightDiffColors,
+    ...lightStatusColors,
+    ...lightStatusTints,
+    ...lightStatusDotColors,
+
+    terminal: {
+      background: tint.surface0,
+      foreground: tint.foreground,
+      cursor: tint.foreground,
+      cursorAccent: tint.surface0,
+      selectionBackground: "rgba(0, 0, 0, 0.15)",
+      selectionForeground: tint.foreground,
+      black: tint.terminalBlack,
+      ...lightTerminalAnsi,
+      brightBlack: tint.terminalBrightBlack,
+    },
+  };
+}
+
+const lightSemanticColors = buildLightSemanticColors({
+  surface0: "#ffffff",
+  surface1: "#fafafa",
+  surface2: "#f4f4f5",
+  surface3: "#e4e4e7",
+  surface4: "#d4d4d8",
+  surfaceDiffEmpty: "#f6f6f6",
+  surfaceSidebar: "#f4f4f5",
+  foreground: "#1a1a1e",
+  foregroundMuted: "#71717a",
+  foregroundExtraMuted: "#a1a1aa",
+  border: "#e4e4e7",
+  borderAccent: "#ececf1",
+  accent: "#20744A",
+  accentBright: "#239956",
+  accentForeground: "#ffffff",
+  primary: "#18181b",
+  primaryForeground: "#fafafa",
+  destructive: "#b04138",
+  terminalBlack: "#1a1a1e",
+  terminalBrightBlack: "#3f3f46",
+  ring: "#18181b",
+});
+
+// ---------------------------------------------------------------------------
+// Dark theme variant builder
+// ---------------------------------------------------------------------------
+
+export interface DarkThemeConfig {
+  surface0: string;
+  surface1: string;
+  surface2: string;
+  surface3: string;
+  surface4: string;
+  surfaceDiffEmpty: string;
+  surfaceSidebar: string;
+  foregroundMuted: string;
+  foregroundExtraMuted: string;
+  border: string;
+  borderAccent: string;
+  accent: string;
+  accentBright: string;
+  accentForeground?: string;
+  destructive: string;
+  terminalBlack: string;
+  terminalBrightBlack: string;
+  foreground?: string;
+  ring?: string;
+}
+
+const darkTerminalAnsi = {
+  red: "#e07070",
+  green: "#5dba80",
+  yellow: "#d4a44a",
+  blue: "#6a9de0",
+  magenta: "#b07ad0",
+  cyan: "#4aabb8",
+  white: "#d4d4d8",
+  brightRed: "#e89090",
+  brightGreen: "#7ecf9a",
+  brightYellow: "#e0be6e",
+  brightBlue: "#8ab4e8",
+  brightMagenta: "#c49ae0",
+  brightCyan: "#6ec2cc",
+  brightWhite: "#f0f0f2",
+} as const;
+
+export function buildDarkSemanticColors(tint: DarkThemeConfig) {
+  const foreground = tint.foreground ?? "#fafafa";
+  const ring = tint.ring ?? "#d4d4d8";
+  return {
+    surface0: tint.surface0,
+    surface1: tint.surface1,
+    surface2: tint.surface2,
+    surface3: tint.surface3,
+    surface4: tint.surface4,
+    surfaceDiffEmpty: tint.surfaceDiffEmpty,
+    surfaceSidebar: tint.surfaceSidebar,
+    surfaceSidebarHover: tint.surface1,
+    surfaceSidebarSelected: tint.surface2,
+    surfaceWorkspace: tint.surface1,
+    interactionHighlight: "rgba(255, 255, 255, 0.08)",
+
+    foreground,
+    foregroundMuted: tint.foregroundMuted,
+    foregroundExtraMuted: tint.foregroundExtraMuted,
+
+    border: tint.border,
+    borderAccent: tint.borderAccent,
+
+    accent: tint.accent,
+    accentBright: tint.accentBright,
+    accentForeground: tint.accentForeground ?? "#ffffff",
+
+    destructive: tint.destructive,
+    destructiveForeground: "#ffffff",
+    success: tint.accent,
+    successForeground: "#ffffff",
+
+    // Legacy aliases (for gradual migration)
+    background: tint.surface0,
+    popover: tint.surface2,
+    popoverForeground: foreground,
+    primary: foreground,
+    primaryForeground: tint.surface0,
+    secondary: tint.surface2,
+    secondaryForeground: foreground,
+    muted: tint.surface2,
+    mutedForeground: tint.foregroundMuted,
+    accentBorder: tint.borderAccent,
+    input: tint.surface2,
+    ring,
+
+    ...darkDiffColors,
+    ...darkStatusColors,
+    ...darkStatusTints,
+    ...darkStatusDotColors,
+
+    terminal: {
+      background: tint.surface0,
+      foreground,
+      cursor: foreground,
+      cursorAccent: tint.surface0,
+      selectionBackground: "rgba(255, 255, 255, 0.2)",
+      selectionForeground: foreground,
+      black: tint.terminalBlack,
+      ...darkTerminalAnsi,
+      brightBlack: tint.terminalBrightBlack,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Dark tint definitions
+// ---------------------------------------------------------------------------
+
+// Paseo — subtle teal-green tint (default)
+const paseoDarkColors = buildDarkSemanticColors({
+  surface0: "#181B1A",
+  surface1: "#1E2120",
+  surface2: "#272A29",
+  surface3: "#434645",
+  surface4: "#595B5B",
+  surfaceDiffEmpty: "#252827",
+  surfaceSidebar: "#141716",
+  foregroundMuted: "#A1A5A4",
+  foregroundExtraMuted: "#717574",
+  border: "#252B2A",
+  borderAccent: "#2F3534",
+  accent: "#20744A",
+  accentBright: "#7ccba0",
+  destructive: "#c64f43", // warm red, hue ~7 — reads as red (not pink) against the green tint
+  terminalBlack: "#141716",
+  terminalBrightBlack: "#434645",
+});
+
+// Zinc — neutral gray, no tint
+const zincDarkColors = buildDarkSemanticColors({
+  surface0: "#18181b",
+  surface1: "#1f1f22",
+  surface2: "#27272a",
+  surface3: "#3f3f46",
+  surface4: "#52525b",
+  surfaceDiffEmpty: "#242427",
+  surfaceSidebar: "#131316",
+  foregroundMuted: "#a1a1aa",
+  foregroundExtraMuted: "#71717a",
+  border: "#27272a",
+  borderAccent: "#303036",
+  accent: "#e4e4e7",
+  accentBright: "#fafafa",
+  accentForeground: "#18181b", // monochrome zinc accent is near-white — needs dark text
+  destructive: "#c44a4a", // neutral red, hue 0 — clearly red without screaming
+  terminalBlack: "#131316",
+  terminalBrightBlack: "#3f3f46",
+});
+
+// Midnight — subtle blue tint
+const midnightDarkColors = buildDarkSemanticColors({
+  surface0: "#161820",
+  surface1: "#1c1e27",
+  surface2: "#252731",
+  surface3: "#3c3e4c",
+  surface4: "#535564",
+  surfaceDiffEmpty: "#222430",
+  surfaceSidebar: "#121420",
+  foregroundMuted: "#9a9db0",
+  foregroundExtraMuted: "#6b6e82",
+  border: "#242636",
+  borderAccent: "#2e3040",
+  accent: "#3b6fcf",
+  accentBright: "#7eaaeb",
+  destructive: "#c44a52", // red with a hint of cool lean against the blue tint
+  terminalBlack: "#121420",
+  terminalBrightBlack: "#3c3e4c",
+});
+
+// Claude — warm neutral with subtle orange undertone
+const claudeDarkColors = buildDarkSemanticColors({
+  surface0: "#1f1f1e",
+  surface1: "#262523",
+  surface2: "#2f2d2b",
+  surface3: "#4a4745",
+  surface4: "#605d5b",
+  surfaceDiffEmpty: "#2a2826",
+  surfaceSidebar: "#1a1918",
+  foregroundMuted: "#ada9a5",
+  foregroundExtraMuted: "#78746f",
+  border: "#2c2a27",
+  borderAccent: "#36332f",
+  accent: "#d97757",
+  accentBright: "#e89a7f",
+  destructive: "#cf513e", // warm orange-red, hue ~10 — sits with the Claude orange accent
+  terminalBlack: "#1a1918",
+  terminalBrightBlack: "#4a4745",
+});
+
+// Ghostty — blue-tinted dark based on Ghostty default background
+const ghosttyDarkColors = buildDarkSemanticColors({
+  surface0: "#282c34",
+  surface1: "#2f333d",
+  surface2: "#383c48",
+  surface3: "#4a4f5e",
+  surface4: "#5b6175",
+  surfaceDiffEmpty: "#323643",
+  surfaceSidebar: "#21252d",
+  foregroundMuted: "#c8ccd8",
+  foregroundExtraMuted: "#a0a4b2",
+  border: "#353a47",
+  borderAccent: "#3f4454",
+  accent: "#89b4fa",
+  accentBright: "#b4d0fc",
+  destructive: "#c44a55", // red with slight cool lean against the slate-blue surfaces
+  terminalBlack: "#21252d",
+  terminalBrightBlack: "#4a4f5e",
+});
 
 export const SPACING = {
   0: 0,
@@ -58,105 +574,30 @@ export const SPACING = {
   32: 128,
 } as const;
 
-// Otto's scale runs a step larger than upstream's at every rung - a deliberate
-// look-and-feel choice. `content` is upstream's addition (readable body copy
-// gets its own size, separate from `base` chrome text), adopted here on Otto's
-// scale rather than at their 15.
 export const FONT_SIZE = {
-  xs: 12,
   code: 12,
-  sm: 14,
-  base: 16,
-  content: 17,
-  lg: 18,
-  xl: 20,
-  "2xl": 22,
-  "3xl": 26,
-  "4xl": 34,
+  content: 15,
+  sm: 12,
+  base: 14,
+  lg: 16,
+  xl: 18,
+  "2xl": 20,
+  "3xl": 22,
+  "4xl": 26,
 } as const;
 
 export const LINE_HEIGHT = {
   diff: 22,
 } as const;
 
-/**
- * The sizes an icon may be drawn at, as authored for a pointer.
- *
- * Two ladders, not one. `xs`-`lg` is the app's icon ramp and doubles on a compact
- * form factor, because a 16pt glyph authored for a mouse is a speck under a thumb.
- * `chrome*` is the same ramp for icons that sit inside fixed chrome - title-bar and
- * header buttons, whose surrounding row cannot grow with them - and scales by 1.5
- * instead, which is as far as those glyphs can go before they overrun the bar.
- *
- * Desktop values are identical across the two ladders. They diverge only on compact,
- * which is the whole reason the distinction lives in the token rather than in a
- * multiplier argument at each call site.
- *
- * `mdPlus` is 18, a step the ramp did not have and twenty-two call sites hardcoded
- * anyway - toast status glyphs, card stars and kebabs, modal row leading icons, list
- * type glyphs. A step that many places reach for independently is a real step, and
- * hardcoding it froze every one of them at 18 on a phone.
- *
- * `chromeXs` is 12 - the chrome twin of `xs`, added because the chrome ladder started
- * at 14 and the smallest affordances in a dense transcript (tool-call badge glyphs,
- * disclosure chevrons, metric icons) are authored at 12. Without it those call sites
- * had to choose between doubling to 24 on a phone or gaining 2pt on the desktop.
- *
- * The scaling itself happens in exactly one place, `applyAppearance`. Never scale an
- * icon at a call site.
- */
 export const ICON_SIZE = {
   xs: 12,
   sm: 14,
   md: 16,
-  mdPlus: 18,
   lg: 20,
-  chromeXs: 12,
-  chromeSm: 14,
-  chromeMd: 16,
-  chromeLg: 20,
-  chromeXl: 24,
 } as const;
 
-/**
- * The compact ladder, resolved exactly as `applyAppearance` resolves it: the ordinary
- * ramp doubles, the `chrome*` ramp grows by half.
- *
- * Two copies of the same resolution, because `applyAppearance` patches the Unistyles
- * theme and this serves the callers that need a number in hand. `apply-appearance.test`
- * asserts the two agree, so a factor changed in one place fails rather than drifts.
- */
-export const ICON_SIZE_COMPACT: Record<keyof typeof ICON_SIZE, number> = {
-  xs: ICON_SIZE.xs * 2,
-  sm: ICON_SIZE.sm * 2,
-  md: ICON_SIZE.md * 2,
-  mdPlus: ICON_SIZE.mdPlus * 2,
-  lg: ICON_SIZE.lg * 2,
-  chromeXs: ICON_SIZE.chromeXs * 1.5,
-  chromeSm: ICON_SIZE.chromeSm * 1.5,
-  chromeMd: ICON_SIZE.chromeMd * 1.5,
-  chromeLg: ICON_SIZE.chromeLg * 1.5,
-  chromeXl: ICON_SIZE.chromeXl * 1.5,
-};
-
-/**
- * The icon ladder resolved to numbers for the current form factor.
- *
- * **Prefer a size token on the icon itself.** `<Search size="md" />` resolves through
- * the live theme and repaints when the breakpoint changes; this hook resolves once per
- * render and only re-resolves because the component re-rendered. It exists for the few
- * places that genuinely need the number rather than the glyph: a glow radius, an
- * optical multiplier, an SVG viewBox, a blob-loader that lays out from it.
- *
- * There is no scale argument any more. A caller that wanted a gentler compact bump
- * asked for `useIconSize(1.5)`, which multiplied every token uniformly and left five
- * different hand-rolled scales across the app. That distinction is now in the token:
- * name a `chrome*` size and get the 1.5 ramp, name an ordinary one and get the double.
- */
-export function useIconSize(): Record<keyof typeof ICON_SIZE, number> {
-  const isCompact = useIsCompactFormFactor();
-  return isCompact ? ICON_SIZE_COMPACT : ICON_SIZE;
-}
+export const ICON_STROKE_WIDTH = 1.5;
 
 export const FONT_WEIGHT = {
   normal: "normal" as const,
@@ -188,40 +629,39 @@ export const OPACITY = {
   100: 1,
 } as const;
 
-// Default font stacks. Otto bundles Inter (ui) and JetBrains Mono (mono) - both
-// OFL-licensed, free for commercial use - via @expo-google-fonts and loads them
-// with `useFonts` in `app/_layout.tsx`, so the family name below is registered on
-// every platform (native and web) before first render. Web keeps a CSS fallback
-// chain in case the webfont fails to load; native fontFamily takes a single name,
-// so it has none. These seed the dynamic `fontFamily` theme token and are the
-// fallback an empty user-supplied family resolves to at apply time.
+// Platform default font stacks — copied verbatim from constants/theme.ts `Fonts`
+// (sans -> ui, mono -> mono). These seed the dynamic `fontFamily` theme token and
+// are the fallback an empty user-supplied family resolves to at apply time.
 export const DEFAULT_UI_FONT_STACK: string = Platform.select({
-  ios: "Inter_400Regular",
-  default: "Inter_400Regular",
-  web: "Inter_400Regular, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  ios: "system-ui",
+  default: "normal",
+  web: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
 });
 
 export const DEFAULT_MONO_FONT_STACK: string = Platform.select({
-  ios: "JetBrainsMono_400Regular",
-  default: "JetBrainsMono_400Regular",
-  web: "JetBrainsMono_400Regular, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+  ios: "ui-monospace",
+  default: "monospace",
+  web: "SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
 });
 
-// `fontSize`, `fontFamily`, `lineHeight`, `iconSize`, and `layout` are deliberately
-// widened to plain `number`/`string` (not narrowed by `as const`) so the appearance
-// updater can patch them at runtime via `UnistylesRuntime.updateTheme`. The remaining
-// tokens keep their literal types.
+// Chat and markdown content column; the appearance updater patches the user's width in.
+export const DEFAULT_CONTENT_MAX_WIDTH = 820;
+
+// `fontSize`, `fontFamily`, `lineHeight`, and `contentMaxWidth` are deliberately widened to plain
+// `number`/`string` (not narrowed by `as const`) so the appearance updater can patch
+// them at runtime via `UnistylesRuntime.updateTheme`. The remaining tokens keep their
+// literal types.
 interface CommonTheme {
   spacing: typeof SPACING;
   fontSize: Record<keyof typeof FONT_SIZE, number>;
   fontFamily: { ui: string; mono: string };
   lineHeight: Record<keyof typeof LINE_HEIGHT, number>;
-  iconSize: Record<keyof typeof ICON_SIZE, number>;
+  contentMaxWidth: number;
+  iconSize: typeof ICON_SIZE;
   fontWeight: typeof FONT_WEIGHT;
   borderRadius: typeof BORDER_RADIUS;
   borderWidth: typeof BORDER_WIDTH;
   opacity: typeof OPACITY;
-  layout: { chatMaxWidth: number | undefined };
 }
 
 const commonTheme: CommonTheme = {
@@ -229,13 +669,34 @@ const commonTheme: CommonTheme = {
   fontSize: FONT_SIZE,
   fontFamily: { ui: DEFAULT_UI_FONT_STACK, mono: DEFAULT_MONO_FONT_STACK },
   lineHeight: LINE_HEIGHT,
+  contentMaxWidth: DEFAULT_CONTENT_MAX_WIDTH,
   iconSize: ICON_SIZE,
   fontWeight: FONT_WEIGHT,
   borderRadius: BORDER_RADIUS,
   borderWidth: BORDER_WIDTH,
   opacity: OPACITY,
-  layout: { chatMaxWidth: resolveChatMaxWidth("default") },
 };
+
+const darkShadow = {
+  sm: {
+    shadowColor: "rgba(0, 0, 0, 0.25)",
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  md: {
+    shadowColor: "rgba(0, 0, 0, 0.20)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  lg: {
+    shadowColor: "rgba(0, 0, 0, 0.40)",
+    shadowOffset: { width: 0, height: 12 },
+    shadowRadius: 24,
+    elevation: 8,
+  },
+} as const;
 
 export function buildDarkTheme(semanticColors: ReturnType<typeof buildDarkSemanticColors>) {
   return {
@@ -250,6 +711,55 @@ export function buildDarkTheme(semanticColors: ReturnType<typeof buildDarkSemant
   } as const;
 }
 
+export const darkTheme = buildDarkTheme(paseoDarkColors);
+export const darkZincTheme = buildDarkTheme(zincDarkColors);
+export const darkMidnightTheme = buildDarkTheme(midnightDarkColors);
+export const darkClaudeTheme = buildDarkTheme(claudeDarkColors);
+export const darkGhosttyTheme = buildDarkTheme(ghosttyDarkColors);
+
+// Pure black — zero-luminance background with high-contrast surfaces.
+const pureBlackDarkColors = buildDarkSemanticColors({
+  surface0: "#000000",
+  surface1: "#0a0a0a",
+  surface2: "#111111",
+  surface3: "#202020",
+  surface4: "#2d2d2d",
+  surfaceDiffEmpty: "#0c0c0c",
+  surfaceSidebar: "#000000",
+  foregroundMuted: "#a1a1aa",
+  foregroundExtraMuted: "#71717a",
+  border: "#1c1c1c",
+  borderAccent: "#242424",
+  accent: "#20744A",
+  accentBright: "#7ccba0",
+  destructive: "#c44a4a",
+  terminalBlack: "#595959",
+  terminalBrightBlack: "#8a8a8a",
+});
+
+export const darkPureBlackTheme = buildDarkTheme(pureBlackDarkColors);
+
+const lightShadow = {
+  sm: {
+    shadowColor: "rgba(0, 0, 0, 0.08)",
+    shadowOffset: { width: 0, height: 2 },
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  md: {
+    shadowColor: "rgba(0, 0, 0, 0.04)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  lg: {
+    shadowColor: "rgba(0, 0, 0, 0.08)",
+    shadowOffset: { width: 0, height: 8 },
+    shadowRadius: 24,
+    elevation: 8,
+  },
+} as const;
+
 export function buildLightTheme(semanticColors: ReturnType<typeof buildLightSemanticColors>) {
   return {
     colorScheme: "light" as const,
@@ -263,143 +773,114 @@ export function buildLightTheme(semanticColors: ReturnType<typeof buildLightSema
   } as const;
 }
 
-export const darkTheme = buildDarkTheme(neutralDarkColors);
-export const darkEvergreenTheme = buildDarkTheme(evergreenDarkColors);
-export const darkZincTheme = buildDarkTheme(graphiteDarkColors);
-export const darkMidnightTheme = buildDarkTheme(nightfallDarkColors);
-export const darkClaudeTheme = buildDarkTheme(emberDarkColors);
-export const darkGhosttyTheme = buildDarkTheme(slateDarkColors);
-export const darkCyberpunkTheme = buildDarkTheme(neotokyoDarkColors);
-export const darkPureBlackTheme = buildDarkTheme(pureBlackDarkColors);
-export const darkObsidianTheme = buildDarkTheme(obsidianDarkColors);
+export const lightTheme = buildLightTheme(lightSemanticColors);
 
-export const daylightTheme = buildLightTheme(daylightColors);
-// Upstream calls the default light theme `lightTheme`; Otto's is Daylight.
-export const lightTheme = daylightTheme;
-export const pastelTheme = buildLightTheme(sherbetColors);
-export const meadowTheme = buildLightTheme(meadowColors);
-export const terracottaTheme = buildLightTheme(terracottaColors);
-export const horizonTheme = buildLightTheme(horizonColors);
-export const powderTheme = buildLightTheme(powderColors);
-export const ivoryTheme = buildLightTheme(ivoryColors);
+// Keep compatibility with existing code
+export const theme = darkTheme;
 
-// Seed for the `black` Unistyles key: the neutral dark variant on black chat
-// surfaces. Runtime repaints replace it with the user's dark-variant pick.
-// Annotated as `typeof darkTheme` so the override literals stay widened and
-// `UnistylesRuntime.updateTheme("black", ...)` can assign arbitrary variant
-// colors back into the mirror.
-export const blackTheme: typeof darkTheme = {
-  ...darkTheme,
-  colors: { ...darkTheme.colors, ...BLACK_VARIANT_OVERRIDES.dark },
-};
+export const THEME_OPTIONS = [
+  {
+    name: "light",
+    group: "primary",
+    unistylesName: "light",
+    theme: lightTheme,
+    swatch: "#ffffff",
+  },
+  {
+    name: "dark",
+    group: "primary",
+    unistylesName: "dark",
+    theme: darkTheme,
+    swatch: "#2D8B62",
+  },
+  { name: "auto", group: "primary" },
+  {
+    name: "zinc",
+    group: "variant",
+    unistylesName: "darkZinc",
+    theme: darkZincTheme,
+    swatch: "#808080",
+  },
+  {
+    name: "midnight",
+    group: "variant",
+    unistylesName: "darkMidnight",
+    theme: darkMidnightTheme,
+    swatch: "#4A6BA8",
+  },
+  {
+    name: "claude",
+    group: "variant",
+    unistylesName: "darkClaude",
+    theme: darkClaudeTheme,
+    swatch: "#D97757",
+  },
+  {
+    name: "ghostty",
+    group: "variant",
+    unistylesName: "darkGhostty",
+    theme: darkGhosttyTheme,
+    swatch: "#8caaee",
+  },
+  {
+    name: "pureBlack",
+    group: "variant",
+    unistylesName: "darkPureBlack",
+    theme: darkPureBlackTheme,
+    swatch: "#000000",
+  },
+] as const;
 
-// Unistyles registers only the adaptive light/dark mirrors plus the scoped
-// black chat surface. Named palette variants repaint these keys at runtime.
-// Upstream's plugin theming: a plugin may contribute a palette, which is
-// registered as its own pair of Unistyles themes and selected through the
-// `plugin` preference. Otto keeps its own theme roster (see the provenance note
-// above) and hosts upstream's mechanism on top of it - the plugin themes start
-// as Otto's light/dark and are overwritten at runtime when a plugin supplies
-// one, so nothing here changes Otto's look until a plugin is active.
 export const PLUGIN_THEME_PREFERENCE = "plugin";
 export const PLUGIN_THEME_NAMES = {
   light: "pluginLight",
   dark: "pluginDark",
 } as const;
 
-export const REGISTERED_THEMES = {
-  light: daylightTheme,
-  dark: darkTheme,
-  black: blackTheme,
-  [PLUGIN_THEME_NAMES.light]: daylightTheme,
-  [PLUGIN_THEME_NAMES.dark]: darkTheme,
-} as const;
-
-// Otto's preference names already match their Unistyles keys, so this is an
-// identity map. It exists because upstream's plugin code resolves preferences
-// through it rather than assuming the two namespaces line up.
-export const THEME_TO_UNISTYLES = {
-  light: "light",
-  dark: "dark",
-  black: "black",
-  [PLUGIN_THEME_NAMES.light]: PLUGIN_THEME_NAMES.light,
-  [PLUGIN_THEME_NAMES.dark]: PLUGIN_THEME_NAMES.dark,
-} as const;
-
-// Keep compatibility with existing code
-export const theme = darkTheme;
-
-// Export a union type that works for both themes
-export type Theme = typeof darkTheme | typeof daylightTheme;
-
-// Only the adaptive Unistyles theme keys (`light`/`dark`, see
-// `styles/unistyles.ts`) - Unistyles' adaptive-theme mechanism hardcodes
-// switching between those two literal keys and cannot be pointed at an
-// arbitrary named theme. Every variant below (including the neutral
-// Daylight/Twilight pair) is exported here as plain data only; nothing but
-// `screens/settings/appearance/apply-color-scheme.ts` reads these exports,
-// which repaints the two registered `light`/`dark` mirror keys to match
-// whichever variant is the user's current per-spectrum preference, for both
-// explicit Light/Dark mode and System (adaptive) mode alike.
-export const THEME_SWATCHES: Record<ThemeVariantName, string> = {
-  daylight: "#f4f4f5", // the neutral light surface - Daylight is picked for being untinted
-  pastel: "#e86bb0",
-  meadow: "#0f9c5b",
-  terracotta: "#dd5b25",
-  horizon: "#1a63e6",
-  powder: "#6d7ed8",
-  ivory: "#ffffff", // Ivory is white paper - the swatch ring is what makes it visible
-  dark: "#3f3f46", // the neutral dark surface - Twilight is picked for being untinted
-  evergreen: "#16a066",
-  zinc: "#808080", // Graphite's swatch stays grey: the theme is monochrome, the cyan is only its accent
-  midnight: "#3d7fe0",
-  claude: "#f2662f",
-  ghostty: "#6ba6ff",
-  cyberpunk: "#ff5ad1",
-  obsidian: "#000000", // Obsidian is true black, the mirror of Ivory
-};
-
-// Compatibility catalog for upstream's theme shortcut and picker contract.
-// Otto's richer per-spectrum variant catalogs remain canonical for Appearance;
-// these entries preserve the upstream option ordering without replacing them.
-export const THEME_OPTIONS = [
-  { name: "light", group: "primary", theme: daylightTheme, swatch: "#ffffff" },
-  { name: "dark", group: "primary", theme: darkTheme, swatch: "#3f3f46" },
-  { name: "auto", group: "primary" },
-  { name: "zinc", group: "variant", theme: darkZincTheme, swatch: "#808080" },
-  { name: "midnight", group: "variant", theme: darkMidnightTheme, swatch: "#3d7fe0" },
-  { name: "claude", group: "variant", theme: darkClaudeTheme, swatch: "#f2662f" },
-  { name: "ghostty", group: "variant", theme: darkGhosttyTheme, swatch: "#6ba6ff" },
-  { name: "pureBlack", group: "variant", theme: darkPureBlackTheme, swatch: "#000000" },
-] as const;
-
-// `plugin` is Paseo's persisted contribution selection. Otto's per-spectrum
-// variants remain data behind the adaptive light/dark mirrors.
 export type ThemePreference =
   | (typeof THEME_OPTIONS)[number]["name"]
   | typeof PLUGIN_THEME_PREFERENCE;
+export type ThemeName = Exclude<ThemePreference, "auto" | typeof PLUGIN_THEME_PREFERENCE>;
+type ConcreteThemeOption = Exclude<(typeof THEME_OPTIONS)[number], { name: "auto" }>;
+export type Theme = ConcreteThemeOption["theme"];
+
+const CONCRETE_THEME_OPTIONS = THEME_OPTIONS.filter(
+  (option): option is ConcreteThemeOption => option.name !== "auto",
+);
+
+type ThemeToUnistyles = {
+  [Name in ThemeName]: Extract<ConcreteThemeOption, { name: Name }>["unistylesName"];
+};
+
+type ThemeSwatches = {
+  [Name in ThemeName]: Extract<ConcreteThemeOption, { name: Name }>["swatch"];
+};
+
+type RegisteredThemes = {
+  [Option in ConcreteThemeOption as Option["unistylesName"]]: Option["theme"];
+} & {
+  pluginLight: typeof lightTheme;
+  pluginDark: typeof darkTheme;
+};
+
+export const THEME_TO_UNISTYLES = Object.fromEntries(
+  CONCRETE_THEME_OPTIONS.map((option) => [option.name, option.unistylesName]),
+) as ThemeToUnistyles;
+
+export const THEME_SWATCHES = Object.fromEntries(
+  CONCRETE_THEME_OPTIONS.map((option) => [option.name, option.swatch]),
+) as ThemeSwatches;
+
+export const REGISTERED_THEMES = {
+  ...Object.fromEntries(
+    CONCRETE_THEME_OPTIONS.map((option) => [option.unistylesName, option.theme]),
+  ),
+  [PLUGIN_THEME_NAMES.light]: lightTheme,
+  [PLUGIN_THEME_NAMES.dark]: darkTheme,
+} as RegisteredThemes;
 
 export function getNextThemePreference(current: ThemePreference): ThemePreference {
   const currentIndex = THEME_OPTIONS.findIndex((option) => option.name === current);
   const nextIndex = (currentIndex + 1) % THEME_OPTIONS.length;
   return THEME_OPTIONS[nextIndex]?.name ?? THEME_OPTIONS[0].name;
 }
-
-// The palette layer lives in theme-palettes.ts; this file stays the import
-// surface its consumers use.
-export {
-  BLACK_LIGHT_VARIANT_COLORS,
-  BLACK_VARIANT_OVERRIDES,
-  DEFAULT_FONT_CONTRAST,
-  accentFillInk,
-  baseColors,
-  compactUp,
-  resolveInkOverrides,
-} from "./theme-palettes";
-export type {
-  DarkThemeName,
-  InkOverrides,
-  InkSource,
-  LightThemeName,
-  ThemeVariantName,
-} from "./theme-palettes";

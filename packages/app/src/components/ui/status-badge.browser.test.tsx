@@ -32,23 +32,32 @@ afterEach(() => {
   }
 });
 
-describe("StatusBadge", () => {
-  // Each variant paints its own semantic status surface (the status color at
-  // low alpha) inside a border of the full status color; only the muted badge
-  // sits on the neutral surface and border ladder.
-  it.each([
-    ["success", "rgba(21, 128, 61, 0.14)", "rgb(21, 128, 61)"],
-    ["warning", "rgba(217, 119, 6, 0.14)", "rgb(217, 119, 6)"],
-    ["error", "rgba(185, 28, 28, 0.14)", "rgb(185, 28, 28)"],
-    ["muted", "rgb(220, 220, 225)", "rgb(209, 209, 216)"],
-  ] as const)(
-    "uses the semantic badge shell for the %s variant",
-    (variant, expectedSurface, expectedBorder) => {
-      const badge = mountBadge(variant);
-      const style = getComputedStyle(badge);
+function parseColor(value: string): { rgb: string; alpha: number } {
+  const channels = value.match(/[\d.]+/g)?.map(Number) ?? [];
+  return { rgb: channels.slice(0, 3).join(","), alpha: channels[3] ?? 1 };
+}
 
-      expect(style.backgroundColor).toBe(expectedSurface);
-      expect(style.borderColor).toBe(expectedBorder);
+describe("StatusBadge", () => {
+  it("uses the neutral badge shell for the muted variant", () => {
+    const style = getComputedStyle(mountBadge("muted"));
+
+    expect(style.backgroundColor).toBe("rgb(228, 228, 231)");
+    expect(style.borderColor).toBe("rgb(228, 228, 231)");
+  });
+
+  it.each(["success", "warning", "error"] as const)(
+    "fills the %s variant with a translucent tint of its own status color",
+    (variant) => {
+      const badge = mountBadge(variant);
+      const text = badge.lastElementChild;
+      if (!(text instanceof HTMLElement)) {
+        throw new Error("StatusBadge did not render its label");
+      }
+      const fill = parseColor(getComputedStyle(badge).backgroundColor);
+
+      expect(fill.rgb).toBe(parseColor(getComputedStyle(text).color).rgb);
+      expect(fill.alpha).toBeGreaterThan(0);
+      expect(fill.alpha).toBeLessThan(0.5);
     },
   );
 
@@ -56,7 +65,7 @@ describe("StatusBadge", () => {
     ["success", "rgb(21, 128, 61)"],
     ["warning", "rgb(217, 119, 6)"],
     ["error", "rgb(185, 28, 28)"],
-    ["muted", "rgb(85, 85, 94)"],
+    ["muted", "rgb(102, 102, 102)"],
   ] as const)("uses the semantic %s signal for its text", (variant, expectedColor) => {
     const badge = mountBadge(variant);
     const text = badge.lastElementChild;

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+// OTTO(chat-identity): question/error priority is independent of root-chat activity.
 import type { Agent, WorkspaceDescriptor } from "@/stores/session-store";
-import { buildWorkspaceAgentActivityIndex } from "@/utils/workspace-agent-activity";
 import type { WorkspaceStructureProject } from "@/projects/workspace-structure";
+import { buildWorkspaceAgentActivityIndex } from "@/utils/workspace-agent-activity";
 import {
   appendMissingOrderKeys,
   applyStoredOrdering,
@@ -10,13 +11,106 @@ import {
   buildSidebarProjectsFromStructure,
   computeSidebarOrderUpdates,
   createSidebarWorkspaceEntry,
-  deriveSidebarLoadingState,
   deriveProjectStatusBucket,
-  type ProjectStatusSession,
-  type SidebarWorkspacePlacement,
+  deriveSidebarLoadingState,
   shouldShowSidebarHostLabels,
+  type ProjectStatusSession,
   type SidebarProjectEntry,
+  type SidebarWorkspacePlacement,
 } from "./sidebar-workspaces-view-model";
+
+function workspaceWithForge(forge: string | undefined, prUrl: string): WorkspaceDescriptor {
+  return {
+    id: "ws-1",
+    projectId: "proj",
+    projectDisplayName: "repo",
+    projectRootPath: "/repo",
+    workspaceDirectory: "/repo",
+    projectKind: "git",
+    workspaceKind: "worktree",
+    name: "feature",
+    title: null,
+    status: "done",
+    statusEnteredAt: null,
+    archivingAt: null,
+    diffStat: null,
+    scripts: [],
+    forge,
+    githubRuntime: {
+      featuresEnabled: true,
+      pullRequest: {
+        url: prUrl,
+        title: "Change",
+        state: "open",
+        baseRefName: "main",
+        headRefName: "feature",
+        isMerged: false,
+      },
+      error: null,
+    },
+  };
+}
+
+describe("createSidebarWorkspaceEntry forge threading", () => {
+  it("threads a gitlab summary forge onto the prHint", () => {
+    const entry = createSidebarWorkspaceEntry({
+      serverId: "srv",
+      workspace: workspaceWithForge("gitlab", "https://gitlab.com/group/proj/-/merge_requests/7"),
+    });
+    expect(entry.prHint).toMatchObject({ number: 7, forge: "gitlab" });
+  });
+
+  it("falls back to github when the summary omits forge (old daemon)", () => {
+    const entry = createSidebarWorkspaceEntry({
+      serverId: "srv",
+      workspace: workspaceWithForge(undefined, "https://github.com/acme/repo/pull/42"),
+    });
+    expect(entry.prHint).toMatchObject({ number: 42, forge: "github" });
+  });
+});
+
+describe("Otto workspace status and independent activity", () => {
+  it.each(["needs_input", "failed"] as const)(
+    "keeps %s visible alongside another chat's activity",
+    (status) => {
+      const descriptor = workspaceWithForge(undefined, "https://github.com/acme/repo/pull/42");
+      descriptor.status = "running";
+      const enteredAt = new Date("2026-06-01T10:00:00Z");
+      const entry = createSidebarWorkspaceEntry({
+        serverId: "srv",
+        workspace: descriptor,
+        workspaceAgentActivity: new Map([
+          [descriptor.id, { agentId: "waiting", status, enteredAt, hasActiveChat: true }],
+        ]),
+      });
+      expect(entry.statusBucket).toBe(status);
+      expect(entry.statusEnteredAt).toBe(enteredAt);
+      expect(entry.hasActiveChat).toBe(true);
+      expect(descriptor.status).toBe("running");
+    },
+  );
+});
+
+describe("createSidebarWorkspaceEntry workspace directory label", () => {
+  it("uses the daemon-provided slug for a Paseo-owned worktree", () => {
+    const descriptor = workspaceWithForge(undefined, "https://github.com/acme/repo/pull/42");
+    descriptor.workspaceDirectory = "/worktrees/feature/packages/app";
+    descriptor.worktreeSlug = "feature";
+
+    const entry = createSidebarWorkspaceEntry({ serverId: "srv", workspace: descriptor });
+
+    expect(entry.workspaceDirectoryLabel).toBe("feature");
+  });
+
+  it("shortens the workspace path when the daemon omits a worktree slug", () => {
+    const descriptor = workspaceWithForge(undefined, "https://github.com/acme/repo/pull/42");
+    descriptor.workspaceDirectory = "/home/alice/external/feature";
+
+    const entry = createSidebarWorkspaceEntry({ serverId: "srv", workspace: descriptor });
+
+    expect(entry.workspaceDirectoryLabel).toBe("~/external/feature");
+  });
+});
 
 interface OrderedItem {
   key: string;
@@ -32,7 +126,9 @@ function project(input: {
   projectKind?: WorkspaceStructureProject["projectKind"];
   iconWorkingDir?: string;
   workspaceKeys: string[];
-  hosts?: WorkspaceStructureProject["hosts"];
+  hosts?: Array<
+    Omit<WorkspaceStructureProject["hosts"][number], "projectId"> & { projectId?: string }
+  >;
 }): WorkspaceStructureProject {
   return {
     viewKey: input.projectKey,
@@ -40,18 +136,16 @@ function project(input: {
     projectName: input.projectName ?? input.projectKey,
     projectKind: input.projectKind ?? "git",
     iconWorkingDir: input.iconWorkingDir ?? input.projectKey,
-    hosts: input.hosts ?? [
-      {
-        serverId: "srv",
-        // Deliberately not `input.projectKey`. The per-host project id and the
-        // cross-host grouping key are different values, and a stub that made
-        // them equal is exactly why nothing here caught the app routing a key
-        // into a `projectId` field ("Project not found for worktree").
-        projectId: `prj_${input.projectKey}`,
-        iconWorkingDir: input.iconWorkingDir ?? input.projectKey,
-        worktreeSupport: "supported",
-      },
-    ],
+    hosts: Array.from(
+      input.hosts ?? [
+        {
+          serverId: "srv",
+          iconWorkingDir: input.iconWorkingDir ?? input.projectKey,
+          worktreeSupport: "supported" as const,
+        },
+      ],
+      (host) => Object.assign({}, host, { projectId: host.projectId ?? input.projectKey }),
+    ),
     workspaceKeys: input.workspaceKeys,
   };
 }
@@ -203,113 +297,42 @@ describe("buildSidebarProjectsFromStructure", () => {
           projectKey: "project-1",
           hosts: [
             {
-              serverId: "relay:otto-host",
-              projectId: "project-1",
+              serverId: "relay:paseo-host",
               iconWorkingDir: "/repo/project-1",
-              worktreeSupport: "supported",
+              worktreeSupport: "supported" as const,
             },
           ],
-          workspaceKeys: ["relay:otto-host:ws-main"],
+          workspaceKeys: ["relay:paseo-host:ws-main"],
         }),
       ],
     });
 
     expect(projects[0]?.workspaces[0]).toMatchObject({
-      workspaceKey: "relay:otto-host:ws-main",
-      serverId: "relay:otto-host",
+      workspaceKey: "relay:paseo-host:ws-main",
+      serverId: "relay:paseo-host",
       workspaceId: "ws-main",
     });
   });
 });
 
 describe("shared sidebar workspace model", () => {
-  it("keeps an active chat separate from a higher-priority workspace status", () => {
-    const entry = createSidebarWorkspaceEntry({
-      serverId: "srv",
-      workspace: workspace({
-        id: "workspace-a",
-        name: "main",
-        projectId: "project-a",
-        projectDisplayName: "Project A",
-        status: "needs_input",
-      }),
-      workspaceAgentActivity: new Map([
-        [
-          "workspace-a",
-          {
-            agentId: "running-chat",
-            status: "running",
-            enteredAt: new Date("2026-06-01T10:00:00.000Z"),
-            hasActiveChat: true,
-          },
-        ],
-      ]),
-    });
-
-    expect(entry).toMatchObject({ statusBucket: "needs_input", hasActiveChat: true });
-  });
-
-  it("keeps a chat notification over the blue running status", () => {
-    const entry = createSidebarWorkspaceEntry({
-      serverId: "srv",
-      workspace: workspace({
-        id: "workspace-a",
-        name: "main",
-        projectId: "project-a",
-        projectDisplayName: "Project A",
-        status: "running",
-      }),
-      workspaceAgentActivity: new Map([
-        [
-          "workspace-a",
-          {
-            agentId: "finished-chat",
-            status: "attention",
-            enteredAt: new Date("2026-06-01T10:00:00.000Z"),
-            hasActiveChat: true,
-          },
-        ],
-      ]),
-    });
-
-    expect(entry).toMatchObject({ statusBucket: "attention", hasActiveChat: true });
-  });
-
-  it("does not treat aggregate workspace activity as a running chat", () => {
-    const entry = createSidebarWorkspaceEntry({
-      serverId: "srv",
-      workspace: workspace({
-        id: "workspace-a",
-        name: "main",
-        projectId: "project-a",
-        projectDisplayName: "Project A",
-        status: "running",
-      }),
-      workspaceAgentActivity: new Map(),
-    });
-
-    expect(entry).toMatchObject({ statusBucket: "running", hasActiveChat: false });
-  });
-
   it("feeds project placement and status grouping from the same cross-host workspace identities", () => {
     const model = buildSidebarWorkspacePlacementModel({
       projects: [
         project({
-          projectKey: "otto-code-ai/otto-code",
-          projectName: "otto-code-ai/otto-code",
-          iconWorkingDir: "/repo/otto-code-ai/otto-code",
+          projectKey: "getpaseo/paseo",
+          projectName: "getpaseo/paseo",
+          iconWorkingDir: "/repo/getpaseo/paseo",
           hosts: [
             {
               serverId: "host-a",
-              projectId: "otto-code-ai/otto-code",
-              iconWorkingDir: "/repo/otto-code-ai/otto-code",
-              worktreeSupport: "supported",
+              iconWorkingDir: "/repo/getpaseo/paseo",
+              worktreeSupport: "supported" as const,
             },
             {
               serverId: "host-b",
-              projectId: "otto-code-ai/otto-code",
-              iconWorkingDir: "/repo/otto-code-ai/otto-code",
-              worktreeSupport: "supported",
+              iconWorkingDir: "/repo/getpaseo/paseo",
+              worktreeSupport: "supported" as const,
             },
           ],
           workspaceKeys: ["host-a:main", "host-b:feature"],
@@ -328,8 +351,8 @@ describe("shared sidebar workspace model", () => {
               workspace({
                 id: "main",
                 name: "main",
-                projectId: "otto-code-ai/otto-code",
-                projectDisplayName: "otto-code-ai/otto-code",
+                projectId: "getpaseo/paseo",
+                projectDisplayName: "getpaseo/paseo",
                 status: "done",
               }),
             ],
@@ -344,8 +367,8 @@ describe("shared sidebar workspace model", () => {
               workspace({
                 id: "feature",
                 name: "feature/status-flow",
-                projectId: "otto-code-ai/otto-code",
-                projectDisplayName: "otto-code-ai/otto-code",
+                projectId: "getpaseo/paseo",
+                projectDisplayName: "getpaseo/paseo",
                 status: "running",
                 statusEnteredAt: new Date("2026-06-10T00:00:00.000Z"),
               }),
@@ -361,19 +384,19 @@ describe("shared sidebar workspace model", () => {
     ]);
     expect(model.projects).toEqual([
       expect.objectContaining({
-        viewKey: "otto-code-ai/otto-code",
+        viewKey: "getpaseo/paseo",
         hosts: [
           {
             serverId: "host-a",
-            projectId: "otto-code-ai/otto-code",
-            iconWorkingDir: "/repo/otto-code-ai/otto-code",
-            worktreeSupport: "supported",
+            projectId: "getpaseo/paseo",
+            iconWorkingDir: "/repo/getpaseo/paseo",
+            worktreeSupport: "supported" as const,
           },
           {
             serverId: "host-b",
-            projectId: "otto-code-ai/otto-code",
-            iconWorkingDir: "/repo/otto-code-ai/otto-code",
-            worktreeSupport: "supported",
+            projectId: "getpaseo/paseo",
+            iconWorkingDir: "/repo/getpaseo/paseo",
+            worktreeSupport: "supported" as const,
           },
         ],
         workspaces: [
@@ -400,9 +423,58 @@ describe("shared sidebar workspace model", () => {
       ["host-a:main", "done", "main"],
       ["host-b:feature", "running", "feature/status-flow"],
     ]);
-    expect(model.projectNamesByViewKey).toEqual(
-      new Map([["otto-code-ai/otto-code", "otto-code-ai/otto-code"]]),
-    );
+    expect(model.projectNamesByViewKey).toEqual(new Map([["getpaseo/paseo", "getpaseo/paseo"]]));
+  });
+
+  it("preserves the collection when a retained sidebar reconnects to unchanged entries", () => {
+    const model = buildSidebarWorkspacePlacementModel({
+      projects: [project({ projectKey: "project", workspaceKeys: ["srv:one", "srv:two"] })],
+    });
+    const one = workspace({
+      id: "one",
+      name: "one",
+      projectId: "project",
+      projectDisplayName: "project",
+    });
+    const two = workspace({
+      id: "two",
+      name: "two",
+      projectId: "project",
+      projectDisplayName: "project",
+    });
+    const sessions = [
+      {
+        serverId: "srv",
+        workspaceAgentActivity: new Map(),
+        workspaces: new Map([
+          ["one", one],
+          ["two", two],
+        ]),
+      },
+    ];
+    const previousEntries = buildSidebarWorkspaceEntries({
+      placements: model.workspaces,
+      sessions,
+    });
+    expect(
+      buildSidebarWorkspaceEntries({
+        placements: model.workspaces,
+        sessions,
+        previousEntries,
+      }),
+    ).toBe(previousEntries);
+    const reordered = buildSidebarWorkspaceEntries({
+      placements: model.workspaces.toReversed(),
+      sessions,
+      previousEntries,
+    });
+    expect([...reordered.keys()]).toEqual(["srv:two", "srv:one"]);
+    const removed = buildSidebarWorkspaceEntries({
+      placements: model.workspaces.slice(0, 1),
+      sessions,
+      previousEntries,
+    });
+    expect([...removed.keys()]).toEqual(["srv:one"]);
   });
 
   it("preserves unchanged row identities when another workspace updates", () => {
@@ -452,6 +524,35 @@ describe("shared sidebar workspace model", () => {
     expect(nextEntries.get("srv:one")).toBe(previousEntries.get("srv:one"));
     expect(nextEntries.get("srv:two")).not.toBe(previousEntries.get("srv:two"));
   });
+
+  it("keeps a structurally disambiguated project key in status entries", () => {
+    const projectKey = "host:srv:project:prj_a";
+    const model = buildSidebarWorkspacePlacementModel({
+      projects: [project({ projectKey, projectName: "Clone A", workspaceKeys: ["srv:clone-a"] })],
+    });
+    const entries = buildSidebarWorkspaceEntries({
+      placements: model.workspaces,
+      sessions: [
+        {
+          serverId: "srv",
+          workspaceAgentActivity: new Map(),
+          workspaces: new Map([
+            [
+              "clone-a",
+              workspace({
+                id: "clone-a",
+                name: "main",
+                projectId: "prj_a",
+                projectDisplayName: "acme/app",
+              }),
+            ],
+          ]),
+        },
+      ],
+    });
+
+    expect(entries.get("srv:clone-a")?.projectViewKey).toBe(projectKey);
+  });
 });
 
 describe("shouldShowSidebarHostLabels", () => {
@@ -478,9 +579,8 @@ describe("shouldShowSidebarHostLabels", () => {
           hosts: [
             {
               serverId: "host-a",
-              projectId: "project-a",
               iconWorkingDir: "/repo/project-a",
-              worktreeSupport: "supported",
+              worktreeSupport: "supported" as const,
             },
           ],
           workspaceKeys: ["host-a:ws-1"],
@@ -490,9 +590,8 @@ describe("shouldShowSidebarHostLabels", () => {
           hosts: [
             {
               serverId: "host-b",
-              projectId: "project-b",
               iconWorkingDir: "/repo/project-b",
-              worktreeSupport: "supported",
+              worktreeSupport: "supported" as const,
             },
           ],
           workspaceKeys: ["host-b:ws-2"],
@@ -507,19 +606,17 @@ describe("shouldShowSidebarHostLabels", () => {
     const projects = buildSidebarProjectsFromStructure({
       projects: [
         project({
-          projectKey: "otto-code-ai/otto-code",
+          projectKey: "getpaseo/paseo",
           hosts: [
             {
               serverId: "host-a",
-              projectId: "otto-code-ai/otto-code",
-              iconWorkingDir: "/repo/otto",
-              worktreeSupport: "supported",
+              iconWorkingDir: "/repo/paseo",
+              worktreeSupport: "supported" as const,
             },
             {
               serverId: "host-b",
-              projectId: "otto-code-ai/otto-code",
-              iconWorkingDir: "/repo/otto",
-              worktreeSupport: "supported",
+              iconWorkingDir: "/repo/paseo",
+              worktreeSupport: "supported" as const,
             },
           ],
           workspaceKeys: ["host-a:main", "host-b:feature"],
@@ -558,6 +655,28 @@ describe("computeSidebarOrderUpdates", () => {
     expect(updates.workspaceOrders).toEqual([
       { projectViewKey: "project-a", order: ["srv:ws-2", "srv:ws-1"] },
       { projectViewKey: "project-b", order: ["srv:ws-3"] },
+    ]);
+  });
+
+  it("preserves the saved workspace order behind multiple newly discovered workspaces", () => {
+    const projects = [
+      sidebarProject({
+        projectKey: "project-a",
+        workspaceKeys: ["newest", "newer", "old-a", "old-b"],
+      }),
+    ];
+
+    const updates = computeSidebarOrderUpdates({
+      projects,
+      persistedProjectOrder: ["project-a"],
+      getWorkspaceOrder: () => ["srv:old-b", "srv:old-a"],
+    });
+
+    expect(updates.workspaceOrders).toEqual([
+      {
+        projectViewKey: "project-a",
+        order: ["srv:newest", "srv:newer", "srv:old-b", "srv:old-a"],
+      },
     ]);
   });
 

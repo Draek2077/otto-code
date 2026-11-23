@@ -18,8 +18,6 @@ function projectTarget(input: {
     serverId: "host-a",
     serverName: "Host A",
     projectViewKey: input.projectKey,
-    projectId: `host-a:id:${input.projectKey}`,
-    projectKey: input.projectKey,
     projectName: input.projectName,
     cwd: input.cwd,
     isGit: true,

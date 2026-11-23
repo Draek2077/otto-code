@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import {
   canRunRealProvider,
@@ -32,7 +32,7 @@ describe("daemon E2E (real claude) - model resolution on init", () => {
   test("runtimeInfo.model is set as soon as the agent starts running, not after turn completes", async () => {
     const logger = pino({ level: "silent" });
     const cwd = tmpCwd();
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       agentClients: createRealProviderClients(["claude"], logger),
       logger,
     });
@@ -41,7 +41,7 @@ describe("daemon E2E (real claude) - model resolution on init", () => {
     try {
       await client.connect();
       await client.fetchAgents({
-        subscribe: { subscriptionId: "model-init-test" },
+        subscribe: {},
       });
 
       const modelsResult = await client.listProviderModels("claude", { cwd });

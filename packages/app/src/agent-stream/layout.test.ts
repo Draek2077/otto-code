@@ -25,7 +25,7 @@ function userMessage(id: string, seed: number): Extract<StreamItem, { kind: "use
 function assistantMessage(
   id: string,
   seed: number,
-  block?: { groupId: string; index: number },
+  _block?: { groupId: string; index: number },
   turnId?: string,
 ): Extract<StreamItem, { kind: "assistant_message" }> {
   return {
@@ -33,7 +33,6 @@ function assistantMessage(
     id,
     text: id,
     timestamp: timestamp(seed),
-    ...(block ? { blockGroupId: block.groupId, blockIndex: block.index } : {}),
     ...(turnId ? { turnId } : {}),
   };
 }
@@ -318,26 +317,7 @@ describe("layoutStream", () => {
     expect(assistantRow.frameOrder).toBe("content-then-footer");
   });
 
-  it.each(["web", "android"] as const)(
-    "places the completed footer after the final assistant block before a follow-up on %s",
-    (platform) => {
-      const firstAssistant = assistantMessage("a1", 2);
-      const finalAssistant = assistantMessage("a2", 3);
-      const layout = layoutFor({
-        platform,
-        tail: [userMessage("u1", 1), firstAssistant, finalAssistant, userMessage("u2", 4)],
-        timingIds: [firstAssistant.id, finalAssistant.id],
-      });
-
-      expect(findLayoutItem(layout, firstAssistant.id).completedFooter).toBeNull();
-      expect(findLayoutItem(layout, finalAssistant.id).completedFooter?.itemId).toBe(
-        finalAssistant.id,
-      );
-      expect(footerOwners(layout)).toEqual([finalAssistant.id]);
-    },
-  );
-
-  it("compacts assistant block spacing across the history and live-head boundary", () => {
+  it("keeps separate messages spaced across history and the live head", () => {
     const historyBlock = assistantMessage("turn:block:0", 2, { groupId: "turn", index: 0 });
     const headBlock = assistantMessage("turn:head", 3, { groupId: "turn", index: 1 });
     const layout = layoutFor({
@@ -347,11 +327,8 @@ describe("layoutStream", () => {
       timingIds: [historyBlock.id, headBlock.id],
     });
 
-    expect(findLayoutItem(layout, historyBlock.id).assistantSpacing).toBe("compactBottom");
-    // The head block is the reply's last segment: only the edge it shares with
-    // the history block is squared off. The turn footer below it is not a
-    // segment, so the outer bottom corners stay rounded.
-    expect(findLayoutItem(layout, headBlock.id).assistantSpacing).toBe("compactTop");
+    expect(findLayoutItem(layout, historyBlock.id).assistantSpacing).toBe("default");
+    expect(findLayoutItem(layout, headBlock.id).assistantSpacing).toBe("compactBottom");
   });
 
   it.each(["web", "android"] as const)(

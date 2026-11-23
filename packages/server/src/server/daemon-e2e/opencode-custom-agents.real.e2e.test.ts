@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { canRunRealProvider, createRealProviderClients } from "./real-provider-test-config.js";
 
@@ -14,16 +14,16 @@ function tmpCwd(): string {
 
 async function createHarness(): Promise<{
   client: DaemonClient;
-  daemon: Awaited<ReturnType<typeof createTestOttoDaemon>>;
+  daemon: Awaited<ReturnType<typeof createTestPaseoDaemon>>;
 }> {
   const logger = pino({ level: "silent" });
-  const daemon = await createTestOttoDaemon({
+  const daemon = await createTestPaseoDaemon({
     agentClients: createRealProviderClients(["opencode"], logger),
     logger,
   });
   const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
   await client.connect();
-  await client.fetchAgents({ subscribe: { subscriptionId: "opencode-custom-agents" } });
+  await client.fetchAgents({ subscribe: {} });
   return { client, daemon };
 }
 
@@ -46,8 +46,8 @@ describe("daemon E2E (real opencode) - custom agent discovery", () => {
       path.join(cwd, "opencode.json"),
       JSON.stringify({
         agent: {
-          "otto-e2e-custom": {
-            description: "Custom agent for Otto daemon E2E test",
+          "paseo-e2e-custom": {
+            description: "Custom agent for Paseo daemon E2E test",
             mode: "primary",
           },
         },
@@ -73,9 +73,9 @@ describe("daemon E2E (real opencode) - custom agent discovery", () => {
       expect(snapshot.availableModes.some((m) => m.id === "build")).toBe(true);
       expect(snapshot.availableModes.some((m) => m.id === "plan")).toBe(true);
 
-      const custom = snapshot.availableModes.find((m) => m.id === "otto-e2e-custom");
+      const custom = snapshot.availableModes.find((m) => m.id === "paseo-e2e-custom");
       expect(custom).toBeDefined();
-      expect(custom!.description).toBe("Custom agent for Otto daemon E2E test");
+      expect(custom!.description).toBe("Custom agent for Paseo daemon E2E test");
 
       // System agents should not leak through
       expect(snapshot.availableModes.some((m) => m.id === "compaction")).toBe(false);

@@ -21,7 +21,6 @@ export interface TerminalLocalFileLinkTarget {
   path: string;
   lineStart?: number;
   lineEnd?: number;
-  kind?: "file" | "directory";
 }
 
 export interface TerminalLocalFileLinkProviderOptions {
@@ -62,14 +61,14 @@ class TerminalLocalFileLinkProvider implements ILinkProvider {
       return;
     }
 
-    activeRequest = Promise.resolve(this.provideLinksForLine(bufferLineNumber));
+    activeRequest = this.provideLinksForLine(bufferLineNumber);
     this.activeRequests.set(bufferLineNumber, activeRequest);
     const links = await activeRequest;
     this.activeRequests.delete(bufferLineNumber);
     callback(links.length > 0 ? links : undefined);
   }
 
-  private provideLinksForLine(bufferLineNumber: number): ILink[] {
+  private async provideLinksForLine(bufferLineNumber: number): Promise<ILink[]> {
     const windowed = getWindowedLineContent(this.terminal, bufferLineNumber - 1);
     if (!windowed || windowed.text.length === 0 || windowed.text.length > MAX_LINE_LENGTH) {
       return [];
@@ -88,6 +87,11 @@ class TerminalLocalFileLinkProvider implements ILinkProvider {
         continue;
       }
 
+      const target = await this.options.resolveLink(source);
+      if (!target) {
+        continue;
+      }
+
       const range = toBufferRange({
         terminal: this.terminal,
         startLine: windowed.startLine,
@@ -98,7 +102,7 @@ class TerminalLocalFileLinkProvider implements ILinkProvider {
         continue;
       }
 
-      links.push(createLocalFileLink({ range, source, options: this.options }));
+      links.push(createLocalFileLink({ range, source, target, options: this.options }));
       resolvedLinkCount += 1;
       if (resolvedLinkCount >= MAX_RESOLVED_LINKS_IN_LINE) {
         break;
@@ -112,6 +116,7 @@ class TerminalLocalFileLinkProvider implements ILinkProvider {
 function createLocalFileLink(input: {
   range: IBufferRange;
   source: TerminalLocalFileLinkSource;
+  target: TerminalLocalFileLinkTarget;
   options: TerminalLocalFileLinkProviderOptions;
 }): ILink {
   return {
@@ -124,15 +129,7 @@ function createLocalFileLink(input: {
     activate: (event) => {
       event.preventDefault();
       const disposition = event.metaKey || event.ctrlKey ? "side" : "main";
-      void input.options.resolveLink(input.source).then(
-        (target) => {
-          if (target) {
-            input.options.openLink(target, disposition, event);
-          }
-          return undefined;
-        },
-        () => undefined,
-      );
+      input.options.openLink(input.target, disposition, event);
     },
   };
 }

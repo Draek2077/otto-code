@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import { createAssistantMarkdownParser } from "./assistant-markdown-parser";
 
 describe("createAssistantMarkdownParser", () => {
+  it("keeps ordinary parsing for completed messages", () => {
+    const parser = createAssistantMarkdownParser();
+    expect(parser.renderInline("**unfinished")).toBe("**unfinished");
+    expect(parser.renderInline("[unfinished")).toBe("[unfinished");
+  });
+
   it("renders agent text verbatim", () => {
     const parser = createAssistantMarkdownParser();
 

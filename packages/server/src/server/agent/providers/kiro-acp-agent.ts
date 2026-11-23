@@ -10,7 +10,6 @@ interface KiroACPAgentClientOptions {
   env?: Record<string, string>;
   providerId?: string;
   label?: string;
-  providerParams?: unknown;
 }
 
 // Kiro CLI publishes its slash commands and skills asynchronously through the
@@ -27,11 +26,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return value != null && typeof value === "object" && !Array.isArray(value);
 }
 
-// Maps a `_kiro.dev/commands/available` payload onto Otto slash commands.
+// Maps a `_kiro.dev/commands/available` payload onto Paseo slash commands.
 // Kiro reports built-in slash commands under `commands` (names arrive with a
 // leading "/", e.g. "/agent") and skills/prompts under `prompts` (names without
-// a slash, tagged with a `skill:` serverName). Otto stores command names
-// without the leading slash - the composer prepends it on insertion.
+// a slash, tagged with a `skill:` serverName). Paseo stores command names
+// without the leading slash — the composer prepends it on insertion.
 function mapKiroAvailableCommands(params: Record<string, unknown>): AgentSlashCommand[] {
   const result: AgentSlashCommand[] = [];
   const seen = new Set<string>();
@@ -92,7 +91,6 @@ export class KiroACPAgentClient extends GenericACPAgentClient {
       env: options.env,
       providerId: options.providerId,
       label: options.label,
-      providerParams: options.providerParams,
       waitForInitialCommands: true,
       initialCommandsWaitTimeoutMs: KIRO_INITIAL_COMMANDS_WAIT_TIMEOUT_MS,
       extensionCommandsParser: parseKiroExtensionCommands,

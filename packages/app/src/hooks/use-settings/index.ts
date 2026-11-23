@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { queryClient as appQueryClient } from "@/data/query-client";
@@ -13,69 +13,47 @@ import { isElectronRuntime } from "@/desktop/host";
 import {
   APP_SETTINGS_KEY,
   APP_SETTINGS_QUERY_KEY,
-  type AppSettings,
-  type AppSettingsUpdate,
-  type PullRequestOpenLocation,
-  type AppStartScreen,
-  type ChatTimestampDisplay,
-  type SubagentTrackPresentation,
   DEFAULT_APP_SETTINGS,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_CODE_FONT_SIZE,
   DEFAULT_CONTENT_FONT_SIZE,
-  DEFAULT_MOUNTED_WORKSPACE_LIMIT,
-  DEFAULT_RULER_COLUMN,
-  DEFAULT_TERMINAL_FONT_SIZE,
+  DEFAULT_CONTENT_MAX_WIDTH,
   DEFAULT_TERMINAL_SCROLLBACK_LINES,
-  DEFAULT_UI_FONT_SIZE,
-  type DesktopSettingsBridge,
-  type InterfaceMode,
-  type KeyValueStorage,
-  type LinkOpenBehavior,
-  loadAppSettingsFromStorage as loadAppSettingsFromStoragePure,
-  loadSettingsFromStorage as loadSettingsFromStoragePure,
+  DEFAULT_THEME_PREFERENCE,
+  DEFAULT_UI_BASE_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
   MAX_CONTENT_FONT_SIZE,
-  MAX_MOUNTED_TAB_LIMIT,
-  MAX_MOUNTED_WORKSPACE_LIMIT,
-  MAX_RULER_COLUMN,
-  MAX_TERMINAL_FONT_SIZE,
+  MAX_CONTENT_MAX_WIDTH,
   MAX_TERMINAL_SCROLLBACK_LINES,
-  MAX_UI_FONT_SIZE,
+  MAX_UI_BASE_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_CONTENT_FONT_SIZE,
-  MIN_MOUNTED_TAB_LIMIT,
-  MIN_MOUNTED_WORKSPACE_LIMIT,
-  MIN_RULER_COLUMN,
-  MIN_TERMINAL_FONT_SIZE,
+  MIN_CONTENT_MAX_WIDTH,
   MIN_TERMINAL_SCROLLBACK_LINES,
-  MIN_UI_FONT_SIZE,
-  type OpenInSidePanePreferences,
+  MIN_UI_BASE_FONT_SIZE,
+  loadAppSettingsFromStorage as loadAppSettingsFromStoragePure,
+  loadSettingsFromStorage as loadSettingsFromStoragePure,
+  normalizeAppSettings,
   parseClampedFontSize,
-  parseMountedTabLimit,
-  parseMountedWorkspaceLimit,
+  parseContentMaxWidth,
   parseTerminalScrollbackLines,
-  type PreviewServerCloseBehavior,
-  type ReleaseChannel,
+  resolveContentMaxWidth,
   sanitizeFontFamily,
   saveAppSettings as saveAppSettingsPure,
+  type AppSettings,
+  type AppSettingsUpdate,
+  type OpenInSidePanePreferences,
+  type PullRequestOpenLocation,
+  type DesktopSettingsBridge,
+  type KeyValueStorage,
+  type ReleaseChannel,
   type SendBehavior,
   type ServiceUrlBehavior,
   type Settings,
-  type SettingsDeps,
-  type ShortcutOverlayMode,
   type SidebarWorkspaceTrailing,
-  type SuggestedTasksDefaultMode,
-  type FollowPromptSuggestionsLimit,
-  type VisualizerContextDisplay,
-  type VisualizerNodeShape,
-  type VisualizerRenderQuality,
+  type SettingsDeps,
   type WorkspaceTitleSource,
-  type WorkspaceToolsPlacement,
 } from "./storage";
-import { collectAppSettingsUpdates } from "./update-routing";
-
-export { collectAppSettingsUpdates } from "./update-routing";
 
 export {
   APP_SETTINGS_KEY,
@@ -83,62 +61,59 @@ export {
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_CODE_FONT_SIZE,
   DEFAULT_CONTENT_FONT_SIZE,
-  DEFAULT_TERMINAL_FONT_SIZE,
-  DEFAULT_MOUNTED_WORKSPACE_LIMIT,
-  DEFAULT_RULER_COLUMN,
+  DEFAULT_CONTENT_MAX_WIDTH,
   DEFAULT_TERMINAL_SCROLLBACK_LINES,
-  DEFAULT_UI_FONT_SIZE,
+  DEFAULT_THEME_PREFERENCE,
+  DEFAULT_UI_BASE_FONT_SIZE,
   MAX_CODE_FONT_SIZE,
   MAX_CONTENT_FONT_SIZE,
-  MAX_TERMINAL_FONT_SIZE,
-  MAX_MOUNTED_WORKSPACE_LIMIT,
-  MAX_RULER_COLUMN,
+  MAX_CONTENT_MAX_WIDTH,
   MAX_TERMINAL_SCROLLBACK_LINES,
-  MAX_UI_FONT_SIZE,
+  MAX_UI_BASE_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_CONTENT_FONT_SIZE,
-  MIN_TERMINAL_FONT_SIZE,
-  MAX_MOUNTED_TAB_LIMIT,
-  MIN_MOUNTED_TAB_LIMIT,
-  MIN_MOUNTED_WORKSPACE_LIMIT,
-  MIN_RULER_COLUMN,
+  MIN_CONTENT_MAX_WIDTH,
   MIN_TERMINAL_SCROLLBACK_LINES,
-  MIN_UI_FONT_SIZE,
+  MIN_UI_BASE_FONT_SIZE,
   parseClampedFontSize,
-  parseMountedTabLimit,
-  parseMountedWorkspaceLimit,
+  parseContentMaxWidth,
   parseTerminalScrollbackLines,
+  resolveContentMaxWidth,
   sanitizeFontFamily,
 };
 export type {
-  OpenInSidePanePreferences,
   AppSettings,
   AppSettingsUpdate,
-  PullRequestOpenLocation,
   AppLanguage,
-  ChatTimestampDisplay,
-  SubagentTrackPresentation,
-  InterfaceMode,
-  AppStartScreen,
-  SuggestedTasksDefaultMode,
-  FollowPromptSuggestionsLimit,
+  OpenInSidePanePreferences,
+  PullRequestOpenLocation,
   DesktopSettingsBridge,
   KeyValueStorage,
-  LinkOpenBehavior,
   ReleaseChannel,
   SendBehavior,
   ServiceUrlBehavior,
   Settings,
   SettingsDeps,
-  PreviewServerCloseBehavior,
-  VisualizerRenderQuality,
-  VisualizerNodeShape,
-  VisualizerContextDisplay,
-  WorkspaceTitleSource,
-  ShortcutOverlayMode,
-  WorkspaceToolsPlacement,
   SidebarWorkspaceTrailing,
+  WorkspaceTitleSource,
 };
+
+/**
+ * Split a `Settings` patch into the part the app owns. The two halves persist to different
+ * places (AsyncStorage vs the Electron settings bridge), and the app's half is exactly the
+ * key set of `DEFAULT_CLIENT_SETTINGS` — reading the keys off it means a new app setting
+ * flows through here without anyone remembering to widen a hand-written list.
+ */
+function pickDefinedAppSettings(updates: Partial<Settings>): Partial<AppSettings> {
+  const appUpdates: Partial<AppSettings> = {};
+  for (const key of Object.keys(DEFAULT_CLIENT_SETTINGS) as (keyof AppSettings)[]) {
+    const value = updates[key];
+    if (value !== undefined) {
+      Object.assign(appUpdates, { [key]: value });
+    }
+  }
+  return appUpdates;
+}
 
 const productionDeps: SettingsDeps = {
   storage: AsyncStorage,
@@ -198,37 +173,15 @@ export function useAppSettings(): UseAppSettingsReturn {
       throw err;
     }
   }, [queryClient]);
+  const settings = useMemo(() => normalizeAppSettings(data), [data]);
 
   return {
-    settings: data ?? DEFAULT_CLIENT_SETTINGS,
+    settings,
     isLoading: isPending,
     error: error ?? null,
     updateSettings,
     resetSettings,
   };
-}
-
-/**
- * Narrow subscription to a single derived AppSettings value. Unlike
- * `useAppSettings()` - a bare query subscription that re-renders its consumer
- * on every settings write - this applies `select` inside the query, so the
- * consumer re-renders only when the selected value itself changes. Use it in
- * hot paths (per-message components, list rows). Pass a stable (module-level)
- * selector that returns a defined value; while the settings are still loading
- * the selector runs against `DEFAULT_CLIENT_SETTINGS`.
- */
-export function useAppSettingValue<TSelected>(
-  select: (settings: AppSettings) => TSelected,
-): TSelected {
-  const { data } = useQuery({
-    queryKey: APP_SETTINGS_QUERY_KEY,
-    queryFn: () => loadAppSettingsFromStorage(),
-    staleTime: Infinity,
-    gcTime: Infinity,
-    select,
-    notifyOnChangeProps: ["data"],
-  });
-  return data === undefined ? select(DEFAULT_CLIENT_SETTINGS) : data;
 }
 
 export function useSettings(): UseSettingsReturn;
@@ -241,7 +194,7 @@ export function useSettings<TSelected>(
 
   const updateSettings = useCallback(
     async (updates: Partial<Settings>) => {
-      const appUpdates = collectAppSettingsUpdates(updates);
+      const appUpdates = pickDefinedAppSettings(updates);
       const promises: Promise<void>[] = [];
       if (Object.keys(appUpdates).length > 0) {
         promises.push(appSettings.updateSettings(appUpdates));
@@ -295,7 +248,7 @@ export function useSettings<TSelected>(
   };
 }
 
-export async function persistAppSettings(updates: AppSettingsUpdate): Promise<void> {
+export async function persistAppSettings(updates: Partial<AppSettings>): Promise<void> {
   await saveAppSettings({ queryClient: appQueryClient, updates });
 }
 

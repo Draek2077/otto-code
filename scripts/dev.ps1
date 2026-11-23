@@ -4,43 +4,35 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $env:PATH = "$ScriptDir\..\node_modules\.bin;$env:PATH"
 
-# Isolated dev environment: dev port, dev OTTO_HOME, dev-only CORS/relay
-# defaults. Keeps this daemon off 6868 and out of `~/.otto`, so the installed
-# Otto can stay open and serving while you work on the checkout.
-. "$ScriptDir\dev-home.ps1"
-$Dev = Initialize-OttoDevEnvironment
+# OTTO(dev-isolation): one managed home and port for every Windows launcher.
+. "$PSScriptRoot/dev-home.ps1"
+$DevEnvironment = Initialize-OttoDevEnvironment
 
 Write-Host @"
 ======================================================
-  Otto Dev (Windows)
+  Paseo Dev (Windows)
 ======================================================
-  Home:    $($Dev.Home)
-  Models:  $($env:OTTO_LOCAL_MODELS_DIR)
-  Daemon:  $($Dev.Listen) (isolated)
+  Home:    $($env:PASEO_HOME)
+  Models:  $($env:PASEO_LOCAL_MODELS_DIR)
+  Daemon:  localhost:$($DevEnvironment.Port)
 ======================================================
 "@
 
+# Allow any origin in dev so Electron on random ports all work.
+# SECURITY: wildcard CORS is unsafe in production — only acceptable here because
+# the daemon binds to localhost and this script is never used for production.
+$env:PASEO_CORS_ORIGINS = "*"
+
 # Configure the app to auto-connect to this daemon on localhost
 $env:APP_VARIANT = "development"
-$env:EXPO_PUBLIC_LOCAL_DAEMON = $Dev.Endpoint
-$env:EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL = (git branch --show-current).Trim()
+$env:EXPO_PUBLIC_LOCAL_DAEMON = "localhost:$($DevEnvironment.Port)"
+$env:EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL = (git branch --show-current).Trim()
+$env:PASEO_LISTEN = $DevEnvironment.Listen
 $env:BROWSER = "none"
-
-# Metro reads the workspace packages from their compiled dist, and snapshots
-# its file map at startup - a stale dist there is an unresolvable import for the
-# whole session. No-op when everything is already built.
-node "$ScriptDir\ensure-app-deps.mjs"
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
-# Bump Metro's Node heap to 8 GB. Long edit-while-live sessions grow Metro's
-# in-memory module graph + transform cache until it walks into V8's ~4 GB default
-# old-space ceiling and dies with "Ineffective mark-compacts near heap limit"
-# (exit 134). Scoped to the Expo/Metro process only - the daemon keeps its default.
-$MetroNodeOptions = if ($env:NODE_OPTIONS) { "$($env:NODE_OPTIONS) --max-old-space-size=8192" } else { "--max-old-space-size=8192" }
 
 # Run both with concurrently
 concurrently `
     --names "daemon,metro" `
     --prefix-colors "cyan,magenta" `
     "npm run dev:server:watch" `
-    "cd packages/app && cross-env NODE_OPTIONS=`"$MetroNodeOptions`" npx expo start"
+    "cd packages/app && npx expo start"

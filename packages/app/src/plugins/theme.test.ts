@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import type { PluginThemeContribution } from "@otto-code/plugin";
+import type { PluginThemeContribution } from "@getpaseo/plugin";
 import { describe, expect, it } from "vitest";
 import { darkTheme, lightTheme } from "@/styles/theme";
 import { collectPluginThemes, rememberPluginThemeHost } from "./themes";
@@ -18,7 +18,7 @@ const MOCHA: PluginThemeContribution = {
     border: "#45475a",
     accent: "#cba6f7",
     mutedForeground: "#a6adc8",
-    ring: "#d4d4d8",
+    ring: "#6c7086",
   },
 };
 
@@ -39,7 +39,7 @@ const LATTE: PluginThemeContribution = {
     border: "#ccd0da",
     accent: "#8839ef",
     mutedForeground: "#6c6f85",
-    ring: "#4c4f69",
+    ring: "#9ca0b0",
   },
 };
 
@@ -49,10 +49,14 @@ function installed(serverId: string, themes: PluginThemeContribution[]): Install
     cleanup: () => undefined,
     serverId,
     clientBundle: serverId,
+    lifetime: new AbortController(),
     queryClient: new QueryClient(),
+    paseo: {} as InstalledPlugin["paseo"],
+    invoke: async () => undefined,
     settingsScreens: [],
     surfaces: [],
-    sidebarItems: [],
+    sidebarItems: { header: [], footer: [] },
+    legacySidebarItems: [],
     workspacePanels: [],
     commandCenterItems: [],
     clientSlashCommands: [],
@@ -100,14 +104,14 @@ describe("plugin theme palettes", () => {
       accent: "#cba6f7",
       accentBright: "#cba6f7",
       accentForeground: "#1e1e2e",
-      ring: "#d4d4d8",
+      ring: "#6c7086",
       terminal: {
         background: "#1e1e2e",
         foreground: "#cdd6f4",
         cursor: "#cdd6f4",
         cursorAccent: "#1e1e2e",
         black: "#45475a",
-        brightBlack: "#d4d4d8",
+        brightBlack: "#6c7086",
       },
     });
   });
@@ -141,7 +145,7 @@ describe("plugin theme palettes", () => {
       foreground: "#4c4f69",
       border: "#ccd0da",
       accent: "#8839ef",
-      ring: "#4c4f69",
+      ring: "#9ca0b0",
       terminal: {
         background: "#eff1f5",
         foreground: "#4c4f69",

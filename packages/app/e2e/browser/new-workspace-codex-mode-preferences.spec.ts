@@ -1,13 +1,14 @@
-import { expect, test, type Page } from "../support/fixtures";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
+import { expect, type Page } from "../support/fixtures";
+import { test } from "../support/creation-fixtures";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
 import type { FormPreferences } from "@/create-agent-preferences/preferences";
 import { gotoAppShell } from "../support/helpers/app";
-import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
+import { captureWorkspaceAgentRequest } from "../support/helpers/creation";
 import { openAgentRoute } from "../support/helpers/mock-agent";
 import {
-  addProjectViaDaemon,
-  connectNewWorkspaceDaemonClient,
   openGlobalNewWorkspaceComposer,
   selectNewWorkspaceProject,
   submitNewWorkspacePrompt,
@@ -15,44 +16,12 @@ import {
 import { expectNoTruncation } from "../support/helpers/no-truncation";
 import { escapeRegex } from "../support/helpers/regex";
 import { seedWorkspace } from "../support/helpers/seed-client";
-import { createTempGitRepo } from "../support/helpers/workspace";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 
+// OTTO(agent-teams): exercise ordinary provider preferences on a host without a Chatter override.
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
+
 const CREATE_AGENT_PREFERENCES_KEY = "@otto:create-agent-preferences";
-
-type WebSocketMessage = string | Buffer;
-
-interface CreateAgentRequestMessage {
-  type: "create_agent_request";
-  config?: {
-    provider?: unknown;
-    modeId?: unknown;
-  };
-}
-
-function parseWebSocketJson(message: WebSocketMessage): unknown {
-  const rawMessage = typeof message === "string" ? message : message.toString("utf8");
-  try {
-    return JSON.parse(rawMessage);
-  } catch {
-    return null;
-  }
-}
-
-function getSessionMessage(message: WebSocketMessage): Record<string, unknown> | null {
-  const envelope = parseWebSocketJson(message);
-  if (!envelope || typeof envelope !== "object") {
-    return null;
-  }
-  const maybeEnvelope = envelope as { type?: unknown; message?: unknown };
-  if (maybeEnvelope.type !== "session" || !maybeEnvelope.message) {
-    return null;
-  }
-  if (typeof maybeEnvelope.message !== "object") {
-    return null;
-  }
-  return maybeEnvelope.message as Record<string, unknown>;
-}
 
 async function seedCodexDefaultPermissionPreferences(page: Page, cwd: string): Promise<string> {
   const client = await connectDaemonClient<DaemonClient>({
@@ -65,6 +34,7 @@ async function seedCodexDefaultPermissionPreferences(page: Page, cwd: string): P
           (await client.getProvidersSnapshot({ cwd })).entries.find(
             (entry) => entry.provider === "codex",
           )?.status,
+        { timeout: 30_000 },
       )
       .toBe("ready");
     const snapshot = await client.getProvidersSnapshot({ cwd });
@@ -113,14 +83,8 @@ async function readCodexModePreference(page: Page): Promise<unknown> {
   }, CREATE_AGENT_PREFERENCES_KEY);
 }
 
-// The manifest labels these "Default Permissions" / "Full Access", but the
-// composer's mode control sentence-cases every label it renders
-// (formatAgentModeLabel), so what is actually on screen is "Default
-// permissions" / "Full access". Per docs/glossary.md the UI label wins, and
-// toContainText is case-sensitive, so the assertions below match the rendered
-// text. selectMode stays case-insensitive and takes the manifest spelling.
 async function selectMode(page: Page, label: string): Promise<void> {
-  const modeControl = page.getByRole("button", { name: /^Select chat mode \(/ });
+  const modeControl = page.getByRole("button", { name: /^Select agent mode \(/ });
   await expect(modeControl).toBeVisible({ timeout: 30_000 });
   await modeControl.click();
 
@@ -128,12 +92,14 @@ async function selectMode(page: Page, label: string): Promise<void> {
   await expect(popup).toBeVisible({ timeout: 10_000 });
   await expectNoTruncation(popup);
 
-  // The mode picker dropped its search box (modes are a small finite set, like
-  // effort levels), so select the option directly from the open popup.
+  const searchInput = page.getByRole("textbox", { name: /search mode/i });
+  await expect(searchInput).toBeVisible({ timeout: 10_000 });
+  await searchInput.fill(label);
+
   const option = popup.getByText(new RegExp(`^${escapeRegex(label)}$`, "i")).first();
   await expect(option).toBeVisible({ timeout: 10_000 });
   await option.click({ force: true });
-  await expect(popup).not.toBeVisible({ timeout: 5_000 });
+  await expect(searchInput).not.toBeVisible({ timeout: 5_000 });
 }
 
 async function expectThinkingOptionsFit(page: Page): Promise<void> {
@@ -149,69 +115,41 @@ async function expectThinkingOptionsFit(page: Page): Promise<void> {
   await expect(page.getByTestId("combobox-desktop-container")).toHaveCount(0, { timeout: 5_000 });
 }
 
-async function recordAndBlockCreateAgentRequests(page: Page): Promise<{
-  waitForCreateAgentRequest(): Promise<CreateAgentRequestMessage>;
-}> {
-  let resolveRequest: ((message: CreateAgentRequestMessage) => void) | null = null;
-  const createAgentSeen = new Promise<CreateAgentRequestMessage>((resolve) => {
-    resolveRequest = resolve;
-  });
-
-  await page.routeWebSocket(daemonWsRoutePattern(), (ws) => {
-    const server = ws.connectToServer();
-
-    ws.onMessage((message) => {
-      const sessionMessage = getSessionMessage(message);
-      if (sessionMessage?.type === "create_agent_request") {
-        resolveRequest?.(sessionMessage as unknown as CreateAgentRequestMessage);
-        return;
-      }
-      server.send(message);
-    });
-
-    server.onMessage((message) => {
-      ws.send(message);
-    });
-  });
-
-  return {
-    waitForCreateAgentRequest: () => createAgentSeen,
-  };
-}
-
 test.describe("New workspace Codex mode preferences", () => {
   test.describe.configure({ timeout: 240_000 });
 
   test("keeps Full Access as the global Codex mode after the workspace draft auto-submit handoff", async ({
     page,
+    startup,
   }) => {
     const seeded = await seedWorkspace({ repoPrefix: "codex-mode-preferences-" });
-    // Create must target a project that no workspace backs yet: seedWorkspace
-    // already backs its own repo, and the composer refuses a second workspace
-    // on the same directory ("This directory already backs the workspace …").
-    // Picking the seeded project left Create spinning on a rejected
-    // workspace.create for the whole 240s budget.
-    const newWorkspaceClient = await connectNewWorkspaceDaemonClient();
-    const targetRepo = await createTempGitRepo("codex-mode-preferences-target-");
-    const targetProject = await addProjectViaDaemon(newWorkspaceClient, targetRepo.path);
-    const createAgentRecorder = await recordAndBlockCreateAgentRequests(page);
+    const createAgentRecorder = await captureWorkspaceAgentRequest(page, { block: false });
     try {
       await seedCodexDefaultPermissionPreferences(page, seeded.repoPath);
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
       await openGlobalNewWorkspaceComposer(page);
-      await selectNewWorkspaceProject(page, targetProject);
+      await selectNewWorkspaceProject(page, {
+        projectKey: seeded.projectKey,
+        projectDisplayName: seeded.projectDisplayName,
+      });
 
       await expect(
-        page.getByRole("button", { name: "Select chat mode (Default permissions)" }),
+        page.getByRole("button", { name: "Select agent mode (Default permissions)" }),
       ).toBeVisible({ timeout: 30_000 });
       await expectThinkingOptionsFit(page);
-      await selectMode(page, "Full Access");
-      await expect(page.getByTestId("mode-control").first()).toContainText("Full access");
+      await selectMode(page, "Full access");
+      await expect(
+        page.getByRole("button", { name: "Select agent mode (Full access)" }),
+      ).toBeVisible();
 
       await submitNewWorkspacePrompt(page, "Keep Codex full access selected globally.");
-      const createAgentRequest = await createAgentRecorder.waitForCreateAgentRequest();
+      const createAgentRequest = await createAgentRecorder.waitForRequest();
 
+      await expect(page).toHaveURL(/\/workspace\//);
+      await expect(
+        page.getByText("Keep Codex full access selected globally.", { exact: true }).first(),
+      ).toBeVisible();
       expect(createAgentRequest.config).toMatchObject({
         provider: "codex",
         modeId: "full-access",
@@ -219,20 +157,16 @@ test.describe("New workspace Codex mode preferences", () => {
       await expect
         .poll(() => readCodexModePreference(page), { timeout: 10_000 })
         .toBe("full-access");
+      await startup.fail();
+      await expect(page.getByText(/Creation startup failed for test/).first()).toBeVisible();
     } finally {
       await seeded.cleanup();
-      // Remove the daemon's project record BEFORE the directory goes: removing
-      // the project also drops the workspace the composer created on it. Leaving
-      // it behind left the shard's daemon serving a project on a deleted path,
-      // which the next spec's composer preselected as the last active project
-      // and then failed to list features for, over and over.
-      await newWorkspaceClient.removeProject(targetProject.projectId).catch(() => undefined);
-      await newWorkspaceClient.close().catch(() => undefined);
-      await targetRepo.cleanup().catch(() => undefined);
     }
   });
 
-  test("uses the live Codex agent mode as the next New Workspace default", async ({ page }) => {
+  test("keeps a live Codex permission change out of the next New Workspace draft", async ({
+    page,
+  }) => {
     const seeded = await seedWorkspace({ repoPrefix: "codex-live-mode-preferences-" });
     try {
       const model = await seedCodexDefaultPermissionPreferences(page, seeded.repoPath);
@@ -250,25 +184,26 @@ test.describe("New workspace Codex mode preferences", () => {
         agentId: agent.id,
       });
       await expect(
-        page.getByRole("button", { name: "Select chat mode (Default permissions)" }),
+        page.getByRole("button", { name: "Select agent mode (Default permissions)" }),
       ).toBeVisible({ timeout: 30_000 });
 
-      await selectMode(page, "Full Access");
-      await expect(page.getByTestId("mode-control").first()).toContainText("Full access", {
-        timeout: 30_000,
-      });
+      const originalMode = await readCodexModePreference(page);
+      await selectMode(page, "Full access");
+      await expect(
+        page.getByRole("button", { name: "Select agent mode (Full access)" }),
+      ).toBeVisible({ timeout: 30_000 });
 
       await openGlobalNewWorkspaceComposer(page);
       await selectNewWorkspaceProject(page, {
-        // The picker's option testID is the cross-host grouping key, not the
-        // host-local project id - see SeededWorkspace's two fields.
         projectKey: seeded.projectKey,
         projectDisplayName: seeded.projectDisplayName,
       });
 
+      // OTTO(agent-teams): active chat controls do not overwrite future draft preferences.
       await expect(
-        page.getByRole("button", { name: "Select chat mode (Full access)" }),
+        page.getByRole("button", { name: "Select agent mode (Default permissions)" }),
       ).toBeVisible({ timeout: 30_000 });
+      expect(await readCodexModePreference(page)).toBe(originalMode);
     } finally {
       await seeded.cleanup();
     }

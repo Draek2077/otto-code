@@ -1,5 +1,7 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, test, type Page } from "../support/fixtures";
-import { clickNewChat, gotoWorkspace } from "../support/helpers/launcher";
+import { gotoWorkspace } from "../support/helpers/launcher";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import {
   chooseCommandCenterAgentControl,
@@ -7,13 +9,15 @@ import {
   waitForDraftComposer,
 } from "../support/helpers/command-center-agent-controls";
 import { openCommandCenter } from "../support/helpers/command-center";
-import { selectModel } from "../support/helpers/app";
+import { runWorkspaceActionFromCommandCenter } from "../support/helpers/command-center-workspace-actions";
+import { seedModelProvider } from "../support/helpers/agent-profiles";
 
 const DISABLE_DEFAULT_SEED_ONCE_KEY = "@otto:e2e-disable-default-seed-once";
 const SEED_NONCE_KEY = "@otto:e2e-seed-nonce";
 
 async function openNewAgentTab(page: Page): Promise<void> {
-  await clickNewChat(page);
+  // Preference persistence does not depend on the animated tab-creation menu.
+  await runWorkspaceActionFromCommandCenter(page, "New agent");
   await waitForDraftComposer(page);
 }
 
@@ -24,13 +28,15 @@ async function chooseDraftControl(page: Page, query: string, choice: string): Pr
 
 async function expectThinkingSelected(page: Page, label: string): Promise<void> {
   await expect(
-    page.getByRole("button", { name: `Select effort (${label})` }).filter({ visible: true }),
+    page
+      .getByRole("button", { name: `Select thinking option (${label})` })
+      .filter({ visible: true }),
   ).toBeVisible({ timeout: 30_000 });
 }
 
 async function expectModeSelected(page: Page, label: string): Promise<void> {
   await expect(
-    page.getByRole("button", { name: `Select chat mode (${label})` }).filter({ visible: true }),
+    page.getByRole("button", { name: `Select agent mode (${label})` }).filter({ visible: true }),
   ).toBeVisible({ timeout: 30_000 });
 }
 
@@ -79,6 +85,8 @@ async function seedLegacyModelPreference(page: Page): Promise<void> {
     );
   });
 }
+
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 test.describe("Workspace draft thinking preferences", () => {
   test.describe.configure({ timeout: 180_000 });
@@ -139,6 +147,13 @@ test.describe("Workspace draft thinking preferences", () => {
     page,
   }) => {
     const workspace = await seedWorkspace({ repoPrefix: "draft-mode-preferences-" });
+    const alternate = await seedModelProvider({
+      id: "permission-mode-alternate",
+      label: "Mode alternate",
+      models: [
+        { id: "alternate-model", label: "Alternate model", description: "Preference fixture" },
+      ],
+    });
 
     try {
       await gotoWorkspace(page, workspace.workspaceId);
@@ -154,14 +169,19 @@ test.describe("Workspace draft thinking preferences", () => {
 
       await openNewAgentTab(page);
       await expectModeSelected(page, "Approval test");
-      await selectModel(page, "gpt-5.4-mini");
+      await chooseDraftControl(page, "alternate model", "Model › Mode alternate › Alternate model");
 
       await openNewAgentTab(page);
       await reloadWithPersistedPreferences(page);
-      await selectModel(page, "Five minute stream");
+      await chooseDraftControl(
+        page,
+        "five minute stream",
+        "Model › Mock Load Test › Five minute stream",
+      );
 
       await expectModeSelected(page, "Approval test");
     } finally {
+      await alternate.restore();
       await workspace.cleanup();
     }
   });

@@ -14,13 +14,10 @@ class FakeAgentConfigOperations implements AgentConfigOperations {
   readonly modelCalls: Array<{ agentId: string; modelId: string | null }> = [];
   readonly featureCalls: Array<{ agentId: string; featureId: string; value: unknown }> = [];
   readonly thinkingCalls: Array<{ agentId: string; thinkingOptionId: string | null }> = [];
-  readonly personalityCalls: Array<{ agentId: string; personalityId: string | null }> = [];
   /** Cross-operation ordering, which the per-operation arrays above cannot show. */
   readonly callLog: string[] = [];
   modeNotice: AgentProviderNotice | null = null;
-  modelNotice: AgentProviderNotice | null = null;
   thinkingNotice: AgentProviderNotice | null = null;
-  personalityNotice: AgentProviderNotice | null = null;
   loadFailure: Error | null = null;
   failWith: Error | null = null;
 
@@ -36,11 +33,10 @@ class FakeAgentConfigOperations implements AgentConfigOperations {
     return this.modeNotice;
   }
 
-  async setModel(agentId: string, modelId: string | null): Promise<AgentProviderNotice | null> {
+  async setModel(agentId: string, modelId: string | null): Promise<void> {
     this.modelCalls.push({ agentId, modelId });
     this.callLog.push("model");
     if (this.failWith) throw this.failWith;
-    return this.modelNotice;
   }
 
   async setFeature(agentId: string, featureId: string, value: unknown): Promise<void> {
@@ -57,15 +53,6 @@ class FakeAgentConfigOperations implements AgentConfigOperations {
     this.callLog.push("thinking");
     if (this.failWith) throw this.failWith;
     return this.thinkingNotice;
-  }
-
-  async setPersonality(
-    agentId: string,
-    personalityId: string | null,
-  ): Promise<AgentProviderNotice | null> {
-    this.personalityCalls.push({ agentId, personalityId });
-    if (this.failWith) throw this.failWith;
-    return this.personalityNotice;
   }
 }
 
@@ -173,7 +160,7 @@ describe("AgentConfigSession", () => {
     });
   });
 
-  test("set model: emits an accepted response with a null notice", async () => {
+  test("set model: emits an accepted response with no notice", async () => {
     const { subsystem, emitted, operations } = makeSubsystem();
 
     await subsystem.handleSetAgentModelRequest({
@@ -187,40 +174,7 @@ describe("AgentConfigSession", () => {
     expect(emitted).toEqual([
       {
         type: "set_agent_model_response",
-        payload: {
-          requestId: "req-1",
-          agentId: "agent-1",
-          accepted: true,
-          error: null,
-          notice: null,
-        },
-      },
-    ]);
-  });
-
-  // The pick can evict a mode that picks the model itself (Claude's Auto), and
-  // the user only learns that from the notice riding back on this response.
-  test("set model: forwards the notice reporting a mode the pick had to leave", async () => {
-    const { subsystem, emitted, operations } = makeSubsystem();
-    operations.modelNotice = { type: "info", message: "Switched off Auto mode to Always Ask" };
-
-    await subsystem.handleSetAgentModelRequest({
-      type: "set_agent_model_request",
-      agentId: "agent-1",
-      modelId: "claude-fable-5",
-      requestId: "req-1",
-    });
-
-    expect(emitted).toEqual([
-      {
-        type: "set_agent_model_response",
-        payload: {
-          requestId: "req-1",
-          agentId: "agent-1",
-          accepted: true,
-          error: null,
-          notice: { type: "info", message: "Switched off Auto mode to Always Ask" },
-        },
+        payload: { requestId: "req-1", agentId: "agent-1", accepted: true, error: null },
       },
     ]);
   });
@@ -352,68 +306,6 @@ describe("AgentConfigSession", () => {
     expect(emitted[1]).toEqual({
       type: "set_agent_thinking_response",
       payload: { requestId: "req-1", agentId: "agent-1", accepted: false, error: "thinking boom" },
-    });
-  });
-
-  test("set personality: forwards the args and emits an accepted response carrying the notice", async () => {
-    const { subsystem, emitted, operations } = makeSubsystem();
-    operations.personalityNotice = { type: "info", message: "Applies on the next turn" };
-
-    await subsystem.handleAgentPersonalitySetRequest({
-      type: "agent.personality.set.request",
-      agentId: "agent-1",
-      personalityId: "p-atlas",
-      requestId: "req-1",
-    });
-
-    expect(operations.personalityCalls).toEqual([{ agentId: "agent-1", personalityId: "p-atlas" }]);
-    expect(emitted).toEqual([
-      {
-        type: "agent.personality.set.response",
-        payload: {
-          requestId: "req-1",
-          agentId: "agent-1",
-          accepted: true,
-          error: null,
-          notice: { type: "info", message: "Applies on the next turn" },
-        },
-      },
-    ]);
-  });
-
-  test("set personality: clearing passes null through", async () => {
-    const { subsystem, operations } = makeSubsystem();
-
-    await subsystem.handleAgentPersonalitySetRequest({
-      type: "agent.personality.set.request",
-      agentId: "agent-1",
-      personalityId: null,
-      requestId: "req-1",
-    });
-
-    expect(operations.personalityCalls).toEqual([{ agentId: "agent-1", personalityId: null }]);
-  });
-
-  test("set personality: a failed mutation reports the personality-specific failure text", async () => {
-    const { subsystem, emitted, operations } = makeSubsystem();
-    operations.failWith = new Error("personality boom");
-
-    await subsystem.handleAgentPersonalitySetRequest({
-      type: "agent.personality.set.request",
-      agentId: "agent-1",
-      personalityId: "p-atlas",
-      requestId: "req-1",
-    });
-
-    expect(emitted.map((m) => m.type)).toEqual(["activity_log", "agent.personality.set.response"]);
-    expect(emitted[1]).toEqual({
-      type: "agent.personality.set.response",
-      payload: {
-        requestId: "req-1",
-        agentId: "agent-1",
-        accepted: false,
-        error: "personality boom",
-      },
     });
   });
 

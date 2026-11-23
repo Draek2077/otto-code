@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import * as React from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import { openEnclosingExamples } from "~/docs-example-target";

@@ -1,24 +1,23 @@
-import { Circle, CircleCheck, CircleDot } from "@/components/icons/material-icons";
+import { Circle, CircleCheck, CircleDot } from "lucide-react-native";
 import { memo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
-import { resolveTodoEntryStatus, resolveTodoEntryText, type TodoEntry } from "@/types/stream";
+import type { TodoEntry } from "@/types/stream";
 
 const ThemedCircle = withUnistyles(Circle);
 const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleDot = withUnistyles(CircleDot);
 
 const extraMutedIcon = (theme: Theme) => ({ color: theme.colors.foregroundExtraMuted });
-
 const runningIcon = (theme: Theme) => ({ color: theme.colors.statusDotRunning });
 
 function TaskStatusIcon({ isCompleted, isRunning }: { isCompleted: boolean; isRunning: boolean }) {
   if (isCompleted) {
-    return <ThemedCircleCheck size="md" uniProps={extraMutedIcon} />;
+    return <ThemedCircleCheck size={16} uniProps={extraMutedIcon} />;
   }
   if (isRunning) {
-    return <ThemedCircleDot size="md" uniProps={runningIcon} />;
+    return <ThemedCircleDot size={16} uniProps={runningIcon} />;
   }
   // A pending task's ring is a status mark, not a checkbox. At the muted step it carries the
   // weight of an enabled control and invites a click that does nothing, so it sits one step back
@@ -27,10 +26,9 @@ function TaskStatusIcon({ isCompleted, isRunning }: { isCompleted: boolean; isRu
 }
 
 export const TaskListRow = memo(function TaskListRow({ task }: { task: TodoEntry }) {
-  const status = resolveTodoEntryStatus(task);
-  const isCompleted = status === "completed";
-  const isRunning = status === "in_progress";
-  const text = resolveTodoEntryText(task);
+  const isCompleted = task.completed || task.status === "completed";
+  const isRunning = !isCompleted && task.status === "in_progress";
+  const text = isRunning && task.activeForm ? task.activeForm : task.text;
 
   return (
     <View style={styles.row} accessibilityLabel={text}>

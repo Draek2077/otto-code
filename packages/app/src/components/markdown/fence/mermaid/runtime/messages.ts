@@ -5,14 +5,6 @@ export interface MermaidRuntimeRenderMessage {
   revision: number;
   source: string;
   colorScheme: DiagramColorScheme;
-  /**
-   * Concrete values for mermaid's `base` theme so diagrams follow the app
-   * palette instead of the stock built-ins. Empty means "no app theme": the
-   * runtime falls back to the stock scheme theme.
-   */
-  themeVariables: Record<string, string>;
-  /** Palette identity, echoed back so the host can match renders to themes. */
-  themeKey: string;
   interactive: boolean;
 }
 
@@ -22,9 +14,7 @@ export type MermaidRuntimeMessage =
       type: "rendered";
       revision: number;
       source: string;
-      themeKey: string;
-      /** A static SVG artifact for native hosts that cannot embed a live guest. */
-      svg?: string;
+      colorScheme: DiagramColorScheme;
     } & DiagramDimensions)
   | { type: "renderError"; revision: number };
 
@@ -34,13 +24,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isColorScheme(value: unknown): value is DiagramColorScheme {
   return value === "light" || value === "dark";
-}
-
-function isStringRecord(value: unknown): value is Record<string, string> {
-  if (!isRecord(value)) {
-    return false;
-  }
-  return Object.values(value).every((entry) => typeof entry === "string");
 }
 
 export function parseMermaidRuntimeRenderMessage(
@@ -53,8 +36,6 @@ export function parseMermaidRuntimeRenderMessage(
     !Number.isInteger(value.revision) ||
     typeof value.source !== "string" ||
     !isColorScheme(value.colorScheme) ||
-    !isStringRecord(value.themeVariables) ||
-    typeof value.themeKey !== "string" ||
     typeof value.interactive !== "boolean"
   ) {
     return null;
@@ -64,8 +45,6 @@ export function parseMermaidRuntimeRenderMessage(
     revision: value.revision,
     source: value.source,
     colorScheme: value.colorScheme,
-    themeVariables: value.themeVariables,
-    themeKey: value.themeKey,
     interactive: value.interactive,
   };
 }
@@ -89,21 +68,19 @@ export function parseMermaidRuntimeMessage(value: unknown): MermaidRuntimeMessag
     typeof value.revision === "number" &&
     Number.isInteger(value.revision) &&
     typeof value.source === "string" &&
-    typeof value.themeKey === "string" &&
+    isColorScheme(value.colorScheme) &&
     typeof value.height === "number" &&
     Number.isFinite(value.height) &&
     typeof value.width === "number" &&
     Number.isFinite(value.width)
   ) {
-    const svg = typeof value.svg === "string" ? value.svg : undefined;
     return {
       type: "rendered",
       revision: value.revision,
       source: value.source,
-      themeKey: value.themeKey,
+      colorScheme: value.colorScheme,
       height: value.height,
       width: value.width,
-      ...(svg ? { svg } : {}),
     };
   }
   return null;

@@ -1,11 +1,10 @@
-import { SettingsTargetText, useRevealSettingsTarget } from "@/screens/settings-search/target";
 import { useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ArrowUpRight, Blocks, Check, Settings2 } from "lucide-react-native";
-import type { AgentSkillOperation, AgentSkillsStatus } from "@otto-code/protocol/messages";
+import type { AgentSkillOperation, AgentSkillsStatus } from "@getpaseo/protocol/messages";
 import type { TFunction } from "i18next";
 import { Button } from "@/components/ui/button";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
@@ -15,6 +14,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { SkillSelectionSheet } from "./selection-sheet";
 import { useAgentSkills } from "./use-agent-skills";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 const OP_KIND_ORDER: Record<AgentSkillOperation["kind"], number> = {
   add: 0,
@@ -25,7 +25,7 @@ const ThemedBlocks = withUnistyles(Blocks);
 const ThemedCheck = withUnistyles(Check);
 const ThemedSettings = withUnistyles(Settings2);
 const ThemedArrowUpRight = withUnistyles(ArrowUpRight);
-const SKILLS_DOCS_URL = "https://otto-code.me/docs/skills";
+const SKILLS_DOCS_URL = `${OTTO_WEBSITE_URL}/docs/skills`; // OTTO(identity)
 const foregroundMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
@@ -90,14 +90,6 @@ export function AgentSkillsSection({ serverId }: { serverId: string }) {
   );
   const handleOpen = useCallback(() => setIsChoosing(true), []);
   const handleClose = useCallback(() => setIsChoosing(false), []);
-  const revealIds = useMemo(
-    () =>
-      skills.connected && skills.supported && skills.status && !skills.isWorking
-        ? ["app-integrations-orchestration-skills-individual-skill"]
-        : [],
-    [skills.connected, skills.supported, skills.status, skills.isWorking],
-  );
-  useRevealSettingsTarget(revealIds, handleOpen);
   const handleOpenDocs = useCallback(() => {
     void openExternalUrl(SKILLS_DOCS_URL);
   }, []);
@@ -145,12 +137,7 @@ export function AgentSkillsSection({ serverId }: { serverId: string }) {
           <View style={settingsStyles.rowContent}>
             <View style={styles.rowTitleRow}>
               <ThemedBlocks size={ICON_SIZE.md} uniProps={foregroundMapping} />
-              <SettingsTargetText
-                settingId="app-integrations-orchestration-skills-orchestration-skills"
-                style={settingsStyles.rowTitle}
-              >
-                {t("settings.host.skills.title")}
-              </SettingsTargetText>
+              <Text style={settingsStyles.rowTitle}>{t("settings.host.skills.title")}</Text>
             </View>
             <Text style={settingsStyles.rowHint}>
               {state === "drift"

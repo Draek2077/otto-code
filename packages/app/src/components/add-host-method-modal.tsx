@@ -1,8 +1,8 @@
-import React, { useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { QrCode, Link2, ClipboardPaste, Terminal } from "@/components/icons/material-icons";
+import { QrCode, Link2, ClipboardPaste, Terminal } from "lucide-react-native";
 import { AdaptiveModalSheet, type SheetHeader } from "./adaptive-modal-sheet";
 import { isFdroidBuild } from "@/constants/build-profile";
 import { isNative } from "@/constants/platform";
@@ -22,9 +22,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[4],
     padding: theme.spacing[4],
     borderRadius: theme.borderRadius.xl,
-    // surface1, not surface2: `border` is nearly identical to surface2 on this
-    // theme, which swallows the card's own outline.
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
@@ -84,8 +82,6 @@ export function AddHostMethodModal({
       header={header}
       visible={visible}
       onClose={onClose}
-      // The animated snap-height wrapper can collapse this menu's scroll body on Android.
-      sizeContentToCurrentSnapPoint={false}
       testID="add-host-method-modal"
     >
       <Pressable
@@ -95,7 +91,7 @@ export function AddHostMethodModal({
         accessibilityLabel={t("pairing.connectionMethods.direct.title")}
         testID="add-host-method-direct"
       >
-        <ThemedLink2 size="mdPlus" uniProps={foregroundIconMapping} />
+        <ThemedLink2 size={18} uniProps={foregroundIconMapping} />
         <View style={styles.optionBody}>
           <Text style={styles.optionText}>{t("pairing.connectionMethods.direct.title")}</Text>
           <Text style={styles.optionSubtext}>
@@ -112,7 +108,7 @@ export function AddHostMethodModal({
           accessibilityLabel={t("pairing.connectionMethods.remoteSsh.title")}
           testID="add-host-method-remote-ssh"
         >
-          <ThemedTerminal size="mdPlus" uniProps={foregroundIconMapping} />
+          <ThemedTerminal size={18} uniProps={foregroundIconMapping} />
           <View style={styles.optionBody}>
             <Text style={styles.optionText}>{t("pairing.connectionMethods.remoteSsh.title")}</Text>
             <Text style={styles.optionSubtext}>
@@ -129,7 +125,7 @@ export function AddHostMethodModal({
           accessibilityRole="button"
           accessibilityLabel={t("pairing.connectionMethods.scanQr.title")}
         >
-          <ThemedQrCode size="mdPlus" uniProps={foregroundIconMapping} />
+          <ThemedQrCode size={18} uniProps={foregroundIconMapping} />
           <View style={styles.optionBody}>
             <Text style={styles.optionText}>{t("pairing.connectionMethods.scanQr.title")}</Text>
             <Text style={styles.optionSubtext}>
@@ -146,7 +142,7 @@ export function AddHostMethodModal({
         accessibilityLabel={t("pairing.connectionMethods.pasteLink.title")}
         testID="add-host-method-pair-link"
       >
-        <ThemedClipboardPaste size="mdPlus" uniProps={foregroundIconMapping} />
+        <ThemedClipboardPaste size={18} uniProps={foregroundIconMapping} />
         <View style={styles.optionBody}>
           <Text style={styles.optionText}>{t("pairing.connectionMethods.pasteLink.title")}</Text>
           <Text style={styles.optionSubtext}>

@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { getAlternativePages } from "~/data/alternative-pages";
 import { AGENT_PAGES } from "~/data/agent-pages";
 import { type Doc, getDocs } from "~/docs";

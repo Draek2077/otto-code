@@ -1,19 +1,21 @@
 import { describe, expect, it } from "vitest";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { runArchiveCommandWithDeps } from "./archive.js";
+
+const daemonTarget = { kind: "endpoint" as const, host: "example.test:12345" };
 
 function createFakeDaemonClient(
   overrides: Partial<
-    Pick<DaemonClient, "getOttoWorktreeList" | "archiveOttoWorktree" | "close">
+    Pick<DaemonClient, "getPaseoWorktreeList" | "archivePaseoWorktree" | "close">
   > = {},
 ): DaemonClient {
   return {
-    getOttoWorktreeList: async () => ({
+    getPaseoWorktreeList: async () => ({
       worktrees: [],
       error: null,
       requestId: "req-list",
     }),
-    archiveOttoWorktree: async () => ({
+    archivePaseoWorktree: async () => ({
       success: true,
       removedAgents: [],
       error: null,
@@ -30,12 +32,12 @@ function createFakeDaemonClient(
 
 describe("runArchiveCommand", () => {
   it("sends scope worktree when archiving by worktree path", async () => {
-    const worktreePath = "/tmp/otto-home/worktrees/repo/feature";
+    const worktreePath = "/tmp/paseo-home/worktrees/repo/feature";
     const archiveCalls: Array<{
-      input: Parameters<DaemonClient["archiveOttoWorktree"]>[0];
+      input: Parameters<DaemonClient["archivePaseoWorktree"]>[0];
     }> = [];
     const fakeClient = createFakeDaemonClient({
-      getOttoWorktreeList: async () => ({
+      getPaseoWorktreeList: async () => ({
         worktrees: [
           {
             worktreePath,
@@ -47,7 +49,7 @@ describe("runArchiveCommand", () => {
         error: null,
         requestId: "req-list",
       }),
-      archiveOttoWorktree: async (input) => {
+      archivePaseoWorktree: async (input) => {
         archiveCalls.push({ input });
         return {
           success: true,
@@ -60,9 +62,12 @@ describe("runArchiveCommand", () => {
 
     const result = await runArchiveCommandWithDeps(
       "feature",
-      {},
+      { daemonTarget },
       {
-        connectToDaemon: async () => fakeClient,
+        connectToDaemon: async (options) => {
+          expect(options.target).toEqual(daemonTarget);
+          return fakeClient;
+        },
       },
     );
 
@@ -81,12 +86,12 @@ describe("runArchiveCommand", () => {
   });
 
   it("archives by matching branch name when no directory name matches", async () => {
-    const worktreePath = "/tmp/otto-home/worktrees/repo/feature-branch";
+    const worktreePath = "/tmp/paseo-home/worktrees/repo/feature-branch";
     const archiveCalls: Array<{
-      input: Parameters<DaemonClient["archiveOttoWorktree"]>[0];
+      input: Parameters<DaemonClient["archivePaseoWorktree"]>[0];
     }> = [];
     const fakeClient = createFakeDaemonClient({
-      getOttoWorktreeList: async () => ({
+      getPaseoWorktreeList: async () => ({
         worktrees: [
           {
             worktreePath,
@@ -98,7 +103,7 @@ describe("runArchiveCommand", () => {
         error: null,
         requestId: "req-list",
       }),
-      archiveOttoWorktree: async (input) => {
+      archivePaseoWorktree: async (input) => {
         archiveCalls.push({ input });
         return {
           success: true,
@@ -111,9 +116,12 @@ describe("runArchiveCommand", () => {
 
     await runArchiveCommandWithDeps(
       "feature-x",
-      {},
+      { daemonTarget },
       {
-        connectToDaemon: async () => fakeClient,
+        connectToDaemon: async (options) => {
+          expect(options.target).toEqual(daemonTarget);
+          return fakeClient;
+        },
       },
     );
 
@@ -124,7 +132,7 @@ describe("runArchiveCommand", () => {
 
   it("throws a CommandError when the worktree is not found", async () => {
     const fakeClient = createFakeDaemonClient({
-      getOttoWorktreeList: async () => ({
+      getPaseoWorktreeList: async () => ({
         worktrees: [],
         error: null,
         requestId: "req-list",
@@ -134,9 +142,12 @@ describe("runArchiveCommand", () => {
     await expect(
       runArchiveCommandWithDeps(
         "missing",
-        {},
+        { daemonTarget },
         {
-          connectToDaemon: async () => fakeClient,
+          connectToDaemon: async (options) => {
+            expect(options.target).toEqual(daemonTarget);
+            return fakeClient;
+          },
         },
       ),
     ).rejects.toMatchObject({

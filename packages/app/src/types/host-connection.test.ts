@@ -50,29 +50,71 @@ describe("orderHostsLocalFirst", () => {
 });
 
 describe("normalizeStoredHostProfile", () => {
+  // OTTO(relay-migration): existing pairings keep their identity on Paseo's relay.
+  it("moves Otto's saved relay pairing to Paseo without losing the preferred connection", () => {
+    const profile = normalizeStoredHostProfile({
+      serverId: "srv_otto",
+      password: "saved-password",
+      connections: [
+        { id: "direct:localhost:6868", type: "directTcp", endpoint: "localhost:6868" },
+        {
+          id: "relay:relay.otto-code.me:443",
+          type: "relay",
+          relayEndpoint: "relay.otto-code.me:443",
+          daemonPublicKeyB64: "saved-daemon-key",
+        },
+      ],
+      preferredConnectionId: "relay:relay.otto-code.me:443",
+    });
+    expect(profile).toMatchObject({
+      serverId: "srv_otto",
+      password: "saved-password",
+      preferredConnectionId: "relay:wss:relay.paseo.sh:443",
+      connections: [
+        { type: "directTcp", endpoint: "localhost:6868" },
+        {
+          id: "relay:wss:relay.paseo.sh:443",
+          type: "relay",
+          relayEndpoint: "relay.paseo.sh:443",
+          useTls: true,
+          daemonPublicKeyB64: "saved-daemon-key",
+        },
+      ],
+    });
+  });
+
   it("loads direct TCP connections stored before TLS and password fields existed", () => {
     const profile = normalizeStoredHostProfile({
       serverId: "srv_old",
       label: "Old Host",
       connections: [
         {
-          id: "direct:127.0.0.1:6868",
+          id: "direct:127.0.0.1:6767",
           type: "directTcp",
-          endpoint: "127.0.0.1:6868",
+          endpoint: "127.0.0.1:6767",
         },
       ],
-      preferredConnectionId: "direct:127.0.0.1:6868",
+      preferredConnectionId: "direct:127.0.0.1:6767",
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-02T00:00:00.000Z",
     });
 
     expect(profile).not.toBeNull();
     expect(profile?.connections[0]).toEqual({
-      id: "direct:localhost:6868",
+      id: "direct:localhost:6767",
       type: "directTcp",
-      endpoint: "localhost:6868",
+      endpoint: "localhost:6767",
       useTls: false,
     });
+    expect(profile?.connections[0]).not.toHaveProperty("password");
+  });
+
+  it("moves a stored direct TCP password to the host profile", () => {
+    const profile = normalizeStoredHostProfile({
+      serverId: "srv_legacy",
+      connections: [{ type: "directTcp", endpoint: "localhost:6767", password: "old-secret" }],
+    });
+    expect(profile?.password).toBe("old-secret");
     expect(profile?.connections[0]).not.toHaveProperty("password");
   });
 
@@ -228,26 +270,28 @@ describe("upsertHostConnectionInProfiles", () => {
       type: "directTcp",
       endpoint: "example.test:6767",
       useTls: false,
-      password: "old-secret",
     };
     const existing: HostProfile = {
       ...makeHost("srv_known"),
+      password: "old-secret",
       connections: [existingConnection],
       preferredConnectionId: existingConnection.id,
     };
     const replacement: HostConnection = {
       ...existingConnection,
       useTls: true,
-      password: "new-secret",
     };
 
     const [profile] = upsertHostConnectionInProfiles({
       profiles: [existing],
       serverId: "srv_known",
       connection: replacement,
+      password: "new-secret",
     });
 
     expect(profile.connections).toEqual([replacement]);
+    expect("password" in profile.connections[0]!).toBe(false);
+    expect(profile.password).toBe("new-secret");
     expect(profile.preferredConnectionId).toBe(replacement.id);
   });
 });

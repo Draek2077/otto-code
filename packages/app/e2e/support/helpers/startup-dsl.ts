@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Route } from "@playwright/test";
 import { expect, type Page } from "../fixtures";
 import { buildCreateAgentPreferences, buildSeededHost } from "./daemon-registry";
@@ -163,7 +164,6 @@ class StartupAssertions {
     await expect(hostRow).toBeVisible({ timeout: 15_000 });
     await expect(hostRow).toContainText(input.label);
     await expect(this.page.getByTestId("sidebar-add-project")).toBeVisible();
-    await expect(this.page.getByTestId("sidebar-import-session")).toBeVisible();
     await expect(this.page.getByTestId("sidebar-settings")).toBeVisible();
     await expect(this.page.getByTestId("welcome-screen")).toHaveCount(0);
     return this;
@@ -204,7 +204,7 @@ class StartupAssertions {
 
 async function installPendingDesktopBridge(page: Page): Promise<void> {
   await page.addInitScript(() => {
-    (window as unknown as { ottoDesktop: unknown }).ottoDesktop = {
+    (window as unknown as { paseoDesktop: unknown }).paseoDesktop = {
       platform: "darwin",
       invoke: async (command: string) => {
         if (command === "start_desktop_daemon") {

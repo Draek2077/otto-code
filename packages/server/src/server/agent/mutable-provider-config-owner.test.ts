@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
+import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { DaemonConfigStore } from "../daemon-config-store.js";
-import { loadPersistedConfig, type PersistedConfig } from "../persisted-config.js";
+import type { PersistedConfig } from "../persisted-config.js";
 import type {
   AgentClient,
   AgentMode,
@@ -27,7 +27,6 @@ const CONTROLLED_PROVIDERS = {
   omp: { enabled: false },
   opencode: { enabled: false },
   pi: { enabled: false },
-  "otto-brain": { enabled: false },
 } as const;
 
 interface Catalog {
@@ -67,13 +66,7 @@ function catalog(modelId: string): Catalog {
 function recordCodexEvent(events: string[]): (transition: ProviderSnapshotTransition) => void {
   return ({ current }) => {
     const codex = current.records.find(({ entry }) => entry.provider === "codex")?.entry;
-    const next = `${codex?.status}:${codex?.models?.[0]?.id ?? "none"}`;
-    // Otto registers more providers than upstream, and every one of them
-    // emits the shared snapshot as its own probe settles. Only Codex's
-    // transitions are under test here, so a repeat of its current state is
-    // another provider's news, not a Codex event.
-    if (events.at(-1) === next) return;
-    events.push(next);
+    events.push(`${codex?.status}:${codex?.models?.[0]?.id ?? "none"}`);
   };
 }
 
@@ -97,7 +90,7 @@ function mutableConfig(persisted: PersistedConfig): MutableDaemonConfig {
       maxProcessesPerSecond: persisted.daemon?.git?.maxProcessesPerSecond ?? 64,
       maxProcessConcurrency: persisted.daemon?.git?.maxProcessConcurrency ?? 8,
     },
-    app: { baseUrl: persisted.app?.baseUrl ?? "https://app.otto-code.me" },
+    app: { baseUrl: persisted.app?.baseUrl ?? "https://app.paseo.sh" },
   };
 }
 
@@ -106,211 +99,10 @@ afterEach(() => {
 });
 
 describe("mutable provider config owner", () => {
-  test("restamps a loaded model when its tier or visibility changes", async () => {
-    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-provider-config-owner-"));
-    tempDirs.push(ottoHome);
-    const store = new DaemonConfigStore(ottoHome, mutableConfig({ version: 1 }));
-    const manager = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: CONTROLLED_PROVIDERS,
-      extraClients: { codex: controlledCodexClient(async () => catalog("local-model")) },
-    });
-    const unsubscribe = attachMutableProviderConfigOwner({
-      store,
-      providerSnapshotManager: manager,
-      updateProviderRegistry: () => undefined,
-    });
-    const cwd = path.resolve("/tmp/provider-tier-override");
-
-    try {
-      await manager.getProvider({ cwd, provider: "codex", wait: true });
-      expect(getCodexSnapshot(manager, cwd)?.models?.[0]?.tier).toBeUndefined();
-
-      store.patch({
-        modelTierOverrides: [{ provider: "codex", modelId: "local-model", tier: "deep" }],
-        modelVisibilityOverrides: [{ provider: "codex", modelId: "local-model", visible: false }],
-      });
-      expect(getCodexSnapshot(manager, cwd)?.models?.[0]).toMatchObject({
-        tier: "deep",
-        isVisible: false,
-      });
-      expect(loadPersistedConfig(ottoHome).agents?.modelTierOverrides).toEqual([
-        { provider: "codex", modelId: "local-model", tier: "deep" },
-      ]);
-
-      store.patch({ modelTierOverrides: [], modelVisibilityOverrides: [] });
-      expect(getCodexSnapshot(manager, cwd)?.models?.[0]?.tier).toBeUndefined();
-      expect(getCodexSnapshot(manager, cwd)?.models?.[0]?.isVisible).toBeUndefined();
-    } finally {
-      unsubscribe();
-      manager.destroy();
-    }
-  });
-
-  test("restores a partially applied agent registry without publishing the prepared catalog", () => {
-    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-provider-config-owner-"));
-    tempDirs.push(ottoHome);
-    const store = new DaemonConfigStore(ottoHome, mutableConfig({ version: 1 }));
-    const manager = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: CONTROLLED_PROVIDERS,
-    });
-    const cwd = path.resolve("/tmp/provider-config-partial-apply");
-    const before = manager.getSnapshot(cwd);
-    const previousState = manager.getAgentManagerProviderState();
-    const previousConfig = store.get();
-    const events: ProviderSnapshotTransition[] = [];
-    manager.on("change", (event) => events.push(event));
-    let agentManagerState = previousState;
-    const appliedStates: boolean[] = [];
-    const unsubscribe = attachMutableProviderConfigOwner({
-      store,
-      providerSnapshotManager: manager,
-      updateProviderRegistry: (state) => {
-        agentManagerState = state;
-        appliedStates.push(state.providerDefinitions.codex.enabled);
-        if (!state.providerDefinitions.codex.enabled) throw new Error("partial registry apply");
-      },
-    });
-
-    try {
-      expect(() => store.patch({ providers: { codex: { enabled: false } } })).toThrow(
-        "partial registry apply",
-      );
-      expect(appliedStates).toEqual([false, true]);
-      expect(agentManagerState).toEqual(previousState);
-      expect(agentManagerState.clients.codex).toBe(previousState.clients.codex);
-      expect(manager.getSnapshot(cwd)).toBe(before);
-      expect(store.get()).toEqual(previousConfig);
-      expect(events).toEqual([]);
-      // A later unrelated successful notification must not commit rejected work.
-      store.patch({ autoArchiveAfterMerge: true });
-      expect(manager.getSnapshot(cwd)).toBe(before);
-      expect(events).toEqual([]);
-    } finally {
-      unsubscribe();
-      manager.destroy();
-    }
-  });
-
-  test("restores providers even when another live owner's rollback fails", () => {
-    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-provider-config-owner-"));
-    tempDirs.push(ottoHome);
-    const store = new DaemonConfigStore(ottoHome, mutableConfig({ version: 1 }));
-    const manager = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: CONTROLLED_PROVIDERS,
-    });
-    const cwd = path.resolve("/tmp/provider-config-multiple-owner-failure");
-    const before = manager.getSnapshot(cwd);
-    const previousState = manager.getAgentManagerProviderState();
-    const previousConfig = store.get();
-    let agentManagerState = previousState;
-    const events: ProviderSnapshotTransition[] = [];
-    manager.on("change", (event) => events.push(event));
-    const unsubscribe = attachMutableProviderConfigOwner({
-      store,
-      providerSnapshotManager: manager,
-      updateProviderRegistry: (state) => {
-        agentManagerState = state;
-      },
-    });
-    const rollbackFailure = new Error("other owner rollback failed");
-    const applyFailure = new Error("third owner apply failed");
-    const unsubscribeOther = store.onApply(() => () => {
-      throw rollbackFailure;
-    });
-    const unsubscribeFailure = store.onApply(() => {
-      throw applyFailure;
-    });
-
-    try {
-      expect(() => store.patch({ providers: { codex: { enabled: false } } })).toThrow(
-        expect.objectContaining({ cause: applyFailure, rollbackErrors: [rollbackFailure] }),
-      );
-      expect(agentManagerState).toEqual(previousState);
-      expect(agentManagerState.clients.codex).toBe(previousState.clients.codex);
-      expect(manager.getSnapshot(cwd)).toBe(before);
-      expect(store.get()).toEqual(previousConfig);
-      expect(events).toEqual([]);
-      unsubscribeFailure();
-      unsubscribeOther();
-      store.patch({ autoArchiveAfterMerge: true });
-      expect(manager.getSnapshot(cwd)).toBe(before);
-      expect(events).toEqual([]);
-    } finally {
-      unsubscribeFailure();
-      unsubscribeOther();
-      unsubscribe();
-      manager.destroy();
-    }
-  });
-
-  test("commits all provider targets despite config and catalog notification failures", () => {
-    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-provider-config-owner-"));
-    tempDirs.push(ottoHome);
-    const store = new DaemonConfigStore(ottoHome, mutableConfig({ version: 1 }));
-    const manager = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: CONTROLLED_PROVIDERS,
-    });
-    const targets = [
-      path.resolve("/tmp/provider-config-notify-a"),
-      path.resolve("/tmp/provider-config-notify-b"),
-    ];
-    for (const cwd of targets) manager.getSnapshot(cwd);
-    let agentManagerState = manager.getAgentManagerProviderState();
-    const unsubscribeFirst = store.onChange(() => {
-      throw new Error("first notification failed");
-    });
-    const unsubscribe = attachMutableProviderConfigOwner({
-      store,
-      providerSnapshotManager: manager,
-      updateProviderRegistry: (state) => {
-        agentManagerState = state;
-      },
-    });
-    manager.on("change", () => {
-      throw new Error("catalog notification failed");
-    });
-    const events: string[] = [];
-    manager.on("change", ({ current }) => {
-      // All memberships must be installed before the first listener runs.
-      for (const cwd of targets)
-        expect(getCodexSnapshot(manager, cwd)).toMatchObject({
-          status: "unavailable",
-          enabled: false,
-        });
-      events.push(current.cwd);
-    });
-    let lastNotificationCount = 0;
-    const unsubscribeLast = store.onChange(() => {
-      lastNotificationCount += 1;
-    });
-
-    try {
-      expect(() => store.patch({ providers: { codex: { enabled: false } } })).not.toThrow();
-      expect(events).toEqual(targets);
-      expect(lastNotificationCount).toBe(1);
-      expect(agentManagerState.providerDefinitions.codex.enabled).toBe(false);
-      expect(store.get().providers.codex.enabled).toBe(false);
-      for (const cwd of targets)
-        expect(getCodexSnapshot(manager, cwd)).toMatchObject({
-          status: "unavailable",
-          enabled: false,
-        });
-    } finally {
-      unsubscribeLast();
-      unsubscribe();
-      unsubscribeFirst();
-      manager.destroy();
-    }
-  });
-
   test("publishes provider changes after commit and emits nothing on rollback", () => {
-    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-provider-config-owner-"));
-    tempDirs.push(ottoHome);
-    const store = new DaemonConfigStore(ottoHome, mutableConfig({ version: 1 }));
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-provider-config-owner-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, mutableConfig({ version: 1 }));
     const manager = new ProviderSnapshotManager({
       logger: createTestLogger(),
       providerOverrides: { codex: { enabled: true } },
@@ -359,8 +151,8 @@ describe("mutable provider config owner", () => {
   });
 
   test("does no provider work for unrelated CORS, Git, and app URL reloads", () => {
-    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-provider-config-owner-"));
-    tempDirs.push(ottoHome);
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-provider-config-owner-"));
+    tempDirs.push(paseoHome);
     const initial: PersistedConfig = {
       version: 1,
       daemon: {
@@ -369,9 +161,9 @@ describe("mutable provider config owner", () => {
       },
       app: { baseUrl: "https://before.example.test" },
     };
-    const configPath = path.join(ottoHome, "config.json");
+    const configPath = path.join(paseoHome, "config.json");
     writeFileSync(configPath, `${JSON.stringify(initial, null, 2)}\n`, "utf-8");
-    const store = new DaemonConfigStore(ottoHome, mutableConfig(initial), undefined, {
+    const store = new DaemonConfigStore(paseoHome, mutableConfig(initial), undefined, {
       startupPersisted: initial,
       reloadSource: {
         resolve: (persisted) => ({
@@ -426,9 +218,9 @@ describe("mutable provider config owner", () => {
   });
 
   test("replaces an in-flight catalog after provider config commits", async () => {
-    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-provider-config-owner-"));
-    tempDirs.push(ottoHome);
-    const store = new DaemonConfigStore(ottoHome, mutableConfig({ version: 1 }));
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-provider-config-owner-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, mutableConfig({ version: 1 }));
     const catalogResolvers: Array<(value: Catalog) => void> = [];
     const manager = new ProviderSnapshotManager({
       logger: createTestLogger(),
@@ -476,9 +268,9 @@ describe("mutable provider config owner", () => {
   });
 
   test("lets the original in-flight catalog publish after provider config rolls back", async () => {
-    const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-provider-config-owner-"));
-    tempDirs.push(ottoHome);
-    const store = new DaemonConfigStore(ottoHome, mutableConfig({ version: 1 }));
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-provider-config-owner-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, mutableConfig({ version: 1 }));
     const catalogResolvers: Array<(value: Catalog) => void> = [];
     const manager = new ProviderSnapshotManager({
       logger: createTestLogger(),

@@ -1,4 +1,5 @@
-import { connectToDaemon, getDaemonHost, getExplicitDaemonHost } from "../../utils/client.js";
+import type { DaemonTarget } from "../../utils/daemon-target.js";
+import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type { CommandError, CommandOptions } from "../../output/index.js";
 import type {
   CreateScheduleInput,
@@ -12,26 +13,28 @@ import type {
 } from "./types.js";
 import { parseDuration } from "../../utils/duration.js";
 import { resolveProviderAndModel } from "../../utils/provider-model.js";
-import { everyMsToFiveFieldCron } from "@otto-code/protocol/schedule/cadence";
+import { everyMsToFiveFieldCron } from "@getpaseo/protocol/schedule/cadence";
 
 export interface ScheduleCommandOptions extends CommandOptions {
   host?: string;
 }
 
 export async function connectScheduleClient(
-  host: string | undefined,
+  target: DaemonTarget,
 ): Promise<{ client: ScheduleDaemonClient; host: string }> {
-  const resolvedHost = getDaemonHost({ host });
+  const resolvedHost = getDaemonHost({ target });
   try {
     const client = (await connectToDaemon({
-      host,
+      target,
     })) as unknown as ScheduleDaemonClient;
     return { client, host: resolvedHost };
   } catch (error) {
+    if (error && typeof error === "object" && "code" in error) throw error;
     const message = error instanceof Error ? error.message : String(error);
     throw {
       code: "DAEMON_NOT_RUNNING",
       message: `Cannot connect to daemon at ${resolvedHost}: ${message}`,
+      // OTTO(identity)
       details: "Start the daemon with: otto daemon start",
     } satisfies CommandError;
   }
@@ -72,9 +75,6 @@ export function formatTarget(target: ScheduleTarget | ScheduleListItem["target"]
   }
   if (target.type === "agent") {
     return `agent:${target.agentId.slice(0, 7)}`;
-  }
-  if (target.type === "workflow") {
-    return `workflow:${target.definitionId}`;
   }
   const modelSuffix = target.config.model ? `/${target.config.model}` : "";
   return `new-agent:${target.config.provider}${modelSuffix}`;
@@ -123,13 +123,14 @@ function resolveScheduleTarget(args: {
   }
 
   if (targetValue === "self") {
-    // COMPAT(scheduleSelfTarget): heartbeat creation moved to `otto heartbeat create`.
+    // COMPAT(scheduleSelfTarget): heartbeat creation moved to `paseo heartbeat create`.
     // Added in v0.2.0; remove after 2027-01-17.
-    const currentAgentId = process.env.OTTO_AGENT_ID?.trim();
+    const currentAgentId = process.env.PASEO_AGENT_ID?.trim();
     if (!currentAgentId) {
       throw {
         code: "INVALID_TARGET",
-        message: "--target self requires running inside a Otto agent",
+        // OTTO(identity)
+        message: "--target self requires running inside an Otto agent",
       } satisfies CommandError;
     }
     return { type: "self", agentId: currentAgentId };
@@ -150,6 +151,7 @@ export function parseScheduleCreateInput(options: {
   thinking?: string;
   cwd?: string;
   host?: string;
+  daemonTarget: import("../../utils/daemon-target.js").DaemonTarget;
   maxRuns?: string;
   expiresIn?: string;
   runNow?: boolean;
@@ -171,7 +173,7 @@ export function parseScheduleCreateInput(options: {
   }
 
   const cwdInput = options.cwd?.trim();
-  if (getExplicitDaemonHost(options.host) !== undefined && !cwdInput) {
+  if (options.daemonTarget.kind === "endpoint" && !cwdInput) {
     throw {
       code: "MISSING_CWD",
       message:

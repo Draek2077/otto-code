@@ -7,13 +7,13 @@
  * noun in code and types; the PR↔MR relabel, the number prefix, the brand mark,
  * and the icon are a UI concern driven by the manifest entry for that id. An
  * unknown/absent forge (e.g. a self-hosted forge a newer daemon reports to an
- * older client) renders neutrally - never GitHub-branded. A null/empty forge
+ * older client) renders neutrally — never GitHub-branded. A null/empty forge
  * still maps to GitHub so old daemons (which never send a forge) render exactly
  * as before.
  */
-import { FORGE_DEFINITIONS, getForgeDefinitionOrNeutral } from "@otto-code/protocol/forge-manifest";
-import { normalizeHost, parseGitRemoteLocation } from "@otto-code/protocol/git-remote";
-import type { ForgeAuthState } from "@otto-code/protocol/messages";
+import { FORGE_DEFINITIONS, getForgeDefinitionOrNeutral } from "@getpaseo/protocol/forge-manifest";
+import { normalizeHost, parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
+import type { ForgeAuthState } from "@getpaseo/protocol/messages";
 import {
   buildForgeBlobUrl,
   buildForgeBranchTreeUrl,
@@ -77,7 +77,7 @@ export interface ForgePresentation {
   numberPrefix: string;
   /** Prefix the forge puts before an issue number ("#" on every forge so far). */
   issueNumberPrefix: string;
-  /** Auth CLI binary for the install hint, or null for a forge with no Otto-driven sign-in. */
+  /** Auth CLI binary for the install hint, or null for a forge with no Paseo-driven sign-in. */
   signInCli: string | null;
   /**
    * i18next context selecting the change-request vocabulary family for any key
@@ -123,21 +123,4 @@ export function buildForgeSignInCommand(forge: string, host: string | null): str
     return `${signIn.command} ${signIn.hostnameFlag} ${host}`;
   }
   return signIn.command;
-}
-
-/**
- * Narrow a forge id to the two providers Otto's GitHostingIcon draws. Upstream's
- * ForgeBrandIcon covers the full set; this keeps the existing badge rendering
- * correct until those call sites move over.
- *
- * COMPAT(forgeBrandIcon): not date-bound, and it clears by deletion rather than
- * expiry. Two call sites still use it (sidebar-workspace-row-content.tsx,
- * workspace-hover-card.tsx); move both to ForgeBrandIcon and this function goes
- * with them. Until then a GitLab or Gitea workspace draws the GitHub badge,
- * because those are the only two glyphs Otto's icon has.
- */
-export function forgeToHostingProvider(
-  forge: string | null | undefined,
-): "github" | "bitbucket-cloud" {
-  return normalizeForge(forge).startsWith("bitbucket") ? "bitbucket-cloud" : "github";
 }

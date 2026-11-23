@@ -1,5 +1,0 @@
-const route = buildRoute({
-  method,
-  path,
-  handler
-});

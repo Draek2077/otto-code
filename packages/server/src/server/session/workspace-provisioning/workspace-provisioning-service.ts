@@ -1,7 +1,7 @@
 import type { PluginLifecycle } from "../../plugins/lifecycle/index.js";
 import { describeHookWorkspace } from "../../plugins/lifecycle/index.js";
-import { assertProjectOnline, assertProjectPathOnline } from "../../project-availability.js";
 import { basename, resolve } from "node:path";
+import type { ProjectCheckoutLitePayload } from "@getpaseo/protocol/messages";
 import type { Logger } from "pino";
 import {
   generateWorkspaceId,
@@ -9,7 +9,6 @@ import {
   reconcileWorkspacePlacement,
 } from "../../workspace-registry-model.js";
 import {
-  createPersistedProjectRecord,
   createPersistedWorkspaceRecord,
   type PersistedProjectRecord,
   type PersistedWorkspaceRecord,
@@ -17,20 +16,18 @@ import {
   type WorkspaceRegistry,
 } from "../../workspace-registry.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
-import type { CreateOttoWorktreeWorkflowResult } from "../../worktree-session.js";
-import {
-  findOccupyingWorkspaceForCwd,
-  WorkspaceDirectoryOccupiedError,
-} from "../../otto-worktree-service.js";
-import { deriveProjectGroupingDisplayName, deriveProjectKey } from "../../project-key.js";
+import type { CreatePaseoWorktreeWorkflowResult } from "../../worktree-session.js";
+import { deriveProjectKey } from "../../project-key.js";
 import { areEquivalentPaths, createRealpathAwarePathMatcher } from "../../../utils/path.js";
 import type { UntrustedWorkspaceSource } from "../../workspace-automation-gate.js";
 
 export interface ResolveOrCreateWorkspaceIdInput {
-  createdWorktree: CreateOttoWorktreeWorkflowResult | null;
+  createdWorktree: CreatePaseoWorktreeWorkflowResult | null;
   requestedWorkspaceId?: string;
   cwd: string;
   initialTitle: string | null;
+  background?: boolean;
+  callerWorkspaceId?: string;
 }
 
 export interface ImportWorkspaceInput {
@@ -46,6 +43,7 @@ export interface ImportWorkspaceResult<T> {
 export interface CreateWorktreeWorkspaceInput {
   sourceCwd: string;
   projectId?: string;
+  workspaceId?: string;
   repoRoot: string;
   cwd: string;
   worktreeRoot: string;
@@ -54,8 +52,8 @@ export interface CreateWorktreeWorkspaceInput {
   title: string | null;
   expectsInitialAgent?: boolean;
   untrustedSource?: UntrustedWorkspaceSource;
-  /** Background worktrees (e.g. automation) stay out of the sidebar. */
-  hidden?: boolean;
+  background?: boolean;
+  callerWorkspaceId?: string;
 }
 
 export interface WorkspaceProvisioningService {
@@ -64,17 +62,17 @@ export interface WorkspaceProvisioningService {
     operation: (workspace: PersistedWorkspaceRecord) => Promise<T>,
   ): Promise<ImportWorkspaceResult<T>>;
   findOrCreateWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord>;
-  reattachOwnedWorktreeForDirectory(input: {
-    cwd: string;
-    repoRoot?: string;
-    projectId?: string;
-  }): Promise<PersistedWorkspaceRecord>;
   resolveOrCreateWorkspaceIdForCreateAgent(input: ResolveOrCreateWorkspaceIdInput): Promise<string>;
   createWorkspaceForDirectory(
     cwd: string,
     title?: string | null,
     projectId?: string,
-    context?: { expectsInitialAgent?: boolean; rejectIfOccupied?: boolean },
+    context?: {
+      expectsInitialAgent?: boolean;
+      workspaceId?: string;
+      background?: boolean;
+      callerWorkspaceId?: string;
+    },
   ): Promise<PersistedWorkspaceRecord>;
   createWorkspaceForWorktree(
     input: CreateWorktreeWorkspaceInput,
@@ -106,10 +104,26 @@ export function createWorkspaceProvisioningService(deps: {
   workspaceRegistry: WorkspaceRegistry;
   projectRegistry: ProjectRegistry;
   workspaceGitService: Pick<WorkspaceGitService, "getCheckout" | "getSnapshot" | "peekSnapshot">;
+  isDirectory: (path: string) => Promise<boolean>;
   logger: Logger;
   lifecycle?: PluginLifecycle;
 }): WorkspaceProvisioningService {
   const { serverId, workspaceRegistry, projectRegistry, workspaceGitService, logger } = deps;
+
+  /**
+   * Placement facts at a workspace directory, or null when there is nothing
+   * there to read. A git read answers "not a checkout" for a plain directory
+   * and for a directory that is gone, and only the first is evidence that a
+   * worktree stopped being one. That answer therefore counts only while the
+   * directory is there on both sides of the read, so a worktree removed or
+   * unmounted while the read is in flight stays an absence.
+   */
+  async function observeWorkspaceCheckout(cwd: string): Promise<ProjectCheckoutLitePayload | null> {
+    if (!(await deps.isDirectory(cwd))) return null;
+    const checkout = await workspaceGitService.getCheckout(cwd);
+    if (!checkout.isGit && !(await deps.isDirectory(cwd))) return null;
+    return checkout;
+  }
 
   async function runInImportWorkspace<T>(
     input: ImportWorkspaceInput,
@@ -185,18 +199,13 @@ export function createWorkspaceProvisioningService(deps: {
   }
 
   async function findOrCreateProjectForDirectory(cwd: string): Promise<PersistedProjectRecord> {
-    await assertProjectPathOnline(projectRegistry, cwd);
     const rootPath = resolve(cwd);
     const checkout = await workspaceGitService.getCheckout(rootPath);
     const timestamp = new Date().toISOString();
     return projectRegistry.getOrCreateActiveByRoot({
       rootPath,
       kind: checkout.isGit ? "git" : "non_git",
-      displayName: deriveProjectGroupingDisplayName({
-        rootPath,
-        remoteUrl: checkout.remoteUrl,
-        worktreeRoot: checkout.worktreeRoot,
-      }),
+      displayName: basename(rootPath) || rootPath,
       projectKey: deriveProjectKey({
         rootPath,
         remoteUrl: checkout.remoteUrl,
@@ -208,64 +217,36 @@ export function createWorkspaceProvisioningService(deps: {
     });
   }
 
-  async function recreateMissingProjectForWorkspace(
-    workspace: PersistedWorkspaceRecord,
-  ): Promise<PersistedProjectRecord> {
-    const rootPath = resolve(workspace.mainRepoRoot ?? workspace.cwd);
-    const checkout = await workspaceGitService.getCheckout(rootPath);
-    const timestamp = new Date().toISOString();
-    const record = createPersistedProjectRecord({
-      projectId: workspace.projectId,
-      rootPath,
-      kind: checkout.isGit ? "git" : "non_git",
-      displayName: deriveProjectGroupingDisplayName({
-        rootPath,
-        remoteUrl: checkout.remoteUrl,
-        worktreeRoot: checkout.worktreeRoot,
-      }),
-      projectKey: deriveProjectKey({
-        rootPath,
-        remoteUrl: checkout.remoteUrl,
-        worktreeRoot: checkout.worktreeRoot,
-        mainRepoRoot: checkout.mainRepoRoot,
-        serverId,
-      }),
-      createdAt: workspace.createdAt,
-      updatedAt: timestamp,
-    });
-    await projectRegistry.upsert(record);
-    return record;
-  }
-
   async function requireActiveProject(projectId: string): Promise<PersistedProjectRecord> {
     const project = await projectRegistry.get(projectId);
     if (!project) throw new WorkspaceProvisioningError("unknown_project", projectId);
     if (project.archivedAt) throw new WorkspaceProvisioningError("archived_project", projectId);
-    assertProjectOnline(project);
     return project;
+  }
+
+  async function resolveBackground(input?: {
+    background?: boolean;
+    callerWorkspaceId?: string;
+  }): Promise<boolean> {
+    if (input?.background !== undefined) return input.background;
+    if (!input?.callerWorkspaceId) return false;
+    const callerWorkspace = await workspaceRegistry.get(input.callerWorkspaceId);
+    if (!callerWorkspace) throw new Error(`Caller workspace ${input.callerWorkspaceId} not found`);
+    return callerWorkspace.background;
   }
 
   async function createWorkspaceForDirectory(
     cwd: string,
     title?: string | null,
     projectId?: string,
-    context?: { expectsInitialAgent?: boolean; rejectIfOccupied?: boolean },
+    context?: {
+      expectsInitialAgent?: boolean;
+      workspaceId?: string;
+      background?: boolean;
+      callerWorkspaceId?: string;
+    },
   ): Promise<PersistedWorkspaceRecord> {
     const normalizedCwd = resolve(cwd);
-    // Explicit "create a workspace here" refuses to stack a second visible
-    // workspace on a directory that already has one. Agent spawns and the
-    // reopen path deliberately skip this: they either already know no active
-    // record exists, or they are allowed to share the directory.
-    if (context?.rejectIfOccupied) {
-      const occupant = findOccupyingWorkspaceForCwd(await workspaceRegistry.list(), normalizedCwd);
-      if (occupant) {
-        throw new WorkspaceDirectoryOccupiedError({
-          cwd: normalizedCwd,
-          existingWorkspaceId: occupant.workspaceId,
-          existingWorkspaceName: occupant.title?.trim() || occupant.displayName,
-        });
-      }
-    }
     const checkout = await workspaceGitService.getCheckout(normalizedCwd);
     const project = projectId
       ? await refreshProjectKind(await requireActiveProject(projectId), normalizedCwd, checkout)
@@ -273,15 +254,18 @@ export function createWorkspaceProvisioningService(deps: {
         await findOrCreateProjectForDirectory(normalizedCwd);
     const timestamp = new Date().toISOString();
     const workspace = createPersistedWorkspaceRecord({
-      workspaceId: generateWorkspaceId(),
+      workspaceId: context?.workspaceId ?? generateWorkspaceId(),
       projectId: project.projectId,
       ...initialWorkspacePlacement({ source: "checkout", cwd: normalizedCwd, checkout }),
       title: title?.trim() || null,
       createdAt: timestamp,
       updatedAt: timestamp,
+      background: await resolveBackground(context),
     });
-    await workspaceRegistry.upsert(workspace, context);
-    deps.lifecycle?.emit("workspace.created", { workspace: describeHookWorkspace(workspace) });
+    await workspaceRegistry.upsert(workspace, {
+      expectsInitialAgent: context?.expectsInitialAgent,
+    });
+    emitWorkspaceCreated(workspace);
     return workspace;
   }
 
@@ -299,7 +283,7 @@ export function createWorkspaceProvisioningService(deps: {
     });
     const timestamp = new Date().toISOString();
     const workspace = createPersistedWorkspaceRecord({
-      workspaceId: generateWorkspaceId(),
+      workspaceId: input.workspaceId ?? generateWorkspaceId(),
       projectId: project.projectId,
       ...initialWorkspacePlacement({
         source: "created_worktree",
@@ -310,16 +294,20 @@ export function createWorkspaceProvisioningService(deps: {
         mainRepoRoot: repoRoot,
       }),
       title: input.title,
-      hidden: input.hidden ?? false,
       createdAt: timestamp,
       updatedAt: timestamp,
       ...(input.untrustedSource ? { untrustedSource: input.untrustedSource } : {}),
+      background: await resolveBackground(input),
     });
     await workspaceRegistry.upsert(workspace, {
       expectsInitialAgent: input.expectsInitialAgent,
     });
-    deps.lifecycle?.emit("workspace.created", { workspace: describeHookWorkspace(workspace) });
+    emitWorkspaceCreated(workspace);
     return workspace;
+  }
+
+  function emitWorkspaceCreated(workspace: PersistedWorkspaceRecord): void {
+    deps.lifecycle?.emit("workspace.created", { workspace: describeHookWorkspace(workspace) });
   }
 
   async function resolveSourceProjectForWorktree(input: {
@@ -363,70 +351,24 @@ export function createWorkspaceProvisioningService(deps: {
     return refreshProjectKind(project);
   }
 
-  // Otto's explicit Reattach action retains source-project placement. Generic
-  // directory opening allocates the selected exact root instead.
-  async function reattachOwnedWorktreeForDirectory(input: {
-    cwd: string;
-    repoRoot?: string;
-    projectId?: string;
-  }): Promise<PersistedWorkspaceRecord> {
-    const cwd = resolve(input.cwd);
-    const existing = (await workspaceRegistry.list())
-      .filter((workspace) => areEquivalentPaths(workspace.cwd, cwd))
-      .sort(
-        (left, right) =>
-          Number(Boolean(left.archivedAt)) - Number(Boolean(right.archivedAt)) ||
-          Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
-          left.workspaceId.localeCompare(right.workspaceId),
-      )[0];
-    if (existing) {
-      if (!(await projectRegistry.get(existing.projectId))) {
-        await recreateMissingProjectForWorkspace(existing);
-      }
-      return ensureWorkspaceRecordUnarchived(existing);
-    }
-    const repoRoot = input.repoRoot ? resolve(input.repoRoot) : cwd;
-    const project = await resolveSourceProjectForWorktree({
-      sourceCwd: repoRoot,
-      repoRoot,
-      projectId: input.projectId,
-    });
-    return createWorkspaceForDirectory(cwd, null, project.projectId);
-  }
-
   async function findOrCreateWorkspaceForDirectory(cwd: string): Promise<PersistedWorkspaceRecord> {
-    await assertProjectPathOnline(projectRegistry, cwd);
     const normalizedCwd = resolve(cwd);
-    const workspaces = await workspaceRegistry.list();
-    const active = workspaces
+    // Path-based discovery selects public work; explicit-ID recovery bypasses this selector.
+    const workspaces = (await workspaceRegistry.list())
       .filter(
-        (workspace) => !workspace.archivedAt && areEquivalentPaths(workspace.cwd, normalizedCwd),
+        (workspace) => !workspace.background && areEquivalentPaths(workspace.cwd, normalizedCwd),
       )
       .sort(
         (left, right) =>
           Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
           left.workspaceId.localeCompare(right.workspaceId),
-      )[0];
+      );
+    const active = workspaces.find((workspace) => !workspace.archivedAt);
     if (active) return refreshWorkspaceRecord(active);
-    const archived = workspaces
-      .filter(
-        (workspace) => workspace.archivedAt && areEquivalentPaths(workspace.cwd, normalizedCwd),
-      )
-      .sort(
-        (left, right) =>
-          Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
-          left.workspaceId.localeCompare(right.workspaceId),
-      )[0];
+    const archived = workspaces.find((workspace) => workspace.archivedAt);
     if (archived) {
       const project = await projectRegistry.get(archived.projectId);
-      // An archived workspace under a still-active project is a workspace the
-      // user closed; reopening its directory restores it.
       if (project && !project.archivedAt) return ensureWorkspaceRecordUnarchived(archived);
-      // An archived workspace under an ARCHIVED project means the whole project
-      // was put away. Explicit opening then allocates a fresh identity and
-      // leaves the archived pair alone - restoring ownership is the agent-restore
-      // path's job, not this one. See the S6/S11 invariants in
-      // session.workspace-resolution-invariants.test.ts.
     }
     return createWorkspaceForDirectory(normalizedCwd);
   }
@@ -439,6 +381,8 @@ export function createWorkspaceProvisioningService(deps: {
     return (
       await createWorkspaceForDirectory(input.cwd, input.initialTitle, undefined, {
         expectsInitialAgent: true,
+        background: input.background,
+        callerWorkspaceId: input.callerWorkspaceId,
       })
     ).workspaceId;
   }
@@ -464,16 +408,15 @@ export function createWorkspaceProvisioningService(deps: {
   ): Promise<PersistedWorkspaceRecord> {
     const project = await projectRegistry.get(workspace.projectId);
     if (!project) throw new Error(`Unknown project: ${workspace.projectId}`);
-    assertProjectOnline(project);
     const timestamp = new Date().toISOString();
     const checkout =
       workspace.archivedAt || project.archivedAt
-        ? await workspaceGitService.getCheckout(workspace.cwd)
+        ? await observeWorkspaceCheckout(workspace.cwd)
         : null;
     const autoArchivedChangeRequestUrl =
       await resolveRestoredAutoArchiveChangeRequestUrl(workspace);
     let next: PersistedWorkspaceRecord | null = null;
-    if (workspace.archivedAt && checkout) {
+    if (workspace.archivedAt) {
       const placementUpdate = reconcileWorkspacePlacement({
         workspace,
         checkout,
@@ -486,10 +429,11 @@ export function createWorkspaceProvisioningService(deps: {
         updatedAt: timestamp,
       };
     }
-    if (checkout && (project.archivedAt || workspace.archivedAt)) {
-      const projectCheckout = areEquivalentPaths(project.rootPath, workspace.cwd)
-        ? checkout
-        : await workspaceGitService.getCheckout(project.rootPath);
+    if (project.archivedAt || workspace.archivedAt) {
+      const projectCheckout =
+        checkout && areEquivalentPaths(project.rootPath, workspace.cwd)
+          ? checkout
+          : await workspaceGitService.getCheckout(project.rootPath);
       const kind = projectCheckout.isGit ? "git" : "non_git";
       const projectKey = deriveProjectKey({
         rootPath: project.rootPath,
@@ -516,26 +460,17 @@ export function createWorkspaceProvisioningService(deps: {
   async function refreshWorkspaceRecord(
     workspace: PersistedWorkspaceRecord,
   ): Promise<PersistedWorkspaceRecord> {
+    const checkout = await observeWorkspaceCheckout(workspace.cwd);
     const project = await projectRegistry.get(workspace.projectId);
-    if (project) assertProjectOnline(project);
-    const checkout = await workspaceGitService.getCheckout(workspace.cwd);
     if (project && !project.archivedAt) {
-      await refreshProjectKind(project, workspace.cwd, checkout);
+      await refreshProjectKind(project, workspace.cwd, checkout ?? undefined);
     }
-    // Re-read after the checkout await. `workspace` was captured before a git
-    // read that takes long enough for an archive to land, and merging onto that
-    // stale copy writes its `archivedAt` back - reviving a workspace the user
-    // just archived. Refreshing git metadata must never resurrect a record.
-    // Unlike ensureWorkspaceRecordUnarchived, un-archiving is not this
-    // function's job.
-    const current = await workspaceRegistry.get(workspace.workspaceId);
-    if (!current || current.archivedAt) return workspace;
     const update = reconcileWorkspacePlacement({
-      workspace: current,
+      workspace,
       checkout,
       updatedAt: new Date().toISOString(),
     });
-    if (!update) return current;
+    if (!update) return workspace;
     await workspaceRegistry.upsert(update.workspace);
     return update.workspace;
   }
@@ -571,7 +506,6 @@ export function createWorkspaceProvisioningService(deps: {
   return {
     runInImportWorkspace,
     findOrCreateWorkspaceForDirectory,
-    reattachOwnedWorktreeForDirectory,
     resolveOrCreateWorkspaceIdForCreateAgent,
     createWorkspaceForDirectory,
     createWorkspaceForWorktree,

@@ -1,33 +1,25 @@
 import {
-  cloneElement,
-  isValidElement,
   useCallback,
   useMemo,
   useState,
   type PropsWithChildren,
   type ReactElement,
   type ReactNode,
-  type Ref,
 } from "react";
 import {
   Pressable,
   Text,
   View,
-  type GestureResponderEvent,
-  type PressableProps,
   type PressableStateCallbackType,
   type ViewStyle,
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Check, CheckCircle } from "@/components/icons/material-icons";
+import { Check, CheckCircle } from "lucide-react-native";
 import { AdaptiveTextInput } from "@/components/adaptive-modal-sheet";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { resolvePreviewFlag, useControlStatePreview } from "@/components/ui/control-state-preview";
-import { compactUp, type Theme } from "@/styles/theme";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import type { Theme } from "@/styles/theme";
 import { MenuDepthProvider, useMenuContext } from "./menu-context";
-import type { IconSizeProp } from "@/components/icons/icon-size";
 import { MENU_ITEM_HEIGHT } from "./menu-geometry";
 
 const ThemedCheck = withUnistyles(Check);
@@ -52,62 +44,6 @@ const successMapping = (theme: Theme) => ({ color: theme.colors.palette.green[50
  * the rows drift taller again. On compact, `minHeight` leads instead and the label centres in it.
  */
 const MENU_ITEM_LINE_HEIGHT = 18;
-
-/**
- * Space between a row's leading icon and its label.
- *
- * Same split as the row height, and for the same reason: a thumb-sized row is taller and wider,
- * and the 8pt that reads as a gap beside a 28pt row reads as the icon crowding the label once
- * the row grows to 40. 12 restores the separation at compact size and leaves desktop where it is.
- */
-const MENU_ITEM_GAP = { xs: 12, md: 8 } as const;
-
-/**
- * The glyph the row draws itself - the check, the pending spinner, the success mark - and the
- * width of the slots that hold one.
- */
-const MENU_ITEM_ICON_SIZE = 16;
-
-/**
- * The size every glyph in a menu row is drawn at: one number per form factor, not a multiplier.
- *
- * Same split as the row height and the icon gap, and for the same reason: the row grew for a
- * thumb, and a 16pt glyph inside a 40pt row reads as a speck left behind by the row around it.
- */
-export function useMenuIconSize(): number {
-  return useIsCompactFormFactor() ? MENU_ITEM_ICON_SIZE * 2 : MENU_ITEM_ICON_SIZE;
-}
-
-/**
- * Draws a caller's glyph at the row's size.
- *
- * Leading icons are built at 14, 15 or 16 all over the app, usually as module-level constant
- * elements that no hook can reach, so the row sizes what it is handed rather than the app
- * sweeping a hundred call sites and waiting for the next one to reintroduce the drift.
- *
- * It **sets** the size; it must never scale it. Scaling looks equivalent and is not: a call site
- * that already sized its glyph through `useIconSize()` hands over an *already compact-scaled*
- * number, and doubling that lands at 4x - which is how one menu ended up drawing 28, 32 and 56pt
- * glyphs in three consecutive rows. Setting is idempotent, so a row is one size no matter what
- * the call site did.
- *
- * Only an element that already takes a numeric `size` is touched. A slot holding a View, an
- * avatar, or an icon sized through `uniProps` (which resolves to `theme.iconSize.md`, the same
- * number this returns) comes back exactly as it went in.
- */
-export function withMenuIconSize(
-  leading: ReactElement | null | undefined,
-  size: number,
-): ReactElement | null {
-  if (!leading || !isValidElement<{ size?: unknown }>(leading)) {
-    return leading ?? null;
-  }
-  const current = leading.props.size;
-  if (typeof current !== "number" || current === size) {
-    return leading;
-  }
-  return cloneElement(leading, { size });
-}
 
 /**
  * Space between two rows, owned by the page rather than the rows. Zero because only one row is
@@ -261,14 +197,13 @@ function resolveLeadingContent(input: {
   isPending: boolean | undefined;
   isSuccess: boolean;
   leading: ReactElement | null;
-  iconSize: IconSizeProp;
 }): ReactElement | null {
-  const { isPending, isSuccess, leading, iconSize } = input;
+  const { isPending, isSuccess, leading } = input;
   if (isPending) {
-    return <ThemedLoadingSpinner size={iconSize} uniProps={mutedMapping} />;
+    return <ThemedLoadingSpinner size={16} uniProps={mutedMapping} />;
   }
   if (isSuccess) {
-    return <ThemedCheckCircle size={iconSize} uniProps={successMapping} />;
+    return <ThemedCheckCircle size={16} uniProps={successMapping} />;
   }
   return leading;
 }
@@ -286,23 +221,9 @@ function resolveItemLabel(input: {
   return children;
 }
 
-function createAlternateSelectHandler(
-  isDisabled: boolean | undefined,
-  onAlternateSelect: (() => void) | undefined,
-): ((event: { preventDefault?: () => void; stopPropagation?: () => void }) => void) | undefined {
-  if (isDisabled || !onAlternateSelect) return undefined;
-  return (event) => {
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    onAlternateSelect();
-  };
-}
-
 export interface MenuItemProps {
   description?: string;
-  onSelect?: (event: GestureResponderEvent) => void;
-  /** Right-click or long-press action for an item that has a useful alternate selection. */
-  onAlternateSelect?: () => void;
+  onSelect?: () => void;
   disabled?: boolean;
   muted?: boolean;
   destructive?: boolean;
@@ -328,9 +249,6 @@ export interface MenuItemProps {
   /** Label to show on success (e.g. "Pushed") */
   successLabel?: string;
   closeOnSelect?: boolean;
-  /** Exposes the rendered row for a follow-on menu anchored to this item. */
-  itemRef?: Ref<View | null>;
-  onLayout?: PressableProps["onLayout"];
   testID?: string;
   tooltip?: string;
 }
@@ -339,7 +257,6 @@ export function MenuItem({
   children,
   description,
   onSelect,
-  onAlternateSelect,
   disabled,
   muted = false,
   destructive,
@@ -353,45 +270,30 @@ export function MenuItem({
   pendingLabel,
   successLabel,
   closeOnSelect = true,
-  itemRef,
-  onLayout,
   testID,
   tooltip,
 }: PropsWithChildren<MenuItemProps>): ReactElement {
   const { selectItem } = useMenuContext("MenuItem");
-  const preview = useControlStatePreview();
-
   const isPending = status === "pending" || loading;
   const isSuccess = status === "success";
   const isDisabled = disabled || isPending || isSuccess;
 
-  const iconSize = useMenuIconSize();
   const leadingContent = resolveLeadingContent({
     isPending,
     isSuccess,
-    leading: withMenuIconSize(leading, iconSize),
-    iconSize,
+    leading: leading ?? null,
   });
 
   const label = resolveItemLabel({ children, isPending, isSuccess, pendingLabel, successLabel });
 
   const trailingContent =
-    withMenuIconSize(trailing, iconSize) ??
-    (!showSelectedCheck && selected ? (
-      <ThemedCheck size={iconSize} uniProps={mutedMapping} />
-    ) : null);
+    trailing ??
+    (!showSelectedCheck && selected ? <ThemedCheck size={16} uniProps={mutedMapping} /> : null);
 
-  const handleItemPress = useCallback(
-    (event: GestureResponderEvent) => {
-      if (isDisabled) return;
-      selectItem(onSelect ? () => onSelect(event) : undefined, closeOnSelect);
-    },
-    [isDisabled, selectItem, onSelect, closeOnSelect],
-  );
-  const handleAlternateSelect = useMemo(
-    () => createAlternateSelectHandler(isDisabled, onAlternateSelect),
-    [isDisabled, onAlternateSelect],
-  );
+  const handleItemPress = useCallback(() => {
+    if (isDisabled) return;
+    selectItem(onSelect, closeOnSelect);
+  }, [isDisabled, selectItem, onSelect, closeOnSelect]);
 
   // A row that draws a check has to say so as well: a multi-select page is a list of things that
   // are on or off, and the check is the only thing telling a sighted user which. Rows that answer
@@ -403,27 +305,19 @@ export function MenuItem({
 
   const itemPressableStyle = useCallback(
     ({
-      pressed: eventPressed,
-      hovered: eventHovered = false,
+      pressed,
+      hovered = false,
       focused = false,
-    }: PressableStateCallbackType & { hovered?: boolean; focused?: boolean }) => {
-      // `preview` pins a state for the UI-state gallery; without one these fall
-      // through to what the pressable actually reports.
-      const hovered = resolvePreviewFlag(preview?.hovered, eventHovered);
-      const pressed = resolvePreviewFlag(preview?.pressed, eventPressed);
-      return [
-        styles.item,
-        active ? styles.itemActive : null,
-        isDisabled ? styles.itemDisabled : null,
-        muted && !isDisabled ? styles.itemMuted : null,
-        hovered && !pressed && !isDisabled ? styles.itemHovered : null,
-        // Keyboard focus reads as hover: arrowing through a menu should look the
-        // same as pointing at it.
-        focused && !isDisabled ? styles.itemHovered : null,
-        pressed && !isDisabled ? styles.itemPressed : null,
-      ];
-    },
-    [active, isDisabled, muted, preview],
+    }: PressableStateCallbackType & { hovered?: boolean; focused?: boolean }) => [
+      styles.item,
+      active ? styles.itemActive : null,
+      isDisabled ? styles.itemDisabled : null,
+      muted && !isDisabled ? styles.itemMuted : null,
+      hovered && !pressed && !isDisabled ? styles.itemHovered : null,
+      focused && !isDisabled ? styles.itemHovered : null,
+      pressed && !isDisabled ? styles.itemPressed : null,
+    ],
+    [active, isDisabled, muted],
   );
 
   const itemTextStyle = useMemo(
@@ -442,8 +336,6 @@ export function MenuItem({
 
   const content = (
     <Pressable
-      ref={itemRef}
-      onLayout={onLayout}
       testID={testID}
       accessibilityRole="menuitem"
       accessibilityState={accessibilityState}
@@ -452,14 +344,11 @@ export function MenuItem({
       dataSet={itemDataSet}
       disabled={isDisabled}
       onPress={handleItemPress}
-      onLongPress={handleAlternateSelect}
-      // @ts-expect-error - onContextMenu is web-only and not in RN types.
-      onContextMenu={handleAlternateSelect}
       style={itemPressableStyle}
     >
       {showSelectedCheck ? (
         <View style={styles.checkSlot}>
-          {selected ? <ThemedCheck size={iconSize} uniProps={foregroundMapping} /> : null}
+          {selected ? <ThemedCheck size={16} uniProps={foregroundMapping} /> : null}
         </View>
       ) : null}
       {leadingContent ? <View style={styles.leadingSlot}>{leadingContent}</View> : null}
@@ -502,7 +391,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingBottom: theme.spacing[1],
   },
   labelText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   // `border` sits between surface1 and surface2, which put it within a hair of the hover fill and
@@ -531,12 +420,12 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   hintText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },
   tooltipText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
   },
   // The fill is inset from the surface's edges and rounded, so a hovered row reads as a chip
@@ -553,7 +442,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     minHeight: MENU_ITEM_HEIGHT,
-    gap: MENU_ITEM_GAP,
+    gap: theme.spacing[2],
     marginHorizontal: theme.spacing[1],
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
@@ -589,14 +478,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: 0,
   },
   itemHovered: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
+    backgroundColor: theme.colors.surface2,
   },
   itemPressed: {
-    backgroundColor: theme.colors.surfaceInteractivePressed,
+    backgroundColor: theme.colors.surface2,
   },
   // The row you are inside, not the value you chose. A chosen value is marked by its check.
   itemActive: {
-    backgroundColor: theme.colors.surfaceInteractiveSelected,
+    backgroundColor: theme.colors.surface2,
   },
   itemDisabled: {
     opacity: 0.5,
@@ -605,7 +494,7 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.72,
   },
   itemText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     lineHeight: MENU_ITEM_LINE_HEIGHT,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
@@ -621,17 +510,16 @@ const styles = StyleSheet.create((theme) => ({
   },
   itemDescription: {
     marginTop: 2,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
-  // Both slots hold one glyph, so they are one glyph wide at whatever scale the row is drawing.
   checkSlot: {
-    width: compactUp(MENU_ITEM_ICON_SIZE),
+    width: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   leadingSlot: {
-    width: compactUp(MENU_ITEM_ICON_SIZE),
+    width: 16,
     alignItems: "center",
     justifyContent: "center",
   },

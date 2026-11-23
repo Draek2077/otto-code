@@ -1,4 +1,3 @@
-import { PendingOpenProjectStore } from "../pending-open-project-store.js";
 import { describe, expect, it } from "vitest";
 import { createDesktopWindowOwner, type OwnedDesktopWindow } from "./desktop-window-owner.js";
 
@@ -13,40 +12,35 @@ function harness() {
   let nextId = 1;
   let focused: OwnedDesktopWindow<Target> | null = null;
   let closeWindow = (_id: number) => {};
-  const pendingProjects = new PendingOpenProjectStore();
-  const owner = createDesktopWindowOwner<Target>(
-    {
-      async create(input) {
-        launches.push({
-          initialRoute: input.initialRoute,
-          restoreWindowState: input.restoreWindowState,
-        });
-        const id = nextId++;
-        closeWindow = input.onClosed;
-        const window: OwnedDesktopWindow<Target> = {
-          webContentsId: id,
-          isDestroyed: () => false,
-          isVisible: () => true,
-          isMinimized: () => false,
-          restore: () => {},
-          show: () => {},
-          focus: () => {},
-          sendAgent: (target) => sent.push(target),
-        };
-        windows.push(window);
-        input.onCreated(id);
-        return window;
-      },
-      windows: () => windows,
-      focusedWindow: () => focused,
-      agentRoute: (target) => `/agent/${target.id}`,
-      deliverAgent: (_id, target) => target,
+  const owner = createDesktopWindowOwner<Target>({
+    async create(input) {
+      launches.push({
+        initialRoute: input.initialRoute,
+        restoreWindowState: input.restoreWindowState,
+      });
+      const id = nextId++;
+      closeWindow = input.onClosed;
+      const window: OwnedDesktopWindow<Target> = {
+        webContentsId: id,
+        isDestroyed: () => false,
+        isVisible: () => true,
+        isMinimized: () => false,
+        restore: () => {},
+        show: () => {},
+        focus: () => {},
+        sendAgent: (target) => sent.push(target),
+      };
+      windows.push(window);
+      input.onCreated(id);
+      return window;
     },
-    pendingProjects,
-  );
+    windows: () => windows,
+    focusedWindow: () => focused,
+    agentRoute: (target) => `/agent/${target.id}`,
+    deliverAgent: (_id, target) => target,
+  });
   return {
     owner,
-    pendingProjects,
     launches,
     sent,
     windows,
@@ -84,20 +78,5 @@ describe("desktop window owner", () => {
     await h.owner.openAdditional({ pendingProjectPath: "/project/a" });
     h.close(1);
     expect(h.owner.takePendingProject(1)).toBeNull();
-  });
-  it("retains Otto file and directory-shell targets in the same per-window owner", async () => {
-    const h = harness();
-    await h.owner.openPrimary({
-      pendingProjectPath: "/project",
-      pendingOpenTarget: { kind: "file", path: " /project/README.md " },
-    });
-    await h.owner.openAdditional({
-      pendingOpenTarget: { kind: "directory-shell", path: "/other" },
-    });
-    expect(h.pendingProjects.takeTarget(1)).toEqual({ kind: "file", path: "/project/README.md" });
-    expect(h.owner.takePendingProject(1)).toBe("/project");
-    expect(h.pendingProjects.takeTarget(1)).toBeNull();
-    h.close(2);
-    expect(h.pendingProjects.takeTarget(2)).toBeNull();
   });
 });

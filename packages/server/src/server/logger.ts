@@ -4,7 +4,7 @@ import pino from "pino";
 import pretty from "pino-pretty";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { PersistedConfig } from "./persisted-config.js";
-import { resolveOttoHome } from "./otto-home.js";
+import { resolvePaseoHome } from "./paseo-home.js";
 
 export type LogLevel = "trace" | "debug" | "info" | "warn" | "error" | "fatal";
 export type LogFormat = "pretty" | "json";
@@ -29,7 +29,7 @@ interface LegacyLogConfig {
 type LoggerConfigInput = PersistedConfig | LegacyLogConfig | undefined;
 
 interface ResolveLogConfigOptions {
-  ottoHome?: string;
+  paseoHome?: string;
   file?: boolean;
 }
 
@@ -47,10 +47,6 @@ const DEFAULT_CONSOLE_FORMAT: LogFormat = "json";
 const DEFAULT_FILE_LEVEL: LogLevel = "info";
 const DEFAULT_DAEMON_LOG_FILENAME = "daemon.log";
 const REDACT_PATHS = [
-  "action.secret",
-  "msg.action.secret",
-  "message.action.secret",
-  "payload.action.secret",
   "authorization",
   "Authorization",
   "headers.authorization",
@@ -65,8 +61,8 @@ const REDACT_PATHS = [
   "req.headers.Sec-WebSocket-Protocol",
 ];
 
-function resolveFilePath(ottoHome: string, configuredPath: string | undefined): string {
-  const fallback = path.join(ottoHome, DEFAULT_DAEMON_LOG_FILENAME);
+function resolveFilePath(paseoHome: string, configuredPath: string | undefined): string {
+  const fallback = path.join(paseoHome, DEFAULT_DAEMON_LOG_FILENAME);
   if (!configuredPath) {
     return fallback;
   }
@@ -75,7 +71,7 @@ function resolveFilePath(ottoHome: string, configuredPath: string | undefined): 
     return configuredPath;
   }
 
-  return path.resolve(ottoHome, configuredPath);
+  return path.resolve(paseoHome, configuredPath);
 }
 
 function minLogLevel(levels: LogLevel[]): LogLevel {
@@ -90,11 +86,11 @@ function minLogLevel(levels: LogLevel[]): LogLevel {
   return minLevel;
 }
 
-function resolveConfiguredOttoHome(options: ResolveLogConfigOptions | undefined): string {
-  if (options?.ottoHome) {
-    return options.ottoHome;
+function resolveConfiguredPaseoHome(options: ResolveLogConfigOptions | undefined): string {
+  if (options?.paseoHome) {
+    return options.paseoHome;
   }
-  return resolveOttoHome();
+  return resolvePaseoHome();
 }
 
 function normalizeLoggerConfigInput(config: LoggerConfigInput): PersistedConfig | undefined {
@@ -144,7 +140,7 @@ export function resolveLogConfig(
   options?: ResolveLogConfigOptions,
 ): ResolvedLogConfig {
   const persistedConfig = normalizeLoggerConfigInput(configInput);
-  const ottoHome = resolveConfiguredOttoHome(options);
+  const paseoHome = resolveConfiguredPaseoHome(options);
   const persistedLog = persistedConfig?.log;
 
   const { consoleLevel, fileLevel, consoleFormat } = resolveLogLevelsAndFormat(persistedLog);
@@ -152,7 +148,7 @@ export function resolveLogConfig(
     options?.file !== false && persistedLog?.file
       ? {
           level: fileLevel ?? DEFAULT_FILE_LEVEL,
-          path: resolveFilePath(ottoHome, persistedLog.file.path),
+          path: resolveFilePath(paseoHome, persistedLog.file.path),
         }
       : undefined;
 

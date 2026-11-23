@@ -3,7 +3,11 @@ import {
   executableExists,
   findExecutable,
 } from "../../executable-resolution/executable-resolution.js";
-import { createExternalProcessEnv, type ProcessEnvRecord } from "../otto-env.js";
+import {
+  createExternalProcessEnv,
+  type ProcessEnvRecord,
+  type ExternalProcessEnv,
+} from "../paseo-env.js";
 export {
   AgentProviderRuntimeSettingsMapSchema,
   ProviderCommandSchema,
@@ -17,7 +21,7 @@ export {
   type ProviderOverrides,
   type ProviderProfileModel,
   type ProviderRuntimeSettings,
-} from "@otto-code/protocol/provider-config";
+} from "@getpaseo/protocol/provider-config";
 import {
   ProviderOverrideSchema,
   ProviderOverridesSchema,
@@ -26,7 +30,7 @@ import {
   type ProviderOverride,
   type ProviderOverrides,
   type ProviderRuntimeSettings,
-} from "@otto-code/protocol/provider-config";
+} from "@getpaseo/protocol/provider-config";
 
 export interface ProviderCommandPrefix {
   command: string;
@@ -39,6 +43,7 @@ export interface ResolvedProviderLaunch {
   command: string;
   args: string[];
   source: ProviderLaunchSource;
+  env?: ProcessEnvRecord;
 }
 
 export interface ProviderLaunchAvailability {
@@ -60,8 +65,8 @@ function normalizeLaunchDefault(
   return defaultBinary;
 }
 
-async function resolveLaunchPath(command: string): Promise<string | null> {
-  const found = await findExecutable(command);
+async function resolveLaunchPath(command: string, env?: ProcessEnvRecord): Promise<string | null> {
+  const found = await findExecutable(command, { env });
   if (found) {
     return found;
   }
@@ -116,7 +121,7 @@ export async function checkProviderLaunchAvailable(
   const resolvedPath =
     defaultBinary && launch.source !== "override"
       ? await resolveDefaultLaunchPath(defaultBinary)
-      : await resolveLaunchPath(launch.command);
+      : await resolveLaunchPath(launch.command, launch.env);
   return {
     available: resolvedPath !== null,
     resolvedPath,
@@ -201,7 +206,7 @@ export function migrateProviderSettings(
 }
 
 // Env vars that indicate a running Claude Code session. If the daemon itself is
-// launched from inside Claude Code (e.g. by a Otto agent), these leak into
+// launched from inside Claude Code (e.g. by a Paseo agent), these leak into
 // child processes and cause "cannot be launched inside another session" errors.
 const PARENT_SESSION_ENV_VARS = [
   "CLAUDECODE",
@@ -242,7 +247,7 @@ export function createProviderEnvSpec(options: ProviderEnvOptions = {}): Provide
   };
 }
 
-export function createProviderEnv(options: ProviderEnvOptions = {}): NodeJS.ProcessEnv {
+export function createProviderEnv(options: ProviderEnvOptions = {}): ExternalProcessEnv {
   const spec = createProviderEnvSpec(options);
   return createExternalProcessEnv(spec.baseEnv ?? process.env, spec.envOverlay);
 }

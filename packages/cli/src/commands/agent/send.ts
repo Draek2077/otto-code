@@ -1,6 +1,7 @@
-import { Option, type Command } from "commander";
+import { type Command, Option } from "commander";
+import type { ActiveTurnBehavior } from "@getpaseo/protocol/messages";
 import { collectMultiple } from "../../utils/command-options.js";
-import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+import { connectToDaemon } from "../../utils/client.js";
 import type {
   CommandOptions,
   SingleResult,
@@ -28,33 +29,28 @@ export const agentSendSchema: OutputSchema<AgentSendResult> = {
 };
 
 export interface AgentSendOptions extends CommandOptions {
+  behavior?: ActiveTurnBehavior;
   wait?: boolean;
   image?: string[];
   prompt?: string;
   promptFile?: string;
-  queue?: boolean;
-  steer?: boolean;
 }
 
 export function addSendOptions(cmd: Command): Command {
   return cmd
-    .description("Send a message/task to an existing agent (default: interrupt a busy agent)")
+    .description("Send a message/task to an existing agent")
     .argument("<id>", "Agent ID (or prefix)")
     .argument("[prompt]", "The message to send")
     .option("--prompt <text>", "Provide the message inline as a flag")
     .option("--prompt-file <path>", "Read the message from a UTF-8 text file")
     .option("--image <path>", "Attach image(s) to the message", collectMultiple, [])
-    .option("--no-wait", "Return immediately without waiting for completion")
-    .option(
-      "--queue",
-      "If the agent is busy, run this after its current turn instead of interrupting it",
-    )
     .addOption(
       new Option(
-        "--steer",
-        "Steer a busy agent; interrupt if unsupported (compaction may queue the message)",
-      ).conflicts("queue"),
-    );
+        "--behavior <behavior>",
+        "Active-turn behavior (agent default: steer; otherwise: interrupt)",
+      ).choices(["interrupt", "steer"]),
+    )
+    .option("--no-wait", "Return immediately without waiting for completion");
 }
 
 /**
@@ -90,6 +86,7 @@ async function readImageFiles(
 
         return { data: buffer.toString("base64"), mimeType };
       } catch (err) {
+        if (err && typeof err === "object" && "code" in err) throw err;
         const message = err instanceof Error ? err.message : String(err);
         throw {
           code: "IMAGE_READ_ERROR",
@@ -132,6 +129,7 @@ async function resolvePromptInput(options: {
       code: "MISSING_PROMPT",
       message: "A prompt is required",
       details:
+        // OTTO(identity)
         "Usage: otto agent send [options] <id> [prompt] | --prompt <text> | --prompt-file <path>",
     };
     throw error;
@@ -140,6 +138,7 @@ async function resolvePromptInput(options: {
   try {
     return await readFile(resolve(promptFilePath), "utf8");
   } catch (err) {
+    if (err && typeof err === "object" && "code" in err) throw err;
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
       code: "PROMPT_FILE_READ_ERROR",
@@ -178,20 +177,12 @@ export async function runSendCommand(
   options: AgentSendOptions,
   _command: Command,
 ): Promise<SingleResult<AgentSendResult>> {
-  if (options.steer && options.queue) {
-    throw {
-      code: "CONFLICTING_DELIVERY_OPTIONS",
-      message: "Cannot combine --steer and --queue",
-    } satisfies CommandError;
-  }
-
-  const host = getDaemonHost({ host: options.host });
-
   // Validate arguments
   if (!agentIdArg || agentIdArg.trim().length === 0) {
     const error: CommandError = {
       code: "MISSING_AGENT_ID",
       message: "Agent ID is required",
+      // OTTO(identity)
       details: "Usage: otto agent send [options] <id> [prompt]",
     };
     throw error;
@@ -203,49 +194,20 @@ export async function runSendCommand(
     promptFile: options.promptFile,
   });
 
-  let client;
-  try {
-    client = await connectToDaemon({ host: options.host });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const error: CommandError = {
-      code: "DAEMON_NOT_RUNNING",
-      message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: "Start the daemon with: otto daemon start",
-    };
-    throw error;
-  }
+  const client = await connectToDaemon({ target: options.daemonTarget });
 
   try {
     // Read image files if provided
     const images =
       options.image && options.image.length > 0 ? await readImageFiles(options.image) : undefined;
 
+    const sourceAgentId = process.env.PASEO_AGENT_ID?.trim() || undefined;
     // Send the message
-    const dispatch = await client.sendAgentMessage(agentIdArg, promptInput, {
+    await client.sendAgentMessage(agentIdArg, promptInput, {
       images,
-      ...(options.queue ? { delivery: "queue" as const } : {}),
-      // Steer is an active-turn behavior layered on immediate wire delivery.
-      ...(options.steer
-        ? { delivery: "interrupt" as const, activeTurnBehavior: "steer" as const }
-        : {}),
+      sourceAgentId,
+      activeTurnBehavior: options.behavior ?? (sourceAgentId ? "steer" : "interrupt"),
     });
-
-    // A queued message has no run to wait for yet - it starts when the current
-    // turn ends, so report it and return rather than blocking on --wait.
-    if (dispatch.queued) {
-      await client.close();
-
-      return {
-        type: "single",
-        data: {
-          agentId: agentIdArg,
-          status: "sent",
-          message: "Agent is busy; message queued to run as its next turn",
-        },
-        schema: agentSendSchema,
-      };
-    }
 
     // If --no-wait, return immediately
     if (options.wait === false) {

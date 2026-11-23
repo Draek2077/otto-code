@@ -61,13 +61,15 @@ export const WIDGET_MAX_LOADING_MESSAGE_CHARS = 120;
 
 export const WIDGET_MAX_TITLE_CHARS = 120;
 
-const WidgetPayloadSchema = z.object({
-  version: z.number().int().positive(),
-  id: z.string().min(1),
-  title: z.string(),
+export const WidgetPayloadSchema = z.object({
+  version: z.literal(WIDGET_PAYLOAD_VERSION),
+  id: z.string().min(1).max(512),
+  title: z.string().max(WIDGET_MAX_TITLE_CHARS),
   mode: z.enum(WIDGET_MODES),
-  code: z.string(),
-  loadingMessages: z.array(z.string()),
+  code: z.string().max(WIDGET_MAX_CODE_CHARS),
+  loadingMessages: z
+    .array(z.string().max(WIDGET_MAX_LOADING_MESSAGE_CHARS))
+    .max(WIDGET_MAX_LOADING_MESSAGES),
   /** Set when the fragment hit {@link WIDGET_MAX_CODE_CHARS} and was cut. */
   truncated: z.boolean().optional(),
 });
@@ -90,9 +92,6 @@ export function readWidgetPayload(
   }
   const parsed = WidgetPayloadSchema.safeParse(raw);
   if (!parsed.success) {
-    return null;
-  }
-  if (parsed.data.version !== WIDGET_PAYLOAD_VERSION) {
     return null;
   }
   return parsed.data;

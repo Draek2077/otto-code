@@ -392,14 +392,14 @@ describe("AgentStreamCoalescer", () => {
   test("reconstructs bytes exactly for fragmented text", async () => {
     const { coalescer, flushes } = createHarness();
     primeLeadingEdge(coalescer, flushes);
-    const text = "Hello, 世界.\nPunctuation: ,.!?;: - but JS strings stay intact.\n";
+    const text = "Hello, 世界.\nPunctuation: ,.!?;: — but JS strings stay intact.\n";
     const chunks = [
       "Hello",
       ", ",
       "世界",
       ".\n",
       "Punctuation: ,.!?;: ",
-      "-",
+      "—",
       " but JS strings stay intact.\n",
     ];
 
@@ -415,40 +415,6 @@ describe("AgentStreamCoalescer", () => {
         provider: "codex",
       },
     ]);
-  });
-
-  test("flushAndDiscard releases reentrant buffers and timers when a subscriber throws", async () => {
-    const flushes: AgentStreamCoalescerFlush[] = [];
-    const failure = new Error("subscriber rejected flush");
-    let rejectFlush = false;
-    const coalescer = new AgentStreamCoalescer({
-      timers: { setTimeout, clearTimeout },
-      onFlush: (payload) => {
-        flushes.push(payload);
-        if (rejectFlush) {
-          coalescer.handle(payload.agentId, assistant("reentrant residue"));
-          throw failure;
-        }
-      },
-    });
-    coalescer.handle("agent-1", assistant("leading"));
-    coalescer.handle("agent-1", assistant("pending"));
-    expect(vi.getTimerCount()).toBe(1);
-    rejectFlush = true;
-    expect(() => coalescer.flushAndDiscard("agent-1")).toThrow(failure);
-    expect(vi.getTimerCount()).toBe(0);
-    rejectFlush = false;
-
-    // Reopening the same agent starts a fresh leading edge immediately.
-    coalescer.handle("agent-1", assistant("reopened"));
-    expect(flushes.map(({ item }) => item)).toEqual([
-      { type: "assistant_message", text: "leading" },
-      { type: "assistant_message", text: "pending" },
-      { type: "assistant_message", text: "reopened" },
-    ]);
-    await vi.advanceTimersByTimeAsync(120);
-    expect(flushes).toHaveLength(3);
-    expect(vi.getTimerCount()).toBe(0);
   });
 
   test("isolates buffers per agent", async () => {
@@ -752,6 +718,57 @@ describe("AgentStreamCoalescer", () => {
           command: "printf ok",
           output: "done",
           exitCode: 0,
+        },
+      },
+    ]);
+  });
+
+  test("keeps a known tool call detail when a later update in the window has none", () => {
+    const { coalescer, flushes } = createHarness();
+    primeLeadingEdge(coalescer, flushes);
+
+    coalescer.handle(
+      "agent-1",
+      timeline({
+        type: "tool_call",
+        callId: "agent-call",
+        name: "Task",
+        status: "running",
+        error: null,
+        detail: {
+          type: "sub_agent",
+          subAgentType: "general-purpose",
+          description: "List files",
+          log: "",
+          actions: [],
+        },
+      }),
+    );
+    coalescer.handle(
+      "agent-1",
+      timeline({
+        type: "tool_call",
+        callId: "agent-call",
+        name: "Agent",
+        status: "completed",
+        error: null,
+        detail: { type: "unknown", input: { description: "List files" }, output: null },
+      }),
+    );
+
+    expect(flushes.map((flush) => flush.item)).toEqual([
+      {
+        type: "tool_call",
+        callId: "agent-call",
+        name: "Agent",
+        status: "completed",
+        error: null,
+        detail: {
+          type: "sub_agent",
+          subAgentType: "general-purpose",
+          description: "List files",
+          log: "",
+          actions: [],
         },
       },
     ]);

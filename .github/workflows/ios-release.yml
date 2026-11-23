@@ -1,3 +1,4 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
 name: iOS Release
 
 # Builds an iOS app via EAS and submits it to App Store Connect (lands in
@@ -39,7 +40,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing tag to check out (e.g. v0.5.1 or ios-v0.5.1)"
+        description: "Release tag to check out, or exact source SHA for simulator verification"
         required: true
         type: string
       build_id:
@@ -47,6 +48,11 @@ on:
         required: false
         type: string
         default: ""
+      simulator_only:
+        description: "Build, install and launch on an iOS simulator without submitting to TestFlight"
+        required: false
+        type: boolean
+        default: false
 
 concurrency:
   group: ios-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
@@ -56,9 +62,47 @@ permissions:
   contents: read
 
 jobs:
+  # OTTO(build): exercise the native app from an exact checkout before release signing.
+  verify-ios-simulator:
+    if: github.event_name == 'workflow_dispatch' && inputs.simulator_only
+    runs-on: macos-15
+    timeout-minutes: 90
+    env:
+      APP_VARIANT: production
+      ONNXRUNTIME_NODE_INSTALL: skip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: node scripts/npm-retry.mjs ci
+      - run: npm run eas-build-post-install --workspace=@getpaseo/app
+      - name: Generate native project and install pods
+        working-directory: packages/app
+        run: |
+          npx --no-install expo prebuild --platform ios --no-install
+          pod install --project-directory=ios
+      - name: Build and launch Otto
+        working-directory: packages/app/ios
+        run: |
+          set -euo pipefail
+          device=$(xcrun simctl list devices available -j | jq -er '[.devices | to_entries[] | select(.key | contains("iOS")) | .value[] | select(.name | startswith("iPhone"))][0].udid')
+          derived="$RUNNER_TEMP/otto-ios"
+          xcodebuild -quiet -workspace Otto.xcworkspace -scheme Otto -configuration Release \
+            -destination "id=$device" -derivedDataPath "$derived" CODE_SIGNING_ALLOWED=NO build
+          app="$derived/Build/Products/Release-iphonesimulator/Otto.app"
+          bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
+          test "$bundle_id" = me.ottocode.mobile
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" "$app"
+          xcrun simctl launch "$device" "$bundle_id"
   # Job-level `if` cannot read the secrets context, so this tiny job exposes
   # whether ASC signing is configured as an output for submit-ios to gate on.
   ios-signing-gate:
+    if: github.event_name != 'workflow_dispatch' || !inputs.simulator_only
     runs-on: ubuntu-latest
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}

@@ -2,17 +2,16 @@ import pino from "pino";
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
 
-import type { OttoToolCatalog, OttoToolDefinition, OttoToolResult } from "../../tools/types.js";
+import type { PaseoToolCatalog, PaseoToolDefinition, PaseoToolResult } from "../../tools/types.js";
 import {
-  clearOmpHostToolState,
   handleOmpHostToolRuntimeEvent,
+  OmpHostToolRouter,
   serializeOmpHostTools,
-  waitForOmpHostToolsIdle,
 } from "./host-tools.js";
 import type { OmpRpcHostToolResult } from "./rpc-types.js";
 import { FakeOmp } from "./test-utils/fake-omp.js";
 
-function createCatalog(tools: OttoToolDefinition[]): OttoToolCatalog {
+function createCatalog(tools: PaseoToolDefinition[]): PaseoToolCatalog {
   const toolMap = new Map(tools.map((tool) => [tool.name, tool]));
   return {
     tools: toolMap,
@@ -27,19 +26,22 @@ function createCatalog(tools: OttoToolDefinition[]): OttoToolCatalog {
 
 class OmpHostToolHarness {
   private readonly logger = pino({ level: "silent" });
-  private resolveControlledResult: ((result: OttoToolResult) => void) | null = null;
+  private resolveControlledResult: ((result: PaseoToolResult) => void) | null = null;
   private controlledSignal: AbortSignal | null = null;
   private resolveControlledStart: (() => void) | null = null;
   private readonly controlledStart = new Promise<void>((resolve) => {
     this.resolveControlledStart = resolve;
   });
+  private readonly router: OmpHostToolRouter;
 
   private constructor(
-    private readonly catalog: OttoToolCatalog,
+    private readonly catalog: PaseoToolCatalog,
     private readonly runtimeSession: Awaited<ReturnType<FakeOmp["startSession"]>>,
-  ) {}
+  ) {
+    this.router = new OmpHostToolRouter({ runtimeSession, catalog, logger: this.logger });
+  }
 
-  static async withTools(tools: OttoToolDefinition[]): Promise<OmpHostToolHarness> {
+  static async withTools(tools: PaseoToolDefinition[]): Promise<OmpHostToolHarness> {
     const omp = new FakeOmp();
     const runtimeSession = await omp.startSession({ cwd: "/workspace/project" });
     return new OmpHostToolHarness(createCatalog(tools), runtimeSession);
@@ -47,13 +49,13 @@ class OmpHostToolHarness {
 
   static async cancellable(): Promise<OmpHostToolHarness> {
     let harness: OmpHostToolHarness;
-    const tool: OttoToolDefinition = {
+    const tool: PaseoToolDefinition = {
       name: "wait_for_agent",
-      description: "Wait for a Otto agent.",
+      description: "Wait for a Paseo agent.",
       handler: async (_input, context) => {
         harness.controlledSignal = context.signal ?? null;
         harness.resolveControlledStart?.();
-        return await new Promise<OttoToolResult>((resolve) => {
+        return await new Promise<PaseoToolResult>((resolve) => {
           harness.resolveControlledResult = resolve;
         });
       },
@@ -69,7 +71,12 @@ class OmpHostToolHarness {
     arguments: Record<string, unknown>;
   }): Promise<OmpRpcHostToolResult> {
     const result = this.runtimeSession.nextHostToolResult();
-    handleOmpHostToolRuntimeEvent({ type: "host_tool_call", ...input }, this.routerInput());
+    handleOmpHostToolRuntimeEvent(
+      { type: "host_tool_call", ...input },
+      this.router,
+      this.runtimeSession,
+      this.logger,
+    );
     return await result;
   }
 
@@ -82,7 +89,9 @@ class OmpHostToolHarness {
         toolName: "wait_for_agent",
         arguments: { agentId: "child-1" },
       },
-      this.routerInput(),
+      this.router,
+      this.runtimeSession,
+      this.logger,
     );
   }
 
@@ -93,17 +102,19 @@ class OmpHostToolHarness {
   cancelControlledCall(): void {
     handleOmpHostToolRuntimeEvent(
       { type: "host_tool_cancel", id: "cancel-1", targetId: "host-cancel" },
-      this.routerInput(),
+      this.router,
+      this.runtimeSession,
+      this.logger,
     );
   }
 
-  completeControlledCall(result: OttoToolResult): void {
+  completeControlledCall(result: PaseoToolResult): void {
     if (!this.resolveControlledResult) throw new Error("Controlled host tool has not started");
     this.resolveControlledResult(result);
   }
 
   async waitForIdle(): Promise<void> {
-    await waitForOmpHostToolsIdle(this.runtimeSession);
+    await this.router.waitForIdle();
   }
 
   wasControlledCallAborted(): boolean {
@@ -119,21 +130,17 @@ class OmpHostToolHarness {
   }
 
   close(): void {
-    clearOmpHostToolState(this.runtimeSession);
-  }
-
-  private routerInput() {
-    return { runtimeSession: this.runtimeSession, ottoTools: this.catalog, logger: this.logger };
+    this.router.clear();
   }
 }
 
 describe("OMP host tools", () => {
-  test("marks every caller-scoped Otto tool essential for direct invocation", () => {
+  test("marks every caller-scoped Paseo tool essential for direct invocation", () => {
     const catalog = createCatalog([
       {
-        name: "create_chat",
+        name: "create_agent",
         title: "Create agent",
-        description: "Create a Otto agent.",
+        description: "Create a Paseo agent.",
         inputSchema: { initialPrompt: z.string().describe("Prompt for the new agent.") },
         handler: async () => ({ content: [] }),
       },
@@ -146,9 +153,9 @@ describe("OMP host tools", () => {
 
     expect(serializeOmpHostTools(catalog)).toEqual([
       {
-        name: "create_chat",
+        name: "create_agent",
         label: "Create agent",
-        description: "Create a Otto agent.",
+        description: "Create a Paseo agent.",
         loadMode: "essential",
         parameters: expect.objectContaining({ type: "object", required: ["initialPrompt"] }),
       },
@@ -164,8 +171,8 @@ describe("OMP host tools", () => {
   test("routes calls and progress through the typed OMP runtime", async () => {
     const omp = await OmpHostToolHarness.withTools([
       {
-        name: "create_chat",
-        description: "Create a Otto agent.",
+        name: "create_agent",
+        description: "Create a Paseo agent.",
         handler: async (input, context) => {
           context.sendUpdate?.({ content: [{ type: "text", text: "creating" }] });
           return { content: [], structuredContent: { input, agentId: "child-1" } };
@@ -177,16 +184,14 @@ describe("OMP host tools", () => {
       omp.call({
         id: "host-1",
         toolCallId: "tool-1",
-        toolName: "create_chat",
+        toolName: "create_agent",
         arguments: { initialPrompt: "Inspect the bug" },
       }),
     ).resolves.toEqual({
       type: "host_tool_result",
       id: "host-1",
       result: {
-        // Compact JSON: addModelVisibleStructuredContent stopped pretty-printing
-        // so the dump isn't replayed with 2-space indentation every round.
-        content: [{ type: "text", text: expect.stringContaining('"agentId":"child-1"') }],
+        content: [{ type: "text", text: expect.stringContaining('"agentId": "child-1"') }],
         details: { input: { initialPrompt: "Inspect the bug" }, agentId: "child-1" },
       },
     });

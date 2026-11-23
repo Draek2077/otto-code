@@ -1,4 +1,4 @@
-import type { FileVersion, FsFileWriteResult } from "@otto-code/protocol/messages";
+import type { FileVersion, FileWriteResult } from "@getpaseo/protocol/messages";
 
 export type FileEditorStatus = "clean" | "dirty" | "saving" | "conflict" | "error";
 export type FileLineSeparator = "\n" | "\r\n" | "\r";
@@ -29,7 +29,7 @@ export interface FileEditorSession {
     content: string;
     expectedModifiedAt: string;
     expectedRevision?: string;
-  }): Promise<FsFileWriteResult>;
+  }): Promise<FileWriteResult>;
 }
 
 export type FileEditorObservation =
@@ -221,7 +221,7 @@ export class FileEditorModel {
     this.observedWhileSaving = null;
     this.setSnapshot({ ...this.snapshot, status: "saving", error: null });
     const serializedContent = hasBom ? `\uFEFF${content}` : content;
-    let result: FsFileWriteResult;
+    let result: FileWriteResult;
     try {
       result = await this.session.write({
         content: serializedContent,

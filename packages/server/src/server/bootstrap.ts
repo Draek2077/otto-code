@@ -1,79 +1,32 @@
-import { assertWorkspaceAutomationAllowedForWorkspace } from "./workspace-automation-gate.js";
+import { initialRoster } from "@getpaseo/protocol/otto/starter-roster"; // OTTO(agent-teams)
+import { activityPluginId } from "@getpaseo/protocol/otto/activity"; // OTTO(activity)
+import { ActivityStore } from "./otto/activity/store.js"; // OTTO(activity)
+import { metadataRoster } from "./otto/agent-profiles/author.js"; // OTTO(agent-teams)
 import {
-  clearedArchitecturalViewAuthoringLabels,
-  moveChatToWorkspace,
-} from "./agent/agent-workspace-transfer.js";
-import {
-  assertProjectOnline,
-  pathWithinRoot,
-  protectOfflineWorkspaceRecords,
-} from "./project-availability.js";
-import { ProjectRelocationService } from "./project-relocation-service.js";
-import {
-  GoogleConnectorAuthorization,
-  loadGoogleOAuthRegistration,
-  GOOGLE_CONNECTOR_INTEGRATION_ID,
-} from "./connectors/google-connector-authorization.js";
-import { GoogleConnectorService } from "./connectors/google-connector-service.js";
+  OTTO_APP_BASE_URL,
+  OTTO_PASEO_BASE_VERSION,
+  OTTO_URL_SCHEME,
+} from "@getpaseo/protocol/otto/identity";
+import type { PluginRegistries } from "@getpaseo/protocol/plugin-registry";
 import { describeHookWorkspace } from "./plugins/lifecycle/index.js";
 import express from "express";
-import { CommunicationsService } from "./communications/communications-service.js";
-import {
-  getZoomTeamChatAuthorizationMethods,
-  ZoomTeamChatProvider,
-} from "./communications/zoom-team-chat-provider.js";
-import { ZoomTeamChatManagedAuthorizationBroker } from "./communications/zoom-team-chat-managed-authorization.js";
-import { createDaemonCredentialVault } from "./integration-authorization/credential-vault.js";
-import { IntegrationAuthorizationCatalog } from "./integration-authorization/integration-authorization-catalog.js";
-import { IntegrationBrowserAuthorizationService } from "./integration-authorization/browser-authorization-service.js";
-import { FileBackedIntegrationAuthorizationRegistry } from "./integration-authorization/integration-authorization-registry.js";
-import { IntegrationAuthorizationService } from "./integration-authorization/integration-authorization-service.js";
-import { ForgeConnectionStore } from "../services/git-hosting/connection-store.js";
-import { resolveForgeProjectScope } from "../services/git-hosting/project-scope.js";
-import {
-  createConnectedForgeService,
-  validateForgeConnection,
-} from "../services/git-hosting/connection-drivers.js";
-import { withForgeConnections } from "../services/git-hosting/connection-router.js";
-import { createForgeService } from "../services/forge-registry.js";
 import { createServer as createHTTPServer, type IncomingMessage, type ServerResponse } from "http";
 import { constants, existsSync, unlinkSync } from "fs";
-import { open, rm } from "fs/promises";
+import { open, stat } from "fs/promises"; // OTTO(history): retain existing timeline files at startup.
 import { randomUUID } from "node:crypto";
-import { homedir, hostname as getHostname } from "node:os";
+import { createNativeHostBrowser } from "./otto/browser/host/native.js"; // OTTO(browser-host): lazy page/runtime ownership.
+import { OTTO_BROWSER_HOST_ID } from "./otto/browser/host/service.js"; // OTTO(browser-host)
+import { getHostName } from "./host-name.js";
 import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Logger } from "pino";
 import { z } from "zod";
 import { createBranchChangeRouteHandler } from "./script-route-branch-handler.js";
-import { configureDotnetChildEnvironment } from "./process-tree.js";
 
 export type ListenTarget =
   | { type: "tcp"; host: string; port: number }
   | { type: "socket"; path: string }
   | { type: "pipe"; path: string };
-
-const AGENT_MCP_FUTURE_PROTOCOL_VERSION = "2026-07-28";
-const AGENT_MCP_NEGOTIATED_PROTOCOL_VERSION = "2025-11-25";
-
-/**
- * Anthropic's installed agent SDK advertises the next MCP protocol date before
- * the bundled MCP server SDK has added it to its HTTP allowlist. The MCP server
- * itself negotiates its supported 2025-11-25 response correctly, but the Hono
- * adapter reads rawHeaders before that negotiation can happen.
- */
-function normalizeAgentMcpProtocolVersion(request: IncomingMessage): void {
-  if (request.headers["mcp-protocol-version"] !== AGENT_MCP_FUTURE_PROTOCOL_VERSION) return;
-
-  // COMPAT(agentMcpProtocol20260728): added in v0.9.0 on 2026-09-06; remove by
-  // 2027-03-06 once @modelcontextprotocol/sdk accepts this protocol date.
-  request.headers["mcp-protocol-version"] = AGENT_MCP_NEGOTIATED_PROTOCOL_VERSION;
-  for (let index = 0; index < request.rawHeaders.length; index += 2) {
-    if (request.rawHeaders[index]?.toLowerCase() === "mcp-protocol-version") {
-      request.rawHeaders[index + 1] = AGENT_MCP_NEGOTIATED_PROTOCOL_VERSION;
-    }
-  }
-}
 
 function resolveBoundListenTarget(
   listenTarget: ListenTarget,
@@ -110,21 +63,21 @@ export function parseListenString(listen: string): ListenTarget {
   if (listen.startsWith("unix://")) {
     return { type: "socket", path: listen.slice(7) };
   }
-  // 3. Reject Windows absolute drive paths - they are not Unix sockets
+  // 3. Reject Windows absolute drive paths — they are not Unix sockets
   if (WINDOWS_DRIVE_RE.test(listen)) {
     throw new Error(`Invalid listen string (Windows path is not a valid listen target): ${listen}`);
   }
-  // 4. POSIX absolute path (/ or ~) - Unix socket
+  // 4. POSIX absolute path (/ or ~) — Unix socket
   if (listen.startsWith("/") || listen.startsWith("~")) {
     return { type: "socket", path: listen };
   }
-  // 5. Pure numeric - TCP port on 127.0.0.1
+  // 5. Pure numeric — TCP port on 127.0.0.1
   const trimmed = listen.trim();
   if (/^\d+$/.test(trimmed)) {
     const port = parseInt(trimmed, 10);
     return { type: "tcp", host: "127.0.0.1", port };
   }
-  // 6. host:port - TCP
+  // 6. host:port — TCP
   if (listen.includes(":")) {
     const lastColonIdx = listen.lastIndexOf(":");
     const host = listen.slice(0, lastColonIdx);
@@ -139,12 +92,12 @@ export function parseListenString(listen: string): ListenTarget {
   throw new Error(`Invalid listen string: ${listen}`);
 }
 
-function formatListenTarget(listenTarget: ListenTarget | null): string | null {
+export function formatListenTarget(listenTarget: ListenTarget | null): string | null {
   if (!listenTarget) {
     return null;
   }
   if (listenTarget.type === "tcp") {
-    return `${listenTarget.host}:${listenTarget.port}`;
+    return `${formatHostForHttpUrl(listenTarget.host)}:${listenTarget.port}`;
   }
   return listenTarget.path;
 }
@@ -177,61 +130,38 @@ export async function fanOutReconciledWorkspaceUpdates(input: {
 }
 
 import { VoiceAssistantWebSocketServer } from "./websocket-server.js";
-import { createGitHubHostingService } from "../services/git-hosting/github-hosting-service.js";
-import { createGitHostingResolver } from "../services/git-hosting/resolver.js";
-import {
-  createGitHostingProviderForgeAdapter,
-  createGitHostingRouter,
-} from "../services/git-hosting/router.js";
-import { readOttoConfigJson } from "../utils/otto-config-file.js";
-import {
-  createOttoWorktree as createRegisteredOttoWorktree,
-  createLocalCheckoutWorkspace,
-  findOccupyingWorkspaceForCwd,
-} from "./otto-worktree-service.js";
-import { revealScheduleRunWorkspace } from "./schedule-workspace-reveal.js";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
-import { createOttoWorktreeWorkflow } from "./worktree-session.js";
 import { createWorkspaceLabelService } from "./workspace-labels/index.js";
+import { createGitHubService } from "../services/github-service.js";
+import { createPaseoWorktree as createRegisteredPaseoWorktree } from "./paseo-worktree-service.js";
 import { createWorkspaceProvisioningService } from "./session/workspace-provisioning/workspace-provisioning-service.js";
+import { createPaseoWorktreeWorkflow } from "./worktree-session.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
-import { FixedWindowRateLimiter } from "./request-rate-limiter.js";
+import { formatAttachmentContentDisposition } from "./file-download/content-disposition.js";
 import type { OpenAiSpeechProviderConfig } from "./speech/providers/openai/config.js";
 import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.js";
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
-import { createSpeechService } from "./speech/speech-runtime.js";
+import { ManagedSpeechRuntime } from "./otto/speech/managed-runtime.js"; // OTTO(speech): one shared runtime, replacement waits for active sessions.
+import { invokeOttoBuiltin, type OttoBuiltinRoute } from "./otto/plugin-rpc.js"; // OTTO(feature-host)
+import { TerminalHost } from "./otto/terminal/host.js"; // OTTO(terminal)
+import { EditorHost } from "./otto/editor/service.js"; // OTTO(editor)
+import { TerminalEditorHost } from "./otto/editor/terminal.js"; // OTTO(editor)
+import { releaseArchivedEditorWorkspace } from "./otto/editor/workspace-lifecycle.js"; // OTTO(editor)
+import { SpeechHost } from "./otto/speech/host.js"; // OTTO(speech)
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
-import { RetainedTranscriptStore } from "./agent/retained-transcript-store.js";
-import { ChatSearchService } from "./chat-search/service.js";
-import { migrateProfileStorePaths } from "./migrations/profile-store-paths.migration.js";
-import { ProfileStatsStore } from "./agent/profile-stats-store.js";
-import { ProfileMemoryStore } from "./agent/profile-memory/profile-memory-store.js";
-import { ProfileMemoryService } from "./agent/profile-memory/profile-memory-service.js";
-import { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
-import { ProjectKnowledgeStoreResolver } from "./agent/project-knowledge/project-knowledge-store-resolver.js";
-import { ArchitecturalViewsService } from "./architectural-views/architectural-views-service.js";
-import { areEquivalentPaths } from "../utils/path.js";
-import { loadInstructionFiles } from "./agent/context-management/instruction-files.js";
-import { resolveProjectRootForCwd } from "./agent/context-management/context-management-service.js";
-import {
-  ActivityStatsStore,
-  type ActivityIncrementFn,
-} from "./activity-stats/activity-stats-store.js";
-import { UsageLogStore } from "./activity-stats/usage-log-store.js";
+import { ChatSearchService } from "./otto/history/search/service.js"; // OTTO(chat-search)
+import { createOfflineHistoryReader } from "./otto/history/search/offline-history.js"; // OTTO(chat-search)
+import { stopObservedSubagent } from "./otto/observed-subagents/host.js"; // OTTO(observed-subagents)
+import { dispatchSuggestion } from "./otto/suggested-tasks/host.js"; // OTTO(suggested-tasks)
+import { listSearchChats } from "./otto/history/search/host.js"; // OTTO(chat-search)
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
-import { createOttoToolCatalog, type OttoToolHostDependencies } from "./agent/tools/otto-tools.js";
-import { ArtifactService } from "./artifact/artifact-service.js";
-import { ArtifactStoreRegistry } from "./artifact/artifact-store-registry.js";
-import { ArtifactStoreResolver } from "./artifact/artifact-store-resolver.js";
-import { CategoryStorageResolver } from "./category-storage/category-storage-resolver.js";
-import { DevServerManager } from "./preview/dev-server-manager.js";
-import { BrainManager } from "./brain/brain-manager.js";
-import { BrainOpsManager } from "./brain/brain-ops-manager.js";
-import type { OttoToolRuntimeContext } from "./agent/tools/types.js";
-import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
-import { OTTO_BRAIN_PROVIDER_ID } from "./agent/provider-registry.js";
+import {
+  createPaseoToolCatalog,
+  type PaseoToolHostDependencies,
+} from "./agent/tools/paseo-tools.js";
+import type { PaseoToolRuntimeContext } from "./agent/tools/types.js";
 import { createAgentProviderRuntime } from "./agent/provider-runtime.js";
 import { bootstrapWorkspaceRegistries } from "./workspace-registry-bootstrap.js";
 import { WorkspaceReconciliationService } from "./workspace-reconciliation-service.js";
@@ -242,46 +172,18 @@ import {
 } from "./workspace-registry.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { ScheduleService } from "./schedule/service.js";
-import { createWorkflowScheduleTargetRunner } from "./schedule/workflow-target.js";
-import { WorkflowService, toWireRun } from "./workflow/workflow-service.js";
-import { WorkflowRunStore } from "./workflow/workflow-run-store.js";
-import { buildRunSummaryPrompt } from "./workflow/workflow-engine.js";
-import { GraphStore } from "./workflow/graph-store.js";
-import { GraphSharingService } from "./workflow/graph-sharing-service.js";
-import { WorkflowLibraryService } from "./workflow/workflow-library-service.js";
-import { seedStarterGraphs } from "./workflow/starter-graphs.js";
-import { NodeOutputStore } from "./workflow/node-output.js";
-import { PromptTemplateStore } from "./workflow/prompt-template-store.js";
-import { startUserOrchestration } from "./workflow/user-workflow.js";
-import {
-  WORKFLOW_HOST_STORE_ROOT_DIRECTORY,
-  WorkflowStoreRegistry,
-} from "./workflow/workflow-store-registry.js";
-import { seedStarterPromptTemplates } from "./workflow/starter-prompt-templates.js";
-import { createAgentStructuredTextGeneration } from "./session/checkout/git-metadata-generator.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
-import { ConnectorOAuthBroker, type ConnectorAuthStore } from "./connectors/connector-oauth.js";
-import { setConnectorAuthStore } from "./connectors/connector-auth-store.js";
-import {
-  HostedConnectorAuthorization,
-  setHostedConnectorAuthorization,
-} from "./connectors/hosted-connector-authorization.js";
-import { ConnectorToolCatalogService } from "./connectors/connector-tool-catalog.js";
-import {
-  createStartupOrchestrationSkills,
-  SkillMaintenanceStoppedError,
-} from "./orchestration-skills/startup.js";
-import type { SkillTargets } from "./orchestration-skills/internal/operations.js";
-import {
-  DEFAULT_APP_BASE_URL,
-  resolveConfigFromPersisted,
-  type CliConfigOverrides,
-} from "./config.js";
-import { resolveOttoToolPolicy } from "./agent/otto-tool-policy.js";
+import { createOrchestrationSkills } from "./orchestration-skills/index.js";
+import { resolveConfigFromPersisted, type CliConfigOverrides } from "./config.js";
+import { resolvePaseoToolPolicy } from "./agent/paseo-tool-policy.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
 import { DaemonConfigBrowserToolsPolicy } from "./browser-tools/policy.js";
-import { DaemonConfigOttoToolGroupsPolicy } from "./agent/tools/tool-groups-policy.js";
 import { WorkspaceGitServiceImpl } from "./workspace-git-service.js";
+import { fileHistoryHost } from "./otto/workspace-git/file-history-host.js"; // OTTO(file-history)
+import { releaseMovedViewAuthor } from "./otto/workspace-git/view-authoring.js"; // OTTO(workspace-lifecycle)
+import { createOttoWorkspaceLifecycle } from "./otto/workspace-git/lifecycle.js"; // OTTO(workspace-lifecycle)
+import { WorkspaceGitHost, initialGitFetchPolicy } from "./otto/workspace-git/host.js"; // OTTO(git-fetch)
+import { GitFetchSettingsStore } from "./otto/workspace-git/settings.js"; // OTTO(git-fetch)
 import { resolveWorkspaceIdForPath } from "./resolve-workspace-id-for-path.js";
 import {
   archiveByScope,
@@ -300,68 +202,42 @@ import type { PushNotificationSender } from "./push/index.js";
 import { getOrCreateServerId } from "./server-id.js";
 import { resolveDaemonVersion } from "./daemon-version.js";
 import type { AgentClient, AgentProvider } from "./agent/agent-sdk-types.js";
-import {
-  DEFAULT_MUTABLE_BRAIN_CONFIG,
-  MutableBrainConfigSchema,
-} from "@otto-code/protocol/messages";
-import type { OttoToolGroup } from "@otto-code/protocol/provider-config";
-import { STALL_GUARD_DEFAULT_THRESHOLD } from "@otto-code/protocol/provider-config";
-import {
-  DEFAULT_AGENT_PROFILES,
-  DEFAULT_AGENT_TEAMS,
-} from "@otto-code/protocol/default-personalities";
 import type {
   AgentProfile,
-  FirstAgentContext,
-  TerminalProfile,
   AgentSkillSelection,
+  FirstAgentContext,
   PluginSource,
-} from "@otto-code/protocol/messages";
+  TerminalProfile,
+} from "@getpaseo/protocol/messages";
 import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
-import {
-  loadPersistedConfig,
-  type PersistedConfig,
-  type PersistedAgentPersonality,
-  type PersistedAgentTeam,
-  type PersistedModelTierOverride,
-  type PersistedModelVisibilityOverride,
-  type PersistedSavedProviderEndpoint,
-} from "./persisted-config.js";
-import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
-import {
-  DEFAULT_LOCAL_STT_MODEL,
-  DEFAULT_LOCAL_TTS_MODEL,
-  getLocalTtsDefaultSpeakerId,
-  resolveLocalTtsVoiceName,
-} from "./speech/providers/local/models.js";
+import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
-import {
-  DEFAULT_ATTACHMENT_IMAGE_MAX_AGE_DAYS,
-  DEFAULT_ATTACHMENT_IMAGE_MAX_TOTAL_MB,
-} from "./agent/providers/provider-image-output.js";
-import { startMaterializedImageHousekeeping } from "./materialized-image-housekeeping.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
 import { createScriptStatusEmitter } from "./script-status-projection.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
+import { createWorkspaceScriptsService } from "./session/workspace-scripts/workspace-scripts-service.js";
+import { assertWorkspaceAutomationAllowedForWorkspace } from "./workspace-automation-gate.js";
+import { spawnWorkspaceScript } from "./worktree-bootstrap.js";
 import {
   createManagedProcessRegistry,
   createSystemManagedProcessTable,
   type ManagedProcessRegistry,
 } from "./managed-processes/managed-processes.js";
 import { terminateWithTreeKill } from "../utils/tree-kill.js";
+import { withTimeout } from "../utils/promise-timeout.js";
 import { isHostnameAllowed, type HostnamesConfig } from "./hostnames.js";
 import {
   createRequireBearerMiddleware,
   isAgentMcpRequestAuthorized,
   type DaemonAuthConfig,
 } from "./auth.js";
+import { deleteLocalCredential, writeLocalCredential } from "./local-credential.js";
 import { createWebUiMiddleware } from "./web-ui.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
-import { AgentAutoTitle } from "./agent/agent-auto-title.js";
 import { createGitMutationService } from "./session/git-mutation/git-mutation-service.js";
 import { workspaceIdsOnCheckout } from "./workspace-directory.js";
 import { configureGitProcessPolicy } from "../utils/run-git-command.js";
@@ -373,18 +249,54 @@ import {
 } from "./agent/create-agent/create.js";
 import { archiveAgentCommand, cancelAgentRunCommand } from "./agent/lifecycle-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
-// DISABLED(hub): these three specifiers used to read "./hub/...". They now
-// resolve to inert stand-ins so `server/hub/**` never enters the module graph.
-// The wiring below is left byte-identical to upstream on purpose, so their
-// changes to it keep auto-merging. See hub-disabled.ts for the whole rationale.
 import {
   HubRelationshipController,
   type HubRelationshipClock,
   type HubRelationshipRetryPolicy,
-} from "./hub-disabled.js";
-import { DirectHubRelationshipRemote, type HubRelationshipRemote } from "./hub-disabled.js";
-import { DaemonExecutions } from "./hub-disabled.js";
+} from "./hub/relationship-controller.js";
+import {
+  DirectHubRelationshipRemote,
+  type HubRelationshipRemote,
+} from "./hub/relationship-remote.js";
+import { DaemonExecutions } from "./hub/daemon-executions.js";
 import { PluginService } from "./plugins/index.js";
+import { BrainDaemonService } from "./otto/brain/service.js"; // OTTO(brain-host): one controller for all app consumers.
+import { KanbanDaemonService } from "./otto/kanban/service.js"; // OTTO(kanban): host-owned projects and forge transport.
+import { createRetainedKanbanToolPolicy } from "./otto/kanban/tool-policy.js"; // OTTO(kanban): inert, read-only retained tool ceilings.
+import { createHostIntegrations } from "../services/otto/integrations/host.js"; // OTTO(integration): shared daemon-owned credentials.
+import { prepareConnectorTools } from "../services/otto/connectors/catalog.js"; // OTTO(connectors)
+import { bitbucketProjectForCwd } from "../services/otto/bitbucket/project.js"; // OTTO(bitbucket)
+import { KnowledgeDaemonService } from "./otto/project-knowledge/host.js"; // OTTO(knowledge)
+import { contextAgents } from "./otto/context-management/agents.js"; // OTTO(context-management)
+import { ContextManagementService } from "./otto/context-management/host.js"; // OTTO(context-management)
+import { BrowserHistoryHost } from "./otto/browser/history-host.js"; // OTTO(browser-history): canonical workspace/project scope.
+import { PreviewHost } from "./otto/preview/host.js"; // OTTO(preview)
+import { PreviewManager } from "./otto/preview/manager.js"; // OTTO(preview)
+import { createPreviewProcessPorts, previewProtectedPorts } from "./otto/preview/process-ports.js"; // OTTO(preview)
+import { createRetainedToolPolicy } from "./otto/retained-tool-policy.js"; // OTTO(preview)
+import { ArtifactDaemonService } from "./otto/artifacts/service.js"; // OTTO(artifacts): one daemon owner for UI and tools.
+import { ArchitecturalViewsService } from "./otto/architectural-views/service.js"; // OTTO(architectural-views): one project-bound owner.
+import { createViewAuthoring } from "./otto/architectural-views/authoring.js"; // OTTO(architectural-views): normal Paseo chat creation and first-turn dispatch.
+import { documentBuiltinAvailable } from "./otto/architectural-views/capabilities.js"; // OTTO(architectural-views): document owner/asset readiness stays outside startup branching.
+import { createWorkflowComposition } from "./otto/workflows/composition.js"; // OTTO(workflows): isolated owner over existing Paseo sessions.
+import { createScheduleComposition } from "./otto/schedules/composition.js"; // OTTO(schedules): target/storage ports for Paseo's single scheduler.
+import { ScheduleNativePolicy } from "./otto/schedules/native-policy.js"; // OTTO(schedules): reuse canonical provider/workspace policy.
+import { createScheduleApi } from "./otto/schedules/api.js"; // OTTO(schedules): one owner for authenticated app/CLI/MCP actions.
+import { createWorkflowArtifactPort } from "./otto/workflows/artifact-source.js"; // OTTO(workflows): live ownership, not editable labels.
+import { BrowserAdmissions } from "./otto/browser/admission.js"; // OTTO(browser-admission)
+import { lookup as lookupBrowserDestination } from "node:dns/promises"; // OTTO(browser-admission): only explicit navigation resolves DNS.
+import { createContextTextGeneration } from "./otto/context-management/text-generation.js"; // OTTO(context-compaction): provider-owned, tool-free generation only.
+import { createNativeContextGeneration } from "./otto/context-management/native-generation.js"; // OTTO(context-generation): native enforcement, no AgentManager chat registration.
+import { resolveStructuredGenerationProviders } from "./agent/structured-generation-providers.js"; // OTTO(context-compaction): reuse canonical model selection without launching a normal agent.
+import { nativeContextInspector } from "./otto/context-management/native-host.js"; // OTTO(context-management): read-only native conventions.
+import { createKnowledgeGenerationSource } from "./otto/project-knowledge/generation.js"; // OTTO(knowledge): use the existing provider-neutral generation boundary.
+import { roleResolver } from "./otto/agent-profiles/role-selection.js"; // OTTO(role-pickers)
+import { ProfileMemoryStore } from "./otto/profile-memory/profile-memory-store.js"; // OTTO(profile-memory)
+import { ProfileMemoryService } from "./otto/profile-memory/profile-memory-service.js"; // OTTO(profile-memory)
+import { createArtifactGeneration } from "./otto/artifacts/generation.js"; // OTTO(artifacts): cancellable provider-owned utility sessions.
+import { createArtifactDataGeneration } from "./otto/artifacts/data-generation.js"; // OTTO(schedules): JSON-only updates, never HTML regeneration.
+import type { ArtifactCompletionPorts } from "./otto/artifacts/completion.js";
+import { BuiltinPluginLoader } from "./plugins/builtin/index.js";
 import { ManagedPluginSources } from "./plugins/managed-source.js";
 
 const MCP_DEBUG_BATCH_LIMIT = 10;
@@ -511,18 +423,18 @@ function describeMcpDebugPayload(value: unknown): Record<string, unknown> {
   };
 }
 
-export type OttoOpenAIConfig = OpenAiSpeechProviderConfig;
-export type OttoLocalSpeechConfig = LocalSpeechProviderConfig;
+export type PaseoOpenAIConfig = OpenAiSpeechProviderConfig;
+export type PaseoLocalSpeechConfig = LocalSpeechProviderConfig;
 
-export interface OttoSpeechSttLanguages {
+export interface PaseoSpeechSttLanguages {
   dictation: string;
   voice: string;
 }
 
-export interface OttoSpeechConfig {
+export interface PaseoSpeechConfig {
   providers: RequestedSpeechProviders;
-  sttLanguages?: OttoSpeechSttLanguages;
-  local?: OttoLocalSpeechConfig;
+  sttLanguages?: PaseoSpeechSttLanguages;
+  local?: PaseoLocalSpeechConfig;
 }
 
 export type DaemonLifecycleIntent =
@@ -539,14 +451,11 @@ export type DaemonLifecycleIntent =
       reason: string;
     };
 
-export interface OttoDaemonConfig {
+export interface PaseoDaemonConfig {
   listen: string;
-  /** True when `listen` was defaulted to 0.0.0.0 because the daemon detected it's running under WSL. */
-  listenAutoWidenedForWsl?: boolean;
+  paseoHome: string;
   daemonVersion?: string;
-  /** True when the desktop app owns this daemon's lifecycle rather than the CLI. */
   desktopManaged?: boolean;
-  ottoHome: string;
   worktreesRoot?: string;
   corsAllowedOrigins: string[];
   allowedHosts?: HostnamesConfig;
@@ -554,26 +463,7 @@ export interface OttoDaemonConfig {
   trustedProxies?: true | string[];
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
-  /** Otto tool-group allowlist for the MCP path. undefined = all groups enabled. */
-  mcpToolGroups?: OttoToolGroup[];
   browserToolsEnabled?: boolean;
-  /**
-   * Daemon-wide agent behavior toggles, honoured by providers whose launch context supports
-   * behavior injection. undefined fields = default (on).
-   *
-   * Deliberately not named after a provider. The agent-hook tests assert that this file mentions
-   * no provider id at all, so that bootstrap stays generic and specifics live in the adapters -
-   * which means even a comment naming one fails the build.
-   */
-  agentBehaviors?: {
-    promptSuggestions?: boolean;
-    agentProgressSummaries?: boolean;
-    notifyOnFinishDefault?: boolean;
-    defaultSendBehavior?: "interrupt" | "steer" | "queue";
-    todoNudge?: boolean;
-    todoReconcileOnIdle?: boolean;
-    stallGuardThreshold?: number;
-  };
   git?: {
     maxProcessesPerSecond: number;
     maxProcessConcurrency: number;
@@ -583,9 +473,12 @@ export interface OttoDaemonConfig {
   appendSystemPrompt?: string;
   terminalProfiles?: TerminalProfile[];
   agentProfiles?: AgentProfile[];
+  agentTeams?: MutableDaemonConfig["agentTeams"]; // OTTO(agent-teams)
   skillSelection?: AgentSkillSelection;
   pluginsEnabled?: boolean;
   plugins?: Record<string, PluginSource>;
+  pluginRegistries?: PluginRegistries;
+  pluginRegistryUrl?: string;
   staticDir: string;
   mcpDebug: boolean;
   isDev?: boolean;
@@ -607,8 +500,8 @@ export interface OttoDaemonConfig {
   };
   appBaseUrl?: string;
   auth?: DaemonAuthConfig;
-  openai?: OttoOpenAIConfig;
-  speech?: OttoSpeechConfig;
+  openai?: PaseoOpenAIConfig;
+  speech?: PaseoSpeechConfig;
   voiceLlmProvider?: AgentProvider | null;
   voiceLlmProviderExplicit?: boolean;
   voiceLlmModel?: string | null;
@@ -622,20 +515,7 @@ export interface OttoDaemonConfig {
       model?: string;
       thinkingOptionId?: string;
     }>;
-    enabled?: boolean;
-    preferWriterPersonalities?: boolean;
   };
-  agentPersonalities?: {
-    personalities?: PersistedAgentPersonality[];
-  };
-  agentTeams?: {
-    teams?: PersistedAgentTeam[];
-    activeTeamId?: string | null;
-    projectDefaults?: Record<string, string>;
-  };
-  modelTierOverrides?: PersistedModelTierOverride[];
-  modelVisibilityOverrides?: PersistedModelVisibilityOverride[];
-  savedProviderEndpoints?: PersistedSavedProviderEndpoint[];
   providerOverrides?: Record<string, ProviderOverride>;
   log?: PersistedConfig["log"];
   onLifecycleIntent?: (intent: DaemonLifecycleIntent) => void;
@@ -650,8 +530,8 @@ export interface OttoDaemonConfig {
   };
 }
 
-export interface OttoDaemon {
-  config: OttoDaemonConfig;
+export interface PaseoDaemon {
+  config: PaseoDaemonConfig;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   terminalManager: TerminalManager;
@@ -661,10 +541,13 @@ export interface OttoDaemon {
   start(): Promise<void>;
   stop(): Promise<void>;
   getListenTarget(): ListenTarget | null;
+  getServerId(): string;
 }
 
-export interface OttoDaemonDependencies {
-  resolveSkillTargets?: () => SkillTargets;
+export interface PaseoDaemonDependencies {
+  // OTTO(paseo-version): versioned compatibility hosts inject the plugin API separately.
+  pluginApiVersion?: string;
+  builtinPlugins?: BuiltinPluginLoader;
   hubRelationshipRemote?: HubRelationshipRemote;
   hubRelationshipClock?: HubRelationshipClock;
   hubRelationshipRetryPolicy?: HubRelationshipRetryPolicy;
@@ -675,8 +558,12 @@ export interface OttoDaemonDependencies {
   };
 }
 
+function resolveBuiltinPluginLoader(dependencies: PaseoDaemonDependencies): BuiltinPluginLoader {
+  return dependencies.builtinPlugins ?? new BuiltinPluginLoader();
+}
+
 function createBootstrapManagedProcessRegistry(
-  config: Pick<OttoDaemonConfig, "ottoHome" | "managedProcesses">,
+  config: Pick<PaseoDaemonConfig, "paseoHome" | "managedProcesses">,
   logger: Logger,
 ): ManagedProcessRegistry {
   if (config.managedProcesses) {
@@ -684,7 +571,7 @@ function createBootstrapManagedProcessRegistry(
   }
 
   return createManagedProcessRegistry({
-    ottoHome: config.ottoHome,
+    paseoHome: config.paseoHome,
     processTable: createSystemManagedProcessTable(),
     terminateProcess: terminateWithTreeKill,
     logger,
@@ -701,412 +588,47 @@ async function reconcileManagedProcessLedger(
   }
 }
 
-function mountWebUi(app: express.Application, config: OttoDaemonConfig, logger: Logger): void {
+function mountWebUi(app: express.Application, config: PaseoDaemonConfig, logger: Logger): void {
   app.use(
     createWebUiMiddleware({
       enabled: config.webUi?.enabled ?? false,
       distDir: config.webUi?.distDir ?? null,
-      label: getHostname(),
+      label: getHostName(),
       logger,
     }),
   );
 }
 
-function resolveExpressTrustProxySetting(config: OttoDaemonConfig): true | string[] {
+function resolveExpressTrustProxySetting(config: PaseoDaemonConfig): true | string[] {
   return config.trustedProxies ?? ["loopback"];
 }
 
-interface InitialMutableSttInput {
-  provider: string;
-  localModel: string | undefined;
-  openaiModel: string | undefined;
-  language: string | undefined;
-}
+function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDaemonConfig {
+  const providers = config.providerOverrides ?? {};
 
-function initialMutableSttConfig(input: InitialMutableSttInput): {
-  provider: string;
-  model?: string;
-  language?: string;
-} {
-  const model = input.provider === "local" ? input.localModel : input.openaiModel;
-  return {
-    provider: input.provider,
-    ...(model ? { model } : {}),
-    ...(input.language ? { language: input.language } : {}),
-  };
-}
-
-interface InitialMutableTtsInput {
-  provider: string;
-  local: { model: string; voice: string | undefined; speed: number | undefined };
-  openai: { model: string | undefined; voice: string | undefined };
-}
-
-function initialMutableTtsConfig(input: InitialMutableTtsInput): {
-  provider: string;
-  model?: string;
-  voice?: string;
-  speed?: number;
-} {
-  if (input.provider !== "local") {
-    return {
-      provider: input.provider,
-      ...(input.openai.model ? { model: input.openai.model } : {}),
-      ...(input.openai.voice ? { voice: input.openai.voice } : {}),
-    };
-  }
-  return {
-    provider: input.provider,
-    model: input.local.model,
-    ...(input.local.voice ? { voice: input.local.voice } : {}),
-    ...(input.local.speed !== undefined ? { speed: input.local.speed } : {}),
-  };
-}
-
-interface InitialMutableSpeechInputs {
-  requested: RequestedSpeechProviders | undefined;
-  localModels: LocalSpeechProviderConfig["models"] | undefined;
-  openai: OttoOpenAIConfig | undefined;
-  languages: { dictation: string | undefined; voice: string | undefined };
-}
-
-function collectInitialMutableSpeechInputs(config: OttoDaemonConfig): InitialMutableSpeechInputs {
-  return {
-    requested: config.speech?.providers,
-    localModels: config.speech?.local?.models,
-    openai: config.openai,
-    languages: {
-      dictation: config.speech?.sttLanguages?.dictation,
-      voice: config.speech?.sttLanguages?.voice,
+  const initialConfig: MutableDaemonConfig = {
+    relay: { enabled: config.relayEnabled ?? true },
+    mcp: {
+      enabled: config.mcpEnabled ?? true,
+      injectIntoAgents: config.mcpInjectIntoAgents ?? true,
     },
-  };
-}
-
-function initialMutableDictationSection(inputs: InitialMutableSpeechInputs) {
-  return {
-    enabled: inputs.requested?.dictationStt.enabled !== false,
-    stt: initialMutableSttConfig({
-      provider: inputs.requested?.dictationStt.provider ?? "local",
-      localModel: inputs.localModels?.dictationStt ?? DEFAULT_LOCAL_STT_MODEL,
-      openaiModel: inputs.openai?.stt?.model,
-      language: inputs.languages.dictation,
-    }),
-  };
-}
-
-function resolveInitialLocalTtsSelection(
-  localModels: LocalSpeechProviderConfig["models"] | undefined,
-): { model: string; voice: string | undefined; speed: number | undefined } {
-  const model = localModels?.voiceTts ?? DEFAULT_LOCAL_TTS_MODEL;
-  const voice = resolveLocalTtsVoiceName(
-    model,
-    localModels?.voiceTtsSpeakerId ?? getLocalTtsDefaultSpeakerId(model),
-  );
-  return { model, voice, speed: localModels?.voiceTtsSpeed };
-}
-
-function initialMutableVoiceModeSection(inputs: InitialMutableSpeechInputs) {
-  const voiceTtsEnabled = inputs.requested?.voiceTts.enabled !== false;
-  const voiceSttEnabled = inputs.requested?.voiceStt.enabled !== false;
-  return {
-    enabled: voiceTtsEnabled || voiceSttEnabled,
-    stt: initialMutableSttConfig({
-      provider: inputs.requested?.voiceStt.provider ?? "local",
-      localModel: inputs.localModels?.voiceStt ?? DEFAULT_LOCAL_STT_MODEL,
-      openaiModel: inputs.openai?.stt?.model,
-      language: inputs.languages.voice,
-    }),
-    tts: initialMutableTtsConfig({
-      provider: inputs.requested?.voiceTts.provider ?? "local",
-      local: resolveInitialLocalTtsSelection(inputs.localModels),
-      openai: { model: inputs.openai?.tts?.model, voice: inputs.openai?.tts?.voice },
-    }),
-  };
-}
-
-// The mutable speech section mirrors the resolved speech config so clients see
-// effective values (defaults included), not just what config.json happens to pin.
-function createInitialMutableSpeechConfig(
-  config: OttoDaemonConfig,
-): NonNullable<MutableDaemonConfig["speech"]> {
-  const inputs = collectInitialMutableSpeechInputs(config);
-  // Only the key stored in config.json is echoed to clients - an env-only key
-  // (OPENAI_API_KEY) stays out of the mutable config so unrelated speech
-  // patches can never copy it onto disk.
-  const persistedOpenAiApiKey = loadPersistedConfig(config.ottoHome).providers?.openai?.apiKey;
-  return {
-    dictation: initialMutableDictationSection(inputs),
-    voiceMode: initialMutableVoiceModeSection(inputs),
-    ...(persistedOpenAiApiKey ? { openai: { apiKey: persistedOpenAiApiKey } } : {}),
-  };
-}
-
-// undefined mcpToolGroups = all groups enabled; only carry an explicit allowlist.
-/**
- * The launch policy that `reload()` can apply live.
- *
- * Each of these reads back out through `PERSISTED_TO_MUTABLE_PATH`, so a field
- * left off the mutable config makes an edit to it report as "not applied"
- * rather than being applied or flagged restart-required.
- */
-function buildInitialReloadableLaunchPolicy(
-  config: OttoDaemonConfig,
-): Pick<MutableDaemonConfig, "cors" | "trustedProxies" | "git" | "app"> &
-  Partial<Pick<MutableDaemonConfig, "hostnames" | "catalogRefreshTimeoutMs">> {
-  return {
     ...(config.hostnames !== undefined ? { hostnames: config.hostnames } : {}),
     cors: { allowedOrigins: config.corsAllowedOrigins },
     trustedProxies: config.trustedProxies ?? ["loopback"],
     git: config.git ?? resolveGitProcessPolicy({ env: process.env }),
-    app: { baseUrl: config.appBaseUrl ?? DEFAULT_APP_BASE_URL },
+    app: { baseUrl: config.appBaseUrl ?? OTTO_APP_BASE_URL /* OTTO(identity) */ },
     ...(config.providerCatalogRefreshTimeoutMs !== undefined
       ? { catalogRefreshTimeoutMs: config.providerCatalogRefreshTimeoutMs }
       : {}),
-  };
-}
-
-function buildInitialMcpSection(config: OttoDaemonConfig): MutableDaemonConfig["mcp"] {
-  return {
-    // Reloadable, so it has to be on the mutable config for `reload()` to see
-    // an edit to it as applied rather than restart-required.
-    enabled: config.mcpEnabled ?? true,
-    injectIntoAgents: config.mcpInjectIntoAgents ?? true,
-    ...(config.mcpToolGroups !== undefined ? { toolGroups: config.mcpToolGroups } : {}),
-  };
-}
-
-function buildInitialAgentBehaviors(
-  config: OttoDaemonConfig,
-): MutableDaemonConfig["agentBehaviors"] {
-  return {
-    promptSuggestions: config.agentBehaviors?.promptSuggestions ?? true,
-    agentProgressSummaries: config.agentBehaviors?.agentProgressSummaries ?? true,
-    notifyOnFinishDefault: config.agentBehaviors?.notifyOnFinishDefault ?? true,
-    defaultSendBehavior: config.agentBehaviors?.defaultSendBehavior,
-    todoNudge: config.agentBehaviors?.todoNudge ?? true,
-    todoReconcileOnIdle: config.agentBehaviors?.todoReconcileOnIdle ?? true,
-    stallGuardThreshold:
-      config.agentBehaviors?.stallGuardThreshold ?? STALL_GUARD_DEFAULT_THRESHOLD,
-  };
-}
-
-/**
- * Retention for the images agents materialize (docs/attachment-lifecycle.md).
- * Host-level like the store it governs, and read fresh on every sweep, so an
- * edit takes effect on the next pass rather than at the next daemon restart.
- */
-function buildInitialAttachmentImageRetention(persistedConfig: PersistedConfig): {
-  attachmentImageMaxAgeDays: number;
-  attachmentImageMaxTotalMb: number;
-} {
-  return {
-    attachmentImageMaxAgeDays:
-      persistedConfig.daemon?.attachmentImageMaxAgeDays ?? DEFAULT_ATTACHMENT_IMAGE_MAX_AGE_DAYS,
-    attachmentImageMaxTotalMb:
-      persistedConfig.daemon?.attachmentImageMaxTotalMb ?? DEFAULT_ATTACHMENT_IMAGE_MAX_TOTAL_MB,
-  };
-}
-
-function buildInitialTerminalPreferences(
-  persistedConfig: PersistedConfig,
-): Pick<
-  MutableDaemonConfig,
-  "terminalTitleMode" | "terminalTitleIncludePaths" | "defaultTerminalShell"
-> {
-  const daemon = persistedConfig.daemon;
-  return {
-    ...(daemon?.terminalTitleMode !== undefined
-      ? { terminalTitleMode: daemon.terminalTitleMode }
-      : {}),
-    ...(daemon?.terminalTitleIncludePaths !== undefined
-      ? { terminalTitleIncludePaths: daemon.terminalTitleIncludePaths }
-      : {}),
-    ...(daemon?.defaultTerminalShell !== undefined
-      ? { defaultTerminalShell: daemon.defaultTerminalShell }
-      : {}),
-  };
-}
-
-function buildInitialMetadataGeneration(
-  config: OttoDaemonConfig,
-): MutableDaemonConfig["metadataGeneration"] {
-  return {
-    providers: config.metadataGeneration?.providers ?? [],
-    enabled: config.metadataGeneration?.enabled ?? true,
-    preferWriterPersonalities: config.metadataGeneration?.preferWriterPersonalities ?? false,
-  };
-}
-
-/**
- * "Microsoft .NET Solution Management" - off by default, and a **separate row** from `lsp` rather
- * than a member of it. The Solution view spawns a process and evaluates MSBuild, so it is opted
- * into; and turning C# code intelligence off does not turn this off, because the Language Server
- * Protocol has no project-structure request for it to have been built on.
- *
- * Only `enabled` round-trips through disk. The caps are daemon policy, not a user preference:
- * persisting them would freeze today's defaults into every existing install.
- */
-function buildInitialDotnetSolutionManagement(
-  persistedConfig: PersistedConfig,
-): MutableDaemonConfig["dotnetSolutionManagement"] {
-  return {
-    enabled: persistedConfig.daemon?.dotnetSolutionManagement?.enabled ?? false,
-    maxRunningProbes: 2,
-    idleMinutes: 10,
-  };
-}
-
-/**
- * The local AI host (otto-brain) projection round-trips config.json ⇄ mutable
- * config. Absent on disk reads as the schema default (OFF). The brain's own
- * config.json is the source of truth on disk; this is only the editable
- * projection the settings UI reads and the daemon writes through.
- */
-function buildInitialBrainConfig(persistedConfig: PersistedConfig): MutableDaemonConfig["brain"] {
-  const persistedBrain = persistedConfig.daemon?.brain;
-  if (persistedBrain === undefined) {
-    return DEFAULT_MUTABLE_BRAIN_CONFIG;
-  }
-  return MutableBrainConfigSchema.parse(persistedBrain);
-}
-
-function buildInitialGitFetchConfig(
-  persistedConfig: PersistedConfig,
-): NonNullable<MutableDaemonConfig["gitFetch"]> {
-  return {
-    enabled: persistedConfig.daemon?.gitFetch?.enabled ?? true,
-    intervalSeconds: persistedConfig.daemon?.gitFetch?.intervalSeconds ?? 180,
-  };
-}
-
-type MutableSavedProviderEndpoint = MutableDaemonConfig["savedProviderEndpoints"][number];
-
-function withSavedEndpointApiKey(
-  endpoint: PersistedSavedProviderEndpoint,
-): MutableSavedProviderEndpoint {
-  return { ...endpoint, apiKey: endpoint.apiKey ?? "" };
-}
-
-// The one stored roster, labelled "Personalities" in the UI. A host that has
-// carried neither an agentProfiles section nor a legacy agentPersonalities one
-// (undefined, not an empty roster the user cleared) is seeded with the shipped
-// starter team. A pre-convergence host reads its legacy roster here so the
-// in-memory config is correct on the very first tick; the durable copy is made
-// by importLegacyPersonalitiesIfNeeded.
-// COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
-function buildInitialAgentProfiles(config: OttoDaemonConfig): AgentProfile[] {
-  if (config.agentProfiles !== undefined) {
-    return config.agentProfiles;
-  }
-  if (config.agentPersonalities !== undefined) {
-    return config.agentPersonalities.personalities ?? [];
-  }
-  return [...DEFAULT_AGENT_PROFILES];
-}
-
-function buildInitialAgentTeams(config: OttoDaemonConfig): MutableDaemonConfig["agentTeams"] {
-  return {
-    // A missing section receives the inactive starter team. Persisting the seed
-    // separately makes clearing the roster stick on subsequent starts.
-    teams:
-      config.agentTeams === undefined ? [...DEFAULT_AGENT_TEAMS] : (config.agentTeams.teams ?? []),
-    ...(config.agentTeams?.activeTeamId !== undefined
-      ? { activeTeamId: config.agentTeams.activeTeamId }
-      : {}),
-    ...(config.agentTeams?.projectDefaults !== undefined
-      ? { projectDefaults: config.agentTeams.projectDefaults }
-      : {}),
-  };
-}
-
-function buildInitialProjectStorageConfig(
-  persistedConfig: PersistedConfig,
-): Pick<MutableDaemonConfig, "projectKnowledge" | "projectArtifacts" | "projectWorkflows"> {
-  return {
-    projectKnowledge: persistedConfig.daemon?.projectKnowledge ?? {
-      defaultStoreLocation: "repository",
-    },
-    projectArtifacts: persistedConfig.daemon?.projectArtifacts ?? {
-      defaultStoreLocation: "repository",
-    },
-    projectWorkflows: persistedConfig.daemon?.projectWorkflows ?? {
-      defaultStoreLocation: "repository",
-    },
-  };
-}
-
-function buildInitialLspConfig(persistedConfig: PersistedConfig): MutableDaemonConfig["lsp"] {
-  const lsp = persistedConfig.daemon?.lsp;
-  return {
-    enabled: lsp?.enabled ?? true,
-    languages: lsp?.languages ?? {},
-    ...(lsp?.csharpProjectScope ? { csharpProjectScope: lsp.csharpProjectScope } : {}),
-    maxRunningServers: lsp?.maxRunningServers ?? 6,
-    idleMinutes: lsp?.idleMinutes ?? 10,
-    backgroundIdleMinutes: lsp?.backgroundIdleMinutes ?? 2,
-  };
-}
-
-function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaemonConfig {
-  const providers = config.providerOverrides ?? {};
-
-  // Per-project git hosting credentials round-trip config.json ⇄ mutable
-  // config the same way the speech OpenAI key does.
-  const persistedConfig = loadPersistedConfig(config.ottoHome);
-  const persistedGitHosting = persistedConfig.gitHosting;
-
-  const initialConfig: MutableDaemonConfig = {
-    relay: { enabled: config.relayEnabled ?? true },
-    mcp: buildInitialMcpSection(config),
-    ...buildInitialReloadableLaunchPolicy(config),
     browserTools: { enabled: config.browserToolsEnabled ?? false },
-    // On by default and safe: nothing spawns until a code-intelligence action needs
-    // a language in a workspace, so an unused language costs nothing.
-    lsp: buildInitialLspConfig(persistedConfig),
-    dotnetSolutionManagement: buildInitialDotnetSolutionManagement(persistedConfig),
-    // Local AI host (otto-brain) section. Round-trips from config.json; the
-    // brain's own config.json is the source of truth and the daemon writes
-    // changes through once brainControl is exercised (see MutableBrainConfigSchema).
-    brain: buildInitialBrainConfig(persistedConfig),
-    agentBehaviors: buildInitialAgentBehaviors(config),
     providers,
-    metadataGeneration: buildInitialMetadataGeneration(config),
+    metadataGeneration: {
+      ...config.metadataGeneration,
+      providers: config.metadataGeneration?.providers ?? [],
+    },
     autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
-    gitFetch: buildInitialGitFetchConfig(persistedConfig),
-    // Host-level client git-action policy; only the app consumes it, so it
-    // rides the daemon config round-trip without a field on OttoDaemonConfig.
-    hideMergeIntoBaseAction: persistedConfig.daemon?.hideMergeIntoBaseAction ?? false,
-    ...buildInitialAttachmentImageRetention(persistedConfig),
     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
-    ...buildInitialTerminalPreferences(persistedConfig),
     appendSystemPrompt: config.appendSystemPrompt ?? "",
-    speech: createInitialMutableSpeechConfig(config),
-    ...(persistedGitHosting ? { gitHosting: persistedGitHosting } : {}),
-    agentProfiles: buildInitialAgentProfiles(config),
-    // COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
-    // Retired section, kept on the wire so a pre-convergence client still
-    // parses server_info. Nothing reads or writes it any more; the roster lives
-    // in agentProfiles. An old client sees an empty roster rather than a stale
-    // one, which is the feature contract's "upgrade the host" degradation.
-    agentPersonalities: { personalities: [] },
-    agentTeams: buildInitialAgentTeams(config),
-    // User per-model tier tags round-trip config.json ⇄ mutable config; absent
-    // on disk reads as an empty tag set (all tiers inferred at ingest).
-    modelTierOverrides: config.modelTierOverrides ?? [],
-    // Model picker visibility is host-owned and defaults to showing every
-    // selectable model when no policy has been stored yet.
-    modelVisibilityOverrides: config.modelVisibilityOverrides ?? [],
-    // Remembered provider endpoints round-trip config.json ⇄ mutable config;
-    // absent on disk reads as "nothing remembered yet". A hand-edited entry may
-    // omit apiKey (the wire shape requires the field), so it reads as "saved,
-    // no credential" rather than dropping the endpoint.
-    savedProviderEndpoints: (config.savedProviderEndpoints ?? []).map(withSavedEndpointApiKey),
-    // Connector registry round-trips config.json ⇄ mutable config; absent on
-    // disk reads as "no connectors configured yet".
-    connectors: persistedConfig.daemon?.connectors ?? [],
-    // Each durable category has an independent default. Existing hosts retain
-    // the historical repository location until a user explicitly changes it.
-    ...buildInitialProjectStorageConfig(persistedConfig),
     pluginsEnabled: config.pluginsEnabled ?? false,
     plugins: config.plugins ?? {},
     skills: { selection: config.skillSelection },
@@ -1116,37 +638,29 @@ function createInitialMutableDaemonConfig(config: OttoDaemonConfig): MutableDaem
     initialConfig.terminalProfiles = config.terminalProfiles;
   }
 
+  Object.assign(initialConfig, initialRoster(config.agentProfiles, config.agentTeams)); // OTTO(agent-teams)
+
   return initialConfig;
 }
 
-export async function createOttoDaemon(
-  config: OttoDaemonConfig,
+export async function createPaseoDaemon(
+  config: PaseoDaemonConfig,
   rootLogger: Logger,
-  dependencies: OttoDaemonDependencies = {},
-): Promise<OttoDaemon> {
-  // Agents, terminals, scripts, and provider tool loops inherit this environment. The
-  // .NET registry covers only Otto's own C# server and Solution sidecar; builds launched
-  // by an agent need the same process policy before any child can start.
-  configureDotnetChildEnvironment(process.env);
-  configureGitProcessPolicy(config.git);
+  dependencies: PaseoDaemonDependencies = {},
+): Promise<PaseoDaemon> {
+  configureGitProcessPolicy(config.git ?? resolveGitProcessPolicy({ env: process.env }));
   const logger = rootLogger.child({ module: "bootstrap" });
-  const obsoleteTimelineDirectory = path.join(config.ottoHome, "agent-timelines");
-  await rm(obsoleteTimelineDirectory, { recursive: true, force: true }).catch((error) => {
-    logger.warn(
-      { err: error, path: obsoleteTimelineDirectory },
-      "Failed to remove obsolete agent timeline data",
-    );
-  });
+  // OTTO(history): keep historical Otto timeline files on upgrade, even when this daemon does not use them.
   const bootstrapStart = performance.now();
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
   const daemonVersion = config.daemonVersion ?? resolveDaemonVersion(import.meta.url);
   const initialMutableConfig = createInitialMutableDaemonConfig(config);
-  const daemonConfigStore = new DaemonConfigStore(config.ottoHome, initialMutableConfig, logger, {
+  const daemonConfigStore = new DaemonConfigStore(config.paseoHome, initialMutableConfig, logger, {
     relayEnabledMutable: config.relayEnabledMutable ?? true,
     startupPersisted: config.configReload?.startupPersisted,
     reloadSource: {
       resolve: (persisted) => {
-        const reloaded = resolveConfigFromPersisted(config.ottoHome, persisted, {
+        const reloaded = resolveConfigFromPersisted(config.paseoHome, persisted, {
           env: config.configReload?.env ?? process.env,
           cli: config.configReload?.cli,
           relayEnabledFallback: config.configReload?.relayEnabledFallback,
@@ -1158,102 +672,180 @@ export async function createOttoDaemon(
       },
     },
   });
-  // Record the first-run seed on disk so the shipped starter team survives a
-  // restart AND a subsequent "delete every profile" stays deleted.
-  daemonConfigStore.seedDefaultProfilesIfAbsent(DEFAULT_AGENT_PROFILES);
-  // COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
-  // Fold a pre-convergence host's roster into agentProfiles. Runs after the
-  // seed so a fresh host is seeded rather than importing an empty legacy list.
-  daemonConfigStore.importLegacyPersonalitiesIfNeeded();
-  daemonConfigStore.seedDefaultTeamsIfAbsent(DEFAULT_AGENT_TEAMS);
-  // Publish the connector credential store before anything can spawn an agent:
-  // the openai-compat provider reads it when it builds MCP transports, and a
-  // signed-in connector with no store attaches no token and 401s.
-  const connectorAuthStore: ConnectorAuthStore = {
-    read: (connectorId) =>
-      (daemonConfigStore.get().connectors ?? []).find((entry) => entry.id === connectorId)?.auth,
-    write: (connectorId, auth) => {
-      daemonConfigStore.setConnectorAuth(connectorId, auth);
-    },
-  };
-  setConnectorAuthStore(connectorAuthStore);
-  const connectorOAuthBroker = new ConnectorOAuthBroker({ store: connectorAuthStore, logger });
-  const orchestrationSkills = createStartupOrchestrationSkills(daemonConfigStore, {
-    desktopManaged: config.desktopManaged === true,
-    logger,
-    resolveTargets: dependencies.resolveSkillTargets,
-  });
+  const orchestrationSkills = createOrchestrationSkills(daemonConfigStore);
   void orchestrationSkills.autoUpdate().catch((error) => {
-    if (error instanceof SkillMaintenanceStoppedError) return;
     logger.error({ err: error }, "Failed to maintain orchestration skills at startup");
   });
   const browserToolsPolicy = new DaemonConfigBrowserToolsPolicy(daemonConfigStore);
-  const ottoToolGroupsPolicy = new DaemonConfigOttoToolGroupsPolicy(daemonConfigStore);
-  const browserToolsBroker = new BrowserToolsBroker({});
-  const previewDevServers = new DevServerManager({ logger });
-  const pluginRuntime = new PluginService(logger, daemonConfigStore, daemonVersion, {
-    managedSources: new ManagedPluginSources(config.ottoHome),
-    settingsDirectory: path.join(config.ottoHome, "plugin-settings"),
-  });
-
-  const serverId = getOrCreateServerId(config.ottoHome, { logger });
-  const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.ottoHome, logger);
-  const managedProcesses = createBootstrapManagedProcessRegistry(config, logger);
-  // Daemon-managed local AI host (otto-brain). Constructed alongside the other
-  // managed children; it spawns the brain's `serve` command as a foreground
-  // child, holds the process so it dies with the daemon, and talks to it over
-  // HTTP. Settings are applied by the websocket server at startup and on change.
-  // Forward-declared so the brain can tell the snapshot manager to re-probe the
-  // otto-brain provider; the snapshot manager is built further down (it needs
-  // the workspace git service) but reads the brain endpoint the same way.
-  let providerSnapshotManagerRef: ProviderSnapshotManager | null = null;
-  const brainManager = new BrainManager({
+  const browserAdmissions = new BrowserAdmissions({
+    previewTarget: async (input) => ottoPreview?.navigationTarget(input) ?? null,
+    lookup: (hostname) => lookupBrowserDestination(hostname, { all: true }),
+  }); // OTTO(browser-admission): inert until a browser command.
+  const browserToolsBroker = new BrowserToolsBroker({
+    ottoAdmission: (input, next) => browserAdmissions.execute(input, next),
+    ottoNewTabHostId: () => (ottoHostBrowser ? OTTO_BROWSER_HOST_ID : undefined), // OTTO(browser-host): stable daemon host, independent of desktop connection order.
+  }); // OTTO(browser-admission)
+  // OTTO(paseo-version): plugins target the Paseo API, so the plugin host reports
+  // the Paseo base release instead of Otto's version.
+  const ottoActivity = new ActivityStore(config.paseoHome, logger); // OTTO(activity): load only on an event or explicit view.
+  const ottoBrain = new BrainDaemonService(config.paseoHome); // OTTO(brain-host): inert until demand/action or saved startup intent.
+  let ottoKanban: KanbanDaemonService | null = null; // OTTO(kanban): bound after registry/server identity creation, before plugins start.
+  let ottoFileHistory: ReturnType<typeof fileHistoryHost> | null = null; // OTTO(file-history)
+  let ottoWorkspaceLifecycle: ReturnType<typeof createOttoWorkspaceLifecycle> | null = null; // OTTO(workspace-lifecycle)
+  let ottoWorkspaceGit: WorkspaceGitHost | null = null; // OTTO(git-fetch): same canonical workspace/Git owners.
+  let ottoIntegrations: ReturnType<typeof createHostIntegrations> | null = null; // OTTO(integration)
+  let ottoContext: ContextManagementService | null = null; // OTTO(context-management): composed after AgentManager.
+  let ottoBrowserHistory: BrowserHistoryHost | null = null; // OTTO(browser-history): no startup reads or writes.
+  let ottoPreview: PreviewHost | null = null; // OTTO(preview): inert until an explicit scoped request.
+  let previewManager: PreviewManager | null = null; // OTTO(preview): owns only children it creates.
+  let ottoHostBrowser: ReturnType<typeof createNativeHostBrowser> | null = null; // OTTO(browser-host): composition never launches Chromium.
+  let ottoKnowledge: KnowledgeDaemonService | null = null; // OTTO(knowledge)
+  let ottoArtifacts: ArtifactDaemonService | null = null; // OTTO(artifacts): inert until scoped demand.
+  let ottoViews: ArchitecturalViewsService | null = null; // OTTO(architectural-views): no startup content reads, watchers or renderer processes.
+  let ottoWorkflows: ReturnType<typeof createWorkflowComposition> | null = null; // OTTO(workflows)
+  let ottoSchedules: ReturnType<typeof createScheduleApi> | null = null; // OTTO(schedules)
+  const ottoTerminal = new TerminalHost(
+    config.paseoHome,
+    () => serverId,
+    () => terminalManager,
+  ); // OTTO(terminal): inert until an explicit settings/action request.
+  let ottoSpeech: SpeechHost | null = null; // OTTO(speech): authenticated host settings and playback, composed before listening.
+  const ottoEditor = new EditorHost(config.paseoHome, () => serverId, logger); // OTTO(editor): no reads or server launches during construction.
+  const ottoTerminalEditor = new TerminalEditorHost(
+    () => serverId,
+    () => terminalManager,
+    () => workspaceRegistry,
+  ); // OTTO(editor): reuse Paseo PTYs and active workspace identity.
+  // OTTO(feature-host): one registry of shared built-in owners; no dispatch growth in Paseo's session path.
+  const ottoRoutes: Readonly<Record<string, OttoBuiltinRoute>> = {
+    [activityPluginId]: (method, input) => ottoActivity.invoke(method, input), // OTTO(activity)
+    "otto-observed-subagents": (method, input) => stopObservedSubagent(agentManager, method, input), // OTTO(observed-subagents)
+    "otto-workflows": (method, input) => ottoWorkflows?.invoke(method, input), // OTTO(workflows)
+    "otto-suggested-tasks": (method, input) =>
+      dispatchSuggestion({ agentManager, agentStorage, createAgent, logger }, method, input), // OTTO(suggested-tasks)
+    "otto-schedules": (method, input) => ottoSchedules?.invoke(method, input), // OTTO(schedules)
+    "otto-editor": (method, input, clientId) =>
+      ottoTerminalEditor.invoke(method, input) ?? ottoEditor.invoke(method, input, clientId), // OTTO(editor)
+    "otto-terminal": (method, input) => ottoTerminal.invoke(method, input),
+    "otto-workspace-git": (method, input) =>
+      ottoFileHistory?.(method, input) ??
+      ottoWorkspaceLifecycle?.invoke(method, input) ??
+      ottoWorkspaceGit?.invoke(method, input), // OTTO(workspace-lifecycle, git-fetch)
+    "otto-speech": (method, input, clientId) => ottoSpeech?.invoke(method, input, clientId),
+    "otto-artifacts": (method, input) => ottoArtifacts?.invoke(method, input),
+    "otto-architectural-views": (method, input, clientId) =>
+      ottoViews?.invoke(method, input, clientId), // OTTO(architectural-views)
+    "otto-brain": (method, input, clientId) => ottoBrain.invoke(method, input, clientId),
+    "otto-browser": (method, input, _clientId, source) =>
+      ottoBrowserHistory?.invoke(method, input) ??
+      ottoPreview?.invoke(method, input) ??
+      ottoHostBrowser?.invoke(method, input, source),
+    "otto-kanban": (method, input, clientId) => ottoKanban?.invoke(method, input, clientId),
+    "otto-integrations": (method, input) => ottoIntegrations?.rpc.invoke(method, input),
+    "otto-project-knowledge": (method, input, clientId) =>
+      ottoContext?.invoke(method, input) ?? ottoKnowledge?.invoke(method, input, clientId),
+  };
+  // OTTO(feature-host): these routes have no optional runtime dependency.
+  const permanentOttoRoutes = new Set([
+    activityPluginId, // OTTO(activity)
+    "otto-editor",
+    "otto-terminal",
+    "otto-brain",
+    "otto-observed-subagents",
+    "otto-suggested-tasks",
+  ]);
+  const pluginRuntime: PluginService = new PluginService(
     logger,
-    managedProcesses,
-    ottoHome: config.ottoHome,
-    onReachabilityChanged: () => {
-      void providerSnapshotManagerRef
-        ?.refreshProviderEverywhere(OTTO_BRAIN_PROVIDER_ID)
-        .catch((error: unknown) => {
-          logger.warn({ err: error }, "Failed to refresh the Otto Brain provider snapshot");
-        });
-    },
-  });
-  // Model/runtime management + long jobs, driven by shelling out to the
-  // otto-brain CLI. Separate from BrainManager (which owns the serve lifecycle).
-  const brainOpsManager = new BrainOpsManager({
-    logger,
-    ottoHome: config.ottoHome,
-    onRuntimeInstalled: ({ build, runtime }) => {
-      // A latest install resolves at request time, so retain the automatic
-      // policy. An explicitly named build is a deliberate pin.
-      daemonConfigStore.patch({
-        brain: {
-          runtime:
-            build && build !== "latest"
-              ? { source: "managed", path: runtime.dir }
-              : { source: "auto", path: null },
+    daemonConfigStore,
+    dependencies.pluginApiVersion ?? OTTO_PASEO_BASE_VERSION,
+    {
+      usageAgents: {
+        hasAgent: (id) => agentManager.getAgent(id) !== null,
+        usageSession: (id) => agentManager.usageSession(id),
+      },
+      managedSources: new ManagedPluginSources(config.paseoHome, {
+        registries: config.pluginRegistries,
+        defaultUrl: config.pluginRegistryUrl,
+      }),
+      builtinPlugins: resolveBuiltinPluginLoader(dependencies),
+      settingsDirectory: path.join(config.paseoHome, "plugin-settings"),
+      // OTTO(feature-host): existing authenticated plugin RPC, unchanged relay framing.
+      ottoRpc: {
+        has: (pluginId) =>
+          (pluginId === "otto-workflows" && ottoWorkflows !== null) || // OTTO(workflows)
+          (pluginId === "otto-schedules" && ottoSchedules !== null) || // OTTO(schedules)
+          permanentOttoRoutes.has(pluginId) || // OTTO(feature-host)
+          (pluginId === "otto-workspace-git" && ottoWorkspaceGit !== null) || // OTTO(git-fetch)
+          (pluginId === "otto-speech" && ottoSpeech !== null) || // OTTO(speech)
+          documentBuiltinAvailable(pluginId, ottoArtifacts, ottoViews) || // OTTO(architectural-views): no renderer assets, no capability.
+          (pluginId === "otto-browser" && ottoBrowserHistory !== null) || // OTTO(browser-history)
+          (pluginId === "otto-kanban" && ottoKanban !== null) ||
+          (pluginId === "otto-integrations" && ottoIntegrations !== null) ||
+          (pluginId === "otto-project-knowledge" && ottoKnowledge !== null), // OTTO(knowledge)
+        invoke: (pluginId, method, input, clientId, source) =>
+          invokeOttoBuiltin(ottoRoutes, pluginId, method, input, clientId, source), // OTTO(feature-host)
+        releaseClient: (clientId) => {
+          void ottoEditor
+            .releaseClient(clientId)
+            .catch((error) => logger.warn({ err: error }, "Editor client cleanup failed")); // OTTO(editor)
+          ottoSpeech?.releaseClient(clientId); // OTTO(speech)
+          ottoBrain.releaseClient(clientId);
+          void ottoViews
+            ?.releaseClient(clientId)
+            .catch((error) => logger.warn({ err: error }, "View observation cleanup failed")); // OTTO(architectural-views)
+          ottoKanban?.releaseClient(clientId); // OTTO(kanban): stop polling after paired-session teardown.
+          void ottoKnowledge
+            ?.releaseClient(clientId)
+            .catch((error) => logger.warn({ err: error }, "Knowledge observation cleanup failed")); // OTTO(knowledge)
         },
+      },
+    },
+  );
+
+  const serverId = getOrCreateServerId(config.paseoHome, { logger });
+  ottoIntegrations = createHostIntegrations(
+    config.paseoHome,
+    serverId,
+    {
+      exists: async (id) => (await projectRegistry.get(id)) !== null,
+      forCwd: async (cwd) => {
+        if (!workspaceRegistry) throw new Error("The owning workspace registry is unavailable.");
+        return bitbucketProjectForCwd(
+          cwd,
+          await workspaceRegistry.list(),
+          await projectRegistry.list(),
+        );
+      },
+    },
+    () => {
+      const mcp = daemonConfigStore.get().mcp;
+      const enabled = mcp.enabled !== false && mcp.injectIntoAgents !== false;
+      return Object.entries(
+        providerSnapshotManager.getAgentManagerProviderState().providerDefinitions,
+      ).flatMap(([id, definition]) => {
+        if (!definition) return [];
+        const available =
+          enabled &&
+          definition.enabled &&
+          resolvePaseoToolPolicy(id, daemonConfigStore.get().providers)?.enabled !== false;
+        return [
+          {
+            id,
+            label: providerSnapshotManager.getProviderLabel(id),
+            available,
+            reason: available ? null : "Enable this provider and its Otto tools to use Connectors.",
+          },
+        ];
       });
     },
-    onPullCompleted: () => brainManager.rescanInventory(),
-  });
+  ); // OTTO(integration): closures remain inert until the registries exist; no keyring access or migration at startup. // OTTO(bitbucket,connectors)
+  const daemonKeyPair = await loadOrCreateDaemonKeyPair(config.paseoHome, logger);
+  const managedProcesses = createBootstrapManagedProcessRegistry(config, logger);
   // Reconcile the helper-process ledger in the background so it never blocks the
   // daemon from coming up; terminating a live leftover can take a few seconds.
   // Best-effort, so a failure is logged here rather than crashing startup.
   void reconcileManagedProcessLedger(managedProcesses, logger).catch((error) => {
     logger.warn({ err: error }, "Failed to reconcile managed helper process ledger");
-  });
-  const stopMaterializedImageHousekeeping = startMaterializedImageHousekeeping({
-    ottoHome: config.ottoHome,
-    logger,
-    getPolicy: () => {
-      const current = daemonConfigStore.get();
-      return {
-        maxAgeDays: current.attachmentImageMaxAgeDays,
-        maxTotalMb: current.attachmentImageMaxTotalMb,
-      };
-    },
   });
   let relayRuntime: RelayRuntime | null = null;
 
@@ -1266,8 +858,8 @@ export async function createOttoDaemon(
 
   // Capability token authenticating the daemon's own agents to the loopback
   // Agent MCP endpoint (/mcp/agents). Random per daemon run, injected only into
-  // local agent configs and the daemon's own MCP client - never sent to remote
-  // clients - so it cannot be replayed off-box. This lets the injected MCP
+  // local agent configs and the daemon's own MCP client — never sent to remote
+  // clients — so it cannot be replayed off-box. This lets the injected MCP
   // authenticate even when the daemon password is set via the app (hash only,
   // no plaintext available). Mirrors the /api/files/download capability-token
   // pattern.
@@ -1284,6 +876,7 @@ export async function createOttoDaemon(
   let workspaceRegistry: FileBackedWorkspaceRegistry | null = null;
   const terminalManager = createConfiguredTerminalManager({
     getTerminalActivityUrl: () => createTerminalActivityUrl(boundListenTarget),
+    getOttoPreferences: () => ottoTerminal.store.read().preferences, // OTTO(terminal): snapshot only when creating a new PTY.
   });
   applyTerminalAgentHookSetting({ store: daemonConfigStore, logger });
 
@@ -1297,12 +890,12 @@ export async function createOttoDaemon(
   const scriptRuntimeStore = new WorkspaceScriptRuntimeStore();
   const workspaceSetupRuntime = new WorkspaceSetupRuntime();
   let configuredHostnames = config.hostnames ?? config.allowedHosts;
-  let appBaseUrl = config.appBaseUrl ?? "https://app.otto-code.me";
+  let appBaseUrl = config.appBaseUrl ?? OTTO_APP_BASE_URL /* OTTO(identity) */;
   daemonConfigStore.onFieldChange("hostnames", (value) => {
     configuredHostnames = value as HostnamesConfig | undefined;
   });
   daemonConfigStore.onFieldChange("app.baseUrl", (value) => {
-    appBaseUrl = typeof value === "string" ? value : "https://app.otto-code.me";
+    appBaseUrl = typeof value === "string" ? value : OTTO_APP_BASE_URL /* OTTO(identity) */;
   });
   let wsServer: VoiceAssistantWebSocketServer | null = null;
   let serviceProxyListenTarget: ListenTarget | null = null;
@@ -1351,7 +944,7 @@ export async function createOttoDaemon(
   // CORS - allow same-origin + configured origins
   const fixedAllowedOrigins = [
     // Packaged desktop renderers use the custom otto:// protocol scheme.
-    "otto://app",
+    `${OTTO_URL_SCHEME}://app`, // OTTO(identity)
     // For TCP, add localhost variants
     ...(listenTarget.type === "tcp"
       ? [
@@ -1371,7 +964,7 @@ export async function createOttoDaemon(
 
   app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (origin && allowedOrigins.has(origin)) {
+    if (origin && (allowedOrigins.has("*") || allowedOrigins.has(origin))) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
       res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
@@ -1397,8 +990,10 @@ export async function createOttoDaemon(
   // remain protected.
   mountWebUi(app, config, logger);
 
+  let localCredential: string | null = null;
+  const daemonAuth = { ...config.auth, localCredential: () => localCredential };
   app.use(
-    createRequireBearerMiddleware(config.auth, (context) => {
+    createRequireBearerMiddleware(daemonAuth, (context) => {
       logger.warn(context, "Rejected HTTP request with invalid daemon password");
     }),
   );
@@ -1417,7 +1012,7 @@ export async function createOttoDaemon(
     res.json({
       status: "server_info",
       serverId,
-      hostname: getHostname(),
+      hostname: getHostName(),
       version: daemonVersion,
       listen: formatListenTarget(boundListenTarget ?? listenTarget),
     });
@@ -1444,18 +1039,21 @@ export async function createOttoDaemon(
     try {
       fileHandle = await open(entry.absolutePath, DOWNLOAD_OPEN_FLAGS);
       const fileStats = await fileHandle.stat();
+      if (res.destroyed) {
+        return;
+      }
       if (!fileStats.isFile()) {
         res.status(404).json({ error: "File not found" });
         return;
       }
 
-      const safeFileName = entry.fileName.replace(/["\r\n]/g, "_");
       res.setHeader("Content-Type", entry.mimeType);
-      res.setHeader("Content-Disposition", `attachment; filename="${safeFileName}"`);
+      res.setHeader("Content-Disposition", formatAttachmentContentDisposition(entry.fileName));
       res.setHeader("Content-Length", fileStats.size.toString());
 
       const stream = fileHandle.createReadStream();
       fileHandle = null;
+      res.once("close", () => stream.destroy());
       stream.on("error", (err) => {
         logger.error({ err }, "Failed to stream download");
         if (!res.headersSent) {
@@ -1481,7 +1079,7 @@ export async function createOttoDaemon(
 
   const httpServer = createHTTPServer(app);
 
-  // Script proxy WebSocket upgrade handler - must be registered before the
+  // Script proxy WebSocket upgrade handler — must be registered before the
   // VoiceAssistantWebSocketServer attaches its own "upgrade" listener so that
   // script-bound upgrades are forwarded first. The handler is a no-op for
   // requests that don't match a registered script route.
@@ -1492,163 +1090,125 @@ export async function createOttoDaemon(
   }
 
   const agentStorage = new AgentStorage(config.agentStoragePath, logger);
-  // COMPAT(profileStorePaths): added in v0.8.13, remove after 2027-02-22.
-  // Must run BEFORE either store is constructed, or the first read creates an
-  // empty store at the new path and the rename below then declines to clobber
-  // it - stranding the user's lessons at the old one.
-  await migrateProfileStorePaths({ ottoHome: config.ottoHome, logger });
-  const profileStatsStore = new ProfileStatsStore(
-    path.join(config.ottoHome, "stats", "profile-usage.json"),
-    logger,
-  );
-  // The lessons profiles accrue. One file per profile, so the store is handed a
-  // directory rather than a path.
-  const profileMemoryStore = new ProfileMemoryStore(
-    path.join(config.ottoHome, "profile-memory"),
-    logger,
-  );
-  const activityStatsStore = new ActivityStatsStore(
-    path.join(config.ottoHome, "activity-stats.json"),
-    logger,
-  );
-  const recordActivity: ActivityIncrementFn = (field, by) => {
-    void activityStatsStore.increment(field, by);
-  };
-  // Itemized usage ledger - the scrollable rows behind the aggregate tiles.
-  // Fed from the same chokepoint that moves the counters (usage-ledger project).
-  const usageLogStore = new UsageLogStore(path.join(config.ottoHome, "usage-log.json"), logger);
   const projectRegistry = new FileBackedProjectRegistry(
-    path.join(config.ottoHome, "projects", "projects.json"),
+    path.join(config.paseoHome, "projects", "projects.json"),
     logger,
   );
   workspaceRegistry = new FileBackedWorkspaceRegistry(
-    path.join(config.ottoHome, "projects", "workspaces.json"),
+    path.join(config.paseoHome, "projects", "workspaces.json"),
     logger,
   );
-  const integrationAuthorizationRegistry = new FileBackedIntegrationAuthorizationRegistry(
-    path.join(config.ottoHome, "integration-authorizations.json"),
-    logger,
-  );
-  const integrationAuthorization = new IntegrationAuthorizationService({
-    hostId: serverId,
-    registry: integrationAuthorizationRegistry,
-    vault: await createDaemonCredentialVault(),
-  });
-  await integrationAuthorization.initialize();
-  const googleConnectorAuthorization = new GoogleConnectorAuthorization({
-    authorization: integrationAuthorization,
-    registration: await loadGoogleOAuthRegistration(),
-    readConnectors: () => daemonConfigStore.get().connectors ?? [],
-  });
-  const hostedConnectorAuthorization = new HostedConnectorAuthorization({
-    authorization: integrationAuthorization,
-    store: connectorAuthStore,
-    readConnectors: () => daemonConfigStore.get().connectors ?? [],
-    origin: process.env.OTTO_CONNECTOR_AUTH_URL,
-  });
-  setHostedConnectorAuthorization(hostedConnectorAuthorization);
-  const googleConnectors = new GoogleConnectorService({
-    authorization: googleConnectorAuthorization,
-    readConnectors: () => daemonConfigStore.get().connectors ?? [],
-  });
-  const connectorToolCatalog = new ConnectorToolCatalogService({
-    readConnectors: () => daemonConfigStore.get().connectors ?? [],
-    authStore: connectorAuthStore,
-    googleConnectors,
-    logger,
-    managedProcesses,
-  });
-  daemonConfigStore.onFieldChange("connectors", () => {
-    void hostedConnectorAuthorization
-      .reconcile()
-      .catch(() => logger.warn("Could not clear a removed hosted connection"));
-    void googleConnectors
-      .reconcile()
-      .catch(() => logger.warn("Could not clear a removed Google connection"));
-    void connectorToolCatalog
-      .reconcile()
-      .catch(() => logger.warn("Could not close an outdated connector client"));
-  });
-
-  const forgeConnections = new ForgeConnectionStore({
-    filePath: path.join(config.ottoHome, "forge-connections.json"),
-    authorization: integrationAuthorization,
-    validate: (input) => validateForgeConnection(input, config.ottoHome),
-    createService: createConnectedForgeService,
-    projectExists: async (id) => {
-      const project = await projectRegistry.get(id);
-      return Boolean(project && !project.archivedAt);
-    },
-    resolveProjectId: async (cwd) => {
-      const [projects, workspaces] = await Promise.all([
-        projectRegistry.list(),
-        workspaceRegistry!.list(),
-      ]);
-      return resolveForgeProjectScope(cwd, projects, workspaces);
-    },
-  });
-  await forgeConnections.initialize();
-  // All PR/issue functionality routes through the git hosting layer: GitHub
-  // uses gh and Bitbucket Cloud uses its native REST adapter.
-  const gitHostingResolver = createGitHostingResolver({
-    connections: forgeConnections,
-    github: createGitHubHostingService(),
-    getDaemonConfig: () => daemonConfigStore.get(),
-    readOttoConfigJson,
-    ottoHome: config.ottoHome,
-  });
-  const github = withForgeConnections(
-    "github",
-    createGitHostingRouter(gitHostingResolver),
-    forgeConnections,
-  );
-  const bitbucketCloud = withForgeConnections(
-    "bitbucket-cloud",
-    createGitHostingProviderForgeAdapter(gitHostingResolver, "bitbucket-cloud"),
-    forgeConnections,
-  );
-  const forgeOverrides = { github, "bitbucket-cloud": bitbucketCloud } as Record<
-    string,
-    import("../services/forge-service.js").ForgeService
-  >;
-  for (const forge of ["gitlab", "gitea", "forgejo", "codeberg"]) {
-    const base = createForgeService(forge);
-    forgeOverrides[forge] = withForgeConnections(forge, base!, forgeConnections);
-  }
-  forgeConnections.subscribe(() => gitHostingResolver.invalidateAll());
-  const unsubscribeGitHostingConfigChange = daemonConfigStore.onChange(() => {
-    // Provider credentials may have changed; re-resolve on next use.
-    gitHostingResolver.invalidateAll();
-  });
   const workspaceLabelService = createWorkspaceLabelService({
-    ottoHome: config.ottoHome,
+    paseoHome: config.paseoHome,
     workspaceRegistry,
   });
+  const github = createGitHubService();
+  ottoBrowserHistory = new BrowserHistoryHost({
+    home: config.paseoHome,
+    hostId: serverId,
+    workspaces: workspaceRegistry,
+  }); // OTTO(browser-history): inert until an authenticated workspace request.
+  previewManager = new PreviewManager(
+    createPreviewProcessPorts(previewProtectedPorts(listenTarget)),
+  ); // OTTO(preview): construction never starts a child or probes a port.
+  ottoPreview = new PreviewHost({
+    hostId: serverId,
+    manager: previewManager,
+    workspaces: workspaceRegistry,
+    broker: browserToolsBroker,
+  }); // OTTO(preview)
+  ottoHostBrowser = createNativeHostBrowser({
+    home: config.paseoHome,
+    hostId: serverId,
+    broker: browserToolsBroker,
+    workspaces: workspaceRegistry,
+    reportError: (error) => logger.error({ err: error }, "Host Browser runtime failed"),
+  }); // OTTO(browser-host): profile/process resources remain lazy until explicit page creation.
+  ottoHostBrowser.register(); // OTTO(browser-host)
+  const knowledgeGeneration = createKnowledgeGenerationSource(); // OTTO(knowledge): inert until AgentManager composition below.
+  // OTTO(artifacts,schedules): both utility formats share provider selection without sharing sessions.
+  const resolveRole = roleResolver(
+    () => daemonConfigStore.get(),
+    (provider, cwd) => providerSnapshotManager.getProvider({ provider, cwd, wait: true }),
+  ); // OTTO(role-pickers)
+  const artifactCompletion = (): ArtifactCompletionPorts => ({
+    resolveRole,
+    profileBrief: (id, cwd) => profileMemory.previewBrief(id, cwd), // OTTO(profile-memory): only explicitly Profile-bound generation reads lessons.
+    providers: providerSnapshotManager,
+    candidates: (cwd) =>
+      resolveStructuredGenerationProviders({
+        cwd,
+        providerSnapshotManager,
+        daemonConfig: metadataRoster(daemonConfigStore.get()),
+      }),
+  });
+  ottoArtifacts = new ArtifactDaemonService({
+    onCreated: () => ottoActivity.increment("artifactsCreated"),
+    hostId: serverId,
+    home: config.paseoHome,
+    metadata: projectRegistry.ottoMetadata,
+    workspaces: workspaceRegistry,
+    projects: () => projectRegistry!.list(),
+    reportGenerationError: (error) => logger.error({ err: error }, "Artifact generation failed"), // OTTO(artifacts): provider errors stay in host diagnostics, never RPC responses.
+    generation: (request) => createArtifactGeneration(artifactCompletion())(request),
+    schedules: { inspect: (id) => scheduleService.inspect(id) }, // OTTO(artifacts): provenance reads the owning scheduler, never prompt-derived labels alone.
+    workflows: createWorkflowArtifactPort(
+      () => ottoWorkflows?.service.host ?? null,
+      () => ottoWorkflows?.service.library ?? null,
+    ), // OTTO(workflows): lazy cross-feature adapter.
+  }); // OTTO(artifacts): one cancellable owner, no startup work or Context isolation changes.
+  ottoKnowledge = new KnowledgeDaemonService({
+    hostId: serverId,
+    home: config.paseoHome,
+    metadata: projectRegistry.ottoMetadata,
+    workspaces: workspaceRegistry,
+    generation: knowledgeGeneration.forSelection, // OTTO(knowledge): no launch during startup/read.
+  }); // OTTO(knowledge): scoped demand, no startup file writes.
+  ottoViews = new ArchitecturalViewsService({
+    hostId: serverId,
+    home: config.paseoHome,
+    knowledge: ottoKnowledge,
+    metadata: projectRegistry.ottoMetadata,
+    report: (error) => logger.warn({ err: error }, "Architectural View operation diagnostic"),
+  }); // OTTO(architectural-views): same canonical Knowledge/project allocation.
+  ottoKanban = new KanbanDaemonService({
+    hostId: serverId,
+    metadata: projectRegistry.ottoMetadata,
+    github: github.projectBoards,
+    writes: github.projectBoardWrites, // OTTO(kanban): provider effects share the normal CLI policy.
+    atlassian: ottoIntegrations.atlassian, // OTTO(kanban): reuse shared host authorization.
+    operationDirectory: path.join(config.paseoHome, "kanban", "operations"), // OTTO(kanban): durable write admission belongs to this isolated daemon home.
+  }); // OTTO(kanban)
+  const ottoGitFetchSettings = new GitFetchSettingsStore(config.paseoHome); // OTTO(git-fetch)
   const workspaceGitService = new WorkspaceGitServiceImpl({
     logger,
-    ottoHome: config.ottoHome,
+    paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
-    fetchPolicy: daemonConfigStore.get().gitFetch ?? { enabled: true, intervalSeconds: 180 },
+    ottoFetchPolicy: initialGitFetchPolicy(ottoGitFetchSettings, () =>
+      logger.warn(
+        "Git fetch settings are unreadable; automatic fetch stays disabled until they can be read.",
+      ),
+    ), // OTTO(git-fetch): never activate an unreadable old opt-out.
     deps: {
-      forgeOverrides,
-      configuredForge: (host) => forgeConnections.forgeForHost(host),
-      resolveHostingForCwd: async (cwd) => {
-        const resolved = await gitHostingResolver.resolveForCwd(cwd);
-        return {
-          providerId: resolved.providerId,
-          capabilities: resolved.capabilities,
-          credentialsMissing: resolved.credentialsMissing,
-        };
-      },
+      forgeOverrides: {
+        github,
+        "bitbucket-cloud": ottoIntegrations.bitbucket,
+      }, // OTTO(bitbucket): reuse private owning-host credentials; registration performs no reads or requests.
     },
   });
-  forgeConnections.subscribe(() => workspaceGitService.onForgeConnectionsChanged());
-  daemonConfigStore.onFieldChange("gitFetch", (value) => {
-    workspaceGitService.setFetchPolicy(
-      value as { enabled: boolean; intervalSeconds: 60 | 180 | 300 | 600 | 900 | 1_800 | 3_600 },
-    );
-  });
-
+  ottoWorkspaceGit = new WorkspaceGitHost({
+    store: ottoGitFetchSettings,
+    hostId: serverId,
+    workspace: (id) => workspaceRegistry.get(id),
+    policy: (value) => workspaceGitService.ottoFetchControl.setPolicy(value),
+    fetch: (cwd) => workspaceGitService.fetchWorkspace(cwd),
+    setBase: async (cwd, input) => {
+      // OTTO(diff-base): reuse the existing snapshot owner and push subscriptions.
+      const { setComparisonBaseAndRefresh } =
+        await import("./otto/workspace-git/comparison-base.js");
+      return setComparisonBaseAndRefresh(cwd, input, workspaceGitService);
+    },
+  }); // OTTO(git-fetch): composition performs no Git command or settings write.
   workspaceRegistry.subscribeToMutations((mutation) => {
     if (mutation.kind === "archive" && mutation.workspace) {
       pluginRuntime.emit("workspace.archived", {
@@ -1662,110 +1222,11 @@ export async function createOttoDaemon(
     projectRegistry,
     workspaceRegistry,
     workspaceGitService,
+    isDirectory: async (target) => (await stat(target).catch(() => null))?.isDirectory() ?? false,
     logger,
   });
-  // Personality memory. Constructed here because AgentManager needs it below to
-  // inject each personality's accrued lessons at spawn, and it needs the git
-  // service to scope project lessons to a repo root rather than a bare cwd
-  // (a worktree and its main checkout are the same project's lessons).
-  const personalityMemory = new ProfileMemoryService({
-    store: profileMemoryStore,
-    readAgentProfiles: () => daemonConfigStore.get().agentProfiles ?? [],
-    resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
-    logger,
-  });
-  // Where each project's Knowledge lives. Split from the service on purpose:
-  // the service owns Markdown, the resolver owns the precedence between a
-  // project override, an existing repository store, and the host default.
-  const projectKnowledgeStores = new ProjectKnowledgeStoreResolver({
-    ottoHome: config.ottoHome,
-    resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
-    findProjectByRoot: async (rootPath) =>
-      (await projectRegistry.list()).find(
-        (project) => !project.archivedAt && areEquivalentPaths(project.rootPath, rootPath),
-      ) ?? null,
-    persistDirectoryName: async ({ projectId, directoryName }) => {
-      await projectRegistry.update(projectId, (record) => ({
-        ...record,
-        knowledgeDirectoryName: directoryName,
-        updatedAt: new Date().toISOString(),
-      }));
-    },
-    defaultLocation: () =>
-      daemonConfigStore.get().projectKnowledge?.defaultStoreLocation ?? "repository",
-    logger,
-  });
-  const projectKnowledge = new ProjectKnowledgeService({
-    resolveStore: (cwd) => projectKnowledgeStores.resolveForCwd(cwd),
-    logger,
-  });
-  const architecturalViews = new ArchitecturalViewsService({
-    resolveStore: (cwd) => projectKnowledgeStores.resolveForCwd(cwd),
-  });
-  const artifactStoreRegistry = new ArtifactStoreRegistry({
-    resolver: new ArtifactStoreResolver({
-      ottoHome: config.ottoHome,
-      findProjectByRoot: async (rootPath) =>
-        (await projectRegistry.list()).find(
-          (project) => !project.archivedAt && areEquivalentPaths(project.rootPath, rootPath),
-        ) ?? null,
-      persistDirectoryName: async ({ projectId, directoryName }) => {
-        await projectRegistry.update(projectId, (record) => ({
-          ...record,
-          artifactDirectoryName: directoryName,
-          updatedAt: new Date().toISOString(),
-        }));
-      },
-      defaultLocation: () =>
-        daemonConfigStore.get().projectArtifacts?.defaultStoreLocation ?? "repository",
-      logger,
-    }),
-    resolveProjectRoot: (cwd) => projectKnowledgeStores.projectRoot(cwd),
-    listProjectRoots: async () =>
-      (await projectRegistry.list())
-        .filter((project) => !project.archivedAt)
-        .map((project) => project.rootPath),
-    legacyArtifactsDirectory: path.join(config.ottoHome, ".otto", "artifacts"),
-  });
-  const workflowStoreRegistry = new WorkflowStoreRegistry({
-    resolver: new CategoryStorageResolver({
-      category: "workflows",
-      repositoryDirectory: "workflows",
-      hostRootDirectory: WORKFLOW_HOST_STORE_ROOT_DIRECTORY,
-      ottoHome: config.ottoHome,
-      hostId: serverId,
-      hostName: getHostname(),
-      findProjectByRoot: async (rootPath) =>
-        (await projectRegistry.list()).find(
-          (project) => !project.archivedAt && areEquivalentPaths(project.rootPath, rootPath),
-        ) ?? null,
-      projectLocation: (project) => project.workflowLocation,
-      projectDirectoryName: (project) => project.workflowDirectoryName,
-      persistDirectoryName: async ({ projectId, directoryName }) => {
-        await projectRegistry.update(projectId, (record) => ({
-          ...record,
-          workflowDirectoryName: directoryName,
-          updatedAt: new Date().toISOString(),
-        }));
-      },
-      defaultLocation: () =>
-        daemonConfigStore.get().projectWorkflows?.defaultStoreLocation ?? "repository",
-      logger,
-    }),
-    resolveProjectRoot: (cwd) => projectKnowledgeStores.projectRoot(cwd),
-    listProjectRoots: async () =>
-      (await projectRegistry.list())
-        .filter((project) => !project.archivedAt)
-        .map((project) => project.rootPath),
-    legacy: {
-      runsDirectory: path.join(config.ottoHome, "runs"),
-      definitionsDirectory: path.join(config.ottoHome, "orchestration-graphs"),
-      templatesDirectory: path.join(config.ottoHome, "prompt-templates"),
-    },
-  });
-
   const agentProviderRuntime = await createAgentProviderRuntime({
-    ottoHome: config.ottoHome,
+    paseoHome: config.paseoHome,
     logger,
     snapshotManager: {
       refreshTimeoutMs: config.providerCatalogRefreshTimeoutMs,
@@ -1775,14 +1236,9 @@ export async function createOttoDaemon(
       managedProcesses,
       isDev: config.isDev === true,
       extraClients: config.agentClients,
-      modelTierOverrides: daemonConfigStore.get().modelTierOverrides,
-      modelVisibilityOverrides: daemonConfigStore.get().modelVisibilityOverrides,
-      connectors: daemonConfigStore.get().connectors,
-      brainEndpoint: () => brainManager.getProviderEndpoint(),
     },
   });
   const providerSnapshotManager = agentProviderRuntime.snapshotManager;
-  providerSnapshotManagerRef = providerSnapshotManager;
   daemonConfigStore.onFieldChange("catalogRefreshTimeoutMs", (value) => {
     providerSnapshotManager.setRefreshTimeoutMs(typeof value === "number" ? value : undefined);
   });
@@ -1795,110 +1251,96 @@ export async function createOttoDaemon(
     if (git) configureGitProcessPolicy(git);
   });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
-  const retainedTranscriptStore = new RetainedTranscriptStore({
-    ottoHome: config.ottoHome,
+  // OTTO(chat-search): one index per host, started only by a real capture or query.
+  const ottoChatSearch = new ChatSearchService({
+    offlineHistory: createOfflineHistoryReader(agentStorage), // OTTO(chat-search): bounded native reads on explicit search.
+    home: config.paseoHome,
     logger,
+    snapshot: (id): import("./otto/history/search/service.js").SearchTimeline | null =>
+      agentManager.getSearchTimeline(id),
+    list: () =>
+      listSearchChats({
+        storage: agentStorage,
+        workspaces: workspaceRegistry,
+        projects: projectRegistry,
+      }),
   });
-  const agentManager: AgentManager = new AgentManager({
-    chatSearch: new ChatSearchService({
-      ottoHome: config.ottoHome,
-      logger,
-      snapshot: (id) => agentManager.getSearchSnapshot(id),
-      backfill: (id, signal) => agentManager.readSearchHistory(id, signal),
-      revision: (id) => agentManager.getSearchHistoryRevision(id),
-      list: async () => {
-        const [records, workspaces, projects] = await Promise.all([
-          agentStorage.list(),
-          workspaceRegistry.list(),
-          projectRegistry.list(),
-        ]);
-        const workspaceById = new Map(
-          workspaces.map((workspace) => [workspace.workspaceId, workspace]),
-        );
-        const projectById = new Map(projects.map((project) => [project.projectId, project]));
-        return records
-          .filter((record) => !record.internal)
-          .map((record) => {
-            const workspace = record.workspaceId
-              ? workspaceById.get(record.workspaceId)
-              : undefined;
-            const project = workspace ? projectById.get(workspace.projectId) : undefined;
-            return {
-              id: record.id,
-              title: record.title ?? "Chat",
-              provider: record.provider,
-              workspaceId: record.workspaceId ?? null,
-              projectId: workspace?.projectId ?? null,
-              projectName: project?.customName ?? project?.displayName ?? "",
-              archived: Boolean(record.archivedAt),
-            };
-          });
-      },
-    }),
+  const profileMemory = new ProfileMemoryService({
+    store: new ProfileMemoryStore(path.join(config.paseoHome, "profile-memory"), logger),
+    logger,
+    readAgentProfiles: () => daemonConfigStore.get().agentProfiles ?? [],
+    resolveProjectRoot: (cwd) => workspaceGitService.resolveRepoRoot(cwd),
+  });
+  const agentManager = new AgentManager({
     pluginLifecycle: pluginRuntime,
-    assertDirectoryAvailable: async (cwd) => {
-      const workspaces = await workspaceRegistry.list();
-      const owners = new Set(
-        workspaces
-          .filter((workspace) => pathWithinRoot(workspace.cwd, cwd))
-          .map((workspace) => workspace.projectId),
-      );
-      for (const project of await projectRegistry.list()) {
-        if (
-          owners.has(project.projectId) ||
-          (!project.archivedAt && pathWithinRoot(project.rootPath, cwd))
-        )
-          assertProjectOnline(project);
-      }
-    },
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
-    retainedTranscripts: retainedTranscriptStore,
+    ottoChatSearch, // OTTO(chat-search)
+    ottoActivity, // OTTO(activity)
+    readProfileCatalog: (provider, cwd) =>
+      providerSnapshotManager.getProvider({ provider, cwd, wait: true }), // OTTO(agent-teams)
+    profileMemory, // OTTO(profile-memory)
+    readProfileRoster: () => daemonConfigStore.get(), // OTTO(agent-teams)
     appendSystemPrompt: config.appendSystemPrompt,
-    agentBehaviors: config.agentBehaviors,
+    ottoKnowledgePrompt: ottoKnowledge.sessionPrompt.bind(ottoKnowledge), // OTTO(knowledge): registry-bound, inert until an interactive session opens.
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
-    // Counted at the createAgent choke point so composer, MCP create_chat,
-    // and schedule spawns all land in the per-personality usage stats.
-    onPersonalitySpawn: (personalityId) => {
-      void profileStatsStore.increment(personalityId);
-    },
-    // Injected at the same choke point, so every spawn path - composer, MCP
-    // create_chat, schedule runs, orchestration, resume - carries the
-    // personality's accrued lessons without threading anything per-caller.
-    resolvePersonalityMemoryBrief: (params) => personalityMemory.resolveBriefForSpawn(params),
-    resolveProjectKnowledgeBrief: async ({ cwd }) => {
-      if (!cwd) return null;
-      const brief = await projectKnowledge.briefForCwd(cwd);
-      return brief.text || null;
-    },
-    // The repo's own AGENTS.md, for the providers that have no CLI of their own
-    // to read it. Same choke point as the two briefs above, so every spawn path
-    // gets it; the manager applies the `ownsContextPayload` gate so the
-    // CLI-backed providers are not sent their instructions a second time.
-    resolveInstructionFiles: async ({ cwd }) => {
-      if (!cwd) return null;
-      const projectRoot = await resolveProjectRootForCwd(cwd, (dir) =>
-        workspaceGitService.resolveRepoRoot(dir),
-      );
-      const loaded = await loadInstructionFiles({
-        cwd,
-        projectRoot,
-        homeDir: homedir(),
-        env: process.env,
-        logger,
-      });
-      return loaded.text;
-    },
-    onActivity: recordActivity,
-    onUsageEvent: (event) => usageLogStore.append(event),
     mcpAuthToken: agentMcpAuthToken,
-    resolveOttoToolPolicy: (provider) =>
-      resolveOttoToolPolicy(provider, daemonConfigStore.get().providers),
+    resolvePaseoToolPolicy: (provider) =>
+      resolvePaseoToolPolicy(provider, daemonConfigStore.get().providers),
     logger,
   });
+  ottoViews.setAuthoring(
+    createViewAuthoring({
+      host: ottoViews,
+      agents: agentManager,
+      storage: agentStorage,
+      providers: providerSnapshotManager,
+      workspaces: workspaceRegistry,
+      logger,
+      policy: createRetainedToolPolicy("knowledge", config.paseoHome, () =>
+        daemonConfigStore.get(),
+      ),
+    }),
+  ); // OTTO(architectural-views): caller-selected normal provider and permissions.
+  ottoContext = new ContextManagementService({
+    hasDirtyFile: (file) => ottoEditor.hasDirtyFile(file), // OTTO(refine)
+    profileBrief: (id, cwd) => profileMemory.previewBrief(id, cwd), // OTTO(profile-memory)
+    hostId: serverId,
+    home: config.paseoHome,
+    workspaces: workspaceRegistry,
+    agents: contextAgents(agentManager, agentStorage), // OTTO(context-management): sanitized live/persisted projection, never resumes sessions.
+    nativeInspection: nativeContextInspector({
+      providers: () => daemonConfigStore.get().providers ?? {},
+      sessionEnvironment: (id) => agentManager.usageSession(id)?.env,
+    }), // OTTO(context-management): no provider launch; only discovery path fields leave the adapter.
+    providerOwner: (id) => pluginRuntime.ottoProviderOwner(id),
+    invoke: (id, method, input) => pluginRuntime.invokePluginRpc(id, method, input),
+    generation: (selection) =>
+      createContextTextGeneration(
+        {
+          providerOwner: (id) => pluginRuntime.ottoProviderOwner(id),
+          native: createNativeContextGeneration(() =>
+            providerSnapshotManager.getAgentManagerProviderState(),
+          ), // OTTO(context-generation)
+          invoke: (id, method, input) => pluginRuntime.invokePluginRpc(id, method, input),
+          candidates: (cwd) =>
+            resolveStructuredGenerationProviders({
+              cwd,
+              providerSnapshotManager,
+              daemonConfig: metadataRoster(daemonConfigStore.get()),
+            }),
+        },
+        selection,
+      ), // OTTO(context-compaction): API/Brain providers cannot expose tools or create a chat here.
+  }); // OTTO(context-management): no reads, watches or writes during registration.
+  knowledgeGeneration.initialize({
+    agentManager,
+    providerSnapshotManager,
+    readDaemonConfig: () => metadataRoster(daemonConfigStore.get()),
+  }); // OTTO(knowledge): wire only after both sides of the host/agent dependency exist.
   const syncPluginProviders = () => {
     agentManager.updateProviderRegistry(
       providerSnapshotManager.replacePluginProviders(pluginRuntime.getProviderRegistrations()),
@@ -1914,17 +1356,9 @@ export async function createOttoDaemon(
   );
   await agentStorage.initialize();
   logger.info({ elapsed: elapsed() }, "Agent storage initialized");
-  await projectRegistry.initialize();
-  await workspaceRegistry.initialize();
-  protectOfflineWorkspaceRecords(projectRegistry, workspaceRegistry);
-  await new ProjectRelocationService({
-    ottoHome: config.ottoHome,
-    projectRegistry,
-    workspaceRegistry,
-    agentStorage,
-  }).recover();
   await bootstrapWorkspaceRegistries({
-    ottoHome: config.ottoHome,
+    serverId,
+    paseoHome: config.paseoHome,
     agentStorage,
     projectRegistry,
     workspaceRegistry,
@@ -1933,7 +1367,25 @@ export async function createOttoDaemon(
   });
   await workspaceLabelService.initialize();
   logger.info({ elapsed: elapsed() }, "Workspace registries bootstrapped");
+  // OTTO(workflows): no ordinary chat subscriptions, provider launches or history scans.
+  ottoWorkflows = createWorkflowComposition({
+    onStarted: () => ottoActivity.increment("runsOrchestrated"),
+    home: config.paseoHome,
+    hostId: serverId,
+    hostLabel: serverId,
+    logger,
+    metadata: projectRegistry.ottoMetadata,
+    workspaces: { get: (id) => workspaceRegistry!.get(id) },
+    agents: agentManager,
+    storage: agentStorage,
+    providers: providerSnapshotManager,
+    readConfig: () => daemonConfigStore.get(),
+  });
+  await ottoWorkflows.initialize();
   const teardownArchivedWorkspaceRuntime = (workspaceId: string): void => {
+    void releaseArchivedEditorWorkspace(ottoEditor, workspaceRegistry, workspaceId).catch((error) =>
+      logger.warn({ err: error, workspaceId }, "Archived editor cleanup failed"),
+    ); // OTTO(editor)
     scriptRuntimeStore.removeForWorkspace(workspaceId);
     releaseWorkspaceServicePortPlan(workspaceId);
   };
@@ -1959,7 +1411,7 @@ export async function createOttoDaemon(
   });
   const checkoutDiffManager = new CheckoutDiffManager({
     logger,
-    ottoHome: config.ottoHome,
+    paseoHome: config.paseoHome,
     workspaceGitService,
   });
   const archiveWorkspaceRecordExternal = async (
@@ -1982,19 +1434,13 @@ export async function createOttoDaemon(
   const ensureWorkspaceForCreateExternal = async (
     cwd: string,
     firstAgentContext?: FirstAgentContext,
+    context?: { callerWorkspaceId?: string },
   ): Promise<string> => {
-    // One directory = one live workspace: reuse the visible workspace already
-    // backing the cwd (MCP create_chat, loops, and agent-spawned terminals
-    // attach to it) instead of minting a duplicate - which
-    // createLocalCheckoutWorkspace now rejects. Auto-naming only runs for a
-    // freshly minted workspace; an existing one keeps its name.
-    const existingWorkspace = findOccupyingWorkspaceForCwd(await workspaceRegistry.list(), cwd);
-    if (existingWorkspace) {
-      return existingWorkspace.workspaceId;
-    }
-    const workspace = await createLocalCheckoutWorkspace(
-      { cwd, title: resolveFirstAgentPromptTitle(firstAgentContext) },
-      { projectRegistry, workspaceRegistry, workspaceGitService },
+    const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
+      cwd,
+      resolveFirstAgentPromptTitle(firstAgentContext),
+      undefined,
+      context,
     );
     if (firstAgentContext) {
       workspaceAutoName.scheduleForDirectory({
@@ -2014,7 +1460,7 @@ export async function createOttoDaemon(
         cwd: workspace.cwd,
         kind: workspace.kind,
         worktreeRoot: workspace.worktreeRoot,
-        isOttoOwnedWorktree: workspace.isOttoOwnedWorktree,
+        isPaseoOwnedWorktree: workspace.isPaseoOwnedWorktree,
         mainRepoRoot: workspace.mainRepoRoot,
       }));
   };
@@ -2038,11 +1484,39 @@ export async function createOttoDaemon(
       ),
     );
   };
+  // OTTO(workspace-lifecycle): reuse the canonical registries, checkout ownership and broadcasts.
+  ottoFileHistory = fileHistoryHost({ serverId: () => serverId, workspaces: workspaceRegistry }); // OTTO(file-history)
+  ottoWorkspaceLifecycle = createOttoWorkspaceLifecycle({
+    serverId: () => serverId,
+    paseoHome: config.paseoHome,
+    worktreesRoot: config.worktreesRoot,
+    workspaceRegistry,
+    projectRegistry,
+    workspaceGitService,
+    workspaceProvisioning,
+    agentManager,
+    publish: emitWorkspaceUpdatesExternal,
+    recovered: async (workspace) => {
+      await Promise.all(
+        (wsServer?.listSessions() ?? []).map((session) =>
+          session.refreshRecoveredWorkspaceForExternalMutation(workspace),
+        ),
+      );
+    },
+    releaseAuthoring: (input) =>
+      releaseMovedViewAuthor({
+        ...input,
+        hostId: serverId,
+        views: ottoViews,
+        workspaces: workspaceRegistry,
+      }),
+  });
   const ensureWorkspaceForCreateAndBroadcastExternal = async (
     cwd: string,
     firstAgentContext?: FirstAgentContext,
+    context?: { callerWorkspaceId?: string },
   ): Promise<string> => {
-    const workspaceId = await ensureWorkspaceForCreateExternal(cwd, firstAgentContext);
+    const workspaceId = await ensureWorkspaceForCreateExternal(cwd, firstAgentContext, context);
     await emitWorkspaceUpdatesExternal([workspaceId]);
     return workspaceId;
   };
@@ -2053,48 +1527,12 @@ export async function createOttoDaemon(
   const emitExternalSessionMessage = (message: SessionOutboundMessage) => {
     wsServer?.broadcast(wrapSessionMessage(message));
   };
-  // Live-update the Metrics screen: whenever any activity counter moves, ping
-  // every connected client so it re-fetches stats.activity.get. The store
-  // coalesces increments (max one callback per couple of seconds), so this
-  // stays a low-frequency, payload-free broadcast.
-  activityStatsStore.onDidChange(() => {
-    emitExternalSessionMessage({ type: "activity_stats_changed" });
-  });
-  // One daemon-owned artifact service backs both create_artifact and every
-  // client session. It owns ready-file watchers and generation state for every
-  // registered store; status notifications broadcast to every client.
-  const toolArtifactService = new ArtifactService({
-    storeRegistry: artifactStoreRegistry,
-    logger,
-    agentManager,
-    providerSnapshotManager,
-    broadcastArtifactUpdate: (metadata) => {
-      emitExternalSessionMessage({
-        type: "artifact.updated.notification",
-        payload: { artifact: metadata },
-      });
-    },
-    onActivity: recordActivity,
-  });
-  // Reconcile before clients can fetch the library so a crashed generation is
-  // always recoverable, then keep its ready-file watchers daemon-owned for the
-  // lifetime of this daemon.
-  await toolArtifactService.reconcileInterruptedGenerations().catch((error) => {
-    logger.error({ err: error }, "Failed to reconcile interrupted artifact generations");
-  });
-  await toolArtifactService.watchReadyArtifacts().catch((error) => {
-    logger.error({ err: error }, "Failed to start ready artifact file watchers");
-  });
   const workspaceAutoName = new WorkspaceAutoName({
     agentManager,
     workspaceRegistry,
     workspaceGitService,
     providerSnapshotManager,
-    readDaemonConfig: () => ({
-      metadataGeneration: daemonConfigStore.get().metadataGeneration,
-      agentProfiles: daemonConfigStore.get().agentProfiles,
-      agentTeams: daemonConfigStore.get().agentTeams,
-    }),
+    readDaemonConfig: () => metadataRoster(daemonConfigStore.get()),
     gitMutation: createGitMutationService({
       workspaceGitService,
       logger,
@@ -2105,22 +1543,10 @@ export async function createOttoDaemon(
     },
     logger,
   });
-  const agentAutoTitle = new AgentAutoTitle({
-    agentManager,
-    agentStorage,
-    providerSnapshotManager,
-    readDaemonConfig: () => ({
-      metadataGeneration: daemonConfigStore.get().metadataGeneration,
-      agentProfiles: daemonConfigStore.get().agentProfiles,
-      agentTeams: daemonConfigStore.get().agentTeams,
-    }),
-    workspaceGitService,
-    logger,
-  });
 
   setupAutoArchiveOnMerge({
-    ottoHome: config.ottoHome,
-    ottoWorktreesBaseRoot: config.worktreesRoot,
+    paseoHome: config.paseoHome,
+    paseoWorktreesBaseRoot: config.worktreesRoot,
     daemonConfigStore,
     workspaceGitService,
     github,
@@ -2138,24 +1564,22 @@ export async function createOttoDaemon(
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
   });
 
-  const createOttoWorktreeForTools = async (
-    input: Parameters<typeof createOttoWorktreeWorkflow>[1],
-    serviceOptions?: Parameters<typeof createOttoWorktreeWorkflow>[2],
+  const createPaseoWorktreeForTools = async (
+    input: Parameters<typeof createPaseoWorktreeWorkflow>[1],
+    serviceOptions?: Parameters<typeof createPaseoWorktreeWorkflow>[2],
   ) => {
-    return createOttoWorktreeWorkflow(
+    return createPaseoWorktreeWorkflow(
       {
-        ottoHome: config.ottoHome,
+        paseoHome: config.paseoHome,
         worktreesRoot: config.worktreesRoot,
-        createOttoWorktree: async (workflowInput, workflowOptions) => {
-          return createRegisteredOttoWorktree(workflowInput, {
+        createPaseoWorktree: async (workflowInput, workflowOptions) => {
+          return createRegisteredPaseoWorktree(workflowInput, {
             github,
             ...(workflowOptions?.resolveDefaultBranch
               ? {
                   resolveDefaultBranch: workflowOptions.resolveDefaultBranch,
                 }
               : {}),
-            projectRegistry,
-            workspaceRegistry,
             workspaceGitService,
             workspaceProvisioning,
           });
@@ -2180,7 +1604,6 @@ export async function createOttoDaemon(
         emit: emitExternalSessionMessage,
         sessionLogger: logger,
         terminalManager,
-        archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
         serviceProxy,
         scriptRuntimeStore,
         getDaemonTcpPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
@@ -2197,21 +1620,20 @@ export async function createOttoDaemon(
     agentManager,
     agentStorage,
     logger,
-    ottoHome: config.ottoHome,
+    paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     terminalManager,
     providerSnapshotManager,
-    createOttoWorktree: createOttoWorktreeForTools,
+    createPaseoWorktree: createPaseoWorktreeForTools,
     ensureWorkspaceForCreate: ensureWorkspaceForCreateAndBroadcastExternal,
-    scheduleAutoTitle: (request) => agentAutoTitle.schedule(request),
   };
   const createAgent = (input: Parameters<typeof createAgentCommand>[1]) =>
     createAgentCommand(createAgentCommandDependencies, input);
   const archiveWorkspaceByIdExternal = (workspaceId: string, requestId: string) =>
     archiveByScope(
       {
-        ottoHome: config.ottoHome,
-        ottoWorktreesBaseRoot: config.worktreesRoot,
+        paseoHome: config.paseoHome,
+        paseoWorktreesBaseRoot: config.worktreesRoot,
         github,
         workspaceGitService,
         agentManager,
@@ -2233,13 +1655,13 @@ export async function createOttoDaemon(
       { scope: { kind: "workspace", workspaceId }, requestId },
     );
   const hubAgentLifecycle = new CreateAgentLifecycleDispatch({
-    ottoHome: config.ottoHome,
+    paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     agentManager,
     agentStorage,
     github,
     workspaceGitService,
-    createOttoWorktreeWorkflow: createOttoWorktreeForTools,
+    createPaseoWorktreeWorkflow: createPaseoWorktreeForTools,
     archiveAgentForClose: (agentId) =>
       archiveAgentCommand({ agentManager, agentStorage, logger }, agentId),
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
@@ -2255,8 +1677,8 @@ export async function createOttoDaemon(
     logger,
   });
   const hubRelationships = new HubRelationshipController({
-    ottoHome: config.ottoHome,
-    hostname: getHostname(),
+    paseoHome: config.paseoHome,
+    hostname: getHostName(),
     serverId,
     daemonPublicKey: daemonKeyPair.publicKeyB64,
     logger,
@@ -2271,9 +1693,6 @@ export async function createOttoDaemon(
         { transport: "hub", hubDaemonId: options.daemonId },
         {
           principalId: options.principalId,
-          // Legacy Hub sessions keep their execution-only RPC ceiling. Modern
-          // sessions are bounded by the explicit semantic permissions below.
-          scopes: options.sessionProtocol === "legacy" ? ["hub.execution.*"] : ["*"],
           permissions: options.permissions,
           hubExecutionAgents: options.agents,
         },
@@ -2307,75 +1726,35 @@ export async function createOttoDaemon(
   const createScheduleLocalWorkspaceExternal = async (input: {
     cwd: string;
     firstAgentContext: FirstAgentContext;
-    hidden: boolean;
   }) => {
-    const workspace = await createLocalCheckoutWorkspace(
-      {
-        cwd: input.cwd,
-        title: resolveFirstAgentPromptTitle(input.firstAgentContext),
-        hidden: input.hidden,
-      },
-      { projectRegistry, workspaceRegistry, workspaceGitService },
+    const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
+      input.cwd,
+      resolveFirstAgentPromptTitle(input.firstAgentContext),
     );
     workspaceAutoName.scheduleForDirectory({
       workspaceId: workspace.workspaceId,
       cwd: workspace.cwd,
       firstAgentContext: input.firstAgentContext,
     });
-    // A hidden workspace resolves to no descriptor, so this emit is a no-op REMOVE
-    // (the row was never shown); it stays out of the sidebar until revealed.
     await emitWorkspaceUpdatesExternal([workspace.workspaceId]);
     return workspace;
   };
-  const createScheduleOttoWorktreeExternal = async (input: {
+  const createSchedulePaseoWorktreeExternal = async (input: {
     cwd: string;
     firstAgentContext: FirstAgentContext;
-    hidden: boolean;
   }) => {
-    const result = await createOttoWorktreeForTools({
+    const result = await createPaseoWorktreeForTools({
       cwd: input.cwd,
       firstAgentContext: input.firstAgentContext,
-      hidden: input.hidden,
     });
     await emitWorkspaceUpdatesExternal([result.workspace.workspaceId]);
     return result;
   };
-  // Reveal a hidden schedule-run workspace: flip `hidden` to false in the shared
-  // registry, then emit so every session upserts it into the sidebar (the
-  // descriptor now resolves). No-op if the workspace is already visible or gone.
-  // When the directory is already backed by a visible workspace, this reattaches
-  // the finished run to that occupant instead of revealing a duplicate - see
-  // revealScheduleRunWorkspace for why.
-  const revealScheduleWorkspaceExternal = async (workspaceId: string) => {
-    const outcome = await revealScheduleRunWorkspace(workspaceId, {
-      workspaceRegistry,
-      agentStorage,
-      archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
-    });
-    switch (outcome.kind) {
-      case "noop":
-        return;
-      case "revealed":
-        await emitWorkspaceUpdatesExternal([workspaceId]);
-        return;
-      case "reattached":
-        logger.info(
-          {
-            workspaceId,
-            occupantWorkspaceId: outcome.occupantWorkspaceId,
-            movedAgents: outcome.movedAgentIds.length,
-          },
-          "Reattached scheduled run to the workspace already backing its directory",
-        );
-        await emitWorkspaceUpdatesExternal([workspaceId, outcome.occupantWorkspaceId]);
-        return;
-    }
-  };
-  const archiveScheduleWorkspaceExternal = async (workspaceId: string, repoRoot: string) => {
+  const archiveScheduleWorkspaceExternal = async (workspaceId: string) => {
     await archiveByScope(
       {
-        ottoHome: config.ottoHome,
-        ottoWorktreesBaseRoot: config.worktreesRoot,
+        paseoHome: config.paseoHome,
+        paseoWorktreesBaseRoot: config.worktreesRoot,
         github,
         workspaceGitService,
         agentManager,
@@ -2402,136 +1781,65 @@ export async function createOttoDaemon(
       },
       {
         scope: { kind: "workspace", workspaceId },
-        repoRoot,
-        ottoWorktreesBaseRoot: config.worktreesRoot,
         requestId: "schedule-run-finish",
       },
     );
   };
+  const scheduleNativePolicy = new ScheduleNativePolicy({
+    resolveRole, // OTTO(schedule-profiles)
+    home: config.paseoHome,
+    hostId: serverId,
+    hostLabel: serverId,
+    metadata: projectRegistry.ottoMetadata,
+    storage: agentStorage,
+    workspaces: workspaceRegistry,
+    providers: providerSnapshotManager,
+  }); // OTTO(schedules): canonical provider and project preflight; no separate catalog or auth.
+  const scheduleTargets = createScheduleComposition({
+    home: config.paseoHome,
+    hostId: serverId,
+    hostLabel: serverId,
+    metadata: projectRegistry.ottoMetadata,
+    projects: () => projectRegistry!.list(),
+    workflows: ottoWorkflows.schedules,
+    artifacts: ottoArtifacts,
+    generateData: createArtifactDataGeneration(artifactCompletion()),
+    native: {
+      manager: agentManager,
+      validate: (schedule) => scheduleNativePolicy.validateStored(schedule),
+      onLateError: (scheduleId, runId, error) =>
+        logger.warn(
+          { err: error, scheduleId, runId },
+          "Native Schedule late cleanup needs inspection",
+        ),
+    },
+  }); // OTTO(schedules): owners are ready before the original clock starts.
   const scheduleService = new ScheduleService({
-    ottoHome: config.ottoHome,
+    onRunStarted: () => ottoActivity.increment("schedulesExecuted"), // OTTO(activity)
+    resolveRole, // OTTO(schedule-profiles)
+    paseoHome: config.paseoHome,
     logger,
     agentManager,
     agentStorage,
     createAgent,
-    createLocalCheckoutWorkspace: createScheduleLocalWorkspaceExternal,
-    createOttoWorktreeWorkspace: createScheduleOttoWorktreeExternal,
+    createDirectoryWorkspace: createScheduleLocalWorkspaceExternal,
+    createPaseoWorktreeWorkspace: createSchedulePaseoWorktreeExternal,
     archiveWorkspace: archiveScheduleWorkspaceExternal,
-    revealWorkspace: revealScheduleWorkspaceExternal,
-    providerSnapshotManager,
-    readAgentProfiles: () => daemonConfigStore.get().agentProfiles ?? [],
-    readAgentTeams: () => daemonConfigStore.get().agentTeams,
-    onActivity: recordActivity,
+    store: scheduleTargets.registry, // OTTO(schedules): includes retained legacy and independently resolved project stores.
+    otto: scheduleTargets.runtime, // OTTO(schedules): same claim/admission/settlement owner.
   });
-  // Orchestration runtime - owns multi-agent Runs and drives the engine. Run
-  // updates broadcast to every connected client so the UI can watch live.
-  // A terminal run is summarized by a Writer (same one-shot, internal-agent path
-  // as commit messages) so the Runs display shows a plain-language recap.
-  const runSummaryGeneration = createAgentStructuredTextGeneration({
-    agentManager,
-    providerSnapshotManager,
-    readDaemonConfig: () => {
-      const cfg = daemonConfigStore.get();
-      return {
-        metadataGeneration: cfg.metadataGeneration,
-        agentProfiles: cfg.agentProfiles,
-        agentTeams: cfg.agentTeams,
-      };
-    },
-    getFocusedSelection: () => undefined,
-  });
-  const runSummarySchema = z.object({ summary: z.string().min(1) });
-  const runService = new WorkflowService({
-    store: new WorkflowRunStore(workflowStoreRegistry, path.join(config.ottoHome, "runs")),
-    logger,
-    onActivity: recordActivity,
-    storageResolver: {
-      provenanceForCwd: async (cwd) =>
-        workflowStoreRegistry.provenanceFor(await workflowStoreRegistry.resolveForCwd(cwd)),
-    },
-    summarize: async (run) => {
-      const result = await runSummaryGeneration.generate({
-        cwd: run.cwd ?? config.ottoHome,
-        prompt: buildRunSummaryPrompt(run),
-        schema: runSummarySchema,
-        schemaName: "RunSummary",
-        agentTitle: "Run summary",
-      });
-      return result.summary;
-    },
-  });
-  await runService.init();
-  runService.onChange((run) => {
-    emitExternalSessionMessage({
-      type: "runs.updated.notification",
-      payload: { run: toWireRun(run) },
-    });
-  });
-  runService.onRemove((runIds) => {
-    emitExternalSessionMessage({ type: "runs.cleared.notification", payload: { runIds } });
-  });
-  logger.info({ elapsed: elapsed() }, "Run service initialized");
-  // Orchestration graph templates (projects/orchestration-graphs) - host-level,
-  // like personalities/teams. Starter graphs seed once; user edits win forever.
-  const graphStore = new GraphStore(path.join(config.ottoHome, "orchestration-graphs"));
-  const workflowLibraryService = new WorkflowLibraryService(workflowStoreRegistry, {
-    graphsDirectory: path.join(config.ottoHome, "orchestration-graphs"),
-    templatesDirectory: path.join(config.ottoHome, "prompt-templates"),
-    runsDirectory: path.join(config.ottoHome, "runs"),
-  });
-  const graphSharingService = new GraphSharingService(
-    graphStore,
-    workflowStoreRegistry,
-    undefined,
-    workflowLibraryService,
-  );
-  // Where a graph node's submit_output call lands on its way to the engine.
-  // One per daemon, shared by the tool catalog (writes) and the orchestration
-  // spawn port (reads); see orchestration/node-output.ts.
-  const nodeOutputStore = new NodeOutputStore();
-  // Reusable prompts + snippets, stored like graphs and for the same reason.
-  const promptTemplateStore = new PromptTemplateStore(
-    path.join(config.ottoHome, "prompt-templates"),
-  );
-  await seedStarterGraphs(graphStore, logger);
-  await seedStarterPromptTemplates(promptTemplateStore, logger);
-  graphStore.onChange((graphs) => {
-    emitExternalSessionMessage({ type: "runs.graphs.changed.notification", payload: { graphs } });
-  });
-  promptTemplateStore.onChange((templates) => {
-    emitExternalSessionMessage({
-      type: "runs.templates.changed.notification",
-      payload: { templates },
-    });
-  });
-  logger.info({ elapsed: elapsed() }, "Orchestration graph store initialized");
-  scheduleService.setWorkflowRunner(
-    createWorkflowScheduleTargetRunner({
-      createGraphStore: (directory) => new GraphStore(directory),
-      workflowStoreRegistry,
-      orchestration: {
-        runService,
-        graphStore,
-        agentManager,
-        createAgentDeps: createAgentCommandDependencies,
-        logger,
-        getPersonalityRoster: () => daemonConfigStore.get().agentProfiles ?? [],
-        getAgentTeams: () => daemonConfigStore.get().agentTeams,
-        listProviderEntries: (cwd) => providerSnapshotManager.listProviders({ cwd, wait: true }),
-        nodeOutputStore,
-        promptTemplateStore,
-      },
-      start: startUserOrchestration,
-    }),
-  );
+  ottoSchedules = createScheduleApi({
+    targets: scheduleTargets,
+    scheduler: scheduleService,
+    policy: scheduleNativePolicy,
+    onSettlementError: (scheduleId, error) =>
+      logger.error(
+        { err: error, scheduleId },
+        "Schedule settlement could not be persisted; inspect retained history",
+      ),
+  }); // OTTO(schedules): register real owners only; the target editor capability is added with UI acceptance.
   await scheduleService.start();
   agentManager.setAgentArchivedCallback(async (agentId) => {
-    // An AI Workflow whose planning chat is archived before it declared a
-    // plan can never be activated; make that a durable, inspectable failure.
-    await runService.failPendingAiRunForConductor(
-      agentId,
-      "The orchestrator chat was archived before it declared a workflow plan.",
-    );
     try {
       await scheduleService.completeForAgent(agentId);
     } catch (error) {
@@ -2551,163 +1859,137 @@ export async function createOttoDaemon(
   logger.info({ elapsed: elapsed() }, "Preparing voice and MCP runtime");
 
   const createAgentToolHostDependencies = (
-    runtime: OttoToolRuntimeContext,
-  ): OttoToolHostDependencies => ({
+    runtime: PaseoToolRuntimeContext,
+  ): PaseoToolHostDependencies => ({
+    onBackgroundTaskStarted: () => ottoActivity.increment("backgroundTasksInvoked"), // OTTO(activity)
+    ottoWorkflows: ottoWorkflows?.tools(runtime.callerAgentId), // OTTO(workflows): caller-bound authority, shared app/CLI/MCP owner.
+    ottoSchedules: ottoSchedules ?? undefined, // OTTO(schedules): same owner as UI and CLI, never a parallel scheduler.
+    scheduleToolPolicy: createRetainedToolPolicy("schedules", config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ), // OTTO(schedules)
+    ottoPreview: ottoPreview ?? undefined, // OTTO(preview)
+    previewToolPolicy: createRetainedToolPolicy("preview", config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ), // OTTO(preview)
+    ottoKnowledge: ottoKnowledge ?? undefined, // OTTO(knowledge)
+    ottoArtifacts: ottoArtifacts ?? undefined, // OTTO(artifacts)
+    ottoViews: ottoViews ?? undefined, // OTTO(architectural-views)
+    viewToolPolicy: createRetainedToolPolicy("knowledge", config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ), // OTTO(architectural-views): preserve host/provider ceilings.
+    artifactToolPolicy: createRetainedToolPolicy("artifacts", config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ), // OTTO(artifacts)
+    ottoMoveChat: ottoWorkspaceLifecycle?.move, // OTTO(workspace-lifecycle)
+    workspaceMovePolicy: createRetainedToolPolicy("workspaces", config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ),
+    ottoKanban: ottoKanban ?? undefined, // OTTO(kanban): one host boundary for app and agent tools.
+    kanbanToolPolicy: createRetainedKanbanToolPolicy(config.paseoHome, () =>
+      daemonConfigStore.get(),
+    ), // OTTO(kanban): live primary + retained ceilings, no startup reads or writes.
     agentManager,
     agentStorage,
     terminalManager,
     getDaemonTcpPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
     scheduleService,
-    runService,
     providerSnapshotManager,
-    readAgentProfiles: () => daemonConfigStore.get().agentProfiles ?? [],
-    readAgentTeams: () => daemonConfigStore.get().agentTeams,
-    personalityMemory,
-    projectKnowledge,
-    architecturalViews,
-    openArchitecturalView: ({ agentId, workspaceId, viewId }) => {
-      emitExternalSessionMessage({
-        type: "architectural-views.open.notification",
-        payload: { agentId, workspaceId, viewId },
-      });
-    },
+    daemonConfigStore,
     github,
     workspaceGitService,
     findWorkspaceIdForCwd: findWorkspaceIdForCwdExternal,
     listActiveWorkspaces: listActiveWorkspacesExternal,
     archiveWorkspaceRecord: archiveWorkspaceRecordExternal,
     emitWorkspaceUpdatesForWorkspaceIds: emitWorkspaceUpdatesExternal,
-    moveChatToWorkspace: (input) =>
-      moveChatToWorkspace(
-        {
-          getAgentWorkspaceId: async (id) => {
-            const live = agentManager.getAgent(id);
-            if (live) return { workspaceId: live.workspaceId };
-            const stored = await agentStorage.get(id);
-            return stored ? { workspaceId: stored.workspaceId } : null;
-          },
-          getWorkspace: (id) => workspaceRegistry.get(id),
-          transfer: (id, target) => agentManager.transferAgentWorkspace(id, target),
-          getAgentLabels: async (id) =>
-            agentManager.getAgent(id)?.labels ?? (await agentStorage.get(id))?.labels,
-          releaseDraftAuthoringAgent: async (draft) => {
-            const source = await workspaceRegistry.get(draft.workspaceId);
-            if (source) {
-              await architecturalViews.releaseDraftAuthoringAgent({
-                cwd: source.cwd,
-                agentId: draft.agentId,
-                viewId: draft.viewId,
-                draftId: draft.draftId,
-              });
-            }
-          },
-          clearAuthoringLabels: async (id) => {
-            await agentManager.updateAgentMetadata(id, {
-              labels: clearedArchitecturalViewAuthoringLabels,
-            });
-          },
-          emitStoredRecord: async (record) => {
-            await Promise.all(
-              (wsServer?.listSessions() ?? []).map((session) =>
-                session.emitStoredAgentRecordForExternalMutation(record),
-              ),
-            );
-          },
-          emitWorkspaceUpdates: emitWorkspaceUpdatesExternal,
-        },
-        input,
-      ),
     workspaceRegistry,
     projectRegistry,
-    readKanbanConfig: () => daemonConfigStore.get(),
-    kanbanConnections: forgeConnections,
-    kanbanProjectRegistry: projectRegistry,
-    kanbanWorkspaceRegistry: workspaceRegistry,
-    // Backs create_workspace's "local" isolation. The worktree half rides on
-    // createOttoWorktree below, so both isolations reach the same services the
-    // New Workspace screen uses.
-    createDirectoryWorkspace: (cwd, title, projectId) =>
-      workspaceProvisioning.createWorkspaceForDirectory(cwd, title, projectId),
+    createDirectoryWorkspace: async (cwd, title, projectId, context) => {
+      const workspace = await workspaceProvisioning.createWorkspaceForDirectory(
+        cwd,
+        title,
+        projectId,
+        context,
+      );
+      await emitWorkspaceUpdatesExternal([workspace.workspaceId]);
+      return workspace;
+    },
+    workspaceScripts: createWorkspaceScriptsService({
+      serviceProxy,
+      scriptRuntimeStore,
+      terminalManager,
+      workspaceRegistry,
+      projectRegistry,
+      workspaceGitService,
+      getDaemonTcpPort: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.port : null),
+      getDaemonTcpHost: () => (boundListenTarget?.type === "tcp" ? boundListenTarget.host : null),
+      serviceProxyPublicBaseUrl,
+      resolveScriptHealth: (hostname) => scriptHealthMonitor.getHealthForHostname(hostname),
+      logger,
+      emit: (message) => wsServer?.broadcast(wrapSessionMessage(message)),
+      publishStatusUpdate: (message) => wsServer?.publishScriptStatusUpdate(message),
+      spawnWorkspaceScript,
+      assertAutomationAllowed: (workspaceId) =>
+        assertWorkspaceAutomationAllowedForWorkspace(workspaceRegistry, workspaceId),
+      globalServicePorts: loadPersistedConfig(config.paseoHome).worktrees?.servicePorts,
+    }),
     markWorkspaceArchiving: markWorkspaceArchivingExternal,
     clearWorkspaceArchiving: clearWorkspaceArchivingExternal,
     ensureWorkspaceForCreate: createAgentCommandDependencies.ensureWorkspaceForCreate,
-    createOttoWorktree: createAgentCommandDependencies.createOttoWorktree,
-    scheduleAutoTitle: createAgentCommandDependencies.scheduleAutoTitle,
+    createPaseoWorktree: createAgentCommandDependencies.createPaseoWorktree,
     browserToolsEnabled: browserToolsPolicy.isEnabled(),
-    // Live-read the group allowlist so category toggles take effect without a
-    // restart - the deps are rebuilt per MCP request (stateless transport).
-    enabledOttoToolGroups: ottoToolGroupsPolicy.getEnabledGroups(),
     browserToolsBroker,
-    previewDevServers,
-    artifactService: toolArtifactService,
-    emitArtifactCreated: (artifact) => {
-      emitExternalSessionMessage({
-        type: "artifact.created.notification",
-        payload: { artifact },
-      });
-    },
-    emitArtifactUpdated: (artifact) => {
-      emitExternalSessionMessage({
-        type: "artifact.updated.notification",
-        payload: { artifact },
-      });
-    },
-    ottoToolPolicy:
-      runtime.ottoToolPolicy ??
-      (runtime.callerAgentId ? agentManager.getOttoToolPolicy(runtime.callerAgentId) : undefined),
-    ottoHome: config.ottoHome,
+    paseoToolPolicy:
+      runtime.paseoToolPolicy ??
+      (runtime.callerAgentId ? agentManager.getPaseoToolPolicy(runtime.callerAgentId) : undefined),
+    paseoHome: config.paseoHome,
     worktreesRoot: config.worktreesRoot,
     callerAgentId: runtime.callerAgentId,
     enableVoiceTools: runtime.enableVoiceTools,
     voiceOnly: runtime.voiceOnly,
     resolveSpeakHandler: (agentId) => wsServer?.resolveVoiceSpeakHandler(agentId) ?? null,
     resolveCallerContext: (agentId) => wsServer?.resolveVoiceCallerContext(agentId) ?? null,
-    onActivity: recordActivity,
-    nodeOutputStore,
     logger,
   });
-  const createAgentToolDependencies = async (
-    runtime: OttoToolRuntimeContext,
-  ): Promise<OttoToolHostDependencies> => {
-    const deps = createAgentToolHostDependencies(runtime);
-    const cwd =
-      runtime.callerCwd ??
-      (runtime.callerAgentId ? agentManager.getAgentToolCwd(runtime.callerAgentId) : undefined);
-    // Connector authority is agent-scoped. Unbound control-plane clients and
-    // voice-only catalog requests do not acquire the host's external accounts.
-    if (cwd && !runtime.voiceOnly) deps.connectorTools = await connectorToolCatalog.getTools(cwd);
-    return deps;
+  // OTTO(connectors): both native tool loops and CLI MCP use the same prepared
+  // catalog. Unbound control-plane/voice/generation contexts receive no connectors.
+  const prepareAgentToolDependencies = async (runtime: PaseoToolRuntimeContext) => {
+    const toolHost = createAgentToolHostDependencies(runtime);
+    const caller = runtime.callerAgentId ? agentManager.getAgent(runtime.callerAgentId) : null;
+    const enabled =
+      daemonConfigStore.get().mcp.enabled !== false &&
+      daemonConfigStore.get().mcp.injectIntoAgents !== false &&
+      toolHost.paseoToolPolicy?.enabled !== false;
+    const ottoConnectorTools = await prepareConnectorTools({
+      host: ottoIntegrations!.connectors,
+      runtime,
+      cwd: runtime.callerCwd ?? caller?.cwd,
+      enabled,
+    });
+    return { ...toolHost, ottoConnectorTools };
   };
-  const createAgentToolCatalog = async (runtime: OttoToolRuntimeContext) =>
-    createOttoToolCatalog(await createAgentToolDependencies(runtime));
+  const createAgentToolCatalog = async (runtime: PaseoToolRuntimeContext) =>
+    createPaseoToolCatalog(await prepareAgentToolDependencies(runtime));
   const setAgentProviderToolsEnabled = (enabled: boolean) => {
-    // The bridge advertises a static manifest. Agent-bound execution still uses
-    // the asynchronous catalog with its current connector and workspace grants.
-    agentProviderRuntime.setOttoToolCatalog(
-      enabled ? createOttoToolCatalog(createAgentToolHostDependencies({})) : null,
+    agentProviderRuntime.setPaseoToolCatalog(
+      enabled ? createPaseoToolCatalog(createAgentToolHostDependencies({})) : null,
     );
   };
-  agentManager.setOttoToolCatalogFactory(createAgentToolCatalog);
-  agentManager.setOttoToolsEnabled(config.mcpInjectIntoAgents !== false);
+  agentManager.setPaseoToolCatalogFactory(createAgentToolCatalog);
+  agentManager.setPaseoToolsEnabled(config.mcpInjectIntoAgents !== false);
   setAgentProviderToolsEnabled(config.mcpEnabled !== false && config.mcpInjectIntoAgents !== false);
 
   let mcpEnabled = config.mcpEnabled ?? true;
   let agentMcpBaseUrl: string | null = null;
   {
     const agentMcpRoute = "/mcp/agents";
-    // Agent MCP requests construct a fresh tool server and transport. Bound the
-    // work a single network peer can force before it reaches authorization or
-    // session construction, without relying on untrusted forwarded headers.
-    const agentMcpRequestLimiter = new FixedWindowRateLimiter({
-      maxRequests: 120,
-      windowMs: 60_000,
-    });
 
     const createAgentMcpSession = async (callerAgentId?: string) => {
       const agentMcpServer = await createAgentMcpServer(
-        await createAgentToolDependencies({
+        await prepareAgentToolDependencies({
           callerAgentId,
-          ottoToolPolicy: callerAgentId ? agentManager.getOttoToolPolicy(callerAgentId) : undefined,
+          paseoToolPolicy: callerAgentId
+            ? agentManager.getPaseoToolPolicy(callerAgentId)
+            : undefined,
         }),
       );
 
@@ -2754,7 +2036,6 @@ export async function createOttoDaemon(
         res.status(401).json({ error: "Unauthorized" });
         return;
       }
-      normalizeAgentMcpProtocolVersion(req);
       if (config.mcpDebug) {
         logger.debug(
           {
@@ -2816,13 +2097,6 @@ export async function createOttoDaemon(
     };
 
     const handleAgentMcpRequest: express.RequestHandler = (req, res) => {
-      const peer = req.socket.remoteAddress ?? "unknown";
-      const limit = agentMcpRequestLimiter.take(peer);
-      if (!limit.allowed) {
-        res.setHeader("Retry-After", limit.retryAfterSeconds.toString());
-        res.status(429).json({ error: "Too many Agent MCP requests" });
-        return;
-      }
       void runAgentMcpRequest(req, res);
     };
 
@@ -2832,41 +2106,20 @@ export async function createOttoDaemon(
     logger.info({ route: agentMcpRoute, enabled: mcpEnabled }, "Agent MCP route mounted");
   }
 
-  const speechService = createSpeechService({
+  // OTTO(speech): the wrapper composes Paseo's service, never a parallel engine.
+  const speechService = new ManagedSpeechRuntime(
+    { openai: config.openai, speech: config.speech },
     logger,
-    openaiConfig: config.openai,
-    speechConfig: config.speech,
-  });
+  );
+  ottoSpeech = SpeechHost.forDaemon(config, serverId, speechService, logger);
   logger.info({ elapsed: elapsed() }, "Speech service created");
-
-  // Hot-reload speech providers when daemon config changes (settings UI writes
-  // features.dictation/voiceMode via the daemon config store). reconfigure()
-  // no-ops when the resolved speech config is unchanged, so unrelated config
-  // patches never churn the speech worker.
-  const unsubscribeSpeechConfigChange = daemonConfigStore.onChange(() => {
-    try {
-      const persisted = loadPersistedConfig(config.ottoHome, logger);
-      const resolved = resolveSpeechConfig({
-        ottoHome: config.ottoHome,
-        env: process.env,
-        persisted,
-      });
-      void speechService
-        .reconfigure({ openaiConfig: resolved.openai, speechConfig: resolved.speech })
-        .catch((error: unknown) => {
-          logger.warn({ err: error }, "Speech reconfigure failed after config change");
-        });
-    } catch (error) {
-      logger.warn({ err: error }, "Failed to re-resolve speech config after config change");
-    }
-  });
 
   logger.info({ elapsed: elapsed() }, "Bootstrap complete, ready to start listening");
 
   const start = async () => {
-    agentManager.chatSearch?.start();
     let mainStarted = false;
     try {
+      localCredential = await writeLocalCredential(config.paseoHome);
       if (serviceProxyListenTarget) {
         const boundServiceProxyTarget = await serviceProxy.startStandalone({
           listenTarget: serviceProxyListenTarget,
@@ -2897,47 +2150,26 @@ export async function createOttoDaemon(
             agentMcpBaseUrl =
               !mcpEnabled || config.mcpInjectIntoAgents === false ? null : mcpBaseUrl;
             agentManager.setMcpBaseUrl(agentMcpBaseUrl);
-            agentManager.setOttoToolsEnabled(mcpEnabled && config.mcpInjectIntoAgents !== false);
+            agentManager.setPaseoToolsEnabled(mcpEnabled && config.mcpInjectIntoAgents !== false);
             daemonConfigStore.onFieldChange("mcp.enabled", (value) => {
               mcpEnabled = value !== false;
               const inject = daemonConfigStore.get().mcp.injectIntoAgents !== false;
               agentManager.setMcpBaseUrl(mcpEnabled && inject ? mcpBaseUrl : null);
-              agentManager.setOttoToolsEnabled(mcpEnabled && inject);
+              agentManager.setPaseoToolsEnabled(mcpEnabled && inject);
               setAgentProviderToolsEnabled(mcpEnabled && inject);
             });
             daemonConfigStore.onFieldChange("mcp.injectIntoAgents", (value) => {
               agentManager.setMcpBaseUrl(mcpEnabled && value ? mcpBaseUrl : null);
-              agentManager.setOttoToolsEnabled(mcpEnabled && value !== false);
+              agentManager.setPaseoToolsEnabled(mcpEnabled && value !== false);
               setAgentProviderToolsEnabled(mcpEnabled && value !== false);
             });
             daemonConfigStore.onFieldChange("appendSystemPrompt", (value) => {
               agentManager.setAppendSystemPrompt(typeof value === "string" ? value : "");
             });
-            // Daemon-wide agent behavior toggles (behavior-injecting providers + the Otto-tools
-            // notify-on-finish default). New/resumed agents pick up promptSuggestions
-            // and agentProgressSummaries on their next launch (injected via
-            // buildLaunchContext); notifyOnFinishDefault is read live per tool call.
-            // WP-A persists agentBehaviors.*; WP-E owns this live wiring. The
-            // resolver treats any non-false field as on, so passing the raw
-            // partial object through is safe.
-            daemonConfigStore.onFieldChange("agentBehaviors", (value) => {
-              const behaviors =
-                typeof value === "object" && value !== null
-                  ? (value as {
-                      promptSuggestions?: boolean;
-                      agentProgressSummaries?: boolean;
-                      notifyOnFinishDefault?: boolean;
-                      defaultSendBehavior?: "interrupt" | "steer" | "queue";
-                      todoNudge?: boolean;
-                      todoReconcileOnIdle?: boolean;
-                    })
-                  : undefined;
-              agentManager.setAgentBehaviors(behaviors);
-            });
             const relayEnabled = config.relayEnabled ?? true;
-            const relayEndpoint = config.relayEndpoint ?? "relay.otto-code.me:443";
+            const relayEndpoint = config.relayEndpoint ?? "relay.paseo.sh:443";
             const relayPublicEndpoint = config.relayPublicEndpoint ?? relayEndpoint;
-            const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.otto-code.me:443";
+            const relayUseTls = config.relayUseTls ?? relayEndpoint === "relay.paseo.sh:443";
             const relayPublicUseTls = config.relayPublicUseTls ?? relayUseTls;
             if (boundListenTarget.type === "tcp") {
               logger.info(
@@ -2961,35 +2193,7 @@ export async function createOttoDaemon(
             }
             if (config.auth?.password) {
               logger.info("Daemon password authentication enabled");
-            } else if (config.listenAutoWidenedForWsl) {
-              logger.warn(
-                "Detected WSL: binding to 0.0.0.0 so the Windows host can reach the daemon " +
-                  "without manual config. No password is set, so anything that can reach this " +
-                  "port controls the daemon. Consider setting OTTO_PASSWORD (or auth.password " +
-                  "in config.json) to require authentication.",
-              );
             }
-
-            const integrationAuthorizationCatalog = new IntegrationAuthorizationCatalog();
-            integrationAuthorizationCatalog.registerMethods(getZoomTeamChatAuthorizationMethods());
-            const zoomTeamChatAuthorization = new ZoomTeamChatManagedAuthorizationBroker(
-              integrationAuthorization,
-            );
-            const integrationBrowserAuthorization = new IntegrationBrowserAuthorizationService();
-            integrationBrowserAuthorization.register(zoomTeamChatAuthorization);
-            integrationBrowserAuthorization.registerResolver(
-              GOOGLE_CONNECTOR_INTEGRATION_ID,
-              (connectionId) => ({
-                integrationId: GOOGLE_CONNECTOR_INTEGRATION_ID,
-                connectionId,
-                start: () => googleConnectors.start(connectionId),
-              }),
-            );
-
-            const communicationsService = new CommunicationsService();
-            communicationsService.registerProvider(
-              new ZoomTeamChatProvider(integrationAuthorization),
-            );
 
             wsServer = new VoiceAssistantWebSocketServer(
               httpServer,
@@ -2998,7 +2202,7 @@ export async function createOttoDaemon(
               agentManager,
               agentStorage,
               downloadTokenStore,
-              config.ottoHome,
+              config.paseoHome,
               daemonConfigStore,
               mcpBaseUrl,
               {
@@ -3009,7 +2213,7 @@ export async function createOttoDaemon(
                 startPaused: true,
               },
               workspaceAutoName,
-              config.auth,
+              daemonAuth,
               speechService,
               terminalManager,
               {
@@ -3055,43 +2259,24 @@ export async function createOttoDaemon(
               },
               serviceProxyPublicBaseUrl,
               browserToolsBroker,
-              previewDevServers,
-              gitHostingResolver,
-              runService,
-              recordActivity,
-              () => activityStatsStore.getRollups(),
-              agentAutoTitle,
-              (query) => usageLogStore.getPage(query),
-              // "Reset" on the Metrics screen: wipe both usage sinks together -
-              // the day-bucketed counters behind the tiles and the itemized
-              // ledger behind the Log tab - so the screen starts fresh. The
-              // stats store fires its coalesced change ping on reset, so every
-              // connected client re-fetches both.
-              async () => {
-                await Promise.all([activityStatsStore.reset(), usageLogStore.reset()]);
-              },
-              graphStore,
-              // Trailing positional arguments, and the place the v0.2.5 merge
-              // went wrong: two branches each appended a final parameter to this
-              // constructor, and only graphStore made it to the call site. The
-              // session then saw no relationship manager and answered every
-              // `otto hub connect` with "Hub relationship management is
-              // unavailable". Anything appended below must be added here too.
               hubRelationships,
-              connectorOAuthBroker,
-              communicationsService,
-              integrationAuthorization,
-              integrationAuthorizationCatalog,
-              integrationBrowserAuthorization,
-              zoomTeamChatAuthorization,
               workspaceSetupRuntime,
               pluginRuntime,
               orchestrationSkills,
               workspaceLabelService,
-              googleConnectors,
             );
-            pluginRuntime.bindOttoSessionHost(wsServer);
+            pluginRuntime.bindPaseoSessionHost(wsServer);
             await pluginRuntime.start();
+            // OTTO(brain-startup): saved enable+autostart applies once at daemon startup,
+            // only for a running built-in. Reads/saves and Remote mode never start a host.
+            if (pluginRuntime.catalog().some((plugin) => plugin.id === "otto-brain")) {
+              void ottoBrain.applyStartupIntent().catch(() => {
+                logger.warn(
+                  "Saved Brain startup failed; open Brain settings to start it explicitly",
+                );
+              });
+            }
+            providerSnapshotManager.settlePluginProviders();
             wsServer.beginAcceptingConnections();
             relayRuntime = createRelayRuntime({
               config: {
@@ -3113,37 +2298,6 @@ export async function createOttoDaemon(
               relayRuntime?.setEnabled(value === true);
             });
             await hubRelationships.start();
-
-            wsServer.setPersonalityStatsProvider(() => profileStatsStore.get());
-            wsServer.setPersonalityMemoryService(personalityMemory);
-            wsServer.setProjectKnowledgeService(projectKnowledge);
-            wsServer.setProjectKnowledgeStoreResolver(projectKnowledgeStores);
-            wsServer.setArtifactService(toolArtifactService);
-            wsServer.setWorkflowStoreRegistry(workflowStoreRegistry);
-            wsServer.setGraphSharingService(graphSharingService);
-            wsServer.setNodeOutputStore(nodeOutputStore);
-            wsServer.setPromptTemplateStore(promptTemplateStore);
-            // Late-wired like the stores above: hands the brain manager to the
-            // websocket server, which applies the current `brain` config now and
-            // re-applies it on every daemon-config change.
-            wsServer.setBrainManager(brainManager);
-            wsServer.setBrainOpsManager(brainOpsManager);
-
-            // Sanity guard: never let preview "stop external server" tree-kill
-            // Otto's own runtime - the daemon's listen port or a loopback dev
-            // server hosting a connected client (e.g. Metro serving this app).
-            const wsServerForProtectedPorts = wsServer;
-            previewDevServers.setProtectedPortsProvider(() => {
-              const ports = new Set<number>();
-              const bound = boundListenTarget ?? listenTarget;
-              if (bound.type === "tcp") {
-                ports.add(bound.port);
-              }
-              for (const port of wsServerForProtectedPorts.getConnectedClientOriginPorts()) {
-                ports.add(port);
-              }
-              return [...ports];
-            });
           };
 
           logAndResolve().then(resolve, reject);
@@ -3166,8 +2320,33 @@ export async function createOttoDaemon(
       speechService.start();
       scriptHealthMonitor.start();
     } catch (error) {
+      localCredential = null;
+      await deleteLocalCredential(config.paseoHome);
       unsubscribePluginProviders();
       await pluginRuntime.stopAllPlugins().catch(() => undefined);
+      ottoSpeech?.close(); // OTTO(speech)
+      await ottoBrain.close(); // OTTO(brain-host): release waits/feed; never stop independent host jobs.
+      await ottoEditor.close(); // OTTO(editor): bounded language-server teardown on startup failure.
+      await ottoKnowledge?.close(); // OTTO(knowledge): awaited observer teardown.
+      await ottoSchedules?.close(); // OTTO(schedules): reject pending API admissions before scheduler/target teardown.
+      await scheduleService
+        .stop()
+        .catch((cleanupError) => logger.warn({ err: cleanupError }, "Schedule cleanup failed")); // OTTO(schedules): revoke target waits before their owning services stop.
+      await ottoArtifacts?.close(); // OTTO(artifacts): revoke late generation publication.
+      await ottoViews?.close(); // OTTO(architectural-views): release feeds/cache and bounded renderer children.
+      await ottoWorkflows?.close(); // OTTO(workflows): settle owned sessions before provider teardown.
+      await ottoKanban?.close(); // OTTO(kanban): no polling survives daemon startup failure.
+      await ottoIntegrations?.close(); // OTTO(bitbucket,connectors): release polls, clients and callback listeners.
+      await ottoHostBrowser
+        ?.close()
+        .catch((cleanupError) =>
+          logger.error({ err: cleanupError }, "Host Browser cleanup failed"),
+        ); // OTTO(browser-host)
+      await previewManager
+        ?.close()
+        .catch((cleanupError) =>
+          logger.error({ err: cleanupError }, "Preview process cleanup failed"),
+        ); // OTTO(preview): preserve the original startup error.
       await serviceProxy.stopStandalone().catch(() => undefined);
       await agentProviderRuntime.shutdown().catch(() => undefined);
       if (mainStarted) {
@@ -3179,52 +2358,63 @@ export async function createOttoDaemon(
   };
 
   const stop = async () => {
-    await hostedConnectorAuthorization.close();
-    setHostedConnectorAuthorization(undefined);
-    connectorOAuthBroker.closeAll();
-    await connectorToolCatalog.close();
-    await googleConnectors.close();
-    await orchestrationSkills.dispose();
-    await pluginRuntime.stopAllPlugins();
+    localCredential = null;
+    await deleteLocalCredential(config.paseoHome);
+    // Stop tracking plugin provider registrations before anything tears plugins
+    // down, so plugin shutdown cannot withdraw a provider from under an agent
+    // that is still open. Plugins themselves are stopped once every session
+    // they serve has been closed, further down.
     unsubscribePluginProviders();
     await hubRelationships.stop();
     workspaceReconciliation.dispose();
     scriptHealthMonitor.stop();
-    stopMaterializedImageHousekeeping();
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();
+    await ottoSchedules?.close(); // OTTO(schedules): no API admission survives shutdown; owning jobs are stopped below.
+    await scheduleService
+      .stop()
+      .catch((error) => logger.warn({ err: error }, "Schedule cleanup failed")); // OTTO(schedules): stop the clock and revoke publication before target/provider teardown.
+    await ottoWorkflows?.close(); // OTTO(workflows): close only owned runs before Paseo takes its agent shutdown snapshot.
     agentManager.prepareForShutdown();
-    // Dev servers next: they are children of this daemon and hold ports the
-    // next daemon instance may want.
-    await previewDevServers.shutdown().catch(() => undefined);
-    // The local AI host is a managed child too - kill it so it never outlives
-    // the daemon that spawned it.
-    await brainManager.shutdown().catch(() => undefined);
-    await brainOpsManager.shutdown().catch(() => undefined);
     await closeAllAgents(logger, agentManager);
+    await withTimeout({
+      promise: pluginRuntime.drainEvents(),
+      timeoutMs: AGENT_CLOSE_TIMEOUT_MS,
+      label: "drain plugin lifecycle events",
+    }).catch((error) => logger.warn({ err: error }, "Plugin lifecycle events did not finish"));
     await agentManager.flushForShutdown().catch(() => undefined);
-    await agentManager.chatSearch
-      ?.close()
-      .catch((error) => logger.warn({ err: error }, "Chat search shutdown failed"));
+    await ottoActivity.flush().catch(
+      (error: unknown) => logger.warn({ err: error }, "Failed to flush Otto activity"), // OTTO(activity)
+    );
+    await ottoChatSearch.close().catch((error: unknown) => {
+      // OTTO(chat-search)
+      logger.warn({ err: error }, "Chat search shutdown did not finish");
+    });
     detachAgentStoragePersistence();
     await agentStorage.flush().catch(() => undefined);
-    // The ledger's write timer is coalesced and unref()'d, so without this every
-    // daemon exit dropped up to WRITE_COALESCE_MS of appended rows. `flush()` was
-    // always documented as the graceful-shutdown hook; nothing called it.
-    await usageLogStore.flush().catch(() => undefined);
     await agentProviderRuntime.shutdown();
+    await pluginRuntime.stopAllPlugins();
+    await ottoBrain.close(); // OTTO(brain-host)
+    await ottoEditor.close(); // OTTO(editor): language servers and observation waits share the daemon lifetime.
+    await ottoKnowledge?.close(); // OTTO(knowledge)
+    await ottoArtifacts?.close(); // OTTO(artifacts)
+    await ottoViews?.close(); // OTTO(architectural-views)
+    await ottoKanban?.close(); // OTTO(kanban)
+    await ottoIntegrations?.close(); // OTTO(bitbucket,connectors)
+    await ottoHostBrowser
+      ?.close()
+      .catch((error) => logger.error({ err: error }, "Host Browser cleanup failed")); // OTTO(browser-host)
+    await previewManager
+      ?.close()
+      .catch((error) =>
+        logger.error(
+          { err: error },
+          "Preview process cleanup failed; some owned children may remain",
+        ),
+      ); // OTTO(preview): report ownership uncertainty while continuing daemon cleanup.
     terminalManager.killAll();
-    unsubscribeSpeechConfigChange();
-    unsubscribeGitHostingConfigChange();
-    github.dispose?.();
-    forgeConnections.dispose();
-    ["gitlab", "gitea", "forgejo", "codeberg"].forEach((forge) =>
-      forgeOverrides[forge]?.dispose?.(),
-    );
-    speechService.stop();
-    toolArtifactService.stop();
+    ottoSpeech?.close(); // OTTO(speech): abort owned playback before releasing the shared engine.
     await speechService.stop();
-    await scheduleService.stop().catch(() => undefined);
     await relayRuntime?.stop().catch(() => undefined);
     if (wsServer) {
       await wsServer.close();
@@ -3258,15 +2448,28 @@ export async function createOttoDaemon(
     start,
     stop,
     getListenTarget: () => boundListenTarget,
+    getServerId: () => serverId,
   };
 }
 
+/**
+ * Closing an agent asks its provider to close the session and waits for the
+ * answer. A provider that never answers must not hold the daemon open, so a
+ * close that outlives this deadline is abandoned; `agentProviderRuntime`
+ * shutdown runs next and rejects the request that was still pending.
+ */
+const AGENT_CLOSE_TIMEOUT_MS = 5_000;
+
 async function closeAllAgents(logger: Logger, agentManager: AgentManager): Promise<void> {
-  const agents = agentManager.listAgents();
+  const agents = agentManager.listAgents({ includeInternal: true });
   await Promise.all(
     agents.map(async (agent) => {
       try {
-        await agentManager.closeAgent(agent.id);
+        await withTimeout({
+          promise: agentManager.closeAgent(agent.id),
+          timeoutMs: AGENT_CLOSE_TIMEOUT_MS,
+          label: `close agent ${agent.id}`,
+        });
       } catch (err) {
         logger.error({ err, agentId: agent.id }, "Failed to close agent");
       }

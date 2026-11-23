@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
-import { AGENT_HOOK_PROVIDERS } from "@otto-code/server/agent-hooks";
+import { AGENT_HOOK_PROVIDERS } from "@getpaseo/server/agent-hooks";
 import { describe, expect, it } from "vitest";
 import { runHooksCommand } from "./hooks.js";
 
 const hookEnv = {
-  OTTO_TERMINAL_ID: "terminal-1",
-  OTTO_ACTIVITY_TOKEN: "token-1",
-  OTTO_TERMINAL_ACTIVITY_URL: "http://127.0.0.1:6868/api/terminal-activity",
+  PASEO_TERMINAL_ID: "terminal-1",
+  PASEO_ACTIVITY_TOKEN: "token-1",
+  PASEO_TERMINAL_ACTIVITY_URL: "http://127.0.0.1:6767/api/terminal-activity",
 };
 
 function inputFrom(value: string) {
@@ -15,6 +15,15 @@ function inputFrom(value: string) {
       yield value;
     },
   };
+}
+
+function claudeNotification(notificationType: string) {
+  return JSON.stringify({
+    session_id: "session-1",
+    hook_event_name: "Notification",
+    message: "Claude is waiting for your input",
+    notification_type: notificationType,
+  });
 }
 
 function ttyInput() {
@@ -60,13 +69,13 @@ async function runHook(agent: string, event: string, input = ttyInput()) {
 function expectPostedState(fetch: RecordingFetch, state: string) {
   expect(fetch.calls).toEqual([
     {
-      url: hookEnv.OTTO_TERMINAL_ACTIVITY_URL,
+      url: hookEnv.PASEO_TERMINAL_ACTIVITY_URL,
       init: {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          terminalId: hookEnv.OTTO_TERMINAL_ID,
-          token: hookEnv.OTTO_ACTIVITY_TOKEN,
+          terminalId: hookEnv.PASEO_TERMINAL_ID,
+          token: hookEnv.PASEO_ACTIVITY_TOKEN,
           state,
         }),
         signal: expect.any(AbortSignal),
@@ -123,7 +132,7 @@ describe("runHooksCommand", () => {
     const send = await runHook(
       claudeProvider.id,
       claudeProvider.events[4].event,
-      inputFrom('{"reason":"idle_prompt"}'),
+      inputFrom(claudeNotification("idle_prompt")),
     );
 
     expectPostedState(send, "needs-input");
@@ -131,11 +140,11 @@ describe("runHooksCommand", () => {
 
   it.each(["permission_prompt", "elicitation_prompt", "elicitation_response", "auth_success"])(
     "ignores Claude %s notifications",
-    async (reason) => {
+    async (notificationType) => {
       const send = await runHook(
         claudeProvider.id,
         claudeProvider.events[4].event,
-        inputFrom(JSON.stringify({ reason })),
+        inputFrom(claudeNotification(notificationType)),
       );
 
       expect(send.calls).toEqual([]);

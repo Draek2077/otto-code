@@ -52,6 +52,9 @@ import {
 } from "../support/helpers/github-fixtures";
 import { getServerId } from "../support/helpers/server-id";
 import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
+import { getE2EDaemonPort } from "../support/helpers/daemon-port";
+import { chooseAddProjectMethod, expectAddProjectPage } from "../support/helpers/add-project-flow";
+import { seedSavedSettingsHosts } from "../support/helpers/settings";
 import {
   expectSidebarWorkspaceSelected,
   expectWorkspaceHeader,
@@ -214,29 +217,13 @@ test.describe("New workspace flow", () => {
   const createdWorktreeDirectories = new Set<string>();
   const localGithubFixtures = new Set<LocalGhPrFixture>();
 
-  /**
-   * Archiving a workspace leaves its project record behind, and the ownership
-   * guard in `fixtures.ts` reads projects off the workspace list. Tracking the
-   * two together is the only way a test cannot remove one and leak the other.
-   */
-  function trackLocalWorkspace(opened: { workspaceId: string; projectId: string }): void {
-    localWorkspaceIds.add(opened.workspaceId);
-    localProjectIds.add(opened.projectId);
-  }
-
   test.describe.configure({ timeout: 240_000 });
 
   test.beforeEach(async () => {
     client = await connectNewWorkspaceDaemonClient();
   });
 
-  /**
-   * Release every tracked daemon record. Tests call this before deleting their
-   * temp repo: once a project's base folder is gone the daemon marks it Offline
-   * and refuses to archive its workspaces or remove it, so cleanup that runs
-   * after the directory is deleted leaks the project record.
-   */
-  async function releaseTrackedDaemonRecords(): Promise<void> {
+  test.afterEach(async () => {
     if (client) {
       for (const workspaceDirectory of createdWorktreeDirectories) {
         await archiveWorkspaceFromDaemon(client, workspaceDirectory).catch(() => undefined);
@@ -251,10 +238,6 @@ test.describe("New workspace flow", () => {
     createdWorktreeDirectories.clear();
     localWorkspaceIds.clear();
     localProjectIds.clear();
-  }
-
-  test.afterEach(async () => {
-    await releaseTrackedDaemonRecords();
     await client?.close().catch(() => undefined);
   });
 
@@ -265,11 +248,53 @@ test.describe("New workspace flow", () => {
     localGithubFixtures.clear();
   });
 
-  // Removed with the Paseo add-project overlay: this drove an "Add project" row
-  // inside the new-workspace project picker that Otto's rebuild does not render,
-  // then handed off to the retired overlay. Adding a project from an empty host
-  // now starts at the New project page, covered by `project-picker-desktop.spec.ts`
-  // and `open-project-home-regression.spec.ts`.
+  test("adds a project from the selected empty host", async ({ page }) => {
+    const repo = await createTempGitRepo("new-workspace-project-picker-");
+    const primaryServerId = getServerId();
+    const emptyServerId = "empty-new-workspace-host";
+
+    try {
+      const openedProject = await openProjectViaDaemon(client, repo.path);
+      localWorkspaceIds.add(openedProject.workspaceId);
+      await seedSavedSettingsHosts(page, [
+        {
+          serverId: primaryServerId,
+          label: "Primary host",
+          endpoint: `127.0.0.1:${getE2EDaemonPort()}`,
+        },
+        {
+          serverId: emptyServerId,
+          label: "Empty host",
+          endpoint: "127.0.0.1:9",
+        },
+      ]);
+
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+      await openGlobalNewWorkspaceComposer(page);
+
+      const projectTrigger = page.getByTestId("new-workspace-project-picker-trigger");
+      await projectTrigger.click();
+      await page.getByPlaceholder("Search projects").fill("no matching project");
+      await expect(page.getByTestId("new-workspace-project-picker-add-project")).toBeVisible();
+      await page.keyboard.press("Escape");
+
+      await page.getByTestId("host-picker-trigger").click();
+      await page.getByTestId(`new-workspace-host-picker-option-${emptyServerId}`).click();
+      await expect(projectTrigger).toContainText("Choose project");
+      await projectTrigger.click();
+
+      const addProject = page.getByTestId("new-workspace-project-picker-add-project");
+      await expect(addProject).toContainText("Add project");
+      await expect(addProject).toContainText(/(?:⌘|Ctrl\+)O/);
+      await addProject.click();
+
+      await expectAddProjectPage(page, "method");
+      await chooseAddProjectMethod(page, "directory-search");
+    } finally {
+      await repo.cleanup();
+    }
+  });
 
   test("sidebar workspace navigation updates URL and header", async ({ page }) => {
     const serverId = getServerId();
@@ -280,8 +305,8 @@ test.describe("New workspace flow", () => {
     try {
       const firstWorkspace = await openProjectViaDaemon(client, firstRepo.path);
       const secondWorkspace = await openProjectViaDaemon(client, secondRepo.path);
-      trackLocalWorkspace(firstWorkspace);
-      trackLocalWorkspace(secondWorkspace);
+      localWorkspaceIds.add(firstWorkspace.workspaceId);
+      localWorkspaceIds.add(secondWorkspace.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -320,7 +345,6 @@ test.describe("New workspace flow", () => {
         subtitle: firstWorkspace.projectDisplayName,
       });
     } finally {
-      await releaseTrackedDaemonRecords();
       await secondRepo.cleanup();
       await firstRepo.cleanup();
     }
@@ -337,7 +361,7 @@ test.describe("New workspace flow", () => {
         cwd: repo.path,
         slug: `nav-${Date.now()}`,
       });
-      trackLocalWorkspace(rootWorkspace);
+      localWorkspaceIds.add(rootWorkspace.workspaceId);
       createdWorktreeDirectories.add(worktreeWorkspace.workspaceDirectory);
 
       await gotoAppShell(page);
@@ -400,7 +424,6 @@ test.describe("New workspace flow", () => {
         selected: false,
       });
     } finally {
-      await releaseTrackedDaemonRecords();
       await repo.cleanup();
     }
   });
@@ -414,7 +437,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      trackLocalWorkspace(openedProject);
+      localWorkspaceIds.add(openedProject.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -431,10 +454,6 @@ test.describe("New workspace flow", () => {
 
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
-      // The project's checkout is already occupied by `openedProject`, and a second visible
-      // LOCAL workspace on it is refused (docs/workspace-lifecycle.md). Isolation is incidental
-      // to what this test asserts, so take the worktree the guard steers users to.
-      await selectWorkspaceIsolation(page, "worktree");
       await submitNewWorkspacePrompt(page);
 
       const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
@@ -481,7 +500,6 @@ test.describe("New workspace flow", () => {
       const composer = page.getByRole("textbox", { name: "Message agent..." });
       await expect(composer).toBeVisible({ timeout: 30_000 });
     } finally {
-      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -494,7 +512,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      trackLocalWorkspace(openedProject);
+      localWorkspaceIds.add(openedProject.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -513,10 +531,6 @@ test.describe("New workspace flow", () => {
         projectKey: openedProject.projectKey,
         projectDisplayName: openedProject.projectDisplayName,
       });
-
-      // Occupied-directory guard: `openedProject` already holds this checkout, so a second
-      // visible local workspace is refused. Isolation is incidental here - take the worktree.
-      await selectWorkspaceIsolation(page, "worktree");
 
       const composer = page.getByRole("textbox", { name: "Message agent..." });
       await expect(composer).toBeVisible({ timeout: 30_000 });
@@ -564,7 +578,6 @@ test.describe("New workspace flow", () => {
         activeWorkspaceDeckEntry.locator('[data-testid^="workspace-tab-agent_"]'),
       ).toHaveCount(1, { timeout: 30_000 });
     } finally {
-      await releaseTrackedDaemonRecords();
       agentCreatedDelay.release();
       await tempRepo.cleanup();
     }
@@ -579,7 +592,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      trackLocalWorkspace(openedProject);
+      localWorkspaceIds.add(openedProject.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -599,10 +612,6 @@ test.describe("New workspace flow", () => {
 
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
-      // The project's checkout is already occupied by `openedProject`, and a second visible
-      // LOCAL workspace on it is refused (docs/workspace-lifecycle.md). Isolation is incidental
-      // to what this test asserts, so take the worktree the guard steers users to.
-      await selectWorkspaceIsolation(page, "worktree");
       await submitNewWorkspacePrompt(page);
 
       const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
@@ -623,7 +632,6 @@ test.describe("New workspace flow", () => {
         excludes: "done",
       });
     } finally {
-      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -637,7 +645,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      trackLocalWorkspace(openedProject);
+      localWorkspaceIds.add(openedProject.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -657,10 +665,6 @@ test.describe("New workspace flow", () => {
 
       await openGlobalNewWorkspaceComposer(page);
       await expectNewWorkspaceProjectSelected(page, openedProject.projectDisplayName);
-      // The project's checkout is already occupied by `openedProject`, and a second visible
-      // LOCAL workspace on it is refused (docs/workspace-lifecycle.md). Isolation is incidental
-      // to what this test asserts, so take the worktree the guard steers users to.
-      await selectWorkspaceIsolation(page, "worktree");
       await submitNewWorkspaceWithoutPrompt(page);
 
       const createdWorkspace = await assertNewWorkspaceSidebarAndHeader(page, {
@@ -687,14 +691,11 @@ test.describe("New workspace flow", () => {
         excludesIndicator: "workspace-status-indicator-running",
       });
     } finally {
-      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
 
-  // docs/workspace-lifecycle.md: an explicitly selected local branch is checked out in the new
-  // worktree (4b6cc9401). Only an untouched picker cuts a fresh branch named after the directory.
-  test("selected branch is checked out in a new workspace worktree", async ({ page }) => {
+  test("selected branch becomes the base of a new workspace worktree", async ({ page }) => {
     const serverId = getServerId();
 
     const tempRepo = await createTempGitRepo("new-workspace-ref-", {
@@ -703,7 +704,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      trackLocalWorkspace(openedProject);
+      localWorkspaceIds.add(openedProject.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -745,13 +746,10 @@ test.describe("New workspace flow", () => {
       const branchInfo = await readWorktreeBranchInfo({
         worktreePath: createdWorkspace.workspaceDirectory,
       });
-      expect(branchInfo.currentBranch).toBe("dev");
-      expect(readRepoRef(createdWorkspace.workspaceDirectory, "HEAD")).toBe(
-        tempRepo.branchHeads.dev,
-      );
-      expect(path.basename(createdWorkspace.workspaceDirectory)).not.toBe("dev");
+      expect(branchInfo.currentBranch).toBe(path.basename(createdWorkspace.workspaceDirectory));
+      expect(branchInfo.hasAncestor(tempRepo.branchHeads.main)).toBe(true);
+      expect(branchInfo.hasAncestor(tempRepo.branchHeads.dev)).toBe(true);
     } finally {
-      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -765,7 +763,7 @@ test.describe("New workspace flow", () => {
       repoPath: string,
     ) {
       const openedProject = await openProjectViaDaemon(client, repoPath);
-      trackLocalWorkspace(openedProject);
+      localWorkspaceIds.add(openedProject.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -813,7 +811,6 @@ test.describe("New workspace flow", () => {
         expect(created.branchInfo.hasAncestor(originHead)).toBe(true);
         expect(created.branchInfo.hasAncestor(localHead)).toBe(false);
       } finally {
-        await releaseTrackedDaemonRecords();
         await tempRepo.cleanup();
       }
     });
@@ -846,7 +843,6 @@ test.describe("New workspace flow", () => {
         const created = await createWorktreeAndRead(page, openedProject);
         expect(created.branchInfo.hasAncestor(localHead)).toBe(true);
       } finally {
-        await releaseTrackedDaemonRecords();
         await tempRepo.cleanup();
       }
     });
@@ -889,7 +885,6 @@ test.describe("New workspace flow", () => {
           baseRef: "refs/remotes/upstream/main",
         });
       } finally {
-        await releaseTrackedDaemonRecords();
         await tempRepo.cleanup();
       }
     });
@@ -902,7 +897,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      trackLocalWorkspace(openedProject);
+      localWorkspaceIds.add(openedProject.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -918,7 +913,6 @@ test.describe("New workspace flow", () => {
       await expectPickerSelected(page, "dev");
       await expectPickerClosed(page);
     } finally {
-      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -928,7 +922,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, tempRepo.path);
-      trackLocalWorkspace(openedProject);
+      localWorkspaceIds.add(openedProject.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -943,7 +937,6 @@ test.describe("New workspace flow", () => {
       await closeBranchPicker(page);
       await expectPickerClosed(page);
     } finally {
-      await releaseTrackedDaemonRecords();
       await tempRepo.cleanup();
     }
   });
@@ -959,7 +952,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, pr.localPath);
-      trackLocalWorkspace(openedProject);
+      localWorkspaceIds.add(openedProject.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -981,12 +974,11 @@ test.describe("New workspace flow", () => {
         title: pr.title,
       });
     } finally {
-      await releaseTrackedDaemonRecords();
       await ghRepo.cleanup();
     }
   });
 
-  test("accepting a pasted GitHub PR checkout hint replaces the branch and creates its worktree", async ({
+  test("pasted GitHub PR replaces a selected branch and creates its worktree", async ({
     page,
     context,
   }) => {
@@ -995,7 +987,8 @@ test.describe("New workspace flow", () => {
     const { pr, mainCheckout } = fixture;
 
     const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
-    trackLocalWorkspace(openedProject);
+    localWorkspaceIds.add(openedProject.workspaceId);
+    localProjectIds.add(openedProject.projectId);
 
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
@@ -1010,8 +1003,7 @@ test.describe("New workspace flow", () => {
     await pasteGithubPrUrl(page, context, pr.url);
 
     const createButton = page.getByTestId("workspace-create-submit");
-    // Attaching a PR proposes a checkout; it does not silently replace the chosen branch.
-    await expectPickerSelected(page, "main");
+    await expect(createButton).toBeDisabled();
     await expect(createButton.getByRole("progressbar")).toHaveCount(0);
 
     await dropFileOnComposer(page, BACKGROUND_RESOLUTION_FILE);
@@ -1021,7 +1013,6 @@ test.describe("New workspace flow", () => {
       number: pr.number,
       title: pr.title,
     });
-    await page.getByTestId("new-workspace-checkout-hint-accept").click();
     await expectStartingRefPickerTriggerPr(page, {
       number: pr.number,
       title: pr.title,
@@ -1054,7 +1045,8 @@ test.describe("New workspace flow", () => {
     const { pr, mainCheckout } = fixture;
 
     const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
-    trackLocalWorkspace(openedProject);
+    localWorkspaceIds.add(openedProject.workspaceId);
+    localProjectIds.add(openedProject.projectId);
 
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
@@ -1064,7 +1056,6 @@ test.describe("New workspace flow", () => {
     });
     await selectWorkspaceIsolation(page, "worktree");
     await pasteGithubPrUrl(page, context, pr.url);
-    await page.getByTestId("new-workspace-checkout-hint-accept").click();
     await expectStartingRefPickerTriggerPr(page, {
       number: pr.number,
       title: pr.title,
@@ -1103,7 +1094,7 @@ test.describe("New workspace flow", () => {
 
     try {
       const openedProject = await openProjectViaDaemon(client, mainCheckout.path);
-      trackLocalWorkspace(openedProject);
+      localWorkspaceIds.add(openedProject.workspaceId);
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -1130,7 +1121,6 @@ test.describe("New workspace flow", () => {
       expect(branchInfo.currentBranch).toBe(pr.branch);
       expect(existsSync(path.join(worktree.workspaceDirectory, "pr-1.txt"))).toBe(true);
     } finally {
-      await releaseTrackedDaemonRecords();
       await mainCheckout.cleanup();
       await ghRepo.cleanup();
     }

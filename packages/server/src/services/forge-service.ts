@@ -1,4 +1,4 @@
-import type { ForgeSearchKind } from "@otto-code/protocol/messages";
+import type { ForgeSearchKind } from "@getpaseo/protocol/messages";
 
 export type ForgeSearchRequestKind = ForgeSearchKind | "github-issue" | "github-pr" | "pr";
 
@@ -30,19 +30,6 @@ export interface PullRequestSummary {
   updatedAt: string;
 }
 
-/** Keeps every forge's change-request picker deterministic and recency-first. */
-export function sortPullRequestsLatestFirst(
-  pullRequests: readonly PullRequestSummary[],
-): PullRequestSummary[] {
-  return [...pullRequests].sort((left, right) => {
-    const rightTime = Date.parse(right.updatedAt);
-    const leftTime = Date.parse(left.updatedAt);
-    const safeRightTime = Number.isFinite(rightTime) ? rightTime : Number.NEGATIVE_INFINITY;
-    const safeLeftTime = Number.isFinite(leftTime) ? leftTime : Number.NEGATIVE_INFINITY;
-    return safeRightTime - safeLeftTime || right.number - left.number;
-  });
-}
-
 export interface PullRequestCheckoutTarget {
   number: number;
   baseRefName: string;
@@ -52,6 +39,8 @@ export interface PullRequestCheckoutTarget {
   headRepositorySshUrl: string | null;
   headRepositoryUrl: string | null;
   isCrossRepository: boolean;
+  /** "pull-ref" when headRefName is a synthetic pull ref, not a real branch name (agit PRs, deleted branches); undefined means "branch" */
+  headRefKind?: "branch" | "pull-ref";
 }
 
 export interface PullRequestCheckoutRef {
@@ -150,22 +139,6 @@ export interface CurrentPullRequestStatus {
 
 export type PullRequestTimelineReviewState = "approved" | "changes_requested" | "commented";
 
-export type PullRequestCommentReactionContent =
-  | "THUMBS_UP"
-  | "THUMBS_DOWN"
-  | "LAUGH"
-  | "HOORAY"
-  | "CONFUSED"
-  | "HEART"
-  | "ROCKET"
-  | "EYES";
-
-export interface PullRequestCommentReaction {
-  content: PullRequestCommentReactionContent;
-  count: number;
-  viewerHasReacted: boolean;
-}
-
 interface PullRequestTimelineItemBase {
   id: string;
   author: string;
@@ -174,7 +147,6 @@ interface PullRequestTimelineItemBase {
   body: string;
   createdAt: number;
   url: string;
-  reactions?: PullRequestCommentReaction[];
 }
 
 export type PullRequestTimelineItem =
@@ -211,8 +183,6 @@ export interface PullRequestTimeline {
   repoOwner: string;
   repoName: string;
   items: PullRequestTimelineItem[];
-  /** Whether this provider can mutate reactions on comments in this timeline. */
-  commentReactionsSupported?: boolean;
   truncated: boolean;
   error: PullRequestTimelineError | null;
 }
@@ -290,23 +260,6 @@ export type GetPullRequestTimelineOptions = {
   repoOwner: string;
   repoName: string;
 } & ForgeReadOptions;
-
-export interface SetPullRequestThreadResolvedOptions {
-  cwd: string;
-  prNumber: number;
-  /** Opaque provider thread id returned in timeline data. */
-  threadId: string;
-  resolved: boolean;
-}
-
-export interface SetPullRequestCommentReactionOptions {
-  cwd: string;
-  prNumber: number;
-  /** Opaque provider comment id returned in timeline data. */
-  commentId: string;
-  content: PullRequestCommentReactionContent;
-  reacted: boolean;
-}
 
 export type GetCheckDetailsOptions = {
   cwd: string;
@@ -490,9 +443,9 @@ export interface ForgeService {
   getPullRequestCheckoutTarget(options: GetPullRequestOptions): Promise<PullRequestCheckoutTarget>;
   /**
    * Refs to fetch for a change-request checkout when the resolved checkout
-   * target carries none. Adapters that expose a universal change-request head
-   * ref (GitHub's refs/pull/N/head) return it here; others let the shell fall
-   * back to the head branch.
+   * target carries none. Adapters with a universal change-request head ref
+   * (refs/pull/N/head) return it here; others let the shell fall back to the
+   * head branch.
    */
   defaultCheckoutRefs?(params: {
     changeRequestNumber: number;
@@ -500,7 +453,7 @@ export interface ForgeService {
   }): PullRequestCheckoutRef[];
   /**
    * Local branch name for a checked-out change request when the adapter
-   * disambiguates cross-repository heads (GitHub prefixes the fork owner).
+   * disambiguates cross-repository heads (prefixes the fork owner).
    * Returns undefined to keep the head ref name as-is.
    */
   buildPrLocalBranchName?(params: {
@@ -522,8 +475,6 @@ export interface ForgeService {
     } & ForgeReadOptions,
   ): Promise<CurrentPullRequestStatus | null>;
   getPullRequestTimeline(options: GetPullRequestTimelineOptions): Promise<PullRequestTimeline>;
-  setPullRequestThreadResolved?(options: SetPullRequestThreadResolvedOptions): Promise<void>;
-  setPullRequestCommentReaction?(options: SetPullRequestCommentReactionOptions): Promise<void>;
   getCheckDetails(options: GetCheckDetailsOptions): Promise<CheckDetails>;
   searchIssuesAndPrs(options: SearchIssuesAndPrsOptions): Promise<SearchResult>;
   createPullRequest(options: CreatePullRequestOptions): Promise<PullRequestCreateResult>;
@@ -553,7 +504,7 @@ export interface ForgeService {
    * auth failure) on failure instead of just resolving to false. Callers that
    * want the precise failure kind before falling back to a PR-status lookup
    * (which can't distinguish "unauthenticated" from "no PR found") should
-   * only probe isAuthenticated() when this is set - otherwise the call
+   * only probe isAuthenticated() when this is set — otherwise the call
    * cannot change the outcome and is pure overhead.
    */
   authProbeCanThrow?: boolean;

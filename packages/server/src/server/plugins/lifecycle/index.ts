@@ -1,23 +1,23 @@
-import { pluginApiContext } from "../sdk-identity.js";
 import type { AgentStreamEvent, AgentTimelineItem } from "../../agent/agent-sdk-types.js";
 import { z } from "zod";
-import { CreateAgentRequestMessageSchema } from "@otto-code/protocol/messages";
+import { CreateAgentRequestMessageSchema } from "@getpaseo/protocol/messages";
 import type {
   PluginHookAgent,
   PluginHookContext,
   PluginLifecycleRegistration,
-} from "@otto-code/plugin/server";
-import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
+} from "@getpaseo/plugin/server";
+import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import type {
   PluginBeforeRequests,
   PluginHookWorkspace,
   PluginLifecycleEvents,
-} from "@otto-code/plugin/server";
-import { WorkspaceCreateRequestSchema } from "@otto-code/protocol/messages";
+} from "@getpaseo/plugin/server";
+import { WorkspaceCreateRequestSchema } from "@getpaseo/protocol/messages";
 import type { PersistedWorkspaceRecord } from "../../workspace-registry.js";
 
 export const lifecycleEventNames = [
   "agent.created",
+  "agent.closed",
   "agent.turn_started",
   "agent.turn_ended",
   "agent.permission_requested",
@@ -196,7 +196,7 @@ export class PluginHookHandlers implements PluginLifecycleRegistration {
     kind: "event" | "before",
     name: string,
     input: unknown,
-    otto: PluginHookContext["otto"],
+    paseo: PluginHookContext["paseo"],
   ): Promise<unknown> {
     const controller = new AbortController();
     this.active.set(id, controller);
@@ -204,18 +204,18 @@ export class PluginHookHandlers implements PluginLifecycleRegistration {
       if (kind === "before") {
         if (
           !beforeHookNames.includes(
-            name as keyof import("@otto-code/plugin/server").PluginBeforeRequests,
+            name as keyof import("@getpaseo/plugin/server").PluginBeforeRequests,
           )
         ) {
           throw new Error(`Unknown before hook: ${name}`);
         }
-        const hookName = name as keyof import("@otto-code/plugin/server").PluginBeforeRequests;
+        const hookName = name as keyof import("@getpaseo/plugin/server").PluginBeforeRequests;
         let request = validateBeforeRequest(hookName, input);
         for (const handler of this.transforms.get(name) ?? []) {
           controller.signal.throwIfAborted();
           const result = await handler(
             { request: structuredClone(request) },
-            { ...pluginApiContext(otto), signal: controller.signal },
+            { paseo, signal: controller.signal },
           );
           if (result !== undefined) {
             request = validateBeforeResult(hookName, request, result);
@@ -226,10 +226,7 @@ export class PluginHookHandlers implements PluginLifecycleRegistration {
       for (const handler of this.events.get(name) ?? []) {
         controller.signal.throwIfAborted();
         try {
-          await handler(structuredClone(input), {
-            ...pluginApiContext(otto),
-            signal: controller.signal,
-          });
+          await handler(structuredClone(input), { paseo, signal: controller.signal });
         } catch (error) {
           console.error(`Lifecycle hook ${name} failed`, error);
         }

@@ -1,6 +1,6 @@
 # NOTE: Maestro requires a config section for every flow file, even when used
 # via `runFlow`. Keep this aligned with the dev build application id.
-appId: me.ottocode.mobile
+appId: me.ottocode.mobile # OTTO(identity)
 ---
 # Reusable flow to handle dev client screens after launchApp
 # Works with both release builds (no-ops) and dev builds
@@ -27,6 +27,6 @@ appId: me.ottocode.mobile
 
 - runFlow:
     when:
-      visible: "Welcome to Otto"
+      visible: "Welcome to Paseo"
     commands:
-      - assertVisible: "Welcome to Otto"
+      - assertVisible: "Welcome to Paseo"

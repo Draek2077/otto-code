@@ -6,6 +6,8 @@ order: 42
 category: Configuration
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Metadata generation
 
 Otto asks a language model to write short pieces of text for you so you don't have to. This is separate from the agent you're talking to: it's a small, one-shot call made in the background.

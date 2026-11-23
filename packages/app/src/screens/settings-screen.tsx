@@ -1,35 +1,16 @@
-import {
-  SettingsSearchContent,
-  SettingsTarget,
-  SettingsTargetText,
-} from "@/screens/settings-search/target";
-import { pluginSettingsSearchId } from "@/screens/settings-search/plugin-projection";
-import { WhatsNewRow } from "@/screens/settings/otto-whats-new-row";
-import { usePluginSettingsHeader } from "@/screens/settings/otto-plugin-settings-header";
-import { PluginSettingsContent } from "@/plugins/settings";
-import { AddRemoteSshHostModal } from "@/components/add-remote-ssh-host-modal";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { OttoCodeSettings } from "@/otto/editor/settings/page"; // OTTO(editor)
+import { VisualizerAttribution } from "@/otto/visualizer/attribution"; // OTTO(visualizer): attribution stays in About, outside product identity.
 import type { ComponentType, ReactNode } from "react";
 import {
+  Alert,
   Pressable,
   ScrollView,
-  StyleSheet as RNStyleSheet,
   Text,
-  TextInput,
-  useWindowDimensions,
   View,
   type PressableStateCallbackType,
-  type NativeScrollEvent,
-  type NativeSyntheticEvent,
 } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useRouter } from "expo-router";
-import {
-  buildSettingsSearchDestination,
-  returnFromSettings,
-  type SettingsView,
-} from "@/navigation/settings-navigation";
 import { useFocusEffect } from "@react-navigation/native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
@@ -38,129 +19,83 @@ import type { TFunction } from "i18next";
 import { Buffer } from "buffer";
 import {
   ArrowLeft,
-  Blocks,
-  Chat,
   Settings,
   Palette,
   Server,
   Network,
-  Brain,
-  CircleNotificationsFilled,
   Bot,
   Boxes,
-  CodeBlocks,
-  DataObject,
   Gauge,
-  Groups,
-  HardDrive,
   Keyboard,
-  PanelRight,
-  Plug,
   Stethoscope,
   Info,
+  Bell,
   Shield,
   Puzzle,
   Plus,
   FolderGit2,
   SquareTerminal,
+  Code2,
   Smartphone,
-  Robot,
-  Waypoints,
-  Workspaces,
-  Wrench,
-} from "@/components/icons/material-icons";
+  Sparkles,
+  Blocks,
+  Globe,
+  PanelLeft,
+  MessageSquare,
+  ChevronRight,
+} from "lucide-react-native";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
-import { AppDiagnosticSheet } from "@/components/app-diagnostic-sheet";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
-import { SidebarFooterNavRow } from "@/components/sidebar/sidebar-footer-nav";
-import { resolveBrainRailRoute, useBrainRail } from "@/components/brain/use-brain-rail-state";
-import { KeyedFadeContainer } from "@/components/route-fade-container";
-import { SidebarSeamShadow } from "@/components/sidebar-seam-shadow";
-import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
 import { HostPicker as SharedHostPicker } from "@/components/hosts/host-picker";
 import { HostStatusDot } from "@/components/host-status-dot";
-import { ScreenTitle } from "@/components/headers/screen-title";
-import { HeaderIconBadge } from "@/components/headers/header-icon-badge";
-import { SettingsSection } from "@/screens/settings/settings-section";
-import {
-  AppearanceSection,
-  ChatAppearanceSection,
-} from "@/screens/settings/appearance/appearance-section";
-import { LayoutSection } from "@/screens/settings/layout/layout-section";
-import { EditorSection } from "@/screens/settings/editor-section";
-import {
-  DiffPresentationSection,
-  DiffPreviewSection,
-} from "@/screens/settings/diff-presentation-section";
-import { VisualizerSection } from "@/screens/settings/visualizer-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
+import { ZoomRecorderSettings } from "@/otto/zoom-recorder/settings"; // OTTO(zoom-recorder)
+import { AppearanceSection } from "@/screens/settings/appearance/appearance-section";
+import { OpenLocationSection } from "@/screens/settings/open-location/open-location-section";
+import { TerminalSection } from "@/screens/settings/terminal/terminal-section";
+import { ChatSection } from "@/screens/settings/chat/chat-section";
+import { SidebarNavSection } from "@/screens/settings/sidebar/sidebar-nav-section";
+import { SendingSection } from "@/screens/settings/general/sending-section";
 import {
   useAppSettings,
   useSettings,
-  parseMountedTabLimit,
-  parseMountedWorkspaceLimit,
-  parseTerminalScrollbackLines,
   type AppSettings,
-  type InterfaceMode,
-  type AppStartScreen,
-  type SuggestedTasksDefaultMode,
-  type FollowPromptSuggestionsLimit,
-  type LinkOpenBehavior,
-  type PreviewServerCloseBehavior,
-  type ServiceUrlBehavior,
   type Settings as EffectiveSettings,
 } from "@/hooks/use-settings";
 import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
-import { useDefaultSendSetting, type DefaultSendSetting } from "@/hooks/use-default-send-setting";
 import { useSessionStore } from "@/stores/session-store";
-import { MAX_SIDEBAR_WIDTH, MIN_SIDEBAR_WIDTH, usePanelStore } from "@/stores/panel-store";
-import { orderHostsLocalFirst, type HostProfile } from "@/types/host-connection";
+import {
+  orderHostsLocalFirst,
+  resolveActiveHostServerId,
+  type HostProfile,
+} from "@/types/host-connection";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
-import { useWindowControlsPadding } from "@/utils/desktop-window";
-import { WindowChromeRegion } from "@/utils/window-chrome";
-import { SIDEBAR_TOP_SPACER_TRIM } from "@/components/left-sidebar";
+import { WindowChromeRegion, WindowChromeSafeArea } from "@/utils/desktop-window";
+import { confirmDialog } from "@/utils/confirm-dialog";
 import { BackHeader } from "@/components/headers/back-header";
-import { ScreenHeader } from "@/components/headers/screen-header";
-import { SettingsContentErrorBoundary } from "@/components/settings-content-error-boundary";
+import { PageLayout } from "@/components/page-layout";
 import { AddHostMethodModal } from "@/components/add-host-method-modal";
 import { AddHostModal } from "@/components/add-host-modal";
+import { AddRemoteSshHostModal } from "@/components/add-remote-ssh-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
 import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-section";
+import { EditorSection } from "@/screens/settings/editor-section";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { CommunityLinks } from "@/components/community-links";
 import { SegmentedControl } from "@/components/ui/segmented-control";
-import { Switch } from "@/components/ui/switch";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { DesktopPermissionsSection } from "@/desktop/components/desktop-permissions-section";
 import { DesktopNotificationsSection } from "@/desktop/components/desktop-notifications-section";
-import {
-  CommandLineIntegrationSection,
-  IntegrationsSection,
-} from "@/desktop/components/integrations-section";
-import { AgentSkillsSection } from "@/agent-skills";
-import {
-  type EnableBuiltInDaemonOption,
-  useEnableBuiltInDaemonOption,
-} from "@/desktop/hooks/use-enable-built-in-daemon-option";
-import { DesktopWindowBehaviorSection } from "@/desktop/components/desktop-window-behavior-section";
+import { BrowserDataSection } from "@/desktop/browser/settings/browser-data-section";
+import { IntegrationsSection } from "@/desktop/components/integrations-section";
 import { isElectronRuntime } from "@/desktop/host";
 import { useDesktopAppUpdater } from "@/desktop/updates/use-desktop-app-updater";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
-import {
-  ARCHITECTURAL_VIEWS_UPSTREAM_AUTHOR,
-  ARCHITECTURAL_VIEWS_UPSTREAM_LICENSE,
-  ARCHITECTURAL_VIEWS_UPSTREAM_NAME,
-  ARCHITECTURAL_VIEWS_UPSTREAM_URL,
-} from "@/utils/architectural-views-attribution";
-import { UPSTREAM_BASE_NAME, UPSTREAM_BASE_VERSION } from "@/utils/upstream-base-version";
-import {
-  VISUALIZER_UPSTREAM_AUTHOR,
-  VISUALIZER_UPSTREAM_LICENSE,
-  VISUALIZER_UPSTREAM_NAME,
-  VISUALIZER_UPSTREAM_URL,
-} from "@/utils/visualizer-attribution";
-import { openLink } from "@/utils/open-link";
+import { openChangelog } from "@/changelog";
+import { useAppDiagnosticStore } from "@/diagnostics/store";
 import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
@@ -175,195 +110,146 @@ import {
   HostConnectionsPage,
   HostPairDevicePage,
   HostAgentsPage,
-  HostTeamsPage,
-  HostCodePage,
-  HostToolsPage,
-  HostConnectorsPage,
   HostSettingsPage,
   HostProvidersPage,
   HostUsagePage,
-  HostStoragePage,
   HostWorkspacesPage,
   HostTerminalsPage,
 } from "@/screens/settings/host-page";
-import { HostBrainPage } from "@/screens/settings/host-brain-page";
-import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
+import { PluginSettingsContent } from "@/plugins/settings";
+// OTTO(provider-settings): use the product label for Otto's bundled provider screen.
+import { ottoPluginSettingsTitle } from "@/otto/plugin-settings-identity";
+import { useInstalledPlugins } from "@/plugins/registry";
 import { HostPluginsPage } from "@/screens/settings/plugins-page";
-import { PreviewCacheSettingsSection } from "@/screens/settings/storage-section";
-import { AgentVoiceCuesRow } from "@/screens/settings/agent-voice-cues-row";
-import { VoicePlaybackVolumeRow } from "@/screens/settings/voice-playback-volume-row";
+import { MetadataGenerationPage } from "@/screens/settings/metadata-generation-page";
 import ProjectsScreen from "@/screens/projects-screen";
-import ProjectSettingsScreen, {
-  confirmDiscardProjectSettingsChanges,
-} from "@/screens/project-settings-screen";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retention";
-import { isNative, isWeb } from "@/constants/platform";
-import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import ProjectSettingsScreen from "@/screens/project-settings-screen";
+import { SETTINGS_DESKTOP_SIDEBAR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
+import { densityIconBox, densityIconSize } from "@/styles/density";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
-import { useRetainedScrollOffset } from "@/hooks/use-retained-scroll-offset";
 import {
-  buildOpenProjectRoute,
+  type EnableBuiltInDaemonOption,
+  useEnableBuiltInDaemonOption,
+} from "@/desktop/hooks/use-enable-built-in-daemon-option";
+import {
   buildSettingsHostSectionRoute,
   buildSettingsSectionRoute,
-  buildSetupRoute,
-  buildStatsRoute,
   type HostSectionSlug,
   type SettingsSectionSlug,
 } from "@/utils/host-routes";
-import {
-  navigateToLastWorkspace,
-  useLastWorkspaceSelection,
-} from "@/stores/navigation-active-workspace-store";
-import { rememberLastSettingsView } from "@/stores/last-settings-view";
-
-// Matches MIN_CHAT_WIDTH in left-sidebar.tsx so both sidebars clamp the shared
-// panel-store width identically.
-import { SettingsSearchOverview } from "@/screens/settings-search-overview";
-import { type SettingsSearchItem } from "@/screens/settings-search-catalog";
-import type { IconSizeProp } from "@/components/icons/icon-size";
-
-const MIN_SETTINGS_CONTENT_WIDTH = 400;
+import { useLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import { returnFromSettings, type SettingsView } from "@/navigation/settings-navigation";
+import { isNative, isWeb } from "@/constants/platform";
 
 // ---------------------------------------------------------------------------
 // View model
 // ---------------------------------------------------------------------------
 
-export type { SettingsView } from "@/navigation/settings-navigation";
-
-// Counts mounted SettingsScreen instances. Navigating between settings route
-// groups (app section ↔ host section ↔ projects) replaces one SettingsScreen
-// with another; the incoming screen's first render happens while the outgoing
-// one is still mounted, so a nonzero count at first render means "arrived from
-// inside settings" - the desktop content pane should run its fade even though
-// it just mounted. A fresh entry from outside settings sees zero and skips it
-// (the app-wide route fade already covers that transition).
-let mountedSettingsScreens = 0;
-
-// Stable string identity for a settings view, used as the content error
-// boundary's reset key (navigating to a different view clears a caught error).
-function settingsViewKey(view: SettingsView): string {
-  switch (view.kind) {
-    case "section":
-      return `section:${view.section}`;
-    case "host":
-      return `host:${view.serverId}:${view.section}`;
-    case "project":
-      return `project:${view.serverId}:${view.projectId}`;
-    case "plugin":
-      return `plugin:${view.serverId}:${view.pluginId}:${view.screenId}`;
-    default:
-      return view.kind;
-  }
-}
-
 interface SidebarSectionItem {
   id: SettingsSectionSlug;
   labelKey: string;
-  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
+  icon: ComponentType<{ size: number; color: string; strokeWidth?: number }>;
   desktopOnly?: boolean;
-  hidden?: boolean;
-  // Hidden from the sidebar (and content gated to null) in User mode.
-  developerOnly?: boolean;
+  webOnly?: boolean;
+  /** The page body, for pages that need nothing from the settings screen. */
+  Content?: ComponentType;
 }
 
 const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
   { id: "general", labelKey: "settings.sections.general", icon: Settings },
-  { id: "chat", labelKey: "settings.sections.chat", icon: Chat },
-  { id: "appearance", labelKey: "settings.sections.appearance", icon: Palette },
   {
-    id: "layout",
-    labelKey: "settings.sections.layout",
-    icon: PanelRight,
-    desktopOnly: true,
+    id: "appearance",
+    labelKey: "settings.sections.appearance",
+    icon: Palette,
+    Content: AppearanceSection,
   },
-  // Reuses the Appearance-subsection title key so every locale already has it.
   {
-    id: "visualizer",
-    labelKey: "settings.appearance.visualizer.title",
-    icon: Waypoints,
-    developerOnly: true,
+    id: "sidebar",
+    labelKey: "settings.sections.sidebar",
+    icon: PanelLeft,
+    Content: SidebarNavSection,
+  },
+  { id: "chat", labelKey: "settings.sections.chat", icon: MessageSquare, Content: ChatSection },
+  {
+    id: "terminal",
+    labelKey: "settings.sections.terminal",
+    icon: SquareTerminal,
+    Content: TerminalSection,
+  },
+  {
+    id: "browser",
+    labelKey: "settings.sections.browser",
+    icon: Globe,
+    desktopOnly: true,
+    Content: BrowserDataSection,
   },
   {
     id: "editor",
-    labelKey: "settings.editor.title",
-    icon: CodeBlocks,
-    developerOnly: true,
+    labelKey: "settings.sections.editor",
+    icon: Code2,
+    // OTTO(editor): the offline native editor shares these device preferences.
+    Content: EditorSection,
   },
-  { id: "shortcuts", labelKey: "settings.sections.shortcuts", icon: Keyboard, desktopOnly: true },
+  {
+    id: "shortcuts",
+    labelKey: "settings.sections.shortcuts",
+    icon: Keyboard,
+    desktopOnly: true,
+    Content: KeyboardShortcutsSection,
+  },
   {
     id: "integrations",
     labelKey: "settings.sections.integrations",
     icon: Puzzle,
+    desktopOnly: true,
+    Content: IntegrationsSection,
   },
   {
     id: "notifications",
     labelKey: "settings.sections.notifications",
-    icon: CircleNotificationsFilled,
+    icon: Bell,
     desktopOnly: true,
+    Content: DesktopNotificationsSection,
   },
   {
     id: "permissions",
     labelKey: "settings.sections.permissions",
     icon: Shield,
     desktopOnly: true,
+    Content: DesktopPermissionsSection,
   },
   { id: "diagnostics", labelKey: "settings.sections.diagnostics", icon: Stethoscope },
   { id: "about", labelKey: "settings.sections.about", icon: Info },
 ];
 
+function isSectionAvailable(item: SidebarSectionItem, isDesktopApp: boolean): boolean {
+  return (!item.desktopOnly || isDesktopApp) && (!item.webOnly || isWeb);
+}
+
 interface HostSectionItem {
   id: HostSectionSlug;
   labelKey: string;
-  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
-  // Developer-only host sections - hidden from the sidebar and their content
-  // gated to null in User mode (see renderHostSettingsContent).
-  developerOnly?: boolean;
+  icon: ComponentType<{ size: number; color: string; strokeWidth?: number }>;
 }
 
 const HOST_SECTION_ITEMS: HostSectionItem[] = [
-  // Paseo's v0.6.1 host sequence is the visible base. Otto-specific systems
-  // remain discrete only where folding them into an upstream page would hide
-  // a separate ownership boundary.
   { id: "host", labelKey: "settings.hostSections.host", icon: Server },
   { id: "projects", labelKey: "settings.hostSections.projects", icon: FolderGit2 },
   { id: "connections", labelKey: "settings.hostSections.connections", icon: Network },
   { id: "pair-device", labelKey: "openProject.tiles.pairDevice.title", icon: Smartphone },
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
-  { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Robot },
-  // Git-provider settings are collapsed into "Workspaces" as a "Git" panel - too
-  // few options to warrant its own sidebar category. See HostWorkspacesPage.
-  // Everything in that page (PR auto-archive, Git providers) is developer-only,
-  // so the whole category is developer-only too.
-  {
-    id: "workspaces",
-    labelKey: "settings.hostSections.workspaces",
-    icon: Workspaces,
-    developerOnly: true,
-  },
+  { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Sparkles },
+  { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
-  {
-    id: "terminals",
-    labelKey: "settings.hostSections.terminals",
-    icon: SquareTerminal,
-    developerOnly: true,
-  },
-  { id: "plugins", labelKey: "settings.plugins.title", icon: Blocks },
-  { id: "teams", labelKey: "settings.hostSections.teams", icon: Groups },
-  { id: "tools", labelKey: "settings.hostSections.tools", icon: Wrench },
-  { id: "connectors", labelKey: "settings.hostSections.connectors", icon: Plug },
-  { id: "code", labelKey: "settings.hostSections.code", icon: DataObject },
-  { id: "brain", labelKey: "settings.hostSections.brain", icon: Brain },
-  // Not developer-only: reclaiming the disk agents filled is a plain user need,
-  // and User mode is exactly where someone asks where their space went.
-  { id: "storage", labelKey: "settings.hostSections.storage", icon: HardDrive },
+  { id: "terminals", labelKey: "settings.hostSections.terminals", icon: SquareTerminal },
+  { id: "code", labelKey: "settings.hostSections.code", icon: Code2 }, // OTTO(editor)
+  { id: "plugins", labelKey: "settings.hostSections.plugins", icon: Blocks },
 ];
 
 function renderHostSettingsContent(
   view: Extract<SettingsView, { kind: "host" }>,
   onHostRemoved: () => void,
-  isDeveloperMode: boolean,
 ): ReactNode {
   switch (view.section) {
     case "projects":
@@ -374,28 +260,18 @@ function renderHostSettingsContent(
       return <HostPairDevicePage serverId={view.serverId} />;
     case "agents":
       return <HostAgentsPage serverId={view.serverId} />;
-    case "teams":
-      return <HostTeamsPage serverId={view.serverId} />;
-    case "tools":
-      return <HostToolsPage serverId={view.serverId} />;
-    case "connectors":
-      return <HostConnectorsPage serverId={view.serverId} />;
-    case "code":
-      return <HostCodePage serverId={view.serverId} />;
-    case "brain":
-      return <HostBrainPage serverId={view.serverId} />;
     case "metadata":
       return <MetadataGenerationPage serverId={view.serverId} />;
     case "workspaces":
-      return isDeveloperMode ? <HostWorkspacesPage serverId={view.serverId} /> : null;
+      return <HostWorkspacesPage serverId={view.serverId} />;
     case "providers":
       return <HostProvidersPage serverId={view.serverId} />;
     case "usage":
       return <HostUsagePage serverId={view.serverId} />;
-    case "storage":
-      return <HostStoragePage serverId={view.serverId} />;
     case "terminals":
-      return isDeveloperMode ? <HostTerminalsPage serverId={view.serverId} /> : null;
+      return <HostTerminalsPage serverId={view.serverId} />;
+    case "code":
+      return <OttoCodeSettings serverId={view.serverId} />; // OTTO(editor)
     case "plugins":
       return <HostPluginsPage serverId={view.serverId} />;
     case "host":
@@ -407,112 +283,27 @@ function renderHostSettingsContent(
 // Trigger + sidebar style helpers
 // ---------------------------------------------------------------------------
 
-function themeTriggerStyle({ pressed }: PressableStateCallbackType) {
-  return [styles.themeTrigger, pressed && { opacity: 0.85 }];
-}
-
-function sidebarItemStyle({ hovered }: PressableStateCallbackType & { hovered?: boolean }) {
-  return [sidebarStyles.item, Boolean(hovered) && sidebarStyles.itemHovered];
-}
-
-function selectedSidebarItemStyle({ hovered }: PressableStateCallbackType & { hovered?: boolean }) {
+function sidebarItemStyle({
+  hovered,
+  pressed,
+}: PressableStateCallbackType & { hovered?: boolean }) {
   return [
     sidebarStyles.item,
-    sidebarStyles.itemSelected,
     Boolean(hovered) && sidebarStyles.itemHovered,
+    pressed && sidebarStyles.itemPressed,
   ];
 }
 
-const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
-// Responsive bordered row: stacks + centers a wide trailing control below the
-// label on compact widths (see `settingsStyles.rowResponsive`).
-const ROW_RESPONSIVE_WITH_BORDER_STYLE = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
-
-function getInterfaceModeOptions(t: TFunction) {
+function selectedSidebarItemStyle({
+  hovered,
+  pressed,
+}: PressableStateCallbackType & { hovered?: boolean }) {
   return [
-    { value: "user" as const, label: t("settings.general.interfaceMode.options.user") },
-    { value: "developer" as const, label: t("settings.general.interfaceMode.options.developer") },
+    sidebarStyles.item,
+    Boolean(hovered) && sidebarStyles.itemHovered,
+    sidebarStyles.itemSelected,
+    pressed && sidebarStyles.itemPressed,
   ];
-}
-
-function getAppStartScreenOptions(t: TFunction) {
-  return [
-    {
-      value: "workspaces" as const,
-      label: t("settings.general.appStartScreen.options.workspaces"),
-    },
-    { value: "home" as const, label: t("settings.general.appStartScreen.options.home") },
-    {
-      value: "dashboard" as const,
-      label: t("settings.general.appStartScreen.options.dashboard"),
-    },
-  ];
-}
-
-const APP_START_SCREEN_DESCRIPTION_KEYS = {
-  workspaces: "settings.general.appStartScreen.descriptions.workspaces",
-  home: "settings.general.appStartScreen.descriptions.home",
-  dashboard: "settings.general.appStartScreen.descriptions.dashboard",
-} as const satisfies Record<AppStartScreen, string>;
-
-// Suggested-task default action. English-only for now - the whole suggested-task
-// feature is unlocalized pending verification (see build-first-translate-last).
-const FOLLOW_PROMPT_SUGGESTIONS_LIMIT_OPTIONS: {
-  value: FollowPromptSuggestionsLimit;
-  label: string;
-}[] = [
-  { value: "3", label: "3" },
-  { value: "5", label: "5" },
-  { value: "10", label: "10" },
-  { value: "25", label: "25" },
-  { value: "unlimited", label: "Unlimited" },
-];
-
-const SUGGESTED_TASKS_DEFAULT_MODE_OPTIONS: {
-  value: SuggestedTasksDefaultMode;
-  label: string;
-}[] = [
-  { value: "new_chat", label: "New chat" },
-  { value: "subagent", label: "Sub-agent" },
-  { value: "worktree", label: "Worktree" },
-  { value: "in_session", label: "In session" },
-];
-
-const SUGGESTED_TASKS_DEFAULT_MODE_DESCRIPTIONS = {
-  new_chat: "Starts in a separate chat in its own tab, with no link to this chat.",
-  subagent: "Starts as a linked sub-agent shown under this chat and archived with it.",
-  worktree: "Starts in an isolated new git worktree (its own branch) in a new tab.",
-  in_session: "Sends the task straight to this chat's agent.",
-} as const satisfies Record<SuggestedTasksDefaultMode, string>;
-
-function getPreviewServerCloseBehaviorOptions(t: TFunction) {
-  return [
-    {
-      value: "keep-running" as const,
-      label: t("settings.general.previewServerCloseBehavior.options.keepRunning"),
-    },
-    {
-      value: "stop-on-close" as const,
-      label: t("settings.general.previewServerCloseBehavior.options.stopOnClose"),
-    },
-  ];
-}
-
-function getServiceUrlBehaviorLabel(t: TFunction, value: ServiceUrlBehavior): string {
-  const labels: Record<ServiceUrlBehavior, string> = {
-    ask: t("settings.general.serviceUrls.options.ask"),
-    "in-app": t("settings.general.serviceUrls.options.inApp"),
-    external: t("settings.general.serviceUrls.options.external"),
-  };
-  return labels[value];
-}
-
-function getLinkOpenBehaviorLabel(t: TFunction, value: LinkOpenBehavior): string {
-  const labels: Record<LinkOpenBehavior, string> = {
-    "in-app": t("settings.general.openLinks.options.inApp"),
-    external: t("settings.general.openLinks.options.external"),
-  };
-  return labels[value];
 }
 
 function getActiveLocale(language: string | undefined): SupportedLocale {
@@ -520,73 +311,13 @@ function getActiveLocale(language: string | undefined): SupportedLocale {
   return parsed && parsed !== "system" ? parsed : "en";
 }
 
-const SERVICE_URL_BEHAVIOR_VALUES: ServiceUrlBehavior[] = ["ask", "in-app", "external"];
-const LINK_OPEN_BEHAVIOR_VALUES: LinkOpenBehavior[] = ["external", "in-app"];
-
 // ---------------------------------------------------------------------------
 // Section components
 // ---------------------------------------------------------------------------
 
 interface GeneralSectionProps {
   settings: AppSettings;
-  isDesktopApp: boolean;
-  handleInterfaceModeChange: (mode: InterfaceMode) => void;
-  handleAppStartScreenChange: (screen: AppStartScreen) => void;
-  handleServiceUrlBehaviorChange: (behavior: ServiceUrlBehavior) => void;
-  handleLinkOpenBehaviorChange: (behavior: LinkOpenBehavior) => void;
   handleLanguageChange: (language: AppLanguage) => void;
-  handleTerminalScrollbackLinesChange: (lines: number) => void;
-  handleMountedWorkspaceLimitChange: (limit: number) => void;
-  // `null` = match this device. See AppSettings.mountedTabLimit.
-  handleMountedTabLimitChange: (limit: number | null) => void;
-  handlePreviewServerCloseBehaviorChange: (behavior: PreviewServerCloseBehavior) => void;
-  handlePreviewAutoStartOnRestoreChange: (enabled: boolean) => void;
-}
-
-interface ServiceUrlBehaviorMenuItemProps {
-  value: ServiceUrlBehavior;
-  label: string;
-  selected: boolean;
-  onChange: (value: ServiceUrlBehavior) => void;
-}
-
-function ServiceUrlBehaviorMenuItem({
-  value,
-  label,
-  selected,
-  onChange,
-}: ServiceUrlBehaviorMenuItemProps) {
-  const handleSelect = useCallback(() => {
-    onChange(value);
-  }, [onChange, value]);
-  return (
-    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
-      {label}
-    </DropdownMenuItem>
-  );
-}
-
-interface LinkOpenBehaviorMenuItemProps {
-  value: LinkOpenBehavior;
-  label: string;
-  selected: boolean;
-  onChange: (value: LinkOpenBehavior) => void;
-}
-
-function LinkOpenBehaviorMenuItem({
-  value,
-  label,
-  selected,
-  onChange,
-}: LinkOpenBehaviorMenuItemProps) {
-  const handleSelect = useCallback(() => {
-    onChange(value);
-  }, [onChange, value]);
-  return (
-    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
-      {label}
-    </DropdownMenuItem>
-  );
 }
 
 interface LanguageMenuItemProps {
@@ -613,35 +344,9 @@ function LanguageMenuItem({ value, activeLocale, selected, onChange }: LanguageM
   );
 }
 
-function GeneralSection({
-  settings,
-  isDesktopApp,
-  handleInterfaceModeChange,
-  handleAppStartScreenChange,
-  handleServiceUrlBehaviorChange,
-  handleLinkOpenBehaviorChange,
-  handleLanguageChange,
-  handleTerminalScrollbackLinesChange,
-  handleMountedWorkspaceLimitChange,
-  handleMountedTabLimitChange,
-  handlePreviewServerCloseBehaviorChange,
-  handlePreviewAutoStartOnRestoreChange,
-}: GeneralSectionProps) {
+function GeneralSection({ settings, handleLanguageChange }: GeneralSectionProps) {
   const { t, i18n } = useTranslation();
   const activeLocale = getActiveLocale(i18n.language);
-  const interfaceModeOptions = useMemo(() => getInterfaceModeOptions(t), [t]);
-  // `null` (unchosen / legacy device) resolves to Developer, matching useInterfaceMode.
-  const interfaceModeValue: InterfaceMode = settings.interfaceMode ?? "developer";
-  const interfaceModeDescriptionKey =
-    interfaceModeValue === "user"
-      ? "settings.general.interfaceMode.descriptions.user"
-      : "settings.general.interfaceMode.descriptions.developer";
-  const appStartScreenOptions = useMemo(() => getAppStartScreenOptions(t), [t]);
-  const appStartScreenDescriptionKey = APP_START_SCREEN_DESCRIPTION_KEYS[settings.appStartScreen];
-  const previewServerCloseBehaviorOptions = useMemo(
-    () => getPreviewServerCloseBehaviorOptions(t),
-    [t],
-  );
   const selectedLanguageOption = LANGUAGE_OPTIONS.find(
     (option) => option.value === settings.language,
   );
@@ -652,137 +357,13 @@ function GeneralSection({
         t(selectedLanguageOption.labelKey),
       )
     : settings.language;
-  const [terminalScrollbackValue, setTerminalScrollbackValue] = useState(
-    String(settings.terminalScrollbackLines),
-  );
-  const [mountedWorkspaceLimitValue, setMountedWorkspaceLimitValue] = useState(
-    String(settings.mountedWorkspaceLimit),
-  );
-
-  const handleMountedWorkspaceLimitChangeText = useCallback((value: string) => {
-    setMountedWorkspaceLimitValue(value.replace(/[^\d]/g, ""));
-  }, []);
-
-  const commitMountedWorkspaceLimit = useCallback(() => {
-    const parsed = parseMountedWorkspaceLimit(mountedWorkspaceLimitValue);
-    const nextValue = parsed ?? settings.mountedWorkspaceLimit;
-    // Echo the clamped value back into the field, so typing 99 visibly becomes
-    // the maximum rather than silently doing something else.
-    setMountedWorkspaceLimitValue(String(nextValue));
-    if (nextValue !== settings.mountedWorkspaceLimit) {
-      handleMountedWorkspaceLimitChange(nextValue);
-    }
-  }, [
-    handleMountedWorkspaceLimitChange,
-    mountedWorkspaceLimitValue,
-    settings.mountedWorkspaceLimit,
-  ]);
-
-  useEffect(() => {
-    setMountedWorkspaceLimitValue(String(settings.mountedWorkspaceLimit));
-  }, [settings.mountedWorkspaceLimit]);
-
-  // `null` means "match this device", and an empty field is how the user says
-  // that - so the field is blank rather than showing a number they did not pick.
-  const isCompactFormFactor = useIsCompactFormFactor();
-  const autoMountedTabLimit = resolveMountedTabLimit({
-    setting: null,
-    isCompact: isCompactFormFactor,
-  });
-  const [mountedTabLimitValue, setMountedTabLimitValue] = useState(
-    settings.mountedTabLimit === null ? "" : String(settings.mountedTabLimit),
-  );
-
-  const handleMountedTabLimitChangeText = useCallback((value: string) => {
-    setMountedTabLimitValue(value.replace(/[^\d]/g, ""));
-  }, []);
-
-  const commitMountedTabLimit = useCallback(() => {
-    const parsed = parseMountedTabLimit(mountedTabLimitValue);
-    // undefined = unparseable, so keep what was there. null = cleared, which is
-    // a deliberate choice to go back to the per-device default.
-    const nextValue = parsed === undefined ? settings.mountedTabLimit : parsed;
-    // Echo the clamped value back, so typing 99 visibly becomes the maximum.
-    setMountedTabLimitValue(nextValue === null ? "" : String(nextValue));
-    if (nextValue !== settings.mountedTabLimit) {
-      handleMountedTabLimitChange(nextValue);
-    }
-  }, [handleMountedTabLimitChange, mountedTabLimitValue, settings.mountedTabLimit]);
-
-  useEffect(() => {
-    setMountedTabLimitValue(
-      settings.mountedTabLimit === null ? "" : String(settings.mountedTabLimit),
-    );
-  }, [settings.mountedTabLimit]);
-
-  const handleTerminalScrollbackChangeText = useCallback((value: string) => {
-    setTerminalScrollbackValue(value.replace(/[^\d]/g, ""));
-  }, []);
-
-  const commitTerminalScrollback = useCallback(() => {
-    const parsed = parseTerminalScrollbackLines(terminalScrollbackValue);
-    const nextValue = parsed ?? settings.terminalScrollbackLines;
-    setTerminalScrollbackValue(String(nextValue));
-    if (nextValue !== settings.terminalScrollbackLines) {
-      handleTerminalScrollbackLinesChange(nextValue);
-    }
-  }, [
-    handleTerminalScrollbackLinesChange,
-    settings.terminalScrollbackLines,
-    terminalScrollbackValue,
-  ]);
-
-  useEffect(() => {
-    setTerminalScrollbackValue(String(settings.terminalScrollbackLines));
-  }, [settings.terminalScrollbackLines]);
-
   return (
-    <Fragment>
+    <>
       <SettingsSection title={t("settings.general.title")}>
         <View style={settingsStyles.card}>
-          <View style={settingsStyles.rowResponsive}>
+          <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-general-general-interface-mode"
-                style={settingsStyles.rowTitle}
-              >
-                {t("settings.general.interfaceMode.label")}
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>{t(interfaceModeDescriptionKey)}</Text>
-            </View>
-            <SegmentedControl
-              size="sm"
-              value={interfaceModeValue}
-              onValueChange={handleInterfaceModeChange}
-              options={interfaceModeOptions}
-            />
-          </View>
-          <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-general-general-app-starts-on"
-                style={settingsStyles.rowTitle}
-              >
-                {t("settings.general.appStartScreen.label")}
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>{t(appStartScreenDescriptionKey)}</Text>
-            </View>
-            <SegmentedControl
-              size="sm"
-              value={settings.appStartScreen}
-              onValueChange={handleAppStartScreenChange}
-              options={appStartScreenOptions}
-              testID="settings-app-start-screen"
-            />
-          </View>
-          <View style={ROW_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-general-general-language"
-                style={settingsStyles.rowTitle}
-              >
-                {t("settings.general.language.label")}
-              </SettingsTargetText>
+              <Text style={settingsStyles.rowTitle}>{t("settings.general.language.label")}</Text>
               <Text style={settingsStyles.rowHint}>
                 {t("settings.general.language.description")}
               </Text>
@@ -791,9 +372,8 @@ function GeneralSection({
               <DropdownTrigger
                 accessibilityRole="button"
                 accessibilityLabel={selectedLanguageLabel}
-                style={themeTriggerStyle}
               >
-                <Text style={styles.themeTriggerText}>{selectedLanguageLabel}</Text>
+                {selectedLanguageLabel}
               </DropdownTrigger>
               <DropdownMenuContent side="bottom" align="end" width={300}>
                 {LANGUAGE_OPTIONS.map((option) => (
@@ -808,525 +388,10 @@ function GeneralSection({
               </DropdownMenuContent>
             </DropdownMenu>
           </View>
-          {isDesktopApp ? (
-            <View style={ROW_WITH_BORDER_STYLE}>
-              <View style={settingsStyles.rowContent}>
-                <SettingsTargetText
-                  settingId="app-general-general-service-urls"
-                  style={settingsStyles.rowTitle}
-                >
-                  {t("settings.general.serviceUrls.label")}
-                </SettingsTargetText>
-                <Text style={settingsStyles.rowHint}>
-                  {t("settings.general.serviceUrls.description")}
-                </Text>
-              </View>
-              <DropdownMenu>
-                <DropdownTrigger style={themeTriggerStyle}>
-                  <Text style={styles.themeTriggerText}>
-                    {getServiceUrlBehaviorLabel(t, settings.serviceUrlBehavior)}
-                  </Text>
-                </DropdownTrigger>
-                <DropdownMenuContent side="bottom" align="end" width={200}>
-                  {SERVICE_URL_BEHAVIOR_VALUES.map((value) => (
-                    <ServiceUrlBehaviorMenuItem
-                      key={value}
-                      value={value}
-                      label={getServiceUrlBehaviorLabel(t, value)}
-                      selected={settings.serviceUrlBehavior === value}
-                      onChange={handleServiceUrlBehaviorChange}
-                    />
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </View>
-          ) : null}
-          {isDesktopApp ? (
-            <View style={ROW_WITH_BORDER_STYLE}>
-              <View style={settingsStyles.rowContent}>
-                <SettingsTargetText
-                  settingId="app-general-general-open-links"
-                  style={settingsStyles.rowTitle}
-                >
-                  {t("settings.general.openLinks.label")}
-                </SettingsTargetText>
-                <Text style={settingsStyles.rowHint}>
-                  {t("settings.general.openLinks.description")}
-                </Text>
-              </View>
-              <DropdownMenu>
-                <DropdownTrigger style={themeTriggerStyle}>
-                  <Text style={styles.themeTriggerText}>
-                    {getLinkOpenBehaviorLabel(t, settings.linkOpenBehavior)}
-                  </Text>
-                </DropdownTrigger>
-                <DropdownMenuContent side="bottom" align="end" width={200}>
-                  {LINK_OPEN_BEHAVIOR_VALUES.map((value) => (
-                    <LinkOpenBehaviorMenuItem
-                      key={value}
-                      value={value}
-                      label={getLinkOpenBehaviorLabel(t, value)}
-                      selected={settings.linkOpenBehavior === value}
-                      onChange={handleLinkOpenBehaviorChange}
-                    />
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            </View>
-          ) : null}
-          <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-general-general-workspaces-kept-loaded"
-                style={settingsStyles.rowTitle}
-              >
-                {t("settings.general.mountedWorkspaceLimit.label")}
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                {t("settings.general.mountedWorkspaceLimit.description")}
-              </Text>
-            </View>
-            <TextInput
-              value={mountedWorkspaceLimitValue}
-              onChangeText={handleMountedWorkspaceLimitChangeText}
-              onBlur={commitMountedWorkspaceLimit}
-              onSubmitEditing={commitMountedWorkspaceLimit}
-              keyboardType="number-pad"
-              inputMode="numeric"
-              selectTextOnFocus
-              style={styles.terminalScrollbackInput}
-              accessibilityLabel={t("settings.general.mountedWorkspaceLimit.accessibilityLabel")}
-              testID="settings-mounted-workspace-limit-input"
-            />
-          </View>
-          <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-general-general-tabs-kept-loaded"
-                style={settingsStyles.rowTitle}
-              >
-                {t("settings.general.mountedTabLimit.label")}
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                {t("settings.general.mountedTabLimit.description", {
-                  auto: autoMountedTabLimit,
-                })}
-              </Text>
-            </View>
-            <TextInput
-              value={mountedTabLimitValue}
-              onChangeText={handleMountedTabLimitChangeText}
-              onBlur={commitMountedTabLimit}
-              onSubmitEditing={commitMountedTabLimit}
-              // Empty is a real value here: it means "match this device", so the
-              // placeholder shows what that resolves to on this one.
-              placeholder={String(autoMountedTabLimit)}
-              keyboardType="number-pad"
-              inputMode="numeric"
-              selectTextOnFocus
-              style={styles.terminalScrollbackInput}
-              accessibilityLabel={t("settings.general.mountedTabLimit.accessibilityLabel")}
-              testID="settings-mounted-tab-limit-input"
-            />
-          </View>
-          {interfaceModeValue === "developer" ? (
-            <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-              <View style={settingsStyles.rowContent}>
-                <SettingsTargetText
-                  settingId="app-general-general-terminal-scrollback"
-                  style={settingsStyles.rowTitle}
-                >
-                  {t("settings.general.terminalScrollback.label")}
-                </SettingsTargetText>
-                <Text style={settingsStyles.rowHint}>
-                  {t("settings.general.terminalScrollback.description")}
-                </Text>
-              </View>
-              <TextInput
-                value={terminalScrollbackValue}
-                onChangeText={handleTerminalScrollbackChangeText}
-                onBlur={commitTerminalScrollback}
-                onSubmitEditing={commitTerminalScrollback}
-                keyboardType="number-pad"
-                inputMode="numeric"
-                selectTextOnFocus
-                style={styles.terminalScrollbackInput}
-                accessibilityLabel={t("settings.general.terminalScrollback.accessibilityLabel")}
-              />
-            </View>
-          ) : null}
         </View>
       </SettingsSection>
-      {interfaceModeValue === "developer" ? (
-        <SettingsSection title={t("settings.preview.title")}>
-          <View style={settingsStyles.card}>
-            <View style={settingsStyles.rowResponsive}>
-              <View style={settingsStyles.rowContent}>
-                <SettingsTargetText
-                  settingId="app-general-preview-preview-server-on-tab-close"
-                  style={settingsStyles.rowTitle}
-                >
-                  {t("settings.general.previewServerCloseBehavior.label")}
-                </SettingsTargetText>
-                <Text style={settingsStyles.rowHint}>
-                  {t("settings.general.previewServerCloseBehavior.description")}
-                </Text>
-              </View>
-              <SegmentedControl
-                size="sm"
-                value={settings.previewServerCloseBehavior}
-                onValueChange={handlePreviewServerCloseBehaviorChange}
-                options={previewServerCloseBehaviorOptions}
-              />
-            </View>
-            <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
-              <View style={settingsStyles.rowContent}>
-                <SettingsTargetText
-                  settingId="app-general-preview-auto-start-on-restore"
-                  style={settingsStyles.rowTitle}
-                >
-                  {t("settings.preview.autoStartOnRestore.label")}
-                </SettingsTargetText>
-                <Text style={settingsStyles.rowHint}>
-                  {t("settings.preview.autoStartOnRestore.description")}
-                </Text>
-              </View>
-              <Switch
-                value={settings.previewAutoStartOnRestore}
-                onValueChange={handlePreviewAutoStartOnRestoreChange}
-                accessibilityLabel={t("settings.preview.autoStartOnRestore.label")}
-                testID="settings-preview-auto-start-on-restore-switch"
-              />
-            </View>
-          </View>
-        </SettingsSection>
-      ) : null}
-      <DesktopWindowBehaviorSection />
-    </Fragment>
-  );
-}
-
-interface ChatSectionProps {
-  settings: AppSettings;
-  defaultSend: DefaultSendSetting;
-  handleSuggestedTasksEnabledChange: (enabled: boolean) => void;
-  handleSuggestedTasksDefaultModeChange: (mode: SuggestedTasksDefaultMode) => void;
-  handlePromptSuggestionsEnabledChange: (enabled: boolean) => void;
-  handleFollowPromptSuggestionsChange: (enabled: boolean) => void;
-  handleFollowPromptSuggestionsLimitChange: (limit: FollowPromptSuggestionsLimit) => void;
-  handleRateLimitWarningsEnabledChange: (enabled: boolean) => void;
-  handleContextWarningsEnabledChange: (enabled: boolean) => void;
-  handleAutoClearCompletedSubagentsChange: (enabled: boolean) => void;
-  handleAutoClearCompletedBackgroundTasksChange: (enabled: boolean) => void;
-  handleAutoClearFailedBackgroundTasksChange: (enabled: boolean) => void;
-  handlePinnedTaskListEnabledChange: (enabled: boolean) => void;
-  handlePinnedTaskListAutoDismissChange: (enabled: boolean) => void;
-}
-
-function ChatSection({
-  settings,
-  defaultSend,
-  handleSuggestedTasksEnabledChange,
-  handleSuggestedTasksDefaultModeChange,
-  handlePromptSuggestionsEnabledChange,
-  handleFollowPromptSuggestionsChange,
-  handleFollowPromptSuggestionsLimitChange,
-  handleRateLimitWarningsEnabledChange,
-  handleContextWarningsEnabledChange,
-  handleAutoClearCompletedSubagentsChange,
-  handleAutoClearCompletedBackgroundTasksChange,
-  handleAutoClearFailedBackgroundTasksChange,
-  handlePinnedTaskListEnabledChange,
-  handlePinnedTaskListAutoDismissChange,
-}: ChatSectionProps) {
-  const { t } = useTranslation();
-  const suggestedTasksDefaultModeDescription =
-    SUGGESTED_TASKS_DEFAULT_MODE_DESCRIPTIONS[settings.suggestedTasksDefaultMode];
-  const sendBehaviorDescriptionKey = `settings.general.defaultSend.descriptions.${defaultSend.behavior}`;
-
-  return (
-    <Fragment>
-      <SettingsSection title="Agent behavior">
-        <View style={settingsStyles.card}>
-          <View style={settingsStyles.row}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-chat-agent-behavior-suggested-tasks"
-                style={settingsStyles.rowTitle}
-              >
-                Suggested tasks
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                Show a card when an agent proposes follow-up work you can start later.
-              </Text>
-            </View>
-            <Switch
-              value={settings.suggestedTasksEnabled}
-              onValueChange={handleSuggestedTasksEnabledChange}
-              accessibilityLabel="Suggested tasks"
-              testID="settings-suggested-tasks-enabled-switch"
-            />
-          </View>
-          {settings.suggestedTasksEnabled ? (
-            <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
-              <View style={settingsStyles.rowContent}>
-                <SettingsTargetText
-                  settingId="app-chat-agent-behavior-suggested-tasks-default"
-                  style={settingsStyles.rowTitle}
-                >
-                  Suggested tasks default
-                </SettingsTargetText>
-                <Text style={settingsStyles.rowHint}>{suggestedTasksDefaultModeDescription}</Text>
-              </View>
-              <SegmentedControl
-                size="sm"
-                value={settings.suggestedTasksDefaultMode}
-                onValueChange={handleSuggestedTasksDefaultModeChange}
-                options={SUGGESTED_TASKS_DEFAULT_MODE_OPTIONS}
-                testID="settings-suggested-tasks-default-mode"
-              />
-            </View>
-          ) : null}
-          <View style={ROW_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-chat-agent-behavior-default-send"
-                style={settingsStyles.rowTitle}
-              >
-                {t("settings.general.defaultSend.label")}
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                {defaultSend.isSaving ? t("renameModal.saving") : t(sendBehaviorDescriptionKey)}
-              </Text>
-              {defaultSend.error ? (
-                <Text style={settingsStyles.rowError}>{defaultSend.error}</Text>
-              ) : null}
-            </View>
-            <SegmentedControl
-              size="sm"
-              value={defaultSend.behavior}
-              onValueChange={defaultSend.onChange}
-              options={defaultSend.options}
-            />
-          </View>
-          <View style={ROW_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-chat-agent-behavior-ai-prompt-suggestions"
-                style={settingsStyles.rowTitle}
-              >
-                AI prompt suggestions
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                After a turn, show the agent&apos;s predicted next prompt as ghost text in the
-                message box; press Tab to accept it.
-              </Text>
-            </View>
-            <Switch
-              value={settings.promptSuggestionsEnabled}
-              onValueChange={handlePromptSuggestionsEnabledChange}
-              accessibilityLabel="AI prompt suggestions"
-              testID="settings-prompt-suggestions-switch"
-            />
-          </View>
-          {settings.promptSuggestionsEnabled ? (
-            <View style={ROW_WITH_BORDER_STYLE}>
-              <View style={settingsStyles.rowContent}>
-                <SettingsTargetText
-                  settingId="app-chat-agent-behavior-follow-prompt-suggestions"
-                  style={settingsStyles.rowTitle}
-                >
-                  Follow prompt suggestions
-                </SettingsTargetText>
-                <Text style={settingsStyles.rowHint}>
-                  The default Autonomous mode for new chats. When on, a chat sends the predicted
-                  next prompt automatically instead of waiting for Tab. Each chat has its own toggle
-                  in the message box. Separate from Auto mode, which decides how an agent acts after
-                  a prompt is sent.
-                </Text>
-              </View>
-              <Switch
-                value={settings.followPromptSuggestions}
-                onValueChange={handleFollowPromptSuggestionsChange}
-                accessibilityLabel="Follow prompt suggestions"
-                testID="settings-follow-prompt-suggestions-switch"
-              />
-            </View>
-          ) : null}
-          {settings.promptSuggestionsEnabled ? (
-            <View style={ROW_WITH_BORDER_STYLE}>
-              <View style={settingsStyles.rowContent}>
-                <SettingsTargetText
-                  settingId="app-chat-agent-behavior-suggestions-in-a-row"
-                  style={settingsStyles.rowTitle}
-                >
-                  Suggestions in a row
-                </SettingsTargetText>
-                <Text style={settingsStyles.rowHint}>
-                  How many suggested prompts Autonomous mode sends back-to-back before it waits for
-                  you. Sending a message yourself resets the count. Unlimited keeps going until the
-                  agent stops suggesting.
-                </Text>
-              </View>
-              <SegmentedControl
-                size="sm"
-                value={settings.followPromptSuggestionsLimit}
-                onValueChange={handleFollowPromptSuggestionsLimitChange}
-                options={FOLLOW_PROMPT_SUGGESTIONS_LIMIT_OPTIONS}
-                testID="settings-follow-prompt-suggestions-limit"
-              />
-            </View>
-          ) : null}
-          <View style={ROW_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-chat-agent-behavior-plan-rate-limit-warnings"
-                style={settingsStyles.rowTitle}
-              >
-                Plan rate-limit warnings
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                Show a warning above the message box when your Claude plan usage nears or hits a
-                rate limit.
-              </Text>
-            </View>
-            <Switch
-              value={settings.rateLimitWarningsEnabled}
-              onValueChange={handleRateLimitWarningsEnabledChange}
-              accessibilityLabel="Plan rate-limit warnings"
-              testID="settings-rate-limit-warnings-switch"
-            />
-          </View>
-          <View style={ROW_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-chat-agent-behavior-context-weight-warnings"
-                style={settingsStyles.rowTitle}
-              >
-                Context weight warnings
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                Show a warning above the message box when this project&apos;s context takes a large
-                share of the model window.
-              </Text>
-            </View>
-            <Switch
-              value={settings.contextWarningsEnabled}
-              onValueChange={handleContextWarningsEnabledChange}
-              accessibilityLabel="Context weight warnings"
-              testID="settings-context-warnings-switch"
-            />
-          </View>
-          <View style={ROW_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-chat-agent-behavior-auto-clear-completed-sub-agents"
-                style={settingsStyles.rowTitle}
-              >
-                Auto-clear completed sub-agents
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                Remove finished sub-agents from a chat&apos;s track once they settle. Their token
-                totals stay counted in the track header.
-              </Text>
-            </View>
-            <Switch
-              value={settings.autoClearCompletedSubagents}
-              onValueChange={handleAutoClearCompletedSubagentsChange}
-              accessibilityLabel="Auto-clear completed sub-agents"
-              testID="settings-auto-clear-completed-subagents-switch"
-            />
-          </View>
-          <View style={ROW_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-chat-agent-behavior-auto-clear-completed-background-tasks"
-                style={settingsStyles.rowTitle}
-              >
-                Auto-clear completed background tasks
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                Remove finished background shell tasks from a chat&apos;s track once they settle.
-                Their output stays in the chat.
-              </Text>
-            </View>
-            <Switch
-              value={settings.autoClearCompletedBackgroundTasks}
-              onValueChange={handleAutoClearCompletedBackgroundTasksChange}
-              accessibilityLabel="Auto-clear completed background tasks"
-              testID="settings-auto-clear-completed-background-tasks-switch"
-            />
-          </View>
-          <View style={ROW_WITH_BORDER_STYLE}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-chat-agent-behavior-auto-clear-failed-background-tasks"
-                style={settingsStyles.rowTitle}
-              >
-                Auto-clear failed background tasks
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                Do the same for background shell tasks that failed. Off by default, so tidying away
-                the ones that succeeded never sweeps a failure you have not read.
-              </Text>
-            </View>
-            <Switch
-              value={settings.autoClearFailedBackgroundTasks}
-              onValueChange={handleAutoClearFailedBackgroundTasksChange}
-              accessibilityLabel="Auto-clear failed background tasks"
-              testID="settings-auto-clear-failed-background-tasks-switch"
-            />
-          </View>
-        </View>
-      </SettingsSection>
-      <SettingsSection title="Task list">
-        <View style={settingsStyles.card}>
-          <View style={settingsStyles.row}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-chat-task-list-pin-task-list"
-                style={settingsStyles.rowTitle}
-              >
-                Pin task list
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>
-                Float the agent&apos;s task checklist at the top of the chat so it stays in view
-                instead of scrolling away inline.
-              </Text>
-            </View>
-            <Switch
-              value={settings.pinnedTaskListEnabled}
-              onValueChange={handlePinnedTaskListEnabledChange}
-              accessibilityLabel="Pin task list"
-              testID="settings-pinned-task-list-switch"
-            />
-          </View>
-          {settings.pinnedTaskListEnabled ? (
-            <View style={ROW_WITH_BORDER_STYLE}>
-              <View style={settingsStyles.rowContent}>
-                <SettingsTargetText
-                  settingId="app-chat-task-list-auto-dismiss-when-done"
-                  style={settingsStyles.rowTitle}
-                >
-                  Auto-dismiss when done
-                </SettingsTargetText>
-                <Text style={settingsStyles.rowHint}>
-                  Close the pinned task list automatically a moment after every task completes,
-                  instead of leaving it up for you to dismiss.
-                </Text>
-              </View>
-              <Switch
-                value={settings.pinnedTaskListAutoDismiss}
-                onValueChange={handlePinnedTaskListAutoDismissChange}
-                accessibilityLabel="Auto-dismiss task list when done"
-                testID="settings-pinned-task-list-auto-dismiss-switch"
-              />
-            </View>
-          ) : null}
-        </View>
-      </SettingsSection>
-      <ChatAppearanceSection />
-    </Fragment>
+      <ZoomRecorderSettings />
+    </>
   );
 }
 
@@ -1337,8 +402,6 @@ interface DiagnosticsSectionProps {
   isPlaybackTestRunning: boolean;
   playbackTestResult: string | null;
   handlePlaybackTest: () => Promise<void>;
-  appVersion: string | null;
-  isDesktopApp: boolean;
 }
 
 function DiagnosticsSection({
@@ -1348,41 +411,21 @@ function DiagnosticsSection({
   isPlaybackTestRunning,
   playbackTestResult,
   handlePlaybackTest,
-  appVersion,
-  isDesktopApp,
 }: DiagnosticsSectionProps) {
   const { t } = useTranslation();
-  const { settings, updateSettings } = useSettings();
-  const [diagnosticSheetOpen, setDiagnosticSheetOpen] = useState(false);
-  const handleResourceMonitorEnabledChange = useCallback(
-    (resourceMonitorEnabled: boolean) => {
-      void updateSettings({ resourceMonitorEnabled });
-    },
-    [updateSettings],
-  );
-  const handleClientResourceBarAllPagesChange = useCallback(
-    (clientResourceBarAllPages: boolean) => {
-      void updateSettings({ clientResourceBarAllPages });
-    },
-    [updateSettings],
-  );
+  const openAppDiagnostic = useAppDiagnosticStore((state) => state.open);
   const handlePlayPress = useCallback(() => {
     void handlePlaybackTest();
   }, [handlePlaybackTest]);
-  const handleOpenDiagnostic = useCallback(() => setDiagnosticSheetOpen(true), []);
-  const handleCloseDiagnostic = useCallback(() => setDiagnosticSheetOpen(false), []);
   return (
     <SettingsSection title={t("settings.diagnostics.title")}>
       <View style={settingsStyles.card}>
         {isNative ? (
           <View style={settingsStyles.row} testID="legacy-terminal-renderer-row">
             <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-diagnostics-diagnostics-use-legacy-terminal-renderer"
-                style={settingsStyles.rowTitle}
-              >
+              <Text style={settingsStyles.rowTitle}>
                 {t("settings.diagnostics.legacyTerminalRenderer.label")}
-              </SettingsTargetText>
+              </Text>
               <Text style={settingsStyles.rowHint}>
                 {t("settings.diagnostics.legacyTerminalRenderer.description")}
               </Text>
@@ -1397,69 +440,18 @@ function DiagnosticsSection({
             />
           </View>
         ) : null}
-        <View style={settingsStyles.rowResponsive} testID="app-diagnostic-row">
+        <View style={settingsStyles.row} testID="app-diagnostic-row">
           <View style={settingsStyles.rowContent}>
-            <SettingsTargetText
-              settingId="app-diagnostics-diagnostics-app-diagnostic"
-              style={settingsStyles.rowTitle}
-            >
-              {t("settings.diagnostics.app.rowTitle")}
-            </SettingsTargetText>
+            <Text style={settingsStyles.rowTitle}>{t("settings.diagnostics.app.rowTitle")}</Text>
             <Text style={settingsStyles.rowHint}>{t("settings.diagnostics.app.rowHint")}</Text>
           </View>
-          <Button variant="secondary" size="sm" onPress={handleOpenDiagnostic}>
+          <Button variant="secondary" size="sm" onPress={openAppDiagnostic}>
             {t("settings.diagnostics.app.run")}
           </Button>
         </View>
-        <View style={settingsStyles.rowResponsive}>
+        <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <SettingsTargetText
-              settingId="app-diagnostics-diagnostics-performance-monitoring"
-              style={settingsStyles.rowTitle}
-            >
-              Performance monitoring
-            </SettingsTargetText>
-            <Text style={settingsStyles.rowHint}>
-              Record frame timing, retained state and daemon traffic so the app diagnostic can show
-              what grows over a long session. Local only - nothing is sent anywhere.
-            </Text>
-          </View>
-          <Switch
-            value={settings.resourceMonitorEnabled}
-            onValueChange={handleResourceMonitorEnabledChange}
-            accessibilityLabel="Performance monitoring"
-            testID="settings-resource-monitor-switch"
-          />
-        </View>
-        <View style={settingsStyles.rowResponsive}>
-          <View style={settingsStyles.rowContent}>
-            <SettingsTargetText
-              settingId="app-diagnostics-diagnostics-show-metrics-footer-on-all-pages"
-              style={settingsStyles.rowTitle}
-            >
-              Show Metrics footer on all pages
-            </SettingsTargetText>
-            <Text style={settingsStyles.rowHint}>
-              Move the client performance metrics strip from the Metrics page to the bottom of the
-              whole app.
-            </Text>
-          </View>
-          <Switch
-            value={settings.clientResourceBarAllPages}
-            onValueChange={handleClientResourceBarAllPagesChange}
-            disabled={!settings.resourceMonitorEnabled}
-            accessibilityLabel="Show Metrics footer on all pages"
-            testID="settings-client-resource-bar-all-pages-switch"
-          />
-        </View>
-        <View style={settingsStyles.rowResponsive}>
-          <View style={settingsStyles.rowContent}>
-            <SettingsTargetText
-              settingId="app-diagnostics-diagnostics-test-audio"
-              style={settingsStyles.rowTitle}
-            >
-              {t("settings.diagnostics.testAudio")}
-            </SettingsTargetText>
+            <Text style={settingsStyles.rowTitle}>{t("settings.diagnostics.testAudio")}</Text>
             {playbackTestResult ? (
               <Text style={settingsStyles.rowHint}>{playbackTestResult}</Text>
             ) : null}
@@ -1476,12 +468,6 @@ function DiagnosticsSection({
           </Button>
         </View>
       </View>
-      <AppDiagnosticSheet
-        visible={diagnosticSheetOpen}
-        onClose={handleCloseDiagnostic}
-        appVersion={appVersion}
-        isDesktopApp={isDesktopApp}
-      />
     </SettingsSection>
   );
 }
@@ -1500,31 +486,17 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="app-about-about-app-version"
-                style={settingsStyles.rowTitle}
-              >
-                {t("settings.about.appVersion")}
-              </SettingsTargetText>
+              <Text style={settingsStyles.rowTitle}>{t("settings.about.appVersion")}</Text>
               <Text style={settingsStyles.rowHint}>{t("settings.about.thisDevice")}</Text>
             </View>
-            <View style={styles.aboutVersionColumn}>
-              <Text style={styles.aboutValue}>{appVersionText}</Text>
-              <Text style={styles.aboutBaseVersion}>
-                {t("settings.about.upstreamBase", {
-                  brand: UPSTREAM_BASE_NAME,
-                  version: formatVersionWithPrefix(UPSTREAM_BASE_VERSION),
-                })}
-              </Text>
-            </View>
+            <Text style={styles.aboutValue}>{appVersionText}</Text>
           </View>
           <WhatsNewRow />
           {isDesktopApp ? <DesktopAppUpdateRow /> : null}
-          <SetupWizardRerunRow />
-          <ThirdPartyCreditsRow />
         </View>
       </SettingsSection>
       <ConnectedHostsSection clientVersion={appVersion} />
+      <VisualizerAttribution />
       <View style={styles.aboutCommunity}>
         <CommunityLinks />
       </View>
@@ -1532,86 +504,30 @@ function AboutSection({ appVersion, appVersionText, isDesktopApp }: AboutSection
   );
 }
 
-// Re-enters the first-run setup wizard from About. The wizard is idempotent -
-// it loads the current mode/roster/teams and only ever adds - so this "resets"
-// the intro, never any data. The completion flag stays true.
-function SetupWizardRerunRow() {
+function WhatsNewRow() {
   const { t } = useTranslation();
-  const router = useRouter();
-  const handlePress = useCallback(() => {
-    router.push(buildSetupRoute());
-  }, [router]);
-  return (
-    <View style={ROW_WITH_BORDER_STYLE}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="app-about-setup-reset-first-time-wizard"
-          style={settingsStyles.rowTitle}
-        >
-          {t("settings.about.resetWizard.label")}
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>{t("settings.about.resetWizard.description")}</Text>
-      </View>
-      <Button variant="secondary" size="sm" onPress={handlePress} testID="settings-reset-wizard">
-        {t("settings.about.resetWizard.action")}
-      </Button>
-    </View>
-  );
-}
+  const { theme } = useUnistyles();
 
-function ThirdPartyCreditsRow() {
-  const { t } = useTranslation();
-  const handleVisualizerPress = useCallback(() => {
-    void openLink(VISUALIZER_UPSTREAM_URL);
-  }, []);
-  const handleArchitecturalViewsPress = useCallback(() => {
-    void openLink(ARCHITECTURAL_VIEWS_UPSTREAM_URL);
-  }, []);
   return (
-    <View style={ROW_WITH_BORDER_STYLE}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="app-about-credits-third-party-credits"
-          style={settingsStyles.rowTitle}
-        >
-          {t("settings.about.credits.title")}
-        </SettingsTargetText>
-        <View style={styles.aboutCreditLine}>
-          <Text style={settingsStyles.rowHint}>
-            {t("settings.about.credits.visualizer", {
-              name: VISUALIZER_UPSTREAM_NAME,
-              license: VISUALIZER_UPSTREAM_LICENSE,
-              author: VISUALIZER_UPSTREAM_AUTHOR,
-            })}
-          </Text>
-          <Button
-            variant="ghost"
-            size="sm"
-            onPress={handleVisualizerPress}
-            testID="settings-visualizer-credits-link"
-          >
-            {t("settings.about.credits.viewSource")}
-          </Button>
-        </View>
-        <View style={styles.aboutCreditLine}>
-          <Text style={settingsStyles.rowHint}>
-            {t("settings.about.credits.architecturalViews", {
-              name: ARCHITECTURAL_VIEWS_UPSTREAM_NAME,
-              license: ARCHITECTURAL_VIEWS_UPSTREAM_LICENSE,
-              author: ARCHITECTURAL_VIEWS_UPSTREAM_AUTHOR,
-            })}
-          </Text>
-          <Button
-            variant="ghost"
-            size="sm"
-            onPress={handleArchitecturalViewsPress}
-            testID="settings-architectural-views-credits-link"
-          >
-            {t("settings.about.credits.viewSource")}
-          </Button>
-        </View>
-      </View>
-    </View>
+    <Pressable
+      style={[settingsStyles.row, settingsStyles.rowBorder]}
+      onPress={openChangelog}
+      accessibilityRole="button"
+      testID="settings-whats-new"
+    >
+      {({ hovered }: PressableStateCallbackType & { hovered?: boolean }) => (
+        <>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>{t("changelog.title")}</Text>
+            <Text style={settingsStyles.rowHint}>{t("settings.about.whatsNewHint")}</Text>
+          </View>
+          <ChevronRight
+            size={theme.iconSize.sm}
+            color={hovered ? theme.colors.foreground : theme.colors.foregroundMuted}
+          />
+        </>
+      )}
+    </Pressable>
   );
 }
 
@@ -1674,7 +590,7 @@ function HostVersionRow({
   } else if (normalizedHost) {
     valueText = formatVersionWithPrefix(normalizedHost);
   } else {
-    valueText = "-";
+    valueText = "—";
   }
 
   const valueStyle = useMemo(
@@ -1692,12 +608,7 @@ function HostVersionRow({
           <Text style={settingsStyles.rowHint}>{t("settings.about.versionDiffers")}</Text>
         ) : null}
       </View>
-      <SettingsTargetText
-        settingId="app-about-connected-hosts-connected-host-version"
-        style={valueStyle}
-      >
-        {valueText}
-      </SettingsTargetText>
+      <Text style={valueStyle}>{valueText}</Text>
     </View>
   );
 }
@@ -1766,10 +677,27 @@ function DesktopAppUpdateRow() {
       return;
     }
 
-    // No confirmation - the button already says what happens, so just restart
-    // into the update (user-locked; matches the sidebar callout's install path).
-    void installUpdate();
-  }, [installUpdate, isDesktopApp]);
+    void confirmDialog({
+      title: t("settings.about.updates.installTitle"),
+      message: t("settings.about.updates.installMessage"),
+      confirmLabel: t("settings.about.updates.installConfirm"),
+      cancelLabel: t("common.actions.cancel"),
+    })
+      .then((confirmed) => {
+        if (!confirmed) {
+          return;
+        }
+        void installUpdate();
+        return;
+      })
+      .catch((error) => {
+        console.error("[Settings] Failed to open app update confirmation", error);
+        Alert.alert(
+          t("settings.about.updates.alertTitle"),
+          t("settings.about.updates.alertMessage"),
+        );
+      });
+  }, [installUpdate, isDesktopApp, t]);
 
   const isUpdateReady = availableUpdate?.readyToInstall === true;
   const readyUpdateVersion = isUpdateReady ? availableUpdate?.latestVersion : null;
@@ -1780,14 +708,9 @@ function DesktopAppUpdateRow() {
 
   return (
     <>
-      <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+      <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="app-about-updates-release-channel"
-            style={settingsStyles.rowTitle}
-          >
-            {t("settings.about.releaseChannel.label")}
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>{t("settings.about.releaseChannel.label")}</Text>
           <Text style={settingsStyles.rowHint}>
             {t("settings.about.releaseChannel.description")}
           </Text>
@@ -1799,14 +722,9 @@ function DesktopAppUpdateRow() {
           options={releaseChannelOptions}
         />
       </View>
-      <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+      <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="app-about-updates-app-updates"
-            style={settingsStyles.rowTitle}
-          >
-            {t("settings.about.updates.label")}
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>{t("settings.about.updates.label")}</Text>
           <Text style={settingsStyles.rowHint}>{statusText}</Text>
           {readyUpdateVersion ? (
             <Text style={settingsStyles.rowHint}>
@@ -1844,11 +762,6 @@ function DesktopAppUpdateRow() {
 // Sidebar
 // ---------------------------------------------------------------------------
 
-// The desktop sidebar's own scroll region. The compact root list renders the
-// same body but pushes rather than replaces, so its screen stays mounted and
-// keeps its position without help.
-const SETTINGS_SIDEBAR_SCROLL_KEY = "settings-sidebar";
-
 /**
  * Local daemon first, then remaining hosts in their existing order.
  */
@@ -1859,10 +772,13 @@ function useSortedHosts(hosts: HostProfile[], localServerId: string | null): Hos
 interface SidebarSectionButtonProps {
   itemId: SettingsSectionSlug;
   label: string;
-  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
+  icon: ComponentType<{ size: number; color: string; strokeWidth?: number }>;
   isSelected: boolean;
   onSelect: (section: SettingsSectionSlug) => void;
 }
+
+// Lighter than lucide's default 2px stroke so the nav reads quieter than the content.
+const SIDEBAR_ICON_STROKE_WIDTH = 1.5;
 
 function SidebarSectionButton({
   itemId,
@@ -1871,7 +787,7 @@ function SidebarSectionButton({
   isSelected,
   onSelect,
 }: SidebarSectionButtonProps) {
-  const { theme } = useUnistyles();
+  const { theme, rt } = useUnistyles();
   const handlePress = useCallback(() => {
     onSelect(itemId);
   }, [onSelect, itemId]);
@@ -1888,8 +804,9 @@ function SidebarSectionButton({
       style={isSelected ? selectedSidebarItemStyle : sidebarItemStyle}
     >
       <IconComponent
-        size={theme.iconSize.md}
+        size={densityIconSize(rt, "md")}
         color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
+        strokeWidth={SIDEBAR_ICON_STROKE_WIDTH}
       />
       <Text style={labelStyle} numberOfLines={1}>
         {label}
@@ -1901,7 +818,7 @@ function SidebarSectionButton({
 interface SidebarHostSectionButtonProps {
   itemId: HostSectionSlug;
   label: string;
-  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
+  icon: ComponentType<{ size: number; color: string; strokeWidth?: number }>;
   isSelected: boolean;
   onSelect: (section: HostSectionSlug) => void;
 }
@@ -1913,7 +830,7 @@ function SidebarHostSectionButton({
   isSelected,
   onSelect,
 }: SidebarHostSectionButtonProps) {
-  const { theme } = useUnistyles();
+  const { theme, rt } = useUnistyles();
   const handlePress = useCallback(() => {
     onSelect(itemId);
   }, [onSelect, itemId]);
@@ -1931,8 +848,9 @@ function SidebarHostSectionButton({
       style={isSelected ? selectedSidebarItemStyle : sidebarItemStyle}
     >
       <IconComponent
-        size={theme.iconSize.md}
+        size={densityIconSize(rt, "md")}
         color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
+        strokeWidth={SIDEBAR_ICON_STROKE_WIDTH}
       />
       <Text style={labelStyle} numberOfLines={1}>
         {label}
@@ -1953,7 +871,7 @@ interface HostPickerProps {
  * Scopes the host sections to a host. Reuses the canonical sidebar host
  * switcher pattern (left-sidebar.tsx): a quiet row-styled trigger opening a
  * <Combobox>. The local host is listed first, each row shows the connection it
- * is using right now; an "Add host" row is always reachable from the list -
+ * is using right now; an "Add host" row is always reachable from the list —
  * even with a single host.
  */
 function HostPicker({
@@ -1975,9 +893,10 @@ function HostPicker({
     [],
   );
   const triggerStyle = useCallback(
-    ({ hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       sidebarStyles.pickerTrigger,
       hovered && sidebarStyles.pickerTriggerHovered,
+      pressed && sidebarStyles.itemPressed,
     ],
     [],
   );
@@ -2023,15 +942,23 @@ function HostPicker({
   );
 }
 
+/** A labelled group of sidebar rows. On compact layouts the rows sit together in one island. */
+function SidebarGroup({ label, children }: { label?: string; children: ReactNode }) {
+  return (
+    <View style={sidebarStyles.group}>
+      {label ? <Text style={sidebarStyles.groupLabel}>{label}</Text> : null}
+      <View style={sidebarStyles.island}>{children}</View>
+    </View>
+  );
+}
+
 interface SettingsSidebarProps {
   view: SettingsView;
-  onSelectSection: (section: SettingsSectionSlug | null) => void;
+  onSelectSection: (section: SettingsSectionSlug) => void;
   onSelectHostSection: (section: HostSectionSlug) => void;
   onSelectHost: (serverId: string) => void;
   onAddHost: () => void;
   onBackToWorkspace: () => void;
-  onNavigateHome: () => void;
-  onNavigateStats: () => void;
   activeHostServerId: string | null;
   layout: "desktop" | "mobile";
 }
@@ -2043,12 +970,10 @@ function SettingsSidebar({
   onSelectHost,
   onAddHost,
   onBackToWorkspace,
-  onNavigateHome,
-  onNavigateStats,
   activeHostServerId,
   layout,
 }: SettingsSidebarProps) {
-  const { theme } = useUnistyles();
+  const { theme, rt } = useUnistyles();
   const { t } = useTranslation();
   const hosts = useHosts();
   const localServerId = useLocalDaemonServerId();
@@ -2056,114 +981,26 @@ function SettingsSidebar({
   const hasHosts = sortedHosts.length > 0;
   const enableBuiltInDaemonOption = useEnableBuiltInDaemonOption();
   const isDesktopApp = isElectronRuntime();
+  const items = SIDEBAR_SECTION_ITEMS.filter((item) => isSectionAvailable(item, isDesktopApp));
   const insets = useSafeAreaInsets();
-  const padding = useWindowControlsPadding("sidebar");
-  const { settings } = useAppSettings();
-  const isDeveloperMode = (settings.interfaceMode ?? "developer") === "developer";
-  const items = SIDEBAR_SECTION_ITEMS.filter(
-    (item) =>
-      !item.hidden &&
-      (!item.desktopOnly || isDesktopApp) &&
-      (!item.developerOnly || isDeveloperMode),
-  );
-  const hostItems = HOST_SECTION_ITEMS.filter((item) => !item.developerOnly || isDeveloperMode);
-  const showTopSpacer = padding.top > 0 && !settings.compactSidebarTopSpacing;
   const isDesktop = layout === "desktop";
-  // Shared with the workspace left sidebar: both read/write the same
-  // panel-store width, so resizing here resizes there and vice versa.
-  const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
-  const setSidebarWidth = usePanelStore((state) => state.setSidebarWidth);
-  const { width: viewportWidth } = useWindowDimensions();
-  const startWidthRef = useRef(sidebarWidth);
-  const resizeWidth = useSharedValue(sidebarWidth);
-
-  useEffect(() => {
-    resizeWidth.value = sidebarWidth;
-  }, [sidebarWidth, resizeWidth]);
-
-  const resizeGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        // See the context-management splitter: Pan's default 15px activation
-        // slop turns a 1px divider into a dead zone plus a catch-up jump.
-        .minDistance(0)
-        .hitSlop({ left: 8, right: 8, top: 0, bottom: 0 })
-        .onStart(() => {
-          startWidthRef.current = sidebarWidth;
-          resizeWidth.value = sidebarWidth;
-        })
-        .onUpdate((event) => {
-          // Dragging right (positive translationX) increases width
-          const newWidth = startWidthRef.current + event.translationX;
-          const maxWidth = Math.max(
-            MIN_SIDEBAR_WIDTH,
-            Math.min(MAX_SIDEBAR_WIDTH, viewportWidth - MIN_SETTINGS_CONTENT_WIDTH),
-          );
-          const clampedWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxWidth, newWidth));
-          resizeWidth.value = clampedWidth;
-        })
-        .onEnd(() => {
-          runOnJS(setSidebarWidth)(resizeWidth.value);
-        }),
-    [sidebarWidth, resizeWidth, setSidebarWidth, viewportWidth],
+  const outerContainerStyle = useMemo(
+    () => [isDesktop ? sidebarStyles.desktopContainer : sidebarStyles.mobileContainer],
+    [isDesktop],
   );
-
-  const resizeAnimatedStyle = useAnimatedStyle(() => ({
-    width: resizeWidth.value,
-  }));
-  const desktopSidebarStyle = useMemo(
-    () => [staticSidebarStyles.desktopSidebar, resizeAnimatedStyle],
-    [resizeAnimatedStyle],
+  const innerContainerStyle = useMemo(
+    () => [{ flex: 1 }, isDesktop ? { paddingTop: insets.top } : null],
+    [insets.top, isDesktop],
   );
-  const desktopBorderStyle = useMemo(
-    () => [sidebarStyles.desktopContainer, { flex: 1, paddingTop: insets.top }],
-    [insets.top],
-  );
-  const resizeHandleStyle = useMemo(
-    () => [sidebarStyles.resizeHandle, isWeb && ({ cursor: "col-resize" } as object)],
-    [],
-  );
-  const sidebarScroll = useRetainedScrollOffset(SETTINGS_SIDEBAR_SCROLL_KEY);
   const selectedSectionId = view.kind === "section" ? view.section : null;
   let selectedHostSection: HostSectionSlug | null = null;
   if (view.kind === "host") selectedHostSection = view.section;
   if (view.kind === "project") selectedHostSection = "projects";
   if (view.kind === "plugin") selectedHostSection = "plugins";
-  // Matches the workspace left sidebar's trimmed spacer so the top menu rows of
-  // the two sidebars stay vertically aligned when navigating between them.
-  const paddingTopStyle = useMemo(
-    () => ({ height: Math.max(0, padding.top - SIDEBAR_TOP_SPACER_TRIM) }),
-    [padding.top],
-  );
-
-  // Every Settings entry point returns to the search overview.
-  const handleFooterSettings = useCallback(() => {
-    onSelectSection(null);
-  }, [onSelectSection]);
-
-  // Destructured, not passed whole: `useBrainRail` returns a fresh object every
-  // poll, so depending on it would rebuild the handler on every tick.
-  const { disabled: isBrainDisabled, serverId: brainServerId } = useBrainRail();
-  const footerRouter = useRouter();
-  const handleFooterBrain = useCallback(() => {
-    footerRouter.push(
-      resolveBrainRailRoute({ disabled: isBrainDisabled, serverId: brainServerId }),
-    );
-  }, [footerRouter, isBrainDisabled, brainServerId]);
-  const footerLabels = useMemo(
-    () => ({
-      home: t("sidebar.actions.home"),
-      settings: t("sidebar.actions.settings"),
-      // Temporary label (English-only) - mirrors the workspace sidebar footer.
-      stats: "Metrics",
-    }),
-    [t],
-  );
 
   const sidebarBody = (
     <>
-      <View style={sidebarStyles.list}>
-        <Text style={sidebarStyles.groupLabel}>{t("settings.groups.app")}</Text>
+      <SidebarGroup label={t("settings.groups.app")}>
         {items.map((item) => (
           <SidebarSectionButton
             key={item.id}
@@ -2174,11 +1011,9 @@ function SettingsSidebar({
             onSelect={onSelectSection}
           />
         ))}
-      </View>
-      <SidebarSeparator />
+      </SidebarGroup>
       {hasHosts ? (
-        <View style={sidebarStyles.list}>
-          <Text style={sidebarStyles.groupLabel}>{t("settings.groups.host")}</Text>
+        <SidebarGroup label={t("settings.groups.host")}>
           <HostPicker
             activeServerId={activeHostServerId}
             sortedHosts={sortedHosts}
@@ -2186,7 +1021,7 @@ function SettingsSidebar({
             onAddHost={onAddHost}
             enableBuiltInDaemonOption={enableBuiltInDaemonOption}
           />
-          {hostItems.map((item) => (
+          {HOST_SECTION_ITEMS.map((item) => (
             <SidebarHostSectionButton
               key={item.id}
               itemId={item.id}
@@ -2196,9 +1031,9 @@ function SettingsSidebar({
               onSelect={onSelectHostSection}
             />
           ))}
-        </View>
+        </SidebarGroup>
       ) : (
-        <View style={sidebarStyles.list}>
+        <SidebarGroup>
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={t("settings.addHost")}
@@ -2206,7 +1041,11 @@ function SettingsSidebar({
             testID="settings-add-host"
             style={sidebarItemStyle}
           >
-            <Plus size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+            <Plus
+              size={densityIconSize(rt, "md")}
+              color={theme.colors.foregroundMuted}
+              strokeWidth={SIDEBAR_ICON_STROKE_WIDTH}
+            />
             <Text style={sidebarStyles.label} numberOfLines={1}>
               {t("settings.addHost")}
             </Text>
@@ -2219,79 +1058,52 @@ function SettingsSidebar({
               testID="settings-enable-built-in-daemon"
               style={sidebarItemStyle}
             >
-              <Server size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
+              <Server
+                size={densityIconSize(rt, "md")}
+                color={theme.colors.foregroundMuted}
+                strokeWidth={SIDEBAR_ICON_STROKE_WIDTH}
+              />
               <Text style={sidebarStyles.label} numberOfLines={1}>
                 {t("settings.enableBuiltInDaemon")}
               </Text>
             </Pressable>
           ) : null}
-        </View>
+        </SidebarGroup>
       )}
     </>
   );
 
-  if (!isDesktop) {
-    return (
-      <View style={sidebarStyles.mobileContainer} testID="settings-sidebar">
-        {sidebarBody}
-      </View>
-    );
-  }
-
   return (
-    <Animated.View style={desktopSidebarStyle} testID="settings-sidebar">
-      <View style={desktopBorderStyle}>
-        <View style={sidebarStyles.sidebarDragArea}>
-          <TitlebarDragRegion />
-          {showTopSpacer ? <View style={paddingTopStyle} /> : null}
-          <SidebarHeaderRow
-            icon={ArrowLeft}
-            label={t("settings.backToWorkspace")}
-            onPress={onBackToWorkspace}
-            testID="settings-back-to-workspace"
-          />
+    <View
+      accessibilityLabel={t("settings.title")}
+      role="navigation"
+      style={outerContainerStyle}
+      testID="settings-sidebar"
+    >
+      {isDesktop ? (
+        <View style={innerContainerStyle}>
+          <View style={sidebarStyles.sidebarDragArea}>
+            <TitlebarDragRegion />
+            <WindowChromeSafeArea placement="below" />
+            <SidebarHeaderRow
+              icon={ArrowLeft}
+              label={t("settings.backToWorkspace")}
+              onPress={onBackToWorkspace}
+              testID="settings-back-to-workspace"
+            />
+          </View>
+          <ScrollView
+            style={sidebarStyles.scrollBody}
+            showsVerticalScrollIndicator={false}
+            testID="settings-sidebar-scroll-body"
+          >
+            {sidebarBody}
+          </ScrollView>
         </View>
-        {/* Every settings section is its own route, so picking one replaces the
-            whole SettingsScreen (see mountedSettingsScreens) and this list
-            remounts at the top - scrolling the menu away from the row that was
-            just clicked whenever it is taller than the pane. Retain the offset
-            across that remount. */}
-        <ScrollView
-          testID="settings-sidebar-scroll-body"
-          ref={sidebarScroll.ref}
-          style={sidebarStyles.scrollBody}
-          onScroll={sidebarScroll.onScroll}
-          onContentSizeChange={sidebarScroll.onContentSizeChange}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={false}
-        >
-          {sidebarBody}
-        </ScrollView>
-
-        {/* Same footer icon bar as the workspace sidebar, so Home, Brain and
-            Metrics remain one click away from inside settings. `activeItem`
-            stays "settings": Brain is a destination you leave for, never the
-            surface this sidebar is marking. */}
-        <View style={sidebarStyles.footer}>
-          <SidebarFooterNavRow
-            theme={theme}
-            labels={footerLabels}
-            onHome={onNavigateHome}
-            onSettings={handleFooterSettings}
-            onStats={onNavigateStats}
-            onBrain={handleFooterBrain}
-            activeItem="settings"
-          />
-        </View>
-
-        {/* Resize handle - absolutely positioned over right border */}
-        <GestureDetector gesture={resizeGesture}>
-          <View style={resizeHandleStyle} />
-        </GestureDetector>
-
-        <SidebarSeamShadow seam="right" />
-      </View>
-    </Animated.View>
+      ) : (
+        sidebarBody
+      )}
+    </View>
   );
 }
 
@@ -2302,51 +1114,13 @@ function SettingsSidebar({
 export interface SettingsScreenProps {
   view: SettingsView;
   openAddHostIntent?: string | null;
-  preferredHostServerId?: string | null;
-  focusSettingId?: string | null;
 }
 
-function DesktopIntegrationsContent(props: {
-  isDesktopApp: boolean;
-  serverId: string | null;
-  localServerId: string | null;
-}) {
-  const { isDesktopApp, serverId, localServerId } = props;
-  return (
-    <Fragment>
-      {isDesktopApp && serverId ? <AgentSkillsSection serverId={serverId} /> : null}
-      {isDesktopApp ? <CommandLineIntegrationSection /> : null}
-      {serverId ? (
-        <SettingsSection title="Voice & dictation">
-          <View style={settingsStyles.card}>
-            <AgentVoiceCuesRow serverId={serverId} />
-            <VoicePlaybackVolumeRow serverId={serverId} />
-          </View>
-        </SettingsSection>
-      ) : null}
-      {isDesktopApp ? (
-        <IntegrationsSection
-          serverId={serverId}
-          isLocalDaemon={serverId !== null && serverId === localServerId}
-        />
-      ) : null}
-    </Fragment>
-  );
-}
-
-// oxlint-disable-next-line complexity -- the Settings shell is the one exhaustive route owner.
-export default function SettingsScreen({
-  view,
-  openAddHostIntent = null,
-  preferredHostServerId = null,
-  focusSettingId = null,
-}: SettingsScreenProps) {
+export default function SettingsScreen({ view, openAddHostIntent = null }: SettingsScreenProps) {
   const router = useRouter();
-  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const voiceAudioEngine = useVoiceAudioEngineOptional();
   const { settings, isLoading: settingsLoading, updateSettings } = useAppSettings();
-  const isDeveloperMode = (settings.interfaceMode ?? "developer") === "developer";
   const [isAddHostMethodVisible, setIsAddHostMethodVisible] = useState(false);
   const [isDirectHostVisible, setIsDirectHostVisible] = useState(false);
   const [isRemoteSshVisible, setIsRemoteSshVisible] = useState(false);
@@ -2360,32 +1134,6 @@ export default function SettingsScreen({
   const isCompactLayout = useIsCompactFormFactor();
   const insets = useSafeAreaInsets();
   const insetBottomStyle = useMemo(() => ({ paddingBottom: insets.bottom }), [insets.bottom]);
-  // The themed, auto-hiding overlay scrollbar replaces the native scrollbar on
-  // web for every settings ScrollView - including narrow desktop windows that
-  // fall into the compact layout branch. Native keeps its platform scrollbars.
-  // Only one of the three ScrollViews below is ever mounted at a time, so a
-  // single ref + hook serves whichever branch renders.
-  const showWebScrollbar = isWeb;
-  const retainedScroll = useRetainedScrollOffset(
-    `settings:${settingsViewKey(view)}:${isCompactLayout ? "compact" : "desktop"}`,
-  );
-  const webScrollbar = useWebScrollViewScrollbar(retainedScroll.ref, {
-    enabled: showWebScrollbar,
-  });
-  const handleScroll = useCallback(
-    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-      retainedScroll.onScroll(event);
-      webScrollbar.onScroll(event);
-    },
-    [retainedScroll, webScrollbar],
-  );
-  const handleContentSizeChange = useCallback(
-    (width: number, height: number) => {
-      if (!focusSettingId) retainedScroll.onContentSizeChange(width, height);
-      webScrollbar.onContentSizeChange(width, height);
-    },
-    [focusSettingId, retainedScroll, webScrollbar],
-  );
   const hosts = useHosts();
   const localServerId = useLocalDaemonServerId();
   const sortedHosts = useSortedHosts(hosts, localServerId);
@@ -2395,177 +1143,28 @@ export default function SettingsScreen({
       ? view.serverId
       : null;
   const [selectedSettingsHostServerId, setSelectedSettingsHostServerId] = useState<string | null>(
-    routedSettingsHostServerId ?? preferredHostServerId ?? lastWorkspaceSelection?.serverId ?? null,
+    routedSettingsHostServerId ?? lastWorkspaceSelection?.serverId ?? null,
   );
   useFocusEffect(
     useCallback(() => {
       setSelectedSettingsHostServerId(
-        routedSettingsHostServerId ??
-          preferredHostServerId ??
-          lastWorkspaceSelection?.serverId ??
-          null,
+        routedSettingsHostServerId ?? lastWorkspaceSelection?.serverId ?? null,
       );
-    }, [lastWorkspaceSelection?.serverId, preferredHostServerId, routedSettingsHostServerId]),
+    }, [lastWorkspaceSelection?.serverId, routedSettingsHostServerId]),
   );
-  const knownSelectedSettingsHostServerId = useMemo(() => {
-    if (!selectedSettingsHostServerId) {
-      return null;
-    }
-    return hosts.some((host) => host.serverId === selectedSettingsHostServerId)
-      ? selectedSettingsHostServerId
-      : null;
-  }, [hosts, selectedSettingsHostServerId]);
-  // The cached local-daemon serverId can outlive the daemon identity it points at
-  // (e.g. the WSL daemon restarts with a new serverId): the ["desktop-daemon-server-id"]
-  // query never refetches, so it keeps serving a stale id that is absent from the live
-  // host registry. Validate it against `hosts` - same as the selected id above - so we
-  // fall through to a real host instead of scoping every section to a ghost host
-  // ("Host not found").
-  const knownLocalServerId = useMemo(() => {
-    if (!localServerId) {
-      return null;
-    }
-    return hosts.some((host) => host.serverId === localServerId) ? localServerId : null;
-  }, [hosts, localServerId]);
-
-  useEffect(() => {
-    if (view.kind === "host" || view.kind === "project" || view.kind === "plugin") {
-      setSelectedSettingsHostServerId(view.serverId);
-      return;
-    }
-    if (preferredHostServerId) {
-      setSelectedSettingsHostServerId(preferredHostServerId);
-    }
-  }, [preferredHostServerId, view]);
-
-  // Remember the current sub-page so re-opening Settings returns here instead of
-  // resetting to General (see the /settings redirect in app/settings/index.tsx).
-  useEffect(() => {
-    rememberLastSettingsView(view);
-  }, [view]);
 
   // The host the four sections scope to: the host on the active view, otherwise
-  // the picker choice, otherwise the local daemon, otherwise the first host.
+  // the picker choice, otherwise the connected local daemon, otherwise the first host.
   const activeHostServerId = useMemo(() => {
     if (view.kind === "host" || view.kind === "project" || view.kind === "plugin")
       return view.serverId;
-    return (
-      knownSelectedSettingsHostServerId ?? knownLocalServerId ?? sortedHosts[0]?.serverId ?? null
-    );
-  }, [view, knownSelectedSettingsHostServerId, knownLocalServerId, sortedHosts]);
-  const defaultSend = useDefaultSendSetting(activeHostServerId);
-
-  const handleInterfaceModeChange = useCallback(
-    (mode: InterfaceMode) => {
-      void updateSettings({ interfaceMode: mode });
-    },
-    [updateSettings],
-  );
-
-  const handleAppStartScreenChange = useCallback(
-    (screen: AppStartScreen) => {
-      void updateSettings({ appStartScreen: screen });
-    },
-    [updateSettings],
-  );
-
-  const handleSuggestedTasksEnabledChange = useCallback(
-    (enabled: boolean) => {
-      void updateSettings({ suggestedTasksEnabled: enabled });
-    },
-    [updateSettings],
-  );
-
-  const handleSuggestedTasksDefaultModeChange = useCallback(
-    (mode: SuggestedTasksDefaultMode) => {
-      void updateSettings({ suggestedTasksDefaultMode: mode });
-    },
-    [updateSettings],
-  );
-
-  const handlePromptSuggestionsEnabledChange = useCallback(
-    (promptSuggestionsEnabled: boolean) => {
-      void updateSettings({ promptSuggestionsEnabled });
-    },
-    [updateSettings],
-  );
-
-  const handleFollowPromptSuggestionsChange = useCallback(
-    (followPromptSuggestions: boolean) => {
-      void updateSettings({ followPromptSuggestions });
-    },
-    [updateSettings],
-  );
-
-  const handleFollowPromptSuggestionsLimitChange = useCallback(
-    (followPromptSuggestionsLimit: FollowPromptSuggestionsLimit) => {
-      void updateSettings({ followPromptSuggestionsLimit });
-    },
-    [updateSettings],
-  );
-
-  const handleContextWarningsEnabledChange = useCallback(
-    (contextWarningsEnabled: boolean) => {
-      void updateSettings({ contextWarningsEnabled });
-    },
-    [updateSettings],
-  );
-
-  const handleAutoClearCompletedSubagentsChange = useCallback(
-    (autoClearCompletedSubagents: boolean) => {
-      void updateSettings({ autoClearCompletedSubagents });
-    },
-    [updateSettings],
-  );
-
-  const handleAutoClearCompletedBackgroundTasksChange = useCallback(
-    (autoClearCompletedBackgroundTasks: boolean) => {
-      void updateSettings({ autoClearCompletedBackgroundTasks });
-    },
-    [updateSettings],
-  );
-
-  const handleAutoClearFailedBackgroundTasksChange = useCallback(
-    (autoClearFailedBackgroundTasks: boolean) => {
-      void updateSettings({ autoClearFailedBackgroundTasks });
-    },
-    [updateSettings],
-  );
-
-  const handlePinnedTaskListEnabledChange = useCallback(
-    (pinnedTaskListEnabled: boolean) => {
-      void updateSettings({ pinnedTaskListEnabled });
-    },
-    [updateSettings],
-  );
-
-  const handlePinnedTaskListAutoDismissChange = useCallback(
-    (pinnedTaskListAutoDismiss: boolean) => {
-      void updateSettings({ pinnedTaskListAutoDismiss });
-    },
-    [updateSettings],
-  );
-
-  const handleRateLimitWarningsEnabledChange = useCallback(
-    (rateLimitWarningsEnabled: boolean) => {
-      void updateSettings({ rateLimitWarningsEnabled });
-    },
-    [updateSettings],
-  );
-
-  const handleServiceUrlBehaviorChange = useCallback(
-    (behavior: ServiceUrlBehavior) => {
-      void updateSettings({ serviceUrlBehavior: behavior });
-    },
-    [updateSettings],
-  );
-
-  const handleLinkOpenBehaviorChange = useCallback(
-    (behavior: LinkOpenBehavior) => {
-      void updateSettings({ linkOpenBehavior: behavior });
-    },
-    [updateSettings],
-  );
+    return resolveActiveHostServerId({
+      selectedServerId: selectedSettingsHostServerId,
+      localServerId,
+      hosts,
+      orderedHosts: sortedHosts,
+    });
+  }, [view, selectedSettingsHostServerId, localServerId, hosts, sortedHosts]);
 
   const handleLanguageChange = useCallback(
     (language: AppLanguage) => {
@@ -2574,46 +1173,13 @@ export default function SettingsScreen({
     [updateSettings],
   );
 
-  const handleTerminalScrollbackLinesChange = useCallback(
-    (terminalScrollbackLines: number) => {
-      void updateSettings({ terminalScrollbackLines });
-    },
-    [updateSettings],
-  );
-
-  const handleMountedWorkspaceLimitChange = useCallback(
-    (mountedWorkspaceLimit: number) => {
-      void updateSettings({ mountedWorkspaceLimit });
-    },
-    [updateSettings],
-  );
-
-  const handleMountedTabLimitChange = useCallback(
-    (mountedTabLimit: number | null) => {
-      void updateSettings({ mountedTabLimit });
-    },
-    [updateSettings],
-  );
-
-  const handlePreviewServerCloseBehaviorChange = useCallback(
-    (behavior: PreviewServerCloseBehavior) => {
-      void updateSettings({ previewServerCloseBehavior: behavior });
-    },
-    [updateSettings],
-  );
-
-  const handlePreviewAutoStartOnRestoreChange = useCallback(
-    (enabled: boolean) => {
-      void updateSettings({ previewAutoStartOnRestore: enabled });
-    },
-    [updateSettings],
-  );
   const handleUseLegacyTerminalRendererChange = useCallback(
     (useLegacyTerminalRenderer: boolean) => {
       void updateSettings({ useLegacyTerminalRenderer });
     },
     [updateSettings],
   );
+
   const handlePlaybackTest = useCallback(async () => {
     if (!voiceAudioEngine || isPlaybackTestRunning) {
       return;
@@ -2684,76 +1250,28 @@ export default function SettingsScreen({
     setIsPasteLinkVisible(true);
   }, []);
 
-  // Tracks whether the project settings form (the only settings view with a
-  // draft/save cycle) has unsaved changes, so shell-level exits can warn.
-  const projectSettingsDirtyRef = useRef(false);
-  const handleProjectSettingsDirtyChange = useCallback((dirty: boolean) => {
-    projectSettingsDirtyRef.current = dirty;
-  }, []);
-
-  // Web-only exit guard: on native the project screen guards its own route
-  // removal via usePreventRemove, and running both would double-prompt.
-  const guardProjectSettingsExit = useCallback(
-    (action: () => void) => {
-      if (isNative || !projectSettingsDirtyRef.current) {
-        action();
-        return;
-      }
-      void (async () => {
-        if (await confirmDiscardProjectSettingsChanges(t)) {
-          action();
-        }
-      })();
-    },
-    [t],
-  );
-
   const handleHostAdded = useCallback(
     ({ serverId }: { serverId: string }) => {
-      guardProjectSettingsExit(() => {
-        const target = buildSettingsHostSectionRoute(serverId, "connections");
-        if (isCompactLayout) {
-          router.push(target);
-        } else {
-          router.replace(target);
-        }
-      });
+      const target = buildSettingsHostSectionRoute(serverId, "connections");
+      if (isCompactLayout) {
+        router.push(target);
+      } else {
+        router.replace(target);
+      }
     },
-    [guardProjectSettingsExit, isCompactLayout, router],
+    [isCompactLayout, router],
   );
 
   const handleSelectSection = useCallback(
-    (section: SettingsSectionSlug | null) => {
-      guardProjectSettingsExit(() => {
-        const target = section
-          ? buildSettingsSectionRoute(section, activeHostServerId ?? undefined)
-          : "/settings";
-        if (isCompactLayout) {
-          router.push(target);
-        } else {
-          router.replace(target);
-        }
-      });
-    },
-    [activeHostServerId, guardProjectSettingsExit, isCompactLayout, router],
-  );
-
-  const handleSelectSearchItem = useCallback(
-    (item: SettingsSearchItem) => {
-      if (item.host && !activeHostServerId) {
-        handleAddHost();
-        return;
+    (section: SettingsSectionSlug) => {
+      const target = buildSettingsSectionRoute(section);
+      if (isCompactLayout) {
+        router.push(target);
+      } else {
+        router.replace(target);
       }
-      guardProjectSettingsExit(() => {
-        const destination = buildSettingsSearchDestination(item, activeHostServerId);
-        if (isCompactLayout) {
-          router.push(destination);
-        } else {
-          router.replace(destination);
-        }
-      });
     },
-    [activeHostServerId, guardProjectSettingsExit, handleAddHost, isCompactLayout, router],
+    [isCompactLayout, router],
   );
 
   // Picker: choose the host for host-section rows. If the user is already on a
@@ -2761,11 +1279,8 @@ export default function SettingsScreen({
   const handleSelectHost = useCallback(
     (serverId: string) => {
       setSelectedSettingsHostServerId(serverId);
-      if (view.kind === "project" || view.kind === "plugin") {
-        const target = buildSettingsHostSectionRoute(
-          serverId,
-          view.kind === "plugin" ? "plugins" : "projects",
-        );
+      if (view.kind === "project") {
+        const target = buildSettingsHostSectionRoute(serverId, "projects");
         if (isCompactLayout) {
           router.push(target);
         } else {
@@ -2792,16 +1307,14 @@ export default function SettingsScreen({
         handleAddHost();
         return;
       }
-      guardProjectSettingsExit(() => {
-        const target = buildSettingsHostSectionRoute(activeHostServerId, section);
-        if (isCompactLayout) {
-          router.push(target);
-        } else {
-          router.replace(target);
-        }
-      });
+      const target = buildSettingsHostSectionRoute(activeHostServerId, section);
+      if (isCompactLayout) {
+        router.push(target);
+      } else {
+        router.replace(target);
+      }
     },
-    [activeHostServerId, guardProjectSettingsExit, handleAddHost, isCompactLayout, router],
+    [activeHostServerId, handleAddHost, isCompactLayout, router],
   );
 
   const handleScanQr = useCallback(() => {
@@ -2821,203 +1334,86 @@ export default function SettingsScreen({
     }
   }, [isCompactLayout, router]);
 
-  const handleBackToRoot = useCallback(() => {
-    // A host detail can be opened directly from the workspace's host picker.
-    // Its parent is still the Settings list, regardless of navigation history.
-    router.dismissTo("/settings");
-  }, [router]);
-
-  const detailProjectServerId = view.kind === "project" ? view.serverId : null;
-  const detailPluginView = view.kind === "plugin" ? view : null;
   const handleBackFromDetail = useCallback(() => {
-    if (detailPluginView) {
-      returnFromSettings(detailPluginView);
-      return;
-    }
-    if (detailProjectServerId) {
-      router.navigate(buildSettingsHostSectionRoute(detailProjectServerId, "projects"));
-      return;
-    }
-    handleBackToRoot();
-  }, [detailPluginView, detailProjectServerId, handleBackToRoot, router]);
+    returnFromSettings(view);
+  }, [view]);
 
   const handleBackToWorkspace = useCallback(() => {
-    guardProjectSettingsExit(() => {
-      if (navigateToLastWorkspace()) {
-        return;
-      }
-      router.replace(buildOpenProjectRoute());
-    });
-  }, [guardProjectSettingsExit, router]);
-
-  // Sidebar footer nav - leaves settings entirely, mirroring the workspace
-  // sidebar's Home and Metrics buttons.
-  const handleNavigateHome = useCallback(() => {
-    guardProjectSettingsExit(() => {
-      router.push(buildOpenProjectRoute());
-    });
-  }, [guardProjectSettingsExit, router]);
-
-  const handleNavigateStats = useCallback(() => {
-    guardProjectSettingsExit(() => {
-      router.push(buildStatsRoute());
-    });
-  }, [guardProjectSettingsExit, router]);
-
-  // See mountedSettingsScreens: fade the content pane on mount only when this
-  // screen replaced another settings screen (cross-route-group navigation).
-  const [contentFadeOnMount] = useState(() => mountedSettingsScreens > 0);
-  useEffect(() => {
-    mountedSettingsScreens += 1;
-    return () => {
-      mountedSettingsScreens -= 1;
-    };
+    returnFromSettings({ kind: "root" });
   }, []);
 
-  const pluginSettingsHeader = usePluginSettingsHeader(view, t("settings.title"));
-  const detailHeader = ((): {
-    title: string;
-    Icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
-    titleAccessory?: ReactNode;
-  } | null => {
-    if (view.kind === "plugin") return pluginSettingsHeader;
+  const installedPlugins = useInstalledPlugins();
+  const detailTitle = ((): string | undefined => {
+    if (view.kind === "plugin") {
+      // OTTO(provider-settings): keep the internal plugin ID out of the screen title.
+      const ottoTitle = ottoPluginSettingsTitle(view.pluginId, view.screenId);
+      if (ottoTitle) return ottoTitle;
+      const screen = installedPlugins
+        .find((plugin) => plugin.serverId === view.serverId && plugin.id === view.pluginId)
+        ?.settingsScreens.find((candidate) => candidate.id === view.screenId);
+      // OTTO(integration): use the registered UI title, not an internal plugin identifier.
+      return screen?.title ?? t("settings.title");
+    }
     if (view.kind === "host") {
       const item = HOST_SECTION_ITEMS.find((s) => s.id === view.section);
-      if (!item) return null;
-      return { title: t(item.labelKey), Icon: item.icon };
+      return item ? t(item.labelKey) : undefined;
     }
     if (view.kind === "section") {
       const item = SIDEBAR_SECTION_ITEMS.find((s) => s.id === view.section);
-      if (!item) return null;
-      return { title: t(item.labelKey), Icon: item.icon };
+      return item ? t(item.labelKey) : undefined;
     }
     if (view.kind === "project") {
-      return { title: t("settings.projects"), Icon: FolderGit2 };
+      return t("settings.projects");
     }
-    return null;
+    return undefined;
   })();
 
-  // oxlint-disable-next-line complexity -- one exhaustive switch owns the typed Settings route.
-  const renderedContent = (() => {
-    if (view.kind === "plugin") {
+  const content: ReactNode = (() => {
+    if (view.kind === "plugin")
       return (
-        <SettingsTarget
-          settingId={pluginSettingsSearchId(view.serverId, view.pluginId, view.screenId)}
-        >
-          <PluginSettingsContent
-            serverId={view.serverId}
-            pluginId={view.pluginId}
-            screenId={view.screenId}
-          />
-        </SettingsTarget>
-      );
-    }
-    if (view.kind === "root") {
-      return (
-        <SettingsSearchOverview
-          serverId={activeHostServerId}
-          onSelectItem={handleSelectSearchItem}
-          isDeveloperMode={isDeveloperMode}
+        <PluginSettingsContent
+          serverId={view.serverId}
+          pluginId={view.pluginId}
+          screenId={view.screenId}
+          onBackToPlugins={handleBackFromDetail}
+          showBackToPlugins={!isCompactLayout}
         />
       );
-    }
     if (view.kind === "host") {
-      return renderHostSettingsContent(view, handleHostRemoved, isDeveloperMode);
+      return renderHostSettingsContent(view, handleHostRemoved);
     }
     if (view.kind === "project") {
       return (
         <ProjectSettingsScreen
           serverId={view.serverId}
           projectId={view.projectId}
-          onDirtyChange={handleProjectSettingsDirtyChange}
+          onBackToProjects={handleBackFromDetail}
+          showBackToProjects={!isCompactLayout}
         />
       );
     }
     if (view.kind === "section") {
+      const item = SIDEBAR_SECTION_ITEMS.find((candidate) => candidate.id === view.section);
+      if (!item || !isSectionAvailable(item, isDesktopApp)) return null;
       switch (view.section) {
         case "general":
           return (
-            <GeneralSection
-              settings={settings}
-              isDesktopApp={isDesktopApp}
-              handleInterfaceModeChange={handleInterfaceModeChange}
-              handleAppStartScreenChange={handleAppStartScreenChange}
-              handleServiceUrlBehaviorChange={handleServiceUrlBehaviorChange}
-              handleLinkOpenBehaviorChange={handleLinkOpenBehaviorChange}
-              handleLanguageChange={handleLanguageChange}
-              handleTerminalScrollbackLinesChange={handleTerminalScrollbackLinesChange}
-              handleMountedWorkspaceLimitChange={handleMountedWorkspaceLimitChange}
-              handleMountedTabLimitChange={handleMountedTabLimitChange}
-              handlePreviewServerCloseBehaviorChange={handlePreviewServerCloseBehaviorChange}
-              handlePreviewAutoStartOnRestoreChange={handlePreviewAutoStartOnRestoreChange}
-            />
+            <>
+              <GeneralSection settings={settings} handleLanguageChange={handleLanguageChange} />
+              <SendingSection />
+              {isDesktopApp ? <OpenLocationSection /> : null}
+            </>
           );
-        case "chat":
-          return (
-            <ChatSection
-              settings={settings}
-              defaultSend={defaultSend}
-              handleSuggestedTasksEnabledChange={handleSuggestedTasksEnabledChange}
-              handleSuggestedTasksDefaultModeChange={handleSuggestedTasksDefaultModeChange}
-              handlePromptSuggestionsEnabledChange={handlePromptSuggestionsEnabledChange}
-              handleFollowPromptSuggestionsChange={handleFollowPromptSuggestionsChange}
-              handleFollowPromptSuggestionsLimitChange={handleFollowPromptSuggestionsLimitChange}
-              handleRateLimitWarningsEnabledChange={handleRateLimitWarningsEnabledChange}
-              handleContextWarningsEnabledChange={handleContextWarningsEnabledChange}
-              handleAutoClearCompletedSubagentsChange={handleAutoClearCompletedSubagentsChange}
-              handleAutoClearCompletedBackgroundTasksChange={
-                handleAutoClearCompletedBackgroundTasksChange
-              }
-              handleAutoClearFailedBackgroundTasksChange={
-                handleAutoClearFailedBackgroundTasksChange
-              }
-              handlePinnedTaskListEnabledChange={handlePinnedTaskListEnabledChange}
-              handlePinnedTaskListAutoDismissChange={handlePinnedTaskListAutoDismissChange}
-            />
-          );
-        case "appearance":
-          return <AppearanceSection />;
-        case "layout":
-          return isDesktopApp ? <LayoutSection /> : null;
-        case "visualizer":
-          return isDeveloperMode ? <VisualizerSection /> : null;
-        case "editor":
-          return isDeveloperMode ? (
-            <Fragment>
-              <EditorSection serverId={activeHostServerId} />
-              <DiffPresentationSection />
-              <DiffPreviewSection />
-            </Fragment>
-          ) : null;
-        case "shortcuts":
-          return isDesktopApp ? <KeyboardShortcutsSection /> : null;
-        case "integrations":
-          return (
-            <DesktopIntegrationsContent
-              isDesktopApp={isDesktopApp}
-              serverId={activeHostServerId}
-              localServerId={knownLocalServerId}
-            />
-          );
-        case "notifications":
-          return isDesktopApp ? <DesktopNotificationsSection /> : null;
-        case "permissions":
-          return isDesktopApp ? <DesktopPermissionsSection /> : null;
         case "diagnostics":
           return (
-            <Fragment>
-              <DiagnosticsSection
-                useLegacyTerminalRenderer={settings.useLegacyTerminalRenderer}
-                onUseLegacyTerminalRendererChange={handleUseLegacyTerminalRendererChange}
-                voiceAudioEngine={voiceAudioEngine}
-                isPlaybackTestRunning={isPlaybackTestRunning}
-                playbackTestResult={playbackTestResult}
-                handlePlaybackTest={handlePlaybackTest}
-                appVersion={appVersion}
-                isDesktopApp={isDesktopApp}
-              />
-              <PreviewCacheSettingsSection />
-            </Fragment>
+            <DiagnosticsSection
+              useLegacyTerminalRenderer={settings.useLegacyTerminalRenderer}
+              onUseLegacyTerminalRendererChange={handleUseLegacyTerminalRendererChange}
+              voiceAudioEngine={voiceAudioEngine}
+              isPlaybackTestRunning={isPlaybackTestRunning}
+              playbackTestResult={playbackTestResult}
+              handlePlaybackTest={handlePlaybackTest}
+            />
           );
         case "about":
           return (
@@ -3027,20 +1423,12 @@ export default function SettingsScreen({
               isDesktopApp={isDesktopApp}
             />
           );
+        default:
+          return item.Content ? <item.Content /> : null;
       }
     }
     return null;
   })();
-
-  // Scope render failures to the content pane so the settings header/back stays
-  // usable instead of the whole screen dropping to the root fallback. The reset
-  // key is the active view's stable identity, so switching sections clears a
-  // caught error and re-attempts the render.
-  const content = (
-    <SettingsContentErrorBoundary resetKey={settingsViewKey(view)}>
-      {renderedContent}
-    </SettingsContentErrorBoundary>
-  );
 
   if (settingsLoading) {
     return (
@@ -3081,46 +1469,23 @@ export default function SettingsScreen({
     </>
   );
 
-  // Mobile root: full-screen search-first overview.
+  // Mobile root: full-screen sidebar-as-list.
   if (isCompactLayout && view.kind === "root") {
     return (
       <View style={styles.container}>
         <BackHeader title={t("settings.title")} onBack={handleBackToWorkspace} />
-        <View style={styles.scrollView}>
-          <ScrollView
-            ref={retainedScroll.ref}
-            style={styles.scrollView}
-            contentContainerStyle={insetBottomStyle}
-            onLayout={webScrollbar.onLayout}
-            onScroll={handleScroll}
-            onContentSizeChange={handleContentSizeChange}
-            scrollEventThrottle={16}
-            showsVerticalScrollIndicator={!showWebScrollbar}
-          >
-            <SettingsSearchContent
-              style={styles.content}
-              settingId={focusSettingId}
-              scroll={retainedScroll.ref}
-            >
-              {content}
-              <View style={styles.rootBrowseSidebar}>
-                <SettingsSidebar
-                  view={view}
-                  onSelectSection={handleSelectSection}
-                  onSelectHostSection={handleSelectHostSection}
-                  onSelectHost={handleSelectHost}
-                  onAddHost={handleAddHost}
-                  onBackToWorkspace={handleBackToWorkspace}
-                  onNavigateHome={handleNavigateHome}
-                  onNavigateStats={handleNavigateStats}
-                  activeHostServerId={activeHostServerId}
-                  layout="mobile"
-                />
-              </View>
-            </SettingsSearchContent>
-          </ScrollView>
-          {webScrollbar.overlay}
-        </View>
+        <ScrollView style={styles.scrollView} contentContainerStyle={insetBottomStyle}>
+          <SettingsSidebar
+            view={view}
+            onSelectSection={handleSelectSection}
+            onSelectHostSection={handleSelectHostSection}
+            onSelectHost={handleSelectHost}
+            onAddHost={handleAddHost}
+            onBackToWorkspace={handleBackToWorkspace}
+            activeHostServerId={activeHostServerId}
+            layout="mobile"
+          />
+        </ScrollView>
         {addHostModals}
       </View>
     );
@@ -3129,72 +1494,17 @@ export default function SettingsScreen({
   if (isCompactLayout) {
     return (
       <View style={styles.container}>
-        <BackHeader
-          title={detailHeader?.title}
-          titleAccessory={detailHeader?.titleAccessory}
-          onBack={handleBackFromDetail}
-        />
-        <View style={styles.scrollView}>
-          <ScrollView
-            ref={retainedScroll.ref}
-            style={styles.scrollView}
-            contentContainerStyle={insetBottomStyle}
-            onLayout={webScrollbar.onLayout}
-            onScroll={handleScroll}
-            onContentSizeChange={handleContentSizeChange}
-            scrollEventThrottle={16}
-            showsVerticalScrollIndicator={!showWebScrollbar}
-          >
-            <SettingsSearchContent
-              style={styles.content}
-              settingId={focusSettingId}
-              scroll={retainedScroll.ref}
-            >
-              {content}
-            </SettingsSearchContent>
-          </ScrollView>
-          {webScrollbar.overlay}
-        </View>
+        <PageLayout title={detailTitle} onBack={handleBackFromDetail}>
+          {content}
+        </PageLayout>
         {addHostModals}
       </View>
     );
   }
 
-  // Desktop split view - mirrors AppContainer: sidebar owns the titlebar drag
+  // Desktop split view — mirrors AppContainer: sidebar owns the titlebar drag
   // region + traffic-light padding; detail pane renders whatever header the
   // selected section provides.
-  const detailHeaderLeft = detailHeader ? (
-    <>
-      <HeaderIconBadge>
-        <detailHeader.Icon size={theme.iconSize.md} color={theme.colors.foregroundMuted} />
-      </HeaderIconBadge>
-      <ScreenTitle testID="settings-detail-header-title">{detailHeader.title}</ScreenTitle>
-      {detailHeader.titleAccessory}
-    </>
-  ) : null;
-  const desktopContentScroll = (
-    <View style={styles.scrollView}>
-      <ScrollView
-        ref={retainedScroll.ref}
-        style={styles.scrollView}
-        contentContainerStyle={insetBottomStyle}
-        onLayout={webScrollbar.onLayout}
-        onScroll={handleScroll}
-        onContentSizeChange={handleContentSizeChange}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={!showWebScrollbar}
-      >
-        <SettingsSearchContent
-          style={styles.content}
-          settingId={focusSettingId}
-          scroll={retainedScroll.ref}
-        >
-          {content}
-        </SettingsSearchContent>
-      </ScrollView>
-      {webScrollbar.overlay}
-    </View>
-  );
   return (
     <View style={styles.container}>
       <View style={desktopStyles.row}>
@@ -3206,29 +1516,15 @@ export default function SettingsScreen({
             onSelectHost={handleSelectHost}
             onAddHost={handleAddHost}
             onBackToWorkspace={handleBackToWorkspace}
-            onNavigateHome={handleNavigateHome}
-            onNavigateStats={handleNavigateStats}
             activeHostServerId={activeHostServerId}
             layout="desktop"
           />
         </WindowChromeRegion>
         <WindowChromeRegion corners="top-right">
           <View style={desktopStyles.contentPane} testID="settings-detail-pane">
-            {/* Pane-scoped page fade: the app-wide RouteFadeContainer treats all
-                /settings* routes as one page on desktop (see
-                use-route-transition-key.ts), so section changes fade only this
-                pane and never veil the settings sidebar. */}
-            <KeyedFadeContainer
-              transitionKey={settingsViewKey(view)}
-              fadeOnMount={contentFadeOnMount}
-            >
-              <ScreenHeader
-                borderless={!detailHeader}
-                left={detailHeaderLeft}
-                leftStyle={desktopStyles.detailLeft}
-              />
-              {desktopContentScroll}
-            </KeyedFadeContainer>
+            <PageLayout title={detailTitle} titleTestID="settings-detail-header-title">
+              {content}
+            </PageLayout>
           </View>
         </WindowChromeRegion>
       </View>
@@ -3250,7 +1546,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   loadingText: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.base,
   },
   container: {
     flex: 1,
@@ -3259,40 +1555,16 @@ const styles = StyleSheet.create((theme) => ({
   scrollView: {
     flex: 1,
   },
-  content: {
-    padding: theme.spacing[4],
-    paddingTop: theme.spacing[6],
-    width: "100%",
-    maxWidth: 720,
-    alignSelf: "center",
-  },
-  rootBrowseSidebar: {
-    marginTop: theme.spacing[4],
-  },
   aboutValue: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
-  aboutVersionColumn: {
-    alignItems: "flex-end",
-  },
-  aboutCreditLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[2],
-  },
-  aboutBaseVersion: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    marginTop: theme.spacing[1],
+    fontSize: theme.fontSize.base,
   },
   aboutVersionMismatch: {
     color: theme.colors.palette.amber[500],
   },
   aboutErrorText: {
     color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     marginTop: theme.spacing[1],
   },
   aboutCommunity: {
@@ -3303,33 +1575,6 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
   },
-  themeTrigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  themeTriggerText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-  },
-  terminalScrollbackInput: {
-    width: 112,
-    minHeight: 36,
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface2,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    textAlign: "right",
-  },
   placeholder: {
     flex: 1,
     alignItems: "center",
@@ -3338,11 +1583,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   placeholderText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
 }));
 
-const desktopStyles = StyleSheet.create((theme) => ({
+const desktopStyles = StyleSheet.create({
   row: {
     flex: 1,
     flexDirection: "row",
@@ -3350,33 +1595,14 @@ const desktopStyles = StyleSheet.create((theme) => ({
   contentPane: {
     flex: 1,
   },
-  detailLeft: {
-    gap: theme.spacing[2],
-  },
-}));
-
-// Static styles for Animated.Views - must NOT use Unistyles dynamic theme to
-// avoid the "Unable to find node on an unmounted component" crash when Unistyles
-// tries to patch the native node that Reanimated also manages.
-const staticSidebarStyles = RNStyleSheet.create({
-  desktopSidebar: {
-    position: "relative" as const,
-  },
 });
 
 const sidebarStyles = StyleSheet.create((theme) => ({
   desktopContainer: {
+    width: SETTINGS_DESKTOP_SIDEBAR_WIDTH,
     borderRightWidth: 1,
     borderRightColor: theme.colors.border,
     backgroundColor: theme.colors.surfaceSidebar,
-  },
-  resizeHandle: {
-    position: "absolute",
-    right: -5,
-    top: 0,
-    bottom: 0,
-    width: 10,
-    zIndex: 10,
   },
   scrollBody: {
     flex: 1,
@@ -3388,45 +1614,46 @@ const sidebarStyles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[2],
   },
-  // Matches the workspace sidebar's footer chrome (left-sidebar.tsx
-  // `sidebarFooter`) so the nav bar sits identically on both sidebars.
-  footer: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: theme.spacing[4],
-    paddingVertical: theme.spacing[3],
-    borderTopWidth: 1,
-    borderTopColor: theme.colors.border,
-  },
-  list: {
+  // Compact values draw each group as an island of tiles; desktop keeps a plain list.
+  group: {
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[2],
-    gap: 1,
+    gap: { xs: theme.spacing[1], md: theme.spacing[0.5] },
   },
   groupLabel: {
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foregroundMuted,
-    paddingHorizontal: theme.spacing[2],
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.normal,
+    color: theme.colors.foregroundExtraMuted,
+    paddingHorizontal: { xs: theme.spacing[4], md: theme.spacing[2] },
     paddingVertical: theme.spacing[1],
+  },
+  island: {
+    gap: { xs: 2, md: theme.spacing[0.5] },
+    borderRadius: { xs: theme.borderRadius["2xl"], md: 0 },
+    overflow: "hidden",
   },
   item: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
-    minHeight: 36,
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.lg,
+    gap: { xs: theme.spacing[3], md: theme.spacing[2] },
+    minHeight: { xs: 52, md: 28 },
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: { xs: theme.spacing[4], md: theme.spacing[2] },
+    borderRadius: { xs: 0, md: theme.borderRadius.lg },
+    backgroundColor: { xs: theme.colors.surface1, md: "transparent" },
   },
   itemHovered: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
+    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   itemSelected: {
-    backgroundColor: theme.colors.surfaceInteractiveSelected,
+    backgroundColor: theme.colors.surfaceSidebarHover,
+  },
+  // The workspace rows' pressed fill.
+  itemPressed: {
+    backgroundColor: theme.colors.surface2,
   },
   label: {
-    fontSize: theme.fontSize.base,
+    fontSize: { xs: theme.fontSize.lg, md: theme.fontSize.base },
     color: theme.colors.foregroundMuted,
     fontWeight: theme.fontWeight.normal,
     flex: 1,
@@ -3434,26 +1661,27 @@ const sidebarStyles = StyleSheet.create((theme) => ({
   pickerTrigger: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[2],
-    minHeight: 36,
-    paddingVertical: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.lg,
+    gap: { xs: theme.spacing[3], md: theme.spacing[2] },
+    minHeight: { xs: 52, md: 28 },
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: { xs: theme.spacing[4], md: theme.spacing[2] },
+    borderRadius: { xs: 0, md: theme.borderRadius.lg },
+    backgroundColor: { xs: theme.colors.surface1, md: "transparent" },
   },
   pickerTriggerHovered: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
+    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   pickerTriggerLabel: {
     flex: 1,
     minWidth: 0,
-    fontSize: theme.fontSize.base,
+    fontSize: { xs: theme.fontSize.lg, md: theme.fontSize.base },
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
   },
   // Match the setting items' icon footprint so the host label aligns with them.
   pickerTriggerDot: {
-    width: theme.iconSize.md,
-    height: theme.iconSize.md,
+    width: densityIconBox("md"),
+    height: densityIconBox("md"),
     alignItems: "center",
     justifyContent: "center",
   },

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
 import {
+  UsageReportEntrySchema,
   AgentSnapshotPayloadSchema,
   AgentTimelineItemPayloadSchema,
   ServerInfoStatusPayloadSchema,
@@ -160,56 +161,6 @@ describe("wire schema compatibility", () => {
       type: "assistant_message",
       text: "new daemon shape",
       messageId: "msg-1",
-    });
-  });
-
-  test("user timeline image references remain optional on the wire", () => {
-    expect(
-      AgentTimelineItemPayloadSchema.parse({
-        type: "user_message",
-        text: "old daemon shape",
-      }),
-    ).toEqual({ type: "user_message", text: "old daemon shape" });
-    expect(
-      AgentTimelineItemPayloadSchema.parse({
-        type: "user_message",
-        text: "new daemon shape",
-        images: [
-          {
-            path: "/otto/sent-attachments/image.png",
-            mimeType: "image/png",
-          },
-        ],
-      }),
-    ).toEqual({
-      type: "user_message",
-      text: "new daemon shape",
-      images: [
-        {
-          path: "/otto/sent-attachments/image.png",
-          mimeType: "image/png",
-        },
-      ],
-    });
-  });
-
-  test("error timeline details are optional on the wire", () => {
-    expect(
-      AgentTimelineItemPayloadSchema.parse({
-        type: "error",
-        message: "MCP connections unavailable",
-      }),
-    ).toEqual({ type: "error", message: "MCP connections unavailable" });
-    expect(
-      AgentTimelineItemPayloadSchema.parse({
-        type: "error",
-        message: "MCP connections unavailable",
-        details: ["MCP server 'example' unavailable: Authentication required"],
-      }),
-    ).toEqual({
-      type: "error",
-      message: "MCP connections unavailable",
-      details: ["MCP server 'example' unavailable: Authentication required"],
     });
   });
 
@@ -438,4 +389,88 @@ test("blocked setup preserves the legacy failed shape and optional provenance", 
   expect(WorkspaceSetupSnapshotSchema.parse(legacySnapshot.parse(failed))).toEqual(
     legacySnapshot.parse(failed),
   );
+});
+
+test("usage login errors are additive and older reports still parse", () => {
+  const entry = {
+    id: "codex:account",
+    account: {},
+    fetchedAt: "2026-10-05T00:00:00.000Z",
+    sourceId: "codex",
+    sourceLabel: "Codex",
+    report: { status: "error", error: "Usage API returned 500" },
+  };
+  const legacy = z.object({
+    type: z.literal("usage.list_reports.update"),
+    payload: z.object({
+      requestId: z.string(),
+      report: z.object({
+        id: z.string(),
+        account: z.object({ label: z.string().optional() }),
+        fetchedAt: z.string(),
+        sourceId: z.string(),
+        sourceLabel: z.string(),
+        icon: z.string().optional(),
+        report: z.discriminatedUnion("status", [
+          z.object({ status: z.literal("available"), windows: z.array(z.unknown()) }),
+          z.object({ status: z.literal("unavailable"), problem: z.unknown() }),
+          z.object({ status: z.literal("error"), error: z.string() }),
+        ]),
+      }),
+    }),
+  });
+  const oldMessage = {
+    type: "usage.list_reports.update",
+    payload: { requestId: "usage", report: entry },
+  };
+  const newMessage = {
+    ...oldMessage,
+    payload: {
+      ...oldMessage.payload,
+      report: {
+        ...entry,
+        loginErrors: [{ harness: "Codex", report: entry.report }],
+      },
+    },
+  };
+  expect(SessionOutboundMessageSchema.parse(oldMessage)).toEqual(oldMessage);
+  expect(SessionOutboundMessageSchema.parse(newMessage)).toEqual(newMessage);
+  expect(legacy.parse(newMessage)).toEqual(oldMessage);
+});
+
+test("usage entries accept older failures and additive successful snapshots", () => {
+  const oldEntry = {
+    id: "source:account",
+    sourceId: "source",
+    sourceLabel: "Source",
+    account: {},
+    fetchedAt: "2026-10-17T10:06:00Z",
+    report: { status: "error", error: "Rate limited" },
+  };
+  expect(UsageReportEntrySchema.parse(oldEntry)).toEqual(oldEntry);
+  const retained = {
+    ...oldEntry,
+    lastSuccessful: {
+      fetchedAt: "2026-10-17T10:00:00Z",
+      report: { status: "available", windows: [{ id: "weekly", label: "Weekly", usedPct: 42 }] },
+    },
+  };
+  expect(UsageReportEntrySchema.parse(retained)).toEqual(retained);
+  const available = {
+    ...oldEntry,
+    report: retained.lastSuccessful.report,
+    successfulAt: "2026-10-17T10:00:15Z",
+  };
+  expect(UsageReportEntrySchema.parse(available)).toEqual(available);
+  expect(
+    UsageReportEntrySchema.omit({ lastSuccessful: true, successfulAt: true }).parse(available),
+  ).toEqual({ ...oldEntry, report: available.report });
+  // An older client's entry shape strips the additive snapshot and still sees the failure.
+  expect(UsageReportEntrySchema.omit({ lastSuccessful: true }).parse(retained)).toEqual(oldEntry);
+  expect(
+    UsageReportEntrySchema.safeParse({
+      ...oldEntry,
+      lastSuccessful: { fetchedAt: oldEntry.fetchedAt, report: oldEntry.report },
+    }).success,
+  ).toBe(false);
 });

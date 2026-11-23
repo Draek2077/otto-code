@@ -1,17 +1,24 @@
-import { cancel, confirm, intro, isCancel, log, note, outro, spinner } from "@clack/prompts";
-import { Command, Option } from "commander";
-import { writeFileSync } from "node:fs";
-import path from "node:path";
-import { loadPersistedConfig, type PersistedConfig } from "@otto-code/server";
+import { addLocalDaemonOptions } from "../utils/command-options.js";
 import {
-  resolveLocalOttoHome,
-  resolveLocalDaemonState,
-  resolveTcpHostFromListen,
-  startLocalDaemonDetached,
-  tailDaemonLog,
-  type DaemonStartOptions,
-} from "./daemon/local-daemon.js";
-import { tryConnectToDaemon } from "../utils/client.js";
+  OTTO_APP_BASE_URL,
+  OTTO_DEFAULT_DAEMON_PORT,
+  OTTO_PRODUCT_NAME,
+  OTTO_RELEASES_LATEST_URL,
+  OTTO_WEBSITE_URL,
+} from "@getpaseo/protocol/otto/identity";
+import { cancel, confirm, intro, isCancel, log, note, outro } from "@clack/prompts";
+import { Command, Option } from "commander";
+import path from "node:path";
+import {
+  readPersistedConfig as loadPersistedConfig,
+  savePersistedConfig,
+  type PersistedConfig,
+} from "@getpaseo/server/configuration";
+import { readDaemonInstance, waitForDaemonReady } from "@getpaseo/server/daemon-control";
+import { withGlobalOptions } from "../utils/command-options.js";
+import type { CommandOptions } from "../output/index.js";
+import { launchLocalDaemon, parseTimeoutMs } from "./daemon/local-daemon.js";
+import { connectToDaemon } from "../utils/client.js";
 import { formatPairingInstructions } from "../output/pairing.js";
 import {
   confirmRelayPairing,
@@ -19,7 +26,12 @@ import {
   resolveLocalPairingOffer,
 } from "./daemon/pair.js";
 
-interface OnboardOptions extends DaemonStartOptions {
+interface OnboardOptions extends CommandOptions {
+  port?: string;
+  listen?: string;
+  relay?: boolean;
+  mcp?: boolean;
+  hostnames?: string;
   timeout?: string;
   voice?: "ask" | "enable" | "disable";
 }
@@ -39,39 +51,10 @@ type OnboardPersistedConfig = PersistedConfig & {
   };
 };
 
-const DEFAULT_READY_TIMEOUT_MS = 10 * 60 * 1000;
-const READY_PROBE_TIMEOUT_MS = 1200;
-
 class OnboardCancelledError extends Error {}
-
 const plainNoteFormat = (line: string): string => line;
-
 function renderNote(message: string, title: string): void {
   note(message, title, { format: plainNoteFormat });
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-function parseTimeoutMs(raw: string | undefined): number {
-  if (!raw || raw.trim().length === 0) {
-    return DEFAULT_READY_TIMEOUT_MS;
-  }
-
-  const seconds = Number(raw);
-  if (!Number.isFinite(seconds) || seconds <= 0) {
-    throw new Error(`Invalid timeout value: ${raw}`);
-  }
-
-  return Math.ceil(seconds * 1000);
-}
-
-function savePersistedConfig(ottoHome: string, config: OnboardPersistedConfig): void {
-  const configPath = path.join(ottoHome, "config.json");
-  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 }
 
 function applyVoiceSelection(
@@ -135,150 +118,24 @@ async function resolveVoiceSelection(mode: OnboardOptions["voice"]): Promise<boo
   return answer;
 }
 
-interface DownloadProgress {
-  modelId: string | null;
-  pct: number | null;
-}
-
-function parseDownloadProgress(logTail: string): DownloadProgress | null {
-  const lines = logTail.split("\n").filter(Boolean);
-
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index];
-    if (!line || !line.includes("Downloading model artifact")) {
-      continue;
-    }
-
-    const pctMatch = line.match(/"pct"\s*:\s*(\d{1,3})|\bpct[=:]\s*(\d{1,3})/);
-    const modelMatch = line.match(/"modelId"\s*:\s*"([^"]+)"|\bmodelId[=:]\s*"?([^\s",}]+)/);
-
-    return {
-      modelId: modelMatch?.[1] ?? modelMatch?.[2] ?? null,
-      pct: pctMatch ? Number(pctMatch[1] ?? pctMatch[2]) : null,
-    };
-  }
-
-  return null;
-}
-
-function renderProgressLine(progress: DownloadProgress): string {
-  const modelSuffix = progress.modelId ? ` (${progress.modelId})` : "";
-  if (progress.pct === null) {
-    return `Downloading speech model${modelSuffix}...`;
-  }
-  return `Downloading speech model${modelSuffix}: ${progress.pct}%`;
-}
-
-type ProbeResult = { kind: "ready"; listen: string; host: string | null } | { kind: "pending" };
-
-async function probeDaemonReady(home: string, timeoutMs: number): Promise<ProbeResult> {
-  const state = resolveLocalDaemonState({ home });
-  const host = resolveTcpHostFromListen(state.listen);
-  const deadline = Date.now() + timeoutMs;
-  const remainingTimeoutMs = () => Math.max(1, deadline - Date.now());
-
-  if (state.running && host) {
-    const client = await tryConnectToDaemon({
-      host,
-      timeout: Math.min(remainingTimeoutMs(), READY_PROBE_TIMEOUT_MS),
-    });
-    if (client) {
-      try {
-        await client.fetchAgents({
-          timeout: Math.min(remainingTimeoutMs(), READY_PROBE_TIMEOUT_MS),
-        });
-        return { kind: "ready", listen: state.listen, host };
-      } catch {
-        // Daemon process is alive but not API-ready yet.
-      } finally {
-        await client.close().catch(() => {});
-      }
-    }
-  } else if (state.running && !host) {
-    return { kind: "ready", listen: state.listen, host: null };
-  }
-
-  return { kind: "pending" };
-}
-
-interface ProgressState {
-  lastStatus: string;
-  lastPrintedAt: number;
-}
-
-function announceProgress(
-  home: string,
-  state: ProgressState,
-  onStatus: ((message: string) => void) | undefined,
-): ProgressState {
-  const progress = parseDownloadProgress(tailDaemonLog(home, 120) ?? "");
-  const progressLine = progress ? renderProgressLine(progress) : null;
-  const statusMessage = progressLine ?? "Waiting for daemon to become ready...";
-
-  if (statusMessage !== state.lastStatus) {
-    onStatus?.(statusMessage);
-    return { lastStatus: statusMessage, lastPrintedAt: Date.now() };
-  }
-  if (!onStatus && Date.now() - state.lastPrintedAt >= 3000) {
-    console.log(statusMessage);
-    return { lastStatus: state.lastStatus, lastPrintedAt: Date.now() };
-  }
-  return state;
-}
-
-async function waitForDaemonReady(args: {
-  home: string;
-  timeoutMs: number;
-  onStatus?: (message: string) => void;
-}): Promise<{ listen: string; host: string | null }> {
-  const deadline = Date.now() + args.timeoutMs;
-  const createTimeoutError = () => {
-    const recentLogs = tailDaemonLog(args.home, 60);
-    return new Error(
-      [
-        `Timed out after ${Math.ceil(args.timeoutMs / 1000)}s waiting for daemon readiness.`,
-        recentLogs ? `Recent daemon logs:\n${recentLogs}` : null,
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
-    );
-  };
-
-  async function poll(state: ProgressState): Promise<{ listen: string; host: string | null }> {
-    if (Date.now() >= deadline) {
-      throw createTimeoutError();
-    }
-    const probe = await probeDaemonReady(args.home, Math.max(1, deadline - Date.now()));
-    if (probe.kind === "ready") {
-      return { listen: probe.listen, host: probe.host };
-    }
-    const nextState = announceProgress(args.home, state, args.onStatus);
-    if (Date.now() >= deadline) {
-      throw createTimeoutError();
-    }
-    await sleep(200);
-    return poll(nextState);
-  }
-
-  return poll({ lastStatus: "", lastPrintedAt: 0 });
-}
-
-function printNextSteps(pairingUrl: string | null, ottoHome: string, richUi: boolean): void {
-  const daemonLogPath = path.join(ottoHome, "daemon.log");
+function printNextSteps(pairingUrl: string | null, paseoHome: string, richUi: boolean): void {
+  const daemonLogPath = path.join(paseoHome, "daemon.log");
+  // OTTO(identity)
   const nextStepsLines = [
     pairingUrl
-      ? "1. Open Otto and scan the QR code above, or paste the pairing link."
-      : "1. Open Otto and connect to your daemon.",
-    "2. Web app: https://app.otto-code.me",
-    "3. Desktop app: https://github.com/Draek2077/otto-code/releases/latest",
-    "4. Docs: https://otto-code.me/docs",
-    '5. Example: otto run --output-schema schema.json "extract fields"',
+      ? `1. Open ${OTTO_PRODUCT_NAME} and scan the QR code above, or paste the pairing link.`
+      : `1. Open ${OTTO_PRODUCT_NAME} and connect to your daemon.`,
+    `2. Web app: ${OTTO_APP_BASE_URL}`,
+    `3. Desktop app: ${OTTO_RELEASES_LATEST_URL}`,
+    `4. Docs: ${OTTO_WEBSITE_URL}/docs`,
+    `5. Example: otto run --home ${JSON.stringify(paseoHome)} --output-schema schema.json "extract fields"`,
   ];
   const quickReferenceLines = [
+    // OTTO(identity)
     "1. otto --help",
-    "2. otto ls",
-    '3. otto run "your prompt"',
-    "4. otto status",
+    `2. otto ls --home ${JSON.stringify(paseoHome)}`,
+    `3. otto run --home ${JSON.stringify(paseoHome)} "your prompt"`,
+    `4. otto status --home ${JSON.stringify(paseoHome)}`,
     `5. Daemon logs: ${daemonLogPath}`,
   ];
 
@@ -301,31 +158,39 @@ function printNextSteps(pairingUrl: string | null, ottoHome: string, richUi: boo
 }
 
 export function onboardCommand(): Command {
-  return new Command("onboard")
-    .description("Run first-time setup, start daemon, and print pairing instructions")
-    .option("--listen <listen>", "Listen target (host:port, port, or unix socket path)")
-    .option("--port <port>", "Port to listen on (default: 6868)")
-    .option("--home <path>", "Otto home directory (default: ~/.otto)")
-    .option("--relay", "Enable relay connection without prompting")
-    .option("--no-relay", "Disable relay connection")
-    .option("--no-mcp", "Disable the Agent MCP HTTP endpoint")
-    .option(
-      "--hostnames <hosts>",
-      'Daemon hostnames (comma-separated, e.g. "myhost,.example.com" or "true" for any)',
-    )
-    .addOption(new Option("--allowed-hosts <hosts>").hideHelp())
-    .option("--timeout <seconds>", "Max time to wait for daemon readiness (default: 600)")
-    .option("--voice <mode>", "Voice setup mode: ask, enable, disable", "ask")
-    .action(async (options: RawOnboardOptions) => {
-      await runOnboard({
-        ...options,
-        hostnames: options.hostnames ?? options.allowedHosts,
-      });
-    });
+  return (
+    addLocalDaemonOptions(new Command("onboard"))
+      .description("Run first-time setup, start daemon, and print pairing instructions")
+      .option("--listen <listen>", "Listen target (host:port, port, or unix socket path)")
+      // OTTO(identity)
+      .option("--port <port>", `Port to listen on (default: ${OTTO_DEFAULT_DAEMON_PORT})`)
+      .option("--relay", "Enable relay connection without prompting")
+      .option("--no-relay", "Disable relay connection")
+      .option("--no-mcp", "Disable the Agent MCP HTTP endpoint")
+      .option(
+        "--hostnames <hosts>",
+        'Daemon hostnames (comma-separated, e.g. "myhost,.example.com" or "true" for any)',
+      )
+      .addOption(new Option("--allowed-hosts <hosts>").hideHelp())
+      .option("--timeout <seconds>", "Max time to wait for daemon readiness (default: 600)")
+      .option("--voice <mode>", "Voice setup mode: ask, enable, disable", "ask")
+      .action(
+        withGlobalOptions(async (options: RawOnboardOptions, command: Command) => {
+          await runOnboard({
+            ...options,
+            mcp: command.getOptionValueSource("mcp") === "cli" ? options.mcp : undefined,
+            hostnames: options.hostnames ?? options.allowedHosts,
+          });
+        }),
+      )
+  );
 }
 
-async function resolveAndPersistVoice(ottoHome: string, options: OnboardOptions): Promise<boolean> {
-  let persisted = loadPersistedConfig(ottoHome) as OnboardPersistedConfig;
+async function resolveAndPersistVoice(
+  paseoHome: string,
+  options: OnboardOptions,
+): Promise<boolean> {
+  let persisted = loadPersistedConfig(paseoHome) as OnboardPersistedConfig;
   const persistedVoiceSelection = resolvePersistedVoiceSelection(persisted);
   const shouldPrompt = options.voice === "ask" || options.voice === undefined;
   let voiceEnabled: boolean;
@@ -347,79 +212,40 @@ async function resolveAndPersistVoice(ottoHome: string, options: OnboardOptions)
   }
 
   persisted = applyVoiceSelection(persisted, voiceEnabled);
-  savePersistedConfig(ottoHome, persisted);
+  savePersistedConfig(paseoHome, persisted);
   return voiceEnabled;
 }
 
-async function ensureDaemonStarted(options: OnboardOptions, richUi: boolean): Promise<void> {
-  const stateBeforeStart = resolveLocalDaemonState({ home: options.home });
-  if (stateBeforeStart.running) {
-    log.message(`Daemon already running (PID ${stateBeforeStart.pidInfo?.pid ?? "unknown"}).`);
-    return;
+function persistSetupChoices(paseoHome: string, options: OnboardOptions): void {
+  const persisted = loadPersistedConfig(paseoHome, { defaultsIfMissing: true });
+  if (options.listen || options.port) {
+    persisted.daemon = {
+      ...persisted.daemon,
+      listen: options.listen ?? `127.0.0.1:${options.port}`,
+    };
   }
-
-  const startSpinner = richUi ? spinner() : null;
-  try {
-    if (startSpinner) {
-      startSpinner.start("Starting daemon...");
-    } else {
-      log.message("Starting daemon...");
-    }
-    const startup = await startLocalDaemonDetached(options);
-    if (startSpinner) {
-      startSpinner.stop(`Daemon started (PID ${startup.pid ?? "unknown"})`);
-    } else {
-      log.message(`Daemon started (PID ${startup.pid ?? "unknown"})`);
-    }
-    log.message(`Logs: ${startup.logPath}`);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (startSpinner) {
-      startSpinner.error(message);
-    } else {
-      log.error(message);
-    }
-    process.exit(1);
-  }
-}
-
-async function waitForDaemonReadyWithUi(args: {
-  home: string;
-  timeoutMs: number;
-  richUi: boolean;
-}): Promise<{ listen: string; host: string | null }> {
-  const readySpinner = args.richUi ? spinner() : null;
-  try {
-    if (readySpinner) {
-      readySpinner.start("Waiting for daemon to become ready...");
-    } else {
-      log.message("Waiting for daemon to become ready...");
-    }
-    const readyState = await waitForDaemonReady({
-      home: args.home,
-      timeoutMs: args.timeoutMs,
-      onStatus: readySpinner ? (message) => readySpinner.message(message) : undefined,
-    });
-    if (readySpinner) {
-      readySpinner.stop(`Daemon ready on ${readyState.listen}`);
-    } else {
-      log.message(`Daemon ready on ${readyState.listen}`);
-    }
-    return readyState;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (readySpinner) {
-      readySpinner.error(message);
-    } else {
-      log.error(message);
-    }
-    return process.exit(1);
-  }
+  if (options.relay !== undefined)
+    persisted.daemon = {
+      ...persisted.daemon,
+      relay: { ...persisted.daemon?.relay, enabled: options.relay },
+    };
+  if (options.mcp !== undefined)
+    persisted.daemon = {
+      ...persisted.daemon,
+      mcp: { ...persisted.daemon?.mcp, enabled: options.mcp },
+    };
+  if (options.hostnames)
+    persisted.daemon = {
+      ...persisted.daemon,
+      hostnames: options.hostnames === "true" ? true : options.hostnames.split(","),
+    };
+  savePersistedConfig(paseoHome, persisted);
 }
 
 export async function runOnboard(options: OnboardOptions): Promise<void> {
   const richUi = process.stdin.isTTY && process.stdout.isTTY;
   if (richUi) {
+    // OTTO(identity)
     intro("Welcome to Otto");
   }
 
@@ -428,43 +254,48 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
     process.exit(1);
   }
 
-  let timeoutMs = DEFAULT_READY_TIMEOUT_MS;
-  try {
-    timeoutMs = parseTimeoutMs(options.timeout);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    cancel(message);
-    process.exit(1);
-  }
+  const timeoutMs = parseTimeoutMs(options.timeout);
 
-  const ottoHome = resolveLocalOttoHome(options.home);
+  if (options.daemonTarget.kind !== "instance") throw new Error("Onboarding requires a local home");
+  const paseoHome = options.daemonTarget.home;
+  const alreadyRunning = await readDaemonInstance(paseoHome);
+  persistSetupChoices(paseoHome, options);
   if (richUi) {
-    renderNote(ottoHome, "Otto home");
+    // OTTO(identity)
+    renderNote(paseoHome, "Otto home");
   }
 
-  const voiceEnabled = await resolveAndPersistVoice(ottoHome, options);
+  const voiceEnabled = await resolveAndPersistVoice(paseoHome, options);
   log.message(
     voiceEnabled
       ? "Voice features enabled. Local speech models will be downloaded automatically if missing."
       : "Voice features disabled. Local speech models will not be downloaded.",
   );
 
-  await ensureDaemonStarted(options, richUi);
-  await waitForDaemonReadyWithUi({
-    home: options.home ?? ottoHome,
-    timeoutMs,
-    richUi,
-  });
+  if (alreadyRunning) {
+    log.message(`Daemon already running (PID ${alreadyRunning.pid}); retaining its supervisor.`);
+    const client = await connectToDaemon({ target: options.daemonTarget, timeout: timeoutMs });
+    try {
+      log.message(JSON.stringify(await client.reloadDaemonConfig()));
+    } finally {
+      await client.close();
+    }
+  } else {
+    await launchLocalDaemon({ home: paseoHome, timeoutMs });
+  }
+  const ready = await waitForDaemonReady(paseoHome, { timeoutMs });
+  log.message(`Daemon ready on ${ready.listen}`);
 
   if (options.relay === false) {
     log.message("Relay pairing skipped because --no-relay was provided.");
-    printNextSteps(null, ottoHome, richUi);
+    printNextSteps(null, paseoHome, richUi);
+    // OTTO(identity)
     if (richUi) outro("Otto daemon is running.");
     return;
   }
 
   let pairing = await resolveLocalPairingOffer({
-    ottoHome,
+    paseoHome,
     enableRelay: options.relay === true,
   });
 
@@ -472,18 +303,20 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
     const shouldEnable = richUi ? await confirmRelayPairing() : false;
     if (!shouldEnable) {
       printDirectConnectionGuidance();
-      printNextSteps(null, ottoHome, richUi);
+      printNextSteps(null, paseoHome, richUi);
+      // OTTO(identity)
       if (richUi) outro("Otto daemon is running.");
       return;
     }
-    pairing = await resolveLocalPairingOffer({ ottoHome, enableRelay: true });
+    pairing = await resolveLocalPairingOffer({ paseoHome, enableRelay: true });
     log.success("Relay enabled");
   }
 
   if (!pairing.url) {
     log.warn("Relay pairing URL is unavailable for this daemon configuration.");
-    printNextSteps(null, ottoHome, richUi);
+    printNextSteps(null, paseoHome, richUi);
     if (richUi) {
+      // OTTO(identity)
       outro("Otto daemon is running.");
     }
     return;
@@ -496,8 +329,9 @@ export async function runOnboard(options: OnboardOptions): Promise<void> {
       columns: process.stdout.columns,
     }),
   );
-  printNextSteps(pairing.url, ottoHome, richUi);
+  printNextSteps(pairing.url, paseoHome, richUi);
   if (richUi) {
+    // OTTO(identity)
     outro("Otto is ready!");
   }
 }

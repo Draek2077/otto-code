@@ -11,7 +11,7 @@ import {
   type TextRevealState,
   visibleRevealedText,
 } from "@/agent-stream/text-reveal";
-import type { MarkdownPhase } from "@/components/markdown/fence/types";
+export type MarkdownPhase = "streaming" | "complete";
 
 /**
  * Binds the paced reveal in @/agent-stream/text-reveal to a frame clock.
@@ -21,8 +21,7 @@ import type { MarkdownPhase } from "@/components/markdown/fence/types";
  * wiring, so the rendered behavior is covered end to end by
  * `packages/app/e2e/browser/agent-stream-smoothness.spec.ts`.
  */
-export function useRevealedText(text: string, phase: MarkdownPhase, active = true): string {
-  const wasActiveRef = useRef(active);
+export function useRevealedText(text: string, phase: MarkdownPhase): string {
   const pacingSupported = isTextRevealPacingSupported();
   const stateRef = useRef<TextRevealState>(beginTextReveal(text));
   const [, forceRender] = useState(0);
@@ -30,12 +29,6 @@ export function useRevealedText(text: string, phase: MarkdownPhase, active = tru
   const lastFrameAtRef = useRef<number | null>(null);
 
   stateRef.current = retargetTextReveal(stateRef.current, text);
-  // Retained Otto panes can resume with a large newer snapshot. Reuse the
-  // upstream reveal state, but never animate the backlog accumulated offscreen.
-  if (!active || !wasActiveRef.current) {
-    stateRef.current = completeTextReveal(stateRef.current);
-  }
-  wasActiveRef.current = active;
 
   useEffect(() => {
     const settle = () => {
@@ -47,7 +40,7 @@ export function useRevealedText(text: string, phase: MarkdownPhase, active = tru
       }
     };
 
-    if (!active || !pacingSupported || phase !== "streaming") {
+    if (!pacingSupported || phase !== "streaming") {
       settle();
       return;
     }
@@ -86,7 +79,7 @@ export function useRevealedText(text: string, phase: MarkdownPhase, active = tru
         frameRef.current = null;
       }
     };
-  }, [text, pacingSupported, phase, active]);
+  }, [text, pacingSupported, phase]);
 
   return pacingSupported
     ? visibleRevealedText(stateRef.current, { streaming: phase === "streaming" })

@@ -1,39 +1,37 @@
-import { createAgentRequestsStub } from "./test-utils/session-stubs.js";
-import { execSync } from "child_process";
+// OTTO(identity): expect Otto-facing product text.
 import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  statSync,
-  symlinkSync,
-  writeFileSync,
-} from "fs";
+  createMessageReceiptsStub,
+  createTestCreationService,
+} from "./test-utils/session-stubs.js";
+import { execSync } from "child_process";
+import { existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve as resolvePath } from "path";
 import pino from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
-import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
-import type { WorkspaceDescriptorPayload } from "@otto-code/protocol/messages";
+import {
+  assertPullRequestAutoMergeDisableReady,
+  assertPullRequestAutoMergeEnableReady,
+} from "../services/github-service.js";
+import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
+import type { WorkspaceDescriptorPayload } from "@getpaseo/protocol/messages";
 import {
   decodeFileTransferFrame,
   encodeFileTransferFrame,
   FileTransferOpcode,
   type FileTransferFrame,
-} from "@otto-code/protocol/binary-frames/index";
+} from "@getpaseo/protocol/binary-frames/index";
 import { Session } from "./session.js";
-import * as createAgentCommands from "./agent/create-agent/create.js";
-import type { ManagedAgent } from "./agent/agent-manager.js";
 import { OWNER_PERMISSIONS, type DaemonPermission } from "./authorization/index.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
 import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
-import { createPersistedProjectRecord, type PersistedProjectRecord } from "./workspace-registry.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
+import type { AgentManagerEvent } from "./agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { WorkspaceLabelError, type WorkspaceLabelService } from "./workspace-labels/index.js";
+import { createPersistedProjectRecord } from "./workspace-registry.js";
 import { deriveProjectKey } from "./project-key.js";
 import type { SessionOptions } from "./session.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "./messages.js";
@@ -53,19 +51,17 @@ import {
   createProviderSnapshotManagerStub,
 } from "./test-utils/session-stubs.js";
 import { isPlatform } from "../test-utils/platform.js";
-import type {
-  CheckDetails,
-  GitHubPullRequestStatusFacts,
-  GitHubService,
+import {
+  GitHubAuthenticationError,
+  GitHubCliMissingError,
+  GitHubCommandError,
+  type GitHubService,
 } from "../services/github-service.js";
-import type { GitHubForgeSpecificStatusFacts } from "../services/github-facts.js";
+import type { CheckDetails, ForgeService } from "../services/forge-service.js";
+import type { GitHubPullRequestStatusFacts } from "../services/github-facts.js";
 
 interface SessionHandlerInternals {
   interruptAgentIfRunning(agentId: string): Promise<void>;
-  agentUpdates: { forwardLiveAgent(agent: ManagedAgent): Promise<void> };
-  handleStartSuggestedTaskRequest(
-    msg: Extract<SessionInboundMessage, { type: "tasks.suggested.start.request" }>,
-  ): Promise<void>;
   handleSendAgentMessage(
     agentId: string,
     text: string,
@@ -80,7 +76,7 @@ interface SessionHandlerInternals {
   handleCheckoutCommitRequest(params: unknown): Promise<unknown>;
   handleCheckoutPrCreateRequest(params: unknown): Promise<unknown>;
   handleCheckoutPrMergeRequest(params: unknown): Promise<unknown>;
-  handleCheckoutGithubSetAutoMergeRequest(params: unknown): Promise<unknown>;
+  handleCheckoutForgeSetAutoMergeRequest(params: unknown): Promise<unknown>;
   handleCheckoutPullRequest(params: unknown): Promise<unknown>;
   handleCheckoutPushRequest(params: unknown): Promise<unknown>;
   handleCheckoutRefreshRequest(params: unknown): Promise<unknown>;
@@ -93,7 +89,7 @@ interface SessionHandlerInternals {
   handleStashListRequest(params: unknown): Promise<unknown>;
   handleStashSaveRequest(params: unknown): Promise<unknown>;
   handleStashPopRequest(params: unknown): Promise<unknown>;
-  createOttoWorktree(params: unknown): Promise<unknown>;
+  createPaseoWorktree(params: unknown): Promise<unknown>;
   handleStartWorkspaceScriptRequest(params: unknown): Promise<unknown>;
 }
 
@@ -111,6 +107,85 @@ function createBinaryMessageHandler(
     binaryMessages.push(frame);
   };
 }
+
+test("interruptAgentIfRunning rejects when graceful cancellation is refused", async () => {
+  const agentId = "11111111-1111-4111-8111-111111111111";
+  const session = createSessionForTest({
+    agentManager: {
+      getAgent: vi.fn(() => ({ id: agentId, provider: "codex", lifecycle: "running" })),
+      hasInFlightRun: vi.fn(() => true),
+      cancelAgentRun: vi.fn(async () => ({ status: "refused" as const })),
+    },
+  });
+
+  await expect(asSessionInternals(session).interruptAgentIfRunning(agentId)).rejects.toThrow(
+    "active run cancellation was not acknowledged",
+  );
+});
+
+test("cancel_agent_request reports refusal only through its response", async () => {
+  const agentId = "11111111-1111-4111-8111-111111111111";
+  const messages: SessionOutboundMessage[] = [];
+  const getAgent = vi
+    .fn()
+    .mockReturnValueOnce({ id: agentId, provider: "codex", lifecycle: "running" })
+    .mockReturnValue(null);
+  const session = createSessionForTest({
+    messages,
+    agentManager: {
+      getAgent,
+      hasInFlightRun: vi.fn(() => true),
+      cancelAgentRun: vi.fn(async () => ({ status: "refused" as const })),
+    },
+  });
+
+  await session.handleMessage({
+    type: "cancel_agent_request",
+    agentId,
+    requestId: "cancel-refused",
+  });
+
+  expect(messages).toEqual([
+    {
+      type: "cancel_agent_response",
+      payload: {
+        requestId: "cancel-refused",
+        agentId,
+        agent: null,
+        error:
+          "Cannot stop agent 11111111-1111-4111-8111-111111111111 because its active run cancellation was not acknowledged",
+      },
+    },
+  ]);
+});
+
+test("legacy cancel_agent_request reports refusal through the activity log", async () => {
+  const agentId = "11111111-1111-4111-8111-111111111111";
+  const messages: SessionOutboundMessage[] = [];
+  const session = createSessionForTest({
+    messages,
+    agentManager: {
+      getAgent: vi.fn(() => ({ id: agentId, provider: "codex", lifecycle: "running" })),
+      hasInFlightRun: vi.fn(() => true),
+      cancelAgentRun: vi.fn(async () => ({ status: "refused" as const })),
+    },
+  });
+
+  await session.handleMessage({ type: "cancel_agent_request", agentId });
+
+  expect(messages).toEqual([
+    {
+      type: "activity_log",
+      payload: {
+        id: expect.any(String),
+        timestamp: expect.any(Date),
+        type: "error",
+        content:
+          "Failed to cancel running agent on request: Cannot stop agent 11111111-1111-4111-8111-111111111111 because its active run cancellation was not acknowledged",
+      },
+    },
+  ]);
+});
 
 const checkoutGitMocks = vi.hoisted(() => ({
   checkoutResolvedBranch: vi.fn(),
@@ -140,8 +215,8 @@ const gitCommandMocks = vi.hoisted(() => ({
   runGitCommand: vi.fn(),
 }));
 
-const ottoWorktreeServiceMocks = vi.hoisted(() => ({
-  createOttoWorktree: vi.fn(),
+const paseoWorktreeServiceMocks = vi.hoisted(() => ({
+  createPaseoWorktree: vi.fn(),
 }));
 
 interface Deferred<T> {
@@ -180,11 +255,11 @@ vi.mock("../utils/checkout-git.js", async (importOriginal) => {
   };
 });
 
-vi.mock("./otto-worktree-service.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./otto-worktree-service.js")>();
+vi.mock("./paseo-worktree-service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./paseo-worktree-service.js")>();
   return {
     ...actual,
-    createOttoWorktree: ottoWorktreeServiceMocks.createOttoWorktree,
+    createPaseoWorktree: paseoWorktreeServiceMocks.createPaseoWorktree,
   };
 });
 
@@ -215,14 +290,13 @@ vi.mock("./worktree-bootstrap.js", async (importOriginal) => {
 
 interface SessionForTestOptions {
   clientId?: string;
-  agentRequests?: SessionOptions["agentRequests"];
-  onAgentBrowserOrigin?: SessionOptions["onAgentBrowserOrigin"];
   permissions?: readonly DaemonPermission[];
   agentManager?: { [K in keyof SessionOptions["agentManager"]]?: unknown };
   agentStorage?: { [K in keyof SessionOptions["agentStorage"]]?: unknown };
-  github?: Partial<GitHubService>;
+  github?: Partial<ForgeService & GitHubService>;
   checkoutDiffManager?: { scheduleRefreshForCwd: ReturnType<typeof vi.fn> };
   workspaceGitService?: {
+    getCheckout?: ReturnType<typeof vi.fn>;
     getCheckoutDiff?: ReturnType<typeof vi.fn>;
     getSnapshot?: ReturnType<typeof vi.fn>;
     suggestBranchesForCwd?: ReturnType<typeof vi.fn>;
@@ -232,19 +306,13 @@ interface SessionForTestOptions {
     hasLocalBranch?: ReturnType<typeof vi.fn>;
     resolveRepoRemoteUrl?: ReturnType<typeof vi.fn>;
     resolveRepoRoot?: ReturnType<typeof vi.fn>;
+    resolveForge?: ReturnType<typeof vi.fn>;
     getWorkspaceGitMetadata?: ReturnType<typeof vi.fn>;
+    getProjectSlug?: ReturnType<typeof vi.fn>;
   };
   workspaceRegistry?: { get: ReturnType<typeof vi.fn> };
-  /**
-   * Directories the session should treat as known workspace roots. Every
-   * directory-scoped file RPC is gated on this (`assertCwdWithinKnownWorkspace`
-   * in `workspace-files-session.ts`), so a test that browses a temp directory
-   * has to declare it here or the daemon correctly refuses to serve it.
-   */
-  workspaceRoots?: string[];
   projectRegistry?: Partial<SessionOptions["projectRegistry"]>;
   terminalManager?: SessionOptions["terminalManager"];
-  previewDevServers?: SessionOptions["previewDevServers"];
   serviceProxy?: SessionOptions["serviceProxy"];
   scriptRuntimeStore?: SessionOptions["scriptRuntimeStore"];
   getDaemonTcpPort?: () => number | null;
@@ -253,18 +321,15 @@ interface SessionForTestOptions {
   hubExecutionAgents?: SessionOptions["hubExecutionAgents"];
   stt?: SessionOptions["stt"];
   voice?: SessionOptions["voice"];
-  ottoHome?: string;
+  paseoHome?: string;
   serverId?: SessionOptions["serverId"];
   daemonVersion?: SessionOptions["daemonVersion"];
   daemonRuntimeConfig?: SessionOptions["daemonRuntimeConfig"];
   downloadTokenStore?: SessionOptions["downloadTokenStore"];
   pushNotifications?: SessionOptions["pushNotifications"];
   messages?: unknown[];
-  binaryMessages?: Uint8Array[];
-  clientCapabilities?: SessionOptions["clientCapabilities"];
-  onMessageToSource?: SessionOptions["onMessageToSource"];
-  /** Collects socket-targeted sends, for tests asserting per-socket delivery. */
   targetedMessages?: Array<{ source: object; message: SessionOutboundMessage }>;
+  binaryMessages?: Uint8Array[];
   pluginRuntime?: SessionOptions["pluginRuntime"];
   orchestrationSkills?: SessionOptions["orchestrationSkills"];
   workspaceLabelService?: WorkspaceLabelService;
@@ -281,85 +346,71 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
   const checkoutDiffManager = options.checkoutDiffManager ?? {
     scheduleRefreshForCwd: vi.fn(),
   };
-  const workspaceGitService = fillWorkspaceGitServiceDefaults(options.workspaceGitService);
+  const workspaceGitService = {
+    getCheckout: vi.fn(),
+    getCheckoutDiff: vi.fn(),
+    getSnapshot: vi.fn(),
+    suggestBranchesForCwd: vi.fn(),
+    listStashes: vi.fn(),
+    peekSnapshot: vi.fn(),
+    validateBranchRef: vi.fn(),
+    hasLocalBranch: vi.fn(),
+    resolveRepoRemoteUrl: vi.fn(),
+    resolveRepoRoot: vi.fn(),
+    getWorkspaceGitMetadata: vi.fn(),
+    resolveForge: vi.fn().mockResolvedValue({ forge: "github", service: github }),
+    // Mirror production: invalidateForge resolves the forge and busts the
+    // adapter's cache. The resolved forge here is github, so delegate to it.
+    invalidateForge: vi.fn((cwd: string) => github.invalidate({ cwd })),
+    getProjectSlug: vi.fn(),
+    ...options.workspaceGitService,
+  };
   const messages = options.messages ?? [];
 
-  return new Session({
-    agentRequests: options.agentRequests ?? createAgentRequestsStub(),
+  const sessionOptions: SessionOptions = {
+    messageReceipts: createMessageReceiptsStub(),
+    creationService: createTestCreationService(),
     clientId: options.clientId ?? "test-client",
-    onAgentBrowserOrigin: options.onAgentBrowserOrigin,
-    // Otto gates every RPC on the session's scopes, and a session constructed
-    // without them throws before the first message. "*" is what the trusted
-    // local transport grants, so it is the right stand-in for a harness that
-    // is not exercising the scope check itself.
-    scopes: ["*"],
     onMessage: (message) => messages.push(message),
-    ...(options.clientCapabilities ? { clientCapabilities: options.clientCapabilities } : {}),
-    ...(options.onMessageToSource ? { onMessageToSource: options.onMessageToSource } : {}),
     ...(options.targetedMessages
       ? {
           onMessageToSource: (source: object, message: SessionOutboundMessage) =>
             options.targetedMessages?.push({ source, message }),
         }
-      : {}),
+      : {
+          onMessageToSource: (_source: object, message: SessionOutboundMessage) =>
+            messages.push(message),
+        }),
     onBinaryMessage: createBinaryMessageHandler(options.binaryMessages),
     logger,
     downloadTokenStore: options.downloadTokenStore ?? asDownloadTokenStore(),
     pushNotifications: options.pushNotifications ?? asPushNotifications(),
-    ottoHome: options.ottoHome ?? "/tmp/otto-home",
+    paseoHome: options.paseoHome ?? "/tmp/paseo-home",
     agentManager: asAgentManager({
       listAgents: vi.fn(() => []),
       listProviderSubagentActivity: vi.fn(() => []),
       subscribe: vi.fn(() => () => {}),
-      // `listAgentPayloads` calls this on every fetch_agents_request. Left unstubbed it throws,
-      // and the throw is swallowed by handleFetchAgents' catch - which clears the subscription,
-      // so every later agent_update is dropped and the test fails somewhere far away with no
-      // mention of this method. Default it here rather than per-test for that reason.
-      listObservedSubagentPayloads: vi.fn(() => []),
-      // Per-agent mutations load the agent first. The loader awaits any
-      // in-flight close, then takes the already-live agent and stops. Both
-      // defaults keep that path from reaching storage-backed resume, which no
-      // config-setter test is trying to exercise.
-      waitForAgentClose: vi.fn(async () => {}),
-      getAgent: vi.fn(() => ({}) as never),
       ...options.agentManager,
     }),
     agentStorage: asAgentStorage({
+      get: vi.fn().mockResolvedValue(undefined),
       list: vi.fn().mockResolvedValue([]),
-      // Every per-agent mutation loads the agent first and refuses to touch an
-      // archived one, which reads the record twice. Left unstubbed the config
-      // setters fail with "get was called but not stubbed" from inside the
-      // load, nowhere near the request under test. null means "no stored
-      // record", which is the not-archived answer.
-      get: vi.fn().mockResolvedValue(null),
       ...options.agentStorage,
     }),
-    projectRegistry: options.projectRegistry ?? {
+    projectRegistry: {
       list: vi.fn().mockResolvedValue([]),
       get: vi.fn(),
+      getOrCreateActiveByRoot: vi.fn(),
       upsert: vi.fn(),
       archive: vi.fn(),
       remove: vi.fn(),
       initialize: vi.fn(),
       existsOnDisk: vi.fn(),
+      ...options.projectRegistry,
     },
     workspaceRegistry: options.workspaceRegistry ?? {
       get: vi.fn(),
-      list: vi.fn().mockResolvedValue(
-        (options.workspaceRoots ?? []).map((cwd, index) => ({
-          workspaceId: `workspace-root-${index}`,
-          projectId: `project-root-${index}`,
-          cwd,
-          kind: "checkout" as const,
-          displayName: `Workspace ${index}`,
-          title: null,
-          branch: null,
-          baseBranch: null,
-          createdAt: "2026-01-01T00:00:00.000Z",
-          updatedAt: "2026-01-01T00:00:00.000Z",
-          archivedAt: null,
-        })),
-      ),
+      list: vi.fn().mockResolvedValue([]),
     },
     workspaceLabelService: options.workspaceLabelService,
     scheduleService: asScheduleService(),
@@ -378,7 +429,6 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     stt: options.stt ?? null,
     tts: null,
     terminalManager: options.terminalManager ?? null,
-    previewDevServers: options.previewDevServers,
     providerSnapshotManager:
       options.providerSnapshotManager ?? createProviderSnapshotManagerStub().manager,
     hubExecutionAgents: options.hubExecutionAgents,
@@ -391,346 +441,17 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
     daemonVersion: options.daemonVersion,
     daemonRuntimeConfig: options.daemonRuntimeConfig,
     permissions: options.permissions ?? OWNER_PERMISSIONS,
-  });
-}
-
-// Project RPCs refuse Offline projects, and a root that does not exist on disk is Offline.
-const onlineProjectRoots: string[] = [];
-
-afterEach(() => {
-  for (const dir of onlineProjectRoots.splice(0)) {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-function makeOnlineProjectRoot(prefix: string): string {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
-  onlineProjectRoots.push(root);
-  return root;
-}
-
-test("queues an in-session suggested task instead of interrupting compaction", async () => {
-  const messages: SessionOutboundMessage[] = [];
-  const parentAgent = { id: "parent-agent", provider: "codex" } as never;
-  const enqueueSteerMessage = vi.fn(() => ({
-    queued: true,
-    entry: {
-      id: "queued-1",
-      prompt: "Finish the follow-up after compaction.",
-      enqueuedAt: "2026-09-04T00:00:00.000Z",
-      source: "user" as const,
-    },
-  }));
-  const replaceAgentRun = vi.fn(() => (async function* noop() {})());
-  const markSuggestedTaskStarted = vi.fn();
-  const session = createSessionForTest({
-    messages,
-    agentManager: {
-      getAgent: vi.fn(() => parentAgent),
-      getSuggestedTaskEntry: vi.fn(() => ({
-        id: "task-1",
-        parentAgentId: "parent-agent",
-        title: "Finish the follow-up",
-        prompt: "Finish the follow-up after compaction.",
-        tldr: "Completes the deferred follow-up in this chat.",
-        state: "pending",
-        createdAt: "2026-09-04T00:00:00.000Z",
-        updatedAt: "2026-09-04T00:00:00.000Z",
-      })),
-      beginSuggestedTaskStart: vi.fn(() => true),
-      endSuggestedTaskStart: vi.fn(),
-      markSuggestedTaskStarted,
-      waitForAgentClose: vi.fn(async () => {}),
-      tryRunOutOfBand: vi.fn(() => false),
-      hasInFlightRun: vi.fn(() => true),
-      isBusyOnlyWithOutOfBandRun: vi.fn(() => true),
-      enqueueSteerMessage,
-      replaceAgentRun,
-    },
-  });
-
-  await asSessionInternals(session).handleStartSuggestedTaskRequest({
-    type: "tasks.suggested.start.request",
-    requestId: "start-task",
-    parentAgentId: "parent-agent",
-    taskIds: ["task-1"],
-    mode: "in_session",
-  });
-
-  expect(enqueueSteerMessage).toHaveBeenCalledWith(
-    "parent-agent",
-    "Finish the follow-up after compaction.",
-    {},
-  );
-  expect(replaceAgentRun).not.toHaveBeenCalled();
-  expect(markSuggestedTaskStarted).toHaveBeenCalledWith({ taskId: "task-1", mode: "in_session" });
-  expect(messages).toContainEqual({
-    type: "tasks.suggested.start.response",
-    payload: {
-      requestId: "start-task",
-      parentAgentId: "parent-agent",
-      accepted: true,
-      succeeded: 1,
-      failed: 0,
-      error: null,
-    },
-  });
-});
-
-test("restores suggested tasks on timeline reload and clears them on reconnect", async () => {
-  const source = {};
-  const targetedMessages: Array<{ source: object; message: SessionOutboundMessage }> = [];
-  const messages: SessionOutboundMessage[] = [];
-  const pending = [
-    {
-      taskId: "pending-task",
-      parentAgentId: "parent",
-      title: "Follow up",
-      tldr: "Existing suggestion before refresh",
-      state: "pending" as const,
-      createdAt: "2026-09-05T00:00:00.000Z",
-      updatedAt: "2026-09-05T00:00:00.000Z",
-    },
-  ];
-  const currentSuggestedTasksFor = vi.fn(() => pending);
-  const session = createSessionForTest({
-    messages,
-    targetedMessages,
-    agentManager: {
-      getObservedSubagentPayload: vi.fn(() => ({ id: "parent", provider: "claude" })),
-      fetchTimeline: vi.fn(() => ({
-        rows: [],
-        epoch: "epoch",
-        reset: false,
-        staleCursor: false,
-        gap: false,
-        window: { minSeq: 0, maxSeq: 0, nextSeq: 1 },
-        hasOlder: false,
-        hasNewer: false,
-      })),
-      currentSuggestedTasksFor,
-    },
-  });
-  const request = {
-    type: "fetch_agent_timeline_request" as const,
-    agentId: "parent",
-    requestId: "refresh",
   };
-  // No task mutation occurs after the new client connects.
-  await session.handleMessage(request, source);
-  expect(currentSuggestedTasksFor).toHaveBeenCalledWith("parent");
-  expect(targetedMessages).toContainEqual({
-    source,
-    message: {
-      type: "suggested_tasks_changed",
-      payload: { parentAgentId: "parent", tasks: pending },
-    },
-  });
-  expect(messages).toEqual([]);
-
-  // Tasks resolved while disconnected must clear the reconnecting client's map.
-  currentSuggestedTasksFor.mockReturnValue([]);
-  targetedMessages.length = 0;
-  await session.handleMessage({ ...request, requestId: "reconnect" }, source);
-  expect(targetedMessages).toContainEqual({
-    source,
-    message: { type: "suggested_tasks_changed", payload: { parentAgentId: "parent", tasks: [] } },
-  });
-  await session.cleanup();
-});
-
-test("browser tab default follows the client that submitted the prompt", async () => {
-  const origins: Array<{ agentId: string; host: "app" | "host"; clientId: string }> = [];
-  const session = createSessionForTest({
-    clientId: "desktop-client",
-    clientCapabilities: {
-      [CLIENT_CAPS.browserHost]: { supportedCommands: ["new_tab"], hostKind: "desktop app" },
-    },
-    onAgentBrowserOrigin: (agentId, host, clientId) => origins.push({ agentId, host, clientId }),
-    agentRequests: {
-      ...createAgentRequestsStub(),
-      send: async () => ({ disposition: "queued" }),
-    },
-  });
-  const prompt = (requestId: string) =>
-    ({
-      type: "send_agent_message_request",
-      requestId,
-      messageId: requestId,
-      agentId: "agent-1",
-      text: "Open the browser",
-    }) as const;
-
-  await session.handleMessage(prompt("desktop-prompt"));
-  session.updateClientCapabilities(null);
-  await session.handleMessage(prompt("mobile-prompt"));
-
-  expect(origins).toEqual([
-    { agentId: "agent-1", host: "app", clientId: "desktop-client" },
-    { agentId: "agent-1", host: "host", clientId: "desktop-client" },
-  ]);
-  await session.cleanup();
-});
-
-describe("suggested task model selection", () => {
-  afterEach(() => vi.restoreAllMocks());
-
-  test.each(["new_chat", "subagent", "worktree"] as const)(
-    "launches %s using the selected provider without source adapter settings",
-    async (mode) => {
-      const messages: SessionOutboundMessage[] = [];
-      const config = {
-        provider: "codex",
-        cwd: "/project",
-        title: "Source title",
-        model: "source-model",
-        thinkingOptionId: "xhigh",
-        modeId: "full-auto",
-        featureValues: { sourceOnly: true },
-        approvalPolicy: "never",
-        sandboxMode: "danger-full-access",
-        providerOptions: { codex: {} },
-        extra: { codex: { sourceOnly: true } },
-        systemPrompt: "Keep project conventions.",
-        workspaceAccess: "read",
-        toolPolicy: { allow: ["Read"] },
-      };
-      const parent = { id: "source", provider: "codex", cwd: "/project", config } as ManagedAgent;
-      const markSuggestedTaskStarted = vi.fn();
-      const providers = createProviderSnapshotManagerStub();
-      // The chosen model defaults to low; the parent's xhigh must win anyway.
-      providers.listModels.mockResolvedValue([
-        {
-          provider: "openai-compatible",
-          id: "local/model",
-          label: "Local model",
-          defaultThinkingOptionId: "low",
-          thinkingOptions: [
-            { id: "low", label: "Low", isDefault: true },
-            { id: "high", label: "High" },
-            { id: "xhigh", label: "Extra high" },
-          ],
-        },
-      ]);
-      const session = createSessionForTest({
-        messages,
-        providerSnapshotManager: providers.manager,
-        agentManager: {
-          getAgent: vi.fn(() => parent),
-          getSuggestedTaskEntry: vi.fn(() => ({
-            parentAgentId: "source",
-            title: "Follow up",
-            prompt: "Complete this exact task.",
-            cwd: "/other-project",
-            state: "pending",
-          })),
-          beginSuggestedTaskStart: vi.fn(() => true),
-          endSuggestedTaskStart: vi.fn(),
-          markSuggestedTaskStarted,
-        },
-      });
-      const created = { id: "destination" } as ManagedAgent;
-      const create = vi
-        .spyOn(createAgentCommands, "createAgentCommand")
-        .mockResolvedValue({ snapshot: created } as Awaited<
-          ReturnType<typeof createAgentCommands.createAgentCommand>
-        >);
-      vi.spyOn(asSessionInternals(session).agentUpdates, "forwardLiveAgent").mockResolvedValue();
-      await asSessionInternals(session).handleStartSuggestedTaskRequest({
-        type: "tasks.suggested.start.request",
-        requestId: "launch",
-        parentAgentId: "source",
-        taskIds: ["task"],
-        mode,
-        launch: { provider: "openai-compatible", model: "local/model" },
-      });
-      const input = create.mock.calls[0]?.[1];
-      expect(input).toMatchObject({
-        kind: "mcp",
-        provider: "openai-compatible/local/model",
-        title: "Follow up",
-        initialPrompt: "Complete this exact task.",
-        cwd: "/other-project",
-        callerAgentId: "source",
-        detached: mode !== "subagent",
-      });
-      expect(input?.config).toEqual({
-        provider: "codex",
-        cwd: "/project",
-        thinkingOptionId: "xhigh",
-        systemPrompt: "Keep project conventions.",
-        workspaceAccess: "read",
-        toolPolicy: { allow: ["Read"] },
-      });
-      expect(input?.kind === "mcp" ? input.worktree : null).toEqual(
-        mode === "worktree" ? { action: "branch-off" } : undefined,
-      );
-      expect(config.model).toBe("source-model");
-      expect(config.thinkingOptionId).toBe("xhigh");
-      expect(markSuggestedTaskStarted).toHaveBeenCalledWith({
-        taskId: "task",
-        mode,
-        startedAgentId: "destination",
-      });
-      expect(messages.at(-1)).toMatchObject({ payload: { succeeded: 1, failed: 0 } });
-    },
-  );
-
-  test("keeps a failed launch pending and releases its start claim", async () => {
-    const messages: SessionOutboundMessage[] = [];
-    const markSuggestedTaskStarted = vi.fn();
-    const endSuggestedTaskStart = vi.fn();
-    const session = createSessionForTest({
-      messages,
-      agentManager: {
-        getAgent: vi.fn(() => ({
-          id: "source",
-          provider: "codex",
-          cwd: "/project",
-          config: { provider: "codex", cwd: "/project", model: "source-model" },
-        })),
-        getSuggestedTaskEntry: vi.fn(() => ({
-          parentAgentId: "source",
-          title: "Follow up",
-          prompt: "Task",
-          state: "pending",
-        })),
-        beginSuggestedTaskStart: vi.fn(() => true),
-        endSuggestedTaskStart,
-        markSuggestedTaskStarted,
-      },
-    });
-    vi.spyOn(createAgentCommands, "createAgentCommand").mockRejectedValue(
-      new Error("Selected provider is unavailable"),
-    );
-    await asSessionInternals(session).handleStartSuggestedTaskRequest({
-      type: "tasks.suggested.start.request",
-      requestId: "launch",
-      parentAgentId: "source",
-      taskIds: ["task"],
-      mode: "new_chat",
-      launch: { provider: "local", model: "model" },
-    });
-    expect(markSuggestedTaskStarted).not.toHaveBeenCalled();
-    expect(endSuggestedTaskStart).toHaveBeenCalledWith("task");
-    expect(messages.at(-1)).toMatchObject({
-      payload: {
-        accepted: false,
-        succeeded: 0,
-        failed: 1,
-        error: "Follow up: Selected provider is unavailable",
-      },
-    });
-  });
-});
+  return new Session(sessionOptions);
+}
 
 test("routes host-scoped agent skills requests through the daemon owner", async () => {
   const messages: SessionOutboundMessage[] = [];
   const status = {
     state: "up-to-date" as const,
     ops: [],
-    available: ["otto"],
-    installed: ["otto"],
+    available: ["paseo"],
+    installed: ["paseo"],
     selection: { mode: "all" as const },
   };
   const orchestrationSkills: NonNullable<SessionOptions["orchestrationSkills"]> = {
@@ -749,13 +470,13 @@ test("routes host-scoped agent skills requests through the daemon owner", async 
   await session.handleMessage({
     type: "agent.skills.save_selection.request",
     requestId: "save-skills",
-    selection: { mode: "custom", skills: ["otto"] },
-    confirmedRemovals: ["otto-loop"],
+    selection: { mode: "custom", skills: ["paseo"] },
+    confirmedRemovals: ["paseo-loop"],
   });
 
   expect(orchestrationSkills.saveSelection).toHaveBeenCalledWith(
-    { mode: "custom", skills: ["otto"] },
-    ["otto-loop"],
+    { mode: "custom", skills: ["paseo"] },
+    ["paseo-loop"],
   );
   expect(messages).toContainEqual({
     type: "agent.skills.save_selection.response",
@@ -780,7 +501,7 @@ test("routes plugin requests and releases its owned catalog subscription on clea
       return request;
     },
     emit: () => {},
-    listPlugins: () => [plugin],
+    listPlugins: async () => [plugin],
     getLogs: () => [
       {
         sequence: 1,
@@ -801,9 +522,17 @@ test("routes plugin requests and releases its owned catalog subscription on clea
     },
     catalog: () => [{ id: "example", clientBundle: "bundle" }],
     invokePluginRpc: async () => ({ ok: true }),
+    listUsageReports: async () => [],
+    listLegacyUsage: async () => ({ fetchedAt: "2026-01-01T00:00:00.000Z", providers: [] }),
   };
   const session = createSessionForTest({ messages, pluginRuntime });
 
+  await session.handleMessage({
+    type: "session.events.set_subscription.request",
+    requestId: "catalog",
+    events: ["status.plugin_catalog_changed"],
+  });
+  messages.length = 0;
   await session.handleMessage({ type: "plugin.list.request", requestId: "list" });
   await session.handleMessage({
     type: "plugin.logs.get.request",
@@ -1018,13 +747,8 @@ describe("workspace label editing", () => {
   });
 });
 
-describe("session authorization scopes", () => {
-  // DISABLED(hub): Hub is switched off in this fork - `session.ts` imports the
-  // inert `HubExecutionController` from `hub-disabled.ts`, so the validate RPC
-  // reaches a stand-in that does nothing. Skipped rather than edited, matching
-  // the three hub suites excluded in `vitest.config.ts`, so the body stays
-  // byte-identical to upstream.
-  test.skip("routes named-agent validation through the session source", async () => {
+describe("session authorization permissions", () => {
+  test("routes named-agent validation through the session source", async () => {
     const messages: SessionOutboundMessage[] = [];
     const providers = createProviderSnapshotManagerStub();
     providers.validateAgentConfiguration.mockResolvedValue([
@@ -1061,243 +785,176 @@ describe("session authorization scopes", () => {
       },
     });
   });
+
+  test("rejects an operation without its semantic permission", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({
+      permissions: ["hub.execute"],
+      messages,
+    });
+
+    await session.handleMessage({ type: "ping", requestId: "restricted-ping", clientSentAt: 42 });
+
+    expect(messages).toEqual([
+      {
+        type: "rpc_error",
+        payload: {
+          requestId: "restricted-ping",
+          requestType: "ping",
+          error: "Session is not authorized for ping",
+          code: "access_denied",
+        },
+      },
+    ]);
+  });
+
+  test("replaces a session's permissions without reconstructing the session", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const session = createSessionForTest({ permissions: ["hub.execute"], messages });
+
+    await session.handleMessage({
+      type: "ping",
+      requestId: "before-scope-change",
+      clientSentAt: 1,
+    });
+    session.setPermissions(["daemon.read"]);
+    await session.handleMessage({ type: "ping", requestId: "after-scope-change", clientSentAt: 2 });
+
+    expect(messages).toEqual([
+      {
+        type: "rpc_error",
+        payload: {
+          requestId: "before-scope-change",
+          requestType: "ping",
+          error: "Session is not authorized for ping",
+          code: "access_denied",
+        },
+      },
+      {
+        type: "pong",
+        payload: {
+          requestId: "after-scope-change",
+          clientSentAt: 2,
+          serverReceivedAt: expect.any(Number),
+          serverSentAt: expect.any(Number),
+        },
+      },
+    ]);
+  });
 });
 
-describe("preview RPCs", () => {
-  const tempDirs: string[] = [];
-
-  afterEach(() => {
-    for (const dir of tempDirs.splice(0)) {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  function makeProjectRoot(): string {
-    const root = realpathSync(mkdtempSync(join(tmpdir(), "preview-rpc-session-test-")));
-    tempDirs.push(root);
-    return root;
-  }
-
-  function fakePreviewDevServers(overrides: {
-    start?: ReturnType<typeof vi.fn>;
-    bindTab?: ReturnType<typeof vi.fn>;
-    stop?: ReturnType<typeof vi.fn>;
-  }): SessionOptions["previewDevServers"] {
-    return {
-      start: overrides.start ?? vi.fn(),
-      stop: overrides.stop ?? vi.fn(),
-      list: vi.fn(() => []),
-      logs: vi.fn(() => []),
-      bindTab: overrides.bindTab ?? vi.fn(),
-      boundTab: vi.fn(() => null),
-    } as unknown as SessionOptions["previewDevServers"];
-  }
-
-  test("preview.list_config.request lists configured servers", async () => {
-    const cwd = makeProjectRoot();
-    mkdirSync(join(cwd, ".claude"), { recursive: true });
-    writeFileSync(
-      join(cwd, ".claude", "launch.json"),
-      JSON.stringify({
-        version: "0.0.1",
-        configurations: [
-          { name: "otto-dev", runtimeExecutable: "npm", runtimeArgs: ["run", "dev"], port: 8081 },
-          {
-            name: "website",
-            runtimeExecutable: "npm",
-            runtimeArgs: ["run", "dev:web"],
-            port: 8082,
-          },
-        ],
-      }),
-    );
-    const messages: unknown[] = [];
-    const session = createSessionForTest({ messages });
+describe("project command-center RPCs", () => {
+  test("returns normalized repositories from the host GitHub service", async () => {
+    const messages: SessionOutboundMessage[] = [];
+    const searchRepositories = vi.fn().mockResolvedValue([
+      {
+        id: "R_paseo",
+        name: "paseo",
+        nameWithOwner: "getpaseo/paseo",
+        description: "Development environment in your pocket",
+        visibility: "public",
+        updatedAt: "2026-07-15T10:00:00Z",
+        cloneUrl: "git@github.com:getpaseo/paseo.git",
+      },
+    ]);
+    const session = createSessionForTest({ messages, github: { searchRepositories } });
 
     await session.handleMessage({
-      type: "preview.list_config.request",
-      cwd,
-      requestId: "req-list-2",
+      type: "workspace.github.search_repositories.request",
+      query: "paseo",
+      limit: 10,
+      requestId: "req-repositories",
     });
 
+    expect(searchRepositories).toHaveBeenCalledWith({
+      cwd: expect.any(String),
+      query: "paseo",
+      limit: 10,
+    });
     expect(messages).toEqual([
       {
-        type: "preview.list_config.response",
+        type: "workspace.github.search_repositories.response",
         payload: {
-          requestId: "req-list-2",
-          cwd,
-          configured: true,
-          servers: [
-            { name: "otto-dev", port: 8081 },
-            { name: "website", port: 8082 },
+          status: "success",
+          requestId: "req-repositories",
+          repositories: [
+            {
+              id: "R_paseo",
+              name: "paseo",
+              nameWithOwner: "getpaseo/paseo",
+              description: "Development environment in your pocket",
+              visibility: "public",
+              updatedAt: "2026-07-15T10:00:00Z",
+              cloneUrl: "git@github.com:getpaseo/paseo.git",
+            },
           ],
-          runningServers: [],
+          available: true,
           error: null,
         },
       },
     ]);
   });
 
-  test("preview.start.request starts a server and reports its summary", async () => {
-    const cwd = makeProjectRoot();
-    const start = vi.fn().mockResolvedValue({
-      server: {
-        serverId: "srv_1",
-        name: "otto-dev",
-        cwd,
-        port: 8081,
-        url: "http://127.0.0.1:8081/",
-        status: "running",
-        pid: 123,
-        exitCode: null,
-        boundBrowserId: null,
+  test.each([
+    {
+      error: new GitHubCliMissingError(),
+      expected: {
+        status: "unavailable",
+        requestId: "req-repositories-error",
+        reason: "gh_missing",
+        repositories: [],
+        available: false,
+        error: "GitHub CLI (gh) is not installed or not in PATH",
       },
-      reused: false,
-      logTail: ["listening"],
-    });
-    const messages: unknown[] = [];
+    },
+    {
+      error: new GitHubAuthenticationError({ stderr: "gh auth login" }),
+      expected: {
+        status: "unauthenticated",
+        requestId: "req-repositories-error",
+        repositories: [],
+        available: false,
+        error: "GitHub CLI is not authenticated. Run gh auth login on the host.",
+      },
+    },
+    {
+      error: new GitHubCommandError({
+        args: ["search", "repos", "paseo"],
+        cwd: "/tmp",
+        exitCode: 1,
+        stderr: "GitHub API unavailable",
+      }),
+      expected: {
+        status: "error",
+        requestId: "req-repositories-error",
+        repositories: [],
+        available: true,
+        error: "GitHub API unavailable",
+      },
+    },
+  ])("maps GitHub runtime failures to $expected.status", async ({ error, expected }) => {
+    const messages: SessionOutboundMessage[] = [];
     const session = createSessionForTest({
       messages,
-      previewDevServers: fakePreviewDevServers({ start }),
+      github: { searchRepositories: vi.fn().mockRejectedValue(error) },
     });
 
     await session.handleMessage({
-      type: "preview.start.request",
-      cwd,
-      name: "otto-dev",
-      requestId: "req-start-1",
-    });
-
-    expect(start).toHaveBeenCalledWith({ cwd, name: "otto-dev" });
-    expect(messages).toEqual([
-      {
-        type: "preview.start.response",
-        payload: {
-          requestId: "req-start-1",
-          cwd,
-          success: true,
-          reused: false,
-          server: {
-            serverId: "srv_1",
-            name: "otto-dev",
-            url: "http://127.0.0.1:8081/",
-            port: 8081,
-            status: "running",
-            boundBrowserId: null,
-          },
-          error: null,
-        },
-      },
-    ]);
-  });
-
-  test("preview.start.request reports the failure when the server can't start", async () => {
-    const cwd = makeProjectRoot();
-    const start = vi.fn().mockRejectedValue(new Error("Port 8081 is already in use"));
-    const messages: unknown[] = [];
-    const session = createSessionForTest({
-      messages,
-      previewDevServers: fakePreviewDevServers({ start }),
-    });
-
-    await session.handleMessage({
-      type: "preview.start.request",
-      cwd,
-      name: "otto-dev",
-      requestId: "req-start-2",
+      type: "workspace.github.search_repositories.request",
+      query: "paseo",
+      requestId: "req-repositories-error",
     });
 
     expect(messages).toEqual([
       {
-        type: "preview.start.response",
-        payload: {
-          requestId: "req-start-2",
-          cwd,
-          success: false,
-          reused: false,
-          server: null,
-          error: "Port 8081 is already in use",
-        },
-      },
-    ]);
-  });
-
-  test("preview.start.request reports disabled when no DevServerManager is wired", async () => {
-    const cwd = makeProjectRoot();
-    const messages: unknown[] = [];
-    const session = createSessionForTest({ messages });
-
-    await session.handleMessage({
-      type: "preview.start.request",
-      cwd,
-      name: "otto-dev",
-      requestId: "req-start-3",
-    });
-
-    expect(messages).toEqual([
-      {
-        type: "preview.start.response",
-        payload: {
-          requestId: "req-start-3",
-          cwd,
-          success: false,
-          reused: false,
-          server: null,
-          error: "Preview servers are disabled on this daemon.",
-        },
-      },
-    ]);
-  });
-
-  test("preview.bind_tab.request binds the browser tab to the server", async () => {
-    const bindTab = vi.fn();
-    const messages: unknown[] = [];
-    const session = createSessionForTest({
-      messages,
-      previewDevServers: fakePreviewDevServers({ bindTab }),
-    });
-
-    await session.handleMessage({
-      type: "preview.bind_tab.request",
-      serverId: "srv_1",
-      browserId: "browser-1",
-      requestId: "req-bind-1",
-    });
-
-    expect(bindTab).toHaveBeenCalledWith("srv_1", "browser-1");
-    expect(messages).toEqual([
-      {
-        type: "preview.bind_tab.response",
-        payload: { requestId: "req-bind-1", success: true, error: null },
-      },
-    ]);
-  });
-
-  test("preview.stop.request stops the server", async () => {
-    const stop = vi.fn().mockResolvedValue(undefined);
-    const messages: unknown[] = [];
-    const session = createSessionForTest({
-      messages,
-      previewDevServers: fakePreviewDevServers({ stop }),
-    });
-
-    await session.handleMessage({
-      type: "preview.stop.request",
-      serverId: "srv_1",
-      requestId: "req-stop-1",
-    });
-
-    expect(stop).toHaveBeenCalledWith("srv_1");
-    expect(messages).toEqual([
-      {
-        type: "preview.stop.response",
-        payload: { requestId: "req-stop-1", success: true, error: null },
+        type: "workspace.github.search_repositories.response",
+        payload: expected,
       },
     ]);
   });
 
   test("creates a directory and returns its normalized Project descriptor", async () => {
-    const parentDirectory = realpathSync(mkdtempSync(join(tmpdir(), "otto-project-session-")));
+    const parentDirectory = realpathSync(mkdtempSync(join(tmpdir(), "paseo-project-session-")));
     const directoryPath = join(parentDirectory, "new-project");
     const messages: SessionOutboundMessage[] = [];
     const projectAllocation = vi.fn(async (input) =>
@@ -1313,8 +970,6 @@ describe("preview RPCs", () => {
     const session = createSessionForTest({
       messages,
       projectRegistry: {
-        // The Offline gate scans registered roots before allocating a Project.
-        list: vi.fn(async () => []),
         getOrCreateActiveByRoot: projectAllocation,
       },
       workspaceGitService: {
@@ -1324,7 +979,7 @@ describe("preview RPCs", () => {
           currentBranch: null,
           remoteUrl: null,
           worktreeRoot: null,
-          isOttoOwnedWorktree: false as const,
+          isPaseoOwnedWorktree: false as const,
           mainRepoRoot: null,
         })),
       },
@@ -1363,15 +1018,8 @@ describe("preview RPCs", () => {
               projectCustomName: null,
               projectCustomIconRevision: null,
               projectIconRevision: "automatic:none:v1",
-              projectOffline: false,
               projectRootPath: directoryPath,
               projectKind: "non_git",
-              // A freshly created directory has none of Otto's per-project
-              // locations configured yet.
-              projectKnowledgeLocation: null,
-              projectArtifactLocation: null,
-              projectWorkflowLocation: null,
-              projectKanban: null,
             },
             error: null,
             errorCode: null,
@@ -1383,48 +1031,52 @@ describe("preview RPCs", () => {
     }
   });
 
-  test("preview.stop.request reports the failure when the server can't be stopped", async () => {
-    const stop = vi.fn().mockRejectedValue(new Error('Unknown serverId "srv_1".'));
-    const messages: unknown[] = [];
+  test("rolls back the directory when Project registration fails", async () => {
+    const parentDirectory = realpathSync(mkdtempSync(join(tmpdir(), "paseo-project-session-")));
+    const directoryPath = join(parentDirectory, "unregistered");
+    const messages: SessionOutboundMessage[] = [];
     const session = createSessionForTest({
       messages,
-      previewDevServers: fakePreviewDevServers({ stop }),
-    });
-
-    await session.handleMessage({
-      type: "preview.stop.request",
-      serverId: "srv_1",
-      requestId: "req-stop-2",
-    });
-
-    expect(messages).toEqual([
-      {
-        type: "preview.stop.response",
-        payload: { requestId: "req-stop-2", success: false, error: 'Unknown serverId "srv_1".' },
+      projectRegistry: {
+        getOrCreateActiveByRoot: vi.fn().mockRejectedValue(new Error("registry unavailable")),
       },
-    ]);
-  });
-
-  test("preview.stop.request reports disabled when no DevServerManager is wired", async () => {
-    const messages: unknown[] = [];
-    const session = createSessionForTest({ messages });
-
-    await session.handleMessage({
-      type: "preview.stop.request",
-      serverId: "srv_1",
-      requestId: "req-stop-3",
+      workspaceGitService: {
+        getCheckout: vi.fn(async (cwd: string) => ({
+          cwd,
+          isGit: false as const,
+          currentBranch: null,
+          remoteUrl: null,
+          worktreeRoot: null,
+          isPaseoOwnedWorktree: false as const,
+          mainRepoRoot: null,
+        })),
+      },
     });
 
-    expect(messages).toEqual([
-      {
-        type: "preview.stop.response",
-        payload: {
-          requestId: "req-stop-3",
-          success: false,
-          error: "Preview servers are disabled on this daemon.",
+    try {
+      await session.handleMessage({
+        type: "project.create_directory.request",
+        parentPath: parentDirectory,
+        name: "unregistered",
+        requestId: "req-registration-failure",
+      });
+
+      expect(existsSync(directoryPath)).toBe(false);
+      expect(messages).toEqual([
+        {
+          type: "project.create_directory.response",
+          payload: {
+            requestId: "req-registration-failure",
+            directoryPath,
+            project: null,
+            error: "Failed to register project: registry unavailable",
+            errorCode: "registration_failed",
+          },
         },
-      },
-    ]);
+      ]);
+    } finally {
+      rmSync(parentDirectory, { recursive: true, force: true });
+    }
   });
 });
 
@@ -1509,9 +1161,6 @@ describe("file explorer binary responses", () => {
         size: 5,
         encoding: "binary",
         modifiedAt: expect.any(String),
-        // Sent since the transfer became streaming: it pins the exact revision
-        // the chunks came from, so a file rewritten mid-transfer is detectable
-        // rather than arriving as two spliced revisions.
         revision: expect.any(String),
       },
       payload: new Uint8Array(),
@@ -1556,7 +1205,7 @@ describe("workspace file access (behavior preservation)", () => {
     const cwd = makeDir("file-access-list-");
     writeFileSync(join(cwd, "a.txt"), "alpha");
     const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({ messages, workspaceRoots: [cwd] });
+    const session = createSessionForTest({ messages });
 
     await session.handleMessage({
       type: "file_explorer_request",
@@ -1606,7 +1255,6 @@ describe("workspace file access (behavior preservation)", () => {
     const messages: SessionOutboundMessage[] = [];
     const session = createSessionForTest({
       messages,
-      workspaceRoots: [cwd],
       downloadTokenStore: new DownloadTokenStore({ ttlMs: 60_000 }),
     });
 
@@ -1654,7 +1302,7 @@ describe("workspace file access (behavior preservation)", () => {
   test("project_icon responds for a workspace cwd", async () => {
     const cwd = makeDir("file-access-icon-");
     const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({ messages, workspaceRoots: [cwd] });
+    const session = createSessionForTest({ messages });
 
     await session.handleMessage({
       type: "project_icon_request",
@@ -1672,47 +1320,60 @@ describe("workspace file access (behavior preservation)", () => {
   });
 
   test("file upload round-trips bytes through binary frames", async () => {
-    const ottoHome = makeDir("file-access-upload-");
+    const paseoHome = makeDir("file-access-upload-");
     const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({ messages, ottoHome });
+    const session = createSessionForTest({ messages, paseoHome });
 
-    await session.handleMessage({
-      type: "file.upload.request",
-      fileName: "notes.txt",
-      mimeType: "text/plain",
-      size: 11,
-      modifiedAt: "2026-05-02T00:00:00.000Z",
-      requestId: "req-upload",
-    });
-    await session.handleBinaryFrame({
-      kind: "file_transfer",
-      frame: uploadFrame({
-        opcode: FileTransferOpcode.FileBegin,
+    const source = {};
+    await session.handleMessage(
+      {
+        type: "file.upload.request",
+        fileName: "notes.txt",
+        mimeType: "text/plain",
+        size: 11,
+        modifiedAt: "2026-05-02T00:00:00.000Z",
         requestId: "req-upload",
-        metadata: {
-          mime: "text/plain",
-          size: 11,
-          encoding: "binary",
-          modifiedAt: "2026-05-02T00:00:00.000Z",
-          fileName: "notes.txt",
-        },
-      }),
-    });
-    await session.handleBinaryFrame({
-      kind: "file_transfer",
-      frame: uploadFrame({
-        opcode: FileTransferOpcode.FileChunk,
-        requestId: "req-upload",
-        payload: new TextEncoder().encode("hello world"),
-      }),
-    });
-    await session.handleBinaryFrame({
-      kind: "file_transfer",
-      frame: uploadFrame({
-        opcode: FileTransferOpcode.FileEnd,
-        requestId: "req-upload",
-      }),
-    });
+      },
+      source,
+    );
+    await session.handleBinaryFrame(
+      {
+        kind: "file_transfer",
+        frame: uploadFrame({
+          opcode: FileTransferOpcode.FileBegin,
+          requestId: "req-upload",
+          metadata: {
+            mime: "text/plain",
+            size: 11,
+            encoding: "binary",
+            modifiedAt: "2026-05-02T00:00:00.000Z",
+            fileName: "notes.txt",
+          },
+        }),
+      },
+      source,
+    );
+    await session.handleBinaryFrame(
+      {
+        kind: "file_transfer",
+        frame: uploadFrame({
+          opcode: FileTransferOpcode.FileChunk,
+          requestId: "req-upload",
+          payload: new TextEncoder().encode("hello world"),
+        }),
+      },
+      source,
+    );
+    await session.handleBinaryFrame(
+      {
+        kind: "file_transfer",
+        frame: uploadFrame({
+          opcode: FileTransferOpcode.FileEnd,
+          requestId: "req-upload",
+        }),
+      },
+      source,
+    );
 
     const response = messages.find((message) => message.type === "file.upload.response");
     if (response?.type !== "file.upload.response") {
@@ -1967,137 +1628,6 @@ function createProjectRecord(rootPath: string, archivedAt: string | null = null)
   };
 }
 
-describe("project Artifact storage RPC", () => {
-  test("persists the project override and emits its accepted response", async () => {
-    const messages: unknown[] = [];
-    let project: PersistedProjectRecord = {
-      ...createPersistedProjectRecord({
-        projectId: "project-artifact-store",
-        rootPath: makeOnlineProjectRoot("artifact-store-session-test-"),
-        kind: "git",
-        displayName: "Artifact store",
-        createdAt: "2026-08-29T00:00:00.000Z",
-        updatedAt: "2026-08-29T00:00:00.000Z",
-      }),
-      artifactLocation: null,
-      artifactDirectoryName: null,
-    };
-    const update = vi.fn(async (_projectId, updater) => {
-      project = updater(project);
-      return project;
-    });
-    const session = createSessionForTest({
-      messages,
-      projectRegistry: {
-        list: vi.fn(async () => [project]),
-        get: vi.fn(async () => project),
-        update,
-      },
-    });
-
-    await session.handleMessage({
-      type: "project.artifact.store.set.request",
-      projectId: project.projectId,
-      location: "host",
-      requestId: "artifact-store-session-1",
-    });
-
-    expect(update).toHaveBeenCalledOnce();
-    expect(project.artifactLocation).toBe("host");
-    expect(messages).toContainEqual({
-      type: "project.artifact.store.set.response",
-      payload: {
-        requestId: "artifact-store-session-1",
-        projectId: "project-artifact-store",
-        accepted: true,
-        error: null,
-      },
-    });
-  });
-
-  test("reports a recoverable error when the project no longer exists", async () => {
-    const messages: unknown[] = [];
-    const update = vi.fn();
-    const session = createSessionForTest({
-      messages,
-      projectRegistry: {
-        list: vi.fn(async () => []),
-        get: vi.fn(async () => null),
-        update,
-      },
-    });
-
-    await session.handleMessage({
-      type: "project.artifact.store.set.request",
-      projectId: "missing-project",
-      location: "repository",
-      requestId: "artifact-store-session-missing-1",
-    });
-
-    expect(update).not.toHaveBeenCalled();
-    expect(messages).toContainEqual({
-      type: "project.artifact.store.set.response",
-      payload: {
-        requestId: "artifact-store-session-missing-1",
-        projectId: "missing-project",
-        accepted: false,
-        error: "Project not found.",
-      },
-    });
-  });
-});
-
-describe("project Workflow storage RPC", () => {
-  test("persists only the independent Workflow override", async () => {
-    const messages: unknown[] = [];
-    let project: PersistedProjectRecord = {
-      ...createPersistedProjectRecord({
-        projectId: "project-workflow-store",
-        rootPath: makeOnlineProjectRoot("workflow-store-session-test-"),
-        kind: "git",
-        displayName: "Workflow store",
-        createdAt: "2026-08-29T00:00:00.000Z",
-        updatedAt: "2026-08-29T00:00:00.000Z",
-      }),
-      artifactLocation: "repository",
-      workflowLocation: null,
-      workflowDirectoryName: null,
-    };
-    const update = vi.fn(async (_projectId, updater) => {
-      project = updater(project);
-      return project;
-    });
-    const session = createSessionForTest({
-      messages,
-      projectRegistry: {
-        list: vi.fn(async () => [project]),
-        get: vi.fn(async () => project),
-        update,
-      },
-    });
-
-    await session.handleMessage({
-      type: "project.workflow.store.set.request",
-      projectId: project.projectId,
-      location: "host",
-      requestId: "workflow-store-session-1",
-    });
-
-    expect(update).toHaveBeenCalledOnce();
-    expect(project.workflowLocation).toBe("host");
-    expect(project.artifactLocation).toBe("repository");
-    expect(messages).toContainEqual({
-      type: "project.workflow.store.set.response",
-      payload: {
-        requestId: "workflow-store-session-1",
-        projectId: "project-workflow-store",
-        accepted: true,
-        error: null,
-      },
-    });
-  });
-});
-
 describe("project config RPC authorization", () => {
   const tempDirs: string[] = [];
 
@@ -2115,7 +1645,7 @@ describe("project config RPC authorization", () => {
 
   test("read_project_config_request accepts the same root with a trailing slash", async () => {
     const repoRoot = makeRoot();
-    writeFileSync(join(repoRoot, "otto.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
+    writeFileSync(join(repoRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
@@ -2150,7 +1680,10 @@ describe("project config RPC authorization", () => {
     "read_project_config_request accepts a symlink to an active project root",
     async () => {
       const repoRoot = makeRoot();
-      writeFileSync(join(repoRoot, "otto.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
+      writeFileSync(
+        join(repoRoot, "paseo.json"),
+        JSON.stringify({ worktree: { setup: "npm ci" } }),
+      );
       const linkRoot = join(makeRoot(), "link");
       symlinkSync(repoRoot, linkRoot, "dir");
       const messages: unknown[] = [];
@@ -2232,7 +1765,7 @@ describe("project config RPC authorization", () => {
   test("read_project_config_request emits raw lifecycle forms for a known project root", async () => {
     const repoRoot = makeRoot();
     writeFileSync(
-      join(repoRoot, "otto.json"),
+      join(repoRoot, "paseo.json"),
       JSON.stringify({ worktree: { setup: "npm install", teardown: ["npm run clean"] } }),
     );
     const messages: unknown[] = [];
@@ -2266,14 +1799,9 @@ describe("project config RPC authorization", () => {
 
   test("write_project_config_request emits stale and write-failed inline domain failures", async () => {
     const staleRoot = makeRoot();
-    writeFileSync(join(staleRoot, "otto.json"), JSON.stringify({ worktree: { setup: "old" } }));
-    // The root must exist (a missing or non-directory root makes the Project
-    // Offline and the request is refused before it reaches the writer), so the
-    // write fails at the rename instead: otto.json is occupied by a directory.
-    const writeFailedRoot = makeRoot();
-    const blockedConfigPath = join(writeFailedRoot, "otto.json");
-    mkdirSync(blockedConfigPath);
-    const blockedConfigStats = statSync(blockedConfigPath);
+    writeFileSync(join(staleRoot, "paseo.json"), JSON.stringify({ worktree: { setup: "old" } }));
+    const writeFailedRoot = join(makeRoot(), "not-a-directory");
+    writeFileSync(writeFailedRoot, "file");
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
@@ -2299,7 +1827,7 @@ describe("project config RPC authorization", () => {
       requestId: "write-failed-1",
       repoRoot: writeFailedRoot,
       config: { worktree: { setup: "new" } },
-      expectedRevision: { mtimeMs: blockedConfigStats.mtimeMs, size: blockedConfigStats.size },
+      expectedRevision: null,
     });
 
     expect(messages).toEqual([
@@ -2432,10 +1960,10 @@ describe("daemon status + pairing RPC", () => {
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
-      ottoHome: makeHome(),
+      paseoHome: makeHome(),
       serverId: "srv-test",
       daemonVersion: "9.9.9",
-      daemonRuntimeConfig: { listen: "127.0.0.1:6868", getRelayConfig: () => null },
+      daemonRuntimeConfig: { listen: "127.0.0.1:6767", getRelayConfig: () => null },
       agentManager: {
         listProviderAvailability: vi.fn().mockResolvedValue([
           { provider: "claude", available: true },
@@ -2456,7 +1984,7 @@ describe("daemon status + pairing RPC", () => {
           pid: process.pid,
           nodePath: process.execPath,
           startedAt: null,
-          listen: "127.0.0.1:6868",
+          listen: "127.0.0.1:6767",
           relay: null,
           providers: [
             { provider: "claude", available: true, error: null },
@@ -2471,10 +1999,10 @@ describe("daemon status + pairing RPC", () => {
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
-      ottoHome: makeHome(),
+      paseoHome: makeHome(),
       serverId: "srv-test",
       daemonVersion: "9.9.9",
-      daemonRuntimeConfig: { listen: "127.0.0.1:6868", getRelayConfig: () => null },
+      daemonRuntimeConfig: { listen: "127.0.0.1:6767", getRelayConfig: () => null },
       agentManager: {
         listProviderAvailability: vi.fn().mockRejectedValue(new Error("provider listing failed")),
       },
@@ -2507,13 +2035,13 @@ describe("daemon status + pairing RPC", () => {
     const messages: unknown[] = [];
     const session = createSessionForTest({
       messages,
-      ottoHome: makeHome(),
+      paseoHome: makeHome(),
       daemonRuntimeConfig: {
-        listen: "127.0.0.1:6868",
+        listen: "127.0.0.1:6767",
         getRelayConfig: () => ({
           enabled: false,
-          endpoint: "relay.otto-code.ai:443",
-          publicEndpoint: "relay.otto-code.ai:443",
+          endpoint: "relay.paseo.sh:443",
+          publicEndpoint: "relay.paseo.sh:443",
           useTls: true,
           publicUseTls: true,
         }),
@@ -2553,8 +2081,8 @@ function createWorkspaceGitSnapshot(
       repoRoot: cwd,
       mainRepoRoot: null,
       currentBranch: "feature/service",
-      remoteUrl: "https://github.com/otto-code-ai/otto-code.git",
-      isOttoOwnedWorktree: false,
+      remoteUrl: "https://github.com/getpaseo/paseo.git",
+      isPaseoOwnedWorktree: false,
       isDirty: true,
       baseRef: "main",
       aheadBehind: { ahead: 2, behind: 1 },
@@ -2564,35 +2092,13 @@ function createWorkspaceGitSnapshot(
       diffStat: { additions: 3, deletions: 1 },
       ...overrides?.git,
     },
-    // Otto's neutral forge block. Per-PR facts live in a `forgeSpecific`
-    // envelope tagged with the forge that produced them, and featuresEnabled is
-    // paired with the authState it is derived from. Callers may still spell the
-    // facts `github:` inside pullRequest; that is translated below, since every
-    // fixture in this file is describing GitHub.
-    forge: buildForgeSnapshotFixture(overrides?.forge),
+    forge: {
+      featuresEnabled: false,
+      pullRequest: null,
+      error: null,
+      ...overrides?.forge,
+    },
   };
-}
-
-function buildForgeSnapshotFixture(overrides?: Record<string, unknown>) {
-  const { pullRequest, featuresEnabled, authState, ...rest } = overrides ?? {};
-  const enabled = (featuresEnabled as boolean | undefined) ?? false;
-  return {
-    featuresEnabled: enabled,
-    authState: (authState as string | undefined) ?? (enabled ? "authenticated" : "no_remote"),
-    ...(enabled ? { forge: "github" } : {}),
-    error: null,
-    ...rest,
-    pullRequest: toForgePullRequestFixture(pullRequest),
-  };
-}
-
-function toForgePullRequestFixture(pullRequest: unknown) {
-  if (!pullRequest || typeof pullRequest !== "object") {
-    return null;
-  }
-  const { github, forgeSpecific, ...rest } = pullRequest as Record<string, unknown>;
-  const facts = forgeSpecific ?? (github ? { forge: "github", ...(github as object) } : undefined);
-  return { ...rest, ...(facts ? { forgeSpecific: facts } : {}) };
 }
 
 function createTerminalManagerStub(options?: { setTerminalTitle?: ReturnType<typeof vi.fn> }): {
@@ -2809,16 +2315,10 @@ describe("session provider refresh cwd routing", () => {
       requestId: "models-loading-home",
     });
 
-    // The Offline-project gate is awaited before dispatch, so warmup starts a tick later.
-    await vi.waitFor(() =>
-      expect(warmUpSnapshotForCwd).toHaveBeenCalledWith({
-        cwd: undefined,
-        providers: ["codex"],
-      }),
-    );
-    expect(messages).not.toContainEqual(
-      expect.objectContaining({ type: "list_provider_models_response" }),
-    );
+    expect(warmUpSnapshotForCwd).toHaveBeenCalledWith({
+      cwd: undefined,
+      providers: ["codex"],
+    });
     warmupDeferred.resolve();
     await responsePromise;
 
@@ -2881,14 +2381,14 @@ describe("session checkout merge handling", () => {
         baseRef: "main",
         mode: "merge",
       },
-      { ottoHome: "/tmp/otto-home" },
+      { paseoHome: "/tmp/paseo-home" },
     );
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/base-worktree", {
       force: true,
       reason: "merge-to-base",
     });
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledTimes(1);
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/base-worktree");
+    expect(github.invalidate).toHaveBeenCalledTimes(1);
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/base-worktree" });
     expect(checkoutDiffManager.scheduleRefreshForCwd).toHaveBeenCalledWith("/tmp/request-worktree");
     expect(messages).toContainEqual({
       type: "checkout_merge_response",
@@ -2960,15 +2460,19 @@ describe("session checkout merge handling", () => {
       requestId: "request-merge-from-base-success",
     });
 
-    expect(checkoutGitMocks.mergeFromBase).toHaveBeenCalledWith("/tmp/request-worktree", {
-      baseRef: "main",
-      requireCleanTarget: true,
-    });
+    expect(checkoutGitMocks.mergeFromBase).toHaveBeenCalledWith(
+      "/tmp/request-worktree",
+      {
+        baseRef: "main",
+        requireCleanTarget: true,
+      },
+      { paseoHome: "/tmp/paseo-home", worktreesRoot: undefined },
+    );
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
       force: true,
       reason: "merge-from-base",
     });
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/request-worktree");
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
     expect(messages).toContainEqual({
       type: "checkout_merge_from_base_response",
       payload: {
@@ -3009,13 +2513,13 @@ diff --git a/file.txt b/file.txt
   }
 
   function writeConfig(repoRoot: string, config: unknown): void {
-    writeFileSync(join(repoRoot, "otto.json"), `${JSON.stringify(config)}\n`);
+    writeFileSync(join(repoRoot, "paseo.json"), `${JSON.stringify(config)}\n`);
   }
 
   async function generateCommitPromptWithConfig(config: unknown): Promise<string> {
     const repoRoot = makeRoot();
     if (typeof config === "string") {
-      writeFileSync(join(repoRoot, "otto.json"), config);
+      writeFileSync(join(repoRoot, "paseo.json"), config);
     } else if (config !== undefined) {
       writeConfig(repoRoot, config);
     }
@@ -3157,9 +2661,9 @@ diff --git a/file.txt b/file.txt
   });
 
   test.each([
-    ["otto.json missing", undefined],
-    ["otto.json exists but invalid JSON", "{ nope"],
-    ["otto.json valid but missing metadataGeneration", {}],
+    ["paseo.json missing", undefined],
+    ["paseo.json exists but invalid JSON", "{ nope"],
+    ["paseo.json valid but missing metadataGeneration", {}],
     ["metadataGeneration is schema-invalid", { metadataGeneration: "not an object" }],
     [
       "metadataGeneration exists but missing commitMessage",
@@ -3305,13 +2809,13 @@ diff --git a/file.txt b/file.txt
   }
 
   function writeConfig(repoRoot: string, config: unknown): void {
-    writeFileSync(join(repoRoot, "otto.json"), `${JSON.stringify(config)}\n`);
+    writeFileSync(join(repoRoot, "paseo.json"), `${JSON.stringify(config)}\n`);
   }
 
   async function generatePullRequestCallWithConfig(config: unknown): Promise<unknown> {
     const repoRoot = makeRoot();
     if (typeof config === "string") {
-      writeFileSync(join(repoRoot, "otto.json"), config);
+      writeFileSync(join(repoRoot, "paseo.json"), config);
     } else if (config !== undefined) {
       writeConfig(repoRoot, config);
     }
@@ -3338,7 +2842,7 @@ diff --git a/file.txt b/file.txt
       body: "Updates file.",
     });
     checkoutGitMocks.createPullRequest.mockResolvedValue({
-      url: "https://github.com/otto-code-ai/otto-code/pull/1",
+      url: "https://github.com/getpaseo/paseo/pull/1",
       number: 1,
     });
     const session = createSessionForTest({ workspaceGitService });
@@ -3383,7 +2887,7 @@ diff --git a/file.txt b/file.txt
       body: "Updates file.",
     });
     checkoutGitMocks.createPullRequest.mockResolvedValue({
-      url: "https://github.com/otto-code-ai/otto-code/pull/1",
+      url: "https://github.com/getpaseo/paseo/pull/1",
       number: 1,
     });
     const session = createSessionForTest({ workspaceGitService, messages });
@@ -3420,12 +2924,13 @@ diff --git a/file.txt b/file.txt
         base: "main",
       },
       expect.anything(),
+      { paseoHome: "/tmp/paseo-home", worktreesRoot: undefined },
     );
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",
       payload: {
         cwd: "/tmp/request-worktree",
-        url: "https://github.com/otto-code-ai/otto-code/pull/1",
+        url: "https://github.com/getpaseo/paseo/pull/1",
         number: 1,
         error: null,
         requestId: "request-generated-pr",
@@ -3434,9 +2939,9 @@ diff --git a/file.txt b/file.txt
   });
 
   test.each([
-    ["otto.json missing", undefined],
-    ["otto.json exists but invalid JSON", "{ nope"],
-    ["otto.json valid but missing metadataGeneration", {}],
+    ["paseo.json missing", undefined],
+    ["paseo.json exists but invalid JSON", "{ nope"],
+    ["paseo.json valid but missing metadataGeneration", {}],
     ["metadataGeneration is schema-invalid", { metadataGeneration: "not an object" }],
     [
       "metadataGeneration exists but missing pullRequest",
@@ -3522,7 +3027,7 @@ diff --git a/file.txt b/file.txt
       new StructuredAgentFallbackError([]),
     );
     checkoutGitMocks.createPullRequest.mockResolvedValue({
-      url: "https://github.com/otto-code-ai/otto-code/pull/9",
+      url: "https://github.com/getpaseo/paseo/pull/9",
       number: 9,
     });
     const session = createSessionForTest({ workspaceGitService, messages });
@@ -3544,12 +3049,13 @@ diff --git a/file.txt b/file.txt
         base: "main",
       },
       expect.anything(),
+      { paseoHome: "/tmp/paseo-home", worktreesRoot: undefined },
     );
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",
       payload: {
         cwd: "/tmp/request-worktree",
-        url: "https://github.com/otto-code-ai/otto-code/pull/9",
+        url: "https://github.com/getpaseo/paseo/pull/9",
         number: 9,
         error: null,
         requestId: "request-generated-pr-fallback",
@@ -3564,7 +3070,7 @@ diff --git a/file.txt b/file.txt
       getSnapshot: vi.fn().mockResolvedValue({}),
     };
     checkoutGitMocks.createPullRequest.mockResolvedValue({
-      url: "https://github.com/otto-code-ai/otto-code/pull/2",
+      url: "https://github.com/getpaseo/paseo/pull/2",
       number: 2,
     });
     const session = createSessionForTest({ github, workspaceGitService, messages });
@@ -3582,12 +3088,12 @@ diff --git a/file.txt b/file.txt
       force: true,
       reason: "create-pr",
     });
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/request-worktree");
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",
       payload: {
         cwd: "/tmp/request-worktree",
-        url: "https://github.com/otto-code-ai/otto-code/pull/2",
+        url: "https://github.com/getpaseo/paseo/pull/2",
         number: 2,
         error: null,
         requestId: "request-pr-create",
@@ -3674,7 +3180,7 @@ describe("session checkout pull request merge", () => {
       force: true,
       reason: "merge-pr",
     });
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/request-worktree");
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
     expect(messages).toContainEqual({
       type: "checkout_pr_merge_response",
       payload: {
@@ -3692,10 +3198,6 @@ describe("session checkout pull request merge", () => {
       invalidate: vi.fn(),
       mergePullRequest: vi.fn(
         async (input: { status?: { forgeSpecific?: { mergeStateStatus?: string | null } } }) => {
-          // Reads the facts where the session actually puts them. Pointed at the
-          // old `github` key this stub never saw BLOCKED, so it reported success
-          // and the test then measured the post-merge refresh instead of the
-          // rejection it is named for.
           if (input.status?.forgeSpecific?.mergeStateStatus === "BLOCKED") {
             throw new Error("GitHub does not report this pull request as ready for direct merge");
           }
@@ -3755,7 +3257,7 @@ describe("session checkout pull request merge", () => {
         }),
       }),
     );
-    expect(workspaceGitService.invalidateForge).not.toHaveBeenCalled();
+    expect(github.invalidate).not.toHaveBeenCalled();
     expect(messages).toContainEqual({
       type: "checkout_pr_merge_response",
       payload: {
@@ -3766,6 +3268,61 @@ describe("session checkout pull request merge", () => {
           message: "GitHub does not report this pull request as ready for direct merge",
         },
         requestId: "request-pr-merge-fresh-blocked",
+      },
+    });
+  });
+
+  test("delegates direct merge when the current change request lacks GitHub-only merge facts", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      mergePullRequest: vi.fn().mockResolvedValue({ success: true }),
+    };
+    const workspaceGitService = {
+      getSnapshot: vi.fn().mockResolvedValue({
+        forge: {
+          pullRequest: {
+            number: 42,
+            mergeable: "MERGEABLE",
+          },
+        },
+      }),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await session.handleMessage({
+      type: "checkout_pr_merge_request",
+      cwd: "/tmp/request-worktree",
+      mergeMethod: "squash",
+      requestId: "request-pr-merge-missing-github-facts",
+    });
+
+    expect(github.mergePullRequest).toHaveBeenCalledWith({
+      cwd: "/tmp/request-worktree",
+      prNumber: 42,
+      mergeMethod: "squash",
+      status: {
+        number: 42,
+        mergeable: "MERGEABLE",
+      },
+    });
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
+    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(1, "/tmp/request-worktree", {
+      force: true,
+      includeForge: true,
+      reason: "merge-pr-validation",
+    });
+    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(2, "/tmp/request-worktree", {
+      force: true,
+      reason: "merge-pr",
+    });
+    expect(messages).toContainEqual({
+      type: "checkout_pr_merge_response",
+      payload: {
+        cwd: "/tmp/request-worktree",
+        success: true,
+        error: null,
+        requestId: "request-pr-merge-missing-github-facts",
       },
     });
   });
@@ -3830,9 +3387,7 @@ describe("session checkout pull request merge", () => {
 describe("session checkout pull request auto-merge", () => {
   const autoMergeGithubFacts = (
     overrides: Partial<GitHubPullRequestStatusFacts> = {},
-  ): GitHubForgeSpecificStatusFacts => ({
-    // The tag isGitHubPullRequestStatusFacts keys on; without it the merge
-    // guards treat the envelope as unknown facts.
+  ): GitHubPullRequestStatusFacts & { forge: "github" } => ({
     forge: "github",
     mergeStateStatus: "BLOCKED",
     autoMergeRequest: null,
@@ -3856,7 +3411,10 @@ describe("session checkout pull request auto-merge", () => {
     const messages: unknown[] = [];
     const github = {
       invalidate: vi.fn(),
-      enablePullRequestAutoMerge: vi.fn().mockResolvedValue({ success: true }),
+      enablePullRequestAutoMerge: vi.fn(async (input) => {
+        assertPullRequestAutoMergeEnableReady(input);
+        return { success: true };
+      }),
     };
     const workspaceGitService = {
       getSnapshot: vi.fn().mockResolvedValue({
@@ -3872,7 +3430,7 @@ describe("session checkout pull request auto-merge", () => {
     const session = createSessionForTest({ github, workspaceGitService, messages });
 
     await session.handleMessage({
-      type: "checkout.github.set_auto_merge.request",
+      type: "checkout.forge.set_auto_merge.request",
       cwd: "/tmp/request-worktree",
       enabled: true,
       mergeMethod: "squash",
@@ -3898,9 +3456,9 @@ describe("session checkout pull request auto-merge", () => {
       force: true,
       reason: "enable-pr-auto-merge",
     });
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/request-worktree");
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
     expect(messages).toContainEqual({
-      type: "checkout.github.set_auto_merge.response",
+      type: "checkout.forge.set_auto_merge.response",
       payload: {
         cwd: "/tmp/request-worktree",
         enabled: true,
@@ -3915,7 +3473,10 @@ describe("session checkout pull request auto-merge", () => {
     const messages: unknown[] = [];
     const github = {
       invalidate: vi.fn(),
-      disablePullRequestAutoMerge: vi.fn().mockResolvedValue({ success: true }),
+      disablePullRequestAutoMerge: vi.fn(async (input) => {
+        assertPullRequestAutoMergeDisableReady(input);
+        return { success: true };
+      }),
     };
     const workspaceGitService = {
       getSnapshot: vi.fn().mockResolvedValue({
@@ -3926,7 +3487,7 @@ describe("session checkout pull request auto-merge", () => {
               autoMergeRequest: {
                 enabledAt: "2026-05-13T17:00:00Z",
                 mergeMethod: "SQUASH",
-                enabledBy: "devuser",
+                enabledBy: "moboudra",
               },
               viewerCanEnableAutoMerge: false,
               viewerCanDisableAutoMerge: true,
@@ -3938,7 +3499,7 @@ describe("session checkout pull request auto-merge", () => {
     const session = createSessionForTest({ github, workspaceGitService, messages });
 
     await session.handleMessage({
-      type: "checkout.github.set_auto_merge.request",
+      type: "checkout.forge.set_auto_merge.request",
       cwd: "/tmp/request-worktree",
       enabled: false,
       requestId: "request-pr-auto-merge-disable",
@@ -3953,7 +3514,7 @@ describe("session checkout pull request auto-merge", () => {
           autoMergeRequest: {
             enabledAt: "2026-05-13T17:00:00Z",
             mergeMethod: "SQUASH",
-            enabledBy: "devuser",
+            enabledBy: "moboudra",
           },
           viewerCanEnableAutoMerge: false,
           viewerCanDisableAutoMerge: true,
@@ -3969,9 +3530,9 @@ describe("session checkout pull request auto-merge", () => {
       force: true,
       reason: "disable-pr-auto-merge",
     });
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/request-worktree");
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
     expect(messages).toContainEqual({
-      type: "checkout.github.set_auto_merge.response",
+      type: "checkout.forge.set_auto_merge.response",
       payload: {
         cwd: "/tmp/request-worktree",
         enabled: false,
@@ -4001,7 +3562,7 @@ describe("session checkout pull request auto-merge", () => {
     const session = createSessionForTest({ github, workspaceGitService, messages });
 
     await session.handleMessage({
-      type: "checkout.github.set_auto_merge.request",
+      type: "checkout.forge.set_auto_merge.request",
       cwd: "/tmp/request-worktree",
       enabled: true,
       mergeMethod: "merge",
@@ -4009,7 +3570,7 @@ describe("session checkout pull request auto-merge", () => {
     });
 
     expect(messages).toContainEqual({
-      type: "checkout.github.set_auto_merge.response",
+      type: "checkout.forge.set_auto_merge.response",
       payload: {
         cwd: "/tmp/request-worktree",
         enabled: true,
@@ -4027,7 +3588,10 @@ describe("session checkout pull request auto-merge", () => {
     const messages: unknown[] = [];
     const github = {
       invalidate: vi.fn(),
-      enablePullRequestAutoMerge: vi.fn().mockResolvedValue({ success: true }),
+      enablePullRequestAutoMerge: vi.fn(async (input) => {
+        assertPullRequestAutoMergeEnableReady(input);
+        return { success: true };
+      }),
     };
     const workspaceGitService = {
       getSnapshot: vi.fn().mockResolvedValue({
@@ -4050,22 +3614,24 @@ describe("session checkout pull request auto-merge", () => {
     const session = createSessionForTest({ github, workspaceGitService, messages });
 
     await session.handleMessage({
-      type: "checkout.github.set_auto_merge.request",
+      type: "checkout.forge.set_auto_merge.request",
       cwd: "/tmp/request-worktree",
       enabled: true,
       mergeMethod: "squash",
       requestId: "request-pr-auto-merge-method-disabled",
     });
 
-    expect(github.enablePullRequestAutoMerge).not.toHaveBeenCalled();
-    expect(workspaceGitService.invalidateForge).not.toHaveBeenCalled();
+    // The adapter owns the readiness precondition and rejects before any side
+    // effect, so it is invoked but the mutation never completes (no invalidate).
+    expect(github.enablePullRequestAutoMerge).toHaveBeenCalled();
+    expect(github.invalidate).not.toHaveBeenCalled();
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
       force: true,
       includeForge: true,
       reason: "auto-merge-validation",
     });
     expect(messages).toContainEqual({
-      type: "checkout.github.set_auto_merge.response",
+      type: "checkout.forge.set_auto_merge.response",
       payload: {
         cwd: "/tmp/request-worktree",
         enabled: true,
@@ -4083,7 +3649,10 @@ describe("session checkout pull request auto-merge", () => {
     const messages: unknown[] = [];
     const github = {
       invalidate: vi.fn(),
-      disablePullRequestAutoMerge: vi.fn().mockResolvedValue({ success: true }),
+      disablePullRequestAutoMerge: vi.fn(async (input) => {
+        assertPullRequestAutoMergeDisableReady(input);
+        return { success: true };
+      }),
     };
     const workspaceGitService = {
       getSnapshot: vi.fn().mockResolvedValue({
@@ -4106,21 +3675,23 @@ describe("session checkout pull request auto-merge", () => {
     const session = createSessionForTest({ github, workspaceGitService, messages });
 
     await session.handleMessage({
-      type: "checkout.github.set_auto_merge.request",
+      type: "checkout.forge.set_auto_merge.request",
       cwd: "/tmp/request-worktree",
       enabled: false,
       requestId: "request-pr-auto-merge-disable-forbidden",
     });
 
-    expect(github.disablePullRequestAutoMerge).not.toHaveBeenCalled();
-    expect(workspaceGitService.invalidateForge).not.toHaveBeenCalled();
+    // The adapter owns the readiness precondition and rejects before any side
+    // effect, so it is invoked but the mutation never completes (no invalidate).
+    expect(github.disablePullRequestAutoMerge).toHaveBeenCalled();
+    expect(github.invalidate).not.toHaveBeenCalled();
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
       force: true,
       includeForge: true,
       reason: "auto-merge-validation",
     });
     expect(messages).toContainEqual({
-      type: "checkout.github.set_auto_merge.response",
+      type: "checkout.forge.set_auto_merge.response",
       payload: {
         cwd: "/tmp/request-worktree",
         enabled: false,
@@ -4138,7 +3709,10 @@ describe("session checkout pull request auto-merge", () => {
     const messages: unknown[] = [];
     const github = {
       invalidate: vi.fn(),
-      disablePullRequestAutoMerge: vi.fn().mockResolvedValue({ success: true }),
+      disablePullRequestAutoMerge: vi.fn(async (input) => {
+        assertPullRequestAutoMergeDisableReady(input);
+        return { success: true };
+      }),
     };
     const workspaceGitService = {
       getSnapshot: vi.fn().mockResolvedValue({
@@ -4149,7 +3723,7 @@ describe("session checkout pull request auto-merge", () => {
               autoMergeRequest: {
                 enabledAt: "2026-05-13T17:00:00Z",
                 mergeMethod: "SQUASH",
-                enabledBy: "devuser",
+                enabledBy: "moboudra",
               },
               viewerCanEnableAutoMerge: false,
               viewerCanDisableAutoMerge: true,
@@ -4161,7 +3735,7 @@ describe("session checkout pull request auto-merge", () => {
     const session = createSessionForTest({ github, workspaceGitService, messages });
 
     await session.handleMessage({
-      type: "checkout.github.set_auto_merge.request",
+      type: "checkout.forge.set_auto_merge.request",
       cwd: "/tmp/request-worktree",
       enabled: false,
       mergeMethod: "squash",
@@ -4169,9 +3743,9 @@ describe("session checkout pull request auto-merge", () => {
     });
 
     expect(github.disablePullRequestAutoMerge).not.toHaveBeenCalled();
-    expect(workspaceGitService.invalidateForge).not.toHaveBeenCalled();
+    expect(github.invalidate).not.toHaveBeenCalled();
     expect(messages).toContainEqual({
-      type: "checkout.github.set_auto_merge.response",
+      type: "checkout.forge.set_auto_merge.response",
       payload: {
         cwd: "/tmp/request-worktree",
         enabled: false,
@@ -4205,7 +3779,7 @@ describe("session checkout pull and push handling", () => {
       force: true,
       reason: "pull",
     });
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/request-worktree");
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
     expect(messages).toContainEqual({
       type: "checkout_pull_response",
       payload: {
@@ -4235,7 +3809,7 @@ describe("session checkout pull and push handling", () => {
       force: true,
       reason: "push",
     });
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/request-worktree");
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
     expect(messages).toContainEqual({
       type: "checkout_push_response",
       payload: {
@@ -4267,7 +3841,7 @@ describe("session checkout refresh handling", () => {
       requestId: "request-refresh",
     });
 
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/request-worktree");
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/request-worktree" });
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
       force: true,
       includeForge: true,
@@ -4334,12 +3908,7 @@ describe("session checkout status handling", () => {
     });
 
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledTimes(1);
-    // Checkout status is git-only: the response carries no PR data, so the handler
-    // must not block on an inline GitHub fetch (includeForge: false).
-    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/service-worktree", {
-      includeForge: false,
-      reason: "checkout-status-request",
-    });
+    expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/service-worktree");
     expect(checkoutGitMocks.getCheckoutStatus).not.toHaveBeenCalled();
     expect(messages).toContainEqual({
       type: "checkout_status_response",
@@ -4356,11 +3925,8 @@ describe("session checkout status handling", () => {
         behindOfOrigin: 1,
         upstreamRef: null,
         hasRemote: true,
-        remoteUrl: "https://github.com/otto-code-ai/otto-code.git",
-        isOttoOwnedWorktree: false,
-        // Any checkout on a branch can have its base repointed; the base is stored per branch,
-        // so worktree ownership is no longer the gate.
-        isBaseEditable: true,
+        remoteUrl: "https://github.com/getpaseo/paseo.git",
+        isPaseoOwnedWorktree: false,
         error: null,
         requestId: "request-status",
       },
@@ -4413,7 +3979,7 @@ describe("session workspace descriptors", () => {
     const messages: unknown[] = [];
     const workspace = {
       workspaceId: "ws-gh",
-      projectId: "remote:github.com/acme/app",
+      projectId: "prj_app",
       cwd: "/repo/app",
       kind: "local_checkout" as const,
       displayName: "app",
@@ -4421,9 +3987,9 @@ describe("session workspace descriptors", () => {
       archivedAt: null,
     };
     const project = {
-      projectId: "remote:github.com/acme/app",
-      // A real root keeps the Project online; Offline projects carry no placement.
-      rootPath: makeOnlineProjectRoot("workspace-descriptor-gh-"),
+      projectId: "prj_app",
+      projectKey: "remote:github.com/acme/app",
+      rootPath: "/repo/app",
       kind: "git" as const,
       displayName: "acme/app",
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -4433,7 +3999,10 @@ describe("session workspace descriptors", () => {
     const session = createSessionForTest({
       messages,
       workspaceRegistry: { get: vi.fn(), list: vi.fn().mockResolvedValue([workspace]) },
-      projectRegistry: { list: vi.fn().mockResolvedValue([project]), get: vi.fn() },
+      projectRegistry: {
+        list: vi.fn().mockResolvedValue([project]),
+        get: vi.fn().mockResolvedValue(project),
+      },
       workspaceGitService: {
         getSnapshot: vi.fn(),
         peekSnapshot: vi.fn(() =>
@@ -4441,7 +4010,7 @@ describe("session workspace descriptors", () => {
             git: {
               remoteUrl: "https://github.com/acme/app.git",
               currentBranch: "main",
-              isOttoOwnedWorktree: false,
+              isPaseoOwnedWorktree: false,
               mainRepoRoot: null,
             },
           }),
@@ -4462,8 +4031,9 @@ describe("session workspace descriptors", () => {
         entries: [
           expect.objectContaining({
             id: "ws-gh",
+            projectId: "prj_app",
             project: expect.objectContaining({
-              projectKey: "remote:github.com/acme/app",
+              projectKey: "prj_app",
               projectName: "acme/app",
               workspaceName: "app",
               checkout: expect.objectContaining({
@@ -4472,7 +4042,7 @@ describe("session workspace descriptors", () => {
                 currentBranch: "app",
                 remoteUrl: null,
                 worktreeRoot: "/repo/app",
-                isOttoOwnedWorktree: false,
+                isPaseoOwnedWorktree: false,
                 mainRepoRoot: null,
               }),
             }),
@@ -4495,8 +4065,7 @@ describe("session workspace descriptors", () => {
     };
     const project = {
       projectId: "/repo/local",
-      // A real root keeps the Project online; Offline projects carry no placement.
-      rootPath: makeOnlineProjectRoot("workspace-descriptor-local-"),
+      rootPath: "/repo/local",
       kind: "git" as const,
       displayName: "local",
       createdAt: "2026-01-01T00:00:00.000Z",
@@ -4514,7 +4083,7 @@ describe("session workspace descriptors", () => {
             git: {
               remoteUrl: null,
               currentBranch: "main",
-              isOttoOwnedWorktree: false,
+              isPaseoOwnedWorktree: false,
               mainRepoRoot: null,
             },
           }),
@@ -4545,7 +4114,7 @@ describe("session workspace descriptors", () => {
                 currentBranch: "local",
                 remoteUrl: null,
                 worktreeRoot: "/repo/local",
-                isOttoOwnedWorktree: false,
+                isPaseoOwnedWorktree: false,
                 mainRepoRoot: null,
               }),
             }),
@@ -4658,13 +4227,13 @@ describe("session branch validation", () => {
   });
 
   test("does not validate tags as branches", async () => {
-    const tempDir = mkdtempSync(join(tmpdir(), "otto-session-branch-validation-"));
+    const tempDir = mkdtempSync(join(tmpdir(), "paseo-session-branch-validation-"));
     const repoDir = join(tempDir, "repo");
 
     try {
       execSync(`git init -b main ${repoDir}`);
-      execSync('git config user.email "test@test.com"', { cwd: repoDir });
-      execSync('git config user.name "Test"', { cwd: repoDir });
+      execSync("git config user.email 'test@test.com'", { cwd: repoDir });
+      execSync("git config user.name 'Test'", { cwd: repoDir });
       writeFileSync(join(repoDir, "README.md"), "hello\n");
       execSync("git add README.md", { cwd: repoDir });
       execSync("git -c commit.gpgsign=false commit -m init", { cwd: repoDir });
@@ -4733,7 +4302,7 @@ describe("session checkout switch branch handling", () => {
       force: true,
       reason: "switch-branch",
     });
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/repo");
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/repo" });
     expect(messages).toContainEqual({
       type: "checkout_switch_branch_response",
       payload: {
@@ -4858,7 +4427,7 @@ describe("session checkout rename branch handling", () => {
       force: true,
       reason: "rename-branch",
     });
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/repo");
+    expect(github.invalidate).toHaveBeenCalledWith({ cwd: "/tmp/repo" });
     expect(messages).toContainEqual({
       type: "checkout.rename_branch.response",
       payload: {
@@ -4995,9 +4564,9 @@ describe("session stash list handling", () => {
     const entries = [
       {
         index: 0,
-        message: "otto-auto-stash: feature",
+        message: "paseo-auto-stash: feature",
         branch: "feature",
-        isOtto: true,
+        isPaseo: true,
       },
     ];
     const workspaceGitService = {
@@ -5010,13 +4579,13 @@ describe("session stash list handling", () => {
     await session.handleMessage({
       type: "stash_list_request",
       cwd: "/tmp/repo",
-      ottoOnly: true,
+      paseoOnly: true,
       requestId: "request-stashes",
     });
 
     expect(workspaceGitService.listStashes).toHaveBeenCalledTimes(1);
     expect(workspaceGitService.listStashes).toHaveBeenCalledWith("/tmp/repo", {
-      ottoOnly: true,
+      paseoOnly: true,
     });
     expect(messages).toContainEqual({
       type: "stash_list_response",
@@ -5046,7 +4615,7 @@ describe("session stash mutation handling", () => {
     });
 
     expect(gitCommandMocks.runGitCommand).toHaveBeenCalledWith(
-      ["stash", "push", "--include-untracked", "-m", "otto-auto-stash: feature"],
+      ["stash", "push", "--include-untracked", "-m", "paseo-auto-stash: feature"],
       { cwd: "/tmp/repo", timeout: 120_000 },
     );
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/repo", {
@@ -5103,27 +4672,27 @@ describe("session stash mutation handling", () => {
   });
 });
 
-describe("session otto worktree creation handling", () => {
+describe("session paseo worktree creation handling", () => {
   test("forces workspace git refreshes for the source repo and created worktree", async () => {
     const workspaceGitService = { getSnapshot: vi.fn().mockResolvedValue({}) };
     const session = createSessionForTest({ workspaceGitService });
-    ottoWorktreeServiceMocks.createOttoWorktree.mockResolvedValue({
+    paseoWorktreeServiceMocks.createPaseoWorktree.mockResolvedValue({
       repoRoot: "/tmp/repo",
       worktree: {
         branchName: "feature/new-worktree",
-        worktreePath: "/tmp/otto/worktrees/new-worktree",
+        worktreePath: "/tmp/paseo/worktrees/new-worktree",
       },
       workspace: {
         workspaceId: "workspace-new-worktree",
         projectId: "project-repo",
-        cwd: "/tmp/otto/worktrees/new-worktree",
+        cwd: "/tmp/paseo/worktrees/new-worktree",
         kind: "worktree",
         displayName: "feature/new-worktree",
       },
       created: true,
     });
 
-    await asSessionInternals(session).createOttoWorktree({
+    await asSessionInternals(session).createPaseoWorktree({
       cwd: "/tmp/repo",
       worktreeSlug: "new-worktree",
       runSetup: false,
@@ -5134,7 +4703,7 @@ describe("session otto worktree creation handling", () => {
       reason: "create-worktree",
     });
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith(
-      "/tmp/otto/worktrees/new-worktree",
+      "/tmp/paseo/worktrees/new-worktree",
       {
         force: true,
         reason: "create-worktree",
@@ -5144,20 +4713,17 @@ describe("session otto worktree creation handling", () => {
 });
 
 describe("session workspace script handling", () => {
-  test("passes service-owned git metadata into workspace script spawning", async () => {
+  test("passes the project slug and cached branch into workspace script spawning", async () => {
     const messages: unknown[] = [];
+    const snapshot = createWorkspaceGitSnapshot("/tmp/repo", {
+      git: {
+        currentBranch: "feature/service-scripts",
+        remoteUrl: "https://github.com/getpaseo/paseo.git",
+      },
+    });
     const workspaceGitService = {
-      // Otto reads the branch off the cached snapshot and derives the service
-      // slug from the repo name, rather than asking the git service for a
-      // prebuilt metadata record. Same two values, no git read per launch.
-      peekSnapshot: vi.fn(() => ({
-        cwd: "/tmp/repo",
-        git: {
-          isGit: true,
-          currentBranch: "feature/service-scripts",
-          remoteUrl: "https://github.com/otto-code-ai/otto.git",
-        },
-      })),
+      peekSnapshot: vi.fn(() => snapshot),
+      getProjectSlug: vi.fn().mockResolvedValue("paseo"),
     };
     const workspaceRegistry = {
       get: vi.fn().mockResolvedValue({
@@ -5178,7 +4744,7 @@ describe("session workspace script handling", () => {
       },
       serviceProxy: { listRoutesForWorkspace: vi.fn(() => []) },
       scriptRuntimeStore: { listForWorkspace: vi.fn(() => []) },
-      getDaemonTcpPort: () => 6868,
+      getDaemonTcpPort: () => 6767,
       getDaemonTcpHost: () => "127.0.0.1",
       messages,
     });
@@ -5190,15 +4756,14 @@ describe("session workspace script handling", () => {
       requestId: "request-script",
     });
 
-    expect(workspaceGitService.peekSnapshot).toHaveBeenCalledWith("/tmp/repo");
     expect(spawnMocks.spawnWorkspaceScript).toHaveBeenCalledWith(
       expect.objectContaining({
-        workspaceDirectory: "/tmp/repo",
+        repoRoot: "/tmp/repo",
         workspaceId: "workspace-1",
-        projectSlug: "otto",
+        projectSlug: "paseo",
         branchName: "feature/service-scripts",
         scriptName: "api",
-        daemonPort: 6868,
+        daemonPort: 6767,
         daemonListenHost: "127.0.0.1",
       }),
     );
@@ -5216,22 +4781,19 @@ describe("session workspace script handling", () => {
 });
 
 describe("session pull request timeline handling", () => {
-  test("routes GitHub search requests through GitHubService", async () => {
+  test("routes GitHub search requests through ForgeService", async () => {
     const messages: unknown[] = [];
     const github = {
       invalidate: vi.fn(),
       searchIssuesAndPrs: vi.fn().mockResolvedValue({
-        featuresEnabled: true,
         githubFeaturesEnabled: true,
         items: [
           {
-            // Adapters speak the neutral kind; the legacy github_search channel
-            // maps it back to "pr" on the way out. A stub that already says
-            // "pr" is not a change_request, so it fell through to "issue".
             kind: "change_request",
+            forge: "github",
             number: 42,
             title: "Ship search",
-            url: "https://github.com/otto-code-ai/otto-code/pull/42",
+            url: "https://github.com/getpaseo/paseo/pull/42",
             state: "OPEN",
             body: null,
             labels: [],
@@ -5242,7 +4804,13 @@ describe("session pull request timeline handling", () => {
         ],
       }),
     };
-    const gitlab = { searchIssuesAndPrs: vi.fn() };
+    const gitlab = {
+      searchIssuesAndPrs: vi.fn().mockResolvedValue({
+        featuresEnabled: true,
+        authState: "authenticated",
+        items: [],
+      }),
+    };
     const workspaceGitService = {
       resolveForge: vi.fn().mockResolvedValue({ forge: "gitlab", service: gitlab }),
     };
@@ -5270,9 +4838,10 @@ describe("session pull request timeline handling", () => {
         items: [
           {
             kind: "pr",
+            forge: "github",
             number: 42,
             title: "Ship search",
-            url: "https://github.com/otto-code-ai/otto-code/pull/42",
+            url: "https://github.com/getpaseo/paseo/pull/42",
             state: "OPEN",
             body: null,
             labels: [],
@@ -5281,10 +4850,8 @@ describe("session pull request timeline handling", () => {
             updatedAt: "2026-04-18T13:00:00Z",
           },
         ],
-        // The legacy github_search channel keeps the GitHub-named boolean and
-        // the "pr" kind for old clients, and carries the neutral
-        // featuresEnabled beside it.
         featuresEnabled: true,
+        authState: "authenticated",
         githubFeaturesEnabled: true,
         error: null,
         requestId: "request-search",
@@ -5292,15 +4859,47 @@ describe("session pull request timeline handling", () => {
     });
   });
 
-  test("passes request identity to GitHubService and emits timeline items", async () => {
+  test("reports no remote when forge search has no resolved forge", async () => {
+    const messages: unknown[] = [];
+    const github = {
+      invalidate: vi.fn(),
+      searchIssuesAndPrs: vi.fn(),
+    };
+    const workspaceGitService = {
+      resolveForge: vi.fn().mockResolvedValue(null),
+    };
+    const session = createSessionForTest({ github, workspaceGitService, messages });
+
+    await session.handleMessage({
+      type: "forge.search.request",
+      cwd: "/tmp/repo",
+      query: "search",
+      limit: 5,
+      kinds: ["change_request"],
+      requestId: "request-search",
+    });
+
+    expect(github.searchIssuesAndPrs).not.toHaveBeenCalled();
+    expect(messages).toContainEqual({
+      type: "forge.search.response",
+      payload: {
+        items: [],
+        authState: "no_remote",
+        error: null,
+        requestId: "request-search",
+      },
+    });
+  });
+
+  test("passes request identity to ForgeService and emits timeline items", async () => {
     const messages: unknown[] = [];
     const github = {
       invalidate: vi.fn(),
       isAuthenticated: vi.fn().mockResolvedValue(true),
       getPullRequestTimeline: vi.fn().mockResolvedValue({
         prNumber: 42,
-        repoOwner: "otto-code-ai",
-        repoName: "otto",
+        repoOwner: "getpaseo",
+        repoName: "paseo",
         items: [
           {
             id: "review-1",
@@ -5310,7 +4909,7 @@ describe("session pull request timeline handling", () => {
             avatarUrl: "https://avatars.githubusercontent.com/u/1?v=4",
             body: "Looks good",
             createdAt: 1710000000000,
-            url: "https://github.com/otto-code-ai/otto-code/pull/42#pullrequestreview-1",
+            url: "https://github.com/getpaseo/paseo/pull/42#pullrequestreview-1",
             reviewState: "approved",
           },
         ],
@@ -5324,16 +4923,16 @@ describe("session pull request timeline handling", () => {
       type: "pull_request_timeline_request",
       cwd: "/tmp/repo",
       prNumber: 42,
-      repoOwner: "otto-code-ai",
-      repoName: "otto",
+      repoOwner: "getpaseo",
+      repoName: "paseo",
       requestId: "request-1",
     });
 
     expect(github.getPullRequestTimeline).toHaveBeenCalledWith({
       cwd: "/tmp/repo",
       prNumber: 42,
-      repoOwner: "otto-code-ai",
-      repoName: "otto",
+      repoOwner: "getpaseo",
+      repoName: "paseo",
     });
     expect(messages).toContainEqual({
       type: "pull_request_timeline_response",
@@ -5349,7 +4948,7 @@ describe("session pull request timeline handling", () => {
             avatarUrl: "https://avatars.githubusercontent.com/u/1?v=4",
             body: "Looks good",
             createdAt: 1710000000000,
-            url: "https://github.com/otto-code-ai/otto-code/pull/42#pullrequestreview-1",
+            url: "https://github.com/getpaseo/paseo/pull/42#pullrequestreview-1",
             reviewState: "approved",
           },
         ],
@@ -5357,20 +4956,19 @@ describe("session pull request timeline handling", () => {
         error: null,
         requestId: "request-1",
         githubFeaturesEnabled: true,
-        commentReactionsSupported: false,
       },
     });
   });
 
   test.each([
-    { prNumber: 0, repoOwner: "otto-code-ai", repoName: "otto" },
-    { prNumber: -1, repoOwner: "otto-code-ai", repoName: "otto" },
-    { prNumber: 42, repoOwner: "get otto", repoName: "otto" },
-    { prNumber: 42, repoOwner: "otto-code-ai/cli", repoName: "otto" },
-    { prNumber: 42, repoOwner: "get$otto", repoName: "otto" },
-    { prNumber: 42, repoOwner: "otto-code-ai", repoName: "pa seo" },
-    { prNumber: 42, repoOwner: "otto-code-ai", repoName: "otto/app" },
-    { prNumber: 42, repoOwner: "otto-code-ai", repoName: "otto!" },
+    { prNumber: 0, repoOwner: "getpaseo", repoName: "paseo" },
+    { prNumber: -1, repoOwner: "getpaseo", repoName: "paseo" },
+    { prNumber: 42, repoOwner: "get paseo", repoName: "paseo" },
+    { prNumber: 42, repoOwner: "getpaseo/cli", repoName: "paseo" },
+    { prNumber: 42, repoOwner: "get$paseo", repoName: "paseo" },
+    { prNumber: 42, repoOwner: "getpaseo", repoName: "pa seo" },
+    { prNumber: 42, repoOwner: "getpaseo", repoName: "paseo/app" },
+    { prNumber: 42, repoOwner: "getpaseo", repoName: "paseo!" },
   ])("returns an unknown error when request identity is invalid: %j", async (identity) => {
     const messages: unknown[] = [];
     const github = {
@@ -5419,8 +5017,8 @@ describe("session pull request timeline handling", () => {
       type: "pull_request_timeline_request",
       cwd: "/tmp/repo",
       prNumber: 42,
-      repoOwner: "otto-code-ai",
-      repoName: "otto",
+      repoOwner: "getpaseo",
+      repoName: "paseo",
       requestId: "request-3",
     });
 
@@ -5457,14 +5055,14 @@ describe("session pull request timeline handling", () => {
       name: "server-tests",
       status: "completed",
       conclusion: "failure",
-      url: "https://github.com/otto-code-ai/otto-code/actions/runs/456/job/789",
-      detailsUrl: "https://github.com/otto-code-ai/otto-code/actions/runs/456/job/789",
+      url: "https://github.com/getpaseo/paseo/actions/runs/456/job/789",
+      detailsUrl: "https://github.com/getpaseo/paseo/actions/runs/456/job/789",
       output: { title: "Tests failed", summary: "1 failure", text: "Assertion failed" },
       annotations: [],
       failedJobs: [],
       truncated: false,
     };
-    const github: Partial<GitHubService> = {
+    const github: Partial<ForgeService> = {
       invalidate() {},
       async isAuthenticated() {
         return true;
@@ -5483,10 +5081,10 @@ describe("session pull request timeline handling", () => {
     const session = createSessionForTest({ github, messages });
 
     await session.handleMessage({
-      type: "checkout.github.get_check_details.request",
+      type: "checkout.forge.get_check_details.request",
       cwd: "/tmp/repo",
-      repoOwner: "otto-code-ai",
-      repoName: "otto",
+      repoOwner: "getpaseo",
+      repoName: "paseo",
       checkRunId: 12345,
       workflowRunId: 456,
       requestId: "request-check-details",
@@ -5495,15 +5093,15 @@ describe("session pull request timeline handling", () => {
     expect(checkDetailRequests).toEqual([
       {
         cwd: "/tmp/repo",
-        repoOwner: "otto-code-ai",
-        repoName: "otto",
+        repoOwner: "getpaseo",
+        repoName: "paseo",
         checkRunId: 12345,
         workflowRunId: 456,
       },
     ]);
 
     expect(messages).toContainEqual({
-      type: "checkout.github.get_check_details.response",
+      type: "checkout.forge.get_check_details.response",
       payload: {
         cwd: "/tmp/repo",
         success: true,
@@ -5513,8 +5111,8 @@ describe("session pull request timeline handling", () => {
           name: "server-tests",
           status: "completed",
           conclusion: "failure",
-          url: "https://github.com/otto-code-ai/otto-code/actions/runs/456/job/789",
-          detailsUrl: "https://github.com/otto-code-ai/otto-code/actions/runs/456/job/789",
+          url: "https://github.com/getpaseo/paseo/actions/runs/456/job/789",
+          detailsUrl: "https://github.com/getpaseo/paseo/actions/runs/456/job/789",
           output: { title: "Tests failed", summary: "1 failure", text: "Assertion failed" },
           annotations: [],
           failedJobs: [],
@@ -5527,14 +5125,11 @@ describe("session pull request timeline handling", () => {
   });
 });
 
-describe("chat/schedule/loop dispatch routing (behavior preservation)", () => {
-  // Each chat/*, loop/*, and schedule/* type must reach its domain handler. The
-  // injected service stubs are unstubbed, so every handler's own try/catch fires
-  // and emits its domain rpc_error code - proving the message routed (a dropped
-  // case would silently no-op and emit nothing). schedule/* historically routed
-  // via the chat dispatcher's fall-through arm; this guards that path explicitly.
+describe("schedule dispatch routing", () => {
+  // Each schedule/* type must reach its domain handler. The injected service stub
+  // is unstubbed, so every handler's own try/catch emits its domain rpc_error code.
   // handleMessage receives already-parsed messages, so these fixtures only need to
-  // satisfy the TS union here - zod parsing happens upstream at the transport.
+  // satisfy the TS union here — zod parsing happens upstream at the transport.
   const routingCases: Array<{ msg: SessionInboundMessage; code: string }> = [
     {
       msg: {
@@ -5640,6 +5235,7 @@ test("acknowledges a timeline subscription only to its socket source", async () 
         payload: {
           agentIds: ["agent-a"],
           requestId: "timeline-subscription-targeted",
+          subscriptionId: expect.any(String),
         },
       },
     },
@@ -5652,6 +5248,7 @@ test("unions viewed timelines across socket sources and removes detached sources
   const session = createSessionForTest({
     messages,
     agentManager: {
+      getAgent: (id: string) => ({ id, internal: false }),
       subscribe: vi.fn((listener: (event: AgentManagerEvent) => void) => {
         agentEventListeners.push(listener);
         return () => {};
@@ -5759,6 +5356,7 @@ test("keeps selective delivery scoped per socket when a retained session also ha
     messages,
     targetedMessages,
     agentManager: {
+      getAgent: (id: string) => ({ id, internal: false }),
       subscribe: vi.fn((listener: (event: AgentManagerEvent) => void) => {
         agentEventListeners.push(listener);
         return () => {};
@@ -5838,12 +5436,10 @@ test("sends project updates only to capable sockets in a retained session", asyn
 
 test("project.list returns every active project descriptor", async () => {
   const messages: SessionOutboundMessage[] = [];
-  // A real root keeps the Project online; an Offline one skips its icon probe.
-  const activeRoot = makeOnlineProjectRoot("project-active-");
   const active = createPersistedProjectRecord({
     projectId: "project-active",
     projectKey: "remote:github.com/acme/app",
-    rootPath: activeRoot,
+    rootPath: "/tmp/project-active",
     kind: "git",
     displayName: "acme/app",
     createdAt: "2026-07-17T00:00:00.000Z",
@@ -5878,14 +5474,8 @@ test("project.list returns every active project descriptor", async () => {
             projectCustomName: null,
             projectCustomIconRevision: null,
             projectIconRevision: "automatic:none:v1",
-            projectOffline: false,
-            projectRootPath: activeRoot,
+            projectRootPath: "/tmp/project-active",
             projectKind: "git",
-            // Otto's per-project locations, unset on this fixture.
-            projectKnowledgeLocation: null,
-            projectArtifactLocation: null,
-            projectWorkflowLocation: null,
-            projectKanban: null,
           },
         ],
       },
@@ -5894,12 +5484,22 @@ test("project.list returns every active project descriptor", async () => {
 });
 
 describe("agent config setters", () => {
+  function liveAgentManager(overrides: { [K in keyof SessionOptions["agentManager"]]?: unknown }): {
+    [K in keyof SessionOptions["agentManager"]]?: unknown;
+  } {
+    return {
+      waitForAgentClose: vi.fn().mockResolvedValue(undefined),
+      getAgent: vi.fn(() => ({ id: "agent-1" })),
+      ...overrides,
+    };
+  }
+
   test("set_agent_mode_request: success emits accepted response carrying the notice", async () => {
     const messages: SessionOutboundMessage[] = [];
     const notice = { type: "info", message: "Switched to plan mode" } as const;
     const session = createSessionForTest({
       messages,
-      agentManager: { setAgentMode: vi.fn().mockResolvedValue(notice) },
+      agentManager: liveAgentManager({ setAgentMode: vi.fn().mockResolvedValue(notice) }),
     });
 
     await session.handleMessage({
@@ -5927,7 +5527,9 @@ describe("agent config setters", () => {
     const messages: SessionOutboundMessage[] = [];
     const session = createSessionForTest({
       messages,
-      agentManager: { setAgentMode: vi.fn().mockRejectedValue(new Error("mode boom")) },
+      agentManager: liveAgentManager({
+        setAgentMode: vi.fn().mockRejectedValue(new Error("mode boom")),
+      }),
     });
 
     await session.handleMessage({
@@ -5960,9 +5562,11 @@ describe("agent config setters", () => {
 
   test("set_agent_model_request: success emits accepted response with no notice", async () => {
     const messages: SessionOutboundMessage[] = [];
+    // OTTO(agent-teams): choosing a raw model detaches the Profile through the serialized selector.
+    const selectChatProfile = vi.fn().mockResolvedValue(undefined);
     const session = createSessionForTest({
       messages,
-      agentManager: { setAgentModel: vi.fn().mockResolvedValue(undefined) },
+      agentManager: liveAgentManager({ selectChatProfile }),
     });
 
     await session.handleMessage({
@@ -5972,6 +5576,7 @@ describe("agent config setters", () => {
       requestId: "req-model-ok",
     });
 
+    expect(selectChatProfile).toHaveBeenCalledWith("agent-1", null, "claude-opus-4-8");
     expect(messages).toEqual([
       {
         type: "set_agent_model_response",
@@ -5984,7 +5589,9 @@ describe("agent config setters", () => {
     const messages: SessionOutboundMessage[] = [];
     const session = createSessionForTest({
       messages,
-      agentManager: { setAgentModel: vi.fn().mockRejectedValue(new Error("model boom")) },
+      agentManager: liveAgentManager({
+        selectChatProfile: vi.fn().mockRejectedValue(new Error("model boom")),
+      }),
     });
 
     await session.handleMessage({
@@ -6019,7 +5626,7 @@ describe("agent config setters", () => {
     const messages: SessionOutboundMessage[] = [];
     const session = createSessionForTest({
       messages,
-      agentManager: { setAgentFeature: vi.fn().mockResolvedValue(undefined) },
+      agentManager: liveAgentManager({ setAgentFeature: vi.fn().mockResolvedValue(undefined) }),
     });
 
     await session.handleMessage({
@@ -6042,7 +5649,9 @@ describe("agent config setters", () => {
     const messages: SessionOutboundMessage[] = [];
     const session = createSessionForTest({
       messages,
-      agentManager: { setAgentFeature: vi.fn().mockRejectedValue(new Error("feature boom")) },
+      agentManager: liveAgentManager({
+        setAgentFeature: vi.fn().mockRejectedValue(new Error("feature boom")),
+      }),
     });
 
     await session.handleMessage({
@@ -6079,7 +5688,9 @@ describe("agent config setters", () => {
     const notice = { type: "warning", message: "Thinking budget reduced" } as const;
     const session = createSessionForTest({
       messages,
-      agentManager: { setAgentThinkingOption: vi.fn().mockResolvedValue(notice) },
+      agentManager: liveAgentManager({
+        setAgentThinkingOption: vi.fn().mockResolvedValue(notice),
+      }),
     });
 
     await session.handleMessage({
@@ -6107,9 +5718,9 @@ describe("agent config setters", () => {
     const messages: SessionOutboundMessage[] = [];
     const session = createSessionForTest({
       messages,
-      agentManager: {
+      agentManager: liveAgentManager({
         setAgentThinkingOption: vi.fn().mockRejectedValue(new Error("thinking boom")),
-      },
+      }),
     });
 
     await session.handleMessage({
@@ -6141,113 +5752,6 @@ describe("agent config setters", () => {
   });
 });
 
-describe("brain log watch", () => {
-  const CAPABLE = { [CLIENT_CAPS.brainLogWatch]: true };
-
-  function logLines(messages: unknown[]): string[] {
-    return messages
-      .filter(
-        (message): message is { type: "status"; payload: { status: string; line: string } } =>
-          typeof message === "object" &&
-          message !== null &&
-          (message as { type?: unknown }).type === "status" &&
-          (message as { payload?: { status?: unknown } }).payload?.status ===
-            "brain_log_line_added",
-      )
-      .map((message) => message.payload.line);
-  }
-
-  test("keeps pushing to a client that cannot ask", () => {
-    // No brainLogWatch capability means no way to turn the feed on, so gating it
-    // would silently break the Logs tab on every older client.
-    const messages: unknown[] = [];
-    const session = createSessionForTest({ messages });
-
-    session.emitBrainLogLine("srv  log_server_r: request");
-
-    expect(logLines(messages)).toEqual(["srv  log_server_r: request"]);
-  });
-
-  test("sends nothing to a capable client that has not asked", () => {
-    const messages: unknown[] = [];
-    const session = createSessionForTest({ messages, clientCapabilities: CAPABLE });
-
-    session.emitBrainLogLine("srv  log_server_r: request");
-
-    expect(logLines(messages)).toEqual([]);
-  });
-
-  test("follows watch on and back off", async () => {
-    const messages: unknown[] = [];
-    const session = createSessionForTest({ messages, clientCapabilities: CAPABLE });
-
-    await session.handleMessage({
-      type: "brain.logs.watch.request",
-      watching: true,
-      requestId: "watch-on",
-    });
-    session.emitBrainLogLine("while watching");
-
-    await session.handleMessage({
-      type: "brain.logs.watch.request",
-      watching: false,
-      requestId: "watch-off",
-    });
-    session.emitBrainLogLine("after unwatching");
-
-    expect(logLines(messages)).toEqual(["while watching"]);
-  });
-
-  test("watches per socket, so one client's Logs tab does not feed another", async () => {
-    // The case the whole change exists for: a desktop with the Logs tab open
-    // must not turn the feed on for the same account's phone.
-    const desktop = {};
-    const phone = {};
-    const delivered: Array<{ source: object; line: string }> = [];
-    const session = createSessionForTest({
-      clientCapabilities: CAPABLE,
-      onMessageToSource: (source, message) => {
-        if (message.type === "status" && message.payload.status === "brain_log_line_added") {
-          delivered.push({ source, line: message.payload.line });
-        }
-      },
-    });
-    session.updateClientCapabilities(CAPABLE, desktop);
-    session.updateClientCapabilities(CAPABLE, phone);
-
-    await session.handleMessage(
-      { type: "brain.logs.watch.request", watching: true, requestId: "watch-desktop" },
-      desktop,
-    );
-    session.emitBrainLogLine("only the desktop asked");
-
-    expect(delivered).toEqual([{ source: desktop, line: "only the desktop asked" }]);
-  });
-
-  test("drops a watcher when its socket detaches", async () => {
-    const socket = {};
-    const delivered: string[] = [];
-    const session = createSessionForTest({
-      clientCapabilities: CAPABLE,
-      onMessageToSource: (_source, message) => {
-        if (message.type === "status" && message.payload.status === "brain_log_line_added") {
-          delivered.push(message.payload.line);
-        }
-      },
-    });
-    session.updateClientCapabilities(CAPABLE, socket);
-    await session.handleMessage(
-      { type: "brain.logs.watch.request", watching: true, requestId: "watch-on" },
-      socket,
-    );
-
-    session.clearAgentTimelineSubscription(socket);
-    session.emitBrainLogLine("after detach");
-
-    expect(delivered).toEqual([]);
-  });
-});
-
 test("provider snapshots preserve versionless visibility while capabilities update independently", async () => {
   const messages: SessionOutboundMessage[] = [];
   const { manager } = createProviderSnapshotManagerStub();
@@ -6262,34 +5766,50 @@ test("provider snapshots preserve versionless visibility while capabilities upda
       { provider: "plugin-provider", status: "ready", enabled: true },
     ]);
   const session = createSessionForTest({ messages, providerSnapshotManager: manager });
+  const source = {};
+  session.updateClientCapabilities(null, source);
   const read = async () => {
     messages.length = 0;
-    await session.handleMessage({
-      type: "get_providers_snapshot_request",
-      requestId: "visibility",
-    });
+    await session.handleMessage(
+      {
+        type: "get_providers_snapshot_request",
+        requestId: "visibility",
+      },
+      source,
+    );
     return findByType(messages, "get_providers_snapshot_response")!.payload;
   };
   const versionless = await read();
   expect(versionless.entries.map((entry) => entry.provider)).toEqual(["codex"]);
   expect(versionless.entries[0]!.modes![0]!.icon).toBe("ShieldCheck");
-  session.updateClientCapabilities({
-    [CLIENT_CAPS.customModeIcons]: true,
-    [CLIENT_CAPS.providerSnapshotReferences]: true,
-  });
+  session.updateClientCapabilities(
+    {
+      [CLIENT_CAPS.customModeIcons]: true,
+      [CLIENT_CAPS.providerSnapshotReferences]: true,
+    },
+    source,
+  );
   const iconsOnly = await read();
   expect(iconsOnly.entries.map((entry) => entry.provider)).toEqual(["codex"]);
   expect(iconsOnly.entries[0]!.modes![0]!.icon).toBe("Sparkles");
   expect(iconsOnly.snapshotHash).toBeUndefined();
-  session.updateAppVersion("0.1.45");
+  session.updateClientCapabilities(
+    { [CLIENT_CAPS.customModeIcons]: true, [CLIENT_CAPS.providerSnapshotReferences]: true },
+    source,
+    "0.1.45",
+  );
   expect((await read()).entries.map((entry) => entry.provider)).toEqual([
     "codex",
     "plugin-provider",
   ]);
-  session.updateClientCapabilities({
-    [CLIENT_CAPS.compactProviderSnapshots]: true,
-    [CLIENT_CAPS.providerSnapshotReferences]: true,
-  });
+  session.updateClientCapabilities(
+    {
+      [CLIENT_CAPS.compactProviderSnapshots]: true,
+      [CLIENT_CAPS.providerSnapshotReferences]: true,
+    },
+    source,
+    "0.1.45",
+  );
   const references = await read();
   expect(references.entries).toEqual([]);
   expect(references.compactSnapshot!.entries.map((entry) => entry.provider)).toEqual([
@@ -6298,363 +5818,3 @@ test("provider snapshots preserve versionless visibility while capabilities upda
   ]);
   expect(references.compactSnapshot!.entries[0]!.modes![0]!.icon).toBe("ShieldCheck");
 });
-
-describe("session semantic permissions", () => {
-  test("rejects an operation without its semantic permission", async () => {
-    const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({
-      permissions: ["hub.execute"],
-      messages,
-    });
-
-    await session.handleMessage({ type: "ping", requestId: "restricted-ping", clientSentAt: 42 });
-
-    expect(messages).toEqual([
-      {
-        type: "rpc_error",
-        payload: {
-          requestId: "restricted-ping",
-          requestType: "ping",
-          error: "Session is not authorized for ping",
-          code: "access_denied",
-        },
-      },
-    ]);
-  });
-
-  test("replaces a session's permissions without reconstructing the session", async () => {
-    const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({ permissions: ["hub.execute"], messages });
-
-    await session.handleMessage({
-      type: "ping",
-      requestId: "before-scope-change",
-      clientSentAt: 1,
-    });
-    session.setPermissions(["daemon.read"]);
-    await session.handleMessage({ type: "ping", requestId: "after-scope-change", clientSentAt: 2 });
-
-    expect(messages).toEqual([
-      {
-        type: "rpc_error",
-        payload: {
-          requestId: "before-scope-change",
-          requestType: "ping",
-          error: "Session is not authorized for ping",
-          code: "access_denied",
-        },
-      },
-      {
-        type: "pong",
-        payload: {
-          requestId: "after-scope-change",
-          clientSentAt: 2,
-          serverReceivedAt: expect.any(Number),
-          serverSentAt: expect.any(Number),
-        },
-      },
-    ]);
-  });
-});
-
-describe("stable session regression intake", () => {
-  test("interruptAgentIfRunning rejects when graceful cancellation is refused", async () => {
-    const agentId = "11111111-1111-4111-8111-111111111111";
-    const session = createSessionForTest({
-      agentManager: {
-        getAgent: vi.fn(() => ({ id: agentId, provider: "codex", lifecycle: "running" })),
-        hasInFlightRun: vi.fn(() => true),
-        cancelAgentRun: vi.fn(async () => ({ status: "refused" as const })),
-      },
-    });
-
-    await expect(asSessionInternals(session).interruptAgentIfRunning(agentId)).rejects.toThrow(
-      "active run cancellation was not acknowledged",
-    );
-  });
-
-  test("cancel_agent_request reports refusal only through its response", async () => {
-    const agentId = "11111111-1111-4111-8111-111111111111";
-    const messages: SessionOutboundMessage[] = [];
-    const getAgent = vi
-      .fn()
-      .mockReturnValueOnce({ id: agentId, provider: "codex", lifecycle: "running" })
-      .mockReturnValue(null);
-    const session = createSessionForTest({
-      messages,
-      agentManager: {
-        getAgent,
-        hasInFlightRun: vi.fn(() => true),
-        cancelAgentRun: vi.fn(async () => ({ status: "refused" as const })),
-      },
-    });
-
-    await session.handleMessage({
-      type: "cancel_agent_request",
-      agentId,
-      requestId: "cancel-refused",
-    });
-
-    expect(messages).toEqual([
-      {
-        type: "cancel_agent_response",
-        payload: {
-          requestId: "cancel-refused",
-          agentId,
-          agent: null,
-          error:
-            "Cannot stop agent 11111111-1111-4111-8111-111111111111 because its active run cancellation was not acknowledged",
-        },
-      },
-    ]);
-  });
-
-  test("legacy cancel_agent_request reports refusal through the activity log", async () => {
-    const agentId = "11111111-1111-4111-8111-111111111111";
-    const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({
-      messages,
-      agentManager: {
-        getAgent: vi.fn(() => ({ id: agentId, provider: "codex", lifecycle: "running" })),
-        hasInFlightRun: vi.fn(() => true),
-        cancelAgentRun: vi.fn(async () => ({ status: "refused" as const })),
-      },
-    });
-
-    await session.handleMessage({ type: "cancel_agent_request", agentId });
-
-    expect(messages).toEqual([
-      {
-        type: "activity_log",
-        payload: {
-          id: expect.any(String),
-          timestamp: expect.any(Date),
-          type: "error",
-          content:
-            "Failed to cancel running agent on request: Cannot stop agent 11111111-1111-4111-8111-111111111111 because its active run cancellation was not acknowledged",
-        },
-      },
-    ]);
-  });
-
-  test("returns normalized repositories from the host GitHub service", async () => {
-    const messages: SessionOutboundMessage[] = [];
-    const searchRepositories = vi.fn().mockResolvedValue([
-      {
-        id: "R_paseo",
-        name: "paseo",
-        nameWithOwner: "getpaseo/paseo",
-        description: "Development environment in your pocket",
-        visibility: "public",
-        updatedAt: "2026-07-15T10:00:00Z",
-        cloneUrl: "git@github.com:getpaseo/paseo.git",
-      },
-    ]);
-    const session = createSessionForTest({ messages, github: { searchRepositories } });
-
-    await session.handleMessage({
-      type: "workspace.github.search_repositories.request",
-      query: "paseo",
-      limit: 10,
-      requestId: "req-repositories",
-    });
-
-    expect(searchRepositories).toHaveBeenCalledWith({
-      cwd: expect.any(String),
-      query: "paseo",
-      limit: 10,
-    });
-    expect(messages).toEqual([
-      {
-        type: "workspace.github.search_repositories.response",
-        payload: {
-          status: "success",
-          requestId: "req-repositories",
-          repositories: [
-            {
-              id: "R_paseo",
-              name: "paseo",
-              nameWithOwner: "getpaseo/paseo",
-              description: "Development environment in your pocket",
-              visibility: "public",
-              updatedAt: "2026-07-15T10:00:00Z",
-              cloneUrl: "git@github.com:getpaseo/paseo.git",
-            },
-          ],
-          available: true,
-          error: null,
-        },
-      },
-    ]);
-  });
-
-  test("rolls back the directory when Project registration fails", async () => {
-    const parentDirectory = realpathSync(mkdtempSync(join(tmpdir(), "paseo-project-session-")));
-    const directoryPath = join(parentDirectory, "unregistered");
-    const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForTest({
-      messages,
-      projectRegistry: {
-        // The Offline gate scans registered roots before allocating a Project.
-        list: vi.fn(async () => []),
-        getOrCreateActiveByRoot: vi.fn().mockRejectedValue(new Error("registry unavailable")),
-      },
-      workspaceGitService: {
-        getCheckout: vi.fn(async (cwd: string) => ({
-          cwd,
-          isGit: false as const,
-          currentBranch: null,
-          remoteUrl: null,
-          worktreeRoot: null,
-          isOttoOwnedWorktree: false as const,
-          mainRepoRoot: null,
-        })),
-      },
-    });
-
-    try {
-      await session.handleMessage({
-        type: "project.create_directory.request",
-        parentPath: parentDirectory,
-        name: "unregistered",
-        requestId: "req-registration-failure",
-      });
-
-      expect(existsSync(directoryPath)).toBe(false);
-      expect(messages).toEqual([
-        {
-          type: "project.create_directory.response",
-          payload: {
-            requestId: "req-registration-failure",
-            directoryPath,
-            project: null,
-            error: "Failed to register project: registry unavailable",
-            errorCode: "registration_failed",
-          },
-        },
-      ]);
-    } finally {
-      rmSync(parentDirectory, { recursive: true, force: true });
-    }
-  });
-
-  test("delegates direct merge when the current change request lacks GitHub-only merge facts", async () => {
-    const messages: unknown[] = [];
-    const github = {
-      invalidate: vi.fn(),
-      mergePullRequest: vi.fn().mockResolvedValue({ success: true }),
-    };
-    const workspaceGitService = {
-      invalidateForge: vi.fn(),
-      getSnapshot: vi.fn().mockResolvedValue({
-        forge: {
-          pullRequest: {
-            number: 42,
-            mergeable: "MERGEABLE",
-          },
-        },
-      }),
-    };
-    const session = createSessionForTest({ github, workspaceGitService, messages });
-
-    await session.handleMessage({
-      type: "checkout_pr_merge_request",
-      cwd: "/tmp/request-worktree",
-      mergeMethod: "squash",
-      requestId: "request-pr-merge-missing-github-facts",
-    });
-
-    expect(github.mergePullRequest).toHaveBeenCalledWith({
-      cwd: "/tmp/request-worktree",
-      prNumber: 42,
-      mergeMethod: "squash",
-      status: {
-        number: 42,
-        mergeable: "MERGEABLE",
-      },
-    });
-    // Otto refreshes the forge through the workspace git service after a merge.
-    expect(workspaceGitService.invalidateForge).toHaveBeenCalledWith("/tmp/request-worktree");
-    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(1, "/tmp/request-worktree", {
-      force: true,
-      includeForge: true,
-      reason: "merge-pr-validation",
-    });
-    expect(workspaceGitService.getSnapshot).toHaveBeenNthCalledWith(2, "/tmp/request-worktree", {
-      force: true,
-      reason: "merge-pr",
-    });
-    expect(messages).toContainEqual({
-      type: "checkout_pr_merge_response",
-      payload: {
-        cwd: "/tmp/request-worktree",
-        success: true,
-        error: null,
-        requestId: "request-pr-merge-missing-github-facts",
-      },
-    });
-  });
-
-  test("reports no remote when forge search has no resolved forge", async () => {
-    const messages: unknown[] = [];
-    const github = {
-      invalidate: vi.fn(),
-      searchIssuesAndPrs: vi.fn(),
-    };
-    const workspaceGitService = {
-      resolveForge: vi.fn().mockResolvedValue(null),
-    };
-    const session = createSessionForTest({ github, workspaceGitService, messages });
-
-    await session.handleMessage({
-      type: "forge.search.request",
-      cwd: "/tmp/repo",
-      query: "search",
-      limit: 5,
-      kinds: ["change_request"],
-      requestId: "request-search",
-    });
-
-    expect(github.searchIssuesAndPrs).not.toHaveBeenCalled();
-    expect(messages).toContainEqual({
-      type: "forge.search.response",
-      payload: {
-        items: [],
-        authState: "no_remote",
-        error: null,
-        requestId: "request-search",
-      },
-    });
-  });
-});
-
-function fillWorkspaceGitServiceDefaults(supplied: SessionForTestOptions["workspaceGitService"]) {
-  // Defaults are filled in on the caller's own stub object rather than copied
-  // into a new one, so a test that asserts against the object it passed in sees
-  // the spies the harness added. Chiefly invalidateForge: every git mutation
-  // runs through GitMutationService, which invalidates the forge before forcing
-  // the refresh, so a stub carrying only getSnapshot throws on the invalidate
-  // and the forced refresh silently never happens. The same goes for
-  // invalidateAuxiliaryReads, which that path calls for the same reason.
-  const workspaceGitService = (supplied ?? {}) as Record<string, unknown>;
-  const workspaceGitServiceDefaults: Record<string, unknown> = {
-    getCheckoutDiff: vi.fn(),
-    getSnapshot: vi.fn(),
-    suggestBranchesForCwd: vi.fn(),
-    listStashes: vi.fn(),
-    peekSnapshot: vi.fn(),
-    validateBranchRef: vi.fn(),
-    hasLocalBranch: vi.fn(),
-    resolveRepoRemoteUrl: vi.fn(),
-    resolveRepoRoot: vi.fn(),
-    getWorkspaceGitMetadata: vi.fn(),
-    invalidateForge: vi.fn(),
-    invalidateAuxiliaryReads: vi.fn(),
-  };
-  for (const [key, value] of Object.entries(workspaceGitServiceDefaults)) {
-    if (!(key in workspaceGitService)) {
-      workspaceGitService[key] = value;
-    }
-  }
-  return workspaceGitService;
-}

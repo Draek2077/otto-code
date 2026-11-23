@@ -24,11 +24,10 @@ const { mockTheme } = vi.hoisted(() => ({
     colors: { foregroundMuted: "#aaa", surface2: "#222" },
     borderRadius: { md: 6 },
     fontSize: { xs: 11 },
-    iconSize: { sm: 14, md: 16 },
   },
 }));
 
-vi.mock("@/components/icons/material-icons", () => {
+vi.mock("lucide-react-native", () => {
   const StubIcon = () => null;
   return {
     ArrowLeftToLine: StubIcon,
@@ -36,7 +35,6 @@ vi.mock("@/components/icons/material-icons", () => {
     Copy: StubIcon,
     CopyX: StubIcon,
     Ellipsis: StubIcon,
-    FolderOpen: StubIcon,
     Pencil: StubIcon,
     RotateCw: StubIcon,
     X: StubIcon,
@@ -142,7 +140,6 @@ function renderAccessory(
     index: 0,
     tabCount: 2,
     menuTestIDBase: base,
-    isDeveloperMode: false,
     onCopyResumeCommand: vi.fn(),
     onCopyAgentId: vi.fn(),
     onCopyTerminalId: vi.fn(),

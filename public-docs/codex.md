@@ -6,6 +6,8 @@ order: 24
 category: Providers
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Codex
 
 Otto runs Codex through the official `codex` CLI and its app-server interface.

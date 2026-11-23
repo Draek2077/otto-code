@@ -1,13 +1,13 @@
 /**
  * Test Daemon Helper
  *
- * Provides utilities for launching real Otto daemons in E2E tests.
- * Each test gets an isolated daemon on an available local port with its own OTTO_HOME.
+ * Provides utilities for launching real Paseo daemons in E2E tests.
+ * Each test gets an isolated daemon on an available local port with its own PASEO_HOME.
  *
  * CRITICAL RULES (from design doc):
- * 1. Port: Use an available ephemeral local port - NEVER use 6868 (production)
+ * 1. Port: Use an available ephemeral local port - NEVER use 6767 (production)
  * 2. Protocol: WebSocket ONLY - daemon has no HTTP endpoints
- * 3. Temp dirs: Create temp directories for OTTO_HOME and agent --cwd
+ * 3. Temp dirs: Create temp directories for PASEO_HOME and agent --cwd
  * 4. Model: Always use claude provider with haiku model for fast, cheap tests
  * 5. Cleanup: Kill daemon and remove temp dirs after each test
  */
@@ -21,12 +21,12 @@ import { ChildProcess, spawn } from "child_process";
 import { getAvailablePort } from "./network.ts";
 
 export interface TestDaemonContext {
-  /** Available local port for test daemon (never 6868) */
+  /** Available local port for test daemon (never 6767) */
   port: number;
   /** WebSocket URL for connecting to daemon */
   wsUrl: string;
-  /** Temp directory for OTTO_HOME */
-  ottoHome: string;
+  /** Temp directory for PASEO_HOME */
+  paseoHome: string;
   /** Temp directory for agent working directory */
   workDir: string;
   /** Running daemon process */
@@ -38,17 +38,17 @@ export interface TestDaemonContext {
 }
 
 const TEST_DAEMON_ENV_DEFAULTS: Record<string, string> = {
-  OTTO_RELAY_ENABLED: "false",
-  OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
-  OTTO_DICTATION_ENABLED: process.env.OTTO_DICTATION_ENABLED ?? "0",
-  OTTO_VOICE_MODE_ENABLED: process.env.OTTO_VOICE_MODE_ENABLED ?? "0",
+  PASEO_RELAY_ENABLED: "false",
+  PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
+  PASEO_DICTATION_ENABLED: process.env.PASEO_DICTATION_ENABLED ?? "0",
+  PASEO_VOICE_MODE_ENABLED: process.env.PASEO_VOICE_MODE_ENABLED ?? "0",
 };
 const TEST_DAEMON_HOST = "127.0.0.1";
 const TSX_ENTRY = fileURLToPath(import.meta.resolve("tsx/cli"));
 
 const DEFAULT_OUTPUT_CAPTURE_LIMIT = 256 * 1024;
 const TEST_OUTPUT_CAPTURE_LIMIT = Number.parseInt(
-  process.env.OTTO_TEST_OUTPUT_CAPTURE_BYTES ?? `${DEFAULT_OUTPUT_CAPTURE_LIMIT}`,
+  process.env.PASEO_TEST_OUTPUT_CAPTURE_BYTES ?? `${DEFAULT_OUTPUT_CAPTURE_LIMIT}`,
   10,
 );
 
@@ -145,7 +145,7 @@ async function terminateProcessTree(processRef: ChildProcess, timeoutMs: number)
 /**
  * Generate a random port for test daemon
  * Uses range 20000-30000 to avoid conflicts
- * NEVER uses 6868 (user's running daemon)
+ * NEVER uses 6767 (user's running daemon)
  */
 export function getRandomPort(): number {
   return 20000 + Math.floor(Math.random() * 10000);
@@ -154,34 +154,38 @@ export function getRandomPort(): number {
 /**
  * Create isolated temp directories for testing
  */
-export async function createTempDirs(): Promise<{ ottoHome: string; workDir: string }> {
-  const ottoHome = await mkdtemp(join(tmpdir(), "otto-e2e-home-"));
-  const workDir = await mkdtemp(join(tmpdir(), "otto-e2e-work-"));
+export async function createTempDirs(): Promise<{ paseoHome: string; workDir: string }> {
+  const paseoHome = await mkdtemp(join(tmpdir(), "paseo-e2e-home-"));
+  const workDir = await mkdtemp(join(tmpdir(), "paseo-e2e-work-"));
 
   // Create the agents directory that the daemon expects
-  const agentsDir = join(ottoHome, "agents");
+  const agentsDir = join(paseoHome, "agents");
   await mkdir(agentsDir, { recursive: true });
 
-  return { ottoHome, workDir };
+  return { paseoHome, workDir };
 }
 
 /**
- * Wait for daemon to be ready by running `otto agent ls`
+ * Wait for daemon to be ready by running `paseo agent ls`
  * This connects via WebSocket and ensures the daemon is responsive
  */
-async function probeDaemonReady(port: number, env?: NodeJS.ProcessEnv): Promise<boolean> {
+async function probeDaemonReady(
+  port: number,
+  paseoHome: string,
+  env?: NodeJS.ProcessEnv,
+): Promise<boolean> {
   try {
-    const { exitCode } = await runOttoCli(
+    const { exitCode } = await runPaseoCli(
       {
         port,
         wsUrl: `ws://${TEST_DAEMON_HOST}:${port}`,
-        ottoHome: "",
+        paseoHome,
         workDir: "",
         process: null,
         isReady: false,
         stop: async () => {},
       },
-      ["agent", "ls"],
+      ["agent", "ls", "--host", `${TEST_DAEMON_HOST}:${port}`],
       { env },
     );
     return exitCode === 0;
@@ -192,13 +196,14 @@ async function probeDaemonReady(port: number, env?: NodeJS.ProcessEnv): Promise<
 
 async function waitForDaemonReady(
   port: number,
+  paseoHome: string,
   timeout = 30000,
   env?: NodeJS.ProcessEnv,
 ): Promise<void> {
   const deadline = Date.now() + timeout;
 
   async function poll(): Promise<void> {
-    if (await probeDaemonReady(port, env)) return;
+    if (await probeDaemonReady(port, paseoHome, env)) return;
     if (Date.now() >= deadline) {
       throw new Error(`Daemon failed to become ready on port ${port} within ${timeout}ms`);
     }
@@ -217,19 +222,19 @@ function sleep(ms: number): Promise<void> {
  * Start a test daemon programmatically using the server's bootstrap API
  *
  * This starts the daemon in a separate process using the CLI's daemon start command
- * with isolated OTTO_HOME and OTTO_LISTEN environment variables.
+ * with isolated PASEO_HOME and PASEO_LISTEN environment variables.
  */
 export async function startTestDaemon(options?: {
   port?: number;
-  ottoHome?: string;
+  paseoHome?: string;
   workDir?: string;
   timeout?: number;
   env?: NodeJS.ProcessEnv;
 }): Promise<TestDaemonContext> {
   const port = options?.port ?? (await getAvailablePort());
-  const { ottoHome, workDir } =
-    options?.ottoHome && options?.workDir
-      ? { ottoHome: options.ottoHome, workDir: options.workDir }
+  const { paseoHome, workDir } =
+    options?.paseoHome && options?.workDir
+      ? { paseoHome: options.paseoHome, workDir: options.workDir }
       : await createTempDirs();
   const timeout = options?.timeout ?? 30000;
 
@@ -240,23 +245,23 @@ export async function startTestDaemon(options?: {
   const cliSrcPath = join(cliDir, "src", "index.ts");
 
   // Start daemon process using tsx to run TypeScript directly
-  const daemonProcess = spawn(
-    process.execPath,
-    [TSX_ENTRY, cliSrcPath, "daemon", "start", "--foreground"],
-    {
-      env: {
-        ...process.env,
-        ...TEST_DAEMON_ENV_DEFAULTS,
-        OTTO_HOME: ottoHome,
-        OTTO_LISTEN: `${TEST_DAEMON_HOST}:${port}`,
-        // Force no TTY to prevent QR code output
-        CI: "true",
-        ...options?.env,
-      },
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
+  const daemonProcess = spawn(process.execPath, [TSX_ENTRY, cliSrcPath, "daemon", "run"], {
+    env: {
+      ...Object.fromEntries(
+        Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_")),
+      ),
+      ...TEST_DAEMON_ENV_DEFAULTS,
+      PASEO_HOME: paseoHome,
+      PASEO_LISTEN: `${TEST_DAEMON_HOST}:${port}`,
+      // Force no TTY to prevent QR code output
+      CI: "true",
+      ...options?.env,
+      HOME: paseoHome,
+      USERPROFILE: paseoHome,
     },
-  );
+    stdio: ["ignore", "pipe", "pipe"],
+    detached: process.platform !== "win32",
+  });
 
   const stdout = createOutputCapture();
   const stderr = createOutputCapture();
@@ -276,8 +281,8 @@ export async function startTestDaemon(options?: {
 
     // Clean up temp directories
     try {
-      if (existsSync(ottoHome)) {
-        await rm(ottoHome, { recursive: true, force: true });
+      if (existsSync(paseoHome)) {
+        await rm(paseoHome, { recursive: true, force: true });
       }
     } catch {
       // Ignore cleanup errors
@@ -310,7 +315,7 @@ export async function startTestDaemon(options?: {
   const ctx: TestDaemonContext = {
     port,
     wsUrl,
-    ottoHome,
+    paseoHome,
     workDir,
     process: daemonProcess,
     isReady: false,
@@ -319,7 +324,7 @@ export async function startTestDaemon(options?: {
 
   // Wait for daemon to be ready
   try {
-    await waitForDaemonReady(port, timeout, options?.env);
+    await waitForDaemonReady(port, paseoHome, timeout, options?.env);
     ctx.isReady = true;
   } catch (err) {
     // Daemon failed to start - clean up and rethrow
@@ -335,18 +340,20 @@ export async function startTestDaemon(options?: {
 }
 
 /**
- * Run a otto CLI command against a test daemon
+ * Run a paseo CLI command against a test daemon
  *
  * This is a helper that sets the correct environment variables
  * to point at the test daemon.
  */
-export async function runOttoCli(
+export async function runPaseoCli(
   ctx: TestDaemonContext,
   args: string[],
   options?: {
     timeout?: number;
     cwd?: string;
     env?: NodeJS.ProcessEnv;
+    /** Close the reading end of the CLI's stdout, as a launcher that discards output does. */
+    closedStdout?: boolean;
   },
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const timeout = options?.timeout ?? 60000;
@@ -358,11 +365,14 @@ export async function runOttoCli(
   return new Promise((resolve, reject) => {
     const proc = spawn(process.execPath, [TSX_ENTRY, cliSrcPath, ...args], {
       env: {
-        ...process.env,
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_")),
+        ),
         ...TEST_DAEMON_ENV_DEFAULTS,
-        OTTO_HOST: `${TEST_DAEMON_HOST}:${ctx.port}`,
-        OTTO_HOME: ctx.ottoHome,
+        PASEO_HOME: ctx.paseoHome,
         ...options?.env,
+        HOME: ctx.paseoHome,
+        USERPROFILE: ctx.paseoHome,
       },
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
@@ -371,6 +381,10 @@ export async function runOttoCli(
 
     const stdout = createOutputCapture();
     const stderr = createOutputCapture();
+
+    if (options?.closedStdout) {
+      proc.stdout?.destroy();
+    }
 
     proc.stdout?.on("data", (data) => {
       appendOutputCapture(stdout, data);
@@ -384,7 +398,7 @@ export async function runOttoCli(
       if (proc.pid) {
         signalProcessTree(proc.pid, "SIGKILL");
       }
-      reject(new Error(`CLI command timed out after ${timeout}ms: otto ${args.join(" ")}`));
+      reject(new Error(`CLI command timed out after ${timeout}ms: paseo ${args.join(" ")}`));
     }, timeout);
 
     proc.on("exit", (code) => {
@@ -414,8 +428,8 @@ export async function createE2ETestContext(options?: {
   env?: NodeJS.ProcessEnv;
 }): Promise<
   TestDaemonContext & {
-    /** Run a otto CLI command against this daemon */
-    otto: (
+    /** Run a paseo CLI command against this daemon */
+    paseo: (
       args: string[],
       opts?: { timeout?: number; cwd?: string; env?: NodeJS.ProcessEnv },
     ) => Promise<{
@@ -427,13 +441,13 @@ export async function createE2ETestContext(options?: {
 > {
   const ctx = await startTestDaemon({ timeout: options?.timeout, env: options?.env });
 
-  const otto = (
+  const paseo = (
     args: string[],
     opts?: { timeout?: number; cwd?: string; env?: NodeJS.ProcessEnv },
-  ) => runOttoCli(ctx, args, opts);
+  ) => runPaseoCli(ctx, args, opts);
 
   return {
     ...ctx,
-    otto,
+    paseo,
   };
 }

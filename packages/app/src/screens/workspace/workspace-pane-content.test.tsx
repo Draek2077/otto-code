@@ -10,19 +10,10 @@ import {
   WorkspacePaneContent,
 } from "@/screens/workspace/workspace-pane-content";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
-import {
-  usePaneContext,
-  usePaneFocus,
-  usePaneSurface,
-  type PaneContextValue,
-} from "@/panels/pane-context";
+import { usePaneContext, usePaneFocus, type PaneContextValue } from "@/panels/pane-context";
 
 vi.mock("@/panels/register-panels", () => ({
   ensurePanelsRegistered: vi.fn(),
-}));
-
-vi.mock("react-native-safe-area-context", () => ({
-  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));
 
 vi.mock("@/panels/panel-registry", () => ({
@@ -36,7 +27,6 @@ vi.mock("@/panels/panel-registry", () => ({
 interface ProbeSnapshot {
   paneContextValue: PaneContextValue;
   focus: ReturnType<typeof usePaneFocus>;
-  surface: ReturnType<typeof usePaneSurface>;
 }
 
 const snapshots: ProbeSnapshot[] = [];
@@ -46,8 +36,7 @@ const unmountCount = vi.fn();
 function ProbePanel() {
   const paneContextValue = usePaneContext();
   const focus = usePaneFocus();
-  const surface = usePaneSurface();
-  snapshots.push({ paneContextValue, focus, surface });
+  snapshots.push({ paneContextValue, focus });
 
   useEffect(() => {
     mountCount();
@@ -71,7 +60,6 @@ function buildContent(tab: WorkspaceTabDescriptor = agentTab, host: "main" | "ex
     tab,
     normalizedServerId: "server-a",
     normalizedWorkspaceId: "workspace-a",
-    paneId: "pane-main",
     host,
     onOpenTab: vi.fn(),
     onOpenPreferredTarget: vi.fn(),
@@ -123,26 +111,21 @@ describe("WorkspacePaneContent", () => {
     expect(unmountCount).not.toHaveBeenCalled();
     expect(snapshots).toHaveLength(2);
     expect(snapshots[1]?.paneContextValue).toBe(snapshots[0]?.paneContextValue);
-    // `isVisible` is "on screen" - workspace focused and this tab frontmost in its pane - and is
-    // distinct from `isPaneFocused`, which is about input. It tracks the focused value here
-    // because this case passes no explicit prop.
     expect(snapshots[0]?.focus).toEqual({
       isWorkspaceFocused: true,
       isPaneFocused: false,
       isInteractive: false,
-      isVisible: false,
       focusPane: expect.any(Function),
     });
     expect(snapshots[1]?.focus).toEqual({
       isWorkspaceFocused: true,
       isPaneFocused: true,
       isInteractive: true,
-      isVisible: true,
       focusPane: expect.any(Function),
     });
   });
 
-  it("exposes the pane host to its content and leaves the surface to the panel host", () => {
+  it("exposes the pane host to its content", () => {
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -158,9 +141,6 @@ describe("WorkspacePaneContent", () => {
     });
 
     expect(snapshots[0]?.paneContextValue.host).toBe("explorer");
-    // The physical panel host (workspace-panel-host.tsx) owns the visual
-    // surface; pane content never derives it from its own host value.
-    expect(snapshots[0]?.surface).toBe("workspace");
   });
 
   it("keeps pane content mounted when a draft tab is retargeted in place", () => {

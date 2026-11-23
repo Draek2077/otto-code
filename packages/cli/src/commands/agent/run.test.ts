@@ -1,19 +1,72 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { DaemonConnectionError } from "@getpaseo/client/internal/daemon-client";
+import { resolveCallerAgentId as resolveRunCallerAgentId } from "../../utils/caller-agent.js";
 import {
   resolveExistingRunWorkspace,
-  resolveRunCallerAgentId,
   runRunCommand,
-  validateRunOptions,
+  waitsForFinish,
   type AgentRunOptions,
 } from "./run";
 
+const daemonTarget = { kind: "endpoint" as const, host: "example.test:12345" };
+
+// Answers fetchAgent the way a daemon does: an unknown id is an error.
+function daemonWithAgents(...agentIds: string[]) {
+  return {
+    async fetchAgent({ agentId }: { agentId: string }) {
+      if (!agentIds.includes(agentId)) {
+        throw new Error(`Agent not found: ${agentId}`);
+      }
+      return { agent: { id: agentId } };
+    },
+  };
+}
+
+describe("run wait policy", () => {
+  it("waits by default and stops waiting on --no-wait or a legacy alias", () => {
+    expect(waitsForFinish({})).toBe(true);
+    expect(waitsForFinish({ wait: false })).toBe(false);
+    expect(waitsForFinish({ background: true })).toBe(false);
+    expect(waitsForFinish({ detach: true })).toBe(false);
+  });
+});
+
 describe("managed agent caller context", () => {
-  it("propagates a trimmed OTTO_AGENT_ID", () => {
-    expect(resolveRunCallerAgentId({ OTTO_AGENT_ID: "  parent-agent  " })).toBe("parent-agent");
+  it("uses a trimmed PASEO_AGENT_ID when the target daemon runs that agent", async () => {
+    await expect(
+      resolveRunCallerAgentId(daemonWithAgents("parent-agent"), {
+        PASEO_AGENT_ID: "  parent-agent  ",
+      }),
+    ).resolves.toBe("parent-agent");
   });
 
-  it("omits blank caller ids", () => {
-    expect(resolveRunCallerAgentId({ OTTO_AGENT_ID: "   " })).toBeUndefined();
+  it("runs without a caller when PASEO_AGENT_ID belongs to another daemon", async () => {
+    await expect(
+      resolveRunCallerAgentId(daemonWithAgents("other-agent"), {
+        PASEO_AGENT_ID: "parent-agent",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it.each(["DAEMON_CONNECTION_LOST", "DAEMON_REQUEST_TIMEOUT"] as const)(
+    "preserves %s instead of dropping the caller",
+    async (code) => {
+      const disconnectedDaemon = {
+        async fetchAgent(): Promise<never> {
+          throw new DaemonConnectionError("Caller lookup transport failed", code);
+        },
+      };
+
+      await expect(
+        resolveRunCallerAgentId(disconnectedDaemon, { PASEO_AGENT_ID: "parent-agent" }),
+      ).rejects.toBeInstanceOf(DaemonConnectionError);
+    },
+  );
+
+  it("omits blank caller ids", async () => {
+    await expect(
+      resolveRunCallerAgentId(daemonWithAgents(), { PASEO_AGENT_ID: "   " }),
+    ).resolves.toBeUndefined();
   });
 });
 
@@ -52,34 +105,27 @@ describe("existing run workspace resolution", () => {
 // validateRunOptions runs before the CLI ever connects to a daemon, so these
 // invalid combinations reject without one running.
 describe("runRunCommand option validation", () => {
-  it.each([
-    { streamJson: true, background: true },
-    { streamJson: true, detach: true },
-    { streamJson: true, outputSchema: "{}" },
-    { streamJson: true, json: true },
-    { streamJson: true, quiet: true },
-    { streamJson: true, format: "yaml" },
-  ])("rejects conflicting streaming options before connecting: %j", async (options) => {
-    await expect(runRunCommand("task", options, {} as never)).rejects.toMatchObject({
-      code: "INVALID_OPTIONS",
-    });
-  });
-  const originalWorkspaceId = process.env.OTTO_WORKSPACE_ID;
+  const originalWorkspaceId = process.env.PASEO_WORKSPACE_ID;
 
   beforeEach(() => {
-    delete process.env.OTTO_WORKSPACE_ID;
+    delete process.env.PASEO_WORKSPACE_ID;
   });
 
   afterEach(() => {
     if (originalWorkspaceId === undefined) {
-      delete process.env.OTTO_WORKSPACE_ID;
+      delete process.env.PASEO_WORKSPACE_ID;
     } else {
-      process.env.OTTO_WORKSPACE_ID = originalWorkspaceId;
+      process.env.PASEO_WORKSPACE_ID = originalWorkspaceId;
     }
   });
 
-  async function expectInvalidOptions(options: AgentRunOptions, messageMatch: RegExp) {
-    await expect(runRunCommand("do something", options, {} as never)).rejects.toMatchObject({
+  async function expectInvalidOptions(
+    options: Omit<AgentRunOptions, "daemonTarget">,
+    messageMatch: RegExp,
+  ) {
+    await expect(
+      runRunCommand("do something", { ...options, daemonTarget }, {} as never),
+    ).rejects.toMatchObject({
       code: "INVALID_OPTIONS",
       message: expect.stringMatching(messageMatch),
     });
@@ -92,19 +138,17 @@ describe("runRunCommand option validation", () => {
     );
   });
 
-  it("allows explicit worktree workspace creation through validation", () => {
-    // Explicit workspace creation with no --workspace must clear validation.
-    // This is the only case here that CLEARS the guard, so driving it through
-    // runRunCommand escaped into connectToDaemonOrThrow and its outcome hung on
-    // whether a daemon happened to be listening on the machine. Assert the
-    // guard itself, which is pure and opens no socket.
-    expect(() =>
-      validateRunOptions(
+  it("allows explicit worktree workspace creation through validation", async () => {
+    // Explicit workspace creation with no --workspace
+    // must clear validation. It still fails later (provider resolution), which
+    // is enough to prove the new guard did not reject it.
+    await expect(
+      runRunCommand(
         "do something",
-        { newWorkspace: "worktree", provider: undefined },
-        undefined,
+        { newWorkspace: "worktree", provider: undefined, daemonTarget },
+        {} as never,
       ),
-    ).not.toThrow();
+    ).rejects.not.toMatchObject({ code: "INVALID_OPTIONS" });
   });
 
   it("rejects unknown new workspace kinds", async () => {

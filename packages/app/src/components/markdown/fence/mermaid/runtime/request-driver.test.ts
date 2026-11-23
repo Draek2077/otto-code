@@ -3,13 +3,7 @@ import type { MermaidRenderRequest } from "../render-model";
 import { MermaidRuntimeRequestDriver } from "./request-driver";
 
 function request(revision: number, source: string): MermaidRenderRequest {
-  return {
-    revision,
-    source,
-    colorScheme: "dark",
-    themeKey: "dark test-palette",
-    themeVariables: { darkMode: "true" },
-  };
+  return { revision, source, colorScheme: "dark" };
 }
 
 describe("MermaidRuntimeRequestDriver", () => {

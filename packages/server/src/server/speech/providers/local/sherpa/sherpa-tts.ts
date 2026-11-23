@@ -2,45 +2,17 @@ import type pino from "pino";
 import { Readable } from "node:stream";
 import { existsSync } from "node:fs";
 
-import type {
-  SpeechStreamResult,
-  SpeechVoiceOverride,
-  TextToSpeechProvider,
-} from "../../../speech-provider.js";
+import type { SpeechStreamResult, TextToSpeechProvider } from "../../../speech-provider.js";
 import { chunkBuffer, float32ToPcm16le } from "../../../audio.js";
-import { getSherpaOnnxTtsLayout, type LocalTtsModelId } from "./model-catalog.js";
-import { listLocalTtsVoices, resolveLocalTtsSpeakerId } from "./tts-voices.js";
 import { loadSherpaOnnxNode } from "./sherpa-onnx-node-loader.js";
+// OTTO(speech-models): model layout, speaker identity and bounds stay Otto-owned.
+import {
+  localTtsLayout,
+  localTtsRequest,
+  type SpeechTtsModelId,
+} from "../../../../otto/speech/model-catalog.js";
 
-export type SherpaTtsPreset = LocalTtsModelId;
-
-// sherpa-onnx will crash the native worker on a nonsensical speed or an
-// out-of-range speaker id. These bounds fence off bad persisted/env config
-// (e.g. speed=0 or speakerId=999) before it reaches generate().
-const MIN_TTS_SPEED = 0.5;
-const MAX_TTS_SPEED = 2.0;
-
-function clampTtsSpeed(speed: number | undefined): number {
-  if (speed === undefined || !Number.isFinite(speed)) {
-    return 1.0;
-  }
-  return Math.min(MAX_TTS_SPEED, Math.max(MIN_TTS_SPEED, speed));
-}
-
-function resolveValidSpeakerId(
-  preset: LocalTtsModelId,
-  requested: number | undefined,
-  fallback: number,
-): number {
-  if (requested === undefined) {
-    return fallback;
-  }
-  const voiceCount = listLocalTtsVoices(preset).length;
-  if (Number.isInteger(requested) && requested >= 0 && requested < voiceCount) {
-    return requested;
-  }
-  return fallback;
-}
+export type SherpaTtsPreset = SpeechTtsModelId; // OTTO(speech-models)
 
 export interface SherpaTtsConfig {
   preset: SherpaTtsPreset;
@@ -59,75 +31,74 @@ function assertFileExists(filePath: string, label: string): void {
 
 interface SherpaOfflineTtsNative {
   sampleRate?: number;
-  generate: (args: {
+  generateAsync: (args: {
     text: string;
     sid: number;
     speed: number;
     enableExternalBuffer: boolean;
-  }) => { samples?: Float32Array | number[]; sampleRate?: number } | undefined;
+  }) => Promise<{ samples?: Float32Array | number[]; sampleRate?: number } | undefined>;
   free?: () => void;
 }
 
 export class SherpaOnnxTTS implements TextToSpeechProvider {
   private readonly tts: SherpaOfflineTtsNative;
-  private readonly preset: LocalTtsModelId;
   private readonly speakerId: number;
   private readonly speed: number;
   private readonly logger: pino.Logger;
+  private synthesisQueue: Promise<void> = Promise.resolve();
+  private closed = false;
+  private readonly preset: SherpaTtsPreset; // OTTO(speech-models)
 
-  constructor(config: SherpaTtsConfig, logger: pino.Logger) {
+  constructor(
+    config: SherpaTtsConfig,
+    logger: pino.Logger,
+    loadNative: () => Pick<
+      ReturnType<typeof loadSherpaOnnxNode>,
+      "OfflineTts"
+    > = loadSherpaOnnxNode,
+  ) {
     this.logger = logger.child({ module: "speech", provider: "local", component: "tts" });
-    const layout = getSherpaOnnxTtsLayout(config.preset);
+    // OTTO(speech-models): validate before allocating a native model handle.
     this.preset = config.preset;
-    this.speakerId = resolveValidSpeakerId(
-      config.preset,
-      config.speakerId,
-      layout.defaultSpeakerId,
-    );
-    if (config.speakerId !== undefined && config.speakerId !== this.speakerId) {
-      this.logger.warn(
-        { requested: config.speakerId, fallback: this.speakerId, preset: config.preset },
-        "Configured TTS speaker id is out of range; falling back to the model default",
-      );
-    }
-    this.speed = clampTtsSpeed(config.speed);
+    const request = localTtsRequest(config.preset, config.speakerId, config.speed);
+    this.speakerId = request.speakerId;
+    this.speed = request.speed;
+    const layout = localTtsLayout(config.preset);
 
-    const sherpa = loadSherpaOnnxNode();
+    const sherpa = loadNative();
     if (typeof sherpa.OfflineTts !== "function") {
       throw new Error("sherpa-onnx-node OfflineTts is unavailable");
     }
 
-    const modelPath = `${config.modelDir}/${layout.modelFile}`;
+    const modelPath = `${config.modelDir}/${layout.modelFile}`; // OTTO(speech-models)
     const voicesPath = `${config.modelDir}/voices.bin`;
     const tokensPath = `${config.modelDir}/tokens.txt`;
     const dataDir = `${config.modelDir}/espeak-ng-data`;
-    const lexiconPaths = layout.lexiconFiles.map((file) => `${config.modelDir}/${file}`);
 
     assertFileExists(modelPath, "TTS model");
     assertFileExists(voicesPath, "TTS voices");
     assertFileExists(tokensPath, "TTS tokens");
     assertFileExists(dataDir, "TTS espeak-ng dataDir");
-    for (const lexiconPath of lexiconPaths) {
-      assertFileExists(lexiconPath, "TTS lexicon");
-    }
+    // OTTO(speech-models): lexicons are required by the restored v1 packages.
+    const lexicons = layout.lexiconFiles.map((name) => `${config.modelDir}/${name}`);
+    for (const lexicon of lexicons) assertFileExists(lexicon, "TTS lexicon");
 
     const modelConfig = {
+      // The native parser reads these under model, despite the upstream JS typedef.
+      numThreads: config.numThreads ?? 2,
+      provider: "cpu",
       kokoro: {
         model: modelPath,
         voices: voicesPath,
         tokens: tokensPath,
         dataDir,
-        // Kokoro v1.x ships lexicons for EN/ZH; other languages fall back to
-        // espeak-ng phonemes from dataDir. v0.19 has no lexicon files.
-        ...(lexiconPaths.length > 0 ? { lexicon: lexiconPaths.join(",") } : {}),
         lengthScale: config.lengthScale ?? 1.0,
+        ...(lexicons.length ? { lexicon: lexicons.join(",") } : {}), // OTTO(speech-models)
       },
     };
 
     const offlineTtsConfig = {
       model: modelConfig,
-      numThreads: config.numThreads ?? 2,
-      provider: "cpu",
       maxNumSentences: 1,
     };
 
@@ -140,26 +111,43 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
     );
   }
 
-  // A personality voice only resolves to a speaker on THIS model. A voice bound
-  // to a different model (or an unknown name) silently falls back to the host
-  // default - the personality voice is a soft binding, never a hard failure.
-  private resolveSpeakerId(voice?: SpeechVoiceOverride): number {
-    if (!voice || (voice.model && voice.model !== this.preset)) {
-      return this.speakerId;
-    }
-    return resolveLocalTtsSpeakerId(this.preset, voice.name) ?? this.speakerId;
-  }
-
-  async synthesizeSpeech(text: string, voice?: SpeechVoiceOverride): Promise<SpeechStreamResult> {
+  // OTTO(speech-models): a shared native handle accepts per-request voice/speed;
+  // selecting another voice must not allocate another copy of the model.
+  async synthesizeSpeech(
+    text: string,
+    options?: { speakerId?: number; speed?: number },
+  ): Promise<SpeechStreamResult> {
     const trimmed = text.trim();
     if (!trimmed) {
       throw new Error("Cannot synthesize empty text");
     }
 
-    const audio = this.tts.generate({
-      text: trimmed,
-      sid: this.resolveSpeakerId(voice),
-      speed: this.speed,
+    // The native handle is not reentrant. Keep prefetch off the worker event loop
+    // while allowing only one generation at a time on this model.
+    const request = localTtsRequest(
+      this.preset,
+      options?.speakerId ?? this.speakerId,
+      options?.speed ?? this.speed,
+    ); // OTTO(speech-models)
+    const result = this.synthesisQueue.then(() => this.generateSpeech(trimmed, request));
+    this.synthesisQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
+  }
+
+  private async generateSpeech(
+    text: string,
+    request: { speakerId: number; speed: number },
+  ): Promise<SpeechStreamResult> {
+    if (this.closed) {
+      throw new Error("TTS provider closed");
+    }
+    const audio = await this.tts.generateAsync({
+      text,
+      sid: request.speakerId, // OTTO(speech-models)
+      speed: request.speed, // OTTO(speech-models)
       // Electron rejects native external-backed typed arrays. Request a copied buffer
       // from sherpa itself instead of trying to clone after generate() returns.
       enableExternalBuffer: false,
@@ -202,10 +190,19 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
   }
 
   free(): void {
-    try {
-      this.tts?.free?.();
-    } catch {
-      // ignore
+    if (this.closed) {
+      return;
     }
+    this.closed = true;
+    // Let the active native call finish before releasing its handle. Queued
+    // calls observe closed and never enter native code.
+    void this.synthesisQueue.then(() => {
+      try {
+        this.tts.free?.();
+      } catch {
+        // ignore
+      }
+      return undefined;
+    });
   }
 }

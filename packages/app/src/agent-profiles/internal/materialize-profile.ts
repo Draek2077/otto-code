@@ -1,4 +1,6 @@
-import type { AgentConfigApply, AgentProfile } from "@otto-code/protocol/messages";
+import { hasProfileRole } from "@getpaseo/protocol/otto/agent-teams"; // OTTO(agent-teams)
+import type { AgentConfigApply, AgentProfile } from "@getpaseo/protocol/messages";
+import { captureChatProfile, type ChatProfileBinding } from "@/otto/chat/identity/profile-binding"; // OTTO(chat-profile): keep the explicitly chosen identity with its configuration.
 
 /**
  * A profile with its blank fields resolved away. Storage keeps every field
@@ -7,26 +9,14 @@ import type { AgentConfigApply, AgentProfile } from "@otto-code/protocol/message
  * every consumer would otherwise re-derive the same trim-and-drop rules.
  */
 export interface MaterializedAgentProfile {
-  /** Canonical host-config profile id, also used by the legacy personality wire bridge. */
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
+  chatProfile?: ChatProfileBinding;
+  rememberAsChatter?: boolean;
   provider: string;
   /** Empty when the profile names no model, meaning "leave the model alone". */
   modelId: string;
   modeId: string;
   thinkingOptionId: string;
-  effortLevel: string;
   featureValues: Record<string, unknown>;
-  notes: string;
-  personalityPrompt: AgentProfile["personalityPrompt"];
-  respectGlobalAppendPrompt: AgentProfile["respectGlobalAppendPrompt"];
-  roles: NonNullable<AgentProfile["roles"]>;
-  spinner: AgentProfile["spinner"];
-  voice: AgentProfile["voice"];
-  voiceCues: AgentProfile["voiceCues"];
-  memoryEnabled: AgentProfile["memoryEnabled"];
 }
 
 function trimmed(value: string | undefined): string {
@@ -35,24 +25,13 @@ function trimmed(value: string | undefined): string {
 
 export function materializeAgentProfile(profile: AgentProfile): MaterializedAgentProfile {
   return {
-    id: trimmed(profile.id),
-    name: trimmed(profile.name),
-    icon: trimmed(profile.icon),
-    color: trimmed(profile.color),
+    chatProfile: captureChatProfile(profile),
+    ...(hasProfileRole(profile, "chatter") && { rememberAsChatter: true }),
     provider: trimmed(profile.provider),
     modelId: trimmed(profile.model),
     modeId: trimmed(profile.modeId),
     thinkingOptionId: trimmed(profile.thinkingOptionId),
-    effortLevel: trimmed(profile.effortLevel),
     featureValues: profile.featureValues ?? {},
-    notes: trimmed(profile.notes),
-    personalityPrompt: profile.personalityPrompt,
-    respectGlobalAppendPrompt: profile.respectGlobalAppendPrompt,
-    roles: profile.roles ?? [],
-    spinner: profile.spinner,
-    voice: profile.voice,
-    voiceCues: profile.voiceCues,
-    memoryEnabled: profile.memoryEnabled,
   };
 }
 

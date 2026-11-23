@@ -1,12 +1,7 @@
 {
-  "name": "@otto-code/plugin",
+  "name": "@getpaseo/plugin",
   "version": "0.9.35",
-  "description": "Otto plugin SDK package",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Draek2077/otto-code.git",
-    "directory": "packages/plugin"
-  },
+  "description": "Paseo plugin SDK package",
   "files": [
     "dist",
     "!dist/**/*.map"
@@ -28,6 +23,86 @@
       "source": "./src/server/provider.ts",
       "default": "./dist/server/provider.js"
     },
+    "./server/otto-openai": {
+      "types": "./dist/server/otto-openai.d.ts",
+      "source": "./src/server/otto-openai.ts",
+      "default": "./dist/server/otto-openai.js"
+    },
+    "./server/otto-brain": {
+      "types": "./dist/server/otto-brain.d.ts",
+      "source": "./src/server/otto-brain.ts",
+      "default": "./dist/server/otto-brain.js"
+    },
+    "./server/otto-kanban": {
+      "types": "./dist/server/otto-kanban.d.ts",
+      "source": "./src/server/otto-kanban.ts",
+      "default": "./dist/server/otto-kanban.js"
+    },
+    "./server/otto-preview": {
+      "types": "./dist/server/otto-preview.d.ts",
+      "source": "./src/server/otto-preview.ts",
+      "default": "./dist/server/otto-preview.js"
+    },
+    "./otto/preview": {
+      "types": "./dist/otto/preview.d.ts",
+      "source": "./src/otto/preview.ts",
+      "default": "./dist/otto/preview.js"
+    },
+    "./otto/host-browser": {
+      "types": "./dist/otto/host-browser.d.ts",
+      "source": "./src/otto/host-browser.ts",
+      "default": "./dist/otto/host-browser.js"
+    },
+    "./otto/kanban": {
+      "types": "./dist/otto/kanban.d.ts",
+      "source": "./src/otto/kanban.ts",
+      "default": "./dist/otto/kanban.js"
+    },
+    "./otto/atlassian-settings": {
+      "types": "./dist/otto/atlassian-settings.d.ts",
+      "source": "./src/otto/atlassian-settings.ts",
+      "default": "./dist/otto/atlassian-settings.js"
+    },
+    "./otto/bitbucket-connections": {
+      "types": "./dist/otto/bitbucket-connections.d.ts",
+      "source": "./src/otto/bitbucket-connections.ts",
+      "default": "./dist/otto/bitbucket-connections.js"
+    },
+    "./client/otto-bitbucket": {
+      "types": "./dist/client/otto-bitbucket.d.ts",
+      "source": "./src/client/otto-bitbucket.ts",
+      "default": "./dist/client/otto-bitbucket.js"
+    },
+    "./client/otto-connectors": {
+      "types": "./dist/client/otto-connectors.d.ts",
+      "source": "./src/client/otto-connectors.ts",
+      "default": "./dist/client/otto-connectors.js"
+    },
+    "./otto/speech": {
+      "types": "./dist/otto/speech.d.ts",
+      "source": "./src/otto/speech.ts",
+      "default": "./dist/otto/speech.js"
+    },
+    "./client/otto-speech": {
+      "types": "./dist/client/otto-speech.d.ts",
+      "source": "./src/client/otto-speech.ts",
+      "default": "./dist/client/otto-speech.js"
+    },
+    "./otto/project-knowledge": {
+      "types": "./dist/otto/project-knowledge.d.ts",
+      "source": "./src/otto/project-knowledge.ts",
+      "default": "./dist/otto/project-knowledge.js"
+    },
+    "./otto/openai-settings": {
+      "types": "./dist/otto/openai-settings.d.ts",
+      "source": "./src/otto/openai-settings.ts",
+      "default": "./dist/otto/openai-settings.js"
+    },
+    "./server/usage": {
+      "types": "./dist/server/usage.d.ts",
+      "source": "./src/server/usage.ts",
+      "default": "./dist/server/usage.js"
+    },
     "./server/acp": {
       "types": "./dist/server/acp.d.ts",
       "source": "./src/server/acp.ts",
@@ -48,10 +123,140 @@
       "source": "./src/client/ui.ts",
       "default": "./dist/client/ui.js"
     },
+    "./client/otto-brain": {
+      "types": "./dist/client/otto-brain.d.ts",
+      "source": "./src/client/otto-brain.ts",
+      "default": "./dist/client/otto-brain.js"
+    },
+    "./client/otto-knowledge": {
+      "types": "./dist/client/otto-knowledge.d.ts",
+      "source": "./src/client/otto-knowledge.ts",
+      "default": "./dist/client/otto-knowledge.js"
+    },
     "./client": {
       "types": "./dist/client/index.d.ts",
       "source": "./src/client/index.ts",
       "default": "./dist/client/index.js"
+    },
+    "./otto/browser-history": {
+      "types": "./dist/otto/browser-history.d.ts",
+      "source": "./src/otto/browser-history.ts",
+      "default": "./dist/otto/browser-history.js"
+    },
+    "./otto/context-management": {
+      "types": "./dist/otto/context-management.d.ts",
+      "source": "./src/otto/context-management.ts",
+      "default": "./dist/otto/context-management.js"
+    },
+    "./client/otto-preview": {
+      "types": "./dist/client/otto-preview.d.ts",
+      "source": "./src/client/otto-preview.ts",
+      "default": "./dist/client/otto-preview.js"
+    },
+    "./server/otto-browser": {
+      "types": "./dist/server/otto-browser.d.ts",
+      "source": "./src/server/otto-browser.ts",
+      "default": "./dist/server/otto-browser.js"
+    },
+    "./otto/connectors": {
+      "types": "./dist/otto/connectors.d.ts",
+      "source": "./src/otto/connectors.ts",
+      "default": "./dist/otto/connectors.js"
+    },
+    "./otto/artifacts": {
+      "types": "./dist/otto/artifacts.d.ts",
+      "source": "./src/otto/artifacts.ts",
+      "default": "./dist/otto/artifacts.js"
+    },
+    "./otto/architectural-views": {
+      "types": "./dist/otto/architectural-views/contracts.d.ts",
+      "source": "./src/otto/architectural-views/contracts.ts",
+      "default": "./dist/otto/architectural-views/contracts.js"
+    },
+    "./client/otto-artifacts": {
+      "types": "./dist/client/otto-artifacts.d.ts",
+      "source": "./src/client/otto-artifacts.ts",
+      "default": "./dist/client/otto-artifacts.js"
+    },
+    "./client/otto-architectural-views": {
+      "types": "./dist/client/otto-architectural-views.d.ts",
+      "source": "./src/client/otto-architectural-views.ts",
+      "default": "./dist/client/otto-architectural-views.js"
+    },
+    "./client/otto-suggested-tasks": {
+      "types": "./dist/client/otto-suggested-tasks.d.ts",
+      "source": "./src/client/otto-suggested-tasks.ts",
+      "default": "./dist/client/otto-suggested-tasks.js"
+    },
+    "./otto/suggested-task": {
+      "types": "./dist/otto/suggested-task.d.ts",
+      "source": "./src/otto/suggested-task.ts",
+      "default": "./dist/otto/suggested-task.js"
+    },
+    "./client/otto-widgets": {
+      "types": "./dist/client/otto-widgets.d.ts",
+      "source": "./src/client/otto-widgets.ts",
+      "default": "./dist/client/otto-widgets.js"
+    },
+    "./client/otto-visualizer": {
+      "types": "./dist/client/otto-visualizer.d.ts",
+      "source": "./src/client/otto-visualizer.ts",
+      "default": "./dist/client/otto-visualizer.js"
+    },
+    "./otto/terminal": {
+      "types": "./dist/otto/terminal.d.ts",
+      "source": "./src/otto/terminal.ts",
+      "default": "./dist/otto/terminal.js"
+    },
+    "./otto/workspace-git": {
+      "types": "./dist/otto/workspace-git.d.ts",
+      "source": "./src/otto/workspace-git.ts",
+      "default": "./dist/otto/workspace-git.js"
+    },
+    "./otto/editor-solution": {
+      "types": "./dist/otto/editor-solution.d.ts",
+      "source": "./src/otto/editor-solution.ts",
+      "default": "./dist/otto/editor-solution.js"
+    },
+    "./otto/editor": {
+      "types": "./dist/otto/editor.d.ts",
+      "source": "./src/otto/editor.ts",
+      "default": "./dist/otto/editor.js"
+    },
+    "./otto/editor-links": {
+      "types": "./dist/otto/editor-links.d.ts",
+      "source": "./src/otto/editor-links.ts",
+      "default": "./dist/otto/editor-links.js"
+    },
+    "./otto/editor-images": {
+      "types": "./dist/otto/editor-images.d.ts",
+      "source": "./src/otto/editor-images.ts",
+      "default": "./dist/otto/editor-images.js"
+    },
+    "./otto/schedules": {
+      "types": "./dist/otto/schedules/index.d.ts",
+      "source": "./src/otto/schedules/index.ts",
+      "default": "./dist/otto/schedules/index.js"
+    },
+    "./otto/workflows": {
+      "types": "./dist/otto/workflows/index.d.ts",
+      "source": "./src/otto/workflows/index.ts",
+      "default": "./dist/otto/workflows/index.js"
+    },
+    "./otto/workflows/judge-verdict": {
+      "types": "./dist/otto/workflows/judge-verdict.d.ts",
+      "source": "./src/otto/workflows/judge-verdict.ts",
+      "default": "./dist/otto/workflows/judge-verdict.js"
+    },
+    "./client/otto-workflows": {
+      "default": "./dist/client/otto-workflows.js",
+      "source": "./src/client/otto-workflows.ts",
+      "types": "./dist/client/otto-workflows.d.ts"
+    },
+    "./client/otto-schedules": {
+      "types": "./dist/client/otto-schedules.d.ts",
+      "source": "./src/client/otto-schedules.ts",
+      "default": "./dist/client/otto-schedules.js"
     }
   },
   "publishConfig": {
@@ -63,27 +268,29 @@
     "build:clean": "npm run clean && npm run build",
     "prepack": "npm run build:clean",
     "typecheck": "tsgo --noEmit && tsgo -p tsconfig.examples.json --noEmit",
+    "typecheck:otto-fixtures": "tsgo -p tsconfig.otto-tests.json --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "^1.4.0",
+    "@getpaseo/brain": "0.9.35",
     "use-sync-external-store": "^1.6.0"
   },
   "devDependencies": {
-    "@otto-code/client": "0.9.35",
-    "@otto-code/protocol": "0.9.35",
+    "@getpaseo/client": "0.9.35",
+    "@getpaseo/protocol": "0.9.35",
     "@types/node": "^20.9.0",
     "@types/react": "~19.2.0",
     "react": "19.1.0",
     "react-native": "0.81.5",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.6",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@otto-code/client": "0.9.35",
-    "@otto-code/protocol": "0.9.35",
-    "react": "19.1.0",
+    "@getpaseo/client": "0.9.35",
+    "@getpaseo/protocol": "0.9.35",
+    "react": "~19.1.0",
     "react-native": ">=0.81.5",
     "zod": "^4.4.3"
   },

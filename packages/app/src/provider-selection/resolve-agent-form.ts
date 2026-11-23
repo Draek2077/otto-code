@@ -1,16 +1,14 @@
-import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
-import { resolveOttoThinkingFallback } from "./otto-model-selection-policy";
+import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
 import type {
   AgentModelDefinition,
   AgentProvider,
   ProviderSnapshotEntry,
-} from "@otto-code/protocol/agent-types";
+} from "@getpaseo/protocol/agent-types";
 import {
   mergeProviderPreferences,
   type FormPreferences,
   type ProviderPreferences,
 } from "@/hooks/use-form-preferences";
-import { coerceModeForModel, findModelDefinition } from "./mode-support";
 import { findModelByReference } from "./model-catalog";
 
 export interface FormInitialValues {
@@ -91,13 +89,6 @@ export type AgentFormAction =
       allowedProviderMap: Map<AgentProvider, AgentProviderDefinition>;
     }
   | {
-      type: "SET_PROVIDER_FROM_USER";
-      provider: AgentProvider;
-      providerModels: AgentModelDefinition[] | null;
-      providerDef: AgentProviderDefinition | undefined;
-      providerPrefs: ProviderPrefs | undefined;
-    }
-  | {
       type: "SET_PROVIDER_AND_MODEL_FROM_USER";
       provider: AgentProvider;
       modelId: string;
@@ -120,7 +111,7 @@ export type AgentFormAction =
       type: "SET_MODEL_FROM_USER";
       modelId: string;
       availableModels: AgentModelDefinition[] | null;
-      providerPrefs?: ProviderPrefs;
+      providerPrefs: ProviderPrefs | undefined;
     }
   | { type: "CLEAR_PROVIDER_SELECTION_FROM_USER" }
   | { type: "SET_THINKING_OPTION_FROM_USER"; thinkingOptionId: string }
@@ -193,11 +184,7 @@ export function resolveThinkingOptionId(args: {
     return normalizedThinkingOptionId;
   }
 
-  return resolveOttoThinkingFallback({
-    requestedThinkingOptionId: normalizedThinkingOptionId,
-    thinkingOptions,
-    defaultThinkingOptionId: effectiveModel?.defaultThinkingOptionId,
-  });
+  return effectiveModel?.defaultThinkingOptionId ?? thinkingOptions[0]?.id ?? "";
 }
 
 const normalizeSelectedModeId = normalizeSelectedModelId;
@@ -334,12 +321,7 @@ function resolveModelField(input: {
       ? preferredModel
       : resolveCanonicalModelId(availableModels, preferredModel) || preferredModel;
   }
-  // The provider's own default, materialized into state rather than painted in
-  // at label time. It used to return "" here and let resolveSelectedModelLabel
-  // display the default anyway, so the picker showed a model the form did not
-  // actually hold - the last tier of the ladder has to be a real value or
-  // "what you see" and "what you'll get" can disagree.
-  return resolveDefaultModelId(availableModels);
+  return "";
 }
 
 function resolveThinkingOption(input: {
@@ -467,16 +449,6 @@ export function resolveFormStateFromProviderModels(
   );
 }
 
-function pickNextModelForProvider(input: {
-  providerModels: AgentModelDefinition[] | null;
-  providerPrefs: ProviderPrefs | undefined;
-}): string {
-  const preferredModel = normalizeSelectedModelId(input.providerPrefs?.model);
-  return preferredModel
-    ? resolveCanonicalModelId(input.providerModels, preferredModel) || preferredModel
-    : resolveDefaultModelId(input.providerModels);
-}
-
 function pickNextModeForProvider(input: {
   providerDef: AgentProviderDefinition | undefined;
   providerPrefs: ProviderPrefs | undefined;
@@ -573,19 +545,18 @@ function applyProfile(state: AgentFormReducerState, action: ApplyProfileAction) 
   const preferredModeId = action.modeId || action.providerPrefs?.mode || "";
   const defaultModeId = action.providerDef?.defaultModeId ?? "";
   let nextModeId = "";
-  if (availableModeIds.has(preferredModeId)) nextModeId = preferredModeId;
-  else if (availableModeIds.has(defaultModeId)) nextModeId = defaultModeId;
-  const nextThinkingOptionId = resolveThinkingOptionId({
-    availableModels: action.providerModels,
-    modelId: nextModelId,
-    requestedThinkingOptionId:
-      action.thinkingOptionId ||
-      resolvePreferredThinkingOptionId({
-        availableModels: action.providerModels,
-        providerPrefs: action.providerPrefs,
-        modelId: nextModelId,
-      }),
-  });
+  if (availableModeIds.has(preferredModeId)) {
+    nextModeId = preferredModeId;
+  } else if (availableModeIds.has(defaultModeId)) {
+    nextModeId = defaultModeId;
+  }
+  const nextThinkingOptionId =
+    action.thinkingOptionId ||
+    pickNextThinkingOptionForProvider({
+      providerModels: action.providerModels,
+      providerPrefs: action.providerPrefs,
+      modelId: nextModelId,
+    });
   return {
     ...state,
     form: {
@@ -637,7 +608,6 @@ function receiveInputs(
   return completeResolution(next, { ...action, type: "COMPLETE_RESOLUTION" });
 }
 
-// oxlint-disable-next-line complexity
 export function resolveAgentForm(
   state: AgentFormReducerState,
   action: AgentFormAction,
@@ -655,41 +625,8 @@ export function resolveAgentForm(
     case "COMPLETE_RESOLUTION":
       return completeResolution(state, action);
 
-    case "SET_PROVIDER_FROM_USER": {
-      const nextModelId = pickNextModelForProvider({
-        providerModels: action.providerModels,
-        providerPrefs: action.providerPrefs,
-      });
-      const nextModeId = pickNextModeForProvider({
-        providerDef: action.providerDef,
-        providerPrefs: action.providerPrefs,
-      });
-      const nextThinkingOptionId = pickNextThinkingOptionForProvider({
-        providerModels: action.providerModels,
-        providerPrefs: action.providerPrefs,
-        modelId: nextModelId,
-      });
-      return {
-        ...state,
-        form: {
-          ...state.form,
-          provider: action.provider,
-          modeId: nextModeId,
-          model: nextModelId,
-          thinkingOptionId: nextThinkingOptionId,
-        },
-        userModified: { ...state.userModified, provider: true },
-      };
-    }
-
     case "SET_PROVIDER_AND_MODEL_FROM_USER": {
-      // OTTO: an explicit provider+model pick (a personality or team applying
-      // its model) is kept even when the current catalog does not list it yet,
-      // e.g. while the provider snapshot is still loading. Known references
-      // still resolve to their canonical id.
-      const normalizedModelId =
-        resolveCanonicalModelId(action.providerModels, action.modelId) ||
-        normalizeSelectedModelId(action.modelId);
+      const normalizedModelId = resolveCanonicalModelId(action.providerModels, action.modelId);
       const nextModelId = normalizedModelId || resolveDefaultModelId(action.providerModels);
       const nextThinkingOptionId = pickNextThinkingOptionForTarget({
         availableModels: action.providerModels,
@@ -712,19 +649,16 @@ export function resolveAgentForm(
           ...state.form,
           provider: action.provider,
           model: nextModelId,
-          // See SET_MODEL_FROM_USER: Auto may not be runnable on this model.
-          modeId: coerceModeForModel(
-            nextModeId,
-            findModelDefinition(action.providerModels, nextModelId),
-          ),
+          modeId: nextModeId,
           thinkingOptionId: nextThinkingOptionId,
         },
         userModified: { ...state.userModified, provider: true, model: true },
       };
     }
 
-    case "APPLY_PROFILE_FROM_USER":
+    case "APPLY_PROFILE_FROM_USER": {
       return applyProfile(state, action);
+    }
 
     case "SET_MODE_FROM_USER":
       return {
@@ -749,12 +683,6 @@ export function resolveAgentForm(
         form: {
           ...state.form,
           model: nextModelId,
-          // A selected Auto mode can become unsupported on the new model
-          // (e.g. Claude Auto on Haiku); drop back to the provider default.
-          modeId: coerceModeForModel(
-            state.form.modeId,
-            findModelDefinition(action.availableModels, nextModelId),
-          ),
           thinkingOptionId: nextThinkingOptionId,
         },
         userModified: { ...state.userModified, model: true },

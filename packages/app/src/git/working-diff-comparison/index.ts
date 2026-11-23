@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import { create } from "zustand";
 import {
+  expireWorkingDiffComparisonsInState,
   resolveWorkingDiffComparisonFromState,
   selectWorkingDiffComparisonInState,
   type WorkingDiffCheckoutIdentity,
@@ -12,6 +13,7 @@ interface WorkingDiffComparisonStore extends WorkingDiffComparisonState {
   select: (
     input: WorkingDiffCheckoutIdentity & {
       comparison: WorkingDiffComparison;
+      isDirty: boolean;
     },
   ) => void;
 }
@@ -27,21 +29,15 @@ export function useWorkingDiffComparison(
   comparison: WorkingDiffComparison;
   selectComparison: (comparison: WorkingDiffComparison) => void;
 } {
-  const { serverId, workspaceId, cwd, isDirty, modeScope } = input;
+  const { serverId, workspaceId, cwd, isDirty } = input;
   const comparison = useWorkingDiffComparisonStore((state) =>
-    resolveWorkingDiffComparisonFromState(state, {
-      serverId,
-      workspaceId,
-      cwd,
-      isDirty,
-      modeScope,
-    }),
+    resolveWorkingDiffComparisonFromState(state, { serverId, workspaceId, cwd, isDirty }),
   );
   const select = useWorkingDiffComparisonStore((state) => state.select);
   const selectComparison = useCallback(
     (next: WorkingDiffComparison) =>
-      select({ serverId, workspaceId, cwd, modeScope, comparison: next }),
-    [cwd, modeScope, select, serverId, workspaceId],
+      select({ serverId, workspaceId, cwd, isDirty, comparison: next }),
+    [cwd, isDirty, select, serverId, workspaceId],
   );
   return { comparison, selectComparison };
 }
@@ -49,6 +45,7 @@ export function useWorkingDiffComparison(
 export function selectWorkingDiffComparison(
   input: WorkingDiffCheckoutIdentity & {
     comparison: WorkingDiffComparison;
+    isDirty: boolean;
   },
 ): void {
   useWorkingDiffComparisonStore.getState().select(input);
@@ -58,6 +55,16 @@ export function resolveWorkingDiffComparison(
   input: WorkingDiffCheckoutIdentity & { isDirty: boolean },
 ): WorkingDiffComparison {
   return resolveWorkingDiffComparisonFromState(useWorkingDiffComparisonStore.getState(), input);
+}
+
+export function expireWorkingDiffComparisons(input: {
+  serverId: string;
+  cwd: string;
+  isDirty: boolean;
+}): void {
+  useWorkingDiffComparisonStore.setState((state) =>
+    expireWorkingDiffComparisonsInState(state, input),
+  );
 }
 
 export function resetWorkingDiffComparisons(): void {

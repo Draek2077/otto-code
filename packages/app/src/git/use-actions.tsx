@@ -1,10 +1,12 @@
 import { useState, useCallback, useEffect, useMemo, type ReactElement } from "react";
-import { Info } from "@/components/icons/material-icons";
+import { Info } from "lucide-react-native";
 import { withUnistyles } from "react-native-unistyles";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getForgePresentation } from "@/git/forge";
-import { deriveMergeCapability } from "@/git/merge-capability";
 import { z } from "zod";
+import { useTranslation } from "react-i18next";
+import type { Theme } from "@/styles/theme";
+import { getForgePresentation, type Forge } from "@/git/forge";
+import { ForgeBrandIcon, getForgeBrandColorMapping } from "@/git/forge-icon";
 import { type CheckoutGitActionStatus, useCheckoutGitActionsStore } from "@/git/actions-store";
 import { type CheckoutStatusPayload, useCheckoutStatusQuery } from "@/git/use-status-query";
 import { type CheckoutPrStatusPayload, useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
@@ -15,15 +17,10 @@ import {
   type GitAction,
   type GitActions,
 } from "@/git/policy";
-import type {
-  CheckoutPrMergeMethod,
-  CommitMessageAgent,
-  GitHostingProviderId,
-} from "@otto-code/protocol/messages";
-import { confirmDialog } from "@/utils/confirm-dialog";
-import { openLink } from "@/utils/open-link";
+import { deriveMergeCapability } from "@/git/merge-capability";
+import type { CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
+import { openExternalUrl } from "@/utils/open-external-url";
 import { useToast } from "@/contexts/toast-context";
-import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import {
   useActiveWorkspaceSelection,
@@ -34,11 +31,13 @@ import { type WorktreeArchiveWarningLabels } from "@/git/worktree-archive-warnin
 import { useWorkspaceArchive } from "@/workspace/use-workspace-archive";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 import { readValidatedString } from "@/storage/validated-storage";
-import { useGitActionCopy } from "./use-action-copy";
-import { buildBackupActions, getBackupWorkspaceMessage } from "./backup-policy";
+// OTTO(git-fetch): explicit menu contribution only; core primary/secondary policy is unchanged.
+import { useGitFetchAction } from "@/otto/workspace-git/action";
+import { withManualFetch } from "@/otto/workspace-git/action-placement"; // OTTO(git-fetch): use the existing Git options menu.
 
 export type { GitActionId, GitAction, GitActions } from "@/git/policy";
 
+const forgeMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const ThemedInfo = withUnistyles(Info, (theme) => ({ color: theme.colors.foreground }));
 
 export function useGitActionRunner(): (action: GitAction) => void {
@@ -50,7 +49,7 @@ export function useGitActionRunner(): (action: GitAction) => void {
       if (action.unavailableMessage) {
         toast.show(action.unavailableMessage, {
           durationMs: 3200,
-          icon: <ThemedInfo size="md" />,
+          icon: <ThemedInfo size={16} />,
         });
         return;
       }
@@ -60,28 +59,29 @@ export function useGitActionRunner(): (action: GitAction) => void {
   );
 }
 
-function openURLInNewTab(url: string): void {
-  void openLink(url);
+/**
+ * The leading icon for every change-request action (create/view/merge) is the
+ * forge's brand mark, tinted in its brand color (the GitLab tanuki orange, etc).
+ * GitHub and unknown forges have no brand color and render in a neutral tone.
+ * The merge variants all share this one icon, so we build it once.
+ */
+function renderForgePrIcon(forge: Forge): ReactElement {
+  const icon = getForgePresentation(forge).icon;
+  return (
+    <ForgeBrandIcon
+      iconKind={icon}
+      size={16}
+      uniProps={getForgeBrandColorMapping(icon) ?? forgeMutedColorMapping}
+    />
+  );
 }
 
-/** Human-friendly "who writes the message" line for the AI-commit confirmation. */
-function describeCommitAgentMessage(
-  agent: Exclude<CommitMessageAgent, { kind: "none" }>,
-  t: (key: string, options?: Record<string, unknown>) => string,
-): string {
-  const detail = agent.modelLabel
-    ? t("workspace.git.commitAgent.providerModel", {
-        provider: agent.providerLabel,
-        model: agent.modelLabel,
-      })
-    : agent.providerLabel;
-  if (agent.kind === "personality") {
-    return t("workspace.git.commitAgent.messagePersonality", {
-      name: agent.personalityName,
-      detail,
-    });
-  }
-  return t("workspace.git.commitAgent.messageProvider", { detail });
+function forgeVocabulary(forge: Forge): { context: "mr" | undefined } {
+  return { context: getForgePresentation(forge).changeRequestContext };
+}
+
+function openURLInNewTab(url: string): void {
+  void openExternalUrl(url);
 }
 
 function isActionDisabled(actionsDisabled: boolean, status: CheckoutGitActionStatus): boolean {
@@ -119,7 +119,6 @@ interface DeriveGitActionsStateArgs {
   hasUncommittedChanges: boolean;
   postShipArchiveSuggested: boolean;
   isStatusLoading: boolean;
-  isBranchSwitchPending: boolean;
   baseRefLabel: string;
 }
 
@@ -131,7 +130,7 @@ interface DerivedGitActionsState {
   behindOfOrigin: number | null;
   hasPullRequest: boolean;
   hasRemote: boolean;
-  isOttoOwnedWorktree: boolean;
+  isPaseoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
   shouldPromoteArchive: boolean;
 }
@@ -171,21 +170,17 @@ function deriveGitActionsState(args: DeriveGitActionsStateArgs): DerivedGitActio
     hasUncommittedChanges,
     postShipArchiveSuggested,
     isStatusLoading,
-    isBranchSwitchPending,
     baseRefLabel,
   } = args;
-  // A pending branch switch rewrites the working tree, so every other git
-  // action in the header locks until it resolves.
-  const actionsDisabled =
-    !isGit || Boolean(status?.error) || isStatusLoading || isBranchSwitchPending;
-  const isOttoOwnedWorktree = gitStatus?.isOttoOwnedWorktree ?? false;
+  const actionsDisabled = !isGit || Boolean(status?.error) || isStatusLoading;
+  const isPaseoOwnedWorktree = gitStatus?.isPaseoOwnedWorktree ?? false;
   const isMergedPullRequest = Boolean(prStatus?.isMerged);
   return {
     actionsDisabled,
     ...extractGitCommitCounts(gitStatus),
     hasPullRequest: Boolean(prStatus?.url),
     hasRemote: gitStatus?.hasRemote ?? false,
-    isOttoOwnedWorktree,
+    isPaseoOwnedWorktree,
     isOnBaseBranch: gitStatus?.currentBranch === baseRefLabel,
     shouldPromoteArchive: computeShouldPromoteArchive({
       hasUncommittedChanges,
@@ -197,21 +192,13 @@ function deriveGitActionsState(args: DeriveGitActionsStateArgs): DerivedGitActio
 
 interface UseGitActionsInput {
   serverId: string;
+  workspaceId?: string | null;
   cwd: string;
   icons: {
     commit: ReactElement;
     pull: ReactElement;
     push: ReactElement;
     pullAndPush: ReactElement;
-    fetch: ReactElement;
-    // PR-hosting actions carry the provider mark (GitHub/Bitbucket), so they
-    // render per-provider - the hook resolves them with the workspace's
-    // detected git hosting provider.
-    viewPr: (provider: GitHostingProviderId) => ReactElement;
-    createPr: (provider: GitHostingProviderId) => ReactElement;
-    mergePrSquash: (provider: GitHostingProviderId) => ReactElement;
-    mergePrMerge: (provider: GitHostingProviderId) => ReactElement;
-    mergePrRebase: (provider: GitHostingProviderId) => ReactElement;
     merge: ReactElement;
     mergeFromBase: ReactElement;
     archive: ReactElement;
@@ -222,7 +209,6 @@ interface UseGitActionsResult {
   gitActions: GitActions;
   branchLabel: string;
   isGit: boolean;
-  backupWorkspaceMessage: string | null;
 }
 
 interface UseWorkspaceScreenArchiveControllerInput {
@@ -308,7 +294,7 @@ function useWorkspaceScreenArchiveController({
     name: workspaceDescriptor?.name ?? branchLabel,
     isDirty: archiveRisk.isDirty,
     aheadOfOrigin: archiveRisk.aheadOfOrigin,
-    diffStat: workspaceDescriptor?.workingTreeDiffStat ?? null,
+    diffStat: workspaceDescriptor?.diffStat ?? null,
     warningLabels: getWorktreeArchiveWarningLabels(t),
     onSetHiding: setIsHidingWorkspace,
     onArchiveStarted: () => {
@@ -330,13 +316,14 @@ function useWorkspaceScreenArchiveController({
   };
 }
 
-export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): UseGitActionsResult {
-  const { t, isDeveloperMode } = useGitActionCopy();
+export function useGitActions({
+  serverId,
+  workspaceId,
+  cwd,
+  icons,
+}: UseGitActionsInput): UseGitActionsResult {
+  const { t } = useTranslation();
   const toast = useToast();
-  // Host-level PR-only workflow policy. Reads from the daemon config; absent on
-  // old daemons parses to false, so the action stays visible by default.
-  const { config: daemonConfig } = useDaemonConfig(serverId);
-  const hideMergeIntoBaseAction = daemonConfig?.hideMergeIntoBaseAction === true;
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
   const [postShipArchiveSuggested, setPostShipArchiveSuggested] = useState(false);
   const [shipDefault, setShipDefault] = useState<"merge" | "pr">("pr");
@@ -344,22 +331,22 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const { status, isLoading: isStatusLoading } = useCheckoutStatusQuery({ serverId, cwd });
   const gitStatus = status && status.isGit ? status : null;
   const isGit = Boolean(gitStatus);
+  const fetchAction = useGitFetchAction(serverId, workspaceId, Boolean(gitStatus?.hasRemote));
   const notGit = status !== null && !status.isGit && !status.error;
   const baseRef = gitStatus?.baseRef ?? undefined;
 
   const hasUncommittedChanges = Boolean(gitStatus?.isDirty);
 
-  const prQueryEnabled = useMemo(() => isGit && isDeveloperMode, [isGit, isDeveloperMode]);
   const {
     status: prStatus,
     githubFeaturesEnabled,
-    hostingProvider,
     forge,
   } = useCheckoutPrStatusQuery({
     serverId,
     cwd,
-    enabled: prQueryEnabled,
+    enabled: isGit,
   });
+  const prIcon = useMemo(() => renderForgePrIcon(forge), [forge]);
   const baseRefLabel = useMemo(
     () => formatBaseRefLabel(baseRef, t("workspace.git.diff.base")),
     [baseRef, t],
@@ -376,7 +363,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     if (!gitStatus?.repoRoot) {
       return null;
     }
-    return `@otto:changes-ship-default:${gitStatus.repoRoot}`;
+    return `@paseo:changes-ship-default:${gitStatus.repoRoot}`;
   }, [gitStatus?.repoRoot]);
 
   useEffect(() => {
@@ -431,9 +418,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const pullAndPushStatus = useCheckoutGitActionsStore((s) =>
     s.getStatus({ serverId, cwd, actionId: "pull-and-push" }),
   );
-  const fetchStatus = useCheckoutGitActionsStore((s) =>
-    s.getStatus({ serverId, cwd, actionId: "fetch" }),
-  );
   const prCreateStatus = useCheckoutGitActionsStore((s) =>
     s.getStatus({ serverId, cwd, actionId: "create-pr" }),
   );
@@ -468,23 +452,11 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const mergeFromBaseStatus = useCheckoutGitActionsStore((s) =>
     s.getStatus({ serverId, cwd, actionId: "merge-from-base" }),
   );
-  const switchBranchStatus = useCheckoutGitActionsStore((s) =>
-    s.getStatus({ serverId, cwd, actionId: "switch-branch" }),
-  );
 
   const runCommit = useCheckoutGitActionsStore((s) => s.commit);
-  const resolveCommitAgent = useCheckoutGitActionsStore((s) => s.resolveCommitAgent);
-  const commitAgentSupported = useSessionStore(
-    (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutGitCommitAgent === true,
-  );
   const runPull = useCheckoutGitActionsStore((s) => s.pull);
   const runPush = useCheckoutGitActionsStore((s) => s.push);
   const runPullAndPush = useCheckoutGitActionsStore((s) => s.pullAndPush);
-  const runFetch = useCheckoutGitActionsStore((s) => s.fetch);
-  // COMPAT(gitFetchControl): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
-  const gitFetchEnabled = useSessionStore(
-    (s) => s.sessions[serverId]?.serverInfo?.features?.gitFetchControl === true,
-  );
   const runCreatePr = useCheckoutGitActionsStore((s) => s.createPr);
   const runMergePr = useCheckoutGitActionsStore((s) => s.mergePr);
   const runEnablePrAutoMerge = useCheckoutGitActionsStore((s) => s.enablePrAutoMerge);
@@ -492,7 +464,9 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   const runMergeBranch = useCheckoutGitActionsStore((s) => s.mergeBranch);
   const runMergeFromBase = useCheckoutGitActionsStore((s) => s.mergeFromBase);
   const githubAutoMergeActionsEnabled = useSessionStore(
-    (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutGithubSetAutoMerge === true,
+    (s) =>
+      s.sessions[serverId]?.serverInfo?.features?.checkoutForgeSetAutoMerge === true ||
+      s.sessions[serverId]?.serverInfo?.features?.checkoutGithubSetAutoMerge === true,
   );
 
   const toastActionError = useCallback(
@@ -511,55 +485,16 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   );
 
   // Handlers
-  const performCommit = useCallback(
-    () =>
-      runCommit({ serverId, cwd })
-        .then(() => {
-          toastActionSuccess(t("workspace.git.actions.commit.success"));
-          return;
-        })
-        .catch((err) => {
-          toastActionError(err, t("workspace.git.actions.toasts.failedCommit"));
-        }),
-    [cwd, runCommit, serverId, t, toastActionError, toastActionSuccess],
-  );
-
-  // The header "Commit" CTA authors its message with an AI agent. Before running
-  // it, resolve which agent the host would use and confirm it with the user; if
-  // nothing is set up to write the message, refuse instead of committing
-  // placeholder text. Old hosts that can't name the agent keep the one-click flow.
   const handleCommit = useCallback(() => {
-    if (!commitAgentSupported) {
-      void performCommit();
-      return;
-    }
-    void (async () => {
-      let agent: CommitMessageAgent;
-      try {
-        agent = await resolveCommitAgent({ serverId, cwd });
-      } catch (err) {
+    void runCommit({ serverId, cwd })
+      .then(() => {
+        toastActionSuccess(t("workspace.git.actions.commit.success"));
+        return;
+      })
+      .catch((err) => {
         toastActionError(err, t("workspace.git.actions.toasts.failedCommit"));
-        return;
-      }
-      if (agent.kind === "none") {
-        await confirmDialog({
-          title: t("workspace.git.commitAgent.noneTitle"),
-          message: t("workspace.git.commitAgent.noneMessage"),
-          confirmLabel: t("workspace.git.commitAgent.noneConfirm"),
-        });
-        return;
-      }
-      const confirmed = await confirmDialog({
-        title: t("workspace.git.commitAgent.confirmTitle"),
-        message: describeCommitAgentMessage(agent, t),
-        confirmLabel: t("workspace.git.commitAgent.confirmCta"),
       });
-      if (!confirmed) {
-        return;
-      }
-      await performCommit();
-    })();
-  }, [commitAgentSupported, cwd, performCommit, resolveCommitAgent, serverId, t, toastActionError]);
+  }, [cwd, runCommit, serverId, t, toastActionError, toastActionSuccess]);
 
   const handlePull = useCallback(() => {
     void runPull({ serverId, cwd })
@@ -594,28 +529,26 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       });
   }, [cwd, runPullAndPush, serverId, t, toastActionError, toastActionSuccess]);
 
-  const handleFetch = useCallback(() => {
-    void runFetch({ serverId, cwd })
-      .then(() => {
-        toastActionSuccess(t("workspace.git.actions.fetch.success"));
-        return;
-      })
-      .catch((err) => {
-        toastActionError(err, t("workspace.git.actions.toasts.failedFetch"));
-      });
-  }, [cwd, runFetch, serverId, t, toastActionError, toastActionSuccess]);
-
   const handleCreatePr = useCallback(() => {
     void persistShipDefault("pr");
     void runCreatePr({ serverId, cwd })
       .then(() => {
-        toastActionSuccess(t("workspace.git.actions.createPr.success"));
+        toastActionSuccess(t("workspace.git.actions.createPr.success", forgeVocabulary(forge)));
         return;
       })
       .catch((err) => {
         toastActionError(err, t("workspace.git.actions.toasts.failedCreatePr"));
       });
-  }, [cwd, persistShipDefault, runCreatePr, serverId, t, toastActionError, toastActionSuccess]);
+  }, [
+    cwd,
+    forge,
+    persistShipDefault,
+    runCreatePr,
+    serverId,
+    t,
+    toastActionError,
+    toastActionSuccess,
+  ]);
 
   const handleMergePr = useCallback(
     (method: CheckoutPrMergeMethod) => {
@@ -623,14 +556,14 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       void runMergePr({ serverId, cwd, method })
         .then(() => {
           setPostShipArchiveSuggested(true);
-          toastActionSuccess(t("workspace.git.actions.mergePr.success"));
+          toastActionSuccess(t("workspace.git.actions.mergePr.success", forgeVocabulary(forge)));
           return;
         })
         .catch((err) => {
           toastActionError(err, t("workspace.git.actions.toasts.failedMergePr"));
         });
     },
-    [cwd, persistShipDefault, runMergePr, serverId, t, toastActionError, toastActionSuccess],
+    [cwd, forge, persistShipDefault, runMergePr, serverId, t, toastActionError, toastActionSuccess],
   );
 
   const handleEnablePrAutoMerge = useCallback(
@@ -730,7 +663,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     hasUncommittedChanges,
     postShipArchiveSuggested,
     isStatusLoading,
-    isBranchSwitchPending: switchBranchStatus === "pending",
     baseRefLabel,
   });
   const {
@@ -741,7 +673,7 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     behindOfOrigin,
     hasPullRequest,
     hasRemote,
-    isOttoOwnedWorktree,
+    isPaseoOwnedWorktree,
     isOnBaseBranch,
     shouldPromoteArchive,
   } = derived;
@@ -770,10 +702,8 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       pullRequestIsMerged: prStatus?.isMerged ?? false,
       pullRequestMergeable: prStatus?.mergeable ?? "UNKNOWN",
       mergeCapability: deriveMergeCapability(prStatus?.forgeSpecific, prStatus?.github),
-      hostingProvider,
       hasRemote,
-      gitFetchEnabled,
-      isOttoOwnedWorktree,
+      isPaseoOwnedWorktree,
       isOnBaseBranch,
       hasUncommittedChanges,
       baseRefAvailable: Boolean(baseRef),
@@ -783,7 +713,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
       aheadOfOrigin,
       behindOfOrigin,
       shouldPromoteArchive,
-      hideMergeIntoBaseAction,
       shipDefault,
       runtime: {
         commit: {
@@ -810,58 +739,52 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
           icon: icons.pullAndPush,
           handler: handlePullAndPush,
         },
-        fetch: {
-          disabled: isActionDisabled(actionsDisabled, fetchStatus),
-          status: fetchStatus,
-          icon: icons.fetch,
-          handler: handleFetch,
-        },
         pr: {
           disabled: isActionDisabled(actionsDisabled, prCreateStatus),
           status: hasPullRequest ? "idle" : prCreateStatus,
-          icon: hasPullRequest ? icons.viewPr(hostingProvider) : icons.createPr(hostingProvider),
+          icon: prIcon,
           handler: handlePrAction,
         },
         "merge-pr-squash": {
           disabled: isActionDisabled(actionsDisabled, mergePrStatuses.squash),
           status: mergePrStatuses.squash,
-          icon: icons.mergePrSquash(hostingProvider),
+          icon: prIcon,
           handler: () => handleMergePr("squash"),
         },
         "merge-pr-merge": {
           disabled: isActionDisabled(actionsDisabled, mergePrStatuses.merge),
           status: mergePrStatuses.merge,
-          icon: icons.mergePrMerge(hostingProvider),
+          icon: prIcon,
           handler: () => handleMergePr("merge"),
         },
         "merge-pr-rebase": {
           disabled: isActionDisabled(actionsDisabled, mergePrStatuses.rebase),
           status: mergePrStatuses.rebase,
-          icon: icons.mergePrRebase(hostingProvider),
+          icon: prIcon,
           handler: () => handleMergePr("rebase"),
         },
         "enable-pr-auto-merge-squash": {
           disabled: isActionDisabled(actionsDisabled, enablePrAutoMergeStatuses.squash),
           status: enablePrAutoMergeStatuses.squash,
-          icon: icons.mergePrSquash(hostingProvider),
+          icon: prIcon,
           handler: () => handleEnablePrAutoMerge("squash"),
         },
         "enable-pr-auto-merge-merge": {
           disabled: isActionDisabled(actionsDisabled, enablePrAutoMergeStatuses.merge),
           status: enablePrAutoMergeStatuses.merge,
-          icon: icons.mergePrMerge(hostingProvider),
+          icon: prIcon,
           handler: () => handleEnablePrAutoMerge("merge"),
         },
         "enable-pr-auto-merge-rebase": {
           disabled: isActionDisabled(actionsDisabled, enablePrAutoMergeStatuses.rebase),
           status: enablePrAutoMergeStatuses.rebase,
-          icon: icons.mergePrRebase(hostingProvider),
+          icon: prIcon,
           handler: () => handleEnablePrAutoMerge("rebase"),
         },
         "disable-pr-auto-merge": {
           disabled: isActionDisabled(actionsDisabled, disablePrAutoMergeStatus),
           status: disablePrAutoMergeStatus,
-          icon: icons.viewPr(hostingProvider),
+          icon: prIcon,
           handler: handleDisablePrAutoMerge,
         },
         "merge-branch": {
@@ -887,21 +810,20 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
   }, [
     isGit,
     hasRemote,
-    gitFetchEnabled,
     hasPullRequest,
     prStatus?.url,
     prStatus?.state,
     prStatus?.isDraft,
     prStatus?.isMerged,
     prStatus?.mergeable,
-    prStatus?.github,
     prStatus?.forgeSpecific,
-    forge,
+    prStatus?.github,
     aheadCount,
     behindBaseCount,
-    isOttoOwnedWorktree,
+    isPaseoOwnedWorktree,
     isOnBaseBranch,
     githubFeaturesEnabled,
+    forge,
     githubAutoMergeActionsEnabled,
     hasUncommittedChanges,
     aheadOfOrigin,
@@ -909,13 +831,11 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     shipDefault,
     baseRefLabel,
     shouldPromoteArchive,
-    hideMergeIntoBaseAction,
     actionsDisabled,
     commitStatus,
     pullStatus,
     pushStatus,
     pullAndPushStatus,
-    fetchStatus,
     prCreateStatus,
     mergePrStatuses.squash,
     mergePrStatuses.merge,
@@ -932,7 +852,6 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     handlePull,
     handlePush,
     handlePullAndPush,
-    handleFetch,
     handlePrAction,
     handleMergePr,
     handleEnablePrAutoMerge,
@@ -941,51 +860,38 @@ export function useGitActions({ serverId, cwd, icons }: UseGitActionsInput): Use
     handleMergeFromBase,
     handleArchiveWorkspace,
     icons,
-    hostingProvider,
+    prIcon,
     baseRef,
   ]);
 
-  const backupWorkspaceMessage = useMemo(() => {
-    if (isStatusLoading) return "Checking backups…";
-    if (status?.error) return "Could not check backups. Reconnect to the host and try again.";
-    return getBackupWorkspaceMessage({
-      isGit,
-      currentBranch: gitStatus?.currentBranch,
-      isWorktree: gitStatus?.isOttoOwnedWorktree === true,
-    });
-  }, [isStatusLoading, status, isGit, gitStatus]);
-  const gitActions: GitActions = useMemo(
+  const paseoGitActions: GitActions = useMemo(
     () =>
-      isDeveloperMode
-        ? translateGitActions(buildGitActions(gitActionsInput), {
-            baseRefLabel,
-            hasPullRequest,
-            forge,
-            t,
-          })
-        : buildBackupActions(gitActionsInput, backupWorkspaceMessage),
-    [
-      isDeveloperMode,
-      backupWorkspaceMessage,
-      gitActionsInput,
-      baseRefLabel,
-      hasPullRequest,
-      forge,
-      t,
-    ],
+      translateGitActions(buildGitActions(gitActionsInput), {
+        baseRefLabel,
+        hasPullRequest,
+        forge,
+        t,
+      }),
+    [gitActionsInput, baseRefLabel, hasPullRequest, forge, t],
   );
 
-  return { gitActions, branchLabel, isGit, backupWorkspaceMessage };
+  // OTTO(git-fetch): the same menu feeds the toolbar and Command Center.
+  const gitActions = useMemo(
+    () => withManualFetch(paseoGitActions, fetchAction),
+    [paseoGitActions, fetchAction],
+  );
+  return { gitActions, branchLabel, isGit };
 }
 
-interface TranslateGitActionsInput {
-  baseRefLabel: string;
-  hasPullRequest: boolean;
-  forge: string;
-  t: (key: string, options?: Record<string, unknown>) => string;
-}
-
-function translateGitActions(actions: GitActions, input: TranslateGitActionsInput): GitActions {
+function translateGitActions(
+  actions: GitActions,
+  input: {
+    baseRefLabel: string;
+    hasPullRequest: boolean;
+    forge: Forge;
+    t: (key: string, options?: Record<string, unknown>) => string;
+  },
+): GitActions {
   return {
     primary: actions.primary ? translateGitAction(actions.primary, input) : null,
     secondary: actions.secondary.map((action) => translateGitAction(action, input)),
@@ -993,151 +899,161 @@ function translateGitActions(actions: GitActions, input: TranslateGitActionsInpu
   };
 }
 
-function translateGitAction(action: GitAction, input: TranslateGitActionsInput): GitAction {
-  const labels = getTranslatedGitActionLabels(action, input);
+function translateGitAction(
+  action: GitAction,
+  {
+    baseRefLabel,
+    hasPullRequest,
+    forge,
+    t,
+  }: {
+    baseRefLabel: string;
+    hasPullRequest: boolean;
+    forge: Forge;
+    t: (key: string, options?: Record<string, unknown>) => string;
+  },
+): GitAction {
+  const labels = getTranslatedGitActionLabels(action, { baseRefLabel, hasPullRequest, forge, t });
   return {
     ...action,
     ...labels,
-    unavailableMessage: translateGitActionUnavailableMessage(action.unavailableMessage, input),
+    unavailableMessage: translateGitActionUnavailableMessage(action.unavailableMessage, {
+      baseRefLabel,
+      t,
+    }),
   };
 }
 
 function getTranslatedGitActionLabels(
   action: GitAction,
-  { baseRefLabel, hasPullRequest, t }: TranslateGitActionsInput,
-): Pick<GitAction, "label" | "pendingLabel" | "successLabel" | "description"> {
+  {
+    baseRefLabel,
+    hasPullRequest,
+    forge,
+    t,
+  }: {
+    baseRefLabel: string;
+    hasPullRequest: boolean;
+    forge: Forge;
+    t: (key: string, options?: Record<string, unknown>) => string;
+  },
+): Pick<GitAction, "label" | "pendingLabel" | "successLabel"> {
   switch (action.id) {
+    // OTTO(git-fetch): Otto-owned labels already belong to the contribution.
+    case "fetch":
+      return {
+        label: action.label,
+        pendingLabel: action.pendingLabel,
+        successLabel: action.successLabel,
+      };
     case "commit":
       return {
         label: t("workspace.git.actions.commit.label"),
         pendingLabel: t("workspace.git.actions.commit.pending"),
         successLabel: t("workspace.git.actions.commit.success"),
-        description: t("workspace.git.actions.commit.description"),
       };
     case "pull":
       return {
         label: t("workspace.git.actions.pull.label"),
         pendingLabel: t("workspace.git.actions.pull.pending"),
         successLabel: t("workspace.git.actions.pull.success"),
-        description: t("workspace.git.actions.pull.description"),
       };
     case "push":
       return {
         label: t("workspace.git.actions.push.label"),
         pendingLabel: t("workspace.git.actions.push.pending"),
         successLabel: t("workspace.git.actions.push.success"),
-        description: t("workspace.git.actions.push.description"),
       };
     case "pull-and-push":
       return {
         label: t("workspace.git.actions.pullAndPush.label"),
         pendingLabel: t("workspace.git.actions.pullAndPush.pending"),
         successLabel: t("workspace.git.actions.pullAndPush.success"),
-        description: t("workspace.git.actions.pullAndPush.description"),
-      };
-    case "fetch":
-      return {
-        label: t("workspace.git.actions.fetch.label"),
-        pendingLabel: t("workspace.git.actions.fetch.pending"),
-        successLabel: t("workspace.git.actions.fetch.success"),
-        description: t("workspace.git.actions.fetch.description"),
       };
     case "pr":
       return hasPullRequest
         ? {
-            label: t("workspace.git.actions.viewPr"),
-            pendingLabel: t("workspace.git.actions.viewPr"),
-            successLabel: t("workspace.git.actions.viewPr"),
-            description: t("workspace.git.actions.viewPrDescription"),
+            label: t("workspace.git.actions.viewPr", forgeVocabulary(forge)),
+            pendingLabel: t("workspace.git.actions.viewPr", forgeVocabulary(forge)),
+            successLabel: t("workspace.git.actions.viewPr", forgeVocabulary(forge)),
           }
         : {
-            label: t("workspace.git.actions.createPr.label"),
-            pendingLabel: t("workspace.git.actions.createPr.pending"),
-            successLabel: t("workspace.git.actions.createPr.success"),
-            description: t("workspace.git.actions.createPr.description", {
-              baseRef: baseRefLabel,
-            }),
+            label: t("workspace.git.actions.createPr.label", forgeVocabulary(forge)),
+            pendingLabel: t("workspace.git.actions.createPr.pending", forgeVocabulary(forge)),
+            successLabel: t("workspace.git.actions.createPr.success", forgeVocabulary(forge)),
           };
     case "merge-pr-squash":
       return {
-        label: t("workspace.git.actions.mergePr.squash"),
-        pendingLabel: t("workspace.git.actions.mergePr.pending"),
-        successLabel: t("workspace.git.actions.mergePr.success"),
-        description: t("workspace.git.actions.mergePr.squashDescription"),
+        label: t("workspace.git.actions.mergePr.squash", forgeVocabulary(forge)),
+        pendingLabel: t("workspace.git.actions.mergePr.pending", forgeVocabulary(forge)),
+        successLabel: t("workspace.git.actions.mergePr.success", forgeVocabulary(forge)),
       };
     case "merge-pr-merge":
       return {
-        label: t("workspace.git.actions.mergePr.merge"),
-        pendingLabel: t("workspace.git.actions.mergePr.pending"),
-        successLabel: t("workspace.git.actions.mergePr.success"),
-        description: t("workspace.git.actions.mergePr.mergeDescription"),
+        label: t("workspace.git.actions.mergePr.merge", forgeVocabulary(forge)),
+        pendingLabel: t("workspace.git.actions.mergePr.pending", forgeVocabulary(forge)),
+        successLabel: t("workspace.git.actions.mergePr.success", forgeVocabulary(forge)),
       };
     case "merge-pr-rebase":
       return {
-        label: t("workspace.git.actions.mergePr.rebase"),
-        pendingLabel: t("workspace.git.actions.mergePr.pending"),
-        successLabel: t("workspace.git.actions.mergePr.success"),
-        description: t("workspace.git.actions.mergePr.rebaseDescription"),
+        label: t("workspace.git.actions.mergePr.rebase", forgeVocabulary(forge)),
+        pendingLabel: t("workspace.git.actions.mergePr.pending", forgeVocabulary(forge)),
+        successLabel: t("workspace.git.actions.mergePr.success", forgeVocabulary(forge)),
       };
     case "enable-pr-auto-merge-squash":
       return {
         label: t("workspace.git.actions.autoMerge.enableSquash"),
         pendingLabel: t("workspace.git.actions.autoMerge.enabling"),
         successLabel: t("workspace.git.actions.autoMerge.enabled"),
-        description: t("workspace.git.actions.autoMerge.enableDescription"),
       };
     case "enable-pr-auto-merge-merge":
       return {
         label: t("workspace.git.actions.autoMerge.enableMerge"),
         pendingLabel: t("workspace.git.actions.autoMerge.enabling"),
         successLabel: t("workspace.git.actions.autoMerge.enabled"),
-        description: t("workspace.git.actions.autoMerge.enableDescription"),
       };
     case "enable-pr-auto-merge-rebase":
       return {
         label: t("workspace.git.actions.autoMerge.enableRebase"),
         pendingLabel: t("workspace.git.actions.autoMerge.enabling"),
         successLabel: t("workspace.git.actions.autoMerge.enabled"),
-        description: t("workspace.git.actions.autoMerge.enableDescription"),
       };
     case "disable-pr-auto-merge":
       return {
         label: t("workspace.git.actions.autoMerge.enabled"),
         pendingLabel: t("workspace.git.actions.autoMerge.disabling"),
         successLabel: t("workspace.git.actions.autoMerge.disabled"),
-        description: t("workspace.git.actions.autoMerge.disableDescription"),
       };
     case "merge-branch":
       return {
-        label: t("workspace.git.actions.mergeBranch.label", { baseRef: baseRefLabel }),
+        label: t("workspace.git.actions.mergeBranch.label"),
         pendingLabel: t("workspace.git.actions.mergeBranch.pending"),
         successLabel: t("workspace.git.actions.mergeBranch.success"),
-        description: t("workspace.git.actions.mergeBranch.description", {
-          baseRef: baseRefLabel,
-        }),
       };
     case "merge-from-base":
       return {
         label: t("workspace.git.actions.mergeFromBase.label", { baseRef: baseRefLabel }),
         pendingLabel: t("workspace.git.actions.mergeFromBase.pending"),
         successLabel: t("workspace.git.actions.mergeFromBase.success"),
-        description: t("workspace.git.actions.mergeFromBase.description", {
-          baseRef: baseRefLabel,
-        }),
       };
     case "archive-workspace":
       return {
         label: t("workspace.git.actions.archive.label"),
         pendingLabel: t("workspace.git.actions.archive.pending"),
         successLabel: t("workspace.git.actions.archive.success"),
-        description: t("workspace.git.actions.archive.description"),
       };
   }
 }
 
 function translateGitActionUnavailableMessage(
   message: string | undefined,
-  { baseRefLabel, forge, t }: TranslateGitActionsInput,
+  {
+    baseRefLabel,
+    t,
+  }: {
+    baseRefLabel: string;
+    t: (key: string, options?: Record<string, unknown>) => string;
+  },
 ): string | undefined {
   if (!message) return undefined;
   const keyByMessage: Record<string, string> = {
@@ -1171,6 +1087,10 @@ function translateGitActionUnavailableMessage(
       "workspace.git.actions.unavailable.updateNoBase",
     "Update isn't available while you have local changes so commit or stash them first":
       "workspace.git.actions.unavailable.updateDirty",
+    "Merge PR isn't available right now because GitHub isn't connected":
+      "workspace.git.actions.unavailable.mergePrNoGithub",
+    "Archive isn't available here because this workspace was not created as a Paseo worktree":
+      "workspace.git.actions.unavailable.archiveNotWorktree",
     "Merge PR isn't available because there isn't a pull request yet":
       "workspace.git.actions.unavailable.mergePrMissing",
     "Merge PR isn't available because the pull request is still a draft":
@@ -1183,8 +1103,6 @@ function translateGitActionUnavailableMessage(
       "workspace.git.actions.unavailable.mergePrConflicts",
     "Merge PR isn't available here because this repository uses a merge queue":
       "workspace.git.actions.unavailable.mergePrQueue",
-    "Merge PR isn't available until GitHub reports the pull request is ready to merge":
-      "workspace.git.actions.unavailable.mergePrNotReady",
     "Auto-merge is enabled, but this account can't disable it":
       "workspace.git.actions.unavailable.autoMergeCannotDisable",
   };
@@ -1192,19 +1110,6 @@ function translateGitActionUnavailableMessage(
     message.startsWith("Update isn't available because this branch is already up to date with ")
   ) {
     return t("workspace.git.actions.unavailable.updateCurrent", { baseRef: baseRefLabel });
-  }
-  // The "<provider> isn't connected" messages carry the workspace's hosting
-  // provider name, so they match by their invariant prefix instead of the
-  // full string.
-  const providerName = getForgePresentation(forge).brandLabel;
-  if (message.startsWith("View PR isn't available right now because ")) {
-    return t("workspace.git.actions.unavailable.viewPrNoGithub", { provider: providerName });
-  }
-  if (message.startsWith("Create PR isn't available right now because ")) {
-    return t("workspace.git.actions.unavailable.createPrNoGithub", { provider: providerName });
-  }
-  if (message.startsWith("Merge PR isn't available right now because ")) {
-    return t("workspace.git.actions.unavailable.mergePrNoGithub", { provider: providerName });
   }
   const key = keyByMessage[message];
   return key ? t(key) : message;

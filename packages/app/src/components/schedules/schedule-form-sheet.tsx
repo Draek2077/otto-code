@@ -10,31 +10,23 @@ import {
   type ReactNode,
 } from "react";
 import { Text, View } from "react-native";
-import { Folder, Psychology } from "@/components/icons/material-icons";
-import { GitBranch } from "@/components/icons/lucide";
+import { Brain, Folder, GitBranch } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
-import type { AgentProvider } from "@otto-code/protocol/agent-types";
-import type { OrchestrationGraph } from "@otto-code/protocol/workflow";
-import type { ScheduleCadence, ScheduleSummary } from "@otto-code/protocol/schedule/types";
+import type { AgentProvider } from "@getpaseo/protocol/agent-types";
+import type { ScheduleCadence, ScheduleSummary } from "@getpaseo/protocol/schedule/types";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { ComboboxItem } from "@/components/ui/combobox";
 import { Button } from "@/components/ui/button";
-import { RoleModelSelector } from "@/components/role-model-selector";
-import { type PersonalityFormValues } from "@/provider-selection/personality-form";
-import {
-  useFormRolePersonality,
-  type RolePersonality,
-} from "@/provider-selection/role-model-personality";
-import { TEAM_SCHEDULER_PERSONALITY_SENTINEL } from "@otto-code/protocol/agent-teams";
+import { useRolePicker } from "@/otto/agent-profiles/use-role-picker"; // OTTO(schedule-profiles)
+import type { AgentProfilePickerRow } from "@/agent-profiles"; // OTTO(schedule-profiles)
+import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { HostStatusDotSlot } from "@/components/hosts/host-picker";
 import { createControlGeometry, type FieldControlSize } from "@/components/ui/control-geometry";
 import { Field, FormTextInput } from "@/components/ui/form-field";
-import { NumberStepperField } from "@/components/ui/number-stepper-field";
 import { Switch } from "@/components/ui/switch";
-import { getProviderIcon } from "@/components/provider-icons";
-import { PersonalityProviderIcon } from "@/components/personality-provider-icon";
+import { useProviderIcon } from "@/components/provider-icons";
 import { CadenceEditor } from "@/components/schedules/cadence-editor";
 import {
   SelectField,
@@ -57,7 +49,6 @@ import { useSessionStore } from "@/stores/session-store";
 import { buildScheduleProjectTargets } from "@/schedules/schedule-project-targets";
 import { useScheduleFormModel } from "@/schedules/use-schedule-form-model";
 import { useScheduleFormProviderSnapshot } from "@/schedules/use-schedule-form-provider-snapshot";
-import { useProjectWorkflowGraphs } from "@/hooks/use-workflow-graphs";
 import type {
   ScheduleFormDisplay,
   ScheduleFormHost,
@@ -77,32 +68,10 @@ export interface ScheduleFormSheetProps {
   schedule?: ScheduleSummary;
 }
 
-// A schedule that would run more than this many times may as well be unlimited,
-// so the picker caps here and 0 (empty) means "run forever".
-const MAX_SCHEDULE_RUNS = 9999;
-
 function parseMaxRuns(raw: string): number | null {
   const parsed = Number.parseInt(raw, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0) {
-    return null;
-  }
-  return Math.min(parsed, MAX_SCHEDULE_RUNS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
 }
-
-function formatMaxRunsHint(raw: string): string {
-  const parsed = parseMaxRuns(raw);
-  if (parsed == null) {
-    return "Runs forever";
-  }
-  return `Stops after ${parsed} ${parsed === 1 ? "run" : "runs"}`;
-}
-
-// The synthetic "Team's Scheduler" picker entry - a dynamic binding that
-// resolves to the active team's Scheduler at RUN time, not a concrete
-// personality. Its id never leaves the form; the submitted binding is the
-// protocol sentinel. The entry itself is built by the shared form producer
-// (useFormRolePersonality → buildTeamRoleEntry); this const is the local id.
-const TEAM_SCHEDULER_ENTRY_ID = "__team-scheduler__";
 
 function requireCronCadence(
   cadence: Extract<ScheduleCadence, { type: "cron" }> | undefined,
@@ -299,30 +268,10 @@ function OpenScheduleFormSheet({
   const model = useScheduleFormModel(snapshot);
   const state = useSyncExternalStore(model.subscribe, model.getState, model.getState);
   const providerSnapshot = useScheduleFormProviderSnapshot(model, state);
-  const scheduleWorkflowSupported = useSessionStore(
-    (store) =>
-      state.selectedServerId !== null &&
-      store.sessions[state.selectedServerId]?.serverInfo?.features?.scheduleWorkflowTargets ===
-        true,
-  );
-  const workflowGraphs =
-    useProjectWorkflowGraphs({
-      serverId: state.selectedServerId,
-      cwd: state.workingDir,
-      supported: scheduleWorkflowSupported,
-    }).data ?? [];
   const { agents } = useAggregatedAgents({ includeArchived: true });
   const mutationServerId = state.selectedServerId ?? serverId ?? "";
   const { createSchedule, updateSchedule, isCreating, isUpdating } = useScheduleMutations({
     serverId: mutationServerId,
-  });
-
-  const personality = useSchedulePersonalityBinding({
-    mutationServerId,
-    schedule,
-    state,
-    model,
-    providerSnapshot,
   });
 
   const isSubmitting = isCreating || isUpdating;
@@ -348,13 +297,6 @@ function OpenScheduleFormSheet({
     if (!provider) {
       return;
     }
-    // Only a bare model selection is the user's own last-used choice. Under a
-    // personality (or the team's Scheduler) the model on screen belongs to that
-    // binding, and writing it to the device preference would erase the tier it
-    // outranks - then read back as a manual pick on the next create surface.
-    if (personality.resolveSubmitPersonality?.()) {
-      return;
-    }
     await updatePreferences((current) =>
       updateSelectionPreferences({
         preferences: current,
@@ -366,7 +308,6 @@ function OpenScheduleFormSheet({
       }),
     );
   }, [
-    personality,
     state.isolation,
     state.selectedMode,
     state.selectedModel,
@@ -386,82 +327,6 @@ function OpenScheduleFormSheet({
     return true;
   }, [schedule, state.submitCadence, updateSchedule]);
 
-  const submitScheduleEdit = useCallback(
-    async (input: {
-      provider: NonNullable<typeof state.selectedProvider>;
-      cwd: string;
-      maxRuns: ReturnType<typeof parseMaxRuns>;
-      personalityBinding: ReturnType<
-        NonNullable<typeof personality.resolveSubmitPersonality>
-      > | null;
-    }): Promise<boolean> => {
-      if (!schedule) {
-        return false;
-      }
-      await updateSchedule({
-        id: schedule.id,
-        name: state.name.trim() || null,
-        prompt: state.prompt.trim(),
-        ...(state.submitCadence ? { cadence: state.submitCadence } : {}),
-        newAgentConfig: {
-          provider: input.provider,
-          model: state.selectedModel || null,
-          // Always null: schedule runs are unattended and there is no mode
-          // field anymore. Explicit null (not omission) so editing a schedule
-          // clears any mode stored by an older client - a stored attended
-          // mode would fail the run at its first approval prompt.
-          modeId: null,
-          thinkingOptionId: state.selectedThinkingOptionId || null,
-          // Explicit null clears a binding the user removed in the picker.
-          personality: input.personalityBinding,
-          cwd: input.cwd,
-          ...(state.submitArchiveOnFinish !== undefined
-            ? { archiveOnFinish: state.submitArchiveOnFinish }
-            : {}),
-          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
-        },
-        maxRuns: input.maxRuns,
-      });
-      return true;
-    },
-    [schedule, state, updateSchedule],
-  );
-
-  const submitScheduleCreate = useCallback(
-    async (input: {
-      provider: NonNullable<typeof state.selectedProvider>;
-      cwd: string;
-      maxRuns: ReturnType<typeof parseMaxRuns>;
-      personalityBinding: ReturnType<
-        NonNullable<typeof personality.resolveSubmitPersonality>
-      > | null;
-    }): Promise<boolean> => {
-      await createSchedule({
-        prompt: state.prompt.trim(),
-        name: state.name.trim() || undefined,
-        cadence: requireCronCadence(state.submitCadence),
-        target: {
-          type: "new-agent",
-          config: {
-            provider: input.provider,
-            cwd: input.cwd,
-            model: state.selectedModel || undefined,
-            thinkingOptionId: state.selectedThinkingOptionId || undefined,
-            ...(input.personalityBinding ? { personality: input.personalityBinding } : {}),
-            ...(state.submitArchiveOnFinish !== undefined
-              ? { archiveOnFinish: state.submitArchiveOnFinish }
-              : {}),
-            ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
-            title: state.name.trim() || undefined,
-          },
-        },
-        ...(input.maxRuns != null ? { maxRuns: input.maxRuns } : {}),
-      });
-      return true;
-    },
-    [createSchedule, state],
-  );
-
   const submitNewAgent = useCallback(async (): Promise<boolean> => {
     const provider = state.selectedProvider;
     const cwd = state.workingDir.trim();
@@ -470,42 +335,54 @@ function OpenScheduleFormSheet({
     }
 
     await persistPreferences();
-    const submitInput = {
-      provider,
-      cwd,
-      maxRuns: parseMaxRuns(state.maxRuns),
-      personalityBinding: personality.resolveSubmitPersonality?.() ?? null,
-    };
-    return mode === "edit" && schedule
-      ? await submitScheduleEdit(submitInput)
-      : await submitScheduleCreate(submitInput);
-  }, [
-    mode,
-    persistPreferences,
-    personality,
-    schedule,
-    state,
-    submitScheduleCreate,
-    submitScheduleEdit,
-  ]);
-
-  const submitWorkflow = useCallback(async (): Promise<boolean> => {
-    const projectRoot = state.workingDir.trim();
-    const definitionId = state.selectedWorkflowDefinitionId.trim();
-    if (!projectRoot || !definitionId) return false;
     const maxRuns = parseMaxRuns(state.maxRuns);
+    if (mode === "edit" && schedule) {
+      await updateSchedule({
+        id: schedule.id,
+        name: state.name.trim() || null,
+        prompt: state.prompt.trim(),
+        ...(state.submitCadence ? { cadence: state.submitCadence } : {}),
+        newAgentConfig: {
+          agentProfile: explicitBinding(state.agentProfile), // OTTO(schedule-profiles)
+          provider,
+          model: state.selectedModel || null,
+          modeId: state.selectedMode || null,
+          thinkingOptionId: state.selectedThinkingOptionId || null,
+          cwd,
+          ...(state.submitArchiveOnFinish !== undefined
+            ? { archiveOnFinish: state.submitArchiveOnFinish }
+            : {}),
+          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+        },
+        maxRuns,
+      });
+      return true;
+    }
+
     await createSchedule({
-      // Schedule prompts are legacy required metadata. The adapter never passes
-      // this value into the Workflow launcher: the saved definition is the sole
-      // executable input.
-      prompt: state.prompt.trim() || "Start saved Workflow",
+      prompt: state.prompt.trim(),
       name: state.name.trim() || undefined,
       cadence: requireCronCadence(state.submitCadence),
-      target: { type: "workflow", definitionId, projectRoot },
+      target: {
+        type: "new-agent",
+        config: {
+          agentProfile: state.agentProfile, // OTTO(schedule-profiles)
+          provider,
+          cwd,
+          model: state.selectedModel || undefined,
+          modeId: state.selectedMode || undefined,
+          thinkingOptionId: state.selectedThinkingOptionId || undefined,
+          ...(state.submitArchiveOnFinish !== undefined
+            ? { archiveOnFinish: state.submitArchiveOnFinish }
+            : {}),
+          ...(state.submitIsolation !== undefined ? { isolation: state.submitIsolation } : {}),
+          title: state.name.trim() || undefined,
+        },
+      },
       ...(maxRuns != null ? { maxRuns } : {}),
     });
     return true;
-  }, [createSchedule, state]);
+  }, [createSchedule, mode, persistPreferences, schedule, state, updateSchedule]);
 
   const handleSubmit = useCallback(async () => {
     if (!canSubmit) {
@@ -513,30 +390,15 @@ function OpenScheduleFormSheet({
     }
     model.setSubmitError(null);
     try {
-      let submitted: boolean;
-      if (state.targetKind === "agent" || (state.targetKind === "workflow" && mode === "edit")) {
-        submitted = await submitAgentTarget();
-      } else if (state.targetKind === "workflow") {
-        submitted = await submitWorkflow();
-      } else {
-        submitted = await submitNewAgent();
-      }
+      const submitted =
+        state.targetKind === "agent" ? await submitAgentTarget() : await submitNewAgent();
       if (submitted) {
         onClose();
       }
     } catch (error) {
       model.setSubmitError(toErrorMessage(error));
     }
-  }, [
-    canSubmit,
-    mode,
-    model,
-    onClose,
-    state.targetKind,
-    submitAgentTarget,
-    submitNewAgent,
-    submitWorkflow,
-  ]);
+  }, [canSubmit, model, onClose, state.targetKind, submitAgentTarget, submitNewAgent]);
 
   const handleSubmitPress = useCallback(() => {
     void handleSubmit();
@@ -592,72 +454,9 @@ function OpenScheduleFormSheet({
         controlSize={controlSize}
         cadenceError={cadenceError}
         mutationServerId={mutationServerId}
-        personality={personality}
-        workflowGraphs={workflowGraphs}
-        workflowSupported={scheduleWorkflowSupported}
       />
     </AdaptiveModalSheet>
   );
-}
-
-// The schedule form's personality binding: selecting a personality here BINDS
-// it onto the schedule - the daemon re-resolves the binding at every run (and
-// hard-fails loudly when it's out of commission). The synthetic "Team's
-// Scheduler" entry stores the protocol sentinel instead of a name and follows
-// whoever holds the Scheduler role in the active team at run time. The binding
-// mechanics live in the shared form producer (useFormRolePersonality); this
-// hook just supplies the scheduler role, sentinel, and unattended apply.
-function useSchedulePersonalityBinding(input: {
-  mutationServerId: string;
-  schedule: ScheduleSummary | undefined;
-  state: ScheduleFormState;
-  model: ScheduleFormModel;
-  providerSnapshot: ReturnType<typeof useScheduleFormProviderSnapshot>;
-}): RolePersonality {
-  const { mutationServerId, schedule, state, model, providerSnapshot } = input;
-  const scheduleConfig = schedule?.target.type === "new-agent" ? schedule.target.config : null;
-  const originalBinding = scheduleConfig?.personality?.trim() || null;
-
-  // Schedule runs are unattended, so a personality's mode is ignored; only its
-  // provider/model/effort auto-fill here.
-  const applyPersonality = useCallback(
-    (values: PersonalityFormValues) => {
-      model.setModel(values.provider as AgentProvider, values.model);
-      model.setThinking(values.thinkingOptionId);
-    },
-    [model],
-  );
-  const personalityCurrentSelection = useMemo(
-    () => ({
-      provider: state.selectedProvider,
-      model: state.selectedModel,
-      thinkingOptionId: state.selectedThinkingOptionId,
-    }),
-    [state.selectedProvider, state.selectedModel, state.selectedThinkingOptionId],
-  );
-
-  return useFormRolePersonality({
-    serverId: mutationServerId || null,
-    role: "scheduler",
-    entries: providerSnapshot.entries ?? [],
-    onApply: applyPersonality,
-    currentSelection: personalityCurrentSelection,
-    team: {
-      entryId: TEAM_SCHEDULER_ENTRY_ID,
-      label: "Team's Scheduler",
-      roleLabel: "Scheduler",
-      // The synthetic entry only makes sense for a new-agent target.
-      enabled: state.targetKind === "new-agent",
-    },
-    binding: {
-      originalBinding,
-      teamSentinel: TEAM_SCHEDULER_PERSONALITY_SENTINEL,
-    },
-    // New schedules default to the team's Scheduler (or first available
-    // Scheduler); editing keeps the schedule's stored pick.
-    autoSelectDefault:
-      schedule === undefined && state.targetKind === "new-agent" ? "always" : false,
-  });
 }
 
 interface ScheduleFormFieldsProps {
@@ -668,9 +467,6 @@ interface ScheduleFormFieldsProps {
   controlSize: FieldControlSize;
   cadenceError: string | null;
   mutationServerId: string;
-  personality: RolePersonality;
-  workflowGraphs: OrchestrationGraph[];
-  workflowSupported: boolean;
 }
 
 function ScheduleFormFields({
@@ -681,11 +477,7 @@ function ScheduleFormFields({
   controlSize,
   cadenceError,
   mutationServerId,
-  personality,
-  workflowGraphs,
-  workflowSupported,
 }: ScheduleFormFieldsProps): ReactElement {
-  const maxRunsHint = formatMaxRunsHint(state.maxRuns);
   if (state.targetKind === "agent") {
     return (
       <>
@@ -708,6 +500,7 @@ function ScheduleFormFields({
           size={controlSize}
           testID="schedule-name-input"
           accessibilityLabel="Schedule name"
+          initialValue={state.name}
           onChangeText={model.setName}
           placeholder="Optional"
           autoCapitalize="none"
@@ -720,6 +513,7 @@ function ScheduleFormFields({
           size={controlSize}
           testID="schedule-prompt-input"
           accessibilityLabel="Prompt"
+          initialValue={state.prompt}
           onChangeText={model.setPrompt}
           placeholder="What should the agent do each run?"
           style={styles.multilineInput}
@@ -736,9 +530,6 @@ function ScheduleFormFields({
         agentTargetLabel={null}
         controlSize={controlSize}
         mutationServerId={mutationServerId}
-        personality={personality}
-        workflowGraphs={workflowGraphs}
-        workflowSupported={workflowSupported}
       />
 
       <CadenceEditor
@@ -748,19 +539,15 @@ function ScheduleFormFields({
         size={controlSize}
       />
 
-      <Field label="Max runs" hint={maxRunsHint}>
-        <NumberStepperField
+      <Field label="Max runs">
+        <FormTextInput
           size={controlSize}
-          testID="schedule-max-runs"
+          testID="schedule-max-runs-input"
           accessibilityLabel="Max runs"
-          value={state.maxRuns}
+          initialValue={state.maxRuns}
           onChangeText={model.setMaxRuns}
-          min={0}
-          max={MAX_SCHEDULE_RUNS}
-          unlimitedAtMin
           placeholder="Unlimited"
-          decrementLabel="Fewer runs"
-          incrementLabel="More runs"
+          keyboardType="number-pad"
         />
       </Field>
 
@@ -769,6 +556,16 @@ function ScheduleFormFields({
   );
 }
 
+function explicitBinding(value: string | undefined) {
+  return value ?? null;
+}
+function scheduleRoleHost(state: Pick<ScheduleFormState, "targetKind" | "selectedServerId">) {
+  return state.targetKind === "new-agent" ? state.selectedServerId : null;
+}
+
+function manualOptions(visible: boolean, binding: string | undefined) {
+  return visible && !binding;
+}
 interface ScheduleTargetFieldsProps {
   model: ScheduleFormModel;
   state: ScheduleFormState;
@@ -776,138 +573,27 @@ interface ScheduleTargetFieldsProps {
   agentTargetLabel: string | null;
   controlSize: FieldControlSize;
   mutationServerId: string;
-  // Personality binding selection, owned by the parent (which submits it).
-  personality: RolePersonality;
-  workflowGraphs: OrchestrationGraph[];
-  workflowSupported: boolean;
+  // OTTO(schedules): the owned target editor binds host/project once, while reusing
+  // Paseo's canonical provider, permission, thinking, isolation and archive controls.
+  scopeLocked?: boolean;
 }
 
-function resolveSelectedHostDisplay(
-  host: ScheduleFormState["hosts"][number] | undefined,
-  serverId: string | null,
-): SelectFieldDisplay | null {
-  if (host) return { label: host.label };
-  return serverId ? { label: serverId } : null;
+// OTTO(schedules): a scoped target editor already owns these two selectors.
+function scheduleScopeDisclosure(state: ScheduleFormState, locked: boolean) {
+  return {
+    host: !locked && (state.mode === "edit" || state.hosts.length > 1),
+    project: !locked && state.disclosure.showProjectField,
+  };
 }
 
-function buildTargetKindDisplay(targetKind: ScheduleFormState["targetKind"]): SelectFieldDisplay {
-  return { label: targetKind === "workflow" ? "Saved Workflow" : "New agent" };
-}
-
-function savedWorkflowEmptyText(supported: boolean): string {
-  return supported
-    ? "No saved Workflows for this project"
-    : "Update this host to schedule saved Workflows";
-}
-
-function ScheduleModelTriggerLeading({
-  selectedPersonality,
-  selectedProvider,
-  serverId,
-}: {
-  selectedPersonality: NonNullable<RolePersonality["personalities"]>[number] | null;
-  selectedProvider: AgentProvider | null;
-  serverId: string | null;
-}): ReactElement {
-  // A role-slot entry wears its neutral role glyph rather than the current
-  // holder's colored provider icon: selecting it means "the role".
-  if (selectedPersonality?.roleIcon) {
-    const RoleIcon = selectedPersonality.roleIcon;
-    return <RoleIcon size="md" color={styles.providerIcon.color} />;
-  }
-  if (selectedPersonality) {
-    return (
-      <PersonalityProviderIcon
-        provider={selectedPersonality.provider}
-        serverId={serverId}
-        size="md"
-        glowA={selectedPersonality.glowA}
-        glowB={selectedPersonality.glowB}
-      />
-    );
-  }
-  return <ProviderGlyph provider={selectedProvider} serverId={serverId} />;
-}
-
-function ScheduleCreateTargetPicker({
-  visible,
-  targetKind,
-  selectedDisplay,
-  options,
-  onChange,
-  size,
-}: {
-  visible: boolean;
-  targetKind: ScheduleFormState["targetKind"];
-  selectedDisplay: SelectFieldDisplay;
-  options: SelectFieldOption<ScheduleFormState["targetKind"]>[];
-  onChange: (targetKind: ScheduleFormState["targetKind"]) => void;
-  size: FieldControlSize;
-}): ReactElement | null {
-  if (!visible) return null;
-  return (
-    <SelectField
-      label="Target"
-      value={targetKind}
-      selectedDisplay={selectedDisplay}
-      options={options}
-      onChange={onChange}
-      placeholder="Select target"
-      emptyText="No schedule targets available"
-      searchable={false}
-      title="Schedule target"
-      size={size}
-      triggerTestID="schedule-target-trigger"
-    />
-  );
-}
-
-function ScheduleWorkflowDefinitionPicker({
-  visible,
-  definitionId,
-  options,
-  onChange,
-  supported,
-  hasProject,
-  size,
-}: {
-  visible: boolean;
-  definitionId: string;
-  options: SelectFieldOption<string>[];
-  onChange: (definitionId: string) => void;
-  supported: boolean;
-  hasProject: boolean;
-  size: FieldControlSize;
-}): ReactElement | null {
-  if (!visible) return null;
-  return (
-    <SelectField
-      label="Saved Workflow"
-      value={definitionId || null}
-      selectedDisplay={options.find((option) => option.value === definitionId) ?? null}
-      options={options}
-      onChange={onChange}
-      placeholder="Select saved Workflow"
-      emptyText={savedWorkflowEmptyText(supported)}
-      disabled={!supported || !hasProject}
-      searchable
-      title="Select saved Workflow"
-      size={size}
-      triggerTestID="schedule-workflow-trigger"
-    />
-  );
-}
-
-function ScheduleTargetFields({
+export function ScheduleTargetFields({
   model,
   state,
   providerSnapshot,
   agentTargetLabel,
   controlSize,
   mutationServerId,
-  personality,
-  workflowGraphs,
-  workflowSupported,
+  scopeLocked = false,
 }: ScheduleTargetFieldsProps): ReactElement {
   const hostOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
@@ -919,25 +605,26 @@ function ScheduleTargetFields({
       })),
     [state.hosts],
   );
-  const selectedHost = state.hosts.find((host) => host.serverId === state.selectedServerId);
-  const selectedHostDisplay = useMemo(
-    () => resolveSelectedHostDisplay(selectedHost, state.selectedServerId),
-    [selectedHost, state.selectedServerId],
-  );
+  const selectedHost = state.hosts.find((host) => host.serverId === state.selectedServerId) ?? null;
+  const selectedHostDisplay = useMemo<SelectFieldDisplay | null>(() => {
+    if (selectedHost) {
+      return { label: selectedHost.label };
+    }
+    if (state.selectedServerId) {
+      return { label: state.selectedServerId };
+    }
+    return null;
+  }, [selectedHost, state.selectedServerId]);
   const projectOptions = state.projectOptions;
-  const targetKindOptions = useMemo<SelectFieldOption<ScheduleFormState["targetKind"]>[]>(
-    () => [
-      { id: "new-agent", value: "new-agent", label: "New agent" },
-      { id: "workflow", value: "workflow", label: "Saved Workflow", disabled: !workflowSupported },
-    ],
-    [workflowSupported],
-  );
-  const workflowOptions = useMemo<SelectFieldOption<string>[]>(
+  const scopeDisclosure = scheduleScopeDisclosure(state, scopeLocked);
+  const modeOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
-      workflowGraphs
-        .filter((graph) => !graph.builtIn)
-        .map((graph) => ({ id: graph.id, value: graph.id, label: graph.name })),
-    [workflowGraphs],
+      state.modeOptions.map((option) => ({
+        id: option.id,
+        value: option.id,
+        label: option.label,
+      })),
+    [state.modeOptions],
   );
   const thinkingOptions = useMemo<SelectFieldOption<string>[]>(
     () =>
@@ -955,23 +642,37 @@ function ScheduleTargetFields({
     },
     [model],
   );
-  const handleSelectTargetKind = useCallback(
-    (targetKind: ScheduleFormState["targetKind"]) => model.setTargetKind(targetKind),
-    [model],
-  );
-  const handleSelectWorkflow = useCallback(
-    (definitionId: string) => model.setWorkflowDefinition(definitionId),
-    [model],
-  );
   const handleSelectProject = useCallback(
     (optionId: string, display: ScheduleFormDisplay) => {
       model.setProject(optionId, display);
     },
     [model],
   );
+  // OTTO(schedule-profiles): reuse the native model picker and keep only selection intent in the form.
+  const applyRole = useCallback(
+    (id: string, row: AgentProfilePickerRow) => model.setModel(row.provider, row.modelId, id),
+    [model],
+  );
+  const roleHost = scheduleRoleHost(state);
+  const { picker, mark } = useRolePicker(
+    roleHost,
+    "scheduler",
+    providerSnapshot.entries,
+    state.agentProfile,
+    state.mode === "create",
+    applyRole,
+  );
+  const roleLabel = picker?.currentName;
   const handleSelectModel = useCallback(
     (provider: AgentProvider, modelId: string) => {
+      mark();
       model.setModel(provider, modelId);
+    },
+    [model, mark],
+  );
+  const handleSelectMode = useCallback(
+    (modeId: string) => {
+      model.setSessionMode(modeId);
     },
     [model],
   );
@@ -980,17 +681,6 @@ function ScheduleTargetFields({
       model.setThinking(thinkingOptionId);
     },
     [model],
-  );
-  const selectedPersonality = useMemo(
-    () =>
-      personality.personalities?.find((entry) => entry.id === personality.selectedProfileId) ??
-      null,
-    [personality.personalities, personality.selectedProfileId],
-  );
-  const selectedPersonalityName = selectedPersonality?.name ?? null;
-  const selectedTargetKindDisplay = useMemo<SelectFieldDisplay>(
-    () => buildTargetKindDisplay(state.targetKind),
-    [state.targetKind],
   );
   const handleModelOpen = useCallback(() => {
     providerSnapshot.refetchIfStale(state.selectedProvider);
@@ -1014,14 +704,8 @@ function ScheduleTargetFields({
     [],
   );
   const modelTriggerLeading = useMemo(
-    () => (
-      <ScheduleModelTriggerLeading
-        selectedPersonality={selectedPersonality}
-        selectedProvider={state.selectedProvider}
-        serverId={state.selectedServerId}
-      />
-    ),
-    [selectedPersonality, state.selectedProvider, state.selectedServerId],
+    () => <ProviderGlyph provider={state.selectedProvider} serverId={state.selectedServerId} />,
+    [state.selectedProvider, state.selectedServerId],
   );
   const renderModelTrigger = useCallback(
     ({
@@ -1038,12 +722,13 @@ function ScheduleTargetFields({
       hovered: boolean;
       pressed: boolean;
     }): ReactNode => {
-      const displayLabel =
-        selectedPersonalityName ?? state.selectedModelDisplay?.label ?? selectedModelLabel;
+      const displayLabel = roleLabel
+        ? selectedModelLabel
+        : (state.selectedModelDisplay?.label ?? selectedModelLabel); // OTTO(schedule-profiles)
       return (
         <SelectFieldTrigger
           label={displayLabel}
-          isPlaceholder={!state.selectedModel && !selectedPersonalityName}
+          isPlaceholder={!state.selectedModel}
           placeholder={displayLabel}
           leading={modelTriggerLeading}
           disabled={disabled}
@@ -1053,13 +738,7 @@ function ScheduleTargetFields({
         />
       );
     },
-    [
-      controlSize,
-      modelTriggerLeading,
-      selectedPersonalityName,
-      state.selectedModel,
-      state.selectedModelDisplay,
-    ],
+    [roleLabel, controlSize, modelTriggerLeading, state.selectedModel, state.selectedModelDisplay],
   );
 
   if (state.targetKind === "agent") {
@@ -1068,15 +747,7 @@ function ScheduleTargetFields({
 
   return (
     <>
-      <ScheduleCreateTargetPicker
-        visible={state.mode === "create"}
-        targetKind={state.targetKind}
-        selectedDisplay={selectedTargetKindDisplay}
-        options={targetKindOptions}
-        onChange={handleSelectTargetKind}
-        size={controlSize}
-      />
-      {state.mode === "edit" || state.hosts.length > 1 ? (
+      {scopeDisclosure.host ? (
         <SelectField
           label="Host"
           value={state.selectedServerId}
@@ -1094,7 +765,7 @@ function ScheduleTargetFields({
         />
       ) : null}
 
-      {state.disclosure.showProjectField ? (
+      {scopeDisclosure.project ? (
         <SelectField
           label="Project"
           value={state.selectedProjectOptionId || null}
@@ -1114,19 +785,12 @@ function ScheduleTargetFields({
         />
       ) : null}
 
-      <ScheduleWorkflowDefinitionPicker
-        visible={state.targetKind === "workflow"}
-        definitionId={state.selectedWorkflowDefinitionId}
-        options={workflowOptions}
-        onChange={handleSelectWorkflow}
-        supported={workflowSupported}
-        hasProject={Boolean(state.selectedProjectOptionId)}
-        size={controlSize}
-      />
-
       {state.disclosure.showModelField ? (
-        <Field label="Agent Profile or Model">
-          <RoleModelSelector
+        <Field label="Model">
+          <CombinedModelSelector
+            roleSelectionLabel={roleLabel}
+            onApplyProfile={picker?.applyProfile}
+            profiles={picker} // OTTO(schedule-profiles)
             providers={state.modelSelectorProviders}
             selectedProvider={state.selectedProvider ?? ""}
             selectedModel={state.selectedModel}
@@ -1139,27 +803,42 @@ function ScheduleTargetFields({
             onOpen={handleModelOpen}
             onRetryProvider={handleRetryProvider}
             isRetryingProvider={providerSnapshot.isRefreshing}
-            personality={personality}
           />
         </Field>
       ) : null}
 
-      {/* A personality already fixes its own effort, so hide the picker while
-          one is selected - the whole point is not having to choose it. */}
-      {!personality.selectedProfileId && state.disclosure.showThinkingField ? (
+      {manualOptions(state.disclosure.showThinkingField, state.agentProfile) ? (
         <SelectField
-          label="Effort"
+          label="Thinking"
           value={state.selectedThinkingOptionId || null}
           selectedDisplay={state.selectedThinkingDisplay}
           options={thinkingOptions}
           onChange={handleSelectThinking}
-          placeholder="Select effort"
-          emptyText="No effort options found"
+          placeholder="Select thinking"
+          emptyText="No thinking options found"
           searchable={thinkingOptions.length > 6}
-          title="Select effort"
+          title="Select thinking"
           size={controlSize}
           triggerTestID="schedule-thinking-trigger"
           renderOption={renderThinkingOption}
+        />
+      ) : null}
+
+      {manualOptions(state.disclosure.showModeField, state.agentProfile) ? (
+        <SelectField
+          label="Mode"
+          value={state.selectedMode || null}
+          selectedDisplay={state.selectedModeDisplay}
+          options={modeOptions}
+          onChange={handleSelectMode}
+          placeholder="Default mode"
+          emptyText="No modes found"
+          disabled={modeOptions.length === 0}
+          hint={modeOptions.length === 0 ? "No modes are available for this model." : undefined}
+          searchable={modeOptions.length > 6}
+          title="Select mode"
+          size={controlSize}
+          triggerTestID="schedule-mode-trigger"
         />
       ) : null}
 
@@ -1215,9 +894,9 @@ function ScheduleIsolationField({
     () => (
       <View style={styles.optionIconBox}>
         {state.effectiveIsolation === "worktree" ? (
-          <GitBranch size="md" color={styles.providerIcon.color} />
+          <GitBranch size={16} color={styles.providerIcon.color} />
         ) : (
-          <Folder size="md" color={styles.providerIcon.color} />
+          <Folder size={16} color={styles.providerIcon.color} />
         )}
       </View>
     ),
@@ -1293,9 +972,9 @@ function IsolationOptionItem({
     () => (
       <View style={styles.optionIconBox}>
         {option.value === "worktree" ? (
-          <GitBranch size="md" color={styles.providerIcon.color} />
+          <GitBranch size={16} color={styles.providerIcon.color} />
         ) : (
-          <Folder size="md" color={styles.providerIcon.color} />
+          <Folder size={16} color={styles.providerIcon.color} />
         )}
       </View>
     ),
@@ -1343,7 +1022,7 @@ function ProjectOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        <Folder size="md" color={styles.providerIcon.color} />
+        <Folder size={16} color={styles.providerIcon.color} />
       </View>
     ),
     [],
@@ -1370,7 +1049,7 @@ function ThinkingOptionItem({
   const leadingSlot = useMemo(
     () => (
       <View style={styles.optionIconBox}>
-        <Psychology size="md" color={styles.providerIcon.color} />
+        <Brain size={16} color={styles.providerIcon.color} />
       </View>
     ),
     [],
@@ -1395,11 +1074,11 @@ function ProviderGlyph({
   provider: string | null;
   serverId: string | null;
 }): ReactElement | null {
+  const Icon = useProviderIcon(provider ?? "", serverId);
   if (!provider) {
     return null;
   }
-  const Icon = getProviderIcon(provider, serverId);
-  return <Icon size="md" color={styles.providerIcon.color} />;
+  return <Icon size={16} color={styles.providerIcon.color} />;
 }
 
 const styles = StyleSheet.create((theme) => {

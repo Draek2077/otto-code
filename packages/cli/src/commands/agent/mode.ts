@@ -6,7 +6,7 @@ import type {
   CommandError,
   AnyCommandResult,
 } from "../../output/index.js";
-import type { AgentMode } from "@otto-code/protocol/agent-types";
+import type { AgentMode } from "@getpaseo/protocol/agent-types";
 
 /** Result for setting mode */
 export interface SetModeResult {
@@ -40,6 +40,7 @@ export interface AgentModeOptions extends CommandOptions {
 const missingModeError = (): CommandError => ({
   code: "MISSING_ARGUMENT",
   message: "Mode argument required unless --list is specified",
+  // OTTO(identity)
   details: "Usage: otto agent mode <id> <mode> | otto agent mode --list <id>",
 });
 
@@ -55,7 +56,7 @@ export async function runModeCommand(
   _command: Command,
 ): Promise<AgentModeResult> {
   const normalizedMode = mode?.trim();
-  const host = getDaemonHost({ host: options.host });
+  const host = getDaemonHost({ target: options.daemonTarget });
 
   // Validate arguments
   if (!options.list && !normalizedMode) {
@@ -64,12 +65,13 @@ export async function runModeCommand(
 
   let client: Awaited<ReturnType<typeof connectToDaemon>> | undefined;
   try {
-    client = await connectToDaemon({ host: options.host });
+    client = await connectToDaemon({ target: options.daemonTarget });
     const fetchResult = await client.fetchAgent({ agentId: id });
     if (!fetchResult) {
       const error: CommandError = {
         code: "AGENT_NOT_FOUND",
         message: `No agent found matching: ${id}`,
+        // OTTO(identity)
         details: "Use `otto ls` to list available agents",
       };
       throw error;
@@ -120,6 +122,7 @@ export async function runModeCommand(
       const error: CommandError = {
         code: "DAEMON_NOT_RUNNING",
         message: `Cannot connect to daemon at ${host}: ${message}`,
+        // OTTO(identity)
         details: "Start the daemon with: otto daemon start",
       };
       throw error;

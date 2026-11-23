@@ -1,42 +1,12 @@
 import { constants, promises as fs, type BigIntStats, type Stats } from "fs";
 import type { FileHandle } from "fs/promises";
 import path from "path";
-import { writeFileAtomic } from "../atomic-file.js";
-import { expandUserPath } from "../path-utils.js";
-import {
-  ACCESS_OUTSIDE_WORKSPACE_MESSAGE,
-  applyEol,
-  buildConflictResult,
-  createExplorerFile,
-  detectEol,
-  isLikelyBinary,
-  isMissingEntryError,
-  normalizeRelativePath,
-  resolveScopedPath,
-  sha256Hex,
-  type ExplorerEol,
-} from "./otto-file-mutations.js";
-
-// Back-compat: the files session and its tests import these from this file.
-export {
-  createExplorerEntry,
-  deleteExplorerEntry,
-  renameExplorerEntry,
-  resolveExplorerFileIdentity,
-  writeExplorerBinaryFile,
-  type CreateExplorerEntryResult,
-  type DeleteExplorerEntryResult,
-  type ExplorerEol,
-  type ExplorerFileIdentity,
-  type RenameExplorerEntryResult,
-  type WriteBinaryFileParams,
-  type WriteExplorerBinaryFileResult,
-} from "./otto-file-mutations.js";
+import { randomUUID } from "crypto";
+import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
+import { runGitCommand } from "../../utils/run-git-command.js";
 
 export type ExplorerEntryKind = "file" | "directory";
-
 export type ExplorerFileKind = "text" | "image" | "binary";
-
 export type ExplorerEncoding = "utf-8" | "base64" | "none";
 
 export interface ListDirectoryParams {
@@ -48,6 +18,29 @@ export interface ReadFileParams {
   root: string;
   relativePath: string;
 }
+
+export interface WriteFileParams extends ReadFileParams {
+  content: string;
+  expectedModifiedAt: string;
+  expectedRevision?: string;
+}
+
+export type ExplorerFileVersion =
+  | {
+      status: "ready";
+      cwd: string;
+      path: string;
+      size: number;
+      modifiedAt: string;
+      revision: string;
+    }
+  | { status: "missing"; cwd: string; path: string }
+  | { status: "error"; cwd: string; path: string; error: string };
+
+export type ExplorerFileWriteResult =
+  | { status: "written"; modifiedAt: string; size: number; revision: string }
+  | { status: "conflict"; version: ExplorerFileVersion }
+  | { status: "error"; error: string };
 
 export interface FileExplorerEntry {
   name: string;
@@ -70,27 +63,8 @@ export interface FileExplorerFile {
   mimeType?: string;
   size: number;
   modifiedAt: string;
-  // Present for text files on the inline JSON read path; the editor keeps
-  // both as its save-precondition baseline.
-  eol?: ExplorerEol;
-  hash?: string;
+  revision: string;
 }
-
-export interface WriteFileParams {
-  root: string;
-  relativePath: string;
-  content: string;
-  expectedModifiedAt: string;
-  expectedHash?: string;
-  /** Only the deleted-file "save re-creates" flow sets this. */
-  allowCreate?: boolean;
-  /** EOL to apply when creating (there is no on-disk EOL to detect). */
-  eol?: ExplorerEol;
-}
-
-export type WriteExplorerFileResult =
-  | { status: "ok"; modifiedAt: string; hash: string; size: number; eol: ExplorerEol }
-  | { status: "conflict"; modifiedAt: string; hash: string; content?: string; eol?: ExplorerEol };
 
 export interface FileExplorerFileBytes {
   path: string;
@@ -100,14 +74,9 @@ export interface FileExplorerFileBytes {
   mimeType: string;
   size: number;
   modifiedAt: string;
+  revision: string;
 }
 
-/**
- * The streaming counterpart to {@link FileExplorerFileBytes}: the same metadata,
- * but the content arrives as chunks instead of one buffer. `revision` pins the
- * exact file the metadata describes, so a consumer that has already forwarded
- * the header can still be told the file moved underneath it.
- */
 export interface FileExplorerFileStream {
   path: string;
   kind: ExplorerFileKind;
@@ -124,13 +93,26 @@ const TEXT_MIME_TYPES: Record<string, string> = {
 };
 
 const DEFAULT_TEXT_MIME_TYPE = "text/plain";
-
 const FILE_TYPE_SAMPLE_BYTES = 8192;
-
 export const FILE_EXPLORER_STREAM_CHUNK_BYTES = 256 * 1024;
-
+export const MAX_EDITABLE_FILE_BYTES = 1024 * 1024;
 const READ_FILE_OPEN_FLAGS =
   process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW;
+const ACCESS_OUTSIDE_WORKSPACE_MESSAGE = "Access outside of workspace is not allowed";
+
+function fileRevision(stats: BigIntStats): string {
+  return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}`;
+}
+
+function matchesExpectedRevision(
+  stats: BigIntStats,
+  expectedModifiedAt: string,
+  expectedRevision?: string,
+): boolean {
+  return expectedRevision
+    ? fileRevision(stats) === expectedRevision
+    : stats.mtime.toISOString() === expectedModifiedAt;
+}
 
 const IMAGE_MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
@@ -141,54 +123,21 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
   ".svg": "image/svg+xml",
 };
 
+interface ScopedPathParams {
+  root: string;
+  relativePath?: string;
+}
+
+interface ScopedPath {
+  requestedPath: string;
+  resolvedPath: string;
+}
+
 interface EntryPayloadParams {
   root: string;
   targetPath: string;
   name: string;
   kind: ExplorerEntryKind;
-}
-
-export type ExplorerFileVersion =
-  | {
-      status: "ready";
-      cwd: string;
-      path: string;
-      size: number;
-      modifiedAt: string;
-      revision: string;
-    }
-  | { status: "missing"; cwd: string; path: string }
-  | { status: "error"; cwd: string; path: string; error: string };
-
-function fileRevision(stats: BigIntStats): string {
-  return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}`;
-}
-
-/**
- * Compares a caller's recorded mtime against the file's current one, allowing a
- * single millisecond of slack.
- *
- * The wire carries millisecond ISO strings while filesystems keep sub-millisecond
- * stamps, and Node derives `mtime` from `mtimeNs` under bigint stats but from a
- * float `mtimeMs` otherwise. Those two roundings can land a millisecond apart for
- * the very same untouched file, so a caller that read its mtime through a plain
- * stat could be told its save conflicted with itself. The slack is smaller than
- * the resolution the string can express, so it cannot mask a real edit: any write
- * that actually changed the file moves the stamp far further than that.
- */
-function matchesExpectedModifiedAt(expected: string | undefined, current: string): boolean {
-  if (expected === current) {
-    return true;
-  }
-  if (expected === undefined) {
-    return false;
-  }
-  const expectedMs = Date.parse(expected);
-  const currentMs = Date.parse(current);
-  if (Number.isNaN(expectedMs) || Number.isNaN(currentMs)) {
-    return false;
-  }
-  return Math.abs(expectedMs - currentMs) <= 1;
 }
 
 export async function listDirectoryEntries({
@@ -256,6 +205,7 @@ export async function readExplorerFile({
       mimeType: file.mimeType,
       size: file.size,
       modifiedAt: file.modifiedAt,
+      revision: file.revision,
     };
   }
 
@@ -267,100 +217,19 @@ export async function readExplorerFile({
       mimeType: file.mimeType,
       size: file.size,
       modifiedAt: file.modifiedAt,
+      revision: file.revision,
     };
   }
 
-  const text = Buffer.from(file.bytes).toString("utf-8");
   return {
     path: file.path,
     kind: file.kind,
     encoding: "utf-8",
-    content: text,
+    content: Buffer.from(file.bytes).toString("utf-8"),
     mimeType: file.mimeType,
     size: file.size,
     modifiedAt: file.modifiedAt,
-    eol: detectEol(text),
-    hash: sha256Hex(file.bytes),
-  };
-}
-
-/**
- * Conditional, atomic save for the text editor. Refuses to write unless the
- * on-disk file still matches the identity the client last read (hash when
- * provided, mtime otherwise) - a mismatch returns a conflict and leaves the
- * file untouched. Content arrives LF-normalized; the file's detected EOL is
- * re-applied so uniform CRLF files round-trip byte-identical.
- */
-export async function writeExplorerFile({
-  root,
-  relativePath,
-  content,
-  expectedModifiedAt,
-  expectedHash,
-  allowCreate,
-  eol: requestedEol,
-}: WriteFileParams): Promise<WriteExplorerFileResult> {
-  const filePath = await resolveScopedPath({ root, relativePath });
-
-  // The editor only saves files it opened; a missing target is never an
-  // invitation to create one through this RPC - except the explicit
-  // deleted-file "save re-creates" flow.
-  let handle: FileHandle;
-  try {
-    handle = await openFileForRead(filePath.resolvedPath);
-  } catch (error) {
-    if (isMissingEntryError(error)) {
-      if (allowCreate) {
-        return createExplorerFile({
-          resolvedPath: filePath.resolvedPath,
-          content,
-          eol: requestedEol ?? "lf",
-        });
-      }
-      throw new Error("File no longer exists on disk", { cause: error });
-    }
-    throw error;
-  }
-
-  let stats: Stats;
-  let currentBytes: Buffer;
-  try {
-    stats = await handle.stat();
-    if (!stats.isFile()) {
-      throw new Error("Requested path is not a file");
-    }
-    currentBytes = await handle.readFile();
-  } finally {
-    await handle.close();
-  }
-
-  const currentModifiedAt = stats.mtime.toISOString();
-  const currentHash = sha256Hex(currentBytes);
-  const unchanged = expectedHash
-    ? expectedHash === currentHash
-    : matchesExpectedModifiedAt(expectedModifiedAt, currentModifiedAt);
-  if (!unchanged) {
-    return buildConflictResult(currentBytes, currentModifiedAt);
-  }
-
-  if (isLikelyBinary(currentBytes)) {
-    throw new Error("Refusing to overwrite a binary file");
-  }
-
-  const eol = detectEol(currentBytes.toString("utf-8"));
-  const outputBytes = applyEol(content, eol);
-  // The check-then-replace window is unavoidable without file locks; the
-  // replacement itself is all-or-nothing, and mode is preserved so executable
-  // scripts keep their bits.
-  // Number(), because these are BigIntStats and fs.chmod rejects a bigint mode.
-  await writeFileAtomic(filePath.resolvedPath, outputBytes, { mode: Number(stats.mode) });
-  const newStats = await fs.stat(filePath.resolvedPath);
-  return {
-    status: "ok",
-    modifiedAt: newStats.mtime.toISOString(),
-    hash: sha256Hex(outputBytes),
-    size: outputBytes.length,
-    eol,
+    revision: file.revision,
   };
 }
 
@@ -372,7 +241,7 @@ export async function readExplorerFileBytes({
   const handle = await openFileForRead(filePath.resolvedPath);
 
   try {
-    const stats = await handle.stat();
+    const stats = await handle.stat({ bigint: true });
 
     if (!stats.isFile()) {
       throw new Error("Requested path is not a file");
@@ -381,8 +250,9 @@ export async function readExplorerFileBytes({
     const ext = path.extname(filePath.resolvedPath).toLowerCase();
     const basePayload = {
       path: normalizeRelativePath({ root, targetPath: filePath.requestedPath }),
-      size: stats.size,
+      size: Number(stats.size),
       modifiedAt: stats.mtime.toISOString(),
+      revision: fileRevision(stats),
     };
 
     const buffer = await handle.readFile();
@@ -396,7 +266,7 @@ export async function readExplorerFileBytes({
       };
     }
 
-    if (isLikelyBinary(buffer)) {
+    if (isLikelyBinary(buffer) || !isValidUtf8(buffer)) {
       return {
         ...basePayload,
         kind: "binary",
@@ -418,17 +288,6 @@ export async function readExplorerFileBytes({
   }
 }
 
-/**
- * Reads a file to a consumer in bounded chunks instead of buffering it whole.
- * `readExplorerFileBytes` calls `handle.readFile()`, so opening a large file in
- * the viewer used to allocate the entire thing before a single byte reached the
- * client, which is how large file views ended up disconnecting.
- *
- * The handle stays open for the whole callback, and the revision captured up
- * front is re-checked after the last chunk: a file that grows, shrinks, or is
- * overwritten mid-transfer fails loudly rather than delivering a silently
- * spliced-together mix of two revisions.
- */
 export async function streamExplorerFile(
   { root, relativePath }: ReadFileParams,
   consume: (file: FileExplorerFileStream) => Promise<void>,
@@ -472,12 +331,6 @@ export async function streamExplorerFile(
   }
 }
 
-/**
- * Classifies a file without buffering it. `isLikelyBinary` only ever sees the
- * first sample block, so a text file with binary bytes past that block reads as
- * text; this walks the whole file, and decodes with a streaming UTF-8 decoder so
- * a multi-byte sequence split across two blocks is not mistaken for garbage.
- */
 async function isFileHandleBinary(handle: FileHandle, advertisedSize: number): Promise<boolean> {
   if (advertisedSize === 0) return false;
 
@@ -506,8 +359,6 @@ async function isFileHandleBinary(handle: FileHandle, advertisedSize: number): P
     position += bytesRead;
   }
 
-  // Flushes the decoder: a file ending on a truncated multi-byte sequence is
-  // only detectable here, once there is no more input to complete it.
   try {
     decoder.decode();
   } catch {
@@ -537,6 +388,146 @@ async function* readFileHandleChunks(
   const finalStats = await handle.stat({ bigint: true });
   if (fileRevision(finalStats) !== advertisedRevision) {
     throw new Error("File changed during transfer");
+  }
+}
+
+export async function getExplorerFileVersion({
+  root,
+  relativePath,
+}: ReadFileParams): Promise<ExplorerFileVersion> {
+  const cwd = expandUserPath(root);
+  try {
+    const filePath = await resolveScopedPath({ root, relativePath });
+    const stats = await fs.stat(filePath.resolvedPath, { bigint: true });
+    if (!stats.isFile()) {
+      return { status: "error", cwd, path: relativePath, error: "Requested path is not a file" };
+    }
+    return {
+      status: "ready",
+      cwd,
+      path: normalizeRelativePath({ root, targetPath: filePath.requestedPath }),
+      size: Number(stats.size),
+      modifiedAt: stats.mtime.toISOString(),
+      revision: fileRevision(stats),
+    };
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return { status: "missing", cwd, path: relativePath };
+    }
+    return {
+      status: "error",
+      cwd,
+      path: relativePath,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+export async function resolveExplorerFilePath({
+  root,
+  relativePath,
+}: ReadFileParams): Promise<string> {
+  return (await resolveScopedPath({ root, relativePath })).resolvedPath;
+}
+
+export async function writeExplorerFile({
+  root,
+  relativePath,
+  content,
+  expectedModifiedAt,
+  expectedRevision,
+}: WriteFileParams): Promise<ExplorerFileWriteResult> {
+  const encoded = Buffer.from(content, "utf8");
+  if (encoded.byteLength > MAX_EDITABLE_FILE_BYTES) {
+    return { status: "error", error: "File is too large to edit" };
+  }
+
+  let filePath: ScopedPath;
+  let currentMode = 0o600;
+  try {
+    filePath = await resolveScopedPath({ root, relativePath });
+    const handle = await openFileForRead(filePath.resolvedPath);
+    try {
+      const stats = await handle.stat({ bigint: true });
+      if (!stats.isFile()) {
+        return { status: "error", error: "Requested path is not a file" };
+      }
+      if (stats.size > BigInt(MAX_EDITABLE_FILE_BYTES)) {
+        return { status: "error", error: "File is too large to edit" };
+      }
+      const current = await handle.readFile();
+      if (isLikelyBinary(current) || !isValidUtf8(current)) {
+        return { status: "error", error: "Binary files cannot be edited" };
+      }
+      currentMode = Number(stats.mode);
+      const modifiedAt = stats.mtime.toISOString();
+      if (!matchesExpectedRevision(stats, expectedModifiedAt, expectedRevision)) {
+        return {
+          status: "conflict",
+          version: {
+            status: "ready",
+            cwd: expandUserPath(root),
+            path: normalizeRelativePath({ root, targetPath: filePath.requestedPath }),
+            size: Number(stats.size),
+            modifiedAt,
+            revision: fileRevision(stats),
+          },
+        };
+      }
+    } finally {
+      await handle.close();
+    }
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return {
+        status: "conflict",
+        version: { status: "missing", cwd: expandUserPath(root), path: relativePath },
+      };
+    }
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+
+  const temporaryPath = path.join(
+    path.dirname(filePath.resolvedPath),
+    `.paseo-${randomUUID()}.tmp`,
+  );
+  let temporaryHandle: FileHandle | null = null;
+  try {
+    temporaryHandle = await fs.open(temporaryPath, "wx", currentMode);
+    if (process.platform !== "win32") {
+      await temporaryHandle.chmod(currentMode & 0o7777);
+    }
+    await temporaryHandle.writeFile(encoded);
+    await temporaryHandle.sync();
+    await temporaryHandle.close();
+    temporaryHandle = null;
+    const latestStats = await fs.stat(filePath.resolvedPath, { bigint: true });
+    if (!matchesExpectedRevision(latestStats, expectedModifiedAt, expectedRevision)) {
+      return {
+        status: "conflict",
+        version: {
+          status: "ready",
+          cwd: expandUserPath(root),
+          path: normalizeRelativePath({ root, targetPath: filePath.requestedPath }),
+          size: Number(latestStats.size),
+          modifiedAt: latestStats.mtime.toISOString(),
+          revision: fileRevision(latestStats),
+        },
+      };
+    }
+    await fs.rename(temporaryPath, filePath.resolvedPath);
+    const stats = await fs.stat(filePath.resolvedPath, { bigint: true });
+    return {
+      status: "written",
+      modifiedAt: stats.mtime.toISOString(),
+      size: Number(stats.size),
+      revision: fileRevision(stats),
+    };
+  } catch (error) {
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  } finally {
+    await temporaryHandle?.close().catch(() => undefined);
+    await fs.unlink(temporaryPath).catch(() => undefined);
   }
 }
 
@@ -582,6 +573,263 @@ export async function getDownloadableFileInfo({ root, relativePath }: ReadFilePa
   }
 }
 
+export interface ExplorerCreateEntryParams {
+  root: string;
+  parentPath: string;
+  name: string;
+  kind: ExplorerEntryKind;
+}
+
+export interface ExplorerRenameEntryParams {
+  root: string;
+  relativePath: string;
+  name: string;
+}
+
+export type ExplorerEntryMutationResult =
+  | { status: "ok"; path: string }
+  | { status: "error"; error: string };
+
+export async function createExplorerEntry({
+  root,
+  parentPath,
+  name,
+  kind,
+}: ExplorerCreateEntryParams): Promise<ExplorerEntryMutationResult> {
+  const trimmedName = name.trim();
+  if (!trimmedName || trimmedName === "." || trimmedName === "..") {
+    return { status: "error", error: "Invalid name" };
+  }
+  if (trimmedName.includes("/") || trimmedName.includes("\\")) {
+    return { status: "error", error: "Name cannot contain path separators" };
+  }
+
+  try {
+    const parent = await resolveScopedPath({ root, relativePath: parentPath });
+    const parentStats = await fs.stat(parent.resolvedPath);
+    if (!parentStats.isDirectory()) {
+      return { status: "error", error: "Parent path is not a directory" };
+    }
+    const targetPath = path.join(parent.resolvedPath, trimmedName);
+    if (kind === "directory") {
+      await fs.mkdir(targetPath);
+    } else {
+      const handle = await fs.open(targetPath, "wx", 0o644);
+      await handle.close();
+    }
+    return {
+      status: "ok",
+      path: normalizeRelativePath({
+        root,
+        targetPath: path.join(parent.requestedPath, trimmedName),
+      }),
+    };
+  } catch (error) {
+    if (isEntryExistsError(error)) {
+      return { status: "error", error: `"${trimmedName}" already exists` };
+    }
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function duplicateExplorerEntry({
+  root,
+  relativePath,
+}: ReadFileParams): Promise<ExplorerEntryMutationResult> {
+  try {
+    const source = await resolveScopedPath({ root, relativePath });
+    const realRoot = await fs.realpath(expandUserPath(root));
+    if (source.resolvedPath === realRoot) {
+      return { status: "error", error: "Cannot duplicate the workspace root" };
+    }
+
+    const stats = await fs.lstat(source.requestedPath);
+    const sourceName = path.basename(source.requestedPath);
+    const extension = stats.isDirectory() ? "" : path.extname(sourceName);
+    const baseName = extension ? sourceName.slice(0, -extension.length) : sourceName;
+    let targetPath = "";
+    for (let copyNumber = 1; ; copyNumber += 1) {
+      const suffix = copyNumber === 1 ? " copy" : ` copy ${copyNumber}`;
+      targetPath = path.join(
+        path.dirname(source.requestedPath),
+        `${baseName}${suffix}${extension}`,
+      );
+      try {
+        await fs.lstat(targetPath);
+      } catch (error) {
+        if (isMissingEntryError(error)) {
+          break;
+        }
+        throw error;
+      }
+    }
+
+    await fs.cp(source.requestedPath, targetPath, {
+      recursive: stats.isDirectory(),
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true,
+      verbatimSymlinks: true,
+    });
+    return { status: "ok", path: normalizeRelativePath({ root, targetPath }) };
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return { status: "error", error: "File or folder no longer exists" };
+    }
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function renameExplorerEntry({
+  root,
+  relativePath,
+  name,
+}: ExplorerRenameEntryParams): Promise<ExplorerEntryMutationResult> {
+  const trimmedName = name.trim();
+  if (!trimmedName || trimmedName === "." || trimmedName === "..") {
+    return { status: "error", error: "Invalid name" };
+  }
+  if (trimmedName.includes("/") || trimmedName.includes("\\")) {
+    return { status: "error", error: "Name cannot contain path separators" };
+  }
+
+  try {
+    const source = await resolveScopedPath({ root, relativePath });
+    const realRoot = await fs.realpath(expandUserPath(root));
+    if (source.resolvedPath === realRoot) {
+      return { status: "error", error: "Cannot rename the workspace root" };
+    }
+
+    const targetPath = path.join(path.dirname(source.requestedPath), trimmedName);
+    const sourceStats = await fs.lstat(source.requestedPath);
+    const targetStats = await fs.lstat(targetPath).catch((error: unknown) => {
+      if (isMissingEntryError(error)) {
+        return null;
+      }
+      throw error;
+    });
+    if (targetStats) {
+      if (!(await isCaseOnlyRename(source, targetPath, sourceStats, targetStats))) {
+        return { status: "error", error: `"${trimmedName}" already exists` };
+      }
+    }
+
+    const sourcePath = normalizeRelativePath({ root, targetPath: source.requestedPath });
+    const renamedPath = normalizeRelativePath({ root, targetPath });
+    if (sourcePath === renamedPath) {
+      return { status: "ok", path: renamedPath };
+    }
+    const repository = await runGitCommand(["rev-parse", "--is-inside-work-tree"], {
+      cwd: realRoot,
+      acceptExitCodes: [0, 128],
+    });
+    const tracked =
+      repository.exitCode === 0
+        ? await runGitCommand(["ls-files", "-z", "--", `:(literal)${sourcePath}`], {
+            cwd: realRoot,
+            // Inherited literal mode disables the :(literal) pathspec magic.
+            envOverlay: { GIT_LITERAL_PATHSPECS: undefined },
+          })
+        : null;
+    if (tracked?.stdout) {
+      await runGitCommand(["mv", "--", sourcePath, renamedPath], { cwd: realRoot });
+    } else {
+      await fs.rename(source.requestedPath, targetPath);
+    }
+    return { status: "ok", path: renamedPath };
+  } catch (error) {
+    if (isEntryExistsError(error)) {
+      return { status: "error", error: `"${trimmedName}" already exists` };
+    }
+    if (isMissingEntryError(error)) {
+      return { status: "error", error: "File or folder no longer exists" };
+    }
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function deleteExplorerEntry({
+  root,
+  relativePath,
+}: ReadFileParams): Promise<ExplorerEntryMutationResult> {
+  try {
+    const scoped = await resolveScopedPath({ root, relativePath });
+    const realRoot = await fs.realpath(expandUserPath(root));
+    if (scoped.resolvedPath === realRoot) {
+      return { status: "error", error: "Cannot delete the workspace root" };
+    }
+    // Remove the requested path, not the realpath: deleting a symlink must
+    // remove the link, never its target. lstat keeps the same guarantee.
+    const stats = await fs.lstat(scoped.requestedPath);
+    await fs.rm(scoped.requestedPath, {
+      recursive: stats.isDirectory(),
+      force: false,
+    });
+    return {
+      status: "ok",
+      path: normalizeRelativePath({ root, targetPath: scoped.requestedPath }),
+    };
+  } catch (error) {
+    if (isMissingEntryError(error)) {
+      return { status: "error", error: "File or folder no longer exists" };
+    }
+    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function isEntryExistsError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "EEXIST"
+  );
+}
+
+async function isCaseOnlyRename(
+  source: ScopedPath,
+  targetPath: string,
+  sourceStats: Stats,
+  targetStats: Stats,
+): Promise<boolean> {
+  const hasStableFileIds =
+    sourceStats.dev !== 0 ||
+    sourceStats.ino !== 0 ||
+    targetStats.dev !== 0 ||
+    targetStats.ino !== 0;
+  const isSameEntry = hasStableFileIds
+    ? targetStats.dev === sourceStats.dev && targetStats.ino === sourceStats.ino
+    : !sourceStats.isSymbolicLink() &&
+      !targetStats.isSymbolicLink() &&
+      (await fs.realpath(targetPath)) === source.resolvedPath;
+  return isSameEntry && source.requestedPath.toLowerCase() === targetPath.toLowerCase();
+}
+
+async function resolveScopedPath({
+  root,
+  relativePath = ".",
+}: ScopedPathParams): Promise<ScopedPath> {
+  const workspacePath = expandUserPath(root);
+  const requestedPath = resolvePathFromBase(workspacePath, relativePath);
+  assertWithinWorkspace(workspacePath, requestedPath);
+  const canonicalRoot = await fs.realpath(workspacePath);
+  try {
+    const canonicalPath = await fs.realpath(requestedPath);
+    assertWithinWorkspace(canonicalRoot, canonicalPath);
+    return { requestedPath, resolvedPath: canonicalPath };
+  } catch (error) {
+    if (isMissingEntryError(error)) return { requestedPath, resolvedPath: requestedPath };
+    throw error;
+  }
+}
+
+function assertWithinWorkspace(root: string, candidate: string): void {
+  const relative = path.relative(root, candidate);
+  const isOutsideWorkspace =
+    relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative);
+  if (isOutsideWorkspace) throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
+}
+
 async function openFileForRead(filePath: string): Promise<FileHandle> {
   return fs.open(filePath, READ_FILE_OPEN_FLAGS);
 }
@@ -606,99 +854,57 @@ async function buildEntryPayload({
   };
 }
 
+function isMissingEntryError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === "ENOENT" || code === "ENOTDIR" || code === "ELOOP";
+}
+
 function isOutsideWorkspaceError(error: unknown): boolean {
   return error instanceof Error && error.message === ACCESS_OUTSIDE_WORKSPACE_MESSAGE;
+}
+
+function normalizeRelativePath({ root, targetPath }: { root: string; targetPath: string }): string {
+  const normalizedRoot = expandUserPath(root);
+  const normalizedTarget = expandUserPath(targetPath);
+  const relative = path.relative(normalizedRoot, normalizedTarget);
+  return relative === "" ? "." : relative.split(path.sep).join("/");
 }
 
 function textMimeTypeForExtension(ext: string): string {
   return TEXT_MIME_TYPES[ext] ?? DEFAULT_TEXT_MIME_TYPE;
 }
 
-export async function getExplorerFileVersion({
-  root,
-  relativePath,
-}: ReadFileParams): Promise<ExplorerFileVersion> {
-  const cwd = expandUserPath(root);
-  try {
-    const filePath = await resolveScopedPath({ root, relativePath });
-    const stats = await fs.stat(filePath.resolvedPath, { bigint: true });
-    if (!stats.isFile()) {
-      return { status: "error", cwd, path: relativePath, error: "Requested path is not a file" };
-    }
-    return {
-      status: "ready",
-      cwd,
-      path: normalizeRelativePath({ root, targetPath: filePath.requestedPath }),
-      size: Number(stats.size),
-      modifiedAt: stats.mtime.toISOString(),
-      revision: fileRevision(stats),
-    };
-  } catch (error) {
-    if (isMissingEntryError(error)) {
-      return { status: "missing", cwd, path: relativePath };
-    }
-    return {
-      status: "error",
-      cwd,
-      path: relativePath,
-      error: error instanceof Error ? error.message : String(error),
-    };
+function isLikelyBinary(buffer: Buffer): boolean {
+  if (buffer.length === 0) {
+    return false;
   }
+
+  let suspicious = 0;
+  for (let idx = 0; idx < buffer.length; idx += 1) {
+    const byte = buffer[idx];
+    if (byte === 0) {
+      return true;
+    }
+
+    const isControl =
+      byte < 32 &&
+      byte !== 9 && // tab
+      byte !== 10 && // newline
+      byte !== 13; // carriage return
+
+    if (isControl || byte === 127) {
+      suspicious += 1;
+    }
+  }
+
+  return suspicious / buffer.length > 0.3;
 }
 
-export async function resolveExplorerFilePath({
-  root,
-  relativePath,
-}: ReadFileParams): Promise<string> {
-  return (await resolveScopedPath({ root, relativePath })).resolvedPath;
-}
-
-export type DuplicateExplorerEntryResult =
-  | { status: "ok"; path: string }
-  | { status: "error"; error: string };
-
-/** Duplicate a file or directory beside its source without overwriting an existing copy. */
-export async function duplicateExplorerEntry({
-  root,
-  relativePath,
-}: ReadFileParams): Promise<DuplicateExplorerEntryResult> {
+function isValidUtf8(buffer: Buffer): boolean {
   try {
-    const source = await resolveScopedPath({ root, relativePath });
-    const realRoot = await fs.realpath(expandUserPath(root));
-    if (source.resolvedPath === realRoot) {
-      return { status: "error", error: "Cannot duplicate the workspace root" };
-    }
-
-    const stats = await fs.lstat(source.requestedPath);
-    const sourceName = path.basename(source.requestedPath);
-    const extension = stats.isDirectory() ? "" : path.extname(sourceName);
-    const baseName = extension ? sourceName.slice(0, -extension.length) : sourceName;
-    let targetPath = "";
-    for (let copyNumber = 1; ; copyNumber += 1) {
-      const suffix = copyNumber === 1 ? " copy" : ` copy ${copyNumber}`;
-      targetPath = path.join(
-        path.dirname(source.requestedPath),
-        `${baseName}${suffix}${extension}`,
-      );
-      try {
-        await fs.lstat(targetPath);
-      } catch (error) {
-        if (isMissingEntryError(error)) break;
-        throw error;
-      }
-    }
-
-    await fs.cp(source.requestedPath, targetPath, {
-      recursive: stats.isDirectory(),
-      errorOnExist: true,
-      force: false,
-      preserveTimestamps: true,
-    });
-    return { status: "ok", path: normalizeRelativePath({ root, targetPath }) };
-  } catch (error) {
-    if (isMissingEntryError(error)) {
-      return { status: "error", error: "File or folder no longer exists" };
-    }
-    return { status: "error", error: error instanceof Error ? error.message : String(error) };
+    new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    return true;
+  } catch {
+    return false;
   }
 }

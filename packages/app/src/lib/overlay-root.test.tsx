@@ -1,13 +1,7 @@
 // @vitest-environment jsdom
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { dispatchTopWebOverlayKeyDown, OVERLAY_Z, useWebOverlayRegistration } from "./overlay-root";
-
-it("stacks floating sidebars above the Visualizer PIP and below interaction overlays", () => {
-  expect(OVERLAY_Z.visualizerPip).toBeLessThan(OVERLAY_Z.sidebarPeek);
-  expect(OVERLAY_Z.sidebarPeek).toBeLessThan(OVERLAY_Z.drag);
-  expect(OVERLAY_Z.sidebarPeek).toBeLessThan(OVERLAY_Z.floating);
-});
+import { dispatchTopWebOverlayKeyDown, useWebOverlayRegistration } from "./overlay-root";
 
 describe("useWebOverlayRegistration", () => {
   let opener: HTMLButtonElement;

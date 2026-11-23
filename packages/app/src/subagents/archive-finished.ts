@@ -12,9 +12,9 @@ export interface ArchiveFinishedState {
 }
 
 export interface ArchiveFinishedOutcome {
-  archivedOttoIds: string[];
-  archivedProviderIds: string[];
-  skippedOttoIds: string[];
+  archivedPaseoIds: string[];
+  dismissedProviderIds: string[];
+  skippedPaseoIds: string[];
   failures: Array<{ id: string; error: unknown }>;
 }
 
@@ -24,7 +24,7 @@ export interface ArchiveFinishedSubagentsDeps {
   parentAgentId: string;
   getManagedSubagent: (id: string) => ManagedSubagentSnapshot | undefined;
   archiveManagedSubagent: (id: string) => Promise<void>;
-  archiveProviderSubagent: (id: string) => Promise<void>;
+  dismissProviderSubagents: (ids: string[]) => void;
 }
 
 export interface ArchiveFinishedSubagents {
@@ -35,7 +35,7 @@ export interface ArchiveFinishedSubagents {
 }
 
 export function isFinishedSubagent(row: SubagentRow): boolean {
-  if (row.kind === "otto") return row.status === "idle" || row.status === "error";
+  if (row.kind === "paseo") return row.status === "idle" || row.status === "error";
   return row.status === "completed" || row.status === "failed" || row.status === "canceled";
 }
 
@@ -56,11 +56,11 @@ function eligibleSignature(rows: readonly SubagentRow[]): string {
 }
 
 function managedRowIdentity(id: string): string {
-  return `otto:${id}`;
+  return `paseo:${id}`;
 }
 
 function rowIdentity(row: SubagentRow): string {
-  return row.kind === "otto" ? managedRowIdentity(row.id) : `provider:${row.id}`;
+  return row.kind === "paseo" ? managedRowIdentity(row.id) : `provider:${row.id}`;
 }
 
 function rowIdentities(rows: readonly SubagentRow[]): Set<string> {
@@ -73,9 +73,9 @@ function identitySignature(ids: ReadonlySet<string>): string {
 
 function emptyOutcome(): ArchiveFinishedOutcome {
   return {
-    archivedOttoIds: [],
-    archivedProviderIds: [],
-    skippedOttoIds: [],
+    archivedPaseoIds: [],
+    dismissedProviderIds: [],
+    skippedPaseoIds: [],
     failures: [],
   };
 }
@@ -169,28 +169,23 @@ async function runArchiveFinished(
   reportProgress: (completedCount: number) => void,
 ): Promise<{ outcome: ArchiveFinishedOutcome; retryableFailureIds: Set<string> }> {
   const providerIds = rows.filter((row) => row.kind === "provider").map((row) => row.id);
-  const ottoIds = rows.filter((row) => row.kind === "otto").map((row) => row.id);
+  const paseoIds = rows.filter((row) => row.kind === "paseo").map((row) => row.id);
   let completedCount = 0;
   const outcome = emptyOutcome();
   const retryableFailureIds = new Set<string>();
 
-  for (const id of providerIds) {
-    try {
-      await deps.archiveProviderSubagent(id);
-      outcome.archivedProviderIds.push(id);
-    } catch (error) {
-      outcome.failures.push({ id, error });
-      retryableFailureIds.add(`provider:${id}`);
-    }
-    completedCount += 1;
+  if (providerIds.length > 0) {
+    deps.dismissProviderSubagents(providerIds);
+    outcome.dismissedProviderIds.push(...providerIds);
+    completedCount += providerIds.length;
     reportProgress(completedCount);
   }
 
-  for (const id of ottoIds) {
+  for (const id of paseoIds) {
     if (canArchiveManagedSubagent(deps.getManagedSubagent(id), deps.parentAgentId)) {
       try {
         await deps.archiveManagedSubagent(id);
-        outcome.archivedOttoIds.push(id);
+        outcome.archivedPaseoIds.push(id);
       } catch (error) {
         outcome.failures.push({ id, error });
         if (canArchiveManagedSubagent(deps.getManagedSubagent(id), deps.parentAgentId)) {
@@ -198,7 +193,7 @@ async function runArchiveFinished(
         }
       }
     } else {
-      outcome.skippedOttoIds.push(id);
+      outcome.skippedPaseoIds.push(id);
     }
     completedCount += 1;
     reportProgress(completedCount);

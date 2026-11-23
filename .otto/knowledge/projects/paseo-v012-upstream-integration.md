@@ -4,12 +4,12 @@ kind: "project"
 title: "Paseo v0.12 upstream integration"
 status: "proposed"
 tags: ["upstream","paseo","merge"]
-delivery_status: "charter"
+delivery_status: "cancelled"
 progress_completed: 0
 progress_total: 2
 progress_unit: "merge steps"
 created_at: "2026-10-19T19:13:43.404Z"
-updated_at: "2026-10-19T19:13:43.404Z"
+updated_at: "2026-10-20T13:25:42.129Z"
 ---
 # Paseo v0.12 upstream integration
 
@@ -65,3 +65,7 @@ Rationale: a single jump resolves 915 contested files once and two steps resolve
 - time: "2026-10-19T19:13:43.404Z"
   kind: "evidence"
   summary: "Drift measurement and hazard analysis in [[finding-2026-10-19-paseo-v012-merge-gap]]. Rival-feature audit of the Paseo 0.9.0 to 0.12.0 changelog performed 2026-10-19 against b8e24677e, cafe4b01c and Otto HEAD 8fcff77f6."
+- time: "2026-10-20T13:25:42.129Z"
+  kind: "reversal"
+  summary: "Superseded on 2026-10-20 by the decision to rebuild Otto 0.10.0 on a clean Paseo base ([[otto-0-10-rebuilds-on-clean-paseo]], project [[otto-0-10-clean-paseo-rebuild]]). The rival-feature audit and hazard analysis on this page remain useful input to the Phase 1 feature manifest."
+  affects: ["paseo-v012-upstream-integration"]

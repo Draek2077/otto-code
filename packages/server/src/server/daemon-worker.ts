@@ -1,49 +1,33 @@
+// oxlint-disable-next-line import/no-unassigned-import -- OTTO(environment): map OTTO_* onto PASEO_* first.
+import "@getpaseo/protocol/otto/apply-environment";
 import { appendFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { createOttoDaemon } from "./bootstrap.js";
-import { isSurvivablePipeError } from "./pipe-errors.js";
+import { createPaseoDaemon, formatListenTarget } from "./bootstrap.js";
 import { loadConfig } from "./config.js";
-import { resolveOttoHome } from "./otto-home.js";
+import { resolvePaseoHome } from "./paseo-home.js";
 import { createRootLogger } from "./logger.js";
 import type { DaemonLifecycleIntent } from "./bootstrap.js";
 import { getProcessDiagnostics } from "./process-diagnostics.js";
-import { DAEMON_FATAL_EXIT_CODE } from "./daemon-exit-codes.js";
 
-process.title = "Otto Daemon";
-
-// Walk the error and its `cause` chain looking for a listen conflict. A failed
-// bind can surface either directly or wrapped, so check a few levels deep.
-function isAddressInUseError(err: unknown): boolean {
-  let current: unknown = err;
-  for (let depth = 0; depth < 5 && current != null; depth++) {
-    if (typeof current === "object" && "code" in current) {
-      if ((current as { code?: unknown }).code === "EADDRINUSE") {
-        return true;
-      }
-      current = (current as { cause?: unknown }).cause ?? null;
-    } else {
-      break;
-    }
-  }
-  return false;
-}
+process.title = "Otto Daemon"; // OTTO(identity)
 
 type SupervisorLifecycleMessage =
   | {
-      type: "otto:shutdown";
+      type: "paseo:shutdown";
       reason: string;
     }
   | {
-      type: "otto:ready";
+      type: "paseo:ready";
       listen: string;
+      serverId: string;
     }
   | {
-      type: "otto:restart";
+      type: "paseo:restart";
       reason?: string;
     };
 
 interface BootstrapResult {
-  ottoHome: string;
+  paseoHome: string;
   logger: ReturnType<typeof createRootLogger>;
   config: ReturnType<typeof loadConfig>;
 }
@@ -61,12 +45,12 @@ function isPidAlive(pid: number): boolean {
 }
 
 function writeWorkerLifecycleLog(
-  ottoHome: string,
+  paseoHome: string,
   message: string,
   fields: Record<string, unknown> = {},
 ): void {
   try {
-    const logPath = path.join(ottoHome, "daemon.log");
+    const logPath = path.join(paseoHome, "daemon.log");
     mkdirSync(path.dirname(logPath), { recursive: true });
     appendFileSync(
       logPath,
@@ -87,10 +71,10 @@ function writeWorkerLifecycleLog(
 
 function bootstrapFromEnvironment(): BootstrapResult {
   try {
-    const ottoHome = resolveOttoHome();
-    const config = loadConfig(ottoHome);
-    const logger = createRootLogger({ log: config.log }, { ottoHome, file: false });
-    return { ottoHome, logger, config };
+    const paseoHome = resolvePaseoHome();
+    const config = loadConfig(paseoHome);
+    const logger = createRootLogger({ log: config.log }, { paseoHome, file: false });
+    return { paseoHome, logger, config };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     process.stderr.write(`${message}\n`);
@@ -147,8 +131,8 @@ function applyCliFlagOverrides(config: ReturnType<typeof loadConfig>): void {
 }
 
 async function main() {
-  const { ottoHome, logger, config } = bootstrapFromEnvironment();
-  let daemon: Awaited<ReturnType<typeof createOttoDaemon>> | null = null;
+  const { paseoHome, logger, config } = bootstrapFromEnvironment();
+  let daemon: Awaited<ReturnType<typeof createPaseoDaemon>> | null = null;
   let shutdownPromise: Promise<number> | null = null;
   let exitHookInstalled = false;
 
@@ -178,10 +162,7 @@ async function main() {
         `${signal} received, shutting down gracefully...`,
       );
 
-      shutdownPromise = (async (): Promise<number> => {
-        // Backstop for the rare case where cleanup never returns. unref()'d so
-        // it alone never keeps the event loop alive; the normal path below exits
-        // synchronously long before this fires.
+      shutdownPromise = (async () => {
         const forceExit = setTimeout(() => {
           logger.warn(
             { signal, reason, ...getProcessDiagnostics() },
@@ -189,34 +170,21 @@ async function main() {
           );
           process.exit(1);
         }, 10000);
-        forceExit.unref();
 
         try {
           if (!daemon) {
             logger.error("Shutdown requested before daemon initialization completed");
             clearTimeout(forceExit);
-            // Exit synchronously: don't wait for the event loop to drain. The
-            // daemon has never started, so there is nothing left to flush, and
-            // returning would defer process.exit() to a .then() microtask that
-            // on Windows can lag behind the TCP port closing, leaving the
-            // process alive well past the CLI's "unreachable" verdict.
-            process.exit(1);
+            return 1;
           }
           await daemon.stop();
           clearTimeout(forceExit);
           logger.info("Server closed");
-          // Exit synchronously the moment cleanup finishes. The shutdown path
-          // closes the HTTP server (so the CLI sees the port drop and reports
-          // "stopped") and then relies on process.exit() to actually terminate.
-          // Returning here and waiting for installExitHook's .then() callback
-          // to fire process.exit() inserts an extra event-loop tick. On Windows
-          // that tick can be delayed long enough that the process outlives the
-          // CLI's stop result, so we commit the exit on this tick instead.
-          process.exit(options?.successExitCode ?? 0);
+          return options?.successExitCode ?? 0;
         } catch (err) {
           clearTimeout(forceExit);
           logger.error({ err }, "Shutdown failed");
-          process.exit(1);
+          return 1;
         }
       })();
     } else {
@@ -248,7 +216,7 @@ async function main() {
         { clientId: intent.clientId, requestId: intent.requestId, reason: intent.reason },
         "Shutdown requested via websocket",
       );
-      if (sendSupervisorLifecycleMessage({ type: "otto:shutdown", reason: intent.reason })) {
+      if (sendSupervisorLifecycleMessage({ type: "paseo:shutdown", reason: intent.reason })) {
         return;
       }
       beginShutdown("shutdown lifecycle intent", { reason: intent.reason });
@@ -261,7 +229,7 @@ async function main() {
     );
     if (
       sendSupervisorLifecycleMessage({
-        type: "otto:restart",
+        type: "paseo:restart",
         ...(intent.reason ? { reason: intent.reason } : {}),
       })
     ) {
@@ -287,7 +255,7 @@ async function main() {
       }
       supervisorExitRequested = true;
 
-      writeWorkerLifecycleLog(ottoHome, "Supervisor liveness lost; worker exiting", {
+      writeWorkerLifecycleLog(paseoHome, "Supervisor liveness lost; worker exiting", {
         reason,
         ...getProcessDiagnostics(),
         supervisorPid,
@@ -307,11 +275,11 @@ async function main() {
         return;
       }
       const type = (message as { type?: unknown }).type;
-      if (type === "otto:supervisor-heartbeat") {
+      if (type === "paseo:supervisor-heartbeat") {
         lastSupervisorHeartbeatAt = Date.now();
         return;
       }
-      if (type === "otto:graceful-shutdown") {
+      if (type === "paseo:graceful-shutdown") {
         const reason = (message as { reason?: unknown }).reason;
         beginShutdown("Supervisor shutdown request", {
           reason: typeof reason === "string" ? reason : "supervisor_requested_shutdown",
@@ -343,7 +311,7 @@ async function main() {
   installSupervisorLivenessGuard();
 
   try {
-    daemon = await createOttoDaemon(
+    daemon = await createPaseoDaemon(
       {
         ...config,
         onLifecycleIntent: handleLifecycleIntent,
@@ -358,24 +326,17 @@ async function main() {
   try {
     await daemon.start();
     const listenTarget = daemon.getListenTarget();
-    const listen =
-      listenTarget?.type === "tcp"
-        ? `${listenTarget.host}:${listenTarget.port}`
-        : listenTarget?.path;
+    const listen = formatListenTarget(listenTarget);
     if (!listen) {
       throw new Error("Daemon did not expose a listen target after startup");
     }
-    sendSupervisorLifecycleMessage({ type: "otto:ready", listen });
+    sendSupervisorLifecycleMessage({
+      type: "paseo:ready",
+      listen,
+      serverId: daemon.getServerId(),
+    });
   } catch (err) {
     logger.fatal({ err }, "Daemon failed to start listening");
-    if (isAddressInUseError(err)) {
-      // Another daemon already holds the listen port. Restarting the worker can
-      // never win against an occupied port, so exit with the fatal code that
-      // tells the supervisor to stop instead of crash-looping (which is what
-      // spawns rogue, port-squatting daemon processes).
-      exitAfterPinoFlush(DAEMON_FATAL_EXIT_CODE);
-      return;
-    }
     throw err;
   }
 
@@ -383,25 +344,12 @@ async function main() {
   process.on("SIGINT", () => beginShutdown("SIGINT"));
 
   process.on("uncaughtException", (err) => {
-    logger.fatal({ err }, "Uncaught exception - daemon crashing");
+    logger.fatal({ err }, "Uncaught exception — daemon crashing");
     exitAfterPinoFlush();
   });
 
   process.on("unhandledRejection", (reason) => {
-    // A failed write to a child process's pipe is not a daemon bug, and must not be fatal.
-    // The daemon supervises subprocesses that are allowed to die - language servers, the .NET
-    // solution sidecar, terminals - and every one of them leaves a destroyed pipe behind when
-    // it goes. A crashing csharp-ls used to take the whole daemon down through this path,
-    // killing every agent and every terminal along with it, in a restart loop.
-    //
-    // This is the last line of defence, not the first: the LSP connection guards its own writes
-    // and listens on its pipes. It exists so that ONE unguarded write, anywhere, in any
-    // subsystem added later, can never again be fatal.
-    if (isSurvivablePipeError(reason)) {
-      logger.error({ err: reason }, "Pipe write failed after a child process went away");
-      return;
-    }
-    logger.fatal({ err: reason }, "Unhandled promise rejection - daemon crashing");
+    logger.fatal({ err: reason }, "Unhandled promise rejection — daemon crashing");
     exitAfterPinoFlush();
   });
 }
@@ -409,8 +357,8 @@ async function main() {
 // Give pino async streams a moment to flush the fatal log entry to daemon.log
 // before the process exits. Without this, the last few entries that explain
 // why the daemon crashed can be lost.
-function exitAfterPinoFlush(code = 1): void {
-  setTimeout(() => process.exit(code), 200);
+function exitAfterPinoFlush(): void {
+  setTimeout(() => process.exit(1), 200);
 }
 
 main().catch((err) => {

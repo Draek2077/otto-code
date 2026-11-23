@@ -1,3 +1,4 @@
+// OTTO(identity): assertions follow Otto identity values.
 import { describe, expect, test } from "vitest";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import {
@@ -27,9 +28,28 @@ function createRecord(overrides?: Partial<StoredAgentRecord>): StoredAgentRecord
 }
 
 describe("persistence hooks", () => {
+  test("buildConfigOverrides prefers the last live mode over the creation-time mode", () => {
+    const record = createRecord({
+      lastModeId: "bypass",
+      config: { modeId: "acceptEdits" },
+    });
+
+    expect(buildConfigOverrides(record).modeId).toBe("bypass");
+  });
+
+  test("buildConfigOverrides falls back to the configured mode when no live mode was recorded", () => {
+    const record = createRecord({
+      lastModeId: null,
+      config: { modeId: "acceptEdits" },
+    });
+
+    expect(buildConfigOverrides(record).modeId).toBe("acceptEdits");
+  });
+
   test("buildConfigOverrides preserves the complete private launch config", () => {
     const record = createRecord({
       title: "Voice agent (current)",
+      lastModeId: "default",
       config: {
         modeId: "default",
         model: "gpt-5.4-mini",
@@ -39,7 +59,7 @@ describe("persistence hooks", () => {
           sandbox_workspace_write: { writable_roots: ["/tmp/shared"] },
         },
         toolPolicy: {
-          preapproved: [{ kind: "mcp", server: "paseo", tool: "report_status" }],
+          preapproved: [{ kind: "mcp", server: "otto", tool: "report_status" }],
         },
         systemPrompt: "Use speak first.",
         mcpServers: {
@@ -62,7 +82,7 @@ describe("persistence hooks", () => {
         sandbox_workspace_write: { writable_roots: ["/tmp/shared"] },
       },
       toolPolicy: {
-        preapproved: [{ kind: "mcp", server: "paseo", tool: "report_status" }],
+        preapproved: [{ kind: "mcp", server: "otto", tool: "report_status" }],
       },
       systemPrompt: "Use speak first.",
       mcpServers: {
@@ -79,6 +99,7 @@ describe("persistence hooks", () => {
     const record = createRecord({
       provider: "codex",
       title: "Renamed title",
+      lastModeId: null,
       config: {
         model: "gpt-5.4-mini",
         systemPrompt: "Confirm and speak first.",
@@ -108,7 +129,7 @@ describe("persistence hooks", () => {
     });
   });
 
-  test("buildConfigOverrides drops persisted internal otto MCP server", () => {
+  test("buildConfigOverrides drops persisted internal paseo MCP server", () => {
     const record = createRecord({
       config: {
         modeId: "default",
@@ -116,7 +137,7 @@ describe("persistence hooks", () => {
         mcpServers: {
           otto: {
             type: "http",
-            url: "http://127.0.0.1:6868/mcp/agents?callerAgentId=stale-agent",
+            url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=stale-agent",
           },
           custom: {
             type: "stdio",
@@ -134,7 +155,7 @@ describe("persistence hooks", () => {
     });
   });
 
-  test("buildConfigOverrides preserves user-provided otto MCP server", () => {
+  test("buildConfigOverrides preserves user-provided paseo MCP server", () => {
     const record = createRecord({
       config: {
         modeId: "default",
@@ -142,7 +163,7 @@ describe("persistence hooks", () => {
         mcpServers: {
           otto: {
             type: "http",
-            url: "https://example.com/custom-otto",
+            url: "https://example.com/custom-paseo",
           },
         },
       },
@@ -151,7 +172,7 @@ describe("persistence hooks", () => {
     expect(buildConfigOverrides(record).mcpServers).toEqual({
       otto: {
         type: "http",
-        url: "https://example.com/custom-otto",
+        url: "https://example.com/custom-paseo",
       },
     });
   });

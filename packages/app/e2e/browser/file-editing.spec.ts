@@ -1,50 +1,21 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test, type Page } from "../support/fixtures";
-import { awaitAssistantMessage } from "../support/helpers/agent-stream";
-import { expectComposerVisible, submitMessage } from "../support/helpers/composer";
 import {
+  expandFolder,
   openFileExplorer,
   openFileFromExplorer,
   expectFileTabOpen,
 } from "../support/helpers/file-explorer";
-import { fileTabEditorContent } from "../support/helpers/file-tab";
 import { installDaemonWebSocketGate } from "../support/helpers/daemon-websocket-gate";
-import { buildAssistantMarkdownScenarioPrompt } from "../support/helpers/mock-scenarios";
+import { gotoAppShell } from "../support/helpers/app";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 import { seedWorkspace } from "../support/helpers/seed-client";
-// Upstream folded the app-side desktop bridge helper into the desktop package
-// (`installDesktopRuntime`). The desktop-runtime describe block below is the
-// only thing in this file that needs it, and it only runs under
-// E2E_DESKTOP_RUNTIME=1, so it should eventually move to packages/desktop/e2e
-// where that lane lives.
-import { installDesktopRuntime as injectDesktopBridge } from "../../../desktop/e2e/support/runtime";
-import { seedAppSettings } from "../support/helpers/settings";
 import { getServerId } from "../support/helpers/server-id";
-import { openHomeWithProject } from "../support/helpers/workspace-setup";
-import { selectWorkspaceInSidebar } from "../support/helpers/sidebar";
-import { moneyShot } from "../support/helpers/evidence";
+import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 
-// This spec retains the active checks that are specific to the unified file tab:
-// opening an assistant file link at its referenced line and the live Vim mode
-// setting/editor path. The remaining Otto-era cases are intentionally skipped
-// because they either assert unsupported semantics or cover gaps that have not
-// been migrated to the current editor surface.
-//
-// The first test is kept ALIVE and retargeted at Otto's surface, because it is
-// the one behaviour here that no other spec asserts: opening an assistant file
-// link AT ITS REFERENCED LINE. Otto parses `path:line` in
-// `src/assistant-file-links/parse.ts` and opens to the side carrying the line
-// target, but `chat-file-link-side-open.spec.ts` only asserts side-pane
-// placement, never the line jump.
-
-const TARGET_FILE = "target.ts";
-const TARGET_LINE = 150;
-const TOTAL_LINES = 200;
-
-function targetFileContent(): string {
-  return `${Array.from({ length: TOTAL_LINES }, (_, index) => `export const line${index + 1} = ${index + 1};`).join("\n")}\n`;
-}
+const APP_SETTINGS_KEY = "@otto:app-settings";
 
 const RED_PIXEL = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=",
@@ -63,7 +34,7 @@ interface LinkedFile {
 }
 
 function editor(page: Page) {
-  return page.getByTestId("code-editor-surface").filter({ visible: true }).locator(".cm-content");
+  return page.getByTestId("file-source-editor").filter({ visible: true }).locator(".cm-content");
 }
 
 function hasHorizontalOverflow(element: HTMLElement): boolean {
@@ -101,24 +72,12 @@ async function selectFileView(page: Page, view: "Preview" | "Source"): Promise<v
   await expect(option).toHaveAttribute("aria-selected", "true");
 }
 
-async function selectMainFileTab(page: Page, filename: string): Promise<void> {
-  const mainFileTab = page.getByTestId(`workspace-tab-file_${filename}`).first();
-  await expect(mainFileTab).toBeVisible();
-  await mainFileTab.click();
-}
-
-async function selectMainFilePreview(page: Page, filename: string): Promise<void> {
-  await selectMainFileTab(page, filename);
-  const preview = page.getByTestId("file-view-mode-preview");
-  await expect(preview).toBeVisible();
-  await preview.click();
-}
-
-async function expectReadonlySourcePreview(page: Page) {
-  const source = page.getByTestId("file-source-editor");
-  await expect(source).toBeVisible();
-  await expect(source.locator(".cm-content")).toHaveAttribute("contenteditable", "false");
-  return source;
+async function expectMarkdownImageLoaded(page: Page, name: string): Promise<void> {
+  const image = page.getByRole("button", { name, exact: true });
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() => image.evaluate((element: HTMLImageElement) => element.naturalWidth))
+    .toBeGreaterThan(0);
 }
 
 function watchRequestsTo(page: Page, origin: string): string[] {
@@ -147,6 +106,159 @@ async function seedAgentWithFileLink(input: LinkedFile) {
 }
 
 test.describe("CodeMirror workspace file editing", () => {
+  test("opens explicit screenshot links and explains missing files", async ({ page }) => {
+    const session = await seedMockAgentWorkspace({
+      repoPrefix: "screenshot-markdown-link-",
+      title: "Screenshot file links",
+      initialPrompt: "Show screenshots",
+      featureValues: {
+        mockAssistantResponse:
+          "[Capture](.dev/tablet-review/capture.png) [Missing capture](.dev/tablet-review/missing.png)",
+      },
+    });
+    try {
+      await mkdir(path.join(session.cwd, ".dev/tablet-review"), { recursive: true });
+      await writeFile(path.join(session.cwd, ".dev/tablet-review/capture.png"), RED_PIXEL);
+      await openAgentRoute(page, session);
+      await test.step("Open the linked screenshot", async () => {
+        await openAssistantMarkdownLink(page, "Capture");
+        await expectFileTabOpen(page, ".dev/tablet-review/capture.png");
+        await expect(page.getByTestId("image-file-preview-canvas")).toBeVisible();
+      });
+      await test.step("Explain why the missing screenshot cannot open", async () => {
+        await returnToAssistant(page, session.agentId);
+        await openAssistantMarkdownLink(page, "Missing capture");
+        await expectFileTabOpen(page, ".dev/tablet-review/missing.png");
+        await expect(page.getByText(/ENOENT/)).toBeVisible();
+        await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+      });
+    } finally {
+      await session.cleanup();
+    }
+  });
+
+  test("opens the non-ASCII file named by an assistant markdown link", async ({ page }) => {
+    const session = await seedMockAgentWorkspace({
+      repoPrefix: "encoded-markdown-link-",
+      title: "Non-ASCII file link",
+      initialPrompt: "Show the report link",
+      featureValues: { mockAssistantResponse: "[报告](docs/reports/开户赠金.md)" },
+    });
+    try {
+      await mkdir(path.join(session.cwd, "docs/reports"), { recursive: true });
+      await writeFile(path.join(session.cwd, "docs/reports/开户赠金.md"), "# Report opened\n");
+      await openAgentRoute(page, session);
+      await openAssistantMarkdownLink(page, "报告");
+      await expectFileTabOpen(page, "docs/reports/开户赠金.md");
+      await expect(
+        page
+          .getByTestId("workspace-file-pane")
+          .filter({ visible: true })
+          .getByText("Report opened", { exact: true }),
+      ).toBeVisible();
+      await page.screenshot({ path: test.info().outputPath("non-ascii-file-opened.png") });
+    } finally {
+      await session.cleanup();
+    }
+  });
+
+  for (const order of ["raw-first", "href-first"] as const) {
+    test(`opens literal and encoded percent filenames independently ${order}`, async ({ page }) => {
+      const session = await seedMockAgentWorkspace({
+        repoPrefix: "percent-link-cache-",
+        title: "Distinct file links",
+        initialPrompt: "Show both filenames",
+        featureValues: {
+          mockAssistantResponse: "Raw `literal%20.md`. [Decoded](literal%20.md).",
+        },
+      });
+      try {
+        await writeFile(path.join(session.cwd, "literal%20.md"), "# Literal filename\n");
+        await writeFile(path.join(session.cwd, "literal .md"), "# Decoded filename\n");
+        await openAgentRoute(page, session);
+        const links = order === "raw-first" ? ["raw", "href"] : ["href", "raw"];
+        for (const link of links) {
+          await returnToAssistant(page, session.agentId);
+          if (link === "raw") {
+            await openAssistantInlinePath(page, "literal%20.md");
+            await expectFileTabOpen(page, "literal%20.md");
+            await expectPreviewText(page, "Literal filename");
+          } else {
+            await openAssistantMarkdownLink(page, "Decoded");
+            await expectFileTabOpen(page, "literal .md");
+            await expectPreviewText(page, "Decoded filename");
+          }
+        }
+      } finally {
+        await session.cleanup();
+      }
+    });
+  }
+
+  test("jumps to each relative reference to the same file", async ({ page }) => {
+    const session = await seedMockAgentWorkspace({
+      repoPrefix: "relative-reference-qa-",
+      title: "Relative line references",
+      initialPrompt: "Show both references",
+      featureValues: {
+        mockAssistantResponse: "First `src/router.go:46`. Then `src/router.go:403`.",
+      },
+    });
+    try {
+      await mkdir(path.join(session.cwd, "src"));
+      await writeFile(
+        path.join(session.cwd, "src/router.go"),
+        Array.from({ length: 450 }, (_, n) => `// line ${n + 1}`).join("\n"),
+      );
+      await openAgentRoute(page, session);
+      for (const line of [46, 403, 46]) {
+        await page
+          .getByTestId(`workspace-tab-agent_${session.agentId}`)
+          .filter({ visible: true })
+          .click();
+        await page.getByText(`src/router.go:${line}`, { exact: true }).click();
+        await expect(page.getByLabel(`Line ${line}, column 1`)).toBeVisible();
+      }
+      await page.screenshot({ path: test.info().outputPath("relative-line-target.png") });
+    } finally {
+      await session.cleanup();
+    }
+  });
+
+  test("shows an absolute POSIX assistant file link relative to the workspace on hover", async ({
+    page,
+  }) => {
+    const workspace = await seedWorkspace({ repoPrefix: "file-link-tooltip-" });
+    const filePath = path.join(workspace.repoPath, "src", "target.ts");
+    try {
+      const agent = await workspace.client.createAgent({
+        provider: "mock",
+        cwd: workspace.repoPath,
+        workspaceId: workspace.workspaceId,
+        title: "Absolute file link tooltip",
+        modeId: "load-test",
+        model: "e2e-fast-stream",
+        initialPrompt: "Show the file link",
+        featureValues: { mockAssistantResponse: `[Open target](${filePath}:42-45)` },
+      });
+      await gotoAppShell(page);
+      await waitForSidebarHydration(page);
+      const workspaceRow = page.getByTestId(
+        `sidebar-workspace-row-${getServerId()}:${workspace.workspaceId}`,
+      );
+      await expect(workspaceRow).toBeVisible({ timeout: 30_000 });
+      await workspaceRow.click();
+      await page.getByTestId(`workspace-tab-agent_${agent.id}`).filter({ visible: true }).click();
+
+      const fileLink = page.getByRole("link", { name: "Open target" }).first();
+      await expect(fileLink).toBeVisible({ timeout: 15_000 });
+      await fileLink.hover();
+      await expect(fileLink).toHaveAttribute("title", "src/target.ts:42-45");
+    } finally {
+      await workspace.cleanup();
+    }
+  });
+
   test("renders a lockfile-sized read-only source with a bounded CodeMirror DOM", async ({
     page,
   }) => {
@@ -162,16 +274,9 @@ test.describe("CodeMirror workspace file editing", () => {
       await openAgentRoute(page, session);
       await openWorkspaceFile(page, "package-lock.json");
 
-      await selectMainFilePreview(page, "package-lock.json");
-      const source = await expectReadonlySourcePreview(page);
-      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(0);
-      await expect(source).toContainText('"package-0"');
-      await expect.poll(() => source.locator(".cm-line").count()).toBeLessThan(200);
-
-      await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
-      await expect(page.getByTestId("message-input-root")).toBeVisible();
-      await selectMainFileTab(page, "package-lock.json");
-      await expectReadonlySourcePreview(page);
+      await expect(page.getByTestId("file-source-editor")).toBeVisible();
+      await expect(editor(page)).toContainText('"package-0"');
+      await expect.poll(() => page.locator(".cm-line").count()).toBeLessThan(200);
     } finally {
       await session.cleanup();
     }
@@ -192,19 +297,14 @@ test.describe("CodeMirror workspace file editing", () => {
     try {
       await openAgentRoute(page, session);
       await openWorkspaceFile(page, "plain.txt");
-      await selectMainFilePreview(page, "plain.txt");
-      const source = await expectReadonlySourcePreview(page);
-      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(1);
-      await expect(page.getByTestId("file-source-highlight-disabled")).toBeVisible();
-      await expect(source).toContainText("plain source");
-      await expect.poll(() => source.locator(".cm-line").count()).toBeLessThan(200);
-      await moneyShot(page, "plain large source remains readable with highlighting disabled");
+      await expect(page.getByTestId("file-source-editor")).toBeVisible();
+      await expect(editor(page)).toContainText("plain source");
+      await expect.poll(() => page.locator(".cm-line").count()).toBeLessThan(200);
 
       await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
       await expect(page.getByTestId("message-input-root")).toBeVisible();
-      await selectMainFileTab(page, "plain.txt");
-      await expectReadonlySourcePreview(page);
-      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(1);
+      await page.getByTestId("workspace-tab-file_plain.txt").first().click();
+      await expect(page.getByTestId("file-source-editor")).toBeVisible();
     } finally {
       await session.cleanup();
     }
@@ -220,149 +320,79 @@ test.describe("CodeMirror workspace file editing", () => {
     });
     await writeFile(
       path.join(session.cwd, "too-large.txt"),
-      Buffer.alloc(51 * 1024 * 1024, "x"),
+      Buffer.alloc(51 * 1024 * 1024),
       "utf8",
     );
 
     try {
       await openAgentRoute(page, session);
       await openWorkspaceFile(page, "too-large.txt");
-      await selectMainFilePreview(page, "too-large.txt");
       await expect(page.getByTestId("file-source-too-large")).toContainText(
         "This file is too large to display",
       );
-      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(0);
-      await expect(page.getByTestId("file-source-editor")).toHaveCount(0);
 
       await page.getByTestId(`workspace-tab-agent_${session.agentId}`).first().click();
       await expect(page.getByTestId("message-input-root")).toBeVisible();
-      await selectMainFileTab(page, "too-large.txt");
+      await page.getByTestId("workspace-tab-file_too-large.txt").first().click();
       await expect(page.getByTestId("file-source-too-large")).toBeVisible();
-      await expect(page.getByTestId("file-source-highlight-disabled")).toHaveCount(0);
-      await expect(page.getByTestId("file-source-editor")).toHaveCount(0);
-    } finally {
-      await session.cleanup();
-    }
-  });
-
-  test("opens a fresh Explorer file in Main and preserves an explicitly moved file in Explorer", async ({
-    page,
-  }) => {
-    test.setTimeout(120_000);
-    const session = await seedMockAgentWorkspace({
-      repoPrefix: "file-placement-",
-      title: "File placement",
-      initialPrompt: "Generate a title and a git branch name. Return JSON only.",
-    });
-    await writeFile(path.join(session.cwd, "target.ts"), "export const target = true;\n", "utf8");
-
-    try {
-      await page.setViewportSize({ width: 1440, height: 900 });
-      await openAgentRoute(page, session);
-      await openWorkspaceFile(page, "target.ts");
-
-      const mainFileTab = page.getByTestId("workspace-tab-file_target.ts").first();
-      await expect(mainFileTab).toBeVisible();
-      await mainFileTab.click({ button: "right" });
-      const mainTabMenu = page.getByTestId("workspace-tab-context-file_target.ts");
-      await expect(mainTabMenu).toBeVisible();
-      await page.getByTestId("workspace-tab-context-file_target.ts-move-to-explorer").click();
-
-      await expect(page.getByTestId("workspace-tab-file_target.ts")).toHaveCount(0);
-      await expect(page.getByTestId("explorer-sidebar-tab-file_target.ts")).toBeVisible();
-
-      await openFileExplorer(page);
-      await openFileFromExplorer(page, "target.ts");
-      await expect(page.getByTestId("explorer-sidebar-tab-file_target.ts")).toBeVisible();
-      await expect(page.getByTestId("workspace-tab-file_target.ts")).toHaveCount(0);
     } finally {
       await session.cleanup();
     }
   });
 
   test("opens an assistant file link at its referenced line", async ({ page }) => {
-    test.setTimeout(120_000);
-    // Side-pane placement is a desktop-web behaviour (see
-    // chat-file-link-side-open.spec.ts), so pin a desktop viewport.
-    await page.setViewportSize({ width: 1440, height: 900 });
-
-    const workspace = await seedWorkspace({
-      repoPrefix: "file-link-line-target-",
-      repo: { files: [{ path: TARGET_FILE, content: targetFileContent() }] },
+    const target = "target.ts:42";
+    const session = await seedAgentWithFileLink({
+      target,
+      fileName: "target.ts",
+      content: Array.from(
+        { length: 80 },
+        (_, index) => `export const line${index + 1} = ${index + 1};`,
+      ).join("\n"),
     });
 
     try {
-      const agent = await workspace.client.createAgent({
-        provider: "mock",
-        cwd: workspace.repoPath,
-        workspaceId: workspace.workspaceId,
-        title: "File link line target",
-        modeId: "load-test",
-        model: "ten-second-stream",
-      });
+      await openAgentRoute(page, session);
 
-      await openAgentRoute(page, { workspaceId: workspace.workspaceId, agentId: agent.id });
-      await expectComposerVisible(page);
-
-      await submitMessage(
-        page,
-        buildAssistantMarkdownScenarioPrompt(`Open \`${TARGET_FILE}:${TARGET_LINE}\` now.`),
-      );
-      await awaitAssistantMessage(page, "Open");
-
-      const fileLink = page.getByRole("link", { name: `${TARGET_FILE}:${TARGET_LINE}` }).first();
+      const fileLink = page.getByText(target, { exact: true });
       await expect(fileLink).toBeVisible({ timeout: 15_000 });
       await fileLink.click();
 
-      // Not expectFileTabOpen(): a link-opened file carries the ABSOLUTE path
-      // (resolver.ts joins it onto workspaceRoot), so the tab id is
-      // `file_<abs path>`, not `file_target.ts`. Match on the prefix, as
-      // chat-file-link-side-open.spec.ts does.
+      await expectFileTabOpen(page, "target.ts");
+      await expect(page.getByTestId("file-source-editor")).toBeVisible();
+      await expect(page.getByLabel("Line 42, column 1")).toBeVisible();
       await expect(
-        page
-          .locator('[data-testid^="workspace-tab-file_"]')
-          .filter({ hasText: TARGET_FILE })
-          .first(),
-      ).toBeVisible({ timeout: 15_000 });
+        page.getByTestId("file-source-editor").locator(".cm-line", { hasText: "line42 = 42" }),
+      ).toBeVisible();
 
-      // The referenced line is scrolled into view, and the top of the file is
-      // not. CodeMirror only renders lines near the viewport, so line 1 being
-      // absent is what proves the editor jumped rather than opening at the top
-      // with line 150 merely existing in the document.
-      const content = fileTabEditorContent(page);
+      const sourceEditor = editor(page);
+      await sourceEditor.click();
+      await sourceEditor.press("ControlOrMeta+Home");
+      await expect(page.getByLabel(/^Line 1, column \d+$/)).toBeVisible();
+
+      await page
+        .getByTestId(`workspace-tab-agent_${session.agentId}`)
+        .filter({ visible: true })
+        .click();
+      await expect(fileLink).toBeVisible();
+      await fileLink.click();
+
+      await expect(page.getByLabel("Line 42, column 1")).toBeVisible();
       await expect(
-        content.locator(".cm-line", { hasText: `line${TARGET_LINE} = ${TARGET_LINE}` }),
-      ).toBeVisible({ timeout: 15_000 });
-      await expect(content.locator(".cm-line", { hasText: "line1 = 1" })).not.toBeVisible();
-
-      // Scrolling away works, and the buffer keeps the document.
-      await content.click();
-      await content.press("Control+Home");
-      await expect(content.locator(".cm-line", { hasText: "line1 = 1" })).toBeVisible();
-
-      // NOT asserted here, because Otto does not currently do it: clicking the
-      // same `path:line` link again, with the tab already open and scrolled
-      // elsewhere, does NOT re-apply the jump - the view stays at the top. The
-      // Otto original asserted a re-jump and that assertion is what failed when
-      // this test was retargeted (verified by run: the first-open jump above
-      // passes, the re-click does not). Treat it as a real gap rather than a
-      // selector problem; it is tracked as its own ❌ row in the coverage
-      // matrix. If the line target is later re-applied on re-open, add the
-      // re-click assertion back here.
+        page.getByTestId("file-source-editor").locator(".cm-line", { hasText: "line42 = 42" }),
+      ).toBeVisible();
     } finally {
-      await workspace.cleanup();
+      await session.cleanup();
     }
   });
 
-  // DEFERRED(ottoFilePane): `editor()` used to resolve the Otto-only
-  // file-source-editor test ID. Otto's equivalent is `fileTabEditorContent()`
-  // (helpers/file-tab.ts). The pane-focus half is real
-  // Otto behaviour and Alt+Shift+W is a live binding
-  // (workspace-tab-close-current-alt-shift-w-web in keyboard-shortcuts.ts), so
-  // this one is portable - retarget the locator rather than deleting it. Check
-  // first whether split-pane focus is already asserted elsewhere before adding
-  // a duplicate.
-  test.skip("clicking the editor focuses its pane beside an agent", async ({ page }) => {
+  test("clicking the editor focuses its pane beside an agent", async ({ page }) => {
+    await page.addInitScript((settingsKey) => {
+      localStorage.setItem(
+        settingsKey,
+        JSON.stringify({ openInSidePane: { explorerFiles: true } }),
+      );
+    }, APP_SETTINGS_KEY);
     const target = "target.ts:42";
     const session = await seedAgentWithFileLink({
       target,
@@ -378,7 +408,12 @@ test.describe("CodeMirror workspace file editing", () => {
       await openAgentRoute(page, session);
 
       await openWorkspaceFile(page, "target.ts");
-      await expect(page.getByTestId("workspace-tabs-row").filter({ visible: true })).toHaveCount(2);
+      await expect(
+        page
+          .locator('[data-testid^="workspace-pane-"]')
+          .getByTestId("workspace-tabs-row")
+          .filter({ visible: true }),
+      ).toHaveCount(2);
 
       await page
         .getByTestId(`workspace-tab-agent_${session.agentId}`)
@@ -410,35 +445,18 @@ test.describe("CodeMirror workspace file editing", () => {
 
     try {
       await openAgentRoute(page, session);
-      await page.getByRole("link", { name: target, exact: true }).first().click();
+      await page.getByText(target, { exact: true }).click();
 
-      await expect(
-        page
-          .locator('[data-testid^="workspace-tab-file_"]')
-          .filter({ hasText: "plan.html" })
-          .first(),
-      ).toBeVisible();
-      const source = page.getByTestId("file-source-editor");
-      await expect(source).toBeVisible();
-      await expect(source.locator(".cm-file-source-line-highlight")).toContainText(
-        "Review this source line",
-      );
+      await expectFileTabOpen(page, "plan.html");
+      await expect(page.getByTestId("file-source-editor")).toBeVisible();
+      await expect(page.getByLabel("Line 2, column 1")).toBeVisible();
       await expect(page.getByTestId("file-html-preview")).toHaveCount(0);
     } finally {
       await session.cleanup();
     }
   });
 
-  // DEFERRED(ottoFilePane): needs three things Otto does not have. (1)
-  // `workspace-tab-tooltip-<tabId>` - the tab's TooltipContent carries no
-  // testID (workspace-desktop-tabs-row.tsx, the TooltipContent under the
-  // ContextMenuTrigger). (2) file-panel-bar / file-markdown-mode - Otto's bar is
-  // `file-view-mode-bar` with file-view-mode-{editor,split,preview} and
-  // file-view-formatted. (3) the cursor-position readout the mode-stability
-  // assertion pins against; Otto renders no Ln/Col status. Adding a testID to
-  // the tab tooltip is a small, legitimate product change if this is wanted -
-  // start there.
-  test.skip("shows the full file path and keeps editor controls stable", async ({
+  test("shows the full file path and keeps editor controls stable", async ({
     page,
     withWorkspace,
   }) => {
@@ -496,12 +514,7 @@ test.describe("CodeMirror workspace file editing", () => {
     await expect(selection).toHaveCSS("background-color", "rgba(255, 255, 255, 0.2)");
   });
 
-  // DEFERRED(ottoFilePane): blocked only by the missing
-  // `workspace-tab-tooltip-<tabId>` testID above - the uiFontFamily behaviour it
-  // checks is real and Otto's tab tooltip does render the path. This is the
-  // cheapest of the nine to revive: add the testID to the tab's TooltipContent
-  // and this test should pass close to as written.
-  test.skip("applies the interface font to portaled tooltips", async ({ page, withWorkspace }) => {
+  test("applies the interface font to portaled tooltips", async ({ page, withWorkspace }) => {
     await page.addInitScript(() => {
       localStorage.setItem("@otto:app-settings", JSON.stringify({ uiFontFamily: "monospace" }));
     });
@@ -522,12 +535,7 @@ test.describe("CodeMirror workspace file editing", () => {
     ).toHaveCSS("font-family", "monospace");
   });
 
-  // DEFERRED(ottoFilePane): file-mode-source and file-source-editor are both
-  // Otto-only names. The wrap-vs-scroll distinction is worth covering on
-  // Otto's surface, but check `preview-wordwrap-toggle` (file-tab-pane.tsx)
-  // first - Otto makes word wrap an explicit user control, so the per-language
-  // default this asserts may not be Otto's model at all.
-  test.skip("wraps Markdown while source code remains horizontally scrollable", async ({
+  test("wraps Markdown while source code remains horizontally scrollable", async ({
     page,
     withWorkspace,
   }) => {
@@ -557,16 +565,7 @@ test.describe("CodeMirror workspace file editing", () => {
     await expect.poll(() => sourceScroller.evaluate(hasHorizontalOverflow)).toBe(true);
   });
 
-  // DEFERRED(ottoFilePane): do NOT revive this one as written - its first
-  // assertion contradicts Otto on purpose. It expects the buffer to autosave to
-  // disk on a timer; Otto's editor deliberately does not autosave, and
-  // `editor-dirty-guard.spec.ts` asserts that absence ("no-autosave" in the
-  // coverage matrix). The conflict half maps cleanly onto real Otto UI
-  // (editor-conflict-banner with editor-conflict-overwrite /
-  // editor-conflict-reload, plus editor-disk-banner) and the reconnect
-  // resubscribe half is genuinely uncovered - those two are worth splitting out
-  // into a new spec against Otto's names. The autosave half should be dropped.
-  test.skip("autosaves, saves immediately, resolves conflicts, and restores live updates after reconnect", async ({
+  test("autosaves, saves immediately, resolves conflicts, and restores live updates after reconnect", async ({
     page,
     withWorkspace,
   }) => {
@@ -630,10 +629,7 @@ test.describe("CodeMirror workspace file editing", () => {
     await expect(editor(page)).toContainText("const afterReconnect = 9;");
   });
 
-  // DEFERRED(ottoFilePane): CRLF preservation is implemented by the active
-  // editor/daemon path. BOM preservation is still a missing capability, so
-  // this test remains as the regression proof for that one gap.
-  test.skip("preserves a UTF-8 BOM and uses the first line separator after saving", async ({
+  test("preserves a UTF-8 BOM and uses the first line separator after saving", async ({
     page,
     withWorkspace,
   }) => {
@@ -656,14 +652,36 @@ test.describe("CodeMirror workspace file editing", () => {
     await expect.poll(async () => (await readFile(sourcePath)).toString("hex")).toBe(expected);
   });
 
-  // DEFERRED(ottoFilePane): the mode-switching half is covered by
-  // `file-tab-mode-bar.spec.ts` (markdown opens in preview, all three surfaces
-  // switch, per-file mode memory), just under file-view-mode-* instead of
-  // file-mode-*. The genuinely uncovered part is the live-refresh behaviour -
-  // markdown and image panes updating when the file changes on disk. Note
-  // `workspace-file-pane` DOES resolve here (components/file-pane.tsx), so the
-  // image half is close to portable on its own.
-  test.skip("refreshes Markdown and images while preserving Preview and Source behavior", async ({
+  test("warns before closing a panel with an unsaved draft", async ({ page, withWorkspace }) => {
+    const workspace = await withWorkspace({ prefix: "file-editing-draft-" });
+    const sourcePath = path.join(workspace.repoPath, "draft.ts");
+    await writeFile(sourcePath, "const initial = 1;\n", "utf8");
+    await workspace.navigateTo();
+    await openWorkspaceFile(page, "draft.ts");
+
+    await replaceEditorText(page, "const local = 2;\n");
+    await writeFile(sourcePath, "const external = 3;\n", "utf8");
+    await expect(page.getByTestId("file-conflict-alert")).toBeVisible();
+    await expect(page.getByTestId("workspace-tab-modified-file_draft.ts")).toBeVisible();
+
+    let closePrompt = "";
+    page.once("dialog", async (dialog) => {
+      closePrompt = dialog.message();
+      await dialog.dismiss();
+    });
+    await page
+      .getByTestId("workspace-tab-file_draft.ts")
+      .filter({ visible: true })
+      .first()
+      .click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Close", exact: true }).click();
+    expect(closePrompt).toContain("Closing it will discard the draft.");
+
+    await expect(page.getByTestId("file-source-editor")).toBeVisible();
+    await expect(page.getByTestId("workspace-tab-modified-file_draft.ts")).toBeVisible();
+  });
+
+  test("refreshes Markdown and images while preserving Preview and Source behavior", async ({
     page,
     withWorkspace,
   }) => {
@@ -677,17 +695,23 @@ test.describe("CodeMirror workspace file editing", () => {
     await openWorkspaceFile(page, "notes.md");
 
     const visibleFilePane = page.getByTestId("workspace-file-pane").filter({ visible: true });
-    await expect(visibleFilePane.getByText("First heading", { exact: true })).toBeVisible();
+    await expect(
+      visibleFilePane.getByRole("heading", { name: "First heading", exact: true }),
+    ).toBeVisible();
     await expect(page.getByRole("button", { name: "Preview", exact: true })).toBeVisible();
     await writeFile(markdownPath, "# Updated heading\n", "utf8");
-    await expect(visibleFilePane.getByText("Updated heading", { exact: true })).toBeVisible();
+    await expect(
+      visibleFilePane.getByRole("heading", { name: "Updated heading", exact: true }),
+    ).toBeVisible();
 
     await selectFileView(page, "Source");
     await expect(page.getByTestId("file-source-editor")).toBeVisible();
     await replaceEditorText(page, "# Saved from source\n");
     await expect.poll(() => readFile(markdownPath, "utf8")).toBe("# Saved from source\n");
     await selectFileView(page, "Preview");
-    await expect(visibleFilePane.getByText("Saved from source", { exact: true })).toBeVisible();
+    await expect(
+      visibleFilePane.getByRole("heading", { name: "Saved from source", exact: true }),
+    ).toBeVisible();
 
     await openWorkspaceFile(page, "pixel.png");
     const image = visibleFilePane.locator("img");
@@ -705,6 +729,40 @@ test.describe("CodeMirror workspace file editing", () => {
     const initialSource = await image.getAttribute("src");
     await writeFile(imagePath, BLUE_PIXEL);
     await expect.poll(() => image.getAttribute("src")).not.toBe(initialSource);
+  });
+
+  test("renders local relative images inside Markdown preview", async ({ page, withWorkspace }) => {
+    test.setTimeout(90_000);
+    const workspace = await withWorkspace({ prefix: "file-md-relative-image-" });
+    await mkdir(path.join(workspace.repoPath, "docs"), { recursive: true });
+    await mkdir(path.join(workspace.repoPath, "data", "cache"), { recursive: true });
+    await writeFile(path.join(workspace.repoPath, "docs", "sibling.png"), RED_PIXEL);
+    await writeFile(path.join(workspace.repoPath, "data", "cache", "hero.png"), RED_PIXEL);
+    await writeFile(
+      path.join(workspace.repoPath, "docs", "guide.md"),
+      [
+        "# Guide",
+        "",
+        "![sibling](./sibling.png)",
+        "",
+        "![hero](../data/cache/hero.png?v=2#preview)",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    await workspace.navigateTo();
+    await openFileExplorer(page);
+    await expandFolder(page, "docs");
+    await openFileFromExplorer(page, "guide.md");
+    await expectFileTabOpen(page, "docs/guide.md");
+
+    const visibleFilePane = page.getByTestId("workspace-file-pane").filter({ visible: true });
+    await expect(visibleFilePane.getByText("Guide", { exact: true })).toBeVisible();
+    await expectMarkdownImageLoaded(page, "sibling");
+    await expectMarkdownImageLoaded(page, "hero");
+    await visibleFilePane.screenshot({
+      path: test.info().outputPath("markdown-relative-images.png"),
+    });
   });
 
   test("previews and refreshes an HTML plan while preserving source access", async ({
@@ -735,10 +793,10 @@ test.describe("CodeMirror workspace file editing", () => {
     );
     await expect(preview.document.getByRole("heading", { name: "Updated plan" })).toBeVisible();
 
-    await page.getByTestId("file-view-mode-editor").filter({ visible: true }).click();
-    await expect(editor(page)).toContainText("Updated plan");
+    await selectFileView(page, "Source");
+    await expect(page.getByTestId("file-source-editor")).toBeVisible();
     await expect(preview.host).toHaveCount(0);
-    await page.getByTestId("file-view-mode-preview").filter({ visible: true }).click();
+    await selectFileView(page, "Preview");
     await expect(preview.host).toBeVisible();
   });
 
@@ -819,25 +877,13 @@ test.describe("CodeMirror workspace file editing", () => {
     const workspace = await withWorkspace({ prefix: "file-editing-vim-" });
     await writeFile(path.join(workspace.repoPath, "vim.ts"), "const vim = true;\n", "utf8");
 
-    await page.goto("/settings/general");
-    const developerMode = page.getByRole("button", { name: "Developer", exact: true });
-    await expect(developerMode).toBeVisible();
-    await developerMode.click();
-    await expect(developerMode).toHaveAttribute("aria-selected", "true");
     await page.goto("/settings/editor");
     const toggle = page.getByRole("switch", { name: "Vim keybindings" });
     await expect(toggle).toBeVisible();
     await toggle.click();
     await expect(toggle).toBeChecked();
-    const findMapping = page.getByTestId("vim-mapping-find");
-    await expect(findMapping).toBeVisible();
-    await findMapping.getByRole("button", { name: "Rebind" }).click();
-    await page.keyboard.press("g");
-    await findMapping.getByRole("button", { name: "Done" }).click();
-    await expect(findMapping.getByTestId("vim-mapping-find-value")).toContainText("G");
     await page.reload();
     await expect(page.getByRole("switch", { name: "Vim keybindings" })).toBeChecked();
-    await expect(page.getByTestId("vim-mapping-find-value")).toContainText("G");
 
     await workspace.navigateTo();
     await openWorkspaceFile(page, "vim.ts");
@@ -848,115 +894,26 @@ test.describe("CodeMirror workspace file editing", () => {
     await expect(page.getByLabel("Vim mode INSERT")).toBeVisible();
     await editor(page).press("Escape");
     await expect(page.getByLabel("Vim mode NORMAL")).toBeVisible();
-    await editor(page).press("Space");
-    await editor(page).press("g");
-    await expect(page.getByTestId("editor-find-input")).toBeVisible();
-  });
-
-  test.describe("desktop terminal-backed file editor", () => {
-    test.skip(
-      process.env.E2E_DESKTOP_RUNTIME !== "1",
-      "requires the desktop Electron platform overlay",
-    );
-
-    test("gives the terminal ownership and reloads the standard editor after exit", async ({
-      page,
-    }) => {
-      test.setTimeout(120_000);
-      await injectDesktopBridge(page, {
-        serverId: getServerId(),
-        manageBuiltInDaemon: false,
-      });
-      await seedAppSettings(page, {
-        fileEditorMode: "custom",
-        fileEditorCustomCommand:
-          "node -e \"require('fs').appendFileSync('target.txt','\\nexternal')\"",
-      });
-      const workspace = await seedWorkspace({
-        repoPrefix: "external-editor-owner-",
-        repo: { files: [{ path: "target.txt", content: "original\n" }] },
-      });
-      try {
-        await openHomeWithProject(page, workspace.repoPath);
-        await selectWorkspaceInSidebar(page, workspace.workspaceId);
-        await openWorkspaceFile(page, "target.txt");
-        await expect(page.getByTestId("external-file-editor-pane")).toBeVisible({
-          timeout: 30_000,
-        });
-        await expect(page.getByTestId("code-editor-surface")).not.toBeVisible();
-        await expect(page.getByTestId("external-file-editor-pane")).not.toBeVisible({
-          timeout: 30_000,
-        });
-        await expect(page.getByTestId("code-editor-surface")).toContainText("external");
-      } finally {
-        await workspace.cleanup();
-      }
-    });
-
-    test("renders a clear launch failure for a missing host executable", async ({ page }) => {
-      await injectDesktopBridge(page, {
-        serverId: getServerId(),
-        manageBuiltInDaemon: false,
-      });
-      await seedAppSettings(page, {
-        fileEditorMode: "custom",
-        fileEditorCustomCommand: "otto-editor-does-not-exist-e2e",
-      });
-      const workspace = await seedWorkspace({
-        repoPrefix: "external-editor-missing-",
-        repo: { files: [{ path: "target.txt", content: "original\n" }] },
-      });
-      try {
-        await openHomeWithProject(page, workspace.repoPath);
-        await selectWorkspaceInSidebar(page, workspace.workspaceId);
-        await openWorkspaceFile(page, "target.txt");
-        await expect(page.getByTestId("external-file-editor-failure")).toContainText(
-          "File editor was not opened",
-          { timeout: 30_000 },
-        );
-        await expect(page.getByTestId("code-editor-surface")).toContainText("original");
-      } finally {
-        await workspace.cleanup();
-      }
-    });
-
-    test("keeps external ownership across a disk edit and daemon reconnect", async ({ page }) => {
-      test.setTimeout(120_000);
-      await injectDesktopBridge(page, {
-        serverId: getServerId(),
-        manageBuiltInDaemon: false,
-      });
-      await seedAppSettings(page, {
-        fileEditorMode: "custom",
-        fileEditorCustomCommand: 'node -e "setTimeout(() => {}, 6000)"',
-      });
-      const workspace = await seedWorkspace({
-        repoPrefix: "external-editor-reconnect-",
-        repo: { files: [{ path: "target.txt", content: "original\n" }] },
-      });
-      const gate = await installDaemonWebSocketGate(page);
-      try {
-        await openHomeWithProject(page, workspace.repoPath);
-        await selectWorkspaceInSidebar(page, workspace.workspaceId);
-        await openWorkspaceFile(page, "target.txt");
-        await expect(page.getByTestId("external-file-editor-pane")).toBeVisible({
-          timeout: 30_000,
-        });
-        await writeFile(path.join(workspace.repoPath, "target.txt"), "changed on disk\n", "utf8");
-        await expect(page.getByTestId("external-file-editor-file-changed")).toBeVisible({
-          timeout: 15_000,
-        });
-        await gate.drop();
-        gate.restore();
-        await expect(page.getByTestId("external-file-editor-pane")).toBeVisible();
-        await expect(page.getByTestId("external-file-editor-pane")).not.toBeVisible({
-          timeout: 30_000,
-        });
-        await expect(page.getByTestId("code-editor-surface")).toContainText("changed on disk");
-      } finally {
-        gate.restore();
-        await workspace.cleanup();
-      }
-    });
   });
 });
+
+async function openAssistantMarkdownLink(page: Page, name: string): Promise<void> {
+  await page.getByRole("link", { name, exact: true }).first().click();
+}
+
+async function returnToAssistant(page: Page, agentId: string): Promise<void> {
+  await page.getByTestId(`workspace-tab-agent_${agentId}`).filter({ visible: true }).click();
+}
+
+async function openAssistantInlinePath(page: Page, token: string): Promise<void> {
+  await page.getByText(token, { exact: true }).click();
+}
+
+async function expectPreviewText(page: Page, text: string): Promise<void> {
+  await expect(
+    page
+      .getByTestId("workspace-file-pane")
+      .filter({ visible: true })
+      .getByText(text, { exact: true }),
+  ).toBeVisible();
+}

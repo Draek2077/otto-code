@@ -3,10 +3,8 @@ import { existsSync } from "node:fs";
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { forkOttoHomeMetadata, resolveOttoHomePath } from "./otto-home-fork";
-import { stopRegisteredRestartedTestDaemon } from "./daemon-restart";
+import { forkPaseoHomeMetadata, resolvePaseoHomePath } from "./paseo-home-fork";
 import { startIsolatedHostDaemon } from "./isolated-host-daemon";
-import { injectLocalAiProvider, readLocalAiEnv } from "./local-ai-preflight";
 
 export interface E2EWorker {
   close(): Promise<void>;
@@ -22,11 +20,11 @@ export interface E2EWorkerOptions {
 function resolveOptionalHome(value: string | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed) return null;
-  return resolveOttoHomePath(trimmed === "current" ? "~/.otto" : trimmed);
+  return resolvePaseoHomePath(trimmed === "current" ? "~/.paseo" : trimmed);
 }
 
 async function createFakeEditorBin(): Promise<string> {
-  const binDir = await mkdtemp(path.join(tmpdir(), "otto-e2e-editor-bin-"));
+  const binDir = await mkdtemp(path.join(tmpdir(), "paseo-e2e-editor-bin-"));
   let realGhPath = "";
   try {
     const locator = process.platform === "win32" ? "where.exe" : "which";
@@ -42,11 +40,10 @@ async function createFakeEditorBin(): Promise<string> {
   } catch {
     // The local GitHub fixture remains usable without a system gh binary.
   }
-
   const fakeEditorSource = `#!/usr/bin/env node
 const fs = require("fs");
 const path = require("path");
-const recordPath = process.env.OTTO_E2E_EDITOR_RECORD_PATH;
+const recordPath = process.env.PASEO_E2E_EDITOR_RECORD_PATH;
 if (recordPath) {
   fs.appendFileSync(recordPath, JSON.stringify({
     command: path.basename(process.argv[1]),
@@ -60,23 +57,28 @@ if (recordPath) {
     const editorPath = path.join(binDir, editorCommand);
     await writeFile(editorPath, fakeEditorSource);
     await chmod(editorPath, 0o755);
+    if (process.platform === "win32") {
+      await writeFile(`${editorPath}.cmd`, `@node "%~dp0${editorCommand}" %*\r\n`);
+    }
   }
 
   const fakeGhPath = path.join(binDir, "gh");
   const fakeGhSource = `#!/usr/bin/env node
 const { spawnSync } = require("child_process");
 const args = process.argv.slice(2);
-const fixtureRemote = "https://github.com/otto-e2e/local-fixture.git";
+const fixtureRemote = "https://github.com/paseo-e2e/local-fixture.git";
 const origin = spawnSync("git", ["config", "--get", "remote.origin.url"], {
   encoding: "utf8",
   stdio: ["ignore", "pipe", "ignore"]
 }).stdout?.trim();
 
 if (origin === fixtureRemote) {
+  // OTTO(kanban): isolated provider responses; this branch never delegates to a real vendor CLI.
+  if (require(${JSON.stringify(path.resolve(__dirname, "otto-kanban-gh.cjs"))})(args)) process.exit(0);
   const command = args.slice(0, 2).join(" ");
   if (command === "auth status") process.exit(0);
   if (command === "repo view") {
-    process.stdout.write(JSON.stringify({ owner: { login: "otto-e2e" }, name: "local-fixture", parent: null }));
+    process.stdout.write(JSON.stringify({ owner: { login: "paseo-e2e" }, name: "local-fixture", parent: null }));
     process.exit(0);
   }
   if (command === "issue list") {
@@ -88,7 +90,7 @@ if (origin === fixtureRemote) {
     const pr = {
       number: isFork ? 2 : 1,
       title: "Use pasted PR as start ref",
-      url: "https://github.com/otto-e2e/local-fixture/pull/" + (isFork ? 2 : 1),
+      url: "https://github.com/paseo-e2e/local-fixture/pull/" + (isFork ? 2 : 1),
       state: "OPEN",
       body: null,
       labels: [],
@@ -107,9 +109,9 @@ if (origin === fixtureRemote) {
         baseRefName: "main",
         headRefName: isFork ? "pr-branch-2" : "pr-branch-1",
         isCrossRepository: isFork,
-        headRepositoryOwner: { login: isFork ? "fork-owner" : "otto-e2e" },
+        headRepositoryOwner: { login: isFork ? "fork-owner" : "paseo-e2e" },
         headRepository: {
-          sshUrl: isFork ? "git@github.com:fork-owner/local-fixture.git" : "git@github.com:otto-e2e/local-fixture.git",
+          sshUrl: isFork ? "git@github.com:fork-owner/local-fixture.git" : "git@github.com:paseo-e2e/local-fixture.git",
           url: isFork ? "https://github.com/fork-owner/local-fixture" : fixtureRemote
         }
       } } }
@@ -127,15 +129,18 @@ process.exit(result.status ?? 1);
 `;
   await writeFile(fakeGhPath, fakeGhSource);
   await chmod(fakeGhPath, 0o755);
+  if (process.platform === "win32") {
+    await writeFile(`${fakeGhPath}.cmd`, '@node "%~dp0gh" %*\r\n');
+  }
   return binDir;
 }
 
 async function applyMetadataFork(targetHome: string, providerIds: string[]): Promise<void> {
-  const sourceHome = resolveOptionalHome(process.env.E2E_FORK_OTTO_HOME_FROM);
+  const sourceHome = resolveOptionalHome(process.env.E2E_FORK_PASEO_HOME_FROM);
   if (!sourceHome) return;
-  const result = await forkOttoHomeMetadata({ sourceHome, targetHome });
-  process.env.E2E_FORK_SOURCE_OTTO_HOME = result.sourceHome;
-  process.env.E2E_FORK_TARGET_OTTO_HOME = result.targetHome;
+  const result = await forkPaseoHomeMetadata({ sourceHome, targetHome });
+  process.env.E2E_FORK_SOURCE_PASEO_HOME = result.sourceHome;
+  process.env.E2E_FORK_TARGET_PASEO_HOME = result.targetHome;
   process.env.E2E_FORK_COPIED_FILES = String(result.copiedFiles);
   process.env.E2E_FORK_COPIED_BYTES = String(result.copiedBytes);
 
@@ -160,140 +165,55 @@ async function applyMetadataFork(targetHome: string, providerIds: string[]): Pro
   );
 }
 
-/**
- * Starts the E2E host with an EMPTY personality roster and no teams.
- *
- * A fresh OTTO_HOME is seeded with the shipped starter team (Atlas, Sage, Dash,
- * ...), and every apply-now form surface then auto-binds its role's first
- * available personality: see `useFormRolePersonality`'s precedence ladder,
- * where tiers 1-3 outrank the device's last-used model on purpose. Those
- * builtins are all bound to Claude, which the E2E host has no credentials for,
- * so the whole suite would open its composers, schedule forms and artifact
- * sheets on an unusable provider instead of the deterministic mock one. The
- * daemon's Writer-role mini-tasks (chat auto-title) route the same way.
- *
- * The daemon only seeds when the persisted config has never carried the
- * section, so writing empty sections here is exactly the "user cleared the
- * roster" state - no seeding, no auto-bind. Specs that exercise personalities
- * and teams seed their own through `helpers/personalities.ts`, which is also
- * what makes their assertions deterministic.
- */
-async function clearStarterPersonalities(targetHome: string): Promise<void> {
-  const configPath = path.join(targetHome, "config.json");
-  let existing: Record<string, unknown> = { version: 1 };
-  if (existsSync(configPath)) {
-    existing = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
-  }
-  const agents = (existing.agents ??= {}) as Record<string, unknown>;
-  agents.agentPersonalities = { personalities: [] };
-  agents.agentTeams = { teams: [], activeTeamId: null };
-  await writeFile(
-    configPath,
-    `${JSON.stringify(existing, null, 2)}
-`,
-  );
-  console.log(`[e2e] Cleared the starter personality roster in ${configPath}`);
-}
-
-/**
- * Demo captures are recorded against an isolated, disposable host where the
- * operator has already approved browser access. Persist the two daemon gates
- * before startup so clicking Preview or Browser never interrupts a capture
- * with the normal trust dialog. Regular E2E and production hosts retain the
- * secure browser-tools-off default from docs/preview.md.
- */
-async function enableDemoCaptureTools(targetHome: string): Promise<void> {
-  if (process.env.E2E_DEMO_CAPTURE !== "1") {
-    return;
-  }
-
-  const configPath = path.join(targetHome, "config.json");
-  let existing: Record<string, unknown> = { version: 1 };
-  if (existsSync(configPath)) {
-    existing = JSON.parse(await readFile(configPath, "utf8")) as Record<string, unknown>;
-  }
-  const daemon = (existing.daemon ??= {}) as Record<string, unknown>;
-  const mcp = (daemon.mcp ??= {}) as Record<string, unknown>;
-  mcp.injectIntoAgents = true;
-  const browserTools = (daemon.browserTools ??= {}) as Record<string, unknown>;
-  browserTools.enabled = true;
-  await writeFile(
-    configPath,
-    `${JSON.stringify(existing, null, 2)}
-`,
-  );
-  console.log(`[e2e] Enabled Browser Tools for demo capture in ${configPath}`);
-}
-
 export async function startE2EWorker(
   workerIndex: number,
   options: E2EWorkerOptions = {},
 ): Promise<E2EWorker> {
-  const requestedRoot = resolveOptionalHome(process.env.E2E_OTTO_HOME);
-  const ottoHome = requestedRoot
+  const requestedRoot = resolveOptionalHome(process.env.E2E_PASEO_HOME);
+  const paseoHome = requestedRoot
     ? path.join(requestedRoot, `worker-${workerIndex}`)
-    : await mkdtemp(path.join(tmpdir(), `otto-e2e-worker-${workerIndex}-`));
-  const preserveHome = Boolean(requestedRoot) || process.env.E2E_KEEP_OTTO_HOME === "1";
+    : await mkdtemp(path.join(tmpdir(), `paseo-e2e-worker-${workerIndex}-`));
+  const preserveHome = Boolean(requestedRoot) || process.env.E2E_KEEP_PASEO_HOME === "1";
   const fakeEditorBin = await createFakeEditorBin();
-  const editorRecordPath = path.join(ottoHome, "editor-open-records.jsonl");
+  const editorRecordPath = path.join(paseoHome, "editor-open-records.jsonl");
   const serverId = `srv_e2e_worker_${workerIndex}`;
-  const pathKey = Object.keys(process.env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
 
   try {
-    await applyMetadataFork(ottoHome, options.forkProviders ?? []);
-    await clearStarterPersonalities(ottoHome);
+    await applyMetadataFork(paseoHome, options.forkProviders ?? []);
     // Worker-scoped fixture config lets a spec exercise provider discovery without
     // reading the developer's provider state or sharing configuration with other specs.
     if (options.daemonConfig) {
       await writeFile(
-        path.join(ottoHome, "config.json"),
+        path.join(paseoHome, "config.json"),
         `${JSON.stringify(options.daemonConfig, null, 2)}\n`,
       );
     }
     if (options.injectPaseoTools) {
-      await enablePaseoTools(ottoHome);
-    }
-    await enableDemoCaptureTools(ottoHome);
-    const localAiConfig = readLocalAiEnv();
-    if (localAiConfig) {
-      await injectLocalAiProvider(ottoHome, localAiConfig);
+      await enablePaseoTools(paseoHome);
     }
     const daemon = await startIsolatedHostDaemon(serverId, {
-      ottoHome,
+      paseoHome,
       preserveHome,
       environment: {
         NODE_ENV: "development",
-        // Scaffolding commits inside the daemon process, so it needs a test
-        // identity even when the isolated OS home has no global Git config.
-        GIT_AUTHOR_NAME: "Otto E2E",
-        GIT_AUTHOR_EMAIL: "e2e@otto.test",
-        GIT_COMMITTER_NAME: "Otto E2E",
-        GIT_COMMITTER_EMAIL: "e2e@otto.test",
-        // On Windows the inherited env key is `Path`; adding a second `PATH` key
-        // makes the child's resolved PATH unpredictable (git stops resolving), so
-        // extend whichever key the parent process actually has.
-        [pathKey]: `${fakeEditorBin}${path.delimiter}${process.env[pathKey] ?? ""}`,
-        OTTO_E2E_EDITOR_RECORD_PATH: editorRecordPath,
+        PATH: `${fakeEditorBin}${path.delimiter}${process.env.PATH ?? ""}`,
+        PASEO_E2E_EDITOR_RECORD_PATH: editorRecordPath,
         ...options.environment,
       },
     });
 
     process.env.E2E_DAEMON_PORT = String(daemon.port);
     process.env.E2E_SERVER_ID = daemon.serverId;
-    process.env.E2E_OTTO_HOME = daemon.ottoHome;
+    process.env.E2E_PASEO_HOME = daemon.paseoHome;
     process.env.E2E_EDITOR_RECORD_PATH = editorRecordPath;
     delete process.env.E2E_RELAY_PORT;
     delete process.env.E2E_RELAY_DAEMON_PUBLIC_KEY;
 
     console.log(
-      `[e2e] Worker ${workerIndex} daemon started on port ${daemon.port}, home: ${daemon.ottoHome}`,
+      `[e2e] Worker ${workerIndex} daemon started on port ${daemon.port}, home: ${daemon.paseoHome}`,
     );
     return {
       close: async () => {
-        // A restart helper cannot update this fixture's original ChildProcess
-        // handle. Reap its detached replacement only after every per-test
-        // cleanup (including the dangling-project safety sweep) has run.
-        await stopRegisteredRestartedTestDaemon();
         await daemon.close();
         await rm(fakeEditorBin, { recursive: true, force: true });
         console.log(`[e2e] Worker ${workerIndex} daemon stopped`);
@@ -301,7 +221,7 @@ export async function startE2EWorker(
     };
   } catch (error) {
     await rm(fakeEditorBin, { recursive: true, force: true });
-    if (!preserveHome) await rm(ottoHome, { recursive: true, force: true });
+    if (!preserveHome) await rm(paseoHome, { recursive: true, force: true });
     throw error;
   }
 }

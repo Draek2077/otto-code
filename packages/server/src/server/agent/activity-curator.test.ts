@@ -1,7 +1,9 @@
+// OTTO(identity): expect Otto-facing product text.
 import { describe, expect, it } from "vitest";
 import { buildAgentForkContextAttachment, curateAgentActivity } from "./activity-curator.js";
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
 import type { AgentTimelineRow } from "./agent-timeline-store-types.js";
+import { formatAgentMessage, projectAgentMessage } from "./agent-messages/index.js";
 
 function toolCallItem(params: {
   callId: string;
@@ -39,6 +41,67 @@ function row(seq: number, item: AgentTimelineItem): AgentTimelineRow {
 }
 
 describe("curateAgentActivity", () => {
+  it("keeps reasoning before the assistant text that followed it", () => {
+    const timeline: AgentTimelineItem[] = [
+      { type: "reasoning", text: "Check the commands first." },
+      { type: "assistant_message", text: "I will list the commands." },
+      toolCallItem({
+        callId: "shell-order",
+        name: "Bash",
+        detail: {
+          type: "shell",
+          command: "ls packages/cli/src/commands/agent/",
+          output: "",
+          exitCode: 0,
+        },
+      }),
+    ];
+
+    expect(curateAgentActivity(timeline)).toBe(
+      "[Thought] Check the commands first.\nI will list the commands.\n[Shell] ls packages/cli/src/commands/agent/",
+    );
+  });
+
+  it("preserves alternating text kinds, labels, and fragment concatenation", () => {
+    const timeline: AgentTimelineItem[] = [
+      { type: "assistant_message", text: "First message." },
+      { type: "reasoning", text: "First " },
+      { type: "reasoning", text: "thought." },
+      { type: "assistant_message", text: "Second " },
+      { type: "assistant_message", text: "message." },
+      { type: "reasoning", text: "Second thought." },
+    ];
+
+    expect(curateAgentActivity(timeline, { labelAssistantMessages: true })).toBe(
+      "[Assistant] First message.\n[Thought] First thought.\n[Assistant] Second message.\n[Thought] Second thought.",
+    );
+    expect(curateAgentActivity(timeline, { maxItems: 2 })).toBe(
+      "Second message.\n[Thought] Second thought.",
+    );
+  });
+
+  it("renders delivered agent messages with their event, sender, and body", () => {
+    const delivered = (source: Parameters<typeof formatAgentMessage>[0]["source"], text: string) =>
+      projectAgentMessage({
+        type: "user_message",
+        text: formatAgentMessage({ id: `msg-${text.length}`, source, text }),
+      })!;
+    const timeline: AgentTimelineItem[] = [
+      delivered(
+        { kind: "agent-message", agentId: "agt_lead", title: "CI lead" },
+        "Take ownership.\nRead the handoff.",
+      ),
+      delivered(
+        { kind: "agent-notification", agentId: "agt_child", event: "finished" },
+        "Child is done.",
+      ),
+    ];
+
+    expect(curateAgentActivity(timeline)).toBe(
+      "[Message received] CI lead\nTake ownership.\nRead the handoff.\n[Agent finished] agt_child\nChild is done.",
+    );
+  });
+
   it("renders user/assistant/reasoning entries", () => {
     const timeline: AgentTimelineItem[] = [
       { type: "user_message", text: "Hello" },
@@ -89,7 +152,7 @@ describe("curateAgentActivity", () => {
         name: "terminal",
         detail: {
           type: "plain_text",
-          label: `skills/otto-chat/bin/chat.sh post --room storage-revamp --body $'first line
+          label: `skills/paseo-chat/bin/chat.sh post --room storage-revamp --body $'first line
 
 second line'`,
           icon: "square_terminal",
@@ -100,7 +163,7 @@ second line'`,
     const result = curateAgentActivity(timeline);
 
     expect(result).toContain(
-      "[Terminal] skills/otto-chat/bin/chat.sh post --room storage-revamp --body $'first line second line'",
+      "[Terminal] skills/paseo-chat/bin/chat.sh post --room storage-revamp --body $'first line second line'",
     );
     expect(result).not.toContain("[Interacted with terminal]");
   });
@@ -141,16 +204,14 @@ second line'`,
     const timeline: AgentTimelineItem[] = [
       toolCallItem({
         callId: "mcp-1",
-        name: "otto__create_chat",
+        name: "paseo__create_agent",
         input: { cwd: "/tmp/repo", initialPrompt: "do the thing" },
       }),
     ];
 
     const result = curateAgentActivity(timeline);
 
-    // Tool names are humanised before they reach an activity line, so the raw
-    // `otto__create_chat` identifier is never what a reader sees.
-    expect(result).toBe('[Otto create chat] {"cwd":"/tmp/repo","initialPrompt":"do the thing"}');
+    expect(result).toBe('[paseo__create_agent] {"cwd":"/tmp/repo","initialPrompt":"do the thing"}');
   });
 
   it("collapses repeated tool updates by callId", () => {
@@ -293,7 +354,7 @@ second line'`,
           4,
           toolCallItem({
             callId: "external-1",
-            name: "otto__create_chat",
+            name: "paseo__create_agent",
             input: { initialPrompt: "do not include raw external tool input" },
           }),
         ),
@@ -323,7 +384,7 @@ second line'`,
     expect(result.attachment.text).toContain("Source directory: /repo");
     expect(result.attachment.text).toContain("[User] Ship the thing");
     expect(result.attachment.text).toContain("[Read] src/index.ts");
-    expect(result.attachment.text).toContain("[Otto create chat]");
+    expect(result.attachment.text).toContain("[paseo__create_agent]");
     expect(result.attachment.text).toContain("[Assistant] Done.");
     expect(result.attachment.text).not.toContain("private chain of thought");
     expect(result.attachment.text).not.toContain("do not include raw external tool input");
@@ -356,46 +417,44 @@ second line'`,
     expect(result.attachment.text).toContain("[Assistant] Done.");
   });
 
-  it("selects the fork boundary before collapsing later tool updates", () => {
-    const result = buildAgentForkContextAttachment({
-      boundaryMessageId: "assistant-1",
-      rows: [
-        row(1, { type: "user_message", text: "Run it", messageId: "user-1" }),
-        row(
-          2,
-          toolCallItem({
-            callId: "terminal-1",
-            name: "terminal",
-            status: "running",
-            detail: {
-              type: "plain_text",
-              label: "before boundary",
-            },
+  it("rejects a checkpoint whose projected tool state changed later", () => {
+    expect(() =>
+      buildAgentForkContextAttachment({
+        boundaryMessageId: "assistant-1",
+        rows: [
+          row(1, { type: "user_message", text: "Run it", messageId: "user-1" }),
+          row(
+            2,
+            toolCallItem({
+              callId: "terminal-1",
+              name: "terminal",
+              status: "running",
+              detail: {
+                type: "plain_text",
+                label: "before boundary",
+              },
+            }),
+          ),
+          row(3, {
+            type: "assistant_message",
+            text: "Partial result.",
+            messageId: "assistant-1",
           }),
-        ),
-        row(3, {
-          type: "assistant_message",
-          text: "Partial result.",
-          messageId: "assistant-1",
-        }),
-        row(
-          4,
-          toolCallItem({
-            callId: "terminal-1",
-            name: "terminal",
-            status: "completed",
-            detail: {
-              type: "plain_text",
-              label: "after boundary",
-            },
-          }),
-        ),
-      ],
-    });
-
-    expect(result.attachment.text).toContain("[Terminal] before boundary");
-    expect(result.attachment.text).toContain("[Assistant] Partial result.");
-    expect(result.attachment.text).not.toContain("after boundary");
+          row(
+            4,
+            toolCallItem({
+              callId: "terminal-1",
+              name: "terminal",
+              status: "completed",
+              detail: {
+                type: "plain_text",
+                label: "after boundary",
+              },
+            }),
+          ),
+        ],
+      }),
+    ).toThrow("Fork from a later completed response");
   });
 
   it("selects a synthetic assistant error by its timeline cursor", () => {
@@ -441,63 +500,50 @@ second line'`,
       }),
     ).toThrow("Selected assistant message is no longer available.");
   });
-
-  it("keeps long messages whole - a fork carries the conversation forward", () => {
-    const longAnswer = "L".repeat(20_000);
-    const result = buildAgentForkContextAttachment({
-      rows: [
-        row(1, { type: "user_message", text: "Explain it all", messageId: "user-1" }),
-        row(2, { type: "assistant_message", text: longAnswer, messageId: "assistant-1" }),
-      ],
-    });
-
-    expect(result.attachment.text).toContain(longAnswer);
-    expect(result.attachment.text).not.toContain("characters truncated");
-  });
 });
 
-// Tool inputs and summaries were already capped; message text was not, so one
-// long child answer turned get_agent_activity into a full-transcript dump.
-describe("curateAgentActivity message caps", () => {
-  it("caps a long assistant message head/tail with a marker", () => {
-    const text = `${"H".repeat(1_600)}${"M".repeat(30_000)}${"T".repeat(400)}`;
-
-    const result = curateAgentActivity([{ type: "assistant_message", text }]);
-
-    expect(result.length).toBeLessThan(2_200);
-    expect(result.startsWith("H".repeat(1_600))).toBe(true);
-    expect(result.endsWith("T".repeat(400))).toBe(true);
-    expect(result).toContain("characters truncated");
-    expect(result).toContain("open the agent's chat for the full message");
+it("bounds fork history to 100,000 characters while preserving the newest messages", () => {
+  const result = buildAgentForkContextAttachment({
+    rows: [
+      row(1, { type: "user_message", text: "old-message " + "x".repeat(1_100_000) }),
+      row(2, { type: "assistant_message", messageId: "checkpoint", text: "Latest answer." }),
+      row(3, { type: "user_message", text: "Beyond the selected checkpoint." }),
+    ],
+    boundaryMessageId: "checkpoint",
   });
+  expect(result.attachment.text.length).toBeLessThanOrEqual(100_000);
+  expect(result.attachment.text).toContain("[Earlier chat history omitted]");
+  expect(result.attachment.text).toContain("[Assistant] Latest answer.");
+  expect(result.attachment.text).not.toContain("old-message");
+  expect(result.attachment.text).not.toContain("Beyond the selected checkpoint.");
+  expect(result.attachment.text).toMatch(/^<chat-history-summary>\n/);
+  expect(result.attachment.text).toMatch(/\n<\/chat-history-summary>$/);
+});
 
-  it("caps a long user message", () => {
-    const result = curateAgentActivity([{ type: "user_message", text: "U".repeat(30_000) }]);
-
-    expect(result.startsWith("[User] ")).toBe(true);
-    expect(result.length).toBeLessThan(2_200);
-    expect(result).toContain("characters truncated");
+it("bounds one oversized fork message and metadata without losing its beginning and end", () => {
+  const result = buildAgentForkContextAttachment({
+    rows: [
+      row(1, {
+        type: "assistant_message",
+        text: "Beginning. " + "x".repeat(1_100_000) + " The end.",
+      }),
+    ],
+    agentTitle: "T".repeat(200_000),
+    cwd: "/" + "p".repeat(200_000),
   });
+  expect(result.attachment.text.length).toBe(100_000);
+  expect(result.attachment.text).toContain("[Assistant] Beginning.");
+  expect(result.attachment.text).toContain("[Message truncated]");
+  expect(result.attachment.text).toContain("The end.");
+  expect(result.attachment.text).toMatch(/\n<\/chat-history-summary>$/);
+});
 
-  it("caps a long reasoning block", () => {
-    const result = curateAgentActivity([{ type: "reasoning", text: "R".repeat(30_000) }]);
-
-    expect(result.startsWith("[Thought] ")).toBe(true);
-    expect(result.length).toBeLessThan(2_200);
+it("preserves every message in fork history below the character budget", () => {
+  const text = "Complete conversation " + "x".repeat(90_000);
+  const result = buildAgentForkContextAttachment({
+    rows: [row(1, { type: "user_message", text })],
   });
-
-  it("caps each message independently rather than the joined result", () => {
-    const result = curateAgentActivity([
-      { type: "user_message", text: "A".repeat(30_000) },
-      { type: "assistant_message", text: "B".repeat(30_000) },
-    ]);
-
-    expect(result.split("characters truncated")).toHaveLength(3);
-  });
-
-  it("leaves a short message untouched", () => {
-    const result = curateAgentActivity([{ type: "assistant_message", text: "Done." }]);
-
-    expect(result).toBe("Done.");
-  });
+  expect(result.attachment.text).toBe(
+    `<chat-history-summary>\nChat history from a previous Otto agent.\n\n[User] ${text}\n</chat-history-summary>`,
+  );
 });

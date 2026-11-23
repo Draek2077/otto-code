@@ -1,4 +1,4 @@
-import type { AgentTimelineItem } from "@otto-code/protocol/agent-types";
+import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readlink, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,11 +6,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pino from "pino";
 import { expect, test } from "vitest";
-import type { PluginBeforeRequests, PluginLifecycleEvents } from "@otto-code/plugin/server";
+import type { PluginBeforeRequests, PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import { ClaudeAgentClient } from "../agent/providers/claude/agent.js";
 import { CodexAppServerAgentClient } from "../agent/providers/codex-app-server-agent.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
 type RecordedHook =
   | {
@@ -82,7 +82,7 @@ test.skipIf(process.platform !== "linux")(
   "all lifecycle hooks and the example actions work with a real Claude agent on an isolated daemon",
   async () => {
     await mkdir(evidenceDirectory, { recursive: true });
-    const fixture = await mkdtemp(path.join(tmpdir(), "otto-real-hooks-"));
+    const fixture = await mkdtemp(path.join(tmpdir(), "paseo-real-hooks-"));
     const project = path.join(fixture, "project");
     await mkdir(path.join(project, ".claude"), { recursive: true });
     await writeFile(
@@ -110,7 +110,7 @@ test.skipIf(process.platform !== "linux")(
       sync: true,
     });
     const logger = pino({ level: "info" }, destination);
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       daemonVersion: "0.8.0",
       logger,
       agentClients: {
@@ -125,12 +125,12 @@ test.skipIf(process.platform !== "linux")(
     });
     const proof: Record<string, unknown> = {
       port: daemon.port,
-      ottoHome: daemon.ottoHome,
+      paseoHome: daemon.paseoHome,
       startedAt: new Date().toISOString(),
     };
     try {
       await client.connect();
-      await client.fetchAgents({ subscribe: { subscriptionId: "real-hooks" } });
+      await client.fetchAgents({ subscribe: {} });
       await client.patchDaemonConfig({ pluginsEnabled: true });
       await client.installDirectoryPlugin(path.join(repoRoot, "plugin-examples/lifecycle-logger"));
       await client.installDirectoryPlugin(path.join(repoRoot, "plugin-examples/lifecycle-actions"));
@@ -199,7 +199,7 @@ test.skipIf(process.platform !== "linux")(
       proof.deniedRequestId = deniedId;
       proof.canaryPreserved = true;
 
-      const envCommand = 'printf \'%s|%s\' "$OTTO_HOOK_CREATE_EXAMPLE" "$OTTO_HOOK_OPEN_EXAMPLE"';
+      const envCommand = 'printf \'%s|%s\' "$PASEO_HOOK_CREATE_EXAMPLE" "$PASEO_HOOK_OPEN_EXAMPLE"';
       await client.sendMessage(
         agent.id,
         `Call Bash with exactly this command: ${envCommand}. Reply with its exact output only.`,
@@ -280,6 +280,7 @@ test.skipIf(process.platform !== "linux")(
         })
         .toEqual([
           "agent.archived",
+          "agent.closed",
           "agent.created",
           "agent.permission_requested",
           "agent.permission_resolved",

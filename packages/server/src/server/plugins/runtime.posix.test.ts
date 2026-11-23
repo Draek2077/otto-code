@@ -1,3 +1,4 @@
+// OTTO(identity): plugin migration hints target Otto and its Paseo API.
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { fork } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -5,7 +6,7 @@ import { PassThrough } from "node:stream";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pino from "pino";
-import type { ProviderEvent, ProviderRegistration } from "@otto-code/plugin/server/provider";
+import type { ProviderEvent, ProviderRegistration } from "@getpaseo/plugin/server/provider";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentStreamEvent } from "../agent/agent-sdk-types.js";
 import { PluginAgentClientRegistry } from "../agent/plugin-provider.js";
@@ -19,13 +20,9 @@ function hasCompletedAgentTurn(events: readonly AgentStreamEvent[]): boolean {
 }
 
 async function createPlugin(id: string, source: string): Promise<string> {
-  const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-"));
   temporaryDirectories.push(directory);
-  await writeFile(
-    path.join(directory, "otto-plugin.json"),
-    JSON.stringify({ id, requirements: { paseo: ">=0.8.0" } }),
-    "utf8",
-  );
+  await writeFile(path.join(directory, "paseo-plugin.json"), JSON.stringify({ id }), "utf8");
   await writeFile(path.join(directory, "index.server.ts"), source, "utf8");
   return directory;
 }
@@ -36,6 +33,26 @@ async function readTextIfPresent(filePath: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+function pluginMessages(runtime: PluginRuntime, pluginId: string): string[] {
+  return runtime.getLogs(pluginId).map((entry) => entry.message);
+}
+
+function spawnObservedPluginProcess(onMessage: (message: unknown) => void) {
+  const loaderUrl = new URL("../../terminal/terminal-ts-loader.mjs", import.meta.url).href;
+  const setup = `import { register } from "node:module"; register(${JSON.stringify(loaderUrl)});`;
+  const child = fork(new URL("./plugin-process.ts", import.meta.url), [], {
+    execArgv: [
+      "--experimental-strip-types",
+      "--import",
+      `data:text/javascript,${encodeURIComponent(setup)}`,
+    ],
+    serialization: "advanced",
+    stdio: ["ignore", "pipe", "pipe", "ipc"],
+  });
+  child.on("message", onMessage);
+  return child;
 }
 
 function createReloadChild(
@@ -128,8 +145,28 @@ function createTestRuntime(
 
 function createTrackedSessionHost() {
   const active = new Set<object>();
+  // One entry per hello handshake: an attached socket is not a redialled one.
+  const hellos: object[] = [];
+  const waiters = new Set<{ count: number; resolve: () => void }>();
+  function recordHello(socket: object): void {
+    hellos.push(socket);
+    for (const waiter of waiters) {
+      if (hellos.length < waiter.count) continue;
+      waiters.delete(waiter);
+      waiter.resolve();
+    }
+  }
   return {
     active,
+    hellos,
+    // Resolves on the handshake itself rather than after a delay, so the test
+    // waits for the event it cares about instead of a guess at how long it takes.
+    waitForHellos(count: number): Promise<void> {
+      if (hellos.length >= count) return Promise.resolve();
+      return new Promise<void>((resolve) => {
+        waiters.add({ count, resolve });
+      });
+    },
     host: {
       async attachPluginSocket(_pluginId: string, socket: PluginSessionSocket) {
         const closed = new Promise<void>((resolve) => socket.once("close", resolve));
@@ -139,6 +176,7 @@ function createTrackedSessionHost() {
           if (typeof data !== "string") return;
           const message = JSON.parse(data);
           if (message.type !== "hello") return;
+          recordHello(socket);
           socket.send(
             JSON.stringify({
               type: "session",
@@ -213,8 +251,8 @@ afterEach(async () => {
 
 describe("PluginRuntime", () => {
   it.each([
-    { specifier: "@otto-code/plugin", moduleDirectory: "shared" },
-    { specifier: "@otto-code/plugin", moduleDirectory: "server" },
+    { specifier: "@getpaseo/plugin", moduleDirectory: "shared" },
+    { specifier: "@getpaseo/plugin", moduleDirectory: "server" },
   ])(
     "loads $specifier contracts without React in the subprocess module graph",
     async ({ specifier, moduleDirectory }) => {
@@ -317,8 +355,8 @@ register(${JSON.stringify(guardUrl)});`;
   it("runs a provider connection through the real plugin subprocess boundary", async () => {
     const directory = await createPlugin(
       "provider-round-trip",
-      `import type { PluginServerContext } from "@otto-code/plugin/server";
-import type { ProviderEvent, ProviderRegistration } from "@otto-code/plugin/server/provider";
+      `import type { PluginServerContext } from "@getpaseo/plugin/server";
+import type { ProviderEvent, ProviderRegistration } from "@getpaseo/plugin/server/provider";
 
 const provider: ProviderRegistration = {
   id: "direct-example",
@@ -525,8 +563,8 @@ export default function contribute(server: PluginServerContext) {
     );
     const directory = await createPlugin(
       "provider-acp-round-trip",
-      `import type { PluginServerContext } from "@otto-code/plugin/server";
-import { runAcpProvider } from "@otto-code/plugin/server/acp";
+      `import type { PluginServerContext } from "@getpaseo/plugin/server";
+import { runAcpProvider } from "@getpaseo/plugin/server/acp";
 import { vendorEditTransformer } from "./server/vendor-edit.js";
 
 export default function contribute(server: PluginServerContext) {
@@ -586,14 +624,14 @@ lines.on("line", (line) => {
     await connection.send({
       type: "session.open",
       requestId: "open-acp",
-      sessionId: "otto-1",
+      sessionId: "paseo-1",
       config: { cwd: directory, env: {}, mcpServers: {}, settings: {}, persist: true },
       history: "skip",
     });
     await expect.poll(() => hasReadyRequest(events, "open-acp")).toBe(true);
     await connection.send({
       type: "session.prompt",
-      sessionId: "otto-1",
+      sessionId: "paseo-1",
       prompt: {
         clientMessageId: "client-acp",
         delivery: "auto",
@@ -662,7 +700,7 @@ lines.on("line", (line) => {
   it("rejects a malformed provider event from a real plugin subprocess", async () => {
     const directory = await createPlugin(
       "malicious-provider",
-      `import type { ProviderEvent, ProviderRegistration } from "@otto-code/plugin/server/provider";
+      `import type { ProviderEvent, ProviderRegistration } from "@getpaseo/plugin/server/provider";
 let connectionId = "";
 process.on("message", (message: unknown) => {
   const value = message as { type?: string; connectionId?: string };
@@ -729,7 +767,7 @@ export default function contribute(server: any) { server.registerProvider(provid
   it("emits runtime failure for live sessions when a real plugin process dies", async () => {
     const directory = await createPlugin(
       "dying-provider",
-      `import type { ProviderEvent, ProviderRegistration } from "@otto-code/plugin/server/provider";
+      `import type { ProviderEvent, ProviderRegistration } from "@getpaseo/plugin/server/provider";
 const provider: ProviderRegistration = {
   id: "dying",
   label: "Dying",
@@ -802,10 +840,10 @@ export default function contribute(server: any) { server.registerProvider(provid
     expect(
       runtime.getLogs("lifecycle").map(({ stream, message }) => ({ stream, message })),
     ).toEqual([
-      { stream: "stdout", message: "[otto] Loading plugin" },
-      { stream: "stdout", message: "[otto] Plugin ready" },
-      { stream: "stdout", message: "[otto] Stopping plugin" },
-      { stream: "stdout", message: "[otto] Plugin stopped" },
+      { stream: "stdout", message: "[paseo] Loading plugin" },
+      { stream: "stdout", message: "[paseo] Plugin ready" },
+      { stream: "stdout", message: "[paseo] Stopping plugin" },
+      { stream: "stdout", message: "[paseo] Plugin stopped" },
     ]);
   });
 
@@ -827,7 +865,7 @@ export default function contribute(server: any) { server.registerProvider(provid
     const logs = runtime.getLogs("output");
     expect(
       logs
-        .filter((entry) => !entry.message.startsWith("[otto]"))
+        .filter((entry) => !entry.message.startsWith("[paseo]"))
         .map(({ stream, message }) => ({ stream, message })),
     ).toEqual([
       { stream: "stdout", message: "first" },
@@ -949,7 +987,7 @@ export default function contribute(server: any) { server.registerProvider(provid
     ).toEqual([
       {
         stream: "stdout",
-        message: "[otto] Loading plugin",
+        message: "[paseo] Loading plugin",
       },
       {
         stream: "stderr",
@@ -1002,7 +1040,7 @@ export default function contribute(server: any) { server.registerProvider(provid
   });
 
   it("waits for asynchronous plugin cleanup before stopping", async () => {
-    const cleanupFile = path.join(tmpdir(), `otto-plugin-cleanup-${Date.now()}`);
+    const cleanupFile = path.join(tmpdir(), `paseo-plugin-cleanup-${Date.now()}`);
     const directory = await createPlugin(
       "async-cleanup",
       `import { writeFile } from "node:fs/promises";
@@ -1023,14 +1061,83 @@ export default function contribute(plugin: unknown) {
     await rm(cleanupFile, { force: true });
   });
 
+  it("rejects provider input while a connection is closing", async () => {
+    const releaseDirectory = await mkdtemp(path.join(tmpdir(), "paseo-provider-close-"));
+    const releaseFile = path.join(releaseDirectory, "release");
+    const directory = await createPlugin(
+      "closing-provider",
+      `import { readFile, writeFile } from "node:fs/promises";
+import type { ProviderRegistration } from "@getpaseo/plugin/server/provider";
+const provider: ProviderRegistration = {
+  id: "delayed",
+  label: "Delayed",
+  async connect() {
+    return {
+      version: 1,
+      capabilities: [],
+      async send() { console.log("provider accepted input"); },
+      onEvent() { return () => undefined; },
+      async close() {
+        console.log("provider close started");
+        while (true) {
+          try { await readFile(${JSON.stringify(releaseFile)}); break; }
+          catch { await new Promise((resolve) => setTimeout(resolve, 10)); }
+        }
+        console.log("provider close completed");
+      },
+    };
+  },
+};
+export default function contribute(server: { registerProvider(provider: ProviderRegistration): void }) {
+  server.registerProvider(provider);
+  return () => console.log("plugin cleanup started");
+}`,
+    );
+    const closedReports: unknown[] = [];
+    const observeMessage = (message: unknown) => {
+      if ((message as { type?: string }).type === "provider.closed") closedReports.push(message);
+    };
+    const runtime = createTestRuntime({
+      spawnChild: () => spawnObservedPluginProcess(observeMessage),
+    });
+    await runtime.startPlugin("closing-provider", directory);
+    try {
+      const connection = await runtime.connectProvider("closing-provider", "delayed", {
+        versions: [1],
+        capabilities: [],
+      });
+      const closing = connection.close();
+      await expect
+        .poll(() => pluginMessages(runtime, "closing-provider"))
+        .toContain("provider close started");
+      await expect(connection.send({ type: "catalog", requestId: "during-close" })).rejects.toThrow(
+        "Provider connection is closing",
+      );
+      const stopping = runtime.stopPluginById("closing-provider");
+      await expect
+        .poll(() => pluginMessages(runtime, "closing-provider"))
+        .toContain("plugin cleanup started");
+      await writeFile(releaseFile, "release");
+      await Promise.all([closing, stopping]);
+      const messages = pluginMessages(runtime, "closing-provider");
+      expect(messages).toContain("provider close completed");
+      expect(messages).not.toContain("provider accepted input");
+      expect(closedReports).toHaveLength(1);
+    } finally {
+      await writeFile(releaseFile, "release");
+      await runtime.stopAll();
+      await rm(releaseDirectory, { recursive: true, force: true });
+    }
+  });
+
   it("closes a provider connection that resolves during plugin shutdown", async () => {
     const suffix = `${process.pid}-${Date.now()}`;
-    const startedFile = path.join(tmpdir(), `otto-provider-connect-started-${suffix}`);
-    const closedFile = path.join(tmpdir(), `otto-provider-connect-closed-${suffix}`);
+    const startedFile = path.join(tmpdir(), `paseo-provider-connect-started-${suffix}`);
+    const closedFile = path.join(tmpdir(), `paseo-provider-connect-closed-${suffix}`);
     const directory = await createPlugin(
       "shutdown-connect",
       `import { writeFile } from "node:fs/promises";
-import type { ProviderRegistration } from "@otto-code/plugin/server/provider";
+import type { ProviderRegistration } from "@getpaseo/plugin/server/provider";
 
 const provider: ProviderRegistration = {
   id: "delayed",
@@ -1395,31 +1502,25 @@ export default function contribute(server: { registerProvider(provider: Provider
     await runtime.stopAll();
   });
 
-  it("explains that an index.ts plugin was made for an older Otto version", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-"));
+  it("explains that an index.ts plugin was made for an older Paseo version", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-"));
     temporaryDirectories.push(directory);
     await Promise.all([
-      writeFile(
-        path.join(directory, "otto-plugin.json"),
-        JSON.stringify({ id: "legacy", requirements: { paseo: ">=0.8.0" } }),
-      ),
+      writeFile(path.join(directory, "paseo-plugin.json"), JSON.stringify({ id: "legacy" })),
       writeFile(path.join(directory, "index.ts"), "export default function contribute() {}"),
     ]);
     const runtime = createTestRuntime();
 
     await expect(runtime.startPlugin("legacy", directory)).rejects.toThrow(
-      "This plugin uses an older Paseo plugin API and requires split client/server entries for Paseo v0.8. Ask its author to update it. Plugin authors can follow the migration guide: https://otto-code.me/docs/plugins/v0.8/migration",
+      "This plugin was made for a plugin API older than Paseo v0.8 and cannot run in Otto. Ask its author to update it. Plugin authors can follow the migration guide: https://otto-code.me/docs/plugins/migration",
     );
   });
 
   it("loads a client-only plugin without spawning a subprocess", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-"));
+    const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-"));
     temporaryDirectories.push(directory);
     await Promise.all([
-      writeFile(
-        path.join(directory, "otto-plugin.json"),
-        JSON.stringify({ id: "theme", requirements: { paseo: ">=0.8.0" } }),
-      ),
+      writeFile(path.join(directory, "paseo-plugin.json"), JSON.stringify({ id: "theme" })),
       writeFile(
         path.join(directory, "index.client.tsx"),
         `export default function contribute(client: any) {
@@ -1439,18 +1540,15 @@ export default function contribute(server: { registerProvider(provider: Provider
   });
 
   it("loads separate entries, exposes the client bundle, and invokes the server RPC", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-"));
+    const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-"));
     temporaryDirectories.push(directory);
     await mkdir(path.join(directory, "shared"));
-    await writeFile(
-      path.join(directory, "otto-plugin.json"),
-      JSON.stringify({ id: "hello", requirements: { paseo: ">=0.8.0" } }),
-    );
+    await writeFile(path.join(directory, "paseo-plugin.json"), JSON.stringify({ id: "hello" }));
     await writeFile(
       path.join(directory, "index.client.tsx"),
       `import React from "react";
 import { Text } from "react-native";
-import { defineAttachmentSource } from "@otto-code/plugin";
+import { defineAttachmentSource } from "@getpaseo/plugin";
 import { greetRpc } from "./shared/greet";
 
 const attachments = defineAttachmentSource({
@@ -1482,7 +1580,7 @@ export default function contribute(client: any) {
     await writeFile(
       path.join(directory, "shared", "greet.ts"),
       `import { z } from "zod";
-import { defineRpc } from "@otto-code/plugin";
+import { defineRpc } from "@getpaseo/plugin";
 export const greetRpc = defineRpc({
   name: "greet",
   input: z.object({ name: z.string() }),
@@ -1514,8 +1612,8 @@ export default function contribute(server: any) {
     expect(catalog[0]?.clientBundle).toContain("Open review");
     expect(catalog[0]?.clientBundle).not.toContain("node:os");
     expect(catalog[0]?.clientBundle).not.toContain("get: () => from[key]");
-    await expect(runtime.invoke("hello", "greet", { name: "Otto" })).resolves.toMatchObject({
-      message: "Hello, Otto",
+    await expect(runtime.invoke("hello", "greet", { name: "Paseo" })).resolves.toMatchObject({
+      message: "Hello, Paseo",
     });
     await expect(runtime.invoke("hello", "greet", { name: 7 })).rejects.toThrow();
 
@@ -1523,7 +1621,7 @@ export default function contribute(server: any) {
   });
 
   it("keeps client and server modules in their target runtime", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-"));
+    const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-"));
     temporaryDirectories.push(directory);
     await Promise.all([
       mkdir(path.join(directory, "client")),
@@ -1532,13 +1630,13 @@ export default function contribute(server: any) {
     ]);
     await Promise.all([
       writeFile(
-        path.join(directory, "otto-plugin.json"),
-        JSON.stringify({ id: "split-runtime", requirements: { paseo: ">=0.8.0" } }),
+        path.join(directory, "paseo-plugin.json"),
+        JSON.stringify({ id: "split-runtime" }),
         "utf8",
       ),
       writeFile(
         path.join(directory, "index.client.tsx"),
-        `import type { PluginClientContext } from "@otto-code/plugin/client";
+        `import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { Surface } from "./client/surface";
 export default function contribute(client: PluginClientContext) {
   client.addSurface("main", Surface);
@@ -1548,7 +1646,7 @@ export default function contribute(client: PluginClientContext) {
       ),
       writeFile(
         path.join(directory, "index.server.ts"),
-        `import type { PluginServerContext } from "@otto-code/plugin/server";
+        `import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { inspectRpc } from "./shared/inspect";
 import { inspectHost } from "./server/inspect";
 export default function contribute(server: PluginServerContext) {
@@ -1571,7 +1669,7 @@ export function Surface() {
       ),
       writeFile(
         path.join(directory, "shared", "inspect.ts"),
-        `import { defineRpc } from "@otto-code/plugin";
+        `import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const inspectRpc = defineRpc({
@@ -1607,7 +1705,7 @@ export function inspectHost(_input: z.input<typeof inspectRpc.input>) {
   });
 
   it("rejects server imports from client-only modules", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-"));
+    const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-"));
     temporaryDirectories.push(directory);
     await Promise.all([
       mkdir(path.join(directory, "client")),
@@ -1615,13 +1713,13 @@ export function inspectHost(_input: z.input<typeof inspectRpc.input>) {
     ]);
     await Promise.all([
       writeFile(
-        path.join(directory, "otto-plugin.json"),
-        JSON.stringify({ id: "cross-runtime-import", requirements: { paseo: ">=0.8.0" } }),
+        path.join(directory, "paseo-plugin.json"),
+        JSON.stringify({ id: "cross-runtime-import" }),
         "utf8",
       ),
       writeFile(
         path.join(directory, "index.client.tsx"),
-        `import type { PluginClientContext } from "@otto-code/plugin/client";
+        `import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { Surface } from "./client/surface";
 
 export default function contribute(client: PluginClientContext) {
@@ -1651,7 +1749,7 @@ export function Surface() { return readSecret(); }`,
   });
 
   it("rejects client imports from server-only modules", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-"));
+    const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-"));
     temporaryDirectories.push(directory);
     await Promise.all([
       mkdir(path.join(directory, "client")),
@@ -1660,13 +1758,13 @@ export function Surface() { return readSecret(); }`,
     ]);
     await Promise.all([
       writeFile(
-        path.join(directory, "otto-plugin.json"),
-        JSON.stringify({ id: "cross-runtime-import", requirements: { paseo: ">=0.8.0" } }),
+        path.join(directory, "paseo-plugin.json"),
+        JSON.stringify({ id: "cross-runtime-import" }),
         "utf8",
       ),
       writeFile(
         path.join(directory, "index.server.ts"),
-        `import type { PluginServerContext } from "@otto-code/plugin/server";
+        `import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { inspect } from "./server/inspect";
 import { inspectRpc } from "./shared/inspect";
 
@@ -1678,7 +1776,7 @@ export default function contribute(server: PluginServerContext) {
       ),
       writeFile(
         path.join(directory, "shared", "inspect.ts"),
-        `import { defineRpc } from "@otto-code/plugin";
+        `import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 export const inspectRpc = defineRpc({
   name: "inspect",
@@ -1711,7 +1809,7 @@ export function inspect() { void Surface; return {}; }`,
     const directory = await createPlugin(
       "invalid-output",
       `import { z } from "zod";
-import { defineRpc } from "@otto-code/plugin";
+import { defineRpc } from "@getpaseo/plugin";
 const brokenRpc = defineRpc({
   name: "broken",
   input: z.object({}),
@@ -1787,4 +1885,174 @@ export default function contribute(plugin: any) {
       "Plugin is not available",
     );
   });
+
+  it("re-attaches a plugin session when the daemon closes the socket under a live child", async () => {
+    const directory = await createPlugin(
+      "reattaching",
+      `export default function contribute(plugin: unknown) { void plugin; return () => undefined; }`,
+    );
+    const sessions = createTrackedSessionHost();
+    const runtime = createTestRuntime({ sessionHost: sessions.host });
+    await runtime.startPlugin("reattaching", directory);
+
+    expect(sessions.active.size).toBe(1);
+    expect(sessions.hellos).toHaveLength(1);
+    const first = [...sessions.active][0] as PluginSessionSocket;
+
+    // What an expired lease does: drop the socket, leave the process running.
+    first.close(1000, "expired application lease");
+
+    // A second handshake, not just a second attachment: the client really redialled.
+    await sessions.waitForHellos(2);
+
+    expect(sessions.active.size).toBe(1);
+    expect([...sessions.active][0]).not.toBe(first);
+    await runtime.stopAll();
+    expect(sessions.active.size).toBe(0);
+  });
+
+  it("replaces a closed plugin session only once the child sends a fresh hello", async () => {
+    const directory = await createPlugin(
+      "lazy-reattach",
+      `export default function contribute(plugin: unknown) { void plugin; return () => undefined; }`,
+    );
+    const sessions = createTrackedSessionHost();
+    const child = createReloadChild("lazy-reattach", []);
+    const runtime = createTestRuntime({ spawnChild: () => child, sessionHost: sessions.host });
+    await runtime.startPlugin("lazy-reattach", directory);
+    const first = [...sessions.active][0] as PluginSessionSocket;
+    // This child is a stub with no real client, so no handshake has happened.
+    expect(sessions.hellos).toHaveLength(0);
+
+    first.close(1000, "expired application lease");
+    expect(sessions.active.size).toBe(0);
+
+    // Frames the child had already queued belong to the session that just died.
+    // Standing a socket up for one would leave it unspoken to until the host's
+    // hello timeout closed it, and that close would stand up another.
+    child.emitMessage({
+      type: "paseo_frame",
+      data: JSON.stringify({ type: "session", message: { type: "ping" } }),
+      isBinary: false,
+    });
+    expect(sessions.active.size).toBe(0);
+
+    child.emitMessage({
+      type: "paseo_frame",
+      data: JSON.stringify({
+        type: "hello",
+        clientId: "plugin:lazy-reattach",
+        clientType: "cli",
+        protocolVersion: 1,
+      }),
+      isBinary: false,
+    });
+    await sessions.waitForHellos(1);
+
+    expect(sessions.active.size).toBe(1);
+    expect([...sessions.active][0]).not.toBe(first);
+    await runtime.stopAll();
+    expect(sessions.active.size).toBe(0);
+  });
+
+  it("attaches no replacement session when the plugin is stopped", async () => {
+    const directory = await createPlugin(
+      "stopping",
+      `export default function contribute(plugin: unknown) { void plugin; return () => undefined; }`,
+    );
+    const sessions = createTrackedSessionHost();
+    const runtime = createTestRuntime({ sessionHost: sessions.host });
+    await runtime.startPlugin("stopping", directory);
+    expect(sessions.active.size).toBe(1);
+
+    await runtime.stopPluginById("stopping");
+
+    expect(runtime.getLogs("stopping").map((entry) => entry.message)).not.toContain(
+      "[paseo] Re-attached plugin session",
+    );
+    expect(sessions.active.size).toBe(0);
+  });
+  it("closes an in-flight replacement when the plugin stops before attachment completes", async () => {
+    const directory = await createPlugin(
+      "stopping-redial",
+      `export default function contribute() { return () => undefined; }`,
+    );
+    const child = createReloadChild("stopping-redial", []);
+    const sessions = createTrackedSessionHost();
+    let finishAttachment!: () => void;
+    const attachmentHeld = new Promise<void>((resolve) => {
+      finishAttachment = resolve;
+    });
+    let replacementAttached!: (socket: PluginSessionSocket) => void;
+    const replacementStarted = new Promise<PluginSessionSocket>((resolve) => {
+      replacementAttached = resolve;
+    });
+    let attachments = 0;
+    const runtime = createTestRuntime({
+      spawnChild: () => child,
+      sessionHost: {
+        async attachPluginSocket(pluginId, socket) {
+          const attachment = await sessions.host.attachPluginSocket(pluginId, socket);
+          attachments += 1;
+          if (attachments === 2) {
+            replacementAttached(socket);
+            await attachmentHeld;
+          }
+          return attachment;
+        },
+      },
+    });
+    try {
+      await runtime.startPlugin("stopping-redial", directory);
+      const first = [...sessions.active][0] as PluginSessionSocket;
+      first.close();
+      child.emitMessage({
+        type: "paseo_frame",
+        data: JSON.stringify({ type: "hello" }),
+        isBinary: false,
+      });
+      const replacement = await replacementStarted;
+      const replacementClosed = new Promise<void>((resolve) => replacement.once("close", resolve));
+      await runtime.stopPluginById("stopping-redial");
+      finishAttachment();
+      await replacementClosed;
+      expect(sessions.active.size).toBe(0);
+      expect(sessions.hellos).toEqual([]);
+      expect(runtime.catalog()).toEqual([]);
+      child.emitMessage({
+        type: "paseo_frame",
+        data: JSON.stringify({ type: "hello" }),
+        isBinary: false,
+      });
+      expect(attachments).toBe(2);
+    } finally {
+      finishAttachment();
+      await runtime.stopAll();
+    }
+  });
+});
+
+it("rejects a usage source without discovery at registration", async () => {
+  const directory = await createPlugin(
+    "missing-discovery",
+    `
+export default function contribute(server) {
+  server.registerUsageSource({
+    id: "missing-discovery",
+    label: "Missing discovery",
+    input: { parseAsync: async (value) => value },
+    fetch: async () => ({ status: "available", windows: [] }),
+  });
+  return () => {};
+}
+`,
+  );
+  const runtime = createTestRuntime();
+  try {
+    await expect(runtime.startPlugin("missing-discovery", directory)).rejects.toThrow(
+      "Invalid usage source: missing-discovery",
+    );
+  } finally {
+    await runtime.stopAll();
+  }
 });

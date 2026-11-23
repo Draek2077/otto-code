@@ -10,7 +10,7 @@ import { basename } from "node:path";
 import defaultLog from "electron-log/main";
 
 const DEFAULT_RESOLVE_TIMEOUT_MS = 30_000;
-const TIMEOUT_ENV_KEY = "OTTO_SHELL_ENV_TIMEOUT_MS";
+const TIMEOUT_ENV_KEY = "PASEO_SHELL_ENV_TIMEOUT_MS";
 const STDERR_LOG_LIMIT = 2000;
 
 type LoginShellEnvLogger = Pick<typeof defaultLog, "info" | "warn">;
@@ -393,9 +393,6 @@ function restoreElectronEnv({ env, savedRunAsNode, savedNoAttach }: RestoreElect
 
 function resolveShellEnv({ deps, timeoutMs }: ResolveShellEnvInput): ResolvedShellEnv {
   if (deps.platform === "win32") {
-    // Windows inherits the environment from the launching process - there is no
-    // login shell to resolve. The caller logs the fallback; keep it a one-line
-    // info (reason "win32") instead of a warn so a normal Windows dev start stays quiet.
     throw new ShellEnvError("login shell env is not resolved on Windows", { reason: "win32" });
   }
 
@@ -409,9 +406,9 @@ function resolveShellEnv({ deps, timeoutMs }: ResolveShellEnvInput): ResolvedShe
   const { command, attempts } = shellEnvCommand({ shell, mark });
 
   const shellEnv = { ...deps.env };
-  delete shellEnv.OTTO_NODE_ENV;
-  delete shellEnv.OTTO_DESKTOP_MANAGED;
-  delete shellEnv.OTTO_SUPERVISED;
+  delete shellEnv.PASEO_NODE_ENV;
+  delete shellEnv.PASEO_DESKTOP_MANAGED;
+  delete shellEnv.PASEO_SUPERVISED;
 
   deps.logger.info("[login-shell-env] start", {
     shell,
@@ -530,15 +527,6 @@ export function inheritLoginShellEnv(input: LoginShellEnvDependencies = {}): voi
         ? error.details
         : { reason: "throw", shell: deps.env.SHELL ?? undefined };
     const cause = error instanceof Error ? error.cause : undefined;
-    if (details.reason === "win32") {
-      // Not a failure: Windows has no login shell to resolve, and the inherited
-      // environment is exactly right. One quiet info line, no PATH dump.
-      deps.logger.info("[login-shell-env] skipped on Windows; keeping inherited env", {
-        durationMs: deps.now() - startedAt,
-        timeoutMs,
-      });
-      return;
-    }
     deps.logger.warn("[login-shell-env] failed; keeping inherited env", {
       ...details,
       durationMs: deps.now() - startedAt,

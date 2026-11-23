@@ -1,6 +1,5 @@
 import type { StyleProp, ViewStyle } from "react-native";
-import type { IconSizeToken } from "@/components/icons/icon-size";
-import type { Theme } from "@/styles/theme";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 
 export type ButtonControlSize = "xs" | "sm" | "md" | "lg";
 export type FieldControlSize = "sm" | "md";
@@ -24,58 +23,49 @@ export interface ControlInteractionStyleMap {
 }
 
 const TIGHT_CONTROL_HEIGHT = 28;
-export const COMPACT_CONTROL_HEIGHT = 32;
+const COMPACT_CONTROL_HEIGHT = 32;
 const FIELD_CONTROL_HEIGHT = 44;
-// Pin every pane toolbar's `minHeight` to this; don't let content drive it, or
-// the bars drift apart when their tallest child differs (a 32px combobox vs a
-// 30px mode-bar pill vs a 24px icon button).
-export const PANE_TOOLBAR_HEIGHT = COMPACT_CONTROL_HEIGHT + 4;
+export const HEADER_CONTROL_HEIGHT = 26;
 const SEGMENTED_TIGHT_INSET = 2;
 const SEGMENTED_COMPACT_INSET = 2;
 const SEGMENTED_FIELD_INSET = 3;
 const SWITCH_TRACK_WIDTH = 34;
 const SWITCH_TRACK_HEIGHT = 20;
 const SWITCH_THUMB_SIZE = 16;
+const CONTROL_FOCUS_RING_WIDTH = 2;
+const CONTROL_FOCUS_RING_OFFSET = 1;
 const CONTROL_CENTER_JUSTIFY_CONTENT = "center";
 const FIELD_TEXT_LINE_HEIGHT_RATIO = 1.4;
 
-const controlHeights = {
+/**
+ * The three control heights every button, field, and segmented control is built from.
+ * Exported so a row that hosts one of those controls can size itself from the same
+ * numbers instead of guessing a height the control then outgrows.
+ */
+export const CONTROL_HEIGHTS = {
   tight: TIGHT_CONTROL_HEIGHT,
   compact: COMPACT_CONTROL_HEIGHT,
   field: FIELD_CONTROL_HEIGHT,
 };
 
-// Tokens, not pixels. These two maps sit between a control's `size` and the glyph it
-// draws, so a number here freezes every button and segment icon in the app at its
-// desktop size - the control grows on a phone and the icon inside it does not. Naming
-// the token instead lets `applyAppearance` resolve it per form factor, which is the one
-// place icon scaling is allowed to happen.
-export const buttonIconSize: Record<ButtonControlSize, IconSizeToken> = {
-  xs: "xs",
-  sm: "sm",
-  md: "md",
-  lg: "lg",
-};
-
-// Adopted from upstream, expressed in Otto's control heights rather than theirs.
-// Upstream's components ask for a numeric button height by size token; Otto's
-// ladder is the source of truth for what those numbers are, so their code sizes
-// itself to Otto's geometry instead of importing a second scale.
 export const buttonControlHeight: Record<ButtonControlSize, number> = {
-  xs: TIGHT_CONTROL_HEIGHT,
-  sm: COMPACT_CONTROL_HEIGHT,
-  md: FIELD_CONTROL_HEIGHT,
-  lg: FIELD_CONTROL_HEIGHT,
+  xs: CONTROL_HEIGHTS.tight,
+  sm: CONTROL_HEIGHTS.compact,
+  md: CONTROL_HEIGHTS.field,
+  lg: CONTROL_HEIGHTS.field,
 };
 
-// Upstream's title-bar control height. Kept as its own constant because header
-// chrome is deliberately tighter than the tight control ladder.
-export const HEADER_CONTROL_HEIGHT = 26;
+export const buttonIconSize: Record<ButtonControlSize, number> = {
+  xs: ICON_SIZE.xs,
+  sm: ICON_SIZE.sm,
+  md: ICON_SIZE.md,
+  lg: ICON_SIZE.lg,
+};
 
-export const segmentedIconSize: Record<SegmentedControlSize, IconSizeToken> = {
-  xs: "xs",
-  sm: "sm",
-  md: "md",
+export const segmentedIconSize: Record<SegmentedControlSize, number> = {
+  xs: ICON_SIZE.xs,
+  sm: ICON_SIZE.sm,
+  md: ICON_SIZE.md,
 };
 
 export const switchGeometry = {
@@ -85,19 +75,87 @@ export const switchGeometry = {
   thumbTravel: SWITCH_TRACK_WIDTH - SWITCH_THUMB_SIZE - (SWITCH_TRACK_HEIGHT - SWITCH_THUMB_SIZE),
 };
 
-// A segment sits INSIDE its track, so its corners have to be tighter than the
-// track's by exactly the inset, or the two curves fight and the segment's
-// corners poke past the container's.
-function nestedRadius(containerRadius: number, inset: number): number {
-  return Math.max(0, containerRadius - inset);
-}
-
 function fieldLineHeight(fontSize: number): number {
   return Math.round(fontSize * FIELD_TEXT_LINE_HEIGHT_RATIO);
 }
 
-function fieldVerticalPadding(controlHeight: number, lineHeight: number): number {
-  return (controlHeight - lineHeight) / 2;
+function fieldVerticalPadding(
+  controlHeight: number,
+  lineHeight: number,
+  borderWidth: number,
+): number {
+  return (controlHeight - lineHeight - borderWidth * 2) / 2;
+}
+
+/**
+ * Alerts share the button's size names, text size, and icon size (`buttonIconSize`).
+ * The icon and the first text sit in one centered lead row; everything below is indented
+ * by the icon slot plus its gap so it starts at the lead text's left edge. Title and
+ * description use one font size; only the container gap separates them.
+ */
+function createAlertGeometry(theme: Theme) {
+  function alertSize(input: {
+    size: ButtonControlSize;
+    fontSize: number;
+    paddingVertical: number;
+    paddingHorizontal: number;
+    borderRadius: number;
+    iconGap: number;
+    textGap: number;
+  }) {
+    const iconSize = buttonIconSize[input.size];
+    return {
+      container: {
+        paddingVertical: input.paddingVertical,
+        paddingHorizontal: input.paddingHorizontal,
+        borderRadius: input.borderRadius,
+        gap: input.textGap,
+      },
+      lead: { gap: input.iconGap },
+      iconSlot: { width: iconSize },
+      indent: { marginLeft: iconSize + input.iconGap },
+      text: { fontSize: input.fontSize },
+    };
+  }
+
+  return {
+    xs: alertSize({
+      size: "xs",
+      fontSize: theme.fontSize.sm,
+      paddingVertical: theme.spacing[2],
+      paddingHorizontal: theme.spacing[3],
+      borderRadius: theme.borderRadius.xl,
+      iconGap: theme.spacing[2],
+      textGap: 0,
+    }),
+    sm: alertSize({
+      size: "sm",
+      fontSize: theme.fontSize.base,
+      paddingVertical: theme.spacing[3],
+      paddingHorizontal: theme.spacing[4],
+      borderRadius: theme.borderRadius["2xl"],
+      iconGap: theme.spacing[3],
+      textGap: theme.spacing[0.5],
+    }),
+    md: alertSize({
+      size: "md",
+      fontSize: theme.fontSize.base,
+      paddingVertical: theme.spacing[4],
+      paddingHorizontal: theme.spacing[6],
+      borderRadius: theme.borderRadius["2xl"],
+      iconGap: theme.spacing[3],
+      textGap: theme.spacing[0.5],
+    }),
+    lg: alertSize({
+      size: "lg",
+      fontSize: theme.fontSize.base,
+      paddingVertical: theme.spacing[6],
+      paddingHorizontal: theme.spacing[8],
+      borderRadius: theme.borderRadius["2xl"],
+      iconGap: theme.spacing[4],
+      textGap: theme.spacing[1],
+    }),
+  } satisfies Record<ButtonControlSize, unknown>;
 }
 
 export function getControlInteractionPhase(
@@ -129,65 +187,71 @@ export function resolveControlInteractionStyles(
 }
 
 export function createControlGeometry(theme: Theme) {
-  const fieldTextSmLineHeight = fieldLineHeight(theme.fontSize.sm);
+  const controlBorderWidth = theme.borderWidth[1];
+  const fieldTextSmLineHeight = fieldLineHeight(theme.fontSize.base);
   const fieldTextMdLineHeight = fieldLineHeight(theme.fontSize.base);
   const fieldControlSm = {
-    minHeight: controlHeights.compact,
+    minHeight: CONTROL_HEIGHTS.compact,
     paddingHorizontal: theme.spacing[3],
-    paddingVertical: fieldVerticalPadding(controlHeights.compact, fieldTextSmLineHeight),
+    paddingVertical: fieldVerticalPadding(
+      CONTROL_HEIGHTS.compact,
+      fieldTextSmLineHeight,
+      controlBorderWidth,
+    ),
     borderRadius: theme.borderRadius.md,
   };
   const fieldControlMd = {
-    minHeight: controlHeights.field,
+    minHeight: CONTROL_HEIGHTS.field,
     paddingHorizontal: theme.spacing[4],
-    paddingVertical: fieldVerticalPadding(controlHeights.field, fieldTextMdLineHeight),
+    paddingVertical: fieldVerticalPadding(
+      CONTROL_HEIGHTS.field,
+      fieldTextMdLineHeight,
+      controlBorderWidth,
+    ),
     borderRadius: theme.borderRadius.lg,
   };
   const fieldTextSm = {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     lineHeight: fieldTextSmLineHeight,
   };
   const fieldTextMd = {
     fontSize: theme.fontSize.base,
     lineHeight: fieldTextMdLineHeight,
   };
+  const alert = createAlertGeometry(theme);
   const switchControl = {
-    minHeight: controlHeights.compact,
+    minHeight: CONTROL_HEIGHTS.compact,
     justifyContent: CONTROL_CENTER_JUSTIFY_CONTENT,
   } satisfies { minHeight: number; justifyContent: "center" };
-  // xs shares sm's track radius rather than stepping down to borderRadius.sm:
-  // that is 2, and minus the 2px inset the thumb would come out square.
-  const segmentedContainerXsRadius = theme.borderRadius.md;
-  const segmentedContainerSmRadius = theme.borderRadius.md;
-  const segmentedContainerMdRadius = theme.borderRadius.lg;
 
   return {
     buttonXs: {
-      minHeight: controlHeights.tight,
+      minHeight: buttonControlHeight.xs,
       paddingHorizontal: theme.spacing[3],
-      borderRadius: theme.borderRadius.md,
-    },
-    buttonSm: {
-      minHeight: controlHeights.compact,
-      paddingHorizontal: theme.spacing[3],
-      borderRadius: theme.borderRadius.md,
-    },
-    buttonMd: {
-      minHeight: controlHeights.field,
-      paddingHorizontal: theme.spacing[4],
-      borderRadius: theme.borderRadius.lg,
-    },
-    buttonLg: {
-      minHeight: controlHeights.field,
-      paddingHorizontal: theme.spacing[6],
       borderRadius: theme.borderRadius.xl,
     },
+    buttonSm: {
+      minHeight: buttonControlHeight.sm,
+      paddingHorizontal: theme.spacing[3],
+      borderRadius: theme.borderRadius.xl,
+    },
+    buttonMd: {
+      minHeight: buttonControlHeight.md,
+      paddingHorizontal: theme.spacing[4],
+      borderRadius: theme.borderRadius["2xl"],
+    },
+    buttonLg: {
+      minHeight: buttonControlHeight.lg,
+      paddingHorizontal: theme.spacing[6],
+      borderRadius: theme.borderRadius["2xl"],
+    },
     buttonText: {
-      fontSize: theme.fontSize.sm,
+      fontSize: theme.fontSize.base,
     },
     buttonTextXs: {
-      fontSize: theme.fontSize.xs,
+      fontSize: theme.fontSize.sm,
     },
+    alert,
     formTextInputSm: {
       ...fieldControlSm,
       ...fieldTextSm,
@@ -205,16 +269,20 @@ export function createControlGeometry(theme: Theme) {
     fieldTextSm,
     fieldTextMd,
     controlRest: {
-      borderWidth: theme.borderWidth[1],
-      borderColor: theme.colors.borderAccent,
+      borderWidth: controlBorderWidth,
+      borderColor: "transparent",
       outlineWidth: 0,
       outlineColor: "transparent",
     },
     controlHover: {
-      borderColor: theme.colors.borderInteractiveHover,
+      borderColor: theme.colors.borderAccent,
     },
     controlActive: {
-      borderColor: theme.colors.accent,
+      borderColor: theme.colors.borderAccent,
+      outlineColor: theme.colors.accent,
+      outlineOffset: CONTROL_FOCUS_RING_OFFSET,
+      outlineStyle: "solid" as const,
+      outlineWidth: CONTROL_FOCUS_RING_WIDTH,
     },
     controlFocusRingColor: {
       outlineColor: theme.colors.accent,
@@ -223,61 +291,41 @@ export function createControlGeometry(theme: Theme) {
       opacity: theme.opacity[50],
     },
     switchControl,
-    // Otto's segmented control is a boxed track with an inset thumb, NOT
-    // upstream's bare pill row. The track owns a fill and a radius, the segment
-    // is inset by `padding` and takes the matching nested radius. Zeroing the
-    // padding or dropping the container radius here does not just flatten the
-    // control, it leaves segmented-control.tsx painting a square `surface2`
-    // block behind fully-round segments. See docs/design.md.
     segmentedContainerXs: {
-      minHeight: controlHeights.tight,
-      padding: SEGMENTED_TIGHT_INSET,
-      borderRadius: segmentedContainerXsRadius,
+      minHeight: CONTROL_HEIGHTS.tight,
+      padding: 0,
     },
     segmentedContainerSm: {
-      minHeight: controlHeights.compact,
-      padding: SEGMENTED_COMPACT_INSET,
-      borderRadius: segmentedContainerSmRadius,
+      minHeight: CONTROL_HEIGHTS.compact,
+      padding: 0,
     },
     segmentedContainerMd: {
-      minHeight: controlHeights.field,
-      padding: SEGMENTED_FIELD_INSET,
-      borderRadius: segmentedContainerMdRadius,
+      minHeight: CONTROL_HEIGHTS.field,
+      padding: 0,
     },
     segmentedSegmentXs: {
-      minHeight: controlHeights.tight - SEGMENTED_TIGHT_INSET * 2,
+      minHeight: CONTROL_HEIGHTS.tight - SEGMENTED_TIGHT_INSET * 2,
       paddingHorizontal: theme.spacing[2],
-      borderRadius: nestedRadius(segmentedContainerXsRadius, SEGMENTED_TIGHT_INSET),
+      borderRadius: theme.borderRadius.xl,
     },
     segmentedSegmentSm: {
-      minHeight: controlHeights.compact - SEGMENTED_COMPACT_INSET * 2,
+      minHeight: CONTROL_HEIGHTS.compact - SEGMENTED_COMPACT_INSET * 2,
       paddingHorizontal: theme.spacing[2],
-      borderRadius: nestedRadius(segmentedContainerSmRadius, SEGMENTED_COMPACT_INSET),
+      borderRadius: theme.borderRadius.xl,
     },
     segmentedSegmentMd: {
-      minHeight: controlHeights.field - SEGMENTED_FIELD_INSET * 2,
-      paddingHorizontal: theme.spacing[2],
-      borderRadius: nestedRadius(segmentedContainerMdRadius, SEGMENTED_FIELD_INSET),
+      minHeight: CONTROL_HEIGHTS.field - SEGMENTED_FIELD_INSET * 2,
+      paddingHorizontal: theme.spacing[3],
+      borderRadius: theme.borderRadius["2xl"],
     },
     segmentedLabelXs: {
-      fontSize: theme.fontSize.xs,
+      fontSize: theme.fontSize.sm,
     },
     segmentedLabelSm: {
-      fontSize: theme.fontSize.sm,
+      fontSize: theme.fontSize.base,
     },
     segmentedLabelMd: {
       fontSize: theme.fontSize.base,
     },
   };
 }
-
-/**
- * The three control heights every button, field, and segmented control is built from.
- * Exported so a row that hosts one of those controls can size itself from the same
- * numbers instead of guessing a height the control then outgrows.
- */
-export const CONTROL_HEIGHTS = {
-  tight: TIGHT_CONTROL_HEIGHT,
-  compact: COMPACT_CONTROL_HEIGHT,
-  field: FIELD_CONTROL_HEIGHT,
-};

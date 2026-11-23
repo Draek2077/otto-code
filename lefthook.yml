@@ -1,28 +1,23 @@
 pre-commit:
-  parallel: true
+  # OTTO(tooling): serialize normal checks to bound Windows commit-time memory.
+  parallel: false
   jobs:
     - name: format
       glob: "*.{css,js,json,jsonc,jsx,md,ts,tsx,yaml,yml}"
-      # Mirror oxfmt's ignorePatterns (oxfmt.json). Without these, a staged batch
-      # made up entirely of ignored files makes oxfmt exit non-zero with
-      # "Expected at least one target file", failing the hook on nothing.
       exclude:
         - "package-lock.json"
         - "**/package-lock.json"
-        - "vendor/**"
-        - "**/*.gen.ts"
-        - "**/*.gen.tsx"
-        - ".otto/knowledge/**"
-        - "AGENTS.md"
-        - "**/AGENTS.md"
-      run: npm run format:check:files -- {staged_files}
+        # OTTO(visualizer): match oxfmt's pinned-renderer exclusion before
+        # lefthook batches arguments; an all-ignored vendor batch exits 2.
+        - "vendor/agent-flow/**"
+        - "packages/app/src/otto/visualizer/visualizer-bundle.gen.ts"
+      run: npm run format:check:files -- --threads=1 {staged_files}
     - name: lint
       glob: "*.{js,jsx,ts,tsx}"
-      # Mirror oxlint's ignorePatterns (.oxlintrc.json) for the same reason.
+      # OTTO(visualizer): match the lint exclusion before argument batching too.
       exclude:
-        - ".dev/**"
-        - "packages/app/demo/staging/templates/**"
-        - "vendor/**"
-      run: npm run lint -- {staged_files}
+        - "vendor/agent-flow/**"
+        - "packages/app/src/otto/visualizer/visualizer-bundle.gen.ts"
+      run: npm run lint -- --threads=1 {staged_files}
     - name: typecheck
       run: npm run typecheck

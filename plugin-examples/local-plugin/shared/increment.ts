@@ -1,4 +1,4 @@
-import { defineRpc } from "@otto-code/plugin";
+import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const incrementRpc = defineRpc({

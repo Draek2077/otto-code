@@ -1,4 +1,5 @@
 import type { Logger } from "pino";
+import { generateCopilotContextText } from "../../otto/context-management/copilot-generation.js"; // OTTO(context-generation): native SDK utility denies every tool; normal ACP chats stay unchanged.
 import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 
 import type { AgentCapabilityFlags, AgentMode } from "../agent-sdk-types.js";
@@ -70,7 +71,6 @@ export const COPILOT_MODES: AgentMode[] = [
     id: COPILOT_ALLOW_ALL_MODE_ID,
     label: "Allow All",
     description: "Automatically approves all Copilot tool, path, and URL requests.",
-    isUnattended: true,
   },
 ];
 
@@ -80,6 +80,11 @@ interface CopilotACPAgentClientOptions {
 }
 
 export class CopilotACPAgentClient extends ACPAgentClient {
+  ottoGenerateContextText(
+    input: Parameters<typeof generateCopilotContextText>[0],
+  ): Promise<string> {
+    return generateCopilotContextText(input, this.runtimeSettings);
+  } // OTTO(context-generation)
   constructor(options: CopilotACPAgentClientOptions) {
     super({
       provider: "copilot",
@@ -210,6 +215,10 @@ export async function writeCopilotProviderMode(
   if (!requestsAllowAll) {
     return { handled: false };
   }
+  await context.connection.setSessionMode({
+    sessionId: context.sessionId,
+    modeId: COPILOT_AGENT_MODE_ID,
+  });
   const response = await context.connection.setSessionConfigOption({
     sessionId: context.sessionId,
     configId: COPILOT_ALLOW_ALL_CONFIG_ID,

@@ -1,17 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { withUnistyles } from "react-native-unistyles";
-import { usePaneSurface } from "@/panels/pane-context";
 import { RenderProfile } from "@/utils/render-profiler";
 import { createDiffPalette, retainDiffPalette } from "./palette";
 import { DiffSurface } from "./surface";
-import { StructuralDiffDocument } from "./structural-document";
 import type { DiffDocumentProps, DiffHeaderTypography, DiffPalette } from "./types";
 
 export type { DiffDocumentProps, WorkingDiffMode } from "./types";
 
 type ThemedDiffDocumentProps = DiffDocumentProps & {
   palette: DiffPalette;
-  surfaces: { workspace: string; explorer: string };
   headerTypography: DiffHeaderTypography;
 };
 
@@ -19,19 +16,8 @@ const EMPTY_PATHS: string[] = [];
 
 function ThemedDiffDocument(props: ThemedDiffDocumentProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const paneSurface = usePaneSurface();
-  const surface = paneSurface === "explorer" ? props.surfaces.explorer : props.surfaces.workspace;
-  const surfacePalette = useMemo(
-    () => ({
-      ...props.palette,
-      surface,
-      headerSurface: surface,
-      emptyBackground: surface,
-    }),
-    [props.palette, surface],
-  );
-  const paletteRef = useRef(surfacePalette);
-  paletteRef.current = retainDiffPalette(paletteRef.current, surfacePalette);
+  const paletteRef = useRef(props.palette);
+  paletteRef.current = retainDiffPalette(paletteRef.current, props.palette);
   const palette = paletteRef.current;
   const collapseState = props.mode.kind === "working" ? props.collapseState : null;
   const paths = collapseState?.paths ?? EMPTY_PATHS;
@@ -60,10 +46,6 @@ function ThemedDiffDocument(props: ThemedDiffDocumentProps) {
 
 const StyledDiffDocument = withUnistyles(ThemedDiffDocument, (theme) => ({
   palette: createDiffPalette(theme),
-  surfaces: {
-    workspace: theme.colors.surfaceWorkspace,
-    explorer: theme.colors.surfaceSidebarPanel,
-  },
   headerTypography: {
     family: theme.fontFamily.ui,
     size: theme.fontSize.base,
@@ -72,13 +54,20 @@ const StyledDiffDocument = withUnistyles(ThemedDiffDocument, (theme) => ({
 }));
 
 export function DiffDocument(props: DiffDocumentProps) {
+  // OTTO(structural-diff): both presentations share the same review surface.
+  const review = props.reviewPresentation;
+  const structural = review?.presentation === "structural";
+  const displayPreferences = useMemo(
+    () => ({
+      ...props.displayPreferences,
+      layout: structural ? ("split" as const) : props.displayPreferences.layout,
+      structural,
+    }),
+    [props.displayPreferences, structural],
+  );
   return (
     <RenderProfile id="DiffDocument">
-      {props.presentation === "structural" ? (
-        <StructuralDiffDocument {...props} />
-      ) : (
-        <StyledDiffDocument {...props} />
-      )}
+      <StyledDiffDocument {...props} displayPreferences={displayPreferences} />
     </RenderProfile>
   );
 }

@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { randomUUID } from "node:crypto";
 import { expect, type Page } from "@playwright/test";
 import { buildCreateAgentPreferences, buildSeededHost } from "./daemon-registry";
@@ -133,9 +134,9 @@ export async function primeAdditionalPage(page: Page): Promise<void> {
   const seedNonce = randomUUID();
   const { daemon, preferences } = buildSeededStoragePayload();
 
-  await page.route(/:(6868)\b/, (route) => route.abort());
-  await page.routeWebSocket(/:(6868)\b/, async (ws) => {
-    await ws.close({ code: 1008, reason: "Blocked connection to localhost:6868 during e2e." });
+  await page.route(/:(6767)\b/, (route) => route.abort());
+  await page.routeWebSocket(/:(6767)\b/, async (ws) => {
+    await ws.close({ code: 1008, reason: "Blocked connection to localhost:6767 during e2e." });
   });
   await page.addInitScript(
     ({ daemon: seededDaemon, preferences: seededPreferences, seedNonce: nonce }) => {
@@ -231,7 +232,7 @@ export async function closeWorkspaceAgentTab(page: Page, agentId: string): Promi
 export async function expectArchivedAgentFocused(page: Page, agentId: string): Promise<void> {
   await expectWorkspaceTabVisible(page, agentId);
   await expect(
-    page.getByText("This chat is archived").filter({ visible: true }).first(),
+    page.getByText("This agent is archived").filter({ visible: true }).first(),
   ).toBeVisible({
     timeout: 30_000,
   });

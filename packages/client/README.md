@@ -1,15 +1,15 @@
-# @otto-code/client
+# @getpaseo/client
 
-TypeScript SDK for building integrations on top of an Otto daemon.
+TypeScript SDK for building integrations on top of a Paseo daemon.
 
 ```bash
-npm install @otto-code/client
+npm install @getpaseo/client
 ```
 
 ```ts
-import { createOttoClient } from "@otto-code/client";
+import { createPaseoClient } from "@getpaseo/client";
 
-const client = createOttoClient({ url: "ws://127.0.0.1:6868/ws" });
+const client = createPaseoClient({ url: "ws://127.0.0.1:6767/ws" });
 await client.connect();
 
 const agent = await client.agents.create({
@@ -24,21 +24,21 @@ console.log(result.lastMessage);
 await client.close();
 ```
 
-The public API is the package root. Imports under `@otto-code/client/internal/*` are unsupported implementation details used by Otto's own packages.
+The public API is the package root. Imports under `@getpaseo/client/internal/*` are unsupported implementation details used by Paseo's own packages.
 
-Read the [SDK documentation](https://otto-code.me/docs/sdk) for agents, workspaces, terminals, provider discovery, events, recipes, and the API reference. Runnable TypeScript patterns also live in [`examples/`](./examples/README.md).
+Read the [SDK documentation](https://paseo.sh/docs/sdk) for agents, workspaces, terminals, provider discovery, events, recipes, and the API reference. Runnable TypeScript patterns also live in [`examples/`](./examples/README.md).
 
 ## Runtime
 
 The client needs a WebSocket implementation. Modern browsers and Node.js 22 provide one globally.
 
-Use a WebSocket URL ending in `/ws`, such as `ws://127.0.0.1:6868/ws`. Pass `password` when the daemon requires authentication.
+Use a WebSocket URL ending in `/ws`, such as `ws://127.0.0.1:6767/ws`. Pass `password` when the daemon requires authentication.
 
 The client advertises its supported protocol capabilities by default. Optional `capabilities`
 overrides extend or override that declaration; browser hosting must be supplied by the caller.
 Connecting alone does not subscribe to agent timelines or catalog events. See the
-[event guide](https://otto-code.me/docs/sdk/events) for subscription lifetimes and timeline replacements.
+[event guide](https://paseo.sh/docs/sdk/events) for subscription lifetimes and timeline replacements.
 
 ## Stability
 
-The high-level API exported from `@otto-code/client` is the supported SDK surface. The SDK and daemon remain protocol-compatible across versions, but newly added capabilities can require a newer daemon.
+The high-level API exported from `@getpaseo/client` is the supported SDK surface. The SDK and daemon remain protocol-compatible across versions, but newly added capabilities can require a newer daemon.

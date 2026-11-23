@@ -1,10 +1,5 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  EMPTY_ATTACHMENT_STORE_USAGE,
-  type AttachmentMetadata,
-  type AttachmentStore,
-  type SaveAttachmentInput,
-} from "@/attachments/types";
+import { afterEach, describe, expect, it } from "vitest";
+import type { AttachmentMetadata, AttachmentStore, SaveAttachmentInput } from "@/attachments/types";
 import { __setAttachmentStoreForTests } from "./store";
 import {
   encodeAttachmentsForSend,
@@ -55,12 +50,6 @@ function createRecordingStore(): AttachmentStore & {
     },
     async delete() {},
     async garbageCollect() {},
-    async usage() {
-      return EMPTY_ATTACHMENT_STORE_USAGE;
-    },
-    async clearPreviews() {
-      return { deleted: 0, freedBytes: 0 };
-    },
   };
 }
 
@@ -108,29 +97,6 @@ describe("attachment service", () => {
     await expect(encodeAttachmentsForSend([attachment])).resolves.toEqual([
       { data: "att_send:base64", mimeType: "image/jpeg" },
     ]);
-  });
-
-  it("fails the entire send payload when any attachment cannot be encoded", async () => {
-    const store = createRecordingStore();
-    store.encodeBase64 = async ({ attachment }) => {
-      if (attachment.id === "att_missing") {
-        throw new Error("Attachment bytes are unavailable");
-      }
-      return `${attachment.id}:base64`;
-    };
-    __setAttachmentStoreForTests(store);
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
-    try {
-      await expect(
-        encodeAttachmentsForSend([
-          createAttachment({ id: "att_valid" }),
-          createAttachment({ id: "att_missing" }),
-        ]),
-      ).rejects.toThrow("Could not prepare 1 attachment for sending. Your message was not sent.");
-    } finally {
-      consoleError.mockRestore();
-    }
   });
 
   it("does not collect an attachment persisted while garbage collection is starting", async () => {

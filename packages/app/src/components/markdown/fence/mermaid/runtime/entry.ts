@@ -1,5 +1,4 @@
 import mermaid from "mermaid";
-import { applyMindmapTheme } from "../otto/mindmap-theme";
 import {
   parseMermaidRuntimeRenderMessage,
   type MermaidRuntimeMessage,
@@ -11,7 +10,7 @@ declare global {
     ReactNativeWebView?: {
       postMessage?: (data: string) => void;
     };
-    __OTTO_MERMAID_RUNTIME_RECEIVE__?: (message: unknown) => void;
+    __PASEO_MERMAID_RUNTIME_RECEIVE__?: (message: unknown) => void;
   }
 }
 
@@ -22,22 +21,12 @@ function sendToHost(message: MermaidRuntimeMessage): void {
   }
 }
 
-function initializeMermaid(
-  colorScheme: "light" | "dark",
-  themeVariables: Record<string, string>,
-): void {
-  // `base` is the only built-in theme that honours `themeVariables`, so the app
-  // palette rides in as concrete values (mermaid's khroma color math NaNs on
-  // anything var()-shaped). Without variables, fall back to the stock scheme
-  // theme so an empty payload still renders legibly.
-  const hasAppTheme = Object.keys(themeVariables).length > 0;
-  const stockTheme = colorScheme === "dark" ? "dark" : "default";
+function initializeMermaid(colorScheme: "light" | "dark"): void {
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: "strict",
     suppressErrorRendering: true,
-    theme: hasAppTheme ? "base" : stockTheme,
-    ...(hasAppTheme ? { themeVariables } : {}),
+    theme: colorScheme === "dark" ? "dark" : "default",
     secure: [
       "secure",
       "securityLevel",
@@ -107,8 +96,8 @@ function measureDiagram(host: HTMLElement, svg: SVGSVGElement | null): DiagramSi
 
 async function render(message: MermaidRuntimeRenderMessage): Promise<void> {
   try {
-    initializeMermaid(message.colorScheme, message.themeVariables);
-    const { svg } = await mermaid.render(`otto-mermaid-${message.revision}`, message.source);
+    initializeMermaid(message.colorScheme);
+    const { svg } = await mermaid.render(`paseo-mermaid-${message.revision}`, message.source);
     if (message.revision !== latestRevision) {
       return;
     }
@@ -118,20 +107,18 @@ async function render(message: MermaidRuntimeRenderMessage): Promise<void> {
       return;
     }
     host.innerHTML = svg;
-    applyMindmapTheme(host, message.themeVariables);
     const element = host.querySelector("svg");
     if (element) {
       stretchToFrame(element);
     }
     const size = measureDiagram(host, element);
-    const renderedSvg = element?.outerHTML;
     sendToHost({
       type: "rendered",
       revision: message.revision,
       source: message.source,
-      themeKey: message.themeKey,
-      ...size,
-      ...(renderedSvg ? { svg: renderedSvg } : {}),
+      colorScheme: message.colorScheme,
+      height: size.height,
+      width: size.width,
     });
   } catch {
     if (message.revision === latestRevision) {
@@ -173,7 +160,7 @@ function receiveRender(value: unknown): void {
   }, 0);
 }
 
-window.__OTTO_MERMAID_RUNTIME_RECEIVE__ = receiveRender;
+window.__PASEO_MERMAID_RUNTIME_RECEIVE__ = receiveRender;
 window.addEventListener("message", (event) => {
   if (event.source === window.parent) {
     receiveRender(event.data);

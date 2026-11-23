@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import type { ReactNode } from "react";
 
 export function FAQItem({ question, children }: { question: string; children: ReactNode }) {

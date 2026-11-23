@@ -1,6 +1,6 @@
 import type { Logger } from "pino";
 
-import type { OttoSpeechConfig } from "../../../bootstrap.js";
+import type { PaseoSpeechConfig } from "../../../bootstrap.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "../../speech-provider.js";
 import type { RequestedSpeechProviders } from "../../speech-types.js";
 import type { TurnDetectionProvider } from "../../turn-detection-provider.js";
@@ -45,7 +45,7 @@ export interface InitializedLocalSpeech {
   cleanup: () => void;
 }
 
-function resolveConfiguredLocalModels(speechConfig: OttoSpeechConfig | null): ResolvedLocalModels {
+function resolveConfiguredLocalModels(speechConfig: PaseoSpeechConfig | null): ResolvedLocalModels {
   return {
     dictationLocalSttModel: LocalSttModelIdSchema.parse(
       speechConfig?.local?.models.dictationStt ?? DEFAULT_LOCAL_STT_MODEL,
@@ -60,7 +60,7 @@ function resolveConfiguredLocalModels(speechConfig: OttoSpeechConfig | null): Re
 }
 
 export function getLocalSpeechAvailability(
-  speechConfig: OttoSpeechConfig | null,
+  speechConfig: PaseoSpeechConfig | null,
 ): LocalSpeechAvailability {
   const localConfig = speechConfig?.local ?? null;
   return {
@@ -136,7 +136,7 @@ function initializeLocalVoiceTts(params: {
 
 export async function initializeLocalSpeechServices(params: {
   providers: RequestedSpeechProviders;
-  speechConfig: OttoSpeechConfig | null;
+  speechConfig: PaseoSpeechConfig | null;
   logger: Logger;
 }): Promise<InitializedLocalSpeech> {
   const { providers, logger, speechConfig } = params;
@@ -212,7 +212,9 @@ export async function initializeLocalSpeechServices(params: {
     sttService,
     ttsService,
     dictationSttService,
-    localVoiceTtsProvider,
+    localVoiceTtsProvider:
+      localVoiceTtsProvider ??
+      (workerClient ? initializeLocalVoiceTts({ client: workerClient }) : null), // OTTO(profile-voice): same lazy worker for installed per-utterance voices.
     localModelConfig: localConfig
       ? {
           modelsDir: localConfig.modelsDir,

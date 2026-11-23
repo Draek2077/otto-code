@@ -14,7 +14,7 @@ import {
   getRealProviderRuntimeSettings,
 } from "./real-provider-test-config.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestOttoDaemon, type TestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon, type TestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
 type NativeProvider = "claude" | "codex" | "opencode";
 
@@ -32,7 +32,7 @@ async function withNativeConversation(
   const cwd = path.join(root, "workspace");
   mkdirSync(cwd);
   const logger = pino({ level: "warn" });
-  let daemon: TestOttoDaemon | undefined;
+  let daemon: TestPaseoDaemon | undefined;
   let client: DaemonClient | undefined;
   let openCode: OpenCodeAgentClient | undefined;
   let openCodeRuntimeRoot: string | undefined;
@@ -54,14 +54,14 @@ async function withNativeConversation(
       providerClient = openCode;
       config = getRealProviderConfig("opencode");
     }
-    daemon = await createTestOttoDaemon({
+    daemon = await createTestPaseoDaemon({
       agentClients: { [provider]: providerClient },
       logger,
       pluginsEnabled: false,
     });
     client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws`, appVersion: "0.7.2" });
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "native-reload-qa" } });
+    await client.fetchAgents({ subscribe: {} });
     const agent = await client.createAgent({ provider, cwd, ...config });
     process.stdout.write(`${provider}: model=${agent.model ?? "default"}\n`);
     const manager = daemon.daemon.agentManager;

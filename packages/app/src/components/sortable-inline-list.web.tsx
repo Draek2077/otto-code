@@ -12,29 +12,18 @@ import {
   SortableContext,
   sortableKeyboardCoordinates,
   horizontalListSortingStrategy,
-  verticalListSortingStrategy,
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import type { DraggableRenderItemInfo } from "./draggable-list.types";
 import { useDragReorderState } from "./drag-reorder";
 
-type SortableListOrientation = "horizontal" | "vertical";
-
 const restrictToHorizontalAxis: Modifier = ({ transform }) => ({
   ...transform,
   y: 0,
 });
 
-const restrictToVerticalAxis: Modifier = ({ transform }) => ({
-  ...transform,
-  x: 0,
-});
-
-const DND_MODIFIERS_BY_ORIENTATION: Record<SortableListOrientation, Modifier[]> = {
-  horizontal: [restrictToHorizontalAxis],
-  vertical: [restrictToVerticalAxis],
-};
+const DND_MODIFIERS: Modifier[] = [restrictToHorizontalAxis];
 
 function computeDragOpacity(hasExternalContext: boolean, isDragging: boolean): number {
   if (!isDragging) return 1;
@@ -134,7 +123,6 @@ export function SortableInlineList<T>({
   externalDndContext = false,
   activeId: externalActiveId = null,
   getItemData,
-  orientation = "horizontal",
 }: {
   data: T[];
   keyExtractor: (item: T, index: number) => string;
@@ -147,7 +135,6 @@ export function SortableInlineList<T>({
   externalDndContext?: boolean;
   activeId?: string | null;
   getItemData?: (item: T, index: number) => Record<string, unknown>;
-  orientation?: SortableListOrientation;
 }): ReactElement {
   const {
     activeId: internalActiveId,
@@ -179,11 +166,8 @@ export function SortableInlineList<T>({
     [items, keyExtractor],
   );
 
-  const sortingStrategy =
-    orientation === "vertical" ? verticalListSortingStrategy : horizontalListSortingStrategy;
-
   const renderedItems = (
-    <SortableContext items={ids} strategy={sortingStrategy}>
+    <SortableContext items={ids} strategy={horizontalListSortingStrategy}>
       {items.map((item, index) => {
         const id = keyExtractor(item, index);
         return (
@@ -212,7 +196,7 @@ export function SortableInlineList<T>({
     <DndContext
       sensors={sensors}
       collisionDetection={closestCenter}
-      modifiers={DND_MODIFIERS_BY_ORIENTATION[orientation]}
+      modifiers={DND_MODIFIERS}
       onDragStart={handlers.onDragStart}
       onDragCancel={handlers.onDragCancel}
       onDragEnd={handlers.onDragEnd}

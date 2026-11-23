@@ -12,17 +12,13 @@ import type {
 import { createGitMutationService } from "./git-mutation-service.js";
 
 // The production module reads only WorkspaceGitService.{validateBranchRef,getSnapshot,
-// hasLocalBranch,invalidateForge,invalidateAuxiliaryReads}. The fake below implements exactly that slice as an
+// hasLocalBranch,invalidateForge}. The fake below implements exactly that slice as an
 // in-memory adapter; the happy-path tests cross the real git boundary against a temp repo,
 // since that is where checkoutResolvedBranch / `git checkout -b` actually run.
 
 type GitSource = Pick<
   WorkspaceGitService,
-  | "validateBranchRef"
-  | "getSnapshot"
-  | "hasLocalBranch"
-  | "invalidateForge"
-  | "invalidateAuxiliaryReads"
+  "validateBranchRef" | "getSnapshot" | "hasLocalBranch" | "invalidateForge"
 >;
 
 const logger = pino({ level: "silent" });
@@ -40,7 +36,6 @@ function createFakeGit(opts: FakeGitOptions = {}) {
   const branchExists = opts.branchExists ?? false;
   const snapshotCalls: Array<{ cwd: string; force: boolean; reason?: string }> = [];
   const invalidateCalls: Array<{ cwd: string }> = [];
-  const auxiliaryInvalidateCalls: Array<{ cwd: string }> = [];
   const git: GitSource = {
     async validateBranchRef() {
       return resolution;
@@ -58,18 +53,14 @@ function createFakeGit(opts: FakeGitOptions = {}) {
     invalidateForge(cwd) {
       invalidateCalls.push({ cwd });
     },
-    invalidateAuxiliaryReads(cwd) {
-      auxiliaryInvalidateCalls.push({ cwd });
-    },
   };
-  return { git, snapshotCalls, invalidateCalls, auxiliaryInvalidateCalls };
+  return { git, snapshotCalls, invalidateCalls };
 }
 
 function buildService(gitOptions: FakeGitOptions = {}) {
-  const { git, snapshotCalls, invalidateCalls, auxiliaryInvalidateCalls } =
-    createFakeGit(gitOptions);
+  const { git, snapshotCalls, invalidateCalls } = createFakeGit(gitOptions);
   const service = createGitMutationService({ workspaceGitService: git, logger });
-  return { service, snapshotCalls, invalidateCalls, auxiliaryInvalidateCalls };
+  return { service, snapshotCalls, invalidateCalls };
 }
 
 const tempRepos: string[] = [];
@@ -80,7 +71,7 @@ function initRepo(extraBranch?: string): string {
   const run = (...args: string[]) => execFileSync("git", args, { cwd: dir, stdio: "pipe" });
   run("init", "-b", "main");
   run("config", "user.email", "test@example.com");
-  run("config", "user.name", "Otto Test");
+  run("config", "user.name", "Paseo Test");
   writeFileSync(join(dir, "README.md"), "hello\n");
   run("add", "-A");
   run("commit", "-m", "init");
@@ -92,6 +83,43 @@ function initRepo(extraBranch?: string): string {
 
 function headBranch(dir: string): string {
   return execFileSync("git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: dir }).toString().trim();
+}
+
+// A clone whose local branch tracks origin/main. Upstream inheritance only shows up
+// against a real remote, so these fixtures cross the git boundary like the happy paths above.
+function initClonedRepo(): string {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "git-mutation-clone-")));
+  tempRepos.push(root);
+  const remote = join(root, "remote.git");
+  const seed = join(root, "seed");
+  const work = join(root, "work");
+  function run(cwd: string, ...args: string[]): void {
+    execFileSync("git", args, { cwd, stdio: "pipe" });
+  }
+  execFileSync("git", ["init", "--bare", "-b", "main", remote], { cwd: root, stdio: "pipe" });
+  execFileSync("git", ["clone", "--quiet", remote, seed], { cwd: root, stdio: "pipe" });
+  run(seed, "config", "user.email", "test@example.com");
+  run(seed, "config", "user.name", "Paseo Test");
+  writeFileSync(join(seed, "README.md"), "hello\n");
+  run(seed, "add", "-A");
+  run(seed, "commit", "-m", "init");
+  run(seed, "push", "--quiet", "-u", "origin", "main");
+  execFileSync("git", ["clone", "--quiet", remote, work], { cwd: root, stdio: "pipe" });
+  run(work, "config", "user.email", "test@example.com");
+  run(work, "config", "user.name", "Paseo Test");
+  return work;
+}
+
+// Always exits 0 and prints an empty line when the branch has no upstream, so a git or
+// process failure surfaces as a throw instead of being read as "no upstream".
+function upstreamOf(dir: string, branch: string): string {
+  return execFileSync(
+    "git",
+    ["for-each-ref", "--format=%(upstream:short)", `refs/heads/${branch}`],
+    { cwd: dir, stdio: ["pipe", "pipe", "pipe"] },
+  )
+    .toString()
+    .trim();
 }
 
 afterEach(() => {
@@ -198,6 +226,40 @@ describe("createBranchFromBase", () => {
     expect(invalidateCalls).toEqual([]);
     expect(snapshotCalls).toContainEqual({ cwd: dir, force: true, reason: "create-branch" });
   });
+
+  // https://github.com/getpaseo/paseo/issues/5213 — a branch that tracks origin/main sends the
+  // next push to main: `git push` under push.default=tracking and Paseo's own push both read
+  // branch.<name>.merge. A branch Paseo creates must carry no upstream, exactly as the worktree
+  // path already guarantees with `git worktree add -b <branch> --no-track <base>`.
+  test("leaves no upstream when the base is a remote-tracking ref (real repo)", async () => {
+    const dir = initClonedRepo();
+    const { service } = buildService({
+      resolution: { kind: "remote-only", name: "main", remoteRef: "origin/main" },
+    });
+    await service.createBranchFromBase({
+      cwd: dir,
+      baseBranch: "origin/main",
+      newBranchName: "feature-from-remote",
+    });
+    expect(headBranch(dir)).toBe("feature-from-remote");
+    expect(upstreamOf(dir, "feature-from-remote")).toBe("");
+  });
+
+  test("leaves no upstream when git is configured to inherit tracking (real repo)", async () => {
+    const dir = initClonedRepo();
+    execFileSync("git", ["config", "branch.autoSetupMerge", "inherit"], {
+      cwd: dir,
+      stdio: "pipe",
+    });
+    const { service } = buildService({ resolution: { kind: "local", name: "main" } });
+    await service.createBranchFromBase({
+      cwd: dir,
+      baseBranch: "main",
+      newBranchName: "feature-inherited",
+    });
+    expect(headBranch(dir)).toBe("feature-inherited");
+    expect(upstreamOf(dir, "feature-inherited")).toBe("");
+  });
 });
 
 describe("notifyGitMutation", () => {
@@ -213,14 +275,6 @@ describe("notifyGitMutation", () => {
     await service.notifyGitMutation("/tmp/repo", "pull");
     expect(invalidateCalls).toEqual([]);
     expect(snapshotCalls).toEqual([{ cwd: "/tmp/repo", force: true, reason: "pull" }]);
-  });
-
-  test("drops the cached auxiliary reads for every mutation, forge or not", async () => {
-    // Without this, committing and then reading the uncommitted diff serves the
-    // files that were just committed for the rest of the 15s read cache.
-    const { service, auxiliaryInvalidateCalls } = buildService();
-    await service.notifyGitMutation("/tmp/repo", "commit-changes");
-    expect(auxiliaryInvalidateCalls).toEqual([{ cwd: "/tmp/repo" }]);
   });
 
   test("swallows a snapshot-refresh failure", async () => {

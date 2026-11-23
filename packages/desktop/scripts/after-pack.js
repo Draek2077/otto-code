@@ -1,11 +1,12 @@
 const fs = require("fs");
 const path = require("path");
-const { createHash } = require("crypto");
-const { extractFile, uncache } = require("@electron/asar");
+const { verifyWakeWordResources } = require("./otto/verify-wake-word"); // OTTO(wake-word)
 
 const { smokePackagedDesktopApp } = require("../e2e/packaged-app-smoke.js");
 
-const EXECUTABLE_NAME = "Otto";
+const { installLinuxLauncher } = require("./linux-sandbox");
+
+const EXECUTABLE_NAME = "Otto"; // OTTO(identity)
 
 // electron-builder arch enum → Node.js arch string
 const ARCH_MAP = { 0: "ia32", 1: "x64", 2: "armv7l", 3: "arm64", 4: "universal" };
@@ -15,141 +16,6 @@ const RIPGREP_PLATFORM_DIR = {
   linux: { arm64: "arm64-linux", x64: "x64-linux" },
   win32: { arm64: "arm64-win32", x64: "x64-win32" },
 };
-
-function getResourcesDir(appOutDir, platform) {
-  return platform === "darwin"
-    ? path.join(appOutDir, `${EXECUTABLE_NAME}.app`, "Contents", "Resources")
-    : path.join(appOutDir, "resources");
-}
-
-function verifyBundledConnectorOAuth(
-  appOutDir,
-  platform,
-  projectDir,
-  requireGoogle = process.env.OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT === "1",
-) {
-  const archive = path.join(getResourcesDir(appOutDir, platform), "app.asar");
-  const compiledDirectory = path.resolve(projectDir, "../server/dist/server/server/connectors");
-  // Verify the actual archive, not just the staging directory or a files glob.
-  // Slack and Dropbox public registrations compile into JS. Google also needs
-  // its publisher JSON beside the authorization module. Compare build output
-  // with the archive before an installer can be signed or published.
-  uncache(archive);
-  const googleAsset = "google-oauth-client.json";
-  const hasGoogleAsset = fs.existsSync(path.join(compiledDirectory, googleAsset));
-  if (requireGoogle && !hasGoogleAsset) {
-    throw new Error("Google sign-in registration is required for this release.");
-  }
-  for (const file of [
-    "connector-oauth.js",
-    "connector-oauth-registration.js",
-    "google-connector-authorization.js",
-    googleAsset,
-  ]) {
-    const entry = path.join(
-      "node_modules",
-      "@otto-code",
-      "server",
-      "dist",
-      "server",
-      "server",
-      "connectors",
-      file,
-    );
-    let bundled;
-    try {
-      bundled = extractFile(archive, entry);
-    } catch {
-      if (file === googleAsset && !hasGoogleAsset) continue;
-      throw new Error(`Bundled connector OAuth runtime is missing: ${entry}`);
-    }
-    if (file === googleAsset && !hasGoogleAsset) {
-      throw new Error("Bundled Google registration is unexpected for this unconfigured build.");
-    }
-    const expected = fs.readFileSync(path.join(compiledDirectory, file));
-    if (expected.length === 0 || !expected.equals(bundled)) {
-      throw new Error(`Bundled connector OAuth runtime is stale or empty: ${entry}`);
-    }
-  }
-  console.log("Verified bundled connector OAuth runtime and publisher registrations.");
-}
-
-function verifyBundledZoomRecorder(appOutDir, platform, arch) {
-  // The helper is a native binary frozen on its target architecture. It is
-  // deliberately absent from unsupported targets, where the renderer hides
-  // Recorder instead of shipping an executable that cannot run.
-  if (arch !== "x64" || (platform !== "linux" && platform !== "win32")) {
-    return;
-  }
-
-  const executableName = platform === "win32" ? "otto-zoom-recorder.exe" : "otto-zoom-recorder";
-  const executablePath = path.join(
-    getResourcesDir(appOutDir, platform),
-    "zoom-recorder",
-    executableName,
-  );
-  if (!fs.existsSync(executablePath)) {
-    throw new Error(`Bundled Zoom Recorder helper is missing: ${executablePath}`);
-  }
-
-  const stat = fs.statSync(executablePath);
-  if (!stat.isFile() || stat.size === 0) {
-    throw new Error(`Bundled Zoom Recorder helper is invalid: ${executablePath}`);
-  }
-  if (platform !== "win32") {
-    fs.accessSync(executablePath, fs.constants.X_OK);
-  }
-
-  console.log(`Verified bundled Zoom Recorder helper: ${executableName}`);
-}
-
-function verifyBundledWakeWordModel(appOutDir, platform) {
-  const modelDir = path.join(getResourcesDir(appOutDir, platform), "wake-word");
-  const manifestPath = path.join(modelDir, "model.json");
-  if (!fs.existsSync(manifestPath)) {
-    throw new Error(`Bundled wake-word manifest is missing: ${manifestPath}`);
-  }
-
-  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-  const assetNames = Object.values(manifest.assets || {});
-  if (assetNames.length === 0) {
-    throw new Error(`Bundled wake-word manifest has no assets: ${manifestPath}`);
-  }
-  for (const legalFile of ["LICENSE-APACHE-2.0.txt", "THIRD_PARTY_NOTICES.md"]) {
-    const legalPath = path.join(modelDir, legalFile);
-    if (!fs.existsSync(legalPath)) {
-      throw new Error(`Bundled wake-word legal notice is missing: ${legalPath}`);
-    }
-  }
-
-  for (const assetName of assetNames) {
-    if (typeof assetName !== "string") {
-      throw new Error(`Bundled wake-word manifest has an invalid asset name: ${manifestPath}`);
-    }
-    const assetPath = path.join(modelDir, assetName);
-    if (!fs.existsSync(assetPath)) {
-      throw new Error(`Bundled wake-word asset is missing: ${assetPath}`);
-    }
-
-    const expectedBytes = manifest.assetBytes?.[assetName];
-    const actualBytes = fs.statSync(assetPath).size;
-    if (actualBytes !== expectedBytes) {
-      throw new Error(
-        `Bundled wake-word asset size mismatch for ${assetName}: expected ${expectedBytes}, got ${actualBytes}`,
-      );
-    }
-
-    const expectedSha256 = manifest.assetSha256?.[assetName];
-    const actualSha256 = createHash("sha256").update(fs.readFileSync(assetPath)).digest("hex");
-    if (actualSha256 !== expectedSha256) {
-      throw new Error(
-        `Bundled wake-word asset checksum mismatch for ${assetName}: expected ${expectedSha256}, got ${actualSha256}`,
-      );
-    }
-  }
-
-  console.log(`Verified bundled wake-word model: ${assetNames.length} assets`);
-}
 
 function rmSafe(target) {
   fs.rmSync(target, { recursive: true, force: true });
@@ -173,7 +39,7 @@ function pruneClaudeAgentSdk(nodeModules, platform, arch) {
   }
 
   // SDK ≥0.2.113 ships per-platform Claude Code binaries via optionalDependencies
-  // (~210 MB each). Otto requires user-installed `claude` on PATH, matching how
+  // (~210 MB each). Paseo requires user-installed `claude` on PATH, matching how
   // Codex/OpenCode are integrated, so drop every bundled copy.
   const anthropicDir = path.join(nodeModules, "@anthropic-ai");
   if (fs.existsSync(anthropicDir)) {
@@ -211,7 +77,10 @@ function pruneSharpLibvips(nodeModules, platform, arch) {
 }
 
 function pruneNativeModules(appOutDir, platform, arch) {
-  const resourcesDir = getResourcesDir(appOutDir, platform);
+  const resourcesDir =
+    platform === "darwin"
+      ? path.join(appOutDir, `${EXECUTABLE_NAME}.app`, "Contents", "Resources")
+      : path.join(appOutDir, "resources");
 
   const nodeModules = path.join(resourcesDir, "app.asar.unpacked", "node_modules");
   if (!fs.existsSync(nodeModules)) return;
@@ -246,11 +115,20 @@ function fmtMB(bytes) {
 exports.default = async function afterPack(context) {
   const platform = context.electronPlatformName;
   const arch = ARCH_MAP[context.arch] || process.arch;
+  // OTTO(wake-word): fail the installer before distributing corrupt/missing models.
+  verifyWakeWordResources(
+    platform === "darwin"
+      ? path.join(context.appOutDir, `${EXECUTABLE_NAME}.app`, "Contents", "Resources")
+      : path.join(context.appOutDir, "resources"),
+  );
 
-  verifyBundledConnectorOAuth(context.appOutDir, platform, context.packager.projectDir);
-  verifyBundledZoomRecorder(context.appOutDir, platform, arch);
-  verifyBundledWakeWordModel(context.appOutDir, platform);
+  // OTTO(zoom-recorder): x64 Windows and Linux must ship a usable native helper.
+  require("./otto/verify-zoom-recorder.js").verifyZoomRecorder(context.appOutDir, platform, arch);
   pruneNativeModules(context.appOutDir, platform, arch);
+
+  if (platform === "linux") {
+    installLinuxLauncher(context.appOutDir);
+  }
 
   if (platform === "linux" || platform === "win32") {
     if (arch !== process.arch) {
@@ -263,12 +141,8 @@ exports.default = async function afterPack(context) {
   }
 };
 
-exports.verifyBundledWakeWordModel = verifyBundledWakeWordModel;
-exports.verifyBundledZoomRecorder = verifyBundledZoomRecorder;
-exports.verifyBundledConnectorOAuth = verifyBundledConnectorOAuth;
-
 async function smokeUnpackedAppIfRequested(appOutDir) {
-  if (process.env.OTTO_DESKTOP_SMOKE !== "1") {
+  if (process.env.PASEO_DESKTOP_SMOKE !== "1") {
     return;
   }
 

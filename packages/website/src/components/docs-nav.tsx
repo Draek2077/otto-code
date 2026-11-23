@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { Link, useLocation } from "@tanstack/react-router";
 import { ChevronDownIcon, ChevronRightIcon } from "~/components/material-icons";
 import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";

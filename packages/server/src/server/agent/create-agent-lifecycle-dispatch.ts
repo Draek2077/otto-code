@@ -2,29 +2,27 @@ import { randomUUID } from "node:crypto";
 import type pino from "pino";
 
 import type { ForgeService } from "../../services/forge-service.js";
-import { isOttoOwnedWorktreeCwd } from "../../utils/worktree.js";
+import { isPaseoOwnedWorktreeCwd } from "../../utils/worktree.js";
 import { archiveByScope, type ActiveWorkspaceRef } from "../workspace-archive-service.js";
 import type {
-  CreateOttoWorktreeWorkflowFn,
-  CreateOttoWorktreeWorkflowResult,
+  CreatePaseoWorktreeWorkflowFn,
+  CreatePaseoWorktreeWorkflowResult,
+  CreatePaseoWorktreeSetupContinuationInput,
+  NormalizedGitOptions,
 } from "../worktree-session.js";
 import type { WorkspaceGitService } from "../workspace-git-service.js";
-import type {
-  CreateAgentWorktreeTarget,
-  FirstAgentContext,
-  SessionOutboundMessage,
-} from "../messages.js";
+import type { FirstAgentContext, SessionOutboundMessage } from "../messages.js";
 import type { AgentManager, AgentSubscriber, SubscribeOptions } from "./agent-manager.js";
 import type { AgentStorage } from "./agent-storage.js";
 
 interface CreateAgentLifecycleDispatchDependencies {
-  ottoHome: string;
+  paseoHome: string;
   worktreesRoot?: string;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   github: ForgeService;
   workspaceGitService: WorkspaceGitService;
-  createOttoWorktreeWorkflow: CreateOttoWorktreeWorkflowFn;
+  createPaseoWorktreeWorkflow: CreatePaseoWorktreeWorkflowFn;
   archiveAgentForClose: (agentId: string) => Promise<unknown>;
   findWorkspaceIdForCwd: (cwd: string) => Promise<string | null>;
   listActiveWorkspaces: () => Promise<ActiveWorkspaceRef[]>;
@@ -50,7 +48,7 @@ const inactiveRegistration: LifecycleRegistration = { cancel: async () => undefi
 
 type AutoArchiveTarget =
   | { kind: "agent-only" }
-  | { kind: "created-worktree"; result: CreateOttoWorktreeWorkflowResult };
+  | { kind: "created-worktree"; result: CreatePaseoWorktreeWorkflowResult };
 
 export class CreateAgentLifecycleDispatch {
   private readonly autoArchiveAgentIds = new Set<string>();
@@ -59,24 +57,40 @@ export class CreateAgentLifecycleDispatch {
 
   async createWorktreeForRequest(input: {
     cwd: string;
-    target: CreateAgentWorktreeTarget | undefined;
+    target: NormalizedGitOptions | null;
     firstAgentContext: FirstAgentContext;
-    hasLegacyGitOptions: boolean;
-  }): Promise<CreateOttoWorktreeWorkflowResult | null> {
-    if (input.target && input.hasLegacyGitOptions) {
-      throw new Error("create_agent_request worktree cannot be combined with git options");
-    }
-    if (!input.target) {
-      return null;
-    }
-
-    return this.createWorktreeForTarget(input.cwd, input.target, input.firstAgentContext);
+    setupContinuation?: CreatePaseoWorktreeSetupContinuationInput;
+    background?: boolean;
+    callerWorkspaceId?: string;
+  }): Promise<CreatePaseoWorktreeWorkflowResult | null> {
+    const target = input.target;
+    if (!target?.createWorktree) return null;
+    return this.dependencies.createPaseoWorktreeWorkflow(
+      {
+        cwd: input.cwd,
+        background: input.background,
+        callerWorkspaceId: input.callerWorkspaceId,
+        firstAgentContext: input.firstAgentContext,
+        worktreeSlug: target.worktreeSlug,
+        refName: target.refName,
+        action: target.action,
+        checkoutSource: target.checkoutSource,
+        githubPrNumber: target.githubPrNumber,
+        runSetup: false,
+        paseoHome: this.dependencies.paseoHome,
+        worktreesRoot: this.dependencies.worktreesRoot,
+      },
+      {
+        ...(target.baseBranch ? { resolveDefaultBranch: async () => target.baseBranch! } : {}),
+        setupContinuation: input.setupContinuation,
+      },
+    );
   }
 
   registerAutoArchiveIfRequested(input: {
     autoArchive: boolean | undefined;
     agentId: string;
-    createdWorktree: CreateOttoWorktreeWorkflowResult | null;
+    createdWorktree: CreatePaseoWorktreeWorkflowResult | null;
   }): LifecycleRegistration {
     if (input.autoArchive !== true) {
       return inactiveRegistration;
@@ -89,7 +103,7 @@ export class CreateAgentLifecycleDispatch {
   }
 
   async cleanupCreatedWorktreeAfterFailedAgentCreate(input: {
-    createdWorktree: CreateOttoWorktreeWorkflowResult | null;
+    createdWorktree: CreatePaseoWorktreeWorkflowResult | null;
     createdAgentId: string | null;
   }): Promise<void> {
     const { createdWorktree, createdAgentId } = input;
@@ -109,47 +123,6 @@ export class CreateAgentLifecycleDispatch {
         "Failed to clean up worktree after create_agent_request failed",
       );
     });
-  }
-
-  private async createWorktreeForTarget(
-    cwd: string,
-    target: CreateAgentWorktreeTarget,
-    firstAgentContext: FirstAgentContext,
-  ): Promise<CreateOttoWorktreeWorkflowResult> {
-    const baseInput = {
-      cwd,
-      firstAgentContext,
-      runSetup: false,
-      ottoHome: this.dependencies.ottoHome,
-      worktreesRoot: this.dependencies.worktreesRoot,
-    } as const;
-
-    switch (target.mode) {
-      case "branch-off":
-        return this.dependencies.createOttoWorktreeWorkflow(
-          {
-            ...baseInput,
-            worktreeSlug: target.newBranch,
-            action: "branch-off",
-            ...(target.base ? { refName: target.base } : {}),
-          },
-          target.base ? { resolveDefaultBranch: async () => target.base! } : undefined,
-        );
-      case "checkout-branch":
-        return this.dependencies.createOttoWorktreeWorkflow({
-          ...baseInput,
-          action: "checkout",
-          refName: target.branch,
-        });
-      case "checkout-pr":
-        return this.dependencies.createOttoWorktreeWorkflow({
-          ...baseInput,
-          action: "checkout",
-          githubPrNumber: target.prNumber,
-        });
-      default:
-        throw new Error("Unsupported create_agent_request worktree target");
-    }
   }
 
   private registerAutoArchiveOnTerminalState(
@@ -186,22 +159,23 @@ export class CreateAgentLifecycleDispatch {
 
   private async archiveAutoCreatedWorktree(options: {
     agentId: string | null;
-    createdWorktree: CreateOttoWorktreeWorkflowResult;
+    createdWorktree: CreatePaseoWorktreeWorkflowResult;
   }): Promise<void> {
     const { createdWorktree } = options;
     const worktreePath = createdWorktree.worktree.worktreePath;
-    const ownership = await isOttoOwnedWorktreeCwd(worktreePath, {
-      ottoHome: this.dependencies.ottoHome,
+    const ownership = await isPaseoOwnedWorktreeCwd(worktreePath, {
+      paseoHome: this.dependencies.paseoHome,
       worktreesRoot: this.dependencies.worktreesRoot,
     });
     if (!ownership.allowed) {
-      throw new Error("Auto-created worktree is not a Otto-owned worktree");
+      // OTTO(identity)
+      throw new Error("Auto-created worktree is not an Otto-owned worktree");
     }
 
     await archiveByScope(
       {
-        ottoHome: this.dependencies.ottoHome,
-        ottoWorktreesBaseRoot: this.dependencies.worktreesRoot,
+        paseoHome: this.dependencies.paseoHome,
+        paseoWorktreesBaseRoot: this.dependencies.worktreesRoot,
         github: this.dependencies.github,
         workspaceGitService: this.dependencies.workspaceGitService,
         agentManager: this.dependencies.agentManager,
@@ -218,10 +192,6 @@ export class CreateAgentLifecycleDispatch {
       {
         scope: { kind: "workspace", workspaceId: createdWorktree.workspace.workspaceId },
         requestId: randomUUID(),
-        // Without the repo root, deleteOttoWorktree skips both `git worktree
-        // remove` and `git worktree prune` and only deletes the directory, so
-        // the parent repo kept listing the worktree we just tore down.
-        repoRoot: createdWorktree.repoRoot,
       },
     );
 
@@ -269,7 +239,7 @@ export function registerAgentAutoArchive(input: {
 }
 
 function toAutoArchiveTarget(
-  createdWorktree: CreateOttoWorktreeWorkflowResult | null,
+  createdWorktree: CreatePaseoWorktreeWorkflowResult | null,
 ): AutoArchiveTarget {
   return createdWorktree
     ? { kind: "created-worktree", result: createdWorktree }

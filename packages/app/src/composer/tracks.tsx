@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type ReactElement, type ReactNode } fro
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
+  MENU_ITEM_HEIGHT,
   MenuRoot,
   MenuSeparator,
   MenuSurface,
@@ -9,9 +10,7 @@ import {
   useMenuContext,
   type MenuTriggerState,
 } from "@/components/ui/menu";
-import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { StatusRing } from "@/components/status-ring";
-import { STATUS_RING_HALO_INSET } from "@/components/status-ring/geometry";
 import { isWeb } from "@/constants/platform";
 import { getStatusDotColor } from "@/utils/status-dot-color";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
@@ -33,11 +32,9 @@ import { COMPOSER_PILL_CLEARANCE, composerPillStyles } from "./pill-styles";
 export function ComposerTrackBar({ children }: { children: ReactNode }): ReactElement {
   return (
     <View style={styles.bar} pointerEvents="box-none">
-      <ChatWidthBounds style={styles.bounds}>
-        <View style={styles.track} pointerEvents="box-none">
-          {children}
-        </View>
-      </ChatWidthBounds>
+      <View style={styles.track} pointerEvents="box-none">
+        {children}
+      </View>
     </View>
   );
 }
@@ -274,20 +271,15 @@ export function ComposerTrackRow({
  * Each one is sized to the glyph you can see rather than to a slot wide enough for the largest of
  * them. The mark leads the pill, so a box wider than its glyph is padding on both sides at once:
  * it holds the dot off the pill's leading edge while the label runs flush to the trailing one, and
- * it opens a gap to its own label as wide as the gap to the next segment. The ring's halo is
- * knockout for marks that sit on top of an icon, and nothing sits under this one, so it comes off
- * too — leaving every mark's visible edge on the same rail whatever state it is in.
+ * it opens a gap to its own label as wide as the gap to the next segment.
  */
 function ComposerTrackMark({ bucket }: { bucket: SidebarStateBucket | null }): ReactElement | null {
   if (!bucket) {
     return null;
   }
   if (bucket === "running") {
-    return (
-      <View style={styles.ringMark}>
-        <StatusRing />
-      </View>
-    );
+    // OTTO(chat-identity): the plasma ring fills its frame, including on compact layouts.
+    return <StatusRing />;
   }
   return <View style={dotColorStyle(bucket)} />;
 }
@@ -315,6 +307,22 @@ const styles = StyleSheet.create((theme) => {
     backgroundColor: getStatusDotColor({ theme, bucket, showDoneAsInactive: true }) ?? undefined,
   });
 
+  // The rail every panel row sits on: inset from the panel edge so the fill is a rounded block
+  // inside it, and tall enough that revealing an action button cannot resize the row.
+  //
+  // Compact and desktop differ here and only here. A finger needs the taller row a menu row gets
+  // on compact; a pointer does not, and the popover keeps its density.
+  const trackRow = {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    minHeight: { xs: MENU_ITEM_HEIGHT.xs, md: 32 },
+    marginHorizontal: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: { xs: theme.spacing[2], md: theme.spacing[1] },
+    borderRadius: theme.borderRadius.md,
+  } as const;
+
   return {
     bar: {
       position: "absolute",
@@ -328,41 +336,15 @@ const styles = StyleSheet.create((theme) => {
         md: COMPOSER_PILL_CLEARANCE.wide,
       },
     },
-    // The bounds owns the user-selected Default/Wide/Full cap. This bar used
-    // to carry MAX_CONTENT_WIDTH itself, which silently made pill tracks ignore
-    // Wide and Full while the transcript and composer resized correctly.
-    bounds: {
-      width: "100%",
-    },
     track: {
       width: "100%",
+      maxWidth: theme.contentMaxWidth,
       flexDirection: "row",
       alignItems: "center",
       gap: theme.spacing[1],
     },
-    // The rail every panel row sits on: inset from the panel edge so the fill is a rounded block
-    // inside it, and tall enough that revealing an action button cannot resize the row.
-    row: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.spacing[2],
-      minHeight: 32,
-      marginHorizontal: theme.spacing[1],
-      paddingHorizontal: theme.spacing[2],
-      paddingVertical: theme.spacing[1],
-      borderRadius: theme.borderRadius.md,
-    },
-    rowActive: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: theme.spacing[2],
-      minHeight: 32,
-      marginHorizontal: theme.spacing[1],
-      paddingHorizontal: theme.spacing[2],
-      paddingVertical: theme.spacing[1],
-      borderRadius: theme.borderRadius.md,
-      backgroundColor: theme.colors.surface2,
-    },
+    row: trackRow,
+    rowActive: { ...trackRow, backgroundColor: theme.colors.surface2 },
     // Segments sit twice as far apart as a mark sits from its own text, so a count reads as
     // belonging to the mark on its left rather than to the words on its right.
     segments: {
@@ -378,10 +360,6 @@ const styles = StyleSheet.create((theme) => {
       flexShrink: 1,
       minWidth: 0,
       gap: theme.spacing[2],
-    },
-    // Trims the ring's halo so the circle you can see is the box, like the dot's box is the dot.
-    ringMark: {
-      margin: -STATUS_RING_HALO_INSET,
     },
     dotNeedsInput: statusDot("needs_input"),
     dotFailed: statusDot("failed"),

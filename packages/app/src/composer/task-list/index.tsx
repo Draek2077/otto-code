@@ -5,16 +5,12 @@ import { StyleSheet } from "react-native-unistyles";
 import { ComposerTrackPill, ComposerTrackRow } from "@/composer/tracks";
 import { TaskListRow } from "@/components/task-list-row";
 import type { TodoEntry } from "@/types/stream";
-import { useSessionStore } from "@/stores/session-store";
 
 export const AgentTaskList = memo(function AgentTaskList({
-  serverId,
-  agentId,
+  tasks,
 }: {
-  serverId: string;
-  agentId: string;
+  tasks: TodoEntry[] | undefined;
 }) {
-  const tasks = useSessionStore((state) => state.sessions[serverId]?.agentTasks.get(agentId));
   if (!tasks?.length) return null;
   return <TaskListCard tasks={tasks} />;
 });

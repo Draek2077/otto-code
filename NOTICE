@@ -8,6 +8,7 @@ This product is a modified fork of the Paseo project.
   Source: https://github.com/getpaseo
   Historical fork base: GNU Affero General Public License, version 3 (AGPL-3.0)
   Paseo v0.8.0 intake: Apache License, Version 2.0 (LICENSE-Paseo)
+  Otto 0.10.0 base: Paseo v0.12.0, Apache License, Version 2.0 (LICENSE-Paseo)
 
 ================================================================================
 Attribution and license
@@ -54,20 +55,25 @@ corresponding source code of your modified version.
 Summary of modifications relative to Paseo
 ================================================================================
 
-Otto begins as a rebrand of Paseo and is being developed toward a more
-autonomous AI coding IDE. Changes so far include, but are not limited to:
+Starting with Otto 0.10.0, Otto is built on an unmodified Paseo v0.12.0 source
+tree. Changes relative to Paseo include, but are not limited to:
 
-  * Project, product, and package renaming from "Paseo" to "Otto"
-    (npm scope "@getpaseo/*" -> "@otto-code/*", CLI command "paseo" -> "otto",
-    environment-variable prefix "PASEO_" -> "OTTO_", default data directory
-    "~/.paseo" -> "~/.otto", default daemon port 6767 -> 6868, marketing domain
-    paseo.sh -> otto-code.me, application bundle identifiers "sh.paseo*" ->
-    "me.ottocode*" for the mobile app and "ai.ottocode.desktop" for the desktop
-    app).
-  * Associated documentation, configuration, and asset updates for the new name.
+  * Product identity: the user-visible product name, icons and assets, the
+    published npm package scope ("@getpaseo/*" -> "@otto-code/*", applied when
+    packages are published), the CLI command ("paseo" -> "otto"), the default
+    data directory ("~/.paseo" -> "~/.otto"), the default daemon port
+    (6767 -> 6868), the project configuration file ("paseo.json" ->
+    "otto.json"), "OTTO_*" environment variables mapped onto Paseo's "PASEO_*"
+    names, the marketing domain (paseo.sh -> otto-code.me), and application
+    bundle identifiers ("me.ottocode*" for the mobile app, "ai.ottocode.desktop"
+    for the desktop app). Internal source identifiers keep their Paseo names.
+  * Otto features added in Otto-owned modules. Every edit Otto makes inside a
+    Paseo source file is marked with an "OTTO(<name>)" comment, which serves as
+    the prominent notice of modification for that file.
+  * Build, release, and documentation changes for Otto's distribution.
 
-Further functional changes made after the fork are recorded in the project's
-version-control history and CHANGELOG.
+Further functional changes are recorded in the project's version-control
+history and CHANGELOG.
 
 ================================================================================
 Third-party components

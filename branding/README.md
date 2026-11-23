@@ -60,7 +60,7 @@ All raster and derived assets (app icons, favicons + status variants, splash, PW
 desktop `.ico`/`.icns`, website logo/favicon) are generated from these masters:
 
 ```bash
-node scripts/generate-brand-assets.mjs
+node scripts/otto/generate-brand-assets.mjs
 ```
 
 Edit the masters (or the tile/badge parameters in the script), re-run, and commit the
@@ -70,20 +70,5 @@ truth for sizes, tile radii, and status-badge colors (blue `#3b82f6` running, gr
 
 ## Dev-build icons
 
-The same run also writes `packages/desktop/assets/dev/` - the desktop icon and the
-Windows/Linux tray icons over a navy tile (`DEV_TILE_COLOR`, blue-900 `#1e3a8a`)
-instead of the shipped black one. Running the installed Otto and a dev Otto side by
-side is the expected setup (see [docs/development.md](../docs/development.md) →
-"Lanes"), and identical black icons make the two taskbar buttons and tray
-entries indistinguishable.
-
-These never reach a release build. `packages/desktop/src/features/dev-icon.ts` only
-looks in `dev/` when `!app.isPackaged`, and nothing in `electron-builder.yml` copies
-that folder - `files:` ships `dist/**` only, `extraResources:` names individual asset
-files, and `linux.icon: assets` scans for loose `NxN.png`. A missing `dev/` folder
-falls back to the normal icon, so a checkout that has not run the generator still
-launches.
-
-There is no navy variant of the macOS **idle** tray icon: that one is a template
-image, and macOS re-tints template images for the menu-bar theme, so the fill would
-be discarded. It falls back to the shipped asset.
+The same generator writes `packages/desktop/assets/icon-dev.png` with a navy tile.
+Paseo's existing desktop icon resolver uses it only for unpackaged builds.

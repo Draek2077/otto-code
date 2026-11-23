@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, type Page } from "@playwright/test";
 import { buildCreateAgentPreferences, buildSeededHost, TEST_HOST_LABEL } from "./daemon-registry";
 import { getServerId } from "./server-id";
@@ -11,36 +12,6 @@ import {
 const DISABLE_DEFAULT_SEED_ONCE_KEY = "@otto:e2e-disable-default-seed-once";
 const SEED_NONCE_KEY = "@otto:e2e-seed-nonce";
 const REGISTRY_KEY = "@otto:daemon-registry";
-const APP_SETTINGS_KEY = "@otto:app-settings";
-
-/**
- * Seed device-local app settings before the app boots. Registers an init script
- * so the override survives every navigation and reload in the test; it merges
- * over whatever is already stored, so unrelated keys keep their defaults.
- *
- * Use this to pin appearance preferences a spec depends on. For example, the
- * assistant turn footer (copy / fork / timestamp) is hidden-until-hover by
- * default in 0.5.0 (`hideChatMessageDetails` defaults to true), which makes the
- * fork trigger unclickable on desktop web; seeding it to false keeps the footer
- * always visible so hover isn't required.
- */
-export async function seedAppSettings(page: Page, updates: Record<string, unknown>): Promise<void> {
-  await page.addInitScript(
-    ({ key, partial }) => {
-      let current: Record<string, unknown> = {};
-      try {
-        const raw = localStorage.getItem(key);
-        if (raw) {
-          current = JSON.parse(raw) as Record<string, unknown>;
-        }
-      } catch {
-        current = {};
-      }
-      localStorage.setItem(key, JSON.stringify({ ...current, ...partial }));
-    },
-    { key: APP_SETTINGS_KEY, partial: updates },
-  );
-}
 
 interface SavedSettingsHostInput {
   serverId: string;
@@ -50,9 +21,12 @@ interface SavedSettingsHostInput {
 
 const SECTION_LABELS = {
   general: "General",
-  appearance: "Appearance",
   chat: "Chat",
+  appearance: "Appearance",
+  sidebar: "Sidebar",
   editor: "Editor",
+  terminal: "Terminal",
+  browser: "Browser",
   shortcuts: "Shortcuts",
   integrations: "Integrations",
   permissions: "Permissions",
@@ -62,24 +36,15 @@ const SECTION_LABELS = {
 
 export type SettingsSection = keyof typeof SECTION_LABELS;
 
-// Mirrors HOST_SECTION_SLUGS in @/utils/host-routes. Personalities and teams
-// live under "teams" (split out of "agents"); agent-facing tool surfaces live
-// under "tools"; third-party MCP connectors live under "connectors".
 type HostSection =
   | "projects"
   | "connections"
   | "pair-device"
   | "agents"
-  | "teams"
-  | "tools"
-  | "connectors"
-  | "code"
-  | "brain"
   | "metadata"
   | "workspaces"
   | "providers"
   | "usage"
-  | "storage"
   | "terminals"
   | "plugins"
   | "host";
@@ -89,7 +54,7 @@ export async function openSettingsSection(page: Page, section: SettingsSection):
   await expect(sidebar).toBeVisible();
 
   await sidebar.getByRole("button", { name: SECTION_LABELS[section], exact: true }).click();
-  await expect.poll(() => new URL(page.url()).pathname).toBe(buildSettingsSectionRoute(section));
+  await expectAppRoute(page, buildSettingsSectionRoute(section));
 }
 
 export async function openSettingsHost(page: Page, serverId: string): Promise<void> {
@@ -106,14 +71,11 @@ export async function openSettingsHostSection(
   section: HostSection,
 ): Promise<void> {
   await page.getByTestId(`settings-host-section-${section}`).click();
-  // The settings sidebar appends a redundant ?hostSection=<section> query to
-  // the URL; assert the pathname so the section route is validated regardless.
-  const expectedPath = buildSettingsHostSectionRoute(serverId, section);
-  await expect.poll(() => new URL(page.url()).pathname, { timeout: 15_000 }).toBe(expectedPath);
+  await expectAppRoute(page, buildSettingsHostSectionRoute(serverId, section));
 }
 
 export async function expectSettingsHeader(page: Page, title: string): Promise<void> {
-  await expect(page.getByTestId("settings-detail-header-title")).toHaveText(title);
+  await expect(page.getByTestId("page-title")).toHaveText(title);
 }
 
 export async function openAddHostFlow(page: Page): Promise<void> {
@@ -134,12 +96,15 @@ export async function selectHostConnectionType(
 
 export async function addDirectHostFromSettings(
   page: Page,
-  input: { host: string; port: number },
+  input: { host: string; port: number; password?: string },
 ): Promise<void> {
   await openAddHostFlow(page);
   await selectHostConnectionType(page, "direct");
   await page.getByTestId("direct-host-input").fill(input.host);
   await page.getByTestId("direct-port-input").fill(String(input.port));
+  if (input.password) {
+    await page.getByTestId("direct-password-input").fill(input.password);
+  }
   await page.getByTestId("direct-host-submit").click();
   await expect(page.getByTestId("add-host-modal")).toHaveCount(0, { timeout: 30_000 });
 }
@@ -149,10 +114,7 @@ export async function toggleHostAdvanced(page: Page): Promise<void> {
 }
 
 export async function openCompactSettings(page: Page, expectedStartRoute: string): Promise<void> {
-  // A workspace may retain the query that selects its agent tab.
-  await expect
-    .poll(() => new URL(page.url()).pathname, { timeout: 15_000 })
-    .toBe(expectedStartRoute);
+  await expectAppRoute(page, expectedStartRoute, { timeout: 15_000 });
   await page.getByRole("button", { name: "Open menu", exact: true }).first().click();
   const settingsButton = page.locator('[data-testid="sidebar-settings"]:visible').first();
   await expect(settingsButton).toBeVisible();
@@ -268,13 +230,7 @@ export async function clickSettingsBackToWorkspace(page: Page): Promise<void> {
 }
 
 export async function expectHostSettingsUrl(page: Page, serverId: string): Promise<void> {
-  // Same redundant `?hostSection=<section>` query as `openSettingsHostSection` above: the
-  // settings sidebar pushes the section as a route param and expo-router echoes it into the
-  // search string on web. Assert the pathname so the route is validated either way - comparing
-  // pathname+search made every caller of this helper fail on a query string that carries no
-  // meaning.
-  const expectedPath = buildSettingsHostSectionRoute(serverId, "connections");
-  await expect.poll(() => new URL(page.url()).pathname, { timeout: 15_000 }).toBe(expectedPath);
+  await expectAppRoute(page, buildSettingsHostSectionRoute(serverId, "connections"));
 }
 
 export async function verifyLegacyHostSettingsRedirect(page: Page): Promise<void> {
@@ -329,11 +285,11 @@ export async function expectAboutContent(page: Page): Promise<void> {
 }
 
 export async function expectGeneralContent(page: Page): Promise<void> {
-  await expect(page.getByText("Language", { exact: true })).toBeVisible();
+  await expect(page.getByText("Default send", { exact: true }).first()).toBeVisible();
 }
 
 export async function expectAppearanceContent(page: Page): Promise<void> {
-  await expect(page.getByTestId("settings-color-scheme-mode")).toBeVisible();
+  await expect(page.getByText("Highlight theme", { exact: true }).first()).toBeVisible();
 }
 
 export async function expectHostLabelDisplayed(page: Page): Promise<void> {
@@ -415,7 +371,7 @@ export async function findAcpCatalogProvider(page: Page, providerName: string): 
 
 export async function installAcpCatalogProvider(page: Page, providerName: string): Promise<void> {
   await findAcpCatalogProvider(page, providerName);
-  await page.getByRole("button", { name: "Add", exact: true }).click();
+  await page.getByRole("button", { name: `Add ${providerName}`, exact: true }).click();
 }
 
 export async function expectProviderInstalledInSettings(
@@ -469,4 +425,32 @@ export async function expectLocalHostEntryFirst(page: Page, _serverId: string): 
   const picker = sidebar.getByTestId("settings-host-picker");
   await expect(picker).toBeVisible();
   await expect(picker.getByText(TEST_HOST_LABEL, { exact: true })).toBeVisible();
+}
+
+export async function expectHostRejectedWithReAddGuidance(
+  page: Page,
+  reason: string,
+): Promise<void> {
+  const error = page.getByTestId("host-connection-error");
+  await expect(error).toContainText(reason);
+  await expect(error).toContainText(
+    "Remove this host and add it again with the password this daemon asks for.",
+  );
+}
+
+export async function expectNoHostPasswordControls(page: Page): Promise<void> {
+  await expect(page.getByText("Password", { exact: true })).toHaveCount(0);
+  await expect(page.locator('input[type="password"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /password/i })).toHaveCount(0);
+}
+
+export async function removeHostFromHostPage(page: Page, serverId: string): Promise<void> {
+  await page.getByTestId("host-page-remove-host-button").click();
+  await page.getByTestId("remove-host-confirm").click();
+  await expect(page).not.toHaveURL(new RegExp(`/settings/hosts/${serverId}`));
+}
+
+export async function expectHostOnlineWithoutError(page: Page): Promise<void> {
+  await expect(page.getByTestId("host-page-identity")).toContainText("Online");
+  await expect(page.getByTestId("host-connection-error")).toHaveCount(0);
 }

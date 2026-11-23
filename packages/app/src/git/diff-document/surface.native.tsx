@@ -20,7 +20,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { scheduleOnRN } from "react-native-worklets";
 import { InlineReviewThread } from "@/review";
-import { useKeyboardShift } from "@/hooks/keyboard-shift-context";
+import { useKeyboardShift } from "@/keyboard/shift";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { DocumentFileHeader } from "./document-file-header";
 import {
@@ -111,6 +111,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const model = useMemo(() => {
     const dependencies = [
       props.displayPreferences.layout,
+      props.displayPreferences.structural, // OTTO(structural-diff)
       props.displayPreferences.wrapLines,
       viewport.width,
       typography,
@@ -127,6 +128,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       files: viewport.width > 0 ? props.files : [],
       collapsedFilePaths: props.collapsedFilePaths,
       layout: props.displayPreferences.layout,
+      structural: props.displayPreferences.structural, // OTTO(structural-diff)
       wrapLines: props.displayPreferences.wrapLines,
       viewportWidth: viewport.width,
       typography,
@@ -150,6 +152,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     fileWindowTop,
     props.collapsedFilePaths,
     props.displayPreferences.layout,
+    props.displayPreferences.structural, // OTTO(structural-diff)
     props.displayPreferences.wrapLines,
     props.files,
     props.palette,
@@ -256,9 +259,13 @@ export function DiffSurface(props: DiffSurfaceProps) {
       consumedFocusRef.current = requestKey;
     }
   }, [collapsedFilePaths, mode, model.files, onToggleFile, scrollTop]);
+  const contentInsetBottom = props.contentInsetBottom ?? 0;
   const contentStyle = useMemo(
-    () => ({ minHeight: Math.max(model.height, viewport.height), backgroundColor: "transparent" }),
-    [model.height, viewport.height],
+    () => ({
+      minHeight: Math.max(model.height, viewport.height) + contentInsetBottom,
+      backgroundColor: "transparent",
+    }),
+    [contentInsetBottom, model.height, viewport.height],
   );
   return (
     <View style={[styles.root, { backgroundColor: props.palette.surface }]} onLayout={layout}>

@@ -23,23 +23,23 @@ import {
   AlertTriangle,
   Check,
   ChevronRight,
+  Pencil,
   Plus,
   Search,
   Settings,
-} from "@/components/icons/material-icons";
-import type { AgentProvider } from "@otto-code/protocol/agent-types";
-import type { RolePersonality } from "@/provider-selection/role-model-personality";
+} from "lucide-react-native";
+import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import {
-  PersonalitiesSection,
-  SelectorProviderHost,
-  type SelectorProfile,
-} from "@/components/model-selector/selector-content";
+  AgentProfileGlyph,
+  type AgentProfilePicker,
+  type AgentProfilePickerRow as AgentProfilePickerRowModel,
+  type AgentProfileSeed,
+} from "@/agent-profiles";
 import type { SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import type { IconSizeProp } from "@/components/icons/icon-size";
-import { getProviderIcon } from "@/components/provider-icons";
-import { BrainModelFamilyIcon } from "@/components/brain/brain-model-family-icon";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useProviderIcon } from "@/components/provider-icons";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import {
@@ -48,15 +48,15 @@ import {
   filterAndRankModelRows,
   getAllProviderModelRows,
   getProviderModelRows,
-  presentProviderModelSelectionError,
   resolveSelectedModelLabel,
   type ProviderSelectionModelRow,
   type ProviderSelectorProvider,
 } from "@/provider-selection/provider-selection";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
 import { useCurrentOverlayLayer } from "@/lib/overlay-root";
-import type { Theme } from "@/styles/theme";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 import {
+  groupProfilesByProviderModel,
   resolveInitialModelBrowserView,
   resolveModelBrowserAllView,
   type ModelBrowserView,
@@ -71,12 +71,10 @@ const ThemedAlertTriangle = withUnistyles(AlertTriangle);
 const ThemedCheck = withUnistyles(Check);
 const ThemedChevronRight = withUnistyles(ChevronRight);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+const ThemedPencil = withUnistyles(Pencil);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedSearch = withUnistyles(Search);
 const ThemedSettings = withUnistyles(Settings);
-const ThemedBrainModelFamilyIcon = withUnistyles(BrainModelFamilyIcon, (theme) => ({
-  color: theme.colors.foregroundMuted,
-}));
 
 function ProviderSettingsAction({
   accessibilityLabel,
@@ -108,12 +106,39 @@ function ProviderSettingsAction({
   );
 }
 
+function AgentProfilesEditAction({ onPress }: { onPress: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild>
+        <Pressable
+          onPress={onPress}
+          hitSlop={8}
+          style={iconButtonStyle}
+          accessibilityRole="button"
+          accessibilityLabel={t("modelSelector.editProfilesLabel")}
+          testID="model-profiles-edit"
+        >
+          <ThemedPencil size={ICON_SIZE.xs} uniProps={foregroundExtraMutedMapping} />
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>{t("modelSelector.editProfilesLabel")}</Text>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 const IndependentScrollGestureContext = createContext<ReturnType<typeof Gesture.Native> | null>(
   null,
 );
 
 const foregroundMutedMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
+});
+
+const foregroundExtraMutedMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundExtraMuted,
 });
 
 const headerSettingsMapping = (disabled: boolean) => (theme: Theme) => ({
@@ -125,8 +150,9 @@ interface ModelBrowserInput {
   selectedProvider: string;
   selectedModel: string;
   isLoading: boolean;
+  autoFocusSearch?: boolean;
   /** Pinned above the provider list on the root view. `null` hides the section. */
-  personality?: RolePersonality | null;
+  profiles?: AgentProfilePicker | null;
   serverId?: string | null;
 }
 
@@ -135,17 +161,17 @@ export interface ModelBrowserState {
   providers: ProviderSelectorProvider[];
   selectedProvider: string;
   selectedModel: string;
-  personality: RolePersonality | null;
+  profiles: AgentProfilePicker | null;
   view: ModelBrowserView;
   searchQuery: string;
   isSearchFocused: boolean;
-  onSearchFocusChange: (focused: boolean) => void;
   header: SheetHeader;
   selectedModelLabel: string;
   triggerLabel: string;
   desktopFixedHeight: number | undefined;
   isProviderView: boolean;
   prepareToOpen: () => void;
+  showAll: () => void;
   reset: () => void;
   drillDown: (providerId: string, providerLabel: string) => void;
 }
@@ -153,13 +179,20 @@ export interface ModelBrowserState {
 interface ModelBrowserProps {
   state: ModelBrowserState;
   onSelect: (provider: string, modelId: string) => void;
-  /** Picking a Personality resolves the pick and dismisses, exactly like a model row. */
-  onSelectProfile?: (id: string) => void;
-  onClearProfile?: () => void;
+  /** Applying a profile resolves the pick and dismisses, exactly like a model row. */
+  onApplyProfile?: (profileId: string) => void;
   onEditProfiles?: () => void;
+  onCreateProfile?: (seed: AgentProfileSeed) => void;
+  onEditProfile?: (profileId: string) => void;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider?: boolean;
   scrolling?: "sheet" | "independent";
+  /** Empty focused search shows all model rows instead of the browse root. */
+  searchAllOnFocus?: boolean;
+  /** Replaces provider rows only while the all-provider search is empty. */
+  rootBrowseContent?: React.ReactNode;
+  /** Hide the pinned Profiles section while still using rows for model matching. */
+  showProfilesSection?: boolean;
 }
 
 interface ModelBrowserContentProps extends Omit<ModelBrowserProps, "state" | "scrolling"> {
@@ -170,9 +203,11 @@ interface ModelBrowserContentProps extends Omit<ModelBrowserProps, "state" | "sc
   selectedModel: string;
   searchQuery: string;
   isSearchFocused: boolean;
-  personality: RolePersonality | null;
+  profiles: AgentProfilePicker | null;
   onDrillDown: (providerId: string, providerLabel: string) => void;
   scrolling: "sheet" | "independent";
+  searchAllOnFocus: boolean;
+  rootBrowseContent?: React.ReactNode;
 }
 
 type ProviderGlyphTone = "muted" | "foreground";
@@ -185,10 +220,10 @@ export function ModelProviderGlyph({
 }: {
   provider: string;
   serverId: string | null;
-  size: IconSizeProp;
+  size: number;
   tone?: ProviderGlyphTone;
 }) {
-  const Icon = getProviderIcon(provider, serverId);
+  const Icon = useProviderIcon(provider, serverId);
   const color =
     tone === "foreground" ? styles.providerIconForeground.color : styles.providerIconMuted.color;
   return <Icon size={size} color={color} />;
@@ -196,7 +231,7 @@ export function ModelProviderGlyph({
 
 function HeaderSettingsIcon({ disabled }: { disabled: boolean }) {
   const uniProps = useMemo(() => headerSettingsMapping(disabled), [disabled]);
-  return <ThemedSettings size="sm" uniProps={uniProps} />;
+  return <ThemedSettings size={ICON_SIZE.sm} uniProps={uniProps} />;
 }
 
 function iconButtonStyle({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) {
@@ -234,17 +269,16 @@ export function useModelBrowser({
   selectedProvider,
   selectedModel,
   isLoading,
-  personality = null,
+  autoFocusSearch = isWeb,
+  profiles = null,
   serverId = null,
 }: ModelBrowserInput): ModelBrowserState {
   const { t } = useTranslation();
   const [view, setView] = useState<ModelBrowserView>({ kind: "all" });
   const [searchQuery, setSearchQuery] = useState("");
-  // Focusing the field opens the searchable list straight away, so an empty
-  // query still means "I am looking for a model" rather than "browse".
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [searchResetKey, bumpSearchResetKey] = useReducer((key: number) => key + 1, 0);
-  const hasProfiles = (personality?.personalities?.length ?? 0) > 0;
+  const hasProfiles = (profiles?.rows.length ?? 0) > 0;
 
   const initialView = useMemo(
     () =>
@@ -263,10 +297,11 @@ export function useModelBrowser({
 
   const reset = useCallback(() => {
     setSearchQuery("");
+    setIsSearchFocused(false);
     bumpSearchResetKey();
   }, []);
 
-  const handleBackToAll = useCallback(() => {
+  const showAll = useCallback(() => {
     setView({ kind: "all" });
     reset();
   }, [reset]);
@@ -283,10 +318,6 @@ export function useModelBrowser({
     setSearchQuery(value);
   }, []);
 
-  const handleSearchFocusChange = useCallback((focused: boolean) => {
-    setIsSearchFocused(focused);
-  }, []);
-
   const singleProviderView = providers.length === 1;
   const header = useMemo<SheetHeader>(() => {
     if (view.kind === "all") {
@@ -294,9 +325,11 @@ export function useModelBrowser({
         title: t("modelSelector.title"),
         search: {
           onChange: handleSearchQueryChange,
+          onFocus: () => setIsSearchFocused(true),
+          onBlur: () => setIsSearchFocused(false),
           resetKey: `all:${searchResetKey}`,
           placeholder: t("modelSelector.searchAllPlaceholder"),
-          autoFocus: isWeb,
+          autoFocus: autoFocusSearch,
           testID: "model-search-all-input",
         },
       };
@@ -307,11 +340,11 @@ export function useModelBrowser({
         <ModelProviderGlyph
           provider={view.providerId}
           serverId={serverId}
-          size="md"
+          size={ICON_SIZE.md}
           tone="foreground"
         />
       ),
-      back: singleProviderView ? undefined : { onPress: handleBackToAll },
+      back: singleProviderView ? undefined : { onPress: showAll },
       actions: (
         <View style={styles.headerActionRow}>
           <ProviderSettingsAction
@@ -325,18 +358,21 @@ export function useModelBrowser({
       ),
       search: {
         onChange: handleSearchQueryChange,
+        onFocus: () => setIsSearchFocused(true),
+        onBlur: () => setIsSearchFocused(false),
         resetKey: `${view.providerId}:${searchResetKey}`,
         placeholder: t("modelSelector.searchPlaceholder"),
-        autoFocus: isWeb,
+        autoFocus: autoFocusSearch,
         testID: "model-search-input",
       },
     };
   }, [
-    handleBackToAll,
+    autoFocusSearch,
     handleSearchQueryChange,
     searchResetKey,
     serverId,
     singleProviderView,
+    showAll,
     t,
     view,
   ]);
@@ -369,17 +405,17 @@ export function useModelBrowser({
     providers,
     selectedProvider,
     selectedModel,
-    personality,
+    profiles,
     view,
     searchQuery,
     isSearchFocused,
-    onSearchFocusChange: handleSearchFocusChange,
     header,
     selectedModelLabel,
     triggerLabel,
     desktopFixedHeight,
     isProviderView: view.kind === "provider",
     prepareToOpen,
+    showAll,
     reset,
     drillDown,
   };
@@ -496,7 +532,6 @@ function ModelBrowserRow({
   description,
   leadingSlot,
   trailingSlot,
-  trailingAction,
   selected = false,
   selectionIndicator = false,
   tone = "default",
@@ -509,7 +544,6 @@ function ModelBrowserRow({
   description?: string;
   leadingSlot: React.ReactNode;
   trailingSlot?: React.ReactNode;
-  trailingAction?: React.ReactNode;
   selected?: boolean;
   selectionIndicator?: boolean;
   tone?: ModelBrowserRowTone;
@@ -522,13 +556,12 @@ function ModelBrowserRow({
   const pressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.browserRow,
-      Boolean(trailingAction) && styles.browserRowWithAction,
       spacing === "model" && styles.browserModelRow,
       Boolean(hovered) &&
         (tone === "elevated" ? styles.browserRowHoveredElevated : styles.browserRowHovered),
       pressed && (tone === "default" ? styles.browserRowPressed : styles.browserRowPressedElevated),
     ],
-    [spacing, tone, trailingAction],
+    [spacing, tone],
   );
   const contentStyle = useMemo(
     () => [styles.browserRowText, description && styles.browserRowTextInline],
@@ -536,7 +569,7 @@ function ModelBrowserRow({
   );
   const hasTrailing = selected || trailingSlot;
 
-  const row = (
+  return (
     <ModelBrowserPressable
       onPress={onPress}
       style={pressableStyle}
@@ -564,7 +597,9 @@ function ModelBrowserRow({
           <View style={styles.browserRowTrailing}>
             {selectionIndicator ? (
               <View style={styles.browserRowSelection}>
-                {selected ? <ThemedCheck size="sm" uniProps={foregroundMutedMapping} /> : null}
+                {selected ? (
+                  <ThemedCheck size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+                ) : null}
               </View>
             ) : null}
             {trailingSlot}
@@ -573,14 +608,51 @@ function ModelBrowserRow({
       </View>
     </ModelBrowserPressable>
   );
+}
 
-  if (!trailingAction) return row;
-
+function ModelRowProfileAction({
+  hovered,
+  onPress,
+  label,
+  testID,
+  children,
+}: {
+  hovered: boolean;
+  onPress: () => void;
+  label: string;
+  testID: string;
+  children: React.ReactNode;
+}) {
+  const isCompact = useIsCompactFormFactor();
+  const visible = hovered || isNative || isCompact;
+  const pressableStyle = useCallback(
+    ({ hovered: buttonHovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.rowIconButton,
+      Boolean(buttonHovered) && styles.rowIconButtonHovered,
+      pressed && styles.rowIconButtonPressed,
+      !visible && styles.profileActionHidden,
+    ],
+    [visible],
+  );
   return (
-    <View style={styles.browserRowActionRow}>
-      {row}
-      <View style={styles.browserRowAction}>{trailingAction}</View>
-    </View>
+    <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild>
+        <Pressable
+          onPress={onPress}
+          hitSlop={8}
+          style={pressableStyle}
+          pointerEvents={visible ? "auto" : "none"}
+          accessibilityRole="button"
+          accessibilityLabel={label}
+          testID={testID}
+        >
+          {children}
+        </Pressable>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <Text style={styles.tooltipText}>{label}</Text>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -590,35 +662,163 @@ function ModelRow({
   isSelected,
   showProviderLabel = false,
   onPress,
+  profiledRows,
+  onCreateProfile,
+  onEditProfile,
+  onEditProfiles,
 }: {
   row: ProviderSelectionModelRow;
   serverId: string | null;
   isSelected: boolean;
   showProviderLabel?: boolean;
   onPress: () => void;
+  profiledRows: AgentProfilePickerRowModel[];
+  onCreateProfile?: (seed: AgentProfileSeed) => void;
+  onEditProfile?: (profileId: string) => void;
+  onEditProfiles?: () => void;
 }) {
+  const { t } = useTranslation();
+  const [isHovered, setIsHovered] = useState(false);
   const leadingSlot = useMemo(
-    () =>
-      row.provider === "otto-brain" && row.family ? (
-        <ThemedBrainModelFamilyIcon family={row.family} size="sm" />
-      ) : (
-        <ModelProviderGlyph provider={row.provider} serverId={serverId} size="sm" />
-      ),
-    [row.family, row.provider, serverId],
+    () => <ModelProviderGlyph provider={row.provider} serverId={serverId} size={ICON_SIZE.sm} />,
+    [row.provider, serverId],
   );
 
   const description = showProviderLabel ? buildProviderQualifiedDescription(row) : row.description;
+  const primary = profiledRows[profiledRows.length - 1];
+
+  const handleCreateProfile = useCallback(() => {
+    onCreateProfile?.({
+      provider: row.provider,
+      modelId: row.modelId,
+      name: row.modelLabel,
+    });
+  }, [onCreateProfile, row.modelId, row.modelLabel, row.provider]);
+
+  const handleEditProfile = useCallback(() => {
+    onEditProfile?.(primary.id);
+  }, [onEditProfile, primary]);
+
+  const handleEditProfiles = useCallback(() => {
+    onEditProfiles?.();
+  }, [onEditProfiles]);
+
+  const handlePointerEnter = useCallback(() => setIsHovered(true), []);
+  const handlePointerLeave = useCallback(() => setIsHovered(false), []);
+
+  const profileAction = useMemo(() => {
+    if (row.modelId.length === 0) {
+      return null;
+    }
+    if (profiledRows.length === 0) {
+      if (!onCreateProfile) {
+        return null;
+      }
+      return (
+        <ModelRowProfileAction
+          hovered={isHovered}
+          onPress={handleCreateProfile}
+          label={t("modelSelector.createProfileFromModel")}
+          testID={`model-create-profile-${row.provider}-${row.modelId}`}
+        >
+          <ThemedPlus size={ICON_SIZE.xs} uniProps={foregroundMutedMapping} />
+        </ModelRowProfileAction>
+      );
+    }
+    if (profiledRows.length === 1) {
+      if (!onEditProfile) {
+        return null;
+      }
+      return (
+        <ModelRowProfileAction
+          hovered={isHovered}
+          onPress={handleEditProfile}
+          label={t("modelSelector.editProfileLabel", { name: primary.name })}
+          testID={`model-edit-profile-${row.provider}-${row.modelId}`}
+        >
+          <AgentProfileGlyph icon={primary.icon} color={primary.color} size={ICON_SIZE.xs} />
+        </ModelRowProfileAction>
+      );
+    }
+    if (!onEditProfiles) {
+      return null;
+    }
+    return (
+      <ModelRowProfileAction
+        hovered={isHovered}
+        onPress={handleEditProfiles}
+        label={t("modelSelector.editProfilesCount", { count: profiledRows.length })}
+        testID={`model-edit-profiles-${row.provider}-${row.modelId}`}
+      >
+        <AgentProfileGlyph icon={primary.icon} color={primary.color} size={ICON_SIZE.xs} />
+      </ModelRowProfileAction>
+    );
+  }, [
+    handleCreateProfile,
+    handleEditProfile,
+    handleEditProfiles,
+    isHovered,
+    onCreateProfile,
+    onEditProfile,
+    onEditProfiles,
+    primary,
+    profiledRows,
+    row.modelId,
+    row.provider,
+    t,
+  ]);
+
+  const pressableStyle = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.browserRow,
+      Boolean(hovered) && styles.browserRowHovered,
+      pressed && styles.browserRowPressed,
+    ],
+    [],
+  );
 
   return (
-    <ModelBrowserRow
-      label={row.modelLabel}
-      description={description}
-      selected={isSelected}
-      selectionIndicator
-      onPress={onPress}
-      leadingSlot={leadingSlot}
-      testID={`model-row-${row.provider}-${row.modelId}`}
-    />
+    <View
+      style={[styles.modelRowHoverBoundary, styles.browserModelRow]}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
+    >
+      <ModelBrowserPressable
+        onPress={onPress}
+        style={pressableStyle}
+        accessibilitySelected={isSelected}
+        testID={`model-row-${row.provider}-${row.modelId}`}
+      >
+        <View style={styles.browserRowContent}>
+          <View style={styles.browserRowLeading}>{leadingSlot}</View>
+          <View style={[styles.browserRowText, description && styles.browserRowTextInline]}>
+            <Text numberOfLines={1} style={styles.browserRowLabel}>
+              {row.modelLabel}
+            </Text>
+            {description ? (
+              <Text numberOfLines={1} style={styles.browserRowDescription}>
+                {description}
+              </Text>
+            ) : null}
+          </View>
+          <View style={styles.browserRowTrailing}>
+            <View style={styles.browserRowSelection}>
+              {isSelected ? (
+                <ThemedCheck size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
+              ) : null}
+            </View>
+            {profileAction ? <View style={styles.rowIconButton} /> : null}
+          </View>
+        </View>
+      </ModelBrowserPressable>
+      {/* The row renders a <button> on web, so its profile action sits beside it,
+          over the slot reserved above, rather than inside it. */}
+      {profileAction ? (
+        <View style={styles.modelRowProfileActionSlot} pointerEvents="box-none">
+          {profileAction}
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -628,12 +828,20 @@ function SelectableModelRow({
   isSelected,
   showProviderLabel,
   onSelect,
+  profiledRows,
+  onCreateProfile,
+  onEditProfile,
+  onEditProfiles,
 }: {
   row: ProviderSelectionModelRow;
   serverId: string | null;
   isSelected: boolean;
   showProviderLabel?: boolean;
   onSelect: (provider: string, modelId: string) => void;
+  profiledRows: AgentProfilePickerRowModel[];
+  onCreateProfile?: (seed: AgentProfileSeed) => void;
+  onEditProfile?: (profileId: string) => void;
+  onEditProfiles?: () => void;
 }) {
   const handlePress = useCallback(() => {
     onSelect(row.provider, row.modelId);
@@ -645,42 +853,71 @@ function SelectableModelRow({
       isSelected={isSelected}
       showProviderLabel={showProviderLabel}
       onPress={handlePress}
+      profiledRows={profiledRows}
+      onCreateProfile={onCreateProfile}
+      onEditProfile={onEditProfile}
+      onEditProfiles={onEditProfiles}
+    />
+  );
+}
+
+function AgentProfilePickerRowView({
+  row,
+  onApply,
+}: {
+  row: AgentProfilePickerRowModel;
+  onApply: (profileId: string) => void;
+}) {
+  const handlePress = useCallback(() => onApply(row.id), [onApply, row.id]);
+  const leadingSlot = useMemo(
+    () => <AgentProfileGlyph icon={row.icon} color={row.color} size={ICON_SIZE.sm} />,
+    [row.color, row.icon],
+  );
+  return (
+    <ModelBrowserRow
+      label={row.name}
+      description={row.summary}
+      tone="elevated"
+      onPress={handlePress}
+      leadingSlot={leadingSlot}
+      testID={`model-profile-row-${row.id}`}
     />
   );
 }
 
 /**
- * Pinned above the provider list. This is the same Personalities section the
- * desktop picker draws, so the two surfaces cannot drift on label, colour, or
- * selected-row behaviour.
+ * Pinned above the provider list. Rows are actions, not selections: applying a
+ * profile writes its values into the composer and nothing stays bound to it, so
+ * there is no checkmark and no active row to show.
  */
-function PersonalityPickerContent({
-  serverId,
+function AgentProfilesPickerSection({
   rows,
-  selectedProfileId,
-  onSelectProfile,
-  onClearProfile,
+  onApplyProfile,
   onEditProfiles,
 }: {
-  serverId: string | null;
-  rows: SelectorProfile[] | undefined;
-  selectedProfileId: string | null;
-  onSelectProfile?: (id: string) => void;
-  onClearProfile?: () => void;
+  rows: AgentProfilePickerRowModel[];
+  onApplyProfile?: (profileId: string) => void;
   onEditProfiles?: () => void;
 }) {
-  if (!rows || rows.length === 0) {
-    return onEditProfiles ? <CreateAgentProfileRow onPress={onEditProfiles} /> : null;
-  }
+  const { t } = useTranslation();
+  const handleApply = useCallback(
+    (profileId: string) => onApplyProfile?.(profileId),
+    [onApplyProfile],
+  );
   return (
-    <SelectorProviderHost value={serverId}>
-      <PersonalitiesSection
-        personalities={rows}
-        selectedProfileId={selectedProfileId}
-        onSelectProfile={onSelectProfile}
-        onClearProfile={onClearProfile}
-      />
-    </SelectorProviderHost>
+    <View style={styles.profilesContainer}>
+      <View style={styles.sectionHeading}>
+        <Text style={styles.sectionHeadingText}>{t("modelSelector.profiles")}</Text>
+        {onEditProfiles ? (
+          <View style={styles.sectionHeadingAction}>
+            <AgentProfilesEditAction onPress={onEditProfiles} />
+          </View>
+        ) : null}
+      </View>
+      {rows.map((row) => (
+        <AgentProfilePickerRowView key={row.id} row={row} onApply={handleApply} />
+      ))}
+    </View>
   );
 }
 
@@ -689,7 +926,7 @@ function CreateAgentProfileRow({ onPress }: { onPress: () => void }) {
   const leadingSlot = useMemo(
     () => (
       <View testID="model-profiles-create-icon">
-        <ThemedPlus size="sm" uniProps={foregroundMutedMapping} />
+        <ThemedPlus size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
       </View>
     ),
     [],
@@ -702,6 +939,39 @@ function CreateAgentProfileRow({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       testID="model-profiles-empty"
     />
+  );
+}
+
+// OTTO(agent-teams): the all-providers page and single-provider page share this identity header.
+function AgentProfilesPickerContent({
+  rows,
+  profiles,
+  onApplyProfile,
+  onEditProfiles,
+}: {
+  rows: AgentProfilePickerRowModel[];
+  profiles: AgentProfilePicker;
+  onApplyProfile?: (profileId: string) => void;
+  onEditProfiles?: () => void;
+}) {
+  const list = rows.length ? (
+    <AgentProfilesPickerSection
+      rows={rows}
+      onApplyProfile={onApplyProfile}
+      onEditProfiles={onEditProfiles}
+    />
+  ) : null;
+  return (
+    <View>
+      {profiles.currentName && (
+        <Text style={styles.sectionHeadingText}>Current Profile · {profiles.currentName}</Text>
+      )}
+      {profiles.teamName && (
+        <Text style={styles.sectionHeadingText}>Team · {profiles.teamName}</Text>
+      )}
+      {list}
+      {!list && onEditProfiles && <CreateAgentProfileRow onPress={onEditProfiles} />}
+    </View>
   );
 }
 
@@ -735,7 +1005,7 @@ function GroupProviderButton({
       return (
         <View style={styles.rowStateInline}>
           <View style={styles.rowSpinner}>
-            <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedMapping} />
+            <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
           </View>
           <Text style={styles.drillDownCount}>{t("modelSelector.loadingShort")}</Text>
         </View>
@@ -743,20 +1013,20 @@ function GroupProviderButton({
     }
     return (
       <View style={styles.rowStateInline}>
-        <ThemedAlertTriangle size="sm" uniProps={foregroundMutedMapping} />
+        <ThemedAlertTriangle size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
         <Text style={styles.drillDownCount}>{t("modelSelector.error")}</Text>
       </View>
     );
   }, [selection, t]);
   const leadingSlot = useMemo(
-    () => <ModelProviderGlyph provider={provider.id} serverId={serverId} size="sm" />,
+    () => <ModelProviderGlyph provider={provider.id} serverId={serverId} size={ICON_SIZE.sm} />,
     [provider.id, serverId],
   );
   const trailingSlot = useMemo(
     () => (
       <View style={styles.drillDownTrailing}>
         {stateNode}
-        <ThemedChevronRight size="sm" uniProps={foregroundMutedMapping} />
+        <ThemedChevronRight size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
       </View>
     ),
     [stateNode],
@@ -837,13 +1107,11 @@ function IndependentModelList({
         keyExtractor={getModelRowKey}
         style={styles.virtualizedModelList}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.virtualizedModelListContent}
         nestedScrollEnabled
         testID="compact-model-list"
-        initialNumToRender={12}
-        maxToRenderPerBatch={12}
-        windowSize={3}
       />
     </IndependentScrollBoundary>
   );
@@ -863,6 +1131,7 @@ function IndependentProviderList({ children }: { children: React.ReactNode }) {
           styles.virtualizedProviderListContent,
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         showsVerticalScrollIndicator={false}
         nestedScrollEnabled
         testID="compact-provider-list"
@@ -882,6 +1151,10 @@ function ModelRowList({
   showProviderLabel = false,
   header,
   scrolling,
+  profiledLookup,
+  onCreateProfile,
+  onEditProfile,
+  onEditProfiles,
 }: {
   rows: ProviderSelectionModelRow[];
   serverId: string | null;
@@ -891,6 +1164,10 @@ function ModelRowList({
   showProviderLabel?: boolean;
   header?: React.ReactElement;
   scrolling: "sheet" | "independent";
+  profiledLookup: Map<string, AgentProfilePickerRowModel[]>;
+  onCreateProfile?: (seed: AgentProfileSeed) => void;
+  onEditProfile?: (profileId: string) => void;
+  onEditProfiles?: () => void;
 }) {
   const isCompact = useIsCompactFormFactor();
   const renderItem = useCallback(
@@ -901,9 +1178,23 @@ function ModelRowList({
         isSelected={item.provider === selectedProvider && item.modelId === selectedModel}
         showProviderLabel={showProviderLabel}
         onSelect={onSelect}
+        profiledRows={profiledLookup.get(`${item.provider}:${item.modelId}`) ?? []}
+        onCreateProfile={onCreateProfile}
+        onEditProfile={onEditProfile}
+        onEditProfiles={onEditProfiles}
       />
     ),
-    [onSelect, selectedModel, selectedProvider, showProviderLabel, serverId],
+    [
+      onEditProfile,
+      onEditProfiles,
+      onCreateProfile,
+      onSelect,
+      profiledLookup,
+      selectedModel,
+      selectedProvider,
+      serverId,
+      showProviderLabel,
+    ],
   );
   const keyExtractor = useCallback((row: ProviderSelectionModelRow) => row.favoriteKey, []);
 
@@ -938,29 +1229,23 @@ function ModelRowList({
 
 function ProviderErrorEmptyState({
   providerId,
-  providerLabel,
   message,
   onRetryProvider,
   isRetryingProvider,
 }: {
   providerId: string;
-  providerLabel: string;
   message: string;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider: boolean;
 }) {
   const { t } = useTranslation();
-  const presentedMessage = useMemo(
-    () => presentProviderModelSelectionError({ providerLabel, message }),
-    [message, providerLabel],
-  );
   const handleRetry = useCallback(() => {
     onRetryProvider?.(providerId);
   }, [onRetryProvider, providerId]);
   return (
     <View style={styles.emptyState}>
-      <ThemedAlertTriangle size="md" uniProps={foregroundMutedMapping} />
-      <Text style={styles.emptyStateText}>{presentedMessage}</Text>
+      <ThemedAlertTriangle size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
+      <Text style={styles.emptyStateText}>{message}</Text>
       {onRetryProvider ? (
         <Button variant="default" size="sm" onPress={handleRetry} disabled={isRetryingProvider}>
           {isRetryingProvider ? t("modelSelector.retrying") : t("modelSelector.retry")}
@@ -974,7 +1259,7 @@ function ModelSearchEmptyState() {
   const { t } = useTranslation();
   return (
     <View style={styles.emptyState}>
-      <ThemedSearch size="md" uniProps={foregroundMutedMapping} />
+      <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
       <Text style={styles.emptyStateText}>{t("modelSelector.noMatches")}</Text>
     </View>
   );
@@ -984,14 +1269,17 @@ function ProviderModelBrowserContent({
   serverId,
   view,
   provider,
-  personality,
+  profiles,
   selectedProvider,
   selectedModel,
   normalizedQuery,
   onSelect,
-  onSelectProfile,
-  onClearProfile,
+  onApplyProfile,
   onEditProfiles,
+  onCreateProfile,
+  onEditProfile,
+  profiledLookup,
+  showProfilesSection = true,
   onRetryProvider,
   isRetryingProvider,
   scrolling,
@@ -999,14 +1287,17 @@ function ProviderModelBrowserContent({
   serverId: string | null;
   view: Extract<ModelBrowserView, { kind: "provider" }>;
   provider: ProviderSelectorProvider | null;
-  personality: RolePersonality | null;
+  profiles: AgentProfilePicker | null;
   selectedProvider: string;
   selectedModel: string;
   normalizedQuery: string;
   onSelect: (provider: string, modelId: string) => void;
-  onSelectProfile?: (id: string) => void;
-  onClearProfile?: () => void;
+  onApplyProfile?: (profileId: string) => void;
   onEditProfiles?: () => void;
+  onCreateProfile?: (seed: AgentProfileSeed) => void;
+  onEditProfile?: (profileId: string) => void;
+  profiledLookup: Map<string, AgentProfilePickerRowModel[]>;
+  showProfilesSection?: boolean;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider: boolean;
   scrolling: "sheet" | "independent";
@@ -1016,32 +1307,27 @@ function ProviderModelBrowserContent({
     () => (provider ? filterAndRankModelRows(getProviderModelRows(provider), normalizedQuery) : []),
     [normalizedQuery, provider],
   );
-  // The family view lists only this provider Personalities: a running agent is
-  // one provider process, and the draft form drills in per family.
-  const providerPersonalityRows = useMemo(
-    () => personality?.personalities?.filter((row) => row.provider === view.providerId) ?? [],
-    [personality, view.providerId],
+  const providerProfileRows = useMemo(
+    () => profiles?.rows.filter((row) => row.provider === view.providerId) ?? [],
+    [profiles, view.providerId],
   );
   const profileHeader = useMemo(
     () =>
-      normalizedQuery.length === 0 && personality ? (
-        <PersonalityPickerContent
-          serverId={serverId}
-          rows={providerPersonalityRows}
-          selectedProfileId={personality.selectedProfileId}
-          onSelectProfile={onSelectProfile}
-          onClearProfile={onClearProfile}
+      normalizedQuery.length === 0 && showProfilesSection && profiles ? (
+        <AgentProfilesPickerContent
+          profiles={profiles}
+          rows={providerProfileRows}
+          onApplyProfile={onApplyProfile}
           onEditProfiles={onEditProfiles}
         />
       ) : undefined,
     [
       normalizedQuery,
-      onClearProfile,
+      onApplyProfile,
       onEditProfiles,
-      onSelectProfile,
-      personality,
-      providerPersonalityRows,
-      serverId,
+      profiles,
+      providerProfileRows,
+      showProfilesSection,
     ],
   );
 
@@ -1051,7 +1337,7 @@ function ProviderModelBrowserContent({
     return (
       <View style={styles.emptyState}>
         <View style={styles.rowSpinner}>
-          <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedMapping} />
+          <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
         </View>
         <Text style={styles.emptyStateText}>{t("modelSelector.loadingShort")}</Text>
       </View>
@@ -1061,7 +1347,6 @@ function ProviderModelBrowserContent({
     return (
       <ProviderErrorEmptyState
         providerId={view.providerId}
-        providerLabel={view.providerLabel}
         message={selection.message}
         onRetryProvider={onRetryProvider}
         isRetryingProvider={isRetryingProvider}
@@ -1080,11 +1365,15 @@ function ProviderModelBrowserContent({
       onSelect={onSelect}
       header={profileHeader}
       scrolling={scrolling}
+      profiledLookup={profiledLookup}
+      onCreateProfile={onCreateProfile}
+      onEditProfile={onEditProfile}
+      onEditProfiles={onEditProfiles}
     />
   );
 }
 
-export function ModelBrowserContent({
+function ModelBrowserContent({
   serverId,
   view,
   providers,
@@ -1092,18 +1381,26 @@ export function ModelBrowserContent({
   selectedModel,
   searchQuery,
   isSearchFocused,
-  personality,
+  profiles,
   onSelect,
-  onSelectProfile,
-  onClearProfile,
+  onApplyProfile,
   onEditProfiles,
+  onCreateProfile,
+  onEditProfile,
   onDrillDown,
   onRetryProvider,
   isRetryingProvider = false,
   scrolling,
+  searchAllOnFocus,
+  rootBrowseContent,
+  showProfilesSection = true,
 }: ModelBrowserContentProps) {
   const { t } = useTranslation();
   const normalizedQuery = useMemo(() => normalizeSearchQuery(searchQuery), [searchQuery]);
+  const profiledLookup = useMemo(
+    () => groupProfilesByProviderModel(profiles?.rows ?? []),
+    [profiles],
+  );
   const selectedViewProvider = useMemo(
     () =>
       view.kind === "provider"
@@ -1112,10 +1409,15 @@ export function ModelBrowserContent({
     [providers, view],
   );
   const allView = useMemo(
-    () => resolveModelBrowserAllView({ providers, normalizedQuery, isSearchFocused }),
-    [isSearchFocused, normalizedQuery, providers],
+    () =>
+      resolveModelBrowserAllView({
+        providers,
+        normalizedQuery,
+        isSearchFocused: searchAllOnFocus && isSearchFocused,
+      }),
+    [isSearchFocused, normalizedQuery, providers, searchAllOnFocus],
   );
-  const hasResults = personality !== null || providers.length > 0;
+  const hasResults = profiles !== null || providers.length > 0 || rootBrowseContent != null;
 
   if (view.kind === "provider") {
     return (
@@ -1123,14 +1425,17 @@ export function ModelBrowserContent({
         serverId={serverId}
         view={view}
         provider={selectedViewProvider}
-        personality={personality}
+        profiles={profiles}
         selectedProvider={selectedProvider}
         selectedModel={selectedModel}
         normalizedQuery={normalizedQuery}
         onSelect={onSelect}
-        onSelectProfile={onSelectProfile}
-        onClearProfile={onClearProfile}
+        onApplyProfile={onApplyProfile}
         onEditProfiles={onEditProfiles}
+        onCreateProfile={onCreateProfile}
+        onEditProfile={onEditProfile}
+        profiledLookup={profiledLookup}
+        showProfilesSection={showProfilesSection}
         onRetryProvider={onRetryProvider}
         isRetryingProvider={isRetryingProvider}
         scrolling={scrolling}
@@ -1141,7 +1446,7 @@ export function ModelBrowserContent({
   if (allView.kind === "noSearchMatches") {
     return (
       <View style={styles.emptyState} testID="model-search-empty">
-        <ThemedSearch size="md" uniProps={foregroundMutedMapping} />
+        <ThemedSearch size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
         <Text style={styles.emptyStateText}>
           {t("modelSelector.noMatchesForQuery", { query: searchQuery.trim() })}
         </Text>
@@ -1159,36 +1464,39 @@ export function ModelBrowserContent({
         onSelect={onSelect}
         showProviderLabel
         scrolling={scrolling}
+        profiledLookup={profiledLookup}
+        onCreateProfile={onCreateProfile}
+        onEditProfile={onEditProfile}
+        onEditProfiles={onEditProfiles}
       />
     );
   }
 
   const allProvidersContent = (
     <View>
-      {personality ? (
-        <PersonalityPickerContent
-          serverId={serverId}
-          rows={personality.personalities}
-          selectedProfileId={personality.selectedProfileId}
-          onSelectProfile={onSelectProfile}
-          onClearProfile={onClearProfile}
+      {showProfilesSection && profiles ? (
+        <AgentProfilesPickerContent
+          profiles={profiles}
+          rows={profiles.rows}
+          onApplyProfile={onApplyProfile}
           onEditProfiles={onEditProfiles}
         />
       ) : null}
-      {providers.length > 0 ? (
-        <View>
-          {personality ? (
-            <View style={styles.sectionHeading}>
-              <Text style={styles.sectionHeadingText}>{t("modelSelector.providers")}</Text>
-            </View>
-          ) : null}
-          <GroupedProviderRows
-            serverId={serverId}
-            providers={providers}
-            onDrillDown={onDrillDown}
-          />
-        </View>
-      ) : null}
+      {rootBrowseContent ??
+        (providers.length > 0 ? (
+          <View>
+            {showProfilesSection && profiles ? (
+              <View style={styles.sectionHeading}>
+                <Text style={styles.sectionHeadingText}>{t("modelSelector.providers")}</Text>
+              </View>
+            ) : null}
+            <GroupedProviderRows
+              providers={providers}
+              serverId={serverId}
+              onDrillDown={onDrillDown}
+            />
+          </View>
+        ) : null)}
       {!hasResults ? <ModelSearchEmptyState /> : null}
     </View>
   );
@@ -1215,12 +1523,16 @@ export function ModelBrowserContent({
 export function ModelBrowser({
   state,
   onSelect,
-  onSelectProfile,
-  onClearProfile,
+  onApplyProfile,
   onEditProfiles,
+  onCreateProfile,
+  onEditProfile,
   onRetryProvider,
   isRetryingProvider = false,
   scrolling = "sheet",
+  searchAllOnFocus = false,
+  rootBrowseContent,
+  showProfilesSection,
 }: ModelBrowserProps) {
   return (
     <ModelBrowserContent
@@ -1231,15 +1543,19 @@ export function ModelBrowser({
       selectedModel={state.selectedModel}
       searchQuery={state.searchQuery}
       isSearchFocused={state.isSearchFocused}
-      personality={state.personality}
+      profiles={state.profiles}
       onSelect={onSelect}
-      onSelectProfile={onSelectProfile}
-      onClearProfile={onClearProfile}
+      onApplyProfile={onApplyProfile}
       onEditProfiles={onEditProfiles}
+      onCreateProfile={onCreateProfile}
+      onEditProfile={onEditProfile}
       onDrillDown={state.drillDown}
       onRetryProvider={onRetryProvider}
       isRetryingProvider={isRetryingProvider}
       scrolling={scrolling}
+      searchAllOnFocus={searchAllOnFocus}
+      rootBrowseContent={rootBrowseContent}
+      showProfilesSection={showProfilesSection}
     />
   );
 }
@@ -1275,7 +1591,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   sectionHeadingText: {
     flex: 1,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
@@ -1284,19 +1600,17 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[2],
     minHeight: 36,
   },
-  browserModelRow: isWeb ? {} : { marginBottom: theme.spacing[1] },
-  browserRowWithAction: {
-    flex: 1,
+  modelRowHoverBoundary: {
+    position: "relative",
   },
-  browserRowActionRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
-  },
-  browserRowAction: {
-    alignItems: "center",
+  modelRowProfileActionSlot: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    right: isWeb ? theme.spacing[3] : theme.spacing[6],
     justifyContent: "center",
-    paddingRight: isWeb ? theme.spacing[3] : theme.spacing[6],
   },
+  browserModelRow: isWeb ? {} : { marginBottom: theme.spacing[1] },
   browserRowHovered: {
     backgroundColor: theme.colors.surface1,
   },
@@ -1317,9 +1631,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: isWeb ? theme.spacing[3] : theme.spacing[6],
   },
   browserRowLeading: {
-    // The icon itself follows the compact token ladder. Its slot must follow
-    // it too, or the doubled phone glyph crowds the model name.
-    width: theme.iconSize.sm,
+    width: 16,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1333,17 +1645,17 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   browserRowLabel: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
     flexShrink: 0,
   },
   browserRowLabelMuted: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
     flexShrink: 0,
   },
   browserRowDescription: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },
@@ -1364,7 +1676,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   drillDownCount: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   rowStateInline: {
@@ -1390,17 +1702,20 @@ const styles = StyleSheet.create((theme) => ({
   rowIconButtonPressed: {
     backgroundColor: theme.colors.surface1,
   },
+  profileActionHidden: {
+    opacity: 0,
+  },
   emptyState: {
     paddingVertical: theme.spacing[4],
     alignItems: "center",
     gap: theme.spacing[2],
   },
   emptyStateText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
   },
   tooltipText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
   virtualizedModelList: {

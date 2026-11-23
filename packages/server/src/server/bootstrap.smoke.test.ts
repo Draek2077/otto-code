@@ -2,17 +2,17 @@ import { resolveDaemonVersion } from "./daemon-version.js";
 import os from "node:os";
 import http from "node:http";
 import path from "node:path";
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import pino from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { WebSocket } from "ws";
 
-import { createOttoDaemon, parseListenString, type OttoDaemonConfig } from "./bootstrap.js";
+import { createPaseoDaemon, parseListenString, type PaseoDaemonConfig } from "./bootstrap.js";
 import { loadConfig } from "./config.js";
 import { AgentManagerShuttingDownError } from "./agent/agent-manager.js";
 import { hashDaemonPassword } from "./auth.js";
 import { generateLocalPairingOffer } from "./pairing-offer.js";
-import { createTestOttoDaemon } from "./test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { createTestAgentClients } from "./test-utils/fake-agent-client.js";
 import { DaemonClient } from "./test-utils/daemon-client.js";
 import { isPlatform } from "../test-utils/platform.js";
@@ -49,13 +49,13 @@ type WebSocketProbeResult =
   | { status: "connected" }
   | { status: "rejected"; statusCode: number | null };
 
-describe("otto daemon bootstrap", () => {
+describe("paseo daemon bootstrap", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
   test("starts and serves health endpoint", async () => {
-    const daemonHandle = await createTestOttoDaemon({
+    const daemonHandle = await createTestPaseoDaemon({
       openai: { stt: { apiKey: "test-openai-api-key" }, tts: { apiKey: "test-openai-api-key" } },
       speech: {
         providers: {
@@ -80,17 +80,22 @@ describe("otto daemon bootstrap", () => {
     }
   });
 
-  test("keeps timeline activity in memory and removes obsolete timeline files at startup", async () => {
-    const ottoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-timeline-cleanup-"));
-    const ottoHome = path.join(ottoHomeRoot, ".otto");
-    const obsoleteTimelineDirectory = path.join(ottoHome, "agent-timelines");
-    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-timeline-agent-"));
-    await mkdir(obsoleteTimelineDirectory, { recursive: true });
-    await writeFile(path.join(obsoleteTimelineDirectory, "obsolete.json"), "{}\n", "utf-8");
+  // OTTO(history): preserve old homes without making their timeline files the live timeline owner.
+  test("keeps timeline activity in memory and preserves existing timeline files verbatim", async () => {
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-timeline-preservation-"));
+    const paseoHome = path.join(paseoHomeRoot, ".paseo");
+    const preservedTimelineDirectory = path.join(paseoHome, "agent-timelines");
+    const preservedTimelineFile = path.join(preservedTimelineDirectory, "retained.json");
+    const preservedContent =
+      '{"agentId":"older-chat","messages":[{"text":"preserved recovery evidence"}],"unknownField":true}\n';
+    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-timeline-agent-"));
+    await mkdir(preservedTimelineDirectory, { recursive: true });
+    await writeFile(preservedTimelineFile, preservedContent, "utf-8");
 
-    const daemonHandle = await createTestOttoDaemon({ ottoHomeRoot, cleanup: false });
+    const daemonHandle = await createTestPaseoDaemon({ paseoHomeRoot, cleanup: false });
     try {
-      await expect(access(obsoleteTimelineDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readFile(preservedTimelineFile, "utf-8")).toBe(preservedContent);
+      expect(await readdir(preservedTimelineDirectory)).toEqual(["retained.json"]);
 
       const agent = await daemonHandle.daemon.agentManager.createAgent(
         { provider: "codex", cwd: agentCwd },
@@ -103,21 +108,28 @@ describe("otto daemon bootstrap", () => {
       });
       await daemonHandle.daemon.agentManager.flush();
 
-      await expect(access(obsoleteTimelineDirectory)).rejects.toMatchObject({ code: "ENOENT" });
+      expect(daemonHandle.daemon.agentManager.getTimeline(agent.id)).toContainEqual(
+        expect.objectContaining({
+          type: "assistant_message",
+          text: "timeline stays in memory",
+        }),
+      );
+      expect(await readFile(preservedTimelineFile, "utf-8")).toBe(preservedContent);
+      expect(await readdir(preservedTimelineDirectory)).toEqual(["retained.json"]);
     } finally {
       await daemonHandle.close();
       await Promise.all([
-        rm(ottoHomeRoot, { recursive: true, force: true }),
+        rm(paseoHomeRoot, { recursive: true, force: true }),
         rm(agentCwd, { recursive: true, force: true }),
       ]);
     }
   });
 
   test("does not create a timeline directory for live timeline activity", async () => {
-    const ottoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-timeline-memory-"));
-    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-timeline-agent-"));
-    const daemonHandle = await createTestOttoDaemon({ ottoHomeRoot, cleanup: false });
-    const timelineDirectory = path.join(daemonHandle.ottoHome, "agent-timelines");
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-timeline-memory-"));
+    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-timeline-agent-"));
+    const daemonHandle = await createTestPaseoDaemon({ paseoHomeRoot, cleanup: false });
+    const timelineDirectory = path.join(daemonHandle.paseoHome, "agent-timelines");
     try {
       const agent = await daemonHandle.daemon.agentManager.createAgent(
         { provider: "codex", cwd: agentCwd },
@@ -134,19 +146,19 @@ describe("otto daemon bootstrap", () => {
     } finally {
       await daemonHandle.close();
       await Promise.all([
-        rm(ottoHomeRoot, { recursive: true, force: true }),
+        rm(paseoHomeRoot, { recursive: true, force: true }),
         rm(agentCwd, { recursive: true, force: true }),
       ]);
     }
   });
 
   test("reload applies live HTTP, MCP, Git, provider, relay, and app policies", async () => {
-    const ottoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-config-reload-runtime-"));
-    const ottoHome = path.join(ottoHomeRoot, ".otto");
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-config-reload-agent-"));
-    await mkdir(ottoHome, { recursive: true });
-    const configPath = path.join(ottoHome, "config.json");
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-config-reload-runtime-"));
+    const paseoHome = path.join(paseoHomeRoot, ".paseo");
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-config-reload-agent-"));
+    await mkdir(paseoHome, { recursive: true });
+    const configPath = path.join(paseoHome, "config.json");
     const initialPersisted = {
       version: 1 as const,
       daemon: {
@@ -167,10 +179,10 @@ describe("otto daemon bootstrap", () => {
       app: { baseUrl: "https://before.example.test" },
     };
     await writeFile(configPath, `${JSON.stringify(initialPersisted, null, 2)}\n`, "utf-8");
-    const config = loadConfig(ottoHome, { env: {} });
+    const config = loadConfig(paseoHome, { env: {} });
     config.staticDir = staticDir;
     config.agentClients = createTestAgentClients();
-    config.agentStoragePath = path.join(ottoHome, "agents");
+    config.agentStoragePath = path.join(paseoHome, "agents");
     config.isDev = true;
     config.speech = {
       providers: {
@@ -180,7 +192,7 @@ describe("otto daemon bootstrap", () => {
         voiceTts: { provider: "local", explicit: true, enabled: false },
       },
     };
-    const daemon = await createOttoDaemon(config, pino({ level: "silent" }));
+    const daemon = await createPaseoDaemon(config, pino({ level: "silent" }));
     let client: DaemonClient | null = null;
     let proxyUpstream: http.Server | null = null;
 
@@ -232,16 +244,10 @@ describe("otto daemon bootstrap", () => {
       });
       expect(await beforeProxyReload.text()).toBe("http");
 
-      // Edit the file as it is on disk now: startup seeds host-owned sections
-      // (agent teams, the personality-import marker) that are restart-scoped,
-      // and rewriting from the pre-start copy would read as removing them.
-      const startedPersisted = JSON.parse(await readFile(configPath, "utf-8")) as {
-        agents?: Record<string, unknown>;
-      } & typeof initialPersisted;
       const reloadedPersisted = {
-        ...startedPersisted,
+        ...initialPersisted,
         daemon: {
-          ...startedPersisted.daemon,
+          ...initialPersisted.daemon,
           hostnames: ["127.0.0.1", "after.example.test"],
           cors: { allowedOrigins: ["https://after.example.test"] },
           trustedProxies: true as const,
@@ -251,7 +257,6 @@ describe("otto daemon bootstrap", () => {
         },
         app: { baseUrl: "https://after.example.test" },
         agents: {
-          ...startedPersisted.agents,
           catalogRefreshTimeoutMs: 5_000,
           providers: { codex: { enabled: false } },
         },
@@ -333,7 +338,7 @@ describe("otto daemon bootstrap", () => {
         await new Promise<void>((resolve) => proxyUpstream?.close(() => resolve()));
       }
       await Promise.all([
-        rm(ottoHomeRoot, { recursive: true, force: true }),
+        rm(paseoHomeRoot, { recursive: true, force: true }),
         rm(staticDir, { recursive: true, force: true }),
         rm(agentCwd, { recursive: true, force: true }),
       ]);
@@ -377,7 +382,7 @@ describe("otto daemon bootstrap", () => {
       throw new Error("Expected upstream TCP address");
     }
 
-    const daemonHandle = await createTestOttoDaemon({
+    const daemonHandle = await createTestPaseoDaemon({
       auth: { password: hashDaemonPassword("secret") },
     });
     try {
@@ -410,7 +415,7 @@ describe("otto daemon bootstrap", () => {
   });
 
   test("configured public service namespace misses never reach daemon APIs", async () => {
-    const daemonHandle = await createTestOttoDaemon({
+    const daemonHandle = await createTestPaseoDaemon({
       serviceProxy: {
         publicBaseUrl: "https://services.example.com",
         standaloneListen: null,
@@ -439,29 +444,29 @@ describe("otto daemon bootstrap", () => {
       throw new Error("Expected occupied TCP address");
     }
 
-    const ottoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-standalone-rollback-"));
-    const ottoHome = path.join(ottoHomeRoot, ".otto");
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    await mkdir(ottoHome, { recursive: true });
-    const config: OttoDaemonConfig = {
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-standalone-rollback-"));
+    const paseoHome = path.join(paseoHomeRoot, ".paseo");
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    await mkdir(paseoHome, { recursive: true });
+    const config: PaseoDaemonConfig = {
       listen: "127.0.0.1:0",
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: false,
       staticDir,
       mcpDebug: false,
       agentClients: createTestAgentClients(),
-      agentStoragePath: path.join(ottoHome, "agents"),
+      agentStoragePath: path.join(paseoHome, "agents"),
       relayEnabled: false,
-      appBaseUrl: "https://app.otto-code.ai",
+      appBaseUrl: "https://app.paseo.sh",
       openai: undefined,
       speech: undefined,
       serviceProxy: {
         standaloneListen: `127.0.0.1:${address.port}`,
       },
     };
-    const daemon = await createOttoDaemon(config, pino({ level: "silent" }));
+    const daemon = await createPaseoDaemon(config, pino({ level: "silent" }));
 
     try {
       await expect(daemon.start()).rejects.toThrow();
@@ -469,13 +474,13 @@ describe("otto daemon bootstrap", () => {
     } finally {
       await daemon.stop().catch(() => undefined);
       await new Promise<void>((resolve) => occupiedServer.close(() => resolve()));
-      await rm(ottoHomeRoot, { recursive: true, force: true });
+      await rm(paseoHomeRoot, { recursive: true, force: true });
       await rm(staticDir, { recursive: true, force: true });
     }
   });
 
   test("local service namespace misses never reach daemon APIs", async () => {
-    const daemonHandle = await createTestOttoDaemon({
+    const daemonHandle = await createTestPaseoDaemon({
       auth: { password: hashDaemonPassword("secret") },
     });
     try {
@@ -492,7 +497,7 @@ describe("otto daemon bootstrap", () => {
   });
 
   test("daemon websocket still upgrades when service proxy upgrade handler is mounted", async () => {
-    const daemonHandle = await createTestOttoDaemon();
+    const daemonHandle = await createTestPaseoDaemon();
     const ws = new WebSocket(`ws://127.0.0.1:${daemonHandle.port}/ws`);
     try {
       await new Promise<void>((resolve, reject) => {
@@ -506,19 +511,13 @@ describe("otto daemon bootstrap", () => {
     }
   });
 
-  // DISABLED(hub): Hub is a permanent exclusion (docs/upstream-merges.md) -
-  // bootstrap.ts's HubRelationshipController import now resolves to the inert
-  // stand-in in hub-disabled.ts, so a real daemon booted through
-  // createOttoDaemon never reaches enrollment. `rg "DISABLED\(hub\)"` finds
-  // every piece; re-enabling means repointing those specifiers and un-skipping
-  // this test.
-  test.skip("relay config changes during Hub enrollment reach the live runtime", async () => {
-    const ottoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-relay-startup-"));
-    const ottoHome = path.join(ottoHomeRoot, ".otto");
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    await mkdir(ottoHome, { recursive: true });
+  test("relay config changes during Hub enrollment reach the live runtime", async () => {
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-relay-startup-"));
+    const paseoHome = path.join(paseoHomeRoot, ".paseo");
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    await mkdir(paseoHome, { recursive: true });
     await writeFile(
-      path.join(ottoHome, "hub-relationship.json"),
+      path.join(paseoHome, "hub-relationship.json"),
       `${JSON.stringify({
         version: 1,
         state: "pending",
@@ -562,24 +561,24 @@ describe("otto daemon bootstrap", () => {
         return { close: () => undefined };
       },
     };
-    const config: OttoDaemonConfig = {
+    const config: PaseoDaemonConfig = {
       listen: "127.0.0.1:0",
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: false,
       staticDir,
       mcpDebug: false,
       agentClients: createTestAgentClients(),
-      agentStoragePath: path.join(ottoHome, "agents"),
+      agentStoragePath: path.join(paseoHome, "agents"),
       relayEnabled: false,
       relayEndpoint: "127.0.0.1:9",
       relayUseTls: false,
-      appBaseUrl: "https://app.otto-code.ai",
+      appBaseUrl: "https://app.paseo.sh",
       openai: undefined,
       speech: undefined,
     };
-    const daemon = await createOttoDaemon(config, pino({ level: "silent" }), {
+    const daemon = await createPaseoDaemon(config, pino({ level: "silent" }), {
       hubRelationshipRemote: remote,
     });
     const starting = daemon.start();
@@ -607,7 +606,7 @@ describe("otto daemon bootstrap", () => {
       await starting.catch(() => undefined);
       await client?.close().catch(() => undefined);
       await daemon.stop().catch(() => undefined);
-      await rm(ottoHomeRoot, { recursive: true, force: true });
+      await rm(paseoHomeRoot, { recursive: true, force: true });
       await rm(staticDir, { recursive: true, force: true });
     }
   });
@@ -634,7 +633,7 @@ describe("otto daemon bootstrap", () => {
       throw new Error("Expected upstream TCP address");
     }
 
-    const daemonHandle = await createTestOttoDaemon({
+    const daemonHandle = await createTestPaseoDaemon({
       serviceProxy: { standaloneListen: `127.0.0.1:${standalonePort}` },
     });
     try {
@@ -676,19 +675,19 @@ describe("otto daemon bootstrap", () => {
     });
     await new Promise<void>((resolve) => occupiedMain.listen(mainPort, "127.0.0.1", resolve));
 
-    const ottoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-main-rollback-"));
-    const ottoHome = path.join(ottoHomeRoot, ".otto");
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    const pluginDirectory = path.join(ottoHomeRoot, "plugin");
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-main-rollback-"));
+    const paseoHome = path.join(paseoHomeRoot, ".paseo");
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    const pluginDirectory = path.join(paseoHomeRoot, "plugin");
     const pluginPidPath = path.join(pluginDirectory, "plugin.pid");
-    await mkdir(ottoHome, { recursive: true });
+    await mkdir(paseoHome, { recursive: true });
     if (!isPlatform("win32")) {
       await mkdir(pluginDirectory);
       await writeFile(
-        path.join(pluginDirectory, "otto-plugin.json"),
+        path.join(pluginDirectory, "paseo-plugin.json"),
         JSON.stringify({
           id: "startup-rollback",
-          requirements: { otto: `>=${resolveDaemonVersion(import.meta.url)}` },
+          requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
         }),
       );
       await writeFile(
@@ -700,18 +699,18 @@ export default function contribute(plugin: unknown) {
 }`,
       );
     }
-    const config: OttoDaemonConfig = {
+    const config: PaseoDaemonConfig = {
       listen: `127.0.0.1:${mainPort}`,
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: false,
       staticDir,
       mcpDebug: false,
       agentClients: createTestAgentClients(),
-      agentStoragePath: path.join(ottoHome, "agents"),
+      agentStoragePath: path.join(paseoHome, "agents"),
       relayEnabled: false,
-      appBaseUrl: "https://app.otto-code.ai",
+      appBaseUrl: "https://app.paseo.sh",
       openai: undefined,
       speech: undefined,
       serviceProxy: { standaloneListen: `127.0.0.1:${standalonePort}` },
@@ -720,7 +719,7 @@ export default function contribute(plugin: unknown) {
         ? {}
         : { "startup-rollback": { source: "directory", path: pluginDirectory } },
     };
-    const daemon = await createOttoDaemon(config, pino({ level: "silent" }));
+    const daemon = await createPaseoDaemon(config, pino({ level: "silent" }));
 
     try {
       await expect(daemon.start()).rejects.toThrow();
@@ -731,7 +730,7 @@ export default function contribute(plugin: unknown) {
     } finally {
       await daemon.stop().catch(() => undefined);
       await new Promise<void>((resolve) => occupiedMain.close(() => resolve()));
-      await rm(ottoHomeRoot, { recursive: true, force: true });
+      await rm(paseoHomeRoot, { recursive: true, force: true });
       await rm(staticDir, { recursive: true, force: true });
     }
   });
@@ -746,7 +745,7 @@ export default function contribute(plugin: unknown) {
         },
       },
     );
-    const daemonHandle = await createTestOttoDaemon({
+    const daemonHandle = await createTestPaseoDaemon({
       logger,
       mcpDebug: true,
     });
@@ -784,23 +783,23 @@ export default function contribute(plugin: unknown) {
   });
 
   test("starts when OpenAI speech provider is configured without credentials", async () => {
-    const ottoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-openai-config-"));
-    const ottoHome = path.join(ottoHomeRoot, ".otto");
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    await mkdir(ottoHome, { recursive: true });
+    const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-openai-config-"));
+    const paseoHome = path.join(paseoHomeRoot, ".paseo");
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    await mkdir(paseoHome, { recursive: true });
 
-    const config: OttoDaemonConfig = {
+    const config: PaseoDaemonConfig = {
       listen: "127.0.0.1:0",
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: false,
       staticDir,
       mcpDebug: false,
       agentClients: createTestAgentClients(),
-      agentStoragePath: path.join(ottoHome, "agents"),
+      agentStoragePath: path.join(paseoHome, "agents"),
       relayEnabled: false,
-      appBaseUrl: "https://app.otto-code.ai",
+      appBaseUrl: "https://app.paseo.sh",
       openai: undefined,
       speech: {
         providers: {
@@ -812,7 +811,7 @@ export default function contribute(plugin: unknown) {
     };
 
     try {
-      const daemon = await createOttoDaemon(config, pino({ level: "silent" }));
+      const daemon = await createPaseoDaemon(config, pino({ level: "silent" }));
       try {
         await daemon.start();
         expect(daemon.getListenTarget()).toBeDefined();
@@ -821,7 +820,7 @@ export default function contribute(plugin: unknown) {
         await daemon.stop();
       }
     } finally {
-      await rm(ottoHomeRoot, { recursive: true, force: true });
+      await rm(paseoHomeRoot, { recursive: true, force: true });
       await rm(staticDir, { recursive: true, force: true });
     }
   });
@@ -837,7 +836,7 @@ export default function contribute(plugin: unknown) {
       vi.fn(() => fetchGate),
     );
 
-    const daemonHandle = await createTestOttoDaemon({
+    const daemonHandle = await createTestPaseoDaemon({
       speech: {
         providers: {
           dictationStt: { provider: "local", explicit: true, enabled: true },
@@ -846,7 +845,7 @@ export default function contribute(plugin: unknown) {
           voiceTts: { provider: "local", explicit: true, enabled: false },
         },
         local: {
-          modelsDir: path.join(os.tmpdir(), `otto-missing-models-${Date.now()}`),
+          modelsDir: path.join(os.tmpdir(), `paseo-missing-models-${Date.now()}`),
           models: {
             dictationStt: "parakeet-tdt-0.6b-v2-int8",
             voiceStt: "parakeet-tdt-0.6b-v2-int8",
@@ -873,23 +872,23 @@ export default function contribute(plugin: unknown) {
   });
 
   test("parses whitespace-padded numeric port strings", () => {
-    expect(parseListenString(" 6868 ")).toEqual({
+    expect(parseListenString(" 6767 ")).toEqual({
       type: "tcp",
       host: "127.0.0.1",
-      port: 6868,
+      port: 6767,
     });
   });
 
   test("parses IPv6 listen targets correctly", () => {
-    expect(parseListenString("[::1]:6868")).toEqual({
+    expect(parseListenString("[::1]:6767")).toEqual({
       type: "tcp",
       host: "::1",
-      port: 6868,
+      port: 6767,
     });
-    expect(parseListenString("[::]:6868")).toEqual({
+    expect(parseListenString("[::]:6767")).toEqual({
       type: "tcp",
       host: "::",
-      port: 6868,
+      port: 6767,
     });
   });
 
@@ -897,19 +896,19 @@ export default function contribute(plugin: unknown) {
     // A Windows drive path like C:\daemon must NOT be silently parsed as TCP
     // (split(":") would yield host="C" and port="\\daemon" which is nonsensical).
     expect(() => parseListenString(String.raw`C:\daemon`)).toThrow();
-    expect(() => parseListenString(String.raw`D:\Users\foo\.otto\daemon.sock`)).toThrow();
+    expect(() => parseListenString(String.raw`D:\Users\foo\.paseo\daemon.sock`)).toThrow();
     // Single-letter "host" with no valid port is not a valid listen string
     expect(() => parseListenString(String.raw`C:\some\path`)).toThrow();
   });
 
   test("parses Windows named pipes as managed IPC listen targets", () => {
-    expect(parseListenString(String.raw`\\.\pipe\otto-managed-test`)).toEqual({
+    expect(parseListenString(String.raw`\\.\pipe\paseo-managed-test`)).toEqual({
       type: "pipe",
-      path: String.raw`\\.\pipe\otto-managed-test`,
+      path: String.raw`\\.\pipe\paseo-managed-test`,
     });
-    expect(parseListenString(`pipe://${String.raw`\\.\pipe\otto-managed-test`}`)).toEqual({
+    expect(parseListenString(`pipe://${String.raw`\\.\pipe\paseo-managed-test`}`)).toEqual({
       type: "pipe",
-      path: String.raw`\\.\pipe\otto-managed-test`,
+      path: String.raw`\\.\pipe\paseo-managed-test`,
     });
   });
 
@@ -917,50 +916,50 @@ export default function contribute(plugin: unknown) {
   test.skipIf(isPlatform("win32"))(
     "generates a relay pairing offer for unix socket listeners",
     async () => {
-      const ottoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-socket-relay-"));
-      const ottoHome = path.join(ottoHomeRoot, ".otto");
-      const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-      const socketPath = path.join(ottoHomeRoot, "run", "otto.sock");
+      const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-socket-relay-"));
+      const paseoHome = path.join(paseoHomeRoot, ".paseo");
+      const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+      const socketPath = path.join(paseoHomeRoot, "run", "paseo.sock");
       await mkdir(path.dirname(socketPath), { recursive: true });
-      await mkdir(ottoHome, { recursive: true });
+      await mkdir(paseoHome, { recursive: true });
       const logger = pino({ level: "silent" });
 
-      const config: OttoDaemonConfig = {
+      const config: PaseoDaemonConfig = {
         listen: socketPath,
-        ottoHome,
+        paseoHome,
         corsAllowedOrigins: [],
         hostnames: true,
         mcpEnabled: false,
         staticDir,
         mcpDebug: false,
         agentClients: createTestAgentClients(),
-        agentStoragePath: path.join(ottoHome, "agents"),
+        agentStoragePath: path.join(paseoHome, "agents"),
         relayEnabled: true,
         relayEndpoint: "127.0.0.1:9",
         relayPublicEndpoint: "127.0.0.1:9",
-        appBaseUrl: "https://app.otto-code.ai",
+        appBaseUrl: "https://app.paseo.sh",
         openai: undefined,
         speech: undefined,
       };
 
-      const daemon = await createOttoDaemon(config, logger);
+      const daemon = await createPaseoDaemon(config, logger);
 
       try {
         await daemon.start();
         const pairing = await generateLocalPairingOffer({
-          ottoHome,
+          paseoHome,
           relayEnabled: true,
           relayEndpoint: "127.0.0.1:9",
           relayPublicEndpoint: "127.0.0.1:9",
-          appBaseUrl: "https://app.otto-code.ai",
+          appBaseUrl: "https://app.paseo.sh",
           includeQr: false,
         });
         expect(pairing.relayEnabled).toBe(true);
-        expect(pairing.url?.startsWith("https://app.otto-code.ai/#offer=")).toBe(true);
+        expect(pairing.url?.startsWith("https://app.paseo.sh/#offer=")).toBe(true);
       } finally {
         await daemon.stop().catch(() => undefined);
         await daemon.agentManager.flush().catch(() => undefined);
-        await rm(ottoHomeRoot, { recursive: true, force: true });
+        await rm(paseoHomeRoot, { recursive: true, force: true });
         await rm(staticDir, { recursive: true, force: true });
       }
     },
@@ -995,11 +994,11 @@ function holdAgentClose(): HeldAgentClose {
 
 async function beginDaemonShutdownWithAgentClosing(): Promise<BlockedDaemonShutdown> {
   const heldAgentClose = holdAgentClose();
-  const daemonHandle = await createTestOttoDaemon({
+  const daemonHandle = await createTestPaseoDaemon({
     cleanup: false,
     agentClients: createTestAgentClients({ closeSession: heldAgentClose.closeSession }),
   });
-  const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-shutdown-agent-"));
+  const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-shutdown-agent-"));
   await daemonHandle.daemon.agentManager.createAgent(
     {
       provider: "codex",
@@ -1038,7 +1037,7 @@ async function beginDaemonShutdownWithAgentClosing(): Promise<BlockedDaemonShutd
       await stopPromise;
       await daemonHandle.daemon.agentManager.flush().catch(() => undefined);
       await Promise.all([
-        rm(path.dirname(daemonHandle.ottoHome), { recursive: true, force: true }),
+        rm(path.dirname(daemonHandle.paseoHome), { recursive: true, force: true }),
         rm(daemonHandle.staticDir, { recursive: true, force: true }),
         rm(agentCwd, { recursive: true, force: true }),
       ]);

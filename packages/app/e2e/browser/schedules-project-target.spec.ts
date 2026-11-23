@@ -1,10 +1,9 @@
-import { expect, test, type Page } from "../support/fixtures";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
+import { expect, test, type Page } from "../support/helpers/native-schedules"; // OTTO(schedules): original native host capability floor.
 import { gotoAppShell } from "../support/helpers/app";
-import {
-  addFakeScheduleHostAndReload,
-  buildFakeScheduleHostWorkspace,
-  installFakeScheduleHost,
-} from "../support/helpers/schedule-fake-host";
+import { addRetainedFixtureHostAndReload } from "../support/helpers/hosts";
+import { createScheduleHost } from "../support/helpers/schedule-host";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
@@ -39,7 +38,7 @@ async function selectModelByLabel(page: Page, label: string): Promise<void> {
   await page.getByRole("button", { name: /select model/i }).click();
   const popup = page.getByTestId("combobox-desktop-container");
   await expect(popup).toBeVisible({ timeout: 30_000 });
-  const searchInput = page.getByTestId("model-search-input").first();
+  const searchInput = popup.getByRole("textbox");
   await expect(searchInput).toBeVisible({ timeout: 30_000 });
   await searchInput.fill(label);
   const option = popup.getByText(new RegExp(`^${escapeRegex(label)}$`, "i")).first();
@@ -197,17 +196,8 @@ test.describe("Schedules project target", () => {
     await expectStableHeight(formSheet);
     await expect(page.getByTestId("schedule-host-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-project-trigger")).toBeVisible();
-    // No stepped disclosure: the model field is offered before a project is
-    // picked (models are host-scoped) and preselects the last-used model from
-    // device form preferences.
-    await expect(page.getByTestId("schedule-model-trigger")).toContainText("Ten second stream", {
-      timeout: 30_000,
-    });
-    // "Ten second stream" declares thinking options (low/medium/high, default
-    // low), so the effort picker hydrates to that default.
-    await expect(page.getByTestId("schedule-thinking-trigger")).toContainText("Low", {
-      timeout: 30_000,
-    });
+    await expect(page.getByTestId("schedule-model-trigger")).toHaveCount(0);
+    await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-mode")).toHaveCount(0);
     await expect(page.getByTestId("cadence-interval-value")).toHaveCount(0);
@@ -227,9 +217,9 @@ test.describe("Schedules project target", () => {
     await expect(modelTrigger).toContainText("Ten second stream");
     await expectSettled(modelTrigger);
     await expect(page.getByTestId("schedule-thinking-trigger")).toContainText("Low");
-    // No mode field: schedule runs are always unattended, so the form never
-    // offers a mode picker (an attended mode would fail at the first prompt).
-    await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
+    await expectSettled(page.getByTestId("schedule-thinking-trigger"));
+    await expect(page.getByTestId("schedule-mode-trigger")).toBeVisible();
+    await expectSettled(page.getByTestId("schedule-mode-trigger"));
     await expect(page.getByTestId("schedule-isolation-trigger")).toHaveCount(0);
     await expect(page.getByText("Worktree isolation is available for git projects.")).toHaveCount(
       0,
@@ -251,30 +241,21 @@ test.describe("Schedules project target", () => {
       cadenceExpression: "0 9 * * *",
     });
 
-    const fakeHost = await buildFakeScheduleHostWorkspace(workspace);
-    const fakePort = String(59_000 + Math.floor(Math.random() * 900));
-    await installFakeScheduleHost({
+    const secondary = await createScheduleHost();
+    cleanupTasks.push(() => secondary.cleanup());
+    await addRetainedFixtureHostAndReload({
       page,
-      port: fakePort,
-      serverId: fakeHost.serverId,
-      workspace: fakeHost.workspace,
-      project: fakeHost,
-    });
-    await addFakeScheduleHostAndReload({
-      page,
-      serverId: fakeHost.serverId,
-      label: "Fake host",
-      port: fakePort,
+      serverId: secondary.serverId,
+      label: secondary.label,
+      port: secondary.port,
     });
 
-    // The card-grid redesign replaced the host filter with a project filter;
-    // its combobox options must render untruncated.
-    const projectFilterTrigger = page.getByTestId("project-filter-trigger");
-    await expect(projectFilterTrigger).toBeVisible({ timeout: 30_000 });
-    await projectFilterTrigger.click();
-    const projectFilterPopup = page.getByTestId("combobox-desktop-container").last();
-    await expect(projectFilterPopup).toBeVisible({ timeout: 30_000 });
-    await expectNoTruncation(projectFilterPopup);
+    const hostFilterTrigger = page.getByTestId("schedules-host-filter-trigger");
+    await expect(hostFilterTrigger).toBeVisible({ timeout: 30_000 });
+    await hostFilterTrigger.click();
+    const hostFilterPopup = page.getByTestId("combobox-desktop-container").last();
+    await expect(hostFilterPopup).toBeVisible({ timeout: 30_000 });
+    await expectNoTruncation(hostFilterPopup);
     await page.keyboard.press("Escape");
     await expect(page.getByTestId("combobox-desktop-container")).toHaveCount(0, {
       timeout: 5_000,
@@ -282,28 +263,38 @@ test.describe("Schedules project target", () => {
   });
 
   test("clears the selected project and model when the host changes", async ({ page }) => {
+    test.setTimeout(120_000); // Includes two independent host startups and persisted model discovery.
     const workspace = await seedWorkspace({ repoPrefix: "schedule-project-host-model-" });
     cleanupTasks.push(() => workspace.cleanup());
     const serverId = getServerId();
-    const fakeHost = await buildFakeScheduleHostWorkspace(workspace);
-    const fakePort = String(59_000 + Math.floor(Math.random() * 900));
+    const secondary = await createScheduleHost();
+    cleanupTasks.push(() => secondary.cleanup());
 
-    await installFakeScheduleHost({
-      page,
-      port: fakePort,
-      serverId: fakeHost.serverId,
-      workspace: fakeHost.workspace,
-      project: fakeHost,
+    // OTTO(schedules): the second host deliberately has no Scheduler role assignment.
+    // It must discard the first host's explicit model and require a fresh choice.
+    const secondaryConfig = await connectDaemonClient<
+      Pick<DaemonClient, "connect" | "close" | "patchDaemonConfig">
+    >({
+      port: secondary.port,
+      clientIdPrefix: "schedule-unassigned-host",
     });
+    try {
+      await secondaryConfig.patchDaemonConfig({
+        agentProfiles: [],
+        agentTeams: { activeTeamId: null, teams: [] },
+      });
+    } finally {
+      await secondaryConfig.close();
+    }
 
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
     await page.goto(buildSchedulesRoute());
-    await addFakeScheduleHostAndReload({
+    await addRetainedFixtureHostAndReload({
       page,
-      serverId: fakeHost.serverId,
-      label: "Fake host",
-      port: fakePort,
+      serverId: secondary.serverId,
+      label: secondary.label,
+      port: secondary.port,
     });
     await expect(page.getByTestId("schedules-empty")).toBeVisible({ timeout: 30_000 });
     await page.getByTestId("schedules-empty-new").click();
@@ -317,20 +308,15 @@ test.describe("Schedules project target", () => {
     const thinkingTrigger = page.getByTestId("schedule-thinking-trigger");
     const modeTrigger = page.getByTestId("schedule-mode-trigger");
     await expect(hostTrigger).toBeVisible({ timeout: 30_000 });
-    // Project and model are visible from the start (disabled until a host is
-    // chosen) - fields are never revealed step by step.
-    await expect(projectTrigger).toBeVisible();
-    await expect(modelTrigger).toBeVisible();
+    await expect(projectTrigger).toHaveCount(0);
+    await expect(modelTrigger).toHaveCount(0);
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
     await hostTrigger.click();
     await page.getByTestId(`schedule-host-option-${serverId}`).click();
     await expect(projectTrigger).toBeVisible();
-    // Choosing a host preselects the last-used model (valid on this host).
-    await expect(modelTrigger).toContainText("Ten second stream", { timeout: 30_000 });
-    // "Ten second stream" declares thinking options (low/medium/high, default
-    // low), so the effort picker hydrates to that default.
-    await expect(thinkingTrigger).toContainText("Low", { timeout: 30_000 });
+    await expect(modelTrigger).toHaveCount(0);
+    await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
     await expectSettled(hostTrigger);
 
@@ -345,16 +331,17 @@ test.describe("Schedules project target", () => {
     await expect(modelTrigger).toContainText("Ten second stream");
     await expectSettled(modelTrigger);
     await expect(thinkingTrigger).toContainText("Low");
-    await expect(modeTrigger).toHaveCount(0);
+    await expectSettled(thinkingTrigger);
+    await expect(modeTrigger).toBeVisible();
+    await expectSettled(modeTrigger);
 
-    await hostTrigger.click();
-    await page.getByTestId(`schedule-host-option-${fakeHost.serverId}`).click();
-    await expect(hostTrigger).toContainText("Fake host");
+    await hostTrigger.press("Enter");
+    const secondaryOption = page.getByTestId(`schedule-host-option-${secondary.serverId}`);
+    await expect(secondaryOption).toBeVisible();
+    await secondaryOption.click();
+    await expect(hostTrigger).toContainText(secondary.label);
     await expect(projectTrigger).toContainText(/select project/i);
-    // Switching hosts clears both project and model - the prior model isn't
-    // valid on the fake host and the field resets to the placeholder rather
-    // than auto-picking the new host's default.
-    await expect(modelTrigger).toContainText(/select model/i);
+    await expect(modelTrigger).toHaveCount(0);
     await expect(thinkingTrigger).toHaveCount(0);
     await expect(modeTrigger).toHaveCount(0);
     await expectSettled(hostTrigger);
@@ -362,9 +349,9 @@ test.describe("Schedules project target", () => {
 
     await projectTrigger.click();
     await page
-      .getByTestId(`schedule-project-option-${projectEquivalenceViewKey(fakeHost.projectKey)}`)
+      .getByTestId(`schedule-project-option-${projectEquivalenceViewKey(secondary.projectKey)}`)
       .click();
-    await expect(projectTrigger).toContainText(fakeHost.projectDisplayName);
+    await expect(projectTrigger).toContainText(secondary.projectDisplayName);
     await expectSettled(projectTrigger);
     await expect(modelTrigger).toContainText(/select model/i);
     await expectSettled(modelTrigger);
@@ -372,9 +359,7 @@ test.describe("Schedules project target", () => {
     await expect(modeTrigger).toHaveCount(0);
 
     await page.getByLabel("Schedule name").fill(`Cross host model ${Date.now()}`);
-    await page.getByLabel("Prompt").fill("Run on the fake host project.");
-    // The model stayed cleared after the host change, so the form is still
-    // incomplete and cannot be submitted.
+    await page.getByLabel("Prompt").fill("Run on the secondary host project.");
     await expect(page.getByRole("button", { name: "Create schedule" })).toBeDisabled();
   });
 
@@ -417,7 +402,7 @@ test.describe("Schedules project target", () => {
     });
 
     const scheduleId = await findScheduleIdByName(workspace, scheduleName);
-    await page.getByTestId(`schedule-card-${scheduleId}`).click();
+    await page.getByTestId(`schedule-row-${scheduleId}`).click();
     const formSheet = page.getByTestId("schedule-form-sheet");
     await expect(formSheet).toBeVisible({ timeout: 10_000 });
     await expectStableHeight(formSheet);

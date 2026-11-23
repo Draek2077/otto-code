@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import {
   canRunRealProvider,
@@ -33,7 +33,7 @@ describe("daemon E2E (real codex) - send while running recovery", () => {
   test("clears input processing when the interrupt transition is missed", async () => {
     const logger = pino({ level: "silent" });
     const cwd = tmpCwd();
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       agentClients: createRealProviderClients(["codex"], logger),
       logger,
     });
@@ -44,8 +44,8 @@ describe("daemon E2E (real codex) - send while running recovery", () => {
     try {
       await primary.connect();
       await secondary.connect();
-      await primary.fetchAgents({ subscribe: { subscriptionId: "primary" } });
-      await secondary.fetchAgents({ subscribe: { subscriptionId: "secondary" } });
+      await primary.fetchAgents({ subscribe: {} });
+      await secondary.fetchAgents({ subscribe: {} });
 
       const agent = await primary.createAgent({
         cwd,
@@ -101,7 +101,7 @@ describe("daemon E2E (real codex) - send while running recovery", () => {
         });
 
         const initial = await reconnected.fetchAgents({
-          subscribe: { subscriptionId: "reconnected" },
+          subscribe: {},
         });
         const hydratedSnapshot = initial.entries.find(
           (candidate) => candidate.agent.id === agent.id,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ForgeSearchItem } from "@otto-code/protocol/messages";
+import { buildVisibleComboboxOptions } from "@/components/ui/combobox-options";
+import type { ForgeSearchItem } from "@getpaseo/protocol/messages";
 import {
   type BranchPickerDetail,
   branchPickerOptionId,
@@ -35,7 +36,7 @@ describe("pickerItemToCheckoutRequest", () => {
     expect(pickerItemToCheckoutRequest(null)).toBeUndefined();
   });
 
-  it("maps a selected branch row to checkout with its exact ref", () => {
+  it("maps a branch row to branch-off with its exact ref", () => {
     const item: PickerItem = {
       kind: "branch",
       name: "dev",
@@ -43,30 +44,8 @@ describe("pickerItemToCheckoutRequest", () => {
       accessibilityLabel: "dev, local branch",
     };
     expect(pickerItemToCheckoutRequest(item)).toEqual({
-      action: "checkout",
-      refName: "refs/heads/dev",
-    });
-  });
-
-  it("keeps branch-off behavior when only the implicit default base is present", () => {
-    const defaultItem = defaultBasePickerItem({
-      currentBranch: "main",
-      upstreamRef: "refs/remotes/upstream/main",
-    });
-    expect(pickerItemToCheckoutRequest(null, defaultItem)).toEqual({
       action: "branch-off",
-      refName: "refs/remotes/upstream/main",
-    });
-  });
-
-  it("checks out an explicitly selected remote ref even when it is also the default", () => {
-    const item = defaultBasePickerItem({
-      currentBranch: "main",
-      upstreamRef: "refs/remotes/upstream/main",
-    });
-    expect(pickerItemToCheckoutRequest(item, item)).toEqual({
-      action: "checkout",
-      refName: "refs/remotes/upstream/main",
+      refName: "refs/heads/dev",
     });
   });
 
@@ -326,7 +305,7 @@ describe("buildPickerOptionData", () => {
     });
     const selected = data.itemById.get(data.selectedOptionId) ?? null;
     expect(pickerItemToCheckoutRequest(selected)).toEqual({
-      action: "checkout",
+      action: "branch-off",
       refName: "refs/heads/main",
     });
   });
@@ -361,4 +340,49 @@ describe("defaultBasePickerItem", () => {
   it("has no default for detached HEAD", () => {
     expect(defaultBasePickerItem({ currentBranch: null })).toBeNull();
   });
+});
+
+describe("starting-ref search", () => {
+  it.each(["gitlab", "github"] as const)(
+    "keeps a %s change request returned for a body-only match",
+    (forge) => {
+      const item: ForgeSearchItem = {
+        ...prItem,
+        forge,
+        number: 3896,
+        title: "fix(config): send environment credentials only to trusted hosts",
+        body: "This mirrors the fix shipped for CVE-2024-53858.",
+        headRefName: "8545-duo-test",
+      };
+      const { options } = buildPickerOptionData({
+        branchDetails: [],
+        prItems: [item],
+        baseItem: null,
+      });
+      const visible = buildVisibleComboboxOptions({
+        options,
+        searchQuery: "2024",
+        searchable: true,
+        allowCustomValue: false,
+        customValuePrefix: "Use",
+      });
+      expect(visible.map((option) => option.label)).toEqual([
+        `${forge === "gitlab" ? "!" : "#"}3896 fix(config): send environment credentials only to trusted hosts`,
+      ]);
+      const selected = buildPickerOptionData({
+        branchDetails: [],
+        prItems: [],
+        baseItem: { kind: "github-pr", item },
+      });
+      expect(
+        buildVisibleComboboxOptions({
+          options: selected.options,
+          searchQuery: "2024",
+          searchable: true,
+          allowCustomValue: false,
+          customValuePrefix: "Use",
+        }),
+      ).toEqual(visible);
+    },
+  );
 });

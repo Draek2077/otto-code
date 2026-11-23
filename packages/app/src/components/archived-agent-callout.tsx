@@ -1,12 +1,10 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { View, Text } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { FOOTER_HEIGHT } from "@/constants/layout";
-import { ChatWidthBounds } from "@/components/chat-width-bounds";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { KeyboardTranslateView } from "@/components/keyboard-translate-view";
+import { KeyboardTranslateView } from "@/keyboard/shift";
 import { Button } from "@/components/ui/button";
 import type { Theme } from "@/styles/theme";
 import { toErrorMessage } from "@/utils/error-messages";
@@ -18,16 +16,10 @@ interface ArchivedAgentCalloutProps {
 
 export function ArchivedAgentCallout({ serverId, agentId }: ArchivedAgentCalloutProps) {
   const { t } = useTranslation();
-  const insets = useSafeAreaInsets();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const [isUnarchiving, setIsUnarchiving] = useState(false);
   const [unarchiveError, setUnarchiveError] = useState<string | null>(null);
-
-  const containerStyle = useMemo(
-    () => [styles.container, { paddingBottom: insets.bottom }],
-    [insets.bottom],
-  );
 
   const handleUnarchive = useCallback(async () => {
     if (!client || !isConnected || isUnarchiving) return;
@@ -42,9 +34,9 @@ export function ArchivedAgentCallout({ serverId, agentId }: ArchivedAgentCallout
   }, [client, isConnected, isUnarchiving, agentId]);
 
   return (
-    <KeyboardTranslateView style={containerStyle}>
+    <KeyboardTranslateView style={styles.container}>
       <View style={styles.inputAreaContainer}>
-        <ChatWidthBounds style={styles.inputAreaContent}>
+        <View style={styles.inputAreaContent}>
           <View style={styles.calloutStack}>
             <View style={styles.callout}>
               <Text style={styles.calloutText}>{t("agentPanel.archived.callout")}</Text>
@@ -63,7 +55,7 @@ export function ArchivedAgentCallout({ serverId, agentId }: ArchivedAgentCallout
               </Text>
             ) : null}
           </View>
-        </ChatWidthBounds>
+        </View>
       </View>
     </KeyboardTranslateView>
   );
@@ -83,9 +75,9 @@ const styles = StyleSheet.create((theme: Theme) => ({
     overflow: "visible",
     padding: theme.spacing[4],
   },
-  // The cap is the user's chat-width setting, applied by ChatWidthBounds.
   inputAreaContent: {
     width: "100%",
+    maxWidth: theme.contentMaxWidth,
   },
   callout: {
     flexDirection: "row",

@@ -4,7 +4,6 @@ import {
   mergePersistedCollapsedProjects,
   serializeCollapsedProjects,
   setProjectCollapsed,
-  setSectionsCollapsed,
   togglePinnedCollapsed,
   toggleProjectCollapsed,
   toggleWorkspaceGroupCollapsed,
@@ -29,40 +28,6 @@ describe("sidebar collapsed projects transitions", () => {
 
     expect(Array.from(state.collapsedProjectKeys)).toEqual(["project-b"]);
     expect(Array.from(state.collapsedWorkspaceGroupKeys)).toEqual(["running"]);
-  });
-
-  it("collapses and expands many sections at once", () => {
-    let state = emptyState();
-
-    state = setSectionsCollapsed(state, {
-      projectKeys: ["project-a", "project-b"],
-      collapsed: true,
-    });
-    expect(Array.from(state.collapsedProjectKeys)).toEqual(["project-a", "project-b"]);
-
-    state = setSectionsCollapsed(state, {
-      workspaceGroupKeys: ["running", "done"],
-      collapsed: true,
-    });
-    expect(Array.from(state.collapsedProjectKeys)).toEqual(["project-a", "project-b"]);
-    expect(Array.from(state.collapsedWorkspaceGroupKeys)).toEqual(["running", "done"]);
-
-    state = setSectionsCollapsed(state, { projectKeys: ["project-a"], collapsed: false });
-    expect(Array.from(state.collapsedProjectKeys)).toEqual(["project-b"]);
-    expect(Array.from(state.collapsedWorkspaceGroupKeys)).toEqual(["running", "done"]);
-  });
-
-  it("keeps untouched collapse sets when no keys are provided", () => {
-    const state: CollapsedProjectsState = {
-      collapsedProjectKeys: new Set(["project-a"]),
-      collapsedWorkspaceGroupKeys: new Set(["running"]),
-      collapsedPinned: false,
-    };
-
-    const next = setSectionsCollapsed(state, { collapsed: false });
-
-    expect(next.collapsedProjectKeys).toBe(state.collapsedProjectKeys);
-    expect(next.collapsedWorkspaceGroupKeys).toBe(state.collapsedWorkspaceGroupKeys);
   });
 
   it("serializes collapsed project keys for preference storage", () => {

@@ -1,5 +1,5 @@
 import type pino from "pino";
-import type { FirstAgentContext } from "@otto-code/protocol/messages";
+import type { FirstAgentContext } from "@getpaseo/protocol/messages";
 
 import { resolveFirstAgentPromptTitle } from "./agent/create-agent-title.js";
 import type { AgentManager } from "./agent/agent-manager.js";
@@ -8,7 +8,7 @@ import type { StructuredGenerationDaemonConfig } from "./agent/structured-genera
 import {
   attemptFirstAgentBranchAutoName,
   type AttemptFirstAgentBranchAutoNameResult,
-} from "./otto-worktree-service.js";
+} from "./paseo-worktree-service.js";
 import type { GitMutationService } from "./session/git-mutation/git-mutation-service.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import type { PersistedWorkspaceRecord, WorkspaceRegistry } from "./workspace-registry.js";
@@ -24,7 +24,7 @@ type CurrentSelection = GenerateBranchNameFromFirstAgentContextOptions["currentS
 
 interface WorkspaceAutoNameOptions {
   agentManager: AgentManager;
-  workspaceRegistry: Pick<WorkspaceRegistry, "get" | "update">;
+  workspaceRegistry: Pick<WorkspaceRegistry, "update">;
   workspaceGitService: WorkspaceGitService;
   providerSnapshotManager: ProviderSnapshotManager;
   readDaemonConfig: () => StructuredGenerationDaemonConfig;
@@ -41,7 +41,7 @@ interface ScheduleContext {
 
 export class WorkspaceAutoName {
   private readonly agentManager: AgentManager;
-  private readonly workspaceRegistry: Pick<WorkspaceRegistry, "get" | "update">;
+  private readonly workspaceRegistry: Pick<WorkspaceRegistry, "update">;
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
   private readonly readDaemonConfig: () => StructuredGenerationDaemonConfig;
@@ -108,25 +108,12 @@ export class WorkspaceAutoName {
     firstAgentContext: FirstAgentContext;
     currentSelection: CurrentSelection;
   }): Promise<void> {
-    if (!this.isMetadataGenerationEnabled()) {
-      return;
-    }
-    // A workspace can sit in a subdirectory of its worktree. The branch and the
-    // first-agent metadata belong to the worktree root; the title belongs to the
-    // workspace (Paseo #2098).
     const worktreeRoot = input.workspace.worktreeRoot ?? input.workspace.cwd;
     let generated: GeneratedWorkspaceName | null = null;
-    // Whether the branch-rename path actually invoked the generator. A null
-    // result from a generation that DID run must not re-trigger the whole
-    // ladder - only a short-circuit that never generated (e.g. the branch was
-    // already renamed, so attemptFirstAgentBranchAutoName skipped the callback)
-    // should fall through to the direct generation below for the title.
-    let generatorInvoked = false;
     const result: AttemptFirstAgentBranchAutoNameResult = await attemptFirstAgentBranchAutoName({
       cwd: worktreeRoot,
       firstAgentContext: input.firstAgentContext,
       generateBranchNameFromContext: ({ firstAgentContext }) => {
-        generatorInvoked = true;
         return this.generateFromContext({
           cwd: input.workspace.cwd,
           firstAgentContext,
@@ -138,7 +125,7 @@ export class WorkspaceAutoName {
       },
     });
 
-    if (!generated && !generatorInvoked) {
+    if (!generated) {
       generated = await this.generateFromContext({
         cwd: input.workspace.cwd,
         firstAgentContext: input.firstAgentContext,
@@ -153,7 +140,7 @@ export class WorkspaceAutoName {
     // K4: re-read from the registry before writing so any concurrent upsert
     // that happened between workspace creation and this async path is not clobbered.
     // When the first-agent rename changed the git branch too, persist that branch
-    // alongside the title - both are this path's own fields.
+    // alongside the title — both are this path's own fields.
     await this.applyGeneratedWorkspaceTitle(input.workspace.workspaceId, {
       title: generatedTitle,
       ...(result.renamed ? { branch: result.branchName } : {}),
@@ -171,9 +158,6 @@ export class WorkspaceAutoName {
     firstAgentContext: FirstAgentContext;
     currentSelection: CurrentSelection;
   }): Promise<void> {
-    if (!this.isMetadataGenerationEnabled()) {
-      return;
-    }
     const generated = await this.generateFromContext({
       cwd: input.cwd,
       firstAgentContext: input.firstAgentContext,
@@ -184,7 +168,7 @@ export class WorkspaceAutoName {
       return;
     }
     // K4: applyGeneratedWorkspaceTitle re-reads from the registry before writing.
-    // Directory workspaces have no branch - write only the title.
+    // Directory workspaces have no branch — write only the title.
     await this.applyGeneratedWorkspaceTitle(input.workspaceId, {
       title,
       promptTitle: resolveFirstAgentPromptTitle(input.firstAgentContext),
@@ -196,35 +180,18 @@ export class WorkspaceAutoName {
     workspaceId: string,
     input: { title: string; branch?: string | null; promptTitle?: string | null },
   ): Promise<void> {
-    const current = await this.workspaceRegistry.get(workspaceId);
-    // Titles are generated asynchronously, so the workspace can be archived
-    // between the request and the result. Writing then would re-emit an upsert
-    // for an archived record and put it back in front of the user.
-    if (!current || current.archivedAt) {
-      return;
-    }
-    await this.workspaceRegistry.update(workspaceId, (record) => {
-      if (record.archivedAt) {
-        return record;
-      }
-      let title = record.title;
+    await this.workspaceRegistry.update(workspaceId, (current) => {
+      let title = current.title;
       if (!title || (input.promptTitle && title === input.promptTitle)) {
         title = input.title;
       }
       return {
-        ...record,
+        ...current,
         title,
         ...(input.branch ? { branch: input.branch } : {}),
         updatedAt: new Date().toISOString(),
       };
     });
-  }
-
-  // Host opt-out (WP-A metadataGeneration.enabled=false): skip workspace/branch
-  // auto-naming entirely. User-initiated generations (commit/PR/voice) are
-  // unaffected - this gate only covers the automatic naming paths.
-  private isMetadataGenerationEnabled(): boolean {
-    return this.readDaemonConfig().metadataGeneration?.enabled !== false;
   }
 
   private generateFromContext(input: {

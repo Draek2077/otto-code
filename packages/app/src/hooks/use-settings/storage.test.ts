@@ -2,26 +2,31 @@ import { describe, expect, it } from "vitest";
 import { QueryClient } from "@tanstack/react-query";
 import {
   APP_SETTINGS_KEY,
+  APP_SETTINGS_QUERY_KEY,
   DEFAULT_APP_SETTINGS,
   DEFAULT_CLIENT_SETTINGS,
   DEFAULT_CODE_FONT_SIZE,
-  DEFAULT_TERMINAL_FONT_SIZE,
-  DEFAULT_UI_FONT_SIZE,
+  DEFAULT_CONTENT_FONT_SIZE,
+  DEFAULT_UI_BASE_FONT_SIZE,
+  defaultUiBaseFontSize,
+  defaultContentFontSize,
   loadAppSettingsFromStorage,
   loadSettingsFromStorage,
-  MAX_MOUNTED_TAB_LIMIT,
-  MIN_MOUNTED_TAB_LIMIT,
   parseClampedFontSize,
-  parseMountedTabLimit,
   parseTerminalScrollbackLines,
+  resolveContentMaxWidth,
+  sanitizeFontFamily,
   saveAppSettings,
   type SettingsDeps,
 } from "./storage";
-import { DEFAULT_FONT_CONTRAST } from "@/styles/theme";
 import { createFakeDesktopBridge, createInMemoryKeyValueStorage } from "./fakes";
-import { WORKSPACE_TABS_RAIL_MAX_WIDTH } from "@/constants/layout";
+import {
+  DEFAULT_SIDEBAR_ROW_ITEMS,
+  SIDEBAR_ROW_ITEMS,
+} from "@/components/sidebar/display-preferences/row-items";
+import { DEFAULT_CONTENT_MAX_WIDTH, THEME_OPTIONS } from "@/styles/theme";
 
-const LEGACY_SETTINGS_KEY = "@otto:settings";
+const LEGACY_SETTINGS_KEY = "@paseo:settings";
 
 function makeDeps(
   overrides: {
@@ -39,14 +44,159 @@ function makeDeps(
 }
 
 describe("loadAppSettingsFromStorage", () => {
-  it("defaults color scheme mode to system when storage is empty", async () => {
+  // OTTO(action-groups): preserve a 0.9 opt-out and unrelated retained settings.
+  it.each([true, false, undefined])(
+    "restores the action grouping preference %s",
+    async (groupConsecutiveActions) => {
+      const deps = makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({
+            groupConsecutiveActions,
+            theme: "light",
+            futureValue: "keep",
+          }),
+        }),
+      });
+      const loaded = await loadAppSettingsFromStorage(deps);
+      expect(loaded.groupConsecutiveActions).toBe(groupConsecutiveActions ?? true);
+      expect(loaded.theme).toBe("light");
+      expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY)!)).toMatchObject({
+        futureValue: "keep",
+      });
+    },
+  );
+  // OTTO(editor): adding editor fields must not invalidate the existing device record.
+  it.each([undefined, null])(
+    "preserves settings and unknown data when legacy Vim mappings are %s",
+    async (vimMappings) => {
+      const stored = {
+        theme: "light",
+        uiBaseFontSize: 16,
+        contentFontSize: 18,
+        sidebarRowItems: { host: false },
+        futureSetting: { enabled: true },
+        vimMappings,
+      };
+      const bytes = JSON.stringify(stored);
+      const deps = makeDeps({
+        storage: createInMemoryKeyValueStorage({ [APP_SETTINGS_KEY]: bytes }),
+      });
+      const settings = await loadAppSettingsFromStorage(deps);
+      expect(settings).toMatchObject({
+        theme: "light",
+        uiBaseFontSize: 16,
+        contentFontSize: 18,
+        sidebarRowItems: { host: false },
+        vimMappings: { leader: "Space" },
+      });
+      expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(bytes);
+    },
+  );
+  it("preserves a persisted steer send behavior", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        "@paseo:app-settings": JSON.stringify({ sendBehavior: "steer" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(deps)).sendBehavior).toBe("steer");
+  });
+
+  it("keeps valid settings when another build wrote unknown fields or enum values", async () => {
+    const stored = {
+      theme: "dark",
+      contentFontSize: 16,
+      sendBehavior: "future-mode",
+      futureSetting: { enabled: true },
+      sidebarRowItems: { host: false, futureRowItem: true },
+    };
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify(stored),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.theme).toBe("dark");
+    expect(result.sendBehavior).toBe(DEFAULT_CLIENT_SETTINGS.sendBehavior);
+    expect(result.sidebarRowItems.host).toBe(false);
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toEqual(stored);
+  });
+  it("migrates a stored interrupt to steer and persists it", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ sendBehavior: "interrupt" }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.sendBehavior).toBe("steer");
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "{}").sendBehavior).toBe(
+      "steer",
+    );
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "{}")).not.toHaveProperty(
+      "needsWrite",
+    );
+  });
+
+  it("keeps an explicit services choice over the legacy scripts fallback", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          contentFontSize: 16,
+          sidebarRowItems: { scripts: false, services: true },
+        }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).sidebarRowItems.services).toBe(true);
+
+    await saveAppSettings({
+      queryClient: new QueryClient(),
+      updates: {
+        sidebarRowItems: { ...DEFAULT_SIDEBAR_ROW_ITEMS, services: true },
+      },
+      deps,
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).sidebarRowItems.services).toBe(true);
+  });
+
+  it("keeps an interrupt the user picked after the migration ran", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ sendBehavior: "interrupt" }),
+      }),
+    });
+    await loadAppSettingsFromStorage(deps);
+    await saveAppSettings({
+      queryClient: new QueryClient(),
+      updates: { sendBehavior: "interrupt" },
+      deps,
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).sendBehavior).toBe("interrupt");
+  });
+
+  it("defaults theme to auto when storage is empty", async () => {
     const deps = makeDeps();
 
     const result = await loadAppSettingsFromStorage(deps);
 
-    expect(result.colorSchemeMode).toBe("system");
-    expect(result.lightTheme).toBe("daylight");
-    expect(result.darkTheme).toBe("dark");
+    expect(result.theme).toBe("auto");
+  });
+
+  it.each(THEME_OPTIONS)("loads the persisted $name theme", async ({ name }) => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ theme: name }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.theme).toBe(name);
   });
 
   it("seeds storage with the client defaults when nothing is persisted", async () => {
@@ -69,162 +219,6 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.language).toBe("system");
   });
 
-  it("defaults new installs to steer", async () => {
-    const settings = await loadAppSettingsFromStorage(makeDeps());
-
-    expect(settings.sendBehavior).toBe("steer");
-    expect(settings.sendBehaviorMigrationVersion).toBe(1);
-  });
-
-  it("migrates the historical interrupt default to steer exactly once", async () => {
-    const backingStorage = createInMemoryKeyValueStorage({
-      [APP_SETTINGS_KEY]: JSON.stringify({ sendBehavior: "interrupt" }),
-    });
-    let writes = 0;
-    const storage = {
-      ...backingStorage,
-      async setItem(key: string, value: string) {
-        writes += 1;
-        await backingStorage.setItem(key, value);
-      },
-    };
-    const deps = makeDeps({ storage });
-
-    const migrated = await loadAppSettingsFromStorage(deps);
-    const persisted = JSON.parse(storage.entries.get(APP_SETTINGS_KEY) ?? "null");
-    const reloaded = await loadAppSettingsFromStorage(deps);
-
-    expect(migrated.sendBehavior).toBe("steer");
-    expect(persisted).toMatchObject({
-      sendBehavior: "steer",
-      sendBehaviorMigrationVersion: 1,
-    });
-    expect(reloaded.sendBehavior).toBe("steer");
-    expect(JSON.parse(storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toEqual(persisted);
-    expect(writes).toBe(1);
-  });
-
-  it("preserves queue during the steer migration", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ sendBehavior: "queue" }),
-      }),
-    });
-
-    const settings = await loadAppSettingsFromStorage(deps);
-
-    expect(settings.sendBehavior).toBe("queue");
-    expect(settings.sendBehaviorMigrationVersion).toBe(1);
-  });
-
-  it("preserves an interrupt choice made after the steer migration", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({
-          sendBehavior: "interrupt",
-          sendBehaviorMigrationVersion: 1,
-        }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).sendBehavior).toBe("interrupt");
-  });
-
-  it("loads the legacy terminal renderer preference", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ useLegacyTerminalRenderer: true }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).useLegacyTerminalRenderer).toBe(true);
-  });
-
-  it("validates sidebar row display preferences", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({
-          sidebarRowItems: { host: false, changeRequest: "invalid", scripts: false },
-          sidebarChecksDisplay: "icon",
-        }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-    // The stored values win where they are valid; everything else falls back to
-    // DEFAULT_SIDEBAR_ROW_ITEMS, including the rows Otto adds over upstream.
-    expect(result.sidebarRowItems).toEqual({
-      branch: false,
-      project: false,
-      host: false,
-      changeRequest: true,
-      services: false,
-      labels: true,
-    });
-    expect(result.sidebarChecksDisplay).toBe("icon");
-  });
-
-  it("migrates a hidden legacy checks row without overriding an explicit display", async () => {
-    const hidden = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ sidebarRowItems: { checks: false } }),
-      }),
-    });
-    const explicit = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({
-          sidebarRowItems: { checks: false },
-          sidebarChecksDisplay: "iconAndText",
-        }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(hidden)).sidebarChecksDisplay).toBe("none");
-    expect((await loadAppSettingsFromStorage(explicit)).sidebarChecksDisplay).toBe("iconAndText");
-  });
-
-  it("normalizes persisted Vim mappings and preserves the legacy Vim toggle", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({
-          vimKeybindings: true,
-          vimMappings: {
-            leader: "Space",
-            mappings: { goToDefinition: "d", find: "d", openChanges: "ch", unsupported: "x" },
-          },
-        }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.vimKeybindings).toBe(true);
-    expect(result.vimMappings).toEqual({
-      leader: "Space",
-      mappings: {
-        save: "s",
-        find: "d",
-        findReferences: "r",
-        renameSymbol: "n",
-        openFileSearch: "p",
-        openChanges: "ch",
-        newTerminal: "t",
-      },
-    });
-  });
-
-  it("preserves the Markdown Otto editor preference", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ alwaysUseOttoEditorForMarkdown: true }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.alwaysUseOttoEditorForMarkdown).toBe(true);
-  });
-
   it("defaults workspace title source to title when storage is empty", async () => {
     const deps = makeDeps();
 
@@ -233,85 +227,207 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.workspaceTitleSource).toBe("title");
   });
 
-  it("persists the independent wrapped tool-call text preference", async () => {
+  it("enables the chat outline by default", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.chatOutlineEnabled).toBe(true);
+  });
+
+  it("loads a disabled chat outline preference", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ chatOutlineEnabled: false }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.chatOutlineEnabled).toBe(false);
+  });
+
+  it("defaults sidebar navigation items to an empty preference list", async () => {
+    const deps = makeDeps();
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.sidebarNavItems).toEqual([]);
+  });
+
+  it("loads stored sidebar navigation items in order", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          sidebarNavItems: [
+            { key: "history", visible: false },
+            { key: "new-workspace", visible: true },
+          ],
+        }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.sidebarNavItems).toEqual([
+      { key: "history", visible: false },
+      { key: "new-workspace", visible: true },
+    ]);
+  });
+
+  it("falls back to the default sidebar navigation items when the stored list is malformed", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ sidebarNavItems: [{ key: 3 }] }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.sidebarNavItems).toEqual([]);
+  });
+
+  it("loads stored sidebar footer items in order and defaults them to empty", async () => {
+    expect((await loadAppSettingsFromStorage(makeDeps())).sidebarFooterItems).toEqual([]);
+
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          sidebarFooterItems: [
+            // A footer button that was configurable once; the sidebar model skips it.
+            { key: "help", visible: false },
+            { key: "plugin:sync:status", visible: true },
+            { key: "usage", visible: false },
+          ],
+        }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.sidebarFooterItems).toEqual([
+      { key: "help", visible: false },
+      { key: "plugin:sync:status", visible: true },
+      { key: "usage", visible: false },
+    ]);
+  });
+
+  it("loads legacy usage pins in order and defaults a fresh device to source defaults", async () => {
+    expect((await loadAppSettingsFromStorage(makeDeps())).usage).toEqual({
+      displayAs: "used",
+      pins: null,
+      serverId: null,
+    });
+
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          usage: {
+            displayAs: "remaining",
+            pinned: [
+              { sourceId: "codex", windowId: "weekly" },
+              { sourceId: "claude", windowId: "five-hour" },
+            ],
+            serverId: "server",
+          },
+        }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).usage).toEqual({
+      displayAs: "remaining",
+      pins: [
+        { sourceId: "codex", windowId: "weekly" },
+        { sourceId: "claude", windowId: "five-hour" },
+      ],
+      serverId: "server",
+    });
+  });
+
+  it("loads an explicitly empty usage selection without restoring defaults", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          usage: { displayAs: "remaining", pins: [], serverId: "server" },
+        }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(deps)).usage).toEqual({
+      displayAs: "remaining",
+      pins: [],
+      serverId: "server",
+    });
+  });
+
+  it("keeps valid usage preferences when one field is malformed", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          usage: {
+            displayAs: "percent",
+            pinned: [{ sourceId: "claude", windowId: "weekly" }],
+            serverId: 42,
+          },
+        }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).usage).toEqual({
+      displayAs: "used",
+      pins: [{ sourceId: "claude", windowId: "weekly" }],
+      serverId: null,
+    });
+  });
+
+  it("collapses legacy diff destinations into the former Explorer choice", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          openInSidePane: { explorerChanges: true, changesLinks: false },
+        }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.openInSidePane.diffs).toBe(true);
+    expect(result.openInSidePane).not.toHaveProperty("explorerChanges");
+    expect(result.openInSidePane).not.toHaveProperty("changesLinks");
+  });
+
+  it("defaults PRs to Explorer and preserves the legacy side choice", async () => {
     const defaults = await loadAppSettingsFromStorage(makeDeps());
-    expect(defaults.wrapToolCallText).toBe(false);
-
-    const configured = await loadAppSettingsFromStorage(
+    const legacySide = await loadAppSettingsFromStorage(
       makeDeps({
         storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({ wrapToolCallText: true }),
+          [APP_SETTINGS_KEY]: JSON.stringify({ openInSidePane: { pullRequests: true } }),
         }),
       }),
     );
-    expect(configured.wrapToolCallText).toBe(true);
+
+    expect(defaults.pullRequestOpenLocation).toBe("explorer");
+    expect(legacySide.pullRequestOpenLocation).toBe("side");
+    expect(legacySide.openInSidePane).not.toHaveProperty("pullRequests");
   });
 
-  it("shows workspace tools in the sidebar for new installs while preserving a saved header choice", async () => {
-    const defaults = await loadAppSettingsFromStorage(makeDeps());
-    expect(defaults.workspaceToolsPlacement).toBe("workspaceList");
+  it("uses the native terminal renderer by default", async () => {
+    const deps = makeDeps();
 
-    const existingInstall = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({ workspaceToolsPlacement: "header" }),
-        }),
-      }),
-    );
-    expect(existingInstall.workspaceToolsPlacement).toBe("header");
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.useLegacyTerminalRenderer).toBe(false);
   });
 
-  it("keeps Zoom Recorder disabled until the Desktop user explicitly enables it", async () => {
-    const defaults = await loadAppSettingsFromStorage(makeDeps());
-    expect(defaults.zoomRecorderEnabled).toBe(false);
-    expect(defaults.meetingTranscriptDeliveryPolicy).toBe("require_secure_connection");
-
-    const configured = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({ zoomRecorderEnabled: true }),
-        }),
+  it("loads the per-device legacy terminal renderer preference", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ useLegacyTerminalRenderer: true }),
       }),
-    );
-    expect(configured.zoomRecorderEnabled).toBe(true);
-  });
+    });
 
-  it("persists a paused Zoom Recorder without disabling its library", async () => {
-    const configured = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({
-            zoomRecorderEnabled: true,
-            zoomRecorderPaused: true,
-          }),
-        }),
-      }),
-    );
+    const result = await loadAppSettingsFromStorage(deps);
 
-    expect(configured.zoomRecorderEnabled).toBe(true);
-    expect(configured.zoomRecorderPaused).toBe(true);
-  });
-
-  it("persists only recognized transcript delivery policies", async () => {
-    const configured = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({
-            meetingTranscriptDeliveryPolicy: "local_only",
-          }),
-        }),
-      }),
-    );
-    expect(configured.meetingTranscriptDeliveryPolicy).toBe("local_only");
-
-    const invalid = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({ meetingTranscriptDeliveryPolicy: "plaintext" }),
-        }),
-      }),
-    );
-    expect(invalid.meetingTranscriptDeliveryPolicy).toBe("require_secure_connection");
+    expect(result.useLegacyTerminalRenderer).toBe(true);
   });
 
   it("loads configured terminal scrollback lines from app settings", async () => {
@@ -338,43 +454,6 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.workspaceTitleSource).toBe("branch");
   });
 
-  it("defaults shortcut overlays to Full and accepts only the four supported modes", async () => {
-    const defaults = await loadAppSettingsFromStorage(makeDeps());
-    expect(defaults.shortcutOverlayMode).toBe("full");
-
-    for (const shortcutOverlayMode of ["off", "workspaces", "on-screen", "full"] as const) {
-      const result = await loadAppSettingsFromStorage(
-        makeDeps({
-          storage: createInMemoryKeyValueStorage({
-            [APP_SETTINGS_KEY]: JSON.stringify({ shortcutOverlayMode }),
-          }),
-        }),
-      );
-      expect(result.shortcutOverlayMode).toBe(shortcutOverlayMode);
-    }
-
-    const invalid = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({ shortcutOverlayMode: "everywhere" }),
-        }),
-      }),
-    );
-    expect(invalid.shortcutOverlayMode).toBe("full");
-  });
-
-  it("retains the enabled all-pages resource footer from its pre-release key", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ chatMetricsBarAllPages: true }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.clientResourceBarAllPages).toBe(true);
-  });
-
   it("drops an unknown workspace title source back to title", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -385,188 +464,6 @@ describe("loadAppSettingsFromStorage", () => {
     const result = await loadAppSettingsFromStorage(deps);
 
     expect(result.workspaceTitleSource).toBe("title");
-  });
-
-  it("defaults chat width to default when storage is empty", async () => {
-    const deps = makeDeps();
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.chatWidth).toBe("default");
-  });
-
-  it("shows the chat outline by default and preserves an explicit opt-out", async () => {
-    expect((await loadAppSettingsFromStorage(makeDeps())).chatOutlineEnabled).toBe(true);
-
-    const configured = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({ chatOutlineEnabled: false }),
-        }),
-      }),
-    );
-
-    expect(configured.chatOutlineEnabled).toBe(false);
-  });
-
-  it("defaults featureEnabled to an empty map when storage is empty", async () => {
-    const deps = makeDeps();
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.featureEnabled).toEqual({});
-  });
-
-  it("loads an explicit disabled feature flag from app settings", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ featureEnabled: { visualizer: false } }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.featureEnabled).toEqual({ visualizer: false });
-  });
-
-  it("drops a non-object featureEnabled back to the empty default", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ featureEnabled: ["visualizer"] }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.featureEnabled).toEqual({});
-  });
-
-  it("drops unknown keys and non-boolean values from featureEnabled", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({
-          featureEnabled: { visualizer: "yes", bogusFeature: true },
-        }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.featureEnabled).toEqual({});
-  });
-
-  it("loads configured chat width from app settings", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ chatWidth: "wide" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.chatWidth).toBe("wide");
-  });
-
-  it("drops an unknown chat width back to default", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ chatWidth: "cinematic" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.chatWidth).toBe("default");
-  });
-
-  it("defaults tab orientation to vertical when storage is empty", async () => {
-    const deps = makeDeps();
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.defaultTabOrientation).toBe("vertical");
-  });
-
-  it("loads configured default tab orientation from app settings", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ defaultTabOrientation: "vertical" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.defaultTabOrientation).toBe("vertical");
-  });
-
-  it("drops an unknown default tab orientation back to vertical", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ defaultTabOrientation: "diagonal" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.defaultTabOrientation).toBe("vertical");
-  });
-
-  it("defaults the vertical tab rail width to null (content-driven) when storage is empty", async () => {
-    const deps = makeDeps();
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.verticalTabRailWidth).toBeNull();
-  });
-
-  it("loads a saved vertical tab rail width", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ verticalTabRailWidth: 320 }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.verticalTabRailWidth).toBe(320);
-  });
-
-  // An explicit null is "the user reset it", which has to survive the round trip
-  // rather than be treated as an absent field.
-  it("keeps an explicitly stored null vertical tab rail width", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ verticalTabRailWidth: null }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.verticalTabRailWidth).toBeNull();
-  });
-
-  it("clamps an out-of-bounds vertical tab rail width into the rail's range", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ verticalTabRailWidth: 9_000 }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.verticalTabRailWidth).toBe(WORKSPACE_TABS_RAIL_MAX_WIDTH);
-  });
-
-  it("drops a non-numeric vertical tab rail width back to content-driven", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ verticalTabRailWidth: "wide" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.verticalTabRailWidth).toBeNull();
   });
 
   it("normalizes terminal scrollback lines from storage", async () => {
@@ -596,13 +493,48 @@ describe("loadAppSettingsFromStorage", () => {
 
     expect(result).toEqual({
       ...DEFAULT_CLIENT_SETTINGS,
-      colorSchemeMode: "dark",
-      darkTheme: "dark",
-      // Upgrader from the legacy key: backfilled so it never sees the tour or wizard.
-      hasCompletedTutorial: true,
-      hasCompletedSetupWizard: true,
+      theme: "dark",
+      contentFontSize: DEFAULT_UI_BASE_FONT_SIZE,
     });
-    expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(JSON.stringify(result));
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toEqual({
+      manageBuiltInDaemon: false,
+      releaseChannel: "beta",
+      ...result,
+    });
+  });
+
+  it("preserves the legacy key's explicit interface size as content size", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [LEGACY_SETTINGS_KEY]: JSON.stringify({ uiBaseFontSize: 17 }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.uiBaseFontSize).toBe(17);
+    expect(result.contentFontSize).toBe(17);
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toMatchObject({
+      uiBaseFontSize: 17,
+      contentFontSize: 17,
+    });
+  });
+
+  it("preserves the legacy interface scale as content size", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [LEGACY_SETTINGS_KEY]: JSON.stringify({ uiFontSize: 17 }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+
+    expect(result.uiBaseFontSize).toBe(15);
+    expect(result.contentFontSize).toBe(15);
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toMatchObject({
+      uiBaseFontSize: 15,
+      contentFontSize: 15,
+    });
   });
 
   it("loads a persisted explicit language", async () => {
@@ -615,18 +547,6 @@ describe("loadAppSettingsFromStorage", () => {
     const result = await loadAppSettingsFromStorage(deps);
 
     expect(result.language).toBe("zh-CN");
-  });
-
-  it("loads the workspace change indicator preference", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ workspaceChangeIndicator: "branch" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.workspaceChangeIndicator).toBe("branch");
   });
 
   it("drops an unknown persisted language back to system", async () => {
@@ -642,136 +562,41 @@ describe("loadAppSettingsFromStorage", () => {
   });
 });
 
-describe("corrupt persisted settings self-heal", () => {
-  it("resets to defaults and rewrites storage when the blob is unparseable", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        // Truncated write, e.g. an interrupted upgrade - JSON.parse throws.
-        [APP_SETTINGS_KEY]: '{"chatWidth":"wide",',
-      }),
-    });
+describe("saveAppSettings", () => {
+  it("applies consecutive functional updates to the latest cached settings", async () => {
+    const deps = makeDeps();
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(APP_SETTINGS_QUERY_KEY, DEFAULT_CLIENT_SETTINGS);
 
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result).toEqual(DEFAULT_CLIENT_SETTINGS);
-    expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(
-      JSON.stringify(DEFAULT_CLIENT_SETTINGS),
-    );
-  });
-
-  it("resets to defaults when the blob parses to a non-object", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify(["not", "an", "object"]),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result).toEqual(DEFAULT_CLIENT_SETTINGS);
-    expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(
-      JSON.stringify(DEFAULT_CLIENT_SETTINGS),
-    );
-  });
-
-  it("falls back to defaults when only a corrupt legacy blob exists", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [LEGACY_SETTINGS_KEY]: "}not json{",
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result).toEqual(DEFAULT_CLIENT_SETTINGS);
-    expect(deps.storage.entries.get(APP_SETTINGS_KEY)).toBe(
-      JSON.stringify(DEFAULT_CLIENT_SETTINGS),
-    );
-  });
-});
-
-describe("migrating a persisted `theme` field (current AppSettings schema)", () => {
-  it("maps auto to system mode", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "auto" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.colorSchemeMode).toBe("system");
-  });
-
-  it("folds the retired plain light theme into daylight", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "light" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.colorSchemeMode).toBe("light");
-    expect(result.lightTheme).toBe("daylight");
-  });
-
-  it("maps a light variant name to light mode with that variant", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "meadow" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.colorSchemeMode).toBe("light");
-    expect(result.lightTheme).toBe("meadow");
-  });
-
-  it("maps the plain dark theme to dark mode", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.colorSchemeMode).toBe("dark");
-    expect(result.darkTheme).toBe("dark");
-  });
-
-  it("maps a dark variant name to dark mode with that variant", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "ghostty" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.colorSchemeMode).toBe("dark");
-    expect(result.darkTheme).toBe("ghostty");
-  });
-
-  it("does not re-run when the new fields are already present", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({
-          theme: "ghostty", // stale leftover from before migration; must be ignored
-          colorSchemeMode: "light",
-          lightTheme: "meadow",
-          darkTheme: "claude",
+    await Promise.all([
+      saveAppSettings({
+        queryClient,
+        updates: (current) => ({
+          sidebarNavItems: [...current.sidebarNavItems, { key: "history", visible: false }],
         }),
+        deps,
       }),
+      saveAppSettings({
+        queryClient,
+        updates: (current) => ({
+          sidebarNavItems: [...current.sidebarNavItems, { key: "search", visible: true }],
+        }),
+        deps,
+      }),
+    ]);
+
+    expect(queryClient.getQueryData(APP_SETTINGS_QUERY_KEY)).toMatchObject({
+      sidebarNavItems: [
+        { key: "history", visible: false },
+        { key: "search", visible: true },
+      ],
     });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.colorSchemeMode).toBe("light");
-    expect(result.lightTheme).toBe("meadow");
-    expect(result.darkTheme).toBe("claude");
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toMatchObject({
+      sidebarNavItems: [
+        { key: "history", visible: false },
+        { key: "search", visible: true },
+      ],
+    });
   });
 });
 
@@ -806,12 +631,8 @@ describe("loadSettingsFromStorage", () => {
 
     expect(result).toEqual({
       ...DEFAULT_APP_SETTINGS,
-      colorSchemeMode: "light",
-      // The stored `theme` survives alongside its colorSchemeMode migration.
       theme: "light",
-      lightTheme: "daylight",
-      hasCompletedTutorial: true,
-      hasCompletedSetupWizard: true,
+      contentFontSize: DEFAULT_UI_BASE_FONT_SIZE,
     });
   });
 
@@ -834,8 +655,6 @@ describe("loadSettingsFromStorage", () => {
         releaseChannel: "beta",
         notifications: { playSound: true },
         daemon: { manageBuiltInDaemon: false, keepRunningAfterQuit: true },
-        tray: { showIcon: true, minimizeOnClose: true, startMinimized: false },
-        quit: { warnBeforeQuit: false, onlyWarnForActiveAgents: false },
       },
     });
     const deps = makeDeps({
@@ -856,14 +675,10 @@ describe("loadSettingsFromStorage", () => {
     ]);
     expect(result).toEqual({
       ...DEFAULT_APP_SETTINGS,
-      colorSchemeMode: "light",
-      // The stored `theme` survives alongside its colorSchemeMode migration.
       theme: "light",
-      lightTheme: "daylight",
+      contentFontSize: DEFAULT_UI_BASE_FONT_SIZE,
       manageBuiltInDaemon: false,
       releaseChannel: "beta",
-      hasCompletedTutorial: true,
-      hasCompletedSetupWizard: true,
     });
   });
 
@@ -881,17 +696,43 @@ describe("loadSettingsFromStorage", () => {
     expect(desktop.migrationsApplied).toEqual([]);
     expect(result).toEqual({
       ...DEFAULT_APP_SETTINGS,
-      colorSchemeMode: "light",
-      // The stored `theme` survives alongside its colorSchemeMode migration.
       theme: "light",
-      lightTheme: "daylight",
-      hasCompletedTutorial: true,
-      hasCompletedSetupWizard: true,
+      contentFontSize: DEFAULT_UI_BASE_FONT_SIZE,
     });
   });
 });
 
 describe("saveAppSettings", () => {
+  it("round-trips fields written by a newer build", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          theme: "dark",
+          contentFontSize: 16,
+          sendBehavior: "future-mode",
+          futureSetting: { enabled: true },
+          sidebarRowItems: { host: false, futureRowItem: true },
+        }),
+      }),
+    });
+
+    await loadAppSettingsFromStorage(deps);
+    await saveAppSettings({
+      queryClient: new QueryClient(),
+      updates: { theme: "light" },
+      deps,
+    });
+
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toMatchObject({
+      theme: "light",
+      futureSetting: { enabled: true },
+      sidebarRowItems: {
+        host: false,
+        futureRowItem: true,
+      },
+    });
+  });
+
   it("saves terminal scrollback through app settings persistence", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -913,72 +754,61 @@ describe("saveAppSettings", () => {
       }),
     );
   });
+
+  it("normalizes a legacy cached settings shape before saving", async () => {
+    const deps = makeDeps();
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(APP_SETTINGS_QUERY_KEY, {
+      theme: "dark",
+      compactToolCalls: true,
+    });
+
+    await saveAppSettings({
+      queryClient,
+      updates: { theme: "light" },
+      deps,
+    });
+
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toEqual({
+      ...DEFAULT_CLIENT_SETTINGS,
+      theme: "light",
+      contentFontSize: DEFAULT_UI_BASE_FONT_SIZE,
+      toolCallDetailLevel: "overview",
+    });
+  });
+
+  it("persists a selected plugin theme", async () => {
+    const deps = makeDeps();
+    const queryClient = new QueryClient();
+
+    await saveAppSettings({
+      queryClient,
+      updates: { theme: "plugin", pluginThemeId: "catppuccin/theme/mocha" },
+      deps,
+    });
+
+    const loaded = await loadAppSettingsFromStorage(deps);
+    expect(loaded.theme).toBe("plugin");
+    expect(loaded.pluginThemeId).toBe("catppuccin/theme/mocha");
+  });
+
+  // The row items are written as one object through one strict schema, so an item the schema
+  // does not know does not just fail to persist itself — it takes every sibling toggle with it.
+  it.each(SIDEBAR_ROW_ITEMS)("persists the %s row item being switched off", async (item) => {
+    const deps = makeDeps();
+    const queryClient = new QueryClient();
+    const sidebarRowItems = { ...DEFAULT_SIDEBAR_ROW_ITEMS, [item]: false };
+
+    await saveAppSettings({ queryClient, updates: { sidebarRowItems }, deps });
+
+    expect((await loadAppSettingsFromStorage(deps)).sidebarRowItems).toEqual(sidebarRowItems);
+  });
 });
 
 describe("parseTerminalScrollbackLines", () => {
   it("clamps negative values to the minimum and rejects non-numeric strings", () => {
     expect(parseTerminalScrollbackLines("-10")).toBe(0);
     expect(parseTerminalScrollbackLines("abc")).toBeNull();
-  });
-});
-
-describe("parseMountedTabLimit", () => {
-  // Tri-state on purpose: this setting has a real "no choice" value, so
-  // "cleared" and "unparseable" must not collapse into the same answer.
-  it("reads an explicitly cleared field as match-this-device", () => {
-    expect(parseMountedTabLimit("")).toBeNull();
-    expect(parseMountedTabLimit("   ")).toBeNull();
-    expect(parseMountedTabLimit(null)).toBeNull();
-  });
-
-  it("reports unparseable input as undefined so the caller keeps what it had", () => {
-    expect(parseMountedTabLimit("abc")).toBeUndefined();
-    expect(parseMountedTabLimit(undefined)).toBeUndefined();
-    expect(parseMountedTabLimit({})).toBeUndefined();
-  });
-
-  it("clamps a number to the retention bounds", () => {
-    expect(parseMountedTabLimit(6)).toBe(6);
-    expect(parseMountedTabLimit("99")).toBe(MAX_MOUNTED_TAB_LIMIT);
-    expect(parseMountedTabLimit(1)).toBe(MIN_MOUNTED_TAB_LIMIT);
-  });
-});
-
-describe("mountedTabLimit persistence", () => {
-  it("defaults to match-this-device and round-trips an explicit choice", async () => {
-    expect(DEFAULT_APP_SETTINGS.mountedTabLimit).toBeNull();
-
-    const deps = makeDeps();
-    const queryClient = new QueryClient();
-
-    await saveAppSettings({ queryClient, updates: { mountedTabLimit: 8 }, deps });
-    expect((await loadAppSettingsFromStorage(deps)).mountedTabLimit).toBe(8);
-
-    // And clearing it goes back to match-this-device rather than sticking on 8.
-    await saveAppSettings({ queryClient, updates: { mountedTabLimit: null }, deps });
-    expect((await loadAppSettingsFromStorage(deps)).mountedTabLimit).toBeNull();
-  });
-});
-
-describe("sub-agent track presentation persistence", () => {
-  it("defaults to panels, persists pills, and rejects unknown values", async () => {
-    expect(DEFAULT_APP_SETTINGS.subagentTrackPresentation).toBe("panels");
-
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ subagentTrackPresentation: "pills" }),
-      }),
-    });
-    expect((await loadAppSettingsFromStorage(deps)).subagentTrackPresentation).toBe("pills");
-
-    const invalidDeps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ subagentTrackPresentation: "cards" }),
-      }),
-    });
-    expect((await loadAppSettingsFromStorage(invalidDeps)).subagentTrackPresentation).toBe(
-      "panels",
-    );
   });
 });
 
@@ -994,130 +824,175 @@ describe("appearance settings", () => {
 
     expect(result.uiFontFamily).toBe("");
     expect(result.monoFontFamily).toBe("");
-    expect(result.uiFontSize).toBe(DEFAULT_UI_FONT_SIZE);
+    expect(result.uiBaseFontSize).toBe(DEFAULT_UI_BASE_FONT_SIZE);
+    expect(result.contentFontSize).toBe(DEFAULT_UI_BASE_FONT_SIZE);
     expect(result.codeFontSize).toBe(DEFAULT_CODE_FONT_SIZE);
-    expect(result.terminalFontSize).toBe(DEFAULT_TERMINAL_FONT_SIZE);
-    expect(result.syntaxTheme).toBe("default");
-    expect(result.formattingDiffHighlights).toBe(true);
-    expect(result.structuralReplacementPresentation).toBe("new-token");
+    expect(result.syntaxTheme).toBe("one");
+    expect(result.toolCallDetailLevel).toBe("detailed");
   });
 
-  it("defaults hide-tab-toolbar-options to false when omitted", async () => {
+  it("migrates the enabled compact tool call preference to overview", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+        [APP_SETTINGS_KEY]: JSON.stringify({ compactToolCalls: true }),
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).hideTabToolbarOptions).toBe(false);
+    expect((await loadAppSettingsFromStorage(deps)).toolCallDetailLevel).toBe("overview");
   });
 
-  it("loads a persisted hide-tab-toolbar-options preference", async () => {
+  it("clears settings with an unrecognized tool call detail level", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ hideTabToolbarOptions: true }),
+        [APP_SETTINGS_KEY]: JSON.stringify({ toolCallDetailLevel: "unknown" }),
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).hideTabToolbarOptions).toBe(true);
+    expect((await loadAppSettingsFromStorage(deps)).toolCallDetailLevel).toBe("detailed");
   });
 
-  it("migrates the legacy pinned-toolbar preference", async () => {
+  it("migrates a switched-off checks row item to the hidden checks display", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ hidePinnedToolbarOptions: true }),
+        [APP_SETTINGS_KEY]: JSON.stringify({ sidebarRowItems: { checks: false } }),
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).hideTabToolbarOptions).toBe(true);
-    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null")).toMatchObject({
-      hideTabToolbarOptions: true,
-    });
+    expect((await loadAppSettingsFromStorage(deps)).sidebarChecksDisplay).toBe("none");
   });
 
-  it("defaults hide-chat-message-details to true when omitted", async () => {
+  it("lets a stored checks display win over the row item it replaced", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+        [APP_SETTINGS_KEY]: JSON.stringify({
+          sidebarChecksDisplay: "icon",
+          sidebarRowItems: { checks: false },
+        }),
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).hideChatMessageDetails).toBe(true);
+    expect((await loadAppSettingsFromStorage(deps)).sidebarChecksDisplay).toBe("icon");
   });
 
-  it("loads a persisted hide-chat-message-details preference", async () => {
+  it("uses a 15px mobile base and a 14px web base", () => {
+    expect(defaultUiBaseFontSize(true)).toBe(15);
+    expect(defaultUiBaseFontSize(false)).toBe(14);
+  });
+
+  it("uses a 16px content default on mobile and a 15px default on web", () => {
+    expect(defaultContentFontSize(true)).toBe(16);
+    expect(defaultContentFontSize(false)).toBe(15);
+    expect(DEFAULT_CONTENT_FONT_SIZE).toBe(defaultContentFontSize(false));
+  });
+
+  it("derives and persists content size from an existing interface-size preference", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ hideChatMessageDetails: false }),
+        [APP_SETTINGS_KEY]: JSON.stringify({ uiBaseFontSize: 17 }),
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).hideChatMessageDetails).toBe(false);
+    const result = await loadAppSettingsFromStorage(deps);
+    const persisted = JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null");
+
+    expect(result.contentFontSize).toBe(17);
+    expect(persisted).toMatchObject({ uiBaseFontSize: 17, contentFontSize: 17 });
   });
 
-  it("defaults chat-timestamp-display to absolute and rejects unknown values", async () => {
-    const omitted = makeDeps({
+  it("clamps the content font size into range and rejects non-numeric values", async () => {
+    const high = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
+        [APP_SETTINGS_KEY]: JSON.stringify({ contentFontSize: 999 }),
       }),
     });
-    expect((await loadAppSettingsFromStorage(omitted)).chatTimestampDisplay).toBe("absolute");
-
-    const invalid = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ chatTimestampDisplay: "sundial" }),
-      }),
-    });
-    expect((await loadAppSettingsFromStorage(invalid)).chatTimestampDisplay).toBe("absolute");
-  });
-
-  it("loads a persisted chat-timestamp-display preference", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ chatTimestampDisplay: "relative" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).chatTimestampDisplay).toBe("relative");
-  });
-
-  it("defaults chat-bubble-gradient to on and loads a persisted off value", async () => {
-    const omitted = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
-      }),
-    });
-    expect((await loadAppSettingsFromStorage(omitted)).chatBubbleGradient).toBe(true);
-
-    const disabled = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ chatBubbleGradient: false }),
-      }),
-    });
-    expect((await loadAppSettingsFromStorage(disabled)).chatBubbleGradient).toBe(false);
-  });
-
-  it("clamps the UI font size into range and rejects non-numeric values", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ uiFontSize: 999 }),
-      }),
-    });
-    expect((await loadAppSettingsFromStorage(deps)).uiFontSize).toBe(22);
+    expect((await loadAppSettingsFromStorage(high)).contentFontSize).toBe(21);
 
     const low = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ uiFontSize: 8 }),
+        [APP_SETTINGS_KEY]: JSON.stringify({ contentFontSize: 8 }),
       }),
     });
-    expect((await loadAppSettingsFromStorage(low)).uiFontSize).toBe(12);
+    expect((await loadAppSettingsFromStorage(low)).contentFontSize).toBe(10);
 
     const bogus = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ uiFontSize: "abc" }),
+        [APP_SETTINGS_KEY]: JSON.stringify({ contentFontSize: "abc" }),
       }),
     });
-    expect((await loadAppSettingsFromStorage(bogus)).uiFontSize).toBe(DEFAULT_UI_FONT_SIZE);
+    expect((await loadAppSettingsFromStorage(bogus)).contentFontSize).toBe(
+      DEFAULT_CONTENT_FONT_SIZE,
+    );
+  });
+
+  it.each([
+    { legacySize: 16, baseSize: 14 },
+    { legacySize: 17, baseSize: 15 },
+    { legacySize: 18, baseSize: 16 },
+  ])(
+    "migrates legacy interface size $legacySize to base size $baseSize",
+    async ({ legacySize, baseSize }) => {
+      const deps = makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ uiFontSize: legacySize }),
+        }),
+      });
+
+      const result = await loadAppSettingsFromStorage(deps);
+      const persisted = JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null");
+
+      expect(result.uiBaseFontSize).toBe(baseSize);
+      expect(persisted).toMatchObject({ uiBaseFontSize: baseSize });
+      expect(persisted.uiFontSize).toBe(legacySize);
+    },
+  );
+
+  it("lets an explicit base size win over the legacy interface scale", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ uiBaseFontSize: 16, uiFontSize: 17 }),
+      }),
+    });
+
+    expect((await loadAppSettingsFromStorage(deps)).uiBaseFontSize).toBe(16);
+  });
+
+  it("falls back to a valid legacy interface scale when the explicit base size is invalid", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ uiBaseFontSize: "abc", uiFontSize: 17 }),
+      }),
+    });
+
+    const result = await loadAppSettingsFromStorage(deps);
+    const persisted = JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null");
+
+    expect(result.uiBaseFontSize).toBe(15);
+    expect(persisted).toMatchObject({ uiBaseFontSize: 15, uiFontSize: 17 });
+  });
+
+  it("clamps the UI base font size into range and rejects non-numeric values", async () => {
+    const deps = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ uiBaseFontSize: 999 }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(deps)).uiBaseFontSize).toBe(21);
+
+    const low = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ uiBaseFontSize: 8 }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(low)).uiBaseFontSize).toBe(10);
+
+    const bogus = makeDeps({
+      storage: createInMemoryKeyValueStorage({
+        [APP_SETTINGS_KEY]: JSON.stringify({ uiBaseFontSize: "abc" }),
+      }),
+    });
+    expect((await loadAppSettingsFromStorage(bogus)).uiBaseFontSize).toBe(
+      DEFAULT_UI_BASE_FONT_SIZE,
+    );
   });
 
   it("clamps the code font size into range and rejects non-numeric values", async () => {
@@ -1133,7 +1008,7 @@ describe("appearance settings", () => {
         [APP_SETTINGS_KEY]: JSON.stringify({ codeFontSize: 8 }),
       }),
     });
-    expect((await loadAppSettingsFromStorage(low)).codeFontSize).toBe(12);
+    expect((await loadAppSettingsFromStorage(low)).codeFontSize).toBe(9);
 
     const bogus = makeDeps({
       storage: createInMemoryKeyValueStorage({
@@ -1141,38 +1016,6 @@ describe("appearance settings", () => {
       }),
     });
     expect((await loadAppSettingsFromStorage(bogus)).codeFontSize).toBe(DEFAULT_CODE_FONT_SIZE);
-  });
-
-  it("clamps font contrast into 0..1 and keeps it fractional", async () => {
-    const fractional = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ fontContrast: 0.35 }),
-      }),
-    });
-    // The point of the separate parse: the integer font-size clamp would have
-    // rounded this to 0.
-    expect((await loadAppSettingsFromStorage(fractional)).fontContrast).toBe(0.35);
-
-    const high = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ fontContrast: 4 }),
-      }),
-    });
-    expect((await loadAppSettingsFromStorage(high)).fontContrast).toBe(1);
-
-    const low = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ fontContrast: -2 }),
-      }),
-    });
-    expect((await loadAppSettingsFromStorage(low)).fontContrast).toBe(0);
-
-    const bogus = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ fontContrast: "abc" }),
-      }),
-    });
-    expect((await loadAppSettingsFromStorage(bogus)).fontContrast).toBe(DEFAULT_FONT_CONTRAST);
   });
 
   it("trims an accepted font family", async () => {
@@ -1218,33 +1061,11 @@ describe("appearance settings", () => {
   it("accepts a known syntax theme id", async () => {
     const deps = makeDeps({
       storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ syntaxTheme: "nightshade" }),
+        [APP_SETTINGS_KEY]: JSON.stringify({ syntaxTheme: "dracula" }),
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("nightshade");
-  });
-
-  it("preserves the formatting-only diff indicator preference", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ formattingDiffHighlights: false }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).formattingDiffHighlights).toBe(false);
-  });
-
-  it("preserves the compact Structural replacement presentation", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ structuralReplacementPresentation: "before-after" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).structuralReplacementPresentation).toBe(
-      "before-after",
-    );
+    expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("dracula");
   });
 
   it("drops a removed syntax theme id back to the default", async () => {
@@ -1254,7 +1075,7 @@ describe("appearance settings", () => {
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("default");
+    expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("one");
   });
 
   it("drops an unknown syntax theme id back to the default", async () => {
@@ -1264,378 +1085,7 @@ describe("appearance settings", () => {
       }),
     });
 
-    expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("default");
-  });
-});
-
-describe("one-time tutorial flag", () => {
-  it("defaults hasCompletedTutorial to false on a genuinely fresh install", async () => {
-    const deps = makeDeps();
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.hasCompletedTutorial).toBe(false);
-  });
-
-  it("backfills hasCompletedTutorial to true for an existing device missing the field", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.hasCompletedTutorial).toBe(true);
-  });
-
-  it("backfills hasCompletedTutorial to true when migrating from the legacy settings key", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [LEGACY_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.hasCompletedTutorial).toBe(true);
-  });
-
-  it("preserves an explicitly persisted hasCompletedTutorial value", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ hasCompletedTutorial: false }),
-      }),
-    });
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.hasCompletedTutorial).toBe(false);
-  });
-});
-
-describe("interface mode", () => {
-  it("defaults interfaceMode to null on a fresh install (unchosen)", async () => {
-    const deps = makeDeps();
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.interfaceMode).toBeNull();
-  });
-
-  it("loads a persisted interface mode", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ interfaceMode: "user" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).interfaceMode).toBe("user");
-  });
-
-  it("drops an unknown interface mode back to null", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ interfaceMode: "wizard" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).interfaceMode).toBeNull();
-  });
-
-  it("keeps an existing device (no interfaceMode) as null so it resolves to developer", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).interfaceMode).toBeNull();
-  });
-});
-
-describe("app start screen", () => {
-  it("defaults appStartScreen to 'workspaces' on a fresh install", async () => {
-    const deps = makeDeps();
-
-    expect((await loadAppSettingsFromStorage(deps)).appStartScreen).toBe("workspaces");
-  });
-
-  it("loads a persisted app start screen", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ appStartScreen: "dashboard" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).appStartScreen).toBe("dashboard");
-  });
-
-  it("drops an unknown app start screen back to the 'workspaces' default", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ appStartScreen: "everywhere" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).appStartScreen).toBe("workspaces");
-  });
-});
-
-describe("suggested tasks enabled", () => {
-  it("defaults suggestedTasksEnabled to true on a fresh install", async () => {
-    const deps = makeDeps();
-
-    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksEnabled).toBe(true);
-  });
-
-  it("loads a persisted suggestedTasksEnabled=false", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ suggestedTasksEnabled: false }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksEnabled).toBe(false);
-  });
-
-  it("drops a non-boolean suggestedTasksEnabled back to the true default", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ suggestedTasksEnabled: "nope" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksEnabled).toBe(true);
-  });
-});
-
-describe("agent voice cues", () => {
-  it("defaults agentVoiceCues to true on a fresh install", async () => {
-    const deps = makeDeps();
-
-    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(true);
-  });
-
-  it("loads a persisted agentVoiceCues=false", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ agentVoiceCues: false }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(false);
-  });
-
-  // Cues used to be a Visualizer sub-setting. A user who turned them OFF back
-  // then must not have them start talking again after the move.
-  it("carries over a legacy visualizerVoiceCues=false", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ visualizerVoiceCues: false }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(false);
-  });
-
-  it("prefers the new key when both are persisted", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ agentVoiceCues: true, visualizerVoiceCues: false }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(true);
-  });
-
-  // Cues are their own audio channel - the Visualizer's volume must not reach
-  // them, in either direction.
-  it("defaults agentVoiceCuesVolume to 50 independently of the visualizer volume", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ visualizerSoundVolume: 100 }),
-      }),
-    });
-
-    const settings = await loadAppSettingsFromStorage(deps);
-
-    expect(settings.agentVoiceCuesVolume).toBe(50);
-    expect(settings.visualizerSoundVolume).toBe(100);
-  });
-
-  // Mute and enable are different switches: the header button flips the former,
-  // settings the latter, and they must not collapse into one another.
-  it("defaults agentVoiceCuesMuted to false and keeps it independent of enable", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ agentVoiceCuesMuted: true }),
-      }),
-    });
-
-    const settings = await loadAppSettingsFromStorage(deps);
-
-    expect(settings.agentVoiceCuesMuted).toBe(true);
-    expect(settings.agentVoiceCues).toBe(true);
-  });
-
-  it("keeps the Hey Otto listening pause independent of the feature switch", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({
-          wakeWordEnabled: true,
-          wakeWordListeningPaused: true,
-        }),
-      }),
-    });
-
-    const settings = await loadAppSettingsFromStorage(deps);
-
-    expect(settings.wakeWordEnabled).toBe(true);
-    expect(settings.wakeWordListeningPaused).toBe(true);
-  });
-
-  it("clamps a persisted agentVoiceCuesVolume into 0..100", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ agentVoiceCuesVolume: 140 }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCuesVolume).toBe(100);
-  });
-
-  it("drops a non-boolean agentVoiceCues back to the true default", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ agentVoiceCues: "nope" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).agentVoiceCues).toBe(true);
-  });
-});
-
-describe("voice playback volume", () => {
-  // All three audio channels start at the same level. Spoken replies used to
-  // have none at all - they played at whatever the host synthesized - so this
-  // default deliberately makes speech quieter than it was.
-  it("defaults voicePlaybackVolume to 50, level with the other channels", async () => {
-    const settings = await loadAppSettingsFromStorage(makeDeps());
-
-    expect(settings.voicePlaybackVolume).toBe(50);
-    expect(settings.agentVoiceCuesVolume).toBe(50);
-    expect(settings.visualizerSoundVolume).toBe(50);
-  });
-
-  // Three channels, three sliders: spoken replies, voice cues, Visualizer
-  // effects. Setting one must not move the others.
-  it("keeps the three audio channels independent", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ voicePlaybackVolume: 20 }),
-      }),
-    });
-
-    const settings = await loadAppSettingsFromStorage(deps);
-
-    expect(settings.voicePlaybackVolume).toBe(20);
-    expect(settings.agentVoiceCuesVolume).toBe(50);
-    expect(settings.visualizerSoundVolume).toBe(50);
-  });
-
-  it("clamps and rounds a persisted voicePlaybackVolume into 0..100", async () => {
-    const high = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ voicePlaybackVolume: 140 }),
-      }),
-    });
-    const low = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ voicePlaybackVolume: -12.4 }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(high)).voicePlaybackVolume).toBe(100);
-    expect((await loadAppSettingsFromStorage(low)).voicePlaybackVolume).toBe(0);
-  });
-
-  it("drops a non-numeric voicePlaybackVolume back to the default", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ voicePlaybackVolume: "loud" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).voicePlaybackVolume).toBe(50);
-  });
-});
-
-describe("suggested tasks default mode", () => {
-  it("defaults suggestedTasksDefaultMode to 'new_chat' on a fresh install", async () => {
-    const deps = makeDeps();
-
-    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksDefaultMode).toBe("new_chat");
-  });
-
-  it("loads a persisted suggested tasks default mode", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ suggestedTasksDefaultMode: "worktree" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksDefaultMode).toBe("worktree");
-  });
-
-  it("drops an unknown suggested tasks default mode back to 'new_chat'", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ suggestedTasksDefaultMode: "telepathy" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).suggestedTasksDefaultMode).toBe("new_chat");
-  });
-});
-
-describe("one-time setup-wizard flag", () => {
-  it("defaults hasCompletedSetupWizard to false on a genuinely fresh install", async () => {
-    const deps = makeDeps();
-
-    const result = await loadAppSettingsFromStorage(deps);
-
-    expect(result.hasCompletedSetupWizard).toBe(false);
-  });
-
-  it("backfills hasCompletedSetupWizard to true for an existing device missing the field", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).hasCompletedSetupWizard).toBe(true);
-  });
-
-  it("backfills hasCompletedSetupWizard to true when migrating from the legacy settings key", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [LEGACY_SETTINGS_KEY]: JSON.stringify({ theme: "dark" }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).hasCompletedSetupWizard).toBe(true);
-  });
-
-  it("preserves an explicitly persisted hasCompletedSetupWizard value", async () => {
-    const deps = makeDeps({
-      storage: createInMemoryKeyValueStorage({
-        [APP_SETTINGS_KEY]: JSON.stringify({ hasCompletedSetupWizard: false }),
-      }),
-    });
-
-    expect((await loadAppSettingsFromStorage(deps)).hasCompletedSetupWizard).toBe(false);
+    expect((await loadAppSettingsFromStorage(deps)).syntaxTheme).toBe("one");
   });
 });
 
@@ -1648,106 +1098,79 @@ describe("parseClampedFontSize", () => {
   });
 });
 
-describe("Paseo navigation intake with Otto preferences", () => {
-  it("retains independent diff destinations and the legacy PR side choice", async () => {
-    const result = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({
-            openInSidePane: { explorerChanges: true, changesLinks: false, pullRequests: true },
-          }),
-        }),
-      }),
-    );
-    expect(result.openInSidePane.explorerChanges).toBe(true);
-    expect(result.openInSidePane.changesLinks).toBe(false);
-    expect(result.openInSidePane.pullRequests).toBe(true);
-    expect(result.pullRequestOpenLocation).toBe("side");
-  });
-
-  it("combines the former chat file and Changes destinations", async () => {
-    const result = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({
-            openInSidePane: { chatFiles: false, changesLinks: true },
-          }),
-        }),
-      }),
-    );
-    expect(result.openInSidePane.chatFiles).toBe(true);
-    expect(result.openInSidePane.changesLinks).toBe(true);
-  });
-
-  it("keeps Otto defaults while accepting explicit Explorer placement", async () => {
-    const initial = await loadAppSettingsFromStorage(makeDeps());
-    expect(initial.pullRequestOpenLocation).toBe("main");
-    expect(initial.sidebarNavItems).toEqual([]);
-    expect(initial.uiFontSize).toBe(16);
-    expect(initial.contentFontSize).toBe(17);
-    expect(initial.sendBehavior).toBe("steer");
-    const saved = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({
-            pullRequestOpenLocation: "explorer",
-            contentFontSize: 15,
-          }),
-        }),
-      }),
-    );
-    expect(saved.pullRequestOpenLocation).toBe("explorer");
-    expect(saved.contentFontSize).toBe(15);
-  });
-
-  it("retains sidebar navigation order and visibility", async () => {
-    const sidebarNavItems = [
-      { key: "history", visible: false },
-      { key: "new-workspace", visible: true },
-    ];
-    const result = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({ sidebarNavItems }),
-        }),
-      }),
-    );
-    expect(result.sidebarNavItems).toEqual(sidebarNavItems);
-    const malformed = await loadAppSettingsFromStorage(
-      makeDeps({
-        storage: createInMemoryKeyValueStorage({
-          [APP_SETTINGS_KEY]: JSON.stringify({ sidebarNavItems: [{ key: 3 }] }),
-        }),
-      }),
-    );
-    expect(malformed.sidebarNavItems).toEqual([]);
-  });
-
-  it("applies consecutive functional updates against the current cached settings", async () => {
+describe("content max width", () => {
+  it("follows the current default until the user picks a width", async () => {
     const deps = makeDeps();
     const queryClient = new QueryClient();
-    queryClient.setQueryData(["app-settings"], DEFAULT_CLIENT_SETTINGS);
-    await Promise.all([
-      saveAppSettings({
-        queryClient,
-        deps,
-        updates: (current) => ({
-          sidebarNavItems: [...current.sidebarNavItems, { key: "history", visible: false }],
-        }),
-      }),
-      saveAppSettings({
-        queryClient,
-        deps,
-        updates: (current) => ({
-          sidebarNavItems: [...current.sidebarNavItems, { key: "search", visible: true }],
-        }),
-      }),
-    ]);
-    expect(queryClient.getQueryData(["app-settings"])).toMatchObject({
-      sidebarNavItems: [
-        { key: "history", visible: false },
-        { key: "search", visible: true },
-      ],
-    });
+
+    await saveAppSettings({ queryClient, updates: { codeFontSize: 14 }, deps });
+
+    const stored = JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null");
+    expect(stored.contentMaxWidth).toBeNull();
+    expect(resolveContentMaxWidth(await loadAppSettingsFromStorage(deps))).toBe(
+      DEFAULT_CONTENT_MAX_WIDTH,
+    );
   });
+
+  it("keeps a picked width and returns to the default when reset", async () => {
+    const deps = makeDeps();
+    const queryClient = new QueryClient();
+
+    await saveAppSettings({ queryClient, updates: { contentMaxWidth: 1600 }, deps });
+    expect(resolveContentMaxWidth(await loadAppSettingsFromStorage(deps))).toBe(1600);
+
+    await saveAppSettings({ queryClient, updates: { contentMaxWidth: null }, deps });
+    expect(JSON.parse(deps.storage.entries.get(APP_SETTINGS_KEY) ?? "null").contentMaxWidth).toBe(
+      null,
+    );
+    expect(resolveContentMaxWidth(await loadAppSettingsFromStorage(deps))).toBe(
+      DEFAULT_CONTENT_MAX_WIDTH,
+    );
+  });
+
+  it("clamps stored widths and drops malformed ones to the default", async () => {
+    const load = (contentMaxWidth: unknown) =>
+      loadAppSettingsFromStorage(
+        makeDeps({
+          storage: createInMemoryKeyValueStorage({
+            [APP_SETTINGS_KEY]: JSON.stringify({ contentMaxWidth }),
+          }),
+        }),
+      );
+
+    expect((await load(100_000)).contentMaxWidth).toBe(4000);
+    expect((await load(10)).contentMaxWidth).toBe(600);
+    expect((await load("wide")).contentMaxWidth).toBeNull();
+  });
+});
+
+describe("font family CSS safety", () => {
+  it.each(["'foo", '"foo', "Menlo, 'foo", "foo\\", "foo/*", "foo(", "foo["])(
+    "rejects unfinished CSS syntax: %s",
+    (value) => expect(sanitizeFontFamily(value)).toBeNull(),
+  );
+
+  it.each([
+    "Menlo",
+    "'Fira Code', monospace",
+    '"Fira Code", monospace',
+    "'Font\\'s name'",
+    "Font\\ Name",
+    "'Font (Mono)'",
+    "'Font [Mono]'",
+  ])("preserves complete font families: %s", (value) =>
+    expect(sanitizeFontFamily(value)).toBe(value),
+  );
+
+  it.each(["uiFontFamily", "monoFontFamily"])(
+    "recovers a persisted unmatched quote in %s",
+    async (field) => {
+      const deps = makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ [field]: "'foo" }),
+        }),
+      });
+      expect(await loadAppSettingsFromStorage(deps)).toMatchObject({ [field]: "" });
+    },
+  );
 });

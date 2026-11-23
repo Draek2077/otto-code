@@ -1,15 +1,15 @@
 import { CancelledError, type QueryClient } from "@tanstack/react-query";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
-import type { GetProvidersSnapshotResponseMessage } from "@otto-code/protocol/messages";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { GetProvidersSnapshotResponseMessage } from "@getpaseo/protocol/messages";
 import {
   providerSnapshotCache,
   ProviderSnapshotCacheMissError,
   type ProviderSnapshotCache,
 } from "./provider-snapshot-cache";
 import { queryClient as singletonQueryClient } from "./query-client";
-import { replaceProviderSnapshotIcons } from "@/components/provider-icon-name";
+import { replaceProviderSnapshotIcons } from "@/data/provider-icons";
 import { agentCommandsQueryRoot } from "@/hooks/agent-commands-query";
-import type { AgentProvider } from "@otto-code/protocol/agent-types";
+import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import { normalizeWorkspacePath } from "@/utils/workspace-identity";
 
 export const PROVIDERS_SNAPSHOT_QUERY_ROOT = "providersSnapshot";

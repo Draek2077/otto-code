@@ -1,53 +1,54 @@
+import { ZodRealError } from "zod";
 import type { z } from "zod";
 import {
-  pongValidator,
-  sessionOutboundValidators,
-} from "../generated/validation/ws-outbound-dispatch.aot.js";
-import { WSOutboundMessageSchema, type WSOutboundMessage } from "../messages.js";
+  SessionOutboundMessageValidators,
+  WSOutboundEnvelope,
+} from "../generated/validation/ws-outbound.aot.js";
+import type { SessionOutboundMessage, WSOutboundMessage } from "../messages.js";
 
-type WSOutboundValidationResult =
-  | { success: true; data: WSOutboundMessage }
-  | { success: false; error: z.ZodError };
+type ValidationResult<T> = { success: true; data: T } | { success: false; error: z.ZodError };
 
-interface WSOutboundGeneratedValidator {
-  safeParse(input: unknown): { success: true; data: unknown } | { success: false };
+interface GeneratedValidator<T> {
+  safeParse(input: unknown): ValidationResult<T>;
 }
 
-// zod-aot emits runtime JavaScript but not its TypeScript surface.
-const pong = pongValidator as WSOutboundGeneratedValidator;
-const sessionValidators = sessionOutboundValidators as ReadonlyMap<
-  string,
-  WSOutboundGeneratedValidator
+// zod-aot emits runtime JavaScript from the envelope and message schemas but not its TypeScript surface.
+// Protocol regression tests cover the patched compiler cases behind this boundary.
+const envelopeValidator = WSOutboundEnvelope as GeneratedValidator<WSOutboundMessage>;
+const sessionMessageValidators = SessionOutboundMessageValidators as Record<
+  SessionOutboundMessage["type"],
+  GeneratedValidator<SessionOutboundMessage>
 >;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+// The message validator reports paths relative to the message, nested issues included.
+function underMessage(issue: z.core.$ZodIssue): z.core.$ZodIssue {
+  const path = ["message", ...issue.path];
+  switch (issue.code) {
+    case "invalid_union":
+      return issue.inclusive === false
+        ? { ...issue, path }
+        : { ...issue, path, errors: issue.errors.map((branch) => branch.map(underMessage)) };
+    case "invalid_key":
+    case "invalid_element":
+      return { ...issue, path, issues: issue.issues.map(underMessage) };
+    default:
+      return { ...issue, path };
+  }
 }
 
-// The envelope is `pong` or `{ type: "session", message }`, and every session message type has its
-// own generated validator (codegen/ws-outbound.compile.ts explains why). Valid messages only take
-// the generated path. Anything the generated validators reject is re-parsed with the Zod source
-// schema so the failure carries a normal ZodError for logging; that path only runs for invalid
-// messages.
-export function validateWSOutboundMessage(input: unknown): WSOutboundValidationResult {
-  if (isRecord(input)) {
-    if (input.type === "pong") {
-      const result = pong.safeParse(input);
-      if (result.success) {
-        return { success: true, data: result.data as WSOutboundMessage };
-      }
-    } else if (input.type === "session" && isRecord(input.message)) {
-      const messageType = input.message.type;
-      const validator =
-        typeof messageType === "string" ? sessionValidators.get(messageType) : undefined;
-      const result = validator?.safeParse(input.message);
-      if (result?.success) {
-        // Generated validators pass unknown keys through, so keep the original envelope unless
-        // the message validator produced a new object (defaults applied).
-        const data = result.data === input.message ? input : { ...input, message: result.data };
-        return { success: true, data: data as WSOutboundMessage };
-      }
-    }
+export function validateWSOutboundMessage(input: unknown): ValidationResult<WSOutboundMessage> {
+  const envelope = envelopeValidator.safeParse(input);
+  if (!envelope.success || envelope.data.type !== "session") {
+    return envelope;
   }
-  return WSOutboundMessageSchema.safeParse(input) as WSOutboundValidationResult;
+  const message = envelope.data.message;
+  const result = sessionMessageValidators[message.type].safeParse(message);
+  if (!result.success) {
+    return { success: false, error: new ZodRealError(result.error.issues.map(underMessage)) };
+  }
+  // Message validators return a new object when they apply defaults.
+  if (result.data === message) {
+    return envelope;
+  }
+  return { success: true, data: { ...envelope.data, message: result.data } };
 }

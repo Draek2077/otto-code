@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 const CANONICAL_HOST = "otto-code.me";
 
 export function getCanonicalRedirect(

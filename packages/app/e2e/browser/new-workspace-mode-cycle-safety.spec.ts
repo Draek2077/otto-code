@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, test, type Page } from "../support/fixtures";
 import type { FormPreferences } from "@/create-agent-preferences/preferences";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
@@ -100,7 +101,7 @@ test.describe("New Workspace mode cycle safety", () => {
 
   // Regression guard for the P1 safety bug: cycling the execution mode with Shift+Tab in
   // the New Workspace composer must never reach a backgrounded, still-mounted agent's mode
-  // control and silently change that (possibly running) agent's mode - e.g. into a
+  // control and silently change that (possibly running) agent's mode — e.g. into a
   // permissive/bypass mode. See use-keyboard-action-handler.ts.
   test("Shift+Tab in New Workspace never changes a backgrounded agent's mode", async ({ page }) => {
     const seeded = await seedWorkspace({ repoPrefix: "mode-cycle-safety-" });
@@ -120,7 +121,7 @@ test.describe("New Workspace mode cycle safety", () => {
       // Mount the live agent tab: its mode control registers a mode-cycle keyboard handler.
       await openAgentRoute(page, { workspaceId: seeded.workspaceId, agentId: agent.id });
       await expect(
-        page.getByRole("button", { name: "Select chat mode (Default permissions)" }),
+        page.getByRole("button", { name: "Select agent mode (Default permissions)" }),
       ).toBeVisible({ timeout: 30_000 });
 
       // Move to the New Workspace composer. The agent tab stays mounted in the background,
@@ -135,7 +136,7 @@ test.describe("New Workspace mode cycle safety", () => {
 
       // fetchAgents is a real daemon round-trip; once it resolves, any mode change the
       // presses would have triggered has already landed. Assert the running agent is
-      // untouched - both its committed mode and on the wire - with no fixed sleep.
+      // untouched — both its committed mode and on the wire — with no fixed sleep.
       const agents = await seeded.client.fetchAgents();
       const backgroundAgent = agents.entries.find((entry) => entry.agent.id === agent.id)?.agent;
       expect(backgroundAgent?.currentModeId).toBe("auto");

@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { describe, expect, it } from "vitest";
 import { getCanonicalRedirect } from "./canonical-url";
 

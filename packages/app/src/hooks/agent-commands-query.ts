@@ -1,4 +1,5 @@
-import type { AgentProvider } from "@otto-code/protocol/agent-types";
+import type { QueryClient } from "@tanstack/react-query";
+import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import { normalizeWorkspacePath } from "@/utils/workspace-identity";
 
 export const AGENT_COMMANDS_QUERY_ROOT = "agentCommands";
@@ -24,17 +25,24 @@ export function sessionAgentCommandsQueryKey(input: { serverId: string; agentId:
   return [...agentCommandsQueryRoot(input.serverId), "session", input.agentId] as const;
 }
 
+function draftAgentCommandsCheckoutScope(input: { serverId: string; cwd: string }) {
+  return [
+    ...agentCommandsQueryRoot(input.serverId),
+    "draft",
+    "cwd",
+    normalizeAgentCommandsCwd(input.cwd),
+  ] as const;
+}
+
 export function draftAgentCommandsQueryKey(input: {
   serverId: string;
   draftConfig: AgentCommandsDraftConfig;
 }) {
   const { draftConfig } = input;
   return [
-    ...agentCommandsQueryRoot(input.serverId),
-    "draft",
+    ...draftAgentCommandsCheckoutScope({ serverId: input.serverId, cwd: draftConfig.cwd }),
+    "provider",
     draftConfig.provider,
-    "cwd",
-    normalizeAgentCommandsCwd(draftConfig.cwd),
     "mode",
     draftConfig.modeId ?? null,
     "model",
@@ -44,6 +52,16 @@ export function draftAgentCommandsQueryKey(input: {
     "features",
     draftConfig.featureValues ?? null,
   ] as const;
+}
+
+// Draft commands include project skills read from the checkout. When the checkout moves to
+// another branch the cached list describes files that are gone, so it is dropped rather than
+// shown while a refetch runs.
+export function resetDraftAgentCommandsForCheckout(
+  queryClient: QueryClient,
+  input: { serverId: string; cwd: string },
+): Promise<void> {
+  return queryClient.resetQueries({ queryKey: draftAgentCommandsCheckoutScope(input) });
 }
 
 export function agentCommandsQueryKey(input: {

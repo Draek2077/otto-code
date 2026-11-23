@@ -1,5 +1,6 @@
-import type { ParsedDiffFile } from "@otto-code/protocol/messages";
+import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import type { DiffLine } from "@/git/use-diff-query";
+import { structuralPatchPlan } from "@/otto/diff/patch"; // OTTO(structural-diff)
 
 type ReviewSide = "old" | "new";
 type ReviewableLineType = "add" | "remove" | "context";
@@ -69,8 +70,6 @@ export interface UnifiedDiffDisplayLine {
   lineIndex: number;
   line: DiffLine;
   lineNumber: number | null;
-  oldLineNumber: number | null;
-  newLineNumber: number | null;
   reviewTarget: ReviewableDiffTarget | null;
 }
 
@@ -245,11 +244,49 @@ export function buildUnifiedDiffLines(file: ParsedDiffFile): UnifiedDiffDisplayL
       lineIndex: numberedLine.lineIndex,
       line: numberedLine.line,
       lineNumber: numberedLine.unifiedCell?.lineNumber ?? null,
-      oldLineNumber: numberedLine.oldLineNumber,
-      newLineNumber: numberedLine.newLineNumber,
       reviewTarget: numberedLine.unifiedCell ? toReviewTarget(numberedLine.unifiedCell) : null,
     })),
   );
+}
+
+// OTTO(structural-diff): preserve canonical cell coordinates, including review anchors.
+const structuralRows = new WeakMap<
+  ParsedDiffFile,
+  { rows: SplitDiffRow[]; notice: string | null }
+>();
+
+export function buildStructuralSplitRows(file: ParsedDiffFile) {
+  const cached = structuralRows.get(file);
+  if (cached) return cached;
+  const hunks = buildNumberedDiffHunks(file);
+  const plan = structuralPatchPlan(file, hunks);
+  if (!plan.rows) {
+    const fallback = { rows: buildSplitDiffRows(file), notice: plan.reason };
+    structuralRows.set(file, fallback);
+    return fallback;
+  }
+  const rows = plan.rows.map((row): SplitDiffRow => {
+    if (row.kind === "pair") {
+      return {
+        kind: "pair",
+        left: toSplitDisplayLine(row.left?.oldCell ?? null),
+        right: toSplitDisplayLine(row.right?.newCell ?? null),
+      };
+    }
+    const hunk = hunks[row.hunkIndex]!;
+    return {
+      kind: "header",
+      content: hunk.hunkHeader,
+      hunkIndex: hunk.hunkIndex,
+      lineIndex: hunk.lines.find((line) => line.line.type === "header")?.lineIndex ?? 0,
+    };
+  });
+  const result = {
+    rows,
+    notice: plan.formattingOnly ? "Formatting only. All changed source lines are visible." : null,
+  };
+  structuralRows.set(file, result);
+  return result;
 }
 
 export function buildSplitDiffRows(file: ParsedDiffFile): SplitDiffRow[] {

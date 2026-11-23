@@ -1,48 +1,31 @@
-import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
-import {
-  normalizeWorkspaceFileLocation,
-  workspaceFileTabTargetsEqual,
-} from "@/workspace/file-open";
+import { normalizeWorkspaceFileLocation, workspaceFileLocationsEqual } from "@/workspace/file-open";
+import type { WorkspaceDraftTabSetup, WorkspaceTabTarget } from "@/workspace-tabs/model";
+import { normalizeDraftAgentLabels } from "@/otto/chat/identity/profile-binding"; // OTTO(chat-profile): persisted draft handoffs retain captured appearance.
 
-type WorkspaceDraftTabSetup = NonNullable<Extract<WorkspaceTabTarget, { kind: "draft" }>["setup"]>;
-
-// oxlint-disable-next-line complexity
 export function normalizeWorkspaceTabTarget(
   value: WorkspaceTabTarget | null | undefined,
 ): WorkspaceTabTarget | null {
   if (!value || typeof value !== "object" || typeof value.kind !== "string") {
     return null;
   }
+  // COMPAT(otto09FileHistoryTab): accept the original persisted fileHistory target through 2027-05-20.
+  const persistedKind: string = value.kind;
+  if (persistedKind === "fileHistory" && isPlainRecord(value)) return normalizeFileHistory(value);
   if (value.kind === "draft") {
     const draftId = trimNonEmpty(value.draftId);
     if (!draftId) {
       return null;
     }
     const setup = normalizeWorkspaceDraftTabSetup(value.setup);
-    const architecturalViewDraft = normalizeArchitecturalViewDraftContext(
-      value.architecturalViewDraft,
-    );
-    return {
-      kind: "draft",
-      draftId,
-      ...(setup ? { setup } : {}),
-      ...(architecturalViewDraft ? { architecturalViewDraft } : {}),
-    };
+    return setup ? { kind: "draft", draftId, setup } : { kind: "draft", draftId };
   }
   if (value.kind === "new_tab") {
     return { kind: "new_tab" };
   }
   if (value.kind === "agent") {
     const agentId = trimNonEmpty(value.agentId);
-    const architecturalViewDraft = normalizeArchitecturalViewDraftContext(
-      value.architecturalViewDraft,
-    );
-    return agentId
-      ? { kind: "agent", agentId, ...(architecturalViewDraft ? { architecturalViewDraft } : {}) }
-      : null;
+    return agentId ? { kind: "agent", agentId } : null;
   }
-  // Both ids are required: the tab is identified by the pair, and a subagent id
-  // without its parent cannot be resolved back to a timeline.
   if (value.kind === "provider_subagent") {
     const parentAgentId = trimNonEmpty(value.parentAgentId);
     const subagentId = trimNonEmpty(value.subagentId);
@@ -50,331 +33,68 @@ export function normalizeWorkspaceTabTarget(
       ? { kind: "provider_subagent", parentAgentId, subagentId }
       : null;
   }
-  if (value.kind === "terminal") {
-    const terminalId = trimNonEmpty(value.terminalId);
-    return terminalId ? { kind: "terminal", terminalId } : null;
-  }
-  if (value.kind === "browser") {
-    const browserId = trimNonEmpty(value.browserId);
-    return browserId ? { kind: "browser", browserId } : null;
-  }
   if (value.kind === "file") {
     return normalizeFileTabTarget(value);
   }
-  if (value.kind === "setup") {
-    const workspaceId = trimNonEmpty(value.workspaceId);
-    return workspaceId ? { kind: "setup", workspaceId } : null;
-  }
-  if (value.kind === "artifact") {
-    const artifactId = trimNonEmpty(value.artifactId);
-    return artifactId ? { kind: "artifact", artifactId } : null;
-  }
-  if (value.kind === "architecturalViewDraft") {
-    const viewId = trimNonEmpty(value.viewId);
-    const draftId = trimNonEmpty(value.draftId);
-    const authoringAgentId = trimNonEmpty(value.authoringAgentId);
-    const authoringChatId = trimNonEmpty(value.authoringChatId);
-    const generateOnOpen = value.generateOnOpen === true;
-    const authoringPrompt =
-      value.authoringPrompt === "create" || value.authoringPrompt === "update"
-        ? value.authoringPrompt
-        : undefined;
-    const diagramType = isArchitecturalViewDiagramType(value.diagramType)
-      ? value.diagramType
-      : undefined;
-    return viewId && draftId
-      ? {
-          kind: "architecturalViewDraft",
-          viewId,
-          draftId,
-          ...(authoringAgentId ? { authoringAgentId } : {}),
-          ...(authoringChatId ? { authoringChatId } : {}),
-          ...(generateOnOpen ? { generateOnOpen: true } : {}),
-          ...(authoringPrompt ? { authoringPrompt } : {}),
-          ...(diagramType ? { diagramType } : {}),
-        }
-      : null;
-  }
-  if (value.kind === "architecturalView") {
-    const viewId = trimNonEmpty(value.viewId);
-    return viewId ? { kind: "architecturalView", viewId } : null;
-  }
-  if (value.kind === "communicationsRoom") {
-    const providerId = trimNonEmpty(value.providerId);
-    const conversationId = trimNonEmpty(value.conversationId);
-    const title = trimNonEmpty(value.title);
-    return providerId && conversationId
-      ? { kind: "communicationsRoom", providerId, conversationId, ...(title ? { title } : {}) }
-      : null;
-  }
-  if (value.kind === "workflowRun") {
-    const runId = trimNonEmpty(value.runId);
-    return runId ? { kind: "workflowRun", runId } : null;
-  }
-  if (value.kind === "gitLog") {
-    const operation = trimNonEmpty(value.operation);
-    return operation ? { kind: "gitLog", operation } : null;
-  }
-  if (value.kind === "fileHistory") {
-    return normalizeFileHistoryTabTarget(value);
-  }
-  if (value.kind === "codeReferences") {
-    return normalizeCodeReferencesTabTarget(value);
-  }
-  if (value.kind === "codeRename") {
-    return normalizeCodeRenameTabTarget(value);
-  }
-  if (value.kind === "refine") {
-    return normalizeRefineTabTarget(value);
-  }
-  if (value.kind === "visualizer") {
-    const runId = trimNonEmpty(value.runId);
-    return runId ? { kind: "visualizer", runId } : { kind: "visualizer" };
-  }
-  if (value.kind === "contextManagement") {
-    return { kind: "contextManagement" };
-  }
-  if (value.kind === "project_search") {
-    return { kind: "project_search" };
-  }
-  if (value.kind === "projectKnowledge") {
-    const selection = normalizeProjectKnowledgeTabSelection(value.selection);
-    const anchor = trimNonEmpty(typeof value.anchor === "string" ? value.anchor : null);
-    return {
-      kind: "projectKnowledge",
-      ...(selection ? { selection } : {}),
-      ...(anchor ? { anchor } : {}),
-    };
-  }
-  if (value.kind === "orchestrationGraph") {
-    const graphId = trimNonEmpty(value.graphId);
-    if (!graphId) {
-      return null;
-    }
-    const runId = trimNonEmpty(value.runId);
-    return runId
-      ? { kind: "orchestrationGraph", graphId, runId }
-      : { kind: "orchestrationGraph", graphId };
-  }
-  // These three are identified by their kind alone - one per workspace, no id
-  // to carry - and each has a registered panel.
-  if (value.kind === "files" || value.kind === "changes_tree" || value.kind === "pull_request") {
-    return { kind: value.kind };
+  if (value.kind === "working_diff") {
+    return normalizeWorkingDiffTabTarget(value);
   }
   if (value.kind === "plugin") {
     return normalizePluginTabTarget(value);
   }
-  // Both diff kinds now have panels (`panels/diff-panel.tsx` renders them
-  // through Otto's own Changes view), so they normalize like any other target.
-  if (value.kind === "working_diff") {
-    return normalizeWorkingDiffTabTarget(value);
-  }
-  if (value.kind === "commit_diff") {
-    const sha = trimNonEmpty(value.sha);
-    return sha ? { kind: "commit_diff", sha } : null;
-  }
-  return null;
+  return normalizeSimpleWorkspaceTabTarget(value);
 }
 
-/**
- * The working diff keeps the file it was asked to focus, so reopening the tab
- * lands on that file rather than the top of the change set.
- */
-function normalizeWorkingDiffTabTarget(
-  value: Extract<WorkspaceTabTarget, { kind: "working_diff" }>,
-): WorkspaceTabTarget | null {
-  const focusPath = trimNonEmpty(value.focusPath)?.replace(/\\/g, "/") ?? null;
-  const focusRequestId = normalizePositiveInteger(value.focusRequestId);
-  return {
-    kind: "working_diff" as const,
-    ...(focusPath ? { focusPath } : {}),
-    ...(focusRequestId ? { focusRequestId } : {}),
-  };
-}
-
-/** A plugin panel is identified by the plugin, the panel, and what it is bound to. */
-function normalizePluginTabTarget(
-  value: Extract<WorkspaceTabTarget, { kind: "plugin" }>,
-): WorkspaceTabTarget | null {
-  const pluginId = trimNonEmpty(value.pluginId);
-  const panelId = trimNonEmpty(value.panelId);
-  if (!pluginId || !panelId) return null;
-  if (value.context === "workspace") {
-    return { kind: "plugin", pluginId, panelId, context: "workspace" };
+// OTTO(file-history): selection bounds are part of the persisted target identity.
+function normalizeFileHistory(value: Record<string, unknown>): WorkspaceTabTarget | null {
+  const path = typeof value.path === "string" ? trimNonEmpty(value.path) : null;
+  if (!path) return null;
+  const range = isPlainRecord(value.range) ? value.range : value;
+  const { startLine, endLine } = range;
+  if (
+    typeof startLine === "number" &&
+    typeof endLine === "number" &&
+    Number.isSafeInteger(startLine) &&
+    Number.isSafeInteger(endLine) &&
+    startLine > 0 &&
+    endLine >= startLine
+  ) {
+    return { kind: "file_history", path, range: { startLine, endLine } };
   }
-  const agentId = trimNonEmpty(value.agentId);
-  return agentId ? { kind: "plugin", pluginId, panelId, context: "agent", agentId } : null;
+  return { kind: "file_history", path };
 }
 
-/**
- * A file-history target keeps its line scope only when both ends are present
- * and sane; a half-specified range degrades to whole-file rather than being
- * dropped, since the file is still the thing the user asked about.
- */
-function normalizeFileHistoryTabTarget(
-  value: Extract<WorkspaceTabTarget, { kind: "fileHistory" }>,
-): WorkspaceTabTarget | null {
-  const path = trimNonEmpty(value.path);
-  if (!path) {
-    return null;
-  }
-  const startLine = normalizePositiveInteger(value.startLine);
-  const endLine = normalizePositiveInteger(value.endLine);
-  if (startLine === null || endLine === null || endLine < startLine) {
-    return { kind: "fileHistory", path };
-  }
-  return { kind: "fileHistory", path, startLine, endLine };
-}
-
-/**
- * A references tab needs all four fields to mean anything: the position is what was asked
- * about, and the symbol is what the tab is called. Unlike `fileHistory`, a bad position
- * cannot degrade to "the whole file" - there is no such search - so it drops the tab.
- */
-function normalizeCodeReferencesTabTarget(
-  value: Extract<WorkspaceTabTarget, { kind: "codeReferences" }>,
-): WorkspaceTabTarget | null {
-  const path = trimNonEmpty(value.path);
-  const symbol = trimNonEmpty(value.symbol);
-  const line = normalizePositiveInteger(value.line);
-  const column = normalizePositiveInteger(value.column);
-  if (!path || !symbol || line === null || column === null) {
-    return null;
-  }
-  return { kind: "codeReferences", path, line, column, symbol };
-}
-
-type PathKeyedTarget = Extract<WorkspaceTabTarget, { kind: "fileHistory" | "refine" }>;
-
-function isPathKeyedTarget(value: WorkspaceTabTarget): value is PathKeyedTarget {
-  return value.kind === "fileHistory" || value.kind === "refine";
-}
-
-function pathKeyedTargetsEqual(left: PathKeyedTarget, right: PathKeyedTarget): boolean {
-  if (left.kind !== right.kind) {
-    return false;
-  }
-  if (left.kind === "refine" && right.kind === "refine") {
-    return left.paths[0] === right.paths[0];
-  }
-  return (
-    left.kind === "fileHistory" &&
-    right.kind === "fileHistory" &&
-    left.path === right.path &&
-    left.startLine === right.startLine &&
-    left.endLine === right.endLine
-  );
-}
-
-type PositionKeyedTarget = Extract<WorkspaceTabTarget, { kind: "codeReferences" | "codeRename" }>;
-
-function isPositionKeyedTarget(value: WorkspaceTabTarget): value is PositionKeyedTarget {
-  return value.kind === "codeReferences" || value.kind === "codeRename";
-}
-
-/**
- * Position, not symbol name. Two identically named symbols in different scopes are two
- * different things, and matching on the name would collapse them into one tab - precisely
- * the confusion a language server exists to remove. The kind is part of it too: a rename job
- * and a reference search on the same symbol are different tabs.
- */
-function positionKeyedTargetsEqual(left: PositionKeyedTarget, right: PositionKeyedTarget): boolean {
-  return (
-    left.kind === right.kind &&
-    left.path === right.path &&
-    left.line === right.line &&
-    left.column === right.column
-  );
-}
-
-/**
- * Every field required, for the references reason plus one: a rename job with no new name
- * is not a job, and restoring a half-persisted one would put an Apply button in front of
- * an edit nobody described.
- */
-function normalizeCodeRenameTabTarget(
-  value: Extract<WorkspaceTabTarget, { kind: "codeRename" }>,
-): WorkspaceTabTarget | null {
-  const path = trimNonEmpty(value.path);
-  const symbol = trimNonEmpty(value.symbol);
-  const newName = trimNonEmpty(value.newName);
-  const line = normalizePositiveInteger(value.line);
-  const column = normalizePositiveInteger(value.column);
-  if (!path || !symbol || !newName || line === null || column === null) {
-    return null;
-  }
-  return { kind: "codeRename", path, line, column, symbol, newName };
-}
-
-/**
- * A refine job needs at least one rewritable document; without one there is
- * nothing the tab could ever write, so a half-persisted target is dropped
- * rather than restored as an empty session. Read-only references are optional
- * by nature - losing them costs context, not correctness.
- */
-function normalizeRefineTabTarget(
-  value: Extract<WorkspaceTabTarget, { kind: "refine" }>,
-): WorkspaceTabTarget | null {
-  const paths = normalizePathList(value.paths);
-  if (paths.length === 0) {
-    return null;
-  }
-  const references = normalizePathList(value.references).filter((path) => !paths.includes(path));
-  const presetId = trimNonEmpty(value.presetId);
-  return {
-    kind: "refine",
-    paths,
-    ...(references.length > 0 ? { references } : {}),
-    ...(presetId ? { presetId } : {}),
-  };
-}
-
-function normalizePathList(value: readonly string[] | undefined): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const entry of value) {
-    const path = trimNonEmpty(entry);
-    if (!path || seen.has(path)) {
-      continue;
+function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): WorkspaceTabTarget | null {
+  switch (value.kind) {
+    case "agent": {
+      const agentId = trimNonEmpty(value.agentId);
+      return agentId ? { kind: "agent", agentId } : null;
     }
-    seen.add(path);
-    out.push(path);
+    case "terminal": {
+      const terminalId = trimNonEmpty(value.terminalId);
+      return terminalId ? { kind: "terminal", terminalId } : null;
+    }
+    case "browser": {
+      const browserId = trimNonEmpty(value.browserId);
+      return browserId ? { kind: "browser", browserId } : null;
+    }
+    case "changes_tree":
+    case "files":
+    case "pull_request":
+      return { kind: value.kind };
+    case "setup": {
+      const workspaceId = trimNonEmpty(value.workspaceId);
+      return workspaceId ? { kind: "setup", workspaceId } : null;
+    }
+    case "file_history":
+      return normalizeFileHistory(value); // OTTO(file-history)
+    case "commit_diff": {
+      const sha = trimNonEmpty(value.sha);
+      return sha ? { kind: "commit_diff", sha } : null;
+    }
+    default:
+      return null;
   }
-  return out;
-}
-
-function normalizePositiveInteger(value: number | undefined): number | null {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
-    return null;
-  }
-  return value;
-}
-
-function normalizeProjectKnowledgeTabSelection(
-  value: unknown,
-): Extract<WorkspaceTabTarget, { kind: "projectKnowledge" }>["selection"] {
-  if (!isPlainRecord(value) || typeof value.kind !== "string") return undefined;
-  if (value.kind === "root") {
-    const slug = trimNonEmpty(typeof value.slug === "string" ? value.slug : null);
-    return slug ? { kind: "root", slug } : undefined;
-  }
-  if (value.kind === "record") {
-    const id = trimNonEmpty(typeof value.id === "string" ? value.id : null);
-    return id ? { kind: "record", id } : undefined;
-  }
-  return undefined;
-}
-
-function normalizeArchitecturalViewDraftContext(
-  value: { viewId: string; draftId: string } | undefined,
-): { viewId: string; draftId: string } | undefined {
-  if (!value) return undefined;
-  const viewId = trimNonEmpty(value.viewId);
-  const draftId = trimNonEmpty(value.draftId);
-  return viewId && draftId ? { viewId, draftId } : undefined;
 }
 
 export function normalizeWorkspaceDraftTabSetup(
@@ -389,7 +109,9 @@ export function normalizeWorkspaceDraftTabSetup(
   if (!provider || !cwd) {
     return undefined;
   }
+  const labels = normalizeDraftAgentLabels(record.labels);
   return {
+    ...(labels ? { labels } : {}),
     provider,
     cwd,
     modeId: trimOptionalString(typeof record.modeId === "string" ? record.modeId : null),
@@ -398,26 +120,8 @@ export function normalizeWorkspaceDraftTabSetup(
       typeof record.thinkingOptionId === "string" ? record.thinkingOptionId : null,
     ),
     featureValues: isPlainRecord(record.featureValues) ? { ...record.featureValues } : {},
-    personality: trimOptionalString(
-      typeof record.personality === "string" ? record.personality : null,
-    ),
   };
 }
-
-// Kinds whose equality is "same single id field" - everything except draft
-// (two fields), file (its own equality fn), and visualizer (optional runId).
-// Kept as a lookup rather than another `if (left.kind === X && right.kind
-// === X)` branch per kind to stay under the cyclomatic-complexity ceiling.
-const SIMPLE_ID_FIELD_BY_KIND: Partial<Record<WorkspaceTabTarget["kind"], string>> = {
-  agent: "agentId",
-  terminal: "terminalId",
-  browser: "browserId",
-  setup: "workspaceId",
-  artifact: "artifactId",
-  architecturalView: "viewId",
-  gitLog: "operation",
-  workflowRun: "runId",
-};
 
 export function workspaceTabTargetsEqual(
   left: WorkspaceTabTarget,
@@ -426,156 +130,72 @@ export function workspaceTabTargetsEqual(
   if (left.kind !== right.kind) {
     return false;
   }
-  if (isWorkspaceDraftTarget(left, right)) {
-    const rightDraft = right as Extract<WorkspaceTabTarget, { kind: "draft" }>;
-    return (
-      left.draftId === rightDraft.draftId &&
-      workspaceDraftTabSetupsEqual(left.setup, rightDraft.setup)
-    );
+  if (left.kind === "draft" && right.kind === "draft") {
+    return left.draftId === right.draftId && workspaceDraftTabSetupsEqual(left.setup, right.setup);
   }
-  if (isArchitecturalViewDraftTarget(left, right)) {
-    const rightDraft = right as Extract<WorkspaceTabTarget, { kind: "architecturalViewDraft" }>;
-    return left.viewId === rightDraft.viewId && left.draftId === rightDraft.draftId;
+  if (left.kind === "agent" && right.kind === "agent") {
+    return left.agentId === right.agentId;
+  }
+  if (left.kind === "provider_subagent" && right.kind === "provider_subagent") {
+    return left.parentAgentId === right.parentAgentId && left.subagentId === right.subagentId;
+  }
+  if (left.kind === "terminal" && right.kind === "terminal") {
+    return left.terminalId === right.terminalId;
+  }
+  if (left.kind === "plugin" && right.kind === "plugin") {
+    return pluginTargetsEqual(left, right);
+  }
+  if (left.kind === "file_history" && right.kind === "file_history") {
+    return historyIdentity(left) === historyIdentity(right);
+  } // OTTO(file-history)
+  return secondaryWorkspaceTabTargetsEqual(left, right);
+}
+
+function pluginTargetsEqual(
+  left: Extract<WorkspaceTabTarget, { kind: "plugin" }>,
+  right: Extract<WorkspaceTabTarget, { kind: "plugin" }>,
+) {
+  return (
+    left.pluginId === right.pluginId &&
+    left.panelId === right.panelId &&
+    left.context === right.context &&
+    (left.context === "workspace" || (right.context === "agent" && left.agentId === right.agentId))
+  );
+}
+
+function historyIdentity(target: Extract<WorkspaceTabTarget, { kind: "file_history" }>) {
+  return JSON.stringify([target.path, target.range?.startLine, target.range?.endLine]);
+}
+
+function secondaryWorkspaceTabTargetsEqual(
+  left: WorkspaceTabTarget,
+  right: WorkspaceTabTarget,
+): boolean {
+  if (left.kind === "browser" && right.kind === "browser") {
+    return left.browserId === right.browserId;
   }
   if (left.kind === "file" && right.kind === "file") {
-    return workspaceFileTabTargetsEqual(left, right);
+    return workspaceFileLocationsEqual(left, right);
   }
-  // Two visualizer targets are the same tab only when they're scoped to the
-  // same run (or both workspace-wide, no runId).
-  if (left.kind === "visualizer" && right.kind === "visualizer") {
-    return left.runId === right.runId;
+  if (left.kind === "working_diff" && right.kind === "working_diff") {
+    return left.focusPath === right.focusPath && left.focusRequestId === right.focusRequestId;
   }
-  if (left.kind === "communicationsRoom" && right.kind === "communicationsRoom") {
-    return communicationsRoomTargetsEqual(left, right);
-  }
-  // Two path-keyed kinds, sharing one branch to stay inside this function's
-  // complexity ceiling:
-  //   fileHistory - path PLUS scope, because whole-file history and a
-  //     line-scoped history of the same file are different questions.
-  //   refine - the primary path alone, because a second refine of the same
-  //     document is a fresh pin of the same job and supersedes the first.
-  if (isPathKeyedTarget(left) && isPathKeyedTarget(right)) {
-    return pathKeyedTargetsEqual(left, right);
-  }
-  // Both code-intelligence tabs are keyed the same way, so they share one branch -
-  // two branches here would push this function past its complexity ceiling.
-  if (isPositionKeyedTarget(left) && isPositionKeyedTarget(right)) {
-    return positionKeyedTargetsEqual(left, right);
-  }
-  // Singleton per workspace. `openTabInLayoutFocused` also checks the
-  // deterministic id, so a new selection retargets that same tab rather than
-  // creating another Knowledge tab.
-  if (isWorkspaceSingletonTarget(left, right)) {
-    return singletonTargetsEqual(left, right);
-  }
-  // One designer tab per graph; the draft runId doesn't change identity (the
-  // dialog retargets the same tab when it attaches a draft to the graph).
-  if (left.kind === "orchestrationGraph" && right.kind === "orchestrationGraph") {
-    return left.graphId === right.graphId;
-  }
-  const field = SIMPLE_ID_FIELD_BY_KIND[left.kind];
-  if (!field) {
-    return false;
-  }
-  return (
-    (left as unknown as Record<string, unknown>)[field] ===
-    (right as unknown as Record<string, unknown>)[field]
-  );
-}
-
-/**
- * Retargeting normally follows durable tab identity. Architectural View drafts
- * additionally mirror their daemon-bound chat id for live tab presentation;
- * that metadata must replace the current target without turning one durable
- * draft into a second workspace tab.
- */
-export function shouldRetargetWorkspaceTabTarget(
-  current: WorkspaceTabTarget,
-  next: WorkspaceTabTarget,
-): boolean {
-  if (!workspaceTabTargetsEqual(current, next)) {
+  if (left.kind === "files" && right.kind === "files") {
     return true;
   }
-  return (
-    (current.kind === "agent" &&
-      next.kind === "agent" &&
-      !architecturalViewDraftContextsEqual(
-        current.architecturalViewDraft,
-        next.architecturalViewDraft,
-      )) ||
-    (current.kind === "architecturalViewDraft" &&
-      next.kind === "architecturalViewDraft" &&
-      (current.authoringAgentId !== next.authoringAgentId ||
-        current.authoringChatId !== next.authoringChatId ||
-        current.generateOnOpen !== next.generateOnOpen ||
-        current.authoringPrompt !== next.authoringPrompt ||
-        current.diagramType !== next.diagramType))
-  );
-}
-
-function architecturalViewDraftContextsEqual(
-  left: { viewId: string; draftId: string } | undefined,
-  right: { viewId: string; draftId: string } | undefined,
-): boolean {
-  return left?.viewId === right?.viewId && left?.draftId === right?.draftId;
-}
-
-function isArchitecturalViewDiagramType(
-  value: unknown,
-): value is "architecture" | "workflow" | "sequence" | "dataflow" | "lifecycle" {
-  return (
-    value === "architecture" ||
-    value === "workflow" ||
-    value === "sequence" ||
-    value === "dataflow" ||
-    value === "lifecycle"
-  );
-}
-
-function communicationsRoomTargetsEqual(
-  left: Extract<WorkspaceTabTarget, { kind: "communicationsRoom" }>,
-  right: Extract<WorkspaceTabTarget, { kind: "communicationsRoom" }>,
-): boolean {
-  return left.providerId === right.providerId && left.conversationId === right.conversationId;
-}
-
-function isArchitecturalViewDraftTarget(
-  left: WorkspaceTabTarget,
-  right: WorkspaceTabTarget,
-): left is Extract<WorkspaceTabTarget, { kind: "architecturalViewDraft" }> {
-  return left.kind === "architecturalViewDraft" && right.kind === "architecturalViewDraft";
-}
-
-function isWorkspaceDraftTarget(
-  left: WorkspaceTabTarget,
-  right: WorkspaceTabTarget,
-): left is Extract<WorkspaceTabTarget, { kind: "draft" }> {
-  return left.kind === "draft" && right.kind === "draft";
-}
-
-function isWorkspaceSingletonTarget(
-  left: WorkspaceTabTarget,
-  right: WorkspaceTabTarget,
-): left is Extract<WorkspaceTabTarget, { kind: "contextManagement" | "projectKnowledge" }> {
-  return (
-    left.kind === right.kind &&
-    (left.kind === "contextManagement" || left.kind === "projectKnowledge")
-  );
-}
-
-function singletonTargetsEqual(
-  left: Extract<WorkspaceTabTarget, { kind: "contextManagement" | "projectKnowledge" }>,
-  right: WorkspaceTabTarget,
-): boolean {
-  if (left.kind === "contextManagement") return true;
-  if (right.kind !== "projectKnowledge") return false;
-  const leftSelection = left.selection;
-  const rightSelection = right.selection;
-  if (!leftSelection || !rightSelection) return leftSelection === rightSelection;
-  if (leftSelection.kind === "root") {
-    return rightSelection.kind === "root" && leftSelection.slug === rightSelection.slug;
+  if (left.kind === "changes_tree" && right.kind === "changes_tree") {
+    return true;
   }
-  return rightSelection.kind === "record" && leftSelection.id === rightSelection.id;
+  if (left.kind === "pull_request" && right.kind === "pull_request") {
+    return true;
+  }
+  if (left.kind === "setup" && right.kind === "setup") {
+    return left.workspaceId === right.workspaceId;
+  }
+  if (left.kind === "commit_diff" && right.kind === "commit_diff") {
+    return left.sha === right.sha;
+  }
+  return false;
 }
 
 function workspaceDraftTabSetupsEqual(
@@ -591,7 +211,6 @@ function workspaceDraftTabSetupsEqual(
     left.modeId === right.modeId &&
     left.model === right.model &&
     left.thinkingOptionId === right.thinkingOptionId &&
-    (left.personality ?? null) === (right.personality ?? null) &&
     recordsShallowEqual(left.featureValues, right.featureValues)
   );
 }
@@ -612,88 +231,61 @@ function recordsShallowEqual(
   return true;
 }
 
-/** Tabs whose identity is a single id the target already carries. */
-const SIMPLE_TAB_ID_BUILDERS: {
-  [K in WorkspaceTabTarget["kind"]]?: (target: Extract<WorkspaceTabTarget, { kind: K }>) => string;
-} = {
-  draft: (target) => target.draftId,
-  agent: (target) => `agent_${target.agentId}`,
-  terminal: (target) => `terminal_${target.terminalId}`,
-  browser: (target) => `browser_${target.browserId}`,
-  setup: (target) => `setup_${target.workspaceId}`,
-  artifact: (target) => `artifact_${target.artifactId}`,
-  architecturalView: (target) => `architectural-view_${target.viewId}`,
-  architecturalViewDraft: (target) => `architectural-view-draft_${target.viewId}_${target.draftId}`,
-  communicationsRoom: (target) =>
-    `communications-room_${target.providerId}_${target.conversationId}`,
-  gitLog: (target) => `gitlog_${target.operation}`,
-  workflowRun: (target) => `workflow-run_${target.runId}`,
-  contextManagement: () => "context-management",
-  projectKnowledge: () => "project-knowledge",
-  project_search: () => "project_search",
-  // One per workspace, so the kind is the whole identity. Without these they
-  // all fall through to the file builder and collide on a single id, which
-  // silently drops every one after the first.
-  files: () => "files",
-  changes_tree: () => "changes_tree",
-  pull_request: () => "pull_request",
-  plugin: (target) => {
+export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): string {
+  if (target.kind === "new_tab") {
+    throw new Error("New tabs do not have deterministic target identities");
+  }
+  if (target.kind === "draft") {
+    return target.draftId;
+  }
+  if (target.kind === "agent") {
+    return `agent_${target.agentId}`;
+  }
+  if (target.kind === "provider_subagent") {
+    return `provider_subagent_${target.parentAgentId.length}_${target.parentAgentId}_${target.subagentId.length}_${target.subagentId}`;
+  }
+  if (target.kind === "terminal") {
+    return `terminal_${target.terminalId}`;
+  }
+  if (target.kind === "browser") {
+    return `browser_${target.browserId}`;
+  }
+  if (target.kind === "setup") {
+    return `setup_${target.workspaceId}`;
+  }
+  if (target.kind === "file_history") {
+    const range = target.range ? `_${target.range.startLine}_${target.range.endLine}` : "";
+    return `file_history_${encodeURIComponent(target.path)}${range}`;
+  } // OTTO(file-history)
+  if (target.kind === "commit_diff") {
+    return `commit_diff_${target.sha}`;
+  }
+  if (target.kind === "working_diff") {
+    return "working_diff";
+  }
+  if (target.kind === "changes_tree" || target.kind === "files" || target.kind === "pull_request") {
+    return target.kind;
+  }
+  if (target.kind === "plugin") {
     const identity = `${target.pluginId.length}_${target.pluginId}_${target.panelId.length}_${target.panelId}`;
     return target.context === "workspace"
       ? `plugin_workspace_${identity}`
       : `plugin_agent_${identity}_${target.agentId.length}_${target.agentId}`;
-  },
-  orchestrationGraph: (target) => `orchestration-graph_${target.graphId}`,
-  provider_subagent: (target) => `provider-subagent_${target.parentAgentId}_${target.subagentId}`,
-  commit_diff: (target) => `commit_diff_${target.sha}`,
-  working_diff: () => "working_diff",
-  visualizer: (target) => (target.runId ? `visualizer_run_${target.runId}` : "visualizer"),
-};
-
-/**
- * Job tabs keyed by the source location they were opened from, so a second
- * request for the same location supersedes the first rather than stacking.
- */
-function buildJobTabId(target: WorkspaceTabTarget): string | null {
-  if (target.kind === "fileHistory") {
-    const scope =
-      target.startLine !== undefined && target.endLine !== undefined
-        ? `_L${target.startLine}-${target.endLine}`
-        : "";
-    return `filehistory_${target.path}${scope}`;
   }
-  if (target.kind === "codeReferences") {
-    return `coderefs_${target.path}:${target.line}:${target.column}`;
-  }
-  if (target.kind === "codeRename") {
-    return `coderename_${target.path}:${target.line}:${target.column}`;
-  }
-  // The primary path alone: a second refine of the same document supersedes the
-  // first, so neither the rest of the working set nor the preset is part of the
-  // identity - a re-request is a fresh pin of the same job.
-  if (target.kind === "refine") {
-    return `refine_${target.paths[0] ?? ""}`;
-  }
-  return null;
+  return `file_${target.path}`;
 }
 
-export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): string {
-  const simple = SIMPLE_TAB_ID_BUILDERS[target.kind] as
-    | ((value: WorkspaceTabTarget) => string)
-    | undefined;
-  if (simple) {
-    return simple(target);
+function normalizePluginTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "plugin" }>,
+): WorkspaceTabTarget | null {
+  const pluginId = trimNonEmpty(value.pluginId);
+  const panelId = trimNonEmpty(value.panelId);
+  if (!pluginId || !panelId) return null;
+  if (value.context === "workspace") {
+    return { kind: "plugin", pluginId, panelId, context: "workspace" };
   }
-  const jobId = buildJobTabId(target);
-  if (jobId !== null) {
-    return jobId;
-  }
-  // External files are namespaced by their serving workspace so they never
-  // collide with a pane-local file that has the same relative path.
-  if (target.kind === "file" && target.origin) {
-    return `file_${target.origin.workspaceId}_${target.path}`;
-  }
-  return `file_${target.kind === "file" ? target.path : ""}`;
+  const agentId = trimNonEmpty(value.agentId);
+  return agentId ? { kind: "plugin", pluginId, panelId, context: "agent", agentId } : null;
 }
 
 function trimNonEmpty(value: string | null | undefined): string | null {
@@ -708,12 +300,25 @@ function normalizeFileTabTarget(
   value: Extract<WorkspaceTabTarget, { kind: "file" }>,
 ): WorkspaceTabTarget | null {
   const location = normalizeWorkspaceFileLocation(value);
-  if (!location) {
-    return null;
-  }
-  // Preserve the external file origin so the panel resolves the file against
-  // its serving workspace instead of the host pane's root.
-  return { kind: "file", ...location, ...(value.origin ? { origin: value.origin } : {}) };
+  return location ? { kind: "file", ...location } : null;
+}
+
+function normalizeWorkingDiffTabTarget(
+  value: Extract<WorkspaceTabTarget, { kind: "working_diff" }>,
+): WorkspaceTabTarget | null {
+  const focusPath = trimNonEmpty(value.focusPath)?.replace(/\\/g, "/") ?? null;
+  const focusRequestId = normalizePositiveInteger(value.focusRequestId);
+  return {
+    kind: "working_diff" as const,
+    ...(focusPath ? { focusPath } : {}),
+    ...(focusRequestId ? { focusRequestId } : {}),
+  };
+}
+
+function normalizePositiveInteger(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.floor(value)
+    : null;
 }
 
 function trimOptionalString(value: string | null | undefined): string | null {

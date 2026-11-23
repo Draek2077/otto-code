@@ -4,7 +4,7 @@ import {
   isWorkspaceAttachment,
   workspaceAttachmentToSubmitAttachment,
 } from "@/attachments/workspace-attachment-utils";
-import type { AgentAttachment } from "@otto-code/protocol/messages";
+import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import {
   buildForgeAttachmentFromSearchItem,
   buildLegacyGitHubAttachmentFromSearchItem,

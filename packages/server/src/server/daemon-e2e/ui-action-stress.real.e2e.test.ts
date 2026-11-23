@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import {
   canRunRealProvider,
@@ -457,7 +457,7 @@ describe.each(realProviders)("daemon E2E (real %s) - UI action stress", (provide
   test("normal UI submit path (idle sends) stays correct", async () => {
     const logger = pino({ level: "silent" });
     const cwd = tmpCwd();
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       agentClients: createRealProviderClients([provider], logger),
       logger,
     });
@@ -466,7 +466,7 @@ describe.each(realProviders)("daemon E2E (real %s) - UI action stress", (provide
     try {
       await client.connect();
       await client.fetchAgents({
-        subscribe: { subscriptionId: `ui-stress-normal-${provider}` },
+        subscribe: {},
       });
       const agent = await client.createAgent({
         cwd,
@@ -491,7 +491,7 @@ describe.each(realProviders)("daemon E2E (real %s) - UI action stress", (provide
   test("queued-send-now path is stable under overlap", async () => {
     const logger = pino({ level: "silent" });
     const cwd = tmpCwd();
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       agentClients: createRealProviderClients([provider], logger),
       logger,
     });
@@ -504,7 +504,7 @@ describe.each(realProviders)("daemon E2E (real %s) - UI action stress", (provide
     try {
       await client.connect();
       await client.fetchAgents({
-        subscribe: { subscriptionId: `ui-stress-overlap-${provider}` },
+        subscribe: {},
       });
 
       for (const scenario of scenarios) {

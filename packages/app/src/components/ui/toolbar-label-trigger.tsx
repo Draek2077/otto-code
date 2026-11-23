@@ -25,9 +25,7 @@ export function isToolbarLabelTriggerHighlighted(state: ToolbarLabelTriggerState
 export function toolbarLabelTriggerStyle(state: ToolbarLabelTriggerState): StyleProp<ViewStyle> {
   return [
     toolbarLabelTriggerFrameStyle(),
-    state.open && !state.hovered && !state.pressed ? styles.open : null,
-    state.hovered && !state.pressed ? styles.hovered : null,
-    state.pressed ? styles.pressed : null,
+    isToolbarLabelTriggerHighlighted(state) ? styles.highlighted : null,
   ];
 }
 
@@ -90,23 +88,13 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     flexShrink: 1,
   },
-  // A current value keeps the quieter open treatment; pointer interaction
-  // deliberately wins so this toolbar trigger matches all other controls.
-  open: {
-    backgroundColor: theme.colors.surfaceInteractiveSelected,
-  },
-  hovered: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
-  },
-  pressed: {
-    backgroundColor: theme.colors.surfaceInteractivePressed,
+  highlighted: {
+    backgroundColor: theme.colors.interactionHighlight,
   },
   label: {
     minWidth: 0,
     flexShrink: 1,
-    // Pane toolbars are compact chrome. Their labels use the Files sort
-    // control's type tier rather than growing into the main-view hierarchy.
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     fontWeight: theme.fontWeight.normal,
   },

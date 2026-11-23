@@ -1,18 +1,14 @@
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import type pino from "pino";
-import { getErrorMessage } from "@otto-code/protocol/error-utils";
+import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import { TTSManager } from "../../agent/tts-manager.js";
 import { STTManager } from "../../agent/stt-manager.js";
-import type {
-  SpeechToTextProvider,
-  SpeechVoiceOverride,
-  TextToSpeechProvider,
-} from "../../speech/speech-provider.js";
+import type { SpeechToTextProvider, TextToSpeechProvider } from "../../speech/speech-provider.js";
 import type { TurnDetectionProvider } from "../../speech/turn-detection-provider.js";
 import { maybePersistTtsDebugAudio } from "../../agent/tts-debug.js";
-import { isOttoDictationDebugEnabled } from "../../agent/recordings-debug.js";
+import { isPaseoDictationDebugEnabled } from "../../agent/recordings-debug.js";
 import {
   DictationStreamManager,
   type DictationStreamOutboundMessage,
@@ -139,6 +135,7 @@ export interface VoiceSessionOptions {
   host: VoiceSessionHost;
   logger: pino.Logger;
   sessionId: string;
+  onIdle?: () => void;
   sttLanguage?: string;
   tts: Resolvable<TextToSpeechProvider | null>;
   stt: Resolvable<SpeechToTextProvider | null>;
@@ -173,6 +170,8 @@ export class VoiceSession {
   private readonly sttLanguage: string;
 
   private abortController: AbortController;
+  private closed = false;
+  private readonly onIdle: (() => void) | undefined;
   private processingPhase: ProcessingPhase = "idle";
 
   private isVoiceMode = false;
@@ -211,16 +210,11 @@ export class VoiceSession {
   private voiceModeAgentId: string | null = null;
   private voiceModeBaseConfig: VoiceModeBaseConfig | null = null;
 
-  // On-demand message playback (the per-message playback button) runs through the
-  // same session TTSManager but is independent of voice mode, so it carries its
-  // own abort handle: starting a new playback or a cancel/cleanup aborts only
-  // this, never a live voice turn.
-  private messagePlaybackAbort: AbortController | null = null;
-
   constructor(options: VoiceSessionOptions) {
     const { host, logger, sessionId, sttLanguage, tts, stt, voice, voiceBridge, dictation } =
       options;
     this.host = host;
+    this.onIdle = options.onIdle;
     this.sessionLogger = logger;
     this.sessionId = sessionId;
     this.sttLanguage = sttLanguage ?? "en";
@@ -244,7 +238,18 @@ export class VoiceSession {
       stt: dictation?.stt ?? null,
       language: dictation?.sttLanguage,
       finalTimeoutMs: dictation?.finalTimeoutMs,
+      onIdle: this.onIdle,
     });
+  }
+
+  get hasDemand(): boolean {
+    return (
+      this.isVoiceMode ||
+      this.dictationStreamManager.hasDemand ||
+      this.processingPhase !== "idle" ||
+      this.audioBuffer !== null ||
+      this.pendingAudioSegments.length > 0
+    );
   }
 
   isActiveForAgent(agentId: string): boolean {
@@ -384,6 +389,10 @@ export class VoiceSession {
           );
           const refreshedAgentId = await this.enableVoiceModeForAgent(normalizedAgentId);
           this.voiceModeAgentId = refreshedAgentId;
+          if (this.closed) {
+            await this.disableVoiceModeForActiveAgent(true);
+            return;
+          }
           this.sessionLogger.info(
             { agentId: refreshedAgentId, elapsedMs: Date.now() - startedAt },
             "set_voice_mode agent enable complete",
@@ -399,7 +408,7 @@ export class VoiceSession {
           { agentId: this.voiceModeAgentId, elapsedMs: Date.now() - startedAt },
           "set_voice_mode voice turn controller started",
         );
-        this.isVoiceMode = true;
+        this.isVoiceMode = !this.closed;
         this.sessionLogger.info(
           {
             agentId: this.voiceModeAgentId,
@@ -483,6 +492,7 @@ export class VoiceSession {
     const startedAt = Date.now();
     this.sessionLogger.info({ agentId }, "enableVoiceModeForAgent.ensureAgentLoaded.start");
     const existing = await this.host.loadAgent(agentId);
+    if (this.closed) throw new Error("Voice source is closed");
     this.sessionLogger.info(
       { agentId, elapsedMs: Date.now() - startedAt },
       "enableVoiceModeForAgent.ensureAgentLoaded.done",
@@ -526,9 +536,6 @@ export class VoiceSession {
       return;
     }
 
-    this.unregisterVoiceSpeakHandler?.(agentId);
-    this.unregisterVoiceCallerContext?.(agentId);
-
     if (restoreAgentConfig && this.voiceModeBaseConfig) {
       const baseConfig = this.voiceModeBaseConfig;
       try {
@@ -543,6 +550,8 @@ export class VoiceSession {
       }
     }
 
+    this.unregisterVoiceSpeakHandler?.(agentId);
+    this.unregisterVoiceCallerContext?.(agentId);
     this.voiceModeBaseConfig = null;
     this.voiceModeAgentId = null;
   }
@@ -578,13 +587,9 @@ export class VoiceSession {
       sttLanguage: this.sttLanguage,
       callbacks: {
         onSpeechStarted: async () => {
+          // Voice STT providers return final transcripts only. Use the detector's
+          // confirmed speech event so interruption does not wait for transcription.
           this.sessionLogger.debug("Voice VAD speech_started");
-        },
-        onPartialTranscript: async ({ segmentId, transcript }) => {
-          this.sessionLogger.info(
-            { segmentId, transcriptLength: transcript.trim().length },
-            "voice_input_state emitting isSpeaking=true",
-          );
           this.emit({
             type: "voice_input_state",
             payload: {
@@ -592,6 +597,12 @@ export class VoiceSession {
             },
           });
           await this.handleVoiceSpeechStart();
+        },
+        onPartialTranscript: async ({ segmentId, transcript }) => {
+          this.sessionLogger.debug(
+            { segmentId, transcriptLength: transcript.trim().length },
+            "Voice partial transcript",
+          );
         },
         onSpeechStopped: async () => {
           this.handleVoiceSpeechStopped();
@@ -646,8 +657,9 @@ export class VoiceSession {
     });
 
     this.sessionLogger.info("startVoiceTurnController connecting controller");
-    await controller.start();
     this.voiceTurnController = controller;
+    await controller.start();
+    if (this.closed) await controller.stop();
     this.sessionLogger.info("startVoiceTurnController connected");
   }
 
@@ -1038,26 +1050,6 @@ export class VoiceSession {
     await this.flushPendingAudioSegments("transcription complete");
   }
 
-  // The personality's spoken identity: if the voice-mode agent was spawned from
-  // a personality with a voice, use it for TTS. Soft binding - any failure or a
-  // voice that doesn't resolve on the active provider degrades to the host
-  // default (handled downstream), never breaking playback.
-  private async resolvePersonalityVoiceOverride(
-    agentId: string,
-  ): Promise<SpeechVoiceOverride | undefined> {
-    try {
-      const agent = await this.host.loadAgent(agentId);
-      const voice = agent.config.profileSnapshot?.voice;
-      if (!voice) {
-        return undefined;
-      }
-      return { name: voice.name, ...(voice.model ? { model: voice.model } : {}) };
-    } catch (error) {
-      this.sessionLogger.warn({ err: error, agentId }, "Failed to resolve personality voice");
-      return undefined;
-    }
-  }
-
   private registerVoiceBridgeForAgent(agentId: string): void {
     this.registerVoiceSpeakHandler?.(agentId, async ({ text, signal }) => {
       this.sessionLogger.info(
@@ -1068,14 +1060,14 @@ export class VoiceSession {
         },
         "Voice speak tool call received by session handler",
       );
-      const abortSignal = signal ?? this.abortController.signal;
-      const voice = await this.resolvePersonalityVoiceOverride(agentId);
+      const abortSignal = signal
+        ? AbortSignal.any([signal, this.abortController.signal])
+        : this.abortController.signal;
       await this.ttsManager.generateAndWaitForPlayback(
         text,
         (msg) => this.emit(msg),
         abortSignal,
         true,
-        voice,
       );
       this.sessionLogger.info(
         { agentId, textLength: text.length },
@@ -1152,41 +1144,6 @@ export class VoiceSession {
   }
 
   /**
-   * Read a full message aloud on demand (per-message playback button). Streams
-   * the whole text - no length cap - sentence by sentence via the session
-   * TTSManager, in the given personality `voice` (resolved on the client from the
-   * live personality, so it tracks the picked personality). Only one message
-   * playback runs at a time: a new call aborts the previous. Resolves once
-   * playback finishes; returns `{ canceled: true }` if it was superseded or
-   * stopped. Throws only on a genuine synthesis error.
-   */
-  async speakMessage(text: string, voice?: SpeechVoiceOverride): Promise<{ canceled: boolean }> {
-    this.cancelMessagePlayback();
-    const controller = new AbortController();
-    this.messagePlaybackAbort = controller;
-    if (controller.signal.aborted) {
-      return { canceled: true };
-    }
-    try {
-      await this.ttsManager.speakStreaming(text, (msg) => this.emit(msg), controller.signal, voice);
-      return { canceled: controller.signal.aborted };
-    } finally {
-      if (this.messagePlaybackAbort === controller) {
-        this.messagePlaybackAbort = null;
-      }
-    }
-  }
-
-  /** Stop any in-flight on-demand message playback (button stop press/cleanup). */
-  cancelMessagePlayback(): void {
-    if (!this.messagePlaybackAbort) {
-      return;
-    }
-    this.messagePlaybackAbort.abort();
-    this.messagePlaybackAbort = null;
-  }
-
-  /**
    * Mark speech detection start and abort any active playback/agent run.
    */
   private async handleVoiceSpeechStart(): Promise<void> {
@@ -1258,6 +1215,7 @@ export class VoiceSession {
    */
   private setPhase(phase: ProcessingPhase): void {
     this.processingPhase = phase;
+    if (phase === "idle") this.onIdle?.();
     this.sessionLogger.debug({ phase }, `Phase: ${phase}`);
   }
 
@@ -1305,9 +1263,10 @@ export class VoiceSession {
    * debug persistence before forwarding to the session emitter.
    */
   private emit(msg: SessionOutboundMessage): void {
+    if (this.closed) return;
     if (
       msg.type === "audio_output" &&
-      (process.env.TTS_DEBUG_AUDIO_DIR || isOttoDictationDebugEnabled()) &&
+      (process.env.TTS_DEBUG_AUDIO_DIR || isPaseoDictationDebugEnabled()) &&
       msg.payload.groupId &&
       typeof msg.payload.audio === "string"
     ) {
@@ -1356,22 +1315,40 @@ export class VoiceSession {
     this.host.emit(msg);
   }
 
-  /**
-   * Tear down all voice resources.
-   */
-  async cleanup(): Promise<void> {
+  /** Stop input synchronously, including a source disconnected during bootstrap. */
+  cancel(): void {
+    if (this.closed) return;
+    this.closed = true;
     this.abortController.abort();
-    this.cancelMessagePlayback();
     this.clearBufferTimeout();
     this.pendingAudioSegments = [];
     this.audioBuffer = null;
-    await this.stopVoiceTurnController();
+    const failures: unknown[] = [];
+    for (const cleanup of [
+      () => this.ttsManager.cleanup(),
+      () => this.sttManager.cleanup(),
+      () => this.dictationStreamManager.cleanupAll(),
+    ]) {
+      try {
+        cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length) throw new AggregateError(failures, "Voice input cleanup failed");
+  }
 
-    this.ttsManager.cleanup();
-    this.sttManager.cleanup();
-    this.dictationStreamManager.cleanupAll();
-
-    await this.disableVoiceModeForActiveAgent(true);
-    this.isVoiceMode = false;
+  /** Restore the agent only after the caller has drained its in-flight requests. */
+  async cleanup(): Promise<void> {
+    try {
+      this.cancel();
+    } finally {
+      try {
+        await this.stopVoiceTurnController();
+      } finally {
+        await this.disableVoiceModeForActiveAgent(true);
+        this.isVoiceMode = false;
+      }
+    }
   }
 }

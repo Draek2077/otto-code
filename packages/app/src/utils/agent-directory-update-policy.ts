@@ -1,5 +1,5 @@
 import equal from "fast-deep-equal";
-import type { AgentUsage } from "@otto-code/protocol/agent-types";
+import type { AgentUsage } from "@getpaseo/protocol/agent-types";
 
 interface AgentUpdateValue {
   updatedAt: Date | string;

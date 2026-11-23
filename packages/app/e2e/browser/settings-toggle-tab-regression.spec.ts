@@ -1,22 +1,14 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { buildHostAgentDetailRoute, buildHostWorkspaceRoute } from "@/utils/host-routes";
 import { expect, test } from "../support/fixtures";
-import { createIdleAgent, openWorkspaceWithAgents } from "../support/helpers/archive-tab";
+import { createMockIdleAgent, openWorkspaceWithAgents } from "../support/helpers/archive-tab";
 import { waitForTabBar, expectAgentTabActive } from "../support/helpers/launcher";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
-import { openSettingsSection } from "../support/helpers/settings";
 
-// Settings has no keyboard shortcut of its own (Mod+, opens the file finder),
-// so the round trip is the sidebar button in and the back button out - the same
-// `navigateToLastWorkspace` path the old Mod+, toggle took.
-async function openSettingsFromSidebar(page: import("@playwright/test").Page) {
-  const settingsButton = page.locator('[data-testid="sidebar-settings"]:visible').first();
-  await expect(settingsButton).toBeVisible({ timeout: 15_000 });
-  await settingsButton.click();
-}
-
-async function backToWorkspaceFromSettings(page: import("@playwright/test").Page) {
-  await page.getByTestId("settings-back-to-workspace").click();
+async function pressSettingsToggleShortcut(page: import("@playwright/test").Page) {
+  const modifier = process.platform === "darwin" ? "Meta" : "Control";
+  await page.keyboard.press(`${modifier}+Comma`);
 }
 
 interface ComposerFrame {
@@ -113,12 +105,12 @@ test.describe("Settings toggle tab regression", () => {
     const workspace = await seedWorkspace({ repoPrefix: "settings-toggle-tab-" });
 
     try {
-      const firstAgent = await createIdleAgent(workspace.client, {
+      const firstAgent = await createMockIdleAgent(workspace.client, {
         cwd: workspace.repoPath,
         workspaceId: workspace.workspaceId,
         title: `settings-toggle-a-${Date.now()}`,
       });
-      const secondAgent = await createIdleAgent(workspace.client, {
+      const secondAgent = await createMockIdleAgent(workspace.client, {
         cwd: workspace.repoPath,
         workspaceId: workspace.workspaceId,
         title: `settings-toggle-b-${Date.now()}`,
@@ -128,22 +120,34 @@ test.describe("Settings toggle tab regression", () => {
       await waitForTabBar(page);
       await expectAgentTabActive(page, secondAgent.id);
 
-      await openSettingsFromSidebar(page);
-      await expect(page).toHaveURL(/\/settings$/);
-      await openSettingsSection(page, "chat");
+      await pressSettingsToggleShortcut(page);
+      await expect(page).toHaveURL(/\/settings\/general$/);
 
-      const steer = page.getByRole("button", { name: "Steer", exact: true });
-      const queue = page.getByRole("button", { name: "Queue", exact: true });
-      await expect(steer).toBeVisible();
-      await expect(steer).toHaveAttribute("aria-selected", "true");
-      await expectSendBehavior(page, "steer");
-      await queue.click();
+      const defaultSendTrigger = page.getByRole("button", {
+        name: "Default send: Steer",
+        exact: true,
+      });
+      await expect(defaultSendTrigger).toBeVisible();
+      await expect(page.getByRole("menuitem", { name: "Queue", exact: true })).toHaveCount(0);
+
+      await defaultSendTrigger.click();
+      await expect(page.getByRole("menuitem", { name: "Steer", exact: true })).toHaveAttribute(
+        "aria-checked",
+        "true",
+      );
+      await page.getByRole("menuitem", { name: "Queue", exact: true }).click();
       await expectSendBehavior(page, "queue");
-      await expect(queue).toHaveAttribute("aria-selected", "true");
-      await page.getByRole("button", { name: "Interrupt", exact: true }).click();
+      const queuedDefaultSendTrigger = page.getByRole("button", {
+        name: "Default send: Queue",
+        exact: true,
+      });
+      await expect(queuedDefaultSendTrigger).toBeVisible();
+
+      await queuedDefaultSendTrigger.click();
+      await page.getByRole("menuitem", { name: "Interrupt", exact: true }).click();
       await expectSendBehavior(page, "interrupt");
 
-      await backToWorkspaceFromSettings(page);
+      await pressSettingsToggleShortcut(page);
       await expect(page).toHaveURL(buildHostWorkspaceRoute(serverId, workspace.workspaceId));
       await waitForTabBar(page);
       await expectAgentTabActive(page, secondAgent.id);
@@ -162,12 +166,12 @@ test.describe("Settings toggle tab regression", () => {
     const workspace = await seedWorkspace({ repoPrefix: "settings-composer-height-" });
 
     try {
-      const firstAgent = await createIdleAgent(workspace.client, {
+      const firstAgent = await createMockIdleAgent(workspace.client, {
         cwd: workspace.repoPath,
         workspaceId: workspace.workspaceId,
         title: `settings-composer-height-a-${Date.now()}`,
       });
-      const secondAgent = await createIdleAgent(workspace.client, {
+      const secondAgent = await createMockIdleAgent(workspace.client, {
         cwd: workspace.repoPath,
         workspaceId: workspace.workspaceId,
         title: `settings-composer-height-b-${Date.now()}`,
@@ -182,9 +186,9 @@ test.describe("Settings toggle tab regression", () => {
       expect(baselineHeight).toBeDefined();
 
       await startComposerFrameCapture(page);
-      await openSettingsFromSidebar(page);
-      await expect(page).toHaveURL(/\/settings$/);
-      await backToWorkspaceFromSettings(page);
+      await pressSettingsToggleShortcut(page);
+      await expect(page).toHaveURL(/\/settings\/general$/);
+      await pressSettingsToggleShortcut(page);
       await expect(page).not.toHaveURL(/\/settings(\/|$)/);
       await expect(input).toHaveValue("Keep this short draft in the composer");
       await page.waitForTimeout(250);
@@ -222,12 +226,12 @@ test.describe("Settings toggle tab regression", () => {
     const workspace = await seedWorkspace({ repoPrefix: "agent-route-refresh-" });
 
     try {
-      const firstAgent = await createIdleAgent(workspace.client, {
+      const firstAgent = await createMockIdleAgent(workspace.client, {
         cwd: workspace.repoPath,
         workspaceId: workspace.workspaceId,
         title: `agent-route-refresh-a-${Date.now()}`,
       });
-      const secondAgent = await createIdleAgent(workspace.client, {
+      const secondAgent = await createMockIdleAgent(workspace.client, {
         cwd: workspace.repoPath,
         workspaceId: workspace.workspaceId,
         title: `agent-route-refresh-b-${Date.now()}`,

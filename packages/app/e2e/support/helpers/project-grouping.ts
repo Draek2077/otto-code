@@ -1,5 +1,5 @@
 import { expect, type Locator, type Page } from "@playwright/test";
-import { gotoAppShell, openSettings } from "./app";
+import { gotoAppShell } from "./app";
 import { addConnectedHostsAndReload, waitForConnectedHost } from "./hosts";
 import { openProjectSettings } from "./project-settings";
 import { selectSettingsHost } from "./settings";
@@ -90,12 +90,13 @@ export async function createWorkspaceWithoutAgent(page: Page): Promise<void> {
 
 export async function expectProjectWorkspaceCountForHost(
   page: Page,
-  input: { projectName: string; serverId: string; count: number },
+  input: { projectName: string; hostName: string; count: number },
 ): Promise<void> {
   const group = projectGroup(page, input.projectName);
-  await expect(
-    group.locator(`[data-testid^="sidebar-workspace-row-${input.serverId}:"]`),
-  ).toHaveCount(input.count, { timeout: PROJECT_VISIBILITY_TIMEOUT });
+  await expect(group.getByRole("button").filter({ hasText: input.hostName })).toHaveCount(
+    input.count,
+    { timeout: PROJECT_VISIBILITY_TIMEOUT },
+  );
 }
 
 export async function renameProject(page: Page, name: string): Promise<void> {
@@ -111,7 +112,8 @@ export async function openGroupedProjectSettings(
   page: Page,
   input: { serverId: string; projectName: string },
 ): Promise<void> {
-  await openSettings(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page).toHaveURL(/\/settings\/general$/);
   await selectSettingsHost(page, input.serverId);
   await page.locator('[data-testid="settings-host-section-projects"]:visible').click();
   await expect(page).toHaveURL(/\/settings\/hosts\/[^/]+\/projects$/);
@@ -131,4 +133,20 @@ export async function expectProjectSettingsName(page: Page, projectName: string)
   await expect(page.getByRole("main").getByText(projectName, { exact: true })).toBeVisible({
     timeout: PROJECT_VISIBILITY_TIMEOUT,
   });
+}
+
+export async function openGroupedProjectWorkspace(
+  page: Page,
+  projectName: string,
+  workspaceName: string,
+): Promise<void> {
+  await projectGroup(page, projectName)
+    .getByRole("button")
+    .filter({ hasText: workspaceName })
+    .click();
+  await expect(page).toHaveURL(/\/workspace\//);
+}
+
+export async function expectWorkspaceHost(page: Page, hostName: string): Promise<void> {
+  await expect(page.getByRole("button", { name: "Host", exact: true })).toContainText(hostName);
 }

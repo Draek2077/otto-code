@@ -35,42 +35,6 @@ function outboundMessage(type: SessionOutboundMessage["type"]): SessionOutboundM
 }
 
 describe("SessionAuthorization", () => {
-  test("does not give empty authority any request, including Otto extensions", () => {
-    const authorization = new SessionAuthorization([]);
-    expect(
-      inboundOperationTypes().filter((type) => authorization.allowsInbound(inboundMessage(type))),
-    ).toEqual([]);
-    expect(
-      outboundOperationTypes().filter((type) =>
-        authorization.allowsOutbound(outboundMessage(type)),
-      ),
-    ).toEqual(["rpc_error"]);
-  });
-  test("separates Otto workspace, daemon, account and automation authority", () => {
-    const workspace = new SessionAuthorization(["workspace.read"]);
-    expect(workspace.allowsInbound(inboundMessage("project.knowledge.get.request"))).toBe(true);
-    expect(workspace.allowsInbound(inboundMessage("project.knowledge.apply.request"))).toBe(false);
-    expect(
-      workspace.allowsInbound(inboundMessage("communications.inbox.get_messages.request")),
-    ).toBe(false);
-    expect(
-      workspace.allowsOutbound(outboundMessage("communications.inbox.get_messages.response")),
-    ).toBe(false);
-    const daemon = new SessionAuthorization(["daemon.read"]);
-    expect(daemon.allowsInbound(inboundMessage("brain.host.status.request"))).toBe(true);
-    expect(daemon.allowsInbound(inboundMessage("brain.host.start.request"))).toBe(false);
-    expect(daemon.allowsInbound(inboundMessage("connectors.oauth.authorize.request"))).toBe(false);
-    const automation = new SessionAuthorization(["automation.manage"]);
-    expect(automation.allowsInbound(inboundMessage("workflows.start.request"))).toBe(true);
-    expect(automation.allowsInbound(inboundMessage("brain.host.restart.request"))).toBe(false);
-    const account = new SessionAuthorization(["access.manage"]);
-    expect(
-      account.allowsInbound(inboundMessage("integrations.authorization.start_browser.request")),
-    ).toBe(true);
-    expect(account.allowsInbound(inboundMessage("communications.room.message.send.request"))).toBe(
-      false,
-    );
-  });
   test("owner authority covers every session operation", () => {
     const authorization = new SessionAuthorization(OWNER_PERMISSIONS);
 
@@ -114,11 +78,15 @@ describe("SessionAuthorization", () => {
     const authorization = new SessionAuthorization(["hub.execute"]);
     for (const type of [
       "create_agent_request",
-      "send_agent_message_request",
+      "workspace.title.set.request",
+      "fetch_agents_request",
       "fetch_agent_request",
       "agent.timeline.set_subscription.request",
+      "send_agent_message_request",
       "workspace.recovery.inspect.request",
       "workspace.recovery.restore.request",
+      "archive_workspace_request",
+      "cancel_agent_request",
     ] as const) {
       expect(authorization.allowsInbound(inboundMessage(type))).toBe(true);
     }
@@ -126,8 +94,17 @@ describe("SessionAuthorization", () => {
       "status",
       "agent_update",
       "agent_stream",
+      "workspace_update",
+      "rpc_error",
+      "workspace.title.set.response",
+      "fetch_agents_response",
+      "fetch_agent_response",
+      "agent.timeline.set_subscription.response",
       "send_agent_message_response",
+      "workspace.recovery.inspect.response",
       "workspace.recovery.restore.response",
+      "archive_workspace_response",
+      "cancel_agent_response",
     ] as const) {
       expect(authorization.allowsOutbound(outboundMessage(type))).toBe(true);
     }

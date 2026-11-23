@@ -1,10 +1,10 @@
 # Ad-hoc daemon testing
 
-Spin up an isolated in-process daemon test harness without touching the main daemon on port 6868.
+Spin up an isolated in-process daemon test harness without touching the main daemon on port 6767.
 
 This is for test code only. Executable daemon processes must start through
 `scripts/supervisor-entrypoint.ts` or `dist/scripts/supervisor-entrypoint.js`;
-do not use `createOttoDaemon` as a product launch path.
+do not use `createPaseoDaemon` as a product launch path.
 
 ## Quick start
 
@@ -13,29 +13,29 @@ import os from "node:os";
 import path from "node:path";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import pino from "pino";
-import { createOttoDaemon } from "./bootstrap.js";
+import { createPaseoDaemon } from "./bootstrap.js";
 import { DaemonClient } from "./test-utils/daemon-client.js";
 
 const logger = pino({ level: "warn" });
-const ottoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-test-"));
-const ottoHome = path.join(ottoHomeRoot, ".otto");
-await mkdir(ottoHome, { recursive: true });
-const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
+const paseoHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-test-"));
+const paseoHome = path.join(paseoHomeRoot, ".paseo");
+await mkdir(paseoHome, { recursive: true });
+const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
 
-const daemon = await createOttoDaemon(
+const daemon = await createPaseoDaemon(
   {
     listen: "127.0.0.1:0", // OS picks a free port
-    ottoHome,
+    paseoHome,
     corsAllowedOrigins: [],
     hostnames: true,
     mcpEnabled: false,
     staticDir,
     mcpDebug: false,
     agentClients: {},
-    agentStoragePath: path.join(ottoHome, "agents"),
+    agentStoragePath: path.join(paseoHome, "agents"),
     relayEnabled: false,
-    relayEndpoint: "relay.otto-code.me:443",
-    appBaseUrl: "https://app.otto-code.me",
+    relayEndpoint: "relay.paseo.sh:443",
+    appBaseUrl: "https://app.paseo.sh",
     // Add custom config here, e.g.:
     // providerOverrides: { ... },
   },
@@ -51,13 +51,13 @@ const client = new DaemonClient({
   appVersion: "0.1.70", // see gotcha #1
 });
 await client.connect();
-await client.fetchAgents({ subscribe: { subscriptionId: "test" } });
+await client.fetchAgents({ subscribe: {} });
 
 // ... do your testing ...
 
 await client.close();
 await daemon.stop();
-await rm(ottoHomeRoot, { recursive: true, force: true });
+await rm(paseoHomeRoot, { recursive: true, force: true });
 await rm(staticDir, { recursive: true, force: true });
 ```
 
@@ -69,19 +69,19 @@ npx tsx packages/server/src/server/your-script.ts
 
 ## Using the test helper
 
-For simpler cases, `createTestOttoDaemon` + `DaemonClient` handles temp dirs and port selection:
+For simpler cases, `createTestPaseoDaemon` + `DaemonClient` handles temp dirs and port selection:
 
 ```typescript
-import { createTestOttoDaemon } from "./test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { DaemonClient } from "./test-utils/daemon-client.js";
 
-const daemon = await createTestOttoDaemon();
+const daemon = await createTestPaseoDaemon();
 const client = new DaemonClient({
   url: `ws://127.0.0.1:${daemon.port}/ws`,
   appVersion: "0.1.70",
 });
 await client.connect();
-await client.fetchAgents({ subscribe: { subscriptionId: "test" } });
+await client.fetchAgents({ subscribe: {} });
 
 // ... test ...
 
@@ -89,7 +89,7 @@ await client.close();
 await daemon.close(); // stops daemon + cleans up temp dirs
 ```
 
-The test helper does **not** expose `providerOverrides`. In test harnesses, use `createOttoDaemon` directly when you need it (see quick start above).
+The test helper does **not** expose `providerOverrides`. In test harnesses, use `createPaseoDaemon` directly when you need it (see quick start above).
 
 ## Common client methods
 
@@ -136,11 +136,11 @@ for (let i = 0; i < 20; i++) {
 
 ### 3. fetchAgents is required before most operations
 
-Call `client.fetchAgents()` after connecting. The daemon session expects this handshake before it processes other requests - without it, messages like `get_providers_snapshot_request` will silently hang.
+Call `client.fetchAgents()` after connecting. The daemon session expects this handshake before it processes other requests — without it, messages like `get_providers_snapshot_request` will silently hang.
 
 ### 4. listen: "127.0.0.1:0" for port allocation
 
-Always use port `0` so the OS picks a free port. Never hardcode a port - it will collide with the main daemon or other test runs.
+Always use port `0` so the OS picks a free port. Never hardcode a port — it will collide with the main daemon or other test runs.
 
 ### 5. Script must live inside packages/server
 
@@ -156,7 +156,7 @@ try {
 } finally {
   await client.close();
   await daemon.stop().catch(() => undefined);
-  await rm(ottoHomeRoot, { recursive: true, force: true });
+  await rm(paseoHomeRoot, { recursive: true, force: true });
 }
 ```
 

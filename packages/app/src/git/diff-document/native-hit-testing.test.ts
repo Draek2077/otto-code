@@ -1,4 +1,4 @@
-import type { ParsedDiffFile } from "@otto-code/protocol/messages";
+import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import { describe, expect, it } from "vitest";
 import { buildDiffDocumentModel } from "./model";
 import { hitTestDiffBodyPoint } from "./native-hit-testing";

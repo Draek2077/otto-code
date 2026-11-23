@@ -1,13 +1,7 @@
 {
-  "name": "@otto-code/relay",
+  "name": "@getpaseo/relay",
   "version": "0.9.35",
-  "description": "Otto relay for bridging daemon and client connections",
-  "license": "AGPL-3.0-or-later",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Draek2077/otto-code.git",
-    "directory": "packages/relay"
-  },
+  "description": "Paseo relay for bridging daemon and client connections",
   "files": [
     "dist",
     "!dist/**/*.map"
@@ -17,21 +11,15 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "node": "./dist/index.js",
-      "import": "./src/index.ts",
-      "default": "./src/index.ts"
+      "default": "./dist/index.js"
     },
     "./e2ee": {
       "types": "./dist/e2ee.d.ts",
-      "node": "./dist/e2ee.js",
-      "import": "./src/e2ee.ts",
-      "default": "./src/e2ee.ts"
+      "default": "./dist/e2ee.js"
     },
     "./cloudflare": {
       "types": "./dist/cloudflare-adapter.d.ts",
-      "node": "./dist/cloudflare-adapter.js",
-      "import": "./src/cloudflare-adapter.ts",
-      "default": "./src/cloudflare-adapter.ts"
+      "default": "./dist/cloudflare-adapter.js"
     }
   },
   "publishConfig": {
@@ -49,12 +37,12 @@
   "dependencies": {
     "base64-js": "^1.5.1",
     "tweetnacl": "^1.0.3",
-    "ws": "^8.21.0"
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "@types/node": "^20.9.0",
     "@types/ws": "^8.5.8",
     "typescript": "^5.2.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.6"
   }
 }

@@ -1,28 +1,11 @@
+<!-- OTTO(dev-isolation): Otto homes, ports, and entry points override Paseo defaults. -->
+
 # Development
 
 ## Prerequisites
 
 - Node.js (see `.tool-versions` for exact version)
 - npm workspaces (comes with Node)
-- Python 3 on PATH (`python3`, `python`, or the Windows `py` launcher), needed only for
-  desktop packaging: the electron-builder before-pack hook freezes the Zoom Recorder helper
-  with PyInstaller. The hook provisions its own venv (`packages/desktop/.venv-zoom-recorder`)
-  with the pinned dependencies from `resources/zoom-recorder/requirements-build.txt`, so no
-  manual pip install is required. Set `OTTO_ZOOM_RECORDER_PYTHON` to use a different
-  interpreter instead (that skips the venv, so it must already have the requirements).
-
-### Windows: npm script shell
-
-Some repo scripts (e.g. `scripts/dev-home.sh`) use bash syntax, but npm on
-Windows defaults to `cmd.exe` for script execution regardless of the invoking
-shell, which breaks them. Point npm at Git Bash in your **global** npm config,
-not a repo-committed `.npmrc` - a project-level override applies to every
-`npm ci`/`npm install` in CI too, and GitHub Actions runners are Linux, where
-a hardcoded Windows path doesn't exist and breaks every workflow:
-
-```powershell
-npm config set script-shell "C:\Program Files\Git\bin\bash.exe" --location=global
-```
 
 ## Running the dev server
 
@@ -32,262 +15,74 @@ npm run dev:app
 npm run dev:desktop
 ```
 
-**`npm run dev:win:desktop` (Windows) / `npm run dev:desktop` is the front-end dev command.**
-It brings up Metro and the Electron shell together with the daemon in the Electron main
-process - one command, the whole app. Reach for the split entrypoints below only for tests,
-demos, CI, and agent-driven services.
+On Windows, use `npm run dev:win:desktop` for desktop development. The desktop
+launchers manage their Electron-flavored Metro and desktop-managed daemon.
 
-Root checkout dev is otherwise split across terminals:
+<!-- OTTO(dev-review): commands and their state belong to the selected checkout. -->
 
-- `npm run dev:server` runs the dev daemon on `127.0.0.1:6788`.
+Run commands from the checkout or worktree you intend to test. Check its directory,
+branch and revision before launching:
+
+```powershell
+Get-Location
+git branch --show-current
+git rev-parse HEAD
+```
+
+The desktop launcher prints its Metro URL, daemon endpoint, runtime home and
+Electron user-data directory. Check these values before testing. The app's package
+version alone does not identify the source revision or the connected host.
+Switching to another checkout does not update an already running app or daemon.
+
+Web development is split across terminals; desktop has its own launcher:
+
+- `npm run dev:server` runs the daemon on `127.0.0.1:6788`.
 - `npm run dev:app` runs Expo on `http://localhost:8081` and connects to the dev daemon.
-- `npm run dev:desktop` runs its own Electron-flavored Expo server on the first free port from `8082` through `8089`. It never claims port `8081`.
+- The shell `npm run dev:desktop` launcher selects the first free Metro port from `8082` through `8089`.
+- `npm run dev:win:desktop` selects the first free Metro port from `8081` through `8085`. Use the URL printed by that launcher.
 
-Desktop dev launches its desktop-managed daemon with `OTTO_NODE_ENV=development`,
+Desktop dev launches its desktop-managed daemon with `PASEO_NODE_ENV=development`,
 so development-only providers such as Mock Load Test are available. Packaged
 desktop launches always force the daemon to production mode.
 
 The web and desktop dev launchers pass the current Git branch to Metro as
-`EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL`. The desktop workspace title bar shows it as a pill
-immediately to the right of the workspace `...` menu. Production builds leave the variable
-unset and show no label.
+`EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL`. The expanded desktop sidebar shows it in
+the titlebar row. Production builds leave the variable unset and show no label.
 
-`npm run dev` is only a shorthand for `npm run dev:server`.
+`npm run dev` is only a shorthand for `npm run dev:server`. Keep `127.0.0.1:6868` for the packaged app and production-style `~/.otto` state.
 
-Whichever you use, they all resolve through the same dev defaults, so they land on the same
-daemon port and the same `OTTO_HOME` - see below.
+<!-- OTTO(metro-resources): keep the fork's resource policy separate from upstream Metro configuration. -->
 
-### Lanes
+### Metro file-handle pressure
 
-**The installed Otto, the dev Otto, an agent's own instance, a test run, and a
-demo run are all expected to be up at the same time.** Each owns its own ports
-and its own running space. These defaults separate lanes, but they do not allocate a new set of
-ports for each checkout:
+The Otto-owned `packages/app/otto/metro-resource-policy.cjs` extends Expo's
+existing exclusions. Checkout scratch directories, package runtime homes,
+coverage, Playwright traces and exported app copies are excluded from Metro's
+source map. Compiled workspace dependencies remain visible. Windows uses at most
+two Metro workers; smaller explicit budgets and other platforms retain their
+existing setting. This bounds transform pressure without changing installed Otto,
+system limits or dependency sources.
 
-| Lane              | Daemon port | `OTTO_HOME`                        | Metro         | Other fixed ports |
-| ----------------- | ----------- | ---------------------------------- | ------------- | ----------------- |
-| **Installed app** | `6868`      | `~/.otto`                          | -             | -                 |
-| **Dev**           | `6788`      | `packages/desktop/.dev/otto-home`  | `8081`-`8089` | CDP `9223`        |
-| **Agent**         | `6799`      | `packages/desktop/.dev/agent-home` | `8095` (web)  | -                 |
-| **Tests** (e2e)   | dynamic     | `$TMP/otto-e2e-home-*`             | dynamic       | relay dynamic     |
-| **Demos**         | dynamic     | `$TMP/otto-e2e-home-*`             | dynamic       | relay dynamic     |
+An `EMFILE` error means the process could not open another file. If the stack
+ends in Metro's error formatter, it may conceal an earlier bundling failure;
+inspect the preceding output rather than assuming the last file is defective.
+The resource policy takes effect the next time the dev command starts. Policy
+tests and configuration inspection do not establish that a reported crash has
+been reproduced or resolved. No cache deletion or daemon restart is required by
+this policy.
 
-Before starting services in another worktree, inspect existing service ownership and allocate free
-daemon, Metro, and CDP ports plus a worktree-specific `OTTO_HOME`. Never restart another worktree's
-service or assume its default port is available. A timeout does not establish that a service needs
-restarting.
+### GitHub PR lookup diagnostics on Windows
 
-The fixed lanes get fixed ports because you need to _find_ them - you type
-`localhost:6788` into a client, you attach a debugger to `9223`. Override the dev
-port with `OTTO_DEV_DAEMON_PORT` and the CDP port with
-`OTTO_ELECTRON_REMOTE_DEBUGGING_PORT`.
+The forge command runner resolves native Windows executables before invoking
+them. Native `gh`, `glab` and `tea` receive argv directly, including multiline
+GraphQL, JSON and literal shell characters. Command-script wrappers retain the
+shared process launcher's script policy. This does not change CLI accounts,
+credentials or global configuration.
 
-The daemon sets `MSBUILDDISABLENODEREUSE=1` before starting local agents, terminals,
-and workspace scripts. MSBuild may still use parallel workers during a build, but
-ordinary builds launched through Otto should release them when the build ends. The
-daemon's .NET process registry separately caps Otto's C# language servers and Solution
-sidecars; it does not count build processes launched by agents or terminal commands.
-
-#### The agent lane
-
-`npm run dev:win:agent` (Windows) / `npm run dev:agent` starts a daemon **and** an
-Expo **web** front end that an AI agent can drive and screenshot on its own,
-without touching anything you have running. Start it while the installed Otto and
-the dev Otto are both up - nothing collides. That is the whole reason it exists.
-
-It serves web rather than Electron on purpose: a web front end opens in Otto's
-browser pane and can be verified with the browser tools, whereas an Electron
-window would need its own userData for the single-instance lock and could only be
-inspected over CDP.
-
-To actually drive it that way, go through Preview rather than opening the Metro
-URL in a browser tab by hand - `.claude/launch.json` carries an `otto-agent`
-config that starts the whole lane. See
-[preview.md → Previewing Otto itself](preview.md#previewing-otto-itself), which
-also covers what an agent sees when the lane is already running and it did not
-start it.
-
-The home is managed (its `config.json` is seeded with the lane's port) and
-persistent - a throwaway home mints a new daemon keypair and `serverId` every run,
-and a client that remembered the old identity refuses the new one.
-
-Override with `OTTO_DEV_DAEMON_PORT`, `OTTO_AGENT_METRO_PORT`, or `OTTO_DEV_HOME`.
-`OTTO_DEV_HOME` is the general escape hatch for standing up **another** managed
-lane: unlike raw `OTTO_HOME` - which is honored but never written to - a managed
-home gets its `config.json` seeded, so the lane actually answers on its own port
-instead of inheriting `6868`.
-
-##### Bootstrapping it
-
-A brand-new lane home has no providers configured and boots into the first-run
-wizard, which is friction on every single run. `npm run dev:agent:bootstrap`
-removes it. The bootstrap has two halves, because the state lives in two places:
-
-```bash
-npm run dev:agent:bootstrap
-```
-
-- **Daemon half** (what the script does): copies the durable, machine-local half
-  of another home's `config.json` - provider endpoints and keys, model tier
-  overrides, personalities, teams, feature flags - into the agent home. Defaults
-  to seeding from the dev home; `--from <home>` picks another, `--force`
-  overwrites values already set. It deliberately never copies `daemon.*`, because
-  inheriting someone else's `daemon.listen` is exactly how a lane ends up
-  answering on the wrong port.
-- **Client half** (what it prints): the first-run wizard and spotlight-tour flags
-  are device-local app settings in the _client's_ AsyncStorage - for Expo web
-  that is `localStorage` under key `@otto:app-settings` on the Metro origin, not
-  anywhere under `OTTO_HOME`. The script prints a one-liner to run once in the
-  browser pane, then reload.
-
-  **Per origin, so a different port is a different client.** The one-liner the
-  script prints names the lane's own origin. Serve the same app on another port -
-  a `preview_start` front end, say - and it boots into the wizard again with the
-  flags unset, because `localhost:8095` and `127.0.0.1:8096` are separate
-  `localStorage` scopes. Daemon-owned state (projects, workspaces, chats) is
-  untouched; only re-run the client half against the new origin.
-
-Note the flags must be set to `true` explicitly. `migrateSetupWizardFlag` only
-treats a device as an upgrader when the field is _absent_, and the app writes a
-full settings blob with `false` on first boot - so seeding an empty blob does not
-skip the wizard.
-
-##### Playbooks: starting states
-
-`--stage` takes the bootstrap further than "make the wizard go away": it puts the
-lane into a named, reproducible starting state. The stages are cumulative, so
-each is the previous one plus a step.
-
-| Stage       | State                                                             | Daemon           |
-| ----------- | ----------------------------------------------------------------- | ---------------- |
-| `fresh`     | No providers, no wizard flags, no projects - the first-run wizard | must be **down** |
-| `defaults`  | Providers and keys seeded, wizard and tour flags set (default)    | either           |
-| `project`   | + a project registered                                            | must be **up**   |
-| `workspace` | + a workspace on that project                                     | must be **up**   |
-| `chat`      | + a chat in that workspace, on a chosen model                     | must be **up**   |
-
-```bash
-npm run dev:agent:bootstrap -- --stage chat --model qwen
-```
-
-`--model` takes `haiku`, `sonnet`, `opus`, `qwen`, or a raw model id alongside
-`--provider`. `--project <path>` registers an existing directory instead of the
-lane's scratch repo; `--prompt <text>` sends a first turn. Numbers work too:
-`--stage 5` is `chat`.
-
-##### Every run starts clean
-
-Stages that touch the daemon **first tear down the lane's chats, workspaces, projects
-and sandbox**, so a scenario is never reached with the previous one still in the way.
-`--keep` opts out and composes onto existing state instead.
-
-Clean-slate is the default rather than a flag because the flag fails silently: forget
-it once and you are debugging leftover state instead of the feature. Teardown runs over
-RPCs, not by deleting files, which is what lets it work with the lane **up** - the
-alternative is stopping and restarting a daemon for every scenario, which is the
-friction this script exists to remove.
-
-Two safety properties hold it in place. Reset refuses to run against any home outside
-`packages/desktop/.dev/`, so it can never reach the installed app's state. And
-enumeration failures are never swallowed - a reset that quietly finds nothing looks
-like a clean slate and is not one, which is the most confusing way this could fail.
-
-##### Boilerplate projects
-
-`--template <name>` swaps the empty scratch repo for a real project from the
-shared corpus in `test-documents/projects/` - a plausible tree that **builds**,
-with a `break/<slug>` branch per error scenario. `--list` prints what is available.
-
-```bash
-npm run dev:agent:bootstrap -- --stage chat --template python-cli --branch break/failing-test --model qwen
-```
-
-`--verify` runs the template's declared build and test. On a `break/*` branch the
-expectation inverts: a break branch that builds clean is reported as a failure,
-because the error scenario has silently stopped working. A missing toolchain is a
-**skip**, not a failure - the repo is still worth having for highlighting, the file
-tree, diffs and the editor.
-
-`--branch` backs the workspace with an otto worktree rather than a plain directory,
-which is what makes the git surface real: a fork-point diff base, commit, rollback,
-file history, blame, branch switch, merge-into-base, archive with branch cleanup.
-The project then reads as the stack and its workspaces read as branches.
-
-The corpus and its materializer (`scripts/playbook-projects.mjs`) are **shared with
-the Playwright suites** - one corpus, two callers. An agent driving Otto by hand and
-a spec asserting about Otto work against identical ground truth, so a green suite
-stays evidence about the thing the agent just looked at. Template format and the
-rules a template has to meet are in
-[test-documents/projects/README.md](../test-documents/projects/README.md).
-
-The first two stages are file writes. The last three drive the **running** daemon
-over its WebSocket, because a project, a workspace and an agent are daemon-owned
-records - hand-writing them into `OTTO_HOME` would duplicate registry logic and
-rot the first time it changed. That is also why the workspace stage calls
-`open_project` rather than `workspace.create`: `workspace.create` never
-deduplicates by directory and the daemon rejects a second workspace on a
-directory that already backs one, so a re-run would fail. A playbook that is not
-idempotent is not a playbook.
-
-**Custom providers are registered once, at daemon startup.** Seeding `config.json`
-while the lane is running leaves the daemon unaware of `openai-compatible`, and
-`createAgent` then fails with a bare `Unknown provider`. The `chat` stage
-preflights the provider list and tells you to restart the lane instead.
-
-Where this is going - boilerplate language projects, branch-backed workspaces,
-full local git, and per-feature playbooks for artifacts, schedules, teams and the
-visualizer - is charted on the
-[Usage Playbooks project page](../.otto/knowledge/projects/usage-playbooks.md).
-
-**Tests and demos stay dynamic on purpose - do not pin them to a band.** Both run
-through `e2e/global-setup.ts`, which mints a throwaway `mkdtemp` `OTTO_HOME` per
-run and asks the OS for free daemon/Metro/relay ports. That is what lets several
-runs go at once - two e2e runs, or e2e and demos together, or one per worktree
-under `otto.json` services. A fixed band would trade all of that away to solve a
-collision the dynamic allocator does not have. Cross-lane safety instead comes
-from subtraction: `RESERVED_LOCAL_PORTS` in `global-setup.ts` lists every fixed
-port the other lanes own (`6868`, `6788`, `8081`-`8090`, `9223`, `4300`, plus
-OpenCode's `61680`) and the allocator refuses all of them. **Add a row there
-whenever a lane claims a new fixed port.**
-
-Per-run output also stays separate: the tier scripts set `E2E_HTML_REPORT_DIR`
-and `E2E_REPORT_DIR` so a demo or T2 run cannot wipe a T1 report mid-write.
-
-The `6868`/`6788` split is the load-bearing one for the two fixed lanes. Two
-daemons on `6868` do not coexist - the second either crash-loops fighting for the
-port or, worse, the first one answers and hands dev clients your production
-agents. `npm run cli` resolves through the same wrapper, so the in-repo CLI
-always talks to the dev daemon.
-
-The separate Electron userData (`packages/desktop/.dev/user-data`) is what lets
-the dev app launch at all while the installed one is open: on a shared userData
-the dev instance loses the single-instance lock and immediately quits.
-
-**Dev builds wear a navy icon.** With both apps running, identical black icons
-make the two taskbar buttons and tray entries indistinguishable, so an
-unpackaged build loads its window, dock and tray art from
-`packages/desktop/assets/dev/` - the same tile in blue-900 `#1e3a8a`. Generated
-by `scripts/generate-brand-assets.mjs`, resolved by
-`packages/desktop/src/features/dev-icon.ts`, and impossible to ship: the lookup
-is gated on `!app.isPackaged` and nothing in `electron-builder.yml` copies that
-folder. See [branding/README.md](../branding/README.md).
-
-Two things do **not** separate, both cosmetic. You get two tray icons - expected,
-they are two apps. And on Windows both processes call
-`setAppUserModelId("ai.ottocode.desktop")`, so toast notifications are attributed
-identically and a toast click may activate whichever window Windows picks.
-
-Deliberately **shared**: `OTTO_LOCAL_MODELS_DIR` points both at
-`~/.otto/models/local-speech` so local speech models are downloaded once, and
-skills sync writes to the machine-level `~/.claude/skills`, `~/.codex/skills`,
-and `~/.agents/skills` for both.
-
-**Do not click "Install CLI" from a dev build.** It writes `~/.local/bin/otto`
-from the _running_ app's bundled shim path, so a dev build overwrites the
-installed app's working shim with one that only resolves inside the checkout.
-
-`scripts/dev-home.sh` and `scripts/dev-home.ps1` hold these defaults, one per
-shell. They are mirrors of each other - change one, change both.
+A GitHub repository lookup failure can mean an incorrect remote or insufficient
+access for the host's current CLI account. The Changes panel explains that
+uncertainty instead of rendering the full `gh pr view --json ...` command.
+It does not treat that failure as an absent PR or hide the local file diff.
 
 ## Nix desktop package
 
@@ -302,51 +97,41 @@ Linux produces the `otto-desktop` launcher and desktop entry. macOS produces
 Electron runtime and the checkout's built daemon, client, and renderer rather
 than downloading a published desktop release.
 
-### OTTO_HOME
+### PASEO_HOME
 
-`OTTO_HOME` is the directory that holds runtime state (agents, worktrees, workspace config, sockets, daemon log). Resolution rules:
+`OTTO_*` settings map to the corresponding `PASEO_*` readers. The shell and Windows
+launchers share the checkout-local home and dev port. Explicit homes are honored
+without seeding their configuration. `npm run dev:win` uses the Windows launcher;
+`npm run cli -- ...` selects the native wrapper automatically.
 
-- The **server itself** (e.g. when launched by the desktop app or `npm run start`) defaults to `~/.otto` (see `packages/server/src/server/otto-home.ts`).
-- **Repo dev scripts** default to `$ROOT/packages/desktop/.dev/otto-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app. It lives under `packages/desktop` because that is where the desktop dev script originally put it and where the accumulated dev state sits; the other entrypoints were pointed at it rather than the reverse, so nobody has to relocate a populated home and its git worktrees.
-- **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's dev home and dev daemon endpoint.
-- **Otto-created worktrees** seed `$OTTO_WORKTREE_PATH/packages/desktop/.dev/otto-home` from the source checkout's dev home by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
-- **This repo's state-seeding setup step** runs `node ./scripts/seed-worktree-dev-state.mjs` on every platform. It also copies `packages/server/.env` when present in the source checkout. Keep this step shell-neutral: lifecycle commands use PowerShell on Windows, so Bash environment assignments and `$VAR` expansion do not work there.
+`PASEO_HOME` is the directory that holds runtime state (agents, worktrees, workspace config, sockets, daemon log). Resolution rules:
+
+- The **server itself** (e.g. when launched by the desktop app or `npm run start`) defaults to `~/.otto` (see `packages/server/src/server/paseo-home.ts`).
+- **Repo dev scripts** default to `$ROOT/packages/desktop/.dev/otto-home`, where `$ROOT` is the current checkout or worktree root. This keeps all dev state scoped to the checkout instead of the packaged desktop app.
+- **`npm run cli -- ...`** runs through the same dev-home wrapper as the dev scripts, so the in-repo CLI automatically targets the current checkout's `packages/desktop/.dev/otto-home` and configured dev daemon endpoint.
+- **Paseo-created worktrees** seed `$PASEO_WORKTREE_PATH/packages/desktop/.dev/otto-home` from `$PASEO_SOURCE_CHECKOUT_PATH/packages/desktop/.dev/otto-home` by copying durable JSON metadata. Runtime files like pid files, sockets, and logs are not copied.
 - **This repo's worktree setup** also best-effort seeds `packages/app/ios` and the newest `.dev/ios-build` entry from the source checkout so iOS simulator services can reuse native project and Xcode cache state when it is safe enough to do so.
-
-An explicit `OTTO_HOME` is always honored and never rewritten - only the
-script-managed dev home gets its `config.json` seeded with the dev port and
-wildcard CORS, so pointing dev at a real home can never clobber it.
 
 Override knobs:
 
 ```bash
-OTTO_HOME=~/.otto-blue npm run dev           # explicit home
-OTTO_DEV_DAEMON_PORT=6799 npm run dev        # explicit dev daemon port
-OTTO_DEV_SEED_HOME=/path/to/home npm run dev # seed from a different source home
-OTTO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived worktree home
+PASEO_HOME=~/.otto-blue npm run dev          # explicit home
+PASEO_DEV_SEED_HOME=/path/to/home npm run dev # seed from a different source home
+PASEO_DEV_RESET_HOME=1 npm run dev            # clear and reseed the derived worktree home
 ```
+
+<!-- OTTO(dev-isolation): both launchers select the checkout-local listener. -->
 
 ### Daemon endpoints
 
-- Stable daemon launched by the installed desktop app: `localhost:6868`.
+- Stable daemon launched by the desktop app: `localhost:6868`.
 - Root checkout dev daemon: `localhost:6788`.
 - Root checkout Expo: `http://localhost:8081`.
-- Root checkout desktop dev Expo: first free port from `8082` through `8089`.
-- Desktop dev Electron CDP: `127.0.0.1:9223`.
-- Marketing site (`dev:website`): `http://localhost:4300`.
+- Shell desktop dev Expo: first free port from `8082` through `8089`.
+- Windows desktop dev Expo: first free port from `8081` through `8085`.
+- Windows repo dev commands also use `localhost:6788` by default; explicit `OTTO_*`/`PASEO_*` overrides are honored.
 
-**`808x` belongs to Metro/Expo; nothing else may sit in it.** `8081` is the root
-checkout, `8082`-`8089` is the desktop dev band, `8095` is the agent lane. The
-sites live at `43xx`/`44xx` for exactly this reason - the website was on `8082`
-until it turned out that is the desktop dev shell's _first_ choice, so running
-`dev:desktop` and `dev:website` together gave one of them a port the other
-expected. Anything new that needs a fixed local port goes outside `808x` and gets
-added to `RESERVED_LOCAL_PORTS` in `packages/app/e2e/global-setup.ts`, so E2E's
-dynamic allocation keeps avoiding it.
-
-In Otto-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
-
-**Windows gotcha:** `npm run dev:win` always spawns its own daemon - it has no mode to attach to one that's already running. If your Windows dev session already has a daemon on the dev port (e.g. from an earlier `dev:win`) and something else invokes `dev:win` again (a preview tool, a second terminal), the new daemon instance crash-loops fighting over the port. Use `npm run dev:app` instead when you just need Expo pointed at an already-running daemon; it never launches its own daemon.
+In Paseo-managed worktree services, use the injected service environment rather than hardcoded root checkout ports.
 
 ### Expo Router
 
@@ -356,13 +141,44 @@ startup routing, remembered workspace restore, or active workspace selection.
 
 ### iOS simulator preview service
 
-Otto worktrees expose the native iOS dev app through the `ios-simulator` service in `otto.json`. The service URL serves the simulator preview at `/.sim`, so the preview link is `${OTTO_URL}/.sim`.
+Paseo worktrees expose the native iOS dev app through the `ios-simulator` service in `paseo.json`. The service URL serves the simulator preview at `/.sim`, so the preview link is `${PASEO_URL}/.sim`.
 
-The service is designed for concurrent worktrees: it derives a deterministic simulator identity from the worktree path, uses the worktree's assigned `OTTO_PORT`, pins `serve-sim` to that simulator UDID, and only tears down that worktree's helper/simulator state. It must not rely on the globally booted simulator or any fixed Metro port.
+**Prerequisites (macOS only).** The service shells out to the Apple toolchain, so beyond the `npm ci` that worktree setup runs you must install:
+
+- **Xcode** (the full app, not just the Command Line Tools) — install it from the Mac App Store, or from `developer.apple.com/download` for a specific version. It provides `xcodebuild` and `xcrun simctl`; accept its license and let first-run component installation finish before starting the service.
+- **An iOS Simulator runtime with at least one iPhone device type**. Recent Xcode versions may not bundle a runtime — add one via Xcode → Settings → Components (older Xcode: "Platforms"). The service targets `iPhone 16 Pro` by default (override with `PASEO_IOS_DEVICE_TYPE`) and falls back to any iPhone; it fails with `No iPhone simulator device type is installed` when none exist.
+- **Homebrew** — CocoaPods itself installs automatically: `expo prebuild` runs `pod install` on a cold worktree, and when the CocoaPods CLI is missing the runner installs it for you. It tries `gem install cocoapods` first and falls back to Homebrew (`brew install cocoapods`), so having Homebrew available lets that fallback succeed without a manual step.
+
+`serve-sim`, Expo, and Metro come from `npm ci`, and CocoaPods installs itself on the first prebuild as described above.
+
+The service is designed for concurrent worktrees: it derives a deterministic simulator identity from the worktree path, uses the worktree's assigned `PASEO_PORT`, pins `serve-sim` to that simulator UDID, and only tears down that worktree's helper/simulator state. It must not rely on the globally booted simulator or any fixed Metro port.
 
 Worktree setup best-effort seeds the generated iOS project and newest native build cache from the source checkout before the service runs. The service still validates the native project by running Expo prebuild and Xcode; the seed only avoids paying all setup/build cost from a cold worktree every time.
 
-Starting the service must not create, focus, reveal, or leave behind macOS Simulator.app windows. The browser preview is the user-visible simulator surface.
+Starting the service must not create, focus, reveal, or leave behind macOS Simulator.app windows — a guard hides Simulator.app every 250ms, so the native window vanishes if you focus it. The user-visible surface is the interactive `/.sim` preview: a `serve-sim` stream (60 FPS MJPEG + a WebSocket control channel) that Metro mounts at `basePath: "/.sim"` (`packages/app/metro.config.cjs`) and that forwards taps and gestures, so first-launch prompts like "Open in PaseoDebug?" are answered there, not in the native window. Open the `${PASEO_URL}/.sim` link the service prints — not `serve-sim`'s raw stream port (`:3100`), which is view-only. Because the stream sits behind the daemon proxy it is convenient for remote viewing but laggy up close; for fast local dev at the Mac, use the native simulator path below.
+
+**Troubleshooting.** If `xcrun simctl` fails with `unable to find utility "simctl"`, the active developer directory is still the Command Line Tools even though Xcode is installed. Point it at Xcode: `sudo xcode-select -s /Applications/Xcode.app/Contents/Developer`, then confirm with `xcrun --find simctl`.
+
+### Running the iOS app on a local simulator
+
+For fast, native, interactive iOS dev at the Mac — as opposed to the remote `/.sim` preview above — skip the service and build the dev client directly:
+
+```bash
+npm run ios        # → expo run:ios (packages/app): builds and launches the app in the real Simulator.app
+```
+
+`expo run:ios` starts its own Metro and gives you the normal Simulator.app window (full speed, native touch, no stream).
+
+**Pointing the app at a daemon.** The client resolves its local daemon from `EXPO_PUBLIC_LOCAL_DAEMON` (`packages/app/src/runtime/host-runtime.ts`); when unset it falls back to `localhost:6868`, the production `~/.otto` daemon. To target a worktree's dev daemon instead, set it on the build command:
+
+```bash
+EXPO_PUBLIC_LOCAL_DAEMON=localhost:${PASEO_SERVICE_DAEMON_PORT} npm run ios   # worktree daemon running as a Paseo service
+EXPO_PUBLIC_LOCAL_DAEMON=localhost:6788 npm run ios                          # standalone `npm run dev:server`
+```
+
+The iOS simulator shares the Mac's loopback, so `localhost:<port>` reaches the host daemon directly.
+
+**Gotcha — `EXPO_PUBLIC_*` is inlined into the JS bundle at Metro bundle time, not read at runtime.** Set it in the same shell that starts Metro. If the app still connects to the old daemon, Metro served a cached bundle; re-bundle clean with `cd packages/app && EXPO_PUBLIC_LOCAL_DAEMON=… npx expo start -c` and reload the app.
 
 ### Desktop renderer profiling
 
@@ -370,11 +186,11 @@ Starting the service must not create, focus, reveal, or leave behind macOS Simul
 renderer CPU profiles can be captured through CDP. By default it passes
 `--remote-debugging-port=0`, so Chromium atomically asks the OS for an available
 port and prints the selected DevTools endpoint. Set
-`OTTO_ELECTRON_REMOTE_DEBUGGING_PORT` when a QA workflow requires a validated,
+`PASEO_ELECTRON_REMOTE_DEBUGGING_PORT` when a QA workflow requires a validated,
 fixed port.
 
 Desktop dev also scopes Electron `userData` to the current dev root. This prevents
-desktop-only environment inherited by terminals opened inside Otto from coupling
+desktop-only environment inherited by terminals opened inside Paseo from coupling
 a new worktree instance to the parent desktop instance's profile or single-instance
 lock.
 
@@ -388,17 +204,17 @@ With desktop dev running, verify the real BrowserWindow, titlebar clearance, ful
 transition, and 751-pixel settings split with:
 
 ```bash
-npm run verify:electron-cdp --workspace=@otto-code/desktop
+npm run verify:electron-cdp --workspace=@getpaseo/desktop
 ```
 
 The verifier reads the same `EXPO_PORT` and
-`OTTO_ELECTRON_REMOTE_DEBUGGING_PORT` environment names as desktop dev. Set an
+`PASEO_ELECTRON_REMOTE_DEBUGGING_PORT` environment names as desktop dev. Set an
 explicit remote-debugging port for verifier runs, and set both when testing an
 isolated instance on non-default ports.
 
 When running a dedicated Electron QA instance against a non-default Expo port, set
 `EXPO_DEV_URL` explicitly. Desktop main defaults to `http://localhost:8081`, so
-`OTTO_PORT=57928` alone starts Metro on 57928 but Electron still loads 8081.
+`PASEO_PORT=57928` alone starts Metro on 57928 but Electron still loads 8081.
 
 ### React render profiling
 
@@ -408,11 +224,11 @@ to measure with `RenderProfile`, then open the app with `?renderProfile=1`. When
 the query param is absent, `RenderProfile` returns children directly and records
 nothing.
 
-Captured samples are exposed on `globalThis.__OTTO_RENDER_PROFILE__`. Call
-`globalThis.__OTTO_RESET_RENDER_PROFILE__?.()` after warm-up and before the
+Captured samples are exposed on `globalThis.__PASEO_RENDER_PROFILE__`. Call
+`globalThis.__PASEO_RESET_RENDER_PROFILE__?.()` after warm-up and before the
 interaction you want to measure. If a memo comparator or subscription boundary
 needs explanation, call `recordRenderProfileReasons(id, reasons)` while profiling;
-reason counts are exposed on `globalThis.__OTTO_RENDER_PROFILE_REASONS__`.
+reason counts are exposed on `globalThis.__PASEO_RENDER_PROFILE_REASONS__`.
 
 Use this workflow for any render investigation:
 
@@ -441,73 +257,73 @@ What this caught during the workspace tab investigation:
 - Some plausible fixes did not pay off: memoizing the tab row and composer draft
   object barely moved the profile, so they were removed.
 
-Existing scenario script: workspace chat/terminal tab switching. Start Expo on
+Existing scenario script: workspace agent/terminal tab switching. Start Expo on
 web, keep a daemon available, then run:
 
 ```bash
-OTTO_PROFILE_SERVER_ID=<server-id> \
-OTTO_PROFILE_WORKSPACE_ID=<workspace-path> \
-OTTO_PROFILE_AGENT_ID=<agent-id> \
-  npm run profile:workspace-tabs --workspace=@otto-code/app
+PASEO_PROFILE_SERVER_ID=<server-id> \
+PASEO_PROFILE_WORKSPACE_ID=<workspace-path> \
+PASEO_PROFILE_AGENT_ID=<agent-id> \
+  npm run profile:workspace-tabs --workspace=@getpaseo/app
 ```
 
 This script opens the app with `?renderProfile=1`, creates a temporary terminal
-tab, switches between a real chat and that terminal, prints aggregated React
+tab, switches between a real agent and that terminal, prints aggregated React
 Profiler timings, then removes the temporary terminal. It is an example of the
 workflow above, not the only way to use the profiler. Useful knobs:
 
 ```bash
-OTTO_PROFILE_APP_URL=http://localhost:19010 # Expo web URL
-OTTO_PROFILE_SWITCH_COUNT=1                # number of agent/terminal switch pairs
-OTTO_PROFILE_SWITCH_WAIT_MS=250            # delay after each click
-OTTO_PROFILE_IDLE_WAIT_MS=3000             # idle baseline before switching
-OTTO_PROFILE_DUMP_COMMITS=1                # include per-commit profiler samples
+PASEO_PROFILE_APP_URL=http://localhost:19010 # Expo web URL
+PASEO_PROFILE_SWITCH_COUNT=1                # number of agent/terminal switch pairs
+PASEO_PROFILE_SWITCH_WAIT_MS=250            # delay after each click
+PASEO_PROFILE_IDLE_WAIT_MS=3000             # idle baseline before switching
+PASEO_PROFILE_DUMP_COMMITS=1                # include per-commit profiler samples
 ```
 
 For warm workspace switching, point the benchmark at an app backed by seeded
 daemon state:
 
 ```bash
-OTTO_PROFILE_APP_URL=http://localhost:19010 \
-  npm run profile:workspace-switching --workspace=@otto-code/app
+PASEO_PROFILE_APP_URL=http://localhost:19010 \
+  npm run profile:workspace-switching --workspace=@getpaseo/app
 ```
 
 The benchmark first warms `Cmd+1` through `Cmd+7`, then records a rapid seven-workspace
 burst. It separately warms the three-entry workspace deck LRU and records `Cmd+1` through
 `Cmd+3` without waits between keys. Both scenarios report keydown-to-activation latency and
-React commits on the same browser clock. Set `OTTO_PROFILE_WORKSPACE_DIGITS`,
-`OTTO_PROFILE_WORKSPACE_LRU_SIZE`, or `OTTO_PROFILE_WARM_QUIET_MS` to change the shape. Set
-`OTTO_PROFILE_DUMP_COMMITS=1` to include the nested component breakdown for every commit.
-Set `OTTO_PROFILE_RETAINED_REPEATS=5` to repeat the retained-LRU burst for a less noisy sample.
-Set `OTTO_PROFILE_CPU_PATH=/tmp/workspace-switch.cpuprofile` to run a separate retained-LRU
+React commits on the same browser clock. Set `PASEO_PROFILE_WORKSPACE_DIGITS`,
+`PASEO_PROFILE_WORKSPACE_LRU_SIZE`, or `PASEO_PROFILE_WARM_QUIET_MS` to change the shape. Set
+`PASEO_PROFILE_DUMP_COMMITS=1` to include the nested component breakdown for every commit.
+Set `PASEO_PROFILE_RETAINED_REPEATS=5` to repeat the retained-LRU burst for a less noisy sample.
+Set `PASEO_PROFILE_CPU_PATH=/tmp/workspace-switch.cpuprofile` to run a separate retained-LRU
 capture after the latency scenarios and write a raw CDP CPU profile without contaminating their
 timings.
-Set `OTTO_PROFILE_TRACE_PATH=/tmp/workspace-switch.trace.json` to run another separate retained-LRU
+Set `PASEO_PROFILE_TRACE_PATH=/tmp/workspace-switch.trace.json` to run another separate retained-LRU
 capture and write a Chromium Performance trace with User Timing marks and screenshots. Open the
-trace in the Chrome DevTools Performance panel. Set `OTTO_PROFILE_TRACE_INVALIDATIONS=1` only for a
+trace in the Chrome DevTools Performance panel. Set `PASEO_PROFILE_TRACE_INVALIDATIONS=1` only for a
 focused invalidation capture; React Native's generated stacks make that mode highly intrusive.
-Set `OTTO_PROFILE_TRACE_FOCUS=1` to include focus targets, durations, and JavaScript call stacks in
+Set `PASEO_PROFILE_TRACE_FOCUS=1` to include focus targets, durations, and JavaScript call stacks in
 the scenario report. This mode wraps `HTMLElement.focus`, so use it only for diagnosis.
 
 For the desktop Explorer sidebar toggle, run the app against the root checkout's daemon and use:
 
 ```bash
-npm run profile:explorer-toggle --workspace=@otto-code/app
+npm run profile:explorer-toggle --workspace=@getpaseo/app
 ```
 
-The harness verifies port `6768`, opens the Otto workspace, creates and warms the Explorer pane,
+The harness verifies port `6788`, opens the Paseo workspace, creates and warms the Explorer pane,
 records an idle control, then measures settled and 50 ms burst Cmd+E toggles. It reports
 input-to-DOM and input-to-paint latency, React commits, mounts, unmounts, and DOM mutations. Set
-`OTTO_PROFILE_TRACE_PATH=/tmp/explorer-toggle.trace.json` or
-`OTTO_PROFILE_CPU_PATH=/tmp/explorer-toggle.cpuprofile` for separate Chromium captures. Override
-the app URL, daemon port, workspace, or server with the corresponding `OTTO_PROFILE_*` variables.
+`PASEO_PROFILE_TRACE_PATH=/tmp/explorer-toggle.trace.json` or
+`PASEO_PROFILE_CPU_PATH=/tmp/explorer-toggle.cpuprofile` for separate Chromium captures. Override
+the app URL, daemon port, workspace, or server with the corresponding `PASEO_PROFILE_*` variables.
 
 For sustained composer typing, run the paired composer-versus-textarea benchmark against a seeded
 daemon:
 
 ```bash
-OTTO_PROFILE_APP_URL=http://localhost:19010 \
-  npm run profile:composer-typing --workspace=@otto-code/app
+PASEO_PROFILE_APP_URL=http://localhost:19010 \
+  npm run profile:composer-typing --workspace=@getpaseo/app
 ```
 
 The benchmark opens the first workspace, preserves its existing draft, and dispatches 300 printable
@@ -515,31 +331,31 @@ keys at a fixed 16 ms cadence without waiting for each key to paint. It measures
 `keydown` to the next paint opportunity, verifies that every character survived, alternates the
 composer and plain-textarea control across three runs, then restores the original draft. The report
 includes percentiles, frame coalescing, input processing, React work, long tasks, slow samples, and
-Playwright dispatch lateness. Set `OTTO_PROFILE_TYPING_KEYS`, `OTTO_PROFILE_TYPING_CADENCE_MS`,
-`OTTO_PROFILE_TYPING_REPEATS`, or `OTTO_PROFILE_WORKSPACE_DIGIT` to change the scenario. Optional
-`OTTO_PROFILE_CPU_PATH` and `OTTO_PROFILE_TRACE_PATH` captures run separately after the latency
+Playwright dispatch lateness. Set `PASEO_PROFILE_TYPING_KEYS`, `PASEO_PROFILE_TYPING_CADENCE_MS`,
+`PASEO_PROFILE_TYPING_REPEATS`, or `PASEO_PROFILE_WORKSPACE_DIGIT` to change the scenario. Optional
+`PASEO_PROFILE_CPU_PATH` and `PASEO_PROFILE_TRACE_PATH` captures run separately after the latency
 measurements so profiling overhead does not contaminate them.
 
-Set `OTTO_PROFILE_TYPING_SCENARIO=height-growth` to alternate `Shift+Enter` and printable input.
+Set `PASEO_PROFILE_TYPING_SCENARIO=height-growth` to alternate `Shift+Enter` and printable input.
 That report includes input and composer height changes plus React work grouped into composer,
 stream, and ancestor/root scopes. Ancestor/root timings include descendant work because the Profiler
 boundaries are nested. A printable key after an empty newline should not change either height.
 
 ### Preview Windows and Linux window controls on macOS
 
-Desktop development can replace native macOS traffic lights with Otto's custom controls:
+Desktop development can replace native macOS traffic lights with Paseo's custom controls:
 
 ```bash
-OTTO_DESKTOP_WINDOW_CONTROLS=windows npm run dev:desktop
-OTTO_DESKTOP_WINDOW_CONTROLS=linux npm run dev:desktop
+PASEO_DESKTOP_WINDOW_CONTROLS=windows npm run dev:desktop
+PASEO_DESKTOP_WINDOW_CONTROLS=linux npm run dev:desktop
 ```
 
 The override is rejected in packaged builds. Restart the desktop process when changing it.
 
 ### Desktop macOS compositor watchdog
 
-macOS display sleep can leave Chromium's GPU-process display link - the vsync
-source that drives frame production - stuck on a stale display. The compositor
+macOS display sleep can leave Chromium's GPU-process display link — the vsync
+source that drives frame production — stuck on a stale display. The compositor
 then stops producing frames and the window looks frozen: unresponsive to clicks
 and keys even though the renderer and every process stay alive. It self-recovers
 after a few minutes, which is too long for a foreground app.
@@ -555,24 +371,40 @@ legitimately stops producing frames then.
 The watchdog deliberately leaves background throttling **enabled**. Calling
 `webContents.setBackgroundThrottling(false)` would keep the compositor producing
 frames non-stop, pinning ProMotion displays at 120Hz forever and draining the
-battery while the app is idle - so do not re-add it. The probe's visibility
+battery while the app is idle — so do not re-add it. The probe's visibility
 guards already prevent throttling from causing a false stall.
+
+### Desktop Linux hidden-window fallback
+
+On Wayland (seen on ChromeOS Linux) a window created with `show: false` can sit
+forever without a single compositor frame: the renderer loads and runs, but
+`ready-to-show` never fires, so the window is never shown and the app looks like
+it did not start while every process is alive. `showWindowWhenReady`
+(`packages/desktop/src/window/show-when-ready.ts`) shows the main window when
+the document finishes loading if the event has not arrived. The fallback is
+Linux-only; macOS and Windows keep waiting for `ready-to-show`.
+
+Run the startup regression on Linux with an isolated display:
+
+```bash
+xvfb-run -a npm run test:e2e:window-startup --workspace=@getpaseo/desktop
+```
 
 ### Daemon logs
 
-Check `$OTTO_HOME/daemon.log` for daemon logs. The default level is `info`; set
-`OTTO_LOG_LEVEL=trace` before launching the daemon when you need full provider,
+Check `$PASEO_HOME/daemon.log` for daemon logs. The default level is `info`; set
+`PASEO_LOG_LEVEL=trace` before launching the daemon when you need full provider,
 session, and agent-manager traces for stuck-state debugging.
 
 The supervisor rotates `daemon.log`. Persisted `log.file.rotate` settings in
-`$OTTO_HOME/config.json` win first. Without persisted config, the optional
-`OTTO_LOG_ROTATE_SIZE` and `OTTO_LOG_ROTATE_COUNT` env vars override the
+`$PASEO_HOME/config.json` win first. Without persisted config, the optional
+`PASEO_LOG_ROTATE_SIZE` and `PASEO_LOG_ROTATE_COUNT` env vars override the
 defaults. The default rotation is `10m` x `3` files everywhere.
 
 ### Git process pressure
 
 If Git refreshes consume too much CPU, disk, or antivirus capacity, especially on Windows, reduce
-the daemon-global Git process limits in `$OTTO_HOME/config.json`:
+the daemon-global Git process limits in `$PASEO_HOME/config.json`:
 
 ```json
 {
@@ -585,17 +417,17 @@ the daemon-global Git process limits in `$OTTO_HOME/config.json`:
 }
 ```
 
-Reload the daemon with `otto reload`. Environment-variable overrides still require a restart because
+Reload the daemon with `paseo reload`. Environment-variable overrides still require a restart because
 the launch environment remains authoritative. Lower values reduce machine pressure but make Git-backed workspace state and
 Git RPCs wait longer. See [Git process limits](data-model.md#git-process-limits) for defaults,
 semantics, and environment-variable overrides.
 
 ### Agent Tool Catalog Measurement
 
-Measure the MCP `tools/list` payload that Otto injects into agents with:
+Measure the MCP `tools/list` payload that Paseo injects into agents with:
 
 ```bash
-npm run measure:agent-tools --workspace=@otto-code/server
+npm run measure:agent-tools --workspace=@getpaseo/server
 ```
 
 The command reports compact JSON bytes, estimated tokens, field totals, largest
@@ -618,28 +450,32 @@ exact ref also resolves through its stored branch name.
 
 Worktrees inherit committed Git state only; uncommitted source-checkout changes are not copied.
 
-Attaching a pull request in New workspace proposes a checkout through an inline hint. Accepting
-the hint selects the PR as the starting ref; attaching it alone preserves the selected branch.
-The starting-ref picker remains available afterward, so choosing a branch overrides that PR checkout.
-
-## otto.json service scripts
+## paseo.json service scripts
 
 `worktree.setup` and `worktree.teardown` accept either a multiline shell script or an array
 of commands. Both run sequentially.
 
 Lifecycle commands run in the worktree through a stable script shell: `bash`
 resolved from `PATH` on macOS/Linux, and PowerShell with `-NoProfile` on
-Windows. They inherit the daemon environment plus Otto's lifecycle variables;
+Windows. They inherit the daemon environment plus Paseo's lifecycle variables;
 login and interactive shell startup files are not loaded, and Bash's `BASH_ENV`
 hook is unset. ACP single-string terminal commands use the same non-login Bash
 behavior on macOS/Linux, but preserve their existing `cmd.exe /c` string semantics
 on Windows. Service scripts are separate:
 they launch in a terminal and receive the service environment described below.
 
+Because the shell differs per platform, a lifecycle command that must run
+everywhere cannot use POSIX-only syntax — `VAR=1 cmd` env prefixes, `$VAR`
+expansion, `cp`/`rm`, or a `./scripts/*.sh` entrypoint all fail under PowerShell,
+and `bash` is not guaranteed to exist on Windows. Put that logic in a Node script
+that reads what it needs from `process.env` and invoke it as
+`node ./scripts/<name>.mjs`. This repo's own setup does exactly that in
+`scripts/seed-worktree-dev-state.mjs` and `scripts/seed-ios-native-cache.mjs`.
+
 ```json
 {
   "worktree": {
-    "setup": "npm ci\ncp \"$OTTO_SOURCE_CHECKOUT_PATH/.env\" .env\nnpm run db:migrate",
+    "setup": "npm ci\ncp \"$PASEO_SOURCE_CHECKOUT_PATH/.env\" .env\nnpm run db:migrate",
     "teardown": "npm run db:drop || true"
   }
 }
@@ -647,13 +483,13 @@ they launch in a terminal and receive the service environment described below.
 
 Every `scripts` entry with `"type": "service"` receives these environment variables:
 
-| Variable                   | Value                                                                                                                     |
-| -------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `OTTO_SERVICE_<NAME>_URL`  | Proxied URL for a declared peer service. Prefer this for peer discovery; it survives peer restarts.                       |
-| `OTTO_SERVICE_<NAME>_PORT` | Raw ephemeral port for a declared peer service. Use only as a bypass escape hatch; it can go stale if that peer restarts. |
-| `OTTO_URL`                 | Self alias for `OTTO_SERVICE_<SELF>_URL`.                                                                                 |
-| `OTTO_PORT`                | Self alias for `OTTO_SERVICE_<SELF>_PORT`.                                                                                |
-| `HOST`                     | Bind host for the service process.                                                                                        |
+| Variable                    | Value                                                                                                                     |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `PASEO_SERVICE_<NAME>_URL`  | Proxied URL for a declared peer service. Prefer this for peer discovery; it survives peer restarts.                       |
+| `PASEO_SERVICE_<NAME>_PORT` | Raw ephemeral port for a declared peer service. Use only as a bypass escape hatch; it can go stale if that peer restarts. |
+| `PASEO_URL`                 | Self alias for `PASEO_SERVICE_<SELF>_URL`.                                                                                |
+| `PASEO_PORT`                | Self alias for `PASEO_SERVICE_<SELF>_PORT`.                                                                               |
+| `HOST`                      | Bind host for the service process.                                                                                        |
 
 Service proxy hostnames use the double-dash shape: `web--feature-auth--project.localhost` or, on the default branch, `web--project.localhost`. Optional public aliases use the same leftmost label under the configured public base host.
 
@@ -666,11 +502,20 @@ Service proxy hostnames use the double-dash shape: `web--feature-auth--project.l
   "scripts": {
     "web": {
       "type": "service",
-      "command": "PORT=$OTTO_PORT npm run dev:web"
+      "command": "PORT=$PASEO_PORT npm run dev:web"
     }
   }
 }
 ```
+
+Service ports use OS ephemeral allocation by default. Set `worktrees.servicePorts` in
+`$PASEO_HOME/config.json`, or replace it for one project with `worktree.servicePorts` in
+`paseo.json`. The block accepts an inclusive `range` such as `"3000-4000"` or a `portScript`
+executable. Since `portScript` is executed directly without a shell, it must point to a real executable (e.g., a binary or a script with a proper shebang like `#!/bin/sh`) rather than an inline shell command or shell pipeline. For inline shell commands or pipelines, wrap them in a small script. `portScript` runs in the workspace directory with four arguments: service name,
+workspace ID, branch name, and worktree path. A missing branch is passed as an empty string. The same
+values are available as `PASEO_SCRIPTNAME`, `PASEO_WORKSPACE_ID`, `PASEO_BRANCH_NAME`, and
+`PASEO_WORKTREE_PATH`. The script must print one valid TCP port. Paseo trusts the external allocator,
+so the port may already be bound. `portScript` takes precedence when both values are present.
 
 ## Bundled daemon web UI
 
@@ -678,16 +523,17 @@ Service proxy hostnames use the double-dash shape: `web--feature-auth--project.l
 
 The daemon can optionally serve the browser web client from the same HTTP server. This is disabled by default.
 
-Enable it for a running daemon with:
+Enable it in persistent configuration:
 
 ```bash
-otto daemon start --web-ui
+paseo daemon config set features.webUi.enabled true
+paseo daemon start
 ```
 
 Or set the environment variable:
 
 ```bash
-OTTO_WEB_UI_ENABLED=true otto daemon start
+PASEO_WEB_UI_ENABLED=true paseo daemon run
 ```
 
 Or persist it in `config.json`:
@@ -720,13 +566,13 @@ Measured bundle size for a standard Expo web export:
 - gzip: 2.55 MiB
 - brotli: 1.93 MiB
 
-The desktop-managed daemon disables the bundled web UI by default (`OTTO_WEB_UI_ENABLED=false`) because the desktop app already ships the renderer as `app-dist`. Shipping the same assets again inside `@otto-code/server` would duplicate the ~10.8 MiB install. Desktop packaging also excludes `node_modules/@otto-code/server/dist/server/web-ui/**` from the packaged app.
+The desktop-managed daemon disables the bundled web UI by default (`PASEO_WEB_UI_ENABLED=false`) because the desktop app already ships the renderer as `app-dist`. Shipping the same assets again inside `@getpaseo/server` would duplicate the ~10.8 MiB install. Desktop packaging also excludes `node_modules/@getpaseo/server/dist/server/web-ui/**` from the packaged app.
 
 ## Built workspace packages
 
 Package imports resolve through package exports to compiled `dist/` output, not sibling `src/` files. This is true in local dev and in published packages: the app, daemon, CLI, and SDK consumers should all exercise the same runtime paths.
 
-`npm run dev:server` builds the server-side workspace packages once, then keeps `@otto-code/protocol` and `@otto-code/client` fresh with TypeScript watch builds while the daemon runs. If you change protocol schemas or client code outside that watch workflow, rebuild the producer before trusting runtime behavior.
+`npm run dev:server` builds the server-side workspace packages once, then keeps `@getpaseo/protocol` and `@getpaseo/client` fresh with TypeScript watch builds while the daemon runs. If you change protocol schemas or client code outside that watch workflow, rebuild the producer before trusting runtime behavior.
 
 Use the named root build targets instead of remembering workspace dependency chains:
 
@@ -738,8 +584,6 @@ npm run build:app-deps     # highlight -> protocol -> client -> expo-two-way-aud
 ```
 
 Use `npm run build:server` whenever you have changed any daemon/server-facing package and need clean cross-package types or runtime behavior.
-
-Every dev entry point that starts Metro (`npm run dev:win`, `npm run dev:app`, and the two agent-lane scripts) runs `scripts/ensure-app-deps.mjs` first. It compares the newest source file against the newest emitted file for `protocol`, `client`, and `highlight`, and runs `build:app-deps` only when one of them is stale, so a warm start stays instant. The guard exists because Metro snapshots its file map at startup and reads these packages through their compiled `dist`: starting Metro while a `dist` is missing or mid-rebuild yields `Unable to resolve "@otto-code/protocol/<module>"` for the rest of the session, and the watch build filling the directory in afterwards does not always clear it. If you do hit it, restart Metro.
 
 The app Metro config disables Watchman and uses Metro's node crawler for exports. Keep that invariant unless you have verified production app exports on machines with and without Watchman installed; distro Watchman builds can differ in capabilities and change Metro's crawl behavior.
 
@@ -754,7 +598,9 @@ For tighter loops, you can rebuild a single workspace:
 `patches/*.patch` are applied by `scripts/postinstall-patches.mjs` on every install. A patch only
 runs when its package is actually present, so add the package to that script's `patchedPackages`
 list when you introduce a new patch — otherwise the file sits in `patches/` and never applies.
-Regenerate a patch with `npx patch-package <package>` after editing `node_modules/<package>`, and
+patch-package cannot apply a patch that changed after an earlier version was applied, so the
+script removes that package and fails the install; the next `npm install` reinstalls it clean
+with the current patch. Regenerate a patch with `npx patch-package <package>` after editing `node_modules/<package>`, and
 patch every build the consumers use: Metro resolves the `react-native` field of a package
 (`src/*.ts` for `react-native-svg`), while Node and Vitest resolve `main`/`module`
 (`lib/commonjs`, `lib/module`). Patching only `lib/` leaves the app bundle unfixed.
@@ -762,8 +608,8 @@ patch every build the consumers use: Metro resolves the `react-native` field of 
 ## ACP provider catalog versions
 
 The in-app ACP provider catalog pins package-runner entries (`npx`, `npm exec`,
-and `uvx`) to exact package versions. Run the drift checker regularly - and
-before releases - so catalog installs do not sit on stale agent versions:
+and `uvx`) to exact package versions. Run the drift checker regularly — and
+before releases — so catalog installs do not sit on stale agent versions:
 
 ```bash
 npm run acp:version-drift        # report stale/non-exact package pins
@@ -778,110 +624,19 @@ install.
 
 ## CLI reference
 
-Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's dev home (`packages/desktop/.dev/otto-home`) and the dev daemon on `6788` unless you pass an explicit override. The globally installed `otto` binary is a shim into the installed Otto desktop app, not this checkout - use it to drive the installed app's daemon on `6868`, and `npm run cli` when you want to talk to the CLI you are editing.
+Use `npm run cli` to run the in-repo CLI from source (`npx tsx packages/cli/src/index.ts`). The script wraps the CLI with `scripts/dev-home.sh`, so it automatically uses this checkout's `packages/desktop/.dev/otto-home` and dev daemon endpoint unless you pass an explicit override. The globally installed `paseo` binary on macOS is a symlink into the installed Paseo desktop app, not this checkout — use it to drive the desktop's built-in daemon, but use `npm run cli` when you want to talk to the CLI you are editing.
 
-Saved Graph Workflows are available headlessly through `otto workflow graph`: `ls`, `inspect`,
-`validate <file>`, and `run <graph-id>`. Validation reads a local JSON document but never
-imports or executes it. Graph file import and `run --file` wait on the Graph trust boundary and
-are described in [workflow-node-capabilities.md](workflow-node-capabilities.md). Graph
-Runs already persist an exact source-document snapshot; a draft's snapshot is replaced only when
-the user re-saves that draft, while an executed Run's snapshot is immutable history.
-Canonical automation uses `otto project create/ls/rename/delete`, `otto workspace create/ls/rename/archive`, `otto heartbeat create/update/delete`, and the full `otto schedule` group. MCP heartbeat automation is intentionally smaller: create and delete only. Detach remains an explicit user lifecycle action rather than an agent tool. `otto run --new-workspace local|worktree` composes workspace creation with agent creation. The old `otto worktree` and `otto run --worktree` forms are hidden compatibility aliases.
+Canonical automation uses `paseo project create/ls/rename/delete`, `paseo workspace create/ls/rename/archive`, `paseo heartbeat create/update/delete`, and the full `paseo schedule` group. MCP heartbeat automation is intentionally smaller: create and delete only. Detach remains an explicit user lifecycle action rather than an agent tool. `paseo run --new-workspace local|worktree` composes workspace creation with agent creation. The old `paseo worktree` and `paseo run --worktree` forms are hidden compatibility aliases.
 
 ```bash
 npm run cli -- ls -a -g              # List all agents globally
 npm run cli -- ls -a -g --json       # Same, as JSON
 npm run cli -- inspect <id>          # Show detailed agent info
 npm run cli -- logs <id>             # View agent timeline
+npm run cli -- agent open <id>       # Focus an existing agent in Paseo Desktop
 npm run cli -- daemon status         # Check daemon status
+npm run cli -- clone owner/repo --dir ~/workspace # Clone GitHub repo and register project
 ```
-
-### Foreground creation receipts
-
-`otto run --stream-json` (also `otto agent run`) opts into NDJSON: one compact JSON
-object per line on stdout. After the daemon acknowledges creation, the CLI writes
-and flushes `agent.created` before it issues the foreground wait. This exposes the
-authoritative ID while a command transport still reports a running process session.
-The default table, `--json`, YAML, background, and `--output-schema` behavior is unchanged.
-Streaming cannot be combined with background execution, structured output schemas,
-`--json`, `--quiet`, or a non-table `--format`.
-
-```bash
-npm run cli -- run --workspace <workspace-id> --provider <provider/model> --stream-json --wait-timeout 5m "Task"
-npm run cli -- wait <agent-id-from-receipt> --stream-json --timeout 5m
-```
-
-The CLI exports these discriminated record types from `output/agent-stream.ts`:
-
-| `type`          | Fields                                                                                                                                           | Meaning                                                                      |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------- |
-| `agent.created` | `agentId`, `workspaceId: string \| null`, `provider`, `cwd`, `title: string \| null`                                                             | Creation acknowledged by the daemon; not proof that a turn or task completed |
-| `agent.wait`    | `agentId`, `status: idle \| timeout \| permission \| error`, `lastMessage: string \| null`, `error: string \| null`, `permissions: {id, kind}[]` | Terminal record for this CLI wait, using the daemon's literal outcome        |
-| `error`         | `agentId: string \| null`, `error: {code, message, details?}`                                                                                    | CLI validation, connection, creation, or wait failure                        |
-
-A successful foreground streaming invocation emits one creation receipt followed by
-one wait record. A failure after creation emits the receipt followed by an error
-record carrying the same ID. Before acknowledged creation, errors have no known ID.
-If the creation response is lost, the CLI cannot prove whether creation happened;
-it does not automatically retry creation. Commander argument-parsing errors still
-use stderr. Human diagnostics also remain on stderr; stdout contains only records.
-
-`idle` can mean an ordinary question, a request for clarification, or a completed
-turn. It does **not** prove the requested task is complete. Inspect `lastMessage`
-and verify the task's acceptance criteria before treating it as completed. A
-`permission` outcome carries request IDs/kinds for inspection through the existing
-permission commands; streaming never grants a permission or answers a question.
-
-Exit 0 means a valid wait outcome was returned, including `timeout`, `permission`,
-or a daemon-reported `error`; it is not a task-success signal. A CLI failure emits
-`error` and exits 1. Automation must inspect the record discriminator and status.
-An abruptly terminated process or closed pipe may have no terminal record.
-
-A timeout ends only the CLI wait; it does not cancel, restart, or recreate the chat.
-Save the receipt's full `agentId` and host target. Resume the same command process
-through the transport's session ID while it is alive, or invoke `otto wait <agentId>
---stream-json` against that same host after it exits. `wait` resolves the existing
-identity and emits only a wait/error record; it never calls creation. Do not rerun
-`run` to resume: that explicitly requests another chat.
-
-### Listing ownership
-
-`otto ls` and `otto agent ls` have identical listing semantics. JSON and YAML rows keep
-the existing fields and add `projectId` and `workspaceId`. `projectId` comes from the
-daemon's project placement (`projectKey`, resolved from the owning workspace registry
-record); `workspaceId` comes from the chat's persisted ownership. An older daemon's
-snapshot without a workspace ID produces `workspaceId: null`. The CLI never resolves
-ownership from a name or `cwd`, even when multiple workspace records share a directory.
-Table columns and quiet output are unchanged.
-
-Use full IDs from the selected host's listings to traverse projects, workspaces, and chats:
-
-```bash
-npm run cli -- project ls --json
-npm run cli -- workspace ls --project <project-id> --json
-npm run cli -- ls --project <project-id> --workspace <workspace-id> --json
-```
-
-- `workspace ls` adds `projectId` alongside the existing `project` display name.
-  Its optional `--project <project-id>` uses the existing daemon project filter on
-  every page. With no filter it still lists all active workspaces, paging to completion.
-- Chat `--project <project-id>` uses the existing daemon `projectKeys` filter.
-  `--workspace <workspace-id>` uses the daemon's exact persisted-workspace filter.
-  Workspace filtering requires `server_info.features.agentWorkspaceFilter` (added in
-  0.9.34); an older host returns `DAEMON_UPDATE_REQUIRED` before the CLI requests chats.
-  Project-only filtering and ordinary listing continue to work on older hosts.
-- ID arguments are opaque, exact, case-sensitive matches, with surrounding whitespace
-  trimmed. Empty or whitespace-only values fail with `INVALID_OPTIONS`; a missing value
-  is a CLI usage error. Names and ID prefixes are not resolved. Unknown IDs, or a
-  project/workspace pair that does not match, return an empty list. Both flags together
-  mean intersection; they do not move a chat or select another workspace.
-- Ownership filters intersect the existing scope, label, and thinking filters. Without
-  `-g`, the daemon's `active` scope still restricts results to unarchived chats in active
-  workspaces and projects. `-g` removes that scope restriction; `-a` includes archived
-  chats but does not widen `active` scope. Use `-a -g` for archived/global results.
-  These flags never infer a scope from the shell's current directory. Chat listing keeps
-  its existing single daemon page (up to 200 matches), followed by the existing local
-  sorting and optional status, cwd, and label checks.
 
 Use the global `--host` option to point the CLI at a different daemon:
 
@@ -890,14 +645,14 @@ npm run cli -- --host localhost:7777 ls -a
 npm run cli -- --host ssh://user@host ls -a
 ```
 
-Set `OTTO_HOST` to use the same target across invocations. An explicit
-`--host` overrides the environment variable.
+Set `PASEO_HOST` to use the same target across invocations. An explicit
+selector overrides both environment selectors. With both `PASEO_HOME` and `PASEO_HOST` set, pass an explicit selector. See [CLI target selection](../public-docs/cli.md#select-one-daemon).
 
 In an SSH URI, the URL port is the SSH server port. The remote daemon defaults to `127.0.0.1:6868`; use `?daemonPort=7777` to override it. The transport runs non-interactively through the local OpenSSH client and never installs, starts, or configures the remote daemon. User-facing setup and troubleshooting live in [public-docs/connectivity.md](../public-docs/connectivity.md#ssh).
 
 Desktop integrations can focus an existing agent without creating one or
-sending a message. Use `otto://h/<server-id>/agent/<agent-id>`, or run
-`otto agent open <agent-id>`. The CLI reads the local daemon's server ID by
+sending a message. Use `paseo://h/<server-id>/agent/<agent-id>`, or run
+`paseo agent open <agent-id>`. The CLI reads the local daemon's server ID by
 default; pass `--server <server-id>` when targeting another server.
 
 ## Agent state
@@ -905,19 +660,19 @@ default; pass `--server <server-id>` when targeting another server.
 Agent data lives at:
 
 ```
-$OTTO_HOME/agents/{cwd-with-dashes}/{agent-id}.json
+$PASEO_HOME/agents/{cwd-with-dashes}/{agent-id}.json
 ```
 
 Find an agent by ID:
 
 ```bash
-find $OTTO_HOME/agents -name "{agent-id}.json"
+find $PASEO_HOME/agents -name "{agent-id}.json"
 ```
 
 Find by content:
 
 ```bash
-rg -l "some title text" $OTTO_HOME/agents/
+rg -l "some title text" $PASEO_HOME/agents/
 ```
 
 ## Provider session files
@@ -938,20 +693,20 @@ Get the session ID from the agent JSON (`persistence.sessionId`), then:
 
 ## Testing with Playwright MCP
 
-Point Playwright MCP at the running Expo web target. For root checkout dev, `npm run dev:app` reserves `http://localhost:8081`. For Otto-managed worktree app services, use the service URL or port shown by Otto for that worktree.
+Point Playwright MCP at the running Expo web target. For root checkout dev, `npm run dev:app` reserves `http://localhost:8081`. For Paseo-managed worktree app services, use the service URL or port shown by Paseo for that worktree.
 
-Do NOT use browser history (back/forward). Always navigate by clicking UI elements or using `browser_navigate` with the full URL - the app uses client-side routing and browser history breaks state.
+Do NOT use browser history (back/forward). Always navigate by clicking UI elements or using `browser_navigate` with the full URL — the app uses client-side routing and browser history breaks state.
 
 ## App web deploys
 
 `packages/app` exports a single-page Expo web app and deploys the `dist/`
-directory to Cloudflare Pages with `npm run deploy:web --workspace=@otto-code/app`.
+directory to Cloudflare Pages with `npm run deploy:web --workspace=@getpaseo/app`.
 
 PWA install metadata lives in `packages/app/public/manifest.json` and is linked
 from `packages/app/public/index.html`. Keep the install icons in `public/` so
 Cloudflare serves them from stable root URLs after `expo export`.
 
-Do not add service-worker caching casually. Otto is a live control surface for
+Do not add service-worker caching casually. Paseo is a live control surface for
 agents, and an aggressive service worker can strand installed users on stale web
 code. If offline behavior becomes a product requirement, add it deliberately
 with an update strategy and test the installed-app upgrade path.
@@ -964,59 +719,6 @@ npx expo-doctor
 
 Diagnoses version mismatches and native module issues.
 
-## Zoom Recorder diagnostics
-
-The packaged `otto-zoom-recorder` helper (`otto-zoom-recorder.exe` on Windows)
-supports `probe --seconds 10`. This reads audio-session metadata without recording
-audio, starting a watcher, or changing the recorder status file. The dev helper lives
-in `packages/desktop/resources/zoom-recorder/bin/x64/`; packaged builds put it in
-`resources/zoom-recorder/` beside the app.
-
-Windows call detection scans sessions on every active render and capture device.
-Zoom can use a different device from the Windows default, and switching devices
-can leave inactive sessions for the same Zoom PID. An active capture session wins
-over those inactive duplicates. Playback alone does not establish a call. A device
-that cannot be inspected appears as an error in the probe while the remaining
-devices are still scanned.
-
-The Windows microphone target carries the exact WASAPI endpoint ID from Zoom's
-active capture session. When opening a recording part, the helper refreshes its own
-PortAudio device list and resolves that ID through `PaWasapi_GetIMMDevice`. It
-does not match display names, which can be duplicated, or substitute the default
-microphone. This bridge uses the DLL loaded by the pinned sounddevice wheel.
-Device-list refresh occurs after the previous microphone part closes. Far-end
-recording uses the detected meeting PID for per-process loopback; capture failure
-is reported rather than switching to unrelated desktop audio.
-
-Linux identifies Zoom through its application/process identity on the node or
-owning PipeWire client. `media.class` selects audio playback and microphone streams,
-so stream display names may change without breaking detection. The original
-`playStream`/`recStream` labels apply only when `media.class` is absent. Playback
-alone still does not start a call. Device targets come from Zoom's PipeWire links,
-and playback is tapped directly from Zoom's output ports. Object ID properties
-are normalized because PipeWire can represent them as strings. Recreated output
-ports roll the recording part even when the node ID stays the same. The existing
-Linux fallback after a failed stream tap uses Zoom's linked speaker monitor and
-logs that choice; that monitor can also contain other audio playing on that device.
-
-Automatic recording never fills a missing Zoom route with a system default.
-Capture status reports unavailable tracks, and reports an error if neither track
-can start. The WAV decoder uses packaged libsndfile via soundfile for both Linux
-PCM and Windows float WAV_EXTENSIBLE. It passes mono float32 samples and the native
-sample rate to the recognizer's resampler, averaging stereo channels so speech on
-either channel is retained. A Windows capture check does not prove live Linux
-capture; the Linux graph cases are covered by hardware-independent tests.
-
-The Python routing and capture tests run without Zoom or audio hardware. Install
-the pinned build requirements for the real WAV decoder fixtures:
-
-```bash
-python -m unittest discover -s packages/desktop/resources/zoom-recorder/tests
-```
-
-The recorder is frozen into its own executable. Changing its Python source requires
-rebuilding the helper before the desktop app can use the change.
-
 ## Typecheck
 
 Always run typecheck after changes:
@@ -1024,41 +726,3 @@ Always run typecheck after changes:
 ```bash
 npm run typecheck
 ```
-
-## Git hooks dying instantly in an agent session (Windows)
-
-**Symptom:** `git commit` inside an agent session fails with all three lefthook jobs
-(format / lint / typecheck) exiting non-zero in well under a second, reporting
-`'node' is not recognized as an internal or external command` or `'"node"' is not
-recognized`. Running the same three checks by hand passes. A sub-second triple
-failure is the tell: a real typecheck takes tens of seconds, so nothing was ever
-checked.
-
-**Cause, and why it only bites agents.** The daemon prepends the sherpa-onnx
-library directory to its own `PATH` so the speech addon can find its DLLs
-(`applySherpaLoaderEnv`), and every process the daemon spawns inherits it. In a
-packaged desktop build that directory used to resolve _inside_ `app.asar`, which
-is an archive file rather than a directory. Git runs hooks through its bundled
-MSYS `sh`, and MSYS rewrites `PATH` from POSIX to Windows form for native
-children. It gives up at the `app.asar` entry and silently drops every entry
-after it - including the one holding `node`. So the hook's `npm run` starts, its
-script shell cannot resolve `node`, and the job dies. Your own terminal is
-unaffected because nothing there inherits the daemon's `PATH`.
-
-**Fixed** in `sherpa-runtime-env.ts` by redirecting the resolved directory to its
-`app.asar.unpacked` twin, which is a real directory (and is where
-electron-builder puts native modules, so the old path could never have loaded
-the addon anyway). `resolveUnpackedLibDir` owns the redirect and is unit-tested.
-
-**If you see it again**, confirm before assuming anything is wrong with your
-changes:
-
-```bash
-# 43 entries here, but far fewer reaching an npm script means PATH is truncated
-"C:\Program Files\Git\bin\sh.exe" -c 'echo "$PATH"'
-"C:\Program Files\Git\bin\sh.exe" -c 'npm exec -c "echo %PATH%"'
-```
-
-Any entry that points inside a `.asar` is the culprit. Do not "fix" it by
-committing with `--no-verify` as a habit: that silently gives up the pre-commit
-gate on every agent commit.

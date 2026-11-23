@@ -1,6 +1,6 @@
 import type { TurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
-import { getAssistantBlockSpacing, getGapBetweenStreamItems } from "./spacing";
+import { getAssistantMessageSpacing, getGapBetweenStreamItems } from "./spacing";
 import type { StreamFrameChildOrder, StreamStrategy } from "./strategy";
 import { continuesResponse, continuesTurn, isResponseBoundary } from "./turn-membership";
 
@@ -47,6 +47,7 @@ interface LayoutSegmentInput {
   items: StreamItem[];
   timingByAssistantId: Map<string, TurnTiming>;
   auxiliaryTurnFooter: TurnFooterHost | null;
+  hasAuxiliaryFooter: boolean;
   frameOrder: StreamFrameChildOrder;
   boundaryIndex: number | null;
   boundaryAboveItem: StreamItem | null;
@@ -182,13 +183,8 @@ function resolveCompletedFooter(input: {
 
 function isToolSequenceItem(
   item: StreamItem | null,
-): item is Extract<StreamItem, { kind: "tool_call" | "thought" | "todo_list" | "action_group" }> {
-  return (
-    item?.kind === "tool_call" ||
-    item?.kind === "thought" ||
-    item?.kind === "todo_list" ||
-    item?.kind === "action_group"
-  );
+): item is Extract<StreamItem, { kind: "tool_call" | "thought" | "todo_list" }> {
+  return item?.kind === "tool_call" || item?.kind === "thought" || item?.kind === "todo_list";
 }
 
 function getToolSequence(input: {
@@ -315,10 +311,9 @@ function layoutSegmentItem(
     boundaryAboveItems: input.boundaryAboveItems,
     boundaryAboveIndex: input.boundaryAboveIndex,
   });
-  const assistantSpacing = getAssistantBlockSpacing({
+  const assistantSpacing = getAssistantMessageSpacing({
     item,
-    aboveItem,
-    belowItem,
+    hasFooterBelow: completedFooter !== null || (input.hasAuxiliaryFooter && belowItem === null),
   });
 
   return shareLayoutItem({
@@ -382,6 +377,7 @@ export function layoutStream(input: StreamLayoutInput): StreamLayout {
         items: input.history,
         timingByAssistantId: input.timingByAssistantId,
         auxiliaryTurnFooter,
+        hasAuxiliaryFooter,
         frameOrder,
         boundaryIndex: historyBoundaryIndex,
         boundaryAboveItem: null,
@@ -401,6 +397,7 @@ export function layoutStream(input: StreamLayoutInput): StreamLayout {
     items: input.liveHead,
     timingByAssistantId: input.timingByAssistantId,
     auxiliaryTurnFooter,
+    hasAuxiliaryFooter,
     frameOrder,
     boundaryIndex: liveHeadBoundaryIndex,
     boundaryAboveItem: historyBoundaryItem,

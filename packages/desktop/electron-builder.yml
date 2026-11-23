@@ -1,142 +1,57 @@
 npmRebuild: false
+# OTTO(identity): Otto app id, product name, and otto:// scheme.
 appId: ai.ottocode.desktop
 productName: Otto
 executableName: Otto
-# LegalCopyright in the Windows exe/installer version block and the copyright
-# line on macOS. Left blank, this field falls back to an empty/Electron-default
-# value, which reads as "unknown origin" in the file's Properties > Details tab.
 copyright: "Copyright © 2026 Draekz. Licensed under AGPL-3.0-or-later."
-# Registers otto:// with the OS so agent deep links reach the app. main.ts
-# handles them via 'open-url' (macOS) and second-instance argv (Windows/Linux).
 protocols:
   - name: Otto agent link
     schemes:
       - otto
-# Keep this list aligned with highlight/src/parsers.ts and the rendered document
-# extensions in app/src/components/file-pane-render-mode.ts. These are an
-# additional Open With choice; Otto is not installed as the OS default editor.
-fileAssociations:
-  - { ext: js, name: Otto, role: Editor }
-  - { ext: jsx, name: Otto, role: Editor }
-  - { ext: ts, name: Otto, role: Editor }
-  - { ext: tsx, name: Otto, role: Editor }
-  - { ext: mjs, name: Otto, role: Editor }
-  - { ext: cjs, name: Otto, role: Editor }
-  - { ext: c, name: Otto, role: Editor }
-  - { ext: h, name: Otto, role: Editor }
-  - { ext: cc, name: Otto, role: Editor }
-  - { ext: cpp, name: Otto, role: Editor }
-  - { ext: cxx, name: Otto, role: Editor }
-  - { ext: hpp, name: Otto, role: Editor }
-  - { ext: hxx, name: Otto, role: Editor }
-  - { ext: m, name: Otto, role: Editor }
-  - { ext: mm, name: Otto, role: Editor }
-  - { ext: json, name: Otto, role: Editor }
-  - { ext: css, name: Otto, role: Editor }
-  - { ext: scss, name: Otto, role: Editor }
-  - { ext: html, name: Otto, role: Editor }
-  - { ext: htm, name: Otto, role: Editor }
-  - { ext: xml, name: Otto, role: Editor }
-  - { ext: java, name: Otto, role: Editor }
-  - { ext: py, name: Otto, role: Editor }
-  - { ext: go, name: Otto, role: Editor }
-  - { ext: php, name: Otto, role: Editor }
-  - { ext: yaml, name: Otto, role: Editor }
-  - { ext: yml, name: Otto, role: Editor }
-  - { ext: rs, name: Otto, role: Editor }
-  - { ext: swift, name: Otto, role: Editor }
-  - { ext: dart, name: Otto, role: Editor }
-  - { ext: cs, name: Otto, role: Editor }
-  - { ext: ex, name: Otto, role: Editor }
-  - { ext: exs, name: Otto, role: Editor }
-  - { ext: md, name: Otto, role: Editor }
-  - { ext: mdx, name: Otto, role: Editor }
-  - { ext: markdown, name: Otto, role: Editor }
-  - { ext: mmd, name: Otto, role: Editor }
-  - { ext: mermaid, name: Otto, role: Editor }
-  - { ext: adoc, name: Otto, role: Editor }
-  - { ext: asciidoc, name: Otto, role: Editor }
-  - { ext: sh, name: Otto, role: Editor }
-  - { ext: bash, name: Otto, role: Editor }
-  - { ext: zsh, name: Otto, role: Editor }
-  - { ext: shell, name: Otto, role: Editor }
-  - { ext: sql, name: Otto, role: Editor }
-  - { ext: png, name: Otto, role: Editor }
-  - { ext: jpg, name: Otto, role: Editor }
-  - { ext: jpeg, name: Otto, role: Editor }
-  - { ext: gif, name: Otto, role: Editor }
-  - { ext: webp, name: Otto, role: Editor }
-  - { ext: bmp, name: Otto, role: Editor }
-  - { ext: ico, name: Otto, role: Editor }
-  - { ext: svg, name: Otto, role: Editor }
-  - { ext: avif, name: Otto, role: Editor }
-  - { ext: heic, name: Otto, role: Editor }
-  - { ext: heif, name: Otto, role: Editor }
 afterPack: ./scripts/after-pack.js
-beforePack: ./scripts/before-pack.js
 afterSign: ./scripts/after-sign.js
 directories:
   output: release
 files:
   - dist/**/*
   - "!**/*.map"
-  - "!node_modules/@otto-code/*/src/**"
-  - "!node_modules/@otto-code/**/*.test.*"
-  - "!node_modules/@otto-code/**/*.spec.*"
-  - "!node_modules/@otto-code/server/dist/server/web-ui/**"
-  # The .NET solution sidecar ships as an extraResource instead, so drop the copy that rides
-  # inside the server package. electron-builder strips every `.dll` from node_modules on
-  # non-Windows platforms, so keeping it here shipped two orphan `.json` files and no assemblies
-  # on Linux and macOS, and on Windows it would only duplicate the payload inside app.asar.
-  - "!node_modules/@otto-code/server/dist/dotnet-probe/**"
+  - "!node_modules/@getpaseo/*/src/**"
+  - "!node_modules/@getpaseo/**/*.test.*"
+  - "!node_modules/@getpaseo/**/*.spec.*"
+  - "!node_modules/@getpaseo/server/dist/server/web-ui/**"
+  - "!node_modules/@getpaseo/server/dist/server/builtin-plugins/**"
   # Workspace packages are symlinked, so anything a dev generates inside them
   # lands in the asar. CI never has these; a local .debug run adds gigabytes.
-  - "!node_modules/@otto-code/*/.debug/**"
-  - "!node_modules/@otto-code/*/.tasks/**"
-  - "!node_modules/@otto-code/*/conversations/**"
-  - "!node_modules/@otto-code/*/test-results/**"
+  - "!node_modules/@getpaseo/*/.debug/**"
+  - "!node_modules/@getpaseo/*/.tasks/**"
+  - "!node_modules/@getpaseo/*/conversations/**"
+  - "!node_modules/@getpaseo/*/test-results/**"
 asarUnpack:
   - dist/daemon/node-entrypoint-runner.js
-  - node_modules/@otto-code/server/dist/server/terminal/shell-integration/**/*
-  # The daemon owns connector credentials. Keep the keyring bridge and its
-  # platform-specific N-API binary outside app.asar so Node can load it.
-  - node_modules/@napi-rs/keyring/**/*
-  - node_modules/@napi-rs/keyring-*/**/*
+  # OTTO(architectural-views): Node renderer children read their whole offline payload physically.
+  - node_modules/@getpaseo/server/dist/server/server/otto/architectural-views/vendor/archify/**/*
+  - node_modules/@getpaseo/server/dist/server/terminal/shell-integration/**/*
 extraResources:
-  - from: ../app/dist
-    to: app-dist
-  # The .NET solution sidecar, which powers the Solution tree. It has to live outside both
-  # node_modules (electron-builder deletes `.dll` there on non-Windows platforms) and app.asar
-  # (`dotnet` is an ordinary child process and cannot read into the archive). Absent when the
-  # build machine has no .NET SDK, which electron-builder warns about and skips.
+  # OTTO(editor): dotnet cannot read assemblies through app.asar; ship portable IL outside it.
   - from: ../server/dist/dotnet-probe
     to: dotnet-probe
+  # OTTO(wake-word): verified offline detector, separate from daemon speech models.
   - from: ../expo-two-way-audio/models/wake-word
     to: wake-word
-  - from: ../expo-two-way-audio/wake-word-model.json
-    to: wake-word/model.json
-  - from: ../../vendor/agent-flow/LICENSE
-    to: wake-word/LICENSE-APACHE-2.0.txt
-  - from: assets/tray-icon.png
-    to: tray-icon.png
-  - from: assets/tray-icon-attention.png
-    to: tray-icon-attention.png
-  - from: assets/tray-icon-mac.png
-    to: tray-icon-mac.png
-  - from: assets/tray-icon-mac@2x.png
-    to: tray-icon-mac@2x.png
-  - from: assets/tray-icon-mac-attention.png
-    to: tray-icon-mac-attention.png
-  - from: assets/tray-icon-mac-attention@2x.png
-    to: tray-icon-mac-attention@2x.png
+  # Preserve physical compiler inputs, including .d.ts files omitted from packaged node_modules.
+  - from: ../server/dist/server/builtin-plugins
+    to: builtin-plugins
+  - from: ../app/dist
+    to: app-dist
   - from: assets/editor-targets
     to: editor-target-icons
+# OTTO(identity): updates come from Otto releases.
 publish:
   provider: github
   owner: Draek2077
   repo: otto-code
 mac:
-  artifactName: "Otto-${version}-${arch}.${ext}"
+  artifactName: "Otto-${version}-${arch}.${ext}" # OTTO(identity)
   minimumSystemVersion: "13.0.0"
   category: public.app-category.developer-tools
   icon: assets/icon.icns
@@ -144,15 +59,9 @@ mac:
   notarize: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.inherit.plist
-  extendInfo:
-    CFBundleDocumentTypes:
-      - CFBundleTypeRole: Editor
-        CFBundleTypeName: Folder
-        LSItemContentTypes:
-          - public.folder
   extraResources:
-    - from: bin/otto
-      to: bin/otto
+    - from: bin/paseo
+      to: bin/otto # OTTO(identity)
     - from: assets/icon.png
       to: icon.png
   target:
@@ -161,63 +70,46 @@ mac:
 linux:
   category: Development
   icon: assets
-  artifactName: "Otto-${version}-${arch}.${ext}"
-  maintainer: "Draekz <https://github.com/Draek2077>"
+  artifactName: "Otto-${version}-${arch}.${ext}" # OTTO(identity)
+  maintainer: "Draekz <https://github.com/Draek2077>" # OTTO(identity)
   vendor: "Otto"
-  # Electron derives the running window's Linux app id (X11 WM_CLASS / Wayland
-  # app_id) from the packaged app.asar's package.json "name" field, sanitized -
-  # "@otto-code/desktop" becomes "otto-code-desktop" - not from productName or
-  # StartupWMClass. Without this override the generated .desktop entry's default
-  # StartupWMClass (productName, "Otto") never matches, so GNOME/KDE/Cinnamon
-  # treat the launcher and the running window as unrelated: the taskbar/dock
-  # icon detaches and every launch opens a fresh, unpinned instance. See the
-  # "Taskbar/dock icon detached" gotcha in docs/desktop-linux.md.
-  desktop:
-    entry:
-      StartupWMClass: otto-code-desktop
-      # Best-effort folder association. Nautilus and some other Linux file
-      # managers do not consistently show non-default directory handlers.
-      MimeType: inode/directory;
   extraResources:
+    # OTTO(zoom-recorder): the native helper is built only on supported architectures.
     - from: resources/zoom-recorder/bin/${arch}
       to: zoom-recorder
-    - from: bin/otto
-      to: bin/otto
-    # AppArmor profile installed to /etc/apparmor.d/otto by after-install.sh so
-    # Chromium's sandbox works under Ubuntu 24.04's unprivileged-userns lockdown.
-    - from: build/linux/apparmor/otto
-      to: apparmor/otto
+      filter: ["otto-zoom-recorder"]
+    - from: bin/paseo
+      to: bin/otto # OTTO(identity)
+    - from: assets/icon.png
+      to: icon.png
   target:
     - AppImage
     - deb
     - rpm
     - tar.gz
 deb:
-  # Append to electron-builder's default dependencies, rather than replacing
-  # the GTK/NSS/etc. list. Older distributions ship pkexec in policykit-1.
-  fpm:
-    - "--depends"
-    - "pkexec | policykit-1"
-  afterInstall: build/linux/after-install.sh
-  afterRemove: build/linux/after-remove.sh
+  afterInstall: scripts/linux-sandbox/after-install.tpl
 rpm:
-  afterInstall: build/linux/after-install.sh
-  afterRemove: build/linux/after-remove.sh
+  afterInstall: scripts/linux-sandbox/after-install.tpl
 appImage:
+  # A nonempty argument list replaces builder's hardcoded --no-sandbox default.
+  executableArgs: ["--class=Otto"] # OTTO(identity)
   # Keep the AppImage filename stable across versions (no ${version}) so
   # electron-updater overwrites the file in place instead of renaming it to a new
   # versioned path. A rename orphans the old binary, breaks desktop shortcuts, and
-  # dangles the ~/.local/bin/otto CLI symlink, which points at $APPIMAGE. The
+  # dangles the ~/.local/bin/paseo CLI symlink, which points at $APPIMAGE. The
   # version stays discoverable via the release tag and the in-app version.
-  artifactName: "Otto-${arch}.${ext}"
+  artifactName: "Otto-${arch}.${ext}" # OTTO(identity)
 win:
-  artifactName: "Otto-Setup-${version}-${arch}.${ext}"
+  artifactName: "Otto-Setup-${version}-${arch}.${ext}" # OTTO(identity)
   icon: assets/icon.ico
   extraResources:
+    # OTTO(zoom-recorder): the native helper is built only on supported architectures.
     - from: resources/zoom-recorder/bin/${arch}
       to: zoom-recorder
-    - from: bin/otto.cmd
-      to: bin/otto.cmd
+      filter: ["otto-zoom-recorder.exe"]
+    - from: bin/paseo.cmd
+      to: bin/otto.cmd # OTTO(identity)
   target:
     - target: nsis
       arch:
@@ -231,4 +123,3 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-  include: build/installer.nsh

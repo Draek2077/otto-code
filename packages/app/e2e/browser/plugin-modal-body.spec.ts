@@ -14,6 +14,8 @@ async function openExample(page: Page, example: string) {
 
 async function closeExample(page: Page) {
   await page.getByRole("button", { name: "Close", exact: true }).last().click();
+  // The launcher is visible behind a closing sheet; wait for dismissal before reopening.
+  await expect(page.getByText(/^Modal example:/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open Form", exact: true })).toBeVisible();
 }
 
@@ -34,9 +36,7 @@ async function scrollToLastRow(page: Page) {
   await page.getByRole("button", { name: "Row 100", exact: true }).click();
 }
 
-// Otto's unified sheet chrome insets every sheet body by spacing[3]
-// (SHEET_HORIZONTAL_PADDING_SCALE in components/ui/sheet-chrome.tsx).
-async function expectSingleInset(page: Page, left = "12px", bottom = "12px") {
+async function expectSingleInset(page: Page, left = "24px", bottom = "24px") {
   const form = await page.getByTestId("modal-example-form").boundingBox();
   const input = await page.getByRole("textbox", { name: "Paste here" }).boundingBox();
   expect(form).not.toBeNull();

@@ -1,14 +1,24 @@
-import React, { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from "react";
-import { Annotation, Compartment, EditorState, Transaction } from "@codemirror/state";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { FileFind, FileFindModel } from "../find/index.web";
+import {
+  Annotation,
+  Compartment,
+  EditorState,
+  Transaction,
+  type Extension,
+} from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
-import { getLanguageForFile } from "@otto-code/highlight";
+import { getLanguageForFile } from "@getpaseo/highlight";
 import { getCM, vim } from "@replit/codemirror-vim";
 import { isRenderedMarkdownFile } from "@/components/file-pane-render-mode";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { FileEditorModel } from "./model";
 import { editorBaseExtensions, editorTheme, type EditorVisualTheme } from "./extensions.web";
+import { editorLocationSelection } from "@/otto/editor/code/navigation"; // OTTO(editor)
+import { editorFindTarget } from "@/otto/editor/code/find-bridge"; // OTTO(editor)
 
 interface FileEditorViewProps {
+  ottoExtensions?: Extension; // OTTO(editor): owned semantic extensions; the Paseo model still owns the file.
   model: FileEditorModel;
   filename: string;
   location: WorkspaceFileLocation;
@@ -23,12 +33,14 @@ const languageCompartment = new Compartment();
 const wrappingCompartment = new Compartment();
 const themeCompartment = new Compartment();
 const vimCompartment = new Compartment();
+const ottoCompartment = new Compartment(); // OTTO(editor)
 
 function wrappingForFile(filename: string) {
   return isRenderedMarkdownFile(filename) ? EditorView.lineWrapping : [];
 }
 
 export function FileEditorView({
+  ottoExtensions, // OTTO(editor)
   model,
   filename,
   location,
@@ -38,17 +50,22 @@ export function FileEditorView({
   onCursorChange,
   onVimModeChange,
 }: FileEditorViewProps) {
+  const [find] = useState(() => new FileFindModel());
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const snapshot = useSyncExternalStore(model.subscribe, model.getSnapshot, model.getSnapshot);
-  const initial = useRef({ filename, model, theme, vimEnabled, content: snapshot.content });
+  const initial = useRef({
+    filename,
+    model,
+    theme,
+    vimEnabled,
+    content: snapshot.content,
+    ottoExtensions,
+  }); // OTTO(editor)
   const onCursorChangeRef = useRef(onCursorChange);
   onCursorChangeRef.current = onCursorChange;
 
-  // Source mode is an editing action, so the newly mounted CodeMirror surface
-  // owns keyboard focus before the browser paints. A passive effect leaves the
-  // mode button focused until the user clicks into the document.
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!hostRef.current) return;
     const values = initial.current;
     const view = new EditorView({
@@ -57,7 +74,13 @@ export function FileEditorView({
         doc: values.content,
         extensions: [
           vimCompartment.of(values.vimEnabled ? vim() : []),
-          ...editorBaseExtensions(() => void values.model.save()),
+          ottoCompartment.of(values.ottoExtensions ?? []), // OTTO(editor)
+          find.extension,
+          editorFindTarget.of((editor) => {
+            find.open(editor);
+            return true;
+          }), // OTTO(editor): registry commands use Paseo's query and focus owner.
+          ...editorBaseExtensions(() => void values.model.save(), !values.ottoExtensions), // OTTO(editor)
           languageCompartment.of(getLanguageForFile(values.filename)?.extension ?? []),
           wrappingCompartment.of(wrappingForFile(values.filename)),
           themeCompartment.of(editorTheme(values.theme)),
@@ -79,13 +102,16 @@ export function FileEditorView({
       }),
     });
     viewRef.current = view;
-    view.focus();
     onCursorChangeRef.current({ line: 1, column: 1 });
     return () => {
       view.destroy();
       viewRef.current = null;
     };
-  }, []);
+  }, [find]);
+
+  useEffect(() => {
+    viewRef.current?.dispatch({ effects: ottoCompartment.reconfigure(ottoExtensions ?? []) });
+  }, [ottoExtensions]); // OTTO(editor): one extension seam, no parallel document/save owner.
 
   useEffect(() => {
     const view = viewRef.current;
@@ -103,15 +129,23 @@ export function FileEditorView({
   useEffect(() => {
     const view = viewRef.current;
     if (!view || !location.lineStart) return;
-    const lineStart = Math.min(location.lineStart, view.state.doc.lines);
-    const lineEnd = Math.min(location.lineEnd ?? lineStart, view.state.doc.lines);
-    const from = view.state.doc.line(lineStart).from;
-    const to = view.state.doc.line(Math.max(lineStart, lineEnd)).to;
+    const selection = editorLocationSelection(view.state.doc, {
+      lineStart: location.lineStart,
+      lineEnd: location.lineEnd,
+      columnStart: location.columnStart,
+      columnEnd: location.columnEnd,
+    }); // OTTO(editor)
     view.dispatch({
-      selection: { anchor: from, head: lineEnd > lineStart ? to : from },
-      effects: EditorView.scrollIntoView(from, { y: "center" }),
+      selection,
+      effects: EditorView.scrollIntoView(selection.anchor, { y: "center" }),
     });
-  }, [location.lineEnd, location.lineStart, navigationRevision]);
+  }, [
+    location.lineEnd,
+    location.lineStart,
+    location.columnStart,
+    location.columnEnd,
+    navigationRevision,
+  ]); // OTTO(editor)
 
   useEffect(() => {
     viewRef.current?.dispatch({
@@ -145,15 +179,30 @@ export function FileEditorView({
   }, [onVimModeChange, vimEnabled]);
 
   return (
-    <div
-      ref={hostRef}
-      data-pmono=""
-      data-testid="file-source-editor"
-      aria-label={`Source editor for ${filename}`}
-      style={HOST_STYLE}
-    />
+    <div style={FRAME_STYLE}>
+      <div
+        ref={hostRef}
+        data-pmono=""
+        data-otto-editor-language={isRenderedMarkdownFile(filename) ? "markdown" : "code"} // OTTO(editor): scope registry shortcuts to the focused source content.
+        data-testid="file-source-editor"
+        aria-label={`Source editor for ${filename}`}
+        style={HOST_STYLE}
+      />
+      <FileFind model={find} editor={viewRef} shortcutsManaged={Boolean(ottoExtensions)} />
+      {/* OTTO(editor): no hardcoded shortcut after unassignment. */}
+    </div>
   );
 }
 
 const remoteUpdate = Annotation.define<boolean>();
-const HOST_STYLE = { flex: 1, minHeight: 0, overflow: "hidden" } as const;
+const FRAME_STYLE = {
+  display: "flex",
+  position: "relative",
+  flex: 1,
+  minHeight: 0,
+  minWidth: 0,
+} as const;
+// CodeMirror's scrollIntoView scrolls every overflowing ancestor and stops at a fixed or sticky
+// one. Sticky (with no offsets it lays out like relative) keeps line reveals inside the editor, so
+// they don't shift the host around it, such as the compact workspace sheet.
+const HOST_STYLE = { flex: 1, minHeight: 0, overflow: "hidden", position: "sticky" } as const;

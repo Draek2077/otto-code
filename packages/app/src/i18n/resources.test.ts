@@ -1,3 +1,4 @@
+// OTTO(identity): test the installed Otto identity.
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -74,6 +75,45 @@ const untranslatedLocalFallbacks = [
   "Unable to save desktop settings.",
 ] as const;
 
+const pullRequestPanelSources = [
+  "git/pull-request-panel/pane.tsx",
+  "git/pull-request-panel/data.ts",
+  "git/pull-request-panel/checks-section.tsx",
+  "components/sidebar/sidebar-status-list.tsx",
+] as const;
+const untranslatedPullRequestPanelLabels = [
+  "Activity",
+  "No activity yet",
+  "Add all to chat",
+  "Add to chat",
+  "Adding...",
+  "Comment actions",
+  "Thread actions",
+  "Commented",
+  "Approved",
+  "Requested changes",
+  "Reviewed",
+  "Draft",
+  "Merged",
+  "Closed",
+  "Open",
+  "Resolved",
+  "Outdated",
+] as const;
+
+function findUntranslatedPullRequestPanelLabels(): string[] {
+  return pullRequestPanelSources.flatMap((source) => {
+    const contents = readFileSync(join(appSourceRoot, source), "utf8");
+    const matches: string[] = untranslatedPullRequestPanelLabels.filter(
+      (text) => contents.includes(`"${text}"`) || new RegExp(`>\\s*${text}\\s*<`).test(contents),
+    );
+    if (contents.includes("} group`")) {
+      matches.push("group");
+    }
+    return matches.length === 0 ? [] : [`${source}: ${matches.join(", ")}`];
+  });
+}
+
 function collectSourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
@@ -118,29 +158,24 @@ describe("translation resources", () => {
 
   it("keeps non-English supported languages translated beyond fallback labels", () => {
     const totalStrings = Object.keys(flattenStrings(en)).length;
-    // 0.08 after the Batch 5B full translation pass drained the backlog (peak
-    // was 0.30). What still matches English is deliberate: brand and product
-    // names (GitHub, Bitbucket Cloud, OpenAI, Otto), quote attributions, code
-    // placeholders (`sk-…`, `claude`, `my-project`), and pure-interpolation
-    // strings. Raise this only for a genuine mid-flight batch, and lower it
-    // again in the pass that translates that batch.
-    const maxFallbackStrings = Math.floor(totalStrings * 0.08);
+    const maxFallbackStrings = Math.floor(totalStrings * 0.25);
     expect(countMatchingEnglishStrings(ar)).toBeLessThan(maxFallbackStrings);
     expect(countMatchingEnglishStrings(es)).toBeLessThan(maxFallbackStrings);
     expect(countMatchingEnglishStrings(fr)).toBeLessThan(maxFallbackStrings);
     expect(countMatchingEnglishStrings(ja)).toBeLessThan(maxFallbackStrings);
+    expect(countMatchingEnglishStrings(ko)).toBeLessThan(maxFallbackStrings);
     expect(countMatchingEnglishStrings(ptBR)).toBeLessThan(maxFallbackStrings);
     expect(countMatchingEnglishStrings(ru)).toBeLessThan(maxFallbackStrings);
     expect(countMatchingEnglishStrings(zhCN)).toBeLessThan(maxFallbackStrings);
   });
 
-  // Korean arrived with the Paseo v0.4.0 merge and covers upstream's key set only,
-  // so every Otto-only key still falls back to English. That is a genuine
-  // mid-flight batch: 0.50 is the cap until the Korean translation pass lands,
-  // and it drops to the 0.08 shared cap in the same pass.
-  it("holds Korean to the mid-flight translation cap", () => {
-    const totalStrings = Object.keys(flattenStrings(en)).length;
-    expect(countMatchingEnglishStrings(ko)).toBeLessThan(Math.floor(totalStrings * 0.5));
+  it("localizes the pull request empty state in every supported language", () => {
+    for (const resource of [ar, es, fr, ja, ko, ptBR, ru, zhCN]) {
+      expect(resource.panels.pullRequest.emptyTitle).not.toBe(en.panels.pullRequest.emptyTitle);
+      expect(resource.panels.pullRequest.emptyDescription).not.toBe(
+        en.panels.pullRequest.emptyDescription,
+      );
+    }
   });
 
   it("preserves interpolation placeholders in every language", () => {
@@ -188,8 +223,51 @@ describe("translation resources", () => {
     expect(ko.desktop.daemon.status.notRunning).toBe("실행 중이 아님");
   });
 
+  it("uses the French navigation and Git meanings for reported labels", () => {
+    expect(fr.common.back).toBe("Retour");
+    expect(fr.common.actions.back).toBe("Retour");
+    expect(fr.common.actions.copy).toBe("Copier");
+    expect(fr.common.states.starting).toBe("Démarrage…");
+    expect(fr.common.connectionStatus.connecting).toBe("Connexion…");
+    expect(fr.workspace.git.pr.sections.checks).toBe("Vérifications");
+    expect(fr.sidebar.display.show.checks).toBe("Vérifications");
+  });
+
+  it("separates French interpolation placeholders from neighboring words", () => {
+    const glued = Object.entries(flattenStrings(fr)).filter(([, value]) =>
+      /\p{L}\{\{|\}\}\p{L}{2,}/u.test(value),
+    );
+    expect(glued).toEqual([]);
+  });
+
   it("labels the immediate add-to-chat action without an ellipsis", () => {
     expect(en.workspace.fileActions.addToChat).toBe("Add to chat");
+  });
+
+  it("keeps pull request panel and sidebar status group labels translated", () => {
+    expect(findUntranslatedPullRequestPanelLabels()).toEqual([]);
+    for (const resource of [ar, es, fr, ja, ko, ptBR, ru, zhCN]) {
+      const pr = resource.workspace.git.pr;
+      const englishPr = en.workspace.git.pr;
+      expect(pr.sections.activity).not.toBe(englishPr.sections.activity);
+      expect(pr.empty.noActivity).not.toBe(englishPr.empty.noActivity);
+      expect(pr.actions.addToChat).not.toBe(englishPr.actions.addToChat);
+      expect(pr.actions.addAllToChat).not.toBe(englishPr.actions.addAllToChat);
+      expect(pr.actions.addingToChat).not.toBe(englishPr.actions.addingToChat);
+      expect(pr.accessibility.commentActions).not.toBe(englishPr.accessibility.commentActions);
+      expect(pr.accessibility.threadActions).not.toBe(englishPr.accessibility.threadActions);
+      for (const verb of Object.keys(englishPr.activity) as (keyof typeof englishPr.activity)[]) {
+        expect(pr.activity[verb]).not.toBe(englishPr.activity[verb]);
+      }
+      for (const state of Object.keys(englishPr.states) as (keyof typeof englishPr.states)[]) {
+        expect(pr.states[state]).not.toBe(englishPr.states[state]);
+      }
+      expect(pr.thread.resolved).not.toBe(englishPr.thread.resolved);
+      expect(pr.thread.outdated).not.toBe(englishPr.thread.outdated);
+      expect(resource.sidebar.statusGroupAccessibility).not.toBe(
+        en.sidebar.statusGroupAccessibility,
+      );
+    }
   });
 
   it("keeps local connection fallback errors translated", () => {
@@ -210,15 +288,16 @@ describe("translation resources", () => {
     expect(en.shell.menu.open).toBe("Open menu");
     expect(en.shell.menu.close).toBe("Close menu");
     expect(en.shell.commandCenter.placeholder).toBe(
-      "Search commands, files, workspaces, and chats...",
+      "Search commands, files, workspaces, and agents...",
     );
     expect(en.shell.commandCenter.filePlaceholder).toBe("Search files...");
     expect(en.shell.commandCenter.files).toBe("Files");
     expect(en.shell.commandCenter.noMatches).toBe("No matches");
     expect(en.shell.commandCenter.actions).toBe("Actions");
+    expect(en.shell.commandCenter.workspaces).toBe("Workspaces");
     expect(en.shell.commandCenter.agents).toBe("Agents");
-    expect(en.shell.commandCenter.newAgent).toBe("New chat");
-    expect(en.shell.commandCenter.openProject).toBe("Open project");
+    expect(en.shell.commandCenter.newAgent).toBe("New agent");
+    expect(en.shell.commandCenter.addProject).toBe("Add project");
     expect(en.shell.commandCenter.home).toBe("Home");
     expect(en.shell.commandCenter.modelGroupLabel).toBe("Model");
     expect(en.shell.commandCenter.modelSearchKeywords).toBe(
@@ -240,7 +319,10 @@ describe("translation resources", () => {
     expect(en.composer.input.sendMessage).toBe("Send message");
     expect(en.composer.voice.startDictation).toBe("Start dictation");
     expect(en.composer.attachments.addIssueOrPr).toBe("Add issue or PR");
+    expect(en.composer.attachments.addIssueOrPr_mr).toBe("Add issue or MR");
     expect(en.composer.github.title).toBe("Attach issue or PR");
+    expect(en.composer.github.title_mr).toBe("Attach issue or MR");
+    expect(en.composer.github.searchPlaceholder_mr).toBe("Search issues and MRs...");
     expect(en.agentControls.provider.fallback).toBe("Provider");
     expect(en.agentControls.hints.model).toBe("Change model");
     expect(en.agentControls.hints.mode).toBe("Change mode");
@@ -249,8 +331,8 @@ describe("translation resources", () => {
     expect(en.agentStream.permission.required).toBe("Permission Required");
     expect(en.agentStream.permission.proposedPlan).toBe("Proposed plan");
     expect(en.agentPanel.unavailable.selectedHost).toBe("Selected host");
-    expect(en.agentPanel.states.notFound).toBe("Chat not found");
-    expect(en.panels.draft.newAgent).toBe("New Chat");
+    expect(en.agentPanel.states.notFound).toBe("Agent not found");
+    expect(en.panels.draft.newAgent).toBe("New Agent");
   });
 
   it("includes Settings expansion keys for the Batch 3A migration", () => {
@@ -264,7 +346,6 @@ describe("translation resources", () => {
     expect(en.settings.appearance.fonts.interfaceFont).toBe("Interface font");
     expect(en.settings.shortcuts.actions.rebind).toBe("Rebind");
     expect(en.settings.integrations.commandLine.title).toBe("Command line");
-    expect(en.settings.integrations.skills.updateAvailable).toBe("Update available");
     expect(en.settings.notifications.playSound).toBe("Play sound");
     expect(en.settings.notifications.permission).toBe("Notification permission");
     expect(en.settings.notifications.sentTitle).toBe("Test notification sent");
@@ -307,13 +388,20 @@ describe("translation resources", () => {
   });
 
   it("includes workspace Git and review keys for the Batch 4B migration", () => {
-    expect(en.workspace.tabs.actions.newAgent).toBe("New chat");
+    expect(en.workspace.tabs.actions.newAgent).toBe("New agent");
     expect(en.workspace.header.actions.copyPath).toBe("Copy workspace path");
     expect(en.workspace.scripts.actions.run).toBe("Run");
     expect(en.workspace.git.actions.commit.label).toBe("Commit");
     expect(en.workspace.git.diff.binaryFile).toBe("Binary file");
     expect(en.workspace.git.pr.sections.checks).toBe("Checks");
+    expect(en.workspace.git.pr.sections.pipeline).toBe("Pipeline");
     expect(en.workspace.git.pr.actions.viewPullRequest).toBe("View");
+    expect(en.workspace.git.pr.actions.openOn).toBe("Open on {{brand}}");
+    expect(en.workspace.git.pr.empty.noJobs).toBe("No jobs");
+    expect(en.workspace.git.pr.empty.loadingPipeline).toBe("Loading pipeline…");
+    expect(en.workspace.git.pr.empty.pipelineJobsLoadFailed).toBe("Could not load pipeline jobs");
+    expect(en.workspace.git.pr.empty.allowedToFail).toBe("allowed to fail");
+    expect(en.workspace.git.pr.approvals).toBe("{{given}} of {{required}} approvals");
     expect(en.workspace.git.pr.accessibility.checkStatus).toEqual({
       passed: "Passed",
       failed: "Failed",
@@ -389,7 +477,7 @@ describe("translation resources", () => {
     expect(en.agentList.badges.attention).toBe("Attention");
     expect(en.agentList.archiveSheet.hostOffline).toBe("Host offline");
     expect(en.agentList.archiveSheet.runningAgent).toBe(
-      "This chat is still running. Archiving it will stop the chat.",
+      "This agent is still running. Archiving it will stop the agent.",
     );
     expect(en.agentList.archiveSheet.archive).toBe("Archive");
   });
@@ -415,7 +503,7 @@ describe("translation resources", () => {
     expect(en.message.question.otherPlaceholder).toBe("Other...");
     expect(en.message.todo.title).toBe("Tasks");
     expect(en.message.todo.empty).toBe("No tasks yet.");
-    expect(en.message.todo.tasksProgressCurrent).toBe("{{completed}}/{{total}} tasks · {{task}}");
+    expect(en.message.todo.tasksProgress).toBe("{{completed}}/{{total}} tasks");
     expect(en.message.todo.activity).toEqual({
       created: "Created {{count}} tasks",
       added: "Added",
@@ -425,15 +513,14 @@ describe("translation resources", () => {
   });
 
   it("includes workspace tab toast keys for the Batch 4J migration", () => {
-    expect(en.workspace.tabs.emptyPane).toBe("No tabs in this pane.");
     expect(en.workspace.tabs.toasts.copyFailed).toBe("Copy failed");
-    expect(en.workspace.tabs.toasts.agentIdCopiedLabel).toBe("Chat ID");
+    expect(en.workspace.tabs.toasts.agentIdCopiedLabel).toBe("Agent ID");
     expect(en.workspace.tabs.toasts.resumeCommandCopiedLabel).toBe("resume command");
     expect(en.workspace.tabs.toasts.resumeIdUnavailable).toBe("Resume ID not available");
     expect(en.workspace.tabs.toasts.resumeCommandUnavailable).toBe("Resume command not available");
-    expect(en.workspace.tabs.toasts.reloadingAgent).toBe("Reloading chat...");
-    expect(en.workspace.tabs.toasts.reloadedAgent).toBe("Reloaded chat");
-    expect(en.workspace.tabs.toasts.failedToReloadAgent).toBe("Failed to reload chat");
+    expect(en.workspace.tabs.toasts.reloadingAgent).toBe("Reloading agent...");
+    expect(en.workspace.tabs.toasts.reloadedAgent).toBe("Reloaded agent");
+    expect(en.workspace.tabs.toasts.failedToReloadAgent).toBe("Failed to reload agent");
     expect(en.workspace.header.toasts.workspacePathCopiedLabel).toBe("Workspace path");
     expect(en.workspace.header.toasts.branchNameCopiedLabel).toBe("Branch name");
   });
@@ -442,8 +529,8 @@ describe("translation resources", () => {
     expect(en.sidebar.host.noHost).toBe("No host");
     expect(en.sidebar.host.switchTitle).toBe("Switch host");
     expect(en.sidebar.host.searchPlaceholder).toBe("Search hosts...");
-    expect(en.sidebar.actions.addProject).toBe("New project");
-    expect(en.sidebar.actions.home).toBe("Home");
+    expect(en.sidebar.actions.addProject).toBe("Add project");
+    expect(en.sidebar.actions.hosts).toBe("Hosts");
     expect(en.sidebar.actions.settings).toBe("Settings");
     expect(en.sidebar.actions.closeSidebar).toBe("Close sidebar");
     expect(en.sidebar.sections.sessions).toBe("History");
@@ -480,7 +567,7 @@ describe("translation resources", () => {
     expect(en.branchSwitcher.title).toBe("Switch branch");
     expect(en.panels.file.loading).toBe("Loading file...");
     expect(en.panels.file.noPreview).toBe("No preview available");
-    expect(en.panels.file.binaryPreviewUnavailable).toBe("This file can't be previewed here");
+    expect(en.panels.file.binaryPreviewUnavailable).toBe("Binary preview unavailable");
     expect(en.panels.file.failedToLoad).toBe("Failed to load file");
     expect(en.toolCallDetails.error).toBe("Error");
     expect(en.toolCallDetails.empty).toBe("No additional details available");
@@ -514,13 +601,16 @@ describe("translation resources", () => {
     expect(en.agentList.dateSections.recent).toBe("Recent");
     expect(en.message.attachments.imagePreviewUnavailable).toBe("Image preview unavailable.");
     expect(en.message.attachments.imagePreviewLoadFailed).toBe("Unable to load image preview.");
-    expect(en.workspace.tabs.explorer.changes).toBe("Changes");
-    expect(en.workspace.tabs.explorer.files).toBe("Files");
+    expect(en.workspace.tabs.explorerSidebar.changes).toBe("Changes");
+    expect(en.workspace.tabs.explorerSidebar.files).toBe("Files");
+    expect(en.workspace.tabs.actions.maximizePane).toBe("Maximize pane");
+    expect(en.workspace.tabs.actions.restorePane).toBe("Restore pane");
+    expect(en.branchSwitcher.triggerTooltip).toBe("Switch workspace branch");
     expect(en.branchSwitcher.uncommittedTitle).toBe("Uncommitted changes");
     expect(en.branchSwitcher.uncommittedMessage).toBe(
-      "You have uncommitted changes. Stash them, switch branches, then restore them on the new branch?",
+      "You have uncommitted changes. Stash them before switching branches?",
     );
-    expect(en.branchSwitcher.stashAndSwitch).toBe("Stash, Switch & Pop");
+    expect(en.branchSwitcher.stashAndSwitch).toBe("Stash & Switch");
     expect(en.branchSwitcher.failedToStash).toBe("Failed to stash changes");
     expect(en.branchSwitcher.failedToSwitch).toBe("Failed to switch branch");
     expect(en.workspaceSetup.errors.failedCreateWorktree).toBe("Failed to create worktree");
@@ -543,8 +633,8 @@ describe("translation resources", () => {
     expect(en.renameModal.rename).toBe("Rename");
     expect(en.renameModal.saving).toBe("Saving...");
     expect(en.sidebarCallout.dismiss).toBe("Dismiss");
-    expect(en.contextWindow.title).toBe("Context window ({{percentage}}% used)");
-    expect(en.contextWindow.sessionCost).toBe("Session cost {{cost}}");
+    expect(en.contextWindow.title).toBe("Context window");
+    expect(en.contextWindow.used).toBe("{{percentage}}% used");
   });
 
   it("includes view-model and policy utility keys for the Batch 4N migration", () => {
@@ -568,13 +658,14 @@ describe("translation resources", () => {
     expect(en.workspace.route.hostOffline).toBe("{{hostName}} is offline");
     expect(en.workspace.route.cannotReachHost).toBe("Cannot reach {{hostName}}");
     expect(en.workspace.route.hostStatus).toBe("Host status: {{status}}");
-    expect(en.workspace.route.missing).toBe("Workspace not found");
+    expect(en.workspace.route.recovery.archivedTitle).toBe("Workspace archived");
+    expect(en.workspace.route.recovery.unavailableTitle).toBe("Workspace unavailable");
     expect(en.message.compaction.loading).toBe("Compacting...");
     expect(en.message.compaction.auto).toBe("Context automatically compacted");
     expect(en.message.compaction.manual).toBe("Context manually compacted");
     expect(en.message.compaction.withTokens).toBe("Context compacted ({{tokens}}K tokens)");
     expect(en.message.compaction.completed).toBe("Context compacted");
-    expect(en.agentPanel.archived.callout).toBe("This chat is archived");
+    expect(en.agentPanel.archived.callout).toBe("This agent is archived");
     expect(en.agentPanel.archived.unarchive).toBe("Unarchive");
     expect(en.desktop.quitting.title).toBe("Quitting Otto...");
     expect(en.desktop.quitting.detail).toBe("Stopping the local daemon.");
@@ -687,9 +778,6 @@ describe("translation resources", () => {
     );
     expect(en.desktop.daemon.loadFailed).toBe("Unable to load desktop daemon status.");
     expect(en.desktop.integrations.cli.installFailed).toBe("Unable to install the Otto CLI.");
-    expect(en.desktop.integrations.skills.installFailed).toBe(
-      "Unable to install orchestration skills.",
-    );
   });
 
   it("includes remaining utility chrome keys for the Batch 4T migration", () => {
@@ -707,7 +795,7 @@ describe("translation resources", () => {
     expect(en.loadOlderHistory.failed).toBe("Couldn't load older history");
     expect(en.agentControls.thinking.extraHigh).toBe("Extra high");
     expect(en.agentControls.model.unknown).toBe("Unknown model");
-    expect(en.panels.draft.creatingAgent).toBe("Creating chat");
+    expect(en.panels.draft.creatingAgent).toBe("Creating agent");
   });
 
   it("includes shared default utility keys for the Batch 4U migration", () => {
@@ -724,27 +812,5 @@ describe("translation resources", () => {
     expect(en.startup.logs.loading).toBe("Loading daemon logs...");
     expect(en.startup.logs.unavailable).toBe("No daemon logs available.");
     expect(en.startup.logs.loadFailed).toBe("Unable to load daemon logs: {{message}}");
-  });
-  it("keeps stable import, release notes and Otto sidebar discovery available in every locale", () => {
-    const keys = [
-      "importSession.chooseHostTitle",
-      "importSession.searchPlaceholder",
-      "changelog.title",
-      "changelog.openWebsite",
-      "changelog.error.title",
-      "changelog.error.description",
-      "changelog.showMore",
-      "changelog.installed",
-      "common.actions.retry",
-      "settings.plugins.screens.open",
-      "sidebar.sections.kanban",
-      "sidebar.sections.runs",
-      "settings.appearance.sidebar.workspaceActions",
-    ];
-    for (const resource of [en, ar, es, fr, ja, ko, ptBR, ru, zhCN]) {
-      const strings = flattenStrings(resource);
-      for (const key of keys) expect(strings[key], key).toBeTruthy();
-    }
-    expect(en.pairing.remoteSsh.helper).toContain("Otto daemon");
   });
 });

@@ -53,12 +53,7 @@ function renderedSize(message: MermaidRuntimeMessage): { height: number; width: 
 
 function render(
   frame: HTMLIFrameElement,
-  input: {
-    revision: number;
-    source: string;
-    themeKey?: string;
-    themeVariables?: Record<string, string>;
-  },
+  input: { revision: number; source: string },
 ): Promise<MermaidRuntimeMessage> {
   const response = waitForRuntimeMessage(
     frame,
@@ -73,8 +68,6 @@ function render(
       revision: input.revision,
       source: input.source,
       colorScheme: "dark",
-      themeVariables: input.themeVariables ?? { darkMode: "true", primaryColor: "#27272a" },
-      themeKey: input.themeKey ?? "dark test-palette",
       interactive: false,
     },
     "*",
@@ -98,28 +91,9 @@ describe("Mermaid sandbox runtime", () => {
     const invalid = await render(frame, { revision: 2, source: "not a mermaid diagram" });
     const second = await render(frame, { revision: 3, source: secondSource });
 
-    expect(first).toMatchObject({
-      type: "rendered",
-      revision: 1,
-      source: firstSource,
-      svg: expect.stringContaining("<svg"),
-    });
+    expect(first).toMatchObject({ type: "rendered", revision: 1, source: firstSource });
     expect(invalid).toEqual({ type: "renderError", revision: 2 });
     expect(second).toMatchObject({ type: "rendered", revision: 3, source: secondSource });
-  });
-
-  it("renders modern Mermaid shape templates", async () => {
-    const frame = await mountRuntime();
-    const source = "flowchart TD\n  Input@{ shape: lean-r } --> Output@{ shape: notch-rect }";
-
-    const result = await render(frame, { revision: 4, source });
-
-    expect(result).toMatchObject({
-      type: "rendered",
-      revision: 4,
-      source,
-      svg: expect.stringContaining("<svg"),
-    });
   });
 
   /**
@@ -136,30 +110,6 @@ describe("Mermaid sandbox runtime", () => {
     const wide = await render(wideFrame, { revision: 1, source });
 
     expect(renderedSize(narrow)).toEqual(renderedSize(wide));
-  });
-
-  it("preserves a custom theme identity and readable mindmap SVG in every viewport", async () => {
-    const frame = await mountRuntime({ height: 60, width: 60 });
-    const result = await render(frame, {
-      revision: 1,
-      source: "mindmap\n  root((Otto))\n    Theme\n    Fullscreen",
-      themeKey: "warm-palette",
-      themeVariables: {
-        primaryColor: "#e9d9c4",
-        primaryTextColor: "#24201c",
-        primaryBorderColor: "#9d8971",
-        lineColor: "#62564b",
-      },
-    });
-    expect(result).toMatchObject({ type: "rendered", themeKey: "warm-palette" });
-    if (result.type !== "rendered") throw new Error("Expected a rendered diagram");
-    const document = new DOMParser().parseFromString(result.svg!, "image/svg+xml");
-    const svg = document.documentElement;
-    expect(svg.getAttribute("viewBox")).toBeTruthy();
-    expect(svg.getAttribute("style")).toContain("height: 100%");
-    expect(svg.textContent).toContain("fill: #e9d9c4 !important");
-    expect(svg.textContent).toContain("fill: #24201c !important");
-    expect(svg.textContent).not.toContain("NaN");
   });
 
   it("coalesces queued input and never reports an obsolete result", async () => {
@@ -183,8 +133,6 @@ describe("Mermaid sandbox runtime", () => {
         revision: 10,
         source: obsoleteSource,
         colorScheme: "dark",
-        themeVariables: { darkMode: "true" },
-        themeKey: "dark test-palette",
         interactive: false,
       },
       "*",

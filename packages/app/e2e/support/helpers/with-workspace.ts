@@ -52,9 +52,9 @@ export function createWithWorkspace(page: Page): WithWorkspaceHandle {
       const tempRoot = await resolveTempRoot();
       workspacePath = path.join(
         tempRoot,
-        `otto-wt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        `paseo-wt-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       );
-      const branchName = `otto-wt-${Date.now()}`;
+      const branchName = `paseo-wt-${Date.now()}`;
       execSync(
         `git worktree add ${JSON.stringify(workspacePath)} -b ${JSON.stringify(branchName)} main`,
         { cwd: repo.path, stdio: "ignore" },

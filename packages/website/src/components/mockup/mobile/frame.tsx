@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 // The iPhone frame every mobile mockup sits inside. Authored at a fixed
 // "design" size — iPhone 17 Pro points, 402 x 874 — and scaled to whatever
 // width its column gives it. The scale is pure CSS (`tan(atan2(100cqw, …))`,

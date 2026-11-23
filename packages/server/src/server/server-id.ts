@@ -16,8 +16,8 @@ function getLogger(logger: LoggerLike | undefined): LoggerLike | undefined {
   return logger?.child({ module: "server-id" });
 }
 
-function getServerIdPath(ottoHome: string): string {
-  return path.join(ottoHome, SERVER_ID_FILENAME);
+function getServerIdPath(paseoHome: string): string {
+  return path.join(paseoHome, SERVER_ID_FILENAME);
 }
 
 function generateServerId(): string {
@@ -27,22 +27,22 @@ function generateServerId(): string {
 }
 
 /**
- * Stable daemon identifier scoped to a given $OTTO_HOME.
+ * Stable daemon identifier scoped to a given $PASEO_HOME.
  *
- * - Persisted to `$OTTO_HOME/server-id`
- * - Can be overridden via `OTTO_SERVER_ID` (useful for tests)
+ * - Persisted to `$PASEO_HOME/server-id`
+ * - Can be overridden via `PASEO_SERVER_ID` (useful for tests)
  */
 export function getOrCreateServerId(
-  ottoHome: string,
+  paseoHome: string,
   options?: { env?: NodeJS.ProcessEnv; logger?: LoggerLike },
 ): string {
   const env = options?.env ?? process.env;
   const log = getLogger(options?.logger);
-  const serverIdPath = getServerIdPath(ottoHome);
+  const serverIdPath = getServerIdPath(paseoHome);
 
   const envOverride =
-    typeof env.OTTO_SERVER_ID === "string" && env.OTTO_SERVER_ID.trim().length > 0
-      ? env.OTTO_SERVER_ID.trim()
+    typeof env.PASEO_SERVER_ID === "string" && env.PASEO_SERVER_ID.trim().length > 0
+      ? env.PASEO_SERVER_ID.trim()
       : null;
 
   if (envOverride) {
@@ -50,9 +50,9 @@ export function getOrCreateServerId(
     if (!existsSync(serverIdPath)) {
       try {
         writePrivateFileAtomicSync(serverIdPath, `${envOverride}\n`);
-        log?.info({ serverId: envOverride }, "Persisted OTTO_SERVER_ID override");
+        log?.info({ serverId: envOverride }, "Persisted PASEO_SERVER_ID override");
       } catch (error) {
-        log?.warn({ error }, "Failed to persist OTTO_SERVER_ID override");
+        log?.warn({ error }, "Failed to persist PASEO_SERVER_ID override");
       }
     } else {
       ensurePrivateFile(serverIdPath);

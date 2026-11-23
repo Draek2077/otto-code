@@ -1,6 +1,6 @@
-import React, { useCallback, useState } from "react";
+import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
-import { Activity, CircleHelp, Gift, Keyboard } from "@/components/icons/material-icons";
+import { Activity, CircleHelp, Gift, Keyboard } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { DiscordIcon } from "@/components/icons/discord-icon";
@@ -14,46 +14,48 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { DensityIcon } from "@/components/ui/density-icon";
+import { SidebarFooterIconHighlight } from "./sidebar-footer-icon-highlight";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAppDiagnosticStore } from "@/diagnostics/store";
 import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
 import { useHostRuntimeIsConnected, useHosts } from "@/runtime/host-runtime";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { useSessionStore } from "@/stores/session-store";
-import { compactUp, type Theme } from "@/styles/theme";
+import { density } from "@/styles/density";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
 import { openChangelog } from "@/changelog";
 import { openExternalUrl } from "@/utils/open-external-url";
+import { OTTO_ISSUES_NEW_URL } from "@getpaseo/protocol/otto/identity";
 
-const DISCORD_URL = "https://discord.gg/Cwjm93KfK";
-const GITHUB_ISSUE_URL = "https://github.com/Draek2077/otto-code/issues/new";
-
+const DISCORD_URL = "https://discord.gg/jz8T2uahpH";
+const GITHUB_ISSUE_URL = OTTO_ISSUES_NEW_URL; // OTTO(identity)
 const ThemedActivity = withUnistyles(Activity);
-const ThemedCircleHelp = withUnistyles(CircleHelp);
 const ThemedGift = withUnistyles(Gift);
 const ThemedKeyboard = withUnistyles(Keyboard);
 const ThemedDiscordIcon = withUnistyles(DiscordIcon);
 const ThemedGitHubIcon = withUnistyles(GitHubIcon);
-const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
-
-function helpTriggerStyle({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) {
-  return [
-    styles.trigger,
-    Boolean(hovered) && !pressed && styles.triggerHovered,
-    Boolean(pressed) && styles.triggerPressed,
-  ];
-}
-
-const diagnosticLeadingIcon = <ThemedActivity size="sm" uniProps={foregroundMutedColorMapping} />;
-const shortcutsLeadingIcon = <ThemedKeyboard size="sm" uniProps={foregroundMutedColorMapping} />;
-const discordLeadingIcon = <ThemedDiscordIcon size="sm" uniProps={foregroundMutedColorMapping} />;
-const githubLeadingIcon = <ThemedGitHubIcon size="sm" uniProps={foregroundMutedColorMapping} />;
-const changelogLeadingIcon = <ThemedGift size="sm" uniProps={foregroundMutedColorMapping} />;
+const diagnosticLeadingIcon = (
+  <ThemedActivity size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
+);
+const shortcutsLeadingIcon = (
+  <ThemedKeyboard size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
+);
+const discordLeadingIcon = (
+  <ThemedDiscordIcon size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
+);
+const githubLeadingIcon = (
+  <ThemedGitHubIcon size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
+);
+const changelogLeadingIcon = (
+  <ThemedGift size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
+);
 
 function HostVersionHint({ host }: { host: HostProfile }) {
   const { t } = useTranslation();
@@ -103,16 +105,20 @@ export function SidebarHelpMenu() {
         <TooltipTrigger asChild>
           <View>
             <DropdownMenuTrigger
-              style={helpTriggerStyle}
+              style={styles.trigger}
               testID="sidebar-help"
               accessibilityRole="button"
               accessibilityLabel={t("sidebar.help.trigger")}
             >
-              {({ hovered }) => (
-                <ThemedCircleHelp
-                  size="chromeXl"
-                  uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
-                />
+              {({ hovered, pressed, open: menuOpen }) => (
+                <>
+                  <SidebarFooterIconHighlight visible={pressed || menuOpen} />
+                  <DensityIcon
+                    icon={CircleHelp}
+                    size="md"
+                    color={hovered ? "foreground" : "foregroundMuted"}
+                  />
+                </>
               )}
             </DropdownMenuTrigger>
           </View>
@@ -182,20 +188,12 @@ export function SidebarHelpMenu() {
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    // Match FooterIconButton: Help belongs to the footer icon series, rather
-    // than using the smaller menu-trigger geometry.
-    width: compactUp(32, 1.5),
-    height: compactUp(32, 1.5),
+    width: density.iconButton,
+    height: density.iconButton,
     alignItems: "center",
     justifyContent: "center",
-    padding: 0,
-    borderRadius: theme.borderRadius.lg,
-  },
-  triggerHovered: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
-  },
-  triggerPressed: {
-    backgroundColor: theme.colors.surfaceInteractivePressed,
+    paddingVertical: theme.spacing[1],
+    paddingHorizontal: theme.spacing[1],
   },
   tooltipText: {
     fontSize: theme.fontSize.base,

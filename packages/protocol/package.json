@@ -1,13 +1,7 @@
 {
-  "name": "@otto-code/protocol",
+  "name": "@getpaseo/protocol",
   "version": "0.9.35",
-  "description": "Otto shared protocol schemas and wire types",
-  "license": "AGPL-3.0-or-later",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Draek2077/otto-code.git",
-    "directory": "packages/protocol"
-  },
+  "description": "Paseo shared protocol schemas and wire types",
   "files": [
     "dist",
     "!dist/**/*.map",
@@ -44,7 +38,7 @@
     "@types/node": "^20.9.0",
     "@types/semver": "^7.8.0",
     "typescript": "^5.2.2",
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.6",
     "zod-aot": "0.20.4"
   }
 }

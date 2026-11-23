@@ -1,4 +1,4 @@
-import { ChevronRight } from "@/components/icons/material-icons";
+import { ChevronRight } from "lucide-react-native";
 import { withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
-import { createTestOttoDaemon, type TestOttoDaemon } from "./test-utils/otto-daemon.js";
+import { createTestPaseoDaemon, type TestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { DaemonClient } from "./test-utils/daemon-client.js";
-import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
+import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
 import type { AgentSnapshotPayload } from "./messages.js";
 import type { PushNotificationSender, PushPayload } from "./push/index.js";
 import { PRESENCE_THRESHOLD_MS } from "./agent-attention-policy.js";
@@ -35,14 +35,14 @@ describe("client activity tracking", () => {
   const TEST_PROVIDER = "claude";
   const TEST_MODEL = "haiku";
   const TEST_CWD = "/tmp";
-  let daemon: TestOttoDaemon;
+  let daemon: TestPaseoDaemon;
   let client1: DaemonClient;
   let client2: DaemonClient;
   let pushNotifications: RecordingPushNotificationSender;
 
   beforeEach(async () => {
     pushNotifications = new RecordingPushNotificationSender();
-    daemon = await createTestOttoDaemon({ pushNotificationSender: pushNotifications });
+    daemon = await createTestPaseoDaemon({ pushNotificationSender: pushNotifications });
   });
 
   afterEach(async () => {
@@ -93,34 +93,6 @@ describe("client activity tracking", () => {
     });
   }
 
-  /**
-   * Records every attention_required this client receives for `agentId`.
-   *
-   * A client that is present, app-visible and focused on the agent suppresses
-   * attention at the source (`isTargetActivelyWatched` in
-   * agent-attention-policy.ts): the manager returns before it ever raises the
-   * flag, so there is no event to carry a `shouldNotify: false`. Proving that
-   * means proving an absence, so collect instead of awaiting - the turn is
-   * pinned down separately by waiting on the assistant timeline, which keeps
-   * "nothing arrived" from passing vacuously when the turn never ran.
-   */
-  function collectAttentionRequired(
-    client: DaemonClient,
-    agentId: string,
-  ): {
-    events: Array<Extract<AgentStreamEventPayload, { type: "attention_required" }>>;
-    stop: () => void;
-  } {
-    const events: Array<Extract<AgentStreamEventPayload, { type: "attention_required" }>> = [];
-    const stop = client.on("agent_stream", (msg) => {
-      if (msg.type !== "agent_stream") return;
-      if (msg.payload.agentId !== agentId) return;
-      if (msg.payload.event.type !== "attention_required") return;
-      events.push(msg.payload.event);
-    });
-    return { events, stop };
-  }
-
   function waitForAssistantTimeline(
     client: DaemonClient,
     agentId: string,
@@ -168,16 +140,13 @@ describe("client activity tracking", () => {
 
       await new Promise((r) => setTimeout(r, 100));
 
-      const attention = collectAttentionRequired(client1, agent.id);
-      const finished = waitForAssistantTimeline(client1, agent.id);
+      const attentionPromise = waitForAttentionRequired(client1, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      await expect(finished).resolves.toMatch(/hello/i);
-      attention.stop();
+      const attention = await attentionPromise;
 
-      // Watched by a present, visible client: attention is never raised at all.
-      expect(attention.events).toEqual([]);
-      expect(pushNotifications.sent).toEqual([]);
+      expect(attention.reason).toBe("finished");
+      expect(attention.shouldNotify).toBe(false);
     }, 120000);
 
     test("notification when focused on different agent", async () => {
@@ -315,20 +284,15 @@ describe("client activity tracking", () => {
 
       await new Promise((r) => setTimeout(r, 100));
 
-      const attention1 = collectAttentionRequired(client1, agent.id);
-      const attention2 = collectAttentionRequired(client2, agent.id);
-      const finished = waitForAssistantTimeline(client2, agent.id);
+      const attention1Promise = waitForAttentionRequired(client1, agent.id);
+      const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      await expect(finished).resolves.toMatch(/hello/i);
-      attention1.stop();
-      attention2.stop();
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
-      // client2 is watching the agent, so attention is suppressed for the whole
-      // daemon - not merely delivered to client1 with shouldNotify false.
-      expect(attention1.events).toEqual([]);
-      expect(attention2.events).toEqual([]);
-      expect(pushNotifications.sent).toEqual([]);
+      // Neither should notify - user is actively watching on client2
+      expect(attention1.shouldNotify).toBe(false);
+      expect(attention2.shouldNotify).toBe(false);
     }, 120000);
 
     test("pushes when both web clients are inactive", async () => {
@@ -465,19 +429,15 @@ describe("client activity tracking", () => {
 
       await new Promise((r) => setTimeout(r, 100));
 
-      const attention1 = collectAttentionRequired(client1, agent.id);
-      const attention2 = collectAttentionRequired(client2, agent.id);
-      const finished = waitForAssistantTimeline(client1, agent.id);
+      const attention1Promise = waitForAttentionRequired(client1, agent.id);
+      const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      await expect(finished).resolves.toMatch(/hello/i);
-      attention1.stop();
-      attention2.stop();
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
-      // User sees it on web, so attention is suppressed for every client.
-      expect(attention1.events).toEqual([]);
-      expect(attention2.events).toEqual([]);
-      expect(pushNotifications.sent).toEqual([]);
+      // Neither should notify - user sees it on web
+      expect(attention1.shouldNotify).toBe(false);
+      expect(attention2.shouldNotify).toBe(false);
     }, 120000);
 
     test("no notification to either when user actively on agent (mobile)", async () => {
@@ -507,19 +467,15 @@ describe("client activity tracking", () => {
 
       await new Promise((r) => setTimeout(r, 100));
 
-      const attention1 = collectAttentionRequired(client1, agent.id);
-      const attention2 = collectAttentionRequired(client2, agent.id);
-      const finished = waitForAssistantTimeline(client1, agent.id);
+      const attention1Promise = waitForAttentionRequired(client1, agent.id);
+      const attention2Promise = waitForAttentionRequired(client2, agent.id);
       await client1.sendMessage(agent.id, "Say 'hello' and nothing else");
 
-      await expect(finished).resolves.toMatch(/hello/i);
-      attention1.stop();
-      attention2.stop();
+      const [attention1, attention2] = await Promise.all([attention1Promise, attention2Promise]);
 
-      // User sees it on mobile, so attention is suppressed for every client.
-      expect(attention1.events).toEqual([]);
-      expect(attention2.events).toEqual([]);
-      expect(pushNotifications.sent).toEqual([]);
+      // Neither should notify - user sees it on mobile
+      expect(attention1.shouldNotify).toBe(false);
+      expect(attention2.shouldNotify).toBe(false);
     }, 120000);
 
     test("notify mobile only when web is stale and mobile is present", async () => {

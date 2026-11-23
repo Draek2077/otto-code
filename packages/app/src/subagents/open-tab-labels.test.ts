@@ -3,7 +3,7 @@ import type { Agent } from "@/stores/session-store";
 import type { WorkspaceTab } from "@/workspace-tabs/model";
 import { getAgentTabsNeedingOpenLabel } from "./open-tab-labels";
 
-const label = "otto.open-agent-tab.client-1";
+const label = "paseo.open-agent-tab.client-1";
 
 function tab(agentId: string, createdAt: number): WorkspaceTab {
   return { tabId: `agent_${agentId}`, target: { kind: "agent", agentId }, createdAt };
@@ -47,23 +47,6 @@ describe("getAgentTabsNeedingOpenLabel", () => {
         getAgent: (agentId) => agents.get(agentId),
         label,
         pendingAgentIds: new Set(["pending"]),
-      }),
-    ).toEqual([]);
-  });
-
-  it("skips observed subagents, which the daemon never stores", () => {
-    const observed = {
-      ...agent({ id: "parent::sub::toolu_1", parentAgentId: "parent" }),
-      attend: "observed",
-    } as Agent;
-    const agents = new Map([[observed.id, observed]]);
-
-    expect(
-      getAgentTabsNeedingOpenLabel({
-        tabs: [tab(observed.id, 1)],
-        getAgent: (agentId) => agents.get(agentId),
-        label,
-        pendingAgentIds: new Set(),
       }),
     ).toEqual([]);
   });

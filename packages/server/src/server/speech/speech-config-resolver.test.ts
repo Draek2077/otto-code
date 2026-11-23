@@ -7,12 +7,12 @@ import { resolveSpeechConfig } from "./speech-config-resolver.js";
 
 describe("resolveSpeechConfig", () => {
   test("resolves local-first defaults without env overrides", () => {
-    const ottoHome = "/tmp/otto-home";
+    const paseoHome = "/tmp/paseo-home";
     const persisted = PersistedConfigSchema.parse({});
     const env = {} as NodeJS.ProcessEnv;
 
     const result = resolveSpeechConfig({
-      ottoHome,
+      paseoHome,
       env,
       persisted,
     });
@@ -39,18 +39,18 @@ describe("resolveSpeechConfig", () => {
       enabled: true,
     });
     expect(result.speech.local).toEqual({
-      modelsDir: path.join(ottoHome, "models", "local-speech"),
+      modelsDir: path.join(paseoHome, "models", "local-speech"),
       models: {
         dictationStt: "parakeet-tdt-0.6b-v2-int8",
         voiceStt: "parakeet-tdt-0.6b-v2-int8",
-        voiceTts: "kokoro-multi-lang-v1_0",
-        voiceTtsSpeakerId: 3,
+        voiceTts: "kokoro-en-v0_19",
+        voiceTtsSpeakerId: 0,
       },
     });
     expect(result.speech.local?.models.dictationStt).toBe("parakeet-tdt-0.6b-v2-int8");
     expect(result.speech.local?.models.voiceStt).toBe("parakeet-tdt-0.6b-v2-int8");
-    expect(result.speech.local?.models.voiceTts).toBe("kokoro-multi-lang-v1_0");
-    expect(result.speech.local?.models.voiceTtsSpeakerId).toBe(3);
+    expect(result.speech.local?.models.voiceTts).toBe("kokoro-en-v0_19");
+    expect(result.speech.local?.models.voiceTtsSpeakerId).toBe(0);
     expect(result.speech.sttLanguages).toEqual({
       dictation: "en",
       voice: "en",
@@ -70,22 +70,22 @@ describe("resolveSpeechConfig", () => {
       },
     });
     const env = {
-      OTTO_DICTATION_LOCAL_STT_MODEL: "parakeet-tdt-0.6b-v2-int8",
-      OTTO_VOICE_LOCAL_STT_MODEL: "parakeet-tdt-0.6b-v2-int8",
-      OTTO_VOICE_LOCAL_TTS_MODEL: "kokoro-en-v0_19",
-      OTTO_VOICE_LOCAL_TTS_SPEAKER_ID: "5",
-      OTTO_VOICE_LOCAL_TTS_SPEED: "1.35",
-      OTTO_DICTATION_LANGUAGE: "es",
-      OTTO_VOICE_LANGUAGE: "pt",
-      OTTO_LOCAL_MODELS_DIR: "/tmp/models",
+      PASEO_DICTATION_LOCAL_STT_MODEL: "parakeet-tdt-0.6b-v2-int8",
+      PASEO_VOICE_LOCAL_STT_MODEL: "parakeet-tdt-0.6b-v2-int8",
+      PASEO_VOICE_LOCAL_TTS_MODEL: "kokoro-en-v0_19",
+      PASEO_VOICE_LOCAL_TTS_SPEAKER_ID: "5",
+      PASEO_VOICE_LOCAL_TTS_SPEED: "1.35",
+      PASEO_DICTATION_LANGUAGE: "es",
+      PASEO_VOICE_LANGUAGE: "pt",
+      PASEO_LOCAL_MODELS_DIR: "/tmp/models",
       OPENAI_API_KEY: "env-key",
-      OTTO_VOICE_STT_PROVIDER: "openai",
-      OTTO_DICTATION_STT_PROVIDER: "local",
-      OTTO_VOICE_TTS_PROVIDER: "local",
+      PASEO_VOICE_STT_PROVIDER: "openai",
+      PASEO_DICTATION_STT_PROVIDER: "local",
+      PASEO_VOICE_TTS_PROVIDER: "local",
     } as NodeJS.ProcessEnv;
 
     const result = resolveSpeechConfig({
-      ottoHome: "/tmp/otto-home",
+      paseoHome: "/tmp/paseo-home",
       env,
       persisted,
     });
@@ -151,10 +151,10 @@ describe("resolveSpeechConfig", () => {
     });
 
     const result = resolveSpeechConfig({
-      ottoHome: "/tmp/otto-home",
+      paseoHome: "/tmp/paseo-home",
       env: {
-        OTTO_DICTATION_LANGUAGE: "es",
-        OTTO_VOICE_LANGUAGE: "  ",
+        PASEO_DICTATION_LANGUAGE: "es",
+        PASEO_VOICE_LANGUAGE: "  ",
       } as NodeJS.ProcessEnv,
       persisted,
     });
@@ -174,7 +174,7 @@ describe("resolveSpeechConfig", () => {
     });
 
     const result = resolveSpeechConfig({
-      ottoHome: "/tmp/otto-home",
+      paseoHome: "/tmp/paseo-home",
       env: {} as NodeJS.ProcessEnv,
       persisted,
     });

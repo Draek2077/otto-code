@@ -1,4 +1,3 @@
-import { i18n } from "@/i18n/i18next";
 import type { Agent } from "@/stores/session-store";
 import type { ConfirmDialogInput } from "@/utils/confirm-dialog";
 
@@ -15,7 +14,7 @@ function resolveSubagentLabel(title: Agent["title"] | null | undefined): string 
   if (!normalized) {
     return null;
   }
-  if (normalized.toLowerCase() === "new agent" || normalized.toLowerCase() === "new chat") {
+  if (normalized.toLowerCase() === "new agent") {
     return null;
   }
   return normalized;
@@ -24,18 +23,16 @@ function resolveSubagentLabel(title: Agent["title"] | null | undefined): string 
 export function resolveArchiveSubagentDialog(
   input: ResolveArchiveSubagentDialogInput,
 ): ConfirmDialogInput {
-  const subject = resolveSubagentLabel(input.title) ?? i18n.t("subagents.dialogs.subjectFallback");
+  const subagentLabel = resolveSubagentLabel(input.title) ?? "this subagent";
   const isRunning = input.status === "running";
 
   return {
-    title: isRunning
-      ? i18n.t("subagents.dialogs.archive.titleRunning")
-      : i18n.t("subagents.dialogs.archive.title"),
+    title: isRunning ? "Archive running subagent?" : "Archive subagent?",
     message: isRunning
-      ? i18n.t("subagents.dialogs.archive.messageRunning", { subject })
-      : i18n.t("subagents.dialogs.archive.message", { subject }),
-    confirmLabel: i18n.t("subagents.dialogs.archive.confirm"),
-    cancelLabel: i18n.t("common.actions.cancel"),
+      ? `${subagentLabel} is still running. Archiving it will stop the subagent and remove it from the track.`
+      : `Remove ${subagentLabel} from the track. The subagent will be archived.`,
+    confirmLabel: "Archive",
+    cancelLabel: "Cancel",
     destructive: true,
   };
 }

@@ -1,155 +1,94 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  initialStartupBlocker,
   resolveStartupBlocker,
   resolveStartupNavigationReady,
   resolveHostIndexRoute,
   resolveStartupRoute,
-  shouldMountStartupRuntime,
   shouldRunStartupGiveUpTimer,
   startHostRuntimeBootstrap,
   bindHostRuntimeAppState,
 } from "./host-runtime-bootstrap";
-
-function createFakeStore() {
-  return { boot: vi.fn() };
-}
-
-function createFakeDaemonStartService() {
-  return {
-    start: vi.fn(async () => ({ ok: true as const })),
-  };
-}
+import type { DaemonStartResult, StartDaemonIfEnabledInput } from "@/runtime/daemon-start-service";
 
 describe("startHostRuntimeBootstrap", () => {
-  it("fires boot and daemon-start without awaiting the daemon-start promise", () => {
+  it("boots the host registry and starts the managed-daemon decision independently", async () => {
     const events: string[] = [];
+    const shouldStartDaemon = async () => true;
     const store = {
-      boot: vi.fn(() => {
+      boot: async () => {
         events.push("boot");
-      }),
-    };
-    const daemonStartService = {
-      start: vi.fn(async () => {
-        events.push("daemon-start");
-        return { ok: true as const };
-      }),
-    };
-
-    startHostRuntimeBootstrap({
-      store,
-      daemonStartService,
-      shouldStartDaemon: true,
-    });
-
-    expect(store.boot).toHaveBeenCalledTimes(1);
-    expect(daemonStartService.start).toHaveBeenCalledTimes(1);
-    expect(events).toEqual(["boot", "daemon-start"]);
-  });
-
-  it("skips daemon-start when shouldStartDaemon is false", () => {
-    const store = createFakeStore();
-    const daemonStartService = createFakeDaemonStartService();
-
-    startHostRuntimeBootstrap({
-      store,
-      daemonStartService,
-      shouldStartDaemon: false,
-    });
-
-    expect(store.boot).toHaveBeenCalledTimes(1);
-    expect(daemonStartService.start).not.toHaveBeenCalled();
-  });
-
-  it("skips daemon-start when the startup gate resolves false", async () => {
-    const store = createFakeStore();
-    const daemonStartService = createFakeDaemonStartService();
-
-    startHostRuntimeBootstrap({
-      store,
-      daemonStartService,
-      shouldStartDaemon: async () => false,
-    });
-    await Promise.resolve();
-
-    expect(store.boot).toHaveBeenCalledTimes(1);
-    expect(daemonStartService.start).not.toHaveBeenCalled();
-  });
-
-  it("surfaces gate rejection to onGateError without starting the daemon", async () => {
-    const store = createFakeStore();
-    const daemonStartService = createFakeDaemonStartService();
-    const onGateError = vi.fn();
-    const onGateSettled = vi.fn();
-
-    startHostRuntimeBootstrap({
-      store,
-      daemonStartService,
-      shouldStartDaemon: async () => {
-        throw new Error("settings file unreadable");
       },
-      onGateError,
-      onGateSettled,
-    });
-    await vi.waitFor(() => {
-      expect(onGateError).toHaveBeenCalledTimes(1);
-    });
-
-    expect(daemonStartService.start).not.toHaveBeenCalled();
-    expect(onGateError).toHaveBeenCalledWith(expect.stringContaining("settings file unreadable"));
-    expect(onGateSettled).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([true, false])(
-    "settles a delayed settings gate (%s) after dispatching its decision",
-    async (shouldStart) => {
-      let finishGate!: (value: boolean) => void;
-      const gate = new Promise<boolean>((resolve) => {
-        finishGate = resolve;
-      });
-      const events: string[] = [];
-      const start = vi.fn(() => {
-        events.push("start");
-        return new Promise<{ ok: true }>(() => {});
-      });
-      startHostRuntimeBootstrap({
-        store: createFakeStore(),
-        daemonStartService: { start },
-        shouldStartDaemon: () => gate,
-        onGateSettled: () => events.push("settled"),
-      });
-      await Promise.resolve();
-      expect(events).toEqual([]);
-      finishGate(shouldStart);
-      await vi.waitFor(() =>
-        expect(events).toEqual(shouldStart ? ["start", "settled"] : ["settled"]),
-      );
-      expect(start).toHaveBeenCalledTimes(shouldStart ? 1 : 0);
-    },
-  );
-
-  it("does not await the daemon-start promise", () => {
-    const store = createFakeStore();
-    let resolveStart: ((value: { ok: true }) => void) | undefined;
+    };
+    const receivedDecisions: Array<Promise<boolean>> = [];
     const daemonStartService = {
-      start: vi.fn(
-        () =>
-          new Promise<{ ok: true }>((resolve) => {
-            resolveStart = resolve;
-          }),
-      ),
+      startIfEnabled: async (input: StartDaemonIfEnabledInput) => {
+        receivedDecisions.push(
+          Promise.resolve(
+            typeof input.shouldStart === "boolean" ? input.shouldStart : input.shouldStart(),
+          ),
+        );
+        events.push("daemon-start-decision");
+        return { ok: true as const };
+      },
     };
 
     startHostRuntimeBootstrap({
       store,
       daemonStartService,
-      shouldStartDaemon: true,
+      shouldStartDaemon,
     });
 
-    expect(store.boot).toHaveBeenCalledTimes(1);
-    expect(daemonStartService.start).toHaveBeenCalledTimes(1);
+    expect(events).toEqual(["boot", "daemon-start-decision"]);
+    expect(await receivedDecisions[0]).toBe(true);
+    expect(events).toEqual(["boot", "daemon-start-decision"]);
+  });
 
-    resolveStart?.({ ok: true });
+  it("loads the registry before evaluating managed-daemon startup", async () => {
+    const events: string[] = [];
+    let resolveBoot!: () => void;
+    const booted = new Promise<void>((resolve) => {
+      resolveBoot = resolve;
+    });
+    const store = {
+      boot: () => {
+        events.push("boot");
+        return booted;
+      },
+    };
+    let startFinished!: Promise<DaemonStartResult>;
+    const daemonStartService = {
+      startIfEnabled: (input: StartDaemonIfEnabledInput) => {
+        events.push("daemon-start-service");
+        startFinished = (async () => {
+          const shouldStart =
+            typeof input.shouldStart === "boolean" ? input.shouldStart : await input.shouldStart();
+          events.push(`decision:${shouldStart}`);
+          return { ok: true as const };
+        })();
+        return startFinished;
+      },
+    };
+
+    startHostRuntimeBootstrap({
+      store,
+      daemonStartService,
+      shouldStartDaemon: () => {
+        events.push("evaluate-daemon-setting");
+        return true;
+      },
+    });
+
+    await Promise.resolve();
+    expect(events).toEqual(["boot", "daemon-start-service"]);
+
+    resolveBoot();
+    await startFinished;
+    expect(events).toEqual([
+      "boot",
+      "daemon-start-service",
+      "evaluate-daemon-setting",
+      "decision:true",
+    ]);
   });
 });
 
@@ -160,11 +99,6 @@ describe("startup blocking policy", () => {
     daemonStartIsRunning: false,
     daemonStartError: null,
   };
-
-  it("starts desktop navigation behind the startup splash until bootstrap state is known", () => {
-    expect(initialStartupBlocker(true)).toEqual({ kind: "managed-daemon-starting" });
-    expect(initialStartupBlocker(false)).toEqual({ kind: "none" });
-  });
 
   it("runs the give-up timer when no startup blocker is active", () => {
     const blocker = resolveStartupBlocker(noBlockerInput);
@@ -196,52 +130,6 @@ describe("startup blocking policy", () => {
         hasGivenUpWaitingForHost: false,
       }),
     ).toBe(false);
-  });
-
-  it("keeps the runtime covered while the desktop daemon settings gate is pending", () => {
-    const input = {
-      ...noBlockerInput,
-      isDesktopRuntime: true,
-      daemonStartGatePending: true,
-    };
-    const blocker = resolveStartupBlocker(input);
-    expect(blocker).toEqual({ kind: "managed-daemon-starting" });
-    expect(
-      shouldMountStartupRuntime({ startupBlocker: blocker, hostRegistryStatus: "ready" }),
-    ).toBe(false);
-    expect(resolveStartupBlocker({ ...input, daemonStartGatePending: false })).toEqual({
-      kind: "none",
-    });
-    expect(resolveStartupBlocker({ ...input, anyOnlineHostServerId: "remote" })).toEqual({
-      kind: "none",
-    });
-  });
-
-  it("keeps the application runtime unmounted until host bootstrap is settled", () => {
-    expect(
-      shouldMountStartupRuntime({
-        startupBlocker: { kind: "managed-daemon-starting" },
-        hostRegistryStatus: "loading",
-      }),
-    ).toBe(false);
-    expect(
-      shouldMountStartupRuntime({
-        startupBlocker: { kind: "none" },
-        hostRegistryStatus: "loading",
-      }),
-    ).toBe(false);
-    expect(
-      shouldMountStartupRuntime({
-        startupBlocker: { kind: "managed-daemon-error", message: "Failed to start" },
-        hostRegistryStatus: "ready",
-      }),
-    ).toBe(false);
-    expect(
-      shouldMountStartupRuntime({
-        startupBlocker: { kind: "none" },
-        hostRegistryStatus: "ready",
-      }),
-    ).toBe(true);
   });
 
   it("unblocks navigation when any host is online", () => {
@@ -289,10 +177,6 @@ describe("resolveStartupRoute", () => {
     workspaceSelectionStatus: "unknown" as const,
     isWorkspaceSelectionLoaded: true,
     hasGivenUpWaitingForHost: false,
-    // Default to a device that already finished the wizard (the backfilled state
-    // for every existing device), so the cases below assert today's routing.
-    hasCompletedSetupWizard: true,
-    isSetupWizardStateLoaded: true,
   };
   const baseHostInput = {
     route: { kind: "host" as const, serverId: "server-saved" },
@@ -413,88 +297,6 @@ describe("resolveStartupRoute", () => {
     ).toEqual({ kind: "redirect", href: "/welcome" });
   });
 
-  it("sends a fresh device to the setup wizard once an online host appears", () => {
-    expect(
-      resolveStartupRoute({
-        ...baseIndexInput,
-        hasCompletedSetupWizard: false,
-        anyOnlineHostServerId: "srv-desktop",
-      }),
-    ).toEqual({ kind: "redirect", href: "/setup" });
-  });
-
-  it("does not send a fresh device to the wizard when only a saved (offline) host exists", () => {
-    // Wizard requires an ONLINE host - its providers step calls useProvidersSnapshot()
-    // which needs a live connection. With only a saved-but-offline host, fall through
-    // to the host route or welcome so the user can reconnect first.
-    expect(
-      resolveStartupRoute({
-        ...baseIndexInput,
-        hasCompletedSetupWizard: false,
-        hosts: [{ serverId: "server-saved" }],
-        hasGivenUpWaitingForHost: true,
-      }),
-    ).toEqual({ kind: "redirect", href: "/h/server-saved" });
-  });
-
-  it("does not run the wizard before restoring a saved workspace when the host is offline", () => {
-    // Wizard requires an ONLINE host. With a saved-but-offline host and a restorable
-    // workspace, go straight to the workspace restore instead of the wizard.
-    expect(
-      resolveStartupRoute({
-        ...baseIndexInput,
-        hasCompletedSetupWizard: false,
-        hosts: [{ serverId: "server-1" }],
-        workspaceSelection: { serverId: "server-1", workspaceId: "workspace-a" },
-        workspaceSelectionStatus: "exists",
-      }),
-    ).toEqual({ kind: "redirect", href: "/h/server-1" });
-  });
-
-  it("runs the wizard before restoring a saved workspace on a fresh device when host is online", () => {
-    expect(
-      resolveStartupRoute({
-        ...baseIndexInput,
-        hasCompletedSetupWizard: false,
-        hosts: [{ serverId: "server-1" }],
-        anyOnlineHostServerId: "server-1",
-        workspaceSelection: { serverId: "server-1", workspaceId: "workspace-a" },
-        workspaceSelectionStatus: "exists",
-      }),
-    ).toEqual({ kind: "redirect", href: "/setup" });
-  });
-
-  it("does not run the wizard when there is no host to configure yet", () => {
-    expect(
-      resolveStartupRoute({
-        ...baseIndexInput,
-        hasCompletedSetupWizard: false,
-        hasGivenUpWaitingForHost: true,
-      }),
-    ).toEqual({ kind: "redirect", href: "/welcome" });
-  });
-
-  it("waits on the splash until the wizard flag has loaded", () => {
-    expect(
-      resolveStartupRoute({
-        ...baseIndexInput,
-        hasCompletedSetupWizard: false,
-        isSetupWizardStateLoaded: false,
-        anyOnlineHostServerId: "srv-desktop",
-      }),
-    ).toEqual({ kind: "splash" });
-  });
-
-  it("skips the wizard for a device that already completed it", () => {
-    expect(
-      resolveStartupRoute({
-        ...baseIndexInput,
-        hasCompletedSetupWizard: true,
-        anyOnlineHostServerId: "srv-desktop",
-      }),
-    ).toEqual({ kind: "redirect", href: "/h/srv-desktop" });
-  });
-
   it("keeps host routes mounted while the host registry is loading", () => {
     expect(
       resolveStartupRoute({
@@ -591,39 +393,6 @@ describe("resolveHostIndexRoute", () => {
         workspaceSelectionStatus: "unknown",
       }),
     ).toEqual("/open-project");
-  });
-
-  it("with appStartScreen 'home' always opens global project selection, even with a restorable workspace", () => {
-    expect(
-      resolveHostIndexRoute({
-        serverId: "server-saved",
-        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
-        workspaceSelectionStatus: "exists",
-        appStartScreen: "home",
-      }),
-    ).toEqual("/open-project");
-  });
-
-  it("with appStartScreen 'dashboard' always opens the stats screen, even with a restorable workspace", () => {
-    expect(
-      resolveHostIndexRoute({
-        serverId: "server-saved",
-        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
-        workspaceSelectionStatus: "exists",
-        appStartScreen: "dashboard",
-      }),
-    ).toEqual("/stats");
-  });
-
-  it("with appStartScreen 'workspaces' (or omitted) preserves the default restore behavior", () => {
-    expect(
-      resolveHostIndexRoute({
-        serverId: "server-saved",
-        workspaceSelection: { serverId: "server-saved", workspaceId: "workspace-a" },
-        workspaceSelectionStatus: "exists",
-        appStartScreen: "workspaces",
-      }),
-    ).toEqual("/h/server-saved/workspace/workspace-a");
   });
 });
 

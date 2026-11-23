@@ -5,12 +5,11 @@ import type { ScheduleFormModel, ScheduleFormState } from "./schedule-form-model
 export function useScheduleFormProviderSnapshot(
   model: ScheduleFormModel,
   state: ScheduleFormState,
+  active = true, // OTTO(schedules): the owned target editor releases provider demand while hidden.
 ) {
   const serverId = state.providerSnapshotRequest?.serverId ?? state.selectedServerId;
-  // An empty cwd fetches the host-scoped ("home") snapshot, so models are
-  // available before a project is picked.
   const cwd = state.providerSnapshotRequest?.cwd ?? state.workingDir;
-  const enabled = state.targetKind === "new-agent" && Boolean(serverId);
+  const enabled = active && state.targetKind === "new-agent" && Boolean(serverId && cwd.trim());
   const snapshot = useProvidersSnapshot(serverId ?? null, {
     cwd,
     enabled,

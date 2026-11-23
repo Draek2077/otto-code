@@ -1,6 +1,6 @@
-import type { DiffBackgroundColors, HighlightStyle } from "./types.js";
+import type { HighlightStyle } from "./types.js";
 
-export const darkHighlightColors: Record<HighlightStyle, string> & DiffBackgroundColors = {
+export const darkHighlightColors: Record<HighlightStyle, string> = {
   keyword: "#ff7b72",
   comment: "#8b949e",
   string: "#a5d6ff",
@@ -21,17 +21,9 @@ export const darkHighlightColors: Record<HighlightStyle, string> & DiffBackgroun
   meta: "#8b949e",
   heading: "#79c0ff",
   link: "#a5d6ff",
-  diffAdded: "rgba(46, 160, 67, 0.15)",
-  diffRemoved: "rgba(248, 81, 73, 0.1)",
-  diffAddedForeground: "#4ade80",
-  diffRemovedForeground: "#ef4444",
-  diffAddedEmphasis: "rgba(46, 160, 67, 0.4)",
-  diffRemovedEmphasis: "rgba(248, 81, 73, 0.35)",
-  diffFormatting: "rgba(210, 168, 255, 0.15)",
-  diffMoved: "#d2a8ff",
 };
 
-export const lightHighlightColors: Record<HighlightStyle, string> & DiffBackgroundColors = {
+export const lightHighlightColors: Record<HighlightStyle, string> = {
   keyword: "#cf222e",
   comment: "#6e7781",
   string: "#0a3069",
@@ -52,12 +44,4 @@ export const lightHighlightColors: Record<HighlightStyle, string> & DiffBackgrou
   meta: "#6e7781",
   heading: "#0550ae",
   link: "#0a3069",
-  diffAdded: "rgba(46, 160, 67, 0.15)",
-  diffRemoved: "rgba(248, 81, 73, 0.1)",
-  diffAddedForeground: "#15803d",
-  diffRemovedForeground: "#b91c1c",
-  diffAddedEmphasis: "rgba(46, 160, 67, 0.4)",
-  diffRemovedEmphasis: "rgba(248, 81, 73, 0.35)",
-  diffFormatting: "rgba(130, 80, 223, 0.1)",
-  diffMoved: "#8250df",
 };

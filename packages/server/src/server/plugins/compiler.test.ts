@@ -2,6 +2,7 @@ import { realpathSync } from "node:fs";
 import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url"; // OTTO(preview): compile the actual built-in entry, not a synthetic substitute.
 import { afterEach, describe, expect, it } from "vitest";
 import {
   compilePlugin,
@@ -11,6 +12,52 @@ import {
 
 const asarEsbuildDir = path.join("Resources", "app.asar", "node_modules", "esbuild");
 const temporaryDirectories: string[] = [];
+it("compiles the actual Visualizer tab, settings and Command Center bridge", async () => {
+  const client = fileURLToPath(
+    new URL("../../../../../plugins/otto-visualizer/index.client.tsx", import.meta.url),
+  );
+  const result = await compilePlugin({ client, server: null });
+  expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-visualizer");
+  expect(result.clientBundle).toContain("Open Visualizer");
+  expect(result.serverBundle).toBeNull();
+}); // OTTO(visualizer)
+it("compiles the actual Architectural Views navigation and workspace bridge", async () => {
+  const client = fileURLToPath(
+    new URL("../../../../../plugins/otto-architectural-views/index.client.tsx", import.meta.url),
+  );
+  const result = await compilePlugin({ client, server: null });
+  expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-architectural-views");
+  expect(result.clientBundle).toContain("Open Architecture");
+  expect(result.serverBundle).toBeNull();
+}); // OTTO(architectural-views)
+it("compiles the real Schedules settings contribution through its client-only bridge", async () => {
+  const client = fileURLToPath(
+    new URL("../../../../../plugins/otto-schedules/index.client.tsx", import.meta.url),
+  );
+  const result = await compilePlugin({ client, server: null });
+  expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-schedules");
+  expect(result.clientBundle).toContain("Schedules");
+  expect(result.serverBundle).toBeNull();
+}); // OTTO(schedules)
+it("compiles the actual Artifacts navigation, workspace and settings contributions", async () => {
+  const client = fileURLToPath(
+    new URL("../../../../../plugins/otto-artifacts/index.client.tsx", import.meta.url),
+  );
+  const result = await compilePlugin({ client, server: null });
+  expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-artifacts");
+  expect(result.clientBundle).toContain("Open Artifacts");
+  expect(result.serverBundle).toBeNull();
+}); // OTTO(artifacts)
+
+it("compiles the real Preview built-in client with its host-provided UI bridge", async () => {
+  const client = fileURLToPath(
+    new URL("../../../../../plugins/otto-browser/index.client.tsx", import.meta.url),
+  );
+  const result = await compilePlugin({ client, server: null });
+  expect(result.clientBundle).toContain("Preview Servers");
+  expect(result.clientBundle).toContain("@getpaseo/plugin/client/otto-preview");
+  expect(result.serverBundle).toBeNull();
+}); // OTTO(preview)
 
 afterEach(async () => {
   await Promise.all(
@@ -83,7 +130,7 @@ async function createSplitPlugin(): Promise<{
 }> {
   // Keep the platform's original spelling (including Windows short names) in symlink
   // targets. Only diagnostic expectations use canonical paths.
-  const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-compiler-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-compiler-"));
   temporaryDirectories.push(directory);
   await Promise.all([
     mkdir(path.join(directory, "client")),
@@ -130,7 +177,7 @@ export default function contribute(server) {
 }
 
 async function createRootAlias(directory: string): Promise<string> {
-  const aliases = await mkdtemp(path.join(tmpdir(), "otto-plugin-root-alias-"));
+  const aliases = await mkdtemp(path.join(tmpdir(), "paseo-plugin-root-alias-"));
   temporaryDirectories.push(aliases);
   const rootAlias = path.join(aliases, "plugin");
   await symlink(directory, rootAlias, process.platform === "win32" ? "junction" : "dir");
@@ -138,29 +185,63 @@ async function createRootAlias(directory: string): Promise<string> {
 }
 
 describe("plugin runtime entries", () => {
-  it("records upstream provider identity from type-only imports", async () => {
+  it.each([
+    'import type { AgentTimelineItem, ToolCallDetail } from "@getpaseo/protocol/agent-types"; export type Detail = ToolCallDetail; export type Item = AgentTimelineItem;',
+    'import { type AgentTimelineItem } from "@getpaseo/protocol/agent-types"; export type Item = AgentTimelineItem;',
+    'export type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";',
+    'export type Item = import("@getpaseo/protocol/agent-types").AgentTimelineItem;',
+    'export type { AgentAttachment } from "@getpaseo/protocol/messages";',
+  ])("compiles protocol types without local dependencies: %s", async (typeSource) => {
+    const entries = await createSplitPlugin();
+    await writeFile(
+      path.join(entries.directory, "shared", "labels.ts"),
+      `${typeSource}\nexport const clientLabel = "Client contribution"; export const serverLabel = "Server contribution";`,
+    );
+
+    const result = await compilePlugin(entries);
+
+    expect(result.clientBundle).toContain("Client contribution");
+    expect(result.serverBundle).toContain("Server contribution");
+    expect(result.clientBundle).not.toContain("@getpaseo/protocol");
+    expect(result.serverBundle).not.toContain("@getpaseo/protocol");
+  });
+
+  it("still requires local dependencies for protocol runtime imports", async () => {
     const entries = await createSplitPlugin();
     await writeFile(
       entries.server,
-      `import type { PluginServerContext } from "@getpaseo/plugin/server";
-export default function contribute(server: PluginServerContext) { return () => {}; }`,
+      'import { TOOL_CALL_ICON_NAMES } from "@getpaseo/protocol/agent-types"; export default () => TOOL_CALL_ICON_NAMES;',
     );
-    const compiled = await compilePlugin(entries);
-    const factory = globalThis.eval(compiled.serverBundle!);
-    const exports = factory(() => {
-      throw new Error("A type-only import must be erased");
-    });
-    expect(exports.__ottoPluginSdkNamespace).toBe("paseo");
+
+    await expect(compilePlugin(entries)).rejects.toThrow(
+      'Could not resolve "@getpaseo/protocol/agent-types"',
+    );
+  });
+
+  it("still rejects missing third-party type dependencies", async () => {
+    const entries = await createSplitPlugin();
+    await writeFile(
+      entries.client,
+      'import type { Item } from "missing-types"; export default (item: Item) => item;',
+    );
+
+    await expect(compilePlugin(entries)).rejects.toThrow(
+      'Could not resolve type dependency "missing-types"',
+    );
   });
 
   it.each([
     "react",
     "react/jsx-runtime",
     "react-native",
-    "@otto-code/plugin/client",
-    "@otto-code/plugin/client/ui",
     "@getpaseo/plugin/client",
     "@getpaseo/plugin/client/ui",
+    "@getpaseo/plugin/client/otto-brain", // OTTO(brain-ui): keep the renderer out of server bundles.
+    "@getpaseo/plugin/client/otto-preview", // OTTO(preview): app-only UI bridge.
+    "@getpaseo/plugin/client/otto-schedules", // OTTO(schedules): no app presentation in server code.
+    "@getpaseo/plugin/client/otto-visualizer", // OTTO(visualizer): no renderer in a server plugin.
+    "@getpaseo/plugin/client/otto-widgets", // OTTO(widgets): the sandboxed renderer belongs to the app.
+    "@getpaseo/plugin/client/otto-suggested-tasks", // OTTO(suggested-tasks): chat actions belong to the app.
   ])("rejects %s from server code", async (specifier) => {
     const entries = await createSplitPlugin();
     await writeFile(
@@ -171,12 +252,11 @@ export default function contribute(server: PluginServerContext) { return () => {
   });
 
   it.each([
-    "@otto-code/plugin/server",
-    "@otto-code/plugin/server/provider",
-    "@otto-code/plugin/server/acp",
     "@getpaseo/plugin/server",
     "@getpaseo/plugin/server/provider",
     "@getpaseo/plugin/server/acp",
+    "@getpaseo/plugin/server/otto-kanban", // OTTO(kanban): no host library in clients.
+    "@getpaseo/plugin/server/otto-preview", // OTTO(preview): no execution parser in clients.
   ])("rejects %s from client code", async (specifier) => {
     const entries = await createSplitPlugin();
     await writeFile(
@@ -190,8 +270,8 @@ export default function contribute(server: PluginServerContext) { return () => {
     "react",
     "node:fs",
     "fs",
-    "@otto-code/plugin/client",
-    "@otto-code/plugin/server",
+    "@getpaseo/plugin/client",
+    "@getpaseo/plugin/server",
     "../client/surface",
     "../server/handler",
   ])("rejects %s from shared code", async (specifier) => {
@@ -206,7 +286,7 @@ export default function contribute(server: PluginServerContext) { return () => {
   it.each([
     { target: "client", dependency: "react" },
     { target: "server", dependency: "node:fs" },
-    { target: "server", dependency: "@otto-code/plugin/server/provider" },
+    { target: "server", dependency: "@getpaseo/plugin/server/provider" },
   ] as const)(
     "rejects a shared dependency reaching $dependency in the $target bundle",
     async ({ target, dependency }) => {
@@ -232,10 +312,10 @@ export default function contribute(server: PluginServerContext) { return () => {
   );
 
   it.each([
-    'import type { PluginClientContext } from "@otto-code/plugin/client"; export type Context = PluginClientContext;',
-    'export type { PluginClientContext } from "@otto-code/plugin/client";',
-    'export type Context = import("@otto-code/plugin/client").PluginClientContext;',
-    'import { type PluginClientContext } from "@otto-code/plugin/client"; export type Context = PluginClientContext;',
+    'import type { PluginClientContext } from "@getpaseo/plugin/client"; export type Context = PluginClientContext;',
+    'export type { PluginClientContext } from "@getpaseo/plugin/client";',
+    'export type Context = import("@getpaseo/plugin/client").PluginClientContext;',
+    'import { type PluginClientContext } from "@getpaseo/plugin/client"; export type Context = PluginClientContext;',
     'import type { ComponentType } from "react"; export type Component = ComponentType;',
   ])("rejects runtime-owned types in shared code: %s", async (typeSource) => {
     const entries = await createSplitPlugin();
@@ -346,7 +426,7 @@ export type Value = string;`,
       );
       await writeFile(
         referencedFile,
-        'export type { PluginClientContext } from "@otto-code/plugin/client";',
+        'export type { PluginClientContext } from "@getpaseo/plugin/client";',
       );
       await writeFile(
         path.join(entries.directory, "shared/labels.ts"),
@@ -397,16 +477,16 @@ export type Value = string;`,
     });
     await writeFile(
       path.join(entries.directory, "shared/types.ts"),
-      'export type { PluginClientContext as Value } from "@otto-code/plugin/client";',
+      'export type { PluginClientContext as Value } from "@getpaseo/plugin/client";',
     );
     await expect(compilePlugin(entries)).rejects.toThrow("plugin shared");
   });
 
   it.each([
-    { specifier: "@otto-code/plugin/client", importKind: "import type" },
-    { specifier: "@otto-code/plugin/server", importKind: "import type" },
-    { specifier: "@otto-code/plugin/client", importKind: "import" },
-    { specifier: "@otto-code/plugin/server", importKind: "import" },
+    { specifier: "@getpaseo/plugin/client", importKind: "import type" },
+    { specifier: "@getpaseo/plugin/server", importKind: "import type" },
+    { specifier: "@getpaseo/plugin/client", importKind: "import" },
+    { specifier: "@getpaseo/plugin/server", importKind: "import" },
   ])(
     "rejects transitive declaration dependencies on $specifier through $importKind",
     async ({ specifier, importKind }) => {
@@ -439,7 +519,7 @@ export type Value = string;`,
     const entries = await createSplitPlugin();
     await writeFile(
       path.join(entries.directory, "shared/types.ts"),
-      'export type { PluginClientContext } from "@otto-code/plugin/client";',
+      'export type { PluginClientContext } from "@getpaseo/plugin/client";',
     );
     await writeFile(
       path.join(entries.directory, "shared/labels.ts"),
@@ -449,13 +529,12 @@ export type Value = string;`,
   });
 
   it.each([
-    "@otto/plugin",
     "@paseo/plugin",
-    "@otto-code/plugin/react-native",
-    "@otto-code/plugin/ui",
-    "@otto-code/plugin/provider",
-    "@otto-code/plugin/acp",
-    "@otto-code/plugin/host",
+    "@getpaseo/plugin/react-native",
+    "@getpaseo/plugin/ui",
+    "@getpaseo/plugin/provider",
+    "@getpaseo/plugin/acp",
+    "@getpaseo/plugin/host",
   ])("rejects retired entry %s", async (specifier) => {
     const entries = await createSplitPlugin();
     await writeFile(
@@ -475,6 +554,33 @@ export type Value = string;`,
     expect(serverBundle).toContain("Server contribution");
     expect(serverBundle).not.toContain("Client contribution");
   });
+
+  it.each(["main", "module"])(
+    "builds a dependency that declares only %s into both runtimes",
+    async (field) => {
+      const entries = await createSplitPlugin();
+      const dependency = path.join(entries.directory, "node_modules/legacy-entry");
+      await mkdir(dependency, { recursive: true });
+      await writeFile(
+        path.join(dependency, "package.json"),
+        JSON.stringify({ name: "legacy-entry", [field]: "lib/entry.js" }),
+      );
+      await mkdir(path.join(dependency, "lib"));
+      await writeFile(
+        path.join(dependency, "lib/entry.js"),
+        'exports.label = "legacy entry contribution";',
+      );
+      await writeFile(
+        path.join(entries.directory, "shared/labels.ts"),
+        'import { label } from "legacy-entry"; export const clientLabel = label; export const serverLabel = label;',
+      );
+
+      const { clientBundle, serverBundle } = await compilePlugin(entries);
+
+      expect(clientBundle).toContain("legacy entry contribution");
+      expect(serverBundle).toContain("legacy entry contribution");
+    },
+  );
 
   it("uses the automatic JSX runtime without a React import", async () => {
     const entries = await createSplitPlugin();
@@ -548,7 +654,7 @@ export default function contribute() { void value; return () => undefined; }`,
   });
 
   it("rejects relative imports that escape the plugin root", async () => {
-    const parent = await mkdtemp(path.join(tmpdir(), "otto-plugin-compiler-parent-"));
+    const parent = await mkdtemp(path.join(tmpdir(), "paseo-plugin-compiler-parent-"));
     temporaryDirectories.push(parent);
     const pluginDirectory = path.join(parent, "plugin");
     const server = path.join(pluginDirectory, "index.server.ts");
@@ -569,7 +675,7 @@ export default function contribute() { void secret; return () => undefined; }`,
 
   it("rejects absolute imports from outside the plugin root", async () => {
     const entries = await createSplitPlugin();
-    const outsideDirectory = await mkdtemp(path.join(tmpdir(), "otto-plugin-outside-"));
+    const outsideDirectory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-outside-"));
     temporaryDirectories.push(outsideDirectory);
     const outside = path.join(outsideDirectory, "secret.ts");
     await writeFile(outside, `export const secret = "outside";`);
@@ -585,7 +691,7 @@ export default function contribute() { void secret; return () => undefined; }`,
   });
 
   it("rejects plugin-authored relative imports that escape into node_modules", async () => {
-    const parent = await mkdtemp(path.join(tmpdir(), "otto-plugin-node-modules-parent-"));
+    const parent = await mkdtemp(path.join(tmpdir(), "paseo-plugin-node-modules-parent-"));
     temporaryDirectories.push(parent);
     const pluginDirectory = path.join(parent, "plugin");
     const server = path.join(pluginDirectory, "index.server.ts");
@@ -802,7 +908,7 @@ export default function contribute() { void handler; return () => undefined; }`,
 
   it("allows linked dependencies to resolve within their own package root", async () => {
     const entries = await createSplitPlugin();
-    const linkedPackage = await mkdtemp(path.join(tmpdir(), "otto-plugin-linked-dependency-"));
+    const linkedPackage = await mkdtemp(path.join(tmpdir(), "paseo-plugin-linked-dependency-"));
     temporaryDirectories.push(linkedPackage);
     await mkdir(path.join(entries.directory, "node_modules"));
     await Promise.all([
@@ -863,7 +969,7 @@ export default function contribute() { void secret; return () => undefined; }`,
 
   it("does not let remembered linked roots hide plugin-local runtime boundaries", async () => {
     const entries = await createSplitPlugin();
-    const linkedPackage = await mkdtemp(path.join(tmpdir(), "otto-plugin-linked-boundary-"));
+    const linkedPackage = await mkdtemp(path.join(tmpdir(), "paseo-plugin-linked-boundary-"));
     temporaryDirectories.push(linkedPackage);
     await mkdir(path.join(entries.directory, "node_modules"));
     await Promise.all([

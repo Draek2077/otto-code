@@ -1,52 +1,43 @@
-import { isSessionRpcAllowed } from "./session/otto-rpc-scopes.js";
-import { appShowsHostedTabs } from "./browser-tools/hosted-tab-support.js";
-import { browserErrorText } from "./browser-tools/page-load-errors.js";
-import { RemoteBrowserManager } from "./browser-tools/remote-browser-manager.js";
-import type { GoogleConnectorService } from "./connectors/google-connector-service.js";
-import { AgentRequests } from "./agent/requests/index.js";
-import { getHostedConnectorAuthorization } from "./connectors/hosted-connector-authorization.js";
+import { terminalAvailable } from "./otto/terminal/capabilities.js"; // OTTO(terminal)
+import { gitFetchAvailable } from "./otto/workspace-git/capabilities.js"; // OTTO(git-fetch)
+import { activityAvailable } from "./otto/activity/capability.js"; // OTTO(activity)
+import { editorAvailable } from "./otto/editor/capabilities.js"; // OTTO(editor)
+import { stat } from "node:fs/promises";
+import { speechAvailable } from "./otto/speech/capabilities.js"; // OTTO(speech)
+import { ottoBrowserCapabilities } from "./otto/browser/capabilities.js"; // OTTO(browser-history)
+import { ottoArtifactsAvailable } from "./otto/artifacts/capabilities.js"; // OTTO(artifacts)
+import { architecturalViewsAvailable } from "./otto/architectural-views/capabilities.js"; // OTTO(architectural-views)
+import { ottoWorkflowsAvailable } from "./otto/workflows/capabilities.js"; // OTTO(workflows)
+import { scheduleTargetsAvailable } from "./otto/schedules/capabilities.js"; // OTTO(schedules)
+import { ottoBitbucketAvailable } from "../services/otto/bitbucket/available.js"; // OTTO(bitbucket)
+// OTTO(protocol): preserve Otto 0.9 clients without renaming Paseo internals.
+import {
+  encodeOttoServerMessage,
+  normalizeOttoClientMessage,
+  usesLegacyOttoRpcNames,
+} from "@getpaseo/protocol/otto/wire-compatibility";
+import type { CreationSnapshot } from "@getpaseo/protocol/messages";
+import { CreationService } from "./creation/index.js";
+import { MessageReceipts } from "./message-receipts/index.js";
 import { WebSocket, WebSocketServer } from "ws";
 import type { IncomingMessage, Server as HTTPServer } from "http";
 import { join } from "path";
-import { hostname as getHostname } from "node:os";
+import { getHostName } from "./host-name.js";
 import { randomUUID } from "node:crypto";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import type { AgentManager, AgentMetricsSnapshot } from "./agent/agent-manager.js";
 import type { AgentStorage } from "./agent/agent-storage.js";
 import type { DownloadTokenStore } from "./file-download/token-store.js";
 import type { TerminalManager } from "../terminal/terminal-manager.js";
-import { detectWindowsTerminalShells } from "../terminal/windows-terminal-shells.js";
 import type pino from "pino";
 import type { ProjectRegistry, WorkspaceRegistry } from "./workspace-registry.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import type { ScheduleService } from "./schedule/service.js";
-import type { WorkflowService } from "./workflow/workflow-service.js";
-import type { GraphStore } from "./workflow/graph-store.js";
-import type { GraphSharingService } from "./workflow/graph-sharing-service.js";
-import type { NodeOutputStore } from "./workflow/node-output.js";
-import type { ProfileMemoryService } from "./agent/profile-memory/profile-memory-service.js";
-import type { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
-import type { ArtifactService } from "./artifact/artifact-service.js";
-import type { ProjectKnowledgeStoreResolver } from "./agent/project-knowledge/project-knowledge-store-resolver.js";
-import type { PromptTemplateStore } from "./workflow/prompt-template-store.js";
 import type { CheckoutDiffManager, CheckoutDiffMetrics } from "./checkout-diff-manager.js";
-import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore, MutableDaemonConfig } from "./daemon-config-store.js";
-import type { ConnectorOAuthBroker } from "./connectors/connector-oauth.js";
-import { CommunicationsService } from "./communications/communications-service.js";
-import { ZoomTeamChatManagedAuthorizationBroker } from "./communications/zoom-team-chat-managed-authorization.js";
-import { IntegrationAuthorizationCatalog } from "./integration-authorization/integration-authorization-catalog.js";
-import { IntegrationBrowserAuthorizationService } from "./integration-authorization/browser-authorization-service.js";
-import { IntegrationAuthorizationService } from "./integration-authorization/integration-authorization-service.js";
-
-// Normalize an optional constructor dependency to null. A function rather than
-// an inline `?? null` per field: this constructor takes forty-odd positional
-// parameters and each inline default counts against its complexity budget.
-function orNull<T>(value: T | null | undefined): T | null {
-  return value ?? null;
-}
 import {
   type ServerInfoStatusPayload,
+  type ScriptStatusUpdateMessage,
   type SessionOutboundMessage,
   type WorkspaceSetupSnapshot,
   type WSHelloMessage,
@@ -57,12 +48,9 @@ import {
   type WSOutboundMessage,
   wrapSessionMessage,
 } from "./messages.js";
-import {
-  asUint8Array,
-  decodeBinaryFrame,
-  encodeBrowserFrame,
-} from "@otto-code/protocol/binary-frames/index";
-import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
+import { asUint8Array, decodeBinaryFrame } from "@getpaseo/protocol/binary-frames/index";
+import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
+import { MAX_WEBSOCKET_MESSAGE_BYTES } from "@getpaseo/protocol/websocket-message-limit";
 import type { HostnamesConfig } from "./hostnames.js";
 import { isHostnameAllowed } from "./hostnames.js";
 import {
@@ -78,24 +66,14 @@ import type { AgentProvider } from "./agent/agent-sdk-types.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
 import { attachMutableProviderConfigOwner } from "./agent/mutable-provider-config-owner.js";
 import type {
-  ActivityIncrementFn,
-  ActivityRollups,
-} from "./activity-stats/activity-stats-store.js";
-import type { UsageLogPage, UsageLogPageQuery } from "./activity-stats/usage-log-store.js";
-import type {
   WorkspaceGitRuntimeSnapshot,
   WorkspaceGitService,
   WorkspaceGitServiceMetrics,
 } from "./workspace-git-service.js";
 import type { GitCommandRuntimeMetricsSnapshot } from "../utils/git-command-runtime-metrics.js";
 import { snapshotGitCommandRuntimeMetrics } from "../utils/run-git-command.js";
-import {
-  snapshotWorkspaceDescriptorMetrics,
-  type WorkspaceDescriptorMetricsSnapshot,
-} from "./workspace-directory.js";
 import { createPluginClientId, isPluginClientId } from "./plugins/plugin-session-identity.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
-import type { AgentAutoTitle } from "./agent/agent-auto-title.js";
 import { deriveProjectSlug } from "./workspace-git-metadata.js";
 import {
   createPushNotifications,
@@ -103,10 +81,6 @@ import {
   type PushNotificationSender,
 } from "./push/index.js";
 import type { ScriptHealthState } from "./script-health-monitor.js";
-import type { DevServerManager } from "./preview/dev-server-manager.js";
-import type { BrainManager } from "./brain/brain-manager.js";
-import { attachBrainConfigOwner } from "./brain/brain-config-owner.js";
-import type { BrainOpsManager } from "./brain/brain-ops-manager.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
@@ -114,43 +88,35 @@ import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
 import {
   computeNotificationPlan,
   isPushEligibleAttentionReason,
-  isTargetActivelyWatched,
   type ClientPresenceState,
 } from "./agent-attention-policy.js";
 import {
   buildAgentAttentionNotificationPayload,
   findLatestPermissionRequest,
-} from "@otto-code/protocol/agent-attention-notification";
-import type { GitHostingResolver } from "../services/git-hosting/resolver.js";
+} from "@getpaseo/protocol/agent-attention-notification";
 import { createGitHubService } from "../services/github-service.js";
 import type { ForgeService } from "../services/forge-service.js";
 import {
+  extractHttpBearerToken,
   extractWsBearerProtocol,
   extractWsBearerToken,
-  isBearerTokenValid,
+  isBearerTokenValidAsync,
   type DaemonAuthConfig,
 } from "./auth.js";
+import { resolveSessionAdmission } from "./session-admission-auth.js";
 import {
   WebSocketRuntimeMetricsWindow,
   type WebSocketRuntimeCounters,
   type WebSocketRuntimeDiagnosticSnapshot,
 } from "./websocket/runtime-metrics.js";
-import { ProviderUsageService } from "../services/quota-fetcher/service.js";
 import { getProcessMemoryDiagnostics, getProcessUptimeSeconds } from "./process-diagnostics.js";
 import {
   CLIENT_SHUTDOWN_RPC_REASON,
   normalizeClientRestartRpcReason,
 } from "./lifecycle-reasons.js";
-import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
-import type { BrowserAutomationExecuteResponse } from "@otto-code/protocol/browser-automation/rpc-schemas";
-import {
-  BrowserAutomationHostCapabilitySchema,
-  type BrowserAutomationHostCapability,
-} from "@otto-code/protocol/browser-automation/capabilities";
+import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
+
 import type { BrowserToolsBroker } from "./browser-tools/broker.js";
-import { LspService, type LspSettings } from "./lsp/service.js";
-import { SolutionService } from "./solution-model/service.js";
-import { killAllSharedDotnetProcesses } from "./dotnet-process-registry.js";
 import type { DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import { DirectorySyncService } from "./directory-sync/index.js";
 import { OWNER_PERMISSIONS, type DaemonPermission } from "./authorization/index.js";
@@ -177,7 +143,6 @@ export interface ExternalSocketMetadata {
 export interface SessionAdmission {
   principalId: string;
   permissions: readonly DaemonPermission[];
-  scopes: readonly string[];
   hubExecutionAgents?: HubExecutionAgents;
 }
 
@@ -185,7 +150,8 @@ interface PendingConnection {
   connectionLogger: pino.Logger;
   helloTimeout: ReturnType<typeof setTimeout> | null;
   identity: WebSocketConnectionIdentity;
-  admission: SessionAdmission;
+  admission: SessionAdmission | null;
+  authenticating: boolean;
 }
 
 interface WebSocketConnectionIdentity {
@@ -214,8 +180,7 @@ interface WebSocketServerConfig {
   startPaused?: boolean;
 }
 
-type WebSocketRuntimeMetrics = SessionRuntimeMetrics &
-  CheckoutDiffMetrics & { workspaceDescriptor: WorkspaceDescriptorMetricsSnapshot };
+type WebSocketRuntimeMetrics = SessionRuntimeMetrics & CheckoutDiffMetrics;
 interface GitRuntimeMetrics {
   commands: GitCommandRuntimeMetricsSnapshot;
   workspaceService: WorkspaceGitServiceMetrics;
@@ -254,7 +219,7 @@ function createFallbackWorkspaceGitSnapshot(cwd: string): WorkspaceGitRuntimeSna
       mainRepoRoot: null,
       currentBranch: null,
       remoteUrl: null,
-      isOttoOwnedWorktree: false,
+      isPaseoOwnedWorktree: false,
       isDirty: null,
       baseRef: null,
       aheadBehind: null,
@@ -263,7 +228,6 @@ function createFallbackWorkspaceGitSnapshot(cwd: string): WorkspaceGitRuntimeSna
       behindOfOrigin: null,
       hasRemote: false,
       diffStat: null,
-      workingTreeDiffStat: null,
     },
     forge: {
       featuresEnabled: false,
@@ -282,7 +246,6 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     onSnapshotUpdated: () => ({
       unsubscribe: () => {},
     }),
-    setActiveWorkspace: () => {},
     peekSnapshot: () => null,
     getCheckout: async (cwd: string) => ({
       cwd,
@@ -290,16 +253,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
       currentBranch: null,
       remoteUrl: null,
       worktreeRoot: null,
-      isOttoOwnedWorktree: false,
-      mainRepoRoot: null,
-    }),
-    getCheckoutLite: async (cwd: string) => ({
-      cwd,
-      isGit: false,
-      currentBranch: null,
-      remoteUrl: null,
-      worktreeRoot: null,
-      isOttoOwnedWorktree: false,
+      isPaseoOwnedWorktree: false,
       mainRepoRoot: null,
     }),
     getSnapshot: async (cwd: string) => createFallbackWorkspaceGitSnapshot(cwd),
@@ -310,6 +264,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     suggestBranchesForCwd: async () => [],
     listStashes: async () => [],
     listWorktrees: async () => [],
+    invalidateWorktrees: () => {},
     getProjectSlug: async (cwd: string) => {
       const snapshot = createFallbackWorkspaceGitSnapshot(cwd);
       return deriveProjectSlug(cwd, snapshot.git.isGit ? snapshot.git.remoteUrl : null);
@@ -318,8 +273,6 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     resolveDefaultBranch: async () => "main",
     resolveRepoRemoteUrl: async () => null,
     refresh: async () => {},
-    fetch: async () => {},
-    setFetchPolicy: () => {},
     requestWorkingTreeWatch: async () => ({
       repoRoot: null,
       unsubscribe: () => {},
@@ -327,7 +280,6 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
     scheduleRefreshForCwd: () => {},
     onWorkspaceStateMayHaveChanged: () => {},
     invalidateForge: () => {},
-    invalidateAuxiliaryReads: () => {},
     getMetrics: () => ({
       workspaceTargetCount: 0,
       workspaceListenerCount: 0,
@@ -352,6 +304,7 @@ function createFallbackWorkspaceGitService(): WorkspaceGitService {
         nativeTrackedFileCount: 0,
         pendingEventCount: 0,
         pendingReconciliationWorkCount: 0,
+        pendingClassificationCount: 0,
         reconciliationInFlightCount: 0,
         reconciliationCount: 0,
         scopedReconciliationCount: 0,
@@ -386,13 +339,6 @@ function createNoopProjectRegistry(): ProjectRegistry {
       displayName: input.displayName,
       projectKey: input.projectKey ?? null,
       customName: null,
-      kanban: null,
-      knowledgeLocation: null,
-      knowledgeDirectoryName: null,
-      artifactLocation: null,
-      artifactDirectoryName: null,
-      workflowLocation: null,
-      workflowDirectoryName: null,
       customIconRevision: null,
       createdAt: input.timestamp,
       updatedAt: input.timestamp,
@@ -494,15 +440,6 @@ function bufferFromWsData(data: Buffer | ArrayBuffer | Buffer[] | string): Buffe
   return Buffer.from(data);
 }
 
-function getBrowserHostCapability(
-  capabilities: Record<string, unknown> | null,
-): BrowserAutomationHostCapability | null {
-  const parsed = BrowserAutomationHostCapabilitySchema.safeParse(
-    capabilities?.[CLIENT_CAPS.browserHost],
-  );
-  return parsed.success ? parsed.data : null;
-}
-
 export interface WebSocketLike {
   readyState: number;
   bufferedAmount?: number;
@@ -517,7 +454,6 @@ export interface WebSocketLike {
 }
 
 interface SessionConnectionBase {
-  scopes: readonly string[];
   session: Session;
   principalId: string;
   sessionKey: string;
@@ -540,26 +476,17 @@ interface PluginSessionConnection extends SessionConnectionBase {
 
 type SessionConnection = ReconnectableSessionConnection | PluginSessionConnection;
 
-interface BrowserToolsRegistration {
-  capabilitySignature: string;
-  unregister: () => void;
-}
-
 interface SocketSessionOptions {
   clientId: string;
   appVersion: string | null;
   clientCapabilities: Record<string, unknown> | null;
   permissions: readonly DaemonPermission[];
-  scopes: readonly string[];
   connectionLogger: pino.Logger;
   onMessage: (message: SessionOutboundMessage) => void;
-  // Otto fans daemon-global state (project metadata) to every session, not just
-  // the one that asked. Upstream has no equivalent.
-  broadcastToAllSessions?: (message: SessionOutboundMessage) => void;
   onMessageToSource?: (source: object, message: SessionOutboundMessage) => void;
   onBinaryMessage?: (frame: Uint8Array) => void;
   onBinaryMessageToSource?: (source: object, frame: Uint8Array) => Promise<void>;
-  getTransportBufferedAmount?: () => number | null;
+  getTransportBufferedAmount?: (source?: object) => number | null;
   onLifecycleIntent?: (intent: SessionLifecycleIntent) => void;
   hubExecutionAgents?: HubExecutionAgents;
   hubRelationships?: HubRelationshipManagement;
@@ -580,17 +507,9 @@ const WS_CLOSE_INCOMPATIBLE_PROTOCOL = 4003;
 const WS_CLOSE_SERVER_SHUTDOWN = 1001;
 const WS_PROTOCOL_VERSION = 1;
 const WS_RUNTIME_METRICS_FLUSH_MS = 30_000;
-/**
- * How often idle language servers are checked for expiry. The pool deliberately holds no
- * timers - every decision reads an injected clock so the lifecycle is testable without
- * waiting on wall time - so the daemon owns the tick. Well under the shortest allowance
- * (the 2-minute background idle) so the setting means roughly what it says.
- */
-const LSP_IDLE_REAP_INTERVAL_MS = 30_000;
 const OWNER_SESSION_ADMISSION: SessionAdmission = {
   principalId: "owner",
   permissions: OWNER_PERMISSIONS,
-  scopes: ["*"],
 };
 
 export class MissingDaemonVersionError extends Error {
@@ -600,25 +519,9 @@ export class MissingDaemonVersionError extends Error {
   }
 }
 
-function requireDaemonVersion(value: string | undefined): string {
-  if (typeof value !== "string" || value.trim().length === 0) {
-    throw new MissingDaemonVersionError();
-  }
-  return value.trim();
-}
-
 interface RequiredWebSocketServices {
   scheduleService: ScheduleService;
   checkoutDiffManager: CheckoutDiffManager;
-}
-
-// Normalizes the optional orchestration pair (projects/orchestration-graphs)
-// outside the constructor to keep it under the complexity ceiling.
-function resolveOrchestrationServices(
-  runService: WorkflowService | null | undefined,
-  graphStore: GraphStore | null | undefined,
-): { runService: WorkflowService | null; graphStore: GraphStore | null } {
-  return { runService: runService ?? null, graphStore: graphStore ?? null };
 }
 
 function requireWebSocketServices(params: {
@@ -646,66 +549,34 @@ export class VoiceAssistantWebSocketServer {
   private readonly socketIdentities: Map<WebSocketLike, WebSocketConnectionIdentity> = new Map();
   private readonly externalSessionsByKey: Map<string, ReconnectableSessionConnection> = new Map();
   private readonly pluginSocketIds = new WeakMap<WebSocketLike, string>();
+  // OTTO(protocol): RPC dialect belongs to the requesting socket, not a shared session.
+  private readonly legacyOttoSockets = new WeakSet<WebSocketLike>();
   private readonly pluginSocketCleanup = new WeakMap<WebSocketLike, () => void>();
   private readonly serverId: string;
   private readonly daemonVersion: string;
   private readonly daemonRuntimeConfig: DaemonRuntimeConfig | undefined;
   private readonly agentManager: AgentManager;
   private readonly agentStorage: AgentStorage;
-  private readonly agentRequests: AgentRequests;
+  private readonly messageReceipts: MessageReceipts;
+  private readonly creationService: CreationService;
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly workspaceLabelService: WorkspaceLabelService | null;
   private readonly scheduleService: ScheduleService;
-  private readonly runService: WorkflowService | null;
-  private readonly graphStore: GraphStore | null;
-  private graphSharingService: GraphSharingService | null = null;
-  // Late-wired (setNodeOutputStore) rather than another constructor
-  // positional: it is one in-memory side channel for graph runs, and every
-  // session reads the same instance.
-  private nodeOutputStore: NodeOutputStore | null = null;
-  private promptTemplateStore: PromptTemplateStore | null = null;
-  // Late-wired (setBrainManager): the daemon-managed local AI host. One instance
-  // per daemon; every session reads the same one for the brain.* RPCs.
-  private brainManager: BrainManager | null = null;
-  // Late-wired (setBrainOpsManager): drives the brain's model/runtime verbs and
-  // long-running jobs. Shared across sessions like brainManager.
-  private brainOpsManager: BrainOpsManager | null = null;
   private readonly checkoutDiffManager: CheckoutDiffManager;
-  private readonly gitHostingResolver: GitHostingResolver | null;
   private readonly github: ForgeService;
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly workspaceAutoName: WorkspaceAutoName;
-  // Daemon-wide shared AgentAutoTitle (bootstrap-owned); handed to every
-  // Session so auto-titling state is never split across instances. Null only
-  // in test harnesses that predate the parameter.
-  private readonly agentAutoTitle: AgentAutoTitle | null;
   private readonly downloadTokenStore: DownloadTokenStore;
-  private readonly lspService: LspService;
-  private readonly solutionService: SolutionService;
-  private readonly ottoHome: string;
+  private readonly paseoHome: string;
+  private readonly passwordHash: string | undefined;
+  private readonly credentialSource: DaemonAuthConfig | undefined;
   private readonly worktreesRoot: string | undefined;
   private readonly daemonConfigStore: DaemonConfigStore;
-  private readonly connectorOAuthBroker: ConnectorOAuthBroker | null;
-  private readonly communicationsService: CommunicationsService;
-  private readonly integrationAuthorization: IntegrationAuthorizationService | null;
-  private readonly integrationAuthorizationCatalog: IntegrationAuthorizationCatalog;
-  private readonly integrationBrowserAuthorization: IntegrationBrowserAuthorizationService | null;
-  private readonly zoomTeamChatAuthorization: ZoomTeamChatManagedAuthorizationBroker | null;
   private readonly pushNotifications: PushNotifications;
   private readonly pushNotificationSender: PushNotificationSender;
   private readonly mcpBaseUrl: string | null;
   private speech!: SpeechService | null;
-  private getPersonalityStatsFn:
-    | (() => Record<string, number> | Promise<Record<string, number>>)
-    | null = null;
-  private personalityMemoryService: ProfileMemoryService | null = null;
-  private projectKnowledgeService: ProjectKnowledgeService | null = null;
-  private projectKnowledgeStoreResolver: ProjectKnowledgeStoreResolver | null = null;
-  private artifactService: ArtifactService | null = null;
-  private workflowStoreRegistry: {
-    discoverForProjectRoot: (projectRoot: string) => Promise<unknown>;
-  } | null = null;
   private terminalManager!: TerminalManager | null;
   private serviceProxy!: ServiceProxySubsystem | null;
   private scriptRuntimeStore!: WorkspaceScriptRuntimeStore | null;
@@ -729,33 +600,39 @@ export class VoiceAssistantWebSocketServer {
   private readonly runtimeMetrics = new WebSocketRuntimeMetricsWindow();
   private lastRuntimeMetricsSnapshot: WebSocketRuntimeDiagnosticPayload | null = null;
   private runtimeMetricsInterval: ReturnType<typeof setInterval> | null = null;
-  private lspIdleReapInterval: ReturnType<typeof setInterval> | null = null;
   private applicationSocketLeaseInterval: ReturnType<typeof setInterval> | null = null;
   private readonly applicationSocketLease = new ApplicationSocketLease<WebSocketLike>();
   private eventLoopDelayMonitor: ReturnType<typeof monitorEventLoopDelay> | null = null;
   private unsubscribeSpeechReadiness: (() => void) | null = null;
   private unsubscribeDaemonConfigChange: (() => void) | null = null;
-  private unsubscribeBrainConfigChange: (() => void) | null = null;
-  private readonly providerUsageService: ProviderUsageService;
   private unsubscribeTerminalActivity: (() => void) | null = null;
   private readonly browserToolsBroker: BrowserToolsBroker | null;
-  private readonly remoteBrowserManager: RemoteBrowserManager;
-  private unregisterRemoteBrowserHost: (() => void) | null = null;
   private readonly hubRelationships: HubRelationshipManagement | null;
-  private readonly browserToolsRegistrations = new Map<string, BrowserToolsRegistration>();
-  private readonly previewDevServers: DevServerManager | null;
-  private readonly onActivity: ActivityIncrementFn | undefined;
-  private readonly getActivityRollups: (() => Promise<ActivityRollups>) | undefined;
-  private readonly getUsageLogPage:
-    | ((query: UsageLogPageQuery) => Promise<UsageLogPage>)
-    | undefined;
-  private readonly resetActivityStats: (() => Promise<void>) | undefined;
   private connectionLifecycle: "starting" | "accepting" | "stopping" = "accepting";
   private readonly advertiseDaemonStatusRpc: boolean;
   private readonly advertiseRelayConfig: boolean;
   private readonly directorySync = new DirectorySyncService();
   private readonly pluginRuntime: SessionOptions["pluginRuntime"];
   private readonly orchestrationSkills: SessionOptions["orchestrationSkills"];
+
+  private async validateCompletedCreation(snapshot: CreationSnapshot): Promise<void> {
+    if (snapshot.workspace && snapshot.kind === "workspace") {
+      const workspace = await this.workspaceRegistry.get(snapshot.workspace.id);
+      if (!workspace) throw new Error("Previously created workspace no longer exists");
+      const directory = await stat(workspace.cwd).catch(() => null);
+      if (!directory?.isDirectory())
+        throw Object.assign(new Error(`Directory not found: ${workspace.cwd}`), {
+          code: "directory_not_found",
+        });
+    }
+    if (
+      snapshot.agentId &&
+      !this.agentManager.getAgent(snapshot.agentId) &&
+      !(await this.agentStorage.get(snapshot.agentId))
+    ) {
+      throw new Error("Previously created agent no longer exists");
+    }
+  }
 
   constructor(
     server: HTTPServer,
@@ -764,7 +641,7 @@ export class VoiceAssistantWebSocketServer {
     agentManager: AgentManager,
     agentStorage: AgentStorage,
     downloadTokenStore: DownloadTokenStore,
-    ottoHome: string,
+    paseoHome: string,
     daemonConfigStore: DaemonConfigStore,
     mcpBaseUrl: string | null,
     wsConfig: WebSocketServerConfig,
@@ -798,138 +675,54 @@ export class VoiceAssistantWebSocketServer {
     daemonRuntimeConfig?: DaemonRuntimeConfig,
     serviceProxyPublicBaseUrl?: string | null,
     browserToolsBroker?: BrowserToolsBroker | null,
-    previewDevServers?: DevServerManager | null,
-    gitHostingResolver?: GitHostingResolver | null,
-    runService?: WorkflowService | null,
-    onActivity?: ActivityIncrementFn,
-    getActivityRollups?: () => Promise<ActivityRollups>,
-    agentAutoTitle?: AgentAutoTitle | null,
-    getUsageLogPage?: (query: UsageLogPageQuery) => Promise<UsageLogPage>,
-    resetActivityStats?: () => Promise<void>,
-    graphStore?: GraphStore | null,
     hubRelationships?: HubRelationshipManagement | null,
-    connectorOAuthBroker?: ConnectorOAuthBroker | null,
-    communicationsService?: CommunicationsService,
-    integrationAuthorization?: IntegrationAuthorizationService | null,
-    integrationAuthorizationCatalog?: IntegrationAuthorizationCatalog,
-    integrationBrowserAuthorization?: IntegrationBrowserAuthorizationService | null,
-    zoomTeamChatAuthorization?: ZoomTeamChatManagedAuthorizationBroker | null,
     workspaceSetupRuntime: WorkspaceSetupRuntime = new WorkspaceSetupRuntime(),
     pluginRuntime?: SessionOptions["pluginRuntime"],
     orchestrationSkills?: SessionOptions["orchestrationSkills"],
     workspaceLabelService?: WorkspaceLabelService,
-    private readonly googleConnectors?: GoogleConnectorService,
   ) {
     this.logger = logger.child({ module: "websocket-server" });
-    this.remoteBrowserManager = new RemoteBrowserManager(join(ottoHome, "browser-profile"));
     this.workspaceSetupRuntime = workspaceSetupRuntime;
     this.advertiseDaemonStatusRpc = wsConfig.daemonStatusRpc !== false;
     this.advertiseRelayConfig = wsConfig.relayConfig !== false;
     this.connectionLifecycle = wsConfig.startPaused === true ? "starting" : "accepting";
     this.serverId = serverId;
-    this.daemonVersion = requireDaemonVersion(daemonVersion);
-    this.daemonRuntimeConfig = daemonRuntimeConfig;
-    this.browserToolsBroker = orNull(browserToolsBroker);
-    // The desktop bridge E2E sets this to keep agent tabs on the native host it
-    // verifies. Hosted tabs opened by a client are unaffected.
-    if (this.browserToolsBroker && process.env.OTTO_HOSTED_BROWSER_AUTOMATION !== "0") {
-      this.unregisterRemoteBrowserHost = this.browserToolsBroker.registerClient({
-        id: "daemon-remote-browser",
-        hostKind: "daemon-hosted",
-        supportedCommands: this.remoteBrowserManager.supportedCommands,
-        // A cold start launches the browser and then loads the page.
-        requestTimeoutMs: 45_000,
-        isAvailable: () => this.remoteBrowserManager.hasRuntime(),
-        sendBrowserAutomationRequest: async (request) => {
-          const response = await this.remoteBrowserManager.executeAutomation(request);
-          this.browserToolsBroker?.receiveResponse(response);
-        },
-      });
+    if (typeof daemonVersion !== "string" || daemonVersion.trim().length === 0) {
+      throw new MissingDaemonVersionError();
     }
-    this.previewDevServers = orNull(previewDevServers);
-    this.hubRelationships = orNull(hubRelationships);
+    this.daemonVersion = daemonVersion.trim();
+    this.credentialSource = auth;
+    this.daemonRuntimeConfig = daemonRuntimeConfig;
+    this.browserToolsBroker = browserToolsBroker ?? null;
+    this.hubRelationships = hubRelationships ?? null;
     this.pluginRuntime = pluginRuntime;
     this.orchestrationSkills = orchestrationSkills;
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
-    this.agentRequests = new AgentRequests(join(ottoHome, "agent-requests"));
+    this.messageReceipts = new MessageReceipts(join(paseoHome, "agent-requests"));
+    this.creationService = new CreationService(
+      join(paseoHome, "creations"),
+      this.logger.child({ module: "creation" }),
+      (snapshot) => this.validateCompletedCreation(snapshot),
+      join(paseoHome, "agent-requests"),
+    );
     this.projectRegistry = projectRegistry ?? createNoopProjectRegistry();
     this.workspaceRegistry = workspaceRegistry ?? createNoopWorkspaceRegistry();
-    this.workspaceLabelService = orNull(workspaceLabelService);
+    this.workspaceLabelService = workspaceLabelService ?? null;
     const requiredServices = requireWebSocketServices({
       scheduleService,
       checkoutDiffManager,
     });
     this.scheduleService = requiredServices.scheduleService;
-    const orchestration = resolveOrchestrationServices(runService, graphStore);
-    this.runService = orchestration.runService;
-    this.graphStore = orchestration.graphStore;
-    this.onActivity = onActivity;
-    this.getActivityRollups = getActivityRollups;
-    this.getUsageLogPage = getUsageLogPage;
-    this.resetActivityStats = resetActivityStats;
     this.checkoutDiffManager = requiredServices.checkoutDiffManager;
     this.github = github ?? createGitHubService();
-    this.gitHostingResolver = orNull(gitHostingResolver);
     this.workspaceGitService = workspaceGitService ?? createFallbackWorkspaceGitService();
     this.workspaceAutoName = workspaceAutoName;
-    this.agentAutoTitle = orNull(agentAutoTitle);
     this.downloadTokenStore = downloadTokenStore;
-    // Daemon-scoped on purpose: language servers are expensive processes keyed by
-    // workspace, so every client session shares one pool rather than spawning its own.
-    this.lspService = LspService.create({ logger: this.logger });
-    this.lspService.setSettings(daemonConfigStore.get().lsp);
-    const unsubscribeLspSettings = daemonConfigStore.onFieldChange("lsp", (value) => {
-      void this.lspService.applySettings(value as Partial<LspSettings>).catch((err: unknown) => {
-        this.logger.warn({ err }, "Failed to apply LSP settings");
-      });
-    });
-    // Language-server startup and indexing are the slow, invisible part on a large
-    // project. Broadcasting the busy set lets the sidebar show that it is live.
-    this.lspService.onActivityChange((busyRoots) => {
-      this.broadcast(
-        wrapSessionMessage({
-          type: "status",
-          payload: { status: "lsp_activity_changed", busyRoots },
-        }),
-      );
-    });
-    // Diagnostics are the one push in this subsystem: servers publish them unsolicited,
-    // so there is no request to answer. Broadcast rather than routed to one session
-    // because more than one client may have the same file open.
-    this.lspService.onDiagnosticsChange((snapshot) => {
-      this.broadcast(
-        wrapSessionMessage({
-          type: "status",
-          payload: {
-            status: "lsp_diagnostics_changed",
-            cwd: snapshot.rootPath,
-            path: snapshot.filePath,
-            diagnostics: snapshot.diagnostics,
-          },
-        }),
-      );
-    });
-    // Daemon-scoped for the same reason the language-server pool is: the sidecar holds an MSBuild
-    // project model keyed by solution, so every client session shares one rather than spawning
-    // its own. Constructed unconditionally and cheaply - nothing happens inside it until the
-    // switch is on, and `applySettings` below is what turns it on.
-    this.solutionService = new SolutionService({ logger: this.logger });
-    void this.solutionService
-      .applySettings(daemonConfigStore.get().dotnetSolutionManagement)
-      .catch((err: unknown) => {
-        this.logger.warn({ err }, "Failed to apply solution-management settings");
-      });
-    this.ottoHome = ottoHome;
+    this.paseoHome = paseoHome;
+    this.passwordHash = auth?.password;
     this.worktreesRoot = daemonRuntimeConfig?.worktreesRoot;
     this.daemonConfigStore = daemonConfigStore;
-    this.connectorOAuthBroker = orNull(connectorOAuthBroker);
-    this.communicationsService = communicationsService ?? new CommunicationsService();
-    this.integrationAuthorization = orNull(integrationAuthorization);
-    this.integrationAuthorizationCatalog =
-      integrationAuthorizationCatalog ?? new IntegrationAuthorizationCatalog();
-    this.integrationBrowserAuthorization = orNull(integrationBrowserAuthorization);
-    this.zoomTeamChatAuthorization = orNull(zoomTeamChatAuthorization);
     this.mcpBaseUrl = mcpBaseUrl;
     this.assignOptionalServices({
       speech,
@@ -965,14 +758,13 @@ export class VoiceAssistantWebSocketServer {
     });
     this.unsubscribeDaemonConfigChange = () => {
       unsubscribeProviderConfig();
-      unsubscribeLspSettings();
       unsubscribeChange();
     };
 
     const pushLogger = this.logger.child({ module: "push" });
     this.pushNotifications = createPushNotifications({
       logger: pushLogger,
-      filePath: join(ottoHome, "push-tokens.json"),
+      filePath: join(paseoHome, "push-tokens.json"),
     });
     this.pushNotificationSender = pushNotificationSender ?? this.pushNotifications;
 
@@ -982,130 +774,11 @@ export class VoiceAssistantWebSocketServer {
       });
     });
 
-    // Lets the manager skip raising an unread badge on a chat a client already
-    // has open. Same presence rules the notification plan uses, so the badge and
-    // the OS notification cannot disagree about who is watching.
-    this.agentManager.setAgentActivelyWatchedProbe((agentId) =>
-      isTargetActivelyWatched({
-        allStates: this.collectClientPresenceStates(),
-        focusTarget: { kind: "agent", id: agentId },
-        nowMs: Date.now(),
-      }),
-    );
-
-    this.providerUsageService = new ProviderUsageService({
-      logger: this.logger,
-    });
-
     this.wss = this.createWebSocketServer(server, wsConfig, auth);
     this.startRuntimeMetricsInterval();
-    this.startLspIdleReapInterval();
     this.startApplicationSocketLeaseInterval();
 
     this.logger.info("WebSocket server initialized on /ws");
-  }
-
-  /**
-   * Provide the per-personality usage stats getter (file-backed, async). Wired
-   * from bootstrap so the `agentPersonalities.get_stats` RPC can serve counts.
-   */
-  public setPersonalityStatsProvider(
-    fn: () => Record<string, number> | Promise<Record<string, number>>,
-  ): void {
-    this.getPersonalityStatsFn = fn;
-  }
-
-  /**
-   * Provide the personality-memory service. Wired from bootstrap; when absent the
-   * daemon does not advertise `features.personalityMemory` and the client hides
-   * the whole feature - there is no client-side substitute for daemon storage.
-   */
-  public setPersonalityMemoryService(service: ProfileMemoryService | null): void {
-    this.personalityMemoryService = service;
-  }
-
-  public setProjectKnowledgeService(service: ProjectKnowledgeService | null): void {
-    this.projectKnowledgeService = service;
-  }
-
-  /** The single daemon-owned artifact service every client session shares. */
-  public setArtifactService(service: ArtifactService | null): void {
-    this.artifactService = service;
-  }
-
-  /**
-   * Provide the store resolver. Its presence is what advertises
-   * `features.projectKnowledgeStoreLocation`: without it a client cannot be
-   * offered a choice it has no way to act on.
-   */
-  public setProjectKnowledgeStoreResolver(resolver: ProjectKnowledgeStoreResolver | null): void {
-    this.projectKnowledgeStoreResolver = resolver;
-  }
-
-  /** Wires the shared category resolver before advertising Workflow storage. */
-  public setWorkflowStoreRegistry(
-    registry: { discoverForProjectRoot: (projectRoot: string) => Promise<unknown> } | null,
-  ): void {
-    this.workflowStoreRegistry = registry;
-  }
-
-  public setGraphSharingService(service: GraphSharingService | null): void {
-    this.graphSharingService = service;
-  }
-
-  public setNodeOutputStore(store: NodeOutputStore | null): void {
-    this.nodeOutputStore = store;
-  }
-
-  public setPromptTemplateStore(store: PromptTemplateStore | null): void {
-    this.promptTemplateStore = store;
-  }
-
-  // Wire the daemon-managed local AI host and keep its running state in sync
-  // with committed Brain settings, including changes made in this session.
-  public setBrainManager(manager: BrainManager | null): void {
-    this.unsubscribeBrainConfigChange?.();
-    this.unsubscribeBrainConfigChange = null;
-    this.brainManager = manager;
-    if (manager) {
-      // The brain publishes its own state; the daemon subscribes once and fans
-      // it out here. Listeners are wired before applySettings so the very first
-      // reconcile - the one that spawns the child - already has somewhere to
-      // publish to.
-      manager.setStatusListeners({
-        onStatusChanged: (brain) => {
-          this.broadcast(
-            wrapSessionMessage({
-              type: "status",
-              payload: { status: "brain_status_changed", brain },
-            }),
-          );
-        },
-        // Not `broadcast`: log lines are uncoalesced and per llama-server line,
-        // so an unconditional fanout made every connected client - including a
-        // phone on the relay that never opened the Logs tab - decrypt, parse and
-        // validate each one just to drop it. Each session delivers only to the
-        // sockets that asked (see Session.emitBrainLogLine).
-        onLogLine: (line) => {
-          for (const session of this.listTrustedSessions()) {
-            session.emitBrainLogLine(line);
-          }
-        },
-        // Availability tracks the SELECTED brain, so repointing at an older
-        // host has to walk the feature flag back down. Clients read the new
-        // server_info and restore their compatibility poll.
-        onStatusEventSupportChanged: () => this.broadcastCapabilitiesUpdate(),
-      });
-      this.unsubscribeBrainConfigChange = attachBrainConfigOwner({
-        store: this.daemonConfigStore,
-        manager,
-        onError: (err) => this.logger.warn({ err }, "Failed to apply brain settings"),
-      });
-    }
-  }
-
-  public setBrainOpsManager(manager: BrainOpsManager | null): void {
-    this.brainOpsManager = manager;
   }
 
   private assignOptionalServices(params: {
@@ -1169,6 +842,7 @@ export class VoiceAssistantWebSocketServer {
     const wss = new WebSocketServer({
       server,
       path: "/ws",
+      maxPayload: MAX_WEBSOCKET_MESSAGE_BYTES,
       handleProtocols: (protocols) => selectWebSocketProtocol(protocols, password),
       verifyClient: ({ req }, callback) => {
         this.verifyWsUpgrade(
@@ -1193,27 +867,6 @@ export class VoiceAssistantWebSocketServer {
     }, WS_RUNTIME_METRICS_FLUSH_MS);
     this.runtimeMetricsInterval = runtimeMetricsInterval;
     (runtimeMetricsInterval as unknown as { unref?: () => void }).unref?.();
-  }
-
-  /**
-   * The daemon half of the language-server idle policy. Without this tick nothing ever
-   * expires: a server started for one hover stays resident, holding a project model worth
-   * hundreds of megabytes, until the daemon exits or the LRU cap happens to evict it.
-   */
-  private startLspIdleReapInterval(): void {
-    const lspIdleReapInterval = setInterval(() => {
-      void this.lspService.reapIdle().catch((err: unknown) => {
-        this.logger.warn({ err }, "Failed to reap idle language servers");
-      });
-      // The solution sidecar rides the same tick. Its own reap is a no-op while the feature is
-      // off, and giving it a second interval would mean a second thing to forget to wire - which
-      // is exactly how the language-server reap ended up with no caller at all.
-      void this.solutionService.reapIdle().catch((err: unknown) => {
-        this.logger.warn({ err }, "Failed to reap idle solution sidecars");
-      });
-    }, LSP_IDLE_REAP_INTERVAL_MS);
-    this.lspIdleReapInterval = lspIdleReapInterval;
-    (lspIdleReapInterval as unknown as { unref?: () => void }).unref?.();
   }
 
   private startApplicationSocketLeaseInterval(): void {
@@ -1285,23 +938,39 @@ export class VoiceAssistantWebSocketServer {
     request: IncomingMessage,
     password: string | undefined,
   ): Promise<void> {
-    if (password) {
-      const requestMetadata = extractSocketRequestMetadata(request);
+    // Header validation is asynchronous. Buffer frames until the socket has a
+    // pending hello handler so an eager client cannot lose its first message.
+    ws.pause();
+    try {
+      // COMPAT(headerAuth): added in v0.9.1, remove after 2027-03-24.
       const protocol = extractWsBearerProtocol(request.headers["sec-websocket-protocol"]);
-      const token = extractWsBearerToken(protocol);
-      const isAuthorized = isBearerTokenValid({ password, token });
-      if (!isAuthorized) {
-        const reason = token === null ? "Password required" : "Incorrect password";
-        this.logger.warn(
-          { ...requestMetadata, hasToken: token !== null },
-          "Rejected WebSocket connection with invalid daemon password",
-        );
-        ws.close(WS_CLOSE_DAEMON_AUTH_FAILED, reason);
-        return;
+      const token =
+        extractHttpBearerToken(request.headers.authorization) ?? extractWsBearerToken(protocol);
+      const hasHeaderCredential = token !== null;
+      if (password && hasHeaderCredential) {
+        const requestMetadata = extractSocketRequestMetadata(request);
+        const isAuthorized = await isBearerTokenValidAsync({ password, token });
+        if (!isAuthorized) {
+          const reason = "Incorrect password";
+          this.logger.warn(
+            { ...requestMetadata, hasToken: true },
+            "Rejected WebSocket connection with invalid daemon password",
+          );
+          ws.close(WS_CLOSE_DAEMON_AUTH_FAILED, reason);
+          return;
+        }
       }
-    }
 
-    await this.attachSocket(ws, request);
+      await this.attachSocket(
+        ws,
+        request,
+        undefined,
+        false,
+        hasHeaderCredential ? OWNER_SESSION_ADMISSION : null,
+      );
+    } finally {
+      ws.resume();
+    }
   }
 
   public broadcast(message: WSOutboundMessage): void {
@@ -1324,22 +993,17 @@ export class VoiceAssistantWebSocketServer {
     );
   }
 
-  /** Otto daemon-global streams retain their original owner-session audience. */
-  public listTrustedSessions(): Session[] {
-    return [
-      ...new Set(
-        [...this.sessions.values(), ...this.externalSessionsByKey.values()]
-          .filter((connection) => connection.principalId === "owner")
-          .map((connection) => connection.session),
-      ),
-    ];
-  }
-
   public publishProjectUpdate(update: ProjectUpdate): void {
     for (const session of this.listSessions()) {
       void session
         .emitProjectUpdate(update)
         .catch((error) => this.logger.warn({ err: error }, "Failed to publish project update"));
+    }
+  }
+
+  public publishScriptStatusUpdate(message: ScriptStatusUpdateMessage): void {
+    for (const session of this.listSessions()) {
+      session.emitServerMessage(message);
     }
   }
 
@@ -1359,7 +1023,7 @@ export class VoiceAssistantWebSocketServer {
   public async attachExternalSocket(
     ws: WebSocketLike,
     metadata?: ExternalSocketMetadata,
-    admission: SessionAdmission = OWNER_SESSION_ADMISSION,
+    admission: SessionAdmission | null = null,
     initialHello?: WSHelloMessage,
   ): Promise<void> {
     if (metadata?.transport === "relay") {
@@ -1382,7 +1046,7 @@ export class VoiceAssistantWebSocketServer {
     this.pluginSocketIds.set(ws, pluginId);
     this.pluginSocketCleanup.set(ws, resolve);
     try {
-      await this.attachSocket(ws, undefined, undefined, true);
+      await this.attachSocket(ws, undefined, undefined, true, OWNER_SESSION_ADMISSION);
     } catch (error) {
       this.pluginSocketIds.delete(ws);
       this.finishPluginSocketCleanup(ws);
@@ -1396,14 +1060,13 @@ export class VoiceAssistantWebSocketServer {
     permissions: readonly DaemonPermission[],
   ): void {
     for (const pending of this.pendingConnections.values()) {
-      if (pending.admission.principalId === principalId) {
+      if (pending.admission?.principalId === principalId) {
         pending.admission = { ...pending.admission, permissions };
       }
     }
     for (const connection of new Set(this.externalSessionsByKey.values())) {
       if (connection.principalId === principalId) {
         connection.session.setPermissions(permissions);
-        this.syncBrowserToolsClientRegistration(connection);
       }
     }
   }
@@ -1424,17 +1087,11 @@ export class VoiceAssistantWebSocketServer {
     this.unsubscribeSpeechReadiness = null;
     this.unsubscribeDaemonConfigChange?.();
     this.unsubscribeDaemonConfigChange = null;
-    this.unsubscribeBrainConfigChange?.();
-    this.unsubscribeBrainConfigChange = null;
     this.unsubscribeTerminalActivity?.();
     this.unsubscribeTerminalActivity = null;
     if (this.runtimeMetricsInterval) {
       clearInterval(this.runtimeMetricsInterval);
       this.runtimeMetricsInterval = null;
-    }
-    if (this.lspIdleReapInterval) {
-      clearInterval(this.lspIdleReapInterval);
-      this.lspIdleReapInterval = null;
     }
     if (this.applicationSocketLeaseInterval) {
       clearInterval(this.applicationSocketLeaseInterval);
@@ -1495,20 +1152,6 @@ export class VoiceAssistantWebSocketServer {
     }
 
     await Promise.all(cleanupPromises);
-    // Language servers are child processes we spawned, not ours to leave behind. Nothing
-    // else stops them: they outlive every session, so no session cleanup covers them.
-    await this.lspService.stopAll().catch((err: unknown) => {
-      this.logger.warn({ err }, "Failed to stop language servers during shutdown");
-    });
-    // Same reasoning for the solution sidecars: spawned by us, outliving every session, and
-    // nothing else would ever stop them.
-    await this.solutionService.stopAll().catch((err: unknown) => {
-      this.logger.warn({ err }, "Failed to stop solution sidecars during shutdown");
-    });
-    // Backstop after both pools have had their turn: anything .NET still tracked is a
-    // process whose owner lost its handle, and it would otherwise outlive the daemon.
-    // Kills by tree, so MSBuild workers go with their parent.
-    killAllSharedDotnetProcesses();
     this.providerSnapshotManager.destroy();
     this.checkoutDiffManager.dispose();
     await this.workspaceGitService.dispose();
@@ -1516,48 +1159,89 @@ export class VoiceAssistantWebSocketServer {
     this.sessions.clear();
     this.socketIdentities.clear();
     this.externalSessionsByKey.clear();
-    for (const clientId of this.browserToolsRegistrations.keys()) {
-      this.unregisterBrowserToolsClient(clientId);
-    }
-    this.unregisterRemoteBrowserHost?.();
-    this.unregisterRemoteBrowserHost = null;
-    await this.remoteBrowserManager.close();
     this.wss.close();
   }
 
   private sendToClient(ws: WebSocketLike, message: WSOutboundMessage): void {
-    this.sendMessageToSockets([ws], message);
+    this.sendMessageToSockets([ws], message, true);
   }
 
-  private sendMessageToSockets(sockets: Iterable<WebSocketLike>, message: WSOutboundMessage): void {
-    const writableSockets = [...sockets].filter((ws) => this.ensureOutboundCapacity(ws, 0));
+  private sendMessageToSockets(
+    sockets: Iterable<WebSocketLike>,
+    message: WSOutboundMessage,
+    reportRejection = false,
+  ): void {
+    const writableSockets = [...sockets].filter((ws) => {
+      if (
+        message.type === "session" &&
+        this.sessions.get(ws)?.session.delivery.permits(ws, message.message) !== true
+      ) {
+        this.incrementRuntimeCounter("applicationJsonRejected");
+        // Legacy broadcasts intentionally exclude modern sockets. Targeted failures are bugs.
+        if (reportRejection)
+          this.logger.warn(
+            {
+              messageType: message.message.type,
+              status:
+                message.message.type === "status" ? message.message.payload.status : undefined,
+            },
+            "ws_application_delivery_denied",
+          );
+        return false;
+      }
+      return this.ensureOutboundCapacity(ws, 0);
+    });
     if (writableSockets.length === 0) {
       return;
     }
 
     let payload: string;
     try {
-      payload = JSON.stringify(message);
+      // OTTO(protocol): additive aliases remain parseable by both client generations.
+      payload = JSON.stringify(encodeOttoServerMessage(message));
     } catch (err) {
       this.logger.warn({ err }, "ws_serialize_failed");
       return;
     }
 
     const payloadBytes = outboundFrameByteLength(payload);
+    // OTTO(protocol): serialize the legacy RPC spelling only when that dialect was
+    // requested. Mixed old/new sockets can share a logical session safely.
+    let legacyPayload: string | undefined;
     for (const ws of writableSockets) {
-      this.sendFrameToClient(ws, payload, payloadBytes, () => {
-        this.runtimeMetrics.recordOutboundMessage(message, ws.bufferedAmount);
-      });
+      if (this.legacyOttoSockets.has(ws) && legacyPayload === undefined) {
+        legacyPayload = JSON.stringify(encodeOttoServerMessage(message, true));
+      }
+      const frame = this.legacyOttoSockets.has(ws) ? legacyPayload! : payload;
+      this.sendFrameToClient(
+        ws,
+        frame,
+        frame === payload ? payloadBytes : outboundFrameByteLength(frame),
+        () => {
+          this.runtimeMetrics.recordOutboundMessage(message, ws.bufferedAmount);
+        },
+      );
     }
   }
 
-  private sendBinaryToClient(ws: WebSocketLike, frame: Uint8Array): void {
+  private sendBinaryToClient(ws: WebSocketLike, frame: Uint8Array, reportRejection = true): void {
+    if (!this.sessions.get(ws)?.session.delivery.permitsBinary(ws, frame)) {
+      this.incrementRuntimeCounter("applicationBinaryRejected");
+      if (reportRejection)
+        this.logger.warn({ bytes: frame.byteLength }, "ws_application_binary_delivery_denied");
+      return;
+    }
     this.sendFrameToClient(ws, frame, outboundFrameByteLength(frame), () => {
       this.runtimeMetrics.recordOutboundBinaryFrame(ws.bufferedAmount);
     });
   }
 
   private async sendBinaryToClientAndWait(ws: WebSocketLike, frame: Uint8Array): Promise<void> {
+    if (!this.sessions.get(ws)?.session.delivery.permitsBinary(ws, frame)) {
+      this.incrementRuntimeCounter("applicationBinaryRejected");
+      this.logger.warn({ bytes: frame.byteLength }, "ws_application_binary_delivery_denied");
+      return;
+    }
     try {
       const sent = await sendBoundedPhysicalFrameAndWait({
         socket: ws,
@@ -1648,7 +1332,7 @@ export class VoiceAssistantWebSocketServer {
 
   private sendBinaryToConnection(connection: SessionConnection, frame: Uint8Array): void {
     for (const ws of connection.sockets) {
-      this.sendBinaryToClient(ws, frame);
+      this.sendBinaryToClient(ws, frame, false);
     }
   }
 
@@ -1657,7 +1341,7 @@ export class VoiceAssistantWebSocketServer {
     request?: unknown,
     metadata?: ExternalSocketMetadata,
     allowDuringStartup = false,
-    admission: SessionAdmission = OWNER_SESSION_ADMISSION,
+    admission: SessionAdmission | null = null,
     initialHello?: WSHelloMessage,
   ): Promise<void> {
     if (
@@ -1682,6 +1366,7 @@ export class VoiceAssistantWebSocketServer {
       helloTimeout: null,
       identity,
       admission,
+      authenticating: false,
     };
     const timeout = setTimeout(() => {
       if (this.pendingConnections.get(ws) !== pending) {
@@ -1713,9 +1398,7 @@ export class VoiceAssistantWebSocketServer {
       },
       "Client connected; awaiting hello",
     );
-    if (initialHello) {
-      this.handleHello({ ws, message: initialHello, pending });
-    }
+    if (initialHello) await this.handleHelloSafely({ ws, message: initialHello, pending });
   }
 
   private createSessionConnection(params: {
@@ -1736,18 +1419,12 @@ export class VoiceAssistantWebSocketServer {
       appVersion,
       clientCapabilities,
       permissions: admission.permissions,
-      scopes: admission.scopes,
       connectionLogger,
       onMessage: (msg) => {
         if (!connection) {
           return;
         }
         this.sendToConnection(connection, wrapSessionMessage(msg));
-      },
-      broadcastToAllSessions: (msg) => {
-        for (const target of this.listTrustedSessions()) {
-          target.emitServerMessage(msg);
-        }
       },
       onMessageToSource: (source, msg) => {
         if (!connection || !connection.sockets.has(source as WebSocketLike)) {
@@ -1767,10 +1444,11 @@ export class VoiceAssistantWebSocketServer {
         }
         await this.sendBinaryToClientAndWait(source as WebSocketLike, frame);
       },
-      getTransportBufferedAmount: () => {
+      getTransportBufferedAmount: (source) => {
         if (!connection) {
           return null;
         }
+        if (source) return (source as WebSocketLike).bufferedAmount ?? null;
         // Relay-attached sockets are a WebSocketLike that doesn't expose
         // bufferedAmount. Return null when no socket gives a signal so the
         // terminal fallback can't mistake "no signal" for "client keeping up";
@@ -1793,7 +1471,6 @@ export class VoiceAssistantWebSocketServer {
     const base: SessionConnectionBase = {
       session,
       principalId: admission.principalId,
-      scopes: [...admission.scopes],
       sessionKey: sessionConnectionKey(admission.principalId, clientId),
       clientId,
       appVersion,
@@ -1805,21 +1482,18 @@ export class VoiceAssistantWebSocketServer {
       lifecycle.kind === "ephemeral-plugin"
         ? { ...base, lifecycle: "ephemeral-plugin", pluginId: lifecycle.pluginId }
         : { ...base, lifecycle: "reconnectable", externalDisconnectCleanupTimeout: null };
-    session.updateClientCapabilities(clientCapabilities, ws);
+    session.updateClientCapabilities(clientCapabilities, ws, appVersion);
     return connection;
   }
 
   private createSocketSession(options: SocketSessionOptions): Session {
     return new Session({
+      browserToolsBroker: this.browserToolsBroker,
       clientId: options.clientId,
-      onAgentBrowserOrigin: (agentId, host, clientId) =>
-        this.browserToolsBroker?.setAgentTabHost(agentId, host, clientId),
       appVersion: options.appVersion,
       clientCapabilities: options.clientCapabilities,
       permissions: options.permissions,
-      scopes: options.scopes,
       onMessage: options.onMessage,
-      broadcastToAllSessions: options.broadcastToAllSessions,
       onMessageToSource: options.onMessageToSource,
       onBinaryMessage: options.onBinaryMessage,
       onBinaryMessageToSource: options.onBinaryMessageToSource,
@@ -1833,39 +1507,25 @@ export class VoiceAssistantWebSocketServer {
           ),
         );
       },
+      publishScriptStatusUpdate: (message) => this.publishScriptStatusUpdate(message),
       downloadTokenStore: this.downloadTokenStore,
-      lspService: this.lspService,
-      solutionService: this.solutionService,
       pushNotifications: this.pushNotifications,
-      ottoHome: this.ottoHome,
+      paseoHome: this.paseoHome,
       worktreesRoot: this.worktreesRoot,
       agentManager: this.agentManager,
       agentStorage: this.agentStorage,
-      agentRequests: this.agentRequests,
+      messageReceipts: this.messageReceipts,
+      creationService: this.creationService,
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
       workspaceLabelService: this.workspaceLabelService ?? undefined,
       directorySync: this.directorySync,
       scheduleService: this.scheduleService,
-      runService: this.runService,
-      graphStore: this.graphStore,
-      graphSharingService: this.graphSharingService,
-      nodeOutputStore: this.nodeOutputStore,
-      promptTemplateStore: this.promptTemplateStore,
       checkoutDiffManager: this.checkoutDiffManager,
       github: this.github,
-      ...(this.gitHostingResolver ? { gitHostingResolver: this.gitHostingResolver } : {}),
       workspaceGitService: this.workspaceGitService,
       workspaceAutoName: this.workspaceAutoName,
-      ...(this.agentAutoTitle ? { agentAutoTitle: this.agentAutoTitle } : {}),
       daemonConfigStore: this.daemonConfigStore,
-      connectorOAuthBroker: this.connectorOAuthBroker,
-      googleConnectors: this.googleConnectors,
-      communicationsService: this.communicationsService,
-      integrationAuthorization: this.integrationAuthorization,
-      integrationAuthorizationCatalog: this.integrationAuthorizationCatalog,
-      integrationBrowserAuthorization: this.integrationBrowserAuthorization,
-      zoomTeamChatAuthorization: this.zoomTeamChatAuthorization,
       pluginRuntime: this.pluginRuntime,
       orchestrationSkills: this.orchestrationSkills,
       mcpBaseUrl: this.mcpBaseUrl,
@@ -1873,15 +1533,7 @@ export class VoiceAssistantWebSocketServer {
       sttLanguage: this.speech?.resolveSttLanguage() ?? "en",
       tts: () => this.speech?.resolveTts() ?? null,
       terminalManager: this.terminalManager,
-      previewDevServers: this.previewDevServers,
-      brainManager: this.brainManager,
-      brainOpsManager: this.brainOpsManager,
       providerSnapshotManager: this.providerSnapshotManager,
-      providerUsageService: this.providerUsageService,
-      onActivity: this.onActivity,
-      getActivityRollups: this.getActivityRollups,
-      getUsageLogPage: this.getUsageLogPage,
-      resetActivityStats: this.resetActivityStats,
       hubExecutionAgents: options.hubExecutionAgents,
       hubRelationships: options.hubRelationships,
       serviceProxy: this.serviceProxy ?? undefined,
@@ -1898,6 +1550,8 @@ export class VoiceAssistantWebSocketServer {
       },
       voiceBridge: {
         registerVoiceSpeakHandler: (agentId, handler) => {
+          if (this.voiceSpeakHandlers.has(agentId))
+            throw new Error("Voice mode is already active for this agent");
           this.voiceSpeakHandlers.set(agentId, handler);
         },
         unregisterVoiceSpeakHandler: (agentId) => {
@@ -1919,15 +1573,6 @@ export class VoiceAssistantWebSocketServer {
               getSpeechReadiness: () => this.speech!.getReadiness(),
             }
           : undefined,
-      getSpeechSettingsOptions: this.speech ? () => this.speech!.getSettingsOptions() : undefined,
-      previewTts: this.speech
-        ? (previewParams) => this.speech!.synthesizePreview(previewParams)
-        : undefined,
-      getPersonalityStats: this.getPersonalityStatsFn ?? undefined,
-      personalityMemory: this.personalityMemoryService,
-      projectKnowledge: this.projectKnowledgeService,
-      projectKnowledgeStores: this.projectKnowledgeStoreResolver,
-      artifactService: this.artifactService,
       serverId: this.serverId,
       daemonVersion: this.daemonVersion,
       daemonRuntimeConfig: this.daemonRuntimeConfig,
@@ -1948,14 +1593,14 @@ export class VoiceAssistantWebSocketServer {
     return pending;
   }
 
-  private handleHello(params: {
+  private async handleHello(params: {
     ws: WebSocketLike;
     message: WSHelloMessage;
     pending: PendingConnection;
-  }): void {
+  }): Promise<void> {
     const { ws, message, pending } = params;
 
-    if (message.protocolVersion !== WS_PROTOCOL_VERSION) {
+    if (message.protocolVersion < 1) {
       this.clearPendingConnection(ws);
       pending.connectionLogger.warn(
         {
@@ -1964,13 +1609,12 @@ export class VoiceAssistantWebSocketServer {
         },
         "Rejected hello due to protocol version mismatch",
       );
-      try {
-        ws.close(WS_CLOSE_INCOMPATIBLE_PROTOCOL, "Incompatible protocol version");
-      } catch {
-        // ignore close errors
-      }
+      await this.rejectHello(ws, message, "incompatible_protocol");
       return;
     }
+
+    pending.authenticating = true;
+    if (!pending.admission && !(await this.admitPendingHello(ws, message, pending))) return;
 
     const clientId = message.clientId.trim();
     if (clientId.length === 0) {
@@ -1997,11 +1641,13 @@ export class VoiceAssistantWebSocketServer {
     }
 
     this.clearPendingConnection(ws);
+    const admitted = pending.admission;
+    if (!admitted) throw new Error("Admitted hello has no session admission");
     pending.identity.clientId = clientId;
     if (message.appVersion) {
       pending.identity.appVersion = message.appVersion;
     }
-    const sessionKey = sessionConnectionKey(pending.admission.principalId, clientId);
+    const sessionKey = sessionConnectionKey(admitted.principalId, clientId);
     const existing = pluginId ? undefined : this.externalSessionsByKey.get(sessionKey);
     if (existing) {
       this.resumeSession({ ws, message, pending, existing });
@@ -2017,14 +1663,13 @@ export class VoiceAssistantWebSocketServer {
       clientCapabilities: message.capabilities ?? null,
       connectionLogger,
       lifecycle: pluginId ? { kind: "ephemeral-plugin", pluginId } : { kind: "reconnectable" },
-      admission: pending.admission,
+      admission: admitted,
     });
     this.sessions.set(ws, connection);
     if (connection.lifecycle === "reconnectable") {
       this.externalSessionsByKey.set(sessionKey, connection);
     }
     pending.identity.sessionId = connection.session.getSessionId();
-    this.syncBrowserToolsClientRegistration(connection);
     this.sendToClient(ws, this.createServerInfoMessage(connection.session));
     connection.connectionLogger.info(
       {
@@ -2036,6 +1681,93 @@ export class VoiceAssistantWebSocketServer {
     );
   }
 
+  private handleHelloSafely(params: {
+    ws: WebSocketLike;
+    message: WSHelloMessage;
+    pending: PendingConnection;
+  }): Promise<void> {
+    return this.handleHello(params).catch((error: unknown) => {
+      try {
+        this.handleRawMessageError({
+          ws: params.ws,
+          data: "",
+          error,
+          log: params.pending.connectionLogger,
+        });
+      } catch {
+        // The error reporter must not turn a connection failure into a process failure.
+      } finally {
+        try {
+          params.ws.close(WS_CLOSE_INVALID_HELLO, "Invalid hello");
+        } catch {
+          // The transport may already be closed.
+        }
+      }
+    });
+  }
+
+  private async admitPendingHello(
+    ws: WebSocketLike,
+    message: WSHelloMessage,
+    pending: PendingConnection,
+  ): Promise<boolean> {
+    if (pending.admission) return true;
+    try {
+      const resolved = await resolveSessionAdmission({
+        credential: message.auth,
+        passwordHash: this.passwordHash,
+        localCredential: this.credentialSource?.localCredential?.() ?? null,
+        transport: pending.identity.transport === "relay" ? "relay" : "direct",
+      });
+      if (this.pendingConnections.get(ws) !== pending) return false;
+      if ("rejection" in resolved) {
+        this.clearPendingConnection(ws);
+        await this.rejectHello(ws, message, resolved.rejection);
+        return false;
+      }
+      pending.admission = resolved.admission;
+      return true;
+    } catch (error) {
+      pending.connectionLogger.error({ err: error }, "Failed to resolve hello credential");
+      if (this.pendingConnections.get(ws) === pending) {
+        this.clearPendingConnection(ws);
+        await this.rejectHello(ws, message, "incorrect_password");
+      }
+      return false;
+    }
+  }
+
+  private async rejectHello(
+    ws: WebSocketLike,
+    hello: WSHelloMessage,
+    reason: "password_required" | "incorrect_password" | "incompatible_protocol",
+  ): Promise<void> {
+    // Older clients discard unknown frames, then use the close code and reason.
+    // They never send hello.auth, so avoid sending an unknown envelope to them.
+    if (hello.auth || hello.capabilities?.[CLIENT_CAPS.helloRejection] === true) {
+      try {
+        await ws.send(JSON.stringify({ type: "hello.rejected", reason, accepts: ["password"] }));
+      } catch {
+        // The close reason remains the compatibility signal.
+      }
+    }
+    const closeReason = {
+      password_required: "Password required",
+      incorrect_password: "Incorrect password",
+      incompatible_protocol: "Incompatible protocol version",
+    }[reason];
+    try {
+      ws.close(
+        reason === "incompatible_protocol"
+          ? WS_CLOSE_INCOMPATIBLE_PROTOCOL
+          : WS_CLOSE_DAEMON_AUTH_FAILED,
+        closeReason,
+      );
+    } catch {
+      // Ignore a transport that closed while the rejection was sent.
+    }
+  }
+
   private resumeSession(params: {
     ws: WebSocketLike;
     message: WSHelloMessage;
@@ -2044,10 +1776,6 @@ export class VoiceAssistantWebSocketServer {
   }): void {
     const { ws, message, pending, existing } = params;
     this.incrementRuntimeCounter("helloResumed");
-    existing.scopes = [...pending.admission.scopes];
-    existing.session.setRpcScopes(existing.scopes);
-    existing.session.setPermissions(pending.admission.permissions);
-    this.syncBrowserToolsClientRegistration(existing);
     if (existing.externalDisconnectCleanupTimeout) {
       clearTimeout(existing.externalDisconnectCleanupTimeout);
       existing.externalDisconnectCleanupTimeout = null;
@@ -2061,18 +1789,16 @@ export class VoiceAssistantWebSocketServer {
     // COMPAT(selectiveAgentTimeline): added in v0.1.106. Every capable resumed
     // hello resets membership before server_info so stale retained-session
     // state cannot leak. Remove after 2027-01-12.
-    existing.session.updateClientCapabilities(newClientCapabilities, ws);
+    existing.session.updateClientCapabilities(newClientCapabilities, ws, newAppVersion);
     if (
       JSON.stringify(existing.clientCapabilities ?? null) !==
       JSON.stringify(newClientCapabilities ?? null)
     ) {
       existing.clientCapabilities = newClientCapabilities;
-      this.syncBrowserToolsClientRegistration(existing);
     }
     existing.sockets.add(ws);
     this.sessions.set(ws, existing);
     pending.identity.sessionId = existing.session.getSessionId();
-    this.syncBrowserToolsClientRegistration(existing);
     this.sendToClient(ws, this.createServerInfoMessage(existing.session));
     pending.connectionLogger.info(
       {
@@ -2085,24 +1811,56 @@ export class VoiceAssistantWebSocketServer {
   }
 
   private buildServerInfoStatusPayload(session: Session): ServerInfoStatusPayload {
+    const knowledgeAvailable =
+      this.pluginRuntime?.supportsBuiltinRpc?.("otto-project-knowledge") === true; // OTTO(knowledge)
     return {
       status: "server_info",
+      protocolVersion: WS_PROTOCOL_VERSION,
       serverId: this.serverId,
-      hostname: getHostname(),
+      hostname: getHostName(),
       version: this.daemonVersion,
-      platform: process.platform,
-      ...(process.platform === "win32" ? { terminalShells: detectWindowsTerminalShells() } : {}),
       permissions: session.getPermissions(),
       // COMPAT(desktopManaged): added in v0.1.X, remove optional parsing after 2027-01-16.
       desktopManaged: this.daemonRuntimeConfig?.desktopManaged === true,
       ...(this.serverCapabilities ? { capabilities: this.serverCapabilities } : {}),
       features: {
-        providerOttoToolPolicy: true,
+        // OTTO(brain-host): no feature claim when this daemon lacks the shared controller.
+        ottoBrain: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
+        ottoBrainTui: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
+        ottoBrainCommands: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
+        ottoBrainSharing: this.pluginRuntime?.supportsBuiltinRpc?.("otto-brain") === true,
+        ottoKanban: this.pluginRuntime?.supportsBuiltinRpc?.("otto-kanban") === true, // OTTO(kanban)
+        ottoBitbucket: ottoBitbucketAvailable(this.pluginRuntime), // OTTO(bitbucket)
+        ottoConnectors: ottoBitbucketAvailable(this.pluginRuntime), // OTTO(connectors): same inert built-in owner, independent feature gate.
+        ottoTerminal: terminalAvailable(this.pluginRuntime), // OTTO(terminal)
+        ottoGitFetch: gitFetchAvailable(this.pluginRuntime), // OTTO(git-fetch)
+        ottoWorkspaceLifecycle: gitFetchAvailable(this.pluginRuntime), // OTTO(workspace-lifecycle)
+        ottoGitDiffBase: gitFetchAvailable(this.pluginRuntime), // OTTO(diff-base)
+        ottoManualCommit: true, // OTTO(manual-commit): selected-file operation is implemented by this daemon.
+        ottoEditor: editorAvailable(this.pluginRuntime), // OTTO(editor)
+        ottoSpeech: speechAvailable(this.pluginRuntime), // OTTO(speech)
+        ottoKnowledge: knowledgeAvailable, // OTTO(knowledge)
+        ottoArtifacts: ottoArtifactsAvailable(this.pluginRuntime), // OTTO(artifacts)
+        ottoArchitecturalViews: architecturalViewsAvailable(this.pluginRuntime), // OTTO(architectural-views): composed owner includes renderer assets.
+        ottoWorkflows: ottoWorkflowsAvailable(this.pluginRuntime), // OTTO(workflows)
+        scheduleTargets: scheduleTargetsAvailable(this.pluginRuntime), // OTTO(schedules): one target, history and storage API shared by app/CLI/MCP.
+        ottoFileHistory: gitFetchAvailable(this.pluginRuntime), // OTTO(file-history)
+        ottoStructuralDiff: true, // OTTO(structural-diff)
+        ottoActivity: activityAvailable(this.pluginRuntime), // OTTO(activity)
+        ottoWorkspaceRefine: knowledgeAvailable, // OTTO(refine)
+        ottoContextManagement: knowledgeAvailable, // OTTO(context-management): daemon-owned inspection and conditional edits.
+        ottoContextStarter: knowledgeAvailable, // OTTO(context-starter): reviewed root-file creation.
+        ...ottoBrowserCapabilities(this.pluginRuntime), // OTTO(browser-history)
+        ottoKnowledgeRefinement: knowledgeAvailable, // OTTO(knowledge)
+        usageSources: true,
+        ownedSubscriptions: true,
         agentRequestReceipts: true,
+        workspaceRequestReceipts: true,
+        creationLifecycle: true,
         hubAgentRpc: true,
+        backgroundWorkspaces: true,
         // COMPAT(directorySync): added in v0.3.x, remove gate after 2027-02-12.
         directorySync: true,
-        agentWorkspaceFilter: true,
         // COMPAT(workspaceLabels): added in v0.5.0, remove after 2027-08-14.
         ...(this.workspaceLabelService ? { workspaceLabels: true } : {}),
         // COMPAT(workspaceSetupRun): added in v0.7.3, remove gate after 2027-09-02.
@@ -2127,9 +1885,9 @@ export class VoiceAssistantWebSocketServer {
         // gate and legacy fallback after 2027-01-17 once the supported daemon
         // floor is >= v0.2.0.
         forgeCheckDetails: true,
-        // COMPAT(forgeReviewThreads): added in v0.8.15, remove gate after 2027-02-27.
-        forgeReviewThreads: true,
-        // COMPAT(forgeSearch): added in v0.1.106, remove github_search fallback after 2026-12-28.
+        // COMPAT(forgeSearch): added in v0.2.0-beta.1. Remove the feature gate
+        // and legacy fallback after 2027-01-17 once the supported daemon floor
+        // is >= v0.2.0.
         forgeSearch: true,
         // COMPAT(daemonStatusRpc): added in v0.1.76, remove gate after 2026-11-18.
         ...(this.advertiseDaemonStatusRpc ? { daemonStatusRpc: true } : {}),
@@ -2143,6 +1901,8 @@ export class VoiceAssistantWebSocketServer {
         plugins: true,
         pluginManagement: true,
         pluginGitManagement: true,
+        pluginSourceInstallation: true,
+        pluginSourceUpdates: true,
         pluginLogs: true,
         // COMPAT(pluginThemes): added in v0.5.0, remove gate after 2027-08-20.
         pluginThemes: true,
@@ -2152,12 +1912,6 @@ export class VoiceAssistantWebSocketServer {
         skillManagement: true,
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": true,
-        // COMPAT(terminalCompatibilityDiagnostic): added in v0.8.9, remove gate after 2027-02-12.
-        terminalCompatibilityDiagnostic: true,
-        // COMPAT(terminalEmbeddedPresentation): added in v0.8.9, remove gate after 2027-02-12.
-        terminalEmbeddedPresentation: true,
-        // COMPAT(terminalTitleSettings): added in v0.8.5, remove gate after 2027-02-07.
-        terminalTitleSettings: true,
         // COMPAT(terminalInputModeReplay): added in v0.2.6, remove gate after 2027-02-02.
         "terminal-input-mode-replay": true,
         // COMPAT(terminalSizeOwnership): added in v0.2.6, remove gate after 2027-02-02.
@@ -2169,19 +1923,16 @@ export class VoiceAssistantWebSocketServer {
         agentTimelinePromptIndex: true,
         // COMPAT(agentHistorySearch): added in v0.3.0, remove gate after 2027-02-07.
         agentHistorySearch: true,
-        chatContentSearch: true,
+        historyArchiveCleanup: true, // OTTO(history): reviewed host archive cleanup.
+        chatContentSearch: Boolean(this.agentManager.ottoChatSearch), // OTTO(chat-search)
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: true,
-        // COMPAT(gitFetchControl): added in v0.8.11, remove gate after 2027-02-14.
-        gitFetchControl: true,
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97
         workspaceMultiplicity: true,
         // COMPAT(projectRemove): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectRemove: true,
         // COMPAT(projectAdd): added in v0.1.97, drop the gate when floor >= v0.1.97.
         projectAdd: true,
-        // COMPAT(projectScaffold): added in v0.6.9, drop the gate when floor >= v0.6.9.
-        projectScaffold: true,
         // COMPAT(projectList): added in v0.2.4, drop the gate when floor >= v0.2.4.
         projectList: true,
         // COMPAT(worktreeRestore): keep through 2027-01-11 for clients older than v0.1.105.
@@ -2192,7 +1943,6 @@ export class VoiceAssistantWebSocketServer {
         workspaceFileEditing: true,
         // COMPAT(providerUsageList): added in v0.1.98, drop the gate when daemon floor >= v0.1.98.
         providerUsageList: true,
-        providerDiscoveryDiagnostic: true,
         // COMPAT(agentDetach): added in v0.1.98, remove gate after 2026-12-19 once daemon floor >= v0.1.98.
         agentDetach: true,
         // COMPAT(agentThinkingUpdate): added in v0.2.4, remove gate after 2027-01-28.
@@ -2203,335 +1953,13 @@ export class VoiceAssistantWebSocketServer {
         daemonSelfUpdate: this.daemonRuntimeConfig?.desktopManaged !== true,
         // COMPAT(agentForkContext): added in v0.1.102, remove gate after 2026-12-28.
         agentForkContext: true,
-        browserHistory: true,
-        // COMPAT(remoteBrowser): added in v0.9.25, remove gate after 2027-03-26.
-        remoteBrowser: true,
-        remoteBrowserLoadStatus: true,
-        remoteBrowserGestures: true,
-        remoteBrowserPinch: true,
-        // COMPAT(providerRemove): added in v0.1.105, drop the gate when daemon floor >= v0.1.105.
-        providerRemove: true,
-        // COMPAT(agentContextUsage): added in v0.3.4, drop the gate when daemon floor >= v0.3.4.
-        agentContextUsage: true,
-        // COMPAT(cumulativeUsage): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
-        cumulativeUsage: true,
-        // COMPAT(artifacts): added in v0.4.1, drop the gate when daemon floor >= v0.4.1.
-        artifacts: true,
-        // COMPAT(architecturalViews): added in v0.9.0, remove after 2027-02-28.
-        architecturalViews: this.projectKnowledgeStoreResolver !== null,
-        // COMPAT(interactiveViewTypes): added in v0.9.0 on 2026-09-06; remove
-        // after 2027-03-06 once every supported host writes typed Interactive Views.
-        interactiveViewTypes: this.projectKnowledgeStoreResolver !== null,
-        // COMPAT(architecturalViewDraftDiscovery): added in v0.9.0, remove after 2027-03-05.
-        architecturalViewDraftDiscovery: this.projectKnowledgeStoreResolver !== null,
-        // COMPAT(observedSubagents): added in v0.4.3, drop the gate when daemon floor >= v0.4.3.
-        observedSubagents: true,
-        // COMPAT(retainedTranscripts): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-        retainedTranscripts: true,
-        // COMPAT(textEditor): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
-        textEditor: true,
-        // COMPAT(refine): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.
-        refine: true,
-        // COMPAT(workspaceScriptDiscovery): added in v0.7.6, drop the gate when daemon floor >= v0.7.6.
-        workspaceScriptDiscovery: true,
-        // COMPAT(projectSearch): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
-        projectSearch: true,
-        // COMPAT(codeIndex): added in v0.4.4, drop the gate when daemon floor >= v0.4.4.
-        codeIndex: true,
-        // COMPAT(lsp): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
-        lsp: true,
-        // COMPAT(lspHostServers): added in v0.7.3, drop the gate when daemon floor >= v0.7.3.
-        // `lsp.servers.list` answers host-wide with no `cwd`, so the settings screen can
-        // list what this machine can run without a workspace open.
-        lspHostServers: true,
-        // COMPAT(solutionView): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
-        // Serving the RPCs, not the feature being on: the switch lives in the daemon
-        // config and the client reads it there. A flag that folded in the setting would
-        // make turning the feature off look like an old host to every client.
-        solutionView: true,
-        // COMPAT(artifactsToolGroup): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
-        artifactsToolGroup: true,
-        // COMPAT(speechSettings): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
-        speechSettings: this.speech !== null,
-        // COMPAT(gitHostingProviders): added in v0.4.5, drop the gate when daemon floor >= v0.4.5.
-        gitHostingProviders: this.gitHostingResolver !== null,
-        // COMPAT(agentPersonalities): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
-        agentPersonalities: true,
-        // COMPAT(ttsPreview): added in v0.4.7, drop the gate when daemon floor >= v0.4.7.
-        ttsPreview: this.speech !== null,
-        // COMPAT(ttsSpeak): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
-        ttsSpeak: this.speech !== null,
-        // COMPAT(visualizerVoiceCues): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
-        // Marks that the daemon can AUTHOR cue lines (Writer chain, always
-        // available). Speaking them at runtime separately requires ttsPreview.
-        visualizerVoiceCues: true,
-        // COMPAT(personalityProfile): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
-        // Authoring runs on the same always-available Writer chain as cue lines.
-        personalityProfile: true,
-        // COMPAT(setAgentPersonality): added in v0.5.0, drop the gate when daemon floor >= v0.5.0.
-        setAgentPersonality: true,
-        // COMPAT(checkoutGitCommit): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
-        checkoutGitCommit: true,
-        // COMPAT(checkoutGitCommitAgent): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
-        checkoutGitCommitAgent: true,
-        // COMPAT(checkoutGitRollback): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
-        checkoutGitRollback: true,
-        // COMPAT(checkoutGitLog): added in v0.5.1, drop the gate when daemon floor >= v0.5.1.
-        checkoutGitLog: true,
-        // COMPAT(checkoutGitFileHistory): added in v0.6.6, drop the gate when daemon floor >= v0.6.6.
-        checkoutGitFileHistory: true,
-        // COMPAT(worktreeArchiveBranchCleanup): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
-        worktreeArchiveBranchCleanup: true,
-        // COMPAT(worktreeReattach): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
-        worktreeReattach: true,
-        projectRelocation: true,
-        // COMPAT(worktreeDiffBase): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
-        worktreeDiffBase: true,
-        // COMPAT(checkoutDiffBaseAnyRepo): added in v0.7.4, drop the gate when daemon floor >= v0.7.4.
-        checkoutDiffBaseAnyRepo: true,
-        // COMPAT(hideMergeIntoBaseSetting): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
-        hideMergeIntoBaseSetting: true,
-        // COMPAT(agentTeams): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
-        agentTeams: true,
-        // COMPAT(agentTeamProjectDefaults): added in v0.9.17, drop the gate when daemon floor >= v0.9.17.
-        agentTeamProjectDefaults: true,
-        // COMPAT(modelTierOverrides): added in v0.5.2, drop the gate when daemon floor >= v0.5.2.
-        modelTierOverrides: true,
-        // COMPAT(modelVisibilityOverrides): added in v0.8.18, drop the gate when daemon floor >= v0.8.18.
-        modelVisibilityOverrides: true,
-        // COMPAT(savedProviderEndpoints): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
-        savedProviderEndpoints: true,
-        // COMPAT(agentOrchestration): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
-        agentOrchestration: this.runService !== null,
-        // COMPAT(activityStats): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
-        activityStats: this.getActivityRollups !== undefined,
-        // COMPAT(runsClear): added in v0.5.3, drop the gate when daemon floor >= v0.5.3.
-        runsClear: this.runService !== null,
-        // COMPAT(runsDelete): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
-        runsDelete: this.runService !== null,
-        // COMPAT(runsDraftEdit): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
-        runsDraftEdit: this.runService !== null,
-        // COMPAT(workflowStartRpc): added in v0.9.0, remove after 2027-02-28.
-        workflowStartRpc: this.runService !== null,
-        // COMPAT(workflowStartConfirmation): added in v0.9.0, remove after
-        // 2027-02-28 once every supported client carries the confirmation UI.
-        workflowStartConfirmation: this.runService !== null,
-        // COMPAT(orchestrationGraphs): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
-        orchestrationGraphs: this.runService !== null && this.graphStore !== null,
-        // COMPAT(graphCheckOutputPorts): added in v0.9.0, remove after 2027-02-28.
-        graphCheckOutputPorts: this.runService !== null && this.graphStore !== null,
-        // COMPAT(scheduleWorkflowTargets): added in v0.9.0, remove after 2027-02-28.
-        scheduleWorkflowTargets:
-          this.runService !== null &&
-          this.graphStore !== null &&
-          this.workflowStoreRegistry !== null,
-        // COMPAT(suggestedTasks): added in v0.5.6, drop the gate when daemon floor >= v0.5.6.
-        suggestedTasks: true,
-        suggestedTaskModelSelection: true,
-        // COMPAT(steerQueue): added in v0.6.8, drop the gate when daemon floor >= v0.6.8.
-        steerQueue: true,
-        // COMPAT(steerQueueReorder): added in v0.6.9, drop the gate when daemon floor >= v0.6.9.
-        steerQueueReorder: true,
-        // COMPAT(backgroundShellTasks): wire field reserved in v0.5.3 but never
-        // advertised; the daemon always emits background_shell_task events (Claude
-        // provider), so populate it now. Drop the gate when daemon floor >= v0.6.7.
-        backgroundShellTasks: true,
-        // COMPAT(contextManagement): added in v0.6.5, drop the gate when daemon floor >= v0.6.5.
-        contextManagement: true,
-        // COMPAT(personalityMemory): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
-        // Conditional on the service actually being wired: the flag means "this
-        // daemon can store and serve lessons", and a host without the store must
-        // not advertise a surface that would answer every request with nothing.
-        personalityMemory: this.personalityMemoryService !== null,
-        // COMPAT(projectKnowledge): added in v0.8.5, drop the gate when daemon floor >= v0.8.5.
-        projectKnowledge: this.projectKnowledgeService !== null,
-        // COMPAT(projectKnowledgeDeferredRootBodies): added in v0.9.1, remove
-        // after 2027-03-04.
-        projectKnowledgeDeferredRootBodies: this.projectKnowledgeService !== null,
-        // COMPAT(projectKnowledgeRefinement): added in v0.8.19, drop the gate
-        // when floor >= v0.8.19.
-        projectKnowledgeRefinement: this.projectKnowledgeService !== null,
-        // COMPAT(projectKnowledgeReviewedRefinement): added in v0.8.20, remove
-        // the gate after 2027-02-26.
-        projectKnowledgeReviewedRefinement: this.projectKnowledgeService !== null,
-        // COMPAT(projectKnowledgeAnchoredRefinement): added in v0.8.21, remove
-        // the gate after 2027-02-27.
-        projectKnowledgeAnchoredRefinement: this.projectKnowledgeService !== null,
-        // COMPAT(projectKnowledgeTagEditing): added in v0.8.21, remove the
-        // gate after 2027-02-27.
-        projectKnowledgeTagEditing: this.projectKnowledgeService !== null,
-        // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate
-        // when floor >= v0.8.18.
-        projectKnowledgeStoreLocation: this.projectKnowledgeStoreResolver !== null,
-        // COMPAT(artifactStoreLocation): added in v0.9.0, remove after 2027-02-28.
-        artifactStoreLocation: true,
-        // COMPAT(artifactRepair): added in v0.9.0, remove after 2027-02-28.
-        artifactRepair: true,
-        // COMPAT(artifactDataUpdate): added in v0.9.0, remove after 2027-02-28.
-        artifactDataUpdate: true,
-        // COMPAT(artifactStoreMove): added in v0.9.0, remove after 2027-02-28.
-        artifactStoreMove: true,
-        artifactWorkspaceDiscovery: true,
-        // COMPAT(artifactProvenance): added in v0.9.0, remove after 2027-02-28.
-        artifactProvenance: true,
-        // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
-        categoryStorageResolver: this.workflowStoreRegistry
-          ? { categories: ["workflows"] }
-          : undefined,
-        // COMPAT(fileOutsideWorkspace): added in v0.5.8, drop the gate when daemon floor >= v0.5.8.
-        fileOutsideWorkspace: true,
-        // COMPAT(promptSuggestions): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
-        promptSuggestions: true,
-        // COMPAT(rateLimitEvents): added in v0.6.3, drop the gate when daemon floor >= v0.6.3.
-        rateLimitEvents: true,
-        // COMPAT(openaiCompatMaxToolRounds): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-        openaiCompatMaxToolRounds: true,
-        // COMPAT(openaiCompatActionBreaker): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
-        openaiCompatActionBreaker: true,
-        // COMPAT(openaiCompatMidSessionUpdates): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
-        openaiCompatMidSessionUpdates: true,
-        // COMPAT(mcpToolGroups): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-        mcpToolGroups: true,
-        // COMPAT(connectors): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
-        connectors: true,
-        // COMPAT(connectorOauth): added in v0.7.7, drop the gate when daemon floor >= v0.7.7.
-        connectorOauth: true,
-        connectorGoogleOauth: false,
-        connectorNativeGoogle: this.googleConnectors?.configured === true,
-        connectorHostedOauth: getHostedConnectorAuthorization()?.configured === true,
-        // COMPAT(communications): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
-        communications: true,
-        // COMPAT(communicationsChatHome): added in v0.8.11, remove gate after 2027-02-14.
-        communicationsChatHome: true,
-        // COMPAT(communicationsInboxSearch): added in v0.8.11, remove gate after 2027-02-15.
-        communicationsInboxSearch: true,
-        // COMPAT(communicationsFavorites): added in v0.8.11, remove gate after 2027-02-15.
-        communicationsFavorites: true,
-        // COMPAT(communicationsRooms): added in v0.8.11, remove gate after 2027-02-15.
-        communicationsRooms: true,
-        // COMPAT(communicationsRoomNotifications): added in v0.8.11, remove gate after 2027-02-15.
-        communicationsRoomNotifications: true,
-        // COMPAT(communicationsPresence): added in v0.8.11, remove gate after 2027-02-14.
-        communicationsPresence: true,
-        // COMPAT(communicationsChatAvailability): added in v0.8.11, remove gate after 2027-02-14.
-        communicationsChatAvailability: true,
-        // COMPAT(communicationsPresenceChangeTiming): added in v0.8.11, remove gate after 2027-02-14.
-        communicationsPresenceChangeTiming: true,
-        // COMPAT(communicationsPresenceUpdates): added in v0.8.11, remove gate after 2027-02-14.
-        communicationsPresenceUpdates: true,
-        // COMPAT(meetingTranscripts): added in v0.8.11, remove gate after 2027-02-13.
-        meetingTranscripts: true,
-        // COMPAT(integrationAuthorization): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
-        integrationAuthorization: this.integrationAuthorization !== null,
-        // COMPAT(integrationAuthorizationBrowserFlow): added in v0.8.10, remove gate after 2027-02-14.
-        integrationAuthorizationBrowserFlow: this.integrationBrowserAuthorization !== null,
-        // COMPAT(agentBehaviorToggles): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-        agentBehaviorToggles: true,
-        agentToAgentDefaultSend: true,
-        // COMPAT(todoReminders): added in v0.7.5, drop the gate when daemon floor >= v0.7.5.
-        todoReminders: true,
-        // COMPAT(metadataGenerationEnabled): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-        metadataGenerationEnabled: true,
-        // COMPAT(usageCostCategories): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-        // Gated on the same store the rollups come from - a daemon that can serve
-        // activity rollups at this version also populates the per-category counters.
-        usageCostCategories: this.getActivityRollups !== undefined,
-        // COMPAT(usageLog): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-        // Set when the daemon serves the itemized usage ledger (usage.log.get).
-        usageLog: this.getUsageLogPage !== undefined,
-        // COMPAT(statsReset): added in v0.6.4, drop the gate when daemon floor >= v0.6.4.
-        // Set when the daemon handles stats.activity.reset (wipe counters + ledger).
-        statsReset: this.resetActivityStats !== undefined,
-        // COMPAT(historyDelete): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
-        // Hard delete for chat records - per-row `delete_agent_request` (which has
-        // always existed) plus the bulk `history.agents.clear_archived` sweep.
-        // Unconditionally true: both handlers hang off agentStorage/agentManager,
-        // which every daemon wires, so there is nothing to derive from.
-        historyDelete: true,
-        // COMPAT(fileMutations): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
-        // `file.create`, `file.delete`, `file.rename`. Unconditionally true: the
-        // handlers live on the per-session file subsystem every daemon wires,
-        // with nothing optional behind them.
-        fileMutations: true,
-        // COMPAT(binaryFileWrite): added in v0.7.6, drop the gate when daemon floor >= v0.7.6.
-        binaryFileWrite: true,
-        // COMPAT(attachmentStorage): added in v0.7.1, drop the gate when daemon floor >= v0.7.1.
-        // `attachments.images.get_stats` and `attachments.images.clear`.
-        // Unconditionally true: both read the $OTTO_HOME attachment store
-        // directly, which every daemon has.
-        attachmentStorage: true,
-        // COMPAT(historyStorage): added in v0.7.2, drop the gate when daemon floor >= v0.7.2.
-        historyStorage: true,
-        // COMPAT(agentWorkspaceTransfer): added in v0.7.4, drop the gate when
-        // daemon floor >= v0.7.4. `agent.workspace.transfer`. Unconditionally
-        // true: the handler needs only the agent manager and the workspace
-        // registry, which every daemon wires.
-        agentWorkspaceTransfer: true,
-        // COMPAT(brainControl): added in v0.7.5, remove gate after 2026-01-30 once
-        // daemon floor >= v0.7.5. Daemon manages the local AI host (otto-brain)
-        // as a child: brain.host.status/start/stop/restart, the editable `brain`
-        // config block, kill-on-shutdown.
-        brainControl: true,
-        // COMPAT(brainRuntimeLogVerbosity): added in v0.8.10, drop the gate when
-        // daemon floor >= v0.8.10. Daemon persists the llama.cpp `-lv` level and
-        // passes it to every resident Brain runtime launch.
-        brainRuntimeLogVerbosity: true,
-        // COMPAT(brainModelProcessPool): added in v0.8.12, remove after 2027-02-21.
-        brainModelProcessPool: true,
-        // COMPAT(brainStatus): added in v0.7.5, remove gate after 2026-01-30 once
-        // daemon floor >= v0.7.5. Daemon serves brain.evals.get (and the brain's
-        // status fields on brain.host.status).
-        brainStatus: true,
-        // COMPAT(brainNetworkDiscovery): added in v0.7.5, remove gate after
-        // 2026-07-30 once daemon floor >= v0.7.5. Daemon serves
-        // brain.network.discover (enumerates this host's bind addresses and
-        // probes the local `tailscale` CLI to auto-fill the tailscale TLS mode).
-        brainNetworkDiscovery: true,
-        // COMPAT(brainRemote): added in v0.7.5, remove gate after 2026-07-30
-        // once daemon floor >= v0.7.5. BrainManager can run in "remote" mode:
-        // point at a brain on another Otto host and proxy its status/evals
-        // instead of spawning a local child.
-        brainRemote: true,
-        // COMPAT(brainConsole): added in v0.7.7, drop the gate when daemon floor
-        // >= v0.7.7. Daemon proxies the brain's own /__host/* management API:
-        // brain.models.inventory, brain.model.profile.get/set,
-        // brain.model.budget.get, brain.model.load/unload/delete, brain.logs.tail.
-        // Unlike brainManage (which shells out to the CLI and is therefore
-        // local-only) these work against a remote brain too, because they go
-        // through BrainManager's mode-resolved endpoint. Whether the brain on the
-        // far side serves them is answered separately by `capabilities` on
-        // brain.host.status.
-        brainConsole: true,
-        // COMPAT(brainStatusPush): added in v0.8.3, drop the gate when daemon
-        // floor >= v0.8.3. Not a fixed capability like the flags around it: the
-        // daemon can only push what the brain publishes, so this is true only
-        // while the selected brain also advertises `capabilities.events`.
-        // BrainManager re-broadcasts server_info when that flips.
-        brainStatusPush: this.brainManager?.supportsStatusEvents() === true,
-        // COMPAT(brainLogPush): added in v0.8.10, drop the gate when daemon
-        // floor >= v0.8.10. A capable Brain publishes each durable log line
-        // through the daemon instead of waiting for the Logs tab's next poll.
-        brainLogPush: this.brainManager?.supportsLogEvents() === true,
-        // COMPAT(brainLogWatch): added in v0.8.11, drop the gate when daemon
-        // floor >= v0.8.11. Unconditionally true: this is a daemon routing
-        // capability, not a property of the brain on the far side, so it holds
-        // even while no brain is configured.
-        brainLogWatch: true,
-        // COMPAT(brainManage): added in v0.7.5, remove gate after 2026-07-30
-        // once daemon floor >= v0.7.5. Daemon drives the brain's model/runtime
-        // verbs (scan/catalog/runtime list) and long jobs (pull/runtime
-        // install/calibrate/sweep/bench) by shelling out to the otto-brain CLI.
-        brainManage: true,
-        // COMPAT(brainHfSearch): added in v0.7.5, remove gate after 2026-07-30
-        // once daemon floor >= v0.7.5. Daemon serves brain.hf.search /
-        // brain.hf.quants and starts brain.models.add by shelling out to the
-        // otto-brain search/add CLI verbs.
-        brainHfSearch: true,
         // COMPAT(agentForkContextCursor): added in v0.1.108, remove gate after 2027-01-14.
         agentForkContextCursor: true,
         // COMPAT(providerSubagents): added in v0.1.107, remove gate after 2027-01-12.
         providerSubagents: true,
-        providerSubagentControl: true,
+        ottoObservedSubagentStop: true, // OTTO(observed-subagents)
+        // COMPAT(projectedSubagentTimeline): added after v0.8.0, remove gates after 2027-03-14; retain advertisement.
+        projectedSubagentTimeline: true,
         // COMPAT(providerSubagentNesting): added in v0.7, remove gate after 2027-03-04.
         providerSubagentNesting: true,
         // COMPAT(workspacePinning): added in v0.1.107, remove gate after 2027-01-12.
@@ -2552,6 +1980,7 @@ export class VoiceAssistantWebSocketServer {
         commitBaseClassification: true,
         // COMPAT(providerRemoval): added in v0.1.105, drop the gate when floor >= v0.1.105.
         providerRemoval: true,
+        hopliteProvider: this.providerSnapshotManager.supportsConfigRequiredProvider("hoplite"),
         // COMPAT(importSessionWorkspaceTarget): added in v0.1.110, remove gate after 2027-01-16.
         importSessionWorkspaceTarget: true,
         // COMPAT(importSessionSearch): added in v0.7.3, remove gate after 2027-03-02.
@@ -2559,27 +1988,16 @@ export class VoiceAssistantWebSocketServer {
         // COMPAT(forgeProviders): added in v0.2.0-beta.1. Drop the gate after
         // 2027-01-17 once the supported daemon floor is >= v0.2.0.
         forgeProviders: true,
-        forgeConnections: Boolean(this.gitHostingResolver?.connections),
         // COMPAT(selectiveAgentTimeline): added in v0.1.106, remove after 2027-01-12.
         selectiveAgentTimeline: true,
         explicitEventSubscriptions: true,
         // COMPAT(canonicalSubmittedPrompts): added in v0.2.6, remove gate after 2027-01-30.
         canonicalSubmittedPrompts: true,
+        agentMessageProvenance: true,
         // COMPAT(stableProjectIdentity): added in v0.1.109, remove gate after 2027-01-15.
         stableProjectIdentity: true,
         // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
         workspaceScriptManagement: true,
-        // COMPAT(kanbanBoard): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
-        // The provider-agnostic Kanban board surface: kanban.* RPCs (boards
-        // list, board read, card move/create, external-task link) served
-        // through the KanbanProvider SPI with the in-memory mock and GitHub
-        // Projects v2 registered. Unconditionally true: the mock provider
-        // makes the surface work on every host without credentials.
-        kanbanBoard: true,
-        kanbanCardFields: true,
-        kanbanBoardWatch: true,
-        // COMPAT(kanbanConnectionScope): added in v0.9.27, remove after 2027-03-27.
-        kanbanConnectionScope: true,
         // COMPAT(projectCustomIcon): added in v0.2.0, remove after 2027-01-20.
         projectCustomIcon: true,
         // COMPAT(fsEntryOps): added in v0.3.0, remove gate after 2027-02-08.
@@ -2590,8 +2008,9 @@ export class VoiceAssistantWebSocketServer {
         checkoutDiscardChanges: true,
         // COMPAT(agentProfiles): added in v0.3.2, remove gate after 2027-02-11.
         agentProfiles: true,
-        // COMPAT(agentProfileRpcs): added in v0.8.13, drop the gate when daemon floor >= v0.8.13.
-        agentProfileRpcs: true,
+        ottoProfileMemory: true, // OTTO(profile-memory)
+        ottoRolePickers: true, // OTTO(role-pickers)
+        ottoAgentTeams: true, // OTTO(agent-teams)
         // COMPAT(agentConfigApply): added in v0.3.2, remove gate after 2027-02-11.
         agentConfigApply: true,
       },
@@ -2620,13 +2039,21 @@ export class VoiceAssistantWebSocketServer {
 
   private broadcastCapabilitiesUpdate(): void {
     for (const connection of new Set(this.sessions.values())) {
-      this.sendToConnection(connection, this.createServerInfoMessage(connection.session));
+      if (
+        ![...connection.sockets].some((socket) =>
+          connection.session.wantsSourceEvent(socket, "status.server_info"),
+        )
+      )
+        continue;
+      connection.session.publish({
+        type: "status",
+        payload: this.buildServerInfoStatusPayload(connection.session),
+      });
     }
   }
 
   private broadcastDaemonConfigChanged(config: MutableDaemonConfig): void {
-    // Mask stored secrets before this config fans out to every connected client.
-    this.broadcast(this.createDaemonConfigChangedMessage(redactDaemonConfigForClient(config)));
+    this.broadcast(this.createDaemonConfigChangedMessage(config));
   }
 
   private bindSocketHandlers(ws: WebSocketLike): void {
@@ -2708,13 +2135,11 @@ export class VoiceAssistantWebSocketServer {
     }
 
     this.sessions.delete(ws);
-    this.releaseActiveWorkspaceIfUnattended();
     connection.sockets.delete(ws);
     connection.session.clearAgentTimelineSubscription(ws);
     this.socketIdentities.delete(ws);
 
     if (connection.sockets.size === 0) {
-      this.unregisterBrowserToolsClient(connection);
       if (connection.lifecycle === "ephemeral-plugin") {
         this.pluginSocketIds.delete(ws);
         await this.cleanupConnection(connection, "Plugin session disconnected");
@@ -2771,24 +2196,6 @@ export class VoiceAssistantWebSocketServer {
     resolve();
   }
 
-  /**
-   * Drop the sticky active workspace once the last socket goes away.
-   *
-   * `setActiveWorkspace` is only ever called from a client focus signal and is
-   * deliberately sticky, so without this it would survive every disconnect and
-   * keep the git service's 60 s self-heal and 180 s background `git fetch`
-   * running against a daemon nobody is attached to - overnight network fetches
-   * with zero clients. The next heartbeat after a client returns re-derives the
-   * active workspace from its focus (`Session.syncActiveWorkspaceFromActivity`),
-   * so this is a pause, not a loss.
-   */
-  private releaseActiveWorkspaceIfUnattended(): void {
-    if (this.sessions.size > 0) {
-      return;
-    }
-    this.workspaceGitService.setActiveWorkspace(null);
-  }
-
   private async cleanupConnection(
     connection: SessionConnection,
     logMessage: string,
@@ -2810,67 +2217,12 @@ export class VoiceAssistantWebSocketServer {
         this.externalSessionsByKey.delete(connection.sessionKey);
       }
     }
-    this.unregisterBrowserToolsClient(connection);
 
     connection.connectionLogger.trace(
       { clientId: connection.clientId, totalSessions: this.sessions.size },
       logMessage,
     );
     await connection.session.cleanup();
-  }
-
-  private syncBrowserToolsClientRegistration(connection: SessionConnection): void {
-    if (!this.browserToolsBroker) {
-      return;
-    }
-    const registrationKey = connection.sessionKey;
-    if (
-      !connection.session.allowsPermission("workspace.write") ||
-      !isSessionRpcAllowed(connection.scopes, "browser.automation.execute.request") ||
-      !isSessionRpcAllowed(connection.scopes, "browser.automation.execute.response")
-    ) {
-      this.unregisterBrowserToolsClient(registrationKey);
-      return;
-    }
-    const browserHostCapability = getBrowserHostCapability(connection.clientCapabilities);
-    if (!browserHostCapability) {
-      this.unregisterBrowserToolsClient(registrationKey);
-      return;
-    }
-    const showsHostedTabs = appShowsHostedTabs(browserHostCapability, connection.appVersion);
-    const capabilitySignature = JSON.stringify({ browserHostCapability, showsHostedTabs });
-    const existing = this.browserToolsRegistrations.get(registrationKey);
-    if (existing?.capabilitySignature === capabilitySignature) {
-      return;
-    }
-    if (existing) {
-      this.browserToolsRegistrations.delete(registrationKey);
-      existing.unregister();
-    }
-
-    const unregister = this.browserToolsBroker.registerClient({
-      id: connection.principalId === "owner" ? connection.clientId : registrationKey,
-      hostKind: browserHostCapability.hostKind,
-      supportedCommands: browserHostCapability.supportedCommands,
-      showsHostedTabs,
-      sendBrowserAutomationRequest: (request) => {
-        this.sendToConnection(connection, wrapSessionMessage(request));
-      },
-    });
-    this.browserToolsRegistrations.set(registrationKey, {
-      capabilitySignature,
-      unregister,
-    });
-  }
-
-  private unregisterBrowserToolsClient(connection: SessionConnection | string): void {
-    const registrationKey = typeof connection === "string" ? connection : connection.sessionKey;
-    const registration = this.browserToolsRegistrations.get(registrationKey);
-    if (!registration) {
-      return;
-    }
-    this.browserToolsRegistrations.delete(registrationKey);
-    registration.unregister();
   }
 
   private handleInvalidInboundMessage(args: {
@@ -2915,35 +2267,13 @@ export class VoiceAssistantWebSocketServer {
       "WS inbound message validation failed",
     );
 
-    if (requestInfo) {
-      this.sendToClient(
-        ws,
-        wrapSessionMessage({
-          type: "rpc_error",
-          payload: {
-            requestId: requestInfo.requestId,
-            requestType: requestInfo.requestType,
-            error: isUnknownSchema
-              ? `Unknown request, try upgrading the daemon (currently v${this.daemonVersion})`
-              : "Invalid message",
-            code: isUnknownSchema ? "unknown_schema" : "invalid_message",
-          },
-        }),
-      );
-      return;
-    }
-
-    const errorMessage = `Invalid message: ${parsedMessage.error.message}`;
-    this.sendToClient(
-      ws,
-      wrapSessionMessage({
-        type: "status",
-        payload: {
-          status: "error",
-          message: errorMessage,
-        },
-      }),
-    );
+    activeConnection?.session.delivery.protocolFailure(ws, {
+      ...requestInfo,
+      error: isUnknownSchema
+        ? `Unknown request, try upgrading the daemon (currently v${this.daemonVersion})`
+        : `Invalid message: ${parsedMessage.error.message}`,
+      code: isUnknownSchema ? "unknown_schema" : "invalid_message",
+    });
   }
 
   private maybeHandleBinaryFrame(params: {
@@ -2972,7 +2302,7 @@ export class VoiceAssistantWebSocketServer {
       }
       return true;
     }
-    void Promise.resolve(activeConnection.session.handleBinaryFrame(decodedFrame)).catch(
+    void Promise.resolve(activeConnection.session.handleBinaryFrame(decodedFrame, ws)).catch(
       (error: unknown) => {
         this.handleRawMessageError({
           ws,
@@ -2991,8 +2321,8 @@ export class VoiceAssistantWebSocketServer {
     pendingConnection: PendingConnection;
   }): void {
     const { ws, message, pendingConnection } = params;
-    if (message.type === "hello") {
-      this.handleHello({
+    if (message.type === "hello" && !pendingConnection.authenticating) {
+      void this.handleHelloSafely({
         ws,
         message,
         pending: pendingConnection,
@@ -3046,7 +2376,8 @@ export class VoiceAssistantWebSocketServer {
       }
 
       const parsed = JSON.parse(buffer.toString());
-      const parsedMessage = WSInboundMessageSchema.safeParse(parsed);
+      // OTTO(protocol): canonical validation still rejects malformed legacy requests.
+      const parsedMessage = WSInboundMessageSchema.safeParse(normalizeOttoClientMessage(parsed));
       if (!parsedMessage.success) {
         this.handleInvalidInboundMessage({
           ws,
@@ -3060,15 +2391,17 @@ export class VoiceAssistantWebSocketServer {
       }
 
       const message = parsedMessage.data;
+      // OTTO(protocol): remember the dialect only after the complete envelope validates.
+      this.rememberOttoRpcDialect(ws, parsed);
       this.recordInboundMessageType(message.type);
 
-      if (message.type === "ping") {
-        this.applicationSocketLease.claim(ws);
+      if (message.type === "ping" && activeConnection) {
+        // A plugin socket is IPC to a child this daemon already supervises, not
+        // an abandonable application socket.
+        if (!this.pluginSocketIds.has(ws)) {
+          this.applicationSocketLease.claim(ws);
+        }
         this.sendToClient(ws, { type: "pong" });
-        return;
-      }
-
-      if (message.type === "recording_state") {
         return;
       }
 
@@ -3078,6 +2411,10 @@ export class VoiceAssistantWebSocketServer {
           message,
           pendingConnection,
         });
+        return;
+      }
+
+      if (message.type === "recording_state") {
         return;
       }
 
@@ -3108,6 +2445,11 @@ export class VoiceAssistantWebSocketServer {
     }
   }
 
+  // OTTO(protocol): invoked only after full message validation succeeds.
+  private rememberOttoRpcDialect(ws: WebSocketLike, message: unknown): void {
+    if (usesLegacyOttoRpcNames(message)) this.legacyOttoSockets.add(ws);
+  }
+
   private async dispatchSessionMessage(
     ws: WebSocketLike,
     activeConnection: SessionConnection,
@@ -3131,51 +2473,6 @@ export class VoiceAssistantWebSocketServer {
         "ws_control_rpc_received",
       );
     }
-    if (message.message.type === "browser.automation.execute.response") {
-      if (!activeConnection.session.allowsInbound(message.message)) {
-        await activeConnection.session.handleMessage(message.message, ws);
-        return;
-      }
-      this.browserToolsBroker?.receiveResponse(message.message as BrowserAutomationExecuteResponse);
-      return;
-    }
-
-    if (message.message.type === "browser.remote.execute.request") {
-      const request = message.message;
-      let payload: Extract<
-        SessionOutboundMessage,
-        { type: "browser.remote.execute.response" }
-      >["payload"];
-      try {
-        if (!activeConnection.session.allowsInbound(request))
-          throw new Error("Browser access is not allowed for this connection.");
-        if (!(await this.workspaceRegistry.get(request.workspaceId)))
-          throw new Error("Workspace not found.");
-        const { frameImage, ...result } = await this.remoteBrowserManager.execute(
-          request.workspaceId,
-          request.command,
-        );
-        // The picture goes first so it is waiting when its description arrives.
-        if (frameImage)
-          this.sendBinaryToClient(
-            ws,
-            encodeBrowserFrame({ requestId: request.requestId, image: frameImage }),
-          );
-        payload = { requestId: request.requestId, ok: true, ...result };
-      } catch (cause) {
-        payload = {
-          requestId: request.requestId,
-          ok: false,
-          error: browserErrorText(cause),
-        };
-      }
-      this.sendToClient(
-        ws,
-        wrapSessionMessage({ type: "browser.remote.execute.response", payload }),
-      );
-      return;
-    }
-
     const startMs = performance.now();
     await activeConnection.session.handleMessage(message.message, ws);
     const durationMs = performance.now() - startMs;
@@ -3201,21 +2498,8 @@ export class VoiceAssistantWebSocketServer {
   }): void {
     const { ws, data, error, log } = params;
     const err = error instanceof Error ? error : new Error(String(error));
-    const { rawPayload, parsedPayload } = this.decodeRawMessagePayloadForError(data);
-
-    const trimmedRawPayload =
-      typeof rawPayload === "string" && rawPayload.length > 2000
-        ? `${rawPayload.slice(0, 2000)}... (truncated)`
-        : rawPayload;
-
-    log.error(
-      {
-        err,
-        rawPayload: trimmedRawPayload,
-        parsedPayload,
-      },
-      "Failed to parse/handle message",
-    );
+    // Inbound frames can contain hello.auth.password or session secrets.
+    log.error({ errorName: err.name }, "Failed to parse/handle message");
 
     if (this.pendingConnections.has(ws)) {
       this.clearPendingConnection(ws);
@@ -3227,53 +2511,22 @@ export class VoiceAssistantWebSocketServer {
       return;
     }
 
-    const requestInfo = extractRequestInfoFromUnknownWsInbound(parsedPayload);
-    if (requestInfo) {
-      this.sendToClient(
-        ws,
-        wrapSessionMessage({
-          type: "rpc_error",
-          payload: {
-            requestId: requestInfo.requestId,
-            requestType: requestInfo.requestType,
-            error: "Invalid message",
-            code: "invalid_message",
-          },
-        }),
-      );
-      return;
-    }
-
-    this.sendToClient(
-      ws,
-      wrapSessionMessage({
-        type: "status",
-        payload: {
-          status: "error",
-          message: `Invalid message: ${err.message}`,
-        },
-      }),
+    const requestInfo = extractRequestInfoFromUnknownWsInbound(
+      this.decodeRawMessagePayloadForError(data),
     );
+    this.sessions.get(ws)?.session.delivery.protocolFailure(ws, {
+      ...requestInfo,
+      error: `Invalid message: ${err.message}`,
+      code: "invalid_message",
+    });
   }
 
-  private decodeRawMessagePayloadForError(data: Buffer | ArrayBuffer | Buffer[] | string): {
-    rawPayload: string | null;
-    parsedPayload: unknown;
-  } {
-    let rawPayload: string | null = null;
-    let parsedPayload: unknown = null;
+  private decodeRawMessagePayloadForError(data: Buffer | ArrayBuffer | Buffer[] | string): unknown {
     try {
-      const buffer = bufferFromWsData(data);
-      rawPayload = buffer.toString();
-      parsedPayload = JSON.parse(rawPayload);
-    } catch (payloadError) {
-      rawPayload = rawPayload ?? "<unreadable>";
-      parsedPayload = parsedPayload ?? rawPayload;
-      const payloadErr =
-        payloadError instanceof Error ? payloadError : new Error(String(payloadError));
-      this.logger.error({ err: payloadErr }, "Failed to decode raw payload");
+      return JSON.parse(bufferFromWsData(data).toString());
+    } catch {
+      return null;
     }
-    return { rawPayload, parsedPayload };
   }
 
   private incrementRuntimeCounter(counter: keyof WebSocketRuntimeCounters): void {
@@ -3316,9 +2569,6 @@ export class VoiceAssistantWebSocketServer {
 
     return {
       ...this.checkoutDiffManager.getMetrics(),
-      // Process-wide, not per-session: one rebuild per session per lifecycle
-      // event is exactly the cost this window exists to expose.
-      workspaceDescriptor: snapshotWorkspaceDescriptorMetrics(),
       terminalDirectorySubscriptionCount,
       terminalSubscriptionCount,
       workspaceGitWatchedDirectoryCount,
@@ -3327,48 +2577,6 @@ export class VoiceAssistantWebSocketServer {
       inflightRequests,
       peakInflightRequests,
     };
-  }
-
-  /**
-   * Loopback ports that currently serve a connected Otto client, derived from
-   * socket Origin headers (e.g. the Metro dev server hosting the app in dev).
-   * The preview subsystem treats these as protected: tree-killing whatever
-   * listens there would take down the client issuing the request.
-   */
-  getConnectedClientOriginPorts(): number[] {
-    const ports = new Set<number>();
-    for (const identity of this.socketIdentities.values()) {
-      if (!identity.origin) {
-        continue;
-      }
-      let originUrl: URL;
-      try {
-        originUrl = new URL(identity.origin);
-      } catch {
-        continue;
-      }
-      const hostname = originUrl.hostname;
-      const isLoopback =
-        hostname === "localhost" ||
-        hostname.startsWith("127.") ||
-        hostname === "[::1]" ||
-        hostname === "::1";
-      if (!isLoopback) {
-        continue;
-      }
-      let port: number;
-      if (originUrl.port) {
-        port = Number.parseInt(originUrl.port, 10);
-      } else if (originUrl.protocol === "https:") {
-        port = 443;
-      } else {
-        port = 80;
-      }
-      if (Number.isInteger(port) && port > 0) {
-        ports.add(port);
-      }
-    }
-    return [...ports];
   }
 
   private flushRuntimeMetrics(options?: { final?: boolean }): void {
@@ -3420,30 +2628,11 @@ export class VoiceAssistantWebSocketServer {
       collectedAt: new Date().toISOString(),
       ...loggedMetrics,
     };
-    // The periodic window is retained for `collectDiagnostics` (the app's
-    // Performance Diagnostics Capture carries it) rather than logged: at ~3KB
-    // every 30s it was most of daemon.log by volume. Only the shutdown flush is
-    // written at info so the last window survives when there is no capture.
-    if (options?.final) {
-      this.logger.info(loggedMetrics, "ws_runtime_metrics");
-    } else {
-      this.logger.debug(loggedMetrics, "ws_runtime_metrics");
-    }
+    this.logger.info(loggedMetrics, "ws_runtime_metrics");
   }
 
-  private collectClientPresenceStates(): ClientPresenceState[] {
-    const states: ClientPresenceState[] = [];
-    for (const connection of this.sessions.values()) {
-      if (connection.principalId !== "owner") {
-        continue;
-      }
-      states.push(this.getClientActivityState(connection.session));
-    }
-    return states;
-  }
-
-  private getClientActivityState(session: Session): ClientPresenceState {
-    const activity = session.getClientActivity();
+  private getClientActivityState(session: Session, source: object): ClientPresenceState {
+    const activity = session.getClientActivity(source);
     if (!activity) {
       return {
         appVisible: false,
@@ -3476,14 +2665,22 @@ export class VoiceAssistantWebSocketServer {
     }> = [];
 
     for (const [ws, connection] of this.sessions) {
-      if (!(await connection.session.subscribesToAgent(agent))) continue;
+      if (
+        connection.session.delivery.isModern(ws)
+          ? !connection.session.wantsSourceEvent(ws, "agent_attention_required")
+          : !(await connection.session.subscribesToAgent(agent, ws))
+      )
+        continue;
       clientEntries.push({
         ws,
-        state: this.getClientActivityState(connection.session),
+        state: this.getClientActivityState(connection.session, ws),
       });
     }
 
-    const allStates = clientEntries.map((e) => e.state);
+    const notificationEntries = clientEntries.filter(({ ws }) =>
+      this.sessions.get(ws)?.session.wantsSourceNotification(ws, "agent_attention_required"),
+    );
+    const allStates = notificationEntries.map((e) => e.state);
     const nowMs = Date.now();
     const assistantMessage = await this.agentManager.getLastAssistantMessage(params.agentId);
     const notification = buildAgentAttentionNotificationPayload({
@@ -3508,8 +2705,10 @@ export class VoiceAssistantWebSocketServer {
       });
     }
 
-    for (const [clientIndex, { ws }] of clientEntries.entries()) {
-      const shouldNotify = clientIndex === plan.inAppRecipientIndex;
+    for (const { ws } of clientEntries) {
+      const shouldNotify =
+        plan.inAppRecipientIndex !== null &&
+        notificationEntries[plan.inAppRecipientIndex]?.ws === ws;
       const timestamp = new Date().toISOString();
       const connection = this.sessions.get(ws);
       const attentionPayload = {
@@ -3520,7 +2719,8 @@ export class VoiceAssistantWebSocketServer {
         notification,
       };
       const message = wrapSessionMessage(
-        connection?.session.supportsForSource(CLIENT_CAPS.selectiveAgentTimeline, ws)
+        connection?.session.delivery.isModern(ws) ||
+          connection?.session.supportsForSource(CLIENT_CAPS.selectiveAgentTimeline, ws)
           ? {
               type: "agent_attention_required",
               payload: attentionPayload,
@@ -3542,7 +2742,9 @@ export class VoiceAssistantWebSocketServer {
             },
       );
 
-      this.sendToClient(ws, message);
+      if (message.type === "session" && this.sessions.get(ws)?.session.delivery.isModern(ws))
+        this.sessions.get(ws)!.session.publishToSource(ws, message.message);
+      else this.sendToClient(ws, message);
     }
   }
 
@@ -3560,20 +2762,28 @@ export class VoiceAssistantWebSocketServer {
 
     for (const [ws, connection] of this.sessions) {
       if (
-        !(await connection.session.subscribesToTerminalDirectory({
-          cwd: params.cwd,
-          ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
-        }))
+        connection.session.delivery.isModern(ws)
+          ? !connection.session.wantsSourceEvent(ws, "terminal_attention_required")
+          : !(await connection.session.subscribesToTerminalDirectory(
+              {
+                cwd: params.cwd,
+                ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
+              },
+              ws,
+            ))
       ) {
         continue;
       }
       clientEntries.push({
         ws,
-        state: this.getClientActivityState(connection.session),
+        state: this.getClientActivityState(connection.session, ws),
       });
     }
 
-    const allStates = clientEntries.map((e) => e.state);
+    const notificationEntries = clientEntries.filter(({ ws }) =>
+      this.sessions.get(ws)?.session.wantsSourceNotification(ws, "terminal_attention_required"),
+    );
+    const allStates = notificationEntries.map((e) => e.state);
     const nowMs = Date.now();
     const workspaceId = params.workspaceId;
 
@@ -3607,8 +2817,10 @@ export class VoiceAssistantWebSocketServer {
         });
     }
 
-    for (const [clientIndex, { ws }] of clientEntries.entries()) {
-      const shouldNotify = clientIndex === plan.inAppRecipientIndex;
+    for (const { ws } of clientEntries) {
+      const shouldNotify =
+        plan.inAppRecipientIndex !== null &&
+        notificationEntries[plan.inAppRecipientIndex]?.ws === ws;
       const message = wrapSessionMessage({
         type: "terminal_attention_required",
         payload: {
@@ -3622,7 +2834,9 @@ export class VoiceAssistantWebSocketServer {
           shouldNotify,
         },
       });
-      this.sendToClient(ws, message);
+      if (message.type === "session" && this.sessions.get(ws)?.session.delivery.isModern(ws))
+        this.sessions.get(ws)!.session.publishToSource(ws, message.message);
+      else this.sendToClient(ws, message);
     }
   }
 }

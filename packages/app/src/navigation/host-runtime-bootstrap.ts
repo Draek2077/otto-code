@@ -1,76 +1,44 @@
 import type { AppState } from "react-native";
 import type { ActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import type { DaemonStartResult } from "@/runtime/daemon-start-service";
-import type { AppStartScreen } from "@/hooks/use-settings/storage";
+import type {
+  DaemonStartCondition,
+  DaemonStartResult,
+  StartDaemonIfEnabledInput,
+} from "@/runtime/daemon-start-service";
 import type { Href } from "expo-router";
 import {
   buildHostRootRoute,
   buildHostWorkspaceRoute,
   buildOpenProjectRoute,
-  buildSetupRoute,
-  buildStatsRoute,
 } from "@/utils/host-routes";
 
 export interface HostRuntimeBootstrapStore {
-  boot: () => void;
+  boot: () => Promise<void>;
 }
 
 export interface HostRuntimeBootstrapDaemonStartService {
-  start: () => Promise<DaemonStartResult>;
+  startIfEnabled: (input: StartDaemonIfEnabledInput) => Promise<DaemonStartResult>;
 }
-
-type HostRuntimeBootstrapStartGate = boolean | (() => boolean | Promise<boolean>);
 
 export interface StartHostRuntimeBootstrapInput {
   store: HostRuntimeBootstrapStore;
   daemonStartService: HostRuntimeBootstrapDaemonStartService;
-  shouldStartDaemon: HostRuntimeBootstrapStartGate;
-  onGateError?: (message: string) => void;
-  onGateSettled?: () => void;
+  shouldStartDaemon: DaemonStartCondition;
 }
 
 export function startHostRuntimeBootstrap(input: StartHostRuntimeBootstrapInput): void {
-  input.store.boot();
-  startDaemonIfGateAllows({
-    daemonStartService: input.daemonStartService,
-    shouldStartDaemon: input.shouldStartDaemon,
-    onGateError: input.onGateError,
-    onGateSettled: input.onGateSettled,
+  const registryReady = input.store.boot();
+  void input.daemonStartService.startIfEnabled({
+    shouldStart: async () => {
+      await registryReady;
+      return typeof input.shouldStartDaemon === "boolean"
+        ? input.shouldStartDaemon
+        : input.shouldStartDaemon();
+    },
   });
 }
 
-export function startDaemonIfGateAllows(input: {
-  daemonStartService: HostRuntimeBootstrapDaemonStartService;
-  shouldStartDaemon: HostRuntimeBootstrapStartGate;
-  onGateError?: (message: string) => void;
-  onGateSettled?: () => void;
-}): void {
-  const gate = input.shouldStartDaemon;
-  if (typeof gate === "boolean") {
-    if (gate) {
-      void input.daemonStartService.start();
-    }
-    input.onGateSettled?.();
-    return;
-  }
-
-  void Promise.resolve()
-    .then(() => gate())
-    .then((shouldStartDaemon) => {
-      if (shouldStartDaemon) {
-        void input.daemonStartService.start();
-      }
-      return null;
-    })
-    .catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      input.onGateError?.(`Failed to evaluate desktop daemon settings: ${message}`);
-    })
-    .finally(() => input.onGateSettled?.());
-}
-
 const WELCOME_ROUTE: Href = "/welcome";
-const SETUP_ROUTE: Href = buildSetupRoute();
 
 export type StartupBlocker =
   | { kind: "none" }
@@ -82,11 +50,6 @@ export interface ResolveStartupBlockerInput {
   anyOnlineHostServerId: string | null;
   daemonStartIsRunning: boolean;
   daemonStartError: string | null;
-  daemonStartGatePending?: boolean;
-}
-
-export function initialStartupBlocker(isDesktopRuntime: boolean): StartupBlocker {
-  return isDesktopRuntime ? { kind: "managed-daemon-starting" } : { kind: "none" };
 }
 
 export function resolveStartupBlocker(input: ResolveStartupBlockerInput): StartupBlocker {
@@ -102,7 +65,7 @@ export function resolveStartupBlocker(input: ResolveStartupBlockerInput): Startu
     return { kind: "managed-daemon-error", message: input.daemonStartError };
   }
 
-  if (input.daemonStartGatePending || input.daemonStartIsRunning) {
+  if (input.daemonStartIsRunning) {
     return { kind: "managed-daemon-starting" };
   }
 
@@ -111,16 +74,6 @@ export function resolveStartupBlocker(input: ResolveStartupBlockerInput): Startu
 
 export function resolveStartupNavigationReady(input: { startupBlocker: StartupBlocker }): boolean {
   return input.startupBlocker.kind !== "managed-daemon-starting";
-}
-
-// The root layout owns the first React paint. Keep the application tree out of
-// that paint until host bootstrap has reached a stable state; the splash can
-// then cover the runtime while its first route commits.
-export function shouldMountStartupRuntime(input: {
-  startupBlocker: StartupBlocker;
-  hostRegistryStatus: StartupRegistryStatus;
-}): boolean {
-  return input.startupBlocker.kind === "none" && input.hostRegistryStatus === "ready";
 }
 
 export function shouldRunStartupGiveUpTimer(input: {
@@ -164,12 +117,6 @@ export interface ResolveIndexStartupRouteInput extends ResolveStartupRouteBaseIn
   workspaceSelectionStatus: WorkspaceSelectionStatus;
   isWorkspaceSelectionLoaded: boolean;
   hasGivenUpWaitingForHost: boolean;
-  // First-run setup wizard gate. `hasCompletedSetupWizard` is the device-local
-  // flag (backfilled `true` for existing devices, so only genuinely fresh
-  // installs are `false`); `isSetupWizardStateLoaded` guards against the
-  // unhydrated `false` default flashing the wizard in front of a returning user.
-  hasCompletedSetupWizard: boolean;
-  isSetupWizardStateLoaded: boolean;
 }
 
 export interface ResolveHostStartupRouteInput extends ResolveStartupRouteBaseInput {
@@ -209,17 +156,7 @@ export function resolveHostIndexRoute(input: {
   serverId: string;
   workspaceSelection: ActiveWorkspaceSelection | null;
   workspaceSelectionStatus: WorkspaceSelectionStatus;
-  // Device-local "how the app starts" preference. Defaults to "workspaces"
-  // (today's restore-last-workspace behavior) when omitted, so callers that
-  // haven't hydrated the setting yet behave exactly like before this existed.
-  appStartScreen?: AppStartScreen;
 }): Href {
-  if (input.appStartScreen === "dashboard") {
-    return buildStatsRoute();
-  }
-  if (input.appStartScreen === "home") {
-    return buildOpenProjectRoute();
-  }
   if (
     input.workspaceSelection?.serverId === input.serverId &&
     shouldRestoreWorkspaceSelection(input)
@@ -247,21 +184,6 @@ function resolveReadyIndexStartupRoute(input: ResolveIndexStartupRouteInput): St
 
   if (!input.isWorkspaceSelectionLoaded) {
     return { kind: "splash" };
-  }
-
-  // First-run setup wizard: a fresh device (flag `false`) with an ONLINE host
-  // to configure runs the wizard before any host/workspace routing (Mode →
-  // Providers → … → Done). Existing devices are backfilled to completed
-  // (migrateSetupWizardFlag), so they never see it. Wait for the flag to load so
-  // the unhydrated `false` default can't flash the wizard in front of a
-  // returning user. A device with no online host falls through to the welcome/pair
-  // flow below - there is nothing to configure yet (the providers step requires
-  // a live connection to fetch provider details).
-  if (!input.isSetupWizardStateLoaded) {
-    return { kind: "splash" };
-  }
-  if (!input.hasCompletedSetupWizard && input.anyOnlineHostServerId !== null) {
-    return { kind: "redirect", href: SETUP_ROUTE };
   }
 
   if (

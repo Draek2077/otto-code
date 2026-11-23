@@ -1,7 +1,7 @@
-import { createOttoClient, type OttoClient } from "@otto-code/client";
+import { createPaseoClient, type PaseoClient } from "@getpaseo/client";
 
-export function createClient(url: string): OttoClient {
-  return createOttoClient({
+export function createClient(url: string): PaseoClient {
+  return createPaseoClient({
     url,
   });
 }
@@ -10,13 +10,12 @@ export async function subscribeToEvents(
   url: string,
   agentId: string,
   workspaceId: string,
-): Promise<() => void> {
+): Promise<() => Promise<void>> {
   const client = createClient(url);
   await client.connect();
 
-  await client.workspaces.list({
-    subscribe: { subscriptionId: `workspace-${workspaceId}` },
-  });
+  const agents = await client.agents.list({ subscribe: {} });
+  const workspaces = await client.workspaces.list({ subscribe: {} });
 
   const unsubscribeAgentUpdates = client.agents.subscribe((update) => {
     if (update.kind === "upsert" && update.agent.id === agentId) {
@@ -31,14 +30,24 @@ export async function subscribeToEvents(
   });
 
   const unsubscribeTimeline = client.agents.ref(agentId).timeline.subscribe((event) => {
-    void event.event;
+    if (event.event.type === "subscription_restored") {
+      console.log("Live subscription restored; request any missed history explicitly.");
+    } else if (event.event.type === "error") {
+      console.error(event.event.error);
+    }
   });
 
-  return () => {
+  await unsubscribeTimeline.ready;
+
+  return async () => {
     unsubscribeTimeline();
     unsubscribeWorkspaceUpdates();
     unsubscribeAgentUpdates();
-    void client.close();
+    try {
+      await Promise.all([agents.subscription.release(), workspaces.subscription.release()]);
+    } finally {
+      await client.close();
+    }
   };
 }
 

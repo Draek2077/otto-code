@@ -21,6 +21,7 @@ export function FileAttentionPanel({ visible, fileAttention, onOpenFile }: FileA
     .sort((a, b) => b.totalTokens - a.totalTokens)
 
   const maxTokens = Math.max(...files.map(f => f.totalTokens), 1)
+  const knownFiles = files.filter(f => f.tokensKnown === true || f.totalTokens > 0)
 
   return (
     <SlidingPanel
@@ -65,7 +66,7 @@ export function FileAttentionPanel({ visible, fileAttention, onOpenFile }: FileA
                   border: `1px solid ${canOpen ? heatColor + '30' : heatColor + '15'}`,
                   cursor: canOpen ? 'pointer' : undefined,
                 }}
-                onClick={canOpen ? () => onOpenFile(file.path) : undefined}
+                onClick={canOpen ? () => onOpenFile?.(file.path) : undefined}
                 title={canOpen ? file.path : undefined}
               >
                 {/* Filename */}
@@ -74,7 +75,7 @@ export function FileAttentionPanel({ visible, fileAttention, onOpenFile }: FileA
                     {displayPath}
                   </span>
                   <span className="text-[9px] font-mono" style={{ color: COLORS.textMuted }}>
-                    {file.totalTokens > 0 ? formatTokens(file.totalTokens) : '—'}
+                    {file.tokensKnown || file.totalTokens > 0 ? formatTokens(file.totalTokens) : '—'}
                   </span>
                 </div>
 
@@ -114,7 +115,9 @@ export function FileAttentionPanel({ visible, fileAttention, onOpenFile }: FileA
             color: COLORS.textMuted,
           }}>
             <span>{files.length} files</span>
-            <span>{formatTokens(files.reduce((s, f) => s + f.totalTokens, 0))} tokens in file reads</span>
+            <span>{knownFiles.length === 0 ? 'File token usage not reported' : (
+              <>{knownFiles.length < files.length ? '≥ ' : ''}{formatTokens(knownFiles.reduce((s, f) => s + f.totalTokens, 0))} tokens reported</>
+            )}</span>
           </div>
         )}
       </div>

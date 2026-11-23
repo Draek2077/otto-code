@@ -1,4 +1,4 @@
-import type { FileReadResult } from "@otto-code/client/internal/daemon-client";
+import type { FileReadResult } from "@getpaseo/client/internal/daemon-client";
 import type { LiveFileSnapshot } from "../live-file/model";
 import { describe, expect, it } from "vitest";
 import {
@@ -15,7 +15,6 @@ function previewFile(content: string) {
     encoding: "utf-8" as const,
     hasBom: false,
     modifiedAt: "2026-08-20T00:00:00.000Z",
-    eol: "lf" as const,
     content,
   };
 }

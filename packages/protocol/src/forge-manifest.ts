@@ -1,5 +1,7 @@
+import { OTTO_BITBUCKET_FORGE } from "./otto/bitbucket-forge.js"; // OTTO(bitbucket): declarative adapter registration.
+
 /**
- * Declarative manifest of the git forges Otto knows how to present, mirroring
+ * Declarative manifest of the git forges Paseo knows how to present, mirroring
  * provider-manifest.ts. Pure build-time data shared by BOTH the client (icon,
  * brand label, PR↔MR relabel) and the server (registry host-matching, prompt
  * branding). It is NEVER serialized over the wire, so adding a forge here is not
@@ -13,12 +15,12 @@
 
 /**
  * Declarative sign-in recipe for a forge. The client renders install/sign-in
- * hints from this data alone - no per-CLI switch - so a new forge wires its auth
+ * hints from this data alone — no per-CLI switch — so a new forge wires its auth
  * UX entirely from the manifest. Behavioural auth (the actual host probe) stays
  * in the server adapter; this is only what the user is told to run.
  */
 export interface ForgeSignInCommand {
-  /** Binary the user installs, e.g. "gh" - shown in the install-CLI hint. */
+  /** Binary the user installs, e.g. "gh" — shown in the install-CLI hint. */
   cli: string;
   /** Full sign-in command, e.g. "gh auth login". */
   command: string;
@@ -45,17 +47,18 @@ export interface ForgeDefinition {
   issueNumberPrefix: string;
   /** Icon key; the client falls back to a generic git icon for unknown values. */
   iconKind: string;
-  /** Sign-in recipe, or null when the forge has no Otto-driven sign-in. */
+  /** Sign-in recipe, or null when the forge has no Paseo-driven sign-in. */
   signIn: ForgeSignInCommand | null;
   /**
    * Public cloud hosts this forge owns exactly. A BOUNDED list, never an
-   * allowlist for self-hosted detection - self-hosted/Enterprise instances are
+   * allowlist for self-hosted detection — self-hosted/Enterprise instances are
    * recognized at runtime by the adapter's host probe, not by this field.
    */
   cloudHosts?: string[];
 }
 
 export const FORGE_DEFINITIONS: ForgeDefinition[] = [
+  OTTO_BITBUCKET_FORGE, // OTTO(bitbucket): implementation remains in Otto-owned modules.
   {
     id: "github",
     displayName: "GitHub",
@@ -66,17 +69,6 @@ export const FORGE_DEFINITIONS: ForgeDefinition[] = [
     iconKind: "github",
     signIn: { cli: "gh", command: "gh auth login" },
     cloudHosts: ["github.com", "ssh.github.com"],
-  },
-  {
-    id: "bitbucket-cloud",
-    displayName: "Bitbucket Cloud",
-    changeRequestAbbrev: "PR",
-    changeRequestNoun: "pull request",
-    changeRequestNumberPrefix: "#",
-    issueNumberPrefix: "#",
-    iconKind: "bitbucket-cloud",
-    signIn: null,
-    cloudHosts: ["bitbucket.org"],
   },
   {
     id: "gitlab",

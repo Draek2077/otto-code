@@ -7,6 +7,7 @@ import {
   useAgentCommandsQuery,
   type AgentSlashCommand,
   type DraftCommandConfig,
+  type DraftCommandTarget,
 } from "./use-agent-commands-query";
 import { orderAutocompleteOptions } from "@/components/ui/autocomplete-utils";
 import { useAutocomplete } from "./use-autocomplete";
@@ -25,7 +26,6 @@ import {
 import {
   applyFileMentionReplacement,
   findActiveFileMention,
-  removeFileMention,
   type FileMentionRange,
 } from "@/utils/file-mention-autocomplete";
 
@@ -35,16 +35,10 @@ interface UseAgentAutocompleteInput {
   setUserInput: (nextValue: string) => void;
   serverId: string;
   agentId: string;
-  draftConfig?: DraftCommandConfig;
+  draft?: DraftCommandTarget;
   onAutocompleteApplied?: () => void;
   onClientSlashCommand?: (command: ClientSlashCommand) => void;
   canExecuteClientSlashCommand?: boolean;
-  /**
-   * Attach a picked `@` mention as a composer pill. Returns false when the
-   * composer has nowhere to put one (no attachment scope), in which case the
-   * mention falls back to the quoted-path text it used to insert.
-   */
-  onAttachWorkspaceEntry?: (entry: { path: string; kind: "file" | "directory" }) => boolean;
   pluginClientSlashCommands?: readonly PluginClientSlashCommand[];
 }
 
@@ -69,7 +63,6 @@ type AgentAutocompleteOption =
   | (AutocompleteOption & {
       type: "workspace_entry";
       entryPath: string;
-      entryKind: "file" | "directory";
       mention: FileMentionRange;
     });
 
@@ -125,18 +118,13 @@ type AvailableCommand =
   | { source: "plugin"; command: PluginClientSlashCommand }
   | { source: "provider"; command: AgentSlashCommand };
 
-function normalizeDraftCommandConfig(
-  draftConfig?: DraftCommandConfig,
-): DraftCommandConfig | undefined {
-  if (!draftConfig) {
+function resolveDraftQueryConfig(draft?: DraftCommandTarget): DraftCommandConfig | undefined {
+  if (draft?.status !== "ready") {
     return undefined;
   }
 
+  const draftConfig = draft.config;
   const cwd = draftConfig.cwd.trim();
-  if (!cwd) {
-    return undefined;
-  }
-
   const modeId = draftConfig.modeId?.trim() ?? "";
   const model = draftConfig.model?.trim() ?? "";
   const thinkingOptionId = draftConfig.thinkingOptionId?.trim() ?? "";
@@ -261,7 +249,6 @@ function buildCommandAutocompleteOptions(input: BuildAutocompleteOptionsInput) {
       label: entry.path,
       kind: entry.kind,
       entryPath: entry.path,
-      entryKind: entry.kind,
       mention: activeFileMention,
     }));
   }
@@ -326,25 +313,6 @@ function resolveAutocompleteIsLoading(args: {
   return false;
 }
 
-/**
- * A stable id for the `/command` or `@mention` under the caret, used to scope
- * an Escape dismissal. Position-based, not query-based: typing more of the
- * same token keeps it dismissed instead of popping the list back open.
- */
-function resolveActiveAutocompleteToken(args: {
-  mode: AutocompleteMode;
-  activeSlashCommand: SlashCommandRange | null;
-  activeFileMention: FileMentionRange | null;
-}): string | null {
-  if (args.mode === "command" && args.activeSlashCommand) {
-    return `command:${args.activeSlashCommand.start}`;
-  }
-  if (args.mode === "file" && args.activeFileMention) {
-    return `file:${args.activeFileMention.start}`;
-  }
-  return null;
-}
-
 function resolveAutocompleteErrorMessage(args: {
   mode: AutocompleteMode;
   isCommandError: boolean;
@@ -365,6 +333,35 @@ function resolveAutocompleteErrorMessage(args: {
   return undefined;
 }
 
+// A draft's agentId is a draft key the daemon does not know, so a draft lists
+// commands by its config only, and not at all until that config is complete.
+function resolveDraftCommandContext(draft: DraftCommandTarget | undefined) {
+  const queryDraftConfig = resolveDraftQueryConfig(draft);
+  const isDraftContext = draft !== undefined;
+  return {
+    isDraftContext,
+    queryDraftConfig,
+    canListCommands: !isDraftContext || queryDraftConfig !== undefined,
+  };
+}
+
+function resolveAutocompleteEmptyText(args: {
+  mode: AutocompleteMode;
+  draft: DraftCommandTarget | undefined;
+  t: TFunction;
+}): string {
+  if (args.mode === "file") {
+    return args.t("agentAutocomplete.noFiles");
+  }
+  if (args.draft?.status === "needs-project") {
+    return args.t("agentAutocomplete.chooseProjectForCommands");
+  }
+  if (args.draft?.status === "needs-provider") {
+    return args.t("agentAutocomplete.chooseModelForCommands");
+  }
+  return args.t("agentAutocomplete.noCommands");
+}
+
 export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAutocompleteResult {
   const { t } = useTranslation();
   const {
@@ -373,11 +370,10 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     setUserInput,
     serverId,
     agentId,
-    draftConfig,
+    draft,
     onAutocompleteApplied,
     onClientSlashCommand,
     canExecuteClientSlashCommand,
-    onAttachWorkspaceEntry,
     pluginClientSlashCommands = [],
   } = input;
 
@@ -409,13 +405,10 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     return () => clearTimeout(timer);
   }, [fileFilterQuery]);
 
-  const normalizedDraftConfig = useMemo(
-    () => normalizeDraftCommandConfig(draftConfig),
-    [draftConfig],
+  const { isDraftContext, queryDraftConfig, canListCommands } = useMemo(
+    () => resolveDraftCommandContext(draft),
+    [draft],
   );
-
-  const isDraftContext = normalizedDraftConfig !== undefined;
-  const queryDraftConfig = normalizedDraftConfig;
   const canLoadCommands = resolveCanLoadCommands({ serverId, agentId, isDraftContext });
 
   const agentCwd = useSessionStore(
@@ -439,41 +432,16 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     autocompleteCwd,
   });
 
-  // Escape dismisses the popover, and only the popover: it must never touch the
-  // typed text. The dismissal is pinned to the token under the caret, so it
-  // lasts until the user leaves that `/command` or `@mention` behind.
-  const activeToken = resolveActiveAutocompleteToken({
-    mode,
-    activeSlashCommand,
-    activeFileMention,
-  });
-  const [dismissedToken, setDismissedToken] = useState<string | null>(null);
-  useEffect(() => {
-    if (activeToken === null) {
-      setDismissedToken(null);
-    }
-  }, [activeToken]);
-  const isDismissed = activeToken !== null && dismissedToken === activeToken;
-  const dismissAutocomplete = useCallback(() => {
-    if (activeToken !== null) {
-      setDismissedToken(activeToken);
-    }
-  }, [activeToken]);
-
-  const {
-    commands,
-    isLoading: isCommandsLoading,
-    isError,
-    error,
-  } = useAgentCommandsQuery({
+  const commandsQuery = useAgentCommandsQuery({
     serverId,
     agentId,
-    enabled: mode === "command" && canLoadCommands,
+    enabled: mode === "command" && canLoadCommands && canListCommands,
     draftConfig: queryDraftConfig,
   });
+  const { commands, isError, error } = commandsQuery;
+  const isCommandsLoading = canListCommands && commandsQuery.isLoading;
 
-  const isVisible =
-    canShowAutocomplete && !isDismissed && !(mode === "command" && isCommandsLoading);
+  const isVisible = canShowAutocomplete && !(mode === "command" && isCommandsLoading);
 
   const fileSuggestionsQuery = useQuery({
     queryKey: [
@@ -581,28 +549,17 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
         return;
       }
 
-      // A picked file leaves the text and becomes a pill: the `@query` is
-      // deleted rather than replaced, so the sentence the user is writing keeps
-      // reading as a sentence. Only when the composer has no attachment scope
-      // to hold a pill does the old quoted path go back into the text.
-      const attached = onAttachWorkspaceEntry?.({
-        path: selected.entryPath,
-        kind: selected.entryKind,
+      if (!current.fileMention) return;
+      const nextInput = applyFileMentionReplacement({
+        text: current.text,
+        mention: current.fileMention,
+        relativePath: selected.entryPath,
       });
-      setUserInput(
-        attached
-          ? removeFileMention({ text: userInput, mention: selected.mention })
-          : applyFileMentionReplacement({
-              text: userInput,
-              mention: selected.mention,
-              relativePath: selected.entryPath,
-            }),
-      );
+      setUserInput(nextInput);
       onAutocompleteApplied?.();
     },
     [
       canExecuteClientSlashCommand,
-      onAttachWorkspaceEntry,
       onAutocompleteApplied,
       onClientSlashCommand,
       setUserInput,
@@ -623,10 +580,11 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     isVisible,
     options,
     query: mode === "command" ? commandFilterQuery : fileFilterQuery,
-    // The generic hook hands back the keypress; this unwraps the input snapshot
-    // it carries, which is what the selection logic actually reads.
     onSelectOption: selectOptionFromKeyPress,
-    onEscape: dismissAutocomplete,
+    onEscape:
+      mode === "command" && activeSlashCommand?.position === "start"
+        ? () => setUserInput("")
+        : undefined,
   });
 
   const isLoading = resolveAutocompleteIsLoading({
@@ -648,8 +606,7 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     mode === "file"
       ? t("agentAutocomplete.searchingWorkspace")
       : t("agentAutocomplete.loadingCommands");
-  const emptyText =
-    mode === "file" ? t("agentAutocomplete.noFiles") : t("agentAutocomplete.noCommands");
+  const emptyText = resolveAutocompleteEmptyText({ mode, draft, t });
 
   return {
     isVisible,

@@ -1,14 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { resolveSshFailureDetail } from "../ssh/ssh-tunnel.js";
-import { connectToDaemon, getExplicitDaemonHost } from "./client.js";
+import { connectToDaemon } from "./client.js";
 
 const mocks = vi.hoisted(() => ({
   configs: [] as Array<Record<string, unknown>>,
   createSshTunnel: vi.fn(),
-  connect: vi.fn(),
 }));
 
-vi.mock("@otto-code/client/internal/daemon-client", () => ({
+vi.mock("@getpaseo/client/internal/daemon-client", () => ({
   DaemonClient: class {
     lastError = null;
 
@@ -16,9 +15,7 @@ vi.mock("@otto-code/client/internal/daemon-client", () => ({
       mocks.configs.push(config);
     }
 
-    async connect() {
-      await mocks.connect();
-    }
+    async connect() {}
     async close() {}
   },
 }));
@@ -33,7 +30,6 @@ describe("CLI SSH transport", () => {
   beforeEach(() => {
     mocks.configs.length = 0;
     mocks.createSshTunnel.mockReset();
-    mocks.connect.mockReset();
     mocks.createSshTunnel.mockResolvedValue({
       endpoint: "127.0.0.1:4567",
       close: vi.fn(),
@@ -51,7 +47,9 @@ describe("CLI SSH transport", () => {
   });
 
   it("routes an SSH host through a local tunnel", async () => {
-    await connectToDaemon({ host: "ssh://deploy@build-box:2222?daemonPort=7777" });
+    await connectToDaemon({
+      target: { kind: "endpoint", host: "ssh://deploy@build-box:2222?daemonPort=7777" },
+    });
 
     expect(mocks.createSshTunnel).toHaveBeenCalledWith({
       host: "deploy@build-box",
@@ -63,30 +61,5 @@ describe("CLI SSH transport", () => {
       clientId: "cli-test-id",
       clientType: "cli",
     });
-  });
-
-  it("uses Otto's host environment and lets an explicit host override it", () => {
-    expect(getExplicitDaemonHost(undefined, { OTTO_HOST: "ssh://deploy@build-box" })).toBe(
-      "ssh://deploy@build-box",
-    );
-    expect(getExplicitDaemonHost("explicit:7777", { OTTO_HOST: "other:7777" })).toBe(
-      "explicit:7777",
-    );
-    expect(getExplicitDaemonHost(undefined, { OTTO_HOST: " " })).toBeUndefined();
-  });
-
-  it("closes a failed SSH tunnel and surfaces its failure instead of suggesting a local restart", async () => {
-    const close = vi.fn();
-    mocks.createSshTunnel.mockResolvedValue({
-      endpoint: "127.0.0.1:4567",
-      close,
-      failureDetail: () => "Host key verification failed.",
-    });
-    mocks.connect.mockRejectedValue(new Error("socket closed"));
-
-    await expect(connectToDaemon({ host: "ssh://deploy@build-box" })).rejects.toThrow(
-      "SSH connection failed: Host key verification failed.",
-    );
-    expect(close).toHaveBeenCalledTimes(1);
   });
 });

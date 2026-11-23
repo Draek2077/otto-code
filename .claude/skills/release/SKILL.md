@@ -6,7 +6,7 @@ user-invocable: true
 
 # Release
 
-The self-contained release runbook. **Follow this skill directly - do not re-read `docs/release.md` for a normal release.** `docs/release.md` is the exhaustive reference; come back to it only for the edge cases flagged below (rollout tuning, retrying a failed build). This keeps a release token-light.
+The self-contained release runbook. **Follow this skill directly - do not re-read `docs/otto-release.md` for a normal release.** `docs/otto-release.md` is the exhaustive reference; come back to it only for the edge cases flagged below (rollout tuning, retrying a failed build). This keeps a release token-light.
 
 **Default = stable patch.** "Release", "ship", "ship stable", "release otto" all mean a patch bump from the previous stable. Only run the beta path when the user explicitly says "beta". Never bump minor/major to trigger or retry a build - that needs an explicit "minor"/"major" from the user.
 
@@ -31,7 +31,7 @@ npm run format && npm run lint                         # commit any format churn
 npm run acp:version-drift:check                        # npm/PyPI pins + installed-command labels + ACP registry coverage
 npm run settings:catalog                               # regenerates settings search; commit it if it changed
 npm run size:ceilings:check                            # CI gate: a failure means main is red; report it, never raise a ceiling
-npm outdated -w @otto-code/server                      # report agent SDK lag (claude-agent-sdk, @anthropic-ai/sdk, openai, @opencode-ai/sdk)
+npm outdated -w @getpaseo/server                      # report agent SDK lag (claude-agent-sdk, @anthropic-ai/sdk, openai, @opencode-ai/sdk)
 npm run release:prepare                                # run once alone to absorb any package-lock churn into a normal commit
 ```
 
@@ -78,7 +78,7 @@ npm run release:patch         # release:check → version:all:patch (bump+commit
 
 **`release:check` builds nothing locally.** It finds the newest commit in HEAD that changes anything besides docs (the changelog commit is skipped), and waits until CI's `typecheck`, `lint` and `format` jobs pass on it. CI's `typecheck` job is the clean install, full build, typecheck and dry-run pack of all eight packages that the old local check repeated. It stops early, with the fix in its message, if the code commit is not pushed, a gate job failed, or every run on it was cancelled. Playwright and the test jobs do not gate it. `npm run release:check:local` is the old full local build, for when CI cannot vouch for the commit; use it only when the user agrees to skip the wait.
 
-`release:patch` bumps every workspace, commits, tags, and pushes HEAD + tag. **The agent runs it end to end.** Publishing is not part of it: the tag push runs the `npm Publish` workflow, which publishes the eight `@otto-code/*` packages (highlight, relay, protocol, client, plugin, server, brain, cli) through npm trusted publishing and reads the Google sign-in registration from the `OTTO_GOOGLE_OAUTH_CLIENT_JSON` repository secret. See `docs/release.md` → "npm publishing from CI".
+`release:patch` bumps every workspace, commits, tags, and pushes HEAD + tag. **The agent runs it end to end.** Publishing is not part of it: the tag push runs the `npm Publish` workflow, which publishes the seven `@otto-code/*` packages (highlight, relay, protocol, client, plugin, server, cli) through npm trusted publishing and reads the Google sign-in registration from the `OTTO_GOOGLE_OAUTH_CLIENT_JSON` repository secret. See `docs/otto-release.md` → "npm publishing from CI".
 
 **Push credentials:** the push must authenticate as `Draek2077`. If `gh auth status` shows another active account, don't switch it (other sessions may rely on it); give the push the right token instead, by setting these env vars for the one command: `GIT_CONFIG_COUNT=2`, `GIT_CONFIG_KEY_0/1=credential.https://github.com.helper`, `GIT_CONFIG_VALUE_0=''`, `GIT_CONFIG_VALUE_1='!f() { test "$1" = get || exit 0; echo username=Draek2077; echo "password=$(gh auth token --user Draek2077)"; }; f'`.
 
@@ -97,7 +97,7 @@ The `v*` tag push triggers, in **your** repo: `npm Publish`, `Desktop Release`, 
 - Spot-check once, if at all: `npm view @otto-code/cli version` shows the new version on `latest`.
 - The `beta` dist-tag moves to the new stable inside the `npm Publish` run itself. Never ask the user to move it and never mention it in the report.
 
-Stable rollout is a 36h staged ramp by default; nothing extra needed. To admit everyone immediately or tune the ramp, see **`docs/release.md` → "Staged rollout"**.
+Stable rollout is a 36h staged ramp by default; nothing extra needed. To admit everyone immediately or tune the ramp, see **`docs/otto-release.md` → "Staged rollout"**.
 
 ---
 
@@ -121,12 +121,12 @@ Promotion runs the **stable** completion checklist, including the sanity check.
 ## Hard rules
 
 - **Never run `npm run release:publish` or enter an npm OTP/2FA code yourself.** That step is always the user's to run, in their own terminal. See step 4.
-- **Never bump minor/major to fix or retrigger a build.** Build/CI failures are fixed on the current version. To rebuild a target, push a retry tag - see `docs/release.md` → "Fixing a failed release build" (Docker-only retries use `docker.yml` dispatch, never a re-pushed `v*` tag).
+- **Never bump minor/major to fix or retrigger a build.** Build/CI failures are fixed on the current version. To rebuild a target, push a retry tag - see `docs/otto-release.md` → "Fixing a failed release build" (Docker-only retries use `docker.yml` dispatch, never a re-pushed `v*` tag).
 - **No code in the changelog commit or the release commit.** Code shims are their own reviewed commit.
 - **"Stable" means stable** - don't offer a beta first when the user said stable.
 - **Releases are always patch** unless the user explicitly says "minor"/"major".
 
-## When to open `docs/release.md`
+## When to open `docs/otto-release.md`
 
 Only for these - everything else is above:
 

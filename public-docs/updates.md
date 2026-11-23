@@ -6,6 +6,8 @@ order: 5
 category: Getting started
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Updates
 
 Otto ships updates through two channels: **Stable** and **Beta**.

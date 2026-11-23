@@ -1,8 +1,8 @@
 import {
   encodeTerminalKeyInput,
   type TerminalKeyInput,
-} from "@otto-code/protocol/terminal-key-input";
-import type { TerminalInputModeState } from "@otto-code/protocol/terminal-input-mode";
+} from "@getpaseo/protocol/terminal-key-input";
+import type { TerminalInputModeState } from "@getpaseo/protocol/terminal-input-mode";
 import { normalizeTerminalTransportKey } from "@/utils/terminal-keys";
 
 export interface TerminalKeyModifierState {

@@ -4,13 +4,13 @@ import {
   type ClientForgeLogicModule,
   type MergeCapability,
 } from "@/git/client-forge-module";
-import type { CheckoutPipelineJob, CheckoutPrMergeMethod } from "@otto-code/protocol/messages";
+import type { CheckoutPipelineJob, CheckoutPrMergeMethod } from "@getpaseo/protocol/messages";
 import {
   CHECK_TRAIT_ACTION_REQUIRED,
   CHECK_TRAIT_MANUAL,
   CHECK_TRAIT_WARNING,
-} from "@otto-code/protocol/check-traits";
-import { GITLAB_ACTIVE_PIPELINE_STATUS_SET } from "@otto-code/protocol/gitlab-pipeline";
+} from "@getpaseo/protocol/check-traits";
+import { GITLAB_ACTIVE_PIPELINE_STATUS_SET } from "@getpaseo/protocol/gitlab-pipeline";
 import type { CheckStatus } from "@/git/pull-request-panel/check-status";
 import {
   classifyCheck,

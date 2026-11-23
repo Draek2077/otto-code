@@ -1,4 +1,5 @@
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { expect, type Page } from "../fixtures";
 import { drillIntoProvider, openModelPicker } from "./agent-profiles";
 

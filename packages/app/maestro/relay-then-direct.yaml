@@ -1,4 +1,4 @@
-appId: me.ottocode.mobile
+appId: me.ottocode.mobile # OTTO(identity)
 ---
 - launchApp:
     clearState: true
@@ -38,7 +38,7 @@ appId: me.ottocode.mobile
     timeout: 10000
 
 - tapOn:
-    text: "192.168.1.10:6868"
+    text: "192.168.1.10:6767"
 - eraseText
 - inputText: ${DIRECT_ENDPOINT}
 - tapOn: "Add"

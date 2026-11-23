@@ -1,23 +1,17 @@
-import { PASEO_PLUGIN_API_VERSION } from "@otto-code/protocol/plugin-compatibility";
-import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { exec, execFile } from "node:child_process";
+import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
 import { scaffoldPluginDirectory } from "./scaffold.js";
+// OTTO(paseo-version): the manifest range and the npm release identify different things.
+import { OTTO_PASEO_BASE_VERSION } from "@getpaseo/protocol/otto/identity";
 
 const directories: string[] = [];
-const scratchRoot = fileURLToPath(
-  new URL("../../../../../.tmp/cli-plugin-scaffold/", import.meta.url),
-);
-
-async function createScaffoldTestDirectory(): Promise<string> {
-  await mkdir(scratchRoot, { recursive: true });
-  return mkdtemp(path.join(scratchRoot, "fixture-"));
-}
 const execFileAsync = promisify(execFile);
+const execAsync = promisify(exec);
 const tscPath = createRequire(import.meta.url).resolve("typescript/bin/tsc");
 
 async function typecheckPlugin(directory: string): Promise<void> {
@@ -37,11 +31,52 @@ afterEach(async () => {
 });
 
 describe("plugin scaffold", () => {
+  it("creates an author overview beside the manifest", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "paseo-plugin-scaffold-"));
+    directories.push(parent);
+    const directory = path.join(parent, "hello-plugin");
+    await scaffoldPluginDirectory(directory);
+
+    const overview = await readFile(path.join(directory, "OVERVIEW.md"), "utf8");
+    const comments = overview.match(/<!--[\s\S]*?-->/g) ?? [];
+    expect(comments).toHaveLength(1);
+    expect(overview.replace(/<!--[\s\S]*?-->/g, "").trim()).toBe("");
+    expect(overview).toContain("required to list");
+    expect(overview).toContain("README");
+    expect(overview).toContain("choosing a plugin in Otto");
+    expect(overview).toContain("Length follows complexity");
+    expect(overview).toContain("1. Describe what your plugin is and does");
+    expect(overview).toContain("2. Explain how it works only when it is not obvious");
+    expect(overview).toContain("3. Explain setup when needed");
+    expect(overview).toContain("4. Explain capabilities and settings");
+    expect(overview).toContain("permissions");
+    expect(overview).toContain("known limits");
+    expect(overview).not.toContain("This plugin entry was imported");
+    const packageJson = JSON.parse(await readFile(path.join(directory, "package.json"), "utf8"));
+    expect(packageJson.files).toContain("OVERVIEW.md");
+    expect(await readdir(directory)).toContain("paseo-plugin.json");
+  });
+
+  it("includes the author overview in the packed npm artifact", async () => {
+    const parent = await mkdtemp(path.join(tmpdir(), "paseo-plugin-scaffold-"));
+    directories.push(parent);
+    const directory = path.join(parent, "packed-plugin");
+    await scaffoldPluginDirectory(directory);
+
+    const { stdout } = await execAsync("npm pack --dry-run --ignore-scripts --json", {
+      cwd: directory,
+    });
+    const [artifact] = JSON.parse(stdout) as { files: { path: string }[] }[];
+    expect(artifact.files.map((file) => file.path)).toEqual(
+      expect.arrayContaining(["OVERVIEW.md", "paseo-plugin.json"]),
+    );
+  });
+
   it(
     "creates a standalone split-runtime project that typechecks",
     { timeout: 15_000 },
     async () => {
-      const parent = await createScaffoldTestDirectory();
+      const parent = await mkdtemp(path.join(process.cwd(), ".plugin-scaffold-"));
       directories.push(parent);
       const directory = path.join(parent, "hello-plugin");
 
@@ -57,17 +92,32 @@ describe("plugin scaffold", () => {
       const cliPackageJson = JSON.parse(
         await readFile(new URL("../../../package.json", import.meta.url), "utf8"),
       ) as { version: string };
-      expect(JSON.parse(await readFile(path.join(directory, "otto-plugin.json"), "utf8"))).toEqual({
-        id: "hello-plugin",
-        requirements: { paseo: `>=${PASEO_PLUGIN_API_VERSION}` },
-      });
+      expect(JSON.parse(await readFile(path.join(directory, "paseo-plugin.json"), "utf8"))).toEqual(
+        {
+          id: "hello-plugin",
+          $comment: expect.stringContaining('"icon": "assets/icon.png"'),
+          media: [],
+          requirements: { paseo: `>=${OTTO_PASEO_BASE_VERSION}` },
+        },
+      );
       expect(JSON.parse(await readFile(path.join(directory, "package.json"), "utf8"))).toEqual({
         name: "hello-plugin",
         private: true,
         version: "0.0.0",
+        files: [
+          "paseo-plugin.json",
+          "OVERVIEW.md",
+          "index.client.ts",
+          "index.client.tsx",
+          "index.server.ts",
+          "index.server.tsx",
+          "client/",
+          "server/",
+          "shared/",
+        ],
         scripts: { typecheck: "tsc --noEmit" },
         devDependencies: {
-          "@otto-code/plugin": cliPackageJson.version,
+          "@getpaseo/plugin": `npm:@otto-code/plugin@${cliPackageJson.version}`,
           "@tanstack/react-query": "^5.90.11",
           "@types/react": "~19.2.0",
           react: "19.1.0",
@@ -76,7 +126,7 @@ describe("plugin scaffold", () => {
           zod: "^4.4.3",
         },
       });
-      expect(await readdir(directory)).not.toContain("otto-plugin.d.ts");
+      expect(await readdir(directory)).not.toContain("paseo-plugin.d.ts");
       await expect(readFile(path.join(directory, "index.client.tsx"), "utf8")).resolves.toContain(
         'from "./client/greeting"',
       );
@@ -112,15 +162,15 @@ describe("plugin scaffold", () => {
     },
   );
 
-  it("typechecks client and server Otto API access", async () => {
-    const parent = await createScaffoldTestDirectory();
+  it("typechecks client and server Paseo API access", async () => {
+    const parent = await mkdtemp(path.join(process.cwd(), ".plugin-scaffold-"));
     directories.push(parent);
-    const directory = path.join(parent, "otto-api-plugin");
+    const directory = path.join(parent, "paseo-api-plugin");
     await scaffoldPluginDirectory(directory);
     await Promise.all([
       writeFile(
         path.join(directory, "shared", "inspect.ts"),
-        `import { defineRpc } from "@otto-code/plugin";
+        `import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const inspect = defineRpc({
@@ -132,15 +182,15 @@ export const inspect = defineRpc({
       ),
       writeFile(
         path.join(directory, "server", "inspect.ts"),
-        `import type { PluginHandlerContext } from "@otto-code/plugin/server";
-import type { RpcInput } from "@otto-code/plugin";
+        `import type { PluginHandlerContext } from "@getpaseo/plugin/server";
+import type { RpcInput } from "@getpaseo/plugin";
 import { inspect } from "../shared/inspect";
 
 export async function inspectConfig(
   _input: RpcInput<typeof inspect>,
-  { otto }: PluginHandlerContext,
+  { paseo }: PluginHandlerContext,
 ) {
-  return { configured: Boolean((await otto.config.get()).config) };
+  return { configured: Boolean((await paseo.config.get()).config) };
 }
 `,
       ),
@@ -148,20 +198,22 @@ export async function inspectConfig(
         path.join(directory, "client", "main.tsx"),
         `import React from "react";
 import { Text } from "react-native";
-import { Icon, Modal, useToast } from "@otto-code/plugin/client/react-native";
-import { type PluginAgentPanelProps, type PluginClientContext, type PluginSurfaceProps, useAgent, useOtto, useWorkspace } from "@otto-code/plugin/client";
+import { Icon, Modal, useToast } from "@getpaseo/plugin/client/react-native";
+import { type PluginAgentPanelProps, type PluginClientContext, type PluginSurfaceProps, useAgent, usePaseo, useWorkspace } from "@getpaseo/plugin/client";
 import { inspect } from "../shared/inspect";
 
 export function Surface({ navigation }: PluginSurfaceProps) {
-  const otto = useOtto();
+  const paseo = usePaseo();
   const toast = useToast();
-  const createWorkspace = () => otto.workspaces.create({
+  const createWorkspace = () => paseo.workspaces.create({
     source: { kind: "directory", path: "/repo" },
   });
   navigation?.openAgent({ agentId: "agent-1" });
   navigation?.openWorkspace({ workspaceId: "workspace-1" });
+  navigation?.openAgent({ serverId: "server-2", agentId: "agent-2" });
+  navigation?.openWorkspace({ serverId: "server-2", workspaceId: "workspace-2" });
   void createWorkspace;
-  return <><Icon name="Settings" size={18} color="#123456" /><Text onPress={() => toast.show("Ready")}>Otto API</Text><Modal title="Example" icon={<Icon name="Settings" />} open={false} onOpenChange={() => {}}><Modal.Content><Text>Modal</Text></Modal.Content></Modal></>;
+  return <><Icon name="Settings" size={18} color="#123456" /><Text onPress={() => toast.show("Ready")}>Paseo API</Text><Modal title="Example" icon={<Icon name="Settings" />} open={false} onOpenChange={() => {}}><Modal.Content><Text>Modal</Text></Modal.Content></Modal></>;
 }
 
 export function AgentPanel({ workspaceId, agentId }: PluginAgentPanelProps) {
@@ -218,12 +270,12 @@ export function contributeClient(client: PluginClientContext) {
       ),
       writeFile(
         path.join(directory, "index.client.tsx"),
-        `import type { PluginClientContext } from "@otto-code/plugin/client";
+        `import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { AgentPanel, contributeClient, Surface } from "./client/main";
 import { inspect } from "./shared/inspect";
 
 export default function contribute(client: PluginClientContext) {
-  client.addSurface("main", Surface);
+  client.addScreen({ id: "main", title: "Review", Component: Surface });
   client.addWorkspacePanel({
     id: "review",
     title: "Review",
@@ -236,8 +288,8 @@ export default function contribute(client: PluginClientContext) {
     title: "Open review",
     icon: "Scan",
     context: "agent",
-    async onSelect({ otto, rpc, workspace, openPanel }) {
-      await otto.workspaces.ref(workspace.id).setTitle("Review");
+    async onSelect({ paseo, rpc, workspace, openPanel }) {
+      await paseo.workspaces.ref(workspace.id).setTitle("Review");
       await rpc(inspect, {});
       openPanel("review");
     },
@@ -248,7 +300,7 @@ export default function contribute(client: PluginClientContext) {
       ),
       writeFile(
         path.join(directory, "index.server.ts"),
-        `import type { PluginServerContext } from "@otto-code/plugin/server";
+        `import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { inspectConfig } from "./server/inspect";
 import { inspect } from "./shared/inspect";
 
@@ -264,14 +316,14 @@ export default function contribute(server: PluginServerContext) {
   }, 20_000);
 
   it("reports TypeScript errors for the old composer pill shape and cleanup", async () => {
-    const parent = await createScaffoldTestDirectory();
+    const parent = await mkdtemp(path.join(process.cwd(), ".plugin-scaffold-"));
     directories.push(parent);
     const directory = path.join(parent, "old-composer-pill");
     await scaffoldPluginDirectory(directory);
     await writeFile(
       path.join(directory, "index.client.tsx"),
       `
-import type { PluginClientContext, PluginComposerPillProps } from "@otto-code/plugin/client";
+import type { PluginClientContext, PluginComposerPillProps } from "@getpaseo/plugin/client";
 
 export default function contribute(client: PluginClientContext) {
   const oldPill = {
@@ -289,13 +341,15 @@ export default function contribute(client: PluginClientContext) {
 `,
     );
     const check = typecheckPlugin(directory);
-    await expect(check).rejects.toThrow("has no exported member 'PluginComposerPillProps'");
+    await expect(check).rejects.toThrow(
+      /has no exported member (named )?'PluginComposerPillProps'/,
+    );
     await expect(check).rejects.toThrow("Property 'button' is missing");
     await expect(check).rejects.toThrow("has no call signatures");
   }, 20_000);
 
   it("refuses to write into a non-empty directory", async () => {
-    const directory = await createScaffoldTestDirectory();
+    const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-scaffold-"));
     directories.push(directory);
     await writeFile(path.join(directory, "notes.txt"), "keep me");
 

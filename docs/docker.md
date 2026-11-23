@@ -1,3 +1,5 @@
+<!-- OTTO(identity): Otto container names, paths, configuration, and registry. -->
+
 # Running Otto in Docker
 
 Otto publishes a container image for running the daemon on a server, VM, NAS,
@@ -10,8 +12,8 @@ The image source lives in [`docker/`](../docker/).
 
 The official image:
 
-- builds `@otto-code/server` and `@otto-code/cli` from source-built workspace tarballs
-- runs the daemon as the non-root `otto` user
+- builds `@getpaseo/server` and `@otto-code/cli` from source-built workspace tarballs
+- runs the daemon as the non-root `paseo` user
 - listens on `0.0.0.0:6868` inside the container
 - enables the bundled daemon web UI with `OTTO_WEB_UI_ENABLED=true`
 - stores daemon state and agent credentials under `/home/otto`
@@ -21,6 +23,8 @@ Open the container's HTTP origin, for example `http://localhost:6868`, to load
 the web UI. The served app receives a same-origin connection hint and connects
 back to that daemon. Static UI files load without daemon auth; API and
 WebSocket requests still require `OTTO_PASSWORD` when one is configured.
+
+Host-side CLI commands select the container explicitly, for example `paseo project ls --host 127.0.0.1:6868`. Without an endpoint selector the CLI looks for a local home’s supervisor. Container environment settings are deployment overrides; worker restart preserves them. Your container manager owns full supervisor replacement.
 
 ## Quick Start
 
@@ -56,7 +60,7 @@ Minimal example:
 
 ```yaml
 services:
-  otto:
+  paseo:
     image: ghcr.io/draek2077/otto:latest
     restart: unless-stopped
     ports:
@@ -86,14 +90,14 @@ RUN npm install -g @openai/codex @anthropic-ai/claude-code opencode-ai
 Build it:
 
 ```bash
-docker build -f Dockerfile -t otto-with-agents .
+docker build -f Dockerfile -t paseo-with-agents .
 ```
 
-Then use `image: otto-with-agents` in Compose.
+Then use `image: paseo-with-agents` in Compose.
 
 Leave the child image user as root. The base entrypoint uses root only for
 first-run directory setup, then drops the daemon and launched agents to the
-non-root `otto` user.
+non-root `paseo` user.
 
 An example child image is in
 [`docker/Dockerfile.agents.example`](../docker/Dockerfile.agents.example).
@@ -102,8 +106,8 @@ You can also mount credentials from the host or run agent login once inside the
 container:
 
 ```bash
-docker exec -it --user otto otto codex
-docker exec -it --user otto otto claude
+docker exec -it --user paseo paseo codex
+docker exec -it --user paseo paseo claude
 ```
 
 Agent credentials and config persist in `/home/otto`, alongside daemon state.
@@ -113,10 +117,10 @@ or `compose.environment`; Otto passes them to launched agents.
 
 ## Volumes
 
-| Mount        | Purpose                                                                |
-| ------------ | ---------------------------------------------------------------------- |
-| `/home/otto` | Otto state under `.otto` plus agent config such as `.codex`, `.claude` |
-| `/workspace` | Code that Otto and launched agents can read and write                  |
+| Mount        | Purpose                                                                 |
+| ------------ | ----------------------------------------------------------------------- |
+| `/home/otto` | Otto state under `.paseo` plus agent config such as `.codex`, `.claude` |
+| `/workspace` | Code that Otto and launched agents can read and write                   |
 
 The image defaults:
 
@@ -127,7 +131,7 @@ The image defaults:
 | `OTTO_LISTEN` | `0.0.0.0:6868`     |
 
 If you bind-mount host directories on Linux, make sure the container user can
-write them. The built-in `otto` user has uid/gid `1000:1000`. For a different
+write them. The built-in `paseo` user has uid/gid `1000:1000`. For a different
 host uid/gid, either adjust ownership on the mounted directories or run the
 container with Docker's `--user` / Compose `user:` option.
 
@@ -139,7 +143,7 @@ WebSocket upgrades to the same daemon port.
 Caddy example:
 
 ```caddy
-otto.example.com {
+paseo.example.com {
   reverse_proxy 127.0.0.1:6868
 }
 ```
@@ -149,7 +153,7 @@ Nginx example:
 ```nginx
 server {
     listen 443 ssl;
-    server_name otto.example.com;
+    server_name paseo.example.com;
 
     location / {
         proxy_pass http://127.0.0.1:6868;
@@ -167,7 +171,7 @@ validation allows that name:
 
 ```yaml
 environment:
-  OTTO_HOSTNAMES: "otto.example.com,.lan"
+  OTTO_HOSTNAMES: "paseo.example.com,.lan"
 ```
 
 IPs and `localhost` are allowed by default.
@@ -176,8 +180,9 @@ IPs and `localhost` are allowed by default.
 
 - Set `OTTO_PASSWORD` for any published port or network-reachable deployment.
 - Prefer HTTPS at the reverse proxy for direct browser access.
-- Use the Otto relay for untrusted networks or mobile access when you do not
-  want to expose the daemon port directly.
+- Use the [official Otto relay](https://github.com/getpaseo/paseo-relay) for
+  untrusted networks or mobile access when you do not want to expose the daemon
+  port directly.
 - The container is the isolation boundary for agents. Agents can read and write
   whatever you mount into `/workspace` and whatever credentials you place in
   `/home/otto`.
@@ -189,7 +194,7 @@ See [SECURITY.md](../SECURITY.md) for the daemon trust model.
 ## Building Locally
 
 ```bash
-docker build -f docker/base/Dockerfile -t otto:local .
+docker build -f docker/base/Dockerfile -t paseo:local .
 ```
 
 To assert the source tree version while building:
@@ -197,7 +202,7 @@ To assert the source tree version while building:
 ```bash
 docker build \
   --build-arg OTTO_VERSION=0.1.102 \
-  -t otto:0.1.102 \
+  -t paseo:0.1.102 \
   -f docker/base/Dockerfile \
   .
 ```
@@ -215,11 +220,11 @@ pushing a `v*` release tag:
 ```bash
 gh workflow run docker.yml \
   --ref main \
-  -f otto_version=0.1.102-beta.1 \
+  -f paseo_version=0.1.102-beta.1 \
   -f publish=true
 ```
 
-Manual Docker publishes require an explicit `otto_version`. The workflow builds
+Manual Docker publishes require an explicit `paseo_version`. The workflow builds
 from the checked-out source tree and publishes only the exact prerelease image
 tag for prerelease versions.
 
@@ -234,5 +239,5 @@ The published image is multi-arch for `linux/amd64` and `linux/arm64`.
   runtime where the binary is on `PATH`.
 - **Permission errors in `/workspace`**: make the mounted directory writable by
   uid/gid `1000:1000`, or run the container as the host uid/gid.
-- **Logs**: inspect `docker logs otto` or
+- **Logs**: inspect `docker logs paseo` or
   `/home/otto/.otto/daemon.log` inside the container.

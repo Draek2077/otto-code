@@ -1,7 +1,7 @@
 import type pino from "pino";
 import { v4 as uuidv4 } from "uuid";
-import { getErrorMessage, getErrorMessageOr } from "@otto-code/protocol/error-utils";
-import type { AgentConfigApply } from "@otto-code/protocol/messages";
+import { getErrorMessage, getErrorMessageOr } from "@getpaseo/protocol/error-utils";
+import type { AgentConfigApply } from "@getpaseo/protocol/messages";
 import type { AgentProviderNotice } from "../../agent/agent-sdk-types.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 
@@ -21,27 +21,18 @@ export interface AgentConfigSessionHost {
 /**
  * The per-agent config mutations this subsystem drives. The shell adapts these
  * onto the AgentManager and loads a closed agent before mutation (mode still
- * routes through setAgentModeCommand); tests wire an in-memory fake. Mode,
- * model and thinking yield a provider notice; feature does not. Model's notice
- * reports a mode the pick had to leave (see exitModelSelectingMode).
+ * routes through setAgentModeCommand); tests wire an in-memory fake. Mode and
+ * thinking yield a provider notice; model and feature do not.
  */
 export interface AgentConfigOperations {
+  selectProfile?(agentId: string, id: string): Promise<AgentProviderNotice | null>; // OTTO(agent-teams)
   ensureLoaded(agentId: string): Promise<void>;
   setMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null>;
-  setModel(agentId: string, modelId: string | null): Promise<AgentProviderNotice | null>;
+  setModel(agentId: string, modelId: string | null): Promise<void>;
   setFeature(agentId: string, featureId: string, value: unknown): Promise<void>;
   setThinking(
     agentId: string,
     thinkingOptionId: string | null,
-  ): Promise<AgentProviderNotice | null>;
-  /**
-   * Live-switch (or clear, with null) the agent's personality. The shell
-   * resolves the roster id against the agent's cwd before applying; resolution
-   * failures reject the request with the unavailability reason.
-   */
-  setPersonality(
-    agentId: string,
-    personalityId: string | null,
   ): Promise<AgentProviderNotice | null>;
 }
 
@@ -62,12 +53,11 @@ interface ConfigChange {
 }
 
 /**
- * A client's per-agent config surface: set mode, model, feature, and thinking
- * option one at a time, apply all of them together, or switch personalities.
- * Each request shares one envelope - log, run the mutation, then emit the
- * accepted response, or on failure emit an activity_log error frame followed by
- * the rejected response. Reaches no state beyond the injected operations and the
- * outbound channel.
+ * A client's per-agent config surface: set mode, model, feature, or thinking
+ * option one at a time, or apply all of them together. Each request shares one
+ * envelope — log, run the mutation, then emit the accepted response, or on
+ * failure emit an activity_log error frame followed by the rejected response.
+ * Reaches no state beyond the injected operations and the outbound channel.
  */
 export class AgentConfigSession {
   private readonly host: AgentConfigSessionHost;
@@ -105,7 +95,10 @@ export class AgentConfigSession {
       logLabel: "set_agent_model_request",
       logFields: { agentId, modelId, requestId },
       failureText: "Failed to set agent model",
-      run: () => this.operations.setModel(agentId, modelId),
+      run: async () => {
+        await this.operations.setModel(agentId, modelId);
+        return undefined;
+      },
       emitResponse: (payload) => this.host.emit({ type: "set_agent_model_response", payload }),
     });
   }
@@ -140,22 +133,6 @@ export class AgentConfigSession {
       failureText: "Failed to set agent thinking option",
       run: () => this.operations.setThinking(agentId, thinkingOptionId),
       emitResponse: (payload) => this.host.emit({ type: "set_agent_thinking_response", payload }),
-    });
-  }
-
-  handleAgentPersonalitySetRequest(
-    msg: Extract<SessionInboundMessage, { type: "agent.personality.set.request" }>,
-  ): Promise<void> {
-    const { agentId, personalityId, requestId } = msg;
-    return this.applyConfigChange({
-      agentId,
-      requestId,
-      logLabel: "agent.personality.set.request",
-      logFields: { agentId, personalityId, requestId },
-      failureText: "Failed to set agent personality",
-      run: () => this.operations.setPersonality(agentId, personalityId),
-      emitResponse: (payload) =>
-        this.host.emit({ type: "agent.personality.set.response", payload }),
     });
   }
 
@@ -198,6 +175,10 @@ export class AgentConfigSession {
     agentId: string,
     config: AgentConfigApply,
   ): Promise<AgentProviderNotice | null> {
+    if (config.ottoProfileId !== undefined) {
+      if (!this.operations.selectProfile) throw new Error("Update the host to apply this Profile.");
+      return this.operations.selectProfile(agentId, config.ottoProfileId);
+    } // OTTO(agent-teams)
     let notice: AgentProviderNotice | null = null;
 
     if (config.modelId !== undefined) {

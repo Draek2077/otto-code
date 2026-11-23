@@ -65,7 +65,7 @@ describe("workspace bulk close helpers", () => {
       layoutOnlyAgentTabs: [{ tabId: "agent_child", agentId: "child" }],
     });
     expect(buildBulkCloseConfirmationMessage(groups)).toBe(
-      "This will archive 1 agent(s) and close 1 tab(s). Any external file editor in a closed tab will be stopped immediately.",
+      "This will archive 1 agent(s) and close 1 tab(s).",
     );
   });
 
@@ -80,7 +80,7 @@ describe("workspace bulk close helpers", () => {
     );
 
     expect(message).toBe(
-      "This will archive 2 agent(s), close 1 terminal(s), and close 1 tab(s). Any running process or external file editor in those terminals and tabs will be stopped immediately.",
+      "This will archive 2 agent(s), close 1 terminal(s), and close 1 tab(s). Any running process in a closed terminal will be stopped immediately.",
     );
   });
 

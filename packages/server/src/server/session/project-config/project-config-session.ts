@@ -4,10 +4,10 @@ import type pino from "pino";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import type { ProjectRegistry } from "../../workspace-registry.js";
 import {
-  readOttoConfigForEdit,
-  writeOttoConfigForEdit,
+  readPaseoConfigForEdit,
+  writePaseoConfigForEdit,
   type ProjectConfigRpcError,
-} from "../../../utils/otto-config-file.js";
+} from "../../../utils/paseo-config-file.js";
 import { hasUncommittedWorktreeSetupChanges } from "./worktree-setup-commit-status.js";
 
 export interface ProjectConfigSessionHost {
@@ -21,9 +21,9 @@ export interface ProjectConfigSessionOptions {
 }
 
 /**
- * A client's read/write surface for a project's on-disk otto.json. Resolves the
- * request's repoRoot against the known (non-archived) project roots - accepting a
- * trailing slash or a symlink via realpath - then reads or writes the config
+ * A client's read/write surface for a project's on-disk paseo.json. Resolves the
+ * request's repoRoot against the known (non-archived) project roots — accepting a
+ * trailing slash or a symlink via realpath — then reads or writes the config
  * substrate and emits the matching response. Reaches no state beyond the injected
  * project registry and the outbound channel.
  */
@@ -47,7 +47,7 @@ export class ProjectConfigSession {
       return;
     }
 
-    const result = readOttoConfigForEdit(repoRoot);
+    const result = readPaseoConfigForEdit(repoRoot);
     if (!result.ok) {
       this.logger.warn(
         { repoRoot, requestId: msg.requestId, outcome: result.error.code },
@@ -94,7 +94,7 @@ export class ProjectConfigSession {
       { repoRoot, requestId: msg.requestId, outcome: "write_attempt" },
       "Writing project config",
     );
-    const result = writeOttoConfigForEdit({
+    const result = writePaseoConfigForEdit({
       repoRoot,
       config: msg.config,
       expectedRevision: msg.expectedRevision,

@@ -20,6 +20,7 @@ interface AgentDetailCardProps {
     // OTTO PATCH: the provider's own reported cost; absent ⇒ unpriceable.
     costUsd?: number
     tokensMax: number
+    contextKnown?: boolean
     contextBreakdown: ContextBreakdown
     toolCalls: number
     timeAlive: number
@@ -108,10 +109,10 @@ export function AgentDetailCard({
         <div className="flex justify-between mb-1">
           <span className="text-[10px]" style={{ color: COLORS.textMuted }}>Context</span>
           <span className="text-[10px] font-mono" style={{ color: COLORS.textDim }}>
-            {formatTokens(agent.tokensUsed)} / {formatTokens(agent.tokensMax)} ({contextPercent}%)
+            {agent.contextKnown === false ? 'Not reported' : `${formatTokens(agent.tokensUsed)} / ${formatTokens(agent.tokensMax)} (${contextPercent}%)`}
           </span>
         </div>
-        <ProgressBar percent={contextPercent} color={stateColor} />
+        {agent.contextKnown === false ? null : <ProgressBar percent={contextPercent} color={stateColor} />}
       </div>
 
       {/* Context composition — labeled, with token counts (the node ring shows

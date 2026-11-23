@@ -14,46 +14,22 @@ type AgentUpdatesFilter = NonNullable<
   Extract<SessionInboundMessage, { type: "fetch_agents_request" }>["filter"]
 >;
 
-/**
- * Coalescing window for the workspace-update tail of a forwarded agent change.
- *
- * A running agent fires lifecycle/permission/mode/steer events several times a
- * second, and each one used to trigger a full workspace descriptor rebuild per
- * connected session - the deep-equal dedupe downstream suppresses the wire send,
- * not the rebuild. Batching per workspaceId turns a burst into one rebuild while
- * bounding staleness at this window: the first event in a burst arms the timer,
- * every event inside it folds in, and the timer reads whatever state is current
- * when it fires. Deliberately NOT a resetting debounce, which would starve a
- * continuously active workspace of updates entirely.
- */
-const WORKSPACE_UPDATE_COALESCE_MS = 150;
-
 interface AgentUpdatesSubscriptionState {
   subscriptionId: string;
-  syncEnabled?: boolean;
+  emit: (message: SessionOutboundMessage) => void;
+  syncEnabled: boolean;
   filter?: AgentUpdatesFilter;
+  isProviderVisible: (provider: string) => boolean;
   isBootstrapping: boolean;
   pendingUpdatesByAgentId: Map<string, AgentUpdatePayload>;
 }
 
-/**
- * Owns the single per-client `agent_update` subscription: when a client subscribes
- * via `fetch_agents_request`, every later agent lifecycle change (live forward,
- * stored-record archive/detach, delete) is filtered against the subscription's
- * filter and either emitted or - while the initial snapshot is still being built -
- * buffered and replayed on flush. Keeping the mutable subscription state, the
- * bootstrap buffer, the provider-visibility gate, and the filter predicate behind
- * one interface stops the rest of session.ts from poking the subscription shape or
- * hand-rolling `agent_update` payloads, and the (previously untested) filter/buffer/
- * flush branches become exercisable through injected fakes.
- *
- * The snapshot listing path applies the SAME filter via the pure
- * `matchesAgentUpdatesFilter` so a subscription's initial page and its live updates
- * stay consistent.
- */
+/** Owns filtered agent snapshots and live updates for independent observers. */
 export interface AgentUpdatesService {
   beginSubscription(input: {
     subscriptionId: string;
+    isProviderVisible?: (provider: string) => boolean;
+    emit?: (message: SessionOutboundMessage) => void;
     filter?: AgentUpdatesFilter;
     syncEnabled?: boolean;
   }): void;
@@ -63,26 +39,15 @@ export interface AgentUpdatesService {
   ): void;
   clearSubscription(subscriptionId: string): void;
   hasSubscription(): boolean;
-  includesLiveAgent(agent: ManagedAgent): Promise<boolean>;
+  includesLiveAgent(agent: ManagedAgent, subscriptionIds?: ReadonlySet<string>): Promise<boolean>;
   forwardLiveAgent(agent: ManagedAgent): Promise<void>;
-  /**
-   * Forward a pre-built snapshot (e.g. an observed subagent that has no
-   * ManagedAgent runtime) through the same filter/placement path as a live
-   * agent. See .otto/knowledge/projects/observed-subagents.md.
-   */
-  forwardLiveAgentPayload(payload: AgentSnapshotPayload): Promise<void>;
   emitStoredRecord(record: StoredAgentRecord): Promise<AgentSnapshotPayload>;
   removeAgent(agentId: string): Promise<void>;
-  /**
-   * Run every workspace update still waiting inside its coalescing window, now.
-   * `dispose` calls this so a session teardown never strands the tail of a burst;
-   * tests call it to observe the emit without waiting on wall-clock time.
-   */
-  flushPendingWorkspaceUpdates(): Promise<void>;
   dispose(): void;
 }
 
 export interface AgentUpdatesServiceDeps {
+  includesWorkspace?(agent: AgentSnapshotPayload, includeBackground?: boolean): Promise<boolean>;
   emit(message: SessionOutboundMessage): void;
   enrichAgentPayload(payload: AgentSnapshotPayload): Promise<AgentSnapshotPayload>;
   buildStoredAgentPayload(record: StoredAgentRecord): AgentSnapshotPayload;
@@ -95,6 +60,7 @@ export interface AgentUpdatesServiceDeps {
     project: ProjectPlacementPayload | null,
     agentId: string,
     includeSequence: boolean,
+    includeBackground?: boolean,
   ): T;
   logger: pino.Logger;
 }
@@ -123,10 +89,6 @@ function matchesAgentStructuralFilter(
   project: ProjectPlacementPayload,
   filter: AgentUpdatesFilter,
 ): boolean {
-  if (filter.workspaceId !== undefined && agent.workspaceId !== filter.workspaceId) {
-    return false;
-  }
-
   if (filter.statuses && filter.statuses.length > 0) {
     const statuses = new Set(filter.statuses);
     if (!statuses.has(agent.status)) {
@@ -176,6 +138,10 @@ export function matchesAgentUpdatesFilter(input: {
     return false;
   }
 
+  if (agent.internal && filter?.includeInternal !== true) {
+    return false;
+  }
+
   if (filter && !agentThinkingOptionMatchesFilter(agent, filter)) {
     return false;
   }
@@ -192,8 +158,7 @@ function agentUpdateTargetId(update: AgentUpdatePayload): string {
 }
 
 export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentUpdatesService {
-  let subscription: AgentUpdatesSubscriptionState | null = null;
-  const pendingWorkspaceUpdateTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  const subscriptions = new Map<string, AgentUpdatesSubscriptionState>();
   const liveAgentUpdateTails = new Map<string, Promise<void>>();
   const sequence = <T extends AgentUpdatePayload>(
     sub: AgentUpdatesSubscriptionState,
@@ -201,40 +166,19 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
     agent: AgentSnapshotPayload | null,
     project: ProjectPlacementPayload | null,
     agentId: string,
-  ) => deps.sequenceAgentUpdate(payload, agent, project, agentId, sub.syncEnabled === true);
-
-  async function runWorkspaceUpdate(workspaceId: string): Promise<void> {
-    try {
-      await deps.emitWorkspaceUpdateForWorkspaceId(workspaceId);
-    } catch (error) {
-      deps.logger.error({ err: error, workspaceId }, "Failed to emit workspace update");
-    }
-  }
-
-  function scheduleWorkspaceUpdate(workspaceId: string): void {
-    if (pendingWorkspaceUpdateTimers.has(workspaceId)) {
-      return;
-    }
-    const timer = setTimeout(() => {
-      pendingWorkspaceUpdateTimers.delete(workspaceId);
-      void runWorkspaceUpdate(workspaceId);
-    }, WORKSPACE_UPDATE_COALESCE_MS);
-    // Never a reason to hold the process open for a coalesced status refresh.
-    (timer as unknown as { unref?: () => void }).unref?.();
-    pendingWorkspaceUpdateTimers.set(workspaceId, timer);
-  }
-
-  async function flushPendingWorkspaceUpdates(): Promise<void> {
-    const workspaceIds = Array.from(pendingWorkspaceUpdateTimers.keys());
-    for (const timer of pendingWorkspaceUpdateTimers.values()) {
-      clearTimeout(timer);
-    }
-    pendingWorkspaceUpdateTimers.clear();
-    await Promise.all(workspaceIds.map((workspaceId) => runWorkspaceUpdate(workspaceId)));
-  }
+  ) =>
+    deps.sequenceAgentUpdate(
+      payload,
+      agent,
+      project,
+      agentId,
+      sub.syncEnabled === true,
+      sub.filter?.includeBackground,
+    );
 
   function bufferOrEmit(sub: AgentUpdatesSubscriptionState, payload: AgentUpdatePayload): void {
-    if (payload.kind === "upsert" && !deps.isProviderVisibleToClient(payload.agent.provider)) {
+    if (subscriptions.get(sub.subscriptionId) !== sub) return;
+    if (payload.kind === "upsert" && !sub.isProviderVisible(payload.agent.provider)) {
       return;
     }
     if (sub.isBootstrapping) {
@@ -242,197 +186,122 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
       return;
     }
 
-    deps.emit({
-      type: "agent_update",
-      payload,
-    });
+    sub.emit({ type: "agent_update", payload });
   }
 
   function beginSubscription(input: {
     subscriptionId: string;
+    isProviderVisible?: (provider: string) => boolean;
+    emit?: (message: SessionOutboundMessage) => void;
     filter?: AgentUpdatesFilter;
     syncEnabled?: boolean;
   }): void {
-    subscription = {
-      subscriptionId: input.subscriptionId,
-      syncEnabled: input.syncEnabled,
-      filter: input.filter,
+    subscriptions.set(input.subscriptionId, {
+      ...input,
+      emit: input.emit ?? deps.emit,
+      syncEnabled: input.syncEnabled ?? false,
+      isProviderVisible: input.isProviderVisible ?? deps.isProviderVisibleToClient,
       isBootstrapping: true,
       pendingUpdatesByAgentId: new Map(),
-    };
+    });
   }
 
   function flushBootstrapped(
     subscriptionId: string,
     options?: { snapshotUpdatedAtByAgentId?: Map<string, number> },
   ): void {
-    if (!subscription || subscription.subscriptionId !== subscriptionId) {
-      return;
-    }
-    if (!subscription.isBootstrapping) {
-      return;
-    }
-
-    subscription.isBootstrapping = false;
-    const pending = Array.from(subscription.pendingUpdatesByAgentId.values());
-    subscription.pendingUpdatesByAgentId.clear();
-
+    const sub = subscriptions.get(subscriptionId);
+    if (!sub?.isBootstrapping) return;
+    sub.isBootstrapping = false;
+    const pending = Array.from(sub.pendingUpdatesByAgentId.values());
+    sub.pendingUpdatesByAgentId.clear();
     for (const payload of pending) {
       if (payload.kind === "upsert") {
         const snapshotUpdatedAt = options?.snapshotUpdatedAtByAgentId?.get(payload.agent.id);
-        if (typeof snapshotUpdatedAt === "number") {
-          const updateUpdatedAt = Date.parse(payload.agent.updatedAt);
-          if (!Number.isNaN(updateUpdatedAt) && updateUpdatedAt < snapshotUpdatedAt) {
-            continue;
-          }
-        }
+        if (
+          snapshotUpdatedAt !== undefined &&
+          Date.parse(payload.agent.updatedAt) < snapshotUpdatedAt
+        )
+          continue;
       }
-
-      deps.emit({
-        type: "agent_update",
-        payload,
-      });
+      bufferOrEmit(sub, payload);
     }
   }
 
   function clearSubscription(subscriptionId: string): void {
-    if (subscription && subscription.subscriptionId === subscriptionId) {
-      subscription = null;
-    }
+    subscriptions.delete(subscriptionId);
   }
 
   function hasSubscription(): boolean {
-    return subscription !== null;
+    return subscriptions.size > 0;
   }
 
-  async function includesLiveAgent(agent: ManagedAgent): Promise<boolean> {
-    const activeSubscription = subscription;
-    if (!activeSubscription) return false;
-
+  async function includesLiveAgent(
+    agent: ManagedAgent,
+    subscriptionIds?: ReadonlySet<string>,
+  ): Promise<boolean> {
+    const observers = [...subscriptions.values()].filter(
+      (sub) => !subscriptionIds || subscriptionIds.has(sub.subscriptionId),
+    );
+    if (observers.length === 0) return false;
     const payload = await deps.enrichAgentPayload(toAgentPayload(agent));
-    if (subscription !== activeSubscription || !deps.isProviderVisibleToClient(payload.provider)) {
-      return false;
-    }
     const project = payload.workspaceId
       ? await deps.buildProjectPlacementForWorkspaceId(payload.workspaceId)
       : null;
-    return (
-      subscription === activeSubscription &&
-      project !== null &&
-      matchesAgentUpdatesFilter({
-        agent: payload,
-        project,
-        filter: activeSubscription.filter,
-      })
+    const backgroundVisible = await Promise.all(
+      observers.map(
+        (sub) => deps.includesWorkspace?.(payload, sub.filter?.includeBackground) ?? true,
+      ),
     );
+    return (
+      project !== null &&
+      observers.some(
+        (sub, index) =>
+          backgroundVisible[index] &&
+          sub.isProviderVisible(payload.provider) &&
+          matchesAgentUpdatesFilter({ agent: payload, project, filter: sub.filter }),
+      )
+    );
+  }
+
+  async function publishPayload(payload: AgentSnapshotPayload): Promise<void> {
+    const observers = [...subscriptions.values()];
+    if (observers.length === 0) return;
+    const project = payload.workspaceId
+      ? await deps.buildProjectPlacementForWorkspaceId(payload.workspaceId)
+      : null;
+    for (const sub of observers) {
+      const matches =
+        project &&
+        ((await deps.includesWorkspace?.(payload, sub.filter?.includeBackground)) ?? true) &&
+        matchesAgentUpdatesFilter({ agent: payload, project, filter: sub.filter });
+      bufferOrEmit(
+        sub,
+        sequence(
+          sub,
+          matches
+            ? { kind: "upsert", agent: payload, project }
+            : { kind: "remove", agentId: payload.id },
+          payload,
+          project,
+          payload.id,
+        ),
+      );
+    }
   }
 
   async function emitStoredRecord(record: StoredAgentRecord): Promise<AgentSnapshotPayload> {
     const payload = deps.buildStoredAgentPayload(record);
-    const sub = subscription;
-    if (!sub) {
-      return payload;
-    }
-
-    const project = payload.workspaceId
-      ? await deps.buildProjectPlacementForWorkspaceId(payload.workspaceId)
-      : null;
-    if (!project) {
-      bufferOrEmit(
-        sub,
-        sequence(sub, { kind: "remove", agentId: payload.id }, null, null, payload.id),
-      );
-      return payload;
-    }
-
-    const matches = matchesAgentUpdatesFilter({
-      agent: payload,
-      project,
-      filter: sub.filter,
-    });
-    bufferOrEmit(
-      sub,
-      sequence(
-        sub,
-        matches
-          ? {
-              kind: "upsert",
-              agent: payload,
-              project,
-            }
-          : {
-              kind: "remove",
-              agentId: payload.id,
-            },
-        payload,
-        project,
-        payload.id,
-      ),
-    );
+    await publishPayload(payload);
     return payload;
   }
 
   async function emitLiveAgentUpdate(payload: AgentSnapshotPayload): Promise<void> {
     try {
-      payload = await deps.enrichAgentPayload(payload);
-      const sub = subscription;
-      if (sub) {
-        const project = payload.workspaceId
-          ? await deps.buildProjectPlacementForWorkspaceId(payload.workspaceId)
-          : null;
-        if (!project) {
-          bufferOrEmit(
-            sub,
-            sequence(sub, { kind: "remove", agentId: payload.id }, null, null, payload.id),
-          );
-        } else {
-          const matches = matchesAgentUpdatesFilter({
-            agent: payload,
-            project,
-            filter: sub.filter,
-          });
-
-          if (matches) {
-            bufferOrEmit(
-              sub,
-              sequence(
-                sub,
-                {
-                  kind: "upsert",
-                  agent: payload,
-                  project,
-                },
-                payload,
-                project,
-                payload.id,
-              ),
-            );
-          } else {
-            bufferOrEmit(
-              sub,
-              sequence(
-                sub,
-                {
-                  kind: "remove",
-                  agentId: payload.id,
-                },
-                payload,
-                project,
-                payload.id,
-              ),
-            );
-          }
-        }
-      }
+      if (hasSubscription()) await publishPayload(await deps.enrichAgentPayload(payload));
+      if (payload.workspaceId) await deps.emitWorkspaceUpdateForWorkspaceId(payload.workspaceId);
     } catch (error) {
-      deps.logger.error({ err: error, agentId: payload.id }, "Failed to emit agent update");
-    }
-
-    // A lifecycle change updates exactly the agent's owning workspace, never
-    // every workspace sharing its cwd. Ownership is the agent's workspaceId.
-    // Coalesced, not awaited: see WORKSPACE_UPDATE_COALESCE_MS.
-    if (payload.workspaceId) {
-      scheduleWorkspaceUpdate(payload.workspaceId);
+      deps.logger.error({ err: error }, "Failed to emit agent update");
     }
   }
 
@@ -452,37 +321,32 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
   }
 
   function forwardLiveAgent(agent: ManagedAgent): Promise<void> {
-    if (!subscription) {
+    if (!hasSubscription()) {
       const workspaceId = agent.workspaceId;
-      // Same coalescing window as the subscribed path: a session without an
-      // agent-directory subscription still pays a full descriptor rebuild per
-      // event otherwise. See WORKSPACE_UPDATE_COALESCE_MS.
       return workspaceId
-        ? enqueueAgentUpdate(agent.id, () => scheduleWorkspaceUpdate(workspaceId))
+        ? enqueueAgentUpdate(agent.id, async () => {
+            try {
+              await deps.emitWorkspaceUpdateForWorkspaceId(workspaceId);
+            } catch (error) {
+              deps.logger.error({ err: error }, "Failed to emit workspace update");
+            }
+          })
         : Promise.resolve();
     }
     const payload = toAgentPayload(agent);
     return enqueueAgentUpdate(payload.id, () => emitLiveAgentUpdate(payload));
   }
 
-  function forwardLiveAgentPayload(payload: AgentSnapshotPayload): Promise<void> {
-    return enqueueAgentUpdate(payload.id, () => emitLiveAgentUpdate(payload));
-  }
-
   function removeAgent(agentId: string): Promise<void> {
     return enqueueAgentUpdate(agentId, () => {
-      if (subscription) {
-        bufferOrEmit(
-          subscription,
-          sequence(subscription, { kind: "remove", agentId }, null, null, agentId),
-        );
+      for (const sub of subscriptions.values()) {
+        bufferOrEmit(sub, sequence(sub, { kind: "remove", agentId }, null, null, agentId));
       }
     });
   }
 
   function dispose(): void {
-    subscription = null;
-    void flushPendingWorkspaceUpdates();
+    subscriptions.clear();
   }
 
   return {
@@ -492,10 +356,8 @@ export function createAgentUpdatesService(deps: AgentUpdatesServiceDeps): AgentU
     hasSubscription,
     includesLiveAgent,
     forwardLiveAgent,
-    forwardLiveAgentPayload,
     emitStoredRecord,
     removeAgent,
-    flushPendingWorkspaceUpdates,
     dispose,
   };
 }

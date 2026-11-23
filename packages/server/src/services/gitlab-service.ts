@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseGitRemoteLocation } from "@otto-code/protocol/git-remote";
+import { parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import { findExecutable } from "../executable-resolution/executable-resolution.js";
 import {
   createCachedCliPathResolver,
@@ -17,7 +17,6 @@ import {
   createUnavailableSearchResult,
   normalizeForgeSearchKinds,
   parseOptionalTime,
-  sortPullRequestsLatestFirst,
 } from "./forge-service.js";
 import type {
   CheckDetails,
@@ -58,8 +57,8 @@ import {
   CHECK_TRAIT_ACTION_REQUIRED,
   CHECK_TRAIT_MANUAL,
   CHECK_TRAIT_WARNING,
-} from "@otto-code/protocol/check-traits";
-import { GITLAB_ACTIVE_PIPELINE_STATUS_SET } from "@otto-code/protocol/gitlab-pipeline";
+} from "@getpaseo/protocol/check-traits";
+import { GITLAB_ACTIVE_PIPELINE_STATUS_SET } from "@getpaseo/protocol/gitlab-pipeline";
 import { isGitLabStatusFacts, type GitLabStatusFacts } from "./gitlab-facts.js";
 
 const GLAB_ENV = {
@@ -498,8 +497,8 @@ function toTimelineComment(
     return null;
   }
   const location = toTimelineCommentLocation(note, discussion);
-  // Top-level thread id groups every note of a reply chain - including general
-  // (non-file) discussions that carry no `location` - into one timeline thread.
+  // Top-level thread id groups every note of a reply chain — including general
+  // (non-file) discussions that carry no `location` — into one timeline thread.
   const threadId = isThreadDiscussion(discussion) ? discussion.id : undefined;
   // A resolvable discussion without a file position (a general thread) carries its
   // resolution here, since `location.isResolved` only exists for file threads.
@@ -883,6 +882,31 @@ function throwFirstNonGlabAuthSearchRejection(results: PromiseSettledResult<unkn
   }
 }
 
+function buildGitLabListArgs({
+  kind,
+  input,
+}: {
+  kind: "mr" | "issue";
+  input: ListPullRequestsOptions | ListIssuesOptions;
+}): string[] {
+  const query = input.query?.trim();
+  // issue list uses -O for JSON; its -F flag controls details/ids/urls.
+  // mr list uses -F for JSON instead.
+  const args = [kind, "list", kind === "mr" ? "-F" : "-O", "json"];
+  if (query) {
+    args.push("--search", query);
+  }
+  if (typeof input.limit === "number") {
+    args.push("-P", String(input.limit));
+  }
+  return args;
+}
+
+function gitLabNumberQuery(query: string | undefined): string | null {
+  const trimmed = query?.trim();
+  return trimmed && /^\d+$/.test(trimmed) ? trimmed : null;
+}
+
 export function createGitLabService(options: CreateGitLabServiceOptions = {}): ForgeService {
   const runner = options.runner ?? runGlabCommand;
   const resolveGlab = createCachedCliPathResolver(options.resolveGlabPath ?? resolveGlabPath);
@@ -1058,42 +1082,51 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
     }
   }
 
+  async function runList<T extends { iid: number }>({
+    kind,
+    input,
+    schema,
+  }: {
+    kind: "mr" | "issue";
+    input: ListPullRequestsOptions | ListIssuesOptions;
+    schema: z.ZodType<T[]>;
+  }): Promise<T[]> {
+    const textSearch = runJson(buildGitLabListArgs({ kind, input }), { cwd: input.cwd }, schema);
+    const numberQuery = gitLabNumberQuery(input.query);
+    if (!numberQuery) return textSearch;
+
+    // GitLab text search omits IIDs, so supplement it with an open-item lookup.
+    const resource = kind === "mr" ? "merge_requests" : "issues";
+    const [numberMatches, textMatches] = await Promise.all([
+      runJson(
+        ["api", `projects/:id/${resource}?state=opened&iids[]=${numberQuery}`],
+        { cwd: input.cwd },
+        schema,
+      ),
+      textSearch,
+    ]);
+    const seen = new Set<number>();
+    const items = [...numberMatches, ...textMatches].filter((item) => {
+      if (seen.has(item.iid)) return false;
+      seen.add(item.iid);
+      return true;
+    });
+    return typeof input.limit === "number" ? items.slice(0, input.limit) : items;
+  }
+
   async function runMergeRequestList(
     input: ListPullRequestsOptions,
   ): Promise<PullRequestSummary[]> {
-    const args = ["mr", "list", "-F", "json"];
-    const query = input.query?.trim();
-    if (query) {
-      args.push("--search", query);
-    }
-    if (typeof input.limit === "number") {
-      args.push("-P", String(input.limit));
-    }
-    const mergeRequests = await runJson(
-      args,
-      { cwd: input.cwd },
-      z.array(GitLabMergeRequestSchema),
-    );
-    return sortPullRequestsLatestFirst(mergeRequests.map(toPullRequestSummary));
+    const mergeRequests = await runList({
+      kind: "mr",
+      input,
+      schema: z.array(GitLabMergeRequestSchema),
+    });
+    return mergeRequests.map(toPullRequestSummary);
   }
 
-  /**
-   * `glab issue list` toggles JSON output with `-O/--output` (text|json); its
-   * `-F/--output-format` flag means something else (details|ids|urls) and
-   * silently falls back to the human-readable table for an unknown value. This
-   * differs from `glab mr list`, where `-F/--output` is the JSON toggle. Using
-   * the wrong flag here would emit a text table that fails JSON parsing.
-   */
   async function runIssueList(input: ListIssuesOptions): Promise<IssueSummary[]> {
-    const args = ["issue", "list", "-O", "json"];
-    const query = input.query?.trim();
-    if (query) {
-      args.push("--search", query);
-    }
-    if (typeof input.limit === "number") {
-      args.push("-P", String(input.limit));
-    }
-    const issues = await runJson(args, { cwd: input.cwd }, z.array(GitLabIssueSchema));
+    const issues = await runList({ kind: "issue", input, schema: z.array(GitLabIssueSchema) });
     return issues.map(toIssueSummary);
   }
 
@@ -1171,6 +1204,7 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
           mr.target_project_id !== undefined &&
           mr.target_project_id !== null &&
           mr.source_project_id !== mr.target_project_id,
+        headRefKind: "branch",
       };
     },
 
@@ -1213,7 +1247,7 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
       // `--auto-merge=false` forces an immediate merge: without it glab's default
       // would schedule "merge when the pipeline succeeds" while a pipeline runs,
       // turning a direct merge into an auto-merge. Mirrors `gh pr merge` without
-      // `--auto`. The pre-flight guard above stays - both are needed.
+      // `--auto`. The pre-flight guard above stays — both are needed.
       const args = ["mr", "merge", String(input.prNumber), "--auto-merge=false", "--yes"];
       if (input.mergeMethod === "squash") {
         args.push("--squash");
@@ -1360,9 +1394,16 @@ export function createGitLabService(options: CreateGitLabServiceOptions = {}): F
           });
         }
       }
-      items.sort(
-        (left, right) => parseOptionalTime(right.updatedAt) - parseOptionalTime(left.updatedAt),
-      );
+      const numberQuery = gitLabNumberQuery(input.query);
+      items.sort((left, right) => {
+        if (numberQuery) {
+          const numberMatchOrder =
+            Number(right.number === Number(numberQuery)) -
+            Number(left.number === Number(numberQuery));
+          if (numberMatchOrder !== 0) return numberMatchOrder;
+        }
+        return parseOptionalTime(right.updatedAt) - parseOptionalTime(left.updatedAt);
+      });
 
       return {
         items,

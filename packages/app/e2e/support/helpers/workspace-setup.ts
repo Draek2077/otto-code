@@ -1,25 +1,26 @@
 import { realpathSync } from "node:fs";
 import { expect, type Page } from "@playwright/test";
-import type { DaemonClient as InternalDaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient as InternalDaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { parseHostWorkspaceRouteFromPathname } from "../../../src/utils/host-routes";
 import { gotoAppShell } from "./app";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { getServerId } from "./server-id";
 import { withProjectOwnership } from "./project-ownership";
 import { switchWorkspaceViaSidebar } from "./workspace-ui";
-import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 type WorkspaceSetupDaemonClient = Pick<
   InternalDaemonClient,
   | "close"
   | "addProject"
   | "connect"
-  | "createOttoWorktree"
+  | "createPaseoWorktree"
   | "createWorkspace"
   | "fetchAgent"
   | "fetchAgents"
   | "fetchWorkspaces"
   | "listTerminals"
+  | "observeEvents"
   | "removeProject"
   | "subscribeRawMessages"
 >;
@@ -35,6 +36,13 @@ export async function connectWorkspaceSetupClient(): Promise<WorkspaceSetupDaemo
   const client = await connectDaemonClient<WorkspaceSetupDaemonClient>({
     clientIdPrefix: "workspace-setup",
   });
+  // Establish demand before a caller can launch setup. Client close releases it.
+  try {
+    await client.observeEvents(["workspace_setup_progress"]).ready;
+  } catch (error) {
+    await client.close();
+    throw error;
+  }
   return withProjectOwnership(client);
 }
 
@@ -66,13 +74,8 @@ export async function seedProjectForWorkspaceSetup(
 }
 
 export function projectNameFromPath(repoPath: string): string {
-  // Split on both separators so Windows paths resolve to their basename too.
-  return (
-    repoPath
-      .replace(/[\\/]+$/, "")
-      .split(/[\\/]/)
-      .findLast(Boolean) ?? repoPath
-  );
+  // OTTO(workspace-lifecycle): fixture paths use the operating system separator.
+  return repoPath.split(/[\\/]/).findLast(Boolean) ?? repoPath;
 }
 
 export async function openHomeWithProject(page: Page, repoPath: string): Promise<void> {
@@ -216,7 +219,7 @@ export async function createWorkspaceThroughDaemon(
   client: WorkspaceSetupDaemonClient,
   input: { cwd: string; worktreeSlug: string },
 ): Promise<{ id: string; name: string }> {
-  const result = await client.createOttoWorktree(input);
+  const result = await client.createPaseoWorktree(input);
   if (!result.workspace || result.error) {
     throw new Error(result.error ?? `Failed to create workspace for ${input.cwd}`);
   }

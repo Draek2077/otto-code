@@ -1,5 +1,5 @@
-import type { WorkspaceLabelDefinition } from "@otto-code/protocol/workspace-labels";
-import { workspaceLabelKey } from "@otto-code/protocol/workspace-labels";
+import type { WorkspaceLabelDefinition } from "@getpaseo/protocol/workspace-labels";
+import { workspaceLabelKey } from "@getpaseo/protocol/workspace-labels";
 
 export interface WorkspaceLabelPickerRow extends WorkspaceLabelDefinition {
   assigned: boolean;

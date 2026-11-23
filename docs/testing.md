@@ -4,10 +4,6 @@
 
 Tests prove behavior, not structure. Every test should answer: "what user-visible or API-visible behavior does this verify?"
 
-The profile-picker journeys follow Otto's [profile lifecycle](agent-profiles.md#resolution--lifecycle): applying a profile keeps its identity while updating the agent's brain, including after reload. An empty roster remains manageable through Host Settings → Teams. The upstream chooser's create-profile modal is deliberately omitted, as recorded in [the merge decisions](upstream-merges.md); tests must not require that retired entry point or the upstream behavior of forgetting an applied profile.
-
-Git reconciliation and operation-log journeys commit fixture paths through the real daemon with an explicit message, then assert the Changes UI and the Explorer log. The toolbar Commit action uses AI message generation; its Writer confirmation is covered separately. `changes-commit.spec.ts` covers the inline manual form, Conventional Commits types, checked-file selection, coexistence with Commits history, and preserving the draft after a hook failure so it can be retried.
-
 ## Test-driven development
 
 Work in vertical slices: one test, one implementation, repeat. Each test responds to what you learned from the previous cycle.
@@ -23,7 +19,7 @@ WRONG (horizontal):
   GREEN: impl1, impl2, impl3, impl4, impl5
 ```
 
-Writing all tests first then all implementation produces bad tests - you end up testing imagined behavior instead of actual behavior.
+Writing all tests first then all implementation produces bad tests — you end up testing imagined behavior instead of actual behavior.
 
 ## Fallible user actions
 
@@ -111,24 +107,24 @@ When a test is labeled end-to-end, it calls the real service. No environment var
 
 The packaged desktop smoke is an external observer of the production launch path. It must not add a smoke-only branch to Electron main or start the daemon itself.
 
-The harness launches the unpacked packaged app with isolated user data and daemon state, connects to the real renderer over Chromium's debugging protocol, and requires all of these outcomes:
+The harness launches the packaged app with isolated user data and daemon state, connects to the real renderer over Chromium's debugging protocol, and requires all of these outcomes:
 
-- the `otto://app/` renderer mounts into `#root`;
+- the `paseo://app/` renderer mounts into `#root`;
 - the sandboxed preload exposes the desktop bridge;
-- `webContents.printToPDF` returns real PDF bytes through that bridge (the markdown PDF export has
-  no headless stand-in, so this is the only tier that can prove it);
-- a native right click on a misspelled editable word reaches the shared menu, offers a dictionary
-  suggestion and **Add to Dictionary**, and applies the replacement through Electron;
 - the renderer starts a fresh desktop-managed daemon through the normal startup bootstrap;
 - the bundled CLI can query that daemon and run a terminal command.
 
-Pull-request CI runs the Linux x64 smoke under Xvfb when the cumulative PR diff changes `packages/desktop/**`. The desktop release matrix runs the harness against each host-native packaged app before publishing. Windows runs the spellcheck journey at 225% device scale, matching a common high-DPI desktop configuration. All smoke jobs upload renderer, desktop, and daemon diagnostics on failure.
+The Desktop Packages workflow runs the Linux x64 smoke under Xvfb on main pushes and on pull requests that change `packages/desktop/**`, `nix/**`, or the workflow itself. The Linux job is pinned to Ubuntu 24.04 and runs twice: with AppArmor user namespace restrictions enabled, then with user namespaces available. It installs the real `.deb`, launches the real AppImage via `--appimage-extract-and-run`, and launches the extracted tar archive. It also replaces the Debian installation with the generated RPM through `rpm --install --nodeps` and checks its sandboxed launch under restrictions. Ubuntu supplies the runtime libraries under Debian package names, so this verifies the RPM payload and postinstall rather than Fedora dependency resolution. Each launch verifies the reported sandbox decision; enabled renderers must also have `NoNewPrivs: 1` and `Seccomp: 2` in `/proc`. The desktop release matrix retains its host-native smokes. Linux release builds stay on Ubuntu 22.04 to preserve their native-library baseline; the restricted-host regression runs on Ubuntu 24.04 after merge.
+
+Never repair `chrome-sandbox` in the smoke harness. The old unpacked smoke set its mode to 4755 and concealed a broken package installer. Run installer tests as root and launch tests as an ordinary user: a root-run namespace probe does not reproduce Ubuntu's AppArmor policy for desktop users. Preserve both restricted and unrestricted cases; either one alone permits another sandbox regression.
+
+Smoke jobs upload renderer screenshots and desktop/daemon diagnostics, including successful Linux sandbox evidence.
 
 To exercise the smoke locally on Linux:
 
 ```bash
-OTTO_DESKTOP_SMOKE=1 \
-OTTO_DESKTOP_SMOKE_ARTIFACT_DIR=/tmp/otto-desktop-smoke \
+PASEO_DESKTOP_SMOKE=1 \
+PASEO_DESKTOP_SMOKE_ARTIFACT_DIR=/tmp/paseo-desktop-smoke \
 npm run build:desktop -- --publish never --linux --x64 --dir
 ```
 
@@ -136,129 +132,23 @@ npm run build:desktop -- --publish never --linux --x64 --dir
 
 electron-builder packs `node_modules` by walking declared production `dependencies`. A package that imports something it only lists as a `peerDependency` resolves fine in this hoisted workspace, passes every test, and then throws `ERR_MODULE_NOT_FOUND` inside `app.asar` — killing the desktop daemon at startup. That shipped twice from `@replit/codemirror-lang-*` grammars, which are interactive editor extensions published as if they were bare parsers.
 
-The packaged smoke catches it but only runs when a PR touches the `desktop` filter in `.github/ci-paths.yml`. Both offenders landed under `packages/highlight/**`, which maps to `sdk`.
+The packaged smoke catches it after merge. PRs need the fast dependency-closure test below because packaging runs on main.
 
-`packages/highlight/src/__tests__/dependency-closure.test.ts` replicates the packer's traversal statically and runs with the normal unit tests. It is scoped to `@otto-code/highlight` on purpose: that tree is small and pure, so the check is exact. Running the same walk over `@otto-code/server` produces dozens of false positives from optional dependencies loaded behind `try`/`catch`.
+`packages/highlight/src/__tests__/dependency-closure.test.ts` replicates the packer's traversal statically and runs with the normal unit tests. It is scoped to `@getpaseo/highlight` on purpose: that tree is small and pure, so the check is exact. Running the same walk over `@getpaseo/server` produces dozens of false positives from optional dependencies loaded behind `try`/`catch`.
 
 Prefer a `@lezer/*` grammar. When a language only ships inside an editor extension, vendor the grammar into `packages/highlight/src/<lang>/` — see `svelte/`, `nix/`, and `csharp/`.
 
 ### Desktop browser regression
 
-`npm run test:e2e:browser-layering --workspace=@otto-code/desktop` runs an isolated,
-hidden Electron window with a real guest. It reproduces browser occlusion of pane-local UI,
-then checks compositor pixels for the production `PaneOverlay` and `WindowOverlay` layers,
-menu clicks, exposed-guest hit-testing, guest input through CDP, and guest retention after
-overlays close. The fixture exercises the shared layer primitives rather than a full app
-journey. Hidden-window host input does not reliably forward to guest renderers, so guest
-input is dispatched separately after checking the host's hit target.
-
-`npm run test:e2e:browser-focus --workspace=@otto-code/desktop` runs an isolated
-Electron guest test without a daemon or visible window. It reproduces the native
-focus transfer from trusted automation input, then verifies the production focus
-guard preserves host chat typing and menu focus while guest text input still works.
-It types continuously across command completion, checks every character in the
-draft, and verifies that native user clicks can reclaim the guest without treating
-automation clicks as user input. The previous per-command guard fails this case.
-The Chromium component test in `pane/loading.browser.test.tsx` separately exercises
-the real browser device-size menu; the native fixture is not a full app journey.
-
-The desktop browser E2E launches an isolated real daemon, Metro, and Electron app. It visits six workspaces to force LRU eviction, verifies that the original browser keeps its guest `WebContents` in the permanent browser surface, then makes one MCP call each for tab listing, snapshot, and click against that original browser id. A final MCP wait proves the real target page received the click. Initial renderer startup allows five minutes for cold Metro compilation; subsequent bridge actions retain their 90-second timeout.
-
-Before eviction, the same harness types native characters into the real chat
-composer while MCP clicks, fills, and keypresses run in a split browser. It checks
-the complete draft, rejects an agent focus request during editing, and verifies
-that a page-created tab stays in the background and registers for browser tools.
-Input comes from Electron's main process without refocusing the editor per key.
+The desktop browser E2E launches an isolated real daemon, Metro, and Electron app. It forces workspace LRU eviction to reparent the original tab and replace its guest `WebContents`, then makes one MCP call each for tab listing, snapshot, and click against that original browser id. A final MCP wait proves the real target page received the click.
 
 Run it locally with the same command owned by the Ubuntu `desktop-tests` required check:
 
 ```bash
-npm run test:e2e:browser-tab-bridge --workspace=@otto-code/desktop
+npm run test:e2e:browser-tabs --workspace=@getpaseo/desktop
 ```
-
-### Desktop skill selection upgrade regression
-
-After `npm run build:server`, run
-`npm run test:e2e:skill-selection-upgrade --workspace=@otto-code/desktop`.
-The default `attached` case launches a real managed daemon before Electron and checks
-that a partial installation stays partial while a real legacy-file read error prevents
-import. Repairing that file must trigger the mounted migration's retry, durable import,
-source removal, and selected-only maintenance. Set `OTTO_SKILL_UPGRADE_MODE=cold` to
-exercise daemon launch through the normal renderer startup IPC. Both cases reload the
-renderer and verify the persisted selection and daemon identity.
-
-| Behavior                                                                                                                                                   | Covering harness                                           |
-| ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| Local desktop skill selection survives cold startup, managed-daemon attachment, read failure/retry, and renderer reload without installing excluded skills | `packages/desktop/scripts/skill-selection-upgrade.e2e.mjs` |
-
-The harness isolates OS `HOME`/`USERPROFILE`, Electron user data, daemon home, and
-ephemeral ports under repository `.tmp/agent-02/`. Provider catalogs are disabled through
-persisted configuration. It uses the registered Electron IPC handlers and the real
-WebSocket import path. Logs, a screenshot, and result JSON remain as evidence; successful
-runtime fixtures are removed after owned processes stop, while failed fixtures remain
-for inspection.
 
 ## Test organization
-
-`src/components/observed-subagent-callout.browser.test.tsx` covers the shared provider-child
-read-only callout in Chromium at compact and desktop widths. It checks parent ownership, the
-absence of composer inputs, capability/disconnect/terminal Stop gating, provider control identity,
-parent-session confirmation/cancellation, duplicate submission prevention, and visible failure with
-retry. Its transport and mobile keyboard are test boundaries; it does not establish behavior in a
-real provider chat. Codex mapper and session tests separately cover parent/sibling coordination,
-wait completion, descendant ownership, nested routing, interruption settlement and history replay.
-
-### Focused CI diagnosis
-
-Start with `npm run ci:preflight`: module-size ceilings, E2E coverage registration,
-and CI workflow validation. It performs no dependency installation or heavy test run.
-Normal lint and typecheck remain separate required checks.
-
-Use the same focused command locally and in the manually dispatched **CI diagnostic**
-workflow. It requires one existing repository-relative test file and uses one worker:
-
-```bash
-npm run ci:diagnose -- --suite app-unit --file packages/app/src/composer/input/labels.test.ts
-npm run ci:diagnose -- --suite app-browser --file packages/app/src/runtime/expo-platform.browser.test.ts
-npm run ci:diagnose -- --suite playwright --file packages/app/e2e/browser/file-editing.spec.ts --test-name "large"
-```
-
-The tiers are `app-unit`, `app-browser`, `server`, `playwright`, and `desktop`
-(desktop renderer overlay). Build the owning workspace dependencies before testing;
-browser tiers also need `npm run browsers:install`. The workflow performs these setup
-steps and lets the caller choose Ubuntu or Windows. Provider-dependent tests and
-packaged Electron smoke retain their dedicated harnesses. Globs, directories and
-unknown tiers fail before test launch. `--dry-run` validates and prints the selection.
-
-Focused daemon and browser runs isolate OS homes, temporary files, and reports under
-`.tmp/ci-diagnostic-*`. The E2E worker daemon receives a fixture Git author and committer
-identity so repository scaffolding can make its initial commit without global Git
-configuration. Git discovery stops at that isolated home, so a fixture without
-its own repository cannot accidentally use the enclosing checkout. Browser runs share only Metro's compilation cache in
-`.tmp/ci-metro-cache`, use two compiler workers, and allow five minutes for a cold
-bundle. Renderer diagnostics set Metro's CI mode so edits in another chat cannot
-trigger a hot reload midway through a test. They explicitly retain traces on failure,
-including the first attempt, because these runs disable retries. Windows teardown terminates owned process trees before removing fixture
-homes, including workers spawned by the daemon and Metro.
-
-Diagnose a setup failure separately from an assertion failure. Preserve the failing
-output, repair its root cause, then run the same focused case. Full CI remains the
-acceptance matrix; a successful diagnostic run does not replace it.
-
-Deterministic app browser tests run once in CI and retain a trace from the first
-failure. Repeating a known failure wastes the shard's time budget and can prevent
-later tests from running. Provider-specific projects may declare a bounded retry.
-
-Browser downloads retry temporary HTTP/network failures at most three times within
-one five-minute download budget. Partial archives are discarded between attempts;
-permanent HTTP failures stop immediately and errors retain the URL and cause.
-
-Server tests that execute terminal hooks need `npm run build:server`, including
-the compiled CLI; `build:server-deps` alone cannot run `bin/otto`. Windows runs
-the server unit suite once with one worker. Native watcher adapters resolve
-Windows 8.3 paths before calling `fs.watch`, while retaining the original paths
-for application identities. The focused `watch-directory.test.ts` regression
-checks actual child-process exits and filesystem notifications for both watcher modes.
 
 - Collocate tests with implementation: `thing.ts` + `thing.test.ts`
 - Extract complex setup into reusable helpers
@@ -271,14 +161,14 @@ Vitest picks up tests by suffix. The suffix tells the runner which category it b
 
 | Suffix                | What it is                                                                                                    | Where it runs                                                                        |
 | --------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `*.test.ts(x)`        | Unit test - pure, fast, no daemon                                                                             | `npm run test:unit`                                                                  |
+| `*.test.ts(x)`        | Unit test — pure, fast, no daemon                                                                             | `npm run test:unit`                                                                  |
 | `*.posix.test.ts`     | Unit test that needs POSIX-only behavior                                                                      | unit, skipped on Windows                                                             |
 | `*.browser.test.ts`   | App test that needs a real browser (DOM)                                                                      | `npm run test:browser` (Vitest browser mode, Playwright provider, headless Chromium) |
 | `*.e2e.test.ts`       | End-to-end against a real daemon                                                                              | `npm run test:e2e`                                                                   |
-| `*.real.e2e.test.ts`  | E2E that hits a real provider (Claude/Codex/Copilot/OpenCode/Pi) - needs creds in `packages/server/.env.test` | `npm run test:integration:real` / `test:e2e:real`                                    |
+| `*.real.e2e.test.ts`  | E2E that hits a real provider (Claude/Codex/Copilot/OpenCode/Pi) — needs creds in `packages/server/.env.test` | `npm run test:integration:real` / `test:e2e:real`                                    |
 | `*.local.e2e.test.ts` | E2E that needs a local-only resource                                                                          | `npm run test:integration:local` / `test:e2e:local`                                  |
 
-Browser Playwright specs live in `packages/app/e2e/browser/`. Desktop Playwright and real-Electron E2E live in `packages/desktop/e2e/`. Harness code shared by both suites lives in `packages/app/e2e/support/`; neither suite may place specs there. App Playwright specs that hit real providers use `*.real.spec.ts` and run through `npm run test:e2e:real --workspace=@otto-code/app`; the default browser project ignores that suffix so CI does not need provider credentials. It has three tiers of its own, see [App end-to-end tiers](#app-end-to-end-tiers-playwright) below.
+Browser Playwright specs live in `packages/app/e2e/browser/`. Desktop Playwright and real-Electron E2E live in `packages/desktop/e2e/`. Harness code shared by both suites lives in `packages/app/e2e/support/`; neither suite may place specs there. App Playwright specs that hit real providers use `*.real.spec.ts` and run through `npm run test:e2e:real --workspace=@getpaseo/app`; the default browser project ignores that suffix so CI does not need provider credentials.
 
 Live provider smoke tests belong in `*.real.e2e.test.ts`, not `*.test.ts`, even when guarded by environment variables. Default unit suites must use deterministic provider adapters/fakes so missing credits, auth outages, and upstream model drift do not block normal CI.
 
@@ -286,198 +176,8 @@ Codex MultiAgentV2 real tests use local Codex authentication rather than the Ope
 
 ### Test setup
 
-- Server: `packages/server/src/test-utils/vitest-setup.ts` loads `.env.test`, sets `OTTO_SUPERVISED=0`, and disables Git/SSH prompts. Add new global env shims here, not in individual tests.
-- App: `packages/app/vitest.setup.ts` provides `expo`/`__DEV__` shims and stubs a few native-only modules (`react-native-unistyles`, `react-native-svg`, `expo-linking`, `@xterm/addon-ligatures`). Stubbing here is for modules that have no meaningful Node behavior - not a license to mock app code.
-
-## One browser, and which one
-
-Otto ships inside Electron, so in production the app renders in **Electron's bundled Chromium** and
-the browser pane is a `<webview>` on that same engine. Automated tests do not drive that engine.
-Everything that needs a real browser drives **Playwright's bundled Chromium**, on every platform,
-in CI and locally alike.
-
-Those are two different Chromium builds, and keeping them different is deliberate. Playwright's
-build is pinned, downloadable, identical on Windows, macOS and Linux, and is what CI runs; chasing
-Electron's exact Chromium would mean booting Electron for tests that only need a DOM, which is
-slower, and platform-specific in a way that turns one failing assertion into three per-OS
-investigations. Where Electron genuinely _is_ the thing under test, a harness drives Electron
-directly: the packaged desktop smoke and the browser tab bridge E2E both do, and those are the
-right places for engine-specific behaviour to be proven.
-
-**The pin is the `playwright` version in the root `package.json`, and nothing else.** Never pin a
-Chromium revision by hand, and never point a config at an explicit `executablePath`. A revision
-written down anywhere other than that dependency is a second source of truth that will drift.
-
-Two tiers need the browser present:
-
-| Tier                | Command                | What it launches                                      |
-| ------------------- | ---------------------- | ----------------------------------------------------- |
-| `*.browser.test.ts` | `npm run test:browser` | Vitest browser mode, headless, the **headless shell** |
-| `packages/app/e2e/` | `npm run e2e`          | Playwright, `Desktop Chrome`, the **full chromium**   |
-
-`npm run browsers:install` fetches both into the checkout-local
-`.tmp/otto-playwright-browsers/` cache, and both `test:browser` and `test:e2e` run it as a pre-hook.
-The cache is deliberately not Playwright's user-global cache: unrelated repositories must never
-block Otto on a shared `__dirlock`. Otto's installer serializes concurrent installs for this
-checkout, rechecks the pinned browser after it acquires the lock, and reclaims only an Otto lock
-whose owning process is gone. When the browser is already present the hook costs about a second
-and touches no network.
-
-### When it still goes wrong
-
-The failure reads `Executable doesn't exist at ...chromium_headless_shell-<rev>`, and it is almost
-always **a missing install, not a version mismatch**. Two things make it look like a mismatch:
-
-- **Headless and headed are separate downloads.** Having `chromium-<rev>` is not enough for
-  `test:browser`, which launches the headless shell. `playwright install chromium` lands both.
-- **The browser cache is checkout-local.** Otto's official browser-test scripts set
-  `PLAYWRIGHT_BROWSERS_PATH` to `.tmp/otto-playwright-browsers/`, so another repository's Playwright
-  install cannot block or satisfy this checkout. Do not call bare `npx playwright` for an Otto
-  test: use the npm scripts, which set the cache before Playwright loads. An explicit
-  `PLAYWRIGHT_BROWSERS_PATH` remains an intentional override for specialized environments.
-
-`E2E_BROWSER_CHANNEL=msedge` drives an installed Edge instead of the downloaded Chromium. It is an
-escape hatch for a machine that cannot download browsers, and it tests Edge rather than the browser
-CI runs, so it must never be the default or appear in CI. The one standing exception is the demo
-capture pipeline, which sets it automatically on Windows; see
-[site-demos.md](site-demos.md).
-
-## App end-to-end tiers (Playwright)
-
-The app's browser E2E suite in `packages/app/e2e/` runs a fully isolated stack per run -
-`global-setup.ts` forks a throwaway `OTTO_HOME` with its own daemon, relay and Metro on dynamic
-ports, so a run never touches the real `~/.otto` or the port-6868 daemon - `6788`, the repo dev
-daemon, is reserved against too, so e2e and dev can run side by side. Specs are split into
-three tiers by suffix, and the tier is selected by **Playwright project**, never by a conditional
-skip inside a spec:
-
-| Tier                 | Suffix            | What it proves                                                                                                                                             | Cost             | When it runs                         |
-| -------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- | ------------------------------------ |
-| **T1 Mock**          | `*.spec.ts`       | UI and daemon behaviour against the deterministic mock agent (`helpers/mock-agent.ts`). The bulk of coverage.                                              | Free             | Every category run; CI shards        |
-| **T2 Local-AI**      | `*.local.spec.ts` | The **full live agent loop** - prompt → tool calls → file edits → diff and UI updates - via the openai-compat provider pointed at a local LM Studio model. | Free (local GPU) | Release validation; opt-in locally   |
-| **T3 Real provider** | `*.real.spec.ts`  | Provider-specific integration (Claude/Codex/OpenCode/Pi rewind, session import).                                                                           | Paid             | Release validation only, minimal set |
-
-The default project ignores the `*.local.spec.ts` and `*.real.spec.ts` suffixes, so CI needs no
-credentials.
-
-The workspace pane mounting coverage includes a compact-layout regression case in
-`e2e/browser/workspace-pane-remount.spec.ts`: it saves a split pane on a wide viewport, reloads at
-compact width, verifies the workspace header and menu remain usable, then returns to the wide
-viewport and verifies the saved panes are restored.
-
-The file-editing coverage also verifies Explorer placement in
-`e2e/browser/file-editing.spec.ts`: a fresh ordinary file opens in Main, while an existing file
-that the user moved to Explorer remains there when selected again.
-
-**The E2E host starts with an empty personality roster.** A fresh `OTTO_HOME` is seeded with the
-shipped starter team, and every apply-now form surface then auto-binds its role's first available
-personality: the ladder in `useFormRolePersonality` puts a team or personality above the device's
-last-used model on purpose. Those builtins are all Claude-bound, so on the E2E host the composer,
-the schedule form and the daemon's Writer-role mini-tasks (chat auto-title) would all leave the
-deterministic mock provider behind and land on one with no credentials. `global-setup.ts` therefore
-writes empty `agentPersonalities` / `agentTeams` sections into the forked config before the daemon
-boots, which is the same "user cleared the roster" state the daemon honours instead of re-seeding.
-Specs that exercise personalities or teams seed their own through `helpers/personalities.ts`, so if
-a spec needs one, seed it; never assume a builtin is there.
-
-**Why T2 exists.** The mock agent proves the UI and daemon plumbing but scripts every agent event,
-so it can never prove the loop itself: that a prompt actually becomes tool calls, that tool results
-feed back correctly, that compaction leaves a usable session, that a permission denial actually
-stops the tool. T3 proves that and costs money per run. A local model is the missing middle - and
-for the openai-compat provider specifically it _is_ the production code path, not a stand-in.
-
-Connection values (`E2E_LOCAL_AI_BASE_URL` / `_API_KEY` / `_MODEL`) live in the gitignored repo-root
-`.env.test` and are **never** hardcoded in a spec. With `E2E_LOCAL_AI=1` global setup injects the
-provider block into the forked `OTTO_HOME` and preflights `GET {baseUrl}/models` to assert the
-pinned model is loaded - which catches "LM Studio not running" in seconds instead of a 60 s spec
-timeout, and warms the JIT-loaded model at the same time. Pin one quant; never track "latest".
-
-### Writing T2/T3 specs that do not flake
-
-**Assert on side effects, not on model prose.** A live-model spec asks the agent to do something
-with an unambiguous observable outcome and asserts the outcome appears in the UI or on disk. Never
-assert on the assistant's wording.
-
-- **One imperative, one observable side effect.** "Create a file named `EXACTLY.txt` containing
-  exactly `hello-e2e` and nothing else. Do not explain." Then assert the file row appears in
-  Changes and the content matches through the daemon.
-- **Cap the blast radius** - a low tool-round cap for the spec's agent, a temp workspace, and
-  60 to 120 s timeouts, because local inference is slow.
-- **Assert loop mechanics, not intelligence.** Good targets: a tool call row rendered, a permission
-  prompt appeared and denial stopped execution, a compaction event emitted and the session still
-  answers, rewind truncated the timeline. Bad targets: summary quality, wording, multi-file
-  refactors.
-- **Retries are legitimate here, and only here.** Inference is nondeterministic, so one retry on
-  the local-AI project is honest; T1 keeps zero.
-
-### Coverage matrix and run reports
-
-[`e2e-coverage-matrix.md`](e2e-coverage-matrix.md) is the single source of truth for what is covered:
-one section per feature category, one row per behaviour, marked ✅ / 🟡 / ❌ with the covering spec
-files named inline. **It is live tooling, not a plan** - two things read it at runtime:
-
-- `npm run e2e:coverage` (`scripts/e2e-coverage-check.mjs`) fails on a **stale row** (the matrix
-  names a spec that no longer exists) or an **unmapped spec** (a spec on disk no row claims), and
-  prints a per-category scoreboard. Pure file analysis, no daemon, under a second. **CI runs it in
-  the `lint` job**, before `npm ci`, on every push and pull request - it rode nobody's habit for one
-  release cycle and drifted, which is how `client-resource-soak.spec.ts` reached `main` unmapped.
-  It is deliberately _not_ a pre-commit hook step: the hook is shared by every parallel session in a
-  working tree, and this check must compare the whole spec directory against the whole matrix, so it
-  cannot be scoped to staged files.
-- The QA reporter (`packages/app/e2e/reporters/qa-reporter.ts`) reads the matrix's sections to
-  bucket every test under its module, so the plan and the run artifacts stay in lockstep. **A spec
-  showing up as "Unclassified" in a report means the matrix drifted** - fix the matrix, not the
-  reporter.
-
-Adding a spec is three steps, and the checker enforces the middle one: write it importing
-`test`/`expect` from `./fixtures` (never from `@playwright/test` - the auto fixture is what seeds
-the daemon host, and without it the app sits on the pairing screen), add a matrix row at 🟡, and
-call `moneyShot()` at the moment the behaviour is proven.
-
-**A measurement harness is not coverage.** A spec whose only assertions are that the instrument
-produced a usable series - the resource soak, the terminal perf runs - proves nothing about
-product behaviour, so it belongs in the matrix's §16 marked 📊, which the scoreboard counts
-separately and keeps out of the percentage. Filing one under a feature section as ✅ tells the next
-reader that behaviour is tested when nothing asserted it, and does so in a section the release
-runbook reads.
-
-A run produces a report under `packages/app/e2e-report/` - a per-module table of contents, a
-failure report, a flat greppable log, and per-test evidence directories - plus Playwright's own
-HTML report. None of it is committed; it is regenerated from scratch each run so a stale money shot
-can never be mistaken for proof. Both report roots are overridable (`E2E_REPORT_DIR`,
-`E2E_HTML_REPORT_DIR`) so concurrent runs cannot overwrite each other mid-write.
-
-**A passing test that leaves no visual trace is unauditable**, so every test ships one confirming
-frame. `moneyShot(page, claim)` is _the_ frame, and `claim` is rendered as the caption in the
-digest - write it as the assertion in plain English, not as a step name. `qaShot(page, label)` adds
-intermediate frames that stay with the test's own evidence. Every passing test gets a money shot
-whether or not it asks for one: an auto fixture captures the final frame of any test that never
-called `moneyShot`, labelled `final frame (auto)`. That guarantees full digest coverage, but the
-auto frame is captured at teardown - often after the interesting state is gone - so treat
-`final frame (auto)` in a digest as a **TODO**, not as proof. Capture never fails a test; if the
-page is already closed the screenshot is skipped silently.
-
-### Regression specs
-
-Every bug we fix should leave a test behind, and the test should say which bug it guards:
-
-- **Name it after the behaviour, suffixed `-regression`** - `personality-autosubmit-regression.spec.ts`,
-  not `bug-1234.spec.ts`. The suffix makes the regression set greppable; the behaviour name keeps it
-  readable once the original bug is forgotten.
-- **Head the spec with a docblock stating the bug, the symptom and the fix**, symptom first, so the
-  next person knows what breaking this test actually means.
-- **Assert the symptom, not the implementation.** The fix will be refactored; the symptom is what
-  must never come back.
-- **The matrix row goes in the module the bug lived in**, not a separate regressions section - a
-  personality bug is personality coverage.
-- **`moneyShot()` the frame showing the symptom is absent.** That frame is the durable record.
-
-### Out of Playwright-web scope
-
-Electron-only behaviour (GPU fallback relaunch, focus-mode caption strip, tray, native menus, real
-desktop updates) cannot run in the web harness - those go to
-[browser-capture-harness.md](browser-capture-harness.md) plus a manual checklist in the release
-runbook. Native mobile flows belong to Maestro; see [mobile-testing.md](mobile-testing.md).
+- Server: `packages/server/src/test-utils/vitest-setup.ts` loads `.env.test`, sets `PASEO_SUPERVISED=0`, and disables Git/SSH prompts. Add new global env shims here, not in individual tests.
+- App: `packages/app/vitest.setup.ts` provides `expo`/`__DEV__` shims and stubs a few native-only modules (`react-native-unistyles`, `react-native-svg`, `expo-linking`, `@xterm/addon-ligatures`). Stubbing here is for modules that have no meaningful Node behavior — not a license to mock app code.
 
 ## Running tests locally
 
@@ -488,10 +188,8 @@ Test suites in this repo are heavy. Running them in bulk freezes the machine, es
 - For a broad sweep, redirect to a file and read it after: `npx vitest run <path> --bail=1 > /tmp/test-output.txt 2>&1`
 - Never re-run a suite another agent already reported green.
 - For full-suite confidence, push to CI and check GitHub Actions.
-- Never run the full Playwright E2E suite locally; defer whole-suite verification to CI. Targeted Playwright specs are allowed when you changed or need to prove that specific flow.
-- App Playwright shares one warmed Metro server per run and gives every Playwright worker its own isolated daemon and `OTTO_HOME`. Spec files run concurrently without exposing one file's projects, agents, terminals, history, or provider configuration to another worker; tests within a file remain together so file-level setup is not repeated.
 - Never run the full Playwright E2E suite locally — defer whole-suite verification to CI. Targeted Playwright specs are allowed when you changed or need to prove that specific flow.
-- App Playwright shares one warmed Metro server per run and gives every Playwright worker its own isolated daemon and `OTTO_HOME`. Spec files run concurrently without exposing one file's projects, agents, terminals, history, or provider configuration to another worker; tests within a file remain together so file-level setup is not repeated.
+- App Playwright shares one warmed Metro server per run and gives every Playwright worker its own isolated daemon and `PASEO_HOME`. Spec files run concurrently without exposing one file's projects, agents, terminals, history, or provider configuration to another worker; tests within a file remain together so file-level setup is not repeated.
 - Playwright specs that exercise only the daemon import `daemonTest` from the shared fixtures so they do not create a browser context or page.
 - Helpers that create projects or workspaces own those records until cleanup. Their clients remove the daemon project on close, and an automatic fixture fails any test that still leaks a project record. Deleting only the temporary directory is not cleanup. Agent helpers pass the intended `workspaceId` through to agent creation; they never infer ownership from `cwd`.
 - Tests whose subject is daemon-global state, such as an empty history or daemon restart, start a dedicated host explicitly. Filenames and directories describe product behavior, never execution order or isolation mechanics.
@@ -502,49 +200,296 @@ Test suites in this repo are heavy. Running them in bulk freezes the machine, es
 
 ## Pull-request test routing
 
-**Every job runs on every push right now, and that is deliberate.** Path routing was removed on
-2026-08-18 after it produced green runs that had executed nothing: the skip was wired as a per-step
-`if:` guard, so an unaffected job ran a single `echo` and reported **success**. Between 2026-08-07
-and 2026-08-18 that gave 80 consecutive runs, 55 failures, 22 cancellations, and 3 "successes" that
-had all skipped Playwright entirely. A continuously red suite was indistinguishable from a healthy
-one, and 0.8.10 shipped on a cancelled run.
+PR checks are routed by the behavior each suite proves, using `.github/ci-paths.yml`. A package does not inherit every test suite of its runtime consumers: app changes do not run CLI or Electron-wrapper tests, and protocol changes do not run every package that imports the protocol. Cross-package static compatibility belongs to `typecheck`; full integration coverage runs after merge on main and in manual CI runs.
 
-The invariant that has to hold before routing comes back: **the condition goes on the job, never on
-its steps.** A routed-out job must report `skipped`, never `success`. Matrix legs have to expand into
-statically named jobs first, or the required-check name moves when the matrix does.
+Required matrix legs are declared as statically named jobs. Their shared steps use YAML anchors, while job-level `if` conditions let GitHub report an unaffected leg as genuinely skipped without allocating a runner or losing the exact required-check name.
 
-`.github/ci-paths.yml` is the filter definition prepared for that return, and
-`scripts/ci-workflow.test.mjs` is the contract test that would enforce the job names. Neither is
-wired into `.github/workflows/ci.yml` yet, so treat them as staged work rather than current
-behavior. When routing is reinstated, the smallest meaningful contract wins over package ownership:
-a package does not inherit every suite of its runtime consumers, cross-package static compatibility
-belongs to `typecheck`, and repository scripts plus the shared Vitest configuration run every
-contract because they are cross-cutting toolchain inputs.
-
-### Structural diff corpus
-
-`npm run test:structural-diff` is the structural-diff inner loop. It reads
-version-pinned source pairs from
-`packages/app/src/utils/__fixtures__/structural-diff/` and evaluates only pure
-diff functions. It never starts Electron, the daemon, a browser, or the
-Difftastic executable.
-
-Copied Difftastic cases retain their source, commit pin, and license notice in
-that directory. Each case asserts review semantics rather than terminal output:
-shared context, replacements, pure additions and removals, exact moves, and
-formatting-only changes. The corpus also asserts parser-safe fallback for
-malformed complete sources. Structural eligibility is derived directly from
-the syntax parser registry, and its unit test prevents a supported language
-from silently falling out of the Structural pipeline. Add a fixture only with
-the smallest expectation that captures the reviewer-visible behavior being
-changed. A separate visual regression gate is responsible for renderer
-snapshots; do not turn this fast corpus into a screenshot suite.
+The smallest meaningful contract wins over package ownership. Tiny structural invariants such as daemon launch supervision run unconditionally in the always-running routing job instead of maintaining a transitive file list; this check reads source entrypoints and builds no product. Routed integration contracts use stable domain directories. Browser changes select the required Playwright shards; desktop changes select the existing required desktop jobs, with renderer and real-Electron coverage together in the Ubuntu leg. Packaging runs on main in the Desktop Packages, Docker, and Nix workflows. CLI-side Hub changes select one focused test inside the existing required server jobs. The CLI source suite runs once in the third required CLI job; only the separate local E2E runner is sharded, and that runner owns its dependency build. Repository scripts and the shared Vitest configuration run every PR contract because they are cross-cutting toolchain inputs.
 
 ## Agent authentication in tests
 
 Agent providers handle their own auth. Do not add auth checks, environment variable gates, or conditional skips to tests. If auth fails, report it.
 
+## Otto provider coverage
+
+Schedules: `e2e/browser/otto-schedules.spec.ts` exercises the real target-aware
+editor on wide and compact screens, explicit target review, cadence preview,
+conflicting saves with retained drafts and confirmed reload, literal and instruction-based Artifact
+data updates with unchanged HTML design (literal updates make no generation request), and exact
+result navigation. Native cases also seed the original host-global RPC and exercise
+visible pause, resume and run-once controls without a project transfer.
+Saved Graph runs wait at the ordinary human gate; saved AI
+runs remain in Planning until the user acts and retain explicit cancellation.
+The original model-hydration, project-target and relative-time specs explicitly
+exercise the pre-extension capability floor through a test-only server-info projection.
+All native RPCs still reach the real daemon, including secondary hosts; no UI or response
+is substituted. The manual `schedules` journey runs both sets. Full Otto acceptance
+includes the upgraded-host file, and main CI retains the native compatibility specs.
+These are CI browser journeys, not pure fixture or
+local native-provider proof.
+
+Schedule CLI CRUD fixtures use an explicit future cadence, so crossing a cron boundary
+cannot start a configured provider during inspection or deletion. Preset compilation belongs
+to the focused Schedule command unit tests; execution has its own controlled-provider journeys.
+
+<!-- OTTO(workflows): real daemon and provider tool-loop journeys preserve the ordinary chat boundary. -->
+
+Profiles and Teams: `e2e/browser/otto-agent-teams.spec.ts` switches the active Team on wide and compact layouts, checks Chatter membership, verifies the open chat keeps its assigned Profile, and detaches it on an explicit bare-model pick. A second live-chat journey switches between different mock models, checks that the existing message survives and reads back the device preference. The host settings journey restores a missing starter member and saves all four voice cues.
+
+Workflows: `e2e/browser/otto-workflows.spec.ts` covers wide/compact library creation,
+the original graph canvas, saved edits, CAS conflicts and explicit reload. Its
+runtime journeys use the real agent manager and loopback OpenAI-compatible tool
+loop for Graph workers/gates, ordinary chat sending while a gate waits, worker
+composer restrictions, Artifact provenance, AI clarification/Planning, explicit
+plan confirmation and canceled gate rejection. These run only in the existing
+all-Otto CI lane or its `workflows` diagnostic. Focused host, engine, storage,
+provider-policy, template, draft and transfer fixtures remain separate; synthetic
+HTTP responses do not prove live provider quality, native CLI startup-hook
+isolation or physical mobile interactions.
+
+<!-- OTTO(speech): real playback and chat controls use isolated HTTP audio in the existing acceptance lane. -->
+
+Speech: `e2e/browser/otto-speech.spec.ts` covers registered host settings on wide
+and compact screens, saved model/voice/speed, actual HTTP-to-WAV preview and Stop,
+visible generation failure, explicit retry and revision-conflict recovery without
+key disclosure. It also exercises completed-message Read aloud, per-chat automatic
+reading of new replies and history suppression after reload. It checks the
+left-hand assistant bubble and that playback stays inside it with absolute
+positioning, without changing the bubble's height on hover.
+The focused speech lane also runs the unchanged Mermaid fullscreen/streaming,
+streaming Markdown and assistant-image stability specs. The assistant frame must
+preserve diagram interactions, inline formatting, code/tables, image loading,
+lightboxes, tab switches, pagination and late-content selection/scroll behavior.
+Synthetic endpoints and browser audio do not establish native microphone, physical-device background
+playback or live vendor/local-model quality. Focused native-player fixtures check
+media-control cleanup and system pause/resume without launching a recorder.
+Hey Otto lifecycle, permission, handoff and silence fixtures inject detector and
+capture ports. Browser playback acceptance rejects microphone requests and checks
+the unsupported plain-browser gate. The Android release lane runs native handoff
+JVM tests and verifies the actual APK/AAB model checksums and detector libraries;
+desktop afterPack verifies the copied model. None of those checks substitutes
+for physical-device detection, interruption or false-trigger measurements.
+
+Connectors: `e2e/browser/otto-connectors.spec.ts` covers registered host navigation,
+all 30 catalog entries, search/clear, custom configuration, real MCP discovery,
+per-tool selection, compare-and-swap conflicts, explicit reload, disable and
+removal on wide and compact screens. The acceptance job provides a disposable
+D-Bus keyring and a loopback fixture server. Only synthetic configuration is
+stored; no vendor account or publisher credential is used. Pure service tests
+separately cover native Google, hosted OAuth, legacy grants and provider policy.
+
+Bitbucket settings: `e2e/browser/otto-bitbucket.spec.ts` covers the registered
+host-settings entry, empty-form validation, a real daemon metadata conflict,
+retained local fields, declined/accepted reload, secret-draft clearing and
+repository controls on wide and compact screens. It performs no vendor request
+or native credential write. Adapter, RPC and form fixtures cover the additional
+forge and repository behaviors; these do not prove employer-account access.
+
+<!-- OTTO(artifacts): real daemon/browser acceptance complements the pure service and draft contracts. -->
+
+Artifacts: `e2e/browser/otto-artifacts.spec.ts` covers wide and compact creation through
+the configured deterministic HTTP provider, rendered sandbox interactivity and blocked
+parent/network access (including a real HTTP navigation trap), data-only byte preservation, repair decline/accept and tab
+reopening. Its Schedule journey drives the real scheduler and provider tool loop,
+checks exact source-run inspection and then deletes the source while keeping the
+Artifact available. It belongs to the existing all-Otto-journey CI lane. Focused
+`otto/artifacts/{content,service,generation}.test.ts`, app `model.test.ts` and CLI
+`commands.test.ts` cover persistence, failure/revision authority, cancellation and
+selected-daemon routing. These deterministic checks do not prove native provider or
+device WebView behavior.
+
+The packaged desktop smoke also opens a seeded Artifact through the shipped library
+and reacquires detached CDP sessions during read-only frame discovery. Selected-frame
+actions and sandbox/security assertions still fail normally on protocol errors. It
+asserts interaction plus blocked host/parent access, popups, HTTP requests and
+frame navigation. It retains `artifact-preview.json` and a screenshot for each
+packaged launch. This is an external observer of the production UI and daemon, not
+a renderer-only mount or a smoke branch in the application.
+The observer uses CDP renderer targets for opaque child frames: Playwright's normal
+frame tree omits those frames under the packaged desktop URL scheme. It reads the
+fixture's real DOM and dispatches pointer input; it does not replace the renderer or
+relax its sandbox.
+Initial identity reads have a two-second timeout and may be reacquired inside the
+existing observation deadline. Selected-frame evaluations and input retain their
+normal timeout, propagate failures, and are never replayed.
+
+<!-- OTTO(provider-tests): coverage for the independently owned provider plugin. -->
+
+`Otto App Acceptance` builds the owning server stack and app dependency, then runs
+every `e2e/browser/otto-*.spec.ts` across two bounded CI shards, each with one browser
+worker and no retries. Playwright partitions the complete spec selection; neither shard
+is an optional subset. It runs on
+the restoration branch and relevant pull requests; manual dispatch can pin an exact
+source commit. These journeys use isolated test daemons and synthetic endpoints,
+with no provider API keys, native model launches or publishing. Operational Brain
+journeys reuse the isolated synthetic Node engine from the host contract tests;
+the browser, daemon channel, owner service, profile files and process lifecycle
+remain real. These fixtures do not prove native llama.cpp/GPU or device behavior.
+Screenshots and traces are
+retained on both success and failure. The full CI and product build matrix remain
+separate required gates.
+
+`otto-activity.spec.ts` opens host Activity and Log through the real daemon and tests that a provider prediction can fill an empty composer by Tab or click without sending. The prediction is a synthetic frame on a real chat connection. The ActivityStore fixtures also cover legacy file continuity, measured token accounts, pagination, reset and damaged-file handling.
+
+Repository instruction coverage in `plugins/otto-openai-compatible-provider/server/instructions.test.ts`
+uses real files and an HTTP endpoint to verify fixed/scoped rules, imports, budgets and
+write deferral when current rules have not reached the model. `server/usage.test.ts` in
+the same plugin checks failed/canceled stream accounting and credential-safe errors.
+
+The F01 provider uses deterministic local HTTP endpoints for protocol behavior, isolated
+daemon homes for persistence and credential checks, and real browser settings interactions.
+These checks do not require a separate Android device run for daemon-only changes; Android
+packaging remains a build gate.
+
+| Surface                         | Behavioral coverage                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Endpoint routing                | `plugins/otto-openai-compatible-provider/server/endpoint-routing.test.ts`: identical model IDs, independent credentials, unavailable endpoint isolation, endpoint-bound chats                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Private host keys               | `packages/server/src/server/otto/openai-compatible-credentials.e2e.test.ts`: save, conflict, endpoint binding, daemon restart and secret exclusion from settings/history/logs                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Otto 0.9 settings               | `packages/server/src/server/otto/openai-compatible-legacy-config.e2e.test.ts`: original files unchanged, provider identity and keys retained, explicit new endpoint never receives the old key, Brain inactive                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Otto 0.9 conversations          | `packages/server/src/server/otto/openai-compatible-legacy-history.e2e.test.ts`: existing agent identity and unknown fields, text/images/instructions, display-only reasoning, complete tool groups, no tool replay, private original backup and restart                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Host conversation archives      | `plugins/otto-openai-compatible-provider/server/session-store.test.ts`: small opaque handle with large retained history, stale-writer rejection, malformed-file preservation, checkpoint failure settles the turn before tool effects                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| Wide settings                   | `packages/app/e2e/browser/otto-provider-settings.spec.ts`: two-field setup from the model sheet, one Save action, discovered models, multiple connections, edit/reload, disabled state, removal confirmation and key privacy                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Compact settings                | Same spec: two-field setup with collapsed advanced options, settings/key conflicts retain drafts, explicit review/retry and adoption of untouched peer changes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Connection removal              | `plugins/otto-openai-compatible-provider/server/provider-removal.test.ts` and `server/credentials.test.ts`: cancel only affected sessions, retain transcript persistence, delete the key and persist retirement across restart                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Brain app entrypoints           | `packages/app/e2e/browser/otto-brain.spec.ts`: real host settings, independent enable/autostart, persistence, bottom-row animated icon beside Usage without a separate panel or permanent state label, desktop state tooltip, and all five tab controls on wide/compact screens without starting a runtime; this does not prove loaded-model operations                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Brain model operations          | `packages/app/e2e/browser/otto-brain-operations.spec.ts`: wide/compact profile autosave and rename persistence, typed budget preview, synthetic resident load/unload, real owner log copy, actionable unloaded benchmark error, and durable running benchmark cancellation/reload through the selected daemon's Remote route                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Brain settings recovery         | `packages/app/e2e/browser/otto-brain-settings.spec.ts`: real daemon revision conflicts preserve local intent, block stale saves, and replace drafts only after confirmed reload on wide/compact screens; saved enable/autostart intent does not launch a host                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| Shared integration settings     | `packages/app/e2e/browser/otto-integrations.spec.ts`: registered host account settings, nonsecret persistence, peer conflict, retained drafts and explicit reload on wide/compact screens. No API token, native keyring write or vendor request is made.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Profile memory and role pickers | The Profile parity journeys in otto-artifacts.spec.ts and otto-schedules.spec.ts cover Context lesson editing, Artificer generation and Team Scheduler reassignment before execution using an isolated provider.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| Connectors and MCP catalog      | `packages/app/e2e/browser/otto-connectors.spec.ts`: wide/compact registered settings, all 30 catalog rows, real local MCP discovery and disposable OS-vault persistence, per-tool controls, stale-revision draft/reload, disable and removal. Synthetic endpoints only; vendor approval is a separate gate.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| Kanban project settings         | `packages/app/e2e/browser/otto-kanban.spec.ts`: real registered menu and canonical Project Settings on wide/compact layouts, retained drafts across route departure, stale-save recovery, target persistence and clearing; no tracker traffic or configured-board acceptance                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Kanban configured board         | `packages/app/e2e/browser/otto-kanban-board.spec.ts`: actual UI and daemon through the isolated local-fixture GitHub CLI adapter, paginated cards/fields, compact column selection, external issue edits converging through daemon polling without a Refresh click (even with an unchanged provider board marker), provider links, scope failure and refresh recovery. Synthetic provider responses do not establish live GitHub acceptance.                                                                                                                                                                                                                                                                                                                                                                  |
+| Kanban card actions             | `packages/app/e2e/browser/otto-kanban-actions.spec.ts`: wide/compact create, move, edit, link, detach and uncertain-response reconciliation through the isolated tracker adapter and real daemon. No real provider mutation is performed.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Project Knowledge               | `packages/app/e2e/browser/otto-knowledge.spec.ts`: wide/compact workspace action menu and native panel, Markdown draft creation, real MCP reads of shared records, external-file refresh, revision-conflict draft retention, explicit repository-to-host copy with source recovery retained, confirmed purge (including decline), clearing an externally deleted hosted article, read-only link health shared with MCP plus Open source navigation and a fresh check after conversion, explicit older Markdown/JSON conversion with preview, declined/accepted confirmation, byte recovery and retained identities/history/review, and host-default settings before project selection with declined/accepted saves and unchanged project storage. Isolated daemon/project fixtures only; no agents or models. |
+| Knowledge storage setup         | `packages/app/e2e/browser/otto-knowledge-setup.spec.ts`: fresh Host allocation, exact retained-store reconnection and Repository selection under a Host default, each wide/compact; declined/accepted confirmation, persisted identity, six-root initialization, retained bytes/history/review and real MCP discovery/reads. Isolated owning-host fixtures only.                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+
+| Knowledge article review | `packages/app/e2e/browser/otto-knowledge-review.spec.ts`: wide/compact counted Review signals in the existing article expander, identical/partial tag separation, current-truth and stale-date hints, real MCP parity, unchanged file bytes, and automatic refreshed counts after an external peer edit. No related-article view or persisted diagnostic records. |
+
+| Knowledge write-lock recovery | `packages/app/e2e/browser/otto-knowledge-lock.spec.ts`: wide/compact blocked-draft retention, read-only inspection, explicit no-writer verification and reason, declined/accepted confirmation, unchanged article bytes, retained recovery claim, real MCP unlocked state, and a separate fresh write. No automatic lock expiry or retry. |
+
+| Knowledge scoped edit drafts | `packages/app/e2e/browser/otto-knowledge-drafts.spec.ts`: wide/compact project switching and real route departure/reentry, original revision and reason retained across a peer edit, stale writes refused, explicit declined/accepted discard and reload, fresh saved text after accepted reload, no lock-repair affordance for a revision conflict, and unchanged newer canonical truth. No reload is used to simulate route return. |
+| Kanban agent tools | `packages/app/e2e/browser/otto-kanban-actions.spec.ts`: wide/compact actual MCP -> configured daemon -> synthetic official CLI adapter, one admitted create despite repeated operation ID, card read-back visible in the app, revision-pinned edit/move/detach and exact provider-write counts. No live tracker effects. |
+| Otto workspace lifecycle and diff presentation | `packages/app/e2e/browser/workspace-lifecycle.spec.ts` moves a chat through its tab menu and checks daemon ownership, working directory and transcript. It also reopens an archived Git worktree and checks that the original workspace ID returns to the sidebar. `packages/app/e2e/browser/commit-diff-panel.spec.ts` switches Structural and Line in a loaded commit review. |
+| Structural review | `packages/app/e2e/browser/otto-structural-diff.spec.ts` compares real Git snapshots in Changes, renders captured provider source in a chat edit card, and checks that the compact Settings preview switches independently of the saved default. Commit review and File History switch presentation in their existing browser suites. |
+| Editor Refine entry point | `packages/app/e2e/browser/otto-editor.spec.ts` opens Refine from Document tools, checks pinned prose and linked references through a tool-free test provider, and verifies that approval saves only the kept change. It also opens File History, compares a real Git revision in Structural mode and checks paged line authorship. |
+| Knowledge reviewed refinement | `packages/app/e2e/browser/otto-knowledge-refinement.spec.ts`: wide/compact rendered selection and Replace notes, no-write proposals, per-hunk acceptance, declined/accepted confirmation, canonical daemon/MCP parity, preserved metadata/history, Draft demotion and a refused stale root proposal. No model launch. |
+
+The Otto App Acceptance workflow always runs all Otto journeys for pushes and pull
+requests. Manual dispatch accepts an exact `checkout_ref` and a bounded `journey`
+selection: `all` or one named journey from the workflow's choices. A single-journey
+diagnostic uses one job. The cancellation diagnostic
+repeats that exact journey three times, serially, without retries. A diagnostic
+subset does not replace the full acceptance gate. Failure evidence is retained;
+diagnostics use a separate concurrency group so they cannot cancel that gate.
+The Brain cancellation journey captures sanitized live owner state before its
+fixture restores the daemon's connection.
+
+The Knowledge refinement journey in
+`packages/app/e2e/browser/otto-knowledge-refinement.spec.ts` covers actual rendered
+selection, exact replacement notes, no-write generation, per-hunk keep/drop,
+declined and accepted confirmation, real daemon/MCP parity, confirmed-to-Draft
+transition, preserved metadata/history and a stale root proposal, wide and compact.
+It uses direct replacements without launching a model. Scoped model requests and
+response validation have injected provider-boundary fixtures; those do not establish
+live-provider or physical-device acceptance.
+
+<!-- OTTO(context-management): rendered scope and source-edit proof is part of the existing acceptance matrix. -->
+
+## Context Management acceptance
+
+`Otto Native Context Contracts` inspects installed Muse and Antigravity CLIs on
+disposable Linux runners with a fresh home and no account credentials. It captures
+versions/help and uses Muse's local echo provider with owned hook/MCP sentinels
+to distinguish rejected configuration from effective isolation. Antigravity
+agent discovery does not submit a model turn. The artifacts contain the command
+outcomes, not a claim that a generation adapter is implemented or that a live
+model works. This workflow never runs a developer's installed CLI or Otto home.
+
+<!-- OTTO(preview): provider-neutral host lifecycle and workspace entry points. -->
+
+Preview Servers: `e2e/browser/otto-preview.spec.ts` exercises the single gutter play
+menu with management last and no process on declined quick launch, wide and compact workspace
+entry, declined and stale command confirmations, real isolated host-owned start/stop,
+bounded logs, designated streamed browser opening, trusted pointer/keyboard input
+against that same host page, and corrupt configuration. It runs in CI,
+alongside native Linux/Windows process-tree ownership fixtures. No installed app or
+developer daemon participates. Pure action fixtures additionally cover hidden-confirmation
+invalidation and duplicate admission. Browser-open failure ownership recovery is
+covered by the isolated Preview host fixtures. Separate Windows/Linux native host
+acceptance verifies shared ARIA refs, native input, uploads, dialogs, screenshots,
+source-bound JPEGs and profile cookies across a final-tab close. Pure viewer fixtures
+verify late replies, hidden input, bounded queues and preserved binding data.
+The Docker and Linux Nix workflows additionally run
+`scripts/otto/host-browser-smoke.mjs` against installed server modules and each
+distribution's Chromium. This checks local-page rendering and PNG capture without
+starting an agent, model or installed user daemon.
+
+`e2e/browser/otto-context-health.spec.ts` covers the real composer pill, provider
+catalog window, mute, registered Manage navigation and persisted warning
+settings on wide and compact layouts. It also corrupts only the fixture's
+preference value to verify visible read failure, disabled writes, byte
+preservation and explicit reload recovery. Its chat uses the isolated local HTTP
+provider fixture. Pure policy tests cover unknown windows, severity/band changes,
+eight-hour expiry, workspace isolation, legacy preferences and write failure.
+
+`e2e/browser/otto-context-starter.spec.ts` exercises empty-project setup on wide
+and compact layouts through the real daemon and a local HTTP inference fixture.
+It checks tool-free proposal generation, editable draft review, declined create,
+occupied-lock feedback with retained draft, explicit refresh recovery and the
+resulting instruction bytes. It runs in the existing Otto all-journey CI lane;
+focused filesystem/controller tests alone do not prove rendered acceptance.
+
+`e2e/browser/otto-context-management.spec.ts` covers wide and compact workspace
+entry, owning-host graph/source inspection, declined and accepted load-mode
+confirmation, actual source-byte changes, referenced-body preview and external
+source refresh through the real isolated daemon. The Issues path covers declined
+fixes, a peer edit during confirmation, occupied-lock per-file feedback, retained
+write blocking across a scheduled report refresh, explicit refresh recovery and
+accepted missing-import removal. It does not launch a model or
+prove provider-native hidden context. The normal Otto all-journey acceptance
+includes this file; focused service and action-controller fixtures remain separate.
+
+`e2e/browser/otto-context-source.spec.ts` covers current-source versus prompt
+preview, retained drafts across view changes, declined reload/save, peer-conflict
+feedback, explicit reload recovery, actual saved bytes and revision-matched issue
+line selection/focus on wide and compact screens. It uses the same real isolated
+daemon and does not touch installed homes or launch a model.
+
+`e2e/browser/otto-context-compaction.spec.ts` covers wide and compact prose
+proposal generation through the real daemon/provider RPC and a deterministic
+local HTTP completion fixture. It verifies no tools in the inference request,
+read-only reference inclusion, initially dropped hunks, chosen kept text,
+declined apply, occupied-lock feedback with retained review, explicit reload
+recovery and actual saved bytes. This proves the application path, not the quality
+or availability of a live model, native CLI execution or physical-device rendering.
+
+`e2e/browser/otto-context-layout.spec.ts` covers dragging both desktop reading
+splitters, persisted width/summary height, compact geometry leaving the desktop
+preference untouched and restoration after a fresh app load. Pure persistence
+fixtures cover legacy-width preservation, future/corrupt data and visible save
+failure recovery. Native touch dragging remains a separate device proof.
+
 ## Debugging with tests
+
+### Otto browser actions
+
+`src/otto/browser/actions.browser.test.tsx` covers the actual More/Find controls,
+DOM search, match navigation, highlight cleanup and rendered external-open
+pending/success/failure recovery. Its opener is an injected desktop port, not an
+operating-system browser launch. `page-find.browser.test.ts` covers the guest's
+case/diacritic/word/whitespace matching and non-mutating highlights. Pure
+controller fixtures cover debounce, queued navigation and hidden replies;
+desktop keyboard fixtures retain guest-to-owning-window routing. These fixtures
+do not establish native Electron focus or mobile Host Browser streaming.
+
+Browser history's store, host-scope and UI-state fixtures cover legacy storage,
+limits, corrupt-file preservation, host/project admission, stale searches,
+serialized writes, confirmation and explicit recovery. The real-Electron
+`browser-tabs.e2e.mjs` journey also exercises address suggestions and keyboard
+selection, cancellation/acceptance of the native clear dialog, visible failure
+with an isolated corrupt history file, explicit recovery, and cookie retention.
+Its native-dialog driver targets only that journey's private Xvfb display.
+These checks run in CI; pure model tests alone do not establish native acceptance.
 
 Use the test as your debugging ground:
 
@@ -571,7 +516,143 @@ Aim for deep modules: small interface, deep implementation. Fewer methods = fewe
 
 Every test in this repo lives in exactly one of these shapes:
 
-1. **Unit tests with ports and adapters** - production code receives its real-world dependencies (DB, HTTP, CLI process, clock, randomness, filesystem, other modules) through an injected interface. Tests wire a typed in-memory fake colocated with the production module. **No `vi.mock`, `vi.hoisted`, `vi.spyOn` of own exports, JSDOM, `@testing-library` component mounting, RN test renderer, monkey-patched globals, or fake-server fixtures.** If a test needs any of those, the production module is missing a port - fix the seam, then write the test against a fake adapter.
-2. **Real end-to-end tests** - real daemon, real network, real browser (Playwright for app code) or a real isolated server instance (for daemon code). No JSDOM, no mocked transport.
+1. **Unit tests with ports and adapters** — production code receives its real-world dependencies (DB, HTTP, CLI process, clock, randomness, filesystem, other modules) through an injected interface. Tests wire a typed in-memory fake colocated with the production module. **No `vi.mock`, `vi.hoisted`, `vi.spyOn` of own exports, JSDOM, `@testing-library` component mounting, RN test renderer, monkey-patched globals, or fake-server fixtures.** If a test needs any of those, the production module is missing a port — fix the seam, then write the test against a fake adapter.
+2. **Real end-to-end tests** — real daemon, real network, real browser (Playwright for app code) or a real isolated server instance (for daemon code). No JSDOM, no mocked transport.
 
-Anything in between - component tests in JSDOM, vitest tests that mock the module under test, tests that assert on private state - is slop on its way out.
+Anything in between — component tests in JSDOM, vitest tests that mock the module under test, tests that assert on private state — is slop on its way out.
+
+### Otto terminal restoration
+
+`e2e/browser/otto-terminal.spec.ts` covers wide and compact Host → Terminals
+settings, successful persistence, stale-save draft retention, declined/accepted
+reload, real PTY compatibility diagnostics, a stable-title process and the
+bundled symbol font in the rendered terminal. It runs in the existing serial
+Otto acceptance lane. Physical mobile glyph/input and user-configured external
+editor acceptance are separate from this browser evidence.
+
+### Otto editor restoration
+
+<!-- OTTO(editor): editor acceptance uses the same isolated daemon/browser lane. -->
+
+| Surface                                                                               | Behavioral coverage                                                                                                                                                         |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Workspace content search, semantic navigation, reviewed rename/undo and replacement   | `e2e/browser/otto-editor.spec.ts`, wide and compact; real daemon, TypeScript server and filesystem                                                                          |
+| Markdown source/split/preview, retained undo, review notes and host-owned HTML export | The same editor journey, including attachment removal and source/output checks                                                                                              |
+| Actual Vim, Neovim and custom file editors                                            | Three real PTY journeys in the same spec; literal paths with spaces, saved bytes, declined/accepted close and returning to Otto                                             |
+| Offline native editor protocol                                                        | `src/otto/editor/renderer/webview.browser.test.ts`, executing the shipped HTML in Chromium, including older acknowledgments and Vim state                                   |
+| External C# server and evaluated solution membership                                  | `Otto Editor Runtime Acceptance` installs isolated pinned `csharp-ls` with .NET 10; server fixtures use actual LSP and MSBuild                                              |
+| Static PDF export                                                                     | The same runtime workflow executes the desktop print module in isolated Electron, checks PDF bytes and rejects script/network activity                                      |
+| Safety and lifecycle                                                                  | Colocated focused fixtures cover leases, pending demand, dirty peer drafts, CAS settings, bounded search, reviewed write/undo conflicts, exclusive exports and image assets |
+
+These are defined acceptance checks, not claims that a particular commit passed.
+The manual `editor` diagnostic runs the Otto editor spec together with Paseo's
+`pane-find.spec.ts` and `file-editing.spec.ts`. Both this lane and the full
+browser matrix install Vim and Neovim on their disposable CI runners; a missing
+editor is a fixture setup failure, not a reason to skip the real PTY checks.
+
+`AdaptiveModalSheet` places its `testID` on the full desktop overlay but only on
+the compact header. Scope compact body and footer controls through the visible
+accessible sheet or their own stable test IDs, rather than the header's
+descendants. Markdown source also stays mounted while Preview is visible to
+retain undo. Assert rendered headings or the preview boundary instead of a
+generic text selector that also matches hidden CodeMirror text.
+Compact file sheets can cover a retained editor whose CSS remains visible.
+Scope file actions by the editor's accessible filename and its containing file
+pane, rather than treating every CSS-visible editor as the active file.
+
+Physical mobile IME/keyboard behavior and user-specific editor plugins require
+their own device/environment review. No editor check starts the installed Otto
+daemon or reads its settings.
+
+## Otto Architectural Views restoration
+
+<!-- OTTO(architectural-views): acceptance is part of the existing isolated app lane. -->
+
+| Surface                                                                                                                                                                          | Behavioral coverage                                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
+| Storage, legacy sources, CAS, publication recovery and retained revisions                                                                                                        | `src/server/otto/architectural-views/storage.test.ts`                                |
+| Five pinned diagram validators/renderers, budgets and child shutdown                                                                                                             | `src/server/otto/architectural-views/renderer.test.ts`                               |
+| Scoped workspace display, lease expiry, disconnect and shutdown                                                                                                                  | `src/server/otto/architectural-views/open-intents.test.ts`                           |
+| Local editing authority, late replies, confirmations and retained intent                                                                                                         | `src/otto/architectural-views/draft-model.test.ts`                                   |
+| Model source paging and portable input preflight                                                                                                                                 | `src/server/otto/architectural-views/model-results.test.ts` and `tool-input.test.ts` |
+| Guest channels, bounded controls, export envelopes and frame teardown                                                                                                            | `src/otto/architectural-views/view-controller.test.ts`                               |
+| Selected-daemon CLI capability, contract and uncertain-operation identity                                                                                                        | `src/otto/architectural-views/connection.test.ts` in CLI                             |
+| Real daemon, renderer, normal provider authoring tools, wide/compact native chat integration, validation repair, publication, retained 0.9 base review, revisions and SVG export | `e2e/browser/otto-architectural-views.spec.ts`                                       |
+
+The browser journey runs in Otto App Acceptance with isolated fixture credentials
+and homes. A manual `architectural-views` diagnostic preserves the full push/PR
+gate. Unit fixtures do not launch the app, a provider CLI or the installed daemon.
+These entries define checks; they do not assert that an untested revision passed.
+Physical-device input and user-specific fonts require their corresponding device
+or environment review.
+
+<!-- OTTO(composer-size): geometry is verified against the rendered font, not a fixed pixel height. -->
+
+## Composer geometry
+
+| Surface                                                                                                       | Behavioral coverage                                                                              |
+| ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| One-line empty and short input, multiline/wrapped growth, clearing back to one line, and retained blank lines | `e2e/browser/composer-whitespace.spec.ts`: wide and compact web, including a larger content font |
+
+## Otto History restoration
+
+| Surface                                                                                                               | Behavioral coverage                                                                                                                                                                               |
+| --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Exact archive review, same-connection single-use approval, restored or edited records, retained transcripts           | `server/src/server/otto/history/archive-review.test.ts`, `archive-storage.test.ts`                                                                                                                |
+| Frozen source compatibility, real SQLite worker search, project/archive scoping, rewrites and deletion                | `server/src/server/otto/history/search/service.test.ts`, `messages.test.ts`                                                                                                                       |
+| Search result opens the chat, History host sizes, archive filters, cancellation and explicit clear                    | `app/e2e/browser/otto-history.spec.ts` in Otto App Acceptance, with cleanup on a separate test host                                                                                               |
+| Completed action summaries, inline keyboard expansion/collapse, detached streaming and reload on wide/compact clients | `app/e2e/browser/otto-action-groups.spec.ts`, isolated daemon and mock provider; `app/src/otto/chat/action-group.test.tsx` checks admission of 2,000 members at the lazy badge boundary           |
+| Released chat artwork, Profile color capture and draft persistence, independent workspace status and activity         | `app/src/otto/chat/identity/identity.test.ts`, `app/src/utils/workspace-agent-activity.test.ts`                                                                                                   |
+| Real Profile selection, tab/working-indicator colors, blue workspace ring with a centered dot and reload persistence  | `app/e2e/browser/otto-chat-identity.spec.ts`, wide and compact, real app/daemon with isolated mock provider in Otto App Acceptance; native and hidden-animation performance remain separate gates |
+
+<!-- OTTO(action-groups): canonical-row preservation, stable history keys, cached streaming and retained device settings. -->
+
+`app/src/otto/chat/action-groups.test.ts` covers action/content/turn boundaries,
+parallel completion, failures, older-history extension, unchanged history hosts,
+the Overview boundary and zero history-payload reads during 200 text deltas over
+2,000 loaded rows. `app/src/hooks/use-settings/storage.test.ts` verifies the old
+grouping preference, its default and its explicit opt-out. These tests do not
+establish native-device scroll or performance acceptance.
+
+<!-- OTTO(git-fetch): focused fixture and real-browser proof uses existing CI ownership. -->
+
+## Otto workspace Git fetch
+
+`server/src/server/otto/workspace-git/capabilities.test.ts` verifies the reserved
+RPC identity without adding a plugin worker to startup. Actual socket routing is
+covered by the wide/compact app acceptance journey below.
+
+| Surface                                                                                 | Behavioral coverage                                                                         |
+| --------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Preserved opt-out, unknown fields, revision conflicts and malformed/future files        | `server/src/server/otto/workspace-git/settings.test.ts`, `host.test.ts`                     |
+| Active ownership, queued callbacks after disablement and shared repository operations   | `server/src/server/otto/workspace-git/control.test.ts`                                      |
+| Real file-origin Fetch, linked worktrees and canonical Git snapshot refresh             | `server/src/server/otto/workspace-git/service.test.ts`                                      |
+| Explicit-save draft lifetime, conflicts, late replies and manual action recovery        | `app/src/otto/workspace-git/form.test.ts`, `manual.test.ts`                                 |
+| Wide/compact settings, visible conflict recovery and Fetch success/failure              | `app/e2e/browser/otto-workspace-git.spec.ts`, automatically included by Otto App Acceptance |
+| Stacked diff/commit exclusion, per-branch persistence, linked worktrees and exact refs  | `server/src/server/otto/workspace-git/comparison-base.test.ts`, `host.test.ts`              |
+| Parent picker, updated file list, reload persistence, deleted-branch error and recovery | `app/e2e/browser/otto-comparison-base.spec.ts`, wide/compact in Otto App Acceptance         |
+
+## Otto Visualizer restoration
+
+<!-- OTTO(visualizer): the existing app and Electron lanes own real render proof. -->
+
+| Surface                                                                                                                  | Behavioral coverage                                                                                                                                |
+| ------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Canonical roots/children, streaming revisions, reported usage, failures/cancellation, file overlaps and bounded excerpts | `src/otto/visualizer/projection.test.ts`, `discoveries.test.ts`, `tool-data.test.ts`                                                               |
+| Selected/aggregate timeline demand, independent Speech leases, disconnect/replay and teardown                            | `src/otto/visualizer/feed-owner.test.ts`                                                                                                           |
+| Singleton handoff, private-frame bounds, nearest-edge resize, offline bundle and legacy preferences                      | `src/otto/visualizer/ownership.test.ts`, `bundle.test.ts`, `preferences.test.ts`                                                                   |
+| Real provider tool loop, real graph, wide/compact panel, retained workspace handoff, PIP, background and Composer        | `e2e/browser/otto-visualizer.spec.ts`, regular Otto App Acceptance and manual `visualizer` diagnostic                                              |
+| Workspace tab split and move over interactive Visualizer and Browser guests, with Escape cleanup                         | `e2e/browser/otto-visualizer-toolbar.spec.ts` and `packages/desktop/e2e/otto-visualizer.electron.mjs`                                              |
+| Selector and icon centering in wide/compact tabs and PIP, including switching to all active chats                        | `e2e/browser/otto-visualizer-toolbar.spec.ts`                                                                                                      |
+| Electron private guest, offline policy, browser plane, hidden-window disposal and tab/PIP handoff                        | `packages/desktop/e2e/otto-visualizer.electron.mjs`, called by the existing desktop browser journey                                                |
+| Paseo compact sheet dismissal, sidebar menu backdrops and schedule-sheet lifetime after overlay promotion                | `sidebar-mobile-menu-sheets.spec.ts`, `sidebar-title-width.spec.ts`, `schedules-project-target.spec.ts`; included before the Visualizer diagnostic |
+
+Reported cost zero/unknown/subtotal semantics use the pure production renderer
+helper through `src/otto/visualizer/reported-cost.test.ts`.
+
+`src/otto/visualizer/background-state.test.ts` covers draft/agent tab visibility,
+retained eviction and explicit/tab close.
+
+These define acceptance checks, not the outcome of an untested commit. No test
+launches the installed Otto daemon. Native phone gestures, system audio and
+user-specific providers still need device/environment review.

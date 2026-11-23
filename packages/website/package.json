@@ -1,8 +1,7 @@
 {
-  "name": "@otto-code/website",
+  "name": "@getpaseo/website",
   "version": "0.9.35",
   "private": true,
-  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,8 +11,10 @@
     "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
-    "@cloudflare/vite-plugin": "~1.46.0",
+    "@cloudflare/vite-plugin": "^1.29.1",
     "@cloudflare/workers-types": "^4.20260317.1",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@getpaseo/protocol": "*",
     "@tanstack/react-router": "^1.170.16",
     "@tanstack/react-start": "^1.168.26",
     "framer-motion": "^12.35.2",
@@ -36,9 +37,10 @@
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
     "@vitejs/plugin-react": "^4.5.1",
+    "parse5": "^7.3.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.5",
+    "vite": "^7.3.3",
     "vite-tsconfig-paths": "^5.1.4",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.6"
   }
 }

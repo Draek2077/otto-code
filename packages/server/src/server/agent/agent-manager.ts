@@ -1,56 +1,54 @@
-import { readSearchHistory, getSearchHistoryRevision } from "../chat-search/agent-history.js";
-import { resolveImportedAgentTitle } from "./timeline-display.js";
-import { commandMayHaveChangedExternalState } from "./external-state-command.js";
-export { commandMayHaveChangedExternalState } from "./external-state-command.js";
+import type { ActivityStore } from "../otto/activity/store.js"; // OTTO(activity)
+import {
+  applyCreationProfile,
+  reloadLabels,
+  rosterReader,
+  resolveHostProfile,
+  selectProfile,
+} from "../otto/agent-profiles/selection.js"; // OTTO(agent-teams)
+import {
+  bindProfile,
+  presentationLabel,
+  profileIntentLabel,
+} from "@getpaseo/protocol/otto/agent-teams"; // OTTO(agent-teams)
+import { projectTimelineRows } from "./timeline-projection.js";
 import type { PluginLifecycle } from "../plugins/lifecycle/index.js";
 import { describeHookAgent, publishAgentStream } from "../plugins/lifecycle/index.js";
-import type { PluginSessionOpenRequest } from "@otto-code/plugin/server";
+import type { PluginSessionOpenRequest } from "@getpaseo/plugin/server";
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
-import { matchesImportableSessionQuery } from "./importable-session-query.js";
+import {
+  appendKnowledgeSessionPrompt,
+  type KnowledgeSessionPrompt,
+} from "../otto/project-knowledge/session-prompt.js"; // OTTO(knowledge): runtime-only project catalog.
+import { basename, resolve } from "node:path";
 import { stat } from "node:fs/promises";
 import {
   AGENT_LIFECYCLE_STATUSES,
   type AgentLifecycleStatus,
-} from "@otto-code/protocol/agent-lifecycle";
+} from "@getpaseo/protocol/agent-lifecycle";
 import {
   getParentAgentIdFromLabels,
   hasOpenAgentTab,
-  isOpenAgentTabLabel,
   isDelegatedAgent,
+  isOpenAgentTabLabel,
   PARENT_AGENT_ID_LABEL,
-} from "@otto-code/protocol/agent-labels";
-import {
-  normalizeProfileRoles,
-  OTTO_WORK_VOCABULARY_DIRECTIVE,
-} from "@otto-code/protocol/agent-profiles";
-import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
-import { composeTeamAndPersonalityPrompt } from "./agent-teams.js";
-import { deltaAgentUsage } from "./subagent-usage.js";
-import { normalizeTimelineItemForDisplay, buildImportedTimelineRows } from "./timeline-display.js";
-import {
-  accumulateLifetimeUsage,
-  toTurnSpend,
-  type AgentLifetimeUsage,
-  type TurnUsageWatermark,
-} from "./turn-usage.js";
-import type {
-  ProviderActionBreakerConfig,
-  ProviderCompactionConfig,
-} from "@otto-code/protocol/provider-config";
-import { resolveAgentBehaviorSettings } from "./agent-behavior-settings.js";
+} from "@getpaseo/protocol/agent-labels";
 import type { Logger } from "pino";
-import type { ProviderOttoToolsPolicy } from "@otto-code/protocol/provider-config";
+import type { ToolPolicy } from "@getpaseo/protocol/agent-types";
+import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-config";
 import { z } from "zod";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
+import type { ChatSearchService, SearchTimeline } from "../otto/history/search/service.js"; // OTTO(chat-search)
+import { normalizeWidgetTimelineItem } from "../otto/widgets/widget-timeline.js"; // OTTO(widgets)
+import { redactSuggestionPrompt } from "../otto/suggested-tasks/host.js"; // OTTO(suggested-tasks)
 
 import {
   getAgentStreamEventTurnId,
-  type AgentBareCompletionOptions,
   type AgentCapabilityFlags,
   type AgentClient,
-  type AgentBehaviorSettings,
   type AgentCreateSessionOptions,
+  type AgentResumePurpose,
+  type AgentResumeSessionOptions,
   type AgentFeature,
   type AgentLaunchContext,
   type AgentSlashCommand,
@@ -59,7 +57,6 @@ import {
   type AgentPermissionResponse,
   type AgentPermissionResult,
   type AgentPersistenceHandle,
-  type AgentPersonalityUpdate,
   type AgentProviderNotice,
   type AgentPromptInput,
   type AgentProvider,
@@ -71,46 +68,39 @@ import {
   type SteerResult,
   type AgentStreamEvent,
   type AgentTimelineItem,
-  type ToolCallTimelineItem,
   type AgentUsage,
   type AgentRuntimeInfo,
+  type ImportedTimelineEntry,
   type ImportableProviderSession,
   type ListImportableSessionsOptions,
-  type ObservedSubagentUpdate,
-  type BackgroundShellTaskUpdate,
 } from "./agent-sdk-types.js";
-import type {
-  AgentSnapshotPayload,
-  BackgroundShellTaskInfo,
-  SuggestedTaskInfo,
-  SuggestedTaskState,
-  TasksSuggestedStartMode,
-} from "../messages.js";
-import {
-  deriveObservedSubagentTitle,
-  observedUpdateHasTitleSource,
-  toAgentPayload,
-  toObservedSubagentPayload,
-} from "./agent-projections.js";
-import type {
-  RetainedTranscriptOwner,
-  RetainedTranscriptStore,
-} from "./retained-transcript-store.js";
-import { RetainedTimelineResidency } from "./retained-timeline-residency.js";
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
+import { toStoredAgentRecord } from "./agent-projections.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
-import type {
-  ActivityCounterField,
-  ActivityIncrementFn,
-} from "../activity-stats/activity-stats-store.js";
-import type { UsageEvent } from "@otto-code/protocol/messages";
+import type { AgentOwner } from "./agent-owner.js";
+import {
+  prepareWorkflowLaunch,
+  isControlledWorkflowConductor,
+} from "../otto/workflows/provider-policy.js"; // OTTO(workflows): captured launch identity and final runtime ceiling.
+import {
+  assertWorkflowTurn,
+  assertWorkflowInteractiveControl,
+  assertWorkflowConfigurationChange,
+} from "../otto/workflows/turn-authority.js"; // OTTO(workflows): runtime-only ownership fence; ordinary sessions pass unchanged.
+import {
+  assertScheduleTurnAvailable,
+  assertScheduleTurn,
+  assertScheduleTurnIdle,
+  recordScheduleTurn,
+  startScheduleProviderTurn,
+  ownsScheduleTurn,
+  retainScheduleProviderOperation,
+  type ScheduleTurnReceipt,
+} from "../otto/schedules/turn-authority.js"; // OTTO(schedules): private exact-turn receipts and late-provider-operation fence.
 import {
   InMemoryAgentTimelineStore,
   type SeedAgentTimelineOptions,
 } from "./agent-timeline-store.js";
-import { limitAgentTimelineItemContent } from "./agent-timeline-content.js";
-import { materializeSentImageAttachment } from "./providers/provider-image-output.js";
-import { estimateContextComposition } from "./context-composition.js";
 import type {
   AgentTimelineFetchOptions,
   AgentTimelineFetchResult,
@@ -121,62 +111,29 @@ import {
   AGENT_STREAM_COALESCE_DEFAULT_WINDOW_MS,
   AgentStreamCoalescer,
 } from "./agent-stream-coalescer.js";
+import { limitAgentTimelineItemContent } from "./agent-timeline-content.js";
 import {
   AgentRunState,
   type ForegroundTurnWaiter,
   type PendingForegroundRun,
 } from "./agent-run-state.js";
-import {
-  createSteerQueueEntry,
-  mergeSteerQueueBatch,
-  moveSteerQueueEntry,
-  takeNextSteerQueueBatch,
-  type SteerQueueEntry,
-} from "./steer-queue-state.js";
-import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
-import { resolveModelPickExitModeId } from "./model-pick-mode.js";
 import { invokeRewindCapability, type RewindMode } from "./rewind/rewind.js";
-import { formatSystemNotificationPrompt, isSystemInjectedEnvelope } from "./agent-prompt.js";
-import { normalizeClientMessageId } from "../client-message-id.js";
-import {
-  appendTodoNudgeToPrompt,
-  buildTodoReconcileMessage,
-  findLatestTodoItem,
-  isStaleTodoList,
-  todoListSignature,
-} from "./todo-reminders.js";
-import {
-  buildStallInterruptMessage,
-  classifyTimelineItem,
-  createStallGuardState,
-  hasStalled,
-  latchStallGuard,
-  observeStallSignal,
-  type StallGuardState,
-} from "./agent-stall-guard.js";
-import { applyPluginCreateConfig } from "./otto/plugin-create-config.js";
+import { parseAgentMessage, projectAgentMessage } from "./agent-messages/index.js";
 import { isStaleProviderSessionError } from "./stale-provider-session-error.js";
-import { stripInternalOttoMcpServer, withRuntimeOttoMcpServer } from "./runtime-mcp-config.js";
-import type { OttoToolCatalogFactory } from "./tools/types.js";
-import type { AgentOwner } from "./agent-owner.js";
-import { isOttoToolPolicyEnabled } from "./otto-tool-policy.js";
+import { stripInternalPaseoMcpServer, withRuntimePaseoMcpServer } from "./runtime-mcp-config.js";
+import { resolveCreateAgentTitles } from "./create-agent-title.js";
+import type { PaseoToolCatalogFactory } from "./tools/types.js";
+import { isPaseoToolPolicyEnabled } from "./paseo-tool-policy.js";
 import {
+  ProviderSubagentStore,
   type ProviderSubagentDescriptor,
   type ProviderSubagentStoreEvent,
 } from "./provider-subagents/store.js";
-import {
-  ControlledProviderSubagentStore,
-  providerSubagentArchiveLabel,
-} from "./provider-subagent-control.js";
 import { withTimeout } from "../../utils/promise-timeout.js";
+import { extractAttention } from "../persistence-hooks.js";
 
 const RELOAD_SESSION_CLOSE_TIMEOUT_MS = 3_000;
 const INTERRUPT_SESSION_TIMEOUT_MS = 2_000;
-// Bound at module load so it survives a later vi.useFakeTimers(): close yields one
-// event-loop turn, and a faked setImmediate never fires unless the test advances
-// timers - which it cannot, because it is awaiting the close that is doing the
-// yielding. Capturing the real one keeps the yield honest under both clocks.
-const yieldEventLoopTurn = setImmediate;
 const IMPORTABLE_SESSION_LIST_TIMEOUT_MS = 90_000;
 const STORED_AGENT_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: false,
@@ -191,20 +148,6 @@ const STORED_AGENT_CAPABILITIES: AgentCapabilityFlags = {
 };
 
 type TimeoutResult = "completed" | "timed_out";
-
-export class AgentRunCancellationError extends Error {
-  constructor(agentId: string, action: "reload" | "replace" | "rewind" | "stop") {
-    super(
-      `Cannot ${action} agent ${agentId} because its active run cancellation was not acknowledged`,
-    );
-    this.name = "AgentRunCancellationError";
-  }
-}
-
-export type AgentRunCancellationResult =
-  | { status: "not_running" }
-  | { status: "settled" }
-  | { status: "refused" };
 
 function submittedPromptText(prompt: AgentPromptInput): string {
   if (typeof prompt === "string") {
@@ -223,20 +166,53 @@ export class AgentManagerShuttingDownError extends Error {
   }
 }
 
+export class AgentRunCancellationError extends Error {
+  constructor(agentId: string, action: "reload" | "replace" | "rewind" | "stop") {
+    super(
+      `Cannot ${action} agent ${agentId} because its active run cancellation was not acknowledged`,
+    );
+    this.name = "AgentRunCancellationError";
+  }
+}
+
+export type AgentRunCancellationResult =
+  | { status: "not_running" }
+  | { status: "settled" }
+  | { status: "refused" };
+
+/** A session that will run in a directory needs that directory to be there. */
+async function assertUsableWorkingDirectory(cwd: string): Promise<void> {
+  try {
+    const stats = await stat(cwd);
+    if (!stats.isDirectory()) {
+      throw new Error(`Working directory is not a directory: ${cwd}`);
+    }
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      "code" in error &&
+      (error as NodeJS.ErrnoException).code === "ENOENT"
+    ) {
+      throw new Error(`Working directory does not exist: ${cwd}`, { cause: error });
+    }
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`Failed to access working directory: ${cwd}`, { cause: error });
+  }
+}
+
 interface PreparedSessionConfig {
   storedConfig: AgentSessionConfig;
   launchConfig: AgentSessionConfig;
-  ottoToolPolicy: ProviderOttoToolsPolicy | undefined;
+  paseoToolPolicy: ProviderPaseoToolsPolicy | undefined;
 }
 
 interface NormalizeConfigOptions {
   resolveDefaultModel?: boolean;
-  /**
-   * Launch env, passed on to the provider's `resolveDefaultModeId`. Some
-   * providers pick a different default mode depending on how they are hosted
-   * (Claude on Bedrock, for instance), which the static manifest cannot express.
-   */
   env?: Record<string, string>;
+  /** Defaults to interactive. A history load reads persisted state and runs nothing. */
+  purpose?: AgentResumePurpose;
 }
 
 interface TimeoutOptions {
@@ -254,10 +230,13 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
     provider: record.provider,
     cwd: record.cwd,
   };
+  // lastModeId is the last live mode — it also covers provider-side switches
+  // that never reach record.config.modeId.
+  const modeId = record.lastModeId ?? record.config?.modeId;
+  if (modeId != null) config.modeId = modeId;
   if (!record.config) {
     return config;
   }
-  if (record.config.modeId != null) config.modeId = record.config.modeId;
   if (record.config.model != null) config.model = record.config.model;
   if (record.config.thinkingOptionId != null) {
     config.thinkingOptionId = record.config.thinkingOptionId;
@@ -265,23 +244,16 @@ function buildStoredAgentConfig(record: StoredAgentRecord): AgentSessionConfig {
   if (record.config.featureValues != null) {
     config.featureValues = record.config.featureValues;
   }
-  if (record.config.extra != null) config.extra = record.config.extra;
+  if (record.config.providerOptions != null) {
+    config.providerOptions = record.config.providerOptions;
+  }
+  if (record.config.toolPolicy != null) config.toolPolicy = record.config.toolPolicy;
+  if (record.config.ottoProfile) config.ottoProfile = record.config.ottoProfile; // OTTO(agent-teams)
   if (record.config.systemPrompt != null) {
     config.systemPrompt = record.config.systemPrompt;
   }
   if (record.config.mcpServers != null) config.mcpServers = record.config.mcpServers;
-  if (record.config.profileSnapshot != null) {
-    // Storage keeps roles as a loose string array; normalize back to the known
-    // ProfileRole set on the way in.
-    config.profileSnapshot = {
-      ...record.config.profileSnapshot,
-      roles: normalizeProfileRoles(record.config.profileSnapshot.roles),
-    };
-  }
-  if (record.config.teamSnapshot != null) {
-    config.teamSnapshot = record.config.teamSnapshot;
-  }
-  return stripInternalOttoMcpServer(config);
+  return stripInternalPaseoMcpServer(config);
 }
 
 export { AGENT_LIFECYCLE_STATUSES, type AgentLifecycleStatus };
@@ -296,28 +268,7 @@ export type {
 
 export type AgentManagerEvent =
   | { type: "agent_state"; agent: ManagedAgent }
-  // A synthetic snapshot for an observed subagent (no ManagedAgent runtime).
-  // Forwarded to clients like a normal agent update. See .otto/knowledge/projects/observed-subagents.md.
-  | { type: "observed_agent_state"; payload: AgentSnapshotPayload }
-  // Otto's provider-reported subagents. Distinct from Otto's observed
-  // subagents above: those are registry projections Otto synthesizes, these are
-  // the provider telling us about children it spawned itself.
   | { type: "provider_subagent"; event: ProviderSubagentStoreEvent }
-  // The full current set of background shell tasks for a parent agent
-  // changed. Not Agent-shaped - forwarded to clients as background_shell_tasks_changed.
-  | {
-      type: "background_shell_task_state";
-      parentAgentId: string;
-      tasks: BackgroundShellTaskInfo[];
-    }
-  // The full current set of pending suggested tasks for a parent agent changed
-  // (spawn/start/dismiss). Not Agent-shaped - forwarded to clients as
-  // suggested_tasks_changed.
-  | {
-      type: "suggested_task_state";
-      parentAgentId: string;
-      tasks: SuggestedTaskInfo[];
-    }
   | { type: "timeline_replacement"; agentId: string; epoch: string }
   | {
       type: "agent_stream";
@@ -333,16 +284,12 @@ export type AgentSubscriber = (event: AgentManagerEvent) => void;
 export interface SubscribeOptions {
   agentId?: string;
   replayState?: boolean;
+  /** Receive events for internal agents too. Off by default for global subscribers. */
+  includeInternal?: boolean;
 }
 
 interface HydrateTimelineOptions {
   force?: boolean;
-  /**
-   * A thunk when the answer can still change: a second loader can ask for the
-   * timeline to be broadcast while history is already streaming, and it upgrades
-   * the shared options the running hydration reads. A plain boolean pins the
-   * value taken before that upgrade, so the running hydration never saw it.
-   */
   broadcast?: boolean | (() => boolean);
   broadcastTimeline?: boolean;
 }
@@ -375,12 +322,6 @@ export type AgentAttentionCallback = (params: {
   reason: "finished" | "error" | "permission";
 }) => void;
 
-/** `/compact` only changes the conversation's internal context. It is not an
- * assistant reply and must not create an unread/notification completion. */
-function isCompactCommand(prompt: AgentPromptInput): boolean {
-  return typeof prompt === "string" && /^\/compact(?:\s|$)/i.test(prompt.trim());
-}
-
 export type AgentArchivedCallback = (agentId: string) => Promise<void> | void;
 
 export interface ProviderAvailability {
@@ -397,24 +338,10 @@ interface AgentManagerRescueTimeouts {
 interface ProviderEnabledFlag {
   enabled: boolean;
   derivedFromProviderId?: string | null;
-  /**
-   * Provider-level compaction config for daemon-hosted conversations.
-   * Undefined = caller didn't resolve it (leave live sessions untouched);
-   * null = resolved as unset.
-   */
-  compaction?: ProviderCompactionConfig | null;
-  /**
-   * Provider-level max-tool-rounds override for daemon-hosted providers.
-   * Undefined = caller didn't resolve it (leave live sessions untouched);
-   * null = resolved as unset (built-in default).
-   */
-  maxToolRounds?: number | null;
-  /**
-   * Provider-level action circuit-breaker config for daemon-hosted providers.
-   * Undefined = caller didn't resolve it (leave live sessions untouched);
-   * null = resolved as unset (disabled).
-   */
-  actionBreaker?: ProviderActionBreakerConfig | null;
+  applyToolPolicy?: (
+    config: AgentSessionConfig,
+    toolPolicy: ToolPolicy | undefined,
+  ) => AgentSessionConfig;
 }
 type ProviderEnabledMap = Partial<Record<AgentProvider, ProviderEnabledFlag>>;
 type ProviderClientMap = Partial<Record<AgentProvider, AgentClient>>;
@@ -432,84 +359,27 @@ export interface CreateAgentOptions {
 
 export interface AgentManagerOptions {
   pluginLifecycle?: PluginLifecycle;
-  assertDirectoryAvailable?: (cwd: string) => Promise<void>;
+  /** An internal workspace makes every agent created inside it internal. */
   clients?: ProviderClientMap;
   providerDefinitions?: ProviderEnabledMap;
   idFactory?: () => string;
   registry?: AgentStorage;
   onAgentAttention?: AgentAttentionCallback;
-  /**
-   * True when a connected client reports it is looking straight at this agent.
-   * Attention is an unread signal, so it is never raised for a chat somebody
-   * already has open; otherwise the badge flashes on and is cleared a round trip
-   * later. Wired to live client presence in bootstrap. Absent means "nobody is
-   * watching", which preserves the old always-raise behaviour.
-   */
-  isAgentActivelyWatched?: (agentId: string) => boolean;
   onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
-  /**
-   * Fires once per agent spawned with a bound personality (fire-and-forget
-   * usage telemetry). Lives at the createAgent choke point so composer, MCP
-   * create_chat, and scheduled chat starts all count.
-   */
-  onPersonalitySpawn?: (personalityId: string) => void;
-  /**
-   * Resolves a personality's accrued lessons into the brief injected at spawn,
-   * or null when there is nothing to inject (no lessons, switch off, feature
-   * unwired). Called from prepareSessionConfig - the one point every spawn,
-   * resume and refresh path already funnels through - so memory is re-read on
-   * every resume and no caller has to thread it.
-   * See docs/agent-profiles.md § Memory (Injection).
-   */
-  resolvePersonalityMemoryBrief?: (params: {
-    personalityId: string;
-    personalityName: string;
-    cwd: string | undefined;
-  }) => Promise<string | null>;
-  /**
-   * Resolves the compact active-page project knowledge catalog. Called from the
-   * shared spawn/resume/refresh choke point so every provider discovers the
-   * same repository knowledge before its first task turn.
-   */
-  resolveProjectKnowledgeBrief?: (params: { cwd: string | undefined }) => Promise<string | null>;
-  /**
-   * Resolves the workspace's `AGENTS.md` chain (with its `@import` graph
-   * inlined) into prompt-ready text, for providers whose request Otto composes
-   * itself. Injected rather than done inline because resolving the project root
-   * is a git question, and the agent manager has no business asking it.
-   */
-  resolveInstructionFiles?: (params: { cwd: string | undefined }) => Promise<string | null>;
-  /** Fun-stats counters - see packages/server/src/server/activity-stats. */
-  onActivity?: ActivityIncrementFn;
-  /**
-   * Itemized usage ledger row for one token/cost-bearing activity (usage-ledger
-   * project). Emitted from the same chokepoint as {@link onActivity}: the counters
-   * are the rollup of this event stream. Fire-and-forget.
-   */
-  onUsageEvent?: (event: UsageEvent) => void;
   durableTimelineStore?: AgentTimelineStore;
-  chatSearch?: import("../chat-search/service.js").ChatSearchService;
-  retainedTranscripts?: RetainedTranscriptStore;
   terminalManager?: TerminalManager | null;
   mcpBaseUrl?: string;
   mcpAuthToken?: string;
-  ottoToolsEnabled?: boolean;
-  ottoToolCatalogFactory?: OttoToolCatalogFactory;
-  resolveOttoToolPolicy?: (provider: AgentProvider) => ProviderOttoToolsPolicy | undefined;
+  paseoToolsEnabled?: boolean;
+  paseoToolCatalogFactory?: PaseoToolCatalogFactory;
+  resolvePaseoToolPolicy?: (provider: AgentProvider) => ProviderPaseoToolsPolicy | undefined;
   appendSystemPrompt?: string;
-  /**
-   * Initial daemon-wide agent behavior toggles (undefined fields = on). Hot
-   * reloaded via setAgentBehaviors from the daemon config store.
-   */
-  agentBehaviors?: {
-    promptSuggestions?: boolean;
-    agentProgressSummaries?: boolean;
-    notifyOnFinishDefault?: boolean;
-    defaultSendBehavior?: "interrupt" | "steer" | "queue";
-    todoNudge?: boolean;
-    todoReconcileOnIdle?: boolean;
-    stallGuardThreshold?: number;
-  };
+  profileMemory?: import("../otto/profile-memory/profile-memory-service.js").ProfileMemoryService; // OTTO(profile-memory)
+  readProfileCatalog?: Parameters<typeof resolveHostProfile>[3]; // OTTO(agent-teams)
+  readProfileRoster?: () => Parameters<typeof bindProfile>[0]; // OTTO(agent-teams)
+  ottoKnowledgePrompt?: KnowledgeSessionPrompt; // OTTO(knowledge): canonical workspace-bound metadata only.
+  ottoChatSearch?: ChatSearchService; // OTTO(chat-search): observes canonical rows; never runs agents.
+  ottoActivity?: ActivityStore; // OTTO(activity)
   agentStreamCoalesceWindowMs?: number;
   rescueTimeouts?: AgentManagerRescueTimeouts;
   beforeSteerUnavailableFallback?: (input: {
@@ -544,7 +414,7 @@ export interface WaitForAgentStartOptions {
   signal?: AbortSignal;
 }
 
-type AttentionState =
+export type AttentionState =
   | { requiresAttention: false }
   | {
       requiresAttention: true;
@@ -561,380 +431,6 @@ function resolveInitialAttention(input: AttentionState | undefined): AttentionSt
     attentionReason: input.attentionReason,
     attentionTimestamp: new Date(input.attentionTimestamp),
   };
-}
-
-interface ObservedSubagentDerivedState {
-  title: string;
-  titleFrozen: boolean;
-  cumulativeTokens?: number;
-  // Latest full usage split (in/out/cache) reported for this subagent. Carried
-  // forward when a later update omits it (e.g. a run-state reconcile that only
-  // refreshes the scalar total) so the ledger never loses the real breakdown.
-  lastUsage?: AgentUsage;
-  // The subagent's own model (may differ from the parent's). Sticky once seen.
-  model?: string;
-  // Cumulative model round-trips reported for this subagent; monotonic like
-  // cumulativeTokens so a final update without it can't drop the count.
-  usageRounds?: number;
-  // Tool invocations so far; monotonic like cumulativeTokens.
-  toolUseCount?: number;
-  // The tool the subagent is running (or ran last). Deliberately NOT monotonic:
-  // it tracks the LATEST tool, sticks when an update omits it (so a scalar-only
-  // progress update doesn't blank it), and is dropped by the projection once the
-  // row is terminal. See docs/chat-lifecycle.md (the subagents track).
-  currentTool?: string;
-  // Latches true once the provider reports this run as surviving an interrupt of
-  // the parent's turn (backgrounded Task/Agent, Workflow run). One-way on
-  // purpose: a run that has been backgrounded never becomes foreground again,
-  // and a later status-only update must not drop the flag.
-  backgrounded?: boolean;
-}
-
-/**
- * Derive the frozen label + monotonic token total for an observed subagent from
- * its prior registry state and the incoming update. The title freezes at the
- * first update carrying a real name source (task_started's subAgentType) so
- * later progress summaries never mutate it; the token total never decreases.
- * See docs/agent-lifecycle.md (Items 3 + 4).
- */
-function resolveObservedSubagentDerivedState(
-  existing: ObservedSubagentDerivedState | undefined,
-  update: ObservedSubagentUpdate,
-): ObservedSubagentDerivedState {
-  const shouldFreeze = !existing?.titleFrozen && observedUpdateHasTitleSource(update);
-  const title = shouldFreeze
-    ? deriveObservedSubagentTitle(update)
-    : (existing?.title ?? deriveObservedSubagentTitle(update));
-  return {
-    title,
-    titleFrozen: existing?.titleFrozen || shouldFreeze,
-    ...resolveObservedSubagentCarriedState(existing, update),
-  };
-}
-
-/**
- * The accounting + liveness figures an observed subagent carries forward across
- * updates. Counters take the running maximum; the rest take the newest value the
- * update actually carried, so a scalar-only refresh (a run-state reconcile, a
- * status-only settle) can never blank what an earlier frame established.
- */
-function resolveObservedSubagentCarriedState(
-  existing: ObservedSubagentDerivedState | undefined,
-  update: ObservedSubagentUpdate,
-): Omit<ObservedSubagentDerivedState, "title" | "titleFrozen"> {
-  const cumulativeTokens = monotonicCount(update.cumulativeTokens, existing?.cumulativeTokens);
-  const lastUsage = update.usage ?? existing?.lastUsage;
-  const model = update.model ?? existing?.model;
-  const usageRounds = monotonicCount(update.usageRounds, existing?.usageRounds);
-  const toolUseCount = monotonicCount(update.toolUseCount, existing?.toolUseCount);
-  // Not monotonic, unlike the counters: the LATEST tool is the point. The
-  // projection is what drops it once the row is terminal.
-  const currentTool = update.currentTool ?? existing?.currentTool;
-  // Latching, not "newest wins": once a run is backgrounded it stays that way.
-  const backgrounded = update.backgrounded || existing?.backgrounded ? true : undefined;
-  return {
-    ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
-    ...(lastUsage !== undefined ? { lastUsage } : {}),
-    ...(model !== undefined ? { model } : {}),
-    ...(usageRounds !== undefined ? { usageRounds } : {}),
-    ...(toolUseCount !== undefined ? { toolUseCount } : {}),
-    ...(currentTool !== undefined ? { currentTool } : {}),
-    ...(backgrounded !== undefined ? { backgrounded } : {}),
-  };
-}
-
-/**
- * Carry a monotonic non-decreasing counter (cumulative tokens, model rounds)
- * across observed-subagent updates: a fresh value only ever raises the running
- * figure, and an update that omits it keeps what we had - so a final
- * status-only notification can never drop the readout.
- */
-function monotonicCount(
-  update: number | undefined,
-  existing: number | undefined,
-): number | undefined {
-  return typeof update === "number" && Number.isFinite(update)
-    ? Math.max(existing ?? 0, update)
-    : existing;
-}
-
-/**
- * What an observed subagent has already contributed to the itemized ledger, so
- * a later settle records only the increment above it. `rounds` is the model
- * round-trip count at the time of that write.
- */
-interface RecordedSubagentLedger {
-  usage: AgentUsage;
-  rounds: number;
-}
-
-/** An observed subagent's run has ended once it reports a terminal status. */
-function isTerminalObservedSubagentStatus(status: ObservedSubagentUpdate["status"]): boolean {
-  return status === "idle" || status === "error" || status === "closed";
-}
-
-/**
- * The optional observed-subagent fields the registry record and the emitted
- * payload input carry identically (parentKey + the resolved token/usage/model
- * accounting + the liveness counters). Built once and spread into both so
- * onObservedSubagentUpdated doesn't repeat the same presence checks twice.
- */
-interface ObservedSubagentOptionalFields {
-  parentKey?: string;
-  cumulativeTokens?: number;
-  lastUsage?: AgentUsage;
-  model?: string;
-  usageRounds?: number;
-  toolUseCount?: number;
-  currentTool?: string;
-  backgrounded?: boolean;
-}
-
-function observedSubagentOptionalFields(
-  input: ObservedSubagentOptionalFields,
-): ObservedSubagentOptionalFields {
-  return {
-    ...(input.parentKey ? { parentKey: input.parentKey } : {}),
-    ...(input.cumulativeTokens !== undefined ? { cumulativeTokens: input.cumulativeTokens } : {}),
-    ...(input.lastUsage !== undefined ? { lastUsage: input.lastUsage } : {}),
-    ...(input.model !== undefined ? { model: input.model } : {}),
-    ...(input.usageRounds !== undefined ? { usageRounds: input.usageRounds } : {}),
-    ...(input.toolUseCount !== undefined ? { toolUseCount: input.toolUseCount } : {}),
-    ...(input.currentTool !== undefined ? { currentTool: input.currentTool } : {}),
-    ...(input.backgrounded ? { backgrounded: true } : {}),
-  };
-}
-
-/**
- * Assemble the itemized ledger row for one recorded activity. Optional fields
- * attach only when meaningful: the cache-read slice so the ledger can show
- * fresh vs. cached (a Claude turn is mostly cache-read; the "in" total alone
- * overstates fresh send by ~10x - fresh derives client-side as tokensIn −
- * cached), and the sub-agent spawn-tree identity fields.
- */
-function buildUsageLedgerEvent(input: {
-  kind: string;
-  meta: {
-    provider: AgentProvider;
-    agentId?: string;
-    model?: string;
-    subtype?: string;
-    rounds?: number;
-    startedAt?: number;
-    subagentKey?: string;
-    parentSubagentKey?: string;
-  };
-  inputTokens: number;
-  cachedInputTokens: number;
-  outputTokens: number;
-  costMicroUsd: number;
-  compactionIn: number;
-  compactionOut: number;
-}): UsageEvent {
-  const { meta } = input;
-  const event: UsageEvent = {
-    id: randomUUID(),
-    at: Date.now(),
-    kind: input.kind,
-    provider: meta.provider,
-    tokensIn: input.inputTokens,
-    tokensOut: input.outputTokens,
-    costMicroUsd: input.costMicroUsd,
-  };
-  if (input.cachedInputTokens > 0) event.cachedTokensIn = input.cachedInputTokens;
-  if (meta.subtype) event.subtype = meta.subtype;
-  if (meta.rounds) event.rounds = meta.rounds;
-  if (meta.model) event.model = meta.model;
-  if (meta.agentId) event.agentId = meta.agentId;
-  if (meta.startedAt !== undefined) event.startedAt = meta.startedAt;
-  if (meta.subagentKey) event.subagentKey = meta.subagentKey;
-  if (meta.parentSubagentKey) event.parentSubagentKey = meta.parentSubagentKey;
-  if (input.compactionIn > 0) event.compactionTokensIn = input.compactionIn;
-  if (input.compactionOut > 0) event.compactionTokensOut = input.compactionOut;
-  return event;
-}
-
-interface BackgroundShellTaskEntry {
-  parentAgentId: string;
-  taskId?: string;
-  provider: AgentProvider;
-  command?: string;
-  description?: string;
-  status: "running" | "idle" | "error" | "closed";
-  requiresAttention?: boolean;
-  createdAt: string;
-  updatedAt: string;
-  archivedAt?: string;
-}
-
-// A suggested task a chat surfaced via the `suggest_task` tool. The `prompt` is
-// held here (never sent to clients) and used verbatim when the user starts the
-// task. Resolved (started/dismissed) entries are retained so `dismiss_task` and
-// the start RPC stay idempotent, but are filtered out of the emitted list so the
-// chip disappears on resolution - same "terminal entries leave the wire" rule as
-// backgroundShellTasks.
-interface SuggestedTaskEntry {
-  id: string;
-  parentAgentId: string;
-  title: string;
-  prompt: string;
-  tldr: string;
-  cwd?: string;
-  state: SuggestedTaskState;
-  createdAt: string;
-  updatedAt: string;
-  startMode?: TasksSuggestedStartMode;
-  startedAgentId?: string;
-  dismissReason?: string;
-}
-
-export interface SpawnSuggestedTaskInput {
-  parentAgentId: string;
-  title: string;
-  prompt: string;
-  tldr: string;
-  cwd?: string;
-}
-
-export interface DismissSuggestedTaskResult {
-  found: boolean;
-  dismissed: boolean;
-  state?: SuggestedTaskState;
-}
-
-/**
- * Merge a background_shell_task_updated event onto the existing registry
- * entry (or create one). Split out of onBackgroundShellTaskUpdated to keep
- * that method's cyclomatic complexity down - the provider only ever sends
- * fresher values, so a new field wins when present, otherwise the existing
- * value carries forward.
- */
-function mergeBackgroundShellTaskEntry(input: {
-  parentAgentId: string;
-  provider: AgentProvider;
-  createdAt: string;
-  existing: BackgroundShellTaskEntry | undefined;
-  update: BackgroundShellTaskUpdate;
-}): BackgroundShellTaskEntry {
-  const { parentAgentId, provider, createdAt, existing, update } = input;
-  const command = update.command ?? existing?.command;
-  const description = update.description ?? existing?.description;
-  const requiresAttention = update.requiresAttention ?? existing?.requiresAttention;
-  return {
-    parentAgentId,
-    taskId: update.taskId ?? existing?.taskId,
-    provider,
-    ...(command ? { command } : {}),
-    ...(description ? { description } : {}),
-    status: update.status,
-    ...(requiresAttention !== undefined ? { requiresAttention } : {}),
-    createdAt,
-    updatedAt: new Date().toISOString(),
-    ...(existing?.archivedAt ? { archivedAt: existing.archivedAt } : {}),
-  };
-}
-
-type ProjectionStreamEvent = Extract<
-  AgentStreamEvent,
-  {
-    type:
-      | "observed_subagent_updated"
-      | "observed_subagent_timeline"
-      | "background_shell_task_updated";
-  }
->;
-
-// Narrows to the subagent/background-task projection events dispatchStreamEventByType
-// routes to dispatchProjectionStreamEvent instead of its main switch - kept as a
-// standalone predicate (own complexity budget) rather than an inline `||` chain.
-function isProjectionStreamEvent(event: AgentStreamEvent): event is ProjectionStreamEvent {
-  return (
-    event.type === "observed_subagent_updated" ||
-    event.type === "observed_subagent_timeline" ||
-    event.type === "background_shell_task_updated"
-  );
-}
-
-/** Sum of a single turn's spend - undefined when the provider reported nothing. */
-function sumTurnUsageTokens(usage: AgentUsage | undefined): number | undefined {
-  if (!usage) {
-    return undefined;
-  }
-  const total =
-    (usage.inputTokens ?? 0) +
-    (usage.cachedInputTokens ?? 0) +
-    (usage.cacheCreationInputTokens ?? 0) +
-    (usage.outputTokens ?? 0);
-  return total > 0 ? total : undefined;
-}
-
-/**
- * Roll a completed turn's usage into the agent's lifetime token total - the
- * same rollup native agents (any provider, any spawn path) and observed
- * subagents (resolveObservedSubagentDerivedState above) both feed into the
- * identical wire field, so the subagent track shows every row the same way.
- *
- * Plain addition, with no per-provider branch: `usage` here is always THIS
- * TURN's spend because `recordTurnUsage` runs a cumulative reporter (Pi's whole
- * stat block, OpenCode's cost) through `toTurnSpend` first. Normalizing once at
- * the boundary is what keeps every downstream sink - this total, the activity
- * counters, the itemized ledger - from having to know which providers report a
- * running total. See turn-usage.ts.
- */
-function accumulateAgentTokens(
-  existing: number | undefined,
-  usage: AgentUsage | undefined,
-): number | undefined {
-  const turnTokens = sumTurnUsageTokens(usage);
-  if (turnTokens === undefined) {
-    return existing;
-  }
-  return (existing ?? 0) + turnTokens;
-}
-
-/**
- * The activity counters each usage category writes to (WP-G). Kept as a table so
- * recordUsageActivity stays branch-light. Compaction is handled inline (it has no
- * real cost) and the provider split (claudeTokens*) is applied separately.
- */
-const USAGE_CATEGORY_FIELDS: Record<
-  "mainChat" | "generations" | "subagent",
-  { in: ActivityCounterField; out: ActivityCounterField; cost: ActivityCounterField }
-> = {
-  mainChat: {
-    in: "mainChatTokensIn",
-    out: "mainChatTokensOut",
-    cost: "mainChatCostMicroUsd",
-  },
-  generations: {
-    in: "generationsTokensIn",
-    out: "generationsTokensOut",
-    cost: "generationsCostMicroUsd",
-  },
-  subagent: {
-    in: "subagentTokensIn",
-    out: "subagentTokensOut",
-    cost: "subagentCostMicroUsd",
-  },
-};
-
-/** The itemized-ledger `kind` each aggregate category maps to (usage-ledger). */
-const USAGE_CATEGORY_KIND: Record<"mainChat" | "generations" | "subagent", string> = {
-  mainChat: "chat",
-  generations: "generation",
-  subagent: "subagent",
-};
-
-/**
- * Convert a real provider dollar cost to an integer count of micro-USD (usd*1e6),
- * the summable form stored in the activity counters (WP-G). Non-positive or
- * non-finite costs (or providers that report none) contribute 0.
- */
-function usdToMicroUsd(usd: number | undefined): number {
-  if (typeof usd !== "number" || !Number.isFinite(usd) || usd <= 0) {
-    return 0;
-  }
-  return Math.round(usd * 1_000_000);
 }
 
 interface StreamEventFlags {
@@ -974,138 +470,21 @@ interface ManagedAgentBase {
   >;
   inFlightPermissionResponses: Set<string>;
   pendingReplacement: boolean;
-  /**
-   * Steering messages parked for delivery as this agent's next turn
-   * (`delivery: "queue"`). FIFO; drained in `finalizeForegroundTurn` before the
-   * agent is allowed to go idle. Ephemeral by design - a queued nudge is about
-   * the run in progress, so it does not survive a daemon restart.
-   */
-  steerQueue: SteerQueueEntry[];
-  /**
-   * Mirrors `pendingReplacement` for the queue drain: held true from the moment
-   * `finalizeForegroundTurn` decides to drain until the next turn's
-   * `streamAgent` takes over, so the row never flickers idle→running between
-   * queued turns and a message sent in that window is buffered rather than
-   * raced into a second concurrent turn.
-   */
-  pendingSteerDrain: boolean;
-  /**
-   * Set when a cancel (the composer's stop button, ESC, `cancel_chat`) lands
-   * while messages are queued. Stop means stop, so the cancelled turn's
-   * finalize must not drain the queue into a fresh turn - but the entries
-   * survive, so the Queue track still shows them and the user can edit or send
-   * them when ready. Cleared the moment the next run starts, after which the
-   * queue drains normally again.
-   *
-   * Optional so existing `ManagedAgent` fixtures stay valid.
-   */
-  steerQueueHeld?: boolean;
-  /**
-   * How many out-of-band commands (`/compact`, `/goal pause`) are running.
-   *
-   * An out-of-band command allocates no foreground turn, but it is still work
-   * the agent is doing, and `/compact` in particular rewrites the entire
-   * conversation. While this is non-zero the agent reports `running`, which is
-   * what makes the rest of the lifecycle behave: `delivery: "queue"` parks the
-   * next prompt instead of dispatching it into a session mid-rewrite, and the
-   * composer offers Queue rather than Send. `finalizeOutOfBandRun` drains the
-   * queue when it settles, the way `finalizeForegroundTurn` does for a turn.
-   *
-   * A counter rather than a flag: nothing stops a second out-of-band command
-   * arriving while the first runs, and only the last one out settles the agent.
-   *
-   * Optional so existing `ManagedAgent` fixtures stay valid.
-   */
-  outOfBandRunCount?: number;
   persistence: AgentPersistenceHandle | null;
   historyPrimed: boolean;
   lastUserMessageAt: Date | null;
-  // Upstream turn identity: stream events are stamped with the turn they belong
-  // to so clients can retire optimistic activity without an idle frame. Otto's
-  // foreground-run tracking sits alongside it.
   activeTurnId: string | null;
   activeTurnStartedAt: Date | null;
   lastUsage?: AgentUsage;
-  /**
-   * Lifetime token total for this agent, tracked the same way regardless of
-   * how it was started (create_chat, personality/team chat, schedule fire,
-   * or Run orchestration) or which provider runs it. See
-   * `accumulateAgentTokens` for the per-provider rollup rule. Ephemeral like
-   * `lastUsage` - not persisted, resets on daemon restart.
-   */
-  cumulativeTokens?: number;
-  /**
-   * The same lifetime spend as `cumulativeTokens`, kept as the REAL in / cached
-   * / cache-write / out split plus the provider's own booked cost, so a cache
-   * read is never priced as fresh input and no surface has to guess a rate.
-   * `costUsd` is the cost actually booked (residual-adjusted for a parent), so
-   * parent + Σ descendants is exact by construction. Ephemeral like
-   * `cumulativeTokens`. See turn-usage.ts.
-   */
-  cumulativeUsage?: AgentLifetimeUsage;
-  /**
-   * Watermark for providers that report a running session total instead of
-   * this turn's spend (Pi's whole stat block, OpenCode's cost). Lets
-   * `recordTurnUsage` difference them once so every downstream total is plain
-   * addition. Unused for per-turn providers. See turn-usage.ts.
-   */
-  usageWatermark?: TurnUsageWatermark;
-  /**
-   * Sub-chats-track liveness for a native child chat (create_chat and the
-   * other spawn paths): cumulative tool invocations and the tool it is running
-   * or ran last, both derived from its own timeline because there is no provider
-   * task report to read (observed rows get theirs from the provider - see
-   * ObservedSubagentUpdate). Only maintained for agents that are somebody's
-   * child, so main chats pay nothing. Ephemeral like `cumulativeTokens`.
-   * See recordNativeSubagentToolActivity and docs/chat-lifecycle.md.
-   */
-  toolUseCount?: number;
-  currentTool?: string;
-  /**
-   * Tool-call ids already counted, so a call's running → completed transitions
-   * count once. Lives beside the counter it guards.
-   */
-  countedToolCallIds?: Set<string>;
-  /**
-   * Tool-emission stall guard: consecutive assistant messages that neither
-   * called a tool nor handed back to the user. Purely structural, spans turns,
-   * reset by any tool call or real user prompt. Ephemeral like the counters
-   * above. See agent-stall-guard.ts.
-   */
-  stallGuard?: StallGuardState;
   lastError?: string;
   attention: AttentionState;
   foregroundTurnWaiters: Set<ForegroundTurnWaiter>;
   finalizedForegroundTurnIds: Set<string>;
   unsubscribeSession: (() => void) | null;
   /**
-   * True when this agent was created for an unattended run (schedule/loop/
-   * artifact refresh, unattended-parent spawn - `createAgent(..., unattended:
-   * true)`). Creation-time signal, NOT derived from the permission mode. The
-   * guardrail deny-responder (onStreamPermissionRequested) uses it to auto-deny
-   * permission escalations instead of stalling on a prompt nobody can answer.
-   * See docs/safe-unattended.md (Phase 2).
-   */
-  unattended?: boolean;
-  /**
-   * Count of permission escalations the guardrail deny-responder auto-denied on
-   * this (unattended) agent, plus when the last one happened. Queryable hook a
-   * later phase uses to surface "this run hit a guardrail and may need
-   * attention". See docs/safe-unattended.md (Phase 3).
-   */
-  guardrailDenials?: number;
-  lastGuardrailDenialAt?: string;
-  /**
    * Internal agents are hidden from listings and don't trigger notifications.
    */
   internal?: boolean;
-  /**
-   * Observable internal agents still forward their live `agent_stream` events
-   * to global subscribers (clients) so a user can watch them - e.g. artifact
-   * generation. `agent_state` stays filtered, so they don't appear in the
-   * sidebar. See AgentSessionConfig.observable.
-   */
-  observable?: boolean;
   /**
    * User-defined labels for categorizing agents (e.g., { surface: "workspace" }).
    */
@@ -1219,12 +598,6 @@ interface AgentMetadataPatch {
 }
 
 const SYSTEM_ERROR_PREFIX = "[System Error]";
-const CONTEXT_SIZE_ERROR_MESSAGE =
-  "The request exceeds the model's context size. Try starting a new chat or increasing the model's context size.";
-
-function isContextSizeError(message: string): boolean {
-  return /"type"\s*:\s*"exceed_context_size_error"/.test(message);
-}
 
 function attachPersistenceCwd(
   handle: AgentPersistenceHandle | null,
@@ -1245,6 +618,7 @@ function attachPersistenceCwd(
 interface SubscriptionRecord {
   callback: AgentSubscriber;
   agentId: string | null;
+  includeInternal: boolean;
 }
 
 interface SteerEventBarrier {
@@ -1326,8 +700,51 @@ function buildExplicitTimelineSeedForRegister(
   };
 }
 
+function buildImportedTimelineRows(entries: readonly ImportedTimelineEntry[]): AgentTimelineRow[] {
+  const rows: AgentTimelineRow[] = [];
+  for (const entry of entries) {
+    const item = projectAgentMessage(entry.item);
+    if (!item) continue;
+    rows.push({
+      seq: rows.length + 1,
+      timestamp: entry.timestamp ?? new Date().toISOString(),
+      item: limitAgentTimelineItemContent(item),
+    });
+  }
+  return rows;
+}
+
+function resolveImportedAgentTitle(
+  config: AgentSessionConfig,
+  timelineRows: readonly AgentTimelineRow[],
+): string | null {
+  const initialPrompt = getFirstUserMessageTextFromRows(timelineRows);
+  if (!initialPrompt) {
+    return null;
+  }
+  const { explicitTitle, provisionalTitle } = resolveCreateAgentTitles({
+    configTitle: config.title,
+    initialPrompt,
+  });
+  return explicitTitle ?? provisionalTitle ?? null;
+}
+
+function getFirstUserMessageTextFromRows(rows: readonly AgentTimelineRow[]): string | null {
+  for (const row of rows) {
+    const item = row.item;
+    if (item.type !== "user_message") {
+      continue;
+    }
+    const text = item.text.trim();
+    if (text) {
+      return text;
+    }
+  }
+  return null;
+}
+
 function shouldDetachFromArchivedParent(
-  parent: StoredAgentRecord,
+  parent: Pick<StoredAgentRecord, "workspaceId">,
   child: StoredAgentRecord,
 ): boolean {
   const isCrossWorkspace =
@@ -1347,216 +764,89 @@ function detachedAgentLabelPatch(labels: Record<string, string>): AgentLabelPatc
   return patch;
 }
 
-// Whether a retained-transcript row represents work the agent actually did,
-// versus just its seed prompt. Used to decide if a failed scheduled run has
-// enough substance to reveal its workspace (see docs/safe-unattended.md).
-function isRetainedContentItem(item: AgentTimelineItem): boolean {
-  return (
-    item.type === "assistant_message" ||
-    item.type === "reasoning" ||
-    item.type === "tool_call" ||
-    item.type === "todo"
-  );
+/**
+ * How long an archived internal agent stays readable by id. Storage plays this
+ * role for public agents; internal agents never reach it, and a one-shot helper
+ * can finish and auto-archive before its creator's `waitForFinish` arrives.
+ */
+const RETIRED_INTERNAL_AGENT_TTL_MS = 10 * 60 * 1000;
+const RETIRED_INTERNAL_AGENT_LIMIT = 500;
+
+export interface RetiredInternalAgent {
+  record: ArchivedStoredAgentRecord;
+  lastMessage: string | null;
 }
 
 export class AgentManager {
   private readonly pluginLifecycle: PluginLifecycle | undefined;
+  private readonly retiredInternalAgents = new Map<
+    string,
+    RetiredInternalAgent & { expiresAt: number }
+  >();
   private readonly clients = new Map<AgentProvider, AgentClient>();
   private readonly providerEnabled = new Map<AgentProvider, boolean>();
+  private readonly providerDefinitions = new Map<AgentProvider, ProviderEnabledFlag>();
   private readonly agents = new Map<string, LiveManagedAgent>();
-  private readonly launchingAgentCwds = new Map<string, string>();
   private readonly timelineStore = new InMemoryAgentTimelineStore();
+  private readonly providerSubagents = new ProviderSubagentStore();
   private readonly agentsAwaitingInitialSnapshotPersist = new Set<string>();
   private readonly sessionEventTails = new Map<string, Promise<void>>();
-  private readonly foregroundRuns = new AgentRunState();
   private readonly steerEventBarriers = new Map<string, SteerEventBarrier>();
   private readonly foregroundMutationTails = new Map<string, Promise<void>>();
+  private readonly runs = new AgentRunState();
   private readonly subscribers = new Set<SubscriptionRecord>();
   private readonly idFactory: () => string;
   private readonly registry?: AgentStorage;
   private readonly durableTimelineStore?: AgentTimelineStore;
-  readonly chatSearch?: import("../chat-search/service.js").ChatSearchService;
-  // Retained transcripts of internal generation agents (schedule / artifact),
-  // keyed by generation agent id. Captured at run end before closeAgent so the
-  // chat survives the internal agent's teardown, and served back through the
-  // normal fetch_agent / fetch_agent_timeline paths for a read-only viewer. See
-  // docs/safe-unattended.md. Optional: absent on hosts that don't wire it.
-  private readonly retainedTranscripts?: RetainedTranscriptStore;
-  // Ids whose retained rows have been seeded into the in-memory timeline store
-  // so fetchTimeline can serve them like an observed subagent (no ManagedAgent,
-  // no requireAgent throw). LRU-capped: nothing signals that a viewer closed a
-  // retained transcript, so residency is bounded instead of released.
-  private readonly retainedTimelines = new RetainedTimelineResidency();
-  // Otto's provider-subagent projection, keyed by parent agent id.
-  private readonly providerSubagents = new ControlledProviderSubagentStore((parentId) => {
-    const parent = this.agents.get(parentId);
-    return parent
-      ? { labels: parent.labels, session: "session" in parent ? parent.session : undefined }
-      : undefined;
-  });
-  private readonly inFlightAgentCloses = new Map<string, Promise<void>>();
-  // A timed-out session close can still complete later. Retain its promise so
-  // a retry waits for that same writer release rather than starting another.
-  private readonly reloadedSessionCloses = new WeakMap<AgentSession, Promise<void>>();
   private readonly previousStatuses = new Map<string, AgentLifecycleStatus>();
-  // Signature of the last stale todo list we fired an idle reconcile pass for,
-  // per agent. Guards against a nag loop: an unchanged stale list (the agent
-  // explained why rows stay open) never re-fires. See todo-reminders.ts and the
-  // agentBehaviors.todoReconcileOnIdle toggle.
-  private readonly lastReconciledTodoSignature = new Map<string, string>();
-  // Owning-chat agent id -> sum of its observed sub-agents' priced cost (micro-USD)
-  // not yet backed out of the parent. Provider-agnostic de-inflation: whenever a
-  // provider reports a WHOLE-TREE cost on the parent turn (parent + in-process
-  // sub-agents) while its parent-turn tokens are parent-only, the parent row is
-  // priced as the RESIDUAL (tree cost − Σ sub-agent) to avoid double-counting
-  // sub-agent spend. The provider prices each sub-agent (on the sub-agent's own
-  // model) into update.usage.totalCostUsd; this sink just sums and subtracts.
-  // Claude is the reference (its `total_cost_usd` is whole-tree). Accumulated as
-  // each sub-agent settles, drained at the parent's next turn. See [[subagent-real-accounting]].
-  private readonly pendingSubagentCostMicroUsdByParent = new Map<string, number>();
-  // Observed subagents (Claude Task / ultracode fan-out): id -> resolution info
-  // for the stop RPC. These are ephemeral projections, not ManagedAgents. See
-  // .otto/knowledge/projects/observed-subagents.md.
-  private readonly observedSubagents = new Map<
-    string,
-    {
-      parentAgentId: string;
-      taskId?: string;
-      // Nested fan-out: key of the observed subagent that spawned this one
-      // (see ObservedSubagentUpdate.parentKey). Remembered on first sight so
-      // every payload keeps the tree-shaped parent label even when a later
-      // update omits it. The registry's parentAgentId stays the OWNING agent
-      // (stop/archive resolve the provider session through it).
-      parentKey?: string;
-      provider: AgentProvider;
-      createdAt: string;
-      // Frozen row label. Set once from the first named update (task_started)
-      // and never mutated by later progress summaries - a row is a tab label,
-      // not the agent's latest output. See docs/agent-lifecycle.md (Item 4).
-      title: string;
-      titleFrozen: boolean;
-      // Highest cumulative token total seen from the provider's per-task usage.
-      // Kept monotonic so a final notification without usage can't drop the
-      // readout. See docs/agent-lifecycle.md (Item 3).
-      cumulativeTokens?: number;
-      // Latest full usage split (in/out/cache) + the subagent's own model, both
-      // carried forward across updates so the ledger prices this row on its real
-      // per-frame numbers even when the final update omits them. See
-      // [[subagent-real-accounting]].
-      lastUsage?: AgentUsage;
-      model?: string;
-      // Cumulative model round-trips reported for this subagent, remembered so a
-      // later status-only update (which omits it) can still attribute the count.
-      usageRounds?: number;
-      // Liveness signals for the track row: cumulative tool invocations (kept
-      // monotonic) and the tool this subagent is running or ran last (latest
-      // wins, sticky across updates that omit it, dropped by the projection once
-      // the row is terminal). Both provider-reported through the neutral
-      // ObservedSubagentUpdate; a provider that can't report them leaves the
-      // row's readout absent rather than wrong.
-      // See docs/chat-lifecycle.md (the subagents track).
-      toolUseCount?: number;
-      currentTool?: string;
-      // True when this run survives an interrupt of the owning chat's turn
-      // (backgrounded Task/Agent, Workflow run, or anything nested under one).
-      // Latched by resolveObservedSubagentCarriedState and inherited from the
-      // parent row below. Read by the client so its interrupt warning only
-      // counts work an interrupt actually stops. See docs/chat-lifecycle.md.
-      backgrounded?: boolean;
-      // Watermark of what has already been written to the itemized ledger. Each
-      // time the subagent settles, only the DELTA above this is recorded - so a
-      // duplicate terminal update writes nothing, while a genuine second stream
-      // (a continued/steered subagent, or a late frame raising its totals) gets
-      // its own row instead of being dropped. One row per stream, mirroring the
-      // "one query, one row" rule chats follow.
-      recorded?: RecordedSubagentLedger;
-      // Set when the user archives the row. The entry is retired, not deleted:
-      // a late provider update (final task_notification after an archive-while-
-      // running) must not resurrect the row, so every subsequent emission keeps
-      // carrying this stamp. See docs/agent-lifecycle.md (Items 2 + 6).
-      archivedAt?: string;
-      lastPayload?: AgentSnapshotPayload;
-    }
-  >();
-  // Background shell tasks (Claude Bash tool run_in_background): id -> current
-  // state for the Background Tasks track. Not AI subagents - plain shell
-  // processes, so unlike observedSubagents there's no Agent-shaped payload;
-  // the daemon pushes the full per-parent list on every change.
-  private readonly backgroundShellTasks = new Map<string, BackgroundShellTaskEntry>();
-  // Suggested tasks (suggest_task chips): taskId -> current state, keyed globally.
-  // Pushed as the full per-parent pending list on every change.
-  private readonly suggestedTasks = new Map<string, SuggestedTaskEntry>();
-  // Synchronous reservation for in-flight suggested-task starts: a start awaits
-  // multi-second agent/worktree creation before flipping state to "started", so
-  // a second concurrent start.request for the same id would pass the pending
-  // gate too. Ids claimed here are rejected until the start resolves or fails.
-  private readonly startingSuggestedTaskIds = new Set<string>();
   private readonly backgroundTasks = new Set<Promise<void>>();
   private readonly agentRegistrationTasks = new Set<Promise<void>>();
+  private readonly inFlightAgentCloses = new Map<string, Promise<void>>();
+  private readonly reloadedSessionCloses = new WeakMap<AgentSession, Promise<void>>();
   private readonly lifecycleMutationTails = new Map<string, Promise<void>>();
   private readonly agentStreamCoalescer: AgentStreamCoalescer;
   private mcpBaseUrl: string | null;
   private readonly mcpAuthToken: string | null;
-  private ottoToolsEnabled = true;
-  private ottoToolCatalogFactory: OttoToolCatalogFactory | null = null;
-  private readonly ottoToolPolicies = new Map<string, ProviderOttoToolsPolicy | undefined>();
-  private readonly resolveOttoToolPolicy: (
+  private paseoToolsEnabled = true;
+  private paseoToolCatalogFactory: PaseoToolCatalogFactory | null = null;
+  private readonly paseoToolPolicies = new Map<string, ProviderPaseoToolsPolicy | undefined>();
+  private readonly resolvePaseoToolPolicy: (
     provider: AgentProvider,
-  ) => ProviderOttoToolsPolicy | undefined;
+  ) => ProviderPaseoToolsPolicy | undefined;
+  private readonly configsWithProfileLessons = new WeakSet<AgentSessionConfig>(); // OTTO(profile-memory)
+  readonly profileMemory: AgentManagerOptions["profileMemory"]; // OTTO(profile-memory)
+  private readonly readProfileCatalog: AgentManagerOptions["readProfileCatalog"]; // OTTO(agent-teams)
+  private readonly readProfileRoster: NonNullable<AgentManagerOptions["readProfileRoster"]>; // OTTO(agent-teams)
   private appendSystemPrompt: string;
-  // Resolved daemon-wide behavior toggles (Claude tier). Hot-reloaded via
-  // setAgentBehaviors; injected into each launch via buildLaunchContext and
-  // read by the Otto tools for the notify-on-finish default.
-  private agentBehaviors: AgentBehaviorSettings;
+  private readonly ottoKnowledgePrompt?: KnowledgeSessionPrompt; // OTTO(knowledge)
+  readonly ottoChatSearch?: ChatSearchService; // OTTO(chat-search)
+  private readonly ottoActivity: AgentManagerOptions["ottoActivity"]; // OTTO(activity)
   private onAgentAttention?: AgentAttentionCallback;
-  /** Foreground turns whose idle transition is intentionally silent. */
-  private readonly silentCompletionTurnIds = new Map<string, string>();
-  /**
-   * Agents whose next idle transition comes from an out-of-band command rather
-   * than an assistant reply. Same rule as `silentCompletionTurnIds`: a
-   * side-effect command finishing is not something to badge as unread.
-   */
-  private readonly silentOutOfBandAgentIds = new Set<string>();
-  private isAgentActivelyWatched?: (agentId: string) => boolean;
   private onAgentArchived?: AgentArchivedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
-  private onPersonalitySpawn?: (personalityId: string) => void;
-  private resolvePersonalityMemoryBrief?: AgentManagerOptions["resolvePersonalityMemoryBrief"];
-  private resolveProjectKnowledgeBrief?: AgentManagerOptions["resolveProjectKnowledgeBrief"];
-  private resolveInstructionFiles?: AgentManagerOptions["resolveInstructionFiles"];
-  private onActivity?: ActivityIncrementFn;
-  private onUsageEvent?: (event: UsageEvent) => void;
   private logger: Logger;
   private readonly rescueTimeouts: Required<AgentManagerRescueTimeouts>;
   private readonly beforeSteerUnavailableFallback?: AgentManagerOptions["beforeSteerUnavailableFallback"];
   private acceptingAgentRegistrations = true;
 
-  private readonly assertDirectoryAvailable?: (cwd: string) => Promise<void>;
-  private readonly preservedTimelinesForResume = new Set<string>();
-
   constructor(options: AgentManagerOptions) {
+    this.profileMemory = options.profileMemory; // OTTO(profile-memory)
+    this.ottoActivity = options.ottoActivity; // OTTO(activity)
+    this.readProfileCatalog = options.readProfileCatalog; // OTTO(agent-teams)
+    this.readProfileRoster = rosterReader(options.readProfileRoster); // OTTO(agent-teams)
     this.pluginLifecycle = options.pluginLifecycle;
-    this.assertDirectoryAvailable = options.assertDirectoryAvailable;
-    this.idFactory = options.idFactory ?? (() => randomUUID());
-    this.registry = options.registry;
-    this.durableTimelineStore = options.durableTimelineStore;
-    this.chatSearch = options.chatSearch;
-    this.retainedTranscripts = options.retainedTranscripts;
-    this.onAgentAttention = options.onAgentAttention;
-    this.isAgentActivelyWatched = options.isAgentActivelyWatched;
-    this.onWorkspaceStateMayHaveChanged = options.onWorkspaceStateMayHaveChanged;
-    this.onPersonalitySpawn = options.onPersonalitySpawn;
-    this.resolvePersonalityMemoryBrief = options.resolvePersonalityMemoryBrief;
-    this.resolveProjectKnowledgeBrief = options.resolveProjectKnowledgeBrief;
-    this.resolveInstructionFiles = options.resolveInstructionFiles;
-    this.onActivity = options.onActivity;
-    this.onUsageEvent = options.onUsageEvent;
-    this.mcpBaseUrl = options.mcpBaseUrl ?? null;
-    this.mcpAuthToken = options.mcpAuthToken ?? null;
-    this.configureOttoTools(options);
-    this.resolveOttoToolPolicy = options.resolveOttoToolPolicy ?? (() => undefined);
+    this.idFactory = options?.idFactory ?? (() => randomUUID());
+    this.registry = options?.registry;
+    this.durableTimelineStore = options?.durableTimelineStore;
+    this.onAgentAttention = options?.onAgentAttention;
+    this.onWorkspaceStateMayHaveChanged = options?.onWorkspaceStateMayHaveChanged;
+    this.mcpBaseUrl = options?.mcpBaseUrl ?? null;
+    this.mcpAuthToken = options?.mcpAuthToken ?? null;
+    this.configurePaseoTools(options);
+    this.resolvePaseoToolPolicy = options.resolvePaseoToolPolicy ?? (() => undefined);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
-    this.agentBehaviors = resolveAgentBehaviorSettings(options.agentBehaviors);
+    this.ottoKnowledgePrompt = options.ottoKnowledgePrompt; // OTTO(knowledge)
+    this.ottoChatSearch = options.ottoChatSearch; // OTTO(chat-search)
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
     this.rescueTimeouts = {
       reloadSessionCloseMs:
@@ -1571,10 +861,6 @@ export class AgentManager {
       onFlush: ({ agentId, item, provider, turnId }) => {
         const event = this.recordAndDispatchTimelineItem(agentId, item, provider, turnId);
         this.notifyForegroundTurnWaiters(agentId, event);
-        // Assistant messages and tool calls are coalescable, so this flush - not
-        // onStreamTimelineEvent - is where the live ones land. The guard has to
-        // watch both paths to see the whole stream.
-        this.observeStallGuard(agentId, item);
       },
     });
     this.updateProviderRegistry({
@@ -1583,9 +869,9 @@ export class AgentManager {
     });
   }
 
-  private configureOttoTools(options: AgentManagerOptions): void {
-    this.ottoToolsEnabled = options.ottoToolsEnabled ?? true;
-    this.ottoToolCatalogFactory = options.ottoToolCatalogFactory ?? null;
+  private configurePaseoTools(options: AgentManagerOptions): void {
+    this.paseoToolsEnabled = options.paseoToolsEnabled ?? true;
+    this.paseoToolCatalogFactory = options.paseoToolCatalogFactory ?? null;
   }
 
   registerClient(provider: AgentProvider, client: AgentClient): void {
@@ -1597,25 +883,19 @@ export class AgentManager {
     clients: ProviderClientMap;
     retiredProviders?: readonly AgentProvider[];
   }): void {
+    this.providerEnabled.clear();
+    this.providerDefinitions.clear();
     for (const [provider, definition] of Object.entries(input.providerDefinitions)) {
       if (definition) {
         this.providerEnabled.set(provider, definition.enabled);
+        this.providerDefinitions.set(provider, definition);
       }
     }
+
+    this.clients.clear();
     for (const [provider, client] of Object.entries(input.clients)) {
       if (client) {
         this.clients.set(provider, client);
-      }
-    }
-    // A registry update is the whole picture, not a patch. Providers the new
-    // one omits are dropped: without this, removing a provider from daemon
-    // config left it registered and still creatable until the next restart.
-    // Registration only ever arrives through here, so the incoming map is
-    // authoritative.
-    for (const provider of this.clients.keys()) {
-      if (!input.clients[provider]) {
-        this.clients.delete(provider);
-        this.providerEnabled.delete(provider);
       }
     }
 
@@ -1630,39 +910,6 @@ export class AgentManager {
         });
       }
     }
-
-    // Live sessions absorb provider-level compaction edits (default level,
-    // hidden selector), the max-tool-rounds override, and the action circuit
-    // breaker so open chats reflect settings changes immediately.
-    for (const agent of this.agents.values()) {
-      if (this.applyProviderDefinition(agent, input.providerDefinitions)) {
-        this.emitState(agent);
-      }
-    }
-  }
-
-  /**
-   * Push the updated provider-level settings onto one agent's live session.
-   * Returns true when any of the session's effective settings changed, so the
-   * caller knows to re-emit agent state.
-   */
-  private applyProviderDefinition(
-    agent: LiveManagedAgent,
-    providerDefinitions: ProviderEnabledMap,
-  ): boolean {
-    const definition = providerDefinitions[agent.provider];
-    if (!definition) return false;
-    let changed = false;
-    if (agent.session?.applyCompactionConfig && definition.compaction !== undefined) {
-      changed = agent.session.applyCompactionConfig(definition.compaction) || changed;
-    }
-    if (agent.session?.applyMaxToolRounds && definition.maxToolRounds !== undefined) {
-      changed = agent.session.applyMaxToolRounds(definition.maxToolRounds) || changed;
-    }
-    if (agent.session?.applyActionBreaker && definition.actionBreaker !== undefined) {
-      changed = agent.session.applyActionBreaker(definition.actionBreaker) || changed;
-    }
-    return changed;
   }
 
   getRegisteredProviderIds(): AgentProvider[] {
@@ -1671,14 +918,6 @@ export class AgentManager {
 
   setAgentAttentionCallback(callback: AgentAttentionCallback): void {
     this.onAgentAttention = callback;
-  }
-
-  /**
-   * Late-bound because client presence lives in the websocket server, which is
-   * constructed after the agent manager.
-   */
-  setAgentActivelyWatchedProbe(probe: (agentId: string) => boolean): void {
-    this.isAgentActivelyWatched = probe;
   }
 
   setAgentArchivedCallback(callback: AgentArchivedCallback): void {
@@ -1693,22 +932,22 @@ export class AgentManager {
     this.acceptingAgentRegistrations = false;
   }
 
-  setOttoToolsEnabled(enabled: boolean): void {
-    this.ottoToolsEnabled = enabled;
+  setPaseoToolsEnabled(enabled: boolean): void {
+    this.paseoToolsEnabled = enabled;
   }
 
-  setOttoToolCatalogFactory(factory: OttoToolCatalogFactory | null): void {
-    this.ottoToolCatalogFactory = factory;
+  setPaseoToolCatalogFactory(factory: PaseoToolCatalogFactory | null): void {
+    this.paseoToolCatalogFactory = factory;
   }
 
-  getOttoToolPolicy(agentId: string): ProviderOttoToolsPolicy | undefined {
-    return this.ottoToolPolicies.get(agentId);
+  getPaseoToolPolicy(agentId: string): ProviderPaseoToolsPolicy | undefined {
+    return this.paseoToolPolicies.get(agentId);
   }
 
   /**
    * Capability token the daemon's own MCP clients must present to the Agent MCP
    * endpoint when a daemon password is configured. Read by the per-client
-   * session to authenticate its own MCP connection. Stays in the daemon - never
+   * session to authenticate its own MCP connection. Stays in the daemon — never
    * sent to remote clients.
    */
   getMcpAuthToken(): string | null {
@@ -1717,34 +956,6 @@ export class AgentManager {
 
   setAppendSystemPrompt(prompt: string | null | undefined): void {
     this.appendSystemPrompt = prompt ?? "";
-  }
-
-  /**
-   * Hot-reload the daemon-wide agent behavior toggles. New/resumed agents pick
-   * up the change on their next launch (values are injected via
-   * buildLaunchContext); the notify-on-finish default is read live per tool
-   * call. Accepts the raw partial config shape - absent/undefined fields resolve
-   * to "on".
-   */
-  setAgentBehaviors(
-    behaviors:
-      | {
-          promptSuggestions?: boolean;
-          agentProgressSummaries?: boolean;
-          notifyOnFinishDefault?: boolean;
-          defaultSendBehavior?: "interrupt" | "steer" | "queue";
-          todoNudge?: boolean;
-          todoReconcileOnIdle?: boolean;
-          stallGuardThreshold?: number;
-        }
-      | undefined,
-  ): void {
-    this.agentBehaviors = resolveAgentBehaviorSettings(behaviors);
-  }
-
-  /** Resolved daemon-wide behavior toggles (read by the Otto tool catalog). */
-  getAgentBehaviors(): AgentBehaviorSettings {
-    return this.agentBehaviors;
   }
 
   public getMetricsSnapshot(): AgentMetricsSnapshot {
@@ -1808,22 +1019,8 @@ export class AgentManager {
     return (
       agent.lifecycle === "running" ||
       Boolean(agent.activeForegroundTurnId) ||
-      this.foregroundRuns.hasPendingRun(agentId)
+      this.runs.hasRun(agentId)
     );
-  }
-
-  /**
-   * Busy, but with an out-of-band command rather than a turn - so there is
-   * nothing an interrupting prompt could cancel, and the work in flight
-   * (`/compact`) is exactly the work a new prompt must not land on top of.
-   * The prompt gets queued instead; `finalizeOutOfBandRun` releases it.
-   */
-  isBusyOnlyWithOutOfBandRun(agentId: string): boolean {
-    const agent = this.agents.get(agentId);
-    if (!agent || (agent.outOfBandRunCount ?? 0) === 0) {
-      return false;
-    }
-    return !agent.activeForegroundTurnId && !this.foregroundRuns.hasPendingRun(agentId);
   }
 
   subscribe(callback: AgentSubscriber, options?: SubscribeOptions): () => void {
@@ -1832,6 +1029,7 @@ export class AgentManager {
     const record: SubscriptionRecord = {
       callback,
       agentId: targetAgentId,
+      includeInternal: options?.includeInternal === true,
     };
     this.subscribers.add(record);
 
@@ -1845,9 +1043,9 @@ export class AgentManager {
           });
         }
       } else {
-        // For global subscribers, skip internal agents during replay
+        // Global subscribers skip internal agents unless they opted in.
         for (const agent of this.agents.values()) {
-          if (agent.internal) {
+          if (agent.internal && !record.includeInternal) {
             continue;
           }
           callback({
@@ -1863,10 +1061,28 @@ export class AgentManager {
     };
   }
 
-  listAgents(): ManagedAgent[] {
+  subscriptionCount(): number {
+    return this.subscribers.size;
+  }
+
+  listAgents(options?: { includeInternal?: boolean }): ManagedAgent[] {
     return Array.from(this.agents.values())
-      .filter((agent) => !agent.internal)
+      .filter((agent) => options?.includeInternal === true || !agent.internal)
       .map((agent) => Object.assign({}, agent));
+  }
+
+  /** Archived internal agents still readable by id; see getRetiredInternalAgent. */
+  listRetiredInternalAgents(): RetiredInternalAgent[] {
+    const now = Date.now();
+    const retired: RetiredInternalAgent[] = [];
+    for (const [agentId, entry] of this.retiredInternalAgents) {
+      if (entry.expiresAt <= now) {
+        this.retiredInternalAgents.delete(agentId);
+        continue;
+      }
+      retired.push({ record: entry.record, lastMessage: entry.lastMessage });
+    }
+    return retired;
   }
 
   async listImportableSessions(
@@ -1942,28 +1158,6 @@ export class AgentManager {
     );
   }
 
-  /**
-   * What a provider's adapter can do, or null if no client is registered for
-   * it. Callers that must refuse rather than degrade (a graph node declaring
-   * restricted workspace access, say) read this before spawning.
-   */
-  getProviderCapabilities(provider: AgentProvider): AgentCapabilityFlags | null {
-    return this.clients.get(provider)?.capabilities ?? null;
-  }
-
-  /**
-   * The preset and tool schemas one live agent will actually send, for Context
-   * Management. Null when the agent has no session yet, or when its provider
-   * composes the request in a subprocess and cannot report it.
-   */
-  describeAgentContextPayload(
-    agentId: string,
-  ): { systemPromptText: string; mcpToolsText: string } | null {
-    const agent = this.agents.get(agentId);
-    if (!agent || !("session" in agent)) return null;
-    return agent.session.describeContextPayload?.() ?? null;
-  }
-
   async getProviderAvailability(provider: AgentProvider): Promise<ProviderAvailability> {
     const client = this.clients.get(provider);
     if (!client) {
@@ -2032,7 +1226,7 @@ export class AgentManager {
   async listDraftFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
     const normalizedConfig = await this.normalizeConfig(config, { resolveDefaultModel: false });
     const client = this.requireClient(normalizedConfig.provider);
-    if (!normalizedConfig.model) {
+    if (!normalizedConfig.model && !client.listFeatures) {
       return [];
     }
     const available = await client.isAvailable();
@@ -2061,276 +1255,54 @@ export class AgentManager {
     }
   }
 
+  usageSession(id: string) {
+    const agent = this.agents.get(id);
+    return agent?.session?.usageSession?.() ?? null;
+  }
+
   getAgent(id: string): ManagedAgent | null {
     const agent = this.agents.get(id);
     return agent ? { ...agent } : null;
   }
 
+  async waitForAgentClose(agentId: string): Promise<void> {
+    // Loading during reload must wait for the replacement, not resume another writer.
+    await this.lifecycleMutationTails.get(agentId);
+    await this.inFlightAgentCloses?.get(agentId)?.catch(() => undefined);
+  }
+
   getTimeline(id: string): AgentTimelineItem[] {
-    if (this.observedSubagents.has(id)) {
-      this.ensureObservedTimelineState(id);
-    } else {
-      this.requireAgent(id);
-    }
+    this.requireAgent(id);
     return this.timelineStore.getItems(id);
   }
 
-  /**
-   * Attach an estimated context-window composition (derived from the agent's
-   * own timeline) to a usage reading, powering the visualizer's context ring/bar
-   * segments. Real daemon-side accounting, provider-neutral (see
-   * context-composition.ts). Skipped when the provider already supplied a
-   * composition directly, or the timeline isn't available yet. This scans the
-   * whole timeline - call it at turn boundaries, not on every streaming delta
-   * (see `carryContextComposition`).
-   */
-  private withContextComposition(
-    agentId: string,
-    usage: AgentUsage | undefined,
-  ): AgentUsage | undefined {
-    if (!usage || usage.contextComposition || !this.timelineStore.has(agentId)) {
-      return usage;
-    }
-    const composition = estimateContextComposition(this.timelineStore.getItems(agentId));
-    return composition ? { ...usage, contextComposition: composition } : usage;
-  }
-
-  /**
-   * Per-delta path: carry the previous reading's composition onto a fresh usage
-   * event so the ring's segments stay put between turns instead of blinking off
-   * on every streaming `usage_updated` (recomputing each delta would rescan the
-   * whole timeline). The total occupancy still updates live; the composition
-   * refreshes at the next turn boundary via `withContextComposition`.
-   */
-  private carryContextComposition(previous: AgentUsage | undefined, usage: AgentUsage): AgentUsage {
-    let carried = usage;
-    if (!carried.contextComposition && previous?.contextComposition) {
-      carried = { ...carried, contextComposition: previous.contextComposition };
-    }
-    // The authoritative split is refreshed asynchronously at turn boundaries
-    // (see `refreshContextCategories`), so a mid-turn `usage_updated` would
-    // otherwise drop it and blink the ring's real labels back to the estimate.
-    if (!carried.contextCategories && previous?.contextCategories) {
-      carried = { ...carried, contextCategories: previous.contextCategories };
-    }
-    return carried;
-  }
-
-  /**
-   * Refresh the agent's context split from the PROVIDER's own accounting - the
-   * same `getContextUsage()` the `agent.context.get_usage` RPC serves, so the
-   * context meter and the visualizer never show two different answers for one
-   * agent. Providers that don't implement it keep the coarse timeline estimate
-   * (`withContextComposition`); this simply doesn't fire for them.
-   *
-   * Deliberately fire-and-forget: a turn must never be held up (or failed) by a
-   * display read. It re-emits state when the reading actually lands, so the
-   * snapshot carries it to stream and backfill consumers alike.
-   */
-  private refreshContextCategories(agent: ManagedAgent): void {
-    const session = agent.session;
-    if (!session?.getContextUsage) {
-      return;
-    }
-    void (async () => {
-      try {
-        const usage = await session.getContextUsage?.();
-        // A live handle is required to answer; null just means "can't report
-        // right now", which must not clobber a previous good reading.
-        if (!usage || usage.categories.length === 0) {
-          return;
-        }
-        // The agent may have been closed/replaced while the read was in flight.
-        if (this.agents.get(agent.id) !== agent) {
-          return;
-        }
-        agent.lastUsage = { ...agent.lastUsage, contextCategories: usage.categories };
-        this.emitState(agent);
-      } catch (error) {
-        this.logger.debug(
-          { err: error, agentId: agent.id },
-          "agent.manager.context_categories.refresh_failed",
-        );
-      }
-    })();
-  }
-
   async getTimelineRows(id: string): Promise<AgentTimelineRow[]> {
-    if (this.observedSubagents.has(id)) {
-      this.ensureObservedTimelineState(id);
-    } else {
-      this.requireAgent(id);
-    }
+    this.requireAgent(id);
     if (this.durableTimelineStore) {
-      return await this.durableTimelineStore.getCommittedRows(id);
+      return projectTimelineRows({
+        rows: await this.durableTimelineStore.getCommittedRows(id),
+        mode: "projected",
+      }).map((entry) => Object.assign({ seq: entry.seqEnd }, entry));
     }
     return this.timelineStore.getRows(id);
   }
 
-  getSearchSnapshot(
-    id: string,
-  ): { rows: AgentTimelineRow[]; complete: boolean; busy: boolean } | null {
-    const agent = this.agents.get(id);
-    if (!agent || agent.internal || !this.timelineStore.has(id)) return null;
-    return {
-      rows: this.timelineStore.getRows(id),
-      complete: agent.historyPrimed,
-      busy: agent.lifecycle === "running",
-    };
-  }
-
-  async getSearchHistoryRevision(id: string): Promise<string | null> {
-    return getSearchHistoryRevision(this.registry, this.clients, id);
-  }
-
-  private async captureSearchTimeline(id: string, complete: boolean): Promise<void> {
-    try {
-      await this.chatSearch?.capture(id, this.timelineStore.getRows(id), complete);
-    } catch (error) {
-      // A failed derived search store must not prevent opening/closing a conversation.
-      // Keep it dirty; provider history remains the recovery authority after eviction.
-      this.chatSearch?.schedule(id);
-      this.logger.warn({ err: error, agentId: id }, "Chat search capture will retry");
-    }
-  }
-
-  async readSearchHistory(id: string, signal?: AbortSignal): Promise<AgentTimelineRow[] | null> {
-    return readSearchHistory(this.registry, this.clients, id, signal);
-  }
-
   fetchTimeline(id: string, options?: AgentTimelineFetchOptions): AgentTimelineFetchResult {
-    if (this.observedSubagents.has(id)) {
-      this.ensureObservedTimelineState(id);
-    } else if (this.retainedTimelines.has(id)) {
-      // Retained transcript already seeded into the in-memory store (via
-      // ensureRetainedTranscriptLoaded); serve it without a ManagedAgent, and
-      // count the read as use so an open viewer is not the one evicted.
-      this.retainTimeline(id);
-    } else {
-      this.requireAgent(id);
-    }
+    this.requireAgent(id);
     return this.timelineStore.fetch(id, options);
   }
 
-  /**
-   * Snapshot a finishing internal generation agent's chat so it survives the
-   * agent's teardown. Called by the schedule / artifact services right before
-   * closeAgent, while the agent and its in-memory timeline are still live.
-   * Returns whether the run produced any content (assistant/tool/reasoning
-   * activity beyond its seed prompt), which the schedule runner uses to decide
-   * whether a failed run's workspace is worth revealing. No-op (returns false)
-   * when no retained-transcript store is wired. See docs/safe-unattended.md.
-   */
-  async captureRetainedTranscript(
-    agentId: string,
-    owner: RetainedTranscriptOwner,
-    options?: { title?: string | null },
-  ): Promise<{ hasContent: boolean }> {
-    if (!this.retainedTranscripts) {
-      return { hasContent: false };
-    }
-    const agent = this.agents.get(agentId);
-    if (!agent) {
-      return { hasContent: false };
-    }
-    const rows = this.timelineStore.has(agentId) ? this.timelineStore.getRows(agentId) : [];
-    const hasContent = rows.some((row) => isRetainedContentItem(row.item));
-    try {
-      await this.retainedTranscripts.save({
-        version: 1,
-        agentId,
-        owner,
-        capturedAt: new Date().toISOString(),
-        payload: toAgentPayload(agent, { title: options?.title ?? agent.config.title ?? null }),
-        rows,
-        hasContent,
-      });
-    } catch (error) {
-      this.logger.warn({ err: error, agentId, owner }, "Failed to capture retained transcript");
-    }
-    return { hasContent };
-  }
-
-  /** Agent payload of a retained transcript, or null when the id has none. */
-  async getRetainedTranscriptPayload(agentId: string): Promise<AgentSnapshotPayload | null> {
-    const record = await this.retainedTranscripts?.get(agentId);
-    return record?.payload ?? null;
-  }
-
-  /**
-   * Load a retained transcript's rows into the in-memory timeline store so a
-   * subsequent fetchTimeline serves them (idempotent). Returns true when the id
-   * is a retained transcript, false otherwise - the caller falls back to the
-   * normal live/persisted agent path.
-   */
-  async ensureRetainedTranscriptLoaded(agentId: string): Promise<boolean> {
-    const record = await this.retainedTranscripts?.get(agentId);
-    if (!record) {
-      return false;
-    }
-    if (!this.timelineStore.has(agentId)) {
-      this.timelineStore.initialize(agentId, { rows: record.rows });
-    }
-    this.retainTimeline(agentId);
-    return true;
-  }
-
-  // Residency bookkeeping for retained transcripts: mark this one in use and
-  // drop the rows of whatever fell out of the LRU. Evicted ids reload from disk
-  // on the next fetch, so this costs a re-read, never the transcript.
-  private retainTimeline(agentId: string): void {
-    for (const evictedId of this.retainedTimelines.retain(agentId)) {
-      this.timelineStore.delete(evictedId);
-    }
-  }
-
-  /** Drop every retained transcript produced by one artifact/schedule. */
-  async deleteRetainedTranscriptsForOwner(owner: RetainedTranscriptOwner): Promise<void> {
-    await this.retainedTranscripts?.deleteForOwner(owner);
-  }
-
-  /**
-   * Observed subagents are ephemeral registry projections with no ManagedAgent,
-   * so nothing runs the normal agent-registration path that seeds the timeline
-   * store - without this, every observed timeline append/fetch throws
-   * "Unknown agent" and the subagent's transcript is silently lost (no live
-   * stream, no backfill). See .otto/knowledge/projects/observed-subagents.md.
-   */
-  private ensureObservedTimelineState(id: string): void {
-    if (!this.timelineStore.has(id)) {
-      this.timelineStore.initialize(id, { timestamp: new Date().toISOString() });
-    }
-  }
-
-  /**
-   * Last emitted snapshot for an observed subagent, or null when the id is not
-   * an observed subagent. Lets read paths (timeline fetch) serve observed rows
-   * that have no ManagedAgent or stored record. See .otto/knowledge/projects/observed-subagents.md.
-   */
-  getObservedSubagentPayload(id: string): AgentSnapshotPayload | null {
-    return this.observedSubagents.get(id)?.lastPayload ?? null;
-  }
-
-  /**
-   * Last emitted snapshots for every observed subagent in the registry.
-   * Observed rows otherwise reach clients only as live pushes - without this
-   * feeding the agent-list fetch, a client that (re)connects mid-run has no
-   * way to learn about running subagents until the provider's next task event,
-   * so a page refresh left the subagents track and the visualizer blind to
-   * in-flight children. See .otto/knowledge/projects/observed-subagents.md.
-   */
-  listObservedSubagentPayloads(): AgentSnapshotPayload[] {
-    const payloads: AgentSnapshotPayload[] = [];
-    for (const entry of this.observedSubagents.values()) {
-      if (entry.lastPayload) {
-        payloads.push({ ...entry.lastPayload });
-      }
-    }
-    return payloads;
-  }
-
-  subscriptionCount(): number {
-    return this.subscribers.size;
+  // OTTO(chat-search): copy only user-visible conversation rows, without hydrating a session.
+  getSearchTimeline(id: string): (SearchTimeline & { epoch: string }) | null {
+    const agent = this.agents.get(id);
+    if (!agent || agent.internal || agent.owner || !this.timelineStore.has(id)) return null;
+    return {
+      epoch: this.timelineStore.getEpoch(id),
+      complete: agent.historyPrimed,
+      rows: this.timelineStore
+        .getRows(id)
+        .filter((row) => row.item.type === "user_message" || row.item.type === "assistant_message"),
+    };
   }
 
   listProviderSubagents(parentAgentId: string): ProviderSubagentDescriptor[] {
@@ -2338,72 +1310,26 @@ export class AgentManager {
     return this.providerSubagents.list(parentAgentId);
   }
 
-  async controlProviderSubagent(
-    parentAgentId: string,
+  // OTTO(observed-subagents): preserve Paseo's descriptors, live feed, and parent lifecycle.
+  async stopObservedSubagent(
+    parentId: string,
     subagentId: string,
-    action: "stop" | "archive",
-    allowStopParent = false,
+    workspaceId: string,
   ): Promise<void> {
-    const parent = this.requirePublicAgent(parentAgentId);
-    const child = this.providerSubagents.get(parentAgentId, subagentId);
-    if (!child) throw new Error("Provider subagent not found");
-    if (child.archivedAt) return;
-    if (child.status === "running") {
-      const session = "session" in parent ? parent.session : undefined;
-      if (session?.stopProviderSubagent) {
-        await session.stopProviderSubagent(subagentId);
-      } else {
-        if (!allowStopParent)
-          throw new Error(
-            "Stopping this subagent requires closing its parent agent session. Confirm the wider stop first.",
-          );
-        await this.closeAgent(parentAgentId);
-      }
-      const event = this.providerSubagents.apply(parentAgentId, child.provider, {
-        type: "upsert",
-        id: subagentId,
-        status: "canceled",
-      });
-      this.dispatch({ type: "provider_subagent", event });
+    const parent = this.requirePublicAgent(parentId);
+    const child = this.providerSubagents.list(parentId).find(({ id }) => id === subagentId);
+    const session = parent.session;
+    if (
+      parent.owner ||
+      parent.workspaceId !== workspaceId ||
+      !child ||
+      child.status !== "running" ||
+      child.provider !== parent.provider ||
+      !session?.ottoStopObservedSubagent
+    ) {
+      throw new Error("This provider subagent is no longer stoppable.");
     }
-    if (action === "archive") {
-      await this.archiveProviderSubagentDescriptors(parentAgentId, [subagentId]);
-    }
-  }
-
-  private async archiveProviderSubagentDescriptors(
-    parentAgentId: string,
-    subagentIds: readonly string[],
-  ): Promise<void> {
-    if (subagentIds.length === 0) return;
-    // Clear submits sibling archives concurrently. A stored-only parent reads
-    // and rewrites its labels per call, so serialize writes on the parent's
-    // lane or a slower earlier write can erase later archive tombstones.
-    await this.runLifecycleMutation(parentAgentId, async () => {
-      const archivedAt = new Date().toISOString();
-      const labels = Object.fromEntries(
-        subagentIds.map((id) => [providerSubagentArchiveLabel(id), archivedAt]),
-      );
-      try {
-        await this.setLabels(parentAgentId, labels);
-      } catch (error) {
-        // setLabels updates the live record before persisting. A failed write
-        // must leave every child visible and retryable on subsequent snapshots.
-        const owner = this.agents.get(parentAgentId);
-        for (const label of Object.keys(labels)) {
-          if (owner?.labels[label] === archivedAt) delete owner.labels[label];
-        }
-        throw error;
-      }
-      for (const id of subagentIds) {
-        const archived = this.providerSubagents.get(parentAgentId, id);
-        if (archived)
-          this.dispatch({
-            type: "provider_subagent",
-            event: { type: "upsert", subagent: archived },
-          });
-      }
-    });
+    await session.ottoStopObservedSubagent(subagentId);
   }
 
   listProviderSubagentActivity(): ProviderSubagentDescriptor[] {
@@ -2414,7 +1340,7 @@ export class AgentManager {
     );
     return this.providerSubagents
       .listAll()
-      .filter((subagent) => publicParentIds.has(subagent.parentAgentId) && !subagent.archivedAt);
+      .filter((subagent) => publicParentIds.has(subagent.parentAgentId));
   }
 
   getProviderSubagent(
@@ -2434,81 +1360,12 @@ export class AgentManager {
     return this.providerSubagents.fetchTimeline(parentAgentId, subagentId, options);
   }
 
-  /**
-   * Drop everything retained for an agent id: its committed timeline and any
-   * provider-subagent projection hanging off it.
-   */
-
-  private discardRetainedAgentState(agentId: string): void {
-    this.ottoToolPolicies.delete(agentId);
-    this.timelineStore.delete(agentId);
-    for (const event of this.providerSubagents.deleteParent(agentId)) {
-      this.dispatch({ type: "provider_subagent", event });
-    }
-  }
-
-  private requirePublicAgent(id: string): LiveManagedAgent {
-    const agent = this.requireAgent(id);
-    if (agent.internal) {
-      throw new Error(`Unknown agent '${agent.id}'`);
-    }
-    return agent;
-  }
-
   createAgent(
     config: AgentSessionConfig,
     agentId: string | undefined,
     options: CreateAgentOptions,
   ): Promise<ManagedAgent> {
     return this.trackAgentRegistrationOperation(this.createAgentInternal(config, agentId, options));
-  }
-
-  /**
-   * Run a single tool-less provider completion for the internal
-   * metadata-generation path (chat titles, branch/workspace names, commit/PR
-   * text, voice cues, run summaries). This deliberately does NOT go through
-   * createAgent → runAgent → closeAgent: no agent lifecycle, no
-   * prepareSessionConfig/buildLaunchContext (which inject the Otto tool catalog
-   * + MCP with no internal-agent exemption), and on Claude no `claude_code`
-   * preset or CLAUDE.md. The prompt is self-contained, so a title costs a few
-   * hundred tokens instead of the 15–25K a full spawn carries.
-   *
-   * Providers without a `generateBareCompletion` throw here; the structured
-   * generation fallback ladder catches that and moves to the next provider, so
-   * a provider that can't do a tool-less completion falls through instead of
-   * erroring the whole generation.
-   */
-  async generateBareCompletion(
-    config: AgentSessionConfig,
-    prompt: string,
-    // Optional finer label for the ledger row (e.g. "auto-title", "commit").
-    // Callers may omit it; the row then reads as a generic generation.
-    subtype?: string,
-  ): Promise<string> {
-    const normalized = await this.normalizeConfig(config, { resolveDefaultModel: true });
-    this.requireEnabledProvider(normalized.provider);
-    const client = await this.requireAvailableClient({ provider: normalized.provider });
-    if (!client.generateBareCompletion) {
-      throw new Error(`Provider '${normalized.provider}' does not support tool-less completion`);
-    }
-    const options: AgentBareCompletionOptions = {
-      cwd: normalized.cwd,
-      prompt,
-      ...(normalized.model ? { model: normalized.model } : {}),
-      ...(normalized.thinkingOptionId ? { thinkingOptionId: normalized.thinkingOptionId } : {}),
-      ...(normalized.systemPrompt ? { systemPrompt: normalized.systemPrompt } : {}),
-    };
-    const result = await client.generateBareCompletion(options);
-    // These bare completions bypass the turn path (WP-B), so their spend is
-    // invisible to onStreamTurnCompleted's token counting. Record it here under
-    // the "generations" category so the headline generation cost isn't zero. (WP-G)
-    this.recordUsageActivity(result.usage, {
-      category: "generations",
-      provider: normalized.provider,
-      ...(normalized.model ? { model: normalized.model } : {}),
-      ...(subtype ? { subtype } : {}),
-    });
-    return result.text;
   }
 
   private async createAgentInternal(
@@ -2519,64 +1376,72 @@ export class AgentManager {
     this.assertAcceptingAgentRegistrations();
     const resolvedAgentId = validateAgentId(agentId ?? this.idFactory(), "createAgent");
     if (this.pluginLifecycle && !config.internal) {
-      const request = await applyPluginCreateConfig(config, options.env, this.pluginLifecycle);
-      config = request.config;
+      const request = await this.pluginLifecycle.before("agent.create", {
+        config,
+        env: options.env,
+      });
+      // OTTO(schedule-profiles): the public hook sees only the portable config. Preserve the
+      // binding captured by the owning daemon before provisioning this scheduled workspace.
+      config = { ...request.config, internal: config.internal, ottoProfile: config.ottoProfile };
       options = { ...options, env: request.env };
     }
-    const { storedConfig, launchConfig, ottoToolPolicy } = await this.prepareSessionConfig(
+    // OTTO(agent-teams): the transported id is intent. Only the owning host supplies prompt and identity.
+    const intended = options.labels?.[profileIntentLabel];
+    if (intended) {
+      const { profile, binding } = await resolveHostProfile(
+        this.readProfileRoster(),
+        intended,
+        config,
+        this.readProfileCatalog,
+      );
+      if (profile.model && config.model && profile.model !== config.model)
+        throw new Error("The Profile model changed. Select the Profile again.");
+      config = applyCreationProfile(config, profile, binding);
+      const labels: Record<string, string> = {
+        ...options.labels,
+        "otto.profile": presentationLabel(binding),
+      };
+      delete labels[profileIntentLabel];
+      options = { ...options, labels };
+    }
+    await this.deleteAgentState(resolvedAgentId);
+    const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       config,
       resolvedAgentId,
-      options?.env,
+      { env: options?.env, workspaceId: options.workspaceId }, // OTTO(knowledge)
     );
     this.requireEnabledProvider(storedConfig.provider);
     const client = await this.requireAvailableClient({
       provider: storedConfig.provider,
     });
-    if (this.agents.has(resolvedAgentId)) {
-      throw new Error(`Agent with id ${resolvedAgentId} already exists`);
-    }
-    try {
-      this.ottoToolPolicies.set(resolvedAgentId, ottoToolPolicy);
-      const launchContext = await this.buildLaunchContext(
-        resolvedAgentId,
-        client,
-        storedConfig.cwd,
-        ottoToolPolicy,
-        options?.env,
-        { reason: "create", purpose: "interactive", workspaceId: options.workspaceId ?? null },
-      );
-      const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
-      const createOptions = this.buildCreateSessionOptions(options);
-      const session = await this.withLaunchingAgentCwd(resolvedAgentId, storedConfig.cwd, () =>
-        client.createSession(providerLaunchConfig, launchContext, createOptions),
-      );
-      const managed = await this.registerSession(session, storedConfig, resolvedAgentId, {
-        labels: options.labels,
-        initialTitle: options.initialTitle,
-        workspaceId: options.workspaceId,
-        ...(options.owner ? { owner: options.owner } : {}),
-        historyPrimed: true,
+    this.paseoToolPolicies.set(resolvedAgentId, paseoToolPolicy);
+    const launchContext = await this.buildLaunchContext(
+      resolvedAgentId,
+      client,
+      storedConfig.cwd,
+      paseoToolPolicy,
+      options?.env,
+      { reason: "create", purpose: "interactive", workspaceId: options.workspaceId ?? null },
+    );
+    const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
+    const createOptions = this.buildCreateSessionOptions(options);
+    const session = await client.createSession(providerLaunchConfig, launchContext, createOptions);
+    await this.requireExternalMcpSupport(session, storedConfig);
+    const agent = await this.registerSession(session, storedConfig, resolvedAgentId, {
+      labels: options.labels,
+      initialTitle: options.initialTitle,
+      workspaceId: options.workspaceId,
+      owner: options.owner,
+      historyPrimed: true,
+    });
+    if (!agent.internal) {
+      this.ottoActivity?.increment("agentsCreated"); // OTTO(activity)
+      if (agent.labels?.[PARENT_AGENT_ID_LABEL]) this.ottoActivity?.increment("subagentsInvoked");
+      this.pluginLifecycle?.emit("agent.created", {
+        agent: describeHookAgent({ ...agent, title: agent.config.title }),
       });
-      const spawnedPersonalityId = storedConfig.profileSnapshot?.profileId;
-      if (spawnedPersonalityId) {
-        this.onPersonalitySpawn?.(spawnedPersonalityId);
-      }
-      this.onActivity?.("agentsCreated");
-      if (options.labels?.[PARENT_AGENT_ID_LABEL]) {
-        this.onActivity?.("subagentsInvoked");
-      }
-      if (!managed.internal) {
-        this.pluginLifecycle?.emit("agent.created", {
-          agent: describeHookAgent({ ...managed, title: managed.config.title }),
-        });
-      }
-      return managed;
-    } catch (error) {
-      // A failed hook/provider/registration never owns policy for an absent agent.
-      // A concurrently registered live session retains its own policy.
-      if (!this.agents.has(resolvedAgentId)) this.ottoToolPolicies.delete(resolvedAgentId);
-      throw error;
     }
+    return agent;
   }
 
   private buildCreateSessionOptions(options?: {
@@ -2599,12 +1464,25 @@ export class AgentManager {
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
       workspaceId?: string;
-      /** Otto: history loading is read-only for archived native sessions. */
-      purpose?: "interactive" | "history";
+      owner?: AgentOwner;
+      attention?: AttentionState;
     },
+    resumeOptions?: AgentResumeSessionOptions,
   ): Promise<ManagedAgent> {
+    const resolvedAgentId = validateAgentId(
+      agentId ?? this.idFactory(),
+      "resumeAgentFromPersistence",
+    );
     return this.trackAgentRegistrationOperation(
-      this.resumeAgentFromPersistenceInternal(handle, overrides, agentId, options),
+      this.runLifecycleMutation(resolvedAgentId, () =>
+        this.resumeAgentFromPersistenceInternal(
+          handle,
+          overrides,
+          resolvedAgentId,
+          options,
+          resumeOptions,
+        ),
+      ),
     );
   }
 
@@ -2618,9 +1496,10 @@ export class AgentManager {
       lastUserMessageAt?: Date | null;
       labels?: Record<string, string>;
       workspaceId?: string;
-      /** Otto: history loading is read-only for archived native sessions. */
-      purpose?: "interactive" | "history";
+      owner?: AgentOwner;
+      attention?: AttentionState;
     },
+    resumeOptions?: AgentResumeSessionOptions,
   ): Promise<ManagedAgent> {
     this.assertAcceptingAgentRegistrations();
     const resolvedAgentId = validateAgentId(
@@ -2633,11 +1512,21 @@ export class AgentManager {
       ...overrides,
       provider: handle.provider,
     } as AgentSessionConfig;
-    const { storedConfig, launchConfig, ottoToolPolicy } = await this.prepareSessionConfig(
+    // Decide residency from durable state inside the lifecycle lane. A loader may
+    // have read the record before a queued archive or restore completed. Residency is
+    // settled before the config is prepared, because a history load reads an archived
+    // agent whose working directory may be gone.
+    const record = this.registry ? await this.registry.get(resolvedAgentId) : null;
+    const currentResumeOptions = record
+      ? { purpose: record.archivedAt ? ("history" as const) : ("interactive" as const) }
+      : resumeOptions;
+    const purpose = currentResumeOptions?.purpose ?? "interactive";
+
+    const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       mergedConfig,
       resolvedAgentId,
+      { purpose, workspaceId: options?.workspaceId }, // OTTO(knowledge): use the authoritative session binding, never infer another workspace.
     );
-
     const client = this.requireClient(handle.provider);
     const available = await client.isAvailable();
     if (!available) {
@@ -2645,43 +1534,32 @@ export class AgentManager {
         `Provider '${handle.provider}' is not available. Please ensure the CLI is installed.`,
       );
     }
-    if (this.agents.has(resolvedAgentId)) {
-      throw new Error(`Agent with id ${resolvedAgentId} already exists`);
-    }
-    try {
-      this.ottoToolPolicies.set(resolvedAgentId, ottoToolPolicy);
-      const launchContext = await this.buildLaunchContext(
-        resolvedAgentId,
-        client,
-        storedConfig.cwd,
-        ottoToolPolicy,
-        undefined,
-        {
-          reason: "resume",
-          purpose: options?.purpose ?? "interactive",
-          workspaceId: options?.workspaceId ?? null,
-        },
-      );
-      const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
-      // The purpose reaches the provider. Resuming an archived agent just to read
-      // its history is not the same as resuming it to work in, and a provider that
-      // cannot tell the difference does the full interactive setup for a session
-      // nobody is going to type into.
-      const session = await this.withLaunchingAgentCwd(resolvedAgentId, storedConfig.cwd, () =>
-        client.resumeSession(
-          handle,
-          providerLaunchConfig,
-          launchContext,
-          options?.purpose ? { purpose: options.purpose } : undefined,
-        ),
-      );
-      return await this.registerSession(session, storedConfig, resolvedAgentId, options);
-    } catch (error) {
-      // A failed hook/provider/registration never owns policy for an absent agent.
-      // A concurrently registered live session retains its own policy.
-      if (!this.agents.has(resolvedAgentId)) this.ottoToolPolicies.delete(resolvedAgentId);
-      throw error;
-    }
+    this.paseoToolPolicies.set(resolvedAgentId, paseoToolPolicy);
+    const launchContext = await this.buildLaunchContext(
+      resolvedAgentId,
+      client,
+      storedConfig.cwd,
+      paseoToolPolicy,
+      undefined,
+      {
+        reason: "resume",
+        purpose,
+        workspaceId: options?.workspaceId ?? null,
+      },
+    );
+    const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
+    const session = await client.resumeSession(
+      handle,
+      providerLaunchConfig,
+      launchContext,
+      currentResumeOptions,
+    );
+    await this.requireExternalMcpSupport(session, storedConfig);
+    return this.registerSession(session, storedConfig, resolvedAgentId, {
+      ...options,
+      persistence: handle,
+      restoring: true,
+    });
   }
 
   importProviderSession(input: {
@@ -2710,91 +1588,68 @@ export class AgentManager {
       throw new Error(`Provider '${input.provider}' does not support importing sessions`);
     }
 
-    const { storedConfig, launchConfig, ottoToolPolicy } = await this.prepareSessionConfig(
+    const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       {
         provider: input.provider,
         cwd: input.cwd,
       },
       resolvedAgentId,
+      { workspaceId: input.workspaceId }, // OTTO(knowledge)
     );
-    if (this.agents.has(resolvedAgentId)) {
-      throw new Error(`Agent with id ${resolvedAgentId} already exists`);
-    }
+    this.paseoToolPolicies.set(resolvedAgentId, paseoToolPolicy);
+    const launchContext = await this.buildLaunchContext(
+      resolvedAgentId,
+      client,
+      storedConfig.cwd,
+      paseoToolPolicy,
+      undefined,
+      { reason: "import", purpose: "interactive", workspaceId: input.workspaceId },
+    );
+    const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
+    const imported = await client.importSession(
+      {
+        providerHandleId: input.providerHandleId,
+        cwd: input.cwd,
+      },
+      { config: providerLaunchConfig, storedConfig, launchContext },
+    );
+    let handedToRegistration = false;
     try {
-      this.ottoToolPolicies.set(resolvedAgentId, ottoToolPolicy);
-      const launchContext = await this.buildLaunchContext(
-        resolvedAgentId,
-        client,
-        storedConfig.cwd,
-        ottoToolPolicy,
-        undefined,
-        { reason: "import", purpose: "interactive", workspaceId: input.workspaceId },
+      const importedConfig = await this.normalizeConfig(
+        stripInternalPaseoMcpServer(imported.config),
       );
-      const providerLaunchConfig = this.resolveProviderLaunchConfig(launchConfig, launchContext);
-      const importSession = client.importSession.bind(client);
-      const imported = await this.withLaunchingAgentCwd(resolvedAgentId, storedConfig.cwd, () =>
-        importSession(
-          {
-            providerHandleId: input.providerHandleId,
-            cwd: input.cwd,
-          },
-          { config: providerLaunchConfig, storedConfig, launchContext },
-        ),
-      );
-      let handedToRegistration = false;
-      try {
-        const importedConfig = await this.normalizeConfig(
-          stripInternalOttoMcpServer(imported.config),
-        );
-        const timelineRows = buildImportedTimelineRows(imported.timeline);
-        const initialTitle = resolveImportedAgentTitle(importedConfig, timelineRows);
+      const timelineRows = buildImportedTimelineRows(imported.timeline);
+      const initialTitle = resolveImportedAgentTitle(importedConfig, timelineRows);
 
-        handedToRegistration = true;
-        const registered = await this.registerSession(
-          imported.session,
-          importedConfig,
-          resolvedAgentId,
-          {
-            labels: input.labels,
-            workspaceId: input.workspaceId,
-            timelineRows,
-            timelineNextSeq: timelineRows.length + 1,
-            persistence: imported.persistence,
-            historyPrimed: true,
-            initialTitle,
-            publishWhenReady: true,
-          },
-        );
-        // The provider reports the imported thread's children alongside its
-        // timeline. Applied after registration so the parent exists to hang them
-        // off; without this an imported session arrives with an empty subagent
-        // rail even though the thread had children.
-        for (const event of imported.providerSubagentEvents ?? []) {
-          this.dispatch({
-            type: "provider_subagent",
-            event: this.providerSubagents.apply(resolvedAgentId, event.provider, event.event),
-          });
-        }
-        return registered;
-      } finally {
-        if (!handedToRegistration) {
-          await this.closeUnregisteredSession(imported.session);
-        }
+      handedToRegistration = true;
+      const agent = await this.registerSession(imported.session, importedConfig, resolvedAgentId, {
+        labels: input.labels,
+        workspaceId: input.workspaceId,
+        timelineRows,
+        timelineNextSeq: timelineRows.length + 1,
+        persistence: imported.persistence,
+        historyPrimed: true,
+        initialTitle,
+        publishWhenReady: true,
+      });
+      for (const event of imported.providerSubagentEvents ?? []) {
+        const update = this.providerSubagents.apply(agent.id, event.provider, event.event);
+        this.dispatch({ type: "provider_subagent", event: update });
       }
-    } catch (error) {
-      // A failed hook/provider/registration never owns policy for an absent agent.
-      // A concurrently registered live session retains its own policy.
-      if (!this.agents.has(resolvedAgentId)) this.ottoToolPolicies.delete(resolvedAgentId);
-      throw error;
+      return agent;
+    } finally {
+      if (!handedToRegistration) {
+        await this.closeUnregisteredSession(imported.session);
+      }
     }
   }
 
   // Hot-reload an active agent session with config overrides. By default the
   // in-memory timeline is preserved (used for voice-mode toggles and similar
   // config swaps). When `rehydrateFromDisk` is set, the timeline is wiped so a
-  // new epoch is minted and provider history is re-streamed - this is what the
+  // new epoch is minted and provider history is re-streamed — this is what the
   // user-facing "Reload agent" action wants when the on-disk session was
-  // mutated outside Otto.
+  // mutated outside Paseo.
   reloadAgentSession(
     agentId: string,
     overrides?: Partial<AgentSessionConfig>,
@@ -2810,15 +1665,17 @@ export class AgentManager {
   private async reloadAgentSessionInternal(
     agentId: string,
     overrides?: Partial<AgentSessionConfig>,
-    options?: { rehydrateFromDisk?: boolean },
+    options: { rehydrateFromDisk?: boolean; profileLabels?: Record<string, string> } = {},
   ): Promise<ManagedAgent> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     this.assertAcceptingAgentRegistrations();
     let existing = this.requireSessionAgent(agentId);
+    assertWorkflowConfigurationChange(existing); // OTTO(workflows): reload cannot remove a captured run's launch ceiling.
     if (this.hasInFlightRun(agentId)) {
-      await this.cancelAgentRun(agentId);
+      await this.cancelAgentRunBefore(agentId, "reload");
       existing = this.requireSessionAgent(agentId);
     }
-    const rehydrateFromDisk = options?.rehydrateFromDisk ?? false;
+    const rehydrateFromDisk = options.rehydrateFromDisk === true;
     const preservedHistoryPrimed = existing.historyPrimed;
     const preservedLastUsage = existing.lastUsage;
     const preservedLastError = existing.lastError;
@@ -2831,17 +1688,18 @@ export class AgentManager {
       ...overrides,
       provider,
     } as AgentSessionConfig;
-    const { storedConfig, launchConfig, ottoToolPolicy } = await this.prepareSessionConfig(
+    const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       refreshConfig,
       agentId,
+      { workspaceId: existing.workspaceId }, // OTTO(knowledge)
     );
-    const hadPreviousOttoToolPolicy = this.ottoToolPolicies.has(agentId);
-    const previousOttoToolPolicy = this.ottoToolPolicies.get(agentId);
+    const hadPreviousPaseoToolPolicy = this.paseoToolPolicies.has(agentId);
+    const previousPaseoToolPolicy = this.paseoToolPolicies.get(agentId);
     const launchContext = await this.buildLaunchContext(
       agentId,
       client,
       storedConfig.cwd,
-      ottoToolPolicy,
+      paseoToolPolicy,
       undefined,
       { reason: "refresh", purpose: "interactive", workspaceId: existing.workspaceId },
     );
@@ -2857,42 +1715,36 @@ export class AgentManager {
     let closedExisting: ManagedAgentClosed | undefined;
     let handedToRegistration = false;
     try {
-      // A persisted provider thread has a single writer even while its turn is
-      // idle. Releasing the original runtime must precede resume so a refresh
-      // cannot overlap provider writers.
+      // A persisted thread can have only one writer, even when its turn is idle.
       await this.closeReloadedSession(existing.session, agentId);
       await this.drainSessionEvents(agentId);
-      this.cancelRunningProviderSubagents(existing);
+      this.cancelRunningProviderSubagents(agentId);
       closedExisting = this.prepareAgentForClosure(existing, "agent reloaded");
       await this.persistSnapshot(closedExisting);
       this.assertAcceptingAgentRegistrations();
 
-      this.ottoToolPolicies.set(agentId, ottoToolPolicy);
-      session = await this.withLaunchingAgentCwd(agentId, storedConfig.cwd, () =>
-        handle
-          ? client.resumeSession(handle, providerLaunchConfig, launchContext)
-          : client.createSession(providerLaunchConfig, launchContext),
-      );
+      this.paseoToolPolicies.set(agentId, paseoToolPolicy);
+      session = handle
+        ? await client.resumeSession(handle, providerLaunchConfig, launchContext)
+        : await client.createSession(providerLaunchConfig, launchContext);
+      await this.requireExternalMcpSupport(session, storedConfig);
       this.assertAcceptingAgentRegistrations();
 
       if (rehydrateFromDisk) {
         // Wipe the in-memory timeline so registerSession mints a new epoch and
         // hydrateTimelineFromProvider re-streams the freshly read provider history.
         this.timelineStore.delete(agentId);
-        // The provider children are part of that same replaced state. Leaving
-        // them behind carries children of the previous session across a reload
-        // whose whole point is to re-read from disk.
-        for (const removal of this.providerSubagents.deleteParent(agentId)) {
-          this.dispatch({ type: "provider_subagent", event: removal });
+        for (const event of this.providerSubagents.deleteParent(agentId)) {
+          this.dispatch({ type: "provider_subagent", event });
         }
       }
 
       // Preserve existing labels and timeline during reload.
       handedToRegistration = true;
-      return await this.registerSession(session, storedConfig, agentId, {
-        labels: existing.labels,
+      return this.registerSession(session, storedConfig, agentId, {
+        labels: reloadLabels(existing.labels, options.profileLabels), // OTTO(agent-teams)
         workspaceId: existing.workspaceId,
-        ...(existing.owner ? { owner: existing.owner } : {}),
+        owner: existing.owner,
         createdAt: existing.createdAt,
         updatedAt: existing.updatedAt,
         lastUserMessageAt: existing.lastUserMessageAt,
@@ -2900,21 +1752,23 @@ export class AgentManager {
         lastUsage: preservedLastUsage,
         lastError: preservedLastError,
         attention: preservedAttention,
+        restoring: true,
       });
     } catch (error) {
-      if (hadPreviousOttoToolPolicy) {
-        this.ottoToolPolicies.set(agentId, previousOttoToolPolicy);
-      } else {
-        this.ottoToolPolicies.delete(agentId);
+      if (closedExisting) {
+        this.emitClosedAgent(closedExisting, { persist: false });
+      } else if (this.agents.get(agentId) === existing) {
+        existing.lifecycle = "error";
+        existing.lastError = error instanceof Error ? error.message : String(error);
+        this.emitState(existing);
       }
-      await this.restoreAgentAfterReloadFailure(existing, closedExisting, error);
       throw error;
     } finally {
       if (!handedToRegistration) {
-        if (hadPreviousOttoToolPolicy) {
-          this.ottoToolPolicies.set(agentId, previousOttoToolPolicy);
+        if (hadPreviousPaseoToolPolicy) {
+          this.paseoToolPolicies.set(agentId, previousPaseoToolPolicy);
         } else {
-          this.ottoToolPolicies.delete(agentId);
+          this.paseoToolPolicies.delete(agentId);
         }
         if (session) {
           await this.closeUnregisteredSession(session);
@@ -2923,41 +1777,12 @@ export class AgentManager {
     }
   }
 
-  private async restoreAgentAfterReloadFailure(
-    existing: ActiveManagedAgent,
-    closedExisting: ManagedAgentClosed | undefined,
-    error: unknown,
-  ): Promise<void> {
-    const agentId = existing.id;
-    if (closedExisting) {
-      try {
-        await this.persistSnapshot(closedExisting);
-      } catch (persistError) {
-        this.logger.warn(
-          { err: persistError, agentId },
-          "Failed to restore closed session snapshot after reload failure",
-        );
-      }
-      try {
-        this.emitClosedAgent(closedExisting, { persist: false });
-      } catch (notificationError) {
-        this.logger.warn(
-          { err: notificationError, agentId },
-          "Failed to notify closed session after reload failure",
-        );
-      }
-    } else if (this.agents.get(agentId) === existing) {
-      existing.lifecycle = "error";
-      existing.lastError = error instanceof Error ? error.message : String(error);
-      this.emitState(existing);
-    }
-  }
-
   private async closeReloadedSession(session: AgentSession, agentId: string): Promise<void> {
     let operation = this.reloadedSessionCloses.get(session);
     if (!operation) {
-      operation = Promise.resolve().then(() => session.close());
+      operation = session.close();
       this.reloadedSessionCloses.set(session, operation);
+      // Keep pending closes across request timeouts; a retry must await the same release.
       void operation.catch(() => this.reloadedSessionCloses.delete(session));
     }
     const result = await this.waitWithTimeout({
@@ -3005,10 +1830,43 @@ export class AgentManager {
     }
   }
 
-  closeAgent(agentId: string, options?: { preserveTimeline?: boolean }): Promise<void> {
-    // Relocation changes the launch directory, not the conversation. Some
-    // providers cannot reconstruct a transcript after their session closes.
-    if (options?.preserveTimeline) this.preservedTimelinesForResume.add(agentId);
+  /**
+   * The archived snapshot of an internal agent, for a while after archive.
+   * Null once it has expired or was never an internal agent.
+   */
+  getRetiredInternalAgent(agentId: string): RetiredInternalAgent | null {
+    const entry = this.retiredInternalAgents.get(agentId);
+    if (!entry) {
+      return null;
+    }
+    if (entry.expiresAt <= Date.now()) {
+      this.retiredInternalAgents.delete(agentId);
+      return null;
+    }
+    return { record: entry.record, lastMessage: entry.lastMessage };
+  }
+
+  private retireInternalAgent(entry: RetiredInternalAgent): void {
+    const now = Date.now();
+    for (const [agentId, retired] of this.retiredInternalAgents) {
+      if (retired.expiresAt <= now) {
+        this.retiredInternalAgents.delete(agentId);
+      }
+    }
+    while (this.retiredInternalAgents.size >= RETIRED_INTERNAL_AGENT_LIMIT) {
+      const oldest = this.retiredInternalAgents.keys().next().value;
+      if (oldest === undefined) {
+        break;
+      }
+      this.retiredInternalAgents.delete(oldest);
+    }
+    this.retiredInternalAgents.set(entry.record.id, {
+      ...entry,
+      expiresAt: now + RETIRED_INTERNAL_AGENT_TTL_MS,
+    });
+  }
+
+  closeAgent(agentId: string): Promise<void> {
     const existing = this.inFlightAgentCloses.get(agentId);
     if (existing) {
       return existing;
@@ -3028,27 +1886,6 @@ export class AgentManager {
     return close;
   }
 
-  /** Await an in-flight close started elsewhere; resolves immediately if none. */
-  async waitForAgentClose(agentId: string): Promise<void> {
-    await this.lifecycleMutationTails.get(agentId);
-    await this.inFlightAgentCloses.get(agentId)?.catch(() => undefined);
-  }
-
-  /** Marks every still-running provider child of an agent as canceled. */
-  private cancelRunningProviderSubagents(agent: LiveManagedAgent): void {
-    for (const subagent of this.providerSubagents.list(agent.id)) {
-      if (subagent.status !== "running") {
-        continue;
-      }
-      const update = this.providerSubagents.apply(agent.id, agent.provider, {
-        type: "upsert",
-        id: subagent.id,
-        status: "canceled",
-      });
-      this.dispatch({ type: "provider_subagent", event: update });
-    }
-  }
-
   private async closeAgentRuntime(agentId: string): Promise<void> {
     const agent = this.requireAgent(agentId);
     this.logger.trace(
@@ -3063,36 +1900,19 @@ export class AgentManager {
       },
       "agent.manager.close.start",
     );
-    // Let queued provider events land before deciding what is still running: a
-    // child whose terminal status was already in flight when close was called
-    // is recorded as the completion it was, rather than canceled on the way
-    // past. Whatever is still running after that cannot outlive the session
-    // that reported it, and left alone its status stays "running" so the rail
-    // shows a live subagent under a closed parent.
-    //
-    // One event-loop turn, not flush(): flush also drains persistence, and a
-    // close triggered from inside a persistence task then waits on itself.
-    await new Promise<void>((resolveTurn) => yieldEventLoopTurn(resolveTurn));
-    this.cancelRunningProviderSubagents(agent);
-    this.agentStreamCoalescer.flushAndDiscard(agent.id);
-    if (!agent.internal) await this.captureSearchTimeline(agentId, agent.historyPrimed);
+    await this.drainSessionEvents(agentId);
+    // Retain ownership until shutdown succeeds. A failed close may still own a
+    // native writer, so publishing a resumable closed snapshot would orphan it.
+    await agent.session.close();
+    this.cancelRunningProviderSubagents(agentId);
     const closedAgent = this.prepareAgentForClosure(agent, "agent closed");
-    // A provider that fails to clean up must not take the closure with it. The
-    // error still surfaces to the caller, but the record is persisted and the
-    // closed state emitted first, so the agent is resumable instead of stuck
-    // reading as live with no session behind it.
-    let closeError: unknown;
+
+    let persistError: unknown;
     try {
-      await agent.session.close();
+      await this.persistSnapshot(closedAgent);
     } catch (error) {
-      closeError = error;
-      this.logger.warn(
-        { err: error, agentId, provider: agent.provider },
-        "Provider session close failed; closing the agent anyway",
-      );
+      persistError = error;
     }
-    if (!this.preservedTimelinesForResume.has(agentId)) this.timelineStore.delete(agentId);
-    await this.persistSnapshot(closedAgent);
     this.emitClosedAgent(closedAgent, { persist: false });
     this.logger.trace(
       {
@@ -3102,17 +1922,52 @@ export class AgentManager {
       },
       "agent.manager.close.complete",
     );
-    if (closeError) {
-      throw closeError;
+
+    if (persistError !== undefined) {
+      throw persistError;
     }
   }
 
-  archiveAgent(agentId: string): Promise<{ archivedAt: string }> {
-    return this.runLifecycleMutation(agentId, () => this.archiveAgentInternal(agentId));
+  private cancelRunningProviderSubagents(parentAgentId: string): void {
+    for (const subagent of this.providerSubagents.list(parentAgentId)) {
+      if (subagent.status !== "running") {
+        continue;
+      }
+      const event = this.providerSubagents.apply(parentAgentId, subagent.provider, {
+        type: "upsert",
+        id: subagent.id,
+        status: "canceled",
+      });
+      this.dispatch({ type: "provider_subagent", event });
+    }
   }
 
-  private async archiveAgentInternal(agentId: string): Promise<{ archivedAt: string }> {
+  async archiveAgent(agentId: string): Promise<{ archivedAt: string }> {
+    return this.runLifecycleMutation(agentId, () => this.archiveAgentUnlocked(agentId));
+  }
+
+  private async archiveAgentUnlocked(
+    agentId: string,
+    requestedArchivedAt?: string,
+  ): Promise<{ archivedAt: string }> {
     const agent = this.requireAgent(agentId);
+    if (agent.internal) {
+      // Nothing about an internal agent is on disk, and archiving must not put
+      // it there. Its final snapshot is kept in memory for a while (see
+      // getRetiredInternalAgent); the runtime is closed and the committed
+      // timeline dropped, so `getAgent` returns null from here on.
+      const archivedAt = requestedArchivedAt ?? new Date().toISOString();
+      const lastMessage = await this.getLastAssistantMessage(agentId);
+      const record = buildArchivedAgentRecord(
+        toStoredAgentRecord(agent, { title: agent.config.title ?? null, internal: true }),
+        { archivedAt, updatedAt: archivedAt },
+      );
+      await this.closeAgentRuntime(agentId);
+      await this.deleteAgentState(agentId);
+      this.retireInternalAgent({ record, lastMessage });
+      await this.cascadeArchiveChildren(record);
+      return { archivedAt };
+    }
     if (!this.registry) {
       throw new Error("Agent storage is not configured");
     }
@@ -3125,33 +1980,30 @@ export class AgentManager {
       throw new Error(`Agent ${agentId} not found in storage after snapshot`);
     }
 
-    const { archivedAt } = await this.markRecordArchived(stored);
+    const { archivedAt } = await this.markRecordArchived(stored, requestedArchivedAt);
     agent.updatedAt = new Date(archivedAt);
     await this.closeAgentRuntime(agentId);
     await this.syncNativeArchiveState(stored.provider, stored.persistence, "archive");
-    // The per-agent tool policy snapshot dies with the session; a later
-    // resume re-resolves the provider's current policy.
-    this.ottoToolPolicies.delete(agentId);
+    this.discardRetainedAgentState(agentId);
 
-    await this.cascadeArchiveChildren(agentId);
+    await this.cascadeArchiveChildren(stored);
 
     return { archivedAt };
   }
 
-  // Children created via the MCP `create_chat` tool carry the parent-agent-id
+  // Children created via the MCP `create_agent` tool carry the parent-agent-id
   // label pointing back at the caller. Archiving the parent cascades to those
   // children so subagent fleets don't outlive their orchestrator. Detached
   // handoff agents omit this label, so they stand outside the cascade.
-  private async cascadeArchiveChildren(parentAgentId: string): Promise<void> {
+  private async cascadeArchiveChildren(
+    parent: Pick<StoredAgentRecord, "id" | "workspaceId">,
+  ): Promise<void> {
     const registry = this.registry;
     if (!registry) {
       return;
     }
+    const parentAgentId = parent.id;
     const records = await registry.list();
-    const parent = records.find((record) => record.id === parentAgentId);
-    if (!parent) {
-      throw new Error(`Archived parent ${parentAgentId} not found in storage`);
-    }
     for (const record of records) {
       if (record.archivedAt) {
         continue;
@@ -3175,16 +2027,33 @@ export class AgentManager {
         if (shouldDetachFromArchivedParent(parent, currentChild)) {
           await this.detachAgentUnlocked(currentChild.id);
         } else if (this.agents.has(currentChild.id)) {
-          await this.archiveAgentInternal(currentChild.id);
+          await this.archiveAgentUnlocked(currentChild.id);
         } else {
-          await this.archiveSnapshotInternal(currentChild.id, new Date().toISOString());
+          await this.archiveSnapshotUnlocked(currentChild.id, new Date().toISOString());
         }
+      });
+    }
+    // Internal children never reach storage, so the scan above cannot see them.
+    // They have no tab to keep open and no listing to detach into, so they
+    // always archive with the parent.
+    for (const child of Array.from(this.agents.values())) {
+      if (!child.internal || getParentAgentIdFromLabels(child.labels) !== parentAgentId) {
+        continue;
+      }
+      await this.runLifecycleMutation(child.id, async () => {
+        const current = this.agents.get(child.id);
+        if (!current || getParentAgentIdFromLabels(current.labels) !== parentAgentId) {
+          return;
+        }
+        await this.archiveAgentUnlocked(current.id);
       });
     }
   }
 
-  private async markRecordArchived(record: StoredAgentRecord): Promise<ArchivedStoredAgentRecord> {
-    const archivedAt = new Date().toISOString();
+  private async markRecordArchived(
+    record: StoredAgentRecord,
+    archivedAt = new Date().toISOString(),
+  ): Promise<ArchivedStoredAgentRecord> {
     const archivedRecord = await this.persistArchivedRecord(record, {
       archivedAt,
       updatedAt: archivedAt,
@@ -3205,18 +2074,7 @@ export class AgentManager {
     record: StoredAgentRecord,
     options: { archivedAt: string; updatedAt?: string },
   ): Promise<ArchivedStoredAgentRecord> {
-    const builtRecord = buildArchivedAgentRecord(record, options);
-    // Include the size field itself in the bytes exposed for archive cleanup.
-    let archiveBytes = 0;
-    for (let attempt = 0; attempt < 4; attempt += 1) {
-      const next = Buffer.byteLength(
-        JSON.stringify({ ...builtRecord, archiveBytes }, null, 2),
-        "utf8",
-      );
-      if (next === archiveBytes) break;
-      archiveBytes = next;
-    }
-    const archivedRecord = { ...builtRecord, archiveBytes };
+    const archivedRecord = buildArchivedAgentRecord(record, options);
     await this.requireRegistry().upsert(archivedRecord);
     if (!record.archivedAt && !record.internal) {
       this.pluginLifecycle?.emit("agent.archived", {
@@ -3241,14 +2099,7 @@ export class AgentManager {
 
   private dispatchStoredAgentState(record: StoredAgentRecord): void {
     const updatedAt = new Date(record.updatedAt);
-    const attention: AttentionState =
-      record.requiresAttention && record.attentionReason && record.attentionTimestamp
-        ? {
-            requiresAttention: true,
-            attentionReason: record.attentionReason,
-            attentionTimestamp: new Date(record.attentionTimestamp),
-          }
-        : { requiresAttention: false };
+    const attention = extractAttention(record);
     this.dispatch({
       type: "agent_state",
       agent: {
@@ -3256,6 +2107,7 @@ export class AgentManager {
         provider: record.provider,
         cwd: record.cwd,
         workspaceId: record.workspaceId,
+        owner: record.owner,
         session: null,
         capabilities: STORED_AGENT_CAPABILITIES,
         config: buildStoredAgentConfig(record),
@@ -3270,8 +2122,6 @@ export class AgentManager {
         bufferedPermissionResolutions: new Map(),
         inFlightPermissionResponses: new Set(),
         pendingReplacement: false,
-        steerQueue: [],
-        pendingSteerDrain: false,
         activeForegroundTurnId: null,
         activeTurnId: null,
         activeTurnStartedAt: null,
@@ -3290,238 +2140,96 @@ export class AgentManager {
     });
   }
 
-  /**
-   * Config mutations on one agent serialize through a per-agent promise chain:
-   * the multi-await setters (setAgentPersonality resolves snapshots and applies
-   * prompt + brain across several RPC hops) must not interleave with a racing
-   * set_agent_model/mode/thinking and persist a mixed half-and-half state.
-   */
-  private readonly agentConfigMutations = new Map<string, Promise<void>>();
-
-  /**
-   * True while an explicit config mutation is in flight for this agent.
-   *
-   * Providers echo their own setters back as drift events, and those echoes can
-   * land after a later explicit mutation has already been applied - setModel
-   * emitting a thinking_option_changed carrying the pre-mutation value, for
-   * instance. Config only records drift the provider raised on its own; an echo
-   * would roll the newer explicit value back.
-   */
-  private hasConfigMutationInFlight(agentId: string): boolean {
-    return this.agentConfigMutations.has(agentId);
-  }
-
-  /**
-   * The three events by which a provider reports that its own model, mode, or
-   * thinking option moved. All three land the same way: runtime state updates
-   * unconditionally, stored config only when the change is genuine drift.
-   */
-  private onStreamConfigDrift(
-    agent: ActiveManagedAgent,
-    event: Extract<
-      AgentStreamEvent,
-      { type: "mode_changed" | "model_changed" | "thinking_option_changed" }
-    >,
-  ): void {
-    if (event.type === "mode_changed") {
-      agent.currentModeId = event.currentModeId;
-      agent.availableModes = event.availableModes;
-      this.applyConfigDrift(agent, { modeId: event.currentModeId ?? undefined });
-      if (agent.runtimeInfo) {
-        agent.runtimeInfo = { ...agent.runtimeInfo, modeId: event.currentModeId };
-      }
-      return;
-    }
-    if (event.type === "thinking_option_changed") {
-      this.applyConfigDrift(agent, { thinkingOptionId: event.thinkingOptionId ?? undefined });
-      if (agent.runtimeInfo) {
-        agent.runtimeInfo = { ...agent.runtimeInfo, thinkingOptionId: event.thinkingOptionId };
-      }
-      return;
-    }
-    agent.runtimeInfo = event.runtimeInfo;
-    this.applyConfigDrift(agent, {
-      model: event.runtimeInfo.model ?? agent.config.model,
-      modeId: event.runtimeInfo.modeId ?? agent.config.modeId,
-      thinkingOptionId: event.runtimeInfo.thinkingOptionId ?? agent.config.thinkingOptionId,
-    });
-    if (!agent.persistence && event.runtimeInfo.sessionId) {
-      agent.persistence = attachPersistenceCwd(
-        { provider: agent.provider, sessionId: event.runtimeInfo.sessionId },
-        agent.cwd,
-      );
-    }
-    agent.currentModeId = event.runtimeInfo.modeId ?? agent.currentModeId;
-  }
-
-  /**
-   * Records provider-side config drift on the agent's stored config, which is
-   * what gets persisted and replayed on resume - drift that only reached
-   * runtimeInfo was silently reverted by the next restart. Skipped entirely
-   * while an explicit mutation is in flight, so a provider's echo of its own
-   * setter cannot roll back the newer value.
-   */
-  private applyConfigDrift(
-    agent: ActiveManagedAgent,
-    patch: { model?: string; modeId?: string; thinkingOptionId?: string },
-  ): void {
-    if (this.hasConfigMutationInFlight(agent.id)) {
-      return;
-    }
-    if ("model" in patch) agent.config.model = patch.model;
-    if ("modeId" in patch) agent.config.modeId = patch.modeId;
-    if ("thinkingOptionId" in patch) agent.config.thinkingOptionId = patch.thinkingOptionId;
-  }
-
-  private async withAgentConfigLock<T>(agentId: string, operation: () => Promise<T>): Promise<T> {
-    const previous = this.agentConfigMutations.get(agentId) ?? Promise.resolve();
-    const run = previous.then(operation);
-    const settled: Promise<void> = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.agentConfigMutations.set(agentId, settled);
-    const cleanup = async () => {
-      await settled;
-      if (this.agentConfigMutations.get(agentId) === settled) {
-        this.agentConfigMutations.delete(agentId);
-      }
-    };
-    void cleanup();
-    return run;
-  }
-
   async setAgentMode(agentId: string, modeId: string): Promise<AgentProviderNotice | null> {
-    return this.withAgentConfigLock(agentId, () => this.setAgentModeUnlocked(agentId, modeId));
-  }
-
-  private async setAgentModeUnlocked(
-    agentId: string,
-    modeId: string,
-  ): Promise<AgentProviderNotice | null> {
     const agent = this.requireSessionAgent(agentId);
-    const notice = await this.applyModeToAgent(agent, agent.session, modeId);
-    this.touchUpdatedAt(agent);
-    this.emitState(agent);
-    return notice;
-  }
-
-  /**
-   * Push a mode onto a live session and mirror it onto the managed agent.
-   * Shared by the mode setter and the model-pick exit below so both land the
-   * agent's mode state the same way; neither emits, so the caller controls when.
-   * The session is explicit because the personality path already holds one.
-   */
-  private async applyModeToAgent(
-    agent: ManagedAgent,
-    session: AgentSession,
-    modeId: string,
-  ): Promise<AgentProviderNotice | null> {
-    const notice = (await session.setMode(modeId)) ?? null;
-    const currentMode = (await session.getCurrentMode()) ?? modeId;
+    assertWorkflowConfigurationChange(agent); // OTTO(workflows): preserve the reviewed permission ceiling.
+    const notice = (await agent.session.setMode(modeId)) ?? null;
+    await this.drainSessionEvents(agentId);
+    const currentMode = (await agent.session.getCurrentMode()) ?? modeId;
     agent.config.modeId = currentMode ?? undefined;
     agent.currentModeId = currentMode;
     // Update runtimeInfo to reflect the new mode
     if (agent.runtimeInfo) {
       agent.runtimeInfo = { ...agent.runtimeInfo, modeId: currentMode };
     }
+    this.touchUpdatedAt(agent);
+    this.emitState(agent);
     return notice;
   }
 
-  async setAgentModel(
-    agentId: string,
-    modelId: string | null,
-  ): Promise<AgentProviderNotice | null> {
-    return this.withAgentConfigLock(agentId, () => this.setAgentModelUnlocked(agentId, modelId));
+  // OTTO(agent-teams): serialize raw and Profile picks across clients. Refuse a prompt swap that would interrupt a turn or lose provider history.
+  selectChatProfile(agentId: string, profileId: string | null, rawModel?: string | null) {
+    return this.runLifecycleMutation(agentId, async () => {
+      const agent = this.requireSessionAgent(agentId);
+      assertWorkflowConfigurationChange(agent);
+      if ((profileId || agent.config.ottoProfile) && this.hasInFlightRun(agentId))
+        throw new Error("Wait for the current turn to finish before changing its Profile.");
+      const selected =
+        profileId === null
+          ? null
+          : await resolveHostProfile(
+              this.readProfileRoster(),
+              profileId,
+              agent.config,
+              this.readProfileCatalog,
+            );
+      return selectProfile(agent.config, agent.labels["otto.profile"], selected, rawModel, {
+        refreshMemory: async (next) =>
+          this.configsWithProfileLessons.has(agent.config) ||
+          Boolean(
+            next &&
+            (await this.profileMemory?.resolveBriefForSpawn({
+              personalityId: next.id,
+              personalityName: next.name,
+              cwd: agent.cwd,
+            })),
+          ),
+        setModel: (model) => this.setAgentModel(agentId, model),
+        setMode: (mode) => this.setAgentMode(agentId, mode),
+        setThinking: (effort) => this.setAgentThinkingOption(agentId, effort),
+        setFeature: (key, value) => this.setAgentFeature(agentId, key, value),
+        writeBinding: async (binding, label) => {
+          agent.config.ottoProfile = binding;
+          await this.writeLabels(agentId, { "otto.profile": label });
+        },
+        resume: async (overrides, label) => {
+          if (this.hasInFlightRun(agentId) || !agent.persistence)
+            throw new Error(
+              "Switch this Profile when the chat is idle and its provider session can resume.",
+            );
+          await this.reloadAgentSessionInternal(agentId, overrides, {
+            profileLabels: applyLabelPatch(agent.labels, { "otto.profile": label }),
+          });
+        },
+      });
+    });
   }
-
-  private async setAgentModelUnlocked(
-    agentId: string,
-    modelId: string | null,
-  ): Promise<AgentProviderNotice | null> {
+  async setAgentModel(agentId: string, modelId: string | null): Promise<void> {
     const agent = this.requireSessionAgent(agentId);
+    assertWorkflowConfigurationChange(agent); // OTTO(workflows): model seats are immutable for the run.
     const normalizedModelId =
       typeof modelId === "string" && modelId.trim().length > 0 ? modelId : null;
 
     if (agent.session.setModel) {
       await agent.session.setModel(normalizedModelId);
     }
+    await this.drainSessionEvents(agentId);
 
     agent.config.model = normalizedModelId ?? undefined;
     if (agent.runtimeInfo) {
       agent.runtimeInfo = { ...agent.runtimeInfo, model: normalizedModelId };
     }
-    // Only an explicit pick leaves a model-selecting mode. Clearing back to the
-    // provider default (null) is the user declining to choose, which is exactly
-    // what such a mode is for.
-    const notice = normalizedModelId
-      ? await this.exitModelSelectingMode(agent, agent.session)
-      : null;
+    this.refreshSessionPersistence(agent);
     this.touchUpdatedAt(agent);
     this.emitState(agent);
-    return notice;
-  }
-
-  /**
-   * A mode that picks the model for each turn (Claude's Auto) would silently
-   * override a model that was just chosen, so choosing one moves the agent out
-   * of it. Shared by the explicit pick and by a personality that carries a model
-   * without carrying a mode. No-op for every provider whose modes don't claim
-   * `selectsModel`.
-   *
-   * A failure to change the mode does not fail the model change: the caller
-   * asked for a model and got one. It downgrades to a warning so the override is
-   * named rather than left to be discovered on the next turn.
-   */
-  private async exitModelSelectingMode(
-    agent: ManagedAgent,
-    session: AgentSession,
-  ): Promise<AgentProviderNotice | null> {
-    const exitModeId = resolveModelPickExitModeId({
-      provider: agent.provider,
-      currentModeId: agent.currentModeId,
-      availableModes: agent.availableModes,
-    });
-    if (!exitModeId) {
-      return null;
-    }
-    const findLabel = (modeId: string | null | undefined): string =>
-      agent.availableModes.find((mode) => mode.id === modeId)?.label ??
-      modeId ??
-      "the current mode";
-    const previousLabel = findLabel(agent.currentModeId);
-    try {
-      await this.applyModeToAgent(agent, session, exitModeId);
-    } catch (error) {
-      this.logger.warn(
-        { err: error, agentId: agent.id, provider: agent.provider, exitModeId },
-        "agent.model.exit_mode_failed",
-      );
-      return {
-        type: "warning",
-        message: `${previousLabel} picks the model for each turn and could not be changed, so it may override this model.`,
-      };
-    }
-    return {
-      type: "info",
-      message: `Switched off ${previousLabel} to ${findLabel(agent.currentModeId)}: it picks the model for each turn, which would override your choice.`,
-    };
   }
 
   async setAgentThinkingOption(
     agentId: string,
     thinkingOptionId: string | null,
   ): Promise<AgentProviderNotice | null> {
-    return this.withAgentConfigLock(agentId, () =>
-      this.setAgentThinkingOptionUnlocked(agentId, thinkingOptionId),
-    );
-  }
-
-  private async setAgentThinkingOptionUnlocked(
-    agentId: string,
-    thinkingOptionId: string | null,
-  ): Promise<AgentProviderNotice | null> {
     const agent = this.requireSessionAgent(agentId);
+    assertWorkflowConfigurationChange(agent); // OTTO(workflows): preserve the captured model configuration.
     const normalizedThinkingOptionId =
       typeof thinkingOptionId === "string" && thinkingOptionId.trim().length > 0
         ? thinkingOptionId
@@ -3531,12 +2239,19 @@ export class AgentManager {
     if (agent.session.setThinkingOption) {
       notice = (await agent.session.setThinkingOption(normalizedThinkingOptionId)) ?? null;
     }
+    await this.drainSessionEvents(agentId);
 
-    agent.config.thinkingOptionId = normalizedThinkingOptionId ?? undefined;
+    let effectiveThinkingOptionId = normalizedThinkingOptionId;
+    const runtimeInfo = await agent.session.getRuntimeInfo();
+    if (runtimeInfo.thinkingOptionId !== undefined) {
+      effectiveThinkingOptionId = runtimeInfo.thinkingOptionId;
+    }
+
+    agent.config.thinkingOptionId = effectiveThinkingOptionId ?? undefined;
     if (agent.runtimeInfo) {
       agent.runtimeInfo = {
         ...agent.runtimeInfo,
-        thinkingOptionId: normalizedThinkingOptionId,
+        thinkingOptionId: effectiveThinkingOptionId,
       };
     }
     this.touchUpdatedAt(agent);
@@ -3544,189 +2259,16 @@ export class AgentManager {
     return notice;
   }
 
-  /**
-   * Live-switch a running agent's personality (or clear it with null). The
-   * prompt half goes through the session's applyPersonality (providers without
-   * it reject - they cannot change a system prompt mid-conversation); the brain
-   * half (model/mode/effort) rides the existing setters. Identity (name/spinner)
-   * follows automatically: agent_state projects it from config.profileSnapshot.
-   * The caller resolves the roster personality against the agent's cwd and
-   * guarantees provider match; this method only applies.
-   */
-  async setAgentPersonality(
-    agentId: string,
-    snapshot: ResolvedProfileSnapshot | null,
-  ): Promise<AgentProviderNotice | null> {
-    return this.withAgentConfigLock(agentId, () =>
-      this.setAgentPersonalityUnlocked(agentId, snapshot),
-    );
-  }
-
-  private async setAgentPersonalityUnlocked(
-    agentId: string,
-    snapshot: ResolvedProfileSnapshot | null,
-  ): Promise<AgentProviderNotice | null> {
-    const agent = this.requireSessionAgent(agentId);
-    const session = agent.session;
-    if (!session.applyPersonality) {
-      throw new Error(
-        `Provider '${agent.config.provider}' does not support switching personality on a running agent`,
-      );
-    }
-    if (snapshot && snapshot.provider !== agent.config.provider) {
-      throw new Error(
-        `Personality "${snapshot.name}" targets provider '${snapshot.provider}', but this agent runs '${agent.config.provider}'`,
-      );
-    }
-
-    // Prompt half. The personality prompt only owns config.systemPrompt when
-    // the caller set none at spawn (mirrors applyProfileIdentityToConfig);
-    // a caller-authored prompt survives the switch. The born team is frozen:
-    // the prompt recomposes against the agent's teamSnapshot, never the
-    // currently-active team - switching to an off-team personality keeps the
-    // team prompt, and clearing the personality keeps team + brain, dropping
-    // only the personality prompt.
-    const teamSnapshot = agent.config.teamSnapshot;
-    const outgoingPersonalityPrompt = agent.config.profileSnapshot?.systemPrompt;
-    // Recompose the outgoing prompt with the SAME role directive it was born
-    // with (its snapshot's roles) so the ownership comparison still matches the
-    // stored systemPrompt; the incoming prompt takes the new personality's roles.
-    const outgoingComposedPrompt = composeTeamAndPersonalityPrompt(
-      teamSnapshot,
-      outgoingPersonalityPrompt,
-      agent.config.profileSnapshot?.roles,
-    );
-    const promptIsPersonalityOwned =
-      agent.config.systemPrompt === undefined ||
-      agent.config.systemPrompt === outgoingComposedPrompt ||
-      agent.config.systemPrompt === outgoingPersonalityPrompt;
-    const nextSystemPrompt = promptIsPersonalityOwned
-      ? composeTeamAndPersonalityPrompt(teamSnapshot, snapshot?.systemPrompt, snapshot?.roles)
-      : agent.config.systemPrompt;
-
-    // The incoming personality brings its own lessons, so a live switch has to
-    // re-resolve the brief exactly as a spawn would - otherwise switching to a
-    // personality mid-chat gives you its prompt and its brain but not what it
-    // has learned. The augmented prompt goes to the provider; `nextSystemPrompt`
-    // (memory-free) is what persists, keeping the ownership check above valid.
-    const promptWithMemory = promptIsPersonalityOwned
-      ? await this.withPersonalityMemory(nextSystemPrompt, snapshot, agent.config.cwd)
-      : nextSystemPrompt;
-    const providerSystemPrompt = await this.withProjectKnowledge(
-      promptWithMemory,
-      agent.config.cwd,
-    );
-
-    const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();
-    const personalityUpdate: AgentPersonalityUpdate = {
-      profileSnapshot: snapshot ?? undefined,
-      systemPrompt: providerSystemPrompt,
-      // Same rule as applyDaemonAppendSystemPrompt: a personality with
-      // respectGlobalAppendPrompt === false owns its whole prompt.
-      daemonAppendSystemPrompt:
-        daemonAppendSystemPrompt && snapshot?.respectGlobalAppendPrompt !== false
-          ? daemonAppendSystemPrompt
-          : undefined,
-    };
-    const notices: (AgentProviderNotice | null)[] = [];
-
-    // Brain half first - only when binding a personality; clearing keeps the
-    // brain. Ordering matters for Claude: applyPersonality flags a query
-    // restart, and the brain's setModel/setMode call ensureQuery, which would
-    // then tear down + respawn the CLI synchronously inside this RPC. Brain
-    // first rides the live query; the restart stays lazy (next turn).
-    if (snapshot) {
-      notices.push(...(await this.applyPersonalityBrain(agent, session, snapshot)));
-    }
-    notices.push((await session.applyPersonality(personalityUpdate)) ?? null);
-
-    // Stored config: personality + prompt persist; daemonAppendSystemPrompt is
-    // deliberately runtime-only (re-derived from daemon settings on resume).
-    agent.config.profileSnapshot = snapshot ?? undefined;
-    agent.config.systemPrompt = nextSystemPrompt;
-
-    this.touchUpdatedAt(agent);
-    this.emitState(agent);
-    return notices.find((notice) => notice !== null) ?? null;
-  }
-
-  /**
-   * Apply a personality's brain fields (model/effort/mode) to a live session and
-   * mirror them onto the managed agent's config/runtimeInfo. Split out of
-   * setAgentPersonality purely to keep that method under the complexity ceiling.
-   */
-  private async applyPersonalityBrain(
-    agent: ManagedAgent,
-    session: AgentSession,
-    snapshot: ResolvedProfileSnapshot,
-  ): Promise<(AgentProviderNotice | null)[]> {
-    const notices: (AgentProviderNotice | null)[] = [];
-    // Ordering carries two invariants:
-    // 1. setMode is the fallible step (Claude rejects e.g. "auto" on
-    //    Bedrock/Vertex), so it runs FIRST - a mode failure must not leave a
-    //    half-applied switch (new model + old identity) behind.
-    // 2. Mode and model ride the live query (Claude: ensureQuery + SDK
-    //    setters) and run before setThinkingOption, which flags a query
-    //    restart.
-    if (snapshot.modeId !== undefined) {
-      notices.push((await session.setMode(snapshot.modeId)) ?? null);
-      const currentMode = (await session.getCurrentMode()) ?? snapshot.modeId;
-      agent.config.modeId = currentMode ?? undefined;
-      agent.currentModeId = currentMode;
-      if (agent.runtimeInfo) {
-        agent.runtimeInfo = { ...agent.runtimeInfo, modeId: currentMode };
-      }
-    }
-    if (session.setModel) {
-      await session.setModel(snapshot.model);
-      agent.config.model = snapshot.model;
-      if (agent.runtimeInfo) {
-        agent.runtimeInfo = { ...agent.runtimeInfo, model: snapshot.model };
-      }
-    }
-    // A personality that declares no mode leaves the agent in whatever mode it
-    // was already in. If that mode picks the model itself, the personality's
-    // model would silently lose to it, exactly as an explicit pick would - so
-    // it leaves the mode on the same terms. A personality that DOES declare a
-    // mode has already said what it wants, and that stands even when the mode
-    // it names is the model-picking one.
-    if (snapshot.modeId === undefined && snapshot.model) {
-      notices.push(await this.exitModelSelectingMode(agent, session));
-    }
-    if (session.setThinkingOption) {
-      // Always set - a snapshot without an effort (degraded or unspecified)
-      // clears the previous personality's thinking option back to the model
-      // default instead of silently carrying it onto the new model.
-      notices.push((await session.setThinkingOption(snapshot.thinkingOptionId ?? null)) ?? null);
-      agent.config.thinkingOptionId = snapshot.thinkingOptionId;
-      if (agent.runtimeInfo) {
-        agent.runtimeInfo = {
-          ...agent.runtimeInfo,
-          thinkingOptionId: snapshot.thinkingOptionId,
-        };
-      }
-    }
-    return notices;
-  }
-
   async setAgentFeature(agentId: string, featureId: string, value: unknown): Promise<void> {
-    return this.withAgentConfigLock(agentId, () =>
-      this.setAgentFeatureUnlocked(agentId, featureId, value),
-    );
-  }
-
-  private async setAgentFeatureUnlocked(
-    agentId: string,
-    featureId: string,
-    value: unknown,
-  ): Promise<void> {
     const agent = this.requireAgent(agentId);
+    assertWorkflowConfigurationChange(agent); // OTTO(workflows): features may widen native tool authority.
 
     if (!agent.session.setFeature) {
       throw new Error("Agent session does not support setting features");
     }
 
     await agent.session.setFeature(featureId, value);
+    await this.drainSessionEvents(agentId);
     agent.config.featureValues = { ...agent.config.featureValues, [featureId]: value };
     this.touchUpdatedAt(agent);
     this.emitState(agent);
@@ -3751,8 +2293,10 @@ export class AgentManager {
   }
 
   async setLabels(agentId: string, labels: Record<string, string>): Promise<void> {
-    const agent = this.requireAgent(agentId);
-    await this.writeLabels(agent.id, labels);
+    await this.runLifecycleMutation(agentId, async () => {
+      const agent = this.requireAgent(agentId);
+      await this.writeLabels(agent.id, labels);
+    });
   }
 
   private async writeLabels(agentId: string, patch: AgentLabelPatch): Promise<WriteLabelsResult> {
@@ -3788,61 +2332,6 @@ export class AgentManager {
     };
     await registry.upsert(nextRecord);
     return nextRecord;
-  }
-
-  /**
-   * Re-stamps which workspace owns a chat.
-   *
-   * A move and nothing more: ownership is the single `workspaceId` field, agent
-   * state on disk is keyed by agent id rather than by workspace, and the timeline
-   * store is keyed by agent id too, so there is nothing to migrate alongside it.
-   *
-   * Deliberately does **not** touch `cwd`. The two answer different questions
-   * (see ManagedAgent.workspaceId) and are not required to agree, so a moved chat
-   * keeps running where it was started. See `transferAgentWorkspaceCommand` for
-   * the preconditions on the target workspace.
-   */
-  async transferAgentWorkspace(
-    agentId: string,
-    workspaceId: string,
-  ): Promise<{ record: StoredAgentRecord; live: boolean }> {
-    return this.runLifecycleMutation(agentId, () =>
-      this.transferAgentWorkspaceUnlocked(agentId, workspaceId),
-    );
-  }
-
-  private async transferAgentWorkspaceUnlocked(
-    agentId: string,
-    workspaceId: string,
-  ): Promise<{ record: StoredAgentRecord; live: boolean }> {
-    const registry = this.requireRegistry();
-    const liveAgent = this.agents.get(agentId);
-    if (liveAgent) {
-      liveAgent.workspaceId = workspaceId;
-      this.touchUpdatedAt(liveAgent);
-      await this.persistSnapshot(liveAgent);
-      // Broadcast so every client's ownership gate re-evaluates: the tab appears
-      // in the target workspace and prunes from the source without either
-      // workspace being told about it directly.
-      this.emitState(liveAgent, { persist: false });
-      const record = await registry.get(agentId);
-      if (!record) {
-        throw new Error(`Agent not found in storage after workspace transfer: ${agentId}`);
-      }
-      return { record, live: true };
-    }
-
-    const record = await registry.get(agentId);
-    if (!record) {
-      throw new Error(`Agent not found: ${agentId}`);
-    }
-    const nextRecord: StoredAgentRecord = {
-      ...record,
-      workspaceId,
-      updatedAt: this.nextStoredUpdatedAt(record),
-    };
-    await registry.upsert(nextRecord);
-    return { record: nextRecord, live: false };
   }
 
   async detachAgent(agentId: string): Promise<{
@@ -3954,20 +2443,22 @@ export class AgentManager {
 
   async archiveSnapshot(agentId: string, archivedAt: string): Promise<StoredAgentRecord> {
     return this.runLifecycleMutation(agentId, () =>
-      this.archiveSnapshotInternal(agentId, archivedAt),
+      this.archiveSnapshotUnlocked(agentId, archivedAt),
     );
   }
 
-  private async archiveSnapshotInternal(
+  private async archiveSnapshotUnlocked(
     agentId: string,
     archivedAt: string,
   ): Promise<StoredAgentRecord> {
     const registry = this.requireRegistry();
-    const liveAgent = this.getAgent(agentId);
-    if (liveAgent) {
-      await this.persistSnapshot(liveAgent, {
-        internal: liveAgent.internal,
-      });
+    // A stored-only archive can have waited behind a persisted resume. Reuse the
+    // live archive transition so its newly acquired runtime is closed as well.
+    if (this.agents.has(agentId)) {
+      await this.archiveAgentUnlocked(agentId, archivedAt);
+      const archivedRecord = await registry.get(agentId);
+      if (!archivedRecord) throw new Error(`Agent not found: ${agentId}`);
+      return archivedRecord;
     }
 
     const record = await registry.get(agentId);
@@ -3979,26 +2470,76 @@ export class AgentManager {
 
     await this.syncNativeArchiveState(record.provider, record.persistence, "archive");
 
-    if (this.agents.has(agentId)) {
-      this.notifyAgentState(agentId);
-    } else {
-      this.ottoToolPolicies.delete(agentId);
-      if (!nextRecord.internal) {
-        this.dispatchStoredAgentState(nextRecord);
-      }
-    }
-
-    // Same cascade archiveAgent performs. Reached when the parent was already
-    // closed, which is exactly when it is easy to miss: without it a closed
-    // orchestrator archives alone and its managed children stay behind.
-    await this.cascadeArchiveChildren(agentId);
+    this.discardRetainedAgentState(agentId);
+    if (!nextRecord.internal) this.dispatchStoredAgentState(nextRecord);
 
     await this.fireAgentArchived(agentId);
+    await this.cascadeArchiveChildren(record);
 
     return nextRecord;
   }
 
+  // OTTO(workspace-lifecycle): move only the owning workspace stamp, in the same
+  // lifecycle lane as a persisted resume. The runtime, cwd and transcript stay intact.
+  async moveChatWorkspace(input: {
+    agentId: string;
+    fromWorkspaceId: string | null;
+    workspaceId: string;
+    validateDestination(): Promise<void>;
+    releaseAuthoring(labels: Record<string, string>): Promise<string | null> | undefined;
+  }): Promise<void> {
+    return this.runLifecycleMutation(input.agentId, async () => {
+      const registry = this.requireRegistry();
+      const stored = await registry.get(input.agentId);
+      const live = this.agents.get(input.agentId);
+      if (!stored || stored.internal || stored.archivedAt || stored.owner?.kind === "daemon") {
+        throw new Error("This chat cannot be moved.");
+      }
+      const current = live?.workspaceId ?? stored.workspaceId;
+      if (current === input.workspaceId) return;
+      if ((current ?? null) !== input.fromWorkspaceId) {
+        throw new Error("This chat moved to another workspace. Open it there to move it again.");
+      }
+      await input.validateDestination();
+      const clearedLabel = await input.releaseAuthoring(live?.labels ?? stored.labels);
+      const labels = clearedLabel
+        ? applyLabelPatch(live?.labels ?? stored.labels, { [clearedLabel]: null })
+        : undefined;
+      if (live) {
+        const previousLabels = live.labels;
+        if (labels) live.labels = labels;
+        live.workspaceId = input.workspaceId;
+        try {
+          await this.persistSnapshot(live);
+        } catch (error) {
+          live.workspaceId = current;
+          live.labels = previousLabels;
+          throw error;
+        }
+        this.emitState(live, { persist: false });
+      } else {
+        const next = {
+          ...stored,
+          ...(labels ? { labels } : {}),
+          workspaceId: input.workspaceId,
+          updatedAt: this.nextStoredUpdatedAt(stored),
+        };
+        await registry.upsert(next);
+        this.dispatchStoredAgentState(next);
+      }
+    });
+  }
+
   async unarchiveSnapshot(
+    agentId: string,
+    updates?: { workspaceId?: string; labels?: AgentLabelPatch },
+  ): Promise<boolean> {
+    return this.runLifecycleMutation(agentId, () =>
+      this.unarchiveSnapshotUnlocked(agentId, updates),
+    );
+  }
+
+  private async unarchiveSnapshotUnlocked(
     agentId: string,
     updates?: { workspaceId?: string; labels?: AgentLabelPatch },
   ): Promise<boolean> {
@@ -4008,8 +2549,9 @@ export class AgentManager {
       return false;
     }
 
-    // Archived history may have loaded a runtime that still owns the native writer.
-    await this.closeAgent(agentId);
+    // Close and native restore share the lifecycle lane with persisted resume.
+    // No new history or interactive runtime can acquire the writer between them.
+    if (this.agents.has(agentId)) await this.closeAgentRuntime(agentId);
     await this.syncNativeArchiveState(record.provider, record.persistence, "restore");
 
     await registry.upsert({
@@ -4074,6 +2616,24 @@ export class AgentManager {
     await this.writeStoredMetadata(agentId, updates);
   }
 
+  private async runLifecycleMutation<T>(agentId: string, mutation: () => Promise<T>): Promise<T> {
+    // Parent cascade classifies a child inside the same lane used by open-tab
+    // label writes, so a received ownership update cannot be overtaken.
+    const previous = this.lifecycleMutationTails.get(agentId) ?? Promise.resolve();
+    const result = previous.catch(() => undefined).then(mutation);
+    const tail = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    this.lifecycleMutationTails.set(agentId, tail);
+    void tail.finally(() => {
+      if (this.lifecycleMutationTails.get(agentId) === tail) {
+        this.lifecycleMutationTails.delete(agentId);
+      }
+    });
+    return result;
+  }
+
   async runAgent(
     agentId: string,
     prompt: AgentPromptInput,
@@ -4114,32 +2674,29 @@ export class AgentManager {
   }
 
   /**
-   * Try to run a prompt out-of-band - i.e. without allocating a foreground turn
+   * Try to run a prompt out-of-band — i.e. without allocating a foreground turn
    * and without canceling any active turn. Returns true when the session
    * accepted the prompt as a side-effect command (e.g. /goal pause). Events
    * emitted by the handler flow through dispatchStream so they persist and
    * broadcast like normal timeline events.
    */
-  tryRunOutOfBand(
-    agentId: string,
-    prompt: AgentPromptInput,
-    runOptions?: AgentRunOptions,
-  ): boolean {
+  tryRunOutOfBand(agentId: string, prompt: AgentPromptInput, options?: AgentRunOptions): boolean {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     const agent = this.requireSessionAgent(agentId);
-    const handler = agent.session.tryHandleOutOfBand?.(prompt);
+    assertWorkflowInteractiveControl(agent, isControlledWorkflowConductor(this, agent.id)); // OTTO(workflows): no side-effect command can bypass run ownership.
+    // Providers parse slash commands from the raw text, so a command another agent sent
+    // must reach them without its sender envelope.
+    const agentMessage = typeof prompt === "string" ? parseAgentMessage(prompt) : null;
+    const handler = agent.session.tryHandleOutOfBand?.(
+      agentMessage?.source ? agentMessage.text : prompt,
+    );
     if (!handler) {
       return false;
     }
-    // No foreground turn, but the agent is busy until the handler settles, and
-    // `/compact` rewrites the whole conversation while it does. Saying so is
-    // what keeps the queue honest: `hasInFlightRun` now reports true, so
-    // `delivery: "queue"` parks the next prompt instead of racing it into the
-    // session mid-rewrite, and the client sees a running agent so the composer
-    // offers Queue. Silent by construction - a side-effect command finishing is
-    // not an assistant reply, so it must not raise an unread badge.
-    agent.outOfBandRunCount = (agent.outOfBandRunCount ?? 0) + 1;
-    this.silentOutOfBandAgentIds.add(agent.id);
-    agent.lifecycle = "running";
+    if (options?.clientMessageId) {
+      this.recordSubmittedPrompt(agent, prompt, options.clientMessageId, "accepted");
+      this.emitState(agent);
+    }
     const dispatch = (event: AgentStreamEvent): void => {
       // Persist timeline items so they show up in fetchAgentTimeline; broadcast
       // for live subscribers. Other event types are broadcast only.
@@ -4155,35 +2712,6 @@ export class AgentManager {
       }
       this.dispatchStream(agent.id, event, { timestamp: new Date().toISOString() });
     };
-
-    // An out-of-band command allocates no turn, so no provider ever echoes the
-    // prompt back the way startTurn does. Record it HERE, before the handler
-    // runs, or the typed command exists only as the client's optimistic row:
-    // absent from the persisted timeline, so it disappears on reload, and
-    // unordered against the rows the handler goes on to emit - which is how a
-    // /compact separator ends up rendered ABOVE the "/compact" the reader
-    // typed. Emitting it first also gives it the lower seq, so the separator
-    // sorts after it on every rehydration.
-    const promptText = typeof prompt === "string" ? prompt : "";
-    if (promptText && !isSystemInjectedEnvelope(promptText)) {
-      const clientMessageId = normalizeClientMessageId(runOptions?.clientMessageId);
-      dispatch({
-        type: "timeline",
-        provider: agent.provider,
-        item: {
-          type: "user_message",
-          text: promptText,
-          ...(runOptions?.messageId ? { messageId: runOptions.messageId } : {}),
-          ...(clientMessageId ? { clientMessageId } : {}),
-        },
-      });
-      agent.lastUserMessageAt = new Date();
-    }
-    // Unconditional: the running lifecycle set above has to reach the client
-    // even for a system-injected or structured prompt that records no user row.
-    this.touchUpdatedAt(agent);
-    this.emitState(agent);
-
     void (async () => {
       try {
         await handler.run({ emit: dispatch });
@@ -4194,72 +2722,9 @@ export class AgentManager {
           provider: agent.provider,
           item: { type: "assistant_message", text: `[Error] ${text}` },
         });
-      } finally {
-        this.finalizeOutOfBandRun(agent.id);
       }
     })();
     return true;
-  }
-
-  /**
-   * Settle an out-of-band command the way `finalizeForegroundTurn` settles a
-   * turn: put the agent back to rest, and hand the steer queue its next batch.
-   *
-   * The out-of-band path had no drain edge at all, so a prompt queued while
-   * `/compact` rewrote the context sat in the Queue track forever - nothing
-   * ever finished a turn to release it. The drain conditions are deliberately
-   * the foreground finalize's: a terminal error or a held queue (the user
-   * pressed Stop) leaves the entries parked for the user to send.
-   */
-  private finalizeOutOfBandRun(agentId: string): void {
-    const agent = this.agents.get(agentId);
-    if (!agent) {
-      return;
-    }
-    agent.outOfBandRunCount = Math.max(0, (agent.outOfBandRunCount ?? 1) - 1);
-    if (agent.outOfBandRunCount > 0) {
-      // A second out-of-band command is still running; the last one out settles.
-      return;
-    }
-    // A real turn took the agent over while the command ran - out-of-band
-    // deliberately does not block one. It owns the lifecycle and the drain now,
-    // and reporting idle over it would blank a live turn.
-    if (
-      agent.activeForegroundTurnId ||
-      this.foregroundRuns.hasPendingRun(agentId) ||
-      agent.pendingSteerDrain
-    ) {
-      this.silentOutOfBandAgentIds.delete(agentId);
-      return;
-    }
-    const terminalError = agent.lastError;
-    const drainBatch =
-      !terminalError && !agent.steerQueueHeld ? takeNextSteerQueueBatch(agent.steerQueue) : null;
-    if (drainBatch) {
-      agent.steerQueue = drainBatch.rest;
-      agent.pendingSteerDrain = true;
-      // The drained batch runs as a real turn, and its completion is the user's
-      // to be told about - the silence only ever covered the command itself.
-      this.silentOutOfBandAgentIds.delete(agentId);
-      (agent as ActiveManagedAgent).lifecycle = "running";
-    } else {
-      (agent as ActiveManagedAgent).lifecycle = terminalError ? "error" : "idle";
-    }
-    this.logger.debug(
-      {
-        agentId,
-        provider: agent.provider,
-        lifecycle: agent.lifecycle,
-        steerDrainSize: drainBatch?.entries.length ?? 0,
-        steerQueueSize: agent.steerQueue.length,
-      },
-      "agent.manager.out_of_band.finalize",
-    );
-    this.touchUpdatedAt(agent);
-    this.emitState(agent);
-    if (drainBatch) {
-      void this.dispatchSteerQueueBatch(agentId, drainBatch.entries);
-    }
   }
 
   async appendTimelineItem(
@@ -4267,13 +2732,14 @@ export class AgentManager {
     item: AgentTimelineItem,
   ): Promise<{ seq: number; epoch: string }> {
     const agent = this.requireAgent(agentId);
+    item = limitAgentTimelineItemContent(item);
     this.touchUpdatedAt(agent);
     const row = this.recordTimeline(agentId, item);
     this.dispatchStream(
       agentId,
       {
         type: "timeline",
-        item: row.item,
+        item,
         provider: agent.provider,
       },
       {
@@ -4289,23 +2755,11 @@ export class AgentManager {
   async emitLiveTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
     const agent = this.requireAgent(agentId);
     this.touchUpdatedAt(agent);
-    this.dispatchStream(
-      agentId,
-      {
-        // Live-only items skip the store, so they skip the bound recordTimeline
-        // applies. The client renders these the same as persisted ones and
-        // should not have to cope with a megabyte here either.
-        type: "timeline",
-        item: limitAgentTimelineItemContent(item),
-        provider: agent.provider,
-      },
-      // No `seq` - this row was never committed, and that absence is how the
-      // client tells a provisional apart from a persisted row. The epoch still
-      // ships: without it a reconnecting client cannot tell whether the
-      // provisional it is holding predates a rewind, so it kept replaying stale
-      // provisionals across the reconnect.
-      { epoch: this.timelineStore.getEpoch(agentId) },
-    );
+    this.dispatchStream(agentId, {
+      type: "timeline",
+      item,
+      provider: agent.provider,
+    });
   }
 
   private async startPendingForegroundTurn(params: {
@@ -4317,8 +2771,9 @@ export class AgentManager {
   }): Promise<string> {
     const { agent, agentId, pendingRun, prompt, options } = params;
     try {
-      await this.assertDirectoryAvailable?.(agent.config.cwd);
-      const result = await agent.session.startTurn(prompt, options);
+      const result = await startScheduleProviderTurn(this, agentId, options, () =>
+        agent.session.startTurn(prompt, options),
+      ); // OTTO(schedules): a timed-out pending start cannot release a later turn into that session.
       if (pendingRun.settled) {
         throw new Error(`Agent ${agentId} run was canceled before its turn started`);
       }
@@ -4331,19 +2786,25 @@ export class AgentManager {
         pendingRun.start = { status: "failed", error: error.message };
         agent.pendingReplacement = false;
         if (!agent.activeForegroundTurnId) agent.lifecycle = "idle";
-        this.foregroundRuns.settleForegroundRun(agentId, pendingRun.token);
+        this.runs.settleForegroundRun(agentId, pendingRun.token);
         throw error;
       }
       agent.pendingReplacement = false;
       const errorMsg = error instanceof Error ? error.message : "Failed to start turn";
       pendingRun.start = { status: "failed", error: errorMsg };
+      // A terminal rejection belongs after the submitted prompt even though no provider turn exists.
+      if (options?.clientMessageId) {
+        this.recordSubmittedPrompt(agent, prompt, options.clientMessageId, "rejected", {
+          messageId: options.clientMessageId,
+        });
+      }
       await this.handleStreamEvent(agent, {
         type: "turn_failed",
         provider: agent.provider,
         error: errorMsg,
       });
       this.finalizeForegroundTurn(agent);
-      this.foregroundRuns.settleForegroundRun(agentId, pendingRun.token);
+      this.runs.settleForegroundRun(agentId, pendingRun.token);
       throw error;
     }
   }
@@ -4353,7 +2814,15 @@ export class AgentManager {
     prompt: AgentPromptInput,
     options?: AgentRunOptions,
   ): AsyncGenerator<AgentStreamEvent> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
+    assertScheduleTurn(options, agentId, "admit"); // OTTO(schedules)
     const existingAgent = this.requireSessionAgent(agentId);
+    assertWorkflowTurn(
+      existingAgent,
+      options,
+      "admit",
+      isControlledWorkflowConductor(this, agentId),
+    ); // OTTO(workflows): consume the host's private one-use admission.
     this.logger.trace(
       {
         agentId,
@@ -4362,13 +2831,14 @@ export class AgentManager {
         turnId: existingAgent.activeForegroundTurnId ?? undefined,
         lifecycle: existingAgent.lifecycle,
         activeForegroundTurnId: existingAgent.activeForegroundTurnId,
-        hasPendingForegroundRun: this.foregroundRuns.hasPendingRun(agentId),
+        hasTrackedRun: this.runs.hasRun(agentId),
         promptType: typeof prompt === "string" ? "string" : "structured",
         hasRunOptions: Boolean(options),
       },
       "agent.manager.stream.request",
     );
-    if (existingAgent.activeForegroundTurnId || this.foregroundRuns.hasPendingRun(agentId)) {
+    if (existingAgent.activeForegroundTurnId || this.runs.hasRun(agentId)) {
+      assertScheduleTurnIdle(options, true); // OTTO(schedules): a proven idle-claim rejection has no provider effects.
       this.logger.trace(
         {
           agentId,
@@ -4376,7 +2846,7 @@ export class AgentManager {
           sessionId: existingAgent.persistence?.sessionId ?? undefined,
           turnId: existingAgent.activeForegroundTurnId ?? undefined,
           lifecycle: existingAgent.lifecycle,
-          hasPendingForegroundRun: this.foregroundRuns.hasPendingRun(agentId),
+          hasTrackedRun: this.runs.hasRun(agentId),
         },
         "agent.manager.stream.reject",
       );
@@ -4384,47 +2854,38 @@ export class AgentManager {
     }
 
     const agent = existingAgent;
-    agent.pendingSteerDrain = false;
-    // A new run resumes the queue: the hold only ever covered the finalize of
-    // the turn that was cancelled.
-    agent.steerQueueHeld = false;
+    const isReplacement = agent.pendingReplacement;
     agent.lastError = undefined;
 
-    // Passive stale-todo nudge: ride a reminder along on this turn if the agent
-    // has an open todo list. Stripped from the recorded user message for display
-    // (normalizeUserMessageForDisplay); the provider still sees it this turn.
-    const effectivePrompt = this.maybeAppendTodoNudge(agent, prompt);
-    const isCompact = isCompactCommand(prompt);
-
-    const pendingRun = this.foregroundRuns.createPendingRun(agentId);
+    const pendingRun = this.runs.createPendingRun(agentId);
 
     const streamForwarder = async function* streamForwarder(this: AgentManager) {
+      // OTTO(workflows): revoke late consumption and release only the pending run this iterator owns.
+      try {
+        assertScheduleTurn(options, agentId, "execute"); // OTTO(schedules)
+        assertWorkflowTurn(agent, options, "execute", isControlledWorkflowConductor(this, agentId));
+      } catch (error) {
+        this.runs.settleForegroundRun(agentId, pendingRun.token);
+        throw error;
+      }
       let turnId: string;
       let turnStream: ReturnType<AgentRunState["createTurnStream"]> | null = null;
-      // `effectivePrompt`, not `prompt`: the todo nudge rides this turn.
       turnId = await this.startPendingForegroundTurn({
         agent,
         agentId,
         pendingRun,
-        prompt: effectivePrompt,
+        prompt,
         options,
       });
 
+      if (isReplacement) {
+        agent.pendingReplacement = false;
+      }
+      const turnStartedAt = new Date();
       pendingRun.start = { status: "started", turnId };
       agent.activeForegroundTurnId = turnId;
-      if (isCompact) {
-        this.silentCompletionTurnIds.set(agentId, turnId);
-      } else {
-        this.silentCompletionTurnIds.delete(agentId);
-      }
-      // Cleared here, not when the run was requested: between the old turn
-      // being cancelled and this one becoming current there is a gap in which
-      // the old turn's terminal event can still arrive. The flag is what stops
-      // that stale terminal from reporting the agent idle, so it has to survive
-      // until a replacement turn is actually current.
-      agent.pendingReplacement = false;
-      const turnStartedAt = new Date();
       this.openActiveTurn(agent, turnId, turnStartedAt);
+      recordScheduleTurn(options, agentId, turnId, agent.session); // OTTO(schedules): receipt binds this provider session, not a reusable turn-id string.
       agent.lifecycle = "running";
       this.touchUpdatedAt(agent);
       // AgentManager owns the accepted-turn boundary. Publish liveness before the canonical
@@ -4444,7 +2905,7 @@ export class AgentManager {
           )
         : undefined;
       if (options?.clientMessageId) {
-        this.recordSubmittedPrompt(agent, prompt, options.clientMessageId, {
+        this.recordSubmittedPrompt(agent, prompt, options.clientMessageId, "accepted", {
           messageId: options.clientMessageId,
           turnId,
           providerMessageId:
@@ -4474,14 +2935,10 @@ export class AgentManager {
         "agent.manager.stream.start",
       );
 
-      turnStream = this.foregroundRuns.createTurnStream(turnId);
-      this.foregroundRuns.addWaiter(agent, turnStream.waiter);
+      turnStream = this.runs.createTurnStream(turnId);
+      this.runs.addWaiter(agent, turnStream.waiter);
 
       try {
-        // The accepted turn_started is yielded here, by the manager, not
-        // relayed from the provider's echo. A provider that echoes the start
-        // before startTurn resolves has that echo staged and dropped above, so
-        // relying on it left the consumer waiting on an event that never came.
         const acceptedTurnStartedEvent: AgentStreamEvent = {
           type: "turn_started",
           provider: agent.provider,
@@ -4493,9 +2950,9 @@ export class AgentManager {
         }
       } finally {
         if (turnStream) {
-          this.foregroundRuns.deleteWaiter(agent, turnStream.waiter);
+          this.runs.deleteWaiter(agent, turnStream.waiter);
         }
-        this.foregroundRuns.settleForegroundRun(agentId, pendingRun.token);
+        this.runs.settleForegroundRun(agentId, pendingRun.token);
         if (!agent.activeForegroundTurnId) {
           await this.refreshRuntimeInfo(agent);
         }
@@ -4508,36 +2965,14 @@ export class AgentManager {
   private finalizeForegroundTurn(agent: ActiveManagedAgent, turnId?: string): void {
     const mutableAgent = agent;
     if (turnId) {
-      this.foregroundRuns.rememberFinalizedTurn(mutableAgent, turnId);
+      this.runs.rememberFinalizedTurn(mutableAgent, turnId);
     }
     mutableAgent.activeForegroundTurnId = null;
     this.applyActiveTurnTerminal(mutableAgent, turnId);
     const terminalError = mutableAgent.lastError;
     const shouldHoldBusyForReplacement = mutableAgent.pendingReplacement && !terminalError;
-    // Before the drain is decided: if this turn would otherwise leave the agent
-    // idle with a stale todo list, park a one-shot reconcile turn on the queue so
-    // the drain below runs it instead of going idle. Enqueuing here (not in the
-    // idle-attention hook) reuses the existing steer machinery and avoids
-    // re-entering the turn lifecycle. The method owns its own guards.
-    this.maybeEnqueueTodoReconcile(mutableAgent);
-    // Queue drain. Decided SYNCHRONOUSLY here, before the state emit, so a
-    // message enqueued while the handoff is in flight sees a busy agent and is
-    // buffered instead of racing into a second concurrent turn. A terminal
-    // error (or a replacement already holding the slot) skips the drain: a
-    // queued turn must never run unprompted into a broken session - the queue
-    // is held and surfaced so the supervisor decides. A cancel holds it for the
-    // same reason: the user pressed stop, so nothing new starts on its own,
-    // and the queue stays put for them to send when ready.
-    const drainBatch =
-      !shouldHoldBusyForReplacement && !terminalError && !mutableAgent.steerQueueHeld
-        ? takeNextSteerQueueBatch(mutableAgent.steerQueue)
-        : null;
-    if (drainBatch) {
-      mutableAgent.steerQueue = drainBatch.rest;
-      mutableAgent.pendingSteerDrain = true;
-    }
     let nextLifecycle: "running" | "error" | "idle";
-    if (shouldHoldBusyForReplacement || drainBatch) {
+    if (shouldHoldBusyForReplacement) {
       nextLifecycle = "running";
     } else if (terminalError) {
       nextLifecycle = "error";
@@ -4562,8 +2997,6 @@ export class AgentManager {
         lifecycle: mutableAgent.lifecycle,
         terminalError,
         pendingReplacement: mutableAgent.pendingReplacement,
-        steerDrainSize: drainBatch?.entries.length ?? 0,
-        steerQueueSize: mutableAgent.steerQueue.length,
       },
       "agent.manager.finalize",
     );
@@ -4571,202 +3004,58 @@ export class AgentManager {
       this.touchUpdatedAt(mutableAgent);
       this.emitState(mutableAgent);
     }
-    if (drainBatch) {
-      void this.dispatchSteerQueueBatch(agent.id, drainBatch.entries);
-    }
   }
 
-  /**
-   * Park a one-shot todo reconcile turn on the queue when a turn is about to
-   * leave the agent idle with a stale todo list (rows still open). The caller
-   * runs this before deciding the drain, so the parked entry is picked up as the
-   * next turn - the agent finishes the list instead of leaving a half-checked
-   * one for the user to dismiss. Provider-agnostic: reads Otto's own `todo`
-   * timeline item, which every provider's native todo tool feeds.
-   *
-   * Guards: opt-in via agentBehaviors.todoReconcileOnIdle; never for internal
-   * agents; skips a turn that errored, is being replaced, or whose queue is held
-   * (nothing new runs on its own then); only when the agent would otherwise go
-   * idle (nothing already queued); and at most once per unique list state, so an
-   * unchanged stale list (the agent explained why rows stay open) never re-fires.
-   */
-  private maybeEnqueueTodoReconcile(agent: ActiveManagedAgent): void {
-    if (!this.agentBehaviors.todoReconcileOnIdle || agent.internal) {
-      return;
-    }
-    // Mirror the drain's own preconditions: a terminal error, a pending
-    // replacement, or a held queue all mean nothing should start on its own.
-    if (agent.lastError || agent.pendingReplacement || agent.steerQueueHeld) {
-      return;
-    }
-    // Only when the agent would otherwise become idle. A non-empty queue means
-    // real work is already lined up to run next; don't jump ahead of it.
-    if (agent.steerQueue.length > 0 || agent.session === null) {
-      return;
-    }
-    const todo = findLatestTodoItem(this.timelineStore.getItems(agent.id));
-    if (!isStaleTodoList(todo)) {
-      // Clean (or absent) list: clear the guard so a future stale list can fire.
-      this.lastReconciledTodoSignature.delete(agent.id);
-      return;
-    }
-    const signature = todoListSignature(todo);
-    if (this.lastReconciledTodoSignature.get(agent.id) === signature) {
-      return;
-    }
-    this.lastReconciledTodoSignature.set(agent.id, signature);
-    const entry = createSteerQueueEntry({
-      prompt: formatSystemNotificationPrompt(buildTodoReconcileMessage(todo)),
-      source: "system",
-    });
-    agent.steerQueue = [...agent.steerQueue, entry];
-    this.logger.debug(
-      { agentId: agent.id, provider: agent.provider, openItems: todo.items.length },
-      "agent.manager.todo_reconcile.enqueue",
-    );
+  private openActiveTurn(agent: ActiveManagedAgent, turnId: string, startedAt: Date): void {
+    agent.activeTurnId = turnId;
+    agent.activeTurnStartedAt = startedAt;
   }
 
-  /**
-   * Attach the passive stale-todo reminder to an outgoing turn's prompt when the
-   * agent has an open todo list. Opt-in via agentBehaviors.todoNudge; never for
-   * internal agents; never for system-injected turns (chat mentions, schedule
-   * fires, the idle reconcile pass carry their own envelope). Provider-agnostic -
-   * runs at the one seam every provider's startTurn flows through.
-   */
-  private maybeAppendTodoNudge(
+  private applyActiveTurnTerminal(
     agent: ActiveManagedAgent,
-    prompt: AgentPromptInput,
-  ): AgentPromptInput {
-    if (!this.agentBehaviors.todoNudge || agent.internal) {
-      return prompt;
-    }
-    if (typeof prompt === "string" && isSystemInjectedEnvelope(prompt)) {
-      return prompt;
-    }
-    const todo = findLatestTodoItem(this.timelineStore.getItems(agent.id));
-    if (!isStaleTodoList(todo)) {
-      return prompt;
-    }
-    return appendTodoNudgeToPrompt(prompt, todo);
+    turnId?: string,
+    fromHistory = false,
+  ): ActiveTurnTerminalDisposition {
+    if (fromHistory) return "stale";
+    if (!agent.activeTurnId) return "untracked";
+    if (turnId && agent.activeTurnId !== turnId) return "stale";
+    agent.activeTurnId = null;
+    agent.activeTurnStartedAt = null;
+    return "closed_current";
   }
 
-  /**
-   * Deliver a drained batch as the agent's next turn.
-   *
-   * Async because the just-finalized turn's stream generator settles its
-   * pending run in a `finally` that has not run yet - `streamAgent` rejects
-   * with "already has an active run" until it does. `pendingSteerDrain` holds
-   * the agent visibly `running` across that gap.
-   */
-  private async dispatchSteerQueueBatch(
-    agentId: string,
-    entries: SteerQueueEntry[],
-  ): Promise<void> {
-    try {
-      const pendingRun = this.foregroundRuns.getPendingRun(agentId);
-      if (pendingRun && !pendingRun.settled) {
-        await pendingRun.settledPromise;
-      }
-
-      // A closed agent is already out of `this.agents`, and prepareAgentForClosure
-      // empties its queue - nothing left to deliver.
-      const agent = this.agents.get(agentId);
-      if (!agent || !agent.pendingSteerDrain) {
-        return;
-      }
-      // Something else claimed the turn slot while we waited (an interrupting
-      // send, a rewind). Put the batch back at the head rather than starting a
-      // second concurrent turn - the next finalize drains it.
-      if (agent.activeForegroundTurnId || this.foregroundRuns.hasPendingRun(agentId)) {
-        agent.pendingSteerDrain = false;
-        agent.steerQueue = [...entries, ...agent.steerQueue];
-        this.emitState(agent);
-        return;
-      }
-
-      const merged = mergeSteerQueueBatch(entries);
-      this.logger.debug(
-        { agentId, provider: agent.provider, entryCount: entries.length },
-        "agent.manager.steer_queue.dispatch",
-      );
-      for await (const _ of this.streamAgent(agentId, merged.prompt, merged.runOptions)) {
-        // Events are broadcast via AgentManager subscribers.
-      }
-    } catch (error) {
-      this.logger.error({ err: error, agentId }, "agent.manager.steer_queue.dispatch_failed");
-      const agent = this.agents.get(agentId);
-      if (agent && agent.pendingSteerDrain) {
-        agent.pendingSteerDrain = false;
-        if (!agent.activeForegroundTurnId && agent.lifecycle === "running") {
-          (agent as ActiveManagedAgent).lifecycle = "idle";
-        }
-        this.touchUpdatedAt(agent);
-        this.emitState(agent);
-      }
-    }
-  }
-
-  /**
-   * Park a prompt for delivery as the agent's next turn instead of interrupting
-   * the one in flight (`delivery: "queue"`).
-   *
-   * Returns `{ queued: false }` when the agent is idle right now - the caller
-   * dispatches immediately, because "queue" means "don't interrupt", not "wait".
-   * The busy check and the push happen in one synchronous block, so the answer
-   * cannot go stale between them.
-   *
-   * An agent with no live session cannot be busy, so it reports "not queued"
-   * rather than throwing: `delivery: "queue"` must never be the reason a prompt
-   * fails to reach an agent that would have accepted it as `interrupt`. This
-   * matters for the system-injected senders (chat mentions, notify-on-finish),
-   * whose target may be closed or not yet revived.
-   */
-  enqueueSteerMessage(
+  async replaceAgentRun(
     agentId: string,
     prompt: AgentPromptInput,
-    options?: { runOptions?: AgentRunOptions; source?: "user" | "system" },
-  ): { queued: boolean; entry?: SteerQueueEntry } {
-    const agent = this.agents.get(agentId);
-    if (!agent || agent.session === null) {
-      return { queued: false };
-    }
-    if (!this.hasInFlightRun(agentId) && !agent.pendingSteerDrain) {
-      return { queued: false };
-    }
-
-    const entry = createSteerQueueEntry({
-      prompt,
-      ...(options?.runOptions ? { runOptions: options.runOptions } : {}),
-      ...(options?.source ? { source: options.source } : {}),
-    });
-    agent.steerQueue = [...agent.steerQueue, entry];
-    this.logger.debug(
-      { agentId, provider: agent.provider, queueSize: agent.steerQueue.length },
-      "agent.manager.steer_queue.enqueue",
-    );
-
-    // A terminal event finalizes the turn before the stream generator settles
-    // its pending-run record. If a queue request lands after that finalize has
-    // chosen idle but before the pending run is cleared, the normal finalize
-    // drain has already been missed. Claim the batch here and let the existing
-    // dispatcher wait for the old generator to settle before starting it.
+    options?: AgentRunOptions,
+  ): Promise<AsyncGenerator<AgentStreamEvent>> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
+    const snapshot = this.requireAgent(agentId);
+    assertWorkflowInteractiveControl(snapshot, isControlledWorkflowConductor(this, agentId)); // OTTO(workflows): replacement would bypass worker settlement/caps.
     if (
-      agent.lifecycle === "idle" &&
-      !agent.activeForegroundTurnId &&
-      !agent.pendingSteerDrain &&
-      this.foregroundRuns.hasPendingRun(agentId)
+      snapshot.lifecycle !== "running" &&
+      !snapshot.activeForegroundTurnId &&
+      !this.runs.hasRun(agentId)
     ) {
-      const drainBatch = takeNextSteerQueueBatch(agent.steerQueue);
-      if (drainBatch) {
-        agent.steerQueue = drainBatch.rest;
-        agent.pendingSteerDrain = true;
-        (agent as ActiveManagedAgent).lifecycle = "running";
-        void this.dispatchSteerQueueBatch(agentId, drainBatch.entries);
-      }
+      return this.streamAgent(agentId, prompt, options);
     }
+
+    const agent = this.requireSessionAgent(agentId);
+    agent.pendingReplacement = true;
+    agent.lifecycle = "running";
     this.touchUpdatedAt(agent);
     this.emitState(agent);
-    return { queued: true, entry };
+
+    try {
+      await this.cancelAgentRunBefore(agentId, "replace");
+      return this.streamAgent(agentId, prompt, options);
+    } catch (error) {
+      const latest = this.agents.get(agentId);
+      if (latest) {
+        latest.pendingReplacement = false;
+      }
+      throw error;
+    }
   }
 
   async steerAgentRun(
@@ -4774,7 +3063,9 @@ export class AgentManager {
     prompt: AgentPromptInput,
     options?: AgentSteerOptions,
   ): Promise<SteerResult> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     const agent = this.requireSessionAgent(agentId);
+    assertWorkflowInteractiveControl(agent, isControlledWorkflowConductor(this, agentId)); // OTTO(workflows): only the owning engine may continue a worker.
     const expectedTurnId = agent.activeForegroundTurnId ?? agent.activeTurnId;
     if (!expectedTurnId || !agent.session.steerActiveTurn) {
       return { status: "unavailable" };
@@ -4802,7 +3093,9 @@ export class AgentManager {
     prompt: AgentPromptInput,
     options?: AgentSteerOptions,
   ): Promise<ActiveTurnSteerDispatchResult> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     const agent = this.requireSessionAgent(agentId);
+    assertWorkflowInteractiveControl(agent, isControlledWorkflowConductor(this, agentId)); // OTTO(workflows): enforce the same fence for direct steering callers.
     const expectedTurnId = agent.activeForegroundTurnId ?? agent.activeTurnId;
     if (!expectedTurnId) {
       return { status: "inactive" };
@@ -4924,163 +3217,11 @@ export class AgentManager {
     if (!clientMessageId) {
       return;
     }
-    this.recordSubmittedPrompt(agent, prompt, clientMessageId, {
+    this.recordSubmittedPrompt(agent, prompt, clientMessageId, "accepted", {
       messageId: clientMessageId,
       turnId: expectedTurnId,
     });
     this.emitState(agent);
-  }
-
-  getSteerQueue(agentId: string): SteerQueueEntry[] {
-    return this.agents.get(agentId)?.steerQueue ?? [];
-  }
-
-  /**
-   * Re-order the queue (Queue-track move up / move down).
-   *
-   * Order is the whole point of a FIFO, so this is the one edit that changes
-   * what the next turn says without changing what is in the queue. Returns
-   * false when the entry is already gone or the move is a no-op.
-   */
-  reorderSteerQueueEntry(agentId: string, entryId: string, toIndex: number): boolean {
-    const agent = this.agents.get(agentId);
-    if (!agent) {
-      return false;
-    }
-    const reordered = moveSteerQueueEntry(agent.steerQueue, entryId, toIndex);
-    if (!reordered) {
-      return false;
-    }
-    agent.steerQueue = reordered;
-    this.logger.debug(
-      { agentId, provider: agent.provider, entryId, toIndex },
-      "agent.manager.steer_queue.reorder",
-    );
-    this.touchUpdatedAt(agent);
-    this.emitState(agent);
-    return true;
-  }
-
-  /** Pull one entry back out of the queue (Queue-track edit / send now). */
-  removeSteerQueueEntry(agentId: string, entryId: string): SteerQueueEntry | null {
-    const agent = this.agents.get(agentId);
-    if (!agent) {
-      return null;
-    }
-    const entry = agent.steerQueue.find((candidate) => candidate.id === entryId);
-    if (!entry) {
-      return null;
-    }
-    agent.steerQueue = agent.steerQueue.filter((candidate) => candidate.id !== entryId);
-    this.touchUpdatedAt(agent);
-    this.emitState(agent);
-    return entry;
-  }
-
-  /**
-   * Keep the queue, but stop the cancelled turn from draining it.
-   *
-   * Cancel used to empty the queue outright, on the theory that "stop
-   * everything" includes the work lined up behind it. In practice the messages
-   * you queued are the ones you still want: stopping the run is how you make
-   * room for them, so wiping them destroys work the user typed. So stop now
-   * means exactly what it says - nothing new starts by itself - while the
-   * entries stay in the Queue track, ready to edit or send.
-   *
-   * Returns how many entries were held (0 when there was no queue), purely for
-   * logging.
-   */
-  holdSteerQueue(agentId: string): number {
-    const agent = this.agents.get(agentId);
-    if (!agent) {
-      return 0;
-    }
-    agent.steerQueueHeld = true;
-    return agent.steerQueue.length;
-  }
-
-  /**
-   * Drop every queued message - the explicit "clear the queue" verb behind
-   * `agent.queue.clear`, and the way a closing agent sheds its queue. Cancel
-   * does NOT come through here; see `holdSteerQueue`.
-   */
-  clearSteerQueue(agentId: string): number {
-    const agent = this.agents.get(agentId);
-    if (!agent || agent.steerQueue.length === 0) {
-      return 0;
-    }
-    const cleared = agent.steerQueue.length;
-    agent.steerQueue = [];
-    this.touchUpdatedAt(agent);
-    this.emitState(agent);
-    return cleared;
-  }
-
-  replaceAgentRun(
-    agentId: string,
-    prompt: AgentPromptInput,
-    options?: AgentRunOptions,
-  ): AsyncGenerator<AgentStreamEvent> {
-    const snapshot = this.requireAgent(agentId);
-    if (
-      snapshot.lifecycle !== "running" &&
-      !snapshot.activeForegroundTurnId &&
-      !this.foregroundRuns.hasPendingRun(agentId)
-    ) {
-      return this.streamAgent(agentId, prompt, options);
-    }
-
-    const agent = this.requireSessionAgent(agentId);
-    agent.pendingReplacement = true;
-    agent.lifecycle = "running";
-    this.touchUpdatedAt(agent);
-    this.emitState(agent);
-
-    // Started here rather than inside the generator: "replace this run" means
-    // stop the current one now, not whenever something gets around to draining
-    // the replacement's stream. A refused cancel means the previous run is
-    // still going, and starting the replacement anyway would leave two turns
-    // live against one session.
-    const cancellation = (async () => {
-      const result = await this.cancelAgentRun(agentId);
-      if (result.status === "refused") {
-        throw new AgentRunCancellationError(agentId, "replace");
-      }
-    })();
-    // The generator below is the only consumer, but it may not be driven for a
-    // while; park the rejection so it is not reported as unhandled first.
-    cancellation.catch(() => undefined);
-
-    return async function* replaceRunForwarder(this: AgentManager) {
-      try {
-        await cancellation;
-        const nextRun = this.streamAgent(agentId, prompt, options);
-        for await (const event of nextRun) {
-          yield event;
-        }
-      } catch (error) {
-        const latest = this.agents.get(agentId);
-        if (latest) {
-          const latestActive = latest;
-          latestActive.pendingReplacement = false;
-          // A refused cancellation leaves the original run in place, so the
-          // agent really is still running and must keep saying so. Only a
-          // replacement that failed after the cancel succeeded leaves nothing
-          // behind to be running.
-          const originalRunStillLive = error instanceof AgentRunCancellationError;
-          if (
-            !originalRunStillLive &&
-            !latestActive.activeForegroundTurnId &&
-            latestActive.lifecycle === "running"
-          ) {
-            (latestActive as ActiveManagedAgent).lifecycle = "idle";
-          }
-          this.touchUpdatedAt(latestActive);
-          this.emitState(latestActive);
-        }
-        throw error;
-      }
-    }.call(this);
   }
 
   async waitForAgentRunStart(agentId: string, options?: WaitForAgentStartOptions): Promise<void> {
@@ -5089,16 +3230,15 @@ export class AgentManager {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    const pendingRun = this.foregroundRuns.getPendingRun(agentId);
-    const heldForHandoff = snapshot.pendingReplacement || snapshot.pendingSteerDrain;
+    const pendingRun = this.runs.getPendingRun(agentId);
     if (
       (snapshot.lifecycle === "running" || pendingRun?.start.status === "started") &&
-      !heldForHandoff
+      !snapshot.pendingReplacement
     ) {
       return;
     }
 
-    if (!snapshot.activeForegroundTurnId && !pendingRun && !heldForHandoff) {
+    if (!snapshot.activeForegroundTurnId && !pendingRun && !snapshot.pendingReplacement) {
       throw new Error(`Agent ${agentId} has no pending run`);
     }
 
@@ -5157,11 +3297,10 @@ export class AgentManager {
           return true;
         }
 
-        const currentPendingRun = this.foregroundRuns.getPendingRun(agentId);
-        const currentHeldForHandoff = current.pendingReplacement || current.pendingSteerDrain;
+        const currentPendingRun = this.runs.getPendingRun(agentId);
         if (
           (current.lifecycle === "running" || currentPendingRun?.start.status === "started") &&
-          !currentHeldForHandoff
+          !current.pendingReplacement
         ) {
           finishOk();
           return true;
@@ -5177,7 +3316,7 @@ export class AgentManager {
           return true;
         }
 
-        if (!currentPendingRun && !current.activeForegroundTurnId && !currentHeldForHandoff) {
+        if (!currentPendingRun && !current.activeForegroundTurnId && !current.pendingReplacement) {
           finishErr(new Error(`Agent ${agentId} run finished before starting`));
           return true;
         }
@@ -5221,240 +3360,123 @@ export class AgentManager {
       }
 
       this.touchUpdatedAt(agent);
-      this.emitState(agent);
-      // The refreshed state is out, so the ordering obligation this buffer
-      // exists to enforce is discharged - drop the marker HERE rather than in
-      // `finally`. Holding it across `persistSnapshot` kept buffering
-      // resolutions behind a disk write, and a provider that answers faster
-      // than the disk (any local one) finished its whole turn in that window,
-      // so the client saw `turn_completed` with no `permission_resolved` at
-      // all. Past this line a resolution takes the normal dispatch path.
-      agent.inFlightPermissionResponses.delete(requestId);
-      this.flushBufferedPermissionResolution(agent, requestId);
       await this.persistSnapshot(agent);
+      this.emitState(agent);
+
+      const bufferedResolution = agent.bufferedPermissionResolutions.get(requestId);
+      if (bufferedResolution) {
+        agent.bufferedPermissionResolutions.delete(requestId);
+        this.dispatchStream(agent.id, bufferedResolution, { timestamp: new Date().toISOString() });
+      }
 
       return result;
     } finally {
       agent.inFlightPermissionResponses.delete(requestId);
-      // Deleting the in-flight marker first means a resolution that arrives
-      // from here on dispatches through the normal path. Anything already
-      // buffered still has to be flushed rather than dropped: discarding it
-      // silently loses the only signal the client gets that its own approval
-      // took effect.
-      this.flushBufferedPermissionResolution(agent, requestId);
+      agent.bufferedPermissionResolutions.delete(requestId);
     }
   }
 
-  private flushBufferedPermissionResolution(agent: ActiveManagedAgent, requestId: string): void {
-    const buffered = agent.bufferedPermissionResolutions.get(requestId);
-    if (!buffered) {
-      return;
-    }
-    agent.bufferedPermissionResolutions.delete(requestId);
-    this.dispatchStream(agent.id, buffered, { timestamp: new Date().toISOString() });
+  async cancelAgentRun(
+    agentId: string,
+    receipt?: ScheduleTurnReceipt,
+  ): Promise<AgentRunCancellationResult> {
+    // OTTO(schedules): compare the private session/turn receipt inside the existing mutation queue.
+    return this.runForegroundMutation(agentId, () => this.cancelAgentRunNow(agentId, receipt));
   }
 
-  /**
-   * Cancellation runs on the same foreground-mutation tail as steer admission,
-   * so a replacement issued while a steer is still in flight waits for that
-   * steer to settle instead of interrupting a turn the steer may have just
-   * been accepted into.
-   */
-  async cancelAgentRun(agentId: string): Promise<AgentRunCancellationResult> {
-    return this.runForegroundMutation(agentId, () => this.cancelAgentRunNow(agentId));
-  }
-
-  private async cancelAgentRunNow(agentId: string): Promise<AgentRunCancellationResult> {
+  private async cancelAgentRunNow(
+    agentId: string,
+    receipt?: ScheduleTurnReceipt,
+  ): Promise<AgentRunCancellationResult> {
     const agent = this.requireSessionAgent(agentId);
-    const pendingRun = this.foregroundRuns.getPendingRun(agentId);
-    const foregroundTurnId = agent.activeForegroundTurnId;
-    const hasForegroundTurn = Boolean(foregroundTurnId);
-    const isAutonomousRunning = agent.lifecycle === "running" && !hasForegroundTurn && !pendingRun;
-
-    if (!hasForegroundTurn && !isAutonomousRunning && !pendingRun) {
+    // OTTO(schedules): do not cancel a replacement session or a later manual turn.
+    if (receipt && !ownsScheduleTurn(receipt, agentId, agent.activeForegroundTurnId, agent.session))
+      return { status: "not_running" };
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules): a pending start/interrupt cannot be superseded by another cancellation.
+    const run =
+      this.runs.getRun(agentId) ??
+      (agent.lifecycle === "running" ? this.runs.trackAutonomousRun(agentId, null) : null);
+    if (!run) {
       return { status: "not_running" };
     }
 
-    // Stop means stop. Without the hold, finalizing the cancelled turn drains
-    // the steer queue, so pressing Stop immediately started the agent again on
-    // whatever was queued behind it. The hold covers this turn only; the next
-    // run clears it and the queue rides behind that one instead.
-    this.holdSteerQueue(agentId);
+    const interruptAcknowledged = await this.interruptSession(agent.session, agentId, !!receipt); // OTTO(schedules)
+    const settlement = await this.waitWithTimeout({
+      operation: run.settledPromise,
+      timeoutMs: interruptAcknowledged
+        ? INTERRUPT_SESSION_TIMEOUT_MS
+        : this.rescueTimeouts.interruptSessionMs,
+    });
 
-    const interruptOutcome = await this.interruptSession(agent.session, agentId);
-    if (interruptOutcome !== "acknowledged" && this.isRunStillActive(agent, foregroundTurnId)) {
-      // The provider never accepted the interrupt and its work is still going.
-      // Refuse rather than force-dispatching a synthetic turn_canceled: that
-      // would clear activeForegroundTurnId and settle the waiters, leaving the
-      // UI showing a stopped agent that is in fact still running and still
-      // spending tokens. The caller surfaces the refusal so the user can retry.
-      //
-      // A rejected interrupt is not automatically a refusal: providers commonly
-      // reject because the turn just finished on its own, and that is a genuine
-      // settle, which is why this checks the run rather than the outcome alone.
-      return { status: "refused" };
+    if (!interruptAcknowledged) {
+      return { status: settlement === "completed" ? "settled" : "refused" };
     }
 
-    // The interrupt will produce a turn_canceled/turn_failed event via subscribe(),
-    // which flows through the session event dispatcher and settles the foreground turn waiter.
-    // Wait briefly for the event to propagate if there's an active foreground turn.
-    if (foregroundTurnId) {
-      await this.waitForForegroundTurnToSettle(agent, foregroundTurnId, pendingRun);
-    } else if (pendingRun) {
-      const timeout = new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 2000));
-      await Promise.race([pendingRun.settledPromise, timeout]);
-      // A run cancelled before its turn ever started has no turn id, so no
-      // turn_canceled will arrive to settle it and the force-dispatch below
-      // cannot fire either. Settle it here or the agent reports itself busy
-      // forever against a turn that never began.
-      if (!pendingRun.settled && pendingRun.start.status !== "started") {
-        this.foregroundRuns.settleForegroundRun(agentId, pendingRun.token);
-      }
-    } else if (isAutonomousRunning) {
-      // An autonomous run has no foreground turn and no pending run to wait on,
-      // so cancel used to return the moment the provider acknowledged the
-      // interrupt - before the agent had actually stopped. Wait for it to leave
-      // the running lifecycle so a resolved cancel means stopped.
-      await this.waitForAgentToLeaveRunning(agentId);
-    }
-
-    // If the foreground turn is still stuck after the timeout, force-dispatch a
-    // synthetic turn_canceled so the normal event pipeline cleans up
-    // activeForegroundTurnId, settles waiters, and unblocks the streamForwarder.
-    if (foregroundTurnId && agent.activeForegroundTurnId === foregroundTurnId) {
+    const runTurnId = this.runs.getTurnId(agentId);
+    if (settlement === "timed_out" && runTurnId) {
       this.logger.warn(
-        { agentId, foregroundTurnId },
-        "cancelAgentRun: foreground turn still active after timeout, force-canceling",
+        { agentId, turnId: runTurnId, kind: run.kind },
+        "cancelAgentRun: acknowledged turn still active after timeout, force-canceling",
       );
-      void this.dispatchSessionEvent(agent, {
+      await this.dispatchSessionEvent(agent, {
         type: "turn_canceled",
         provider: agent.provider,
         reason: "interrupted",
-        turnId: foregroundTurnId,
+        turnId: runTurnId,
       });
-      // The synthetic event unblocks the streamForwarder generator, whose finally
-      // block settles the pending foreground run asynchronously. Wait for it.
-      const staleRun = this.foregroundRuns.getPendingRun(agentId);
-      if (staleRun && !staleRun.settled) {
-        await staleRun.settledPromise;
+      await run.settledPromise;
+    } else if (settlement === "timed_out" && run.kind === "foreground") {
+      this.logger.warn(
+        { agentId, kind: run.kind },
+        "cancelAgentRun: acknowledged pending turn still active after timeout, clearing it",
+      );
+      this.runs.settleForegroundRun(agentId, run.token);
+      if (!agent.pendingReplacement) {
+        agent.lifecycle = "idle";
+        this.touchUpdatedAt(agent);
+        this.emitState(agent);
       }
+    } else if (settlement === "timed_out" && run.kind === "autonomous") {
+      this.logger.warn(
+        { agentId, kind: run.kind },
+        "cancelAgentRun: acknowledged turn still active after timeout, force-canceling",
+      );
+      await this.dispatchSessionEvent(agent, {
+        type: "turn_canceled",
+        provider: agent.provider,
+        reason: "interrupted",
+      });
     }
 
-    // Clear any pending permissions that weren't cleaned up by handleStreamEvent.
     if (agent.pendingPermissions.size > 0) {
-      for (const [requestId] of agent.pendingPermissions) {
-        this.dispatchStream(
-          agent.id,
-          {
-            type: "permission_resolved",
-            provider: agent.provider,
-            requestId,
-            resolution: { behavior: "deny", message: "Interrupted" },
-          },
-          { timestamp: new Date().toISOString() },
-        );
-      }
-      agent.pendingPermissions.clear();
+      this.resolvePendingPermissionsForAgent(agent, agent.provider, undefined, "Interrupted");
       this.touchUpdatedAt(agent);
       this.emitState(agent);
     }
-
     return { status: "settled" };
   }
 
-  /**
-   * Waits for an interrupted foreground turn to actually settle. The interrupt
-   * produces a turn_canceled/turn_failed through the session event dispatcher;
-   * this waits for that to land, then for the pending run to be torn down, so a
-   * following streamAgent does not trip over a stale entry.
-   */
-  private async waitForForegroundTurnToSettle(
-    agent: ManagedAgent,
-    foregroundTurnId: string,
-    pendingRun: PendingForegroundRun | null,
+  private async cancelAgentRunBefore(
+    agentId: string,
+    action: "reload" | "replace" | "rewind",
   ): Promise<void> {
-    const agentId = agent.id;
-    const waiter = Array.from(agent.foregroundTurnWaiters).find(
-      (candidate) => candidate.turnId === foregroundTurnId,
-    );
-    const timeout = new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 2000));
-    if (waiter) {
-      await Promise.race([waiter.settledPromise, timeout]);
-    } else if (agent.activeForegroundTurnId === foregroundTurnId) {
-      await Promise.race([
-        new Promise<void>((resolvePromise) => {
-          const unsubscribe = this.subscribe(
-            (event) => {
-              if (
-                event.type === "agent_state" &&
-                event.agent.id === agentId &&
-                !event.agent.activeForegroundTurnId
-              ) {
-                unsubscribe();
-                resolvePromise();
-              }
-            },
-            { agentId, replayState: false },
-          );
-        }),
-        timeout,
-      ]);
-    }
-    if (pendingRun && !pendingRun.settled) {
-      await Promise.race([pendingRun.settledPromise, timeout]);
+    const result = await this.cancelAgentRun(agentId);
+    if (result.status === "refused") {
+      throw new AgentRunCancellationError(agentId, action);
     }
   }
 
-  /** Resolves when the agent stops reporting `running`, or after 2s. */
-  private async waitForAgentToLeaveRunning(agentId: string): Promise<void> {
-    if (this.agents.get(agentId)?.lifecycle !== "running") {
-      return;
-    }
-    await Promise.race([
-      new Promise<void>((resolvePromise) => {
-        const unsubscribe = this.subscribe(
-          (event) => {
-            if (
-              event.type === "agent_state" &&
-              event.agent.id === agentId &&
-              event.agent.lifecycle !== "running"
-            ) {
-              unsubscribe();
-              resolvePromise();
-            }
-          },
-          { agentId, replayState: false },
-        );
-      }),
-      new Promise<void>((resolvePromise) => setTimeout(resolvePromise, 2000)),
-    ]);
-  }
-
-  /**
-   * Is there still work in flight after a refused interrupt? A foreground turn
-   * counts while it is still the agent's active turn; an autonomous run counts
-   * while the agent is still lifecycle-running.
-   */
-  private isRunStillActive(agent: ManagedAgent, foregroundTurnId: string | null): boolean {
-    if (foregroundTurnId) {
-      return agent.activeForegroundTurnId === foregroundTurnId;
-    }
-    return agent.lifecycle === "running";
-  }
-
-  /**
-   * Reports whether the provider actually accepted the interrupt. The caller
-   * needs to know: a hung or rejected interrupt means the provider is still
-   * running, and pretending otherwise is how Stop stops the UI without stopping
-   * the agent.
-   */
   private async interruptSession(
     session: AgentSession,
     agentId: string,
-  ): Promise<"acknowledged" | "timed_out" | "failed"> {
+    scheduleOwned = false,
+  ): Promise<boolean> {
     try {
       const result = await this.waitWithTimeout({
-        operation: session.interrupt(),
+        // OTTO(schedules): keep the lease beyond waitWithTimeout until the real interrupt settles.
+        operation: scheduleOwned
+          ? retainScheduleProviderOperation(this, agentId, () => session.interrupt())
+          : session.interrupt(),
         timeoutMs: this.rescueTimeouts.interruptSessionMs,
         onLateError: (error) => {
           this.logger.warn(
@@ -5469,12 +3491,12 @@ export class AgentManager {
           { agentId, timeoutMs: this.rescueTimeouts.interruptSessionMs },
           "Timed out interrupting session during cancel",
         );
-        return "timed_out";
+        return false;
       }
-      return "acknowledged";
+      return true;
     } catch (error) {
       this.logger.error({ err: error, agentId }, "Failed to interrupt session");
-      return "failed";
+      return false;
     }
   }
 
@@ -5500,11 +3522,8 @@ export class AgentManager {
   }
 
   async rewind(agentId: string, messageId: string, mode: RewindMode): Promise<void> {
+    assertScheduleTurnAvailable(this, agentId); // OTTO(schedules)
     const agent = this.requireSessionAgent(agentId);
-    // A submitted prompt carries the client's id until the provider echoes it
-    // back under its own. Rewinding to it in that window would hand the provider
-    // an id it has never seen, so this waits for the acknowledgement instead of
-    // failing somewhere inside the provider.
     const submittedRow = this.timelineStore
       .getRows(agentId)
       .find(
@@ -5517,17 +3536,12 @@ export class AgentManager {
       throw new Error("Cannot rewind before the provider acknowledges the submitted prompt");
     }
     const providerMessageId = submittedRow?.providerMessageId ?? messageId;
-    const hadActiveRun =
-      Boolean(agent.activeForegroundTurnId) || this.foregroundRuns.hasPendingRun(agentId);
-    if (hadActiveRun) {
-      // Rewinding under a still-live turn would rewrite history the provider is
-      // actively appending to, so a refused cancel stops the rewind.
-      if ((await this.cancelAgentRun(agentId)).status === "refused") {
-        throw new AgentRunCancellationError(agentId, "rewind");
-      }
+
+    if (this.hasInFlightRun(agentId)) {
+      await this.cancelAgentRunBefore(agentId, "rewind");
     }
 
-    const lock = this.foregroundRuns.createPendingRun(agentId);
+    const lock = this.runs.createPendingRun(agentId);
     try {
       this.logger.info(
         { agentId, provider: agent.provider, messageId, mode },
@@ -5562,14 +3576,42 @@ export class AgentManager {
       );
       throw error;
     } finally {
-      this.foregroundRuns.settleForegroundRun(agentId, lock.token);
+      this.runs.settleForegroundRun(agentId, lock.token);
     }
   }
 
   async deleteAgentState(agentId: string): Promise<void> {
-    await this.chatSearch?.delete(agentId);
     this.discardRetainedAgentState(agentId);
     await this.deleteCommittedTimeline(agentId);
+  }
+
+  // OTTO(history): share the normal resume/restore lifecycle lane. Never close
+  // a live runtime because an older History confirmation said it was archived.
+  async deleteReviewedArchive(
+    review: import("../otto/history/archive-review.js").ReviewedArchiveRecord,
+  ): Promise<
+    import("../otto/history/archive-review.js").ArchiveRecordRemoval & { workspaceId?: string }
+  > {
+    return this.runLifecycleMutation(review.agentId, async () => {
+      if (this.agents.has(review.agentId)) return { status: "changed" };
+      const registry = this.requireRegistry();
+      const stored = await registry.get(review.agentId);
+      const result = await registry.removeReviewedArchive(review);
+      if (result.status !== "deleted") return result;
+      const retainedTimeline = await this.deleteAgentState(review.agentId)
+        .then(() => this.ottoChatSearch?.forget(review.agentId)) // OTTO(chat-search): this is an actual deletion.
+        .then(
+          () => false,
+          (error: unknown) => {
+            this.logger.warn(
+              { err: error, agentId: review.agentId },
+              "Archive removed; timeline cleanup failed",
+            );
+            return true;
+          },
+        );
+      return { ...result, retainedTimeline, workspaceId: stored?.workspaceId };
+    });
   }
 
   async deleteCommittedTimeline(agentId: string): Promise<void> {
@@ -5653,7 +3695,7 @@ export class AgentManager {
       throw new Error(`Agent ${agentId} not found`);
     }
 
-    const pendingForegroundRun = this.foregroundRuns.getPendingRun(agentId);
+    const pendingForegroundRun = this.runs.getPendingRun(agentId);
     const hasForegroundTurn =
       Boolean(snapshot.activeForegroundTurnId) || Boolean(pendingForegroundRun);
 
@@ -5805,122 +3847,6 @@ export class AgentManager {
     });
   }
 
-  /**
-   * Wait for an agent AND its whole descendant tree to fully settle - not just
-   * the agent's first idle. A worker that spawns background sub-agents goes idle
-   * with an interim message ("waiting on my helpers…"); `setupFinishNotification`
-   * then re-invokes it when a child finishes, so it gets more turns. `awaitAgent`
-   * on the run engine must not capture that interim idle, or it grades a half-done
-   * answer. This waits until the agent has reached its first idle (via
-   * waitForAgentEvent) and then the entire subtree (the agent + every descendant
-   * spawned under it, by parent-id label) has stayed non-busy for `quietMs`, or a
-   * hard `timeoutMs` cap trips (so a hung child can't stall a run forever).
-   */
-  async waitForAgentFullySettled(
-    agentId: string,
-    options?: { signal?: AbortSignal; timeoutMs?: number; quietMs?: number },
-  ): Promise<WaitForAgentResult> {
-    const first = await this.waitForAgentEvent(agentId, {
-      ...(options?.signal ? { signal: options.signal } : {}),
-      waitForActive: true,
-    });
-    // Blocked on permission or errored: nothing more will happen unattended.
-    if (first.permission || first.status === "error") {
-      return first;
-    }
-    return this.waitForSubtreeQuiet(agentId, first.status, options);
-  }
-
-  // Poll until the agent's whole subtree stays non-busy for `quietMs` (each burst
-  // of re-invocation resets the timer), a pending permission surfaces, or the
-  // `timeoutMs` cap trips. Split out of waitForAgentFullySettled for complexity.
-  private async waitForSubtreeQuiet(
-    agentId: string,
-    fallbackStatus: AgentLifecycleStatus,
-    options?: { signal?: AbortSignal; timeoutMs?: number; quietMs?: number },
-  ): Promise<WaitForAgentResult> {
-    const quietMs = options?.quietMs ?? 2500;
-    const pollMs = 400;
-    const deadline = Date.now() + (options?.timeoutMs ?? 20 * 60 * 1000);
-    let quietSince: number | null = null;
-
-    for (;;) {
-      if (options?.signal?.aborted) {
-        throw createAbortError(options.signal, "wait_for_agent_settled aborted");
-      }
-      const permission = this.peekPendingPermissionById(agentId);
-      if (permission) {
-        return this.settledResult(agentId, fallbackStatus, permission);
-      }
-      if (this.isAgentSubtreeBusy(agentId)) {
-        quietSince = null;
-      } else {
-        quietSince ??= Date.now();
-        if (Date.now() - quietSince >= quietMs) {
-          break;
-        }
-      }
-      if (Date.now() >= deadline) {
-        break;
-      }
-      await new Promise((r) => setTimeout(r, pollMs));
-    }
-    return this.settledResult(agentId, fallbackStatus, null);
-  }
-
-  private async settledResult(
-    agentId: string,
-    fallbackStatus: AgentLifecycleStatus,
-    permission: AgentPermissionRequest | null,
-  ): Promise<WaitForAgentResult> {
-    return {
-      status: this.getAgent(agentId)?.lifecycle ?? fallbackStatus,
-      permission,
-      lastMessage: await this.getLastAssistantMessage(agentId),
-    };
-  }
-
-  private peekPendingPermissionById(agentId: string): AgentPermissionRequest | null {
-    const snapshot = this.getAgent(agentId);
-    return snapshot ? this.peekPendingPermission(snapshot) : null;
-  }
-
-  // True if the agent or any descendant (by parent-id label, transitively) is
-  // busy, mid-foreground-turn, or has a pending run - i.e. more work is coming.
-  private isAgentSubtreeBusy(rootId: string): boolean {
-    for (const id of this.collectAgentSubtree(rootId)) {
-      const agent = this.agents.get(id);
-      if (!agent) {
-        continue;
-      }
-      if (
-        isAgentBusy(agent.lifecycle) ||
-        Boolean(agent.activeForegroundTurnId) ||
-        Boolean(this.foregroundRuns.getPendingRun(id))
-      ) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  // The root plus every agent reachable from it through PARENT_AGENT_ID_LABEL.
-  private collectAgentSubtree(rootId: string): Set<string> {
-    const result = new Set<string>([rootId]);
-    const all = Array.from(this.agents.values());
-    const frontier = [rootId];
-    while (frontier.length > 0) {
-      const parent = frontier.pop()!;
-      for (const agent of all) {
-        if (agent.labels?.[PARENT_AGENT_ID_LABEL] === parent && !result.has(agent.id)) {
-          result.add(agent.id);
-          frontier.push(agent.id);
-        }
-      }
-    }
-    return result;
-  }
-
   private async registerSession(
     session: AgentSession,
     config: AgentSessionConfig,
@@ -5938,6 +3864,12 @@ export class AgentManager {
       lastUsage?: AgentUsage;
       lastError?: string;
       attention?: AttentionState;
+      /**
+       * Bringing a known agent back, rather than starting a new one. Its timestamps and
+       * attention come from what was already recorded, and installing the session is not
+       * activity in it.
+       */
+      restoring?: boolean;
       initialTitle?: string | null;
       publishWhenReady?: boolean;
       workspaceId?: string;
@@ -5947,12 +3879,6 @@ export class AgentManager {
     let registered = false;
     try {
       this.assertAcceptingAgentRegistrations();
-      if (
-        Object.keys(config.mcpServers ?? {}).length > 0 &&
-        session.capabilities.supportsMcpServers !== true
-      ) {
-        throw new Error(`Provider '${config.provider}' does not support MCP servers`);
-      }
       const resolvedAgentId = validateAgentId(agentId, "registerSession");
       if (this.agents.has(resolvedAgentId)) {
         throw new Error(`Agent with id ${resolvedAgentId} already exists`);
@@ -5979,12 +3905,31 @@ export class AgentManager {
         options,
       });
 
+      // Read history before publishing the agent: a provider failure must leave the
+      // session unregistered so the registration catch closes it.
+      const startupHistory: AgentStreamEvent[] = [];
+      if (session.initialTimeline?.length && !managed.historyPrimed) {
+        for await (const event of session.streamHistory()) {
+          startupHistory.push(limitAgentStreamEventContent(event));
+        }
+      }
+
       this.assertAcceptingAgentRegistrations();
       this.agents.set(resolvedAgentId, managed);
-      if (!managed.internal) this.chatSearch?.schedule(resolvedAgentId);
       registered = true;
       // Initialize previousStatus to track transitions
       this.previousStatuses.set(resolvedAgentId, managed.lifecycle);
+      if (session.initialTimeline?.length) {
+        if (!managed.historyPrimed) {
+          // Legacy/imported chats need their existing history before startup rows.
+          await this.primeTimelineFromLegacyProviderHistory(managed, false, startupHistory);
+        } else {
+          for (const entry of buildImportedTimelineRows(session.initialTimeline)) {
+            this.recordTimeline(managed.id, entry.item, { timestamp: entry.timestamp });
+          }
+        }
+        this.refreshSessionPersistence(managed);
+      }
       await this.refreshRuntimeInfo(managed, { emit: false });
       this.assertAgentRegistrationActive(managed);
       await this.persistSnapshot(managed, {
@@ -5998,22 +3943,21 @@ export class AgentManager {
       await this.refreshSessionState(managed, { emit: false });
       this.assertAgentRegistrationActive(managed);
       managed.lifecycle = "idle";
+      // Stamping now over a restored timestamp rewrote the workspace's "last used" in the
+      // sidebar every time a chat was reopened, because workspace `statusEnteredAt` is
+      // re-derived from persisted agent `updatedAt` on every daemon start.
+      if (!options?.restoring) {
+        this.touchUpdatedAt(managed);
+      }
       await this.persistSnapshot(managed);
       this.assertAgentRegistrationActive(managed);
       this.emitState(managed, { persist: false });
       this.subscribeToSession(managed);
+      await this.drainSessionEvents(managed.id);
+      this.assertAgentRegistrationActive(managed);
       return { ...managed };
     } catch (error) {
-      try {
-        const partial = this.agents.get(agentId);
-        if (registered && partial?.session === session) {
-          const closed = this.prepareAgentForClosure(partial, "agent registration failed");
-          await this.persistSnapshot(closed);
-          this.emitClosedAgent(closed, { persist: false });
-        }
-      } catch (cleanupError) {
-        this.logger.warn({ err: cleanupError, agentId }, "Failed to finish registration cleanup");
-      } finally {
+      if (!registered) {
         await this.closeUnregisteredSession(session);
       }
       throw error;
@@ -6034,16 +3978,24 @@ export class AgentManager {
 
   private async closeUnregisteredSession(session: AgentSession): Promise<void> {
     try {
-      let close = this.reloadedSessionCloses.get(session);
-      if (!close) {
-        close = Promise.resolve().then(() => session.close());
-        this.reloadedSessionCloses.set(session, close);
-        void close.catch(() => this.reloadedSessionCloses.delete(session));
-      }
-      await close;
+      await session.close();
     } catch (error) {
       this.logger.warn({ err: error }, "Failed to close unregistered agent session");
     }
+  }
+
+  private async requireExternalMcpSupport(
+    session: AgentSession,
+    storedConfig: AgentSessionConfig,
+  ): Promise<void> {
+    if (
+      Object.keys(storedConfig.mcpServers ?? {}).length === 0 ||
+      session.capabilities.supportsMcpServers === true
+    ) {
+      return;
+    }
+    await this.closeUnregisteredSession(session);
+    throw new Error(`Provider '${storedConfig.provider}' does not support MCP servers`);
   }
 
   private async initializeAgentTimelineForRegister(params: {
@@ -6061,6 +4013,7 @@ export class AgentManager {
       | undefined;
   }): Promise<{ durableTimelineHasRows: boolean }> {
     const { agentId, now, options } = params;
+    const timelineAlreadyPrimed = this.timelineStore.has(agentId);
     const explicitTimelineSeed = buildExplicitTimelineSeedForRegister(now, options);
     const shouldSeedFromDurable =
       !explicitTimelineSeed && !this.timelineStore.has(agentId) && this.durableTimelineStore;
@@ -6068,7 +4021,8 @@ export class AgentManager {
       ? await this.loadCommittedTimelineSeed(agentId, now)
       : null;
     const durableTimelineHasRows =
-      durableTimelineSeed != null && (durableTimelineSeed.nextSeq ?? 1) > 1;
+      timelineAlreadyPrimed ||
+      (durableTimelineSeed != null && (durableTimelineSeed.nextSeq ?? 1) > 1);
     const timelineSeed = explicitTimelineSeed ?? durableTimelineSeed;
     if (timelineSeed || !this.timelineStore.has(agentId)) {
       this.timelineStore.initialize(agentId, timelineSeed ?? { timestamp: now.toISOString() });
@@ -6076,8 +4030,7 @@ export class AgentManager {
     if (options?.timelineRows?.length) {
       this.enqueueDurableTimelineBulkInsert(agentId, options.timelineRows);
     }
-    const preservedTimeline = this.preservedTimelinesForResume.delete(agentId);
-    return { durableTimelineHasRows: durableTimelineHasRows || preservedTimeline };
+    return { durableTimelineHasRows };
   }
 
   private buildManagedAgentForRegister(params: {
@@ -6102,29 +4055,26 @@ export class AgentManager {
         }
       | undefined;
   }): ActiveManagedAgent {
-    const { resolvedAgentId, session, config, now, durableTimelineHasRows } = params;
-    // Defaulted once instead of optional-chaining every field below.
-    const options = params.options ?? {};
+    const { resolvedAgentId, session, config, now, durableTimelineHasRows, options } = params;
     return {
       id: resolvedAgentId,
       provider: config.provider,
       cwd: config.cwd,
-      workspaceId: options.workspaceId,
+      workspaceId: options?.workspaceId,
+      owner: options?.owner,
       session,
       capabilities: session.capabilities,
       config,
       runtimeInfo: undefined,
       lifecycle: "initializing",
-      createdAt: options.createdAt ?? now,
-      updatedAt: options.updatedAt ?? now,
+      createdAt: options?.createdAt ?? now,
+      updatedAt: options?.updatedAt ?? now,
       availableModes: [],
       currentModeId: null,
       pendingPermissions: new Map<string, AgentPermissionRequest>(),
       bufferedPermissionResolutions: new Map(),
       inFlightPermissionResponses: new Set(),
       pendingReplacement: false,
-      steerQueue: [],
-      pendingSteerDrain: false,
       activeForegroundTurnId: null,
       activeTurnId: null,
       activeTurnStartedAt: null,
@@ -6132,24 +4082,16 @@ export class AgentManager {
       finalizedForegroundTurnIds: new Set<string>(),
       unsubscribeSession: null,
       persistence: attachPersistenceCwd(
-        options.persistence ?? session.describePersistence(),
+        options?.persistence ?? session.describePersistence(),
         config.cwd,
       ),
-      historyPrimed: options.historyPrimed ?? durableTimelineHasRows,
-      lastUserMessageAt: options.lastUserMessageAt ?? null,
-      lastUsage: options.lastUsage,
-      lastError: options.lastError,
-      attention: resolveInitialAttention(options.attention),
-      unattended: config.unattended ?? false,
-      guardrailDenials: 0,
+      historyPrimed: options?.historyPrimed ?? durableTimelineHasRows,
+      lastUserMessageAt: options?.lastUserMessageAt ?? null,
+      lastUsage: options?.lastUsage,
+      lastError: options?.lastError,
+      attention: resolveInitialAttention(options?.attention),
       internal: config.internal ?? false,
-      observable: config.observable ?? false,
-      labels: options.labels ?? {},
-      // Ownership has to reach the ManagedAgent, not just the create call:
-      // toStoredAgentRecord projects it off the agent, so leaving it here meant
-      // no hub execution was ever stamped onto its record and every duplicate
-      // create missed findByDaemonExecution and spawned a second agent.
-      owner: options.owner,
+      labels: options?.labels ?? {},
     } as ActiveManagedAgent;
   }
 
@@ -6170,26 +4112,21 @@ export class AgentManager {
     agent: LiveManagedAgent,
     cancelReason: string,
   ): ManagedAgentClosed {
-    try {
-      this.agentStreamCoalescer.flushAndDiscard(agent.id);
-    } catch (error) {
-      this.logger.warn({ err: error, agentId: agent.id }, "Failed to flush closing session stream");
-    }
+    this.agentStreamCoalescer.flushAndDiscard(agent.id);
+    this.captureClosedSearchTimeline(agent.id); // OTTO(chat-search): copy rows before releasing the owner.
     this.agents.delete(agent.id);
     this.previousStatuses.delete(agent.id);
-    this.silentOutOfBandAgentIds.delete(agent.id);
-    this.lastReconciledTodoSignature.delete(agent.id);
     if (agent.unsubscribeSession) {
       agent.unsubscribeSession();
       agent.unsubscribeSession = null;
     }
-    this.foregroundRuns.cancelWaiters(agent, (turnId) => ({
+    this.runs.cancelWaiters(agent, (turnId) => ({
       type: "turn_canceled",
       provider: agent.provider,
       reason: cancelReason,
       turnId,
     }));
-    this.foregroundRuns.clearAgentRun(agent.id);
+    this.runs.clearAgentRun(agent.id);
     return {
       ...agent,
       lifecycle: "closed",
@@ -6197,14 +4134,41 @@ export class AgentManager {
       activeForegroundTurnId: null,
       activeTurnId: null,
       activeTurnStartedAt: null,
-      // A closed session has no next turn to hand a queued message to.
-      steerQueue: [],
-      pendingSteerDrain: false,
+      pendingPermissions: new Map(),
+      bufferedPermissionResolutions: new Map(),
+      inFlightPermissionResponses: new Set(),
+      pendingReplacement: false,
+      foregroundTurnWaiters: new Set(),
+      finalizedForegroundTurnIds: new Set(),
+      unsubscribeSession: null,
     };
+  }
+
+  // OTTO(chat-search): search storage failure must not change Paseo's close or reload outcome.
+  private captureClosedSearchTimeline(agentId: string): void {
+    if (!this.ottoChatSearch) return;
+    const timeline = this.getSearchTimeline(agentId);
+    if (!timeline) return;
+    void this.ottoChatSearch.capture(agentId, timeline).catch((error: unknown) => {
+      this.logger.warn({ err: error, agentId }, "Could not capture the closed chat for search");
+    });
+  }
+
+  private discardRetainedAgentState(agentId: string): void {
+    this.timelineStore.delete(agentId);
+    this.paseoToolPolicies.delete(agentId);
+    for (const event of this.providerSubagents.deleteParent(agentId)) {
+      this.dispatch({ type: "provider_subagent", event });
+    }
   }
 
   private emitClosedAgent(agent: ManagedAgentClosed, options?: { persist?: boolean }): void {
     this.emitState(agent, options);
+    if (!agent.internal) {
+      this.pluginLifecycle?.emit("agent.closed", {
+        agent: describeHookAgent({ ...agent, title: agent.config.title }),
+      });
+    }
   }
   private subscribeToSession(agent: ActiveManagedAgent): void {
     if (agent.unsubscribeSession) {
@@ -6233,7 +4197,7 @@ export class AgentManager {
       steerBarrier.events.push(event);
       return;
     }
-    const pendingRun = this.foregroundRuns.getPendingRun(agentId);
+    const pendingRun = this.runs.getPendingRun(agentId);
     if (pendingRun?.start.status === "pending") {
       pendingRun.stagedEvents.push(event);
       return;
@@ -6278,19 +4242,50 @@ export class AgentManager {
     });
   }
 
+  /**
+   * Provider mutations may synchronously emit config events that are processed through the
+   * asynchronous session queue. Apply those events before committing the mutation's explicit
+   * manager state so call order remains authoritative.
+   */
+  private async drainSessionEvents(agentId: string): Promise<void> {
+    while (true) {
+      const tail = this.sessionEventTails.get(agentId);
+      if (!tail) {
+        return;
+      }
+      await tail;
+      if (this.sessionEventTails.get(agentId) === tail) {
+        return;
+      }
+    }
+  }
+
   private async dispatchSessionEvent(
     agent: ActiveManagedAgent,
     event: AgentStreamEvent,
   ): Promise<void> {
-    // Provider-reported subagents never take part in the turn/waiter machinery:
-    // they are a projection, not a run. Fold and forward before any of it.
+    // OTTO(prompt-suggestions): this is composer metadata, outside logs, hooks and turn waiters.
+    if (event.type === "prompt_suggestion") {
+      this.dispatch({ type: "agent_stream", agentId: agent.id, event });
+      return;
+    }
     if (event.type === "provider_subagent") {
+      // OTTO(activity): an already restored descriptor is not a new invocation.
+      if (
+        this.ottoActivity &&
+        !agent.internal &&
+        event.event.type === "upsert" &&
+        event.event.status === "running" &&
+        !this.providerSubagents.get(agent.id, event.event.id)
+      ) {
+        this.ottoActivity.incrementOnce("subagentsInvoked", agent.id, event.event.id);
+      }
       const update = this.providerSubagents.apply(agent.id, event.provider, event.event);
       this.dispatch({ type: "provider_subagent", event: update });
       return;
     }
     const turnId = getAgentStreamEventTurnId(event);
-    const matchingWaiters = this.foregroundRuns.getMatchingWaiters(agent, turnId);
+    const matchingWaiters = this.runs.getMatchingWaiters(agent, turnId);
     this.logger.trace(
       {
         agentId: agent.id,
@@ -6309,7 +4304,7 @@ export class AgentManager {
       return;
     }
 
-    this.foregroundRuns.notifyWaiters(matchingWaiters, event, {
+    this.runs.notifyWaiters(matchingWaiters, event, {
       terminal: isTurnTerminalEvent(event),
     });
     this.logger.trace(
@@ -6363,6 +4358,19 @@ export class AgentManager {
     return this.registry;
   }
 
+  /**
+   * Provider-side mode switches (ACP current_mode_update, in-session
+   * commands, permission-driven transitions) must land in config.modeId too —
+   * reloadAgentSession and the persisted record derive the resumed session's
+   * mode from it, so leaving it stale silently downgrades the mode on resume.
+   */
+  private applyObservedMode(agent: ActiveManagedAgent, modeId: string | null): void {
+    agent.currentModeId = modeId;
+    if (modeId != null) {
+      agent.config.modeId = modeId;
+    }
+  }
+
   private async refreshSessionState(
     agent: ActiveManagedAgent,
     options?: { emit?: boolean },
@@ -6375,7 +4383,7 @@ export class AgentManager {
     }
 
     try {
-      agent.currentModeId = await agent.session.getCurrentMode();
+      this.applyObservedMode(agent, await agent.session.getCurrentMode());
     } catch {
       agent.currentModeId = null;
     }
@@ -6446,16 +4454,14 @@ export class AgentManager {
     broadcast: boolean,
     broadcastTimeline: boolean,
   ): Promise<void> {
-    if (!agent.internal) this.chatSearch?.schedule(agent.id);
     const historyEvents: Extract<AgentStreamEvent, { type: "timeline" }>[] = [];
     const providerSubagentEvents: Extract<AgentStreamEvent, { type: "provider_subagent" }>[] = [];
     for await (const rawEvent of agent.session.streamHistory()) {
       const event = limitAgentStreamEventContent(rawEvent);
       if (event.type === "timeline") {
-        if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
-          continue;
-        }
-        historyEvents.push(event);
+        const item = projectAgentMessage(event.item);
+        if (!item) continue;
+        historyEvents.push({ ...event, item });
       } else if (event.type === "provider_subagent") {
         providerSubagentEvents.push(event);
       }
@@ -6492,7 +4498,6 @@ export class AgentManager {
         });
       }
     }
-    if (!agent.internal) await this.captureSearchTimeline(agent.id, true);
     this.touchUpdatedAt(agent);
     this.emitState(agent);
   }
@@ -6500,55 +4505,71 @@ export class AgentManager {
   private async primeTimelineFromLegacyProviderHistory(
     agent: ActiveManagedAgent,
     broadcast: boolean | (() => boolean),
+    history:
+      | AsyncIterable<AgentStreamEvent>
+      | Iterable<AgentStreamEvent> = agent.session.streamHistory(),
   ): Promise<void> {
     const deferredBroadcast = typeof broadcast === "function";
-    const timelineEvents: Array<{
-      event: Extract<AgentStreamEvent, { type: "timeline" }>;
-      row: AgentTimelineRow;
-    }> = [];
-    const providerSubagentEvents: AgentManagerEvent[] = [];
+    const historyEvents: Extract<AgentStreamEvent, { type: "timeline" }>[] = [];
+    const historySubagentEvents: Extract<AgentStreamEvent, { type: "provider_subagent" }>[] = [];
     agent.historyPrimed = false;
     try {
-      for await (const rawEvent of agent.session.streamHistory()) {
+      // Collect the whole replay before touching either store. A stream that fails
+      // halfway then leaves the committed timeline as it was, instead of a partial
+      // copy the next attempt would append to.
+      for await (const rawEvent of history) {
         const event = limitAgentStreamEventContent(rawEvent);
         if (event.type === "provider_subagent") {
-          const update = this.providerSubagents.apply(agent.id, event.provider, event.event);
-          const managerEvent: AgentManagerEvent = { type: "provider_subagent", event: update };
-          if (deferredBroadcast) {
-            providerSubagentEvents.push(managerEvent);
-          } else if (broadcast) {
-            this.dispatch(managerEvent);
-          }
+          historySubagentEvents.push(event);
           continue;
         }
         if (event.type !== "timeline") {
           continue;
         }
-        if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
-          continue;
-        }
-        const row = this.recordTimeline(
-          agent.id,
-          event.item,
-          event.timestamp ? { timestamp: event.timestamp } : undefined,
-        );
-        if (deferredBroadcast) {
-          timelineEvents.push({ event, row });
-        } else if (broadcast) {
-          this.dispatchStream(agent.id, event, {
-            seq: row.seq,
-            epoch: this.timelineStore.getEpoch(agent.id),
-            timestamp: row.timestamp,
-          });
-        }
+        const item = projectAgentMessage(event.item);
+        if (!item) continue;
+        historyEvents.push({ ...event, item });
       }
     } catch (error) {
       this.logger.warn({ err: error, agentId: agent.id }, "Failed to hydrate provider history");
       throw error;
     }
-    agent.historyPrimed = true;
 
-    if (!agent.internal) await this.captureSearchTimeline(agent.id, true);
+    // The replay is the timeline, so drop the rows a previous hydration committed.
+    // Keeping them would leave getTimelineRows reading one copy per hydration.
+    await this.deleteCommittedTimeline(agent.id);
+
+    const timelineEvents: Array<{
+      event: Extract<AgentStreamEvent, { type: "timeline" }>;
+      row: AgentTimelineRow;
+    }> = [];
+    const providerSubagentEvents: AgentManagerEvent[] = [];
+    for (const event of historySubagentEvents) {
+      const update = this.providerSubagents.apply(agent.id, event.provider, event.event);
+      const managerEvent: AgentManagerEvent = { type: "provider_subagent", event: update };
+      if (deferredBroadcast) {
+        providerSubagentEvents.push(managerEvent);
+      } else if (broadcast) {
+        this.dispatch(managerEvent);
+      }
+    }
+    for (const event of historyEvents) {
+      const row = this.recordTimeline(
+        agent.id,
+        event.item,
+        event.timestamp ? { timestamp: event.timestamp } : undefined,
+      );
+      if (deferredBroadcast) {
+        timelineEvents.push({ event, row });
+      } else if (broadcast) {
+        this.dispatchStream(agent.id, event, {
+          seq: row.seq,
+          epoch: this.timelineStore.getEpoch(agent.id),
+          timestamp: row.timestamp,
+        });
+      }
+    }
+    agent.historyPrimed = true;
 
     if (typeof broadcast !== "function" || !broadcast()) {
       return;
@@ -6576,7 +4597,7 @@ export class AgentManager {
       return;
     }
 
-    this.foregroundRuns.notifyAgentWaiters(agent, event);
+    this.runs.notifyAgentWaiters(agent, event);
     this.logger.trace(
       {
         agentId,
@@ -6594,19 +4615,16 @@ export class AgentManager {
     event: AgentStreamEvent,
     options?: HandleStreamEventOptions,
   ): Promise<boolean> {
-    // Upstream's turn identity: stamp the owning turn onto an event the
-    // provider left unstamped, so a client can retire optimistic activity
-    // without waiting for an idle frame. Otto's foreground-run tracking reads
-    // the stamped id from here rather than from the raw event.
+    event = limitAgentStreamEventContent(event);
     const identified = attachManagedTurnIdentity(agent, event, options?.fromHistory === true);
     event = identified.event;
     const eventTurnId = identified.turnId;
-    const isForegroundEvent = Boolean(eventTurnId && agent.activeForegroundTurnId === eventTurnId);
+    const isForegroundEvent = agent.activeForegroundTurnId === eventTurnId;
     this.traceHandleStreamEventStart(agent, event, eventTurnId, isForegroundEvent);
     if (
       eventTurnId &&
       isTurnTerminalEvent(event) &&
-      this.foregroundRuns.hasFinalizedTurn(agent, eventTurnId)
+      this.runs.hasFinalizedTurn(agent, eventTurnId)
     ) {
       return false;
     }
@@ -6645,12 +4663,17 @@ export class AgentManager {
       await dispatchPromise;
     }
 
-    if (!options?.fromHistory && isForegroundEvent && isTurnTerminalEvent(event)) {
-      this.finalizeForegroundTurn(agent, eventTurnId);
-    }
+    if (!options?.fromHistory) {
+      if (isTurnTerminalEvent(event)) {
+        this.runs.settleTerminalRun(agent.id, eventTurnId);
+        if (isForegroundEvent) {
+          this.finalizeForegroundTurn(agent, eventTurnId);
+        }
+      }
 
-    if (!options?.fromHistory && flags.shouldDispatchEvent) {
-      this.dispatchStream(agent.id, event, { timestamp: new Date().toISOString() });
+      if (flags.shouldDispatchEvent) {
+        this.dispatchStream(agent.id, event, { timestamp: new Date().toISOString() });
+      }
     }
 
     this.traceHandleStreamEventEnd(agent, event, eventTurnId, flags);
@@ -6729,28 +4752,48 @@ export class AgentManager {
   }): Promise<void> | undefined {
     const { agent, event, options, isForegroundEvent, eventTurnId, terminalDisposition, flags } =
       params;
-    if (isProjectionStreamEvent(event)) {
-      this.dispatchProjectionStreamEvent(agent, event);
-      flags.shouldDispatchEvent = false;
-      return undefined;
-    }
     switch (event.type) {
       case "thread_started":
         this.onStreamThreadStarted(agent);
         return undefined;
       case "usage_updated":
-        agent.lastUsage = this.carryContextComposition(agent.lastUsage, event.usage);
+        agent.lastUsage = event.usage;
         this.emitState(agent);
         return undefined;
       case "mode_changed":
+        this.applyObservedMode(agent, event.currentModeId);
+        agent.availableModes = event.availableModes;
+        if (agent.runtimeInfo) {
+          agent.runtimeInfo = { ...agent.runtimeInfo, modeId: event.currentModeId };
+        }
+        flags.shouldDispatchEvent = false;
+        this.emitState(agent);
+        return undefined;
       case "model_changed":
+        agent.runtimeInfo = event.runtimeInfo;
+        if (!agent.persistence && event.runtimeInfo.sessionId) {
+          agent.persistence = attachPersistenceCwd(
+            { provider: agent.provider, sessionId: event.runtimeInfo.sessionId },
+            agent.cwd,
+          );
+        }
+        this.applyObservedMode(agent, event.runtimeInfo.modeId ?? agent.currentModeId);
+        flags.shouldDispatchEvent = false;
+        this.emitState(agent);
+        return undefined;
       case "thinking_option_changed":
-        this.onStreamConfigDrift(agent, event);
+        agent.config.thinkingOptionId = event.thinkingOptionId ?? undefined;
+        if (agent.runtimeInfo) {
+          agent.runtimeInfo = {
+            ...agent.runtimeInfo,
+            thinkingOptionId: event.thinkingOptionId,
+          };
+        }
         flags.shouldDispatchEvent = false;
         this.emitState(agent);
         return undefined;
       case "timeline":
-        return this.onStreamTimelineEvent({ agent, event, options, isForegroundEvent, flags });
+        return this.onStreamTimelineEvent({ agent, event, options, flags });
       case "turn_completed":
         this.onStreamTurnCompleted({
           agent,
@@ -6793,26 +4836,6 @@ export class AgentManager {
     }
   }
 
-  // Subagent/background-task projections (no ManagedAgent runtime of their
-  // own) share no state with the main event switch above - split out to keep
-  // dispatchStreamEventByType's cyclomatic complexity down.
-  private dispatchProjectionStreamEvent(
-    agent: ActiveManagedAgent,
-    event: ProjectionStreamEvent,
-  ): void {
-    switch (event.type) {
-      case "observed_subagent_updated":
-        this.onObservedSubagentUpdated(agent, event);
-        return;
-      case "observed_subagent_timeline":
-        this.onObservedSubagentTimeline(agent, event);
-        return;
-      case "background_shell_task_updated":
-        this.onBackgroundShellTaskUpdated(agent, event);
-        return;
-    }
-  }
-
   private onStreamThreadStarted(agent: ActiveManagedAgent): void {
     const previousSessionId = agent.persistence?.sessionId ?? null;
     this.refreshSessionPersistence(agent);
@@ -6833,17 +4856,18 @@ export class AgentManager {
     agent: ActiveManagedAgent;
     event: Extract<AgentStreamEvent, { type: "timeline" }>;
     options: { fromHistory?: boolean } | undefined;
-    isForegroundEvent: boolean;
     flags: StreamEventFlags;
   }): Promise<void> {
     const { agent, event, options, flags } = params;
 
-    if (event.item.type === "user_message" && isSystemInjectedEnvelope(event.item.text)) {
+    const item = projectAgentMessage(event.item);
+    if (!item) {
       flags.shouldDispatchEvent = false;
       flags.shouldNotifyWaiters = false;
       return;
     }
 
+    event.item = item;
     if (
       event.item.type === "user_message" &&
       event.item.clientMessageId &&
@@ -6870,256 +4894,31 @@ export class AgentManager {
       agent.lastUserMessageAt = new Date();
       this.emitState(agent);
     }
-    this.observeStallGuard(agent.id, event.item);
     flags.shouldDispatchEvent = false;
     flags.shouldNotifyWaiters = true;
   }
 
-  /**
-   * Fold one live timeline item into the agent's tool-emission stall guard, and
-   * stop the run if the guard trips.
-   *
-   * The guard answers one structural question - "has this agent produced
-   * anything with a side effect lately?" - and nothing about the content of
-   * what it produced. See agent-stall-guard.ts for the invariant and the two
-   * resets (any tool call, any real user prompt).
-   *
-   * Only live items reach here: the `fromHistory` replay path and
-   * system-injected prompts both return before this call. That is deliberate.
-   * Replaying a stalled transcript must not re-stop an agent that is fine now,
-   * and a daemon-authored nudge is not a user taking back control.
-   */
-  private observeStallGuard(agentId: string, item: AgentTimelineItem): void {
-    const threshold = this.agentBehaviors.stallGuardThreshold;
-    if (threshold <= 0) {
-      return;
-    }
-    const agent = this.agents.get(agentId);
-    if (!agent) {
-      return;
-    }
-    const signal = classifyTimelineItem(item, {
-      isSystemInjected: item.type === "user_message" && isSystemInjectedEnvelope(item.text),
-    });
-    const next = observeStallSignal(agent.stallGuard ?? createStallGuardState(), signal);
-    agent.stallGuard = next;
-    if (!hasStalled(next, threshold)) {
-      return;
-    }
-
-    // Latch before stopping: the cancel is async, and the tail of the burst
-    // keeps arriving through this same path. Without the latch the guard would
-    // trip again every threshold messages and stack up duplicate stop rows for
-    // one stall. A tool call or a real user prompt clears it.
-    agent.stallGuard = latchStallGuard();
-    const message = buildStallInterruptMessage(next.count);
-    this.logger.warn(
-      { agentId: agent.id, provider: agent.provider, count: next.count, threshold },
-      "Stall guard tripped: no tool call in consecutive assistant messages, stopping the run",
-    );
-    // Surface the reason in the transcript first, so the row explaining the
-    // stop is already there when the run goes idle.
-    this.recordAndDispatchTimelineItem(agent.id, { type: "error", message }, agent.provider);
-    void this.cancelAgentRun(agent.id).catch((error: unknown) => {
-      this.logger.error({ err: error, agentId: agent.id }, "Stall guard failed to stop the run");
-    });
-  }
-
-  /**
-   * Fold a native child agent's own tool call into its track-row liveness
-   * counters. Observed rows get these from the provider's task report; a native
-   * (create_chat) child has no such report, so its transcript IS the source -
-   * the one signal every provider produces. Returns true only when the readout
-   * actually changed, so a tool call's running → completed transitions don't
-   * re-emit and the row never strobes.
-   *
-   * Scoped to agents that are somebody's child: main chats don't render a track
-   * row, so counting (and emitting) for them would be pure overhead.
-   * See docs/chat-lifecycle.md (the subagents track).
-   */
-  private recordNativeSubagentToolActivity(
-    agent: ManagedAgent,
-    item: ToolCallTimelineItem,
-  ): boolean {
-    if (!agent.labels[PARENT_AGENT_ID_LABEL]) {
-      return false;
-    }
-    const counted = (agent.countedToolCallIds ??= new Set<string>());
-    if (counted.has(item.callId)) {
-      return false;
-    }
-    counted.add(item.callId);
-    agent.toolUseCount = (agent.toolUseCount ?? 0) + 1;
-    if (item.name) {
-      agent.currentTool = item.name;
-    }
-    return true;
-  }
-
-  /**
-   * Roll a turn's provider-reported usage into the agent's lifetime token total
-   * and the daemon activity counters. Shared by turn_completed and the
-   * failed/canceled paths so a turn that errors or is interrupted after burning
-   * tokens still counts (retry storms would otherwise be invisible to the cost
-   * ledger). No-op when the provider reports no usage. (WP-D)
-   *
-   * The category is derived from the agent's kind: a turn on a child agent (one
-   * with a parent-agent label) is attributed to `subagent`, everything else to
-   * `mainChat`. Compaction spend is broken out within recordUsageActivity. (WP-G)
-   *
-   * Everything here books THIS TURN's spend, which for a provider that reports
-   * a running session total (Pi, and OpenCode's cost) is not what it reported -
-   * so the usage is normalized once, up front, and every sink below it is plain
-   * addition. Without that step turn 3 re-books turns 1 and 2 and the error
-   * grows with the chat. See turn-usage.ts.
-   */
-  private recordTurnUsage(
+  // OTTO(activity)
+  private recordActivityUsage(
     agent: ActiveManagedAgent,
-    reported: AgentUsage | undefined,
-    provider: AgentProvider,
+    event: Extract<AgentStreamEvent, { type: "turn_completed" }>,
   ): void {
-    const { usage, watermark } = toTurnSpend(reported, provider, agent.usageWatermark);
-    agent.usageWatermark = watermark;
-    agent.cumulativeTokens = accumulateAgentTokens(agent.cumulativeTokens, usage);
-    const category = agent.labels[PARENT_AGENT_ID_LABEL] ? "subagent" : "mainChat";
-    const model = agent.config.model ?? agent.runtimeInfo?.model ?? undefined;
-    // De-inflate a parent chat: its Claude `total_cost_usd` is the WHOLE tree,
-    // but its tokens are parent-only, so book its cost as the residual (tree −
-    // Σ its settled sub-agents, priced on their own models). Drains the bucket so
-    // the next turn starts clean; clamps at 0 if the sub-agent table over-priced.
-    const costOverrideMicroUsd =
-      category === "mainChat" ? this.residualParentCostMicroUsd(agent.id, usage) : undefined;
-    const costMicroUsd = this.recordUsageActivity(usage, {
-      category,
-      provider,
-      agentId: agent.id,
-      model,
-      ...(costOverrideMicroUsd !== undefined ? { costOverrideMicroUsd } : {}),
+    if (!this.ottoActivity) return;
+    const usage = event.provider === "opencode" ? event.activityUsage : event.usage;
+    if (!usage) return;
+    const generation = agent.internal ? agent.config.ottoActivityGeneration : undefined;
+    if (agent.internal && !generation) return;
+    let kind: "generation" | "subagent" | "chat" = "chat";
+    if (generation) kind = "generation";
+    else if (agent.labels?.[PARENT_AGENT_ID_LABEL]) kind = "subagent";
+    this.ottoActivity.record({
+      agentId: agent.internal ? undefined : agent.id,
+      provider: event.provider,
+      model: agent.runtimeInfo?.model ?? agent.config.model,
+      kind,
+      subtype: generation,
+      usage,
     });
-    // Accumulate the cost that was ACTUALLY BOOKED (the residual for a parent),
-    // never the raw whole-tree figure - that is what makes a chat's total equal
-    // the sum of its own ledger rows instead of double-counting its sub-agents.
-    agent.cumulativeUsage = accumulateLifetimeUsage(agent.cumulativeUsage, usage, costMicroUsd);
-  }
-
-  /**
-   * A parent chat's real own-cost for this turn: the whole-tree `total_cost_usd`
-   * minus the priced cost of the sub-agents that settled under it since the last
-   * turn (drained here). Returns undefined when nothing was accumulated, so the
-   * normal `usage.totalCostUsd` path is used unchanged. Clamped at 0 - a negative
-   * residual would mean the sub-agent price table over-charged, which the
-   * verify-against-modelUsage diagnostic surfaces separately.
-   */
-  private residualParentCostMicroUsd(
-    agentId: string,
-    usage: AgentUsage | undefined,
-  ): number | undefined {
-    const pending = this.pendingSubagentCostMicroUsdByParent.get(agentId);
-    if (!pending) {
-      return undefined;
-    }
-    this.pendingSubagentCostMicroUsdByParent.delete(agentId);
-    const treeMicroUsd = usdToMicroUsd(usage?.totalCostUsd);
-    return Math.max(0, treeMicroUsd - pending);
-  }
-
-  /**
-   * Record one usage measurement into the daemon-wide activity counters, split by
-   * cost category and provider (WP-G). Feeds the two-column Usage & Cost page.
-   *
-   * - Grand totals (`tokensSent`/`tokensReceived`/`costMicroUsd`) always get the
-   *   FULL spend, so the headline stays honest and complete.
-   * - The mid-turn compaction slice (openai-compat only, reported on
-   *   `usage.compaction*Tokens`) is attributed to `compaction` and backed out of
-   *   the turn's own category, so the categories partition the total rather than
-   *   overlap.
-   * - Cost is real only where the provider reports it (Claude's `totalCostUsd`);
-   *   stored as integer micro-USD so it stays summable. Token-only categories
-   *   leave their cost leaf at 0.
-   * - Provider split: Claude (the real-cost provider) gets its own in/out
-   *   counters; "other" is derived in the UI as the grand total minus Claude.
-   *
-   * Returns the cost actually booked (integer micro-USD), so the caller can fold
-   * the identical figure into the agent's lifetime total and the two can never
-   * drift apart. `undefined` when nothing was recorded at all.
-   */
-  private recordUsageActivity(
-    usage: AgentUsage | undefined,
-    meta: {
-      category: "mainChat" | "generations" | "subagent";
-      provider: AgentProvider;
-      agentId?: string;
-      model?: string;
-      subtype?: string;
-      // Model round-trips this measurement aggregates (sub-agent rows cover many;
-      // a chat turn is one query). Makes a large cumulative cache-read legible.
-      rounds?: number;
-      // Explicit cost for this measurement, overriding `usage.totalCostUsd`. Used
-      // to book a parent chat as the residual after its sub-agents' cost is backed
-      // out (parent-residual de-inflation). Applies to BOTH the ledger row and the
-      // aggregate counters so they stay consistent.
-      costOverrideMicroUsd?: number;
-      // Sub-agent rows only: spawn-tree identity (spawn time, own observed key,
-      // spawning sub-agent's key) so the Log can group rows by who spawned whom
-      // instead of by settle time. See UsageEventSchema.
-      startedAt?: number;
-      subagentKey?: string;
-      parentSubagentKey?: string;
-    },
-  ): number | undefined {
-    if (!usage) {
-      return undefined;
-    }
-    const bump = (field: ActivityCounterField, by: number): void => {
-      if (by > 0) {
-        this.onActivity?.(field, by);
-      }
-    };
-    const cachedInputTokens = usage.cachedInputTokens ?? 0;
-    const inputTokens =
-      (usage.inputTokens ?? 0) + cachedInputTokens + (usage.cacheCreationInputTokens ?? 0);
-    const outputTokens = usage.outputTokens ?? 0;
-    const costMicroUsd = meta.costOverrideMicroUsd ?? usdToMicroUsd(usage.totalCostUsd);
-    const compactionIn = usage.compactionInputTokens ?? 0;
-    const compactionOut = usage.compactionOutputTokens ?? 0;
-
-    // Grand headline totals - full spend (compaction included).
-    bump("tokensSent", inputTokens);
-    bump("tokensReceived", outputTokens);
-    bump("costMicroUsd", costMicroUsd);
-
-    // Provider split (Claude vs. derived "other").
-    if (meta.provider === "claude") {
-      bump("claudeTokensIn", inputTokens);
-      bump("claudeTokensOut", outputTokens);
-    }
-
-    // Compaction is its own category, disjoint from the turn's main/subagent share.
-    bump("compactionTokensIn", compactionIn);
-    bump("compactionTokensOut", compactionOut);
-
-    const fields = USAGE_CATEGORY_FIELDS[meta.category];
-    bump(fields.in, Math.max(0, inputTokens - compactionIn));
-    bump(fields.out, Math.max(0, outputTokens - compactionOut));
-    bump(fields.cost, costMicroUsd);
-
-    // Second sink: the itemized ledger row for this same activity (usage-ledger).
-    // Skip zero-usage measurements - an empty row is noise, not accounting.
-    if (this.onUsageEvent && (inputTokens > 0 || outputTokens > 0)) {
-      this.onUsageEvent(
-        buildUsageLedgerEvent({
-          kind: USAGE_CATEGORY_KIND[meta.category],
-          meta,
-          inputTokens,
-          cachedInputTokens,
-          outputTokens,
-          costMicroUsd,
-          compactionIn,
-          compactionOut,
-        }),
-      );
-    }
-    return costMicroUsd;
   }
 
   private onStreamTurnCompleted(params: {
@@ -7142,22 +4941,19 @@ export class AgentManager {
       "agent.manager.turn.completed",
     );
     if (terminalDisposition === "stale") return;
-    // A completion without usage means "nothing further to report", not "the
-    // turn used nothing". Providers that stream usage_updated during the turn
-    // and then complete with no usage were having the turn's own numbers wiped.
     if (event.usage) {
-      agent.lastUsage = this.withContextComposition(agent.id, event.usage);
+      agent.lastUsage = { ...agent.lastUsage, ...event.usage };
+      this.recordActivityUsage(agent, event); // OTTO(activity): settled live events only.
     }
-    // Then upgrade the estimate to the provider's own split where it can report
-    // one (async, non-blocking - see `refreshContextCategories`).
-    this.refreshContextCategories(agent);
-    this.recordTurnUsage(agent, event.usage, event.provider);
+    // If no usage on turn_completed, keep lastUsage as-is so context window
+    // data accumulated during streaming isn't lost when the provider omits
+    // it from the completion event.
     agent.lastError = undefined;
     if (
       !isForegroundEvent &&
+      !agent.activeForegroundTurnId &&
       agent.lifecycle !== "idle" &&
-      !agent.pendingReplacement &&
-      !agent.pendingSteerDrain
+      !agent.pendingReplacement
     ) {
       (agent as ActiveManagedAgent).lifecycle = "idle";
       this.emitState(agent);
@@ -7190,21 +4986,18 @@ export class AgentManager {
       "handleStreamEvent: turn_failed",
     );
     if (terminalDisposition === "stale") return;
-    if (!isForegroundEvent) {
+    if (!isForegroundEvent && !agent.activeForegroundTurnId) {
       agent.lifecycle = "error";
     }
-    const displayError = this.formatTurnFailedMessage(event);
-    agent.lastError = isContextSizeError(event.error) ? displayError : event.error;
-    this.recordTurnUsage(agent, event.usage, event.provider);
-    // A foreground caller receives this same failure through its RPC response,
-    // which the composer renders as its red send error. Persisting it as an
-    // assistant message creates a second, misleading chat bubble. Background
-    // failures have no caller to surface them, so retain their durable record.
-    if (!isForegroundEvent) {
-      await this.appendSystemErrorTimelineMessage(agent, event.provider, displayError, options);
-    }
+    agent.lastError = event.error;
+    await this.appendSystemErrorTimelineMessage(
+      agent,
+      event.provider,
+      this.formatTurnFailedMessage(event),
+      options,
+    );
     this.resolvePendingPermissionsForAgent(agent, event.provider, options, "Turn failed");
-    if (!isForegroundEvent) {
+    if (!isForegroundEvent && !agent.activeForegroundTurnId) {
       this.emitState(agent);
     }
   }
@@ -7235,44 +5028,14 @@ export class AgentManager {
       "agent.manager.turn.canceled",
     );
     if (terminalDisposition === "stale") return;
-    if (!isForegroundEvent && !agent.pendingReplacement && !agent.pendingSteerDrain) {
+    if (!isForegroundEvent && !agent.activeForegroundTurnId && !agent.pendingReplacement) {
       agent.lifecycle = "idle";
     }
     agent.lastError = undefined;
-    this.recordTurnUsage(agent, event.usage, event.provider);
     this.resolvePendingPermissionsForAgent(agent, event.provider, options, "Interrupted");
-    if (!isForegroundEvent) {
+    if (!isForegroundEvent && !agent.activeForegroundTurnId) {
       this.emitState(agent);
     }
-  }
-
-  /**
-   * Upstream's turn identity. `activeForegroundTurnId` tracks the run Otto
-   * started; `activeTurnId` tracks whichever turn the agent is on, foreground
-   * or autonomous, so stream events can be stamped with an owner either way.
-   */
-  private openActiveTurn(agent: ActiveManagedAgent, turnId: string, startedAt: Date): void {
-    agent.activeTurnId = turnId;
-    agent.activeTurnStartedAt = startedAt;
-  }
-
-  /**
-   * Retire the daemon-owned active identity when its matching turn settles.
-   * Terminal events for an older turn must not change the lifecycle, usage,
-   * permissions, or wire timeline of the newer active turn. History is
-   * observational, so it never mutates live turn ownership.
-   */
-  private applyActiveTurnTerminal(
-    agent: ActiveManagedAgent,
-    turnId?: string,
-    fromHistory = false,
-  ): ActiveTurnTerminalDisposition {
-    if (fromHistory) return "stale";
-    if (!agent.activeTurnId) return "untracked";
-    if (turnId && agent.activeTurnId !== turnId) return "stale";
-    agent.activeTurnId = null;
-    agent.activeTurnStartedAt = null;
-    return "closed_current";
   }
 
   private onStreamTurnStarted(params: {
@@ -7293,14 +5056,17 @@ export class AgentManager {
       },
       "agent.manager.turn.started",
     );
-    // The run generator already yielded the accepted turn_started for this
-    // turn, so the provider's own echo of it must reach neither the wire nor
-    // the foreground stream as a second start.
     if (isForegroundEvent) {
       flags.shouldDispatchEvent = false;
       flags.shouldNotifyWaiters = false;
       return;
     }
+    if (agent.activeForegroundTurnId) {
+      flags.shouldDispatchEvent = false;
+      flags.shouldNotifyWaiters = false;
+      return;
+    }
+    this.runs.trackAutonomousRun(agent.id, eventTurnId ?? null);
     if (eventTurnId) {
       this.openActiveTurn(agent, eventTurnId, new Date());
     }
@@ -7313,62 +5079,12 @@ export class AgentManager {
     event: Extract<AgentStreamEvent, { type: "permission_requested" }>,
   ): void {
     const hadPendingPermissions = agent.pendingPermissions.size > 0;
-    const request = event.request;
-    agent.pendingPermissions.set(request.id, request);
+    agent.pendingPermissions.set(event.request.id, event.request);
     this.refreshSessionPersistence(agent);
-
-    // Guardrail: an unattended run (schedule/loop/artifact) has no client
-    // watching to answer approval prompts. Claude's auto-mode classifier (and
-    // any other provider that escalates) would otherwise stall the run here
-    // forever. Answer immediately with DENY by policy - no attention broadcast,
-    // no notification - and let the model adapt. Keyed on the creation-time
-    // `unattended` flag, never the permission mode (an attended user in auto
-    // mode still wants the prompt). This is Phase 4 parity for the prompt path.
-    // See docs/safe-unattended.md (Phase 2).
-    if (agent.unattended) {
-      this.autoDenyUnattendedPermissionRequest(agent, request);
-      return;
-    }
-
     if (!hadPendingPermissions && !agent.internal) {
       this.broadcastAgentAttention(agent, "permission");
     }
     this.emitState(agent);
-  }
-
-  private autoDenyUnattendedPermissionRequest(
-    agent: ActiveManagedAgent,
-    request: AgentPermissionRequest,
-  ): void {
-    const reason = `Unattended run: '${request.name}' is not pre-approved; denied by policy`;
-    this.recordGuardrailDenial(agent, request.name);
-    // Reuse the exact deny path a client's response takes (resolves the pending
-    // permission, refreshes state, continues the turn). Fire-and-forget: the
-    // stream event handler is synchronous, so track the promise as a background
-    // task and log any failure.
-    this.trackBackgroundTask(
-      this.respondToPermission(agent.id, request.id, { behavior: "deny", message: reason })
-        .then(() => undefined)
-        .catch((err) => {
-          this.logger.error(
-            { err, agentId: agent.id, tool: request.name },
-            "safe-unattended: failed to auto-deny unattended permission request",
-          );
-        }),
-    );
-  }
-
-  private recordGuardrailDenial(agent: ActiveManagedAgent, tool: string): void {
-    agent.guardrailDenials = (agent.guardrailDenials ?? 0) + 1;
-    agent.lastGuardrailDenialAt = new Date().toISOString();
-    // TODO(safe-unattended Phase 3): surface this to the owning service
-    // (schedule/artifact) as a promote-on-problem trigger so a guarded run that
-    // hit a guardrail denial gets revealed alongside hard failures.
-    // See docs/safe-unattended.md (Phase 3).
-    this.logger.info(
-      { agentId: agent.id, tool, guardrailDenials: agent.guardrailDenials },
-      "safe-unattended: denied unattended permission request by policy",
-    );
   }
 
   private onStreamPermissionResolved(params: {
@@ -7407,598 +5123,22 @@ export class AgentManager {
     }
   }
 
-  private observedSubagentId(parentAgentId: string, key: string): string {
-    return `${parentAgentId}::sub::${key}`;
-  }
-
-  private emitObservedSubagentState(input: {
-    id: string;
-    /** Owning agent id - resolves to the tree parent below when the row was
-     * spawned by another observed subagent (nested fan-out). */
-    parentAgentId: string;
-    parentKey?: string;
-    provider: AgentProvider;
-    cwd: string;
-    workspaceId?: string;
-    createdAt: string;
-    title: string;
-    cumulativeTokens?: number;
-    lastUsage?: AgentUsage;
-    model?: string;
-    usageRounds?: number;
-    toolUseCount?: number;
-    currentTool?: string;
-    backgrounded?: boolean;
-    update: ObservedSubagentUpdate;
-  }): void {
-    const payload = toObservedSubagentPayload({
-      ...input,
-      parentAgentId: input.parentKey
-        ? this.observedSubagentId(input.parentAgentId, input.parentKey)
-        : input.parentAgentId,
-    });
-    const entry = this.observedSubagents.get(input.id);
-    if (entry?.archivedAt) {
-      // Archived rows stay archived: a late provider update must not undo the
-      // user's archive on connected clients.
-      payload.archivedAt = entry.archivedAt;
-    }
-    if (entry) {
-      entry.lastPayload = payload;
-    }
-    this.dispatch({
-      type: "observed_agent_state",
-      payload,
-    });
-  }
-
-  private onObservedSubagentUpdated(
-    agent: ActiveManagedAgent,
-    event: Extract<AgentStreamEvent, { type: "observed_subagent_updated" }>,
-  ): void {
-    const id = this.observedSubagentId(agent.id, event.update.key);
-    const existing = this.observedSubagents.get(id);
-    if (!existing) {
-      this.onActivity?.("subagentsInvoked");
-    }
-    const createdAt = existing?.createdAt ?? new Date().toISOString();
-    const parentKey = event.update.parentKey ?? existing?.parentKey;
-    const {
-      title,
-      titleFrozen,
-      cumulativeTokens,
-      lastUsage,
-      model,
-      usageRounds,
-      toolUseCount,
-      currentTool,
-      backgrounded,
-    } = resolveObservedSubagentDerivedState(existing, event.update);
-    // A row nested under a backgrounded run survives whatever its ancestor
-    // survives, so the flag flows down the tree. The parent row is always
-    // registered before its children (it is announced by the tool call that
-    // spawns them), so one hop is enough - the parent already carries its own
-    // inherited value.
-    const parentBackgrounded =
-      parentKey !== undefined &&
-      this.observedSubagents.get(this.observedSubagentId(agent.id, parentKey))?.backgrounded ===
-        true;
-    const optional = observedSubagentOptionalFields({
-      parentKey,
-      cumulativeTokens,
-      lastUsage,
-      model,
-      usageRounds,
-      toolUseCount,
-      currentTool,
-      ...(backgrounded || parentBackgrounded ? { backgrounded: true } : {}),
-    });
-    // Record the subagent's real usage to the itemized ledger on every settle,
-    // but only the delta above what was already written (side effect inside the
-    // helper). Returns the new watermark when a row was written, so a second
-    // stream gets its own row and a duplicate terminal update gets none.
-    // See [[subagent-real-accounting]].
-    const priorRecorded = existing?.recorded;
-    const recorded =
-      this.recordObservedSubagentUsageIfSettled({
-        status: event.update.status,
-        recorded: priorRecorded,
-        ownerAgentId: agent.id,
-        provider: event.provider,
-        lastUsage,
-        usageRounds,
-        model,
-        title,
-        subagentKey: event.update.key,
-        parentSubagentKey: parentKey,
-        createdAt,
-      }) ?? priorRecorded;
-    this.observedSubagents.set(id, {
-      parentAgentId: agent.id,
-      taskId: event.update.taskId ?? existing?.taskId,
-      provider: event.provider,
-      createdAt,
-      title,
-      titleFrozen,
-      ...optional,
-      ...(recorded ? { recorded } : {}),
-      ...(existing?.archivedAt ? { archivedAt: existing.archivedAt } : {}),
-      lastPayload: existing?.lastPayload,
-    });
-    this.emitObservedSubagentState({
-      id,
-      parentAgentId: agent.id,
-      provider: event.provider,
-      cwd: agent.cwd,
-      ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
-      createdAt,
-      title,
-      ...optional,
-      update: event.update,
-    });
-  }
-
-  /**
-   * Write an observed subagent's real usage into the itemized ledger, once, when
-   * it first settles. Returns true iff a row was written (so the caller can mark
-   * the entry recorded). No split ⇒ no row - an honest blank, never a fabricated
-   * one. The row is attributed to the OWNING chat (`agentId`) so it traces back
-   * to - and groups under - the parent chat in the Log; `subtype` carries the
-   * subagent's name and `model` its own (possibly cheaper) model for pricing.
-   * Cost is left to recordUsageActivity (0 until per-subagent pricing lands).
-   */
-  private recordObservedSubagentUsageIfSettled(params: {
-    status: ObservedSubagentUpdate["status"];
-    recorded: RecordedSubagentLedger | undefined;
-    ownerAgentId: string;
-    provider: AgentProvider;
-    lastUsage: AgentUsage | undefined;
-    usageRounds: number | undefined;
-    model: string | undefined;
-    title: string;
-    subagentKey: string;
-    parentSubagentKey: string | undefined;
-    createdAt: string;
-  }): RecordedSubagentLedger | undefined {
-    const { status, recorded, ownerAgentId, provider, lastUsage, usageRounds, model, title } =
-      params;
-    if (!isTerminalObservedSubagentStatus(status) || !lastUsage) {
-      return undefined;
-    }
-    // Only the increment above what the ledger already holds: a duplicate
-    // terminal update yields nothing, a genuine second stream yields its own row.
-    const delta = deltaAgentUsage(lastUsage, recorded?.usage);
-    if (!delta) {
-      return undefined;
-    }
-    const rounds = Math.max(0, (usageRounds ?? 0) - (recorded?.rounds ?? 0));
-    // Spawn-tree identity: when the sub-agent was first observed (it belongs to
-    // the turn that SPAWNED it, not the turn it settled in - async sub-agents
-    // routinely settle turns later) and who spawned it.
-    const startedAt = Date.parse(params.createdAt);
-    this.recordUsageActivity(delta, {
-      category: "subagent",
-      provider,
-      agentId: ownerAgentId,
-      ...(rounds > 0 ? { rounds } : {}),
-      ...(model ? { model } : {}),
-      ...(title ? { subtype: title } : {}),
-      ...(Number.isFinite(startedAt) ? { startedAt } : {}),
-      subagentKey: params.subagentKey,
-      ...(params.parentSubagentKey ? { parentSubagentKey: params.parentSubagentKey } : {}),
-    });
-    // Stage this increment's priced cost so the owning chat's next turn can back
-    // it out of the whole-tree total (parent-residual de-inflation). Priced
-    // upstream against the sub-agent's own model; absent when unpriceable, in
-    // which case that spend simply stays on the parent (no fabrication).
-    const subagentCostMicroUsd = usdToMicroUsd(delta.totalCostUsd);
-    if (subagentCostMicroUsd > 0) {
-      const prior = this.pendingSubagentCostMicroUsdByParent.get(ownerAgentId) ?? 0;
-      this.pendingSubagentCostMicroUsdByParent.set(ownerAgentId, prior + subagentCostMicroUsd);
-    }
-    // The new watermark is the full running total we just caught up to.
-    return { usage: lastUsage, rounds: usageRounds ?? recorded?.rounds ?? 0 };
-  }
-
-  private onObservedSubagentTimeline(
-    agent: ActiveManagedAgent,
-    event: Extract<AgentStreamEvent, { type: "observed_subagent_timeline" }>,
-  ): void {
-    const id = this.observedSubagentId(agent.id, event.key);
-    // Timeline may arrive before the first lifecycle update; materialize the
-    // observed subagent so its pane can open.
-    if (!this.observedSubagents.has(id)) {
-      const createdAt = new Date().toISOString();
-      // Timeline arrived before any lifecycle update, so there's no name source
-      // yet - use a provisional label and leave it unfrozen so the first real
-      // task_started can set the stable name.
-      const title = deriveObservedSubagentTitle({});
-      this.observedSubagents.set(id, {
-        parentAgentId: agent.id,
-        provider: event.provider,
-        createdAt,
-        title,
-        titleFrozen: false,
-      });
-      this.emitObservedSubagentState({
-        id,
-        parentAgentId: agent.id,
-        provider: event.provider,
-        cwd: agent.cwd,
-        ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
-        createdAt,
-        title,
-        update: { key: event.key, status: "running" },
-      });
-    }
-    this.ensureObservedTimelineState(id);
-    this.recordAndDispatchTimelineItem(id, event.item, event.provider, event.turnId);
-  }
-
-  /**
-   * Stop a running observed subagent by resolving it to its owning provider
-   * session's task. See .otto/knowledge/projects/observed-subagents.md.
-   */
-  async stopObservedSubagent(observedId: string): Promise<void> {
-    const entry = this.observedSubagents.get(observedId);
-    if (!entry) {
-      // Not a synthetic task-fan-out subagent - check for a real internal
-      // agent (e.g. artifact generation) rendered read-only via `attend:
-      // "observed"`, and stop it the normal way instead.
-      const agent = this.agents.get(observedId);
-      if (agent?.internal) {
-        await this.cancelAgentRun(observedId);
-        return;
-      }
-      throw new Error(`Observed subagent not found: ${observedId}`);
-    }
-    if (!entry.taskId) {
-      throw new Error(`Observed subagent has no task id to stop: ${observedId}`);
-    }
-    const parent = this.agents.get(entry.parentAgentId);
-    const session = parent && "session" in parent ? parent.session : undefined;
-    if (!session?.stopTask) {
-      throw new Error(`Parent session cannot stop observed subagents: ${observedId}`);
-    }
-    await session.stopTask(entry.taskId);
-  }
-
-  /**
-   * Archive an observed subagent. These are ephemeral registry projections with
-   * no ManagedAgent and no stored record, so the normal archive path
-   * (`archiveAgentCommand`) can't resolve them - this is its observed
-   * counterpart, mirroring how fetch (`getObservedSubagentPayload`) and stop
-   * (`stopObservedSubagent`) already special-case the registry. A still-live
-   * subagent is stopped best-effort first; the entry is then retired in place
-   * (kept, stamped `archivedAt`) so late provider updates can't resurrect the
-   * row and open panes can still hydrate it.
-   * See docs/agent-lifecycle.md (Items 2 + 6).
-   */
-  async archiveObservedSubagent(observedId: string): Promise<{ archivedAt: string }> {
-    const entry = this.observedSubagents.get(observedId);
-    if (!entry) {
-      throw new Error(`Observed subagent not found: ${observedId}`);
-    }
-    if (entry.archivedAt) {
-      return { archivedAt: entry.archivedAt };
-    }
-    const last = entry.lastPayload;
-    const wasLive = last?.status === "running" || last?.status === "initializing";
-    if (wasLive) {
-      try {
-        await this.stopObservedSubagent(observedId);
-      } catch (error) {
-        // Best-effort: the archive proceeds even if the provider task can't be
-        // reached (parent gone, no task id) - the projection retires either way.
-        this.logger.debug({ err: error, observedId }, "agent.manager.observed.archive.stop_failed");
-      }
-    }
-    // The observed projection can shadow a provider descriptor for the same
-    // run. A directory refresh omits archived observed rows, so retire the
-    // provider twin as part of this archive or Clear reveals it again.
-    const key = observedId.slice(`${entry.parentAgentId}::sub::`.length);
-    const twins = this.providerSubagents
-      .list(entry.parentAgentId)
-      .filter((child) => child.id === key || child.toolCallId === key)
-      .filter((child) => !child.archivedAt)
-      .map((child) => child.id);
-    await this.archiveProviderSubagentDescriptors(entry.parentAgentId, twins);
-    const archivedAt = new Date().toISOString();
-    entry.archivedAt = archivedAt;
-    if (last) {
-      const payload: AgentSnapshotPayload = {
-        ...last,
-        status: wasLive ? "closed" : last.status,
-        requiresAttention: false,
-        attentionReason: null,
-        updatedAt: archivedAt,
-        archivedAt,
-      };
-      entry.lastPayload = payload;
-      this.dispatch({
-        type: "observed_agent_state",
-        payload,
-      });
-    }
-    return { archivedAt };
-  }
-
-  private backgroundShellTaskId(parentAgentId: string, key: string): string {
-    return `${parentAgentId}::bg::${key}`;
-  }
-
-  private currentBackgroundShellTasksFor(parentAgentId: string): BackgroundShellTaskInfo[] {
-    const tasks: BackgroundShellTaskInfo[] = [];
-    for (const [id, entry] of this.backgroundShellTasks) {
-      if (entry.parentAgentId !== parentAgentId || entry.archivedAt) {
-        continue;
-      }
-      tasks.push({
-        id,
-        parentAgentId: entry.parentAgentId,
-        provider: entry.provider,
-        status: entry.status,
-        createdAt: entry.createdAt,
-        updatedAt: entry.updatedAt,
-        ...(entry.command ? { command: entry.command } : {}),
-        ...(entry.description ? { description: entry.description } : {}),
-        ...(entry.requiresAttention !== undefined
-          ? { requiresAttention: entry.requiresAttention }
-          : {}),
-      });
-    }
-    return tasks.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  }
-
-  private emitBackgroundShellTaskState(parentAgentId: string): void {
-    this.dispatch({
-      type: "background_shell_task_state",
-      parentAgentId,
-      tasks: this.currentBackgroundShellTasksFor(parentAgentId),
-    });
-  }
-
-  private onBackgroundShellTaskUpdated(
-    agent: ActiveManagedAgent,
-    event: Extract<AgentStreamEvent, { type: "background_shell_task_updated" }>,
-  ): void {
-    const id = this.backgroundShellTaskId(agent.id, event.update.key);
-    const existing = this.backgroundShellTasks.get(id);
-    this.backgroundShellTasks.set(
-      id,
-      mergeBackgroundShellTaskEntry({
-        parentAgentId: agent.id,
-        provider: event.provider,
-        createdAt: existing?.createdAt ?? new Date().toISOString(),
-        existing,
-        update: event.update,
-      }),
-    );
-    this.emitBackgroundShellTaskState(agent.id);
-  }
-
-  /**
-   * Stop a running background shell task (Claude Bash run_in_background) by
-   * resolving it to its owning provider session's task. See
-   * .otto/knowledge/projects/observed-subagents.md (the sibling flow this
-   * mirrors) for the shape stopObservedSubagent already established.
-   */
-  async stopBackgroundShellTask(id: string): Promise<void> {
-    const entry = this.backgroundShellTasks.get(id);
-    if (!entry) {
-      throw new Error(`Background shell task not found: ${id}`);
-    }
-    if (!entry.taskId) {
-      throw new Error(`Background shell task has no task id to stop: ${id}`);
-    }
-    const parent = this.agents.get(entry.parentAgentId);
-    const session = parent && "session" in parent ? parent.session : undefined;
-    if (!session?.stopTask) {
-      throw new Error(`Parent session cannot stop background shell tasks: ${id}`);
-    }
-    await session.stopTask(entry.taskId);
-  }
-
-  /**
-   * Clear one or more background shell tasks from the track (single-row
-   * dismiss and bulk "Clear all completed" both call this). Still-live tasks
-   * are stopped best-effort first; entries are retired in place (archivedAt
-   * stamped, never deleted) so a late provider update can't resurrect a
-   * cleared row - same invariant as archiveObservedSubagent.
-   */
-  async clearBackgroundShellTasks(ids: readonly string[]): Promise<void> {
-    const parentIds = new Set<string>();
-    for (const id of ids) {
-      const entry = this.backgroundShellTasks.get(id);
-      if (!entry || entry.archivedAt) {
-        continue;
-      }
-      const wasLive = entry.status === "running";
-      if (wasLive) {
-        try {
-          await this.stopBackgroundShellTask(id);
-        } catch (error) {
-          this.logger.debug(
-            { err: error, id },
-            "agent.manager.background_shell_task.clear.stop_failed",
-          );
-        }
-      }
-      const archivedAt = new Date().toISOString();
-      entry.archivedAt = archivedAt;
-      entry.updatedAt = archivedAt;
-      if (wasLive) {
-        entry.status = "closed";
-      }
-      parentIds.add(entry.parentAgentId);
-    }
-    for (const parentId of parentIds) {
-      this.emitBackgroundShellTaskState(parentId);
-    }
-  }
-
-  // --- Suggested tasks (suggest_task / dismiss_task chips) ------------------
-
-  /** Client-safe pending snapshot, shared by live updates and chat hydration. */
-  currentSuggestedTasksFor(parentAgentId: string): SuggestedTaskInfo[] {
-    const tasks: SuggestedTaskInfo[] = [];
-    for (const entry of this.suggestedTasks.values()) {
-      if (entry.parentAgentId !== parentAgentId || entry.state !== "pending") {
-        continue;
-      }
-      tasks.push({
-        taskId: entry.id,
-        parentAgentId: entry.parentAgentId,
-        title: entry.title,
-        tldr: entry.tldr,
-        state: entry.state,
-        createdAt: entry.createdAt,
-        updatedAt: entry.updatedAt,
-        ...(entry.cwd ? { cwd: entry.cwd } : {}),
-      });
-    }
-    return tasks.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  }
-
-  private emitSuggestedTaskState(parentAgentId: string): void {
-    this.dispatch({
-      type: "suggested_task_state",
-      parentAgentId,
-      tasks: this.currentSuggestedTasksFor(parentAgentId),
-    });
-  }
-
-  /** Create a pending suggested task and surface its chip. Returns the id. */
-  spawnSuggestedTask(input: SpawnSuggestedTaskInput): string {
-    const id = this.idFactory();
-    const now = new Date().toISOString();
-    this.suggestedTasks.set(id, {
-      id,
-      parentAgentId: input.parentAgentId,
-      title: input.title,
-      prompt: input.prompt,
-      tldr: input.tldr,
-      state: "pending",
-      createdAt: now,
-      updatedAt: now,
-      ...(input.cwd ? { cwd: input.cwd } : {}),
-    });
-    this.emitSuggestedTaskState(input.parentAgentId);
-    return id;
-  }
-
-  /** The full entry (incl. the server-only prompt), for the start handler. */
-  getSuggestedTaskEntry(taskId: string): SuggestedTaskEntry | undefined {
-    return this.suggestedTasks.get(taskId);
-  }
-
-  /**
-   * Atomically claim a suggested task for starting. Returns false - leaving no
-   * claim - when the entry is missing, is not pending, or is already being
-   * started; otherwise records the claim and returns true. Synchronous so two
-   * concurrent start.requests can't both pass the pending gate before the
-   * (awaited) agent/worktree creation flips the state. The caller must pair a
-   * successful claim with `endSuggestedTaskStart` in a finally.
-   */
-  beginSuggestedTaskStart(taskId: string): boolean {
-    const entry = this.suggestedTasks.get(taskId);
-    if (!entry || entry.state !== "pending" || this.startingSuggestedTaskIds.has(taskId)) {
-      return false;
-    }
-    this.startingSuggestedTaskIds.add(taskId);
-    return true;
-  }
-
-  /** Release a claim made by `beginSuggestedTaskStart` (on success or failure). */
-  endSuggestedTaskStart(taskId: string): void {
-    this.startingSuggestedTaskIds.delete(taskId);
-  }
-
-  /**
-   * Dismiss a suggested task. Idempotent: a task that was already started or
-   * dismissed is reported via `state` with `dismissed: false`, and an unknown
-   * task returns `found: false` - the caller decides how to surface each.
-   */
-  dismissSuggestedTask(taskId: string, reason?: string): DismissSuggestedTaskResult {
-    const entry = this.suggestedTasks.get(taskId);
-    if (!entry) {
-      return { found: false, dismissed: false };
-    }
-    if (entry.state !== "pending") {
-      return { found: true, dismissed: false, state: entry.state };
-    }
-    entry.state = "dismissed";
-    entry.updatedAt = new Date().toISOString();
-    if (reason) {
-      entry.dismissReason = reason;
-    }
-    this.emitSuggestedTaskState(entry.parentAgentId);
-    return { found: true, dismissed: true, state: "dismissed" };
-  }
-
-  /** Flip a pending task to started once its agent/steer has been dispatched. */
-  markSuggestedTaskStarted(params: {
-    taskId: string;
-    mode: TasksSuggestedStartMode;
-    startedAgentId?: string;
-  }): void {
-    const entry = this.suggestedTasks.get(params.taskId);
-    if (!entry) {
-      return;
-    }
-    entry.state = "started";
-    entry.startMode = params.mode;
-    entry.updatedAt = new Date().toISOString();
-    if (params.startedAgentId) {
-      entry.startedAgentId = params.startedAgentId;
-    }
-    this.emitSuggestedTaskState(entry.parentAgentId);
-  }
-
-  /**
-   * Provider mutations may synchronously emit config events that are processed through the
-   * asynchronous session queue. Apply those events before committing the mutation's explicit
-   * manager state so call order remains authoritative.
-   */
-  private async drainSessionEvents(agentId: string): Promise<void> {
-    while (true) {
-      const tail = this.sessionEventTails.get(agentId);
-      if (!tail) {
-        return;
-      }
-      await tail;
-      if (this.sessionEventTails.get(agentId) === tail) {
-        return;
-      }
-    }
-  }
-
-  private async cancelAgentRunBefore(
-    agentId: string,
-    action: "reload" | "replace" | "rewind",
-  ): Promise<void> {
-    const result = await this.cancelAgentRun(agentId);
-    if (result.status === "refused") {
-      throw new AgentRunCancellationError(agentId, action);
-    }
-  }
-
   private recordAndDispatchTimelineItem(
     agentId: string,
-    rawItem: AgentTimelineItem,
+    item: AgentTimelineItem,
     provider: AgentProvider,
     turnId?: string,
     options?: { providerMessageId?: string },
   ): AgentStreamEvent {
-    // Normalize once so persistence, the dispatched event, and activity
-    // counters all see the same display-clean item (unwraps voice spoken-input,
-    // and turns a show_widget call into a renderable widget).
-    const row = this.recordTimeline(agentId, rawItem, { ...options, turnId });
-    const item = row.item;
-    this.recordTimelineActivity(item);
+    const projectedItem = redactSuggestionPrompt(normalizeWidgetTimelineItem(item)); // OTTO(widgets, suggested-tasks)
+    const row = this.recordTimeline(agentId, projectedItem, { ...options, turnId });
+    const activityAgent = this.agents.get(agentId);
+    if (activityAgent && !activityAgent.internal) {
+      this.ottoActivity?.recordTimeline(agentId, projectedItem, turnId); // OTTO(activity)
+    }
     const event: AgentStreamEvent = {
       type: "timeline",
-      item,
+      item: projectedItem,
       provider,
       ...(turnId !== undefined ? { turnId } : {}),
     };
@@ -8008,101 +5148,54 @@ export class AgentManager {
       timestamp: row.timestamp,
     });
 
-    if (item.type === "tool_call") {
-      // The one place BOTH timeline delivery paths meet - the direct stream
-      // event and the coalescer's flush. The liveness hook lives here so a
-      // coalesced tool call still moves the row's readout. (The coalescer is
-      // also what keeps the row from strobing: running tool calls arrive
-      // batched, so this emits at the coalesce window's rate, not per event.)
+    if (
+      item.type === "tool_call" &&
+      item.status === "completed" &&
+      item.detail?.type === "shell" &&
+      commandMayHaveChangedExternalState(item.detail.command)
+    ) {
       const agent = this.agents.get(agentId);
       if (agent) {
-        if (this.recordNativeSubagentToolActivity(agent, item)) {
-          this.emitState(agent);
-        }
-        if (
-          item.status === "completed" &&
-          item.detail?.type === "shell" &&
-          commandMayHaveChangedExternalState(item.detail.command)
-        ) {
-          this.onWorkspaceStateMayHaveChanged?.({ cwd: agent.cwd });
-        }
+        this.onWorkspaceStateMayHaveChanged?.({ cwd: agent.cwd });
       }
     }
 
     return event;
   }
 
-  /** Fun-stats counters derived from timeline items - see activity-stats. */
-  private recordTimelineActivity(item: AgentTimelineItem): void {
-    switch (item.type) {
-      case "user_message":
-        this.onActivity?.("messagesSent");
-        break;
-      case "assistant_message":
-        this.onActivity?.("messagesReceived");
-        break;
-      case "reasoning":
-        this.onActivity?.("thoughts");
-        break;
-      case "tool_call":
-        // Count once per call, at the moment it starts - not on every
-        // running -> completed/failed/canceled status update.
-        if (item.status === "running") {
-          this.onActivity?.("toolsCalled");
-        }
-        break;
-      default:
-        break;
-    }
-  }
-
   private recordSubmittedPrompt(
     agent: ActiveManagedAgent,
     prompt: AgentPromptInput,
     clientMessageId: string,
+    outcome: "accepted" | "rejected",
     options?: { messageId?: string; providerMessageId?: string; turnId?: string },
   ): void {
-    if (this.timelineStore.getSubmittedUserMessage(agent.id, clientMessageId)) {
-      return;
-    }
-    this.touchUpdatedAt(agent);
-    agent.lastUserMessageAt = new Date();
-    const item: AgentTimelineItem = {
+    const item = projectAgentMessage({
       type: "user_message",
       text: submittedPromptText(prompt),
       clientMessageId,
       ...(options?.messageId ? { messageId: options.messageId } : {}),
-      ...this.materializeSubmittedPromptImages(prompt),
-    };
-    this.recordAndDispatchTimelineItem(agent.id, item, agent.provider, options?.turnId, options);
+    });
+    if (!item) return;
+    // Human attempts stay in history on rejection; delivery notifications require acceptance.
+    if (outcome === "rejected" && item.type !== "user_message") return;
+    this.recordSubmittedPromptItem(agent, item, options);
   }
 
-  /**
-   * Phone attachment stores are intentionally device-local. Mirror submitted
-   * prompt images into the daemon-owned image store so timeline readers on
-   * every client can lazily fetch the same bytes.
-   */
-  private materializeSubmittedPromptImages(
-    prompt: AgentPromptInput,
-  ): Pick<Extract<AgentTimelineItem, { type: "user_message" }>, "images"> {
-    if (typeof prompt === "string") return {};
-    const images = prompt.flatMap((block) => {
-      if (block.type !== "image") return [];
-      try {
-        return [
-          {
-            path: materializeSentImageAttachment({ data: block.data, mimeType: block.mimeType })
-              .path,
-            mimeType: block.mimeType,
-          },
-        ];
-      } catch (error) {
-        // Preview persistence must not prevent the provider receiving a prompt.
-        this.logger.warn({ err: error }, "Failed to materialize user image attachment");
-        return [];
-      }
-    });
-    return images.length > 0 ? { images } : {};
+  private recordSubmittedPromptItem(
+    agent: ActiveManagedAgent,
+    item: AgentTimelineItem,
+    options?: { providerMessageId?: string; turnId?: string },
+  ): void {
+    if (
+      item.type === "user_message" &&
+      item.clientMessageId &&
+      this.timelineStore.getSubmittedUserMessage(agent.id, item.clientMessageId)
+    )
+      return;
+    this.touchUpdatedAt(agent);
+    if (item.type === "user_message") agent.lastUserMessageAt = new Date();
+    this.recordAndDispatchTimelineItem(agent.id, item, agent.provider, options?.turnId, options);
   }
 
   private reconcileSubmittedPromptEcho(
@@ -8114,11 +5207,14 @@ export class AgentManager {
     if (!clientMessageId) return null;
     let existing = this.timelineStore.getSubmittedUserMessage(agent.id, clientMessageId);
     if (!existing) {
-      this.recordSubmittedPrompt(agent, item.text, clientMessageId, {
-        messageId: clientMessageId,
-        ...(messageId ? { providerMessageId: messageId } : {}),
-        ...(turnId ? { turnId } : {}),
-      });
+      this.recordSubmittedPromptItem(
+        agent,
+        { ...item, messageId: clientMessageId },
+        {
+          ...(messageId ? { providerMessageId: messageId } : {}),
+          ...(turnId ? { turnId } : {}),
+        },
+      );
       existing = this.timelineStore.getSubmittedUserMessage(agent.id, clientMessageId);
     }
     if (!existing || existing.item.type !== "user_message") return null;
@@ -8175,9 +5271,6 @@ export class AgentManager {
     event: Extract<AgentStreamEvent, { type: "turn_failed" }>,
   ): string {
     const base = event.error.trim();
-    if (isContextSizeError(base)) {
-      return CONTEXT_SIZE_ERROR_MESSAGE;
-    }
     const parts = [base.length > 0 ? base : "Provider run failed"];
     const code = event.code?.trim();
     if (code) {
@@ -8199,22 +5292,21 @@ export class AgentManager {
       turnId?: string;
     },
   ): AgentTimelineRow {
-    // Bound here rather than at each caller: this is the one gate every
-    // timeline write passes through, and an unbounded shell output otherwise
-    // lands in the row store, the durable log, the stream, and from there in
-    // the next model request. Callers dispatch row.item so the client is shown
-    // exactly what was persisted.
-    const row = this.timelineStore.append(
-      agentId,
-      limitAgentTimelineItemContent(normalizeTimelineItemForDisplay(item)),
-      options,
-    );
+    // OTTO(widgets, suggested-tasks): hydration can enter here without a live stream event.
+    if (item.type === "tool_call" && item.detail?.type === "unknown") {
+      item = redactSuggestionPrompt(normalizeWidgetTimelineItem(item));
+    }
+    item = limitAgentTimelineItemContent(item);
+    const row = this.timelineStore.append(agentId, item, options);
     this.enqueueDurableTimelineAppend(agentId, row);
+    // OTTO(chat-search): coalesce writes; no disk or worker traffic in the live stream path.
     if (
+      this.ottoChatSearch &&
       (item.type === "user_message" || item.type === "assistant_message") &&
       !this.agents.get(agentId)?.internal
-    )
-      this.chatSearch?.schedule(agentId);
+    ) {
+      this.ottoChatSearch.changed(agentId);
+    }
     return row;
   }
 
@@ -8270,29 +5362,8 @@ export class AgentManager {
       return;
     }
 
-    // Don't raise an unread badge on a chat somebody is already reading. The
-    // client can only clear a raised badge a round trip later, which reads as a
-    // flash in the tab strip and the sidebar; not raising it is the only way to
-    // not show it at all.
-    //
-    // Scoped to the finished/error transitions below, which is the whole of this
-    // function. A pending permission is a prompt to act rather than an unread
-    // marker, and it badges off pendingPermissions instead of requiresAttention
-    // (see deriveSidebarStateBucket), so it still surfaces to a watching reader.
-    if (this.isAgentActivelyWatched?.(agent.id)) {
-      return;
-    }
-
     // Check if agent transitioned from running to idle (finished)
     if (previousStatus === "running" && currentStatus === "idle") {
-      const silentTurnId = this.silentCompletionTurnIds.get(agent.id);
-      if (silentTurnId !== undefined) {
-        this.silentCompletionTurnIds.delete(agent.id);
-        return;
-      }
-      if (this.silentOutOfBandAgentIds.delete(agent.id)) {
-        return;
-      }
       agent.attention = {
         requiresAttention: true,
         attentionReason: "finished",
@@ -8321,17 +5392,6 @@ export class AgentManager {
     this.trackBackgroundTask(task);
   }
 
-  private enqueueDurableTimelineUpdate(agentId: string, row: AgentTimelineRow): void {
-    if (!this.durableTimelineStore) return;
-    const task = this.durableTimelineStore.updateCommittedRow(agentId, row).catch((err) => {
-      this.logger.error(
-        { err, agentId, seq: row.seq, itemType: row.item.type },
-        "Failed to enrich durable timeline row",
-      );
-    });
-    this.trackBackgroundTask(task);
-  }
-
   private enqueueDurableTimelineAppend(agentId: string, row: AgentTimelineRow): void {
     if (!this.durableTimelineStore) {
       return;
@@ -8356,6 +5416,17 @@ export class AgentManager {
       this.logger.error(
         { err, agentId, rowCount: rows.length },
         "Failed to seed durable timeline store",
+      );
+    });
+    this.trackBackgroundTask(task);
+  }
+
+  private enqueueDurableTimelineUpdate(agentId: string, row: AgentTimelineRow): void {
+    if (!this.durableTimelineStore) return;
+    const task = this.durableTimelineStore.updateCommittedRow(agentId, row).catch((err) => {
+      this.logger.error(
+        { err, agentId, seq: row.seq, itemType: row.item.type },
+        "Failed to enrich durable timeline row",
       );
     });
     this.trackBackgroundTask(task);
@@ -8429,8 +5500,18 @@ export class AgentManager {
   private dispatchStream(
     agentId: string,
     event: AgentStreamEvent,
-    metadata?: { seq?: number; epoch?: string; timestamp?: string },
+    metadata?: {
+      seq?: number;
+      epoch?: string;
+      timestamp?: string;
+    },
   ): void {
+    if (event.type === "timeline") {
+      event = {
+        ...event,
+        item: limitAgentTimelineItemContent(event.item),
+      };
+    }
     const agent = this.agents.get(agentId);
     this.logger.trace(
       {
@@ -8470,36 +5551,37 @@ export class AgentManager {
       ) {
         continue;
       }
-      // Skip internal agents for global subscribers (those without a specific agentId)
-      if (!subscriber.agentId) {
-        if (event.type === "agent_state" && event.agent.internal) {
-          continue;
-        }
-        if (event.type === "agent_stream") {
-          const agent = this.agents.get(event.agentId);
-          // Observable internal agents (e.g. artifact generation) still stream
-          // so a client that opened their timeline sees messages live; other
-          // internal agents (branch-name/git-metadata generators) stay silent.
-          // agent_state above is always filtered, so neither clutters the sidebar.
-          if (agent?.internal && !agent.observable) {
-            continue;
-          }
-        }
-        // An internal parent is hidden from global subscribers, so its children
-        // must be too: leaking them puts subagents on the sidebar belonging to a
-        // parent that is not there.
-        if (event.type === "provider_subagent") {
-          const parentAgentId =
-            event.event.type === "upsert"
-              ? event.event.subagent.parentAgentId
-              : event.event.parentAgentId;
-          if (this.agents.get(parentAgentId)?.internal) {
-            continue;
-          }
-        }
+      if (
+        subscriber.agentId &&
+        event.type === "provider_subagent" &&
+        subscriber.agentId !==
+          (event.event.type === "upsert"
+            ? event.event.subagent.parentAgentId
+            : event.event.parentAgentId)
+      ) {
+        continue;
+      }
+      // Global subscribers (no agentId) skip internal agents unless they opted in.
+      if (
+        !subscriber.agentId &&
+        !subscriber.includeInternal &&
+        this.eventBelongsToInternalAgent(event)
+      ) {
+        continue;
       }
       subscriber.callback(event);
     }
+  }
+
+  private eventBelongsToInternalAgent(event: AgentManagerEvent): boolean {
+    if (event.type === "agent_state") return event.agent.internal === true;
+    if (event.type === "agent_stream") return this.agents.get(event.agentId)?.internal === true;
+    if (event.type !== "provider_subagent") return false;
+    const parentAgentId =
+      event.event.type === "upsert"
+        ? event.event.subagent.parentAgentId
+        : event.event.parentAgentId;
+    return this.agents.get(parentAgentId)?.internal === true;
   }
 
   private async normalizeConfig(
@@ -8507,27 +5589,16 @@ export class AgentManager {
     options: NormalizeConfigOptions = {},
   ): Promise<AgentSessionConfig> {
     const normalized: AgentSessionConfig = { ...config };
+    delete normalized.daemonAppendSystemPrompt; // OTTO(knowledge): runtime instructions must not reenter stored/imported config.
 
     // Always resolve cwd to absolute path for consistent history file lookup
     if (normalized.cwd) {
       normalized.cwd = resolve(normalized.cwd);
-      try {
-        const cwdStats = await stat(normalized.cwd);
-        if (!cwdStats.isDirectory()) {
-          throw new Error(`Working directory is not a directory: ${normalized.cwd}`);
-        }
-      } catch (error) {
-        if (
-          error instanceof Error &&
-          "code" in error &&
-          (error as NodeJS.ErrnoException).code === "ENOENT"
-        ) {
-          throw new Error(`Working directory does not exist: ${normalized.cwd}`, { cause: error });
-        }
-        if (error instanceof Error) {
-          throw error;
-        }
-        throw new Error(`Failed to access working directory: ${normalized.cwd}`, { cause: error });
+      // Only a session that will run in the directory needs it to still be there. Reading
+      // an archived agent's history runs nothing, and must survive the worktree it ran in
+      // being removed when its workspace was archived.
+      if (options.purpose !== "history") {
+        await assertUsableWorkingDirectory(normalized.cwd);
       }
     }
 
@@ -8544,38 +5615,31 @@ export class AgentManager {
       }
     }
 
-    if (!normalized.modeId) {
-      // Ask the provider first: some pick a different default depending on how
-      // they are hosted (Claude on Bedrock exposes a different approval set),
-      // which the static manifest cannot express. The manifest is the fallback
-      // for providers that do not implement the hook, or that decline to answer.
-      normalized.modeId = await this.resolveDefaultModeId(normalized, options.env);
-    }
-
-    return normalized;
+    return this.applyProviderConfiguration(normalized);
   }
 
-  private async resolveDefaultModeId(
-    config: AgentSessionConfig,
-    env?: Record<string, string>,
-  ): Promise<string | undefined> {
-    try {
-      const resolved = await this.clients.get(config.provider)?.resolveDefaultModeId?.({
-        config,
-        ...(env ? { env } : {}),
-      });
-      if (resolved) {
-        return resolved;
-      }
-    } catch {
-      // A provider that cannot answer falls through to the manifest rather than
-      // failing agent creation over a default.
+  private applyProviderConfiguration(config: AgentSessionConfig): AgentSessionConfig {
+    const definition = this.providerDefinitions.get(config.provider);
+    this.validateToolPolicyServers(config);
+    if (config.toolPolicy && !definition?.applyToolPolicy) {
+      throw new Error(
+        `Provider '${config.provider}' cannot preapprove exact MCP tools for unattended execution`,
+      );
     }
-    try {
-      return getAgentProviderDefinition(config.provider).defaultModeId ?? undefined;
-    } catch {
-      // Unknown provider
-      return undefined;
+    return definition?.applyToolPolicy
+      ? definition.applyToolPolicy(config, config.toolPolicy)
+      : config;
+  }
+
+  private validateToolPolicyServers(config: AgentSessionConfig): void {
+    if (!config.toolPolicy) return;
+    const serverNames = new Set(Object.keys(config.mcpServers ?? {}));
+    for (const grant of config.toolPolicy.preapproved) {
+      if (!serverNames.has(grant.server)) {
+        throw new Error(
+          `toolPolicy preapproval '${grant.server}.${grant.tool}' requires MCP server '${grant.server}' in the same agent request`,
+        );
+      }
     }
   }
 
@@ -8592,7 +5656,7 @@ export class AgentManager {
       });
       return (catalog.models.find((model) => model.isDefault) ?? catalog.models[0])?.id;
     } catch {
-      // Provider may not support model listing - leave model undefined.
+      // Provider may not support model listing — leave model undefined.
       return undefined;
     }
   }
@@ -8600,181 +5664,73 @@ export class AgentManager {
   private async prepareSessionConfig(
     config: AgentSessionConfig,
     agentId: string,
-    // Launch env, so a provider whose default mode depends on how it is hosted
-    // can answer with the mode this particular launch will actually run under.
-    env?: Record<string, string>,
+    options: {
+      env?: Record<string, string>;
+      purpose?: AgentResumePurpose;
+      workspaceId?: string;
+    } = {}, // OTTO(knowledge)
   ): Promise<PreparedSessionConfig> {
-    if (config.cwd) await this.assertDirectoryAvailable?.(config.cwd);
-    const storedConfig = await this.normalizeConfig(
-      stripInternalOttoMcpServer(config),
-      env ? { env } : {},
-    );
-    const ottoToolPolicy = this.ottoToolsEnabled
-      ? this.resolveOttoToolPolicy(storedConfig.provider)
-      : { enabled: false };
-    // Instruction files go on last, so the repo's own rules read as the most
-    // authoritative thing in the prompt - after the personality's identity, its
-    // lessons, and the knowledge catalog.
-    const launchConfig = await this.applyInstructionFiles(
-      await this.applyProjectKnowledge(
-        await this.applyPersonalityMemory(
-          this.applyOttoWorkVocabulary(
-            this.applyDaemonAppendSystemPrompt(
-              withRuntimeOttoMcpServer({
-                config: storedConfig,
-                agentId,
-                mcpBaseUrl:
-                  this.ottoToolsEnabled && isOttoToolPolicyEnabled(ottoToolPolicy)
-                    ? this.mcpBaseUrl
-                    : null,
-                mcpAuthToken: this.mcpAuthToken,
-              }),
-            ),
-          ),
-        ),
-      ),
-    );
-    return { storedConfig, launchConfig, ottoToolPolicy };
-  }
-
-  /**
-   * Append the personality's accrued lessons to the LAUNCH config's system
-   * prompt. Deliberately runtime-only - never written to `storedConfig` - for
-   * two reasons that both matter:
-   *
-   * 1. Memory is re-read on every resume, so a lesson recorded yesterday is
-   *    present today without rewriting any agent record.
-   * 2. The live-personality-switch ownership check compares the stored
-   *    `systemPrompt` against the recomposed personality prompt; baking memory
-   *    into the stored prompt would make that comparison start failing the
-   *    moment a personality learned anything.
-   *
-   * Unlike the daemon-global append prompt this is NOT suppressed by
-   * `respectGlobalAppendPrompt`: that toggle governs the daemon's prompt, and
-   * these lessons are the personality's own.
-   */
-  private async applyPersonalityMemory(config: AgentSessionConfig): Promise<AgentSessionConfig> {
-    const systemPrompt = await this.withPersonalityMemory(
-      config.systemPrompt,
-      config.profileSnapshot,
-      config.cwd,
-    );
-    return systemPrompt === config.systemPrompt ? config : { ...config, systemPrompt };
-  }
-
-  /**
-   * Runtime-only vocabulary for sessions that actually receive Otto's native
-   * catalog. Tool descriptions explain individual calls; this compact brief
-   * explains the shared task/chat/orchestration model without spending tokens
-   * in providers that cannot use those tools.
-   */
-  private applyOttoWorkVocabulary(config: AgentSessionConfig): AgentSessionConfig {
-    if (
-      !this.ottoToolsEnabled ||
-      !this.getProviderCapabilities(config.provider)?.supportsNativeOttoTools
-    ) {
-      return config;
-    }
-    const existing = config.systemPrompt?.trim();
-    return {
-      ...config,
-      systemPrompt: existing
-        ? `${existing}\n\n${OTTO_WORK_VOCABULARY_DIRECTIVE}`
-        : OTTO_WORK_VOCABULARY_DIRECTIVE,
-    };
-  }
-
-  /**
-   * Stack a personality's accrued lessons under a system prompt, or hand the
-   * prompt back untouched. Shared by the spawn path and the live switch so both
-   * compose memory identically - a personality that behaved differently
-   * depending on how you attached it would be two personalities.
-   */
-  private async withPersonalityMemory(
-    systemPrompt: string | undefined,
-    snapshot: ResolvedProfileSnapshot | null | undefined,
-    cwd: string | undefined,
-  ): Promise<string | undefined> {
-    if (!snapshot || !this.resolvePersonalityMemoryBrief) {
-      return systemPrompt;
-    }
-    const brief = await this.resolvePersonalityMemoryBrief({
-      personalityId: snapshot.profileId,
-      personalityName: snapshot.name,
-      cwd,
+    const storedConfig = await this.normalizeConfig(stripInternalPaseoMcpServer(config), {
+      env: options.env,
+      purpose: options.purpose,
     });
-    if (!brief) {
-      return systemPrompt;
+    const paseoToolPolicy = this.paseoToolsEnabled
+      ? this.resolvePaseoToolPolicy(storedConfig.provider)
+      : { enabled: false };
+    const baseLaunchConfig = this.applyDaemonAppendSystemPrompt(
+      withRuntimePaseoMcpServer({
+        config: storedConfig,
+        agentId,
+        mcpBaseUrl:
+          this.paseoToolsEnabled && isPaseoToolPolicyEnabled(paseoToolPolicy)
+            ? this.mcpBaseUrl
+            : null,
+        mcpAuthToken: this.mcpAuthToken,
+      }),
+    );
+    // OTTO(knowledge): compose fresh metadata for create/resume/import/refresh;
+    // never persist the index or mutate the provider-neutral stored config.
+    const launchConfig = await appendKnowledgeSessionPrompt({
+      config: baseLaunchConfig,
+      source: this.ottoKnowledgePrompt,
+      workspaceId: options.workspaceId,
+      purpose: options.purpose,
+      toolsEnabled: this.paseoToolsEnabled && isPaseoToolPolicyEnabled(paseoToolPolicy),
+      disabledTools: paseoToolPolicy?.disabledTools,
+      unavailable: () =>
+        this.logger.warn(
+          { agentId, workspaceId: options.workspaceId },
+          "Project Knowledge catalog is unavailable",
+        ),
+    });
+    // OTTO(profile-memory): only the transient provider prompt receives accrued lessons.
+    const profile = storedConfig.ottoProfile;
+    if (profile && this.profileMemory) {
+      const brief = await this.profileMemory.resolveBriefForSpawn({
+        personalityId: profile.id,
+        personalityName: profile.name,
+        cwd: storedConfig.cwd,
+      });
+      if (brief) {
+        this.configsWithProfileLessons.add(storedConfig);
+        launchConfig.daemonAppendSystemPrompt = [launchConfig.daemonAppendSystemPrompt, brief]
+          .filter(Boolean)
+          .join("\n\n");
+      }
     }
-    const existing = systemPrompt?.trim();
-    return existing ? `${existing}\n\n${brief}` : brief;
-  }
-
-  /**
-   * Load the workspace's `AGENTS.md` chain into the LAUNCH prompt, for the
-   * providers that have no process of their own to do it.
-   *
-   * Gated on `ownsContextPayload` rather than a provider name, and the gate is
-   * the whole correctness argument: Claude, Codex and OpenCode each read these
-   * files themselves, so loading them here too would send the repo's
-   * instructions twice and bill for both. A provider that does not compose its
-   * own request gets them from us; a provider that does is left alone.
-   *
-   * Runtime-only for the same reason as personality memory and the knowledge
-   * catalog: editing `AGENTS.md` must reach the next session without rewriting
-   * any agent record, and the stored prompt has to stay comparable for the
-   * live-personality-switch ownership check.
-   */
-  private async applyInstructionFiles(config: AgentSessionConfig): Promise<AgentSessionConfig> {
-    if (!this.resolveInstructionFiles) return config;
-    if (!this.getProviderCapabilities(config.provider)?.ownsContextPayload) return config;
-
-    let text: string | null;
-    try {
-      text = await this.resolveInstructionFiles({ cwd: config.cwd });
-    } catch (error) {
-      this.logger.warn({ err: error, cwd: config.cwd }, "Failed to load instruction files");
-      return config;
-    }
-    if (!text) return config;
-
-    const existing = config.systemPrompt?.trim();
-    return { ...config, systemPrompt: existing ? `${existing}\n\n${text}` : text };
-  }
-
-  /** Runtime-only, just like personality memory: the catalog is re-read on each session start. */
-  private async applyProjectKnowledge(config: AgentSessionConfig): Promise<AgentSessionConfig> {
-    const systemPrompt = await this.withProjectKnowledge(config.systemPrompt, config.cwd);
-    return systemPrompt === config.systemPrompt ? config : { ...config, systemPrompt };
-  }
-
-  private async withProjectKnowledge(
-    systemPrompt: string | undefined,
-    cwd: string | undefined,
-  ): Promise<string | undefined> {
-    if (!this.resolveProjectKnowledgeBrief) return systemPrompt;
-    let brief: string | null;
-    try {
-      brief = await this.resolveProjectKnowledgeBrief({ cwd });
-    } catch (error) {
-      this.logger.warn({ err: error, cwd }, "Failed to resolve project knowledge catalog");
-      return systemPrompt;
-    }
-    if (!brief) return systemPrompt;
-    const existing = systemPrompt?.trim();
-    return existing ? `${existing}\n\n${brief}` : brief;
+    return { storedConfig, launchConfig, paseoToolPolicy };
   }
 
   private applyDaemonAppendSystemPrompt(config: AgentSessionConfig): AgentSessionConfig {
-    const daemonAppendSystemPrompt = this.appendSystemPrompt.trim();
+    // OTTO(agent-teams): snapshots survive resume; explicitly authored chat instructions take precedence.
+    const daemonAppendSystemPrompt =
+      config.ottoProfile?.respectGlobal === false ? "" : this.appendSystemPrompt.trim();
     const next = { ...config };
+    if (!next.systemPrompt && next.ottoProfile?.prompt) next.systemPrompt = next.ottoProfile.prompt;
+    delete next.ottoProfile;
     delete next.daemonAppendSystemPrompt;
 
-    // A personality with respectGlobalAppendPrompt === false owns its whole
-    // system prompt - the daemon-global append must not stack on top of it.
-    const suppressGlobalAppend = config.profileSnapshot?.respectGlobalAppendPrompt === false;
-
-    return daemonAppendSystemPrompt && !suppressGlobalAppend
+    return daemonAppendSystemPrompt
       ? {
           ...next,
           daemonAppendSystemPrompt,
@@ -8786,7 +5742,7 @@ export class AgentManager {
     agentId: string,
     client: AgentClient,
     cwd: string,
-    ottoToolPolicy: ProviderOttoToolsPolicy | undefined,
+    paseoToolPolicy: ProviderPaseoToolsPolicy | undefined,
     env?: Record<string, string>,
     opening?: {
       reason: PluginSessionOpenRequest["reason"];
@@ -8811,55 +5767,35 @@ export class AgentManager {
       agentId,
       env: {
         ...env,
-        OTTO_AGENT_ID: agentId,
-        // Alongside the id so anything the agent spawns - a hook, a workspace
-        // script, a nested tool - can find the workspace it belongs to without
-        // relying on having inherited the process cwd.
-        OTTO_AGENT_CWD: cwd,
+        PASEO_AGENT_ID: agentId,
+        PASEO_AGENT_CWD: cwd,
       },
-      // Resolved daemon-wide behavior toggles for this launch. Providers that
-      // don't support a behavior ignore it (Claude reads promptSuggestions /
-      // agentProgressSummaries).
-      agentBehaviors: this.agentBehaviors,
     };
     if (
-      this.ottoToolsEnabled &&
-      isOttoToolPolicyEnabled(ottoToolPolicy) &&
-      client.capabilities.supportsNativeOttoTools &&
-      this.ottoToolCatalogFactory
+      this.paseoToolsEnabled &&
+      isPaseoToolPolicyEnabled(paseoToolPolicy) &&
+      client.capabilities.supportsNativePaseoTools &&
+      this.paseoToolCatalogFactory
     ) {
-      context.ottoTools = await this.ottoToolCatalogFactory({
+      context.paseoTools = await this.paseoToolCatalogFactory({
         callerAgentId: agentId,
-        callerCwd: cwd,
-        ottoToolPolicy,
+        paseoToolPolicy,
+        callerCwd: cwd, // OTTO(connectors): use the actual new-session scope before registry publication.
+        callerPurpose: opening?.purpose ?? "interactive", // OTTO(connectors)
       });
     }
     return context;
-  }
-
-  /** MCP initialization may run inside create/resume, before registerSession. */
-  getAgentToolCwd(agentId: string): string | undefined {
-    return this.launchingAgentCwds.get(agentId) ?? this.getAgent(agentId)?.config.cwd;
-  }
-
-  private async withLaunchingAgentCwd<T>(
-    agentId: string,
-    cwd: string,
-    launch: () => Promise<T>,
-  ): Promise<T> {
-    this.launchingAgentCwds.set(agentId, cwd);
-    try {
-      return await launch();
-    } finally {
-      this.launchingAgentCwds.delete(agentId);
-    }
   }
 
   private resolveProviderLaunchConfig(
     launchConfig: AgentSessionConfig,
     launchContext: AgentLaunchContext,
   ): AgentSessionConfig {
-    return launchContext.ottoTools ? stripInternalOttoMcpServer(launchConfig) : launchConfig;
+    return prepareWorkflowLaunch(
+      this,
+      launchContext.paseoTools ? stripInternalPaseoMcpServer(launchConfig) : launchConfig,
+      launchContext,
+    ); // OTTO(workflows): ordinary sessions keep the same object and path.
   }
 
   private async requireAvailableClient(options: { provider: AgentProvider }): Promise<AgentClient> {
@@ -8952,21 +5888,40 @@ export class AgentManager {
     return agent;
   }
 
-  private async runLifecycleMutation<T>(agentId: string, mutation: () => Promise<T>): Promise<T> {
-    // Parent cascade classifies a child inside the same lane used by open-tab
-    // label writes, so a received ownership update cannot be overtaken.
-    const previous = this.lifecycleMutationTails.get(agentId) ?? Promise.resolve();
-    const result = previous.catch(() => undefined).then(mutation);
-    const tail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    this.lifecycleMutationTails.set(agentId, tail);
-    void tail.finally(() => {
-      if (this.lifecycleMutationTails.get(agentId) === tail) {
-        this.lifecycleMutationTails.delete(agentId);
-      }
-    });
-    return result;
+  private requirePublicAgent(id: string): LiveManagedAgent {
+    const agent = this.requireAgent(id);
+    if (agent.internal) {
+      throw new Error(`Unknown agent '${agent.id}'`);
+    }
+    return agent;
   }
+}
+
+function matchesImportableSessionQuery(
+  session: ImportableProviderSession,
+  rawQuery: string | undefined,
+): boolean {
+  const query = rawQuery?.trim().toLowerCase();
+  if (!query) return true;
+  const cwdBasename = basename(session.cwd.replaceAll("\\", "/"));
+  return [session.title, session.firstPromptPreview, session.lastPromptPreview, cwdBasename].some(
+    (value) => value?.toLowerCase().includes(query),
+  );
+}
+
+export function commandMayHaveChangedExternalState(command: string): boolean {
+  const normalized = command.toLowerCase();
+  // Commands that operate on remote state and do NOT trigger local file
+  // watchers. Local git mutations (commit, checkout, merge, rebase, reset,
+  // pull) are already caught by watchers on .git/HEAD and refs/heads/.
+  return (
+    // GitHub PR operations (merge, close, create, edit, comment, review)
+    /\bgh\s+pr\s+(merge|close|create|edit|comment|review)\b/.test(normalized) ||
+    // Pushes to remote — local refs unchanged, but remote state (PR checks,
+    // mergeable status) may shift immediately after.
+    /\bgit\s+push\b/.test(normalized) ||
+    // Fetches update refs/remotes/ which our watchers do not watch, so
+    // ahead/behind counts can drift stale until the next refresh.
+    /\bgit\s+fetch\b/.test(normalized)
+  );
 }

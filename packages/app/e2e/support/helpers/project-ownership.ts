@@ -6,7 +6,7 @@ interface OwnedResourceResult {
 interface ProjectClient {
   addProject?: (...args: unknown[]) => Promise<OwnedResourceResult>;
   close(): Promise<void>;
-  createOttoWorktree?: (...args: unknown[]) => Promise<OwnedResourceResult>;
+  createPaseoWorktree?: (...args: unknown[]) => Promise<OwnedResourceResult>;
   createWorkspace?: (...args: unknown[]) => Promise<OwnedResourceResult>;
   removeProject(projectId: string): Promise<unknown>;
 }
@@ -36,9 +36,9 @@ export function withProjectOwnership<Client extends object>(client: Client): Cli
         const createWorkspace = target.createWorkspace.bind(target);
         return async (...args: unknown[]) => trackProject(await createWorkspace(...args));
       }
-      if (property === "createOttoWorktree" && target.createOttoWorktree) {
-        const createOttoWorktree = target.createOttoWorktree.bind(target);
-        return async (...args: unknown[]) => trackProject(await createOttoWorktree(...args));
+      if (property === "createPaseoWorktree" && target.createPaseoWorktree) {
+        const createPaseoWorktree = target.createPaseoWorktree.bind(target);
+        return async (...args: unknown[]) => trackProject(await createPaseoWorktree(...args));
       }
       if (property === "removeProject") {
         return async (projectId: string) => {

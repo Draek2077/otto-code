@@ -1,4 +1,5 @@
-import { execFileSync } from "node:child_process";
+import { createHook } from "node:async_hooks";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
@@ -12,6 +13,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { isPlatform } from "../test-utils/platform.js";
+import { startPathContainmentMetrics, stopPathContainmentMetrics } from "./path.js";
 import { startGitCommandMetrics, stopGitCommandMetrics } from "./run-git-command.js";
 import {
   searchDirectoryEntries,
@@ -84,7 +86,7 @@ describe("searchDirectoryEntries", () => {
   beforeEach(() => {
     configuredSearchRoot = mkdtempSync(path.join(tmpdir(), "directory-search-"));
     searchRoot = realpathSync.native(configuredSearchRoot);
-    mkdirSync(path.join(searchRoot, "projects", "otto-desktop"), { recursive: true });
+    mkdirSync(path.join(searchRoot, "projects", "paseo-desktop"), { recursive: true });
     mkdirSync(path.join(searchRoot, "src", "components"), { recursive: true });
     mkdirSync(path.join(searchRoot, ".hidden", "secret"), { recursive: true });
     writeFileSync(path.join(searchRoot, "src", "components", "message-renderer.tsx"), "");
@@ -97,7 +99,7 @@ describe("searchDirectoryEntries", () => {
   it("applies result paths and entry kinds as parameters of one search", async () => {
     const directories = await searchDirectoryEntries({
       root: configuredSearchRoot,
-      query: "oto",
+      query: "pso",
       pathFormat: "absolute",
       includeFiles: false,
       includeDirectories: true,
@@ -113,7 +115,7 @@ describe("searchDirectoryEntries", () => {
     expect({ directories, files }).toEqual({
       directories: [
         {
-          path: path.join(searchRoot, "projects", "otto-desktop"),
+          path: path.join(searchRoot, "projects", "paseo-desktop"),
           kind: "directory",
         },
       ],
@@ -168,6 +170,26 @@ describe("searchDirectoryEntries", () => {
       1,
     );
   });
+
+  it.skipIf(isWindows)(
+    "prunes a symlink whose target is inside a Git-ignored directory",
+    async () => {
+      initGitRepo(searchRoot, "generated/\n");
+      mkdirSync(path.join(searchRoot, "generated", "output"), { recursive: true });
+      symlinkSync(path.join(searchRoot, "generated", "output"), path.join(searchRoot, "linked"));
+
+      await expect(
+        searchDirectoryEntries({
+          root: searchRoot,
+          query: "linked",
+          pathFormat: "relative",
+          includeFiles: false,
+          includeDirectories: true,
+          respectGitIgnore: true,
+        }),
+      ).resolves.toEqual([]);
+    },
+  );
 
   it("configures raw blank queries independently from explicit root aliases", async () => {
     const rootEntries = [
@@ -239,7 +261,7 @@ describe("searchDirectoryEntries", () => {
     const expected = [
       { path: "pso-root", kind: "directory" },
       { path: "nested/pso-global", kind: "directory" },
-      { path: "projects/otto-desktop", kind: "directory" },
+      { path: "projects/paseo-desktop", kind: "directory" },
     ];
 
     await expect(searchDirectoryEntries({ ...common, query: "~/pso" })).resolves.toEqual(expected);
@@ -270,7 +292,7 @@ describe("searchDirectoryEntries", () => {
       ],
       projectEntries: [
         { path: "projects", kind: "directory" },
-        { path: "projects/otto-desktop", kind: "directory" },
+        { path: "projects/paseo-desktop", kind: "directory" },
       ],
     });
   });
@@ -314,7 +336,7 @@ describe("searchDirectoryEntries", () => {
 
   it("does not spend the scan budget on excluded entry kinds", async () => {
     const budgetRoot = path.join(searchRoot, "kind-budget");
-    const target = path.join(budgetRoot, "z-projects", "otto-target");
+    const target = path.join(budgetRoot, "z-projects", "paseo-target");
     mkdirSync(target, { recursive: true });
     for (let index = 0; index < 10; index += 1) {
       writeFileSync(path.join(budgetRoot, `a-noise-${index}.txt`), "");
@@ -323,13 +345,13 @@ describe("searchDirectoryEntries", () => {
     await expect(
       searchDirectoryEntries({
         root: budgetRoot,
-        query: "otto-target",
+        query: "paseo-target",
         pathFormat: "relative",
         includeFiles: false,
         includeDirectories: true,
         maxEntriesScanned: 2,
       }),
-    ).resolves.toEqual([{ path: "z-projects/otto-target", kind: "directory" }]);
+    ).resolves.toEqual([{ path: "z-projects/paseo-target", kind: "directory" }]);
   });
 
   it("applies ignored-directory policy to parent-scoped queries", async () => {
@@ -410,7 +432,7 @@ describe("searchDirectoryEntries", () => {
     const narrowRoot = path.join(searchRoot, "retargeted-link-root");
     const insideTarget = path.join(narrowRoot, "inside");
     const outsideTarget = path.join(searchRoot, "retargeted-link-outside");
-    const link = path.join(narrowRoot, "project-shortcut");
+    const link = path.join(narrowRoot, "project-link");
     mkdirSync(insideTarget, { recursive: true });
     mkdirSync(outsideTarget, { recursive: true });
     symlinkSync(insideTarget, link);
@@ -418,12 +440,12 @@ describe("searchDirectoryEntries", () => {
     await expect(
       searchDirectoryEntries({
         root: narrowRoot,
-        query: "project-shortcut",
+        query: "project-link",
         pathFormat: "relative",
         includeFiles: false,
         includeDirectories: true,
       }),
-    ).resolves.toEqual([{ path: "project-shortcut", kind: "directory" }]);
+    ).resolves.toEqual([{ path: "project-link", kind: "directory" }]);
 
     unlinkSync(link);
     symlinkSync(outsideTarget, link);
@@ -431,7 +453,7 @@ describe("searchDirectoryEntries", () => {
     await expect(
       searchDirectoryEntries({
         root: narrowRoot,
-        query: "project-shortcut",
+        query: "project-link",
         pathFormat: "relative",
         includeFiles: false,
         includeDirectories: true,
@@ -482,7 +504,7 @@ describe("absolute directory-path configuration", () => {
     homeDir = realpathSync.native(homeDir);
     outsideDir = realpathSync.native(outsideDir);
 
-    mkdirSync(path.join(homeDir, "projects", "otto"), { recursive: true });
+    mkdirSync(path.join(homeDir, "projects", "paseo"), { recursive: true });
     mkdirSync(path.join(homeDir, "projects", "playground"), { recursive: true });
     mkdirSync(path.join(homeDir, "documents", "plans"), { recursive: true });
     mkdirSync(path.join(homeDir, ".hidden", "cache"), { recursive: true });
@@ -511,7 +533,7 @@ describe("absolute directory-path configuration", () => {
 
   it("shares the scan budget fairly between nested sibling branches", async () => {
     const budgetHome = path.join(tempRoot, "nested-budget-home");
-    const projectPath = path.join(budgetHome, "work", "client", "team", "otto-desktop");
+    const projectPath = path.join(budgetHome, "work", "client", "team", "paseo-desktop");
     mkdirSync(projectPath, { recursive: true });
     for (let index = 0; index < 10; index += 1) {
       mkdirSync(
@@ -522,7 +544,7 @@ describe("absolute directory-path configuration", () => {
 
     const results = await searchAbsoluteDirectoryPaths({
       homeDir: budgetHome,
-      query: "otto-desktop",
+      query: "paseo-desktop",
       limit: 10,
       maxDirectoriesScanned: 8,
     });
@@ -535,7 +557,7 @@ describe("absolute directory-path configuration", () => {
   it.skipIf(isWindows)("does not let a queued symlink hide the direct project branch", async () => {
     const symlinkHome = path.join(tempRoot, "symlink-budget-home");
     const projectRoot = path.join(symlinkHome, "b-projects", "project-root");
-    const projectPath = path.join(projectRoot, "otto-desktop");
+    const projectPath = path.join(projectRoot, "paseo-desktop");
     const noisyBranch = path.join(symlinkHome, "a-noisy");
     mkdirSync(projectPath, { recursive: true });
     for (let index = 0; index < 10; index += 1) {
@@ -549,7 +571,7 @@ describe("absolute directory-path configuration", () => {
 
     const results = await searchAbsoluteDirectoryPaths({
       homeDir: symlinkHome,
-      query: "otto-desktop",
+      query: "paseo-desktop",
       limit: 10,
       maxDirectoriesScanned: 6,
     });
@@ -561,17 +583,13 @@ describe("absolute directory-path configuration", () => {
 
   it.skipIf(isWindows)("follows visible directory symlinks that stay inside home", async () => {
     const symlinkHome = path.join(tempRoot, "internal-symlink-home");
-    const projectPath = path.join(symlinkHome, ".linked", "project-root", "otto-desktop");
+    const projectPath = path.join(symlinkHome, ".linked", "project-root", "paseo-desktop");
     mkdirSync(projectPath, { recursive: true });
     symlinkSync(path.dirname(projectPath), path.join(symlinkHome, "linked-project"));
 
     const results = await searchAbsoluteDirectoryPaths({
       homeDir: symlinkHome,
-      // Fuzzy subsequence of the leaf "otto-desktop" (o-t-o). The upstream test
-      // used "pso" to match the pre-rebrand "otto-desktop"; the rebrand renamed
-      // the directory but not this query, leaving a non-matching pair that only
-      // surfaced on Linux (the test is skipped on Windows).
-      query: "oto",
+      query: "pso",
       limit: 10,
     });
 
@@ -584,14 +602,14 @@ describe("absolute directory-path configuration", () => {
     const symlinkHome = path.join(tempRoot, "visible-symlink-home");
     const projectsPath = path.join(symlinkHome, "projects");
     const targetPath = path.join(symlinkHome, "work", "current");
-    const visibleProjectPath = path.join(projectsPath, "otto");
+    const visibleProjectPath = path.join(projectsPath, "paseo");
     mkdirSync(projectsPath, { recursive: true });
     mkdirSync(targetPath, { recursive: true });
     symlinkSync(targetPath, visibleProjectPath);
 
     const results = await searchAbsoluteDirectoryPaths({
       homeDir: symlinkHome,
-      query: "otto",
+      query: "paseo",
       limit: 10,
     });
 
@@ -626,12 +644,12 @@ describe("absolute directory-path configuration", () => {
   it("supports home-relative path query syntax", async () => {
     const result = await searchAbsoluteDirectoryPaths({
       homeDir,
-      query: "~/projects/o",
+      query: "~/projects/pa",
       limit: 10,
     });
 
     expect(result.map((entry) => realpathSync.native(entry))).toEqual([
-      realpathSync.native(path.join(homeDir, "projects", "otto")),
+      realpathSync.native(path.join(homeDir, "projects", "paseo")),
       realpathSync.native(path.join(homeDir, "projects", "playground")),
     ]);
   });
@@ -679,6 +697,105 @@ describe("absolute directory-path configuration", () => {
   });
 });
 
+describe("home search with excluded discovery paths", () => {
+  let homeDir: string;
+  let libraryDir: string;
+
+  beforeEach(() => {
+    homeDir = realpathSync.native(mkdtempSync(path.join(tmpdir(), "directory-excluded-")));
+    libraryDir = path.join(homeDir, "Library");
+    mkdirSync(path.join(libraryDir, "sub", "match-me"), { recursive: true });
+    mkdirSync(path.join(homeDir, "projects", "other"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  function searchHome(query: string) {
+    return searchDirectoryEntries({
+      root: homeDir,
+      query,
+      pathFormat: "absolute",
+      includeDirectories: true,
+      includeFiles: false,
+      pathQueryPolicy: "rooted",
+      rootAliases: ["~"],
+      blankQueryBehavior: "none",
+      confidentResultScanThreshold: 5_000,
+      excludedDiscoveryPaths: [libraryDir],
+    }).then((entries) => entries.map((entry) => entry.path));
+  }
+
+  it("does not discover entries inside an excluded path", async () => {
+    await expect(searchHome("match")).resolves.toEqual([]);
+    await expect(searchHome("~")).resolves.toEqual([path.join(homeDir, "projects")]);
+  });
+
+  it("excludes by path, so a nested directory with the same name is still discovered", async () => {
+    const nested = path.join(homeDir, "projects", "game", "Library", "match-me");
+    mkdirSync(nested, { recursive: true });
+
+    await expect(searchHome("match")).resolves.toEqual([nested]);
+  });
+
+  // POSIX-only: creates and follows a symlink fixture.
+  it.skipIf(isWindows)("does not discover an excluded path through a symlink", async () => {
+    symlinkSync(path.join(libraryDir, "sub"), path.join(homeDir, "link"), "dir");
+
+    await expect(searchHome("match")).resolves.toEqual([]);
+  });
+
+  it("resolves an exact typed path inside an excluded path", async () => {
+    await expect(searchHome("~/Library/sub/match-me")).resolves.toEqual([
+      path.join(libraryDir, "sub", "match-me"),
+    ]);
+  });
+
+  it("lists one level when browsing inside an excluded path", async () => {
+    await expect(searchHome("~/Library/")).resolves.toEqual([
+      libraryDir,
+      path.join(libraryDir, "sub"),
+    ]);
+    await expect(searchHome("~/Library/su")).resolves.toEqual([path.join(libraryDir, "sub")]);
+  });
+});
+
+describe("rooted queries with a typed parent", () => {
+  let homeDir: string;
+
+  beforeEach(() => {
+    homeDir = realpathSync.native(mkdtempSync(path.join(tmpdir(), "directory-typed-parent-")));
+    mkdirSync(path.join(homeDir, "Developer", "pasta"), { recursive: true });
+    mkdirSync(path.join(homeDir, "Archive", "Developer", "pasta"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(homeDir, { recursive: true, force: true });
+  });
+
+  it("walks only under the typed parent when it exists", async () => {
+    await expect(
+      searchAbsoluteDirectoryPaths({ homeDir, query: "~/Developer/pas" }),
+    ).resolves.toEqual([path.join(homeDir, "Developer", "pasta")]);
+  });
+
+  it("matches the whole tree when the typed parent does not exist", async () => {
+    await expect(searchAbsoluteDirectoryPaths({ homeDir, query: "~/Devel/pas" })).resolves.toEqual([
+      path.join(homeDir, "Developer", "pasta"),
+      path.join(homeDir, "Archive", "Developer", "pasta"),
+    ]);
+  });
+
+  it("returns the typed directory first", async () => {
+    mkdirSync(path.join(homeDir, "Developer", "pasta-extra"));
+
+    const results = await searchAbsoluteDirectoryPaths({ homeDir, query: "~/Developer/pasta" });
+
+    expect(results[0]).toBe(path.join(homeDir, "Developer", "pasta"));
+  });
+});
+
 describe("relative typed-entry configuration", () => {
   let tempRoot: string;
   let workspaceDir: string;
@@ -692,7 +809,7 @@ describe("relative typed-entry configuration", () => {
     });
     mkdirSync(path.join(workspaceDir, "docs"), { recursive: true });
 
-    writeFileSync(path.join(workspaceDir, "README.md"), "# otto\n");
+    writeFileSync(path.join(workspaceDir, "README.md"), "# paseo\n");
     writeFileSync(
       path.join(workspaceDir, "src", "components", "chat-input.tsx"),
       "export const ChatInput = null;\n",
@@ -730,7 +847,7 @@ describe("relative typed-entry configuration", () => {
     mkdirSync(path.join(workspaceDir, "packages", "app", "src"), { recursive: true });
     writeFileSync(path.join(workspaceDir, "src", "file.ts"), "");
     writeFileSync(path.join(workspaceDir, "packages", "app", "src", "file.ts"), "");
-    writeFileSync(path.join(workspaceDir, "src", "otto-config-file.ts"), "");
+    writeFileSync(path.join(workspaceDir, "src", "paseo-config-file.ts"), "");
 
     const basenameResults = await searchRelativeDirectoryEntries({
       cwd: workspaceDir,
@@ -760,22 +877,13 @@ describe("relative typed-entry configuration", () => {
   });
 
   it("suffix mode resolves exact workspace file paths before broad traversal", async () => {
-    const targetPath = path.join(
-      workspaceDir,
-      "packages",
-      "server",
-      "src",
-      "services",
-      "quota-fetcher",
-      "providers",
-      "local.ts",
-    );
+    const targetPath = path.join(workspaceDir, "plugins", "usage-sources", "providers", "local.ts");
     mkdirSync(path.dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, "");
 
     const results = await searchRelativeDirectoryEntries({
       cwd: workspaceDir,
-      query: "packages/server/src/services/quota-fetcher/providers/local.ts",
+      query: "plugins/usage-sources/providers/local.ts",
       limit: 20,
       includeFiles: true,
       includeDirectories: false,
@@ -785,20 +893,20 @@ describe("relative typed-entry configuration", () => {
 
     expect(results).toEqual([
       {
-        path: "packages/server/src/services/quota-fetcher/providers/local.ts",
+        path: "plugins/usage-sources/providers/local.ts",
         kind: "file",
       },
     ]);
   });
 
   it("suffix mode resolves explicit hidden file paths without broad hidden traversal", async () => {
-    const targetPath = path.join(workspaceDir, ".dev", "otto-home", "daemon.log");
+    const targetPath = path.join(workspaceDir, ".dev", "paseo-home", "daemon.log");
     mkdirSync(path.dirname(targetPath), { recursive: true });
     writeFileSync(targetPath, "daemon log\n");
 
     const results = await searchRelativeDirectoryEntries({
       cwd: workspaceDir,
-      query: ".dev/otto-home/daemon.log",
+      query: ".dev/paseo-home/daemon.log",
       limit: 20,
       includeFiles: true,
       includeDirectories: false,
@@ -806,7 +914,7 @@ describe("relative typed-entry configuration", () => {
       maxEntriesScanned: 1,
     });
 
-    expect(results).toEqual([{ path: ".dev/otto-home/daemon.log", kind: "file" }]);
+    expect(results).toEqual([{ path: ".dev/paseo-home/daemon.log", kind: "file" }]);
   });
 
   it("resolves an exact gitignored path while keeping it out of discovery results", async () => {
@@ -921,7 +1029,7 @@ describe("relative typed-entry configuration", () => {
       "something",
       "something-else",
       "skills",
-      "otto-advisor",
+      "paseo-advisor",
       "SKILL.md",
     );
     mkdirSync(path.dirname(targetPath), { recursive: true });
@@ -937,7 +1045,7 @@ describe("relative typed-entry configuration", () => {
 
     expect(results).toEqual([
       {
-        path: "something/something-else/skills/otto-advisor/SKILL.md",
+        path: "something/something-else/skills/paseo-advisor/SKILL.md",
         kind: "file",
       },
     ]);
@@ -955,5 +1063,221 @@ describe("relative typed-entry configuration", () => {
     });
 
     expect(results).toEqual([{ path: "blankpage/editor", kind: "directory" }]);
+  });
+});
+
+interface SearchProcessExit {
+  code: number | null;
+  signal: string | null;
+}
+
+interface SearchProcess {
+  child: ChildProcess;
+  exited: Promise<SearchProcessExit>;
+}
+
+// Reading a tree is cheap; re-deriving each entry's path state is not. A scan that asks whether
+// every ancestor of every entry is inside the root, or is Git-ignored, costs multiples of the
+// read and is what made large home directories exceed the client request timeout.
+describe("home-tree scan cost", () => {
+  const DEPTH = 8;
+  const CHAINS = 40;
+  let scanRoot: string;
+  let searchProcess: SearchProcess | null = null;
+
+  beforeEach(() => {
+    scanRoot = realpathSync.native(mkdtempSync(path.join(tmpdir(), "directory-scan-cost-")));
+    for (let chain = 0; chain < CHAINS; chain += 1) {
+      const segments: string[] = [];
+      for (let level = 0; level < DEPTH; level += 1) segments.push(`c${chain}l${level}`);
+      mkdirSync(path.join(scanRoot, ...segments), { recursive: true });
+    }
+  });
+
+  afterEach(async () => {
+    try {
+      if (searchProcess) {
+        searchProcess.child.kill();
+        await searchProcess.exited;
+      }
+    } finally {
+      searchProcess = null;
+      rmSync(scanRoot, { recursive: true, force: true });
+    }
+  });
+
+  // Nothing matches, so the scan walks the whole tree instead of stopping at a confident result.
+  function scanWholeTree() {
+    return searchAbsoluteDirectoryPaths({
+      homeDir: scanRoot,
+      query: "nomatch",
+      maxDepth: DEPTH + 4,
+    });
+  }
+
+  async function countContainmentChecks(run: () => Promise<unknown>): Promise<number> {
+    startPathContainmentMetrics();
+    await run();
+    return stopPathContainmentMetrics();
+  }
+
+  // Creating the 27,000-directory fixture alone takes about 20 s on Windows
+  // runners under parallel load, and it has crossed the default 30 s deadline.
+  // The heap bound is enforced by the child's --max-old-space-size and its own
+  // 20 s timeout, so the test deadline only has to cover fixture setup.
+  it("finishes overlapping broad-tree searches within a bounded heap", async () => {
+    const broadRoot = path.join(scanRoot, "broad");
+    mkdirSync(broadRoot);
+    for (let branch = 0; branch < 30; branch += 1) {
+      const branchRoot = path.join(broadRoot, `branch-${branch}`);
+      mkdirSync(branchRoot);
+      for (let group = 0; group < 30; group += 1) {
+        const groupRoot = path.join(branchRoot, `group-${group}`);
+        mkdirSync(groupRoot);
+        for (let leaf = 0; leaf < 30; leaf += 1) {
+          mkdirSync(path.join(groupRoot, `leaf-${leaf}`));
+        }
+      }
+    }
+    // A smaller real tree and explicit heap budget keep the million-directory repro cheap in CI.
+    const moduleUrl = new URL("./directory-suggestions.ts", import.meta.url).href;
+    const source = `
+      const { searchDirectoryEntries } = await import(${JSON.stringify(moduleUrl)});
+      const results = await Promise.all(Array.from({ length: 14 }, (_, index) =>
+        searchDirectoryEntries({
+          root: ${JSON.stringify(broadRoot)},
+          query: "z".repeat(index + 1),
+          pathFormat: "absolute",
+          includeFiles: false,
+          includeDirectories: true,
+          pathQueryPolicy: "rooted",
+          rootAliases: ["~"],
+          blankQueryBehavior: "none",
+          confidentResultScanThreshold: 5000,
+          maxEntriesScanned: 2000,
+          limit: 30,
+        })
+      ));
+      process.stdout.write(JSON.stringify(results));
+    `;
+    const child = spawn(
+      process.execPath,
+      [
+        "--max-old-space-size=128",
+        "--conditions=source",
+        "--import",
+        "tsx",
+        "--input-type=module",
+        "--eval",
+        source,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"], timeout: 20_000 },
+    );
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+    const exited = new Promise<SearchProcessExit>((resolve, reject) => {
+      child.on("error", reject);
+      child.on("close", (code, signal) => resolve({ code, signal }));
+    });
+    searchProcess = { child, exited };
+    const exit = await exited;
+    expect({ ...exit, outOfMemory: stderr.includes("heap out of memory") }).toEqual({
+      code: 0,
+      signal: null,
+      outOfMemory: false,
+    });
+    expect(JSON.parse(stdout)).toEqual(Array.from({ length: 14 }, () => []));
+  }, 120_000);
+
+  it("derives no containment for a tree that cannot leave the root", async () => {
+    const checks = await countContainmentChecks(scanWholeTree);
+
+    expect({ checks, scanned: CHAINS * DEPTH }).toEqual({ checks: 0, scanned: 320 });
+  });
+
+  it.skipIf(isWindows)(
+    "derives containment for symlinked entries, which can leave the root",
+    async () => {
+      const outside = realpathSync.native(mkdtempSync(path.join(tmpdir(), "directory-scan-away-")));
+      symlinkSync(outside, path.join(scanRoot, "escape"), "dir");
+
+      const checks = await countContainmentChecks(scanWholeTree);
+
+      expect({ checked: checks > 0, escaped: (await scanWholeTree()).includes(outside) }).toEqual({
+        checked: true,
+        escaped: false,
+      });
+      rmSync(outside, { recursive: true, force: true });
+    },
+  );
+});
+
+// Every pending fs call holds one of libuv's shared threadpool threads (4 by default). A read that
+// never returns, such as one on a hung network mount, keeps its thread, so searches that pile up
+// while the user types must not be able to take every thread from the rest of the daemon.
+describe("filesystem threads held by concurrent searches", () => {
+  const SEARCHES = 8;
+  let scanRoot: string;
+
+  beforeEach(() => {
+    scanRoot = realpathSync.native(mkdtempSync(path.join(tmpdir(), "directory-scan-threads-")));
+    for (let branch = 0; branch < 20; branch += 1) {
+      mkdirSync(path.join(scanRoot, `b${branch}`, "inner", "leaf"), { recursive: true });
+    }
+  });
+
+  afterEach(() => {
+    rmSync(scanRoot, { recursive: true, force: true });
+  });
+
+  async function peakPendingFilesystemRequests(run: () => Promise<unknown>): Promise<number> {
+    const pending = new Set<number>();
+    let peak = 0;
+    const hook = createHook({
+      init(asyncId, type) {
+        if (type !== "FSREQPROMISE" && type !== "FSREQCALLBACK") return;
+        pending.add(asyncId);
+        peak = Math.max(peak, pending.size);
+      },
+      before(asyncId) {
+        pending.delete(asyncId);
+      },
+    });
+    hook.enable();
+    try {
+      await run();
+    } finally {
+      hook.disable();
+    }
+    return peak;
+  }
+
+  function searchWhileTyping() {
+    const queries = Array.from({ length: SEARCHES }, (_, index) => `nomatch${index}`);
+    return Promise.all(
+      queries.map((query) => searchAbsoluteDirectoryPaths({ homeDir: scanRoot, query })),
+    );
+  }
+
+  it("leaves threadpool threads free for the rest of the daemon", async () => {
+    const peak = await peakPendingFilesystemRequests(searchWhileTyping);
+
+    expect(peak).toBeLessThanOrEqual(2);
+  });
+
+  // Searches over one tree walk it in the same order, so searches stuck on one unreadable folder
+  // must hold one thread between them and leave the other for unrelated searches.
+  it("shares one filesystem request among searches waiting on the same path", async () => {
+    const peak = await peakPendingFilesystemRequests(searchWhileTyping);
+
+    expect(peak).toBe(1);
   });
 });

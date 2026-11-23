@@ -12,9 +12,9 @@ import { collectRetainedAttachmentIds } from "@/attachments/gc-retention";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useSessionStore, type SessionState } from "@/stores/session-store";
 import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachments-store";
-import { collectPinnedPreviewAttachmentIds } from "@/attachments/preview-pins";
 import {
   applyClearDraftRecord,
+  editDraftRecordText,
   collectReferencedAttachmentIdsFromState,
   DRAFT_STORE_VERSION,
   isAttachmentMetadata,
@@ -43,6 +43,7 @@ interface DraftStoreActions {
   getDraftInput: (draftKey: string) => DraftInput | undefined;
   hydrateDraftInput: (input: { draftKey: string }) => Promise<DraftInput | undefined>;
   saveDraftInput: (input: { draftKey: string; draft: DraftInput }) => void;
+  editDraftText: (input: { draftKey: string; text: string }) => void;
   markDraftLifecycle: (input: { draftKey: string; lifecycle: DraftLifecycleState }) => void;
   clearDraftInput: (input: {
     draftKey: string;
@@ -166,12 +167,6 @@ async function runAttachmentGc(): Promise<void> {
     collectStreamUserImageIds(session.agentStreamTail, referencedIds);
     collectStreamUserImageIds(session.agentStreamHead, referencedIds);
   }
-
-  // Preview attachments - the local copies behind assistant markdown images and
-  // file-tab image previews - hang off no draft at all, so they are referenced
-  // only by their pins. Without this the GC deleted every browser screenshot in
-  // the transcript on the next keystroke. See attachments/preview-pins.ts.
-  collectPinnedPreviewAttachmentIds(referencedIds);
 
   // Browser-element screenshots live in the workspace attachment store, not in
   // drafts, so collect their ids here to keep them from being garbage collected
@@ -323,6 +318,14 @@ export const useDraftStore = create<DraftStore>()(
         scheduleAttachmentGc();
       },
 
+      editDraftText: ({ draftKey, text }) => {
+        set((state) => {
+          const previous = state.drafts[draftKey];
+          const next = editDraftRecordText(previous, text, Date.now());
+          return next === previous ? state : { drafts: { ...state.drafts, [draftKey]: next } };
+        });
+      },
+
       markDraftLifecycle: ({ draftKey, lifecycle }) => {
         set((state) => {
           const existing = state.drafts[draftKey];
@@ -423,7 +426,7 @@ export const useDraftStore = create<DraftStore>()(
       },
     }),
     {
-      name: "otto-drafts",
+      name: "paseo-drafts",
       version: DRAFT_STORE_VERSION,
       storage: draftPersistStorage,
       partialize: ({ drafts, createModalDraft }) => ({ drafts, createModalDraft }),

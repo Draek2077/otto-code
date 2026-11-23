@@ -1,0 +1,40 @@
+import { StyleSheet } from "react-native-unistyles";
+export const styles = StyleSheet.create((theme) => ({
+  root: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface0 },
+  bar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+  },
+  address: { flex: 1, minWidth: 0 },
+  input: {
+    minWidth: 0,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foreground,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    backgroundColor: theme.colors.surface1,
+    borderRadius: theme.borderRadius.md,
+  },
+  frame: { flex: 1, minHeight: 0, overflow: "hidden" },
+  message: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: theme.spacing[4],
+    gap: theme.spacing[3],
+  },
+  text: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  feedback: { padding: theme.spacing[2] },
+  suggestions: {
+    maxHeight: 240,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface1,
+  },
+  suggestion: { paddingHorizontal: theme.spacing[4], paddingVertical: theme.spacing[2] },
+}));

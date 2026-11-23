@@ -7,6 +7,7 @@ import {
 import {
   buildOpenFileExplorerPatch,
   buildToggleFileExplorerPatch,
+  DEFAULT_TREE_RAIL_WIDTH,
   migratePanelState,
   selectIsAgentListOpen,
   selectIsCompactFileExplorerOpen,
@@ -97,50 +98,6 @@ describe("panel-store explorer tab resolution", () => {
 });
 
 describe("panel-store migration", () => {
-  it("preserves Otto explorer modes and persisted panel widths", () => {
-    const state = migratePanelState(
-      {
-        explorerTab: "search",
-        explorerTabByCheckout: { "host::/repo": "search" },
-        explorerViewModeByCheckout: { "host::/repo": "solution" },
-        explorerSolutionByCheckout: { "host::/repo": "/repo/App.sln" },
-        contextSidebarWidth: 410,
-        projectKnowledgeSidebarWidth: 430,
-      },
-      12,
-    );
-
-    expect(state).toMatchObject({
-      explorerTab: "search",
-      explorerTabByCheckout: { "host::/repo": "search" },
-      explorerViewModeByCheckout: { "host::/repo": "solution" },
-      explorerSolutionByCheckout: { "host::/repo": "/repo/App.sln" },
-      contextSidebarWidth: 410,
-      projectKnowledgeSidebarWidth: 430,
-    });
-  });
-
-  it("drops the superseded desktop Explorer state while keeping compact selection memory", () => {
-    const state = migratePanelState(
-      {
-        desktop: {
-          agentListOpen: true,
-          focusModeEnabled: false,
-          fileExplorerOpen: true,
-        },
-        explorerWidth: 520,
-        explorerFilesSplitRatio: 0.5,
-        explorerTab: "search",
-      },
-      16,
-    );
-
-    expect(state.desktop?.fileExplorerOpen).toBeUndefined();
-    expect(state.explorerWidth).toBeUndefined();
-    expect(state.explorerFilesSplitRatio).toBeUndefined();
-    expect(state.explorerTab).toBe("search");
-  });
-
   it("defaults hidden-file visibility to showing hidden files", () => {
     const state = migratePanelState({}, 10);
 
@@ -157,6 +114,39 @@ describe("panel-store migration", () => {
     const state = migratePanelState({ diffCollapsedFoldersByWorkspace: { ws: ["src/app"] } }, 12);
 
     expect(state.diffCollapsedFoldersByWorkspace).toEqual({ ws: ["src/app"] });
+  });
+
+  it("initializes and preserves collapsed diff file paths by workspace", () => {
+    expect(migratePanelState({}, 14).collapsedFilePathsByWorkspace).toEqual({});
+    expect(
+      migratePanelState({ collapsedFilePathsByWorkspace: { ws: ["src/app.ts"] } }, 14)
+        .collapsedFilePathsByWorkspace,
+    ).toEqual({ ws: ["src/app.ts"] });
+  });
+
+  it("drops the retired per-file diff expansion state", () => {
+    const state = migratePanelState({ diffExpandedPathsByWorkspace: { ws: ["src/app.ts"] } }, 13);
+
+    expect(state.diffExpandedPathsByWorkspace).toBeUndefined();
+  });
+
+  it("replaces the dead explorer split ratio with the shared tree rail width", () => {
+    const state = migratePanelState({ explorerFilesSplitRatio: 0.5 }, 12);
+
+    expect(state.explorerFilesSplitRatio).toBeUndefined();
+    expect(state.treeRailWidth).toBe(DEFAULT_TREE_RAIL_WIDTH);
+  });
+
+  it("narrows an existing install's tree rail to the new default width", () => {
+    expect(DEFAULT_TREE_RAIL_WIDTH).toBeLessThan(320);
+    expect(migratePanelState({ treeRailWidth: 320 }, 15).treeRailWidth).toBe(
+      DEFAULT_TREE_RAIL_WIDTH,
+    );
+  });
+
+  it("defaults the file panel tree to open and keeps it closed once closed", () => {
+    expect(migratePanelState({}, 15).fileTreeVisible).toBe(true);
+    expect(migratePanelState({ fileTreeVisible: false }, 16).fileTreeVisible).toBe(false);
   });
 
   it("drops persisted compact panel state so cold starts return to content", () => {
@@ -191,7 +181,7 @@ describe("panel-store visibility selectors", () => {
     expect(selectIsCompactFileExplorerOpen(state)).toBe(true);
   });
 
-  it("uses the desktop flag for expanded agent-list visibility", () => {
+  it("uses the desktop flag for the expanded agent list", () => {
     const state = makePanelState({
       mobilePanel: { target: "file-explorer", revision: 1 },
       desktop: { agentListOpen: true, focusModeEnabled: false },
@@ -239,9 +229,7 @@ describe("panel-store compact file explorer actions", () => {
       explorerTabByCheckout: { [key]: "changes" },
     });
 
-    const patch = buildOpenFileExplorerPatch(state, checkout);
-
-    expect(patch.explorerTab).toBe("files");
+    expect(buildOpenFileExplorerPatch(state, checkout).explorerTab).toBe("files");
   });
 
   it("opens with the default files tab for an explicit non-git checkout with no stored tab", () => {

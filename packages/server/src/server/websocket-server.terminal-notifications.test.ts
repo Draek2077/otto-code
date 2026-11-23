@@ -1,3 +1,4 @@
+import { SessionDelivery } from "./session/owned-subscriptions/index.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Server as HTTPServer } from "http";
 import type pino from "pino";
@@ -14,10 +15,7 @@ import type {
 } from "../terminal/terminal-manager.js";
 import type { PersistedWorkspaceRecord, WorkspaceRegistry } from "./workspace-registry.js";
 import { asInternals, createStub } from "./test-utils/class-mocks.js";
-import {
-  createDaemonConfigStoreStub,
-  createProviderSnapshotManagerStub,
-} from "./test-utils/session-stubs.js";
+import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
 import type { PushNotificationSender, PushPayload } from "./push/index.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 
@@ -120,7 +118,6 @@ function createServer(terminalManager: TerminalManager, workspaceRegistry?: Work
   const pushNotifications = new RecordingPushNotificationSender();
   const agentManager = {
     setAgentAttentionCallback: vi.fn(),
-    setAgentActivelyWatchedProbe: vi.fn(),
     subscribe: vi.fn(() => () => {}),
     getAgent: vi.fn(() => null),
     getLastAssistantMessage: vi.fn(async () => null),
@@ -134,7 +131,10 @@ function createServer(terminalManager: TerminalManager, workspaceRegistry?: Work
       },
     })),
   };
-  const daemonConfigStore = createDaemonConfigStoreStub();
+  const daemonConfigStore = {
+    onApply: vi.fn(() => () => {}),
+    onChange: vi.fn(() => () => {}),
+  };
 
   const server = new VoiceAssistantWebSocketServer(
     createStub<HTTPServer>({}),
@@ -143,7 +143,7 @@ function createServer(terminalManager: TerminalManager, workspaceRegistry?: Work
     createStub<AgentManager>(agentManager),
     createStub<AgentStorage>({}),
     createStub<DownloadTokenStore>({}),
-    "/tmp/otto-test",
+    "/tmp/paseo-test",
     createStub<DaemonConfigStore>(daemonConfigStore),
     null,
     { allowedOrigins: new Set() },
@@ -195,9 +195,13 @@ function createOpenSocket() {
 
 function connectClient(server: VoiceAssistantWebSocketServer, subscribed = true) {
   const ws = createOpenSocket();
+  const delivery = new SessionDelivery(() => {});
+  delivery.attach(ws, false);
   asInternals<{ sessions: Map<unknown, unknown> }>(server).sessions.set(ws, {
     kind: "trusted",
     session: {
+      delivery,
+      wantsSourceNotification: () => true,
       getClientActivity: vi.fn(() => null),
       subscribesToTerminalDirectory: vi.fn(async () => subscribed),
     },

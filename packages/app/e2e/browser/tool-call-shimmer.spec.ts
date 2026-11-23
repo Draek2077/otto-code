@@ -1,9 +1,9 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Locator, Page } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { expectComposerVisible } from "../support/helpers/composer";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
-import { seedAppSettings } from "../support/helpers/settings";
 
 type WebSocketMessage = string | Buffer;
 
@@ -139,7 +139,7 @@ async function gateSecondToolCall(page: Page, agentId: string) {
 async function readShimmerEvidence(locator: Locator): Promise<ShimmerEvidence> {
   return locator.evaluate((root) => {
     const shimmer = Array.from(root.querySelectorAll<HTMLElement>("*")).find((element) =>
-      getComputedStyle(element).animationName.includes("otto-toolcall-shimmer"),
+      getComputedStyle(element).animationName.includes("paseo-toolcall-shimmer"),
     );
     if (!shimmer) {
       throw new Error("Expected a running shimmer inside the badge");
@@ -147,10 +147,10 @@ async function readShimmerEvidence(locator: Locator): Promise<ShimmerEvidence> {
     const style = getComputedStyle(shimmer);
     return {
       animationDuration: style.animationDuration,
-      endPx: Number.parseFloat(style.getPropertyValue("--otto-shimmer-end")),
+      endPx: Number.parseFloat(style.getPropertyValue("--paseo-shimmer-end")),
       label: shimmer.textContent ?? "",
       renderedWidth: shimmer.getBoundingClientRect().width,
-      startPx: Number.parseFloat(style.getPropertyValue("--otto-shimmer-start")),
+      startPx: Number.parseFloat(style.getPropertyValue("--paseo-shimmer-start")),
     };
   });
 }
@@ -159,7 +159,9 @@ test("measures an overview heading that becomes loading after its idle mount", a
   page,
 }, testInfo) => {
   test.setTimeout(120_000);
-  await seedAppSettings(page, { toolCallDetailLevel: "overview", groupConsecutiveActions: true });
+  await page.addInitScript(() => {
+    localStorage.setItem("@otto:app-settings", JSON.stringify({ toolCallDetailLevel: "overview" }));
+  });
   const agent = await seedMockAgentWorkspace({
     repoPrefix: "tool-call-shimmer-",
     title: "Tool-call shimmer",
@@ -182,11 +184,11 @@ test("measures an overview heading that becomes loading after its idle mount", a
     if (!idleGroupHandle) {
       throw new Error("Expected the idle tool-call group to be mounted");
     }
-    await expect(group.locator('[style*="otto-toolcall-shimmer"]')).toHaveCount(0);
+    await expect(group.locator('[style*="paseo-toolcall-shimmer"]')).toHaveCount(0);
 
     await gate.waitForSecondRunning();
     gate.releaseSecondRunning();
-    await expect(group.locator('[style*="otto-toolcall-shimmer"]')).not.toHaveCount(0);
+    await expect(group.locator('[style*="paseo-toolcall-shimmer"]')).not.toHaveCount(0);
     const sameGroupNode = await group.evaluate(
       (node, previous) => node === previous,
       idleGroupHandle,

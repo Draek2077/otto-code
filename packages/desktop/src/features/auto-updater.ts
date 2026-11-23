@@ -1,15 +1,10 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { app, autoUpdater as electronAutoUpdater, shell } from "electron";
-import log from "electron-log/main";
+import { app } from "electron";
 import { UUID } from "builder-util-runtime";
-import { autoUpdater, DebUpdater } from "electron-updater";
-import { installLinuxDeb } from "./linux-deb-installer.js";
-import {
-  MANUAL_DOWNLOAD_URL,
-  ManualDownloadUpdateRuntime,
-} from "./manual-download-update-runtime.js";
+import log from "electron-log/main";
+import { autoUpdater } from "electron-updater";
 import {
   createAppUpdateService,
   type AppUpdateCheckResult,
@@ -39,14 +34,8 @@ export {
 };
 
 let cachedStagingUserIdPromise: Promise<string> | null = null;
-let installingLinuxDeb = false;
-
-export function isLinuxDebUpdateInstalling(): boolean {
-  return installingLinuxDeb;
-}
 
 const UPDATE_CHANNEL_NOT_PUBLISHED_CODE = "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND";
-const loggedUpdaterErrors = new WeakSet<object>();
 
 interface AppUpdateLogSink {
   info(message: string, details: object): void;
@@ -99,30 +88,6 @@ function isUpdateChannelNotPublished(error: unknown): boolean {
   );
 }
 
-function claimUpdaterError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return true;
-  if (loggedUpdaterErrors.has(error)) return false;
-  loggedUpdaterErrors.add(error);
-  return true;
-}
-
-function logUpdaterError(context: string, error: unknown): void {
-  if (!claimUpdaterError(error)) return;
-  log.error(`[auto-updater] ${context}`, error);
-}
-
-function logElectronUpdaterError(error: unknown): void {
-  // A release can become visible just before its platform manifest. Keep that
-  // expected publishing race in the main log without presenting it as a failed
-  // user update.
-  if (isUpdateChannelNotPublished(error)) {
-    if (!claimUpdaterError(error)) return;
-    log.warn("[auto-updater] Update channel manifest is not published yet", error);
-    return;
-  }
-  logUpdaterError("electron-updater reported an error", error);
-}
-
 export function shouldAdmitToRollout(args: {
   channel: AppReleaseChannel;
   rolloutHours: number | undefined;
@@ -169,33 +134,19 @@ export function getStagingUserId(): Promise<string> {
 export function shouldInstallAppUpdateOnQuit(input: {
   platform: NodeJS.Platform;
   isAppImage: boolean;
-  isDeb?: boolean;
 }): boolean {
   // AppImage's no-relaunch install path blocks while launching the replacement
   // binary, which can hang after the running file has already been replaced.
-  // A Debian install needs an attended authorization prompt and may exceed the
-  // quit deadline. Start it only through Update now.
-  return !(input.platform === "linux" && (input.isAppImage || input.isDeb));
-}
-
-export function shouldStopDesktopManagedDaemonBeforeAppUpdate(input: {
-  platform: NodeJS.Platform;
-  isAppImage: boolean;
-}): boolean {
-  // deb/rpm updates synchronously request polkit or sudo before Electron gets
-  // the updater quit handoff. A cancelled prompt must leave Otto usable.
-  return !(input.platform === "linux" && !input.isAppImage);
+  return !(input.platform === "linux" && input.isAppImage);
 }
 
 class ElectronAppUpdateRuntime implements AppUpdateRuntime {
   private configured = false;
-  private downloadedFile: string | null = null;
-  private installAttempt: { error?: unknown; diagnostics: string } | null = null;
 
   configure(input: AppUpdateRuntimeConfiguration): void {
     autoUpdater.autoDownload = true;
     autoUpdater.autoRunAppAfterInstall = true;
-    // Otto revalidates the current manifest before explicitly installing on quit.
+    // Paseo revalidates the current manifest before explicitly installing on quit.
     // Electron's built-in handler would install an older download without checking
     // whether a newer release has superseded it.
     autoUpdater.autoInstallOnAppQuit = false;
@@ -213,32 +164,16 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     if (this.configured) return;
     this.configured = true;
 
-    log.info("[auto-updater] configured", {
-      channel: autoUpdater.channel,
-      platform: process.platform,
-      isAppImage: Boolean(process.env.APPIMAGE),
-    });
-
-    // Electron-updater owns the package-manager invocation on Linux. Forward
-    // every one of its lifecycle messages to the Electron main-process log so
-    // a failed elevation prompt or package command remains diagnosable after
-    // the app has quit. logUpdaterError de-duplicates the same Error when it
-    // subsequently arrives through the updater event or promise path.
+    // electron-updater logs every emitted error before consumers can classify it.
+    // Paseo reports genuine check, runtime, and install failures through the
+    // callbacks below, so leave internal error logging disabled to avoid both
+    // duplicate logs and expected missing-channel noise.
+    const updaterLogger = autoUpdater.logger;
     autoUpdater.logger = {
-      debug: (message) => log.debug("[auto-updater] electron-updater", message),
-      error: (error) => {
-        // Linux's command runner logs stderr separately, then emits only the
-        // command and exit code. Preserve both for the install result.
-        if (this.installAttempt) {
-          const message = error instanceof Error ? error.message : String(error ?? "");
-          this.installAttempt.diagnostics = `${this.installAttempt.diagnostics}\n${message}`
-            .trim()
-            .slice(-8192);
-        }
-        logElectronUpdaterError(error);
-      },
-      info: (message) => log.info("[auto-updater] electron-updater", message),
-      warn: (message) => log.warn("[auto-updater] electron-updater", message),
+      debug: updaterLogger?.debug ? (message) => updaterLogger.debug?.(message) : undefined,
+      error: () => undefined,
+      info: (message) => updaterLogger?.info(message),
+      warn: (message) => updaterLogger?.warn(message),
     };
 
     autoUpdater.on("update-available", (info) => {
@@ -247,18 +182,12 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
       input.onUpdateAvailable(updateInfo);
     });
     autoUpdater.on("update-downloaded", (info) => {
-      this.downloadedFile = info.downloadedFile;
       const updateInfo = info as RuntimeUpdateInfo;
       updateLifecycleLog.updateDownloaded(updateInfo.version);
       input.onUpdateDownloaded(updateInfo);
     });
     autoUpdater.on("error", (error) => {
-      if (this.installAttempt) this.installAttempt.error = error;
-      if (isUpdateChannelNotPublished(error)) {
-        logElectronUpdaterError(error);
-        return;
-      }
-      logUpdaterError("updater event failed", error);
+      if (isUpdateChannelNotPublished(error)) return;
       input.onError(error);
     });
   }
@@ -273,7 +202,6 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
       };
     } catch (error) {
       if (isUpdateChannelNotPublished(error)) return null;
-      logUpdaterError("failed to check for updates", error);
       throw error;
     }
   }
@@ -283,103 +211,30 @@ class ElectronAppUpdateRuntime implements AppUpdateRuntime {
     return autoUpdater.downloadUpdate();
   }
 
-  async quitAndInstall({
-    targetVersion,
-    isSilent,
-    isForceRunAfter,
-    onBeforeQuit,
-  }: AppUpdateInstallRequest): Promise<void> {
-    if (process.platform === "linux" && autoUpdater instanceof DebUpdater) {
-      if (installingLinuxDeb) throw new Error("A Debian update installation is already running.");
-      if (!this.downloadedFile) throw new Error("The downloaded Debian package path is missing.");
-      installingLinuxDeb = true;
-      try {
-        await installLinuxDeb(this.downloadedFile, (message) =>
-          log.info("[auto-updater]", message),
-        );
-        // Only stop the daemon after authorization, installation, and version
-        // verification succeed. Cancellation leaves every running chat alive.
-        await onBeforeQuit?.();
-      } catch (error) {
-        throw new Error(
-          `${error instanceof Error ? error.message : String(error)}\nUpdate log: ${log.transports.file.getFile().path}`,
-          { cause: error },
-        );
-      } finally {
-        installingLinuxDeb = false;
-      }
-      if (isForceRunAfter) app.relaunch();
-      electronAutoUpdater.emit("before-quit-for-update");
-      app.quit();
-      return;
-    }
-    if (
-      shouldStopDesktopManagedDaemonBeforeAppUpdate({
-        platform: process.platform,
-        isAppImage: Boolean(process.env.APPIMAGE),
-      })
-    )
-      await onBeforeQuit?.();
+  quitAndInstall({ targetVersion, isSilent, isForceRunAfter }: AppUpdateInstallRequest): void {
     autoUpdater.autoRunAppAfterInstall = isForceRunAfter;
     updateLifecycleLog.quitAndInstallRequested({
       targetVersion,
       isSilent,
       isForceRunAfter,
     });
-    log.info("[auto-updater] handing downloaded update to installer", {
-      isSilent,
-      isForceRunAfter,
-      platform: process.platform,
-      isAppImage: Boolean(process.env.APPIMAGE),
-      isDeb: autoUpdater instanceof DebUpdater,
-    });
-    // BaseUpdater.quitAndInstall returns void even when doInstall returns false.
-    // deb/rpm failures are emitted synchronously instead of thrown. Returning
-    // normally in that case tells the service that the installer succeeded.
-    const attempt: NonNullable<ElectronAppUpdateRuntime["installAttempt"]> = {
-      diagnostics: "",
-    };
-    this.installAttempt = attempt;
-    try {
-      autoUpdater.quitAndInstall(isSilent, isForceRunAfter);
-      if (attempt.error !== undefined) {
-        const message =
-          attempt.error instanceof Error ? attempt.error.message : String(attempt.error);
-        const details = attempt.diagnostics;
-        throw new Error(
-          `${message}${details && details !== message ? `\n${details}` : ""}\nUpdate log: ${log.transports.file.getFile().path}`,
-          { cause: attempt.error },
-        );
-      }
-    } finally {
-      this.installAttempt = null;
-    }
+    autoUpdater.quitAndInstall(isSilent, isForceRunAfter);
   }
 }
 
-// COMPAT(macOS-signing): mac builds are unsigned, so they cannot replace
-// themselves in place - see manual-download-update-runtime.ts for why. They
-// still get told an update exists; "Update now" opens the download page.
-// Drop this split once Apple signing is configured.
-const usesManualDownload = process.platform === "darwin";
-
-const manualDownloadRuntime = new ManualDownloadUpdateRuntime({
-  currentVersion: () => app.getVersion(),
-});
-
 const appUpdateService = createAppUpdateService({
-  runtime: usesManualDownload ? manualDownloadRuntime : new ElectronAppUpdateRuntime(),
+  runtime: new ElectronAppUpdateRuntime(),
   isPackaged: () => app.isPackaged,
   now: () => Date.now(),
   bucket: async () => bucketFromStagingUserId(await getStagingUserId()),
   reportCheckError: (error) => {
-    logUpdaterError("failed to check for updates", error);
+    console.error("[auto-updater] Failed to check for updates:", error);
   },
   reportRuntimeError: (error) => {
-    logUpdaterError("updater event failed", error);
+    console.error("[auto-updater] Updater event failed:", error);
   },
   reportInstallError: (message) => {
-    logUpdaterError("failed to download or install update", message);
+    console.error("[auto-updater] Failed to download/install update:", message);
   },
 });
 
@@ -424,20 +279,6 @@ export async function downloadAndInstallUpdate(
   },
   onBeforeQuit?: () => Promise<void>,
 ): Promise<AppUpdateInstallResult> {
-  if (usesManualDownload) {
-    // Nothing to install: hand the user the download page and leave the running
-    // app alone. Reporting installed:false keeps the UI honest - the update is
-    // not applied until they replace the app themselves.
-    await shell.openExternal(MANUAL_DOWNLOAD_URL);
-    return {
-      installed: false,
-      outcome: "deferred",
-      version: manualDownloadRuntime.latestVersion ?? currentVersion,
-      message:
-        "Opened the download page. macOS builds are unsigned, so update by replacing Otto in your Applications folder.",
-    };
-  }
-
   return appUpdateService.downloadAndInstallUpdate(
     { currentVersion, releaseChannel },
     onBeforeQuit,
@@ -457,7 +298,6 @@ export async function installAppUpdateOnQuit({
     !shouldInstallAppUpdateOnQuit({
       platform: process.platform,
       isAppImage: Boolean(process.env.APPIMAGE),
-      isDeb: autoUpdater instanceof DebUpdater,
     })
   ) {
     return false;

@@ -1,27 +1,26 @@
 import { describe, expect, it } from "vitest";
 import type { StateStorage } from "zustand/middleware";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
-import { resolveDeleteAllReviewCommentsDialog } from "./delete-dialogs";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 import {
   buildReviewAttachmentSnapshot,
-  buildReviewDraftBranchKeyPrefix,
   buildReviewDraftKey,
-  buildSearchNoteAttachmentSnapshot,
-  buildSearchNoteDraftKey,
-  prunePreBranchDraftKeys,
+  addReviewDraftComment,
+  saveReviewDraftComment,
+  clearSentReviewDraftComments,
+  getReviewDraftComments,
+  resetReviewDraftStore,
+  useReviewDraftStore,
 } from "./store";
 import {
   addCommentToState,
   clearReviewInState,
-  clearReviewScopeInState,
   deleteCommentFromState,
   normalizePersistedState,
   type ReviewDraftComment,
   type ReviewDraftStoreState,
   serializeReviewDraftState,
   SerializedReviewDraftStateSchema,
-  summarizeReviewDraftsForPrefix,
   updateCommentInState,
 } from "./state";
 
@@ -83,19 +82,18 @@ function createMemoryStorage(): StateStorage & { values: Map<string, string> } {
 }
 
 describe("buildReviewDraftKey", () => {
-  it("scopes by server, workspace-or-cwd, branch, diff mode, base ref, and whitespace mode", () => {
+  it("scopes by server, workspace-or-cwd, diff mode, base ref, and whitespace mode", () => {
     const base = buildReviewDraftKey({
       serverId: " local ",
       workspaceId: " workspace-1 ",
       cwd: "/repo",
       mode: "base",
       baseRef: " main ",
-      branch: " feature/login ",
       ignoreWhitespace: false,
     });
 
     expect(base).toBe(
-      "review:server=local:workspace=workspace-1:branch=feature%2Flogin:mode=base:base=main:ignoreWhitespace=false",
+      "review:server=local:workspace=workspace-1:mode=base:base=main:ignoreWhitespace=false",
     );
     expect(
       buildReviewDraftKey({
@@ -104,7 +102,6 @@ describe("buildReviewDraftKey", () => {
         cwd: "/repo",
         mode: "base",
         baseRef: "main",
-        branch: "feature/login",
         ignoreWhitespace: true,
       }),
     ).not.toBe(base);
@@ -115,28 +112,9 @@ describe("buildReviewDraftKey", () => {
         cwd: "/repo/",
         mode: "base",
         baseRef: "main",
-        branch: null,
         ignoreWhitespace: false,
       }),
-    ).toBe("review:server=local:cwd=%2Frepo:branch=:mode=base:base=main:ignoreWhitespace=false");
-  });
-
-  it("separates drafts written on different branches (baseRef does not change on switch)", () => {
-    const build = (branch: string | null) =>
-      buildReviewDraftKey({
-        serverId: "local",
-        workspaceId: "workspace-1",
-        cwd: "/repo",
-        mode: "base",
-        baseRef: "main",
-        branch,
-        ignoreWhitespace: false,
-      });
-
-    expect(build("feature/a")).not.toBe(build("feature/b"));
-    // Detached HEAD (null) gets its own bucket, stable across renders.
-    expect(build(null)).toBe(build(null));
-    expect(build(null)).not.toBe(build("feature/a"));
+    ).toBe("review:server=local:cwd=%2Frepo:mode=base:base=main:ignoreWhitespace=false");
   });
 });
 
@@ -148,17 +126,16 @@ describe("normalizePersistedState", () => {
       activeModesByScope: { "review:scope": "base" },
     };
     backing.values.set(
-      "@otto:review-draft-store",
+      "@paseo:review-draft-store",
       JSON.stringify({ state: legacyState, version: 1 }),
     );
     const storage = createValidatedPersistStorage(backing, SerializedReviewDraftStateSchema);
 
-    const stored = await storage.getItem("@otto:review-draft-store");
+    const stored = await storage.getItem("@paseo:review-draft-store");
     const normalized = normalizePersistedState(stored?.state);
 
     expect(normalized.drafts["review:key"]).toEqual([makeComment()]);
-    expect(normalized).toEqual({ drafts: { "review:key": [makeComment()] } });
-    expect(backing.values.has("@otto:review-draft-store")).toBe(true);
+    expect(backing.values.has("@paseo:review-draft-store")).toBe(true);
   });
 
   it("rejects the complete payload when any draft comment or field is invalid", () => {
@@ -177,7 +154,7 @@ describe("normalizePersistedState", () => {
           { id: "bad", filePath: "src/example.ts" },
         ],
       },
-      // Old persisted field - must be tolerated and ignored, not migrated.
+      // Old persisted field — must be tolerated and ignored, not migrated.
       activeModesByScope: {
         "review:scope:base": "base",
         "review:scope:dirty": "uncommitted",
@@ -191,37 +168,6 @@ describe("normalizePersistedState", () => {
     expect(normalizePersistedState(null)).toEqual({ drafts: {} });
     expect(normalizePersistedState("nope")).toEqual({ drafts: {} });
     expect(normalizePersistedState({ drafts: [] })).toEqual({ drafts: {} });
-  });
-});
-
-describe("prunePreBranchDraftKeys", () => {
-  it("drops drafts persisted before keys carried a branch part, keeping branch-scoped ones", () => {
-    const branchedKey =
-      "review:server=local:workspace=w1:branch=feature%2Fa:mode=base:base=main:ignoreWhitespace=false";
-    const preBranchKey =
-      "review:server=local:workspace=w1:mode=base:base=main:ignoreWhitespace=false";
-    const state: ReviewDraftStoreState = {
-      drafts: {
-        [branchedKey]: [makeComment()],
-        [preBranchKey]: [makeComment({ id: "comment-2" })],
-      },
-    };
-
-    const pruned = prunePreBranchDraftKeys(state);
-
-    expect(Object.keys(pruned.drafts)).toEqual([branchedKey]);
-  });
-
-  it("keeps state identity when nothing is stale", () => {
-    const state: ReviewDraftStoreState = {
-      drafts: {
-        "review:server=local:cwd=%2Frepo:branch=:mode=base:base=main:ignoreWhitespace=false": [
-          makeComment(),
-        ],
-      },
-    };
-
-    expect(prunePreBranchDraftKeys(state)).toBe(state);
   });
 });
 
@@ -280,176 +226,6 @@ describe("review draft reducers", () => {
   });
 });
 
-describe("branch-scoped bulk clear", () => {
-  const identity = {
-    serverId: "local",
-    workspaceId: "workspace-1",
-    cwd: "/repo",
-  } as const;
-
-  // The four buckets one branch can accumulate: a reader only ever sees one of
-  // them, which is how comments end up somewhere they can no longer be found.
-  function branchDraftKeys(branch: string | null): string[] {
-    return (["uncommitted", "base"] as const).flatMap((mode) =>
-      [false, true].map((ignoreWhitespace) =>
-        buildReviewDraftKey({ ...identity, mode, baseRef: "main", branch, ignoreWhitespace }),
-      ),
-    );
-  }
-
-  function stateWithBranchDrafts(): ReviewDraftStoreState {
-    let state = emptyState();
-    branchDraftKeys("feature/login").forEach((key, index) => {
-      state = addCommentToState(state, {
-        key,
-        comment: makeComment({ id: `feature-${index}`, filePath: `src/file-${index % 3}.ts` }),
-      });
-    });
-    // Neighbours that must survive: a sibling branch whose name starts with the
-    // cleared one, and a different workspace on the same host.
-    state = addCommentToState(state, {
-      key: buildReviewDraftKey({
-        ...identity,
-        mode: "base",
-        baseRef: "main",
-        branch: "feature/login-v2",
-        ignoreWhitespace: false,
-      }),
-      comment: makeComment({ id: "sibling", filePath: "src/other.ts" }),
-    });
-    state = addCommentToState(state, {
-      key: buildReviewDraftKey({
-        ...identity,
-        workspaceId: "workspace-2",
-        mode: "base",
-        baseRef: "main",
-        branch: "feature/login",
-        ignoreWhitespace: false,
-      }),
-      comment: makeComment({ id: "other-workspace", filePath: "src/elsewhere.ts" }),
-    });
-    return state;
-  }
-
-  it("covers every diff mode and whitespace bucket the branch can hold", () => {
-    const prefix = buildReviewDraftBranchKeyPrefix({ ...identity, branch: "feature/login" });
-
-    expect(prefix).toBe("review:server=local:workspace=workspace-1:branch=feature%2Flogin:");
-    for (const key of branchDraftKeys("feature/login")) {
-      expect(key.startsWith(prefix)).toBe(true);
-    }
-    // The trailing separator keeps a name-prefixed sibling branch out.
-    expect(
-      buildReviewDraftKey({
-        ...identity,
-        mode: "base",
-        baseRef: "main",
-        branch: "feature/login-v2",
-        ignoreWhitespace: false,
-      }).startsWith(prefix),
-    ).toBe(false);
-    expect(buildReviewDraftBranchKeyPrefix({ ...identity, branch: null })).toBe(
-      "review:server=local:workspace=workspace-1:branch=:",
-    );
-  });
-
-  it("summarizes comments and distinct files across the branch's buckets", () => {
-    const state = stateWithBranchDrafts();
-    const prefix = buildReviewDraftBranchKeyPrefix({ ...identity, branch: "feature/login" });
-
-    // Four buckets, one comment each, spread over three distinct files.
-    expect(summarizeReviewDraftsForPrefix(state.drafts, prefix)).toEqual({
-      commentCount: 4,
-      fileCount: 3,
-    });
-    expect(
-      summarizeReviewDraftsForPrefix(
-        state.drafts,
-        buildReviewDraftBranchKeyPrefix({ ...identity, branch: "no-comments-here" }),
-      ),
-    ).toEqual({ commentCount: 0, fileCount: 0 });
-  });
-
-  it("clears every bucket on the branch and leaves neighbouring scopes alone", () => {
-    const state = stateWithBranchDrafts();
-    const prefix = buildReviewDraftBranchKeyPrefix({ ...identity, branch: "feature/login" });
-
-    const cleared = clearReviewScopeInState(state, { keyPrefix: prefix });
-
-    expect(Object.keys(cleared.drafts).some((key) => key.startsWith(prefix))).toBe(false);
-    expect(summarizeReviewDraftsForPrefix(cleared.drafts, prefix)).toEqual({
-      commentCount: 0,
-      fileCount: 0,
-    });
-    expect(
-      summarizeReviewDraftsForPrefix(
-        cleared.drafts,
-        buildReviewDraftBranchKeyPrefix({ ...identity, branch: "feature/login-v2" }),
-      ),
-    ).toEqual({ commentCount: 1, fileCount: 1 });
-    expect(
-      summarizeReviewDraftsForPrefix(
-        cleared.drafts,
-        buildReviewDraftBranchKeyPrefix({
-          ...identity,
-          workspaceId: "workspace-2",
-          branch: "feature/login",
-        }),
-      ),
-    ).toEqual({ commentCount: 1, fileCount: 1 });
-  });
-
-  it("keeps state identity when the prefix matches nothing", () => {
-    const state = stateWithBranchDrafts();
-
-    expect(
-      clearReviewScopeInState(state, {
-        keyPrefix: buildReviewDraftBranchKeyPrefix({ ...identity, branch: "unused" }),
-      }),
-    ).toBe(state);
-  });
-});
-
-describe("delete all review comments confirmation", () => {
-  it("states the comment count, the file count, and the branch it sweeps", () => {
-    const dialog = resolveDeleteAllReviewCommentsDialog({
-      commentCount: 4,
-      fileCount: 3,
-      branch: "feature/login",
-    });
-
-    expect(dialog.title).toBe("Delete 4 review comments?");
-    expect(dialog.message).toContain("4 review comments");
-    expect(dialog.message).toContain("3 files");
-    expect(dialog.message).toContain("feature/login");
-    // The reader has to be told the sweep reaches past what they can see.
-    expect(dialog.message).toContain("the current Changes view does not show");
-    expect(dialog.message).toContain("This action cannot be undone.");
-    expect(dialog.confirmLabel).toBe("Delete");
-    expect(dialog.destructive).toBe(true);
-    // Repo hard rule: no em dashes in user-facing copy (docs/writing-style.md).
-    expect(dialog.message).not.toMatch(/[–—]/);
-  });
-
-  it("uses singular copy and drops the branch on a detached HEAD", () => {
-    const single = resolveDeleteAllReviewCommentsDialog({
-      commentCount: 1,
-      fileCount: 1,
-      branch: "main",
-    });
-    expect(single.title).toBe("Delete 1 review comment?");
-    expect(single.message).toContain("1 review comment on 1 file");
-
-    const detached = resolveDeleteAllReviewCommentsDialog({
-      commentCount: 2,
-      fileCount: 2,
-      branch: null,
-    });
-    expect(detached.message).toContain("on the current checkout");
-    expect(detached.message).not.toContain("undefined");
-  });
-});
-
 describe("buildReviewAttachmentSnapshot", () => {
   it("builds a bounded workspace review attachment and skips missing targets", () => {
     const snapshot = buildReviewAttachmentSnapshot({
@@ -486,7 +262,7 @@ describe("buildReviewAttachmentSnapshot", () => {
       commentCount: 1,
       attachment: {
         type: "review",
-        mimeType: "application/otto-review",
+        mimeType: "application/paseo-review",
         cwd: "/repo",
         mode: "base",
         baseRef: "main",
@@ -538,108 +314,48 @@ describe("buildReviewAttachmentSnapshot", () => {
   });
 });
 
-describe("buildSearchNoteDraftKey", () => {
-  const input = { serverId: "server-1", workspaceId: "workspace-1", cwd: "/repo" };
-
-  it("uses a bucket of its own, so a diff draft key can never collide with it", () => {
-    expect(buildSearchNoteDraftKey({ ...input, branch: "main" })).toBe(
-      "search-note:server=server-1:workspace=workspace-1:branch=main",
-    );
-    expect(buildSearchNoteDraftKey({ ...input, branch: "main" })).not.toBe(
-      buildReviewDraftKey({
-        ...input,
-        branch: "main",
-        mode: "uncommitted",
-        ignoreWhitespace: false,
-      }),
-    );
-  });
-
-  it("scopes to the branch, and survives the pre-branch prune that needs one", () => {
-    expect(buildSearchNoteDraftKey({ ...input, branch: "feature" })).not.toBe(
-      buildSearchNoteDraftKey({ ...input, branch: "main" }),
-    );
-    const key = buildSearchNoteDraftKey({ ...input, branch: null });
-    const pruned = prunePreBranchDraftKeys({
-      drafts: { [key]: [] },
+describe("successful feedback cleanup", () => {
+  it("clears sent versions only, preserving edits, additions and other workspace drafts", () => {
+    resetReviewDraftStore();
+    const first = addReviewDraftComment({ key: "first", comment: makeComment() });
+    const edited = addReviewDraftComment({
+      key: "first",
+      comment: makeComment({ id: "edited", body: "Before send" }),
     });
-    expect(Object.keys(pruned.drafts)).toEqual([key]);
-  });
-
-  it("is not swept by a branch-scoped bulk clear of the diff drafts", () => {
-    const noteKey = buildSearchNoteDraftKey({ ...input, branch: "main" });
-    expect(noteKey.startsWith(buildReviewDraftBranchKeyPrefix({ ...input, branch: "main" }))).toBe(
-      false,
-    );
+    const other = addReviewDraftComment({ key: "other", comment: makeComment({ id: "other" }) });
+    useReviewDraftStore.getState().updateComment({
+      key: "first",
+      id: edited.id,
+      updates: { body: "After send" },
+      updatedAt: edited.updatedAt,
+    });
+    const added = addReviewDraftComment({ key: "first", comment: makeComment({ id: "added" }) });
+    clearSentReviewDraftComments({ key: "first", comments: [first, edited] });
+    expect(getReviewDraftComments("first")).toEqual([{ ...edited, body: "After send" }, added]);
+    expect(getReviewDraftComments("other")).toEqual([other]);
+    resetReviewDraftStore();
   });
 });
 
-describe("buildSearchNoteAttachmentSnapshot", () => {
-  const comment = {
-    id: "note-1",
-    filePath: "src/example.ts",
-    side: "new" as const,
-    lineNumber: 42,
-    body: "Rename this.",
-    createdAt: "2026-08-23T00:00:00.000Z",
-    updatedAt: "2026-08-23T00:00:00.000Z",
-  };
-
-  it("quotes the matched line as the note's context", () => {
-    const snapshot = buildSearchNoteAttachmentSnapshot({
-      reviewDraftKey: "search-note:key",
-      cwd: "/repo",
-      comments: [comment],
-      lineTextByTarget: new Map([["src/example.ts:new:42", "const foo = bar;"]]),
-    });
-
-    expect(snapshot).toEqual({
-      kind: "review",
-      reviewDraftKey: "search-note:key",
-      commentCount: 1,
-      attachment: {
-        type: "review",
-        mimeType: "application/otto-review",
-        cwd: "/repo",
-        mode: "uncommitted",
-        baseRef: null,
-        comments: [
-          {
-            filePath: "src/example.ts",
-            side: "new",
-            lineNumber: 42,
-            body: "Rename this.",
-            context: {
-              hunkHeader: "@@ -42,1 +42,1 @@",
-              targetLine: {
-                oldLineNumber: null,
-                newLineNumber: 42,
-                type: "context",
-                content: "const foo = bar;",
-              },
-              lines: [
-                {
-                  oldLineNumber: null,
-                  newLineNumber: 42,
-                  type: "context",
-                  content: "const foo = bar;",
-                },
-              ],
-            },
-          },
-        ],
-      },
-    });
+it("saves an acknowledged open edit as a new version and keeps subsequent edits on that record", () => {
+  resetReviewDraftStore();
+  const submitted = addReviewDraftComment({ key: "first", comment: makeComment() });
+  clearSentReviewDraftComments({ key: "first", comments: [submitted] });
+  saveReviewDraftComment({
+    key: "first",
+    id: submitted.id,
+    comment: { ...submitted, body: "Open edit after acknowledgement" },
   });
-
-  it("skips a note whose line is no longer in the results", () => {
-    expect(
-      buildSearchNoteAttachmentSnapshot({
-        reviewDraftKey: "search-note:key",
-        cwd: "/repo",
-        comments: [comment],
-        lineTextByTarget: new Map(),
-      }),
-    ).toBeNull();
+  const restored = getReviewDraftComments("first")![0]!;
+  expect(restored.body).toBe("Open edit after acknowledgement");
+  expect(restored.id).not.toBe(submitted.id);
+  clearSentReviewDraftComments({ key: "first", comments: [submitted] });
+  expect(getReviewDraftComments("first")).toEqual([restored]);
+  saveReviewDraftComment({
+    key: "first",
+    id: restored.id,
+    comment: { ...restored, body: "Saved again" },
   });
+  expect(getReviewDraftComments("first")).toMatchObject([{ id: restored.id, body: "Saved again" }]);
+  resetReviewDraftStore();
 });

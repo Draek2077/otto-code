@@ -1,4 +1,6 @@
 import path from "node:path";
+// OTTO(speech-models): model-specific default speaker identities are stable.
+import { localTtsLayout } from "../../../otto/speech/model-catalog.js";
 
 import { z } from "zod";
 
@@ -7,7 +9,6 @@ import type { RequestedSpeechProviders } from "../../speech-types.js";
 import {
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
-  getLocalTtsDefaultSpeakerId,
   LocalSttModelIdSchema,
   LocalTtsModelIdSchema,
   type LocalSpeechModelId,
@@ -91,7 +92,7 @@ function shouldIncludeLocalProviderConfig(params: {
 
   return (
     localRequestedByFeature ||
-    params.env.OTTO_LOCAL_MODELS_DIR !== undefined ||
+    params.env.PASEO_LOCAL_MODELS_DIR !== undefined ||
     params.persisted.providers?.local?.modelsDir !== undefined
   );
 }
@@ -122,13 +123,13 @@ function buildLocalSpeechLanguageResolutionInput(params: {
   const { env, persisted } = params;
   return {
     dictationLanguage: firstNonEmptyString([
-      env.OTTO_DICTATION_LANGUAGE,
+      env.PASEO_DICTATION_LANGUAGE,
       persisted.features?.dictation?.stt?.language,
       DEFAULT_STT_LANGUAGE,
     ]),
     voiceLanguage: firstNonEmptyString([
-      env.OTTO_VOICE_LANGUAGE,
-      env.OTTO_DICTATION_LANGUAGE,
+      env.PASEO_VOICE_LANGUAGE,
+      env.PASEO_DICTATION_LANGUAGE,
       persisted.features?.voiceMode?.stt?.language,
       persisted.features?.dictation?.stt?.language,
       DEFAULT_STT_LANGUAGE,
@@ -137,22 +138,22 @@ function buildLocalSpeechLanguageResolutionInput(params: {
 }
 
 function buildLocalSpeechResolutionInput(params: {
-  ottoHome: string;
+  paseoHome: string;
   env: NodeJS.ProcessEnv;
   persisted: PersistedConfig;
   providers: RequestedSpeechProviders;
   includeProviderConfig: boolean;
 }): Record<string, unknown> {
-  const { ottoHome, env, persisted, providers, includeProviderConfig } = params;
+  const { paseoHome, env, persisted, providers, includeProviderConfig } = params;
   return {
     includeProviderConfig,
     modelsDir: firstDefinedValue<string>([
-      env.OTTO_LOCAL_MODELS_DIR,
+      env.PASEO_LOCAL_MODELS_DIR,
       persisted.providers?.local?.modelsDir,
-      path.join(ottoHome, DEFAULT_LOCAL_MODELS_SUBDIR),
+      path.join(paseoHome, DEFAULT_LOCAL_MODELS_SUBDIR),
     ]),
     dictationLocalSttModel: firstDefinedValue<string>([
-      env.OTTO_DICTATION_LOCAL_STT_MODEL,
+      env.PASEO_DICTATION_LOCAL_STT_MODEL,
       persistedLocalFeatureModel(
         providers.dictationStt.provider,
         providers.dictationStt.enabled,
@@ -161,7 +162,7 @@ function buildLocalSpeechResolutionInput(params: {
       DEFAULT_LOCAL_STT_MODEL,
     ]),
     voiceLocalSttModel: firstDefinedValue<string>([
-      env.OTTO_VOICE_LOCAL_STT_MODEL,
+      env.PASEO_VOICE_LOCAL_STT_MODEL,
       persistedLocalFeatureModel(
         providers.voiceStt.provider,
         providers.voiceStt.enabled,
@@ -170,7 +171,7 @@ function buildLocalSpeechResolutionInput(params: {
       DEFAULT_LOCAL_STT_MODEL,
     ]),
     voiceLocalTtsModel: firstDefinedValue<string>([
-      env.OTTO_VOICE_LOCAL_TTS_MODEL,
+      env.PASEO_VOICE_LOCAL_TTS_MODEL,
       persistedLocalFeatureModel(
         providers.voiceTts.provider,
         providers.voiceTts.enabled,
@@ -180,18 +181,18 @@ function buildLocalSpeechResolutionInput(params: {
     ]),
     ...buildLocalSpeechLanguageResolutionInput({ env, persisted }),
     voiceLocalTtsSpeakerId: firstDefinedValue<string | number>([
-      env.OTTO_VOICE_LOCAL_TTS_SPEAKER_ID,
+      env.PASEO_VOICE_LOCAL_TTS_SPEAKER_ID,
       persisted.features?.voiceMode?.tts?.speakerId,
     ]),
     voiceLocalTtsSpeed: firstDefinedValue<string | number>([
-      env.OTTO_VOICE_LOCAL_TTS_SPEED,
+      env.PASEO_VOICE_LOCAL_TTS_SPEED,
       persisted.features?.voiceMode?.tts?.speed,
     ]),
   };
 }
 
 export function resolveLocalSpeechConfig(params: {
-  ottoHome: string;
+  paseoHome: string;
   env: NodeJS.ProcessEnv;
   persisted: PersistedConfig;
   providers: RequestedSpeechProviders;
@@ -202,7 +203,7 @@ export function resolveLocalSpeechConfig(params: {
   );
 
   const resolvedVoiceTtsSpeakerId =
-    parsed.voiceLocalTtsSpeakerId ?? getLocalTtsDefaultSpeakerId(parsed.voiceLocalTtsModel);
+    parsed.voiceLocalTtsSpeakerId ?? localTtsLayout(parsed.voiceLocalTtsModel).defaultSpeakerId; // OTTO(speech-models)
 
   return {
     sttLanguages: {

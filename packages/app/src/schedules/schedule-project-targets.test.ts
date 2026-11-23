@@ -9,7 +9,6 @@ import {
 function makeProject(overrides: Partial<ProjectSummary>): ProjectSummary {
   return {
     viewKey: "proj",
-    projectKey: "remote:example.com/acme/project",
     projectName: "Project",
     hosts: [],
     totalWorkspaceCount: 0,
@@ -25,7 +24,6 @@ function makeHost(overrides: Partial<ProjectSummary["hosts"][number]>) {
     projectId: "project-1",
     projectName: "Project",
     projectCustomName: null,
-    projectKanban: null,
     serverName: "Host 1",
     isOnline: true,
     repoRoot: "/tmp/project",
@@ -51,9 +49,6 @@ describe("buildScheduleProjectTargets", () => {
       serverId: "host-1",
       cwd: "/tmp/alpha",
       projectName: "Alpha on Host 1",
-      projectViewKey: "proj",
-      projectId: "project-1",
-      projectKey: "remote:example.com/acme/project",
     });
   });
 

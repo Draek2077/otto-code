@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { PluginTimelineTransformerContribution } from "@otto-code/plugin/client";
 import { runPluginClientBundle, type PluginClientRuntime } from "./evaluate";
 
 const runtime = {
-  otto: {},
+  paseo: {},
   async rpc() {},
   openSettings() {},
+  openScreen() {},
   openSurface() {},
   openPanel() {},
   addHeaderButton() {
@@ -29,6 +29,88 @@ function bundle(body: string): string {
 }
 
 describe("evaluatePluginClientBundle", () => {
+  it("loads Schedules settings lazily, shares its contracts and rejects an unrelated UI consumer", () => {
+    const source = bundle(
+      'const ui=require("@getpaseo/plugin/client/otto-schedules");const rpc=require("@getpaseo/plugin/otto/schedules");rpc.readScheduleDefaults.input.parse({hostId:"host"});plugin.addSettingsScreen({id:"schedules",title:"Schedules",icon:"Settings",Component:ui.SchedulesSettings});',
+    );
+    const plugin = evaluatePluginClientBundle("otto-schedules", source);
+    expect(plugin.settingsScreens.map((entry) => entry.id)).toContain("schedules");
+    expect(() => evaluatePluginClientBundle("unrelated-schedules", source)).toThrow();
+  }); // OTTO(schedules)
+  it("loads Speech settings lazily through its trusted presentation bridge", () => {
+    const source = bundle(
+      'const ui=require("@getpaseo/plugin/client/otto-speech");const rpc=require("@getpaseo/plugin/otto/speech");rpc.readSpeech.input.parse({hostId:"host"});plugin.addSettingsScreen({id:"speech",title:"Speech",icon:"Mic",Component:ui.SpeechSettings});',
+    );
+    const plugin = evaluatePluginClientBundle("otto-speech", source);
+    expect(plugin.settingsScreens.map((entry) => entry.id)).toContain("speech");
+    expect(() => evaluatePluginClientBundle("untrusted-speech", source)).toThrow();
+  }); // OTTO(speech): preserve the unit runner's classic JSX import boundary as well as Metro.
+  it("keeps Artifacts preview and forms lazy and built-in-only", () => {
+    const source = bundle(
+      'const ui=require("@getpaseo/plugin/client/otto-artifacts");const rpc=require("@getpaseo/plugin/otto/artifacts");rpc.aggregateArtifacts.input.parse({hostId:"host"});plugin.addScreen({id:"artifacts",title:"Artifacts",Component:ui.ArtifactsScreen});',
+    );
+    const plugin = evaluatePluginClientBundle("otto-artifacts", source);
+    expect(plugin.surfaces.map((screen) => screen.id)).toContain("artifacts");
+    expect(() => evaluatePluginClientBundle("untrusted-artifacts", source)).toThrow();
+  }); // OTTO(artifacts)
+  it("keeps Preview UI lazy and built-in-only while exposing structural RPC contracts", () => {
+    const source = bundle(
+      `const ui=require("@getpaseo/plugin/client/otto-preview"); const rpc=require("@getpaseo/plugin/otto/preview"); rpc.readPreviewConfig.input.parse({hostId:"host",workspaceId:"workspace"}); plugin.addWorkspacePanel({id:"preview",title:"Preview Servers",icon:"MonitorPlay",context:"workspace",Component:ui.PreviewWorkspace});`,
+    );
+    const plugin = evaluatePluginClientBundle("otto-browser", source);
+    expect(plugin.workspacePanels.map((panel) => panel.id)).toEqual(["preview"]);
+    expect(() => evaluatePluginClientBundle("untrusted-preview", source)).toThrow();
+  });
+  it("keeps Context Management UI built-in-only and lazy while sharing structural contracts", () => {
+    const source = bundle(
+      `const ui=require("@getpaseo/plugin/client/otto-knowledge");const rpc=require("@getpaseo/plugin/otto/context-management");rpc.readContextAgents.input.parse({hostId:"host",workspaceId:"workspace"});plugin.addWorkspacePanel({id:"context-management",title:"Context Management",icon:"Layers",context:"workspace",Component:ui.ContextManagementWorkspace});`,
+    );
+    const plugin = evaluatePluginClientBundle("otto-project-knowledge", source);
+    expect(plugin.workspacePanels.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "context-management", title: "Context Management" },
+    ]);
+    expect(() => evaluatePluginClientBundle("unrelated-plugin", source)).toThrow();
+  });
+  it("loads the trusted Knowledge bridge without eagerly importing its Markdown surface", () => {
+    const source = bundle(`
+      const ui = require("@getpaseo/plugin/client/otto-knowledge");
+      plugin.addWorkspacePanel({id:"knowledge",title:"Knowledge",icon:"BookOpen",context:"workspace",Component:ui.ProjectKnowledgeWorkspace});
+    `);
+    const plugin = evaluatePluginClientBundle("otto-project-knowledge", source);
+    expect(plugin.workspacePanels.map(({ id, context }) => ({ id, context }))).toEqual([
+      { id: "knowledge", context: "workspace" },
+    ]);
+    expect(() => evaluatePluginClientBundle("unrelated-plugin", source)).toThrow();
+  });
+  it("supplies shared Atlassian settings contracts without exposing credential storage", () => {
+    const plugin = evaluatePluginClientBundle(
+      "otto-integrations",
+      bundle(`
+      const account = require("@getpaseo/plugin/otto/atlassian-settings");
+      if ("KeyringCredentialVault" in account) throw new Error("Vault leaked");
+      account.readAtlassianAccount.input.parse({hostId:"host"});
+      plugin.addSettingsScreen({id:"atlassian",title:account.readAtlassianAccount.name,icon:"Plug",Component:function Settings(){return null;}});
+    `),
+    );
+    expect(plugin.settingsScreens.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "atlassian", title: "integrations.atlassian.read" },
+    ]);
+  });
+  // OTTO(kanban): shared contracts are supplied by the host; Node effects remain separate.
+  it("supplies canonical Kanban contracts without exposing the host implementation", () => {
+    const plugin = evaluatePluginClientBundle(
+      "otto-kanban",
+      bundle(`
+      const kanban = require("@getpaseo/plugin/otto/kanban");
+      if ("createKanbanHandlers" in kanban) throw new Error("Host implementation leaked");
+      kanban.getBoard.input.parse({hostId:"host-a",projectId:"project-a"});
+      plugin.addScreen({id:"board",title:kanban.getBoard.name,Component:function Board(){return null;}});
+    `),
+    );
+    expect(plugin.surfaces.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "board", title: "kanban.board.get" },
+    ]);
+  });
   it("releases button registrations when client setup throws", () => {
     let active = 0;
     function addButton() {
@@ -73,9 +155,10 @@ describe("evaluatePluginClientBundle", () => {
         function Component() { return null; }
         const schema = { safeParse(value) { return { success: true, data: value }; } };
         globalThis.__pluginRemovals = [
-          plugin.addSurface("main", Component),
+          plugin.addScreen({ id: "main", title: "Main", Component }),
           plugin.addSettingsScreen({ id: "display", title: "Display", icon: "Settings", Component }),
-          plugin.addSidebarItem({ id: "main", title: "Main", icon: "Blocks", surface: "main" }),
+          plugin.addSidebarHeaderItem({ id: "main", title: "Main", Component }),
+          plugin.addSidebarFooterItem({ id: "status", title: "Status", Component }),
           plugin.addWorkspacePanel({ id: "panel", title: "Panel", icon: "Blocks", context: "workspace", Component }),
           plugin.addCommandCenterItem({ id: "command", title: "Command", icon: "Blocks", context: "global", onSelect() {} }),
           plugin.addSlashCommand({ name: "review", description: "Review", argumentHint: "", context: "workspace", onSubmit() {} }),
@@ -105,7 +188,8 @@ describe("evaluatePluginClientBundle", () => {
       [
         plugin.surfaces,
         plugin.settingsScreens,
-        plugin.sidebarItems,
+        plugin.sidebarItems.header,
+        plugin.sidebarItems.footer,
         plugin.workspacePanels,
         plugin.commandCenterItems,
         plugin.clientSlashCommands,
@@ -124,7 +208,8 @@ describe("evaluatePluginClientBundle", () => {
       [
         plugin.surfaces,
         plugin.settingsScreens,
-        plugin.sidebarItems,
+        plugin.sidebarItems.header,
+        plugin.sidebarItems.footer,
         plugin.workspacePanels,
         plugin.commandCenterItems,
         plugin.clientSlashCommands,
@@ -166,40 +251,6 @@ describe("evaluatePluginClientBundle", () => {
     ]);
   });
 
-  it("accepts notification transformers without granting custom-plugin row transforms", () => {
-    const plugin = evaluatePluginClientBundle(
-      "notices",
-      bundle(`
-      plugin.addTimelineTransformer({
-        id: "notice", query: { itemType: "notification" },
-        transform({ item }) { return { items: [{ type: "plugin", kind: "notice", version: 1, data: { message: item.message } }] }; },
-      });
-    `),
-    );
-    const transformer = plugin.timelineTransformers.find(
-      (candidate): candidate is PluginTimelineTransformerContribution<"notification"> =>
-        candidate.query.itemType === "notification",
-    );
-    expect(transformer?.query.itemType).toBe("notification");
-    if (!transformer) throw new Error("Expected notification transformer");
-    expect(
-      transformer.transform({
-        item: { type: "notification", level: "info", message: "Provider notice" },
-        phase: "complete",
-      }),
-    ).toEqual({
-      items: [{ type: "plugin", kind: "notice", version: 1, data: { message: "Provider notice" } }],
-    });
-    expect(() =>
-      evaluatePluginClientBundle(
-        "custom",
-        bundle(`
-      plugin.addTimelineTransformer({ id: "custom", query: { itemType: "plugin" }, transform() { return { items: [] }; } });
-    `),
-      ),
-    ).toThrow("invalid item type: plugin");
-  });
-
   it("rejects unknown timeline item types", () => {
     expect(() =>
       evaluatePluginClientBundle(
@@ -215,21 +266,133 @@ describe("evaluatePluginClientBundle", () => {
     ).toThrow("Timeline transformer bad-query has invalid item type: settled");
   });
 
-  it("collects a surface and its sidebar placement", () => {
+  it("collects screens and sidebar header and footer items", () => {
+    const plugin = evaluatePluginClientBundle(
+      "example",
+      bundle(`
+        function Screen() { return null; }
+        const Item = require("react").memo(function Item() { return null; });
+        plugin.addScreen({ id: "main", title: " Main ", Component: Screen });
+        plugin.addScreen({ id: "bot", title: (params) => params.botId, Component: Screen });
+        plugin.addSidebarHeaderItem({ id: "main", title: " Example ", icon: "BookOpen", Component: Item });
+        plugin.addSidebarFooterItem({ id: "main", title: "Status", Component: Item });
+      `),
+    );
+
+    expect(plugin.id).toBe("example");
+    expect(plugin.surfaces.map((surface) => surface.id)).toEqual(["main", "bot"]);
+    expect(plugin.surfaces[0]?.title).toBe("Main");
+    expect(plugin.surfaces[1]?.title).toBeTypeOf("function");
+    expect(plugin.sidebarItems.header.map(({ id, title, icon }) => ({ id, title, icon }))).toEqual([
+      { id: "main", title: "Example", icon: "BookOpen" },
+    ]);
+    expect(plugin.sidebarItems.footer.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "main", title: "Status" },
+    ]);
+    expect(plugin.legacySidebarItems).toEqual([]);
+  });
+
+  it.each([
+    [`plugin.addScreen("main", Screen);`, "addScreen takes { id, title, Component }"],
+    [`plugin.addScreen({ id: "main", Component: Screen });`, "Screen main needs a title"],
+    [
+      `plugin.addScreen({ id: "main", title: " ", Component: Screen });`,
+      "Screen main needs a title",
+    ],
+    [
+      `plugin.addScreen({ id: "main", title: 42, Component: Screen });`,
+      "Screen main needs a title",
+    ],
+    [
+      `plugin.addScreen({ id: "main", title: "Main", Component: "Main" });`,
+      "Screen main is not a component",
+    ],
+  ])("rejects a malformed screen: %s", (call, message) => {
+    expect(() =>
+      evaluatePluginClientBundle("example", bundle(`function Screen() { return null; } ${call}`)),
+    ).toThrow(message);
+  });
+
+  it("rejects duplicate and malformed sidebar items within a section", () => {
+    expect(() =>
+      evaluatePluginClientBundle(
+        "example",
+        bundle(`
+          function Item() { return null; }
+          plugin.addSidebarFooterItem({ id: "main", title: "One", Component: Item });
+          plugin.addSidebarFooterItem({ id: "main", title: "Two", Component: Item });
+        `),
+      ),
+    ).toThrow("Duplicate sidebar footer item: main");
+    expect(() =>
+      evaluatePluginClientBundle(
+        "example",
+        bundle(`plugin.addSidebarHeaderItem({ id: "main", title: "Main", Component: "Main" });`),
+      ),
+    ).toThrow("Sidebar item main is not a component");
+    expect(() =>
+      evaluatePluginClientBundle(
+        "example",
+        bundle(
+          `plugin.addSidebarHeaderItem({ id: "main", title: " ", Component() { return null; } });`,
+        ),
+      ),
+    ).toThrow("Sidebar item main has no title");
+    expect(() =>
+      evaluatePluginClientBundle(
+        "example",
+        bundle(
+          `plugin.addSidebarFooterItem({ id: "main", title: "Main", icon: "MissingFeatureIcon", Component() { return null; } });`,
+        ),
+      ),
+    ).toThrow("MissingFeatureIcon");
+  });
+
+  it("expands the addSurface and addSidebarItem aliases to a screen and a legacy header item", () => {
     const plugin = evaluatePluginClientBundle(
       "example",
       bundle(`
         function Surface() { return null; }
         plugin.addSurface("main", Surface);
-        plugin.addSidebarItem({ id: "main", title: "Example", icon: "Blocks", surface: "main" });
+        plugin.addSidebarItem({ id: "entry", title: "Example", icon: "Blocks", surface: "main" });
       `),
     );
 
-    expect(plugin.id).toBe("example");
-    expect(plugin.surfaces.map((surface) => surface.id)).toEqual(["main"]);
-    expect(plugin.sidebarItems).toEqual([
-      { id: "main", title: "Example", icon: "Blocks", surface: "main" },
+    expect(plugin.surfaces.map(({ id, title }) => ({ id, title }))).toEqual([
+      { id: "main", title: "main" },
     ]);
+    expect(plugin.sidebarItems).toEqual({ header: [], footer: [] });
+    expect(plugin.legacySidebarItems).toEqual([
+      { id: "entry", title: "Example", icon: "Blocks", surface: "main" },
+    ]);
+  });
+
+  it("releases an addSidebarItem alias's header id", () => {
+    const plugin = evaluatePluginClientBundle(
+      "example",
+      bundle(`
+        plugin.addScreen({ id: "main", title: "Main", Component: function Screen() { return null; } });
+        const remove = plugin.addSidebarItem({ id: "entry", title: "Example", icon: "Blocks", surface: "main" });
+        remove();
+        plugin.addSidebarHeaderItem({ id: "entry", title: "Replacement", Component() { return null; } });
+      `),
+    );
+
+    expect(plugin.sidebarItems.header.map((item) => item.title)).toEqual(["Replacement"]);
+    expect(plugin.legacySidebarItems).toEqual([]);
+  });
+
+  it("rejects a header item that reuses an addSidebarItem id", () => {
+    expect(() =>
+      evaluatePluginClientBundle(
+        "example",
+        bundle(`
+          plugin.addScreen({ id: "main", title: "Main", Component: function Screen() { return null; } });
+          plugin.addSidebarItem({ id: "entry", title: "Example", icon: "Blocks", surface: "main" });
+          plugin.addSidebarHeaderItem({ id: "entry", title: "Other", Component() { return null; } });
+        `),
+      ),
+    ).toThrow("Duplicate sidebar header item: entry");
   });
 
   it("collects a declarative attachment source", () => {
@@ -378,7 +541,7 @@ describe("evaluatePluginClientBundle", () => {
     const plugin = evaluatePluginClientBundle(
       "review",
       bundle(`
-        if (!plugin.otto || !plugin.rpc || !plugin.openSurface || !plugin.openPanel || !plugin.addComposerPill) {
+        if (!plugin.paseo || !plugin.rpc || !plugin.openSurface || !plugin.openPanel || !plugin.addComposerPill) {
           throw new Error("missing client runtime");
         }
       `),
@@ -507,16 +670,16 @@ describe("evaluatePluginClientBundle", () => {
     ).toThrow("must return a cleanup function");
   });
 
-  it("provides the host Icon component through @otto-code/plugin/client/react-native", () => {
+  it("provides the host Icon component through @getpaseo/plugin/client/react-native", () => {
     const plugin = evaluatePluginClientBundle(
       "example",
       `(function(require) {
-        const { Icon } = require("@otto-code/plugin/client/react-native");
+        const { Icon } = require("@getpaseo/plugin/client/react-native");
         const module = { exports: {} };
         module.exports.default = function(plugin) {
-          plugin.addSurface("main", function Surface() {
+          plugin.addScreen({ id: "main", title: "Main", Component: function Surface() {
             return Icon({ name: "Settings", size: 18, color: "#123456" });
-          });
+          } });
           return function() {};
         };
         return module.exports;
@@ -529,11 +692,11 @@ describe("evaluatePluginClientBundle", () => {
     expect(element).toMatchObject({ props: { size: 18, color: "#123456" } });
   });
 
-  it("provides Paseo UI through @otto-code/plugin/client/react-native", () => {
+  it("provides Paseo UI through @getpaseo/plugin/client/react-native", () => {
     const plugin = evaluatePluginClientBundle(
       "example",
       `(function(require) {
-        const { Icon, Modal, useToast } = require("@otto-code/plugin/client/react-native");
+        const { Icon, Modal, useToast } = require("@getpaseo/plugin/client/react-native");
         const module = { exports: {} };
         module.exports.default = function(plugin) {
           if (typeof Icon !== "function" || typeof Modal !== "function" || typeof Modal.Content !== "function" || typeof useToast !== "function") {
@@ -554,9 +717,11 @@ describe("evaluatePluginClientBundle", () => {
       evaluatePluginClientBundle(
         "example",
         `(function(require) {
-      const shared = require("@otto-code/plugin");
-      const client = require("@otto-code/plugin/client");
-      for (const name of ["useOtto", "useRpc", "useSettings", "useAgent", "useWorkspace"]) {
+      const shared = require("@getpaseo/plugin");
+      const client = require("@getpaseo/plugin/client");
+      const { ExternalLink } = require("@getpaseo/plugin/client/ui");
+      if (typeof ExternalLink !== "function") throw new Error("ExternalLink");
+      for (const name of ["usePaseo", "useRpc", "useSettings", "useAgent", "useWorkspace", "openExternalUrl"]) {
         if (name in shared || typeof client[name] !== "function") throw new Error(name);
       }
       if ("Icon" in shared || typeof shared.PluginAttachmentItemSchema.parse !== "function") throw new Error("shared exports");
@@ -567,13 +732,13 @@ describe("evaluatePluginClientBundle", () => {
   });
 
   it.each([
-    "@otto-code/plugin/server",
-    "@otto-code/plugin/server/provider",
-    "@otto-code/plugin/server/acp",
-    "@otto-code/plugin/client/host",
-    "@otto-code/plugin/react-native",
-    "@otto-code/plugin/ui",
-    "@otto-code/plugin/host",
+    "@getpaseo/plugin/server",
+    "@getpaseo/plugin/server/provider",
+    "@getpaseo/plugin/server/acp",
+    "@getpaseo/plugin/client/host",
+    "@getpaseo/plugin/react-native",
+    "@getpaseo/plugin/ui",
+    "@getpaseo/plugin/host",
     "@paseo/plugin",
   ])("rejects %s in the client loader", (specifier) => {
     expect(() =>
@@ -584,11 +749,11 @@ describe("evaluatePluginClientBundle", () => {
     ).toThrow("not available in plugin client code");
   });
 
-  it("resolves shared RPC helpers from @otto-code/plugin", () => {
+  it("resolves shared RPC helpers from @getpaseo/plugin", () => {
     const plugin = evaluatePluginClientBundle(
       "example",
       `(function(require) {
-        const { defineRpc, defineAttachmentSource } = require("@otto-code/plugin");
+        const { defineRpc, defineAttachmentSource } = require("@getpaseo/plugin");
         const search = defineRpc({ name: "issues.search", input: {}, output: {} });
         const module = { exports: {} };
         module.exports.default = function(plugin) {
@@ -636,25 +801,38 @@ describe("evaluatePluginClientBundle", () => {
   });
 });
 
-it("shares SDK modules, hooks and callback API identity across both author namespaces", () => {
-  evaluatePluginClientBundle(
-    "aliases",
-    bundle(`
-    const own = require("@otto-code/plugin/client");
-    const upstream = require("@getpaseo/plugin/client");
-    if (own !== upstream || own.useOtto !== upstream.usePaseo) throw new Error("duplicate runtime");
-    if (plugin.otto !== plugin.paseo) throw new Error("duplicate API");
-    for (const suffix of ["", "/client/ui", "/client/react-native"]) {
-      if (require("@otto-code/plugin" + suffix) !== require("@getpaseo/plugin" + suffix)) throw new Error("duplicate module");
-    }
-  `),
-  );
+it("binds imported getters to each originating installation across delayed callbacks", async () => {
+  const calls: string[] = [];
+  const hostRuntime = (installation: string): PluginClientRuntime => ({
+    ...runtime,
+    hosts: {
+      getSnapshot: () => [],
+      subscribe: () => () => {},
+      getPaseoClient(serverId) {
+        calls.push(`${installation}/${serverId}`);
+        return runtime.paseo;
+      },
+    },
+  });
+  const source = bundle(`
+    const { getPaseoClient } = require("@getpaseo/plugin/client");
+    getPaseoClient("entry-host");
+    plugin.addCommandCenterItem({
+      id: "read", title: "Read", icon: "Server", context: "global",
+      onSelect: async () => { await Promise.resolve(); getPaseoClient("target-host"); },
+    });
+  `);
+  const first = runPluginClientBundle("same-id", source, hostRuntime("first"));
+  const second = runPluginClientBundle("same-id", source, hostRuntime("second"));
+  // Both callbacks run after the second bundle has evaluated.
+  await first.commandCenterItems[0].onSelect({} as never);
+  await second.commandCenterItems[0].onSelect({} as never);
+  expect(calls).toEqual([
+    "first/entry-host",
+    "second/entry-host",
+    "first/target-host",
+    "second/target-host",
+  ]);
+  await first.cleanup();
+  await second.cleanup();
 });
-it.each(["/server", "/server/provider", "/server/acp", "/client/host", "/host", "/unknown"])(
-  "rejects upstream private/server/unknown client imports: %s",
-  (suffix) => {
-    expect(() =>
-      evaluatePluginClientBundle("boundary", bundle(`require("@getpaseo/plugin${suffix}")`)),
-    ).toThrow("not available");
-  },
-);

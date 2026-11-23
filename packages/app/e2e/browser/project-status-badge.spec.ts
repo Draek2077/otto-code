@@ -8,7 +8,7 @@ import {
   seedStatusProject,
   startNeedsInputWorkspace,
   startWorkingWorkspace,
-} from "../support/helpers/project-status-badge";
+} from "../helpers/project-status-badge";
 
 test("a collapsed project surfaces its most urgent hidden workspace status", async ({ page }) => {
   test.setTimeout(120_000);
@@ -26,8 +26,8 @@ test("a collapsed project surfaces its most urgent hidden workspace status", asy
 
     await expandStatusProject(page, project);
     await expectProjectStatusHidden(page, project);
-    await expectWorkspaceStatus(page, project.seed.workspaceId, "running");
-    await expectWorkspaceStatus(page, project.needsInputWorkspaceId, "needs_input");
+    await expectWorkspaceStatus(page, "Working workspace", "running");
+    await expectWorkspaceStatus(page, "Needs input workspace", "needs_input");
   } finally {
     await project.seed.cleanup().catch(() => undefined);
   }

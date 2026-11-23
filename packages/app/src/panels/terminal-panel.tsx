@@ -1,22 +1,20 @@
+import { useTerminalDirectory } from "@/otto/terminal/directory"; // OTTO(terminal-paths)
 import { useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Terminal } from "@/components/icons/material-icons";
+import { Terminal } from "lucide-react-native";
 import { Text, View } from "react-native";
 import invariant from "tiny-invariant";
-import type { ListTerminalsResponse } from "@otto-code/protocol/messages";
-import { deriveTerminalActivityStatusBucket } from "@otto-code/protocol/terminal-activity";
+import type { ListTerminalsResponse } from "@getpaseo/protocol/messages";
+import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 import { TerminalPane } from "@/components/terminal-pane";
 import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { queryClient } from "@/data/query-client";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
+import { usePanelStore } from "@/stores/panel-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
-import { revealDirectoryInFiles } from "@/git/changes-reveal";
-import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
-import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
-import { useIsCompactFormFactor } from "@/constants/layout";
 
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
 
@@ -87,34 +85,19 @@ function TerminalPanel() {
   }));
   const workspaceDirectory = workspaceFields?.workspaceDirectory || null;
   const isGitCheckout = workspaceFields?.isGitCheckout ?? false;
-  const isCompact = useIsCompactFormFactor();
-  const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
-  const openFilesExplorer = useCallback(() => {
+  const openDirectory = useTerminalDirectory({
+    serverId,
+    workspaceId,
+    root: workspaceDirectory,
+    isGit: isGitCheckout,
+  }); // OTTO(terminal-paths)
+  const openCompactFileExplorer = usePanelStore((state) => state.openCompactFileExplorer);
+  const handleOpenFileExplorer = useCallback(() => {
     if (!workspaceDirectory) {
       return;
     }
-    openExplorerSidebarView({
-      isCompact,
-      workspaceKey,
-      checkout: { serverId, cwd: workspaceDirectory, isGit: isGitCheckout },
-      view: "files",
-    });
-  }, [isCompact, isGitCheckout, serverId, workspaceDirectory, workspaceKey]);
-  const handleNavigateToFolder = useCallback(
-    (path: string) => {
-      if (!workspaceDirectory) {
-        return;
-      }
-      revealDirectoryInFiles({
-        serverId,
-        cwd: workspaceDirectory,
-        path,
-        isGit: isGitCheckout,
-      });
-      openFilesExplorer();
-    },
-    [isGitCheckout, openFilesExplorer, serverId, workspaceDirectory],
-  );
+    openCompactFileExplorer({ serverId, cwd: workspaceDirectory, isGit: isGitCheckout });
+  }, [isGitCheckout, openCompactFileExplorer, serverId, workspaceDirectory]);
   invariant(target.kind === "terminal", "TerminalPanel requires terminal target");
 
   if (!workspaceDirectory) {
@@ -132,8 +115,8 @@ function TerminalPanel() {
       terminalId={target.terminalId}
       isWorkspaceFocused={isWorkspaceFocused}
       isPaneFocused={isPaneFocused}
-      onOpenFileExplorer={openFilesExplorer}
-      onNavigateToFolder={handleNavigateToFolder}
+      onOpenDirectory={openDirectory} // OTTO(terminal-paths)
+      onOpenFileExplorer={handleOpenFileExplorer}
       onOpenWorkspaceFile={openFileInWorkspace}
     />
   );

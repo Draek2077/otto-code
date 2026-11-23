@@ -1,6 +1,5 @@
 import { beforeEach, afterEach, describe, expect, test } from "vitest";
-import { mkdtempSync, writeFileSync, existsSync, realpathSync } from "fs";
-import { removeTempDir } from "../../test-utils/remove-temp-dir.js";
+import { mkdtempSync, writeFileSync, rmSync, existsSync, realpathSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { execSync } from "child_process";
@@ -22,7 +21,7 @@ interface LegacyCreateWorktreeTestOptions {
   baseBranch: string;
   worktreeSlug: string;
   runSetup?: boolean;
-  ottoHome?: string;
+  paseoHome?: string;
 }
 
 function createLegacyWorktreeForTest(
@@ -41,7 +40,7 @@ function createLegacyWorktreeForTest(
       branchName: options.branchName,
     },
     runSetup: options.runSetup ?? true,
-    ottoHome: options.ottoHome,
+    paseoHome: options.paseoHome,
   });
 }
 
@@ -65,57 +64,20 @@ const testWithGitHubCliAuth = hasGitHubCliAuth() ? test : test.skip;
 
 function initGitRepo(repoDir: string): void {
   execSync("git init -b main", { cwd: repoDir, stdio: "pipe" });
-  execSync('git config user.email "otto-test@example.com"', {
+  execSync("git config user.email 'paseo-test@example.com'", {
     cwd: repoDir,
     stdio: "pipe",
   });
-  execSync('git config user.name "Otto Test"', {
+  execSync("git config user.name 'Paseo Test'", {
     cwd: repoDir,
     stdio: "pipe",
   });
   writeFileSync(path.join(repoDir, "README.md"), "init\n");
   execSync("git add README.md", { cwd: repoDir, stdio: "pipe" });
-  execSync('git -c commit.gpgsign=false commit -m "Initial commit"', {
+  execSync("git -c commit.gpgsign=false commit -m 'Initial commit'", {
     cwd: repoDir,
     stdio: "pipe",
   });
-}
-
-type CheckoutStatusResponse = Awaited<ReturnType<DaemonTestContext["client"]["getCheckoutStatus"]>>;
-
-/**
- * Poll checkout status until `predicate` holds.
- *
- * Checkout status is served from the cached workspace git snapshot, which a
- * filesystem watcher invalidates. A test that mutates the repo with raw git and
- * then reads status once is racing that invalidation rather than asserting on
- * it. Returns the last response either way, so a timeout still fails with a
- * useful diff instead of a bare timeout.
- */
-async function waitForCheckoutStatus(options: {
-  client: DaemonTestContext["client"];
-  cwd: string;
-  predicate: (status: CheckoutStatusResponse) => boolean;
-  timeoutMs?: number;
-}): Promise<CheckoutStatusResponse> {
-  const timeoutMs = options.timeoutMs ?? 15_000;
-  const deadline = Date.now() + timeoutMs;
-  let latest = await options.client.getCheckoutStatus(options.cwd);
-  while (!options.predicate(latest) && Date.now() < deadline) {
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    latest = await options.client.getCheckoutStatus(options.cwd);
-  }
-  // Returning the last candidate on timeout made every caller fail on its own
-  // follow-up assertion instead, which reported "expected 'ship-loop' to be
-  // 'ship-loop-ready'" - a branch-rename bug - when the actual fault was that
-  // the daemon never invalidated its cached git snapshot inside the window.
-  if (!options.predicate(latest)) {
-    throw new Error(
-      `Checkout status for ${options.cwd} never satisfied the predicate within ${timeoutMs}ms. ` +
-        `Last seen currentBranch=${latest.isGit ? latest.currentBranch : "<non-git>"}.`,
-    );
-  }
-  return latest;
 }
 
 function getGhLogin(): string {
@@ -184,7 +146,7 @@ describe("daemon checkout ship loop", () => {
           cwd: repoDir,
           baseBranch: "main",
           worktreeSlug: "ship-loop",
-          ottoHome: ctx.daemon.ottoHome,
+          paseoHome: ctx.daemon.paseoHome,
         });
 
         const agent = await ctx.client.createAgent({
@@ -198,7 +160,7 @@ describe("daemon checkout ship loop", () => {
 
         const status = await ctx.client.getCheckoutStatus(worktree.worktreePath);
         expect(status.isGit).toBe(true);
-        expect(status.isOttoOwnedWorktree).toBe(true);
+        expect(status.isPaseoOwnedWorktree).toBe(true);
         expect(realpathSync(status.repoRoot)).toBe(realpathSync(worktree.worktreePath));
         if (status.isGit) {
           expect(status.baseRef).toBe("main");
@@ -209,15 +171,7 @@ describe("daemon checkout ship loop", () => {
           stdio: "pipe",
         });
 
-        // The rename happens behind the daemon's back, so checkout status keeps
-        // serving the cached workspace git snapshot until its watcher notices
-        // .git/HEAD moved. Asserting on the first read races that invalidation
-        // instead of testing it; poll until the rename lands.
-        const updatedStatus = await waitForCheckoutStatus({
-          client: ctx.client,
-          cwd: worktree.worktreePath,
-          predicate: (candidate) => candidate.currentBranch === "ship-loop-ready",
-        });
+        const updatedStatus = await ctx.client.getCheckoutStatus(worktree.worktreePath);
         expect(updatedStatus.currentBranch).toBe("ship-loop-ready");
 
         const readmePath = path.join(worktree.worktreePath, "README.md");
@@ -283,7 +237,7 @@ describe("daemon checkout ship loop", () => {
         });
         expect(baseDiffAfterMerge.files.length).toBe(0);
 
-        const worktreeList = await ctx.client.getOttoWorktreeList({
+        const worktreeList = await ctx.client.getPaseoWorktreeList({
           cwd: repoDir,
         });
         expect(worktreeList.error).toBeNull();
@@ -295,27 +249,21 @@ describe("daemon checkout ship loop", () => {
           ),
         ).toBe(true);
 
-        const archiveResult = await ctx.client.archiveOttoWorktree({
+        const archiveResult = await ctx.client.archivePaseoWorktree({
           worktreePath: worktree.worktreePath,
         });
         expect(archiveResult.error).toBeNull();
         expect(archiveResult.success).toBe(true);
 
-        // Archiving the last workspace referencing a worktree takes the
-        // directory with it. There is no separate "delete from disk" step and
-        // no prompt: the reference count decides. This assertion used to expect
-        // the opposite, which is how it read before the archive policy became
-        // reference-counted, and it kept saying so because nothing here runs
-        // without a GitHub token.
-        await expect
-          .poll(() => existsSync(worktree.worktreePath), { timeout: 10000, interval: 100 })
-          .toBe(false);
-        const worktreeListAfter = await ctx.client.getOttoWorktreeList({
+        // Archiving removes the agent from the active list but leaves the
+        // worktree on disk — disk deletion is a separate, explicit step.
+        const worktreeListAfter = await ctx.client.getPaseoWorktreeList({
           cwd: repoDir,
         });
         expect(
           worktreeListAfter.worktrees.some((entry) => entry.worktreePath === worktree.worktreePath),
-        ).toBe(false);
+        ).toBe(true);
+        expect(existsSync(worktree.worktreePath)).toBe(true);
 
         const remainingAgents = await ctx.client.fetchAgents();
         expect(remainingAgents.entries.some((entry) => entry.agent.id === agent.id)).toBe(false);
@@ -324,7 +272,7 @@ describe("daemon checkout ship loop", () => {
           await ctx.client.deleteAgent(agentId).catch(() => undefined);
         }
         deleteRepoBestEffort(repoFullName);
-        removeTempDir(repoDir);
+        rmSync(repoDir, { recursive: true, force: true });
       }
     },
     180000,
@@ -347,7 +295,7 @@ describe("daemon checkout ship loop", () => {
         cwd: repoDir,
         baseBranch: "main",
         worktreeSlug: "merge-from-base",
-        ottoHome: ctx.daemon.ottoHome,
+        paseoHome: ctx.daemon.paseoHome,
       });
 
       const agent = await ctx.client.createAgent({
@@ -370,7 +318,7 @@ describe("daemon checkout ship loop", () => {
       execSync("git checkout main", { cwd: repoDir, stdio: "pipe" });
       writeFileSync(path.join(repoDir, "base.txt"), "base update\n");
       execSync("git add base.txt", { cwd: repoDir, stdio: "pipe" });
-      execSync('git -c commit.gpgsign=false commit -m "base update"', {
+      execSync("git -c commit.gpgsign=false commit -m 'base update'", {
         cwd: repoDir,
         stdio: "pipe",
       });
@@ -407,7 +355,7 @@ describe("daemon checkout ship loop", () => {
       if (agentId) {
         await ctx.client.deleteAgent(agentId).catch(() => undefined);
       }
-      removeTempDir(repoDir);
+      rmSync(repoDir, { recursive: true, force: true });
     }
   }, 90000);
 
@@ -442,7 +390,7 @@ describe("daemon checkout ship loop", () => {
       if (agentId) {
         await ctx.client.deleteAgent(agentId).catch(() => undefined);
       }
-      removeTempDir(cwd);
+      rmSync(cwd, { recursive: true, force: true });
     }
   }, 60000);
 });

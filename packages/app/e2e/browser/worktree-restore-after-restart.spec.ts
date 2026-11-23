@@ -1,5 +1,12 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+import {
+  restoreWorkspaceFromHistory,
+  expectCommittedFileAfterReload,
+} from "../support/helpers/workspace-recovery";
 import { expect, type Page } from "@playwright/test";
 import { metroTest as test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
@@ -80,22 +87,26 @@ test.describe("Worktree restore after daemon restart", () => {
     );
   }
 
-  test("after archiving a worktree and restarting the daemon, History shows the worktree branch (not main) before any restore", async ({
+  test("after archiving a worktree and restarting the daemon, History shows the worktree branch (not main) and restores its committed changes", async ({
     page,
   }) => {
-    // A otto worktree is cut on its own branch named after the slug, and the
+    // A paseo worktree is cut on its own branch named after the slug, and the
     // worktree workspace is displayed under the same name. These are the values
-    // the History table cells must show after restore - never "main".
+    // the History table cells must show after restore — never "main".
     const worktreeSlug = `restart-restore-${randomUUID().slice(0, 8)}`;
 
     const project = await openProjectViaDaemon(worktreeClient, tempRepo.path);
-    createdProjectIds.add(project.projectId);
+    createdProjectIds.add(project.projectKey);
     const worktree = await createWorktreeViaDaemon(worktreeClient, {
       cwd: tempRepo.path,
       slug: worktreeSlug,
     });
-    createdProjectIds.add(worktree.projectId);
+    createdProjectIds.add(worktree.projectKey);
     createdWorktreeDirectories.add(worktree.workspaceDirectory);
+
+    writeFileSync(join(worktree.workspaceDirectory, "restart-change.txt"), "persisted base\n");
+    execFileSync("git", ["add", "restart-change.txt"], { cwd: worktree.workspaceDirectory });
+    execFileSync("git", ["commit", "-m", "Survive restart"], { cwd: worktree.workspaceDirectory });
 
     const agent = await createMockIdleAgent(client, {
       cwd: worktree.workspaceDirectory,
@@ -131,12 +142,14 @@ test.describe("Worktree restore after daemon restart", () => {
     // KEY ASSERTION: reproduce the screenshot state. Right after the daemon
     // restart, with NO restore and NO row click, the rendered History table cells
     // (fed by each agent row's projectPlacement via fetch_agent_history) must read
-    // the worktree branch and the worktree workspace name - never "main".
+    // the worktree branch and the worktree workspace name — never "main".
     const branchCell = page.getByTestId(`agent-row-branch-${serverId}-${agent.id}`);
     const workspaceCell = page.getByTestId(`agent-row-workspace-${serverId}-${agent.id}`);
 
     await expect(branchCell).toBeVisible({ timeout: 60_000 });
     await expect(branchCell).toHaveText(worktreeSlug, { timeout: 60_000 });
     await expect(workspaceCell).toHaveText(worktree.workspaceName, { timeout: 60_000 });
+    await restoreWorkspaceFromHistory(page, serverId, agent.id);
+    await expectCommittedFileAfterReload(page, "restart-change.txt");
   });
 });

@@ -1,5 +1,5 @@
 import { QueryClient } from "@tanstack/react-query";
-import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
+import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
 import { describe, expect, it } from "vitest";
 import type {
   AggregatedSchedule,

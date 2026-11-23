@@ -1,7 +1,7 @@
-typeset -g OTTO_SHELL_INTEGRATION_DIR="${${(%):-%N}:A:h}"
+typeset -g PASEO_SHELL_INTEGRATION_DIR="${${(%):-%N}:A:h}"
 
-if [[ -n "${OTTO_ZSH_ZDOTDIR-}" ]]; then
-  export ZDOTDIR="${OTTO_ZSH_ZDOTDIR}"
+if [[ -n "${PASEO_ZSH_ZDOTDIR-}" ]]; then
+  export ZDOTDIR="${PASEO_ZSH_ZDOTDIR}"
 else
   unset ZDOTDIR
 fi
@@ -14,4 +14,4 @@ elif [[ -f "${HOME}/.zshenv" ]]; then
   source "${HOME}/.zshenv"
 fi
 
-source "${OTTO_SHELL_INTEGRATION_DIR}/otto-integration.zsh"
+source "${PASEO_SHELL_INTEGRATION_DIR}/paseo-integration.zsh"

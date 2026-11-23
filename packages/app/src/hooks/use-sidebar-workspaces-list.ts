@@ -1,14 +1,9 @@
 import { useCallback, useEffect, useMemo } from "react";
-import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectoryServerIds } from "@/stores/session-store-hooks";
-import {
-  selectProjectChangeStat,
-  selectWorkspace,
-  workspaceEqualityFns,
-} from "@/stores/session-store-hooks/selectors";
+import { workspaceEqualityFns } from "@/stores/session-store-hooks/selectors";
 import { useHostProjects } from "@/projects/host-projects";
 import { getHostRuntimeStore, useHostRegistryLoaded, useHosts } from "@/runtime/host-runtime";
 import { useSidebarOrderStore } from "@/stores/sidebar-order-store";
@@ -21,35 +16,10 @@ import {
   deriveSidebarLoadingState,
   type ProjectStatusSession,
   type SidebarProjectEntry,
-  type SidebarStateBucket,
   type SidebarWorkspaceEntry,
   type SidebarWorkspacePlacement,
 } from "./sidebar-workspaces-view-model";
-
-/** Aggregate status for a collapsed project row without destabilizing its structural model. */
-export function useSidebarProjectStatusBucket(input: {
-  workspaces: readonly SidebarWorkspacePlacement[];
-  enabled: boolean;
-}): SidebarStateBucket | null {
-  const { workspaces, enabled } = input;
-  const pendingCreateAttempts = useStoreWithEqualityFn(
-    useCreateFlowStore,
-    (state) => state.pendingByDraftId,
-    workspaceEqualityFns.deep,
-  );
-  const selector = useCallback(
-    (state: { sessions: Record<string, ProjectStatusSession | undefined> }) => {
-      if (!enabled) return null;
-      return deriveProjectStatusBucket({
-        workspaces,
-        sessions: state.sessions,
-        pendingCreateAttempts,
-      });
-    },
-    [enabled, pendingCreateAttempts, workspaces],
-  );
-  return useStoreWithEqualityFn(useSessionStore, selector, Object.is);
-}
+import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 
 export {
   appendMissingOrderKeys,
@@ -59,6 +29,7 @@ export {
   createSidebarWorkspaceEntry,
   buildSidebarWorkspacePlacementModel,
   computeSidebarOrderUpdates,
+  deriveProjectStatusBucket,
   deriveSidebarLoadingState,
   shouldShowSidebarHostLabels,
   type SidebarLoadingState,
@@ -71,50 +42,41 @@ export {
   type SidebarWorkspaceEntry,
 } from "./sidebar-workspaces-view-model";
 
-export function useSidebarWorkspaceEntry(
-  serverId: string | null,
-  workspaceId: string | null,
-): SidebarWorkspaceEntry | null {
-  // Deep-compare so that adding/removing unrelated pending creates doesn't re-render this row.
+/**
+ * Aggregate status for a project's workspaces, for the collapsed project row.
+ *
+ * `SidebarProjectEntry` is structural — it carries workspace identity but no status — and
+ * `ProjectBlock` is memoized on that stable reference, so the row can't learn about a
+ * child's status without its own subscription. Returns a primitive, so status churn in a
+ * project only re-renders the row when the aggregate actually moves.
+ *
+ * Pass `enabled: false` while the project is expanded: the child rows show their own dots
+ * and the selector is pure cost.
+ */
+export function useSidebarProjectStatusBucket(input: {
+  workspaces: readonly SidebarWorkspacePlacement[];
+  enabled: boolean;
+}): SidebarStateBucket | null {
+  const { workspaces, enabled } = input;
   const pendingCreateAttempts = useStoreWithEqualityFn(
     useCreateFlowStore,
     (state) => state.pendingByDraftId,
     workspaceEqualityFns.deep,
   );
 
-  // Single subscription: reads workspace + agents together, computes the full entry, and
-  // deep-compares the output. Agents-Map identity churn (setAgents replaces the Map on every
-  // status transition) never causes a React re-render unless the derived entry actually changes.
-  return useStoreWithEqualityFn(
-    useSessionStore,
-    (state) => {
-      const workspace = selectWorkspace(state, serverId, workspaceId);
-      if (!workspace) return null;
-      const workspaceAgentActivity = serverId
-        ? state.sessions[serverId]?.workspaceAgentActivity
-        : undefined;
-      return createSidebarWorkspaceEntry({
-        serverId: serverId ?? "",
-        workspace,
+  const selector = useCallback(
+    (state: { sessions: Record<string, ProjectStatusSession | undefined> }) => {
+      if (!enabled) return null;
+      return deriveProjectStatusBucket({
+        workspaces,
+        sessions: state.sessions,
         pendingCreateAttempts,
-        workspaceAgentActivity,
       });
     },
-    equal,
+    [enabled, pendingCreateAttempts, workspaces],
   );
-}
 
-// Aggregates diff counts across every workspace in a project, so the project row can
-// show a single total instead of duplicating the count on each workspace row.
-export function useSidebarProjectChangeStat(
-  workspaces: ReadonlyArray<{ serverId: string; workspaceId: string }>,
-  indicator: "uncommitted" | "branch" | "hidden",
-): { additions: number; deletions: number } | null {
-  return useStoreWithEqualityFn(
-    useSessionStore,
-    (state) => selectProjectChangeStat(state, workspaces, indicator),
-    equal,
-  );
+  return useStoreWithEqualityFn(useSessionStore, selector, Object.is);
 }
 
 const EMPTY_ORDER: string[] = [];
@@ -152,7 +114,7 @@ export function useSidebarWorkspacesList(options?: {
     }
     const selected = new Set(hostFilters);
     const matched = allServerIds.filter((id) => selected.has(id));
-    // Registry has settled but none of the pinned hosts still exist - fall back to every
+    // Registry has settled but none of the pinned hosts still exist — fall back to every
     // host rather than leaving the sidebar empty.
     if (hostRegistryLoaded && matched.length === 0) {
       return allServerIds;

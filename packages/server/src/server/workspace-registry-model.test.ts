@@ -33,7 +33,7 @@ describe("workspace kind", () => {
         currentBranch: "feature/plain",
         remoteUrl: "https://github.com/acme/repo.git",
         worktreeRoot: "/tmp/repo-feature",
-        isOttoOwnedWorktree: false,
+        isPaseoOwnedWorktree: false,
         mainRepoRoot: "/tmp/repo",
       }),
     ).toBe("worktree");
@@ -52,7 +52,7 @@ describe("workspace placement", () => {
           currentBranch: " main ",
           remoteUrl: null,
           worktreeRoot: "/repo",
-          isOttoOwnedWorktree: false,
+          isPaseoOwnedWorktree: false,
           mainRepoRoot: null,
         },
       }),
@@ -63,7 +63,7 @@ describe("workspace placement", () => {
       branch: "main",
       worktreeRoot: "/repo",
       baseBranch: null,
-      isOttoOwnedWorktree: false,
+      isPaseoOwnedWorktree: false,
       mainRepoRoot: null,
     });
     expect(
@@ -82,9 +82,34 @@ describe("workspace placement", () => {
       branch: "feature/placement",
       worktreeRoot: "/repo-feature",
       baseBranch: "main",
-      isOttoOwnedWorktree: true,
+      isPaseoOwnedWorktree: true,
       mainRepoRoot: "/repo",
     });
+  });
+
+  test("keeps the recorded placement when nothing was read at the workspace directory", () => {
+    const workspace = createPersistedWorkspaceRecord({
+      workspaceId: "workspace-one",
+      projectId: "project-one",
+      cwd: "/repo-feature",
+      kind: "worktree",
+      displayName: "feature/placement",
+      branch: "feature/placement",
+      worktreeRoot: "/repo-feature",
+      baseBranch: "main",
+      isPaseoOwnedWorktree: true,
+      mainRepoRoot: "/repo",
+      createdAt: "2026-03-01T00:00:00.000Z",
+      updatedAt: "2026-03-01T00:00:00.000Z",
+    });
+
+    const update = reconcileWorkspacePlacement({
+      workspace,
+      checkout: null,
+      updatedAt: "2026-03-02T00:00:00.000Z",
+    });
+
+    expect(update).toBeNull();
   });
 
   test("updates live placement while preserving its durable name and base branch", () => {
@@ -97,7 +122,7 @@ describe("workspace placement", () => {
       branch: "old-branch",
       worktreeRoot: "/old-root",
       baseBranch: "release",
-      isOttoOwnedWorktree: true,
+      isPaseoOwnedWorktree: true,
       mainRepoRoot: "/repo",
       createdAt: "2026-03-01T00:00:00.000Z",
       updatedAt: "2026-03-01T00:00:00.000Z",
@@ -111,7 +136,7 @@ describe("workspace placement", () => {
         currentBranch: "renamed-branch",
         remoteUrl: null,
         worktreeRoot: "/repo-feature",
-        isOttoOwnedWorktree: false,
+        isPaseoOwnedWorktree: false,
         mainRepoRoot: "/repo",
       },
       updatedAt: "2026-03-02T00:00:00.000Z",
@@ -120,7 +145,7 @@ describe("workspace placement", () => {
     expect(update?.fields).toEqual({
       branch: "renamed-branch",
       worktreeRoot: "/repo-feature",
-      isOttoOwnedWorktree: false,
+      isPaseoOwnedWorktree: false,
     });
     expect(update?.workspace).toMatchObject({
       displayName: "Keep this name",
@@ -138,7 +163,7 @@ describe("workspace placement", () => {
       displayName: "feature",
       branch: "feature",
       worktreeRoot: "/repo-feature",
-      isOttoOwnedWorktree: true,
+      isPaseoOwnedWorktree: true,
       mainRepoRoot: "/repo",
       createdAt: "2026-03-01T00:00:00.000Z",
       updatedAt: "2026-03-01T00:00:00.000Z",
@@ -150,7 +175,7 @@ describe("workspace placement", () => {
       currentBranch: "feature",
       remoteUrl: null,
       worktreeRoot: "/repo-feature",
-      isOttoOwnedWorktree: true,
+      isPaseoOwnedWorktree: true,
       mainRepoRoot: "/repo",
     });
   });

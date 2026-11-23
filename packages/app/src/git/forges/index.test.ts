@@ -1,6 +1,6 @@
 import { readdirSync } from "node:fs";
+import { fileURLToPath } from "node:url"; // OTTO(test-paths): URL pathname doubles drive letters on Windows.
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { CLIENT_FORGE_LOGIC_MODULES } from "./index";
 import { CLIENT_FORGE_VIEW_MODULES } from "./view";
@@ -8,15 +8,13 @@ import { CLIENT_FORGE_VIEW_MODULES } from "./view";
 /**
  * Adding a forge is "create forges/<id>.ts (logic) + forges/<id>.view.tsx (view)
  * + register one line in each registry". This test removes the only failure mode
- * of the explicit registries - forgetting a line - without resorting to
+ * of the explicit registries — forgetting a line — without resorting to
  * bundler-specific auto-discovery that Metro, Vite, and tsgo would each need to
  * understand differently. The logic/view split keeps logic consumers (URL
  * builders, merge-capability, native checks, and the Node e2e harness) free of
  * the client rendering stack.
  */
-// fileURLToPath, not URL.pathname: on Windows the pathname is "/C:/Users/..." and
-// the leading slash makes readdirSync resolve it against the cwd as "C:\C:\Users\...".
-const forgesDir = path.dirname(fileURLToPath(import.meta.url));
+const forgesDir = path.dirname(fileURLToPath(import.meta.url)); // OTTO(test-paths)
 const dirEntries = readdirSync(forgesDir);
 
 const logicModuleIds = dirEntries

@@ -14,6 +14,10 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { chromium } from "playwright";
 import { runAppearanceFontSizeRegression } from "./appearance-font-size.electron.mjs";
 import { runSettingsMemoryRegression } from "./settings-memory.electron.mjs";
+import { runBrowserHistoryRegression } from "./otto-browser-history.electron.mjs"; // OTTO(browser-history): real guest, daemon, native confirmation and persistent history.
+import { runVisualizerRegression } from "./otto-visualizer.electron.mjs"; // OTTO(visualizer): real private guest, browser layering and hidden-window teardown.
+
+import { seedPluginLinks, runPluginLinksRegression } from "./plugin-links.electron.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const desktopDir = path.resolve(scriptDir, "..");
@@ -26,8 +30,6 @@ const workspaceIds = [
   "desktop-browser-evict-three",
 ];
 const timeoutMs = 90_000;
-const artifactPreviewId = "artifact-preview-security";
-const artifactOnly = process.env.OTTO_DESKTOP_E2E_ARTIFACT_ONLY === "1";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -86,25 +88,7 @@ function writeJson(filePath, value) {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function artifactPreviewHtml(probeUrl) {
-  return `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src *"></head><body>
-    <button id="interactive" onclick="this.textContent = 'Interaction preserved'">Interactive artifact</button>
-    <p id="network">waiting</p><p id="navigation">waiting</p><p id="popup">waiting</p><p id="host">waiting</p>
-    <script>
-      const probe = ${JSON.stringify(probeUrl)};
-      const networkState = document.getElementById('network');
-      const navigationState = document.getElementById('navigation');
-      const popupState = document.getElementById('popup');
-      const hostState = document.getElementById('host');
-      fetch(probe).then(() => networkState.textContent = 'network reached').catch(() => networkState.textContent = 'network blocked');
-      try { top.location.href = probe; navigationState.textContent = 'navigation attempted'; } catch { navigationState.textContent = 'navigation blocked'; }
-      popupState.textContent = window.open(probe) === null ? 'popup blocked' : 'popup reached';
-      hostState.textContent = typeof globalThis.require === 'undefined' && typeof globalThis.process === 'undefined' && typeof globalThis.ottoDesktop === 'undefined' ? 'host blocked' : 'host reached';
-    </script>
-  </body></html>`;
-}
-
-function seedOttoHome(ottoHome, listen, workspaceRoot, artifactProbeUrl) {
+function seedPaseoHome(paseoHome, listen, workspaceRoot) {
   const timestamp = "2026-01-01T00:00:00.000Z";
   const projects = workspaceIds.map((workspaceId, index) => {
     const cwd = path.join(workspaceRoot, `workspace-${index + 1}`);
@@ -135,7 +119,7 @@ function seedOttoHome(ottoHome, listen, workspaceRoot, artifactProbeUrl) {
     pinnedAt: null,
   }));
 
-  writeJson(path.join(ottoHome, "config.json"), {
+  writeJson(path.join(paseoHome, "config.json"), {
     version: 1,
     daemon: {
       listen,
@@ -145,28 +129,8 @@ function seedOttoHome(ottoHome, listen, workspaceRoot, artifactProbeUrl) {
       cors: { allowedOrigins: ["*"] },
     },
   });
-  writeJson(path.join(ottoHome, "projects", "projects.json"), projects);
-  writeJson(path.join(ottoHome, "projects", "workspaces.json"), workspaces);
-  const artifactDirectory = path.join(projects[0].rootPath, ".otto", "artifacts");
-  const artifactPath = path.join(artifactDirectory, `${artifactPreviewId}.html`);
-  fs.mkdirSync(artifactDirectory, { recursive: true });
-  fs.writeFileSync(artifactPath, artifactPreviewHtml(artifactProbeUrl));
-  writeJson(path.join(artifactDirectory, `${artifactPreviewId}.json`), {
-    id: artifactPreviewId,
-    name: "Hostile interactive artifact",
-    description: "Electron security-boundary proof",
-    projectId: projects[0].rootPath,
-    filePath: artifactPath,
-    kind: "html",
-    starred: false,
-    status: "ready",
-    createdAt: timestamp,
-    updatedAt: timestamp,
-    generationAgentId: null,
-    generationProvider: "mock",
-    generationModel: "ten-second-stream",
-    errorMessage: null,
-  });
+  writeJson(path.join(paseoHome, "projects", "projects.json"), projects);
+  writeJson(path.join(paseoHome, "projects", "workspaces.json"), workspaces);
 }
 
 function spawnLogged(name, command, args, options, logDir) {
@@ -218,8 +182,8 @@ async function waitForDesktopStatus(page) {
   while (Date.now() < deadline) {
     try {
       const status = await page.evaluate(async () => {
-        if (typeof window.ottoDesktop?.invoke !== "function") return null;
-        return await window.ottoDesktop.invoke("desktop_daemon_status");
+        if (typeof window.paseoDesktop?.invoke !== "function") return null;
+        return await window.paseoDesktop.invoke("desktop_daemon_status");
       });
       if (typeof status?.serverId === "string") return status;
     } catch (error) {
@@ -234,21 +198,18 @@ async function waitForDesktopStatus(page) {
 }
 
 async function startTargetPage() {
-  let artifactProbeRequests = 0;
-  const server = createServer((request, response) => {
-    if (request.url === "/artifact-probe") {
-      artifactProbeRequests += 1;
-      response.writeHead(200, {
-        "access-control-allow-origin": "*",
-        "content-type": "text/plain; charset=utf-8",
-      });
-      response.end("network reached");
-      return;
-    }
+  const server = createServer((_request, response) => {
     response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
     response.end(`<!doctype html>
       <html>
-        <head><title>Desktop browser target</title></head>
+        <head><title>Desktop browser target</title>
+          <style>body { min-height: 100vh; background: rgb(255, 0, 0); }</style>
+          <script>
+            window.frameCount = 0;
+            function tick() { window.frameCount++; requestAnimationFrame(tick); }
+            requestAnimationFrame(tick);
+          </script>
+        </head>
         <body>
           <button id="bridge-target" onclick="this.textContent = 'Clicked'">Bridge target</button>
           <label for="typing-target">Typing target</label>
@@ -262,162 +223,7 @@ async function startTargetPage() {
   });
   const address = server.address();
   assert(address && typeof address !== "string", "Target page did not bind a TCP port");
-  const origin = `http://127.0.0.1:${address.port}`;
-  return {
-    server,
-    url: `${origin}/`,
-    artifactProbeUrl: `${origin}/artifact-probe`,
-    artifactProbeRequests: () => artifactProbeRequests,
-  };
-}
-
-async function runArtifactPreviewSecurityRegression(page, target) {
-  await page.evaluate(() => {
-    history.pushState(null, "", "/artifacts");
-    dispatchEvent(new PopStateEvent("popstate"));
-  });
-  const card = page.getByTestId(`artifact-card-${artifactPreviewId}`);
-  await card.waitFor({ state: "visible", timeout: timeoutMs });
-  await page.getByTestId(`artifact-menu-${artifactPreviewId}`).click();
-  await page.getByTestId(`artifact-menu-view-${artifactPreviewId}`).click();
-  await page.waitForFunction(
-    () =>
-      document
-        .querySelector('webview[partition="otto-artifact-preview"]')
-        ?.getAttribute("src")
-        ?.startsWith("data:text/html") === true &&
-      document.querySelector('[data-testid="artifact-view-dialog"]'),
-    { timeout: timeoutMs },
-  );
-
-  const guestState = async () =>
-    page.evaluate(async () => {
-      const webview = document.querySelector('webview[partition="otto-artifact-preview"]');
-      if (!webview || typeof webview.executeJavaScript !== "function") return null;
-      return await webview.executeJavaScript(`({
-        network: document.querySelector('#network')?.textContent,
-        navigation: document.querySelector('#navigation')?.textContent,
-        popup: document.querySelector('#popup')?.textContent,
-        host: document.querySelector('#host')?.textContent,
-        url: location.href,
-      })`);
-    });
-  await page.waitForFunction(
-    async () => {
-      const webview = document.querySelector('webview[partition="otto-artifact-preview"]');
-      if (!webview || typeof webview.executeJavaScript !== "function") return false;
-      const state = await webview.executeJavaScript(
-        "document.querySelector('#network')?.textContent",
-      );
-      return state === "network blocked";
-    },
-    undefined,
-    { timeout: timeoutMs },
-  );
-  const beforeInteraction = await guestState();
-  assert(beforeInteraction?.network === "network blocked", "Artifact guest reached the network");
-  assert(beforeInteraction?.popup === "popup blocked", "Artifact guest opened a popup");
-  assert(beforeInteraction?.host === "host blocked", "Artifact guest accessed host privileges");
-  assert(
-    beforeInteraction?.url?.startsWith("data:text/html"),
-    "Artifact guest navigated externally",
-  );
-  assert(target.artifactProbeRequests() === 0, "Artifact network request reached the probe server");
-
-  const interaction = await page.evaluate(async () => {
-    const webview = document.querySelector('webview[partition="otto-artifact-preview"]');
-    if (!webview || typeof webview.executeJavaScript !== "function") return null;
-    return await webview.executeJavaScript(
-      "document.querySelector('#interactive')?.click(); document.querySelector('#interactive')?.textContent",
-    );
-  });
-  assert(interaction === "Interaction preserved", "Artifact interactivity was lost to hardening");
-}
-
-async function runArtifactPreviewSecurityElectronHarness(page, target) {
-  const html = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; font-src data:; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"></head><body>
-    <button id="interactive" onclick="this.textContent = 'Interaction preserved'">Interactive artifact</button>
-    <p id="network">waiting</p><p id="navigation">waiting</p><p id="popup">waiting</p><p id="host">waiting</p>
-    <script>
-      const probe = ${JSON.stringify(target.artifactProbeUrl)};
-      const networkState = document.getElementById('network');
-      const navigationState = document.getElementById('navigation');
-      const popupState = document.getElementById('popup');
-      const hostState = document.getElementById('host');
-      fetch(probe).then(() => networkState.textContent = 'network reached').catch(() => networkState.textContent = 'network blocked');
-      try { top.location.href = probe; navigationState.textContent = 'navigation attempted'; } catch { navigationState.textContent = 'navigation blocked'; }
-      popupState.textContent = window.open(probe) === null ? 'popup blocked' : 'popup reached';
-      hostState.textContent = typeof globalThis.require === 'undefined' && typeof globalThis.process === 'undefined' && typeof globalThis.ottoDesktop === 'undefined' ? 'host blocked' : 'host reached';
-    </script>
-  </body></html>`;
-  const selector = 'webview[data-otto-artifact-security-harness="true"]';
-  await page.evaluate(
-    ({ html: documentHtml, selector: webviewSelector }) => {
-      document.querySelector(webviewSelector)?.remove();
-      const webview = document.createElement("webview");
-      webview.setAttribute("data-otto-artifact-security-harness", "true");
-      webview.setAttribute("partition", "otto-artifact-preview");
-      webview.style.width = "640px";
-      webview.style.height = "480px";
-      webview.src = `data:text/html;charset=utf-8,${encodeURIComponent(documentHtml)}`;
-      document.body.appendChild(webview);
-    },
-    { html, selector },
-  );
-  await page.waitForFunction(
-    (webviewSelector) => {
-      const webview = document.querySelector(webviewSelector);
-      return webview?.getAttribute("src")?.startsWith("data:text/html") === true;
-    },
-    selector,
-    { timeout: timeoutMs },
-  );
-
-  const guestState = async () =>
-    page.evaluate(async (webviewSelector) => {
-      const webview = document.querySelector(webviewSelector);
-      if (!webview || typeof webview.executeJavaScript !== "function") return null;
-      return await webview.executeJavaScript(`({
-        network: document.querySelector('#network')?.textContent,
-        popup: document.querySelector('#popup')?.textContent,
-        host: document.querySelector('#host')?.textContent,
-        url: location.href,
-      })`);
-    }, selector);
-  await page.waitForFunction(
-    async (webviewSelector) => {
-      const webview = document.querySelector(webviewSelector);
-      if (!webview || typeof webview.executeJavaScript !== "function") return false;
-      return (
-        (await webview.executeJavaScript("document.querySelector('#network')?.textContent")) ===
-        "network blocked"
-      );
-    },
-    selector,
-    { timeout: timeoutMs },
-  );
-  const beforeInteraction = await guestState();
-  assert(beforeInteraction?.network === "network blocked", "Artifact guest reached the network");
-  assert(beforeInteraction?.popup === "popup blocked", "Artifact guest opened a popup");
-  assert(beforeInteraction?.host === "host blocked", "Artifact guest accessed host privileges");
-  assert(
-    beforeInteraction?.url?.startsWith("data:text/html"),
-    "Artifact guest navigated externally",
-  );
-  assert(target.artifactProbeRequests() === 0, "Artifact network request reached the probe server");
-
-  const interaction = await page.evaluate(async (webviewSelector) => {
-    const webview = document.querySelector(webviewSelector);
-    if (!webview || typeof webview.executeJavaScript !== "function") return null;
-    return await webview.executeJavaScript(
-      "document.querySelector('#interactive')?.click(); document.querySelector('#interactive')?.textContent",
-    );
-  }, selector);
-  assert(interaction === "Interaction preserved", "Artifact interactivity was lost to hardening");
-  await page.evaluate(
-    (webviewSelector) => document.querySelector(webviewSelector)?.remove(),
-    selector,
-  );
+  return { server, url: `http://127.0.0.1:${address.port}/` };
 }
 
 async function closeServer(server) {
@@ -438,18 +244,17 @@ async function callBrowserTool(client, name, args = {}) {
   return mcpPayload(await client.callTool({ name, args }), name);
 }
 
-async function callBrowserToolUntilReady(client, name, args = {}) {
-  const deadline = Date.now() + timeoutMs;
+async function waitForListedBrowser(client, browserId, workspaceId) {
+  const deadline = Date.now() + 10_000;
   while (Date.now() < deadline) {
-    const result = await client.callTool({ name, args });
-    const payload = result.structuredContent;
-    if (payload?.ok === true) return payload.result;
-    if (payload?.ok !== false || payload.error?.retryable !== true) {
-      return mcpPayload(result, name);
-    }
-    await delay(100);
+    const inventory = await callBrowserTool(client, "browser_list_tabs");
+    if (
+      inventory.tabs.some((tab) => tab.browserId === browserId && tab.workspaceId === workspaceId)
+    )
+      return;
+    await delay(50);
   }
-  throw new Error(`${name} remained unavailable for ${timeoutMs}ms`);
+  throw new Error("The manually created browser did not register with its owning host");
 }
 
 async function waitForGuestSelector(client, browserId) {
@@ -457,7 +262,7 @@ async function waitForGuestSelector(client, browserId) {
   while (Date.now() < deadline) {
     const evaluated = await callBrowserTool(client, "browser_evaluate", {
       browserId,
-      function: "() => Boolean(globalThis.__ottoSelector)",
+      function: "() => Boolean(globalThis.__paseoSelector)",
     });
     if (JSON.parse(evaluated.resultJson) === true) {
       return true;
@@ -482,7 +287,7 @@ async function waitForGuestActiveElement(client, browserId, elementId) {
   return false;
 }
 
-async function createCallerAgent(daemonPort) {
+async function createCallerAgent(daemonPort, workspaceId = workspaceIds[0]) {
   const transport = new StreamableHTTPClientTransport(
     new URL(`http://127.0.0.1:${daemonPort}/mcp/agents`),
   );
@@ -492,12 +297,11 @@ async function createCallerAgent(daemonPort) {
       name: "create_agent",
       args: {
         relationship: { kind: "detached" },
-        workspace: { kind: "existing", workspaceId: workspaceIds[0] },
+        workspace: { kind: "existing", workspaceId },
         title: "Browser desktop browser E2E caller",
         provider: "mock/ten-second-stream",
         settings: { modeId: "load-test" },
         initialPrompt: "Remain available while the browser bridge regression runs.",
-        background: true,
       },
     });
     const result = response.structuredContent;
@@ -507,7 +311,7 @@ async function createCallerAgent(daemonPort) {
     );
     assert(typeof result.agentId === "string", "create_agent returned no caller agent id");
     assert(
-      result.workspaceId === workspaceIds[0],
+      result.workspaceId === workspaceId,
       `MCP caller attached to unexpected workspace ${result.workspaceId}`,
     );
     return result.agentId;
@@ -518,7 +322,7 @@ async function createCallerAgent(daemonPort) {
 
 async function readGuest(page, browserId) {
   return await page.evaluate((id) => {
-    const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+    const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
     if (!(webview instanceof HTMLElement) || typeof webview.getWebContentsId !== "function") {
       return null;
     }
@@ -533,12 +337,12 @@ async function readGuest(page, browserId) {
 
 async function readPresentation(page, browserId) {
   return await page.evaluate((id) => {
-    const surface = document.querySelector(`[data-otto-browser-surface="${id}"]`);
+    const surface = document.querySelector(`[data-paseo-browser-surface="${id}"]`);
     const clip = document.querySelector(`[data-testid="browser-webview-clip-${id}"]`);
     if (!(surface instanceof HTMLElement) || !(clip instanceof HTMLElement)) return null;
     const surfaceRect = surface.getBoundingClientRect();
     const clipRect = clip.getBoundingClientRect();
-    const webview = surface.querySelector(`[data-otto-browser-id="${id}"]`);
+    const webview = surface.querySelector(`[data-paseo-browser-id="${id}"]`);
     if (!(webview instanceof HTMLElement)) return null;
     const webviewRect = webview.getBoundingClientRect();
     const outsidePoint = {
@@ -571,7 +375,8 @@ async function readPresentation(page, browserId) {
 async function readViewport(client, browserId) {
   const evaluated = await callBrowserTool(client, "browser_evaluate", {
     browserId,
-    function: "() => ({ width: window.innerWidth, height: window.innerHeight })",
+    function:
+      "() => ({ width: window.innerWidth, height: window.innerHeight, scale: window.devicePixelRatio })",
   });
   return JSON.parse(evaluated.resultJson);
 }
@@ -588,17 +393,12 @@ async function clickGuestElement(page, client, browserId, selector) {
   });
   const elementRect = JSON.parse(evaluated.resultJson);
   assert(elementRect, `Guest element ${selector} was unavailable`);
-  const webviewRect = await page.evaluate((id) => {
-    const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
-    if (!(webview instanceof HTMLElement)) return null;
-    const rect = webview.getBoundingClientRect();
-    return { x: rect.x, y: rect.y };
-  }, browserId);
-  assert(webviewRect, `Browser webview ${browserId} was unavailable`);
-  await page.mouse.click(
-    webviewRect.x + elementRect.x + elementRect.width / 2,
-    webviewRect.y + elementRect.y + elementRect.height / 2,
-  );
+  await page.locator(`[data-paseo-browser-id="${browserId}"]`).click({
+    position: {
+      x: elementRect.x + elementRect.width / 2,
+      y: elementRect.y + elementRect.height / 2,
+    },
+  });
 }
 
 async function selectDeviceSize(page, label) {
@@ -669,7 +469,176 @@ function recordViewportMismatch(failures, label, actual, expected) {
   );
 }
 
-async function runRegression({ page, client, serverId, targetUrl, callerAgentId, artifactDir }) {
+async function setWindowHidden(inspectorPort, hidden) {
+  const [target] = await (await fetch(`http://127.0.0.1:${inspectorPort}/json/list`)).json();
+  const socket = new WebSocket(target.webSocketDebuggerUrl);
+  try {
+    await new Promise((resolve, reject) => {
+      socket.addEventListener("error", reject, { once: true });
+      socket.addEventListener("message", ({ data }) => {
+        const response = JSON.parse(data);
+        if (response.id !== 1) return;
+        if (response.error || response.result?.exceptionDetails) reject(new Error(data));
+        else resolve();
+      });
+      socket.addEventListener(
+        "open",
+        () =>
+          socket.send(
+            JSON.stringify({
+              id: 1,
+              method: "Runtime.evaluate",
+              params: {
+                expression: `(() => { const win = process.mainModule.require('electron').BrowserWindow.getAllWindows().find(win => win.webContents.getURL().includes('localhost:')); win.${hidden ? "hide" : "show"}(); if (win.isVisible() !== ${!hidden}) throw new Error('Window visibility did not change'); })()`,
+              },
+            }),
+          ),
+        { once: true },
+      );
+    });
+  } finally {
+    socket.close();
+  }
+}
+
+async function verifyHiddenBrowserScreenshots({
+  page,
+  client,
+  browserId,
+  artifactDir,
+  inspectorPort,
+}) {
+  const readFrames = async () => {
+    const result = await callBrowserTool(client, "browser_evaluate", {
+      browserId,
+      function: "() => window.frameCount",
+    });
+    return JSON.parse(result.resultJson);
+  };
+  const expectAnimation = async () => {
+    const start = await readFrames();
+    assert(typeof start === "number", "Animation fixture was not loaded");
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
+      if ((await readFrames()) > start + 2) return;
+      await delay(50);
+    }
+    throw new Error("Browser did not animate in the restored window");
+  };
+  const measurements = [];
+  const expectIdle = async (label) => {
+    await delay(500); // Let Chromium consume the visibility change before sampling.
+    const start = await readFrames();
+    await delay(1_000); // A fixed sampling interval is the behavior under test.
+    const frames = (await readFrames()) - start;
+    measurements.push({ label, frames });
+    writeJson(path.join(artifactDir, "hidden-browser-frames.json"), measurements);
+    assert(frames === 0, `${label}: hidden browser produced ${frames} animation frames`);
+  };
+  try {
+    await expectAnimation();
+    await setWindowHidden(inspectorPort, true);
+    await expectIdle("before-capture");
+    await callBrowserTool(client, "browser_evaluate", {
+      browserId,
+      function: "() => { document.body.style.background = 'rgb(0,255,0)'; }",
+    });
+    const response = await client.callTool({ name: "browser_screenshot", args: { browserId } });
+    mcpPayload(response, "browser_screenshot");
+    const screenshot = response.content.find((item) => item.type === "image");
+    assert(screenshot, "browser_screenshot returned no image");
+    fs.writeFileSync(
+      path.join(artifactDir, "hidden-browser-viewport.png"),
+      Buffer.from(screenshot.data, "base64"),
+    );
+    const pixel = await page.evaluate(async (base64) => {
+      const image = new Image();
+      image.src = `data:image/png;base64,${base64}`;
+      await image.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = image.width;
+      canvas.height = image.height;
+      const context = canvas.getContext("2d");
+      context.drawImage(image, 0, 0);
+      return [
+        ...context.getImageData(Math.floor(image.width / 2), Math.floor(image.height / 2), 1, 1)
+          .data,
+      ];
+    }, screenshot.data);
+    assert(
+      JSON.stringify(pixel) === "[0,255,0,255]",
+      `Hidden screenshot returned stale pixels: ${pixel}`,
+    );
+    await expectIdle("after-capture");
+  } finally {
+    await setWindowHidden(inspectorPort, false);
+  }
+  await expectAnimation();
+}
+
+async function verifyBackgroundTypingStaysInGuest({ page, client, serverId, browserId, agent }) {
+  await page
+    .getByTestId(`workspace-deck-entry-${serverId}:${agent.workspaceId}`)
+    .getByTestId(`workspace-tab-agent_${agent.agentId}`)
+    .click({ timeout: timeoutMs });
+  const composer = page
+    .getByRole("textbox", { name: "Message agent..." })
+    .filter({ visible: true })
+    .first();
+  const draft = "draft the user is typing";
+  await composer.click();
+  await composer.pressSequentially(draft);
+  assert(
+    await composer.evaluate((element) => element === document.activeElement),
+    "Composer did not keep focus while the user typed",
+  );
+
+  const snapshot = await callBrowserTool(client, "browser_snapshot", { browserId });
+  const ref = snapshot.snapshot.match(/textbox "Typing target" \[ref=(@e\d+)\]/)?.[1];
+  assert(ref, `browser_snapshot did not expose the typing target: ${snapshot.snapshot}`);
+  await callBrowserTool(client, "browser_type", { browserId, ref, text: "agent text" });
+  await callBrowserTool(client, "browser_keypress", { browserId, ref, key: "!" });
+
+  // The user keeps typing in the composer while the agent types into the tab's focused field.
+  await composer.click();
+  await composer.press("End");
+  assert(
+    await composer.evaluate((element) => element === document.activeElement),
+    "Composer did not take focus back from the browser tab",
+  );
+  await callBrowserTool(client, "browser_type", { browserId, text: " more" });
+  await callBrowserTool(client, "browser_keypress", { browserId, key: "?" });
+
+  const guestValue = JSON.parse(
+    (
+      await callBrowserTool(client, "browser_evaluate", {
+        browserId,
+        function: "() => document.getElementById('typing-target').value",
+      })
+    ).resultJson,
+  );
+  const composerValue = await composer.inputValue();
+  assert(
+    composerValue === draft,
+    `browser_type and browser_keypress in a background tab changed the focused composer: ${JSON.stringify(composerValue)}`,
+  );
+  assert(
+    guestValue === "agent text! more?",
+    `browser_type and browser_keypress did not reach the browser tab: ${JSON.stringify(guestValue)}`,
+  );
+  await composer.fill("");
+}
+
+async function runRegression({
+  page,
+  client,
+  serverId,
+  targetUrl,
+  callerAgentId,
+  typingAgent,
+  artifactDir,
+  inspectorPort,
+}) {
   const failures = [];
   const originalWorkspaceId = workspaceIds[0];
   const originalWorkspaceRow = page.getByTestId(
@@ -688,16 +657,26 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
     document.body.appendChild(overlayRoot);
   });
 
-  const created = await callBrowserTool(client, "browser_new_tab", { url: targetUrl });
-  const browserId = created.browserId;
-  assert(typeof browserId === "string", "browser_new_tab returned no browserId");
-
   const originalDeck = page.getByTestId(`workspace-deck-entry-${serverId}:${originalWorkspaceId}`);
+  // OTTO(browser-host): agent creates use the daemon browser. This regression
+  // exercises the resident Electron guest, which manual desktop creation retains.
+  await originalDeck.getByTestId("workspace-new-tab-button").filter({ visible: true }).click();
+  await page.getByTestId("workspace-new-tab-menu-browser").click();
+  // The resident guest belongs to the window's parking host, outside the deck DOM.
+  const nativeGuest = page.locator("webview[data-paseo-browser-id]");
+  await nativeGuest.waitFor({ state: "attached", timeout: timeoutMs });
+  const browserId = await nativeGuest.getAttribute("data-paseo-browser-id");
+  assert(typeof browserId === "string" && browserId.length > 0, "No native browser was created");
+  await waitForListedBrowser(client, browserId, originalWorkspaceId);
+  await callBrowserTool(client, "browser_navigate", { browserId, url: targetUrl });
   await originalDeck.getByTestId(`workspace-tab-browser_${browserId}`).click();
   await page.waitForFunction(
     (id) => {
-      const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
-      return webview && webview.parentElement?.id !== "otto-browser-resident-webviews";
+      const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
+      const surface = webview?.parentElement;
+      return (
+        surface?.getAttribute("aria-hidden") === "false" && surface.style.pointerEvents === "auto"
+      );
     },
     browserId,
     { timeout: timeoutMs },
@@ -717,17 +696,18 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
     "Physical browser click did not focus the guest input",
   );
   const focusedGuest = await page.evaluate(
-    (id) => window.ottoDesktop?.browser?.focus?.(id),
+    (id) => window.paseoDesktop?.browser?.focus?.(id),
     browserId,
   );
   assert(focusedGuest === true, "Electron did not focus the registered browser guest");
 
   const deviceSizeMenuPainted = await selectDeviceSize(page, "iPhone SE · 375×667");
   assert(deviceSizeMenuPainted, "Device size menu did not paint above the browser surface");
+  const deviceViewport = await readViewport(client, browserId);
   recordViewportMismatch(
     failures,
     "device size menu paints and receives input above the browser surface",
-    await readViewport(client, browserId),
+    deviceViewport,
     { width: 375, height: 667 },
   );
 
@@ -736,6 +716,12 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
     text: "Bridge target",
     timeoutMs: 5_000,
   });
+  const resizedScreenshot = await callBrowserTool(client, "browser_screenshot", { browserId });
+  assert(
+    resizedScreenshot.width === Math.round(375 * deviceViewport.scale) &&
+      resizedScreenshot.height === Math.round(667 * deviceViewport.scale),
+    `Screenshot after resize returned ${resizedScreenshot.width}×${resizedScreenshot.height}`,
+  );
   const requestedViewport = { width: 640, height: 480 };
   await callBrowserTool(client, "browser_resize", { browserId, ...requestedViewport });
   recordViewportMismatch(
@@ -755,7 +741,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   );
   await page.waitForFunction(
     ({ id, width, height }) => {
-      const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+      const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
       return (
         webview instanceof HTMLElement &&
         Math.round(webview.getBoundingClientRect().width) === width &&
@@ -811,7 +797,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
     { timeout: timeoutMs },
   );
   try {
-    await callBrowserToolUntilReady(client, "browser_screenshot", { browserId });
+    await callBrowserTool(client, "browser_screenshot", { browserId });
   } catch (error) {
     failures.push(`inactive browser remains captureable: ${String(error)}`);
   }
@@ -825,19 +811,19 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   await callBrowserTool(client, "browser_evaluate", {
     browserId,
     function: `() => {
-      globalThis.__ottoFocusContinuity = ${JSON.stringify(focusContinuitySentinel)};
-      globalThis.__ottoViewportTransitions = [{ width: innerWidth, height: innerHeight }];
+      globalThis.__paseoFocusContinuity = ${JSON.stringify(focusContinuitySentinel)};
+      globalThis.__paseoViewportTransitions = [{ width: innerWidth, height: innerHeight }];
       addEventListener('resize', () => {
-        globalThis.__ottoViewportTransitions.push({ width: innerWidth, height: innerHeight });
+        globalThis.__paseoViewportTransitions.push({ width: innerWidth, height: innerHeight });
       });
-      return globalThis.__ottoFocusContinuity;
+      return globalThis.__paseoFocusContinuity;
     }`,
   });
   await page.evaluate((id) => {
-    const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+    const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
     if (!webview) throw new Error(`Browser webview ${id} was unavailable`);
     const events = [];
-    globalThis.__ottoBrowserReactivationEvents = events;
+    globalThis.__paseoBrowserReactivationEvents = events;
     for (const name of [
       "did-start-loading",
       "did-navigate-in-page",
@@ -857,9 +843,9 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   await originalDeck.getByTestId(`workspace-tab-browser_${browserId}`).click();
   await page.waitForFunction(
     ({ id, webContentsId }) => {
-      const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+      const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
       return (
-        webview?.parentElement?.getAttribute("data-otto-browser-surface") === id &&
+        webview?.parentElement?.getAttribute("data-paseo-browser-surface") === id &&
         webview.parentElement.style.pointerEvents === "auto" &&
         webview.getWebContentsId() === webContentsId
       );
@@ -869,7 +855,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   );
   await page.waitForTimeout(1_500);
   const reactivationEvents = await page.evaluate(
-    () => globalThis.__ottoBrowserReactivationEvents ?? [],
+    () => globalThis.__paseoBrowserReactivationEvents ?? [],
   );
   const unexpectedReactivationCommits = reactivationEvents.filter(
     (event) => event.name === "did-navigate-in-page" || event.name === "load-commit",
@@ -880,7 +866,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   );
   const viewportTransitionsResult = await callBrowserTool(client, "browser_evaluate", {
     browserId,
-    function: "() => globalThis.__ottoViewportTransitions ?? []",
+    function: "() => globalThis.__paseoViewportTransitions ?? []",
   });
   const viewportTransitions = JSON.parse(viewportTransitionsResult.resultJson);
   const collapsedViewport = viewportTransitions.find(
@@ -892,7 +878,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   );
   const continuityResult = await callBrowserTool(client, "browser_evaluate", {
     browserId,
-    function: "() => globalThis.__ottoFocusContinuity ?? null",
+    function: "() => globalThis.__paseoFocusContinuity ?? null",
   });
   const continuityValue = JSON.parse(continuityResult.resultJson);
   if (continuityValue !== focusContinuitySentinel) {
@@ -900,25 +886,6 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
       `focusing the browser tab preserves the current document: expected ${JSON.stringify(focusContinuitySentinel)}, received ${JSON.stringify(continuityValue)}`,
     );
   }
-
-  // A resident guest has already emitted dom-ready before this pane remounts.
-  // Submitting a URL must navigate immediately, rather than queue it forever
-  // for an event that will not repeat until a navigation begins.
-  const resumedUrl = `${targetUrl}?resident-navigation=1`;
-  const addressBar = originalDeck.getByRole("textbox", { name: "Browser URL" });
-  await addressBar.fill(resumedUrl);
-  await addressBar.press("Enter");
-  await page.waitForFunction(
-    ({ id, url }) => {
-      const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
-      return typeof webview?.getURL === "function" && webview.getURL() === url;
-    },
-    { id: browserId, url: resumedUrl },
-    { timeout: timeoutMs },
-  );
-  await originalDeck
-    .getByRole("button", { name: "Refresh", exact: true })
-    .waitFor({ state: "visible", timeout: timeoutMs });
 
   for (const workspaceId of workspaceIds.slice(1)) {
     await page.getByTestId(`sidebar-workspace-row-${serverId}:${workspaceId}`).click();
@@ -929,9 +896,9 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
 
   await page.waitForFunction(
     ({ id, previousWebContentsId }) => {
-      const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+      const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
       return (
-        webview?.parentElement?.getAttribute("data-otto-browser-surface") === id &&
+        webview?.parentElement?.getAttribute("data-paseo-browser-surface") === id &&
         webview.parentElement.style.width === "1px" &&
         typeof webview.getWebContentsId === "function" &&
         webview.getWebContentsId() === previousWebContentsId
@@ -942,6 +909,8 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   );
   const parkedGuest = await readGuest(page, browserId);
   assert(parkedGuest, "Browser guest was not parked after workspace eviction");
+
+  await verifyHiddenBrowserScreenshots({ page, client, browserId, artifactDir, inspectorPort });
 
   const listed = await callBrowserTool(client, "browser_list_tabs");
   assert(
@@ -963,14 +932,21 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
     text: "Clicked",
     timeoutMs: 5_000,
   });
+  await verifyBackgroundTypingStaysInGuest({
+    page,
+    client,
+    serverId,
+    browserId,
+    agent: typingAgent,
+  });
 
   await originalWorkspaceRow.click();
   await originalDeck.getByTestId(`workspace-tab-browser_${browserId}`).click();
   await page.waitForFunction(
     ({ id, webContentsId }) => {
-      const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+      const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
       return (
-        webview?.parentElement?.getAttribute("data-otto-browser-surface") === id &&
+        webview?.parentElement?.getAttribute("data-paseo-browser-surface") === id &&
         webview.parentElement.style.pointerEvents === "auto" &&
         webview.getWebContentsId() === webContentsId
       );
@@ -987,9 +963,9 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
 
   const annotateButton = originalDeck.getByRole("button", { name: "Annotate element" });
   await page.evaluate((id) => {
-    const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+    const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
     if (!(webview instanceof HTMLElement)) throw new Error(`Browser webview ${id} was unavailable`);
-    globalThis.__ottoOriginalIsLoadingDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis.__paseoOriginalIsLoadingDescriptor = Object.getOwnPropertyDescriptor(
       webview,
       "isLoading",
     );
@@ -1006,7 +982,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   );
   const selectorDuringLoad = await callBrowserTool(client, "browser_evaluate", {
     browserId,
-    function: "() => Boolean(globalThis.__ottoSelector)",
+    function: "() => Boolean(globalThis.__paseoSelector)",
   });
   assert(
     JSON.parse(selectorDuringLoad.resultJson) === false,
@@ -1017,12 +993,12 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
     "Element selector loading failure was not visible",
   );
   await page.evaluate((id) => {
-    const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+    const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
     if (!(webview instanceof HTMLElement)) throw new Error(`Browser webview ${id} was unavailable`);
-    const descriptor = globalThis.__ottoOriginalIsLoadingDescriptor;
+    const descriptor = globalThis.__paseoOriginalIsLoadingDescriptor;
     if (descriptor) Object.defineProperty(webview, "isLoading", descriptor);
     else delete webview.isLoading;
-    delete globalThis.__ottoOriginalIsLoadingDescriptor;
+    delete globalThis.__paseoOriginalIsLoadingDescriptor;
   }, browserId);
 
   const readyStateResult = await callBrowserTool(client, "browser_evaluate", {
@@ -1036,7 +1012,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   // Reproduce the report's mismatch: the guest is complete, but the pane's
   // last loading signal says it is not ready.
   await page.evaluate((id) => {
-    const webview = document.querySelector(`[data-otto-browser-id="${id}"]`);
+    const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
     if (!(webview instanceof HTMLElement)) {
       throw new Error(`Browser webview ${id} was unavailable`);
     }
@@ -1061,7 +1037,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   await delay(20_500);
   const selectorAfterPriorTimeout = await callBrowserTool(client, "browser_evaluate", {
     browserId,
-    function: "() => Boolean(globalThis.__ottoSelector)",
+    function: "() => Boolean(globalThis.__paseoSelector)",
   });
   if (JSON.parse(selectorAfterPriorTimeout.resultJson) !== true) {
     failures.push("a previous selector timeout does not destroy the current selector session");
@@ -1110,6 +1086,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
     guestFocus: "passed",
     overlayPlane: "passed",
     inactiveCapture: "passed",
+    hiddenWindowCapture: "passed",
     list: "passed",
     snapshot: "passed",
     click: "passed",
@@ -1119,38 +1096,54 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
 
 async function main() {
   const artifactDir =
-    process.env.OTTO_DESKTOP_BROWSER_E2E_ARTIFACT_DIR ??
-    fs.mkdtempSync(path.join(os.tmpdir(), "otto-desktop-browser-e2e-artifacts-"));
-  const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "otto-desktop-browser-e2e-"));
+    process.env.PASEO_DESKTOP_BROWSER_E2E_ARTIFACT_DIR ??
+    fs.mkdtempSync(path.join(os.tmpdir(), "paseo-desktop-browser-e2e-artifacts-"));
+  const runtimeDir = fs.mkdtempSync(path.join(os.tmpdir(), "paseo-desktop-browser-e2e-"));
   fs.mkdirSync(artifactDir, { recursive: true });
-  const ottoHome = path.join(runtimeDir, "otto-home");
+  const paseoHome = path.join(runtimeDir, "paseo-home");
   const userData = path.join(runtimeDir, "electron-user-data");
   const workspaceRoot = path.join(runtimeDir, "workspaces");
-  fs.mkdirSync(ottoHome, { recursive: true });
+  fs.mkdirSync(paseoHome, { recursive: true });
 
-  const [daemonPort, expoPort, cdpPort] = await Promise.all([
+  const [daemonPort, expoPort, cdpPort, inspectorPort, remotePort] = await Promise.all([
+    reservePort(),
+    reservePort(),
     reservePort(),
     reservePort(),
     reservePort(),
   ]);
   const listen = `127.0.0.1:${daemonPort}`;
+  seedPaseoHome(paseoHome, listen, workspaceRoot);
   const target = await startTargetPage();
-  seedOttoHome(ottoHome, listen, workspaceRoot, target.artifactProbeUrl);
+  seedPluginLinks(paseoHome, workspaceIds[0], target.url, workspaceIds[1]);
+  const remoteHome = path.join(runtimeDir, "remote-home");
+  seedPaseoHome(remoteHome, `127.0.0.1:${remotePort}`, path.join(runtimeDir, "remote-workspaces"));
   const children = [];
   let browser = null;
   let client = null;
 
   try {
+    // Observe the real Electron shell handoff without launching a user's browser.
+    const openerDirectory = path.join(runtimeDir, "url-handler");
+    const externalOpenLog = path.join(artifactDir, "external-opens.txt");
+    fs.mkdirSync(openerDirectory, { recursive: true });
+    fs.writeFileSync(externalOpenLog, "");
+    fs.writeFileSync(
+      path.join(openerDirectory, "xdg-open"),
+      '#!/bin/sh\nprintf "%s\\n" "$1" >> "$PASEO_TEST_EXTERNAL_OPEN_LOG"\n',
+      { mode: 0o755 },
+    );
     const commonEnv = {
       ...process.env,
-      OTTO_HOME: ottoHome,
-      OTTO_LISTEN: listen,
-      OTTO_DAEMON_ENDPOINT: `localhost:${daemonPort}`,
-      OTTO_CORS_ORIGINS: "*",
-      OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0",
-      OTTO_DICTATION_ENABLED: "0",
-      OTTO_VOICE_MODE_ENABLED: "0",
-      OTTO_HOSTED_BROWSER_AUTOMATION: "0",
+      PATH: `${openerDirectory}${path.delimiter}${process.env.PATH}`,
+      PASEO_TEST_EXTERNAL_OPEN_LOG: externalOpenLog,
+      PASEO_HOME: paseoHome,
+      PASEO_LISTEN: listen,
+      PASEO_DAEMON_ENDPOINT: `localhost:${daemonPort}`,
+      PASEO_CORS_ORIGINS: "*",
+      PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0",
+      PASEO_DICTATION_ENABLED: "0",
+      PASEO_VOICE_MODE_ENABLED: "0",
       FORCE_COLOR: "0",
       NO_COLOR: "1",
     };
@@ -1158,15 +1151,35 @@ async function main() {
       "daemon",
       process.execPath,
       ["--import", "tsx", path.join(rootDir, "packages/server/scripts/dev-runner.ts")],
-      { cwd: rootDir, env: { ...commonEnv, OTTO_NODE_ENV: "development" } },
+      { cwd: rootDir, env: { ...commonEnv, PASEO_NODE_ENV: "development" } },
       artifactDir,
     );
     children.push(daemon.child);
     await waitForPort(daemonPort, "daemon", daemon);
 
+    const remoteDaemon = spawnLogged(
+      "remote-daemon",
+      process.execPath,
+      ["--import", "tsx", path.join(rootDir, "packages/server/scripts/dev-runner.ts")],
+      {
+        cwd: rootDir,
+        env: {
+          ...commonEnv,
+          PASEO_HOME: remoteHome,
+          PASEO_LISTEN: `127.0.0.1:${remotePort}`,
+          PASEO_SERVER_ID: "plugin-links-remote",
+          PASEO_NODE_ENV: "development",
+        },
+      },
+      artifactDir,
+    );
+    children.push(remoteDaemon.child);
+    await waitForPort(remotePort, "remote daemon", remoteDaemon);
+
     const desktopArgs = [
       process.execPath,
       devRunner,
+      `--inspect=127.0.0.1:${inspectorPort}`,
       ...(process.platform === "linux" ? ["--no-sandbox"] : []),
     ];
     const desktopCommand = process.platform === "linux" ? "xvfb-run" : desktopArgs.shift();
@@ -1184,9 +1197,9 @@ async function main() {
           ...commonEnv,
           EXPO_PORT: String(expoPort),
           EXPO_DEV_URL: `http://localhost:${expoPort}`,
-          OTTO_ELECTRON_REMOTE_DEBUGGING_PORT: String(cdpPort),
-          OTTO_ELECTRON_USER_DATA_DIR: userData,
-          OTTO_ELECTRON_FLAGS: `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${cdpPort}`,
+          PASEO_ELECTRON_REMOTE_DEBUGGING_PORT: String(cdpPort),
+          PASEO_ELECTRON_USER_DATA_DIR: userData,
+          PASEO_ELECTRON_FLAGS: `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${cdpPort}`,
         },
       },
       artifactDir,
@@ -1198,17 +1211,24 @@ async function main() {
     const page = await waitForAppPage(browser, expoPort);
     const status = await waitForDesktopStatus(page);
 
-    if (artifactOnly) {
-      await page
-        .getByRole("button", { name: "Settings", exact: true })
-        .waitFor({ state: "visible", timeout: timeoutMs });
-      await runArtifactPreviewSecurityElectronHarness(page, target);
-      console.log("Electron Artifact preview security E2E passed.");
+    const checkPluginLinks = () =>
+      runPluginLinksRegression({
+        page,
+        remotePort,
+        workspaceId: workspaceIds[0],
+        remoteWorkspaceId: workspaceIds[1],
+        url: target.url,
+        artifactDir,
+        externalOpenLog: process.platform === "linux" ? externalOpenLog : null,
+      });
+    if (process.env.PASEO_DESKTOP_PLUGIN_LINKS_ONLY === "1") {
+      const pluginLinks = await checkPluginLinks();
+      writeJson(path.join(artifactDir, "result.json"), { pluginLinks });
+      console.log("Plugin external links and workspace browser passed.");
       return;
     }
-
     const settingsMemory = await runSettingsMemoryRegression(page);
-    if (process.env.OTTO_DESKTOP_SETTINGS_MEMORY_ONLY === "1") {
+    if (process.env.PASEO_DESKTOP_SETTINGS_MEMORY_ONLY === "1") {
       writeJson(path.join(artifactDir, "result.json"), { settingsMemory });
       console.log(
         `Desktop Settings memory regression passed: ${settingsMemory.detachedAfterWarmRound} detached panes after warm and stress rotations.`,
@@ -1217,9 +1237,12 @@ async function main() {
     }
 
     await runAppearanceFontSizeRegression(page);
-    await runArtifactPreviewSecurityRegression(page, target);
 
     const callerAgentId = await createCallerAgent(daemonPort);
+    const typingAgent = {
+      workspaceId: workspaceIds.at(-1),
+      agentId: await createCallerAgent(daemonPort, workspaceIds.at(-1)),
+    };
     const transport = new StreamableHTTPClientTransport(
       new URL(
         `http://127.0.0.1:${daemonPort}/mcp/agents?callerAgentId=${encodeURIComponent(callerAgentId)}`,
@@ -1231,10 +1254,36 @@ async function main() {
       client,
       serverId: status.serverId,
       targetUrl: target.url,
+      inspectorPort,
       callerAgentId,
+      typingAgent,
       artifactDir,
     });
-    writeJson(path.join(artifactDir, "result.json"), { ...report, settingsMemory });
+    // OTTO(tab-drag): exercise the address bar before drag rearranges the split panes.
+    const history = await runBrowserHistoryRegression({
+      page,
+      execute: (name, args) => callBrowserTool(client, name, args),
+      browserId: report.browserId,
+      targetUrl: target.url,
+      home: paseoHome,
+      projectId: `project-${workspaceIds[0]}`,
+      inspectorPort,
+      artifactDir,
+    }); // OTTO(browser-history)
+    const visualizer = await runVisualizerRegression({
+      page,
+      setHidden: (hidden) => setWindowHidden(inspectorPort, hidden),
+      artifactDir,
+      browserId: report.browserId, // OTTO(tab-drag): verify both real drop destinations.
+    });
+    const pluginLinks = await checkPluginLinks();
+    writeJson(path.join(artifactDir, "result.json"), {
+      ...report,
+      settingsMemory,
+      pluginLinks,
+      history,
+      visualizer,
+    });
     console.log(
       `Browser desktop browser E2E passed: WebContents ${report.originalWebContentsId} remained ${report.finalWebContentsId}; viewport, inactive capture, focus continuity, list, snapshot, click, local-page selectors passed.`,
     );

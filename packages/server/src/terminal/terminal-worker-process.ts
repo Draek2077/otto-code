@@ -67,8 +67,6 @@ function toTerminalInfo(session: TerminalSession): WorkerTerminalInfo {
     name: session.name,
     cwd: session.cwd,
     workspaceId: session.workspaceId,
-    ...(session.presentation ? { presentation: session.presentation } : {}),
-    ...(session.presentationOwner ? { presentationOwner: session.presentationOwner } : {}),
     ...(session.getTitle() ? { title: session.getTitle() } : {}),
     activity: session.getActivity(),
   };
@@ -127,6 +125,7 @@ function watchTerminal(session: TerminalSession): void {
         type: "terminalMessage",
         terminalId: session.id,
         message: { type: "output", data: payload.toString("utf8"), revision },
+        replayPreamble: session.getReplayPreamble(),
       });
     },
   });
@@ -146,6 +145,7 @@ function watchTerminal(session: TerminalSession): void {
         type: "terminalMessage",
         terminalId: session.id,
         message,
+        replayPreamble: session.getReplayPreamble(),
       });
     },
     // Creation already sends an authoritative state in terminalCreated. A second
@@ -253,18 +253,6 @@ async function handleRequest(message: TerminalWorkerRequest): Promise<void> {
     case "registerCwdEnv": {
       manager.registerCwdEnv({ cwd: message.cwd, env: message.env });
       sendToParent({ type: "response", requestId: message.requestId, ok: true });
-      return;
-    }
-
-    case "setTitle": {
-      const success = manager.setTerminalTitle(message.terminalId, message.title);
-      sendToParent({ type: "response", requestId: message.requestId, ok: true, result: success });
-      return;
-    }
-
-    case "clearTitle": {
-      const success = manager.clearTerminalTitle(message.terminalId);
-      sendToParent({ type: "response", requestId: message.requestId, ok: true, result: success });
       return;
     }
 

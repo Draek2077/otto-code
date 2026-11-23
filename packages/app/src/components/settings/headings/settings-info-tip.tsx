@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 import { Pressable, Text } from "react-native";
 import { useTranslation } from "react-i18next";
-import { Info } from "@/components/icons/material-icons";
+import { Info } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { type Theme } from "@/styles/theme";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 
 const ThemedInfo = withUnistyles(Info);
 
@@ -34,7 +34,7 @@ export function SettingsInfoTip({ title, info, testID }: SettingsInfoTipProps) {
           hitSlop={8}
           style={styles.button}
         >
-          <ThemedInfo size="sm" uniProps={mutedIconMapping} />
+          <ThemedInfo size={ICON_SIZE.sm} uniProps={mutedIconMapping} />
         </Pressable>
       </TooltipTrigger>
       <TooltipContent side="top" align="start" offset={8}>

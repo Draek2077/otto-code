@@ -1,17 +1,16 @@
 import { useCallback, useMemo, useRef } from "react";
-import { Pressable, type PressableStateCallbackType, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
-import { ChevronDown } from "@/components/icons/material-icons";
-import { GitBranch } from "@/components/icons/lucide";
+import { GitBranch } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { type Theme } from "@/styles/theme";
+import type { Theme } from "@/styles/theme";
 import { Combobox, ComboboxItem, type ComboboxProps } from "@/components/ui/combobox";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useToast } from "@/contexts/toast-context";
 import { useBranchSwitcher } from "@/hooks/use-branch-switcher";
-import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
+import { ToolbarLabelSelectTrigger } from "@/components/ui/toolbar-label-trigger";
 
 interface BranchSwitcherProps {
   currentBranchName: string | null;
@@ -26,8 +25,6 @@ const foregroundMutedIconColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
 });
 const ThemedGitBranch = withUnistyles(GitBranch);
-const ThemedChevronDown = withUnistyles(ChevronDown);
-const ThemedActivityIndicator = withUnistyles(LoadingSpinner);
 
 export function BranchSwitcher({
   currentBranchName,
@@ -37,7 +34,6 @@ export function BranchSwitcher({
   isGitCheckout,
   testID = "workspace-header-branch-switcher",
 }: BranchSwitcherProps) {
-  const isDeveloperMode = useIsDeveloperMode();
   const { t } = useTranslation();
   const anchorRef = useRef<View>(null);
   const client = useHostRuntimeClient(serverId);
@@ -45,7 +41,7 @@ export function BranchSwitcher({
   const toast = useToast();
   const queryClient = useQueryClient();
 
-  const { branchOptions, isOpen, setIsOpen, handleBranchSelect, isSwitching } = useBranchSwitcher({
+  const { branchOptions, isOpen, setIsOpen, handleBranchSelect } = useBranchSwitcher({
     client,
     normalizedServerId: serverId,
     normalizedWorkspaceId: workspaceId,
@@ -59,17 +55,8 @@ export function BranchSwitcher({
 
   const handleOpen = useCallback(() => setIsOpen(true), [setIsOpen]);
 
-  const triggerStyle = useCallback(
-    ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.trigger,
-      !isSwitching && (Boolean(hovered) || pressed) && styles.triggerHovered,
-      isSwitching && styles.triggerDisabled,
-    ],
-    [isSwitching],
-  );
-
   const branchLeadingSlot = useMemo(
-    () => <ThemedGitBranch size="sm" uniProps={foregroundMutedIconColorMapping} />,
+    () => <ThemedGitBranch size={14} uniProps={foregroundMutedIconColorMapping} />,
     [],
   );
 
@@ -77,10 +64,8 @@ export function BranchSwitcher({
     ({ option, selected, active, onPress }) => (
       <ComboboxItem
         label={option.label}
-        description={option.description}
         selected={selected}
         active={active}
-        disabled={option.disabled}
         onPress={onPress}
         leadingSlot={branchLeadingSlot}
       />
@@ -88,34 +73,29 @@ export function BranchSwitcher({
     [branchLeadingSlot],
   );
 
-  if (!isDeveloperMode || !currentBranchName) {
+  if (!currentBranchName) {
     return null;
   }
 
   return (
     <View ref={anchorRef} collapsable={false} style={styles.anchor}>
-      <Pressable
-        testID={testID}
-        onPress={handleOpen}
-        disabled={isSwitching}
-        style={triggerStyle}
-        accessibilityRole="button"
-        accessibilityLabel={
-          isSwitching
-            ? t("branchSwitcher.switchInProgress")
-            : t("branchSwitcher.currentBranch", { branchName: currentBranchName })
-        }
-      >
-        <ThemedGitBranch size="sm" uniProps={foregroundMutedIconColorMapping} />
-        <Text style={styles.branchLabel} numberOfLines={1}>
-          {currentBranchName}
-        </Text>
-        {isSwitching ? (
-          <ThemedActivityIndicator size="small" uniProps={foregroundMutedIconColorMapping} />
-        ) : (
-          <ThemedChevronDown size="xs" uniProps={foregroundMutedIconColorMapping} />
-        )}
-      </Pressable>
+      <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild>
+          <ToolbarLabelSelectTrigger
+            testID={testID}
+            label={currentBranchName}
+            open={isOpen}
+            onPress={handleOpen}
+            accessibilityRole="button"
+            accessibilityLabel={t("branchSwitcher.currentBranch", {
+              branchName: currentBranchName,
+            })}
+          />
+        </TooltipTrigger>
+        <TooltipContent side="bottom">
+          <Text style={styles.tooltipText}>{t("branchSwitcher.triggerTooltip")}</Text>
+        </TooltipContent>
+      </Tooltip>
       <Combobox
         options={branchOptions}
         value={currentBranchName}
@@ -142,31 +122,8 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
     minWidth: 0,
   },
-  trigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    minWidth: 0,
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[3],
-    borderRadius: theme.borderRadius.md,
-    flexShrink: 1,
-  },
-  triggerHovered: {
-    backgroundColor: theme.colors.surfaceHover,
-  },
-  triggerDisabled: {
-    opacity: 0.6,
-  },
-  branchLabel: {
-    // This is a compact toolbar value, not a main-view title. Keep it on the
-    // Files sort control's type tier across form factors.
-    fontSize: theme.fontSize.xs,
-    // Explicit line height so the label's box never rides platform font
-    // metrics (Linux ascenders / ALL-CAPS branch names rendered taller).
-    lineHeight: theme.fontSize.xs * 1.5,
-    color: theme.colors.foreground,
-    fontWeight: theme.fontWeight.medium,
-    flexShrink: 1,
+  tooltipText: {
+    color: theme.colors.popoverForeground,
+    fontSize: theme.fontSize.sm,
   },
 }));

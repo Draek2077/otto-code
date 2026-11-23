@@ -2,16 +2,17 @@ import type { ReactElement } from "react";
 
 import type { ActionStatus } from "@/components/ui/dropdown-menu";
 import { i18n } from "@/i18n/i18next";
-import type { CheckoutPrMergeMethod, PullRequestMergeable } from "@otto-code/protocol/messages";
+import type { CheckoutPrMergeMethod, PullRequestMergeable } from "@getpaseo/protocol/messages";
 
 import type { MergeCapability } from "./merge-capability";
+// OTTO(git-fetch): extend menu contributions without changing Paseo's action policy/catalog.
+import type { OttoGitActionId } from "@/otto/workspace-git/action";
 
 export type GitActionId =
   | "commit"
   | "pull"
   | "push"
   | "pull-and-push"
-  | "fetch"
   | "pr"
   | "merge-pr-squash"
   | "merge-pr-merge"
@@ -25,12 +26,10 @@ export type GitActionId =
   | "archive-workspace";
 
 export interface GitAction {
-  id: GitActionId;
+  id: GitActionId | OttoGitActionId;
   label: string;
   pendingLabel: string;
   successLabel: string;
-  /** Secondary line in the split-button menu. Otto-only. */
-  description?: string;
   disabled: boolean;
   status: ActionStatus;
   unavailableMessage?: string;
@@ -69,8 +68,7 @@ export interface BuildGitActionsInput {
   pullRequestMergeable: PullRequestMergeable;
   mergeCapability: MergeCapability | null;
   hasRemote: boolean;
-  gitFetchEnabled: boolean;
-  isOttoOwnedWorktree: boolean;
+  isPaseoOwnedWorktree: boolean;
   isOnBaseBranch: boolean;
   hasUncommittedChanges: boolean;
   baseRefAvailable: boolean;
@@ -252,19 +250,6 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
     handler: input.runtime["pull-and-push"].handler,
   });
 
-  allActions.set("fetch", {
-    id: "fetch",
-    label: i18n.t("workspace.git.actions.fetch.label"),
-    pendingLabel: i18n.t("workspace.git.actions.fetch.pending"),
-    successLabel: i18n.t("workspace.git.actions.fetch.success"),
-    disabled: input.runtime.fetch.disabled,
-    status: input.runtime.fetch.status,
-    unavailableMessage: undefined,
-    icon: input.runtime.fetch.icon,
-    startsGroup: true,
-    handler: input.runtime.fetch.handler,
-  });
-
   for (const model of PULL_REQUEST_ACTION_MODELS) {
     allActions.set(model.id, model.build(input));
   }
@@ -314,10 +299,7 @@ export function buildGitActions(input: BuildGitActionsInput): GitActions {
   const primaryActionId = getPrimaryActionId(input);
   const primary = primaryActionId ? (allActions.get(primaryActionId) ?? null) : null;
 
-  const secondaryIds = [
-    ...(input.gitFetchEnabled && input.hasRemote ? (["fetch"] as const) : []),
-    ...REMOTE_ACTION_IDS,
-  ];
+  const secondaryIds = [...REMOTE_ACTION_IDS];
   if (!input.isOnBaseBranch) {
     secondaryIds.push(...getFeatureActionIds(input));
   }
@@ -367,9 +349,9 @@ function getPrimaryActionId(input: BuildGitActionsInput): GitActionId | null {
     return "pr";
   }
 
-  // Only Otto-owned worktrees get Archive as a fallback primary action.
+  // Only Paseo-owned worktrees get Archive as a fallback primary action.
   // Regular Git checkouts should not show the destructive archive CTA by default.
-  if (input.isOttoOwnedWorktree) {
+  if (input.isPaseoOwnedWorktree) {
     return "archive-workspace";
   }
 
@@ -541,9 +523,9 @@ function hasPushableCommits(input: BuildGitActionsInput): boolean {
   if ((input.aheadOfOrigin ?? 0) > 0) {
     return true;
   }
-  // No-upstream Otto worktrees are first-pushable: the daemon push sets upstream with `git push -u`.
+  // No-upstream Paseo worktrees are first-pushable: the daemon push sets upstream with `git push -u`.
   // Do not fold this into aheadOfOrigin; null also covers deleted/pruned upstream branches.
-  return input.isOttoOwnedWorktree && input.aheadOfOrigin === null && input.aheadCount > 0;
+  return input.isPaseoOwnedWorktree && input.aheadOfOrigin === null && input.aheadCount > 0;
 }
 
 function canMergeFromBase(input: BuildGitActionsInput): boolean {

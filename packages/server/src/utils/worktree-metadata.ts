@@ -1,6 +1,8 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { isAbsolute, join, resolve } from "path";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { dirname, isAbsolute, join, resolve } from "path";
 import { z } from "zod";
+// OTTO(identity): preserve existing Otto worktree metadata without renaming Paseo APIs.
+import { OTTO_WORKTREE_METADATA_DIRECTORY } from "@getpaseo/protocol/otto/identity";
 
 const ChangeRequestLookupTargetSchema = z.object({
   headRef: z.string().min(1),
@@ -12,14 +14,14 @@ const ChangeRequestLookupTargetSchema = z.object({
 // baseRefName is the display name; baseRef is the exact ref the worktree was cut from
 // ("refs/remotes/upstream/main"). baseRef is optional because worktrees written before it
 // existed only have the name — there are no migrations, so readers fall back.
-const OttoWorktreeMetadataV1Schema = z.object({
+const PaseoWorktreeMetadataV1Schema = z.object({
   version: z.literal(1),
   baseRefName: z.string().min(1),
   baseRef: z.string().min(1).optional(),
   changeRequestLookupTarget: ChangeRequestLookupTargetSchema.optional(),
 });
 
-const OttoWorktreeMetadataV2Schema = z.object({
+const PaseoWorktreeMetadataV2Schema = z.object({
   version: z.literal(2),
   baseRefName: z.string().min(1),
   baseRef: z.string().min(1).optional(),
@@ -44,25 +46,24 @@ const OttoWorktreeMetadataV2Schema = z.object({
     .optional(),
 });
 
-const OttoWorktreeMetadataSchema = z.union([
-  OttoWorktreeMetadataV1Schema,
-  OttoWorktreeMetadataV2Schema,
+const PaseoWorktreeMetadataSchema = z.union([
+  PaseoWorktreeMetadataV1Schema,
+  PaseoWorktreeMetadataV2Schema,
 ]);
 
-export type OttoWorktreeMetadata = z.infer<typeof OttoWorktreeMetadataSchema>;
-export type OttoWorktreeChangeRequestHint = z.infer<typeof ChangeRequestLookupTargetSchema>;
-export type OttoWorktreeChangeRequestLookupTarget = OttoWorktreeChangeRequestHint;
+export type PaseoWorktreeMetadata = z.infer<typeof PaseoWorktreeMetadataSchema>;
+export type PaseoWorktreeChangeRequestHint = z.infer<typeof ChangeRequestLookupTargetSchema>;
 
-export function createOttoWorktreeChangeRequestHint(
-  input: OttoWorktreeChangeRequestHint,
-): OttoWorktreeChangeRequestHint {
+export function createPaseoWorktreeChangeRequestHint(
+  input: PaseoWorktreeChangeRequestHint,
+): PaseoWorktreeChangeRequestHint {
   return ChangeRequestLookupTargetSchema.parse(input);
 }
 
-export function getOttoWorktreeChangeRequestHintForBranch(
-  metadata: OttoWorktreeMetadata | null,
+export function getPaseoWorktreeChangeRequestHintForBranch(
+  metadata: PaseoWorktreeMetadata | null,
   currentBranch: string,
-): OttoWorktreeChangeRequestHint | null {
+): PaseoWorktreeChangeRequestHint | null {
   const target = metadata?.changeRequestLookupTarget;
   if (!target) {
     return null;
@@ -91,18 +92,18 @@ function normalizeLegacyGitHubOwnerForBranch(owner: string): string | null {
   return /^[a-z0-9-]+$/.test(normalized) ? normalized : null;
 }
 
-export function rebindOttoWorktreeChangeRequestHint(
+export function rebindPaseoWorktreeChangeRequestHint(
   worktreeRoot: string,
   previousBranch: string,
   currentBranch: string,
 ): boolean {
-  const metadata = readOttoWorktreeMetadata(worktreeRoot);
-  const target = getOttoWorktreeChangeRequestHintForBranch(metadata, previousBranch);
+  const metadata = readPaseoWorktreeMetadata(worktreeRoot);
+  const target = getPaseoWorktreeChangeRequestHintForBranch(metadata, previousBranch);
   if (!metadata || !target) {
     return false;
   }
 
-  writeOttoWorktreeMetadataFile(worktreeRoot, {
+  writePaseoWorktreeMetadataFile(worktreeRoot, {
     ...metadata,
     changeRequestLookupTarget: {
       ...target,
@@ -117,19 +118,19 @@ export function rebindOttoWorktreeChangeRequestHint(
   return true;
 }
 
-export function pinOttoWorktreeBranchIdentityIfMissing(
+export function pinPaseoWorktreeBranchIdentityIfMissing(
   worktreeRoot: string,
   branch: string,
 ): boolean {
-  const metadata = readOttoWorktreeMetadata(worktreeRoot);
+  const metadata = readPaseoWorktreeMetadata(worktreeRoot);
   if (!metadata || metadata.changeRequestLookupTarget) {
     return false;
   }
-  const target = createOttoWorktreeChangeRequestHint({
+  const target = createPaseoWorktreeChangeRequestHint({
     headRef: branch,
     localBranchName: branch,
   });
-  writeOttoWorktreeMetadataFile(worktreeRoot, {
+  writePaseoWorktreeMetadataFile(worktreeRoot, {
     ...metadata,
     changeRequestLookupTarget: target,
   });
@@ -158,9 +159,13 @@ function getGitDirForWorktreeRoot(worktreeRoot: string): string {
   return gitPath;
 }
 
-export function getOttoWorktreeMetadataPath(worktreeRoot: string): string {
+export function getPaseoWorktreeMetadataPath(worktreeRoot: string): string {
   const gitDir = getGitDirForWorktreeRoot(worktreeRoot);
-  return join(gitDir, "otto", "worktree.json");
+  return join(gitDir, OTTO_WORKTREE_METADATA_DIRECTORY, "worktree.json"); // OTTO(identity)
+}
+
+export function isQualifiedRef(ref: string): boolean {
+  return ref.trim().startsWith("refs/");
 }
 
 const REMOTE_TRACKING_PREFIX = "refs/remotes/";
@@ -208,58 +213,24 @@ function assertValidBaseRef(value: string): void {
   if (value.includes("..") || value.includes("@{")) {
     throw new Error(`Invalid base branch: ${value}`);
   }
-  if (!/^[0-9A-Za-z._/+-]+$/.test(value)) {
-    throw new Error(`Invalid base branch: ${value}`);
-  }
 }
 
-/** Normalizes and rejects anything git could read as a revision expression or a path escape. */
-export function normalizeAndValidateBaseRefName(input: string): string {
-  const baseRefName = normalizeBaseRefName(input);
-  assertValidBaseRef(baseRefName);
-  return baseRefName;
-}
-
-/**
- * Same safety checks as {@link normalizeAndValidateBaseRefName}, but **keeps** an `origin/`
- * qualifier instead of stripping it.
- *
- * `main` and `origin/main` are separate answers to "what is this diffed against?" - local can be
- * behind, ahead, or diverged from origin - so a base the user pinned explicitly has to survive
- * round-tripping. The comparison path honours the qualifier verbatim; merge and PR targets
- * collapse it back to the local name, because there is no such thing as opening a PR against a
- * remote-tracking ref.
- */
-export function validateBaseRefNameAllowingRemote(input: string): string {
-  const trimmed = input.trim();
-  if (!trimmed) {
-    throw new Error("Base branch is required");
-  }
-  assertValidBaseRef(trimmed);
-  return trimmed;
-}
-
-export function writeOttoWorktreeMetadata(
+export function writePaseoWorktreeMetadata(
   worktreeRoot: string,
   options: {
     baseRefName: string;
     baseRef?: string;
-    // Persisted, not dropped: this is how a change-request worktree remembers
-    // which PR/MR it belongs to. The caller always passed it through a spread,
-    // which slips past the excess-property check, so leaving it off this
-    // signature discarded it silently for every checkout-change-request
-    // worktree - and a cross-repo MR with no push remote has nothing else to
-    // recover the lookup from.
-    changeRequestLookupTarget?: OttoWorktreeChangeRequestLookupTarget;
+    changeRequestLookupTarget?: PaseoWorktreeChangeRequestHint;
   },
 ): void {
-  const baseRefName = normalizeAndValidateBaseRefName(options.baseRefName);
+  const baseRefName = normalizeBaseRefName(options.baseRefName);
+  assertValidBaseRef(baseRefName);
   const baseRef = options.baseRef?.trim();
-  if (baseRef) assertValidBaseRef(baseRef);
+  if (baseRef) {
+    assertValidBaseRef(baseRef);
+  }
 
-  const metadataPath = getOttoWorktreeMetadataPath(worktreeRoot);
-  mkdirSync(join(getGitDirForWorktreeRoot(worktreeRoot), "otto"), { recursive: true });
-  const metadata: OttoWorktreeMetadata = {
+  const metadata: PaseoWorktreeMetadata = {
     version: 1,
     baseRefName,
     ...(baseRef ? { baseRef } : {}),
@@ -267,10 +238,10 @@ export function writeOttoWorktreeMetadata(
       ? { changeRequestLookupTarget: options.changeRequestLookupTarget }
       : {}),
   };
-  writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+  writePaseoWorktreeMetadataFile(worktreeRoot, metadata);
 }
 
-export function writeOttoWorktreeRuntimeMetadata(
+export function writePaseoWorktreeRuntimeMetadata(
   worktreeRoot: string,
   options: { worktreePort: number },
 ): void {
@@ -278,24 +249,22 @@ export function writeOttoWorktreeRuntimeMetadata(
     throw new Error(`Invalid worktree runtime port: ${options.worktreePort}`);
   }
 
-  const current = readOttoWorktreeMetadata(worktreeRoot);
+  const current = readPaseoWorktreeMetadata(worktreeRoot);
   if (!current) {
     throw new Error("Cannot persist worktree runtime metadata: missing base metadata");
   }
 
-  const metadataPath = getOttoWorktreeMetadataPath(worktreeRoot);
-  mkdirSync(join(getGitDirForWorktreeRoot(worktreeRoot), "otto"), { recursive: true });
-  const next: OttoWorktreeMetadata = {
+  const next: PaseoWorktreeMetadata = {
     ...current,
     version: 2,
     runtime: {
       worktreePort: options.worktreePort,
     },
   };
-  writeFileSync(metadataPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  writePaseoWorktreeMetadataFile(worktreeRoot, next);
 }
 
-export function writeOttoWorktreeFirstAgentBranchAutoNameMetadata(
+export function writePaseoWorktreeFirstAgentBranchAutoNameMetadata(
   worktreeRoot: string,
   options: { placeholderBranchName: string },
 ): void {
@@ -304,12 +273,12 @@ export function writeOttoWorktreeFirstAgentBranchAutoNameMetadata(
     throw new Error("Placeholder branch name is required");
   }
 
-  const current = readOttoWorktreeMetadata(worktreeRoot);
+  const current = readPaseoWorktreeMetadata(worktreeRoot);
   if (!current) {
     throw new Error("Cannot persist first-agent branch auto-name metadata: missing base metadata");
   }
 
-  writeOttoWorktreeMetadataFile(worktreeRoot, {
+  writePaseoWorktreeMetadataFile(worktreeRoot, {
     ...current,
     version: 2,
     firstAgentBranchAutoName: {
@@ -319,72 +288,48 @@ export function writeOttoWorktreeFirstAgentBranchAutoNameMetadata(
   });
 }
 
-export function markOttoWorktreeFirstAgentBranchAutoNameAttempted(
+export function markPaseoWorktreeFirstAgentBranchAutoNameAttempted(
   worktreeRoot: string,
   options: { attemptedAt?: string } = {},
-): OttoWorktreeMetadata | null {
-  const current = readOttoWorktreeMetadata(worktreeRoot);
+): PaseoWorktreeMetadata | null {
+  const current = readPaseoWorktreeMetadata(worktreeRoot);
   if (!current || current.version !== 2 || current.firstAgentBranchAutoName?.status !== "pending") {
     return current;
   }
 
-  const next: OttoWorktreeMetadata = {
+  const next: PaseoWorktreeMetadata = {
     ...current,
-    version: 2,
     firstAgentBranchAutoName: {
       status: "attempted",
       placeholderBranchName: current.firstAgentBranchAutoName.placeholderBranchName,
       attemptedAt: options.attemptedAt ?? new Date().toISOString(),
     },
   };
-  writeOttoWorktreeMetadataFile(worktreeRoot, next);
+  writePaseoWorktreeMetadataFile(worktreeRoot, next);
   return next;
 }
 
-/**
- * Repoints an existing worktree at a different base branch, keeping every other v2 field
- * (`writeOttoWorktreeMetadata` rewrites the file as a fresh v1 record and would drop them).
- * The base is a single source of truth: diff, ahead/behind, merge-into-base and PR creation
- * all read it, so a stacked branch retargeted at its parent stays consistent everywhere.
- */
-export function setOttoWorktreeBaseRefName(worktreeRoot: string, baseRefName: string): string {
-  const normalized = normalizeAndValidateBaseRefName(baseRefName);
-  const current = readOttoWorktreeMetadata(worktreeRoot);
-  if (!current) {
-    throw new Error("Cannot change base branch: missing Otto worktree metadata");
-  }
-
-  writeOttoWorktreeMetadataFile(worktreeRoot, {
-    version: 2,
-    baseRefName: normalized,
-    ...(current.version === 2 && current.firstAgentBranchAutoName
-      ? { firstAgentBranchAutoName: current.firstAgentBranchAutoName }
-      : {}),
-    ...(current.version === 2 && current.runtime ? { runtime: current.runtime } : {}),
-  });
-  return normalized;
-}
-
-export function readOttoWorktreeMetadata(worktreeRoot: string): OttoWorktreeMetadata | null {
-  const metadataPath = getOttoWorktreeMetadataPath(worktreeRoot);
+export function readPaseoWorktreeMetadata(worktreeRoot: string): PaseoWorktreeMetadata | null {
+  const metadataPath = getPaseoWorktreeMetadataPath(worktreeRoot);
   if (!existsSync(metadataPath)) {
     return null;
   }
   const parsed = JSON.parse(readFileSync(metadataPath, "utf8"));
-  return OttoWorktreeMetadataSchema.parse(parsed);
+  return PaseoWorktreeMetadataSchema.parse(parsed);
 }
 
-export function requireOttoWorktreeBaseRefName(worktreeRoot: string): string {
-  const metadataPath = getOttoWorktreeMetadataPath(worktreeRoot);
-  const metadata = readOttoWorktreeMetadata(worktreeRoot);
+export function requirePaseoWorktreeBaseRefName(worktreeRoot: string): string {
+  const metadataPath = getPaseoWorktreeMetadataPath(worktreeRoot);
+  const metadata = readPaseoWorktreeMetadata(worktreeRoot);
   if (!metadata) {
+    // OTTO(identity)
     throw new Error(`Missing Otto worktree base metadata: ${metadataPath}`);
   }
   return metadata.baseRefName;
 }
 
-export function readOttoWorktreeRuntimePort(worktreeRoot: string): number | null {
-  const metadata = readOttoWorktreeMetadata(worktreeRoot);
+export function readPaseoWorktreeRuntimePort(worktreeRoot: string): number | null {
+  const metadata = readPaseoWorktreeMetadata(worktreeRoot);
   if (!metadata) {
     return null;
   }
@@ -394,8 +339,13 @@ export function readOttoWorktreeRuntimePort(worktreeRoot: string): number | null
   return null;
 }
 
-function writeOttoWorktreeMetadataFile(worktreeRoot: string, metadata: OttoWorktreeMetadata): void {
-  const metadataPath = getOttoWorktreeMetadataPath(worktreeRoot);
-  mkdirSync(join(getGitDirForWorktreeRoot(worktreeRoot), "otto"), { recursive: true });
-  writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+function writePaseoWorktreeMetadataFile(
+  worktreeRoot: string,
+  metadata: PaseoWorktreeMetadata,
+): void {
+  const metadataPath = getPaseoWorktreeMetadataPath(worktreeRoot);
+  mkdirSync(dirname(metadataPath), { recursive: true }); // OTTO(identity): create the directory we write.
+  const tempPath = `${metadataPath}.${process.pid}.${Date.now()}.tmp`;
+  writeFileSync(tempPath, `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+  renameSync(tempPath, metadataPath);
 }

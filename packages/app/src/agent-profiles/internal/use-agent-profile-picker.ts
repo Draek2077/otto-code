@@ -1,3 +1,6 @@
+import { useHostFeature } from "@/runtime/host-features"; // OTTO(agent-teams)
+import { chatterChoices } from "@/otto/agent-profiles/chat-choices";
+import { activeTeam } from "@getpaseo/protocol/otto/agent-teams"; // OTTO(agent-teams)
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { mergeCreateAgentSelectionPreferences } from "@/create-agent-preferences/preferences";
@@ -15,6 +18,7 @@ import {
 } from "./materialize-profile";
 import { buildAgentProfileTags } from "./profile-summary";
 import { useAgentProfiles } from "./use-agent-profiles";
+import { chatProfileLabels } from "@/otto/chat/identity/profile-binding"; // OTTO(chat-profile): only accepted Profile selections change persisted appearance.
 
 /** The draft composer owns profile application as one state transition. */
 export interface DraftAgentProfileControls {
@@ -40,6 +44,8 @@ export interface AgentProfilePickerRow {
 }
 
 export interface AgentProfilePicker {
+  currentName?: string;
+  teamName?: string;
   rows: AgentProfilePickerRow[];
   applyProfile: (profileId: string) => void;
 }
@@ -52,6 +58,7 @@ export interface UseAgentProfilePickerInput {
    * what it says — a live agent is one provider's process and cannot switch, and
    * the draft form ignores a provider the host does not offer.
    */
+  selectedProfileName?: string;
   availableProviders: readonly string[];
   target: AgentProfileApplyTarget;
 }
@@ -67,7 +74,8 @@ export function useAgentProfilePicker(
 ): AgentProfilePicker | null {
   const { serverId, availableProviders, target } = input;
   const { t } = useTranslation();
-  const { profiles, isSupported } = useAgentProfiles(serverId);
+  const extended = useHostFeature(serverId, "ottoAgentTeams"); // OTTO(agent-teams)
+  const { profiles, teams, isSupported } = useAgentProfiles(serverId);
   // Profiles are host config, so their labels read from the host-wide catalog
   // rather than a workspace's. That is also the key the settings section uses,
   // so every composer on a host shares one query instead of adding its own.
@@ -81,8 +89,13 @@ export function useAgentProfilePicker(
       return [];
     }
     const available = new Set(availableProviders);
-    return profiles.filter((profile) => available.has(profile.provider));
-  }, [availableProviders, isSupported, profiles]);
+    const team = activeTeam(teams);
+    const visible = profiles.filter((p) => available.has(p.provider));
+    if (!extended) return visible;
+    const chatters = chatterChoices(team, visible).choices;
+    // A Paseo Profile with no Otto role metadata is still an explicit choice outside a Team.
+    return team ? chatters : [...chatters, ...visible.filter((p) => p.roles === undefined)];
+  }, [availableProviders, extended, isSupported, profiles, teams]);
 
   const formatFeatureCount = useCallback(
     (count: number) =>
@@ -134,57 +147,66 @@ export function useAgentProfilePicker(
       if (!profile) {
         return;
       }
+      const entry = entries?.find((item) => item.provider === profile.provider);
+      if (
+        extended &&
+        profile.model &&
+        !entry?.models?.some((model) => model.id === profile.model)
+      ) {
+        toast.error("This Profile's model is unavailable on this host.");
+        return;
+      }
       const resolved = materializeAgentProfile(profile);
 
+      if (extended && resolved.chatProfile) resolved.chatProfile.hostBinding = true; // OTTO(agent-teams)
       if (target.kind === "draft") {
         target.controls.applyProfile(resolved);
         return;
       }
 
-      const reconciled = reconcileMaterializedProfileMode(resolved, target.availableModeIds);
-      if (!reconciled) {
+      const reconciled =
+        extended && !resolved.modeId
+          ? resolved
+          : reconcileMaterializedProfileMode(resolved, target.availableModeIds);
+      if (!reconciled || (extended && reconciled.modeId !== resolved.modeId)) {
+        toast.error("This Profile mode is unavailable in the current chat.");
         return;
       }
-      persistSelection(reconciled);
+
       if (!client) {
         return;
       }
-      // Binding the identity is what makes this "apply the template" rather
-      // than "copy four settings off it": the daemon re-resolves the id against
-      // the roster and the agent's cwd, then applies the prompt, roles, spinner
-      // and voice live. It also carries the brain (model/mode/effort), so the
-      // settings apply below is only needed for hosts that reject a live
-      // identity switch - and it is second so a provider that CAN switch is not
-      // left with the template's settings and none of its identity.
       void client
-        .setAgentPersonality(target.agentId, reconciled.id)
-        .catch(async (error: unknown) => {
-          // A provider that cannot change its system prompt mid-session rejects.
-          // Fall back to the settings-only apply so the picker still does
-          // something useful, and say plainly that the identity did not take.
-          console.warn("[useAgentProfilePicker] setAgentPersonality failed", error);
-          const notice = await client.applyAgentConfig(
-            target.agentId,
-            toAgentConfigApply(reconciled),
-          );
-          showProviderNoticeToast(toast, notice);
-          toast.error(
-            t("composer.profiles.identitySwitchRejected", {
-              defaultValue:
-                "Applied the model settings, but this agent could not switch profile mid-session.",
-            }),
-          );
+        .applyAgentConfig(
+          target.agentId,
+          extended ? { ottoProfileId: profile.id } : toAgentConfigApply(reconciled),
+        )
+        .then(async (notice) => {
+          if (!extended)
+            await client.updateAgent(target.agentId, {
+              labels: chatProfileLabels(reconciled.chatProfile),
+            });
+          if (!extended) persistSelection(reconciled); // OTTO(agent-teams): an existing chat never seeds a new one.
+          return showProviderNoticeToast(toast, notice);
         })
-        .catch((error: unknown) => {
+        .catch((error) => {
           console.warn("[useAgentProfilePicker] applyAgentConfig failed", error);
           toast.error(toErrorMessage(error));
         });
     },
-    [applicableProfiles, client, persistSelection, t, target, toast],
+    [applicableProfiles, client, entries, extended, persistSelection, target, toast],
   );
 
   return useMemo(
-    () => (isSupported && profiles !== null ? { rows, applyProfile } : null),
-    [applyProfile, isSupported, profiles, rows],
+    () =>
+      isSupported && profiles !== null
+        ? {
+            rows,
+            applyProfile,
+            teamName: activeTeam(teams)?.name,
+            currentName: input.selectedProfileName,
+          }
+        : null,
+    [applyProfile, isSupported, profiles, rows, teams, input.selectedProfileName],
   );
 }

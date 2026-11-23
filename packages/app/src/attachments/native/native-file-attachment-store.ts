@@ -5,7 +5,7 @@ import { isAbsolutePath } from "@/utils/path";
 export function createNativeFileAttachmentStore() {
   return createLocalFileAttachmentStore({
     storageType: "native-file",
-    baseDirectoryName: "otto-native-attachments",
+    baseDirectoryName: "paseo-native-attachments",
     fileSystem: createExpoAttachmentFileSystem(),
     resolvePreviewUrl: async (attachment) => {
       if (attachment.storageKey.startsWith("file://")) {

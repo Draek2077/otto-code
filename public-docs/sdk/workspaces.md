@@ -6,6 +6,8 @@ order: 53
 category: TypeScript SDK
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Workspaces with the SDK
 
 Use a workspace when an integration needs a durable place in the Paseo app for agents, terminals, browsers, and files related to one task.

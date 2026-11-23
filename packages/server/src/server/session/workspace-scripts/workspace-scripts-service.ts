@@ -1,5 +1,6 @@
 import type pino from "pino";
 import type {
+  ScriptStatusUpdateMessage,
   SessionOutboundMessage,
   StartWorkspaceScriptRequest,
   WorkspaceDescriptorPayload,
@@ -22,20 +23,16 @@ import type {
 } from "../../worktree-bootstrap.js";
 import {
   buildWorkspaceScriptPayloads,
-  readOttoConfigForProjection,
+  readPaseoConfigForProjection,
 } from "../../script-status-projection.js";
 import { deriveProjectServiceSlug, deriveProjectSlug } from "../../workspace-git-metadata.js";
-import { getScriptConfigs } from "../../../utils/worktree.js";
-import { buildDiscoveredScriptPayloads } from "./discovered-script-payloads.js";
-import { discoverWorkspaceScripts } from "./script-discovery.js";
-import { parseQualifiedScriptName } from "./script-provider.js";
-import type { OttoServicePortAllocation } from "@otto-code/protocol/otto-config-schema";
+import type { PaseoServicePortAllocation } from "@getpaseo/protocol/paseo-config-schema";
 
 type WorkspaceScriptsPayload = WorkspaceDescriptorPayload["scripts"];
 
 /**
  * The service-proxy-backed scripts a workspace exposes: build the scripts payload
- * snapshot, emit a script_status_update to clients, and start a script.
+ * snapshot, publish a script_status_update to every client, and start a script.
  *
  * The workspace descriptor builder, the script-status emission path, and the
  * start-script RPC all funnel through one assembly of buildWorkspaceScriptPayloads'
@@ -48,15 +45,7 @@ export interface WorkspaceScriptsService {
     project?: PersistedProjectRecord | null,
   ): WorkspaceScriptsPayload;
   emitStatusUpdate(workspaceId: string, workspaceDirectory: string): Promise<void>;
-  /**
-   * The workspace's Scripts. With `includeDiscovered`, the Scripts the
-   * project's own files declare are appended after the otto.json ones, each
-   * tagged with the `source` it came from and de-duplicated against them.
-   */
-  list(input: {
-    workspaceId: string;
-    includeDiscovered?: boolean;
-  }): Promise<WorkspaceScriptPayload[]>;
+  list(workspaceId: string): Promise<WorkspaceScriptPayload[]>;
   launch(input: { workspaceId: string; scriptName: string }): Promise<WorkspaceScriptPayload>;
   stop(input: { workspaceId: string; scriptName: string }): Promise<WorkspaceScriptPayload>;
   start(request: StartWorkspaceScriptRequest): Promise<void>;
@@ -75,9 +64,11 @@ export function createWorkspaceScriptsService(deps: {
   getDaemonTcpHost: (() => string | null) | null;
   serviceProxyPublicBaseUrl: string | null;
   resolveScriptHealth: ((hostname: string) => ScriptHealthState | null) | null;
-  globalServicePorts?: OttoServicePortAllocation;
+  globalServicePorts?: PaseoServicePortAllocation;
   logger: pino.Logger;
   emit: (message: SessionOutboundMessage) => void;
+  // Script status is daemon state, so it reaches every client, not only the requester.
+  publishStatusUpdate: (message: ScriptStatusUpdateMessage) => void;
   spawnWorkspaceScript: (options: SpawnWorkspaceScriptOptions) => Promise<WorktreeScriptResult>;
   assertAutomationAllowed: (workspaceId: string) => Promise<void>;
 }): WorkspaceScriptsService {
@@ -95,6 +86,7 @@ export function createWorkspaceScriptsService(deps: {
     globalServicePorts,
     logger,
     emit,
+    publishStatusUpdate,
     spawnWorkspaceScript,
     assertAutomationAllowed,
   } = deps;
@@ -130,7 +122,7 @@ export function createWorkspaceScriptsService(deps: {
     return buildWorkspaceScriptPayloads({
       workspaceId: workspace.workspaceId,
       workspaceDirectory: workspace.cwd,
-      ottoConfig: readOttoConfigForProjection(workspace.cwd, logger),
+      paseoConfig: readPaseoConfigForProjection(workspace.cwd, logger),
       serviceProxy,
       runtimeStore: scriptRuntimeStore,
       daemonPort: getDaemonTcpPort?.() ?? null,
@@ -145,7 +137,7 @@ export function createWorkspaceScriptsService(deps: {
       const workspace = await workspaceRegistry.get(workspaceId);
       if (!workspace) return;
       const project = await projectRegistry.get(workspace.projectId);
-      emit({
+      publishStatusUpdate({
         type: "script_status_update",
         payload: { workspaceId, scripts: buildSnapshot(workspace, project) },
       });
@@ -173,69 +165,11 @@ export function createWorkspaceScriptsService(deps: {
     return { serviceProxy, runtimeStore: scriptRuntimeStore, terminalManager };
   }
 
-  async function list(input: {
-    workspaceId: string;
-    includeDiscovered?: boolean;
-  }): Promise<WorkspaceScriptPayload[]> {
-    const available = requireAvailable();
-    const workspace = await getWorkspace(input.workspaceId);
+  async function list(workspaceId: string): Promise<WorkspaceScriptPayload[]> {
+    requireAvailable();
+    const workspace = await getWorkspace(workspaceId);
     const project = await projectRegistry.get(workspace.projectId);
-    const declared = buildSnapshot(workspace, project);
-    if (!input.includeDiscovered) {
-      return declared;
-    }
-
-    const discoveredPayloads = buildDiscoveredScriptPayloads({
-      workspaceId: workspace.workspaceId,
-      discovered: await discoverForWorkspace(workspace.cwd),
-      runtimeStore: available.runtimeStore,
-    });
-    // A *running* discovered script is already in the snapshot as an orphan
-    // runtime entry, carrying live status but not its label or source. The
-    // discovered payload supersedes it - same key, richer record.
-    const discoveredNames = new Set(discoveredPayloads.map((entry) => entry.scriptName));
-
-    // Otto's declared Scripts sort first and stay first; discovery is derived,
-    // never persisted, and never allowed to displace what the user wrote down.
-    return [
-      ...declared.filter((entry) => !discoveredNames.has(entry.scriptName)),
-      ...discoveredPayloads,
-    ];
-  }
-
-  /**
-   * Discovery reads the project's files on every call rather than caching:
-   * `package.json` changes under the user's hands, and a stale Scripts list is
-   * a worse failure than a few milliseconds of filesystem reads on a menu open.
-   */
-  async function discoverForWorkspace(workspaceDirectory: string) {
-    const ottoConfig = readOttoConfigForProjection(workspaceDirectory, logger);
-    const declaredScripts = [...getScriptConfigs(ottoConfig).entries()].map(
-      ([scriptName, config]) => ({ scriptName, command: config.command }),
-    );
-    return discoverWorkspaceScripts({ workspaceDirectory, declaredScripts, logger });
-  }
-
-  /**
-   * A qualified name ("npm:build") never appears in otto.json, so its command
-   * has to come back from discovery. Re-running discovery at launch - rather
-   * than trusting a name the client last saw - means a Script deleted from
-   * `package.json` since the menu opened fails loudly instead of running a
-   * stale command.
-   */
-  async function resolveDiscoveredScript(
-    workspaceDirectory: string,
-    scriptName: string,
-  ): Promise<SpawnWorkspaceScriptOptions["resolvedScript"]> {
-    if (!parseQualifiedScriptName(scriptName)) {
-      return undefined;
-    }
-    const discovered = await discoverForWorkspace(workspaceDirectory);
-    const match = discovered.find((entry) => entry.scriptName === scriptName);
-    if (!match) {
-      return undefined;
-    }
-    return { command: match.command, cwd: match.cwd, displayName: match.name };
+    return buildSnapshot(workspace, project);
   }
 
   async function launchProcess(input: { workspaceId: string; scriptName: string }) {
@@ -244,13 +178,8 @@ export function createWorkspaceScriptsService(deps: {
     await assertAutomationAllowed(workspace.workspaceId);
     const project = await projectRegistry.get(workspace.projectId);
     const gitMetadata = resolveGitMetadata(workspace, project);
-    const resolvedScript = await resolveDiscoveredScript(workspace.cwd, input.scriptName);
     const result = await spawnWorkspaceScript({
-      resolvedScript,
-      // Scripts run in the workspace's own folder; the service-proxy route is
-      // keyed by the shared repo root so a worktree and its checkout agree.
-      workspaceDirectory: workspace.cwd,
-      repoRoot: project?.rootPath ?? workspace.cwd,
+      repoRoot: workspace.cwd,
       workspaceId: workspace.workspaceId,
       projectSlug: gitMetadata.projectSlug,
       branchName: gitMetadata.currentBranch,
@@ -270,32 +199,17 @@ export function createWorkspaceScriptsService(deps: {
     return { workspace, project, terminalId: result.terminalId };
   }
 
-  /**
-   * The status record for one Script after it started or stopped. A qualified
-   * name is only ever found by re-running discovery, so the reply carries its
-   * label and source instead of the bare orphan record the snapshot holds.
-   */
-  async function findScriptPayload(input: {
-    workspaceId: string;
-    scriptName: string;
-  }): Promise<WorkspaceScriptPayload> {
-    const scripts = await list({
-      workspaceId: input.workspaceId,
-      includeDiscovered: parseQualifiedScriptName(input.scriptName) !== null,
-    });
-    const script = scripts.find((entry) => entry.scriptName === input.scriptName);
-    if (!script) {
-      throw new Error(`Script '${input.scriptName}' did not produce a status record`);
-    }
-    return script;
-  }
-
   async function launch(input: {
     workspaceId: string;
     scriptName: string;
   }): Promise<WorkspaceScriptPayload> {
-    const { workspace } = await launchProcess(input);
-    const script = await findScriptPayload(input);
+    const { workspace, project } = await launchProcess(input);
+    const script = buildSnapshot(workspace, project).find(
+      (entry) => entry.scriptName === input.scriptName,
+    );
+    if (!script) {
+      throw new Error(`Script '${input.scriptName}' did not produce a status record`);
+    }
     void emitStatusUpdate(workspace.workspaceId, workspace.cwd);
     return script;
   }
@@ -306,6 +220,7 @@ export function createWorkspaceScriptsService(deps: {
   }): Promise<WorkspaceScriptPayload> {
     const available = requireAvailable();
     const workspace = await getWorkspace(input.workspaceId);
+    const project = await projectRegistry.get(workspace.projectId);
     const runtime = available.runtimeStore.get(input);
     if (!runtime || runtime.lifecycle !== "running") {
       throw new Error(`Script '${input.scriptName}' is not running`);
@@ -317,7 +232,12 @@ export function createWorkspaceScriptsService(deps: {
     // The launcher's terminal exit listener owns route removal and runtime state updates.
     await available.terminalManager.killTerminalAndWait(runtime.terminalId);
 
-    const script = await findScriptPayload(input);
+    const script = buildSnapshot(workspace, project).find(
+      (entry) => entry.scriptName === input.scriptName,
+    );
+    if (!script) {
+      throw new Error(`Script '${input.scriptName}' did not produce a status record`);
+    }
     void emitStatusUpdate(workspace.workspaceId, workspace.cwd);
     return script;
   }

@@ -6,6 +6,8 @@ order: 22
 category: Providers
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Custom providers
 
 Everything beyond the [supported providers](/docs/supported-providers) lives under `agents.providers` in `~/.otto/config.json`. You can:

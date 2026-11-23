@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const INTERNAL_PREFIX = "/_internal/opencode";
 
-export default async function ottoPlugin(input, options) {
+export default async function paseoPlugin(input, options) {
   const request = async (pathname, init) => {
     const response = await fetch(new URL(pathname, options.baseUrl), {
       ...init,
@@ -13,8 +13,12 @@ export default async function ottoPlugin(input, options) {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      const error = new Error(payload.error ?? `Otto OpenCode bridge failed: ${response.status}`);
+      const detail = formatErrorDetail(payload.issues ?? payload.details);
+      // OTTO(identity)
+      const message = payload.error ?? `Otto OpenCode bridge failed: ${response.status}`;
+      const error = new Error(detail ? `${message}: ${detail}` : message);
       error.status = response.status;
+      if (detail) error.details = detail;
       throw error;
     }
     return payload;
@@ -29,10 +33,17 @@ export default async function ottoPlugin(input, options) {
   }
   const tools = {};
   for (const definition of manifest.tools ?? []) {
-    tools[`otto_${definition.name}`] = {
+    tools[`paseo_${definition.name}`] = {
       description: definition.description,
       args: jsonSchemaObjectToZodShape(definition.inputSchema),
       execute: async (args, context) => {
+        // OpenCode leaves permission checks to plugin tools, so ask it the way it asks for MCP tools.
+        await context.ask({
+          permission: `paseo_${definition.name}`,
+          patterns: ["*"],
+          always: ["*"],
+          metadata: {},
+        });
         let result;
         try {
           result = await request(
@@ -50,7 +61,7 @@ export default async function ottoPlugin(input, options) {
         return {
           title: definition.title,
           output: formatToolResult(result),
-          metadata: { ottoTool: definition.name },
+          metadata: { paseoTool: definition.name },
         };
       },
     };
@@ -72,8 +83,19 @@ export default async function ottoPlugin(input, options) {
   };
 }
 
+function formatErrorDetail(details) {
+  if (!Array.isArray(details)) return typeof details === "string" ? details : "";
+  return details
+    .map((issue) => {
+      const path =
+        Array.isArray(issue?.path) && issue.path.length > 0 ? issue.path.join(".") : "input";
+      return `${path}: ${issue?.message ?? "Invalid value"}`;
+    })
+    .join("; ");
+}
+
 function logPluginError(stage, context, error) {
-  console.error(`[otto-opencode-plugin] ${stage} failed`, {
+  console.error(`[paseo-opencode-plugin] ${stage} failed`, {
     ...context,
     error: error instanceof Error ? error.message : String(error),
   });

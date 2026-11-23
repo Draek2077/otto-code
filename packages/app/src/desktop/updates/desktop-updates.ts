@@ -2,6 +2,10 @@ import { isElectronRuntime } from "@/desktop/host";
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 import { isWeb } from "@/constants/platform";
 import { i18n } from "@/i18n/i18next";
+import {
+  OTTO_PRODUCT_NAME,
+  OTTO_RELEASE_DOWNLOAD_BASE_URL,
+} from "@getpaseo/protocol/otto/identity";
 
 export interface DesktopAppUpdateCheckResult {
   hasUpdate: boolean;
@@ -13,12 +17,8 @@ export interface DesktopAppUpdateCheckResult {
   errorMessage: string | null;
 }
 
-/** Mirrors AppUpdateInstallOutcome in the desktop shell's app-update-service. */
-export type DesktopAppUpdateInstallOutcome = "installed" | "deferred" | "failed";
-
 export interface DesktopAppUpdateInstallResult {
   installed: boolean;
-  outcome: DesktopAppUpdateInstallOutcome;
   version: string | null;
   message: string;
 }
@@ -26,16 +26,6 @@ export interface DesktopAppUpdateInstallResult {
 export interface DesktopRuntimeInfo {
   appVersion: string | null;
   runningUnderARM64Translation: boolean;
-  /** The desktop shell is presenting frames without GPU acceleration (the
-   * gpu-fallback marker/flags, or explicit software-GL argv). False when the
-   * shell predates the field. */
-  softwareRendering: boolean;
-  /** Chromium composites frames on the CPU (Otto's fallback, or Chromium's
-   * own GPU blocklist). Continuous animations then cost a full-window software
-   * draw per frame. False when the shell predates the field. */
-  softwareCompositing: boolean;
-  /** Chromium's raw `gpu_compositing` feature status, for diagnostics. */
-  gpuCompositing: string | null;
 }
 
 export type DesktopReleaseChannel = "stable" | "beta";
@@ -52,7 +42,7 @@ export interface LocalDaemonVersionResult {
   error: string | null;
 }
 
-const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/Draek2077/otto-code/releases/download";
+const RELEASE_DOWNLOAD_BASE_URL = OTTO_RELEASE_DOWNLOAD_BASE_URL; // OTTO(identity)
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -100,32 +90,18 @@ export function parseDesktopRuntimeInfo(raw: unknown): DesktopRuntimeInfo {
     return {
       appVersion: null,
       runningUnderARM64Translation: false,
-      softwareRendering: false,
-      softwareCompositing: false,
-      gpuCompositing: null,
     };
   }
 
   return {
     appVersion: toStringOrNull(raw.appVersion),
     runningUnderARM64Translation: raw.runningUnderARM64Translation === true,
-    softwareRendering: raw.softwareRendering === true,
-    softwareCompositing: raw.softwareCompositing === true || raw.softwareRendering === true,
-    gpuCompositing: toStringOrNull(raw.gpuCompositing),
   };
 }
 
 export async function getDesktopRuntimeInfo(): Promise<DesktopRuntimeInfo> {
   const result = await invokeDesktopCommand<unknown>("desktop_get_runtime_info");
   return parseDesktopRuntimeInfo(result);
-}
-
-// Clear the desktop shell's software-rendering fallback and relaunch into
-// hardware acceleration. The app quits and relaunches as part of the command,
-// so this promise typically never resolves - the caller should treat the call
-// as fire-and-forget (show a pending state; the relaunch is the completion).
-export async function reenableGpuAcceleration(): Promise<void> {
-  await invokeDesktopCommand<unknown>("desktop_reenable_gpu_acceleration");
 }
 
 export async function checkDesktopAppUpdate({
@@ -164,22 +140,11 @@ export async function installDesktopAppUpdate({
     throw new Error("Unexpected response while installing desktop update.");
   }
 
-  const installed = result.installed === true;
   return {
-    installed,
-    // A shell that predates the field says nothing about why it stopped, so
-    // read it as "deferred" rather than inventing a failure the user can see.
-    outcome: parseInstallOutcome(result.outcome, installed),
+    installed: result.installed === true,
     version: toStringOrNull(result.version),
     message: toStringOrNull(result.message) ?? i18n.t("desktop.updates.status.installed"),
   };
-}
-
-function parseInstallOutcome(raw: unknown, installed: boolean): DesktopAppUpdateInstallOutcome {
-  if (raw === "installed" || raw === "deferred" || raw === "failed") {
-    return raw;
-  }
-  return installed ? "installed" : "deferred";
 }
 
 export async function runLocalDaemonUpdate(): Promise<LocalDaemonUpdateResult> {
@@ -233,7 +198,7 @@ export function buildMacAppleSiliconDownloadUrl(version: string | null | undefin
     return null;
   }
 
-  return `${RELEASE_DOWNLOAD_BASE_URL}/v${normalizedVersion}/Otto-${normalizedVersion}-arm64.dmg`;
+  return `${RELEASE_DOWNLOAD_BASE_URL}/v${normalizedVersion}/${OTTO_PRODUCT_NAME}-${normalizedVersion}-arm64-unsigned.dmg`; // OTTO(identity)
 }
 
 export function buildDaemonUpdateDiagnostics(result: LocalDaemonUpdateResult): string {

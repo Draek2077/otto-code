@@ -250,7 +250,7 @@ export function addHubDeployCommand(
     addHubResolutionHelp(
       hub
         .command("deploy")
-        .description("Deploy .otto organization triggers or a legacy project bundle")
+        .description("Deploy .paseo organization triggers or a legacy project bundle")
         .option("-p, --project <slug>", "Deploy a legacy bundle to this project slug")
         .option("--hub <origin>", "Paseo Hub origin")
         .option("--api-key <secret>", "Organization API key")

@@ -1,6 +1,6 @@
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import type { HighlightStyle } from "@otto-code/highlight";
+import type { HighlightStyle } from "@getpaseo/highlight";
 import type { WorkspaceFileLocation } from "@/workspace/file-open";
 import type { FileEditorModel } from "./model";
 

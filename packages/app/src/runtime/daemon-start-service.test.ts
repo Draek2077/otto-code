@@ -30,12 +30,14 @@ function makeStatus(overrides: Partial<DesktopDaemonStatus> = {}): DesktopDaemon
   return {
     serverId: "srv_desktop",
     status: "running",
-    listen: "127.0.0.1:6868",
+    listen: "127.0.0.1:6767",
     hostname: "desktop",
     pid: 1234,
     home: "/home",
     version: "0.0.0",
     desktopManaged: true,
+    ownedByDesktop: true,
+    startedAt: "2026-01-01T00:00:00.000Z",
     error: null,
     ...overrides,
   };
@@ -73,7 +75,7 @@ describe("DaemonStartService", () => {
 
     expect(result).toEqual({ ok: true });
     expect(fake.upserts).toEqual([
-      { listenAddress: "127.0.0.1:6868", serverId: "srv_desktop", hostname: "desktop" },
+      { listenAddress: "127.0.0.1:6767", serverId: "srv_desktop", hostname: "desktop" },
     ]);
     expect(service.getLastError()).toBeNull();
     expect(service.isRunning()).toBe(false);
@@ -310,7 +312,7 @@ describe("upsertDesktopDaemonConnection", () => {
 
     expect(result).toEqual({ ok: true });
     expect(fake.upserts).toEqual([
-      { listenAddress: "127.0.0.1:6868", serverId: "srv_desktop", hostname: "desktop" },
+      { listenAddress: "127.0.0.1:6767", serverId: "srv_desktop", hostname: "desktop" },
     ]);
   });
 
@@ -318,6 +320,15 @@ describe("upsertDesktopDaemonConnection", () => {
     const fake = createFakeStore([makeRelayOnlyHost("srv_desktop")]);
 
     const result = await upsertDesktopDaemonConnection(fake.store, makeStatus());
+
+    expect(result).toEqual({ ok: true });
+    expect(fake.upserts).toEqual([]);
+  });
+
+  it("keeps an already registered host without waiting for a listen address", async () => {
+    const fake = createFakeStore([makeRelayOnlyHost("srv_desktop")]);
+
+    const result = await upsertDesktopDaemonConnection(fake.store, makeStatus({ listen: null }));
 
     expect(result).toEqual({ ok: true });
     expect(fake.upserts).toEqual([]);

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, type ReactElement, type ReactNode } from "react";
 import { Pressable, View } from "react-native";
 import type { GestureResponderEvent } from "react-native";
-import { Plus, Server, Settings } from "@/components/icons/material-icons";
+import { Plus, Server, Settings } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { HostStatusDot } from "@/components/host-status-dot";
 import { Combobox, ComboboxItem, type ComboboxProps } from "@/components/ui/combobox";
@@ -24,7 +24,7 @@ export {
 
 const SEARCHABLE_THRESHOLD = 10;
 type RenderHostOption = NonNullable<ComboboxProps["renderOption"]>;
-interface HostPickerHost {
+export interface HostPickerHost {
   serverId: string;
   label: string;
 }
@@ -38,12 +38,12 @@ export function HostStatusDotSlot({ serverId }: { serverId: string }): ReactElem
 }
 
 // Standard secure/plain web ports carry no information in the host display, so
-// "relay.otto-code.me:443" reads as "relay.otto-code.me" while "127.0.0.1:6868" is kept.
+// "relay.paseo.sh:443" reads as "relay.paseo.sh" while "127.0.0.1:6767" is kept.
 function formatConnectionEndpoint(endpoint: string): string {
   return endpoint.replace(/:(?:443|80)$/, "");
 }
 
-// Socket/pipe transports have no host:port - their endpoint is a filesystem
+// Socket/pipe transports have no host:port — their endpoint is a filesystem
 // path, so they read as "Local". TCP and relay show the address being used.
 function formatActiveConnectionLabel(connection: ActiveConnection): string {
   if (connection.type === "directSocket" || connection.type === "directPipe") {
@@ -55,25 +55,25 @@ function formatActiveConnectionLabel(connection: ActiveConnection): string {
 export interface HostPickerOptionProps {
   serverId: string;
   label: string;
-  description?: string;
   showActiveConnection: boolean;
   selected?: boolean;
   active: boolean;
   onPress: () => void;
   onOpenHostSettings?: (serverId: string) => void;
   testID?: string;
+  description?: string; // OTTO(history): optional metadata for this use of the picker.
 }
 
 export function HostPickerOption({
   serverId,
   label,
-  description,
   showActiveConnection,
   selected,
   active,
   onPress,
   onOpenHostSettings,
   testID,
+  description, // OTTO(history)
 }: HostPickerOptionProps): ReactElement {
   const { theme } = useUnistyles();
   const activeConnection = useHostRuntimeSnapshot(serverId)?.activeConnection ?? null;
@@ -112,9 +112,9 @@ export function HostPickerOption({
   return (
     <ComboboxItem
       label={label}
-      description={description ?? connectionLabel}
+      description={description ?? connectionLabel} // OTTO(history)
       leadingSlot={leadingSlot}
-      trailingAction={trailingSlot}
+      trailingSlot={trailingSlot}
       selected={selected}
       active={active}
       onPress={onPress}
@@ -131,18 +131,18 @@ const SYSTEM_HOST_PICKER_OPTION_LABELS: Record<"add" | "all" | "enableBuiltInDae
 
 function SystemHostPickerOption({
   active,
-  description,
   selected,
   onPress,
   kind,
   testID,
+  description, // OTTO(history)
 }: {
   active: boolean;
-  description?: string;
   selected?: boolean;
   onPress: () => void;
   kind: "add" | "all" | "enableBuiltInDaemon";
   testID?: string;
+  description?: string; // OTTO(history)
 }): ReactElement {
   const { theme } = useUnistyles();
   const Icon = kind === "add" ? Plus : Server;
@@ -155,7 +155,7 @@ function SystemHostPickerOption({
   return (
     <ComboboxItem
       label={label}
-      description={description}
+      description={description} // OTTO(history)
       leadingSlot={leadingSlot}
       selected={selected}
       active={active}
@@ -185,8 +185,7 @@ export interface HostPickerProps {
   desktopMinWidth?: number;
   addHostTestID?: string;
   hostOptionTestID?: (serverId: string) => string;
-  /** Optional muted inline value shown beside a host or system option. */
-  optionDescriptions?: Record<string, string>;
+  optionDescriptions?: Readonly<Record<string, string>>; // OTTO(history)
   children: ReactNode;
 }
 
@@ -210,7 +209,7 @@ export function HostPicker({
   desktopMinWidth,
   addHostTestID,
   hostOptionTestID,
-  optionDescriptions,
+  optionDescriptions, // OTTO(history)
   children,
 }: HostPickerProps): ReactElement {
   const localServerId = useLocalDaemonServerId();
@@ -220,33 +219,16 @@ export function HostPicker({
   );
 
   const options = useMemo(() => {
-    const hostOptions = orderedHosts.map((host) => ({
-      id: host.serverId,
-      label: host.label,
-      description: optionDescriptions?.[host.serverId],
-    }));
-    if (includeAllHost)
-      hostOptions.unshift({
-        id: ALL_HOSTS_OPTION_ID,
-        label: "All hosts",
-        description: optionDescriptions?.[ALL_HOSTS_OPTION_ID],
-      });
-    if (includeAddHost)
-      hostOptions.push({ id: ADD_HOST_OPTION_ID, label: "Add host", description: undefined });
+    const hostOptions = orderedHosts.map((host) => ({ id: host.serverId, label: host.label }));
+    if (includeAllHost) hostOptions.unshift({ id: ALL_HOSTS_OPTION_ID, label: "All hosts" });
+    if (includeAddHost) hostOptions.push({ id: ADD_HOST_OPTION_ID, label: "Add host" });
     if (includeEnableBuiltInDaemon)
       hostOptions.push({
         id: ENABLE_BUILT_IN_DAEMON_OPTION_ID,
         label: "Enable built-in daemon",
-        description: undefined,
       });
     return hostOptions;
-  }, [
-    orderedHosts,
-    includeAllHost,
-    includeAddHost,
-    includeEnableBuiltInDaemon,
-    optionDescriptions,
-  ]);
+  }, [orderedHosts, includeAllHost, includeAddHost, includeEnableBuiltInDaemon]);
 
   const isSearchable = searchable === true && orderedHosts.length > SEARCHABLE_THRESHOLD;
 
@@ -289,10 +271,10 @@ export function HostPicker({
           <SystemHostPickerOption
             kind="all"
             active={active}
-            description={option.description}
             selected={selected}
             onPress={onPress}
             testID={hostOptionTestID?.(option.id)}
+            description={optionDescriptions?.[option.id]} // OTTO(history)
           />
         );
       }
@@ -305,19 +287,20 @@ export function HostPicker({
         <HostPickerOption
           serverId={option.id}
           label={option.label}
-          description={option.description}
           showActiveConnection={showActiveConnection === true}
           selected={selected}
           active={active}
           onPress={onPress}
           onOpenHostSettings={onOpenHostSettings ? handleOpenHostSettings : undefined}
           testID={hostOptionTestID?.(option.id)}
+          description={optionDescriptions?.[option.id]} // OTTO(history)
         />
       );
     },
     [
       addHostTestID,
       hostOptionTestID,
+      optionDescriptions, // OTTO(history)
       onOpenHostSettings,
       showActiveConnection,
       handleOpenHostSettings,

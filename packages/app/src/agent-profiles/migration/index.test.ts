@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentProfile } from "@otto-code/protocol/messages";
+import type { AgentProfile } from "@getpaseo/protocol/messages";
 import { LegacyFavoriteProfileMigration } from ".";
 
 class MemoryStorage {
@@ -97,7 +97,7 @@ class FakeProfileHost {
   }
 }
 
-const PREFERENCES_KEY = "@otto:create-agent-preferences";
+const PREFERENCES_KEY = "@paseo:create-agent-preferences";
 
 function migrationStorage() {
   return new MemoryStorage({

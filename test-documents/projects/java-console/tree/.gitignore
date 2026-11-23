@@ -1,6 +1,0 @@
-out/
-*.class
-
-# IDE
-.idea/
-*.iml

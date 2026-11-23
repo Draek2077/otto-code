@@ -3,7 +3,7 @@ import path from "node:path";
 
 import { STTManager } from "../src/server/agent/stt-manager.js";
 import { createRootLogger } from "../src/server/logger.js";
-import { resolveOttoHome } from "../src/server/otto-home.js";
+import { resolvePaseoHome } from "../src/server/paseo-home.js";
 import {
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
@@ -29,7 +29,7 @@ function usage(): string {
     "  npm run speech:transcribe:local -- ./sample.wav --out ./tmp/sample.transcript.txt",
     "",
     "Env fallbacks:",
-    "  OTTO_LOCAL_MODELS_DIR",
+    "  PASEO_LOCAL_MODELS_DIR",
   ].join("\n");
 }
 
@@ -43,9 +43,9 @@ function parseArgs(argv: string[]): CliOptions {
     throw new Error(`Missing <wavPath>\n\n${usage()}`);
   }
 
-  const ottoHome = resolveOttoHome();
+  const paseoHome = resolvePaseoHome();
   const defaultModelsDir =
-    process.env.OTTO_LOCAL_MODELS_DIR ?? path.join(ottoHome, "models", "local-speech");
+    process.env.PASEO_LOCAL_MODELS_DIR ?? path.join(paseoHome, "models", "local-speech");
 
   const positional: string[] = [];
   let outPath: string | undefined;
@@ -120,6 +120,7 @@ async function main(): Promise<void> {
 
   const providers: RequestedSpeechProviders = {
     dictationStt: { provider: "local", explicit: true },
+    voiceTurnDetection: { provider: "local", explicit: false, enabled: false },
     voiceStt: { provider: "local", explicit: true },
     // Not used here, but required by the shared runtime config shape.
     voiceTts: { provider: "openai", explicit: false },

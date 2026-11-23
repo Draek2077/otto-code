@@ -1,7 +1,7 @@
 import * as Clipboard from "expo-clipboard";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { Copy, RotateCw } from "@/components/icons/material-icons";
+import { Copy, RotateCw } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 
@@ -17,9 +17,8 @@ import {
   redactAppDiagnosticReport,
 } from "@/diagnostics/app-diagnostic-report";
 import { collectDesktopDiagnosticSections } from "@/diagnostics/desktop-diagnostic-report";
-import { collectResourceDiagnosticSection } from "@/diagnostics/resource-report/start-resource-monitor";
 import { getHostRuntimeStore, useHosts, type HostRuntimeSnapshot } from "@/runtime/host-runtime";
-import type { Theme } from "@/styles/theme";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 import type { HostProfile } from "@/types/host-connection";
 
 interface AppDiagnosticSheetProps {
@@ -46,11 +45,8 @@ const SNAP_POINTS = ["55%", "88%"];
 const ThemedCopy = withUnistyles(Copy);
 const ThemedRotateCw = withUnistyles(RotateCw);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
-// `size` is folded into uniProps (not a static prop) so it repaints from the live,
-// compact-doubled `theme.iconSize` the same way `color` already does.
 const foregroundMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundMuted,
-  size: theme.iconSize.sm,
 });
 
 export function AppDiagnosticSheet({
@@ -102,7 +98,6 @@ export function AppDiagnosticSheet({
           hostCount: hosts.length,
         }),
       );
-      sections.push(collectResourceDiagnosticSection());
       updateRunProgress("client", t("settings.diagnostics.app.progress.client"), "done");
 
       if (isDesktopApp) {
@@ -185,7 +180,7 @@ export function AppDiagnosticSheet({
             accessibilityRole="button"
             accessibilityLabel={t("settings.diagnostics.app.copyAccessibility")}
           >
-            <ThemedCopy uniProps={foregroundMutedColorMapping} />
+            <ThemedCopy size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
           </Pressable>
           <Pressable
             onPress={handleRefreshPress}
@@ -200,9 +195,9 @@ export function AppDiagnosticSheet({
             }
           >
             {loading ? (
-              <ThemedLoadingSpinner uniProps={foregroundMutedColorMapping} />
+              <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
             ) : (
-              <ThemedRotateCw uniProps={foregroundMutedColorMapping} />
+              <ThemedRotateCw size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
             )}
           </Pressable>
         </View>
@@ -237,14 +232,17 @@ export function AppDiagnosticSheet({
           <View style={styles.progressContent}>
             {progress.length === 0 ? (
               <View style={styles.progressRow}>
-                <ThemedLoadingSpinner uniProps={foregroundMutedColorMapping} />
+                <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
                 <Text style={styles.mutedText}>{t("settings.diagnostics.app.running")}</Text>
               </View>
             ) : (
               progress.map((row) => (
                 <View key={row.id} style={styles.progressRow}>
                   {row.status === "running" || row.status === "pending" ? (
-                    <ThemedLoadingSpinner uniProps={foregroundMutedColorMapping} />
+                    <ThemedLoadingSpinner
+                      size={ICON_SIZE.sm}
+                      uniProps={foregroundMutedColorMapping}
+                    />
                   ) : (
                     <View
                       style={row.status === "failed" ? styles.statusDotFailed : styles.statusDot}
@@ -357,7 +355,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
   },
   iconButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surface2,
   },
   disabled: {
     opacity: 0.5,

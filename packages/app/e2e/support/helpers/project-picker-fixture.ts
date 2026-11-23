@@ -16,20 +16,16 @@ interface ProjectPickerFixtureResource {
 }
 
 export async function createProjectPickerFixture(): Promise<ProjectPickerFixtureResource> {
-  const root = await mkdtemp(path.join(homedir(), "otto-e2e-project-picker-"));
+  const root = await mkdtemp(path.join(homedir(), "paseo-e2e-project-picker-"));
   const nonce = randomUUID().replaceAll("-", "").slice(0, 8);
-  const projectPath = path.join(root, "client", "team", `otto-desktop-fuzzy-target-${nonce}`);
+  const projectPath = path.join(root, "client", "team", `paseo-desktop-fuzzy-target-${nonce}`);
   await mkdir(projectPath, { recursive: true });
 
   return {
     fixture: {
       projectPath,
       projectName: path.basename(projectPath),
-      // Fuzzy subsequence of the leaf "otto-desktop-fuzzy-target-<nonce>"
-      // (o-t-o-d-f-z-t + nonce). The pre-rebrand fixture used "psodfzt", crafted
-      // for "otto-desktop-fuzzy-target"; the rebrand renamed the directory but
-      // not this query, so it stopped matching and the E2E search found nothing.
-      fuzzyQuery: `otodfzt${nonce}`,
+      fuzzyQuery: `psodfzt${nonce}`,
     },
     removeDirectory: () => rm(root, { recursive: true, force: true }),
   };

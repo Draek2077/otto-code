@@ -4,7 +4,7 @@ import type {
   PluginButtonRegistration,
   PluginHeaderButtonContribution,
   PluginComposerPillContribution,
-} from "@otto-code/plugin/client";
+} from "@getpaseo/plugin/client";
 import type { InstalledPlugin } from "../types";
 import {
   requireButtonId,

@@ -30,7 +30,7 @@ test.describe("Add Project GitHub flow", () => {
     test.skip(!hasGithubAuth(), "Requires GitHub authentication (gh auth login)");
 
     let repository: GhRepoFixture | null = null;
-    const parentDirectory = await mkdtemp(path.join(tmpdir(), "otto-e2e-github-clone-"));
+    const parentDirectory = await mkdtemp(path.join(tmpdir(), "paseo-e2e-github-clone-"));
     let projectId: string | null = null;
 
     try {
@@ -41,10 +41,8 @@ test.describe("Add Project GitHub flow", () => {
       await openAddProjectFlow(page);
       await chooseAddProjectMethod(page, "github");
 
-      await addProjectFlowInput(page).fill("Draek2077/otto-code");
-      await expect(
-        addProjectFlow(page).getByText("Draek2077/otto-code", { exact: true }),
-      ).toBeVisible({
+      await addProjectFlowInput(page).fill("getpaseo/paseo");
+      await expect(addProjectFlow(page).getByText("getpaseo/paseo", { exact: true })).toBeVisible({
         timeout: 30_000,
       });
       await addProjectFlowInput(page).fill("");
@@ -75,6 +73,7 @@ test.describe("Add Project GitHub flow", () => {
       projectId = await expectOpenedProject(page, repository.name);
       await expectNewWorkspaceForAddedProject(page, {
         serverId: getServerId(),
+        projectId,
         projectName: repository.name,
         projectPath: checkoutPath,
       });

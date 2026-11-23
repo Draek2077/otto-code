@@ -1,3 +1,5 @@
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { floatingActionsClearance } from "@/components/ui/floating-action-button";
 import { useState, useCallback, useMemo, type ReactElement, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -8,7 +10,6 @@ import {
   View,
   Text,
   Pressable,
-  FlatList,
   type PressableStateCallbackType,
   type StyleProp,
   type ViewStyle,
@@ -16,7 +17,6 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { resolveCompactFontSize } from "@/appearance/apply";
 import {
   AlignJustify,
   ChevronDown,
@@ -28,31 +28,25 @@ import {
   MoreHorizontal,
   Pilcrow,
   RotateCw,
-  SquareTerminal,
   WrapText,
 } from "lucide-react-native";
 import { type ParsedDiffFile } from "@/git/use-diff-query";
 import type { ChangesState } from "@/panels/changes/state";
 import { defaultChangesState } from "@/panels/changes/state";
-import { openGitLogTab } from "@/git/open-git-log-tab";
+import { ReviewCommentSheet, ReviewFeedbackAction } from "@/review";
+import { DiffPresentationControl, useHostDiffReview } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 import { DiffDocument, type WorkingDiffMode } from "@/git/diff-document";
-import { exceedsDiffRenderBudget } from "@/git/diff-render-budget";
-import { FileHeader } from "@/git/file-header";
-import {
-  buildDiffTree,
-  collectDirPaths,
-  compressSingleChildChains,
-  flattenDiffTree,
-  type DiffTreeRow,
-} from "@/git/diff-tree";
-import { DiffFolderRow } from "@/git/diff-folder-row";
+import { ChangedFilesTree } from "@/git/changed-files-tree";
+import { JUMP_TO_FILE_CLEARANCE, JumpToFile } from "@/git/jump-to-file";
 import {
   selectPrHintFromStatus,
   type PrHint,
   useCheckoutPrStatusQuery,
 } from "@/git/use-pr-status-query";
 import { CommitsSection } from "@/git/commits-section/commits-section";
-import { ChangesCommitSection } from "@/git/changes-commit-section";
+import { ManualCommitSection } from "@/otto/workspace-git/commit-section"; // OTTO(manual-commit): typed manual message above commit history, same Git owner.
+import { ManualCommitScope } from "@/otto/workspace-git/commit-context"; // OTTO(manual-commit): local selection shared only by this Changes tree and form.
+import { ComparisonBasePicker } from "@/otto/workspace-git/comparison-base-picker"; // OTTO(diff-base)
 import { useAppSettings } from "@/hooks/use-settings";
 import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import {
@@ -73,11 +67,9 @@ import { BranchSwitcher } from "@/components/branch-switcher";
 import { useGitActions } from "@/git/use-actions";
 import { GIT_ACTION_ICONS } from "@/git/action-icons";
 import { buildForgeSignInCommand, getForgePresentation, type Forge } from "@/git/forge";
-import { parseGitRemoteLocation } from "@otto-code/protocol/git-remote";
-import type { ForgeAuthState } from "@otto-code/protocol/messages";
-import { CheckoutGitRollbackFailedError, useCheckoutGitActionsStore } from "@/git/actions-store";
-import { useChangesSelectionAddon } from "@/git/changes-selection-addon";
-import { resolveRunningAgentLabels } from "@/git/running-agent-labels";
+import { parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
+import type { ForgeAuthState } from "@getpaseo/protocol/messages";
+import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -88,6 +80,7 @@ import {
   paneContentToolbarIconSize,
   paneContentToolbarIconButtonStyle,
   paneContentToolbarTrailingPadding,
+  type ToolbarTrailingControl,
   ToolbarButton,
   ToolbarControls,
 } from "@/components/ui/pane-content-toolbar";
@@ -109,8 +102,6 @@ import { DiffTooLargeState } from "@/git/diff-too-large-state";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
 import { PullRequestStateIcon } from "@/git/pull-request-state-icon";
 import { openExternalUrl } from "@/utils/open-external-url";
-import { DiffBaseSwitcher } from "@/git/diff-base-switcher";
-import type { CheckoutBaseSource } from "@otto-code/protocol/messages";
 import { openWorkspacePullRequest } from "@/workspace-tabs/open-supporting-view";
 import type { PullRequestOpenLocation } from "@/hooks/use-settings";
 
@@ -139,14 +130,6 @@ function computeSelectedDiffStat(
   );
 }
 
-function shouldEnableChangesSelection(
-  diffMode: "uncommitted" | "base",
-  rollbackSupported: boolean,
-  commitSupported: boolean,
-): boolean {
-  return diffMode === "uncommitted" && (rollbackSupported || commitSupported);
-}
-
 function useDiscardChangesAction({
   serverId,
   cwd,
@@ -159,13 +142,6 @@ function useDiscardChangesAction({
   const { t } = useTranslation();
   const toast = useToast();
   const discardChanges = useCheckoutGitActionsStore((state) => state.discardChanges);
-  const rollbackPaths = useCheckoutGitActionsStore((state) => state.rollbackPaths);
-  // Prefer Otto's rollback RPC: the daemon refuses while agents are still
-  // writing to the workspace and the user must confirm the override, which
-  // upstream's discard path has no equivalent for.
-  const rollbackSupported = useSessionStore(
-    (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutGitRollback === true,
-  );
   // COMPAT(checkoutDiscardChanges): added in v0.3.0, remove gate after 2027-02-08.
   const discardSupported = useSessionStore(
     (s) => s.sessions[serverId]?.serverInfo?.features?.checkoutDiscardChanges === true,
@@ -182,63 +158,19 @@ function useDiscardChangesAction({
       if (!confirmed) {
         return;
       }
-      if (!rollbackSupported) {
-        try {
-          await discardChanges({
-            serverId,
-            cwd,
-            paths: oldPath ? [path, oldPath] : [path],
-          });
-        } catch (cause) {
-          toast.error(
-            cause instanceof Error
-              ? cause.message
-              : t("workspace.fileActions.confirmRevert.failed"),
-          );
-        }
-        return;
+      try {
+        await discardChanges({
+          serverId,
+          cwd,
+          paths: oldPath ? [path, oldPath] : [path],
+        });
+      } catch (cause) {
+        toast.error(
+          cause instanceof Error ? cause.message : t("workspace.fileActions.confirmRevert.failed"),
+        );
       }
-      const attempt = async (allowWithRunningAgents: boolean): Promise<void> => {
-        try {
-          await rollbackPaths({
-            serverId,
-            cwd,
-            paths: oldPath ? [path, oldPath] : [path],
-            ...(allowWithRunningAgents ? { allowWithRunningAgents: true } : {}),
-          });
-        } catch (error) {
-          if (error instanceof CheckoutGitRollbackFailedError) {
-            if (error.rollbackError.kind === "agents_running") {
-              const agents = resolveRunningAgentLabels(
-                error.rollbackError.agents,
-                // Read at failure time: subscribing to the agents map re-rendered on every streamed update.
-                useSessionStore.getState().sessions[serverId]?.agents,
-                t("workspace.git.rollback.unnamedAgent"),
-              );
-              const overrideConfirmed = await confirmDialog({
-                title: t("workspace.git.rollback.agentsRunningTitle"),
-                message: t("workspace.git.rollback.agentsRunningMessage", { agents }),
-                confirmLabel: t("workspace.git.rollback.agentsRunningConfirm"),
-                destructive: true,
-              });
-              if (overrideConfirmed) {
-                await attempt(true);
-              }
-              return;
-            }
-            const message =
-              error.rollbackError.kind === "git_failed"
-                ? error.rollbackError.detail
-                : t("workspace.git.rollback.failed");
-            toast.error(message);
-            return;
-          }
-          toast.error(error instanceof Error ? error.message : t("workspace.git.rollback.failed"));
-        }
-      };
-      await attempt(false);
     },
-    [cwd, discardChanges, rollbackPaths, rollbackSupported, serverId, t, toast],
+    [cwd, discardChanges, serverId, t, toast],
   );
   const handleDiscardPath = useCallback(
     (path: string, oldPath?: string) => {
@@ -246,9 +178,7 @@ function useDiscardChangesAction({
     },
     [discardPath],
   );
-  return (discardSupported || rollbackSupported) && diffMode === "uncommitted"
-    ? handleDiscardPath
-    : undefined;
+  return discardSupported && diffMode === "uncommitted" ? handleDiscardPath : undefined;
 }
 
 interface ChangesSurfaceProps {
@@ -257,9 +187,6 @@ interface ChangesSurfaceProps {
   cwd: string;
   enabled?: boolean;
   presentation?: ChangesPresentation;
-  modeScope: string;
-  /** New operation logs stay with the Explorer or Main pane that requested them. */
-  defaultPaneId?: string;
   focusPath?: string;
   focusRequestId?: number;
   onOpenFile?: (path: string) => void;
@@ -306,10 +233,6 @@ const DIFF_OPTIONS_EXPAND_ICON = (
 const DIFF_OPTIONS_CHANGES_TAB_ICON = (
   <ThemedMaximize size={14} uniProps={foregroundMutedIconColorMapping} />
 );
-const ThemedSquareTerminal = withUnistyles(SquareTerminal);
-const DIFF_OPTIONS_GIT_LOG_ICON = (
-  <ThemedSquareTerminal size={14} uniProps={foregroundMutedIconColorMapping} />
-);
 
 interface DiffLayoutToggleProps {
   layout: "unified" | "split";
@@ -345,13 +268,10 @@ export function DiffLayoutToggle({
           style={toggleStyle ?? defaultToggleStyle}
         >
           {layout === "unified" ? (
-            <ThemedColumns2
-              size={paneContentToolbarIconSize(isMobile)}
-              uniProps={foregroundMutedIconColorMapping}
-            />
+            <ThemedColumns2 size={isMobile ? 18 : 14} uniProps={foregroundMutedIconColorMapping} />
           ) : (
             <ThemedAlignJustify
-              size={paneContentToolbarIconSize(isMobile)}
+              size={isMobile ? 18 : 14}
               uniProps={foregroundMutedIconColorMapping}
             />
           )}
@@ -428,10 +348,6 @@ export function DiffModeMenu({
 
 type ChangesPresentation = "combined" | "tree" | "diff";
 
-function defaultChangesPresentation(inlineDiff: boolean): ChangesPresentation {
-  return inlineDiff ? "combined" : "tree";
-}
-
 interface ChangesToolbarRefreshAction {
   isRefreshing: boolean;
   onRefresh: () => void;
@@ -464,7 +380,6 @@ type ChangesToolbarMode =
       onOpenDiff: () => void;
       inlineDiff: ChangesToolbarInlineDiffToggle | null;
       refresh: ChangesToolbarRefreshAction | null;
-      onOpenGitLog: (() => void) | null;
     }
   | {
       kind: "diff";
@@ -477,7 +392,6 @@ type ChangesToolbarMode =
       refresh: ChangesToolbarRefreshAction | null;
       treeToggle: { visible: boolean; onToggle: () => void } | null;
       inlineDiff: ChangesToolbarInlineDiffToggle | null;
-      onOpenGitLog: (() => void) | null;
     };
 
 function buildChangesToolbarMode(input: {
@@ -501,7 +415,6 @@ function buildChangesToolbarMode(input: {
   onToggleHideWhitespace: () => void;
   onToggleWrapLines: () => void;
   onToggleTree: () => void;
-  onOpenGitLog: (() => void) | null;
 }): ChangesToolbarMode {
   const refresh = input.refreshSupported
     ? { isRefreshing: input.isRefreshing, onRefresh: input.onRefresh }
@@ -512,7 +425,6 @@ function buildChangesToolbarMode(input: {
       onOpenDiff: input.onOpenDiff,
       inlineDiff: input.inlineDiff,
       refresh,
-      onOpenGitLog: input.onOpenGitLog,
     };
   }
   const options: ChangesToolbarDiffOptions = {
@@ -543,7 +455,6 @@ function buildChangesToolbarMode(input: {
         ? { visible: input.treeVisible, onToggle: input.onToggleTree }
         : null,
     inlineDiff: input.inlineDiff,
-    onOpenGitLog: input.onOpenGitLog,
   };
 }
 
@@ -561,38 +472,25 @@ interface ChangesRepositoryToolbarModel {
 }
 
 interface ChangesComparisonToolbarModel {
+  basePicker?: ReactNode; // OTTO(diff-base): owned comparison control, alongside the existing mode menu.
   committedDescription?: string;
   diffMode: "uncommitted" | "base";
   mode: ChangesToolbarMode;
   selectedDiffStat: { additions: number; deletions: number } | null;
   onSelectBase: () => void;
   onSelectUncommitted: () => void;
-  // Otto: the fork-point base picker sits beside the mode menu (see
-  // docs/changes-view.md). Carried on upstream's toolbar model rather than
-  // reaching around it, so the row stays the single source of what it renders.
-  baseSwitcher: DiffBaseSwitcherModel | null;
-}
-
-// Otto: props the base switcher needs, resolved once where the header model is
-// built so the toolbar row itself stays presentational.
-interface DiffBaseSwitcherModel {
-  serverId: string;
-  workspaceId?: string | null;
-  cwd: string;
-  baseRefLabel: string;
-  currentBranchName: string | null;
-  isOttoOwnedWorktree: boolean;
-  baseSource: CheckoutBaseSource | null;
-  isBaseEditable: boolean;
 }
 
 interface ChangesHeaderProps {
+  reviewControl?: ReactNode; // OTTO(structural-diff)
   compact: boolean;
   repository: ChangesRepositoryToolbarModel;
   comparison: ChangesComparisonToolbarModel;
+  sidebarSurface: boolean;
 }
 
 interface BuildChangesHeaderModelInput {
+  basePicker?: ReactNode; // OTTO(diff-base)
   branchName: string | null;
   committedDescription?: string;
   compact: boolean;
@@ -607,7 +505,6 @@ interface BuildChangesHeaderModelInput {
   selectedDiffStat: { additions: number; deletions: number } | null;
   serverId: string;
   workspaceId?: string | null;
-  baseSwitcher: DiffBaseSwitcherModel | null;
 }
 
 function buildChangesHeaderModel(input: BuildChangesHeaderModelInput): {
@@ -626,29 +523,49 @@ function buildChangesHeaderModel(input: BuildChangesHeaderModelInput): {
       workspaceId: input.workspaceId,
     },
     comparison: {
+      basePicker: input.basePicker, // OTTO(diff-base)
       committedDescription: input.committedDescription,
       diffMode: input.diffMode,
       mode: input.mode,
       selectedDiffStat: input.selectedDiffStat,
       onSelectBase: input.onSelectBase,
       onSelectUncommitted: input.onSelectUncommitted,
-      baseSwitcher: input.baseSwitcher,
     },
   };
 }
 
 // Presentation resolves into these two capability models before rendering. The rows
-// inherit their surface from the pane host and never infer it from this presentation.
-function ChangesHeader({ compact, repository, comparison }: ChangesHeaderProps) {
+// never infer which host or Changes presentation produced them.
+function ChangesHeader({
+  compact,
+  repository,
+  comparison,
+  sidebarSurface,
+  reviewControl, // OTTO(structural-diff)
+}: ChangesHeaderProps) {
   if (comparison.mode.kind === "diff") {
     return (
-      <ChangesDiffOnlyToolbar compact={compact} mode={comparison.mode} comparison={comparison} />
+      <ChangesDiffOnlyToolbar
+        compact={compact}
+        mode={comparison.mode}
+        reviewControl={reviewControl} // OTTO(structural-diff)
+        sidebarSurface={sidebarSurface}
+      />
     );
   }
   return (
     <View>
-      <ChangesRepositoryToolbar compact={compact} model={repository} />
-      <ChangesComparisonToolbar compact={compact} model={comparison} />
+      <ChangesRepositoryToolbar
+        compact={compact}
+        model={repository}
+        sidebarSurface={sidebarSurface}
+      />
+      <ChangesComparisonToolbar
+        compact={compact}
+        model={comparison}
+        reviewControl={reviewControl} // OTTO(structural-diff)
+        sidebarSurface={sidebarSurface}
+      />
     </View>
   );
 }
@@ -656,26 +573,24 @@ function ChangesHeader({ compact, repository, comparison }: ChangesHeaderProps) 
 function ChangesDiffOnlyToolbar({
   compact,
   mode,
-  comparison,
+  sidebarSurface,
+  reviewControl, // OTTO(structural-diff)
 }: {
   compact: boolean;
-  comparison: Pick<
-    ChangesComparisonToolbarModel,
-    "diffMode" | "committedDescription" | "onSelectUncommitted" | "onSelectBase"
-  >;
   mode: Extract<ChangesToolbarMode, { kind: "diff" }>;
+  sidebarSurface: boolean;
+  reviewControl?: ReactNode; // OTTO(structural-diff)
 }) {
   return (
-    <ChangesToolbarRow compact={compact} testID="changes-header">
-      <ChangesToolbarLeading>
-        <DiffModeMenu
-          diffMode={comparison.diffMode}
-          committedDescription={comparison.committedDescription}
-          onSelectUncommitted={comparison.onSelectUncommitted}
-          onSelectBase={comparison.onSelectBase}
-        />
-      </ChangesToolbarLeading>
+    <ChangesToolbarRow
+      compact={compact}
+      sidebarSurface={sidebarSurface}
+      testID="changes-header"
+      trailing="glyph"
+    >
+      <ChangesToolbarLeading />
       <ChangesToolbarTrailing>
+        {reviewControl /* OTTO(structural-diff) */}
         <ChangesToolbarActions mode={mode} compact={compact} />
       </ChangesToolbarTrailing>
     </ChangesToolbarRow>
@@ -685,15 +600,24 @@ function ChangesDiffOnlyToolbar({
 function ChangesToolbarRow({
   children,
   compact,
+  sidebarSurface,
   testID,
+  trailing,
 }: {
   children: ReactNode;
   compact: boolean;
+  sidebarSurface: boolean;
   testID: string;
+  /** What the row's last control paints, so it can pad to the shared trailing rail. */
+  trailing: ToolbarTrailingControl;
 }) {
   const toolbarStyle = useMemo(
-    () => [styles.changesToolbar, { paddingRight: paneContentToolbarTrailingPadding(compact) }],
-    [compact],
+    () => [
+      styles.changesToolbar,
+      { paddingRight: paneContentToolbarTrailingPadding(compact, trailing) },
+      sidebarSurface ? styles.changesToolbarSidebar : null,
+    ],
+    [compact, sidebarSurface, trailing],
   );
   return (
     <PaneContentToolbar style={toolbarStyle} testID={testID}>
@@ -713,12 +637,19 @@ function ChangesToolbarTrailing({ children }: { children: ReactNode }) {
 function ChangesRepositoryToolbar({
   compact,
   model,
+  sidebarSurface,
 }: {
   compact: boolean;
   model: ChangesRepositoryToolbarModel;
+  sidebarSurface: boolean;
 }) {
   return (
-    <ChangesToolbarRow compact={compact} testID="changes-repository-header">
+    <ChangesToolbarRow
+      compact={compact}
+      sidebarSurface={sidebarSurface}
+      testID="changes-repository-header"
+      trailing={model.gitActions ? "framed" : "glyph"}
+    >
       <ChangesToolbarLeading>
         <BranchSwitcher
           currentBranchName={model.branchName}
@@ -806,12 +737,21 @@ function ChangesPullRequestExternalLink({
 function ChangesComparisonToolbar({
   compact,
   model,
+  sidebarSurface,
+  reviewControl, // OTTO(structural-diff)
 }: {
   compact: boolean;
   model: ChangesComparisonToolbarModel;
+  sidebarSurface: boolean;
+  reviewControl?: ReactNode; // OTTO(structural-diff)
 }) {
   return (
-    <ChangesToolbarRow compact={compact} testID="changes-header">
+    <ChangesToolbarRow
+      compact={compact}
+      sidebarSurface={sidebarSurface}
+      testID="changes-header"
+      trailing="glyph"
+    >
       <ChangesToolbarLeading>
         <DiffModeMenu
           diffMode={model.diffMode}
@@ -819,19 +759,7 @@ function ChangesComparisonToolbar({
           onSelectUncommitted={model.onSelectUncommitted}
           onSelectBase={model.onSelectBase}
         />
-        {model.baseSwitcher ? (
-          <DiffBaseSwitcher
-            visible={model.diffMode === "base"}
-            serverId={model.baseSwitcher.serverId}
-            workspaceId={model.baseSwitcher.workspaceId}
-            cwd={model.baseSwitcher.cwd}
-            baseRefLabel={model.baseSwitcher.baseRefLabel}
-            currentBranchName={model.baseSwitcher.currentBranchName}
-            isOttoOwnedWorktree={model.baseSwitcher.isOttoOwnedWorktree}
-            baseSource={model.baseSwitcher.baseSource}
-            isBaseEditable={model.baseSwitcher.isBaseEditable}
-          />
-        ) : null}
+        {model.basePicker /* OTTO(diff-base) */}
         {model.selectedDiffStat ? (
           <DiffStat
             additions={model.selectedDiffStat.additions}
@@ -841,6 +769,7 @@ function ChangesComparisonToolbar({
         ) : null}
       </ChangesToolbarLeading>
       <ChangesToolbarTrailing>
+        {reviewControl /* OTTO(structural-diff) */}
         <ChangesToolbarActions mode={model.mode} compact={compact} />
       </ChangesToolbarTrailing>
     </ChangesToolbarRow>
@@ -995,24 +924,9 @@ type ChangesOptionsMenuMode = Extract<ChangesToolbarMode, { kind: "tree" | "comb
 function ChangesOptionsMenu({ mode, compact }: { mode: ChangesOptionsMenuMode; compact: boolean }) {
   const { t } = useTranslation();
   const optionsLabel = t("workspace.git.diff.options");
-  const gitLogItem = mode.onOpenGitLog ? (
-    <>
-      <DropdownMenuSeparator />
-      <DropdownMenuItem
-        leading={DIFF_OPTIONS_GIT_LOG_ICON}
-        testID="changes-open-git-log"
-        onSelect={mode.onOpenGitLog}
-      >
-        {t("workspace.git.commit.viewLog")}
-      </DropdownMenuItem>
-    </>
-  ) : null;
   const content =
     mode.kind === "tree" ? (
-      <>
-        <ChangesTreeOptions onOpenDiff={mode.onOpenDiff} inlineDiff={mode.inlineDiff} />
-        {gitLogItem}
-      </>
+      <ChangesTreeOptions onOpenDiff={mode.onOpenDiff} inlineDiff={mode.inlineDiff} />
     ) : (
       <>
         <ChangesDiffOptions options={mode.options} />
@@ -1022,7 +936,6 @@ function ChangesOptionsMenu({ mode, compact }: { mode: ChangesOptionsMenuMode; c
             <ChangesInlineDiffOption toggle={mode.inlineDiff} />
           </>
         ) : null}
-        {gitLogItem}
       </>
     );
 
@@ -1166,7 +1079,6 @@ interface DiffBodyContentProps {
   emptyAction: ChangesEmptyAction | null;
   children: ReactElement;
   checkingRepositoryLabel: string;
-  loadingFilesLabel: string;
   notRepositoryLabel: string;
 }
 
@@ -1182,13 +1094,12 @@ function DiffBodyContent({
   emptyAction,
   children,
   checkingRepositoryLabel,
-  loadingFilesLabel,
   notRepositoryLabel,
 }: DiffBodyContentProps) {
   if (isStatusLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ThemedLoadingSpinner size="small" uniProps={foregroundMutedIconColorMapping} />
+        <ThemedLoadingSpinner size="large" uniProps={foregroundMutedIconColorMapping} />
         <Text style={styles.loadingText}>{checkingRepositoryLabel}</Text>
       </View>
     );
@@ -1210,8 +1121,7 @@ function DiffBodyContent({
   if (isDiffLoading) {
     return (
       <View style={styles.loadingContainer}>
-        <ThemedLoadingSpinner size="small" uniProps={foregroundMutedIconColorMapping} />
-        <Text style={styles.loadingText}>{loadingFilesLabel}</Text>
+        <ThemedLoadingSpinner size="large" uniProps={foregroundMutedIconColorMapping} />
       </View>
     );
   }
@@ -1301,7 +1211,7 @@ type ForgeSetupAction = "install_cli" | "sign_in" | null;
 
 // Drive the onboarding callout from the forge's auth state so the message names
 // the exact next step (install the CLI vs sign in) for whichever forge backs the
-// workspace â€” GitHub included. GitLab additionally requires the host to advertise
+// workspace — GitHub included. GitLab additionally requires the host to advertise
 // GitLab support, matching the rest of the GitLab UI.
 function computeForgeSetupAction(input: {
   forge: Forge;
@@ -1342,7 +1252,7 @@ function buildForgeSetupMessage(input: {
   }
   const { brandLabel, signInCli } = getForgePresentation(input.forge);
   // A forge with no known CLI (an unknown/third-party forge rendered neutrally)
-  // has no install/sign-in command to interpolate â€” show neutral guidance
+  // has no install/sign-in command to interpolate — show neutral guidance
   // rather than the GitLab-specific callout or a null command.
   if (signInCli === null) {
     return input.t("workspace.git.forgeSetup.generic", { brand: brandLabel });
@@ -1362,138 +1272,23 @@ function buildToggleButtonStyle(
   return (state) => [baseStyles, paneContentToolbarIconButtonStyle(state, selected, isMobile)];
 }
 
-function ChangedFilesTree({
-  files,
-  mode,
-  onSelectFile,
-  collapsedFolderPaths,
-  onCollapsedFolderPathsChange,
-}: {
-  files: ParsedDiffFile[];
-  mode: WorkingDiffMode;
-  onSelectFile: (path: string) => void;
-  collapsedFolderPaths: string[];
-  onCollapsedFolderPathsChange: (paths: string[]) => void;
-}) {
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
-  const compressedTree = useMemo(() => compressSingleChildChains(buildDiffTree(files)), [files]);
-  const allFolderPaths = useMemo(() => collectDirPaths(compressedTree), [compressedTree]);
-  const collapsedFolders = useMemo(() => new Set(collapsedFolderPaths), [collapsedFolderPaths]);
-  const items = useMemo(
-    () => flattenDiffTree(compressedTree, collapsedFolders),
-    [collapsedFolders, compressedTree],
-  );
-  const handleSelectPath = useCallback((path: string) => setSelectedPath(path), []);
-  const handleSelectFile = useCallback(
-    (path: string) => {
-      setSelectedPath(path);
-      onSelectFile(path);
-    },
-    [onSelectFile],
-  );
-  const handleToggleFolder = useCallback(
-    (dirPath: string) => {
-      const next = collapsedFolders.has(dirPath)
-        ? Array.from(collapsedFolders).filter((path) => path !== dirPath)
-        : [...collapsedFolders, dirPath];
-      onCollapsedFolderPathsChange(next);
-    },
-    [collapsedFolders, onCollapsedFolderPathsChange],
-  );
-  const handleCollapseFolder = useCallback(
-    (dirPath: string) => {
-      const prefix = `${dirPath}/`;
-      onCollapsedFolderPathsChange([
-        ...new Set([
-          ...collapsedFolders,
-          ...allFolderPaths.filter(
-            (folderPath) => folderPath === dirPath || folderPath.startsWith(prefix),
-          ),
-        ]),
-      ]);
-    },
-    [allFolderPaths, collapsedFolders, onCollapsedFolderPathsChange],
-  );
-  const renderItem = useCallback(
-    ({ item }: { item: DiffTreeRow }) => {
-      if (item.kind === "folder") {
-        return (
-          <DiffFolderRow
-            dirPath={item.dirPath}
-            displayName={item.displayName}
-            depth={item.depth}
-            ancestorMask={item.ancestorMask}
-            collapsed={collapsedFolders.has(item.dirPath)}
-            isSelected={selectedPath === item.dirPath}
-            additions={item.additions}
-            deletions={item.deletions}
-            onToggle={handleToggleFolder}
-            onCollapse={handleCollapseFolder}
-            onSelect={handleSelectPath}
-            onCopyPath={mode.onCopyPath}
-            onCopyRelativePath={mode.onCopyRelativePath}
-            onReveal={mode.onReveal}
-            revealTargetName={mode.revealTargetName}
-            onDuplicate={mode.onDuplicate}
-            onRevert={mode.onRevert}
-            testID={`diff-folder-${item.dirPath}`}
-          />
-        );
-      }
-      return (
-        <FileHeader
-          file={item.file}
-          workspaceFileDragScope={mode.workspaceFileDragScope}
-          bodyVisible={false}
-          showsBodyState={false}
-          isSelected={selectedPath === item.file.path}
-          depth={item.depth}
-          ancestorMask={item.ancestorMask}
-          showDir={false}
-          onActivate={handleSelectFile}
-          onSelect={handleSelectPath}
-          onOpenFile={mode.onOpenFile}
-          onOpenToSide={mode.onOpenToSide}
-          onAddToChat={mode.onAddToChat}
-          onCopyPath={mode.onCopyPath}
-          onCopyRelativePath={mode.onCopyRelativePath}
-          onReveal={mode.onReveal}
-          revealTargetName={mode.revealTargetName}
-          onDownload={mode.onDownload}
-          onDuplicate={mode.onDuplicate}
-          onRevert={mode.onRevert}
-          selectionControl={mode.renderSelectionControl?.(item.file.path)}
-          contextMenuAfter={mode.contextMenuAfter}
-          testID={`diff-tree-file-${item.fileIndex}`}
-        />
-      );
-    },
-    [
-      handleCollapseFolder,
-      handleSelectFile,
-      handleSelectPath,
-      handleToggleFolder,
-      collapsedFolders,
-      mode,
-      selectedPath,
-    ],
-  );
-  const keyExtractor = useCallback(
-    (item: DiffTreeRow) =>
-      item.kind === "folder" ? `folder-${item.dirPath}` : `file-${item.file.path}`,
-    [],
-  );
+interface JumpToFileVisibility {
+  isCompact: boolean;
+  presentation: ChangesPresentation;
+  hasChanges: boolean;
+  isDiffLoading: boolean;
+}
 
-  return (
-    <FlatList
-      data={items}
-      renderItem={renderItem}
-      keyExtractor={keyExtractor}
-      style={styles.scrollView}
-      contentContainerStyle={styles.contentContainer}
-      testID="changes-file-tree"
-    />
-  );
+/**
+ * The room the floating Jump to file action needs over the diff, and zero where
+ * it is not offered. Compact users never see the tree rail, so the diff is their
+ * only view of what changed; the tree and diff presentations are already halves
+ * of a desktop split.
+ */
+function jumpToFileClearance(visibility: JumpToFileVisibility): number {
+  if (!visibility.isCompact || visibility.presentation !== "combined") return 0;
+  if (!visibility.hasChanges || visibility.isDiffLoading) return 0;
+  return JUMP_TO_FILE_CLEARANCE;
 }
 
 function ChangesTreeRail({
@@ -1671,9 +1466,7 @@ export function ChangesSurface({
   workspaceId,
   cwd,
   enabled,
-  presentation: suppliedPresentation,
-  modeScope,
-  defaultPaneId,
+  presentation = "combined",
   focusPath,
   focusRequestId,
   onOpenFile,
@@ -1685,7 +1478,6 @@ export function ChangesSurface({
 }: ChangesSurfaceProps) {
   const { settings: appSettings } = useAppSettings();
   const { preferences, updatePreferences } = useChangesPreferences();
-  const presentation = suppliedPresentation ?? defaultChangesPresentation(preferences.inlineDiff);
   const { t } = useTranslation();
   const isMobile = useIsCompactFormFactor();
   const canUseSplitLayout = isWeb && !isMobile;
@@ -1724,7 +1516,7 @@ export function ChangesSurface({
     const layout = preferences.layout === "unified" ? "split" : "unified";
     void updatePreferences({ layout });
   }, [preferences.layout, updatePreferences]);
-  const codeFontSize = resolveCompactFontSize(appSettings.codeFontSize, isMobile);
+  const codeFontSize = appSettings.codeFontSize;
 
   const toast = useToast();
   const isLocalDaemon = useIsLocalDaemon(serverId);
@@ -1751,6 +1543,8 @@ export function ChangesSurface({
   const fsEntryDuplicateEnabled = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.fsEntryDuplicate === true,
   );
+  const { reviewPresentation, includeStructuralSource } = useHostDiffReview(serverId, presentation);
+  const { presentation: reviewMode, select: selectReviewMode } = reviewPresentation;
   const runRefresh = useCheckoutGitActionsStore((s) => s.refresh);
   const isRefreshing =
     useCheckoutGitActionsStore((s) => s.getStatus({ serverId, cwd, actionId: "refresh" })) ===
@@ -1782,13 +1576,15 @@ export function ChangesSurface({
     isDiffLoading,
     reviewActions,
     reviewAttachment,
+    reviewFeedback,
   } = useWorkingDiff({
+    presentation,
     serverId,
     workspaceId: workspaceId ?? undefined,
     cwd,
     ignoreWhitespace: preferences.hideWhitespace,
+    includeStructuralSource, // OTTO(structural-diff): the Line path requests no full source.
     enabled: enabled !== false,
-    modeScope,
   });
   usePublishWorkingDiffAttachment({
     serverId,
@@ -1900,22 +1696,6 @@ export function ChangesSurface({
     [client, cwd, t, toast],
   );
   const onRevertPath = useDiscardChangesAction({ serverId, cwd, diffMode });
-  const rollbackSelectionSupported = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitRollback === true,
-  );
-  const commitSupported = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitCommit === true,
-  );
-  const gitLogSupported = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.checkoutGitLog === true,
-  );
-  const changesSelection = useChangesSelectionAddon({
-    serverId,
-    cwd,
-    files,
-    enabled: shouldEnableChangesSelection(diffMode, rollbackSelectionSupported, commitSupported),
-    rollbackSupported: rollbackSelectionSupported,
-  });
   const [localFocusRequest, setLocalFocusRequest] = useState<{
     path: string;
     revision: number;
@@ -1959,10 +1739,6 @@ export function ChangesSurface({
       onDownload: handleDownloadPath,
       onDuplicate: fsEntryDuplicateEnabled ? handleDuplicatePath : undefined,
       onRevert: onRevertPath,
-      renderSelectionControl: changesSelection.enabled
-        ? changesSelection.renderSelectionControl
-        : undefined,
-      contextMenuAfter: changesSelection.bulkRollbackMenuItem,
     }),
     [
       reviewActions,
@@ -1981,16 +1757,18 @@ export function ChangesSurface({
       fileManagerTarget,
       fsEntryDuplicateEnabled,
       onRevertPath,
-      changesSelection.enabled,
-      changesSelection.renderSelectionControl,
-      changesSelection.bulkRollbackMenuItem,
     ],
   );
 
+  const { bottom: bottomInset } = useSafeAreaInsets();
   const hasChanges = files.length > 0;
-  // New daemons reject this before sending a structured payload. Retain the
-  // client check so a newer app stays safe against an older daemon as well.
-  const diffRenderBudgetExceeded = useMemo(() => exceedsDiffRenderBudget(files), [files]);
+  const jumpToFileInset = jumpToFileClearance({
+    isCompact: isMobile,
+    presentation,
+    hasChanges,
+    isDiffLoading,
+  });
+  const showJumpToFile = jumpToFileInset > 0;
   const selectedDiffStat = useMemo(
     () => computeSelectedDiffStat(files, isDiffLoading),
     [files, isDiffLoading],
@@ -2013,23 +1791,13 @@ export function ChangesSurface({
   );
   const { gitActions, branchLabel } = useGitActions({
     serverId,
+    workspaceId, // OTTO(git-fetch): owning workspace, not a guessed path identity.
     cwd,
     icons: GIT_ACTION_ICONS,
   });
   const committedDiffDescription = useMemo(
     () => computeCommittedDiffDescription(branchLabel, baseRefLabel),
     [baseRefLabel, branchLabel],
-  );
-  // Git-operation log tab (commit/pull/push output). One tab per operation per
-  // workspace; reopening focuses the existing tab.
-  const handleOpenGitLog = useMemo(
-    () =>
-      workspaceId
-        ? () => {
-            openGitLogTab({ serverId, workspaceId, operation: "commit", defaultPaneId });
-          }
-        : null,
-    [defaultPaneId, serverId, workspaceId],
   );
   const emptyMessage = t("diffViewer.empty");
   const emptyAction = computeChangesEmptyAction({
@@ -2043,28 +1811,42 @@ export function ChangesSurface({
   });
 
   const diffContent: ReactElement = (
-    <DiffBodyContent
-      isStatusLoading={isStatusLoading}
-      statusErrorMessage={statusErrorMessage}
-      notGit={notGit}
-      isDiffLoading={isDiffLoading}
-      diffErrorMessage={diffErrorMessage}
-      diffTooLarge={diffTooLarge || diffRenderBudgetExceeded}
-      hasChanges={hasChanges}
-      emptyMessage={emptyMessage}
-      emptyAction={emptyAction}
-      checkingRepositoryLabel={t("workspace.git.diff.checkingRepository")}
-      loadingFilesLabel={t("workspace.fileExplorer.states.loading")}
-      notRepositoryLabel={t("workspace.git.diff.notRepository")}
-    >
-      <DiffDocument
-        files={files}
-        collapseState={collapseState}
-        displayPreferences={sharedDisplayPreferences}
-        presentation={preferences.presentation}
-        mode={workingMode}
+    <View style={styles.diffContainer}>
+      <DiffBodyContent
+        isStatusLoading={isStatusLoading}
+        statusErrorMessage={statusErrorMessage}
+        notGit={notGit}
+        isDiffLoading={isDiffLoading}
+        diffErrorMessage={diffErrorMessage}
+        diffTooLarge={diffTooLarge}
+        hasChanges={hasChanges}
+        emptyMessage={emptyMessage}
+        emptyAction={emptyAction}
+        checkingRepositoryLabel={t("workspace.git.diff.checkingRepository")}
+        notRepositoryLabel={t("workspace.git.diff.notRepository")}
+      >
+        <DiffDocument
+          files={files}
+          reviewPresentation={reviewPresentation}
+          contentInsetBottom={floatingActionsClearance(
+            [jumpToFileInset, reviewFeedback.clearance],
+            bottomInset,
+          )}
+          collapseState={collapseState}
+          displayPreferences={sharedDisplayPreferences}
+          mode={workingMode}
+        />
+      </DiffBodyContent>
+      <ReviewFeedbackAction
+        bottomOffset={jumpToFileInset}
+        enabled={enabled}
+        hasDiff={presentation !== "tree"}
+        model={reviewFeedback.model}
+        state={reviewFeedback.state}
+        serverId={serverId}
+        workspaceId={workspaceId}
       />
-    </DiffBodyContent>
+    </View>
   );
   const bodyContent = (
     <ChangesBody
@@ -2107,7 +1889,6 @@ export function ChangesSurface({
         onToggleHideWhitespace: handleToggleHideWhitespace,
         onToggleWrapLines: handleToggleWrapLines,
         onToggleTree: handleToggleDesktopTree,
-        onOpenGitLog: handleOpenGitLog,
       }),
     [
       allFilesCollapsed,
@@ -2116,7 +1897,6 @@ export function ChangesSurface({
       handleCollapseAllFiles,
       handleExpandAllFiles,
       handleOpenDiff,
-      handleOpenGitLog,
       handleToggleInlineDiff,
       handleRefresh,
       handleToggleDesktopTree,
@@ -2137,6 +1917,17 @@ export function ChangesSurface({
   const changesHeaderModel = useMemo(
     () =>
       buildChangesHeaderModel({
+        basePicker: (
+          <ComparisonBasePicker
+            key={`${cwd}:${currentBranchName}`}
+            serverId={serverId}
+            workspaceId={workspaceId}
+            cwd={cwd}
+            branchName={currentBranchName}
+            baseRef={baseRef}
+            visible={diffMode === "base"}
+          />
+        ), // OTTO(diff-base)
         branchName: currentBranchName,
         committedDescription: committedDiffDescription,
         compact: isMobile,
@@ -2151,20 +1942,9 @@ export function ChangesSurface({
         selectedDiffStat,
         serverId,
         workspaceId,
-        // Otto: fork-point base picker inputs, read off the same git status the
-        // rest of this toolbar already resolves.
-        baseSwitcher: {
-          serverId,
-          workspaceId,
-          cwd,
-          baseRefLabel,
-          currentBranchName,
-          isOttoOwnedWorktree: status?.isOttoOwnedWorktree === true,
-          baseSource: status?.baseSource ?? null,
-          isBaseEditable: status?.isBaseEditable ?? false,
-        },
       }),
     [
+      baseRef, // OTTO(diff-base)
       committedDiffDescription,
       currentBranchName,
       cwd,
@@ -2178,64 +1958,79 @@ export function ChangesSurface({
       pullRequestStatus,
       selectedDiffStat,
       serverId,
-      status,
-      baseRefLabel,
       toolbarMode,
       workspaceId,
     ],
   );
 
+  // OTTO(structural-diff): use the existing toolbar without taking space from the diff.
+  const reviewControl = useMemo(
+    () =>
+      presentation !== "tree" && files.length > 0 ? (
+        <DiffPresentationControl inline value={reviewMode} onChange={selectReviewMode} />
+      ) : null,
+    [presentation, files.length, reviewMode, selectReviewMode],
+  );
+
   return (
-    <View
-      {...{
-        onContextMenu: (event: { preventDefault?: () => void }) => event.preventDefault?.(),
-      }}
-      style={styles.container}
+    <ManualCommitScope
+      serverId={serverId}
+      cwd={cwd}
+      enabled={enabled}
+      isGit={isGit}
+      diffMode={diffMode}
+      presentation={presentation}
+      files={files}
     >
-      {isGit ? (
-        <ChangesHeader
-          compact={isMobile}
-          repository={changesHeaderModel.repository}
-          comparison={changesHeaderModel.comparison}
-        />
-      ) : null}
+      <View
+        {...{
+          onContextMenu: (event: { preventDefault?: () => void }) => event.preventDefault?.(),
+        }}
+        style={styles.container}
+      >
+        {isGit ? (
+          <ChangesHeader
+            compact={isMobile}
+            repository={changesHeaderModel.repository}
+            comparison={changesHeaderModel.comparison}
+            reviewControl={reviewControl} // OTTO(structural-diff)
+            sidebarSurface={presentation === "tree"}
+          />
+        ) : null}
 
-      {forgeSetupMessage ? (
-        <View style={styles.forgeSetupCallout} testID="forge-setup-callout">
-          <Text style={styles.forgeSetupCalloutText}>{forgeSetupMessage}</Text>
+        {forgeSetupMessage ? (
+          <View style={styles.forgeSetupCallout} testID="forge-setup-callout">
+            <Text style={styles.forgeSetupCalloutText}>{forgeSetupMessage}</Text>
+          </View>
+        ) : null}
+
+        {prErrorMessage ? <Text style={styles.actionErrorText}>{prErrorMessage}</Text> : null}
+
+        <View style={styles.diffContainer}>
+          {bodyContent}
+          {showJumpToFile ? (
+            <JumpToFile files={files} mode={workingMode} onSelectFile={handleSelectTreeFile} />
+          ) : null}
         </View>
-      ) : null}
 
-      {prErrorMessage ? <Text style={styles.actionErrorText}>{prErrorMessage}</Text> : null}
+        <ReviewCommentSheet
+          enabled={enabled}
+          editor={reviewActions.sheetEditor}
+          reviewActions={reviewActions}
+          onChangeBody={reviewActions.onChangeEditorBody}
+        />
 
-      <View style={styles.diffContainer}>{bodyContent}</View>
-
-      {/* Otto's manual commit form shares file selection with bulk rollback. */}
-      <ChangesCommitSection
-        key={`${serverId}:${cwd}`}
-        serverId={serverId}
-        cwd={cwd}
-        workspaceId={workspaceId}
-        selectedPaths={changesSelection.selectedPaths}
-        totalFiles={files.length}
-        commitSupported={commitSupported}
-        logSupported={gitLogSupported}
-        isGit={isGit}
-        diffMode={diffMode}
-        hasChanges={hasChanges}
-        onToggleSelectAll={changesSelection.toggleAll}
-        onCommitted={changesSelection.clearSelection}
-      />
-
-      <ChangesCommits
-        presentation={presentation}
-        serverId={serverId}
-        cwd={cwd}
-        onCommitPress={handleCommitPress}
-        collapsed={instanceState.commitsCollapsed}
-        onCollapsedChange={handleCommitsCollapsedChange}
-      />
-    </View>
+        <ManualCommitSection serverId={serverId} />
+        <ChangesCommits
+          presentation={presentation}
+          serverId={serverId}
+          cwd={cwd}
+          onCommitPress={handleCommitPress}
+          collapsed={instanceState.commitsCollapsed}
+          onCollapsedChange={handleCommitsCollapsedChange}
+        />
+      </View>
+    </ManualCommitScope>
   );
 }
 
@@ -2249,6 +2044,9 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
     paddingLeft: theme.spacing[2],
+  },
+  changesToolbarSidebar: {
+    backgroundColor: theme.colors.surfaceSidebar,
   },
   changesToolbarIdentity: {
     flex: 1,
@@ -2291,26 +2089,20 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     position: "relative",
   },
-  scrollView: {
-    flex: 1,
-  },
   scrollContainer: {
     flex: 1,
     minHeight: 0,
     position: "relative",
   },
-  contentContainer: {
-    paddingBottom: theme.spacing[8],
-  },
   loadingContainer: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    padding: theme.spacing[4],
-    gap: theme.spacing[2],
+    paddingTop: theme.spacing[16],
+    gap: theme.spacing[4],
   },
   loadingText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
   },
   errorContainer: {
@@ -2330,14 +2122,11 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     paddingTop: theme.spacing[16],
-    paddingHorizontal: theme.spacing[4],
     gap: theme.spacing[2],
   },
   emptyText: {
-    alignSelf: "stretch",
     fontSize: theme.fontSize.base,
     color: theme.colors.foregroundMuted,
-    textAlign: "center",
   },
   tooltipText: {
     fontSize: theme.fontSize.sm,

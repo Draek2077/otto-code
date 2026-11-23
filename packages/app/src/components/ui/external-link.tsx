@@ -1,35 +1,38 @@
 import { useCallback, type ReactNode } from "react";
 import { Pressable, Text } from "react-native";
-import { ArrowUpRight } from "@/components/icons/material-icons";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { ArrowUpRight } from "lucide-react-native";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { openLink } from "@/utils/open-link";
+import type { Theme } from "@/styles/theme";
+import { openExternalUrl } from "@/utils/open-external-url";
 
-interface ExternalLinkProps {
+export interface ExternalLinkProps {
   href: string;
-  label: string;
+  label?: string;
+  children?: ReactNode;
+  onError?: (error: unknown) => void;
   tooltip?: ReactNode;
   testID?: string;
   accessibilityLabel?: string;
 }
 
 /**
- * Inline "Docs ↗" affordance - muted text + arrow-top-right icon, opens the
- * URL via the global openLink router (in-app browser tab or system browser,
- * per the "Open links" setting). Wrap in a Tooltip when there's a one-line
- * hint worth surfacing on hover/tap.
+ * Inline "Docs ↗" affordance — muted text + arrow-top-right icon, opens the
+ * URL via the platform's external opener. Wrap in a Tooltip when there's a
+ * one-line hint worth surfacing on hover. A native tap opens the URL.
  */
 export function ExternalLink({
   href,
   label,
+  children,
+  onError,
   tooltip,
   testID,
   accessibilityLabel,
 }: ExternalLinkProps) {
-  const { theme } = useUnistyles();
   const handlePress = useCallback(() => {
-    void openLink(href);
-  }, [href]);
+    void openExternalUrl(href).catch(onError ?? console.error);
+  }, [href, onError]);
 
   const trigger = (
     <Pressable
@@ -40,8 +43,8 @@ export function ExternalLink({
       testID={testID}
       style={styles.trigger}
     >
-      <Text style={styles.label}>{label}</Text>
-      <ArrowUpRight size="xs" color={theme.colors.foregroundMuted} />
+      <Text style={styles.label}>{children ?? label}</Text>
+      <ThemedArrowUpRight size={12} uniProps={iconColor} />
     </Pressable>
   );
 
@@ -50,7 +53,7 @@ export function ExternalLink({
   }
 
   return (
-    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile>
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent side="top" align="end" offset={6}>
         <Text style={styles.tooltipText}>{tooltip}</Text>
@@ -58,6 +61,9 @@ export function ExternalLink({
     </Tooltip>
   );
 }
+
+const iconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const ThemedArrowUpRight = withUnistyles(ArrowUpRight);
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {

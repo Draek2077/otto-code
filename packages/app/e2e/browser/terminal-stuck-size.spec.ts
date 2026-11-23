@@ -19,7 +19,7 @@ import { getServerId } from "../support/helpers/server-id";
  * instead of racing real OS focus.
  *
  * The assertion reads the PTY's own opinion of its size (`stty size`) with input written
- * daemon-side - clicking or typing in the pane would fire the focus-claim path and mask the bug.
+ * daemon-side — clicking or typing in the pane would fire the focus-claim path and mask the bug.
  */
 
 /**
@@ -28,7 +28,7 @@ import { getServerId } from "../support/helpers/server-id";
  *
  * This has to be stubbed: headless Chromium never actually blurs. Opening a second page and
  * calling bringToFront() leaves the first page at `hasFocus() === true`, `visibilityState
- * === "visible"`, and fires no focus/blur events at all - so there is no way to produce a real
+ * === "visible"`, and fires no focus/blur events at all — so there is no way to produce a real
  * blur from Playwright. This stubs the environment signal, not the app: the daemon, the
  * WebSocket, the terminal, and every code path under test stay real.
  */
@@ -49,8 +49,8 @@ interface RenderedTerminalSize {
 
 async function readRenderedTerminalSize(page: Page): Promise<RenderedTerminalSize | null> {
   return await page.evaluate(() => {
-    const terminal = (window as Window & { __ottoTerminal?: { rows: number; cols: number } })
-      .__ottoTerminal;
+    const terminal = (window as Window & { __paseoTerminal?: { rows: number; cols: number } })
+      .__paseoTerminal;
     return terminal ? { rows: terminal.rows, cols: terminal.cols } : null;
   });
 }
@@ -59,7 +59,7 @@ async function createTerminalViaMenu(page: Page): Promise<void> {
   // Workspaces always render a hidden explorer companion pane alongside the
   // main pane, so an unscoped testid locator matches both; scope to the
   // visible one.
-  await page.getByTestId("workspace-new-tab-menu-trigger").filter({ visible: true }).click();
+  await page.getByTestId("workspace-new-tab-button").filter({ visible: true }).click();
   await page
     .getByTestId("workspace-new-tab-menu-terminal")
     .filter({ visible: true })
@@ -132,7 +132,7 @@ test.describe("terminal PTY size claim under lost window focus", () => {
 
     await page.goto(buildHostWorkspaceRoute(getServerId(), harness.workspaceId));
     await expect(
-      page.getByTestId("workspace-new-tab-menu-trigger").filter({ visible: true }),
+      page.getByTestId("workspace-new-tab-button").filter({ visible: true }),
     ).toBeVisible({
       timeout: 30_000,
     });
@@ -172,7 +172,7 @@ test.describe("terminal PTY size claim under lost window focus", () => {
     // ...and comes back.
     await setWindowFocused(page, true);
 
-    // __ottoTerminal points at the most recently mounted xterm - the new terminal.
+    // __paseoTerminal points at the most recently mounted xterm — the new terminal.
     const rendered = requireTerminalSize(await readRenderedTerminalSize(page));
     // Sanity: the pane really rendered at a desktop size, not the PTY default.
     expect(rendered.cols).toBeGreaterThan(80);

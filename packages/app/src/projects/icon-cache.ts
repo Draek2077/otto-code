@@ -1,9 +1,9 @@
-import type { ProjectIcon } from "@otto-code/protocol/messages";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { ProjectIcon } from "@getpaseo/protocol/messages";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { projectIconCacheStorage } from "./icon-cache-storage";
 import type { ProjectIconTarget } from "./icon-target";
 
-const STORAGE_KEY = "@otto:project-icon-cache";
+const STORAGE_KEY = "@paseo:project-icon-cache";
 const CACHE_VERSION = 1;
 const PERSIST_DELAY_MS = 250;
 const MAX_ENTRIES = 512;

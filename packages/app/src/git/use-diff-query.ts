@@ -4,7 +4,7 @@ import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useReplicaQuery } from "@/data/query";
 import { checkoutDiffPushRoute } from "@/data/push-router";
 import { useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import type { ParsedDiffFile, SubscribeCheckoutDiffResponse } from "@otto-code/protocol/messages";
+import type { ParsedDiffFile, SubscribeCheckoutDiffResponse } from "@getpaseo/protocol/messages";
 import { checkoutDiffQueryKey } from "@/git/query-keys";
 
 interface UseCheckoutDiffQueryOptions {
@@ -13,6 +13,7 @@ interface UseCheckoutDiffQueryOptions {
   mode: "uncommitted" | "base";
   baseRef?: string;
   ignoreWhitespace?: boolean;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
   enabled?: boolean;
   queryScope?: string;
 }
@@ -46,6 +47,7 @@ export function useCheckoutDiffQuery({
   mode,
   baseRef,
   ignoreWhitespace,
+  includeStructuralSource,
   enabled = true,
   queryScope,
 }: UseCheckoutDiffQueryOptions) {
@@ -68,8 +70,19 @@ export function useCheckoutDiffQuery({
       compareIgnoreWhitespace,
     );
     const normalizedScope = queryScope?.trim();
-    return normalizedScope ? [...comparisonKey, "scope", normalizedScope] : comparisonKey;
-  }, [serverId, cwd, compareMode, compareBaseRef, compareIgnoreWhitespace, queryScope]);
+    const evidenceKey = includeStructuralSource
+      ? [...comparisonKey, "structural-source"]
+      : comparisonKey;
+    return normalizedScope ? [...evidenceKey, "scope", normalizedScope] : evidenceKey;
+  }, [
+    serverId,
+    cwd,
+    compareMode,
+    compareBaseRef,
+    compareIgnoreWhitespace,
+    queryScope,
+    includeStructuralSource,
+  ]);
   const subscriptionId = useMemo(() => `checkoutDiff:${JSON.stringify(queryKey)}`, [queryKey]);
   const routeEnabled = Boolean(queryEnabled && isConnected && cwd);
 
@@ -87,18 +100,40 @@ export function useCheckoutDiffQuery({
         mode: compareMode,
         ...(compareBaseRef ? { baseRef: compareBaseRef } : {}),
         ignoreWhitespace: compareIgnoreWhitespace,
+        ...(includeStructuralSource ? { includeStructuralSource: true } : {}),
       },
     }),
   });
 
-  const payload = query.data ?? null;
-  const payloadError = payload?.error ?? null;
+  return deriveCheckoutDiffResult(query.data ?? null);
+}
 
+export interface CheckoutDiffResult {
+  files: ParsedDiffFile[];
+  payloadError: CheckoutDiffQueryPayload["error"];
+  diffTooLarge: boolean;
+  isLoading: boolean;
+  isFetching: boolean;
+  isError: boolean;
+  error: null;
+}
+
+/**
+ * The result derives from the payload alone. Until a payload arrives there is no
+ * diff to describe, so the boundary reports loading rather than an empty diff —
+ * whether the query is idle (an inactive retained panel), in flight, or the host
+ * is disconnected. Reporting `files: []` as settled made callers render "+0 -0"
+ * and "No changes" for a diff nobody has fetched yet.
+ */
+export function deriveCheckoutDiffResult(
+  payload: CheckoutDiffQueryPayload | null,
+): CheckoutDiffResult {
+  const payloadError = payload?.error ?? null;
   return {
     files: payload?.files ?? [],
     payloadError,
     diffTooLarge: payload?.diffTooLarge === true,
-    isLoading: payload === null && queryEnabled && isConnected,
+    isLoading: payload === null,
     isFetching: false,
     isError: Boolean(payloadError),
     error: null,

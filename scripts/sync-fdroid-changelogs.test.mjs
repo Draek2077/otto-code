@@ -85,7 +85,13 @@ test("writes the four stable 0.5.0 changelog files", () => {
     (dir) => {
       const result = syncFdroidChangelogs([], { cwd: dir });
       assert.deepEqual(
-        result.written.map((entry) => entry.replace(/ \(.+\)$/, "")),
+        // OTTO(test): compare generated paths consistently on Windows and POSIX.
+        result.written.map((entry) =>
+          entry
+            .replace(/ \(.+\)$/, "")
+            .split(path.sep)
+            .join("/"),
+        ),
         [
           "fastlane/metadata/android/en-US/changelogs/50001.txt",
           "fastlane/metadata/android/en-US/changelogs/50002.txt",
@@ -134,7 +140,8 @@ test("stays inside the 500 character limit and keeps the full-notes link", () =>
         contents.length <= CHANGELOG_CHARACTER_LIMIT,
         `expected <= ${CHANGELOG_CHARACTER_LIMIT}, got ${contents.length}`,
       );
-      assert.match(contents, /Full notes: https:\/\/paseo\.sh\/changelog\n$/);
+      // OTTO(identity): F-Droid metadata links to Otto's release notes.
+      assert.match(contents, /Full notes: https:\/\/otto-code\.me\/changelog\n$/);
       // Truncation happens at a bullet boundary, never mid-sentence.
       assert.equal(contents.includes("Shipped improvement number 0."), true);
       assert.equal(/- Shipped improvement number \d+\.\.\.$/m.test(contents), false);
@@ -266,17 +273,13 @@ test("renders the real 0.1.109 notice, which is the entry's whole point", () => 
 });
 
 test("preserves the standalone 0.1.96 Android notice", () => {
-  // The upstream 0.1.x history was removed from Otto's CHANGELOG.md, so the
-  // 0.1.96 entry body is inlined verbatim instead of read from the repo.
-  const entry = [
-    "",
-    "_This release only fixes an Android issue — desktop users don't need to update._",
-    "",
-    "### Fixed",
-    "",
-    "- On Android, the sidebar no longer reappears and gets stuck after you open a chat",
-    "",
-  ].join("\n");
+  // OTTO(test-fixture): preserve the upstream regression independently of Otto's release history.
+  const changelog = readFileSync(
+    new URL("./otto/fixtures/paseo-android-update-notice.md", import.meta.url),
+    "utf8",
+  ).replaceAll("\r\n", "\n");
+  const entry = changelog.match(/## 0\.1\.96 - 2026-06-13\n([\s\S]*?)(?=\n## |$)/)?.[1];
+  assert.ok(entry);
 
   const contents = formatFdroidChangelog(entry.split("\n"));
   assert.match(contents, /This release only fixes an Android issue/);

@@ -124,15 +124,19 @@ export function handleToolCallStart(
       pushTimelineBlock(entry, currentTime, { type: 'tool_call', label: `${toolName}: ${args}`.slice(0, LABEL_LEN_TIMELINE), color: COLORS.tool }, ctx)
     }
 
-    // Track file attention
-    if (toolName === 'Read' || toolName === 'Edit' || toolName === 'Write') {
+    // OTTO PATCH: canonical file semantics are independent of provider tool names.
+    // Frozen demo events retain their original Read/Edit/Write identities.
+    const fileAccess = payload.fileAccess === 'read' || payload.fileAccess === 'write'
+      ? payload.fileAccess : toolName === 'Read' ? 'read'
+        : toolName === 'Edit' || toolName === 'Write' ? 'write' : undefined
+    if (fileAccess) {
       const filePath = extractFilePath(inputData, args)
       if (filePath) {
         const prev = state.fileAttention.get(filePath)
         const updated = prev
           ? { ...prev, agents: [...prev.agents] }
-          : { path: filePath, reads: 0, edits: 0, totalTokens: 0, lastAccessed: currentTime, agents: [] as string[] }
-        if (toolName === 'Read') updated.reads++
+          : { path: filePath, reads: 0, edits: 0, totalTokens: 0, tokensKnown: false, lastAccessed: currentTime, agents: [] as string[] }
+        if (fileAccess === 'read') updated.reads++
         else updated.edits++
         updated.lastAccessed = currentTime
         if (!updated.agents.includes(agentName)) updated.agents.push(agentName)
@@ -219,12 +223,12 @@ export function handleToolCallEnd(
     }
 
     // File attention token cost
-    if (tokenCost) {
+    if (typeof tokenCost === 'number' && Number.isFinite(tokenCost) && tokenCost >= 0) {
       const filePath = extractFilePath(matchedTool?.inputData, matchedTool?.args)
       if (filePath) {
         const existing = state.fileAttention.get(filePath)
         if (existing) {
-          state.fileAttention.set(filePath, { ...existing, totalTokens: existing.totalTokens + tokenCost })
+          state.fileAttention.set(filePath, { ...existing, totalTokens: existing.totalTokens + tokenCost, tokensKnown: true })
         }
       }
     }

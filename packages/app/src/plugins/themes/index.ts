@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { z } from "zod";
-import type { PluginThemeContribution } from "@otto-code/plugin";
+import type { PluginThemeContribution } from "@getpaseo/plugin";
 import { useHostFeatureMap } from "@/runtime/host-features";
 import {
   buildDarkSemanticColors,
@@ -76,14 +76,9 @@ function buildDarkPluginTheme(contribution: PluginThemeContribution): Theme {
       accentBright: accent,
       accentForeground: colors.background,
       destructive: darkTheme.colors.destructive,
-      scrollbarHandle: darkTheme.colors.scrollbarHandle,
-      spinnerPrimary: darkTheme.colors.spinnerPrimary,
-      spinnerSecondary: darkTheme.colors.spinnerSecondary,
       terminalBlack: colors.control,
       terminalBrightBlack: colors.ring,
-      // A plugin's `ring` already lands on the tokens Otto has for it
-      // (surface4, foregroundExtraMuted, terminalBrightBlack); Otto derives
-      // focus rings from the accent ladder rather than from a ring token.
+      ring: colors.ring,
     }),
   );
 }
@@ -100,8 +95,6 @@ function buildLightPluginTheme(contribution: PluginThemeContribution): Theme {
       surface4: colors.ring,
       surfaceDiffEmpty: colors.raised,
       surfaceSidebar: colors.control,
-      // The slider/switch groove is not something a plugin theme authors.
-      surfaceControlTrack: lightTheme.colors.surfaceControlTrack,
       foreground: colors.foreground,
       foregroundMuted: colors.mutedForeground,
       foregroundExtraMuted: colors.ring,
@@ -110,12 +103,12 @@ function buildLightPluginTheme(contribution: PluginThemeContribution): Theme {
       accent,
       accentBright: accent,
       accentForeground: colors.background,
-      // `primary` is derived from `foreground` inside the palette builder, which
-      // is exactly what a plugin would set it to; only its foreground is an input.
+      primary: colors.foreground,
+      primaryForeground: colors.background,
       destructive: lightTheme.colors.destructive,
-      scrollbarHandle: lightTheme.colors.scrollbarHandle,
-      spinnerPrimary: lightTheme.colors.spinnerPrimary,
-      spinnerSecondary: lightTheme.colors.spinnerSecondary,
+      terminalBlack: colors.foreground,
+      terminalBrightBlack: colors.ring,
+      ring: colors.ring,
     }),
   );
 }

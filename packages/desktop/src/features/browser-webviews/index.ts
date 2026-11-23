@@ -1,16 +1,12 @@
 import { webContents as allWebContents, type WebContents } from "electron";
-import { OTTO_BROWSER_PROFILE_PARTITION } from "../browser-profile.js";
+import { PASEO_BROWSER_PROFILE_PARTITION } from "../browser-profile.js";
 import {
   BROWSER_NEW_TAB_REQUEST_EVENT,
   decideBrowserWindowOpenRequest,
   isAllowedBrowserWebviewUrl,
   PendingBrowserWindowOpenRequests,
 } from "./window-open.js";
-import { OttoBrowserWebviewRegistry } from "./registry.js";
-import {
-  observeBrowserUserActivation,
-  type BrowserInputOwnershipGuest,
-} from "../browser-automation/input-ownership.js";
+import { PaseoBrowserWebviewRegistry } from "./registry.js";
 
 export {
   BROWSER_NEW_TAB_REQUEST_EVENT,
@@ -18,20 +14,16 @@ export {
   PendingBrowserWindowOpenRequests,
 };
 
-const browserRegistry = new OttoBrowserWebviewRegistry();
+const browserRegistry = new PaseoBrowserWebviewRegistry();
 
 interface BrowserWebContentsIdentity {
   readonly id: number;
   isDestroyed(): boolean;
 }
 
-interface RegisteredBrowserWebContents
-  extends BrowserWebContentsIdentity, BrowserInputOwnershipGuest {
-  readonly hostWebContents:
-    | (BrowserWebContentsIdentity & NonNullable<BrowserInputOwnershipGuest["hostWebContents"]>)
-    | null;
+interface RegisteredBrowserWebContents extends BrowserWebContentsIdentity {
+  readonly hostWebContents: BrowserWebContentsIdentity | null;
   readonly session: object;
-  setBackgroundThrottling(allowed: boolean): void;
   once(event: "destroyed", listener: () => void): void;
 }
 
@@ -43,41 +35,40 @@ interface AttachedBrowserRegistration {
 
 interface RegisterAttachedBrowserInput extends AttachedBrowserRegistration {
   sender: BrowserWebContentsIdentity;
-  /** Sessions whose hardened guests may be browser-automation targets. */
-  allowedGuestSessions: readonly object[];
+  profileSession: object;
   findWebContents(webContentsId: number): RegisteredBrowserWebContents | null;
 }
 
-export function isOttoBrowserWebviewAttach(input: { src?: string; partition?: string }): boolean {
+export function isPaseoBrowserWebviewAttach(input: { src?: string; partition?: string }): boolean {
   return (
-    isAllowedBrowserWebviewUrl(input.src) && input.partition === OTTO_BROWSER_PROFILE_PARTITION
+    isAllowedBrowserWebviewUrl(input.src) && input.partition === PASEO_BROWSER_PROFILE_PARTITION
   );
 }
 
-export function listRegisteredOttoBrowserIds(): string[] {
+export function listRegisteredPaseoBrowserIds(): string[] {
   return browserRegistry.listBrowserIds();
 }
 
-export function getOttoBrowserWebviewRegistry(): OttoBrowserWebviewRegistry {
+export function getPaseoBrowserWebviewRegistry(): PaseoBrowserWebviewRegistry {
   return browserRegistry;
 }
 
-export function prepareOttoBrowserWebContents(contents: RegisteredBrowserWebContents): void {
+export function preparePaseoBrowserWebContents(contents: RegisteredBrowserWebContents): void {
   const webContentsId = contents.id;
-  contents.setBackgroundThrottling(false);
-  observeBrowserUserActivation(contents);
+  // Preserve Chromium throttling when the host window is hidden. Browser
+  // residency and screenshot capture do not require a lifetime override.
   contents.once("destroyed", () => {
     browserRegistry.unregisterWebContents(webContentsId);
   });
 }
 
-export function registerAttachedOttoBrowser(input: RegisterAttachedBrowserInput): boolean {
+export function registerAttachedPaseoBrowser(input: RegisterAttachedBrowserInput): boolean {
   const guest = input.findWebContents(input.webContentsId);
   if (
     !guest ||
     guest.isDestroyed() ||
     guest.hostWebContents !== input.sender ||
-    !input.allowedGuestSessions.includes(guest.session)
+    guest.session !== input.profileSession
   ) {
     return false;
   }
@@ -94,7 +85,7 @@ export function registerAttachedOttoBrowser(input: RegisterAttachedBrowserInput)
   return true;
 }
 
-export function getOttoBrowserIdForWebContents(
+export function getPaseoBrowserIdForWebContents(
   contents: BrowserWebContentsIdentity | null,
 ): string | null {
   if (!contents || contents.isDestroyed()) {
@@ -103,27 +94,27 @@ export function getOttoBrowserIdForWebContents(
   return browserRegistry.getBrowserIdForWebContents(contents.id);
 }
 
-export function unregisterOttoBrowser(browserId: string): void {
+export function unregisterPaseoBrowser(browserId: string): void {
   browserRegistry.unregisterBrowser(browserId);
 }
 
-export function unregisterOttoBrowserFromHost(hostWebContentsId: number, browserId: string): void {
+export function unregisterPaseoBrowserFromHost(hostWebContentsId: number, browserId: string): void {
   browserRegistry.unregisterBrowserFromHost(hostWebContentsId, browserId);
 }
 
-export function unregisterOttoBrowserHost(hostWebContentsId: number): void {
+export function unregisterPaseoBrowserHost(hostWebContentsId: number): void {
   browserRegistry.unregisterHostWebContents(hostWebContentsId);
 }
 
-export function getOttoBrowserWorkspaceId(browserId: string): string | null {
+export function getPaseoBrowserWorkspaceId(browserId: string): string | null {
   return browserRegistry.getWorkspaceId(browserId);
 }
 
-export function listRegisteredOttoBrowserIdsForWorkspace(workspaceId: string): string[] {
+export function listRegisteredPaseoBrowserIdsForWorkspace(workspaceId: string): string[] {
   return browserRegistry.listBrowserIdsForWorkspace(workspaceId);
 }
 
-export function setWorkspaceActiveOttoBrowserId(input: {
+export function setWorkspaceActivePaseoBrowserId(input: {
   hostWebContentsId: number;
   workspaceId: string;
   browserId: string | null;
@@ -131,18 +122,18 @@ export function setWorkspaceActiveOttoBrowserId(input: {
   browserRegistry.setWorkspaceActiveBrowser(input);
 }
 
-export function getWorkspaceActiveOttoBrowserId(workspaceId: string): string | null {
+export function getWorkspaceActivePaseoBrowserId(workspaceId: string): string | null {
   return browserRegistry.getMostRecentActiveBrowserIdForWorkspace(workspaceId);
 }
 
-export function getWorkspaceActiveOttoBrowserIdForHostWindow(
+export function getWorkspaceActivePaseoBrowserIdForHostWindow(
   workspaceId: string,
   hostWebContentsId: number,
 ): string | null {
   return browserRegistry.getActiveBrowserIdForWorkspaceInHostWindow(hostWebContentsId, workspaceId);
 }
 
-export function getOttoBrowserWebContentsForHostWindow(
+export function getPaseoBrowserWebContentsForHostWindow(
   browserId: string,
   hostWebContentsId: number,
 ): WebContents | null {
@@ -161,7 +152,7 @@ export function getOttoBrowserWebContentsForHostWindow(
   return null;
 }
 
-export function getActiveOttoBrowserWebContentsForHostWindow(
+export function getActivePaseoBrowserWebContentsForHostWindow(
   hostWebContentsId: number,
 ): WebContents | null {
   const browserId = browserRegistry.getActiveBrowserIdForHostWindow(hostWebContentsId);

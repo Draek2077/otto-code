@@ -1,17 +1,20 @@
+# OTTO(identity): keep source package paths, expose Otto commands and metadata.
 {
   lib,
+  callPackage, # OTTO(editor)
   stdenv,
   buildNpmPackage,
-  nodejs_24,
+  nodejs_22,
   python3,
   makeWrapper,
   autoPatchelfHook,
   # node-pty needs libuv headers on Linux
   libuv,
+  chromium, # OTTO(browser-host): Linux daemon images include their host-owned browser runtime.
   # Exposed so downstream flakes that follow a different nixpkgs revision
   # (where `fetchNpmDeps` may produce a different hash for the same lockfile)
   # can override via `.override { npmDepsHash = "sha256-..."; }` without
-  # `overrideAttrs` gymnastics - `npmDepsHash` is destructured from
+  # `overrideAttrs` gymnastics — `npmDepsHash` is destructured from
   # `buildNpmPackage`'s args, so `overrideAttrs` cannot reach it.
   #
   # The default is read from a sidecar file so the CI auto-updater can replace
@@ -19,8 +22,11 @@
   npmDepsHash ? lib.fileContents ./npm-deps.hash,
 }:
 
+let editorDotnetProbe = callPackage ./dotnet-probe.nix { }; in
 buildNpmPackage rec {
   pname = "otto";
+  passthru.editorDotnetProbe = editorDotnetProbe; # OTTO(editor): reused by desktop without rebuilding NuGet inputs.
+  OTTO_DOTNET_PROBE_PAYLOAD = "${editorDotnetProbe}/lib/otto-dotnet-probe";
   version = (builtins.fromJSON (builtins.readFile ../package.json)).version;
 
   src = lib.cleanSourceWith {
@@ -57,11 +63,13 @@ buildNpmPackage rec {
       && !(lib.hasSuffix ".e2e.test.ts" baseName)
       && baseName != "node_modules"
       && baseName != ".git"
+      && baseName != ".paseo"
       && baseName != ".otto"
+      && baseName != ".tmp"
       && baseName != ".DS_Store";
   };
 
-  nodejs = nodejs_24;
+  nodejs = nodejs_22;
 
   # Default hash lives in nix/npm-deps.hash (see arg default above).
   # CI auto-updates that file when package-lock.json changes (see .github/workflows/).
@@ -84,7 +92,7 @@ buildNpmPackage rec {
     stdenv.cc.cc.lib # libstdc++ for sherpa-onnx prebuilt binaries
   ];
 
-  # Don't use the default npm build hook - we need a custom build sequence
+  # Don't use the default npm build hook — we need a custom build sequence
   dontNpmBuild = true;
 
   buildPhase = ''
@@ -109,35 +117,38 @@ buildNpmPackage rec {
     # (@vercel/nft from supervisor-entrypoint.js, cli/dist/index.js, and the
     # forked terminal/speech worker processes) plus an explicit list of non-JS
     # assets read at runtime. The trace script is the single source of
-    # truth for what the daemon needs at $out - auditable in plain JS, no
+    # truth for what the daemon needs at $out — auditable in plain JS, no
     # npm hoisting / .bin / workspace-symlink footguns.
-    mkdir -p $out/lib/otto
+    mkdir -p $out/lib/paseo
     node scripts/trace-daemon.mjs > daemon-files.txt
 
     while IFS= read -r path; do
       [ -z "$path" ] && continue
-      mkdir -p "$out/lib/otto/$(dirname "$path")"
-      cp -a "$path" "$out/lib/otto/$path"
+      mkdir -p "$out/lib/paseo/$(dirname "$path")"
+      cp -a "$path" "$out/lib/paseo/$path"
     done < daemon-files.txt
+
+    # Shell hooks invoke the retained CLI bin directly, without a system Node.
+    patchShebangs --build "$out/lib/paseo"
 
     # Root package.json lets node resolve the workspace layout when the
     # CLI/server bin starts from $out.
-    cp package.json $out/lib/otto/
+    cp package.json $out/lib/paseo/
 
     # Web UI Assets
-    cp -r packages/server/dist/server/web-ui $out/lib/otto/packages/server/dist/server/
+    cp -r packages/server/dist/server/web-ui $out/lib/paseo/packages/server/dist/server/
 
     # Create wrapper for the server entry point (for systemd / direct use)
     mkdir -p $out/bin
-    # Keep Otto's runtime mode separate from NODE_ENV, which belongs to spawned agents.
+    # Keep Paseo's runtime mode separate from NODE_ENV, which belongs to spawned agents.
     makeWrapper ${nodejs}/bin/node $out/bin/otto-server \
-      --add-flags "$out/lib/otto/packages/server/dist/scripts/supervisor-entrypoint.js" \
-      --set OTTO_NODE_ENV production
+      --add-flags "$out/lib/paseo/packages/server/dist/scripts/supervisor-entrypoint.js" \
+      --set PASEO_NODE_ENV production${lib.optionalString stdenv.hostPlatform.isLinux " --set-default OTTO_HOST_BROWSER_EXECUTABLE ${lib.getExe chromium}"}
 
     # Create wrapper for the CLI
     makeWrapper ${nodejs}/bin/node $out/bin/otto \
-      --add-flags "$out/lib/otto/packages/cli/dist/index.js" \
-      --set NODE_PATH "$out/lib/otto/node_modules"
+      --add-flags "$out/lib/paseo/packages/cli/dist/index.js" \
+      --set NODE_PATH "$out/lib/paseo/node_modules"${lib.optionalString stdenv.hostPlatform.isLinux " --set-default OTTO_HOST_BROWSER_EXECUTABLE ${lib.getExe chromium}"}
 
     runHook postInstall
   '';

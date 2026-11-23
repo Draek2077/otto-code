@@ -1,5 +1,4 @@
 import Svg, { Rect, Line } from "react-native-svg";
-import { withIconSizeToken } from "@/components/icons/icon-size";
 
 interface SourceControlPanelIconProps {
   size?: number;
@@ -7,7 +6,7 @@ interface SourceControlPanelIconProps {
   strokeWidth?: number;
 }
 
-function SourceControlPanelIconBase({
+export function SourceControlPanelIcon({
   size = 16,
   color = "currentColor",
   strokeWidth = 2,
@@ -57,8 +56,3 @@ function SourceControlPanelIconBase({
     </Svg>
   );
 }
-
-export const SourceControlPanelIcon = withIconSizeToken(
-  SourceControlPanelIconBase,
-  "SourceControlPanelIcon",
-);

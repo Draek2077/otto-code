@@ -1,5 +1,6 @@
-import path from "node:path";
+// OTTO(identity): expectations follow the visible Otto command and documentation.
 import YAML from "yaml";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   createHubInitScaffold,
@@ -64,7 +65,7 @@ describe("Hub init scaffold", () => {
         provider,
         providerFilters,
       });
-      expect(scaffold.triggerPath).toBe(`.otto/triggers/${provider}-help.yml`);
+      expect(scaffold.triggerPath).toBe(`.paseo/triggers/${provider}-help.yml`);
       const parsed = YAML.parse(scaffold.trigger) as {
         name: string;
         enabled: boolean;
@@ -112,10 +113,10 @@ describe("Hub init scaffold", () => {
 
 describe("GitHub origin detection", () => {
   it.each([
-    ["git@github.com:Draek2077/otto-code.git", "Draek2077/otto-code"],
-    ["ssh://git@github.com/Draek2077/otto-code.git", "Draek2077/otto-code"],
-    ["https://github.com/Draek2077/otto-code.git", "Draek2077/otto-code"],
-    ["https://gitlab.com/Draek2077/otto-code.git", undefined],
+    ["git@github.com:getpaseo/paseo.git", "getpaseo/paseo"],
+    ["ssh://git@github.com/getpaseo/paseo.git", "getpaseo/paseo"],
+    ["https://github.com/getpaseo/paseo.git", "getpaseo/paseo"],
+    ["https://gitlab.com/getpaseo/paseo.git", undefined],
   ])("resolves %s", (remote, expected) => {
     expect(githubRepositoryFromRemote(remote)).toBe(expected);
   });

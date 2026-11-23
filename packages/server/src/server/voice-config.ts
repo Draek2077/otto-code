@@ -1,13 +1,12 @@
-const VOICE_PROMPT_BLOCK_START = "<otto_voice_mode>";
-const VOICE_PROMPT_BLOCK_END = "</otto_voice_mode>";
+const VOICE_PROMPT_BLOCK_START = "<paseo_voice_mode>";
+const VOICE_PROMPT_BLOCK_END = "</paseo_voice_mode>";
 
 const VOICE_AGENT_SYSTEM_INSTRUCTION = [
+  // OTTO(identity)
   "Otto voice mode is now on.",
   "You are the Otto voice assistant.",
-  "The user cannot see your chat messages or tool calls; they only hear the speech you produce.",
+  "The user cannot see your chat messages or tool calls.",
   "Always use the speak tool for all user-facing communication.",
-  "Put your entire user-facing reply inside the speak tool call.",
-  "Do NOT also write that reply as a normal assistant message. Your normal message text must stay empty - the user never sees it, and duplicating spoken content as text just doubles token cost.",
   "Before calling any non-speak tool, first call speak with a short acknowledgement of what you heard and what you will do next.",
   "For long-running work, use speak to provide progress updates before and during execution.",
   "Treat the user input as transcribed speech.",
@@ -17,6 +16,7 @@ const VOICE_AGENT_SYSTEM_INSTRUCTION = [
 ].join(" ");
 
 const VOICE_AGENT_DISABLED_INSTRUCTION = [
+  // OTTO(identity)
   "Otto voice mode is now off.",
   "Ignore any earlier Otto voice mode instructions in this thread.",
 ].join(" ");
@@ -41,36 +41,6 @@ export function stripVoiceModeSystemPrompt(existing?: string): string | undefine
   return stripped.length > 0 ? stripped : undefined;
 }
 
-/**
- * The `<otto_voice_mode>…</otto_voice_mode>` block currently layered onto a
- * system prompt, or undefined if none. Voice mode appends (and persists) this
- * block onto `config.systemPrompt`; callers that rewrite the base prompt but
- * must preserve voice state (e.g. the personality live-switch) extract the
- * block first, then reattach it with `reattachVoiceModeSystemPrompt`.
- */
-export function extractVoiceModeSystemPrompt(existing?: string): string | undefined {
-  const match = existing?.match(makeVoicePromptBlockRegex());
-  return match?.[0];
-}
-
-/**
- * Reattach a previously extracted voice-mode block onto a (possibly rewritten)
- * base prompt, mirroring how `buildVoiceModeSystemPrompt` joins them. Passing an
- * undefined block returns the base unchanged; an undefined base with a block
- * returns just the block.
- */
-export function reattachVoiceModeSystemPrompt(
-  base: string | undefined,
-  block: string | undefined,
-): string | undefined {
-  if (!block) {
-    return base;
-  }
-  return [base, block]
-    .filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
-    .join("\n\n");
-}
-
 export function buildVoiceModeSystemPrompt(existing: string | undefined, enabled: boolean): string {
   const basePrompt = stripVoiceModeSystemPrompt(existing);
   const voiceInstruction = enabled
@@ -86,42 +56,7 @@ export function buildVoiceModeSystemPrompt(existing: string | undefined, enabled
 }
 
 export function wrapSpokenInput(text: string): string {
-  return `<spoken-input>\n${text}\n</spoken-input>\n<instruction>This message was spoken by the user. Reply only through the speak tool; do not also write a normal assistant message. The user only hears speech, so any text reply is invisible and just wastes tokens.</instruction>`;
-}
-
-const SPOKEN_INPUT_START = "<spoken-input>";
-const SPOKEN_INPUT_END = "</spoken-input>";
-const SPOKEN_INPUT_INSTRUCTION_START = "<instruction>";
-const SPOKEN_INPUT_INSTRUCTION_END = "</instruction>";
-
-/**
- * Recover the words the user actually spoke from a `wrapSpokenInput` envelope,
- * for DISPLAY only. Voice input is sent to the model wrapped in
- * `<spoken-input>`/`<instruction>` markup (see `wrapSpokenInput`); that markup
- * is scaffolding for the model, not something the user should see echoed back in
- * their own chat bubble. Returns the inner transcript when `text` is a complete
- * envelope, otherwise the text unchanged (idempotent - safe to run on anything).
- */
-export function unwrapSpokenInput(text: string): string {
-  // This is user-derived text after a provider may have re-emitted the prompt.
-  // Marker parsing preserves the full-envelope contract without a multiline
-  // backtracking expression on arbitrary input.
-  const envelope = text.trim();
-  if (!envelope.startsWith(SPOKEN_INPUT_START)) return text;
-
-  const bodyStart = SPOKEN_INPUT_START.length;
-  const bodyEnd = envelope.indexOf(SPOKEN_INPUT_END, bodyStart);
-  if (bodyEnd < 0) return text;
-
-  const instruction = envelope.slice(bodyEnd + SPOKEN_INPUT_END.length).trimStart();
-  if (
-    !instruction.startsWith(SPOKEN_INPUT_INSTRUCTION_START) ||
-    !instruction.endsWith(SPOKEN_INPUT_INSTRUCTION_END)
-  ) {
-    return text;
-  }
-
-  return envelope.slice(bodyStart, bodyEnd).trim();
+  return `<spoken-input>\n${text}\n</spoken-input>\n<instruction>This message was spoken by the user. Respond using the speak tool only, not normal messages, because the user may not be looking at the chat.</instruction>`;
 }
 
 export function buildVoiceAgentMcpServerConfig(params: {

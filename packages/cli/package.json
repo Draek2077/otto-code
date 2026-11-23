@@ -1,15 +1,9 @@
 {
-  "name": "@otto-code/cli",
+  "name": "@getpaseo/cli",
   "version": "0.9.35",
-  "description": "Otto CLI - control your AI coding agents from the command line",
-  "license": "AGPL-3.0-or-later",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Draek2077/otto-code.git",
-    "directory": "packages/cli"
-  },
+  "description": "Paseo CLI - control your AI coding agents from the command line",
   "bin": {
-    "otto": "bin/otto"
+    "otto": "bin/paseo"
   },
   "files": [
     "bin",
@@ -34,15 +28,16 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0.0",
-    "@otto-code/brain": "0.9.35",
-    "@otto-code/client": "0.9.35",
-    "@otto-code/protocol": "0.9.35",
-    "@otto-code/server": "0.9.35",
+    "@getpaseo/brain": "0.9.35",
+    "@getpaseo/client": "0.9.35",
+    "@getpaseo/plugin": "^0.9.35",
+    "@getpaseo/protocol": "0.9.35",
+    "@getpaseo/server": "0.9.35",
     "chalk": "^5.3.0",
     "commander": "^12.0.0",
     "mime-types": "^2.1.35",
     "tree-kill": "^1.2.2",
-    "ws": "^8.21.0",
+    "ws": "^8.14.2",
     "yaml": "^2.8.4",
     "zod": "^4.4.3"
   },
@@ -51,7 +46,7 @@
     "@types/ws": "^8.5.8",
     "tsx": "^4.6.0",
     "typescript": "^5.2.2",
-    "vitest": "^4.1.11",
+    "vitest": "^4.1.6",
     "zx": "^8.8.5"
   }
 }

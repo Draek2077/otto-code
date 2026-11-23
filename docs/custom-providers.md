@@ -1,6 +1,6 @@
 # Custom Provider Configuration
 
-Otto supports configuring custom agent providers through `config.json` (located at `$OTTO_HOME/config.json`, typically `~/.otto/config.json`). You can extend built-in providers with different API backends, add ACP-compatible agents, set custom binaries, disable providers, and create multiple profiles for the same underlying provider.
+Paseo supports configuring custom agent providers through `config.json` (located at `$PASEO_HOME/config.json`, typically `~/.paseo/config.json`). You can extend built-in providers with different API backends, add ACP-compatible agents, set custom binaries, disable providers, and create multiple profiles for the same underlying provider.
 
 Provider definitions live under `agents.providers` in config.json:
 
@@ -29,7 +29,36 @@ agent catalog during startup, raise the limit in milliseconds:
 ```
 
 The limit applies independently to every provider refresh and covers availability plus the entire
-catalog probe. `OTTO_PROVIDER_REFRESH_TIMEOUT_MS` sets it when the config field is absent.
+catalog probe. `PASEO_PROVIDER_REFRESH_TIMEOUT_MS` sets it when the config field is absent.
+
+## Provider options
+
+Set provider defaults in `agents.providers.<id>.options`. At agent creation, use
+`providerOptions` on the wire or `config.options` in the SDK. Both are opaque
+`Record<string, unknown>` values: the provider owns validation and application.
+Claude, Codex, and OpenCode reject unknown keys with a key-specific creation error.
+Providers without option handling ignore the record.
+
+The daemon deep-merges the agent's options over the provider defaults at each
+session launch or resume. Plain objects merge recursively; arrays, scalars, and
+`null` replace the base value. Only the agent's own options are persisted, so edits
+to provider defaults apply on the next launch or resume. A profile inherits its
+base provider's options unless it sets its own options record.
+
+```json
+{
+  "agents": {
+    "providers": {
+      "codex": {
+        "options": { "sandbox_mode": "read-only", "approval_policy": "never" }
+      }
+    }
+  }
+}
+```
+
+See the [SDK provider options guide](../public-docs/sdk/provider-options.md) for
+per-agent examples and provider-specific keys.
 
 ---
 
@@ -38,9 +67,7 @@ catalog probe. `OTTO_PROVIDER_REFRESH_TIMEOUT_MS` sets it when the config field 
 - [Extending a built-in provider](#extending-a-built-in-provider)
 - [Z.AI (Zhipu) coding plan](#zai-zhipu-coding-plan)
 - [Alibaba Cloud (Qwen) coding plan](#alibaba-cloud-qwen-coding-plan)
-- [OpenAI Compatible (local models)](#openai-compatible-local-models)
 - [Codex with a custom OpenAI-compatible endpoint](#codex-with-a-custom-openai-compatible-endpoint)
-- [Remembered endpoints](#remembered-endpoints)
 - [Multiple profiles for the same provider](#multiple-profiles-for-the-same-provider)
 - [Custom binary for a provider](#custom-binary-for-a-provider)
 - [Disabling a provider](#disabling-a-provider)
@@ -73,8 +100,8 @@ Use `extends` to create a new provider entry that inherits from a built-in provi
 
 Required fields for custom providers:
 
-- `extends` - which built-in provider to inherit from (or `"acp"`)
-- `label` - display name in the UI
+- `extends` — which built-in provider to inherit from (or `"acp"`)
+- `label` — display name in the UI
 
 See [Codex with a custom OpenAI-compatible endpoint](#codex-with-a-custom-openai-compatible-endpoint) below for the dedicated Codex example.
 
@@ -82,7 +109,7 @@ See [Codex with a custom OpenAI-compatible endpoint](#codex-with-a-custom-openai
 
 ## Z.AI (Zhipu) coding plan
 
-[Z.AI](https://z.ai) is a Chinese AI company (Zhipu AI) that offers an Anthropic-compatible API endpoint. Their GLM Coding Plan provides flat-rate access to GLM models through Claude Code's Anthropic API protocol. These are **not** Anthropic Claude models - they are Zhipu's own GLM models exposed through an Anthropic-compatible API.
+[Z.AI](https://z.ai) is a Chinese AI company (Zhipu AI) that offers an Anthropic-compatible API endpoint. Their GLM Coding Plan provides flat-rate access to GLM models through Claude Code's Anthropic API protocol. These are **not** Anthropic Claude models — they are Zhipu's own GLM models exposed through an Anthropic-compatible API.
 
 ### Setup
 
@@ -125,10 +152,10 @@ See [Codex with a custom OpenAI-compatible endpoint](#codex-with-a-custom-openai
 
 ### Notes
 
-- `ANTHROPIC_AUTH_TOKEN` is used instead of `ANTHROPIC_API_KEY` - this is the z.ai API key
+- `ANTHROPIC_AUTH_TOKEN` is used instead of `ANTHROPIC_API_KEY` — this is the z.ai API key
 - The `API_TIMEOUT_MS` env var extends the request timeout (z.ai can be slower than direct Anthropic)
 - If you get auth errors, run `/logout` inside Claude Code before switching to the z.ai provider
-- Web search (`WebSearch` tool) is an Anthropic-only server-side feature - third-party endpoints don't support it. Add `"disallowedTools": ["WebSearch"]` to avoid errors.
+- Web search (`WebSearch` tool) is an Anthropic-only server-side feature — third-party endpoints don't support it. Add `"disallowedTools": ["WebSearch"]` to avoid errors.
 - Automated setup is also available: `npx @z_ai/coding-helper`
 - Official docs: [docs.z.ai/devpack/tool/claude](https://docs.z.ai/devpack/tool/claude)
 
@@ -142,7 +169,7 @@ See [Codex with a custom OpenAI-compatible endpoint](#codex-with-a-custom-openai
 
 1. Go to the [Coding Plan page](https://modelstudio.console.alibabacloud.com/ap-southeast-1/?tab=globalset#/efm/coding_plan) on Alibaba Cloud Model Studio (Singapore region)
 2. Subscribe to the Pro plan ($50/month)
-3. Obtain your plan-specific API key (format: `sk-sp-xxxxx`) - this is different from a standard Model Studio key
+3. Obtain your plan-specific API key (format: `sk-sp-xxxxx`) — this is different from a standard Model Studio key
 4. Add a provider entry in config.json:
 
 ```json
@@ -196,126 +223,8 @@ For pay-as-you-go, use `ANTHROPIC_API_KEY` with a standard Model Studio key (`sk
 
 - API keys must be created in the **Singapore region**
 - The coding plan is for personal use only in interactive coding tools
-- Web search (`WebSearch` tool) is an Anthropic-only server-side feature - third-party endpoints don't support it. Add `"disallowedTools": ["WebSearch"]` to avoid errors.
+- Web search (`WebSearch` tool) is an Anthropic-only server-side feature — third-party endpoints don't support it. Add `"disallowedTools": ["WebSearch"]` to avoid errors.
 - Official docs: [alibabacloud.com/help/en/model-studio/claude-code-coding-plan](https://www.alibabacloud.com/help/en/model-studio/claude-code-coding-plan)
-
----
-
-## OpenAI Compatible (local models)
-
-Local inference servers like [LM Studio](https://lmstudio.ai), [Ollama](https://ollama.com), vLLM, and llama.cpp expose an OpenAI-compatible HTTP server instead of a CLI. Otto talks to them **natively** - the daemon connects to the endpoint directly with `extends: "openai-compatible"`. No agent CLI is involved.
-
-**OpenAI Compatible** ships as a featured preset in the in-app **Add provider** catalog, defaulting to LM Studio's local port (`http://localhost:1234`). Installing it creates the config below; the Server URL and API key are editable afterwards in the provider's settings sheet (Connection section) - point it at Ollama, vLLM, or any other OpenAI-compatible server instead.
-
-### Setup
-
-1. Install a local server, e.g. [LM Studio](https://lmstudio.ai) or [Ollama](https://ollama.com), and download the models you want
-2. Start the local server (for LM Studio: Developer tab → Start Server, or `lms server start`)
-3. Install the preset from Settings → Add provider, or add the entry manually:
-
-```json
-{
-  "agents": {
-    "providers": {
-      "openai-compatible": {
-        "extends": "openai-compatible",
-        "label": "OpenAI Compatible",
-        "env": {
-          "OPENAI_BASE_URL": "http://localhost:1234/v1"
-        }
-      }
-    }
-  }
-}
-```
-
-### How it works
-
-- **Models are discovered automatically** from `GET {OPENAI_BASE_URL}/models` - whatever the server has downloaded shows up in the model picker. A successful result is reused across workspace model pickers; Refresh in provider settings forces a new endpoint request. Setting `models` in the config replaces discovery with a static list.
-- **Status reflects reachability, not installation.** When the server is running the provider shows Available with the discovered model count; when it isn't, the row shows an error explaining that the endpoint can't be reached.
-- Chat turns stream over `POST {OPENAI_BASE_URL}/chat/completions` (SSE). Reasoning deltas (`reasoning_content`) are rendered as thinking output.
-- **Function-calling models get a built-in coding toolset** executed by the daemon in the agent's cwd: `read_file`, `list_dir`, `grep_search`, `write_file`, `edit_file`, `run_command`. Tool calls stream as timeline items like any other agent's.
-- **`ask_user_question` lets the model ask the user multiple-choice questions mid-turn.** The call pauses the tool loop and renders Otto's shared question UI (the same `kind: "question"` permission request Claude's AskUserQuestion and opencode's questions use). Up to 3 questions per call; each is single-select (2-3 model-supplied options plus the host-provided free-form "Other") or multi-select checkboxes (`multi_select: true`, 2-4 options plus the host-provided custom write-in). The answers come back as the tool result, keyed by question header. Dismissing the questions ends the turn through the standard cancel path - the user chose to take over, so control returns to them in chat instead of the model continuing on its own. Offered in every mode except `dontAsk`, where there is nobody to answer; because Otto Brain rides this same provider, Brain chats get the tool too.
-- **Otto's tool catalog is injected too.** Because there is no agent binary to host an MCP client, the daemon injects Otto's agent tools (`browser_*`, `preview_*`, agent management, terminals, schedules, workspace) directly into the model's tool list, so a local model can drive previews and browser verification like Claude Code does. Excluded in `plan` mode (those tools can take actions); the built-in coding tools win on any name collision.
-- **Otto tools are permission-gated by class** (`tools/otto-tool-permissions.ts`, shared across providers). CLI providers get prompting from their own permission system in front of the MCP client; here the daemon prompts itself. Read-only tools (`browser_snapshot`, `preview_logs`, `list_chats`, `list_workspaces`, Knowledge reads, …) never prompt. "Interact" tools (browser clicks/typing/navigation, `preview_start`/`preview_stop`) prompt in `default` mode and auto-approve in `acceptEdits`, like file edits. "Execute" tools (`browser_evaluate`, `browser_upload`, terminal creation and keystrokes, chat creation/mode changes, schedule and worktree mutation - and any unclassified tool) prompt in `default` **and** `acceptEdits`, like shell commands. `bypassPermissions` auto-approves everything.
-- **Scope the Otto tools with `ottoToolGroups`.** Omit it for all groups (the default); set it to a subset to keep the prompt small and the model focused. Groups: `preview`, `browser`, `web`, `agents`, `terminals`, `schedules`, `artifacts`, `workspace`. The `web` group gates the built-in `web_search` / `web_fetch` tools (DuckDuckGo search + page fetch); unchecking it hides both from the model. The `artifacts` group gates `create_artifact` - uncheck it to keep the artifact suite out of the model entirely.
-
-  ```json
-  {
-    "agents": {
-      "providers": {
-        "openai-compatible": {
-          "extends": "openai-compatible",
-          "label": "OpenAI Compatible",
-          "env": { "OPENAI_BASE_URL": "http://localhost:1234/v1" },
-          "ottoToolGroups": ["preview", "browser"]
-        }
-      }
-    }
-  }
-  ```
-
-- **Permission modes** mirror the other providers: `default` (Always Ask - prompts before edits, commands, web fetches, and non-read-only Otto/MCP tools), `acceptEdits` (auto-approves file edits **inside the workspace subtree** - edits outside the cwd, commands, and web fetches still prompt), `plan` (Read Only - only read tools are offered to the model and Otto/MCP tools are withheld; `web_fetch` stays available for research but prompts), and `bypassPermissions` (unattended). The workspace check is lexical (no symlink chasing) - it scopes prompting, it is not a sandbox.
-- **`web_fetch` prompts in every mode except `bypassPermissions`.** The read tools never prompt and accept absolute paths, so an unprompted fetch would hand a prompt-injected model a zero-click exfiltration channel (read a secret, smuggle it out in a GET query string). `web_search` talks only to DuckDuckGo, so it stays unprompted. Fetches are SSRF-guarded: redirects are followed manually with every hop re-validated, the connection is pinned to the exact DNS answers that passed validation (defeats low-TTL DNS rebinding), loopback/private/link-local/metadata/mapped-IPv6 ranges are blocked, and bodies are streamed with a hard 1 MB cap instead of buffered.
-- **Effort** (reasoning) is a per-model thinking option like every other provider: models advertise Off / Low / Medium / High in `thinkingOptions`, driven by the standard Effort control in the composer, schedule form, and artifact form. Off (the default) omits the `reasoning_effort` parameter entirely, so strict servers are unaffected until you opt in. Custom profile models that declare their own `thinkingOptions` override the defaults. Agents created before the unification persisted the value as a `reasoning_effort` feature select - the daemon still reads (and old clients can still set) that value; see `COMPAT(openaiCompatReasoningFeature)`.
-- **Rewind conversation** is supported: the daemon owns this provider's transcript, so rewinding truncates the conversation at the chosen user message. Persistence keeps the full conversation (no message cap), and resume replays the whole history into the timeline - assistant text, reasoning, and reconstructed tool calls with their results - so a resumed agent looks and rewinds the same as a live one.
-- **Compaction: manual `/compact [instruction]` plus threshold-based auto-compaction.** Both run the same in-process pipeline: zero-LLM pruning of uneventful/oversized tool outputs first, then a structured handoff summary of everything older than a keep-recent budget; a prior summary is updated incrementally rather than re-summarized.
-  - **Auto-compaction triggers on measured usage, not on overflow errors.** The daemon compares the server-reported context size (prompt + completion tokens of the last round) against the probed context window and compacts when it crosses the threshold - at turn start (before the new user message joins the conversation, so it always survives verbatim) and between tool rounds within a turn. Detecting overflow _errors_ across heterogeneous servers was deliberately rejected (2026-07 fork review); thresholds avoid ever reaching overflow instead. Consequence: **endpoints that report no context length never auto-compact** - there's no denominator. LM Studio and vLLM report one; plain llama.cpp setups may not.
-  - **Per-agent control is the "Auto-compact" feature select** (Off / At 50% / … / At 90%, default 80%) in the agent controls. The value persists per agent and survives resume.
-  - **Provider-level defaults** live in the provider entry: `"compaction": { "autoCompact": false }` defaults new agents to Off, `"thresholdPercent": 50|60|70|80|90` shifts the default trigger, `"keepRecentTokens": 20000` tunes how much recent conversation stays verbatim through every compaction (manual and auto), and `"summaryMaxTokens": 4000` caps the generated handoff. Per-agent feature values win over the auto-compact defaults.
-  - **Loop protection:** an auto-compaction that fails, or that can't bring usage back under the threshold (e.g. the retained tail alone exceeds it on a small window), pauses auto-compaction and says so in the timeline - otherwise it would re-summarize on every round, burning a model call each time for nothing. It re-arms when usage drops below the threshold again (rewind, manual `/compact`, larger window) or when the user changes the auto-compact setting. Auto-compaction failures never fail the user's turn.
-  - The other providers auto-compact on their own: Claude Code, Codex, and OpenCode manage it internally and Otto renders their compaction markers (with auto/manual attribution); Pi exposes `/compact` and `/autocompact` plus `.pi/settings.json` `compaction` settings (`enabled`, `reserveTokens`, `keepRecentTokens`), which this provider's settings deliberately mirror. Copilot (ACP) surfaces no compaction signal today.
-- **Max tool rounds per turn** is the daemon-owned loop's safety valve. Because the daemon (not the model host) runs the model→tool→model loop for this provider, it caps the number of rounds in a single turn; after that many rounds without a final answer the turn stops with a `Stopped after N tool rounds without a final answer.` error. This most often bites smaller local models that keep calling tools instead of converging. The cap is **50 by default** and is set in the provider settings **Agents** tab (25/50/100/200/500), or in the provider entry as `"maxToolRounds": <1–1000>` (any integer in range, not just the dropdown presets). Edits apply to running chats on their next turn. (Not relevant to CLI/ACP providers - Claude Code, Codex, OpenCode, Pi own their own tool loop inside their own process, so Otto never sees a round boundary to cap.)
-- **Max text per round** is the same loop's other safety valve, and it catches the opposite failure: not a model that keeps calling tools, but one that keeps talking. A round that streams past this many characters of assistant text while emitting no tool call is neither acting nor finishing, so the turn is interrupted with a `Stopped: the model streamed N characters in one response...` error and the partial output is kept. Set as `"maxRoundTextChars": <2000–2000000>` in the provider entry; **32,000 by default**, and `0` disables it. Reasoning/thinking text is never counted, and a round that has begun emitting a tool call is never interrupted however long its preamble ran. The default sits far above any real answer (roughly 8K tokens of prose in one round), so it is a safety valve rather than a length limit. See [chat-lifecycle.md](chat-lifecycle.md) for how this pairs with the daemon-wide stall guard. (Applies to new sessions; unlike `maxToolRounds` it is not live-applied to running chats.)
-- **Mid-session context updates** decide whether the daemon-owned loop may add context to a conversation after it has started. Today that is one thing: the first time a tool call touches a directory below cwd, that directory's `AGENTS.md` joins the conversation and stays for the session (see [context-management.md](context-management.md)). It is **on by default**; the switch is in the provider settings **Agents** tab, or `"midSessionContextUpdates": false` in the provider entry, which stops the loop collecting touched paths at all. Turn it off on a small local context window, where a few thousand tokens of rules arriving unannounced mid-task cost more than the rules are worth. The switch governs anything the loop later wants to inject mid-conversation, not just this loader. (Not relevant to CLI/ACP providers - they read their own instruction files in their own process, which is why the spawn-time chain skips them too.)
-- `OPENAI_API_KEY` is optional - set it if your server requires an API key (LM Studio local servers accept requests without one).
-- `/v1` is appended to the URL automatically if missing. Remote servers (e.g. LM Studio on another machine over Tailscale) work by pointing `OPENAI_BASE_URL` at that host.
-- The same `extends: "openai-compatible"` entry works for any OpenAI-compatible server: Ollama (`http://localhost:11434/v1`), vLLM, llama.cpp server, gateways.
-
-### MCP servers
-
-The daemon itself acts as the MCP client for this provider: it connects to the configured servers per agent session, lists their tools, and exposes them to the model as `mcp_{server}_{tool}` functions alongside the built-in coding tools and Otto's catalog. Configure servers in the provider entry:
-
-```json
-{
-  "agents": {
-    "providers": {
-      "openai-compatible": {
-        "extends": "openai-compatible",
-        "label": "OpenAI Compatible",
-        "env": { "OPENAI_BASE_URL": "http://localhost:1234/v1" },
-        "mcpServers": {
-          "docs": { "type": "stdio", "command": "npx", "args": ["-y", "some-mcp-server"] },
-          "tracker": {
-            "type": "http",
-            "url": "https://example.com/mcp",
-            "headers": { "Authorization": "Bearer <token>" }
-          }
-        },
-        "mcpToolPermissions": "always-ask"
-      }
-    }
-  }
-}
-```
-
-- **Transports:** `stdio` (daemon spawns the process - scrubbed environment, agent cwd, tree-killed on session close), `http`, and `sse`.
-- **Merging:** provider-level `mcpServers` merge with any per-agent `mcpServers` sent at agent create; the per-agent entry wins on a server-name collision.
-- **Namespacing:** tool names are always exposed as `mcp_{server}_{tool}` (sanitized to the OpenAI charset), so an MCP server can never shadow `run_command`, `preview_start`, or any other builtin/Otto tool.
-- **Permissions (`mcpToolPermissions`):** MCP tools are opaque - the daemon can't know whether one is destructive.
-  - `"always-ask"` (the default): every MCP tool call prompts in `default` **and** `acceptEdits` modes.
-  - `"trust-read-only"`: in `acceptEdits` mode, tools whose MCP `readOnlyHint` annotation is true auto-approve; everything else still prompts. The hint is the server's self-declaration, so it is never honored in `default` mode.
-  - `plan` mode never exposes MCP tools regardless of this setting; `bypassPermissions` auto-approves everything, as with all other tools.
-- **Prompts as slash commands:** prompts exposed by connected servers appear in the composer as `/mcp_{server}_{prompt}` commands. The rest of the line maps to the prompt's first declared argument; a failed resolution falls back to sending the typed text as a plain prompt.
-- **Failure isolation:** a server that can't be reached is skipped with a one-time warning in the agent timeline - the session keeps working with the remaining tools.
-- **Security:** `stdio` entries execute arbitrary commands as the daemon's user - only add servers you trust, exactly as you would for any agent that can run shell commands. Configured header and env values are treated as secrets and redacted from logs, timeline errors, and tool output fed to the model. MCP tool results are capped at 30k characters.
-
-### Current limitations
-
-- Tool use requires a model that supports OpenAI function calling; models without it fall back to plain chat (the `tools` payload is ignored by the server or the model simply never calls them).
-- MCP tool/prompt sets are snapshotted when the session connects; `list_changed` notifications are not yet handled.
-- Multi-argument MCP prompts receive only their first declared argument from the slash-command line.
-- Custom providers can be removed from the UI (provider settings → Remove provider) on daemons with the `providerRemove` feature.
 
 ---
 
@@ -323,7 +232,7 @@ The daemon itself acts as the MCP client for this provider: it connects to the c
 
 Codex talks to OpenAI's Responses API by default. Custom providers that extend `"codex"` can point Codex at any OpenAI-compatible endpoint (OpenRouter, LiteLLM, vLLM, llama.cpp server, an internal gateway, etc.) by setting `OPENAI_BASE_URL` and `OPENAI_API_KEY` in the provider `env`.
 
-Otto passes those variables through to the Codex app-server process **and** maps them into Codex's thread config under `model_provider` / `model_providers`, because Codex reads provider routing from config rather than from `OPENAI_BASE_URL` alone.
+Paseo passes those variables through to the Codex app-server process **and** maps them into Codex's thread config under `model_provider` / `model_providers`, because Codex reads provider routing from config rather than from `OPENAI_BASE_URL` alone.
 
 ### Setup
 
@@ -346,9 +255,9 @@ Otto passes those variables through to the Codex app-server process **and** maps
 }
 ```
 
-### What Otto wires up
+### What Paseo wires up
 
-Under the hood, for each custom Codex provider Otto injects this into Codex's config:
+Under the hood, for each custom Codex provider Paseo injects this into Codex's config:
 
 ```toml
 model_provider = "my-codex"
@@ -361,49 +270,17 @@ env_key = "OPENAI_API_KEY"
 requires_openai_auth = false
 ```
 
-- `base_url` - taken from `OPENAI_BASE_URL`. If it does not already end in `/v1`, Otto appends `/v1`. Trailing slashes are stripped.
-- `wire_api` - always `"responses"` (OpenAI Responses API protocol).
-- `env_key` - set to `"OPENAI_API_KEY"` when that env var is present and non-empty, so Codex reads the key from the same env var Otto passes through.
-- `requires_openai_auth` - forced to `false` when `OPENAI_API_KEY` is provided, so Codex skips its built-in OpenAI login flow.
+- `base_url` — taken from `OPENAI_BASE_URL`. If it does not already end in `/v1`, Paseo appends `/v1`. Trailing slashes are stripped.
+- `wire_api` — always `"responses"` (OpenAI Responses API protocol).
+- `env_key` — set to `"OPENAI_API_KEY"` when that env var is present and non-empty, so Codex reads the key from the same env var Paseo passes through.
+- `requires_openai_auth` — forced to `false` when `OPENAI_API_KEY` is provided, so Codex skips its built-in OpenAI login flow.
 
 ### Notes
 
-- The endpoint must speak the OpenAI **Responses API**, not just chat completions. Many gateways (OpenRouter, LiteLLM) support both - pick the Responses-compatible route.
-- Set `models` explicitly. Custom endpoints expose their own model IDs (`anthropic/claude-opus-4-7`, `qwen/qwen3-coder`, `local/llama`, etc.), and Otto does not discover them automatically for Codex.
+- The endpoint must speak the OpenAI **Responses API**, not just chat completions. Many gateways (OpenRouter, LiteLLM) support both — pick the Responses-compatible route.
+- Set `models` explicitly. Custom endpoints expose their own model IDs (`anthropic/claude-opus-4-7`, `qwen/qwen3-coder`, `local/llama`, etc.), and Paseo does not discover them automatically for Codex.
 - To run multiple endpoints side-by-side, define multiple entries that each extend `"codex"` with different IDs, labels, and env. Each appears as its own provider in the app.
-- If you only want to override the binary (e.g. a nightly Codex build) without changing the endpoint, omit `OPENAI_BASE_URL` and use `command` instead - see [Custom binary for a provider](#custom-binary-for-a-provider).
-
----
-
-## Remembered endpoints
-
-Saving the Connection section of a provider's settings sheet also **remembers** that endpoint - the Server URL together with the API key it was saved with. The remembered entries appear at the top of the Server URL dropdown (above the shipped presets), and picking one restores its credential too, so switching a provider between endpoints is one pick instead of re-typing a key.
-
-- **Pooled by env-var family, not by provider.** Entries saved from any `openai-compatible` or `codex` provider share the `OPENAI_BASE_URL` / `OPENAI_API_KEY` pool; entries saved from `extends: "claude"` providers share the `ANTHROPIC_BASE_URL` pool. An endpoint you saved under one custom provider is offered by every other provider in the same family.
-- **Host-scoped.** They persist in `config.json` under `agents.savedProviderEndpoints`, so the list follows the daemon - the same endpoints are one tap away from the phone.
-- **Re-saving a URL updates it in place** rather than piling up copies, so rotating a key just refreshes the remembered one. Twelve entries are kept per family; the least recently saved is evicted past that.
-- **Forget this endpoint** (under the Server URL field, shown when the current URL is a remembered one) drops the saved copy. It does not change what the provider is pointed at.
-- Credentials are stored in the clear, exactly like the live `agents.providers.<id>.env.OPENAI_API_KEY` they were copied from. This is a convenience list over values `config.json` already holds - treat the file accordingly.
-- Requires a daemon advertising `features.savedProviderEndpoints` (v0.6.5+). Against an older host the dropdown shows the built-in presets only.
-
-Example on disk:
-
-```json
-{
-  "agents": {
-    "savedProviderEndpoints": [
-      {
-        "id": "OPENAI_BASE_URL::http://localhost:1234/v1",
-        "baseUrlKey": "OPENAI_BASE_URL",
-        "apiKeyKey": "OPENAI_API_KEY",
-        "baseUrl": "http://localhost:1234/v1",
-        "apiKey": "lm-studio",
-        "savedAt": 1763500000000
-      }
-    ]
-  }
-}
-```
+- If you only want to override the binary (e.g. a nightly Codex build) without changing the endpoint, omit `OPENAI_BASE_URL` and use `command` instead — see [Custom binary for a provider](#custom-binary-for-a-provider).
 
 ---
 
@@ -440,7 +317,7 @@ Example: two different Anthropic accounts as separate profiles:
 }
 ```
 
-Each profile appears as a separate provider in the Otto app. You can select which one to use when launching an agent.
+Each profile appears as a separate provider in the Paseo app. You can select which one to use when launching an agent.
 
 You can also combine profiles with model overrides to pin specific models per profile:
 
@@ -513,11 +390,11 @@ Override the command used to launch any provider with the `command` field. This 
 }
 ```
 
-The `command` array completely replaces the default command for that provider. The binary must exist on the system - Otto checks for its availability and will mark the provider as unavailable if not found.
+The `command` array completely replaces the default command for that provider. The binary must exist on the system — Paseo checks for its availability and will mark the provider as unavailable if not found.
 
-### Pi-compatible forks with their own session directory
+### OMP profiles and Pi-compatible forks
 
-OMP already ships as a built-in provider option. It is disabled by default; enable it with:
+OMP ships as a first-class built-in provider option. It is disabled by default; enable it with:
 
 ```json
 {
@@ -529,7 +406,7 @@ OMP already ships as a built-in provider option. It is disabled by default; enab
 }
 ```
 
-Custom OMP profiles should extend `omp`. They inherit the OMP adapter's `rpc-ui` approvals, native Otto host tools, provider-managed subagents, and import behavior:
+Custom OMP profiles should extend `omp`. They inherit the OMP adapter's `rpc-ui` approvals, native Paseo host tools, provider-managed subagents, and import behavior:
 
 ```json
 {
@@ -543,7 +420,7 @@ Custom OMP profiles should extend `omp`. They inherit the OMP adapter's `rpc-ui`
           "XDG_CONFIG_HOME": "~/.config/omp-work",
           "XDG_STATE_HOME": "~/.local/state/omp-work"
         },
-        "params": {
+        "options": {
           "sessionDir": "~/.local/state/omp-work/omp/agent/sessions",
           "rpcTimeoutMs": 60000,
           "smolModel": "openai/gpt-5-mini",
@@ -556,7 +433,7 @@ Custom OMP profiles should extend `omp`. They inherit the OMP adapter's `rpc-ui`
 }
 ```
 
-`params.sessionDir` is used only for importing sessions that were started outside Otto. If `command` or XDG env vars move OMP's state directory, set `params.sessionDir` to the resulting OMP JSONL session directory; launching and resuming still go through the configured command. OMP waits 20 seconds for its initial `ready` frame and 60 seconds for later control-plane RPCs by default. `params.rpcTimeoutMs` overrides both deadlines.
+`options.sessionDir` is used only for importing sessions that were started outside Paseo. If `command` or XDG env vars move OMP's state directory, set `options.sessionDir` to the resulting OMP JSONL session directory; launching and resuming still go through the configured command. OMP waits 20 seconds for its initial `ready` frame and 60 seconds for later control-plane RPCs by default. `options.rpcTimeoutMs` overrides both deadlines.
 
 For other providers that keep Pi's `--mode rpc` API but write sessions somewhere else, extend `pi`, replace the command, and provide the JSONL session directory:
 
@@ -568,7 +445,7 @@ For other providers that keep Pi's `--mode rpc` API but write sessions somewhere
         "extends": "pi",
         "label": "My Pi Fork",
         "command": ["my-pi-fork"],
-        "params": {
+        "options": {
           "sessionDir": "~/.my-pi-fork/sessions",
           "rpcTimeoutMs": 60000
         }
@@ -578,7 +455,7 @@ For other providers that keep Pi's `--mode rpc` API but write sessions somewhere
 }
 ```
 
-This session directory is also import-only. Launching and resuming still go through the configured command, so this example resumes with `my-pi-fork --mode rpc --session <session-file>`. `params.rpcTimeoutMs` overrides the 60-second Pi control-plane RPC deadline.
+This session directory is also import-only. Launching and resuming still go through the configured command, so this example resumes with `my-pi-fork --mode rpc --session <session-file>`. `options.rpcTimeoutMs` overrides the 60-second Pi control-plane RPC deadline.
 
 ---
 
@@ -603,11 +480,11 @@ This works for both built-in and custom providers. To re-enable, set `enabled: t
 
 ## ACP providers
 
-The [Agent Client Protocol (ACP)](https://agentclientprotocol.com) is an open standard for communication between editors and AI coding agents - think LSP but for AI agents. Any agent that supports ACP can be added to Otto as a custom provider.
+The [Agent Client Protocol (ACP)](https://agentclientprotocol.com) is an open standard for communication between editors and AI coding agents — think LSP but for AI agents. Any agent that supports ACP can be added to Paseo as a custom provider.
 
-ACP agents communicate over JSON-RPC 2.0 on stdio. Otto spawns the agent process and talks to it through stdin/stdout.
+ACP agents communicate over JSON-RPC 2.0 on stdio. Paseo spawns the agent process and talks to it through stdin/stdout.
 
-Otto also ships an in-app provider catalog (Settings → Add provider) for common agents, including CodeWhale, Cursor, DeepAgents, DimCode, Gemini CLI, Hermes, Qwen Code, and Kimi Code. ACP catalog entries create the same `extends: "acp"` provider config shown below. The catalog also carries featured endpoint presets (e.g. [OpenAI Compatible](#openai-compatible-local-models)) that use the native `extends: "openai-compatible"` provider type instead.
+Paseo also ships an in-app ACP provider catalog for common agents, including CodeWhale, Cursor, DeepAgents, DimCode, Gemini CLI, Hermes, Qwen Code, and Kimi Code. Most catalog entries create the same `extends: "acp"` provider config shown below. Hoplite activates its [bundled provider](plugins.md#built-in-plugins) instead.
 
 ### Adding a generic ACP provider
 
@@ -634,9 +511,9 @@ Required fields for ACP providers:
 
 - `extends: "acp"`
 - `label`
-- `command` - the command to spawn the agent process (must support ACP over stdio)
+- `command` — the command to spawn the agent process (must support ACP over stdio)
 
-Otto tools such as subagent creation come from the shared internal tool catalog. ACP providers receive those tools through the MCP fallback by default because ACP exposes `mcpServers`, not Otto's native tool catalog. Some ACP adapters cannot create sessions when `mcpServers` is non-empty. Disable injected MCP for those providers with `params.supportsMcpServers: false`:
+Paseo tools such as subagent creation come from the shared internal tool catalog. ACP providers receive those tools through the MCP fallback by default because ACP exposes `mcpServers`, not Paseo's native tool catalog. Some ACP adapters cannot create sessions when `mcpServers` is non-empty. Disable injected MCP for those providers with `options.supportsMcpServers: false`:
 
 ```json
 {
@@ -646,7 +523,7 @@ Otto tools such as subagent creation come from the shared internal tool catalog.
         "extends": "acp",
         "label": "My Agent",
         "command": ["my-agent", "acp"],
-        "params": {
+        "options": {
           "supportsMcpServers": false
         }
       }
@@ -656,8 +533,8 @@ Otto tools such as subagent creation come from the shared internal tool catalog.
 ```
 
 ACP agents execute filesystem operations in their own environment by default,
-while terminal operations run through Otto on the host. To customize which
-operations Otto handles, configure client capabilities in provider params:
+while terminal operations run through Paseo on the host. To customize which
+operations Paseo handles, configure client capabilities in provider options:
 
 ```json
 {
@@ -667,7 +544,7 @@ operations Otto handles, configure client capabilities in provider params:
         "extends": "acp",
         "label": "Container Agent",
         "command": ["container-agent", "acp"],
-        "params": {
+        "options": {
           "clientCapabilities": {
             "fs": {
               "readTextFile": false,
@@ -684,13 +561,13 @@ operations Otto handles, configure client capabilities in provider params:
 
 When an agent runs in a container or remote environment that manages its own
 terminal, set `terminal: false` to keep command execution inside the agent
-container. When delegating filesystem operations to Otto (`fs.readTextFile: true`
-or `fs.writeTextFile: true`), ensure the agent and Otto share equivalent
+container. When delegating filesystem operations to Paseo (`fs.readTextFile: true`
+or `fs.writeTextFile: true`), ensure the agent and Paseo share equivalent
 absolute workspace paths.
 
 ### Generic ACP diagnostics
 
-Otto diagnostics for `extends: "acp"` providers report the configured command, resolved launcher binary, version output, ACP `initialize`, ACP `session/new`, model count, modes, and final status.
+Paseo diagnostics for `extends: "acp"` providers report the configured command, resolved launcher binary, version output, ACP `initialize`, ACP `session/new`, model count, modes, and final status.
 
 For package-runner commands such as `npx -y @google/gemini-cli --acp`, the version probe keeps the package spec and runs `npx -y @google/gemini-cli --version`. This diagnoses the actual agent package instead of only proving that `npx` exists.
 
@@ -746,19 +623,19 @@ Ref: [Gemini CLI ACP mode docs](https://github.com/google-gemini/gemini-cli/blob
 
 Ref: [Hermes ACP docs](https://hermes-agent.nousresearch.com/docs/user-guide/features/acp)
 
-### How ACP providers work in Otto
+### How ACP providers work in Paseo
 
 When you launch an agent with an ACP provider:
 
-1. Otto spawns the process using the configured `command`
+1. Paseo spawns the process using the configured `command`
 2. Sends an `initialize` JSON-RPC request over stdin
 3. The agent responds with its capabilities, available modes, and models
-4. Otto creates a session and sends prompts through the ACP protocol
+4. Paseo creates a session and sends prompts through the ACP protocol
 5. The agent streams responses, tool calls, and permission requests back over stdout
 
-Every ACP provider exposes an **Auto Accept** toggle. Enable it per session to let Otto approve
+Every ACP provider exposes an **Auto Accept** toggle. Enable it per session to let Paseo approve
 ACP permission requests without surfacing each prompt. If the provider sends no allow option,
-Otto leaves the request for you to answer. Unattended agents enable Auto Accept unless you
+Paseo leaves the request for you to answer. Unattended agents enable Auto Accept unless you
 explicitly disable it.
 
 Models and modes are discovered dynamically at runtime from the agent process. If you want to override the model list (e.g., to curate which models appear in the UI), use the `models` field:
@@ -836,7 +713,7 @@ Every entry under `agents.providers` accepts these fields:
 | `description`      | `string`                  | No                | Short description shown in the UI                                  |
 | `command`          | `string[]`                | Yes (ACP only)    | Command to spawn the agent process                                 |
 | `env`              | `Record<string, string>`  | No                | Environment variables to set for the agent process                 |
-| `params`           | `Record<string, unknown>` | No                | Provider-specific options such as `supportsMcpServers: false`      |
+| `options`          | `Record<string, unknown>` | No                | Provider-specific options such as `supportsMcpServers: false`      |
 | `models`           | `ProviderProfileModel[]`  | No                | Static model list (overrides runtime discovery)                    |
 | `additionalModels` | `ProviderProfileModel[]`  | No                | Static model additions (merged with runtime discovery or `models`) |
 | `disallowedTools`  | `string[]`                | No                | Tool names to disable for this provider (e.g. `["WebSearch"]`)     |
@@ -866,9 +743,9 @@ Each entry in the `models` array:
 
 ### Claude settings.json model discovery
 
-The built-in `claude` provider appends concrete model IDs from `~/.claude/settings.json` to its first-party Claude model list. Otto reads the top-level `model` field and these `env` keys: `ANTHROPIC_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL`.
+The built-in `claude` provider appends concrete model IDs from `~/.claude/settings.json` to its first-party Claude model list. Paseo reads the top-level `model` field and these `env` keys: `ANTHROPIC_MODEL`, `ANTHROPIC_SMALL_FAST_MODEL`, `ANTHROPIC_DEFAULT_FABLE_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, and `ANTHROPIC_DEFAULT_HAIKU_MODEL`.
 
-This lets users who already configured Claude Code for Bedrock, OpenRouter, ollama, Z.AI, or another Anthropic-compatible gateway select the exact model ID in Otto. Explicit model IDs are passed unchanged to Claude Code, even when the same string is a compatibility alias for a built-in model. When `agents.providers.claude.models` is set it **replaces** both the hardcoded first-party Claude list and any settings.json-discovered entries; use `agents.providers.claude.additionalModels` to keep the first-party list and append curated entries on top.
+This lets users who already configured Claude Code for Bedrock, OpenRouter, ollama, Z.AI, or another Anthropic-compatible gateway select the exact model ID in Paseo. Explicit model IDs are passed unchanged to Claude Code, even when the same string is a compatibility alias for a built-in model. When `agents.providers.claude.models` is set it **replaces** both the hardcoded first-party Claude list and any settings.json-discovered entries; use `agents.providers.claude.additionalModels` to keep the first-party list and append curated entries on top.
 
 ### Gotcha: `extends: "claude"` with third-party endpoints
 
@@ -897,10 +774,7 @@ Use `disallowedTools` to disable unsupported tools:
 
 Built-in providers: `claude`, `codex`, `copilot`, `opencode`, `pi`, `omp`
 
-Special values:
-
-- `acp` - creates a generic ACP provider (requires `command`)
-- `openai-compatible` - served natively by the daemon against an OpenAI-compatible HTTP endpoint (requires `env.OPENAI_BASE_URL`; see [OpenAI Compatible](#openai-compatible-local-models))
+Special value: `acp` — creates a generic ACP provider (requires `command`)
 
 ### Full example
 

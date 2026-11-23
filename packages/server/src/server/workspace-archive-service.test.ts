@@ -5,7 +5,7 @@ import path from "node:path";
 import pino, { type Logger } from "pino";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import type { GitHubService } from "../services/github-service.js";
+import type { ForgeService } from "../services/forge-service.js";
 import { createRealpathAwarePathMatcher } from "../utils/path.js";
 import { createWorktree, type WorktreeConfig } from "../utils/worktree.js";
 import type { ManagedAgent } from "./agent/agent-manager.js";
@@ -18,20 +18,13 @@ import {
   type ArchiveResult,
   resolveWorkspaceIdAtPath,
 } from "./workspace-archive-service.js";
-import {
-  assertWorkspaceAutomationAllowedForWorkspace,
-  clearWorkspaceAutomationBlock,
-} from "./workspace-automation-gate.js";
-import {
-  FileBackedWorkspaceRegistry,
-  createPersistedWorkspaceRecord,
-} from "./workspace-registry.js";
+import { WorkspaceAutomationBlockedError } from "./workspace-automation-gate.js";
 
 const cleanupPaths: string[] = [];
 
 afterEach(() => {
   for (const target of cleanupPaths.splice(0)) {
-    rmSync(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    rmSync(target, { recursive: true, force: true });
   }
 });
 
@@ -43,11 +36,15 @@ function createLogger(): Logger {
   return logger;
 }
 
-function createGitHubServiceStub(): GitHubService {
+function createGitHubServiceStub(): ForgeService {
   return {
     listPullRequests: async () => [],
     listIssues: async () => [],
-    searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: true }),
+    searchIssuesAndPrs: async () => ({
+      items: [],
+      featuresEnabled: true,
+      githubFeaturesEnabled: true,
+    }),
     getPullRequest: async ({ number }) => ({
       number,
       title: `PR ${number}`,
@@ -59,6 +56,15 @@ function createGitHubServiceStub(): GitHubService {
       labels: [],
     }),
     getPullRequestHeadRef: async ({ number }) => `pr-${number}`,
+    getPullRequestCheckoutTarget: async ({ number }) => ({
+      number,
+      baseRefName: "main",
+      headRefName: `pr-${number}`,
+      headOwnerLogin: null,
+      headRepositorySshUrl: null,
+      headRepositoryUrl: null,
+      isCrossRepository: false,
+    }),
     getCurrentPullRequestStatus: async () => null,
     createPullRequest: async () => ({
       number: 1,
@@ -76,11 +82,11 @@ function createGitRepo(): { tempDir: string; repoDir: string } {
   const repoDir = path.join(tempDir, "repo");
   mkdirSync(repoDir, { recursive: true });
   execFileSync("git", ["init", "-b", "main"], { cwd: repoDir, stdio: "pipe" });
-  execFileSync("git", ["config", "user.email", "test@otto-code.local"], {
+  execFileSync("git", ["config", "user.email", "test@getpaseo.local"], {
     cwd: repoDir,
     stdio: "pipe",
   });
-  execFileSync("git", ["config", "user.name", "Otto Test"], {
+  execFileSync("git", ["config", "user.name", "Paseo Test"], {
     cwd: repoDir,
     stdio: "pipe",
   });
@@ -91,38 +97,9 @@ function createGitRepo(): { tempDir: string; repoDir: string } {
   return { tempDir, repoDir };
 }
 
-// Teardown commands are read from the otto.json sitting AT the teardown cwd, so a
-// nested workspace only ever runs its own teardown when the archive tears down from
-// that exact directory rather than from the worktree root.
-function writeTeardownConfig(repoDir: string, relativeDir: string, command: string): void {
-  const targetDir = path.join(repoDir, relativeDir);
-  mkdirSync(targetDir, { recursive: true });
-  writeFileSync(
-    path.join(targetDir, "otto.json"),
-    JSON.stringify({ worktree: { teardown: [command] } }),
-  );
-}
-
-function commitAll(repoDir: string, message: string): void {
-  execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
-  execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", message], {
-    cwd: repoDir,
-    stdio: "pipe",
-  });
-}
-
-function listBranch(repoDir: string, branchName: string): string {
-  return execFileSync("git", ["branch", "--list", branchName], {
-    cwd: repoDir,
-    stdio: "pipe",
-  })
-    .toString()
-    .trim();
-}
-
-async function createOttoOwnedWorktree(
+async function createPaseoOwnedWorktree(
   repoDir: string,
-  ottoHome: string,
+  paseoHome: string,
   worktreeSlug: string,
 ): Promise<WorktreeConfig> {
   return createWorktree({
@@ -134,14 +111,14 @@ async function createOttoOwnedWorktree(
       branchName: worktreeSlug,
     },
     runSetup: false,
-    ottoHome,
+    paseoHome,
   });
 }
 
 interface ArchiveDepsInput {
-  ottoHome: string;
+  paseoHome: string;
   activeWorkspaces: ActiveWorkspaceRef[];
-  ottoWorktreesBaseRoot?: string;
+  paseoWorktreesBaseRoot?: string;
   findWorkspaceIdForCwd?: (cwd: string) => Promise<string | null>;
 }
 
@@ -149,8 +126,6 @@ interface ArchiveTestDependencies extends ArchiveDependencies {
   activeWorkspaces: ActiveWorkspaceRef[];
   archivedAgentIds: string[];
   archivedSnapshotIds: string[];
-  stoppedLanguageServerRoots: string[];
-  droppedGitLogCwds: string[];
 }
 
 function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
@@ -158,17 +133,15 @@ function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
   const active = [...input.activeWorkspaces];
   const archivedAgentIds: string[] = [];
   const archivedSnapshotIds: string[] = [];
-  const stoppedLanguageServerRoots: string[] = [];
-  const droppedGitLogCwds: string[] = [];
 
   return {
-    ottoHome: input.ottoHome,
-    ottoWorktreesBaseRoot: input.ottoWorktreesBaseRoot,
+    paseoHome: input.paseoHome,
+    paseoWorktreesBaseRoot: input.paseoWorktreesBaseRoot,
     github: createGitHubServiceStub(),
     workspaceGitService: {
       getSnapshot: vi.fn(async () => null),
-      invalidateAuxiliaryReads: vi.fn(),
-    } as unknown as Pick<WorkspaceGitService, "getSnapshot" | "invalidateAuxiliaryReads">,
+      invalidateWorktrees: () => {},
+    } as unknown as Pick<WorkspaceGitService, "getSnapshot" | "invalidateWorktrees">,
     agentManager: {
       listAgents: () => [],
       getAgent: () => null,
@@ -198,18 +171,10 @@ function createArchiveDeps(input: ArchiveDepsInput): ArchiveTestDependencies {
     markWorkspaceArchiving: vi.fn(),
     clearWorkspaceArchiving: vi.fn(),
     killTerminalsForWorkspace: vi.fn(async () => {}),
-    stopLanguageServers: async (rootPath: string) => {
-      stoppedLanguageServerRoots.push(rootPath);
-    },
-    deleteGitOperationLogs: (cwd: string) => {
-      droppedGitLogCwds.push(cwd);
-    },
     sessionLogger: createLogger(),
     activeWorkspaces: active,
     archivedAgentIds,
     archivedSnapshotIds,
-    stoppedLanguageServerRoots,
-    droppedGitLogCwds,
   };
 }
 
@@ -227,13 +192,13 @@ function assertArchiveResult(
 describe("archiveByScope", () => {
   test("workspace scope archives the record and removes the directory on last reference", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "last-ref-workspace");
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "last-ref-workspace");
     const workspaceId = "ws-last-ref";
 
     const result = await archiveByScope(
       createArchiveDeps({
-        ottoHome,
+        paseoHome,
         activeWorkspaces: [
           {
             workspaceId,
@@ -244,7 +209,6 @@ describe("archiveByScope", () => {
       }),
       {
         scope: { kind: "workspace", workspaceId },
-        repoRoot: repoDir,
         requestId: "req-last-ref-workspace",
       },
     );
@@ -256,72 +220,31 @@ describe("archiveByScope", () => {
     expect(existsSync(worktree.worktreePath)).toBe(false);
   });
 
-  // The git operation log buffers are keyed by cwd and never shed keys on their
-  // own, so an archived record has to take them with it or they stay resident
-  // for the daemon's lifetime.
-  test("workspace scope drops the archived record's git operation log buffers", async () => {
-    const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "git-log-drop");
-    const workspaceId = "ws-git-log-drop";
-    const dependencies = createArchiveDeps({
-      ottoHome,
-      activeWorkspaces: [{ workspaceId, cwd: worktree.worktreePath, kind: "worktree" }],
-    });
-
-    await archiveByScope(dependencies, {
-      scope: { kind: "workspace", workspaceId },
-      repoRoot: repoDir,
-      requestId: "req-git-log-drop",
-    });
-
-    expect(dependencies.droppedGitLogCwds).toEqual([worktree.worktreePath]);
-  });
-
-  // Two records can sit on one cwd, and they SHARE the buffers under that key.
-  // Archiving one must not blank the survivor's log pane.
-  test("workspace scope keeps git operation log buffers a sibling at the same cwd still uses", async () => {
-    const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "git-log-shared");
-    const workspaceA = "ws-git-log-a";
-    const workspaceB = "ws-git-log-b";
-    const dependencies = createArchiveDeps({
-      ottoHome,
-      activeWorkspaces: [
-        { workspaceId: workspaceA, cwd: worktree.worktreePath, kind: "worktree" },
-        { workspaceId: workspaceB, cwd: worktree.worktreePath, kind: "local_checkout" },
-      ],
-    });
-
-    await archiveByScope(dependencies, {
-      scope: { kind: "workspace", workspaceId: workspaceA },
-      repoRoot: repoDir,
-      requestId: "req-git-log-shared",
-    });
-
-    expect(dependencies.droppedGitLogCwds).toEqual([]);
-  });
-
-  // The workspace is going away whether or not its directory survives, so its
-  // teardown commands owe the same run either way. Only the directory removal is
-  // gated on being the last reference.
   test("workspace scope runs teardown while keeping a directory referenced by a sibling", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    writeTeardownConfig(
-      repoDir,
-      ".",
-      "node -e \"require('fs').writeFileSync(process.env.OTTO_SOURCE_CHECKOUT_PATH + '/shared-teardown.log', 'ok')\"",
+    writeFileSync(
+      path.join(repoDir, "paseo.json"),
+      JSON.stringify({
+        worktree: {
+          teardown: [
+            "node -e \"require('fs').writeFileSync(process.env.PASEO_SOURCE_CHECKOUT_PATH + '/shared-teardown.log', 'ok')\"",
+          ],
+        },
+      }),
     );
-    commitAll(repoDir, "shared teardown");
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "sibling-workspace");
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "shared teardown"], {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "sibling-workspace");
     const workspaceA = "ws-sibling-a";
     const workspaceB = "ws-sibling-b";
 
     const result = await archiveByScope(
       createArchiveDeps({
-        ottoHome,
+        paseoHome,
         activeWorkspaces: [
           { workspaceId: workspaceA, cwd: worktree.worktreePath, kind: "worktree" },
           { workspaceId: workspaceB, cwd: worktree.worktreePath, kind: "local_checkout" },
@@ -329,7 +252,6 @@ describe("archiveByScope", () => {
       }),
       {
         scope: { kind: "workspace", workspaceId: workspaceA },
-        repoRoot: repoDir,
         requestId: "req-sibling-workspace",
       },
     );
@@ -342,68 +264,46 @@ describe("archiveByScope", () => {
     expect(readFileSync(path.join(repoDir, "shared-teardown.log"), "utf8")).toBe("ok");
   });
 
-  async function assertPersistedArchiveAutomationPolicy(approved: boolean): Promise<void> {
+  test("workspace scope skips teardown while repository automation is blocked", async () => {
     const { tempDir, repoDir } = createGitRepo();
     const marker = path.join(repoDir, "blocked-teardown.log");
-    const teardownScript = path.join(repoDir, "blocked-teardown.cjs");
     writeFileSync(
-      teardownScript,
-      `require("node:fs").writeFileSync(${JSON.stringify(marker)}, "unsafe");`,
-    );
-    // Negative control: the repository command is valid and would execute without the gate.
-    execFileSync(process.execPath, [teardownScript], { cwd: repoDir });
-    expect(existsSync(marker)).toBe(true);
-    rmSync(marker);
-    writeFileSync(
-      path.join(repoDir, "otto.json"),
-      JSON.stringify({ worktree: { teardown: ["node blocked-teardown.cjs"] } }),
+      path.join(repoDir, "paseo.json"),
+      JSON.stringify({
+        worktree: {
+          teardown: [`node -e "require('fs').writeFileSync('${marker}', 'unsafe')"`],
+        },
+      }),
     );
     execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
     execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "blocked teardown"], {
       cwd: repoDir,
       stdio: "pipe",
     });
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "blocked-teardown");
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "blocked-teardown");
     const workspaceId = "ws-blocked-teardown";
     const deps = createArchiveDeps({
-      ottoHome,
+      paseoHome,
       activeWorkspaces: [
         {
           workspaceId,
           cwd: worktree.worktreePath,
           kind: "worktree",
           worktreeRoot: worktree.worktreePath,
-          isOttoOwnedWorktree: true,
+          isPaseoOwnedWorktree: true,
           mainRepoRoot: repoDir,
         },
       ],
     });
-    const registryPath = path.join(ottoHome, "workspace-approval.json");
-    const registry = new FileBackedWorkspaceRegistry(registryPath, pino({ enabled: false }));
-    await registry.upsert(
-      createPersistedWorkspaceRecord({
-        workspaceId,
-        projectId: "project",
-        cwd: worktree.worktreePath,
-        kind: "worktree",
-        displayName: "Fork PR",
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        archivedAt: null,
-        untrustedSource: {
-          kind: "change_request",
-          forge: "github",
-          number: 42,
-          headRepository: "contributor/paseo",
-        },
-      }),
-    );
-    if (approved) expect(await clearWorkspaceAutomationBlock(registry, workspaceId)).toBe(true);
-    // Reopen from disk: archiving must honor persisted approval after daemon reload.
-    const reopened = new FileBackedWorkspaceRegistry(registryPath, pino({ enabled: false }));
-    deps.assertWorkspaceAutomationAllowed = (workspace) =>
-      assertWorkspaceAutomationAllowedForWorkspace(reopened, workspace);
+    deps.assertWorkspaceAutomationAllowed = async () => {
+      throw new WorkspaceAutomationBlockedError({
+        kind: "change_request",
+        forge: "github",
+        number: 42,
+        headRepository: "contributor/paseo",
+      });
+    };
 
     const result = await archiveByScope(deps, {
       scope: { kind: "workspace", workspaceId },
@@ -411,24 +311,13 @@ describe("archiveByScope", () => {
     });
 
     expect(result.archivedWorkspaceIds).toEqual([workspaceId]);
-    expect(existsSync(marker)).toBe(approved);
-  }
-
-  test("workspace scope skips teardown while repository automation is blocked", async () => {
-    await assertPersistedArchiveAutomationPolicy(false);
+    expect(existsSync(marker)).toBe(false);
   });
 
-  test("explicit persisted approval permits archive teardown after reload", async () => {
-    await assertPersistedArchiveAutomationPolicy(true);
-  });
-
-  // Otto puts a workspace at the package it was opened on, so a worktree commonly
-  // backs a record whose cwd is <worktreeRoot>/packages/app. Comparing cwds alone
-  // misses that sibling and deletes the directory out from under it.
   test("workspace scope keeps a worktree for an active workspace in a subdirectory", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "subdirectory-sibling");
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "subdirectory-sibling");
     const sourceWorkspaceId = "ws-subdirectory-source";
     const siblingWorkspaceId = "ws-subdirectory-sibling";
     const siblingDirectory = path.join(worktree.worktreePath, "packages", "app");
@@ -436,27 +325,26 @@ describe("archiveByScope", () => {
 
     const result = await archiveByScope(
       createArchiveDeps({
-        ottoHome,
+        paseoHome,
         activeWorkspaces: [
           {
             workspaceId: sourceWorkspaceId,
             cwd: worktree.worktreePath,
             kind: "worktree",
             worktreeRoot: worktree.worktreePath,
-            isOttoOwnedWorktree: true,
+            isPaseoOwnedWorktree: true,
           },
           {
             workspaceId: siblingWorkspaceId,
             cwd: siblingDirectory,
             kind: "worktree",
             worktreeRoot: worktree.worktreePath,
-            isOttoOwnedWorktree: true,
+            isPaseoOwnedWorktree: true,
           },
         ],
       }),
       {
         scope: { kind: "workspace", workspaceId: sourceWorkspaceId },
-        repoRoot: repoDir,
         requestId: "req-subdirectory-sibling",
       },
     );
@@ -468,12 +356,10 @@ describe("archiveByScope", () => {
     expect(existsSync(worktree.worktreePath)).toBe(true);
   });
 
-  // The mirror image: archiving the nested record must not take the whole worktree
-  // with it, even though ownership resolution widens that cwd to the worktree root.
   test("archiving a subdirectory workspace keeps its active worktree root", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "subdirectory-target");
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "subdirectory-target");
     const rootWorkspaceId = "ws-subdirectory-root";
     const subdirectoryWorkspaceId = "ws-subdirectory-target";
     const subdirectory = path.join(worktree.worktreePath, "packages", "app");
@@ -481,27 +367,26 @@ describe("archiveByScope", () => {
 
     const result = await archiveByScope(
       createArchiveDeps({
-        ottoHome,
+        paseoHome,
         activeWorkspaces: [
           {
             workspaceId: rootWorkspaceId,
             cwd: worktree.worktreePath,
             kind: "worktree",
             worktreeRoot: worktree.worktreePath,
-            isOttoOwnedWorktree: true,
+            isPaseoOwnedWorktree: true,
           },
           {
             workspaceId: subdirectoryWorkspaceId,
             cwd: subdirectory,
             kind: "worktree",
             worktreeRoot: worktree.worktreePath,
-            isOttoOwnedWorktree: true,
+            isPaseoOwnedWorktree: true,
           },
         ],
       }),
       {
         scope: { kind: "workspace", workspaceId: subdirectoryWorkspaceId },
-        repoRoot: repoDir,
         requestId: "req-subdirectory-target",
       },
     );
@@ -516,29 +401,40 @@ describe("archiveByScope", () => {
   test("workspace scope runs teardown from the exact nested workspace before deleting its worktree", async () => {
     const { tempDir, repoDir } = createGitRepo();
     const nestedRelative = path.join("packages", "app");
-    writeTeardownConfig(
-      repoDir,
-      nestedRelative,
-      "node -e \"require('fs').writeFileSync(process.env.OTTO_SOURCE_CHECKOUT_PATH + '/nested-teardown.log', process.cwd())\"",
+    const sourceNested = path.join(repoDir, nestedRelative);
+    mkdirSync(sourceNested, { recursive: true });
+    writeFileSync(
+      path.join(sourceNested, "paseo.json"),
+      JSON.stringify({
+        worktree: {
+          teardown: [
+            "node -e \"require('fs').writeFileSync(process.env.PASEO_SOURCE_CHECKOUT_PATH + '/nested-teardown.log', process.cwd())\"",
+          ],
+        },
+      }),
     );
-    commitAll(repoDir, "nested teardown");
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "nested teardown"], {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
 
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "nested-teardown");
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "nested-teardown");
     const workspaceCwd = path.join(worktree.worktreePath, nestedRelative);
     const matchesWorkspaceCwd = createRealpathAwarePathMatcher(workspaceCwd);
     const workspaceId = "ws-nested-teardown";
 
     const result = await archiveByScope(
       createArchiveDeps({
-        ottoHome,
+        paseoHome,
         activeWorkspaces: [
           {
             workspaceId,
             cwd: workspaceCwd,
             kind: "worktree",
             worktreeRoot: worktree.worktreePath,
-            isOttoOwnedWorktree: true,
+            isPaseoOwnedWorktree: true,
             mainRepoRoot: repoDir,
           },
         ],
@@ -555,72 +451,42 @@ describe("archiveByScope", () => {
     });
     expect(existsSync(worktree.worktreePath)).toBe(false);
     expect(
-      matchesWorkspaceCwd(readFileSync(path.join(repoDir, "nested-teardown.log"), "utf8").trim()),
+      matchesWorkspaceCwd(readFileSync(path.join(repoDir, "nested-teardown.log"), "utf8")),
     ).toBe(true);
   });
 
-  // A language server is a child process keyed by directory, so nothing else in the
-  // system stops it: no session owns it and its idle allowance would keep it resident
-  // for minutes serving a workspace that no longer exists.
-  test("workspace scope stops the language servers rooted at the archived directory", async () => {
-    const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "lsp-last-ref");
-    const workspaceId = "ws-lsp-last-ref";
-    const deps = createArchiveDeps({
-      ottoHome,
-      activeWorkspaces: [{ workspaceId, cwd: worktree.worktreePath, kind: "worktree" }],
-    });
-
-    await archiveByScope(deps, {
-      scope: { kind: "workspace", workspaceId },
-      repoRoot: repoDir,
-      requestId: "req-lsp-last-ref",
-    });
-
-    expect(deps.stoppedLanguageServerRoots).toEqual([path.resolve(worktree.worktreePath)]);
-  });
-
-  test("workspace scope leaves language servers running when a sibling still references the directory", async () => {
-    const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "lsp-sibling");
-    const deps = createArchiveDeps({
-      ottoHome,
-      activeWorkspaces: [
-        { workspaceId: "ws-lsp-sibling-a", cwd: worktree.worktreePath, kind: "worktree" },
-        { workspaceId: "ws-lsp-sibling-b", cwd: worktree.worktreePath, kind: "local_checkout" },
-      ],
-    });
-
-    await archiveByScope(deps, {
-      scope: { kind: "workspace", workspaceId: "ws-lsp-sibling-a" },
-      repoRoot: repoDir,
-      requestId: "req-lsp-sibling",
-    });
-
-    expect(deps.stoppedLanguageServerRoots).toEqual([]);
-  });
-
-  // Teardown is per distinct directory, not per record: two workspaces sharing the
-  // worktree root owe ONE root teardown (the command exits 2 on a second run), while
-  // the nested record owes its own.
   test("worktree scope archives root and subdirectory workspaces before removing the backing worktree", async () => {
     const { tempDir, repoDir } = createGitRepo();
     const nestedRelative = path.join("packages", "app");
-    writeTeardownConfig(
-      repoDir,
-      ".",
-      "node -e \"const fs=require('fs');const out=process.env.OTTO_SOURCE_CHECKOUT_PATH+'/root-scope-teardown.log';if(fs.existsSync(out))process.exit(2);fs.writeFileSync(out,'ok')\"",
+    const sourceNested = path.join(repoDir, nestedRelative);
+    mkdirSync(sourceNested, { recursive: true });
+    writeFileSync(
+      path.join(repoDir, "paseo.json"),
+      JSON.stringify({
+        worktree: {
+          teardown: [
+            "node -e \"const fs=require('fs');const out=process.env.PASEO_SOURCE_CHECKOUT_PATH+'/root-scope-teardown.log';if(fs.existsSync(out))process.exit(2);fs.writeFileSync(out,'ok')\"",
+          ],
+        },
+      }),
     );
-    writeTeardownConfig(
-      repoDir,
-      nestedRelative,
-      "node -e \"require('fs').writeFileSync(process.env.OTTO_SOURCE_CHECKOUT_PATH+'/nested-scope-teardown.log','ok')\"",
+    writeFileSync(
+      path.join(sourceNested, "paseo.json"),
+      JSON.stringify({
+        worktree: {
+          teardown: [
+            "node -e \"require('fs').writeFileSync(process.env.PASEO_SOURCE_CHECKOUT_PATH+'/nested-scope-teardown.log','ok')\"",
+          ],
+        },
+      }),
     );
-    commitAll(repoDir, "scope teardown");
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "worktree-scope");
+    execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "scope teardown"], {
+      cwd: repoDir,
+      stdio: "pipe",
+    });
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "worktree-scope");
     const workspaceA = "ws-worktree-a";
     const workspaceB = "ws-worktree-b";
     const workspaceC = "ws-worktree-subdirectory";
@@ -628,34 +494,33 @@ describe("archiveByScope", () => {
 
     const result = await archiveByScope(
       createArchiveDeps({
-        ottoHome,
+        paseoHome,
         activeWorkspaces: [
           {
             workspaceId: workspaceA,
             cwd: worktree.worktreePath,
             kind: "worktree",
             worktreeRoot: worktree.worktreePath,
-            isOttoOwnedWorktree: true,
+            isPaseoOwnedWorktree: true,
           },
           {
             workspaceId: workspaceB,
             cwd: worktree.worktreePath,
             kind: "worktree",
             worktreeRoot: worktree.worktreePath,
-            isOttoOwnedWorktree: true,
+            isPaseoOwnedWorktree: true,
           },
           {
             workspaceId: workspaceC,
             cwd: subdirectory,
             kind: "worktree",
             worktreeRoot: worktree.worktreePath,
-            isOttoOwnedWorktree: true,
+            isPaseoOwnedWorktree: true,
           },
         ],
       }),
       {
         scope: { kind: "worktree", targetPath: worktree.worktreePath },
-        repoRoot: repoDir,
         requestId: "req-worktree-scope",
       },
     );
@@ -670,19 +535,18 @@ describe("archiveByScope", () => {
     expect(readFileSync(path.join(repoDir, "nested-scope-teardown.log"), "utf8")).toBe("ok");
   });
 
-  test("workspace scope never removes a non-Otto-owned directory", async () => {
+  test("workspace scope never removes a non-Paseo-owned directory", async () => {
     const { tempDir } = createGitRepo();
     const localCheckoutDir = mkdtempSync(path.join(tempDir, "local-checkout-"));
     const workspaceId = "ws-local-checkout";
 
     const result = await archiveByScope(
       createArchiveDeps({
-        ottoHome: path.join(tempDir, ".otto"),
+        paseoHome: path.join(tempDir, ".paseo"),
         activeWorkspaces: [{ workspaceId, cwd: localCheckoutDir, kind: "local_checkout" }],
       }),
       {
         scope: { kind: "workspace", workspaceId },
-        repoRoot: null,
         requestId: "req-local-checkout",
       },
     );
@@ -696,13 +560,13 @@ describe("archiveByScope", () => {
 
   test("worktree scope keeps the directory when one record teardown fails", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "partial-failure");
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "partial-failure");
     const workspaceA = "ws-partial-a";
     const workspaceB = "ws-partial-b";
 
     const deps = createArchiveDeps({
-      ottoHome,
+      paseoHome,
       activeWorkspaces: [
         { workspaceId: workspaceA, cwd: worktree.worktreePath, kind: "worktree" },
         { workspaceId: workspaceB, cwd: worktree.worktreePath, kind: "worktree" },
@@ -718,7 +582,6 @@ describe("archiveByScope", () => {
 
     const result = await archiveByScope(deps, {
       scope: { kind: "worktree", targetPath: worktree.worktreePath },
-      repoRoot: repoDir,
       requestId: "req-partial-failure",
     });
 
@@ -730,10 +593,10 @@ describe("archiveByScope", () => {
 
   test("workspace scope with unknown workspace id is a clean no-op", async () => {
     const { tempDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
+    const paseoHome = path.join(tempDir, ".paseo");
 
     const deps = createArchiveDeps({
-      ottoHome,
+      paseoHome,
       activeWorkspaces: [],
     });
     const originalArchiveWorkspaceRecord = deps.archiveWorkspaceRecord;
@@ -743,7 +606,6 @@ describe("archiveByScope", () => {
 
     const result = await archiveByScope(deps, {
       scope: { kind: "workspace", workspaceId: "ws-does-not-exist" },
-      repoRoot: null,
       requestId: "req-unknown-workspace",
     });
 
@@ -756,38 +618,46 @@ describe("archiveByScope", () => {
     expect(deps.emitWorkspaceUpdatesForWorkspaceIds).not.toHaveBeenCalled();
   });
 
-  test("worktree scope removes an owned directory with zero matching records", async () => {
-    const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "zero-records");
+  test.each(["intact", "missing"] as const)(
+    "worktree scope removes an owned directory with zero matching records and %s Git administration",
+    async (gitAdministration) => {
+      const { tempDir, repoDir } = createGitRepo();
+      const paseoHome = path.join(tempDir, ".paseo");
+      const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "zero-records");
+      if (gitAdministration === "missing") {
+        const gitDir = execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+          cwd: worktree.worktreePath,
+        })
+          .toString()
+          .trim();
+        rmSync(gitDir, { recursive: true, force: true });
+      }
+      const dependencies = createArchiveDeps({ paseoHome, activeWorkspaces: [] });
+      const invalidateWorktrees = vi.fn();
+      dependencies.workspaceGitService.invalidateWorktrees = invalidateWorktrees;
 
-    const result = await archiveByScope(
-      createArchiveDeps({
-        ottoHome,
-        activeWorkspaces: [],
-      }),
-      {
+      const result = await archiveByScope(dependencies, {
         scope: { kind: "worktree", targetPath: worktree.worktreePath },
-        repoRoot: repoDir,
         requestId: "req-zero-records",
-      },
-    );
+      });
 
-    assertArchiveResult(result, {
-      archivedWorkspaceIds: [],
-      removedDirectory: true,
-    });
-    expect(existsSync(worktree.worktreePath)).toBe(false);
-  });
+      assertArchiveResult(result, {
+        archivedWorkspaceIds: [],
+        removedDirectory: true,
+      });
+      expect(existsSync(worktree.worktreePath)).toBe(false);
+      expect(invalidateWorktrees).toHaveBeenCalledTimes(1);
+    },
+  );
 
   test("marks archiving, emits an upsert carrying the archiving state, then clears it and emits a remove", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "lifecycle");
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "lifecycle");
     const workspaceId = "ws-lifecycle";
 
     const deps = createArchiveDeps({
-      ottoHome,
+      paseoHome,
       activeWorkspaces: [{ workspaceId, cwd: worktree.worktreePath, kind: "worktree" }],
     });
 
@@ -848,7 +718,6 @@ describe("archiveByScope", () => {
 
     await archiveByScope(deps, {
       scope: { kind: "workspace", workspaceId },
-      repoRoot: repoDir,
       requestId: "req-lifecycle",
     });
 
@@ -867,8 +736,8 @@ describe("archiveByScope", () => {
 
   test("archives stored snapshots only for the target workspace", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "snapshot-scope");
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "snapshot-scope");
     const targetWorkspaceId = "ws-snapshot-target";
     const otherWorkspaceId = "ws-snapshot-other";
     const liveAgentId = "agent-live";
@@ -876,7 +745,7 @@ describe("archiveByScope", () => {
     const otherStoredAgentId = "agent-stored-other";
 
     const deps = createArchiveDeps({
-      ottoHome,
+      paseoHome,
       activeWorkspaces: [
         { workspaceId: targetWorkspaceId, cwd: worktree.worktreePath, kind: "worktree" },
       ],
@@ -907,7 +776,6 @@ describe("archiveByScope", () => {
 
     const result = await archiveByScope(deps, {
       scope: { kind: "workspace", workspaceId: targetWorkspaceId },
-      repoRoot: repoDir,
       requestId: "req-snapshot-scope",
     });
 
@@ -924,11 +792,11 @@ describe("archiveByScope", () => {
 
   test("archives the durable snapshot when an observed live agent closes before teardown", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
+    const paseoHome = path.join(tempDir, ".paseo");
     const workspaceId = "ws-live-teardown-race";
     const agentId = "agent-live-teardown-race";
     const deps = createArchiveDeps({
-      ottoHome,
+      paseoHome,
       activeWorkspaces: [{ workspaceId, cwd: repoDir, kind: "local_checkout" }],
     });
     deps.agentManager = {
@@ -956,15 +824,15 @@ describe("archiveByScope", () => {
 
   test("worktree scope archives three workspaces on the directory and removes it", async () => {
     const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "worktree-scope-n3");
+    const paseoHome = path.join(tempDir, ".paseo");
+    const worktree = await createPaseoOwnedWorktree(repoDir, paseoHome, "worktree-scope-n3");
     const workspaceA = "ws-worktree-n3-a";
     const workspaceB = "ws-worktree-n3-b";
     const workspaceC = "ws-worktree-n3-c";
 
     const result = await archiveByScope(
       createArchiveDeps({
-        ottoHome,
+        paseoHome,
         activeWorkspaces: [
           { workspaceId: workspaceA, cwd: worktree.worktreePath, kind: "worktree" },
           { workspaceId: workspaceB, cwd: worktree.worktreePath, kind: "worktree" },
@@ -973,7 +841,6 @@ describe("archiveByScope", () => {
       }),
       {
         scope: { kind: "worktree", targetPath: worktree.worktreePath },
-        repoRoot: repoDir,
         requestId: "req-worktree-scope-n3",
       },
     );
@@ -983,87 +850,6 @@ describe("archiveByScope", () => {
     );
     expect(result.archivedWorkspaceIds).toHaveLength(3);
     expect(result.removedDirectory).toBe(true);
-    expect(existsSync(worktree.worktreePath)).toBe(false);
-  });
-
-  test("branchCleanup deletes the leftover local branch after the worktree is removed", async () => {
-    const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "cleanup-branch");
-    const workspaceId = "ws-cleanup-branch";
-
-    expect(listBranch(repoDir, "cleanup-branch")).not.toBe("");
-
-    const result = await archiveByScope(
-      createArchiveDeps({
-        ottoHome,
-        activeWorkspaces: [{ workspaceId, cwd: worktree.worktreePath, kind: "worktree" }],
-      }),
-      {
-        scope: { kind: "workspace", workspaceId },
-        repoRoot: repoDir,
-        branchCleanup: { branchName: "cleanup-branch" },
-        requestId: "req-cleanup-branch",
-      },
-    );
-
-    expect(result.removedDirectory).toBe(true);
-    expect(result.deletedBranch).toBe("cleanup-branch");
-    expect(existsSync(worktree.worktreePath)).toBe(false);
-    expect(listBranch(repoDir, "cleanup-branch")).toBe("");
-  });
-
-  test("branchCleanup leaves the branch when the directory is not removed", async () => {
-    const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "kept-branch");
-    const workspaceA = "ws-kept-a";
-    const workspaceB = "ws-kept-b";
-
-    const deleteLocalBranch = vi.fn(async () => ({ deleted: true }));
-    const deps = createArchiveDeps({
-      ottoHome,
-      activeWorkspaces: [
-        { workspaceId: workspaceA, cwd: worktree.worktreePath, kind: "worktree" },
-        { workspaceId: workspaceB, cwd: worktree.worktreePath, kind: "local_checkout" },
-      ],
-    });
-    deps.deleteLocalBranch = deleteLocalBranch;
-
-    const result = await archiveByScope(deps, {
-      scope: { kind: "workspace", workspaceId: workspaceA },
-      repoRoot: repoDir,
-      branchCleanup: { branchName: "kept-branch" },
-      requestId: "req-kept-branch",
-    });
-
-    expect(result.removedDirectory).toBe(false);
-    expect(result.deletedBranch).toBeNull();
-    expect(deleteLocalBranch).not.toHaveBeenCalled();
-    expect(listBranch(repoDir, "kept-branch")).not.toBe("");
-  });
-
-  test("branchCleanup reports null when the branch delete fails but archives anyway", async () => {
-    const { tempDir, repoDir } = createGitRepo();
-    const ottoHome = path.join(tempDir, ".otto");
-    const worktree = await createOttoOwnedWorktree(repoDir, ottoHome, "stubborn-branch");
-    const workspaceId = "ws-stubborn-branch";
-
-    const deps = createArchiveDeps({
-      ottoHome,
-      activeWorkspaces: [{ workspaceId, cwd: worktree.worktreePath, kind: "worktree" }],
-    });
-    deps.deleteLocalBranch = vi.fn(async () => ({ deleted: false }));
-
-    const result = await archiveByScope(deps, {
-      scope: { kind: "workspace", workspaceId },
-      repoRoot: repoDir,
-      branchCleanup: { branchName: "stubborn-branch" },
-      requestId: "req-stubborn-branch",
-    });
-
-    expect(result.removedDirectory).toBe(true);
-    expect(result.deletedBranch).toBeNull();
     expect(existsSync(worktree.worktreePath)).toBe(false);
   });
 });

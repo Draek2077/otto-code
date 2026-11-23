@@ -2,7 +2,6 @@ import { expect, test } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import pino from "pino";
 
 import { ensureSherpaOnnxModels, getSherpaOnnxModelDir } from "./model-downloader.js";
@@ -12,21 +11,23 @@ import { SherpaOnnxTTS } from "./sherpa-tts.js";
 import { SherpaOfflineRecognizerEngine } from "./sherpa-offline-recognizer.js";
 import { SherpaOnnxParakeetSTT } from "./sherpa-parakeet-stt.js";
 
-const RUN = process.env.OTTO_SPEECH_E2E_DOWNLOAD === "1";
+const RUN = process.env.PASEO_SPEECH_E2E_DOWNLOAD === "1";
 const downloadTest = RUN ? test : test.skip;
 
-const appE2eFixturesDir = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "../../../../../../../app/e2e/support/fixtures",
-);
-
 async function readFixtureWav(): Promise<Buffer> {
-  const fixturePath = path.join(appE2eFixturesDir, "recording.wav");
+  const fixturePath = path.resolve(process.cwd(), "..", "app", "e2e", "fixtures", "recording.wav");
   return import("node:fs/promises").then((fs) => fs.readFile(fixturePath));
 }
 
 async function readBaseline(): Promise<string> {
-  const baselinePath = path.join(appE2eFixturesDir, "recording.baseline.txt");
+  const baselinePath = path.resolve(
+    process.cwd(),
+    "..",
+    "app",
+    "e2e",
+    "fixtures",
+    "recording.baseline.txt",
+  );
   return import("node:fs/promises")
     .then((fs) => fs.readFile(baselinePath, "utf-8"))
     .then((t) => t.trim());
@@ -86,8 +87,8 @@ downloadTest(
   async () => {
     const logger = pino({ level: "silent" });
 
-    const ottoHomeRoot = mkdtempSync(path.join(tmpdir(), "otto-speech-download-"));
-    const modelsDir = path.join(ottoHomeRoot, ".otto", "models", "local-speech");
+    const paseoHomeRoot = mkdtempSync(path.join(tmpdir(), "paseo-speech-download-"));
+    const modelsDir = path.join(paseoHomeRoot, ".paseo", "models", "local-speech");
 
     await ensureSherpaOnnxModels({
       modelsDir,
@@ -96,7 +97,7 @@ downloadTest(
     });
 
     const ctx = await createDaemonTestContext({
-      ottoHomeRoot,
+      paseoHomeRoot,
       dictationFinalTimeoutMs: 8000,
       speech: {
         providers: {

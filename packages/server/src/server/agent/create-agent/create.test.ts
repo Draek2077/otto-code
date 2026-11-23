@@ -8,9 +8,10 @@ import { createTestAgentClients } from "../../test-utils/fake-agent-client.js";
 import { createProviderSnapshotManagerStub } from "../../test-utils/session-stubs.js";
 import { AgentManager } from "../agent-manager.js";
 import { AgentStorage } from "../agent-storage.js";
-import type { CreateOttoWorktreeWorkflowResult } from "../../worktree-session.js";
+import type { CreatePaseoWorktreeWorkflowResult } from "../../worktree-session.js";
 import { createAgentCommand } from "./create.js";
 import type { ManagedAgent } from "../agent-manager.js";
+import type { AgentSessionConfig } from "../agent-sdk-types.js";
 
 const logger = createTestLogger();
 
@@ -45,7 +46,7 @@ function fakeWorktreeCreator(args: { repoRoot: string; createdWorkspaceId: strin
   const worktreePath = join(args.repoRoot, "worktree");
   const workspaceCwd = join(worktreePath, "packages", "app");
   mkdirSync(workspaceCwd, { recursive: true });
-  return async (): Promise<CreateOttoWorktreeWorkflowResult> =>
+  return async (): Promise<CreatePaseoWorktreeWorkflowResult> =>
     ({
       worktree: { worktreePath },
       intent: {},
@@ -53,14 +54,14 @@ function fakeWorktreeCreator(args: { repoRoot: string; createdWorkspaceId: strin
       repoRoot: args.repoRoot,
       created: true,
       setupContinuation: { kind: "agent" as const, startAfterAgentCreate: () => {} },
-    }) as unknown as CreateOttoWorktreeWorkflowResult;
+    }) as unknown as CreatePaseoWorktreeWorkflowResult;
 }
 
 test("session create forwards clientMessageId to the initial prompt run options", async () => {
   const snapshot = {
     id: "agent-1",
     provider: "codex",
-    cwd: "/tmp/otto-create-test",
+    cwd: "/tmp/paseo-create-test",
     runtimeInfo: null,
   } as ManagedAgent;
   const streamAgent = vi.fn(() => (async function* noop() {})());
@@ -70,7 +71,6 @@ test("session create forwards clientMessageId to the initial prompt run options"
       getAgent: vi.fn(() => snapshot),
       tryRunOutOfBand: vi.fn(() => false),
       hasInFlightRun: vi.fn(() => false),
-      isBusyOnlyWithOutOfBandRun: vi.fn(() => false),
       streamAgent,
       waitForAgentRunStart: vi.fn(async () => undefined),
     } as unknown as Parameters<typeof createAgentCommand>[0]["agentManager"],
@@ -81,7 +81,7 @@ test("session create forwards clientMessageId to the initial prompt run options"
 
   await createAgentCommand(dependencies, {
     kind: "session",
-    config: { provider: "codex", cwd: "/tmp/otto-create-test" },
+    config: { provider: "codex", cwd: "/tmp/paseo-create-test" },
     workspaceId: "ws-create-test",
     initialPrompt: "hello from create",
     clientMessageId: "msg-create-1",
@@ -96,56 +96,11 @@ test("session create forwards clientMessageId to the initial prompt run options"
   });
 });
 
-test("session create completes its pre-prompt binding before starting the first prompt", async () => {
-  const snapshot = {
-    id: "agent-1",
-    provider: "codex",
-    cwd: "/tmp/otto-create-test",
-    runtimeInfo: null,
-  } as ManagedAgent;
-  const order: string[] = [];
-  const streamAgent = vi.fn(() => {
-    order.push("prompt");
-    return (async function* noop() {})();
-  });
-  const dependencies: Parameters<typeof createAgentCommand>[0] = {
-    agentManager: {
-      createAgent: vi.fn(async () => snapshot),
-      getAgent: vi.fn(() => snapshot),
-      tryRunOutOfBand: vi.fn(() => false),
-      hasInFlightRun: vi.fn(() => false),
-      isBusyOnlyWithOutOfBandRun: vi.fn(() => false),
-      streamAgent,
-      waitForAgentRunStart: vi.fn(async () => undefined),
-    } as unknown as Parameters<typeof createAgentCommand>[0]["agentManager"],
-    agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
-    logger: createTestLogger(),
-    providerSnapshotManager: createProviderSnapshotManagerStub().manager,
-  };
-
-  await createAgentCommand(dependencies, {
-    kind: "session",
-    config: { provider: "codex", cwd: "/tmp/otto-create-test" },
-    workspaceId: "ws-create-test",
-    initialPrompt: "make the view",
-    labels: {},
-    provisionalTitle: null,
-    firstAgentContext: { attachments: [] },
-    onCreatedBeforeInitialPrompt: async (agent) => {
-      expect(agent.id).toBe("agent-1");
-      order.push("bound");
-    },
-    buildSessionConfig: async (config) => ({ sessionConfig: config }),
-  });
-
-  expect(order).toEqual(["bound", "prompt"]);
-});
-
 test("session create validates the requested mode against the provider's modes", async () => {
   const snapshot = {
     id: "agent-1",
     provider: "opencode",
-    cwd: "/tmp/otto-create-test",
+    cwd: "/tmp/paseo-create-test",
     runtimeInfo: null,
   } as ManagedAgent;
   const createAgent = vi.fn(async () => snapshot);
@@ -165,7 +120,7 @@ test("session create validates the requested mode against the provider's modes",
   await expect(
     createAgentCommand(dependencies, {
       kind: "session",
-      config: { provider: "opencode", cwd: "/tmp/otto-create-test", modeId: "plan" },
+      config: { provider: "opencode", cwd: "/tmp/paseo-create-test", modeId: "plan" },
       workspaceId: "ws-create-test",
       labels: {},
       provisionalTitle: null,
@@ -177,7 +132,7 @@ test("session create validates the requested mode against the provider's modes",
   expect(stub.resolveCreateConfig).toHaveBeenCalledWith(
     expect.objectContaining({
       provider: "opencode",
-      cwd: "/tmp/otto-create-test",
+      cwd: "/tmp/paseo-create-test",
       requestedMode: "plan",
     }),
   );
@@ -188,7 +143,7 @@ test("session create applies the resolved mode from the provider create config",
   const snapshot = {
     id: "agent-1",
     provider: "opencode",
-    cwd: "/tmp/otto-create-test",
+    cwd: "/tmp/paseo-create-test",
     runtimeInfo: null,
   } as ManagedAgent;
   const createAgent = vi.fn(async () => snapshot);
@@ -209,7 +164,7 @@ test("session create applies the resolved mode from the provider create config",
 
   await createAgentCommand(dependencies, {
     kind: "session",
-    config: { provider: "opencode", cwd: "/tmp/otto-create-test", modeId: "build" },
+    config: { provider: "opencode", cwd: "/tmp/paseo-create-test", modeId: "build" },
     workspaceId: "ws-create-test",
     labels: {},
     provisionalTitle: null,
@@ -231,7 +186,7 @@ test("mcp create accepts provider-only internal input and leaves model undefined
   const snapshot = {
     id: "agent-1",
     provider: "claude",
-    cwd: "/tmp/otto-create-test",
+    cwd: "/tmp/paseo-create-test",
     runtimeInfo: null,
   } as ManagedAgent;
   const createAgent = vi.fn(async () => snapshot);
@@ -253,11 +208,10 @@ test("mcp create accepts provider-only internal input and leaves model undefined
   await createAgentCommand(dependencies, {
     kind: "mcp",
     provider: "claude",
-    cwd: "/tmp/otto-create-test",
+    cwd: "/tmp/paseo-create-test",
     workspaceId: "ws-create-test",
     title: "provider default",
     initialPrompt: "hello",
-    background: true,
     notifyOnFinish: false,
   });
 
@@ -365,7 +319,7 @@ test("mcp create stamps the new worktree's workspaceId, not the parent's", async
         agentStorage: storage,
         logger,
         providerSnapshotManager,
-        createOttoWorktree: fakeWorktreeCreator({
+        createPaseoWorktree: fakeWorktreeCreator({
           repoRoot: workdir,
           createdWorkspaceId: "ws-new-worktree",
         }),
@@ -375,7 +329,6 @@ test("mcp create stamps the new worktree's workspaceId, not the parent's", async
         provider: "codex/gpt-5.4",
         title: "child",
         initialPrompt: "do the thing",
-        background: true,
         notifyOnFinish: false,
         callerAgentId: parent.id,
         worktree: { worktreeName: "feature", baseBranch: "main" },
@@ -400,7 +353,7 @@ test("mcp create exposes the created worktree before dispatching the initial pro
   })();
   let observed:
     | {
-        createdWorktree: CreateOttoWorktreeWorkflowResult | null;
+        createdWorktree: CreatePaseoWorktreeWorkflowResult | null;
         lifecycle: ManagedAgent["lifecycle"] | null;
       }
     | undefined;
@@ -416,7 +369,7 @@ test("mcp create exposes the created worktree before dispatching the initial pro
             return {};
           },
         },
-        createOttoWorktree: async () => createdWorktree,
+        createPaseoWorktree: async () => createdWorktree,
       },
       {
         kind: "mcp",
@@ -424,7 +377,6 @@ test("mcp create exposes the created worktree before dispatching the initial pro
         cwd: workdir,
         title: "worktree callback",
         initialPrompt: "Say done.",
-        background: true,
         notifyOnFinish: false,
         worktree: { worktreeName: "feature", baseBranch: "main" },
         onCreated: ({ agentId, createdWorktree: callbackWorktree }) => {
@@ -439,70 +391,6 @@ test("mcp create exposes the created worktree before dispatching the initial pro
     expect(observed).toEqual({ createdWorktree, lifecycle: "idle" });
   } finally {
     await removeRealAgentManagerWorkdir({ agentManager, storage, workdir });
-  }
-});
-
-// Regression (safe-unattended): an MCP create_chat input never sets
-// `unattended`, but the resolver OR's in an unattended parent and returns the
-// effective flag. The session config must stamp that resolved value - otherwise
-// a child of an unattended parent runs with `unattended:false` and its
-// deny-responder never arms, so a coerced-Auto escalation hangs forever.
-test("mcp create stamps the resolver's effective unattended onto the child config", async () => {
-  const workdir = mkdtempSync(join(tmpdir(), "create-agent-unattended-test-"));
-  const storage = new AgentStorage(join(workdir, "agents"), logger);
-  const agentManager = createRealAgentManager(storage);
-  const snapshotStub = createProviderSnapshotManagerStub();
-  // Simulate the resolver reporting an effective-unattended run (input.unattended
-  // false, but parent.isUnattended true → true), which is what the real
-  // provider-snapshot-manager returns for a child of an unattended parent.
-  snapshotStub.resolveCreateConfig.mockResolvedValue({
-    modeId: undefined,
-    featureValues: undefined,
-    unattended: true,
-  });
-
-  try {
-    const { snapshot: parent } = await createAgentCommand(
-      {
-        agentManager,
-        agentStorage: storage,
-        logger,
-        providerSnapshotManager: snapshotStub.manager,
-      },
-      {
-        kind: "session",
-        config: { provider: "codex", cwd: workdir },
-        workspaceId: "ws-parent",
-        labels: {},
-        provisionalTitle: null,
-        firstAgentContext: { attachments: [] },
-        buildSessionConfig: async (config) => ({ sessionConfig: config }),
-      },
-    );
-
-    const { snapshot: child } = await createAgentCommand(
-      {
-        agentManager,
-        agentStorage: storage,
-        logger,
-        providerSnapshotManager: snapshotStub.manager,
-      },
-      {
-        kind: "mcp",
-        provider: "codex/gpt-5.4",
-        title: "child",
-        initialPrompt: "do the thing",
-        background: true,
-        notifyOnFinish: false,
-        callerAgentId: parent.id,
-        // Note: no `unattended` field - the input never carries it.
-      },
-    );
-
-    const storedChild = await storage.get(child.id);
-    expect(storedChild?.unattended).toBe(true);
-  } finally {
-    rmSync(workdir, { recursive: true, force: true });
   }
 });
 
@@ -582,66 +470,46 @@ test("session create keeps an explicit title after the initial prompt settles", 
   }
 });
 
-// A bare spawn ("just open a new chat") gets a placeholder title so its tab has
-// something to show. The placeholder must not count as a caller-chosen title, or
-// auto-naming never runs and the chat reads "New chat" forever - which the app
-// renders as a permanent loading skeleton.
-function createBareSpawnHarness() {
+test("session create with an internal config skips provider session persistence", async () => {
   const snapshot = {
-    id: "agent-bare",
-    provider: "claude",
-    cwd: "/tmp/otto-bare-spawn",
+    id: "agent-1",
+    provider: "codex",
+    cwd: "/tmp/paseo-create-test",
     runtimeInfo: null,
   } as ManagedAgent;
-  const scheduleAutoTitle = vi.fn();
+  const createAgent = vi.fn(async () => snapshot);
   const dependencies: Parameters<typeof createAgentCommand>[0] = {
     agentManager: {
-      createAgent: vi.fn(async () => snapshot),
-      getAgent: vi.fn(() => snapshot),
+      createAgent,
     } as unknown as Parameters<typeof createAgentCommand>[0]["agentManager"],
     agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
     logger: createTestLogger(),
-    providerSnapshotManager: {
-      resolveCreateConfig: vi.fn(async () => ({})),
-    } as Parameters<typeof createAgentCommand>[0]["providerSnapshotManager"],
-    scheduleAutoTitle,
+    providerSnapshotManager: createProviderSnapshotManagerStub().manager,
   };
-  return { dependencies, scheduleAutoTitle };
-}
-
-test("mcp bare spawn still auto-names, with the placeholder as the provisional title", async () => {
-  const { dependencies, scheduleAutoTitle } = createBareSpawnHarness();
+  const input = {
+    kind: "session" as const,
+    workspaceId: "ws-create-test",
+    labels: {},
+    provisionalTitle: null,
+    firstAgentContext: { attachments: [] },
+    buildSessionConfig: async (config: AgentSessionConfig) => ({ sessionConfig: config }),
+  };
 
   await createAgentCommand(dependencies, {
-    kind: "mcp",
-    provider: "claude",
-    cwd: "/tmp/otto-bare-spawn",
-    workspaceId: "ws-bare",
-    title: "New chat",
-    titleIsPlaceholder: true,
-    initialPrompt: "Briefly introduce yourself and ask what I'd like to work on.",
-    background: true,
-    notifyOnFinish: false,
+    ...input,
+    config: { provider: "codex", cwd: "/tmp/paseo-create-test", internal: true },
+  });
+  await createAgentCommand(dependencies, {
+    ...input,
+    config: { provider: "codex", cwd: "/tmp/paseo-create-test" },
   });
 
-  expect(scheduleAutoTitle).toHaveBeenCalledWith(
-    expect.objectContaining({ agentId: "agent-bare", provisionalTitle: "New chat" }),
+  expect(createAgent).toHaveBeenNthCalledWith(
+    1,
+    expect.objectContaining({ provider: "codex", internal: true }),
+    undefined,
+    expect.objectContaining({ persistSession: false }),
   );
-});
-
-test("mcp create still lets an explicit caller title win over auto-naming", async () => {
-  const { dependencies, scheduleAutoTitle } = createBareSpawnHarness();
-
-  await createAgentCommand(dependencies, {
-    kind: "mcp",
-    provider: "claude",
-    cwd: "/tmp/otto-bare-spawn",
-    workspaceId: "ws-bare",
-    title: "Review the auth migration",
-    initialPrompt: "Start with the token refresh path.",
-    background: true,
-    notifyOnFinish: false,
-  });
-
-  expect(scheduleAutoTitle).not.toHaveBeenCalled();
+  expect(createAgent.mock.calls[1]?.[0]).not.toHaveProperty("internal");
+  expect(createAgent.mock.calls[1]?.[2]).not.toHaveProperty("persistSession");
 });

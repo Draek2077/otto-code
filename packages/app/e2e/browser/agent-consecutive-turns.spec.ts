@@ -1,5 +1,7 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Page } from "@playwright/test";
-import { expect, test as baseTest } from "../support/fixtures";
+import { expect, test as baseTest } from "../support/helpers/otto-individual-actions"; // OTTO(chat-actions)
 import { expectAgentIdle } from "../support/helpers/agent-stream";
 import {
   attachImageFromMenu,
@@ -89,6 +91,8 @@ declare global {
     __activityContinuityOracle?: ActivityOracleState;
   }
 }
+
+baseTest.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 const test = baseTest.extend<{ streamingAgent: MockAgentWorkspace }>({
   streamingAgent: async ({ page: _page }, provide) => {
@@ -193,8 +197,15 @@ async function recordTurnFrames(page: Page, prompt: string): Promise<void> {
     const spinnerSnapshot = (
       footer: Element | null | undefined,
       clip: Element | null,
-    ): ElementFrame =>
-      snapshot(footer?.querySelector('[data-testid="turn-working-spinner"]'), clip);
+    ): ElementFrame => {
+      // OTTO(chat-identity): sample the painted SVG circles, using the stable frame for layout.
+      const spinner = footer?.querySelector('[data-testid="turn-working-spinner"]');
+      if (!spinner) return emptyElement();
+      const painted = Array.from(spinner.querySelectorAll("circle")).some((circle) =>
+        isPainted(circle, clip),
+      );
+      return snapshot(spinner, clip, painted);
+    };
     const findImageAttachment = (row: Element | undefined) =>
       row?.querySelector('[role="button"][aria-label="Open image attachment"]');
     const findAgentTabState = () => {
@@ -233,9 +244,7 @@ async function recordTurnFrames(page: Page, prompt: string): Promise<void> {
       const interrupt = Array.from(
         composerRoot?.querySelectorAll('[role="button"][aria-label]') ?? [],
       ).find((candidate) =>
-        /stop agent|canceling agent|interrupt agent/i.test(
-          candidate.getAttribute("aria-label") ?? "",
-        ),
+        /stop agent|canceling agent/i.test(candidate.getAttribute("aria-label") ?? ""),
       );
       const primaryActionCount = countPrimaryActions(composerRoot);
       const { agentTab, tabProgress } = findAgentTabState();
@@ -330,7 +339,7 @@ async function installActivityContinuityOracle(page: Page, prompt: string): Prom
         row: Array.from(document.querySelectorAll('[data-testid="user-message"]')).some(
           (candidate) => candidate.textContent?.includes(promptText),
         ),
-        stop: isVisible(document.querySelector('[role="button"][aria-label="Interrupt agent"]')),
+        stop: isVisible(document.querySelector('[role="button"][aria-label="Stop agent"]')),
         footer: isVisible(document.querySelector('[data-testid="turn-working-indicator"]')),
         tabProgress: isVisible(
           visibleAgentTab?.querySelector('[role="progressbar"][aria-label="Agent running"]') ??

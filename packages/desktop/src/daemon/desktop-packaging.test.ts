@@ -1,10 +1,8 @@
+// OTTO(identity): test the installed Otto identity.
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { Arch } from "builder-util";
 import {
   chmodSync,
   copyFileSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -15,22 +13,6 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-
-// electron-builder lifecycle hooks are CommonJS scripts, so exercise their
-// exported packaging assertions directly rather than duplicating the check in
-// a declarative-config test.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { verifyBundledZoomRecorder } = require("../../scripts/after-pack.js") as {
-  verifyBundledZoomRecorder: (appOutDir: string, platform: NodeJS.Platform, arch: string) => void;
-};
-
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const { shouldBuildZoomRecorderForTarget } = require("../../scripts/before-pack.js") as {
-  shouldBuildZoomRecorderForTarget: (context: {
-    arch: Arch;
-    electronPlatformName: string;
-  }) => boolean;
-};
 
 const packageRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -43,11 +25,11 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
   root: string;
   shimPath: string;
 } {
-  const root = mkdtempSync(join(tmpdir(), "otto-cli-shim-test-"));
+  const root = mkdtempSync(join(tmpdir(), "paseo-cli-shim-test-"));
   const appPath = join(root, "Otto.app");
   const contentsPath = join(appPath, "Contents");
   const resourcesPath = join(contentsPath, "Resources");
-  const shimPath = join(resourcesPath, "bin", "otto");
+  const shimPath = join(resourcesPath, "bin", "paseo");
   const mainPath = join(contentsPath, "MacOS", "Otto");
   const helperPath = join(
     contentsPath,
@@ -60,7 +42,7 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
 
   mkdirSync(dirname(shimPath), { recursive: true });
   mkdirSync(dirname(mainPath), { recursive: true });
-  copyFileSync(join(packageRoot, "bin", "otto"), shimPath);
+  copyFileSync(join(packageRoot, "bin", "paseo"), shimPath);
   chmodSync(shimPath, 0o755);
 
   writeExecutable(mainPath, "#!/bin/sh\necho main-executable\n");
@@ -71,7 +53,7 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
       helperPath,
       [
         "#!/bin/sh",
-        'printf "helper env=%s/%s cli=%s\\n" "$ELECTRON_RUN_AS_NODE" "$OTTO_NODE_ENV" "$OTTO_CLI"',
+        'printf "helper env=%s/%s cli=%s\\n" "$ELECTRON_RUN_AS_NODE" "$PASEO_NODE_ENV" "$PASEO_CLI"',
         'printf "args=%s\\n" "$*"',
         "",
       ].join("\n"),
@@ -82,78 +64,6 @@ function createFakeMacBundle(options: { includeHelper: boolean }): {
 }
 
 describe("desktop packaging", () => {
-  it("bundles a checksum-pinned wake-word model in every installer", () => {
-    const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
-    expect(config).toContain("from: ../expo-two-way-audio/models/wake-word");
-    expect(config).toContain("from: ../expo-two-way-audio/wake-word-model.json");
-    expect(config).toContain("to: wake-word/model.json");
-    expect(config).toContain("to: wake-word/LICENSE-APACHE-2.0.txt");
-
-    const sharedPackageRoot = join(packageRoot, "..", "expo-two-way-audio");
-    const manifest = JSON.parse(
-      readFileSync(join(sharedPackageRoot, "wake-word-model.json"), "utf8"),
-    ) as {
-      assets: Record<string, string>;
-      assetBytes: Record<string, number>;
-      assetSha256: Record<string, string>;
-      androidRuntime: {
-        file: string;
-        bytes: number;
-        sha256: string;
-      };
-    };
-
-    expect(Object.keys(manifest.assets)).toEqual([
-      "encoder",
-      "decoder",
-      "joiner",
-      "tokens",
-      "keywords",
-    ]);
-    for (const assetName of Object.values(manifest.assets)) {
-      const assetPath = join(sharedPackageRoot, "models", "wake-word", assetName);
-      expect(existsSync(assetPath), `${assetName} must be checked in`).toBe(true);
-      const asset = readFileSync(assetPath);
-      expect(asset.byteLength, `${assetName} byte length`).toBe(manifest.assetBytes[assetName]);
-      expect(createHash("sha256").update(asset).digest("hex"), `${assetName} checksum`).toBe(
-        manifest.assetSha256[assetName],
-      );
-    }
-
-    const androidRuntimePath = join(sharedPackageRoot, manifest.androidRuntime.file);
-    const androidRuntime = readFileSync(androidRuntimePath);
-    expect(androidRuntime.byteLength, "Android Sherpa AAR byte length").toBe(
-      manifest.androidRuntime.bytes,
-    );
-    expect(
-      createHash("sha256").update(androidRuntime).digest("hex"),
-      "Android Sherpa AAR checksum",
-    ).toBe(manifest.androidRuntime.sha256);
-
-    const androidBuild = readFileSync(join(sharedPackageRoot, "android", "build.gradle"), "utf8");
-    // AGP forbids a local .aar file dependency in a library module, so the pinned
-    // runtime is unpacked into a plain classes.jar at build time. Assert both ends:
-    // the AAR the checksum above covers is still the source, and the jar derived
-    // from it is what the module compiles against.
-    expect(androidBuild).toContain('file("libs/sherpa-onnx-1.12.28.aar")');
-    expect(androidBuild).toContain(
-      'implementation files("$buildDir/generated/sherpa-onnx/classes.jar")',
-    );
-    expect(androidBuild).toContain('assets.srcDir file("../models")');
-    expect(androidBuild).toContain('tasks.register("verifyWakeWordDistribution")');
-  });
-
-  it("points the Nix launcher at the same checked-in wake-word model", () => {
-    const nixPackage = readFileSync(
-      join(packageRoot, "..", "..", "nix", "desktop-package.nix"),
-      "utf8",
-    );
-    expect(nixPackage).toContain(
-      '--set OTTO_WAKE_WORD_MODEL_DIR "$out/share/otto-desktop/packages/expo-two-way-audio/models/wake-word"',
-    );
-    expect(nixPackage).toContain("models/wake-word/LICENSE-APACHE-2.0.txt");
-  });
-
   it("uses an Electron runtime whose Squirrel handoff explicitly wakes ShipIt", () => {
     const pkg = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8")) as {
       devDependencies?: Record<string, string>;
@@ -174,77 +84,26 @@ describe("desktop packaging", () => {
     const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
 
     expect(config).toContain(
-      "node_modules/@otto-code/server/dist/server/terminal/shell-integration/**/*",
+      "node_modules/@getpaseo/server/dist/server/terminal/shell-integration/**/*",
     );
     expect(config).not.toContain(
-      "node_modules/@otto-code/server/dist/src/terminal/shell-integration/**/*",
+      "node_modules/@getpaseo/server/dist/src/terminal/shell-integration/**/*",
     );
-  });
-
-  it("builds and bundles the native Zoom Recorder helper only on supported x64 release targets", () => {
-    const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
-    const beforePack = readFileSync(join(packageRoot, "scripts", "before-pack.js"), "utf8");
-    const buildRuntime = readFileSync(
-      join(packageRoot, "scripts", "build-zoom-recorder-runtime.py"),
-      "utf8",
-    );
-
-    expect(config).toContain("beforePack: ./scripts/before-pack.js");
-    expect(config).toContain("from: resources/zoom-recorder/bin/${arch}");
-    expect(config).toContain("to: zoom-recorder");
-    expect(beforePack).toContain('new Set(["linux", "win32"])');
-    expect(beforePack).toContain("shouldBuildZoomRecorderForTarget(context)");
-    expect(beforePack).toContain('"build-zoom-recorder-runtime.py"');
-    expect(beforePack).toContain('"bin", "x64"');
-    expect(buildRuntime).toContain('OUTPUT_ROOT = HELPER_ROOT / "bin" / "x64"');
-    expect(buildRuntime).toContain('system not in {"Linux", "Windows"}');
-    expect(buildRuntime).toContain("smoke_test(executable)");
-    expect(buildRuntime).toContain('("--version",), ("status",)');
-  });
-
-  it("builds the helper for Electron Builder's Windows lifecycle platform name", () => {
-    expect(
-      shouldBuildZoomRecorderForTarget({ arch: Arch.x64, electronPlatformName: "win32" }),
-    ).toBe(true);
-    expect(shouldBuildZoomRecorderForTarget({ arch: Arch.x64, electronPlatformName: "win" })).toBe(
-      false,
-    );
-    expect(
-      shouldBuildZoomRecorderForTarget({ arch: Arch.arm64, electronPlatformName: "win32" }),
-    ).toBe(false);
-  });
-
-  it("rejects a supported package when its Zoom Recorder helper is missing", () => {
-    const appOutDir = mkdtempSync(join(tmpdir(), "otto-recorder-package-test-"));
-    try {
-      expect(() => verifyBundledZoomRecorder(appOutDir, "win32", "x64")).toThrow(
-        "Bundled Zoom Recorder helper is missing",
-      );
-
-      const helperPath = join(appOutDir, "resources", "zoom-recorder", "otto-zoom-recorder.exe");
-      mkdirSync(dirname(helperPath), { recursive: true });
-      writeFileSync(helperPath, "frozen helper");
-
-      expect(() => verifyBundledZoomRecorder(appOutDir, "win32", "x64")).not.toThrow();
-      expect(() => verifyBundledZoomRecorder(appOutDir, "win32", "arm64")).not.toThrow();
-    } finally {
-      rmSync(appOutDir, { recursive: true, force: true });
-    }
   });
 
   it("excludes package debug/source files from the packaged app", () => {
     const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
 
     expect(config).toContain("!**/*.map");
-    expect(config).toContain("!node_modules/@otto-code/*/src/**");
-    expect(config).toContain("!node_modules/@otto-code/**/*.test.*");
-    expect(config).toContain("!node_modules/@otto-code/**/*.spec.*");
+    expect(config).toContain("!node_modules/@getpaseo/*/src/**");
+    expect(config).toContain("!node_modules/@getpaseo/**/*.test.*");
+    expect(config).toContain("!node_modules/@getpaseo/**/*.spec.*");
   });
 
   it("excludes the bundled daemon web UI from the packaged app", () => {
     const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
 
-    expect(config).toContain("!node_modules/@otto-code/server/dist/server/web-ui/**");
+    expect(config).toContain("!node_modules/@getpaseo/server/dist/server/web-ui/**");
   });
 
   it("uses the server skill catalog without a duplicate desktop resource", () => {
@@ -269,7 +128,7 @@ describe("desktop packaging", () => {
   });
 
   // electron-builder packs production dependencies declared in package.json into
-  // app.asar. Runtime code in runtime-paths.ts and bin/otto dynamically resolves
+  // app.asar. Runtime code in runtime-paths.ts and bin/paseo dynamically resolves
   // these workspace packages by string, so static analysis (TypeScript, Knip) cannot
   // see the link. If a runtime-required workspace dep is dropped from
   // dependencies, the build still succeeds but ships a broken bundle. This
@@ -280,7 +139,7 @@ describe("desktop packaging", () => {
     };
     const deps = pkg.dependencies ?? {};
 
-    for (const required of ["@otto-code/cli", "@otto-code/server"]) {
+    for (const required of ["@getpaseo/cli", "@getpaseo/server"]) {
       expect(deps[required], `${required} must be declared in dependencies`).toBe("*");
     }
   });
@@ -296,7 +155,7 @@ describe("desktop packaging", () => {
       expect(result.stdout).toContain(`helper env=1/production cli=${bundle.shimPath}`);
       expect(result.stdout).toContain("node-entrypoint-runner.js");
       expect(result.stdout).toContain("node-script");
-      expect(result.stdout).toContain("@otto-code/cli/dist/index.js");
+      expect(result.stdout).toContain("@getpaseo/cli/dist/index.js");
       expect(result.stdout).toContain("--version");
       expect(result.stdout).not.toContain("main-executable");
     } finally {
@@ -318,4 +177,17 @@ describe("desktop packaging", () => {
       rmSync(bundle.root, { recursive: true, force: true });
     }
   });
+});
+
+it("installs the Linux helper as root-owned 4755 regardless of root's namespace access", () => {
+  const config = readFileSync(join(packageRoot, "electron-builder.yml"), "utf8");
+  expect(config).toContain("afterInstall: scripts/linux-sandbox/after-install.tpl");
+  const installer = readFileSync(
+    join(packageRoot, "scripts/linux-sandbox/after-install.tpl"),
+    "utf8",
+  );
+  expect(installer).not.toContain("unshare");
+  expect(installer).toContain("chown root:root '/opt/${sanitizedProductName}/chrome-sandbox'");
+  expect(installer).toContain("chmod 4755 '/opt/${sanitizedProductName}/chrome-sandbox'");
+  expect(installer).not.toContain("chmod 0755");
 });

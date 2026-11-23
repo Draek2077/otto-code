@@ -26,6 +26,7 @@ export interface HubInitScaffold {
 }
 
 export function hubLoginResumeCommand(step: "connect" | "init", origin: string): string {
+  // OTTO(identity)
   return step === "connect" ? `otto hub connect ${origin}` : "otto hub init";
 }
 
@@ -51,7 +52,7 @@ export function resolveHubInitConnection(
 export function createHubInitScaffold(input: HubInitScaffoldInput): HubInitScaffold {
   const provider = providerScaffold(input.provider, input.providerFilters);
   return {
-    triggerPath: `.otto/triggers/${input.provider}-help.yml`,
+    triggerPath: `.paseo/triggers/${input.provider}-help.yml`,
     trigger: YAML.stringify(
       triggerDocument({
         ...provider,

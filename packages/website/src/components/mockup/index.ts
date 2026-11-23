@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 export { ClaudeIcon, CodexIcon, SourceControlIcon } from "./icons";
 export { DESIGN_HEIGHT, DESIGN_WIDTH } from "./geometry";
 export { PhoneFrame } from "./mobile/frame";

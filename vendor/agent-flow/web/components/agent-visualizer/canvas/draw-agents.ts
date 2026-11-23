@@ -105,7 +105,7 @@ export function drawContextComposition(
 ) {
   const bd = agent.contextBreakdown
   const total = agent.tokensUsed
-  if (total <= 0) return
+  if (total <= 0 || agent.contextKnown === false) return
 
   const barWidth = Math.max(CONTEXT_BAR.minWidth, radius * CONTEXT_BAR.widthMultiplier)
   const barHeight = CONTEXT_BAR.barHeight
@@ -174,7 +174,7 @@ export function drawContextRing(
 ) {
   const bd = agent.contextBreakdown
   const total = agent.tokensUsed
-  if (total <= 0) return
+  if (total <= 0 || agent.contextKnown === false) return
 
   const usage = total / agent.tokensMax
   const ringR = radius + CONTEXT_RING.ringOffset

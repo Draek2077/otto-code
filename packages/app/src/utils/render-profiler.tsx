@@ -10,10 +10,10 @@ export interface RenderProfileSample {
 }
 
 declare global {
-  var __OTTO_RENDER_PROFILE__: RenderProfileSample[] | undefined;
-  var __OTTO_RENDER_PROFILE_REASONS__: Record<string, Record<string, number>> | undefined;
-  var __OTTO_RESET_RENDER_PROFILE__: (() => void) | undefined;
-  var __OTTO_RENDER_PROFILE_ENABLED__: boolean | undefined;
+  var __PASEO_RENDER_PROFILE__: RenderProfileSample[] | undefined;
+  var __PASEO_RENDER_PROFILE_REASONS__: Record<string, Record<string, number>> | undefined;
+  var __PASEO_RESET_RENDER_PROFILE__: (() => void) | undefined;
+  var __PASEO_RENDER_PROFILE_ENABLED__: boolean | undefined;
 }
 
 function getSearchParam(name: string): string | null {
@@ -30,7 +30,7 @@ function getSearchParam(name: string): string | null {
 
 export function isRenderProfileEnabled(): boolean {
   return (
-    globalThis.__OTTO_RENDER_PROFILE_ENABLED__ === true || getSearchParam("renderProfile") === "1"
+    globalThis.__PASEO_RENDER_PROFILE_ENABLED__ === true || getSearchParam("renderProfile") === "1"
   );
 }
 
@@ -42,8 +42,8 @@ const onRender: ProfilerOnRenderCallback = (
   startTime,
   commitTime,
 ) => {
-  globalThis.__OTTO_RENDER_PROFILE__ ??= [];
-  globalThis.__OTTO_RENDER_PROFILE__.push({
+  globalThis.__PASEO_RENDER_PROFILE__ ??= [];
+  globalThis.__PASEO_RENDER_PROFILE__.push({
     id,
     phase,
     actualDuration,
@@ -58,11 +58,11 @@ export function RenderProfile({ id, children }: { id: string; children: ReactNod
     return children;
   }
 
-  globalThis.__OTTO_RENDER_PROFILE__ ??= [];
-  globalThis.__OTTO_RENDER_PROFILE_REASONS__ ??= {};
-  globalThis.__OTTO_RESET_RENDER_PROFILE__ = () => {
-    globalThis.__OTTO_RENDER_PROFILE__ = [];
-    globalThis.__OTTO_RENDER_PROFILE_REASONS__ = {};
+  globalThis.__PASEO_RENDER_PROFILE__ ??= [];
+  globalThis.__PASEO_RENDER_PROFILE_REASONS__ ??= {};
+  globalThis.__PASEO_RESET_RENDER_PROFILE__ = () => {
+    globalThis.__PASEO_RENDER_PROFILE__ = [];
+    globalThis.__PASEO_RENDER_PROFILE_REASONS__ = {};
   };
 
   return (
@@ -76,8 +76,8 @@ export function recordRenderProfileReasons(id: string, reasons: string[]) {
   if (!isRenderProfileEnabled() || reasons.length === 0) {
     return;
   }
-  globalThis.__OTTO_RENDER_PROFILE_REASONS__ ??= {};
-  const counts = (globalThis.__OTTO_RENDER_PROFILE_REASONS__[id] ??= {});
+  globalThis.__PASEO_RENDER_PROFILE_REASONS__ ??= {};
+  const counts = (globalThis.__PASEO_RENDER_PROFILE_REASONS__[id] ??= {});
   for (const reason of reasons) {
     counts[reason] = (counts[reason] ?? 0) + 1;
   }

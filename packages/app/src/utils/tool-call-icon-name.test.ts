@@ -45,22 +45,22 @@ describe("resolveToolCallIconName", () => {
     expect(icon).toBe("sparkles");
   });
 
-  it("uses the handyman glyph for skill tool names", () => {
+  it("does not special-case skill tool names", () => {
     const icon = resolveToolCallIconName("skill", {
       type: "plain_text",
       label: "Skill output",
     });
 
-    expect(icon).toBe("handyman");
+    expect(icon).toBe("wrench");
   });
 
-  it("lets an explicit plain_text icon win over the skill default", () => {
-    const icon = resolveToolCallIconName("Skill", {
-      type: "plain_text",
-      label: "Skill output",
-      icon: "sparkles",
-    });
+  it("uses the Paseo icon for agent messages despite the legacy bot detail icon", () => {
+    const icon = resolveToolCallIconName(
+      "agent_message",
+      { type: "plain_text", text: "Done.", icon: "bot" },
+      { event: "finished", sender: { id: "agt_1" }, text: "Done." },
+    );
 
-    expect(icon).toBe("sparkles");
+    expect(icon).toBe("paseo");
   });
 });

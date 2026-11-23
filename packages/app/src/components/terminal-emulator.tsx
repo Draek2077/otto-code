@@ -1,5 +1,10 @@
 "use dom";
 
+import type {
+  TerminalFindHandle,
+  TerminalFindResult,
+} from "../terminal/runtime/terminal-emulator-runtime";
+
 import {
   useCallback,
   useEffect,
@@ -16,8 +21,8 @@ import type { DOMProps } from "expo/dom";
 import { useDOMImperativeHandle, type DOMImperativeFactory } from "expo/dom";
 import "@xterm/xterm/css/xterm.css";
 import type { ITheme } from "@xterm/xterm";
-import type { TerminalState } from "@otto-code/protocol/messages";
-import type { TerminalInputModeState } from "@otto-code/protocol/terminal-input-mode";
+import type { TerminalState } from "@getpaseo/protocol/messages";
+import type { TerminalInputModeState } from "@getpaseo/protocol/terminal-input-mode";
 import type { PendingTerminalModifiers } from "../utils/terminal-keys";
 import {
   TerminalEmulatorRuntime,
@@ -30,7 +35,7 @@ import type {
 } from "../terminal/local-links/terminal-local-link-provider";
 import type { TerminalClipboardWriter } from "../terminal/native-renderer/terminal-selection";
 import type { TerminalRendererReadyChange } from "../utils/terminal-renderer-readiness";
-import { openLink } from "../utils/open-link";
+import { openExternalUrl } from "../utils/open-external-url";
 import { focusWithRetries } from "../utils/web-focus";
 import {
   extractTerminalDropPaths,
@@ -41,6 +46,7 @@ import {
 import { getDesktopHost } from "@/desktop/host";
 
 export interface TerminalEmulatorHandle {
+  find?: TerminalFindHandle;
   writeOutput: (data: TerminalOutputData) => void;
   restoreOutput: (data: TerminalOutputData) => void;
   renderSnapshot: (state: TerminalState | null) => void;
@@ -111,6 +117,8 @@ interface TerminalEmulatorProps {
   onSwipeLeft?: () => void;
   onSwipeRight?: () => void;
   initialSnapshot?: TerminalState | null;
+  onFindRequest?: () => void;
+  onFindResult?: (result: TerminalFindResult) => void;
   onInput?: (data: string) => Promise<void> | void;
   onFocus?: () => Promise<void> | void;
   onResize?: (input: {
@@ -172,6 +180,8 @@ export default function TerminalEmulator({
   onSwipeLeft,
   onSwipeRight,
   initialSnapshot = null,
+  onFindRequest,
+  onFindResult,
   onInput,
   onFocus,
   onResize,
@@ -201,6 +211,8 @@ export default function TerminalEmulator({
   const onRendererReadyChangeRef = useRef(onRendererReadyChange);
   onRendererReadyChangeRef.current = onRendererReadyChange;
   const mountCallbacksRef = useRef({
+    onFindRequest,
+    onFindResult,
     onInput,
     onResize,
     onTerminalKey,
@@ -210,6 +222,8 @@ export default function TerminalEmulator({
     onOpenLocalFileLink,
   });
   mountCallbacksRef.current = {
+    onFindRequest,
+    onFindResult,
     onInput,
     onResize,
     onTerminalKey,
@@ -283,6 +297,11 @@ export default function TerminalEmulator({
   useImperativeHandle(
     ref,
     (): TerminalEmulatorHandle => ({
+      find: {
+        setWidgetSize: (size) => runtimeRef.current?.find.setWidgetSize(size),
+        search: (query, direction) => runtimeRef.current?.find.search(query, direction),
+        clear: () => runtimeRef.current?.find.clear(),
+      },
       writeOutput: (data: TerminalOutputData) => {
         runtimeRef.current?.write({ data });
       },
@@ -451,7 +470,7 @@ export default function TerminalEmulator({
     runtime.setCallbacks({
       callbacks: {
         ...mountCallbacksRef.current,
-        onOpenExternalUrl: openLink,
+        onOpenExternalUrl: openExternalUrl,
       },
     });
     runtime.setPendingModifiers({ pendingModifiers: pendingModifiersRef.current });
@@ -478,6 +497,8 @@ export default function TerminalEmulator({
   useEffect(() => {
     runtimeRef.current?.setCallbacks({
       callbacks: {
+        onFindRequest,
+        onFindResult,
         onInput,
         onResize,
         onTerminalKey,
@@ -485,10 +506,12 @@ export default function TerminalEmulator({
         onInputModeChange,
         onResolveLocalFileLink,
         onOpenLocalFileLink,
-        onOpenExternalUrl: openLink,
+        onOpenExternalUrl: openExternalUrl,
       },
     });
   }, [
+    onFindRequest,
+    onFindResult,
     onInput,
     onInputModeChange,
     onOpenLocalFileLink,
@@ -534,7 +557,7 @@ export default function TerminalEmulator({
   }, [resizeRequestToken]);
 
   const showTerminalContextMenu = useCallback(() => {
-    const showContextMenu = window.ottoDesktop?.menu?.showContextMenu;
+    const showContextMenu = window.paseoDesktop?.menu?.showContextMenu;
     if (typeof showContextMenu !== "function") {
       return;
     }
@@ -697,10 +720,7 @@ export default function TerminalEmulator({
       ref={rootRef}
       data-testid={testId}
       data-terminal-scrollbar-root="true"
-      // data-pmono excludes xterm's subtree from the app-wide interface-font rule.
-      // Without it, the DOM renderer (used whenever WebGL is unavailable) draws
-      // terminal rows in the proportional UI font.
-      data-pmono=""
+      data-pmono="" // OTTO(terminal-fonts): exclude DOM-rendered terminal rows from the interface font rule.
       style={rootDivStyle}
       onPointerDown={handleRootPointerDown}
       onContextMenu={handleRootContextMenu}

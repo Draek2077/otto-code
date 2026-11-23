@@ -1,4 +1,6 @@
-@import 'tailwindcss';
+/* OTTO PATCH: scan only this pinned renderer, independent of checkout/scratch files. */
+@import 'tailwindcss' source(none);
+@source '../';
 @import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));

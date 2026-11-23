@@ -722,7 +722,7 @@ describe("createGiteaService", () => {
     });
 
     // The commit-status combined state is "success", but a failed Actions run
-    // must pull the aggregate to failure - never green on a failing PR.
+    // must pull the aggregate to failure — never green on a failing PR.
     expect(status?.checksStatus).toBe("failure");
     expect(status?.checks.map((check) => check.status)).toContain("failure");
   });
@@ -1464,7 +1464,7 @@ describe("createGiteaService", () => {
     });
 
     // Gitea's "warning" is terminal and non-passing (IsSuccess()===false, blocks
-    // merge). Our enum has no yellow bucket, so it surfaces as failure - never
+    // merge). Our enum has no yellow bucket, so it surfaces as failure — never
     // green success, never a never-resolving pending.
     expect(status?.checks[0]?.status).toBe("failure");
     expect(status?.checks[0]?.traits).toEqual(["warning"]);
@@ -1700,7 +1700,7 @@ describe("createGiteaService", () => {
       { resolveCurrentBranch: async () => "feat/sample-change" },
     );
 
-    // No checkRunId - only the Actions workflowRunId, as the PR pane sends for a
+    // No checkRunId — only the Actions workflowRunId, as the PR pane sends for a
     // Gitea Actions row. It must still resolve instead of throwing.
     const details = await service.getCheckDetails({
       cwd: "/repo",
@@ -2297,11 +2297,13 @@ describe("createGiteaService", () => {
       checkoutRefs: [
         { remoteName: "origin", remoteRef: "refs/pull/5/head" },
         { remoteName: "origin", remoteRef: "refs/heads/feat/sample-change" },
+        { remoteName: "upstream", remoteRef: "refs/pull/5/head" },
       ],
       headOwnerLogin: null,
       headRepositorySshUrl: null,
       headRepositoryUrl: null,
       isCrossRepository: false,
+      headRefKind: "branch",
     });
   });
 
@@ -2332,15 +2334,213 @@ describe("createGiteaService", () => {
       headRefName: "feat/sample-change",
       checkoutRefs: [
         { remoteName: "origin", remoteRef: "refs/pull/5/head" },
-        { remoteName: "origin", remoteRef: "refs/heads/feat/sample-change" },
+        { remoteName: "upstream", remoteRef: "refs/pull/5/head" },
       ],
       headOwnerLogin: "contributor",
       headRepositorySshUrl: "git@gitea.com:contributor/sample-repo.git",
       headRepositoryUrl: "https://gitea.com/contributor/sample-repo",
       isCrossRepository: true,
+      headRefKind: "branch",
     });
 
     expect(calls).toContainEqual(["api", "repos/example-user/sample-repo/pulls/5"]);
+  });
+
+  it("skips the origin branch fallback and tracking for an AGit pull request", async () => {
+    const { service } = makeService((args) =>
+      args[0] === "api"
+        ? ok(
+            JSON.stringify({
+              flow: 1,
+              head: { ref: "refs/pull/5/head", repo: { id: 1 } },
+              base: { repo: { id: 1 } },
+            }),
+          )
+        : ok(JSON.stringify(STATUS_PR_VIEW)),
+    );
+
+    const target = await service.getPullRequestCheckoutTarget({ cwd: "/repo", number: 5 });
+
+    expect(target).toMatchObject({
+      checkoutRefs: [
+        { remoteName: "origin", remoteRef: "refs/pull/5/head" },
+        { remoteName: "upstream", remoteRef: "refs/pull/5/head" },
+      ],
+      isCrossRepository: false,
+      headRefKind: "pull-ref",
+    });
+  });
+
+  it("names the local branch pr-<number> end to end for an agit pull request", async () => {
+    // the tea CLI reports head as the raw pull ref too when there's no real
+    // branch, same as the Forgejo API's head.ref
+    const { service } = makeService((args) =>
+      args[0] === "api"
+        ? ok(
+            JSON.stringify({
+              flow: 1,
+              head: { ref: "refs/pull/5/head", repo: { id: 1 } },
+              base: { repo: { id: 1 } },
+            }),
+          )
+        : ok(JSON.stringify({ ...STATUS_PR_VIEW, head: "refs/pull/5/head" })),
+    );
+
+    const target = await service.getPullRequestCheckoutTarget({ cwd: "/repo", number: 5 });
+    const localBranchName = service.buildPrLocalBranchName?.({
+      headRef: target.headRefName,
+      checkoutTarget: target,
+    });
+
+    expect(localBranchName).toBe("pr-5");
+  });
+
+  it("skips the origin branch fallback when the head branch was deleted", async () => {
+    const { service } = makeService((args) =>
+      args[0] === "api"
+        ? ok(
+            JSON.stringify({
+              head: { ref: "refs/pull/5/head", repo: { id: 1 } },
+              base: { repo: { id: 1 } },
+            }),
+          )
+        : ok(JSON.stringify(STATUS_PR_VIEW)),
+    );
+
+    const target = await service.getPullRequestCheckoutTarget({ cwd: "/repo", number: 5 });
+
+    expect(target).toMatchObject({
+      checkoutRefs: [
+        { remoteName: "origin", remoteRef: "refs/pull/5/head" },
+        { remoteName: "upstream", remoteRef: "refs/pull/5/head" },
+      ],
+      isCrossRepository: false,
+      headRefKind: "pull-ref",
+    });
+  });
+
+  it("keeps a pull request from a deleted fork cross-repository", async () => {
+    const { service } = makeService((args) =>
+      args[0] === "api"
+        ? ok(JSON.stringify({ head: { repo: null }, base: { repo: { id: 1 } } }))
+        : ok(JSON.stringify(STATUS_PR_VIEW)),
+    );
+
+    const target = await service.getPullRequestCheckoutTarget({ cwd: "/repo", number: 5 });
+
+    expect(target).toMatchObject({
+      checkoutRefs: [
+        { remoteName: "origin", remoteRef: "refs/pull/5/head" },
+        { remoteName: "upstream", remoteRef: "refs/pull/5/head" },
+      ],
+      headOwnerLogin: null,
+      isCrossRepository: true,
+      headRefKind: "branch",
+    });
+  });
+
+  it("keeps the origin branch fallback when the server sends no head ref", async () => {
+    const { service } = makeService((args) =>
+      args[0] === "api"
+        ? ok(JSON.stringify({ head: { repo: { id: 1 } }, base: { repo: { id: 1 } } }))
+        : ok(JSON.stringify(STATUS_PR_VIEW)),
+    );
+
+    const target = await service.getPullRequestCheckoutTarget({ cwd: "/repo", number: 5 });
+
+    expect(target.checkoutRefs).toContainEqual({
+      remoteName: "origin",
+      remoteRef: "refs/heads/feat/sample-change",
+    });
+    expect(target.headRefKind).toBe("branch");
+  });
+
+  it("prefixes the local branch name with the fork owner for a cross-repository checkout", () => {
+    const { service } = makeService(() => ok(""));
+
+    const localBranchName = service.buildPrLocalBranchName?.({
+      headRef: "patch-1",
+      checkoutTarget: {
+        number: 5,
+        baseRefName: "main",
+        headRefName: "patch-1",
+        headOwnerLogin: "contributor",
+        headRepositorySshUrl: null,
+        headRepositoryUrl: null,
+        isCrossRepository: true,
+      },
+    });
+
+    expect(localBranchName).toBe("contributor/patch-1");
+  });
+
+  it("names the local branch pr-<number> for a same-repo pull-ref-only head", () => {
+    const { service } = makeService(() => ok(""));
+
+    const localBranchName = service.buildPrLocalBranchName?.({
+      headRef: "refs/pull/5/head",
+      checkoutTarget: {
+        number: 5,
+        baseRefName: "main",
+        headRefName: "refs/pull/5/head",
+        headOwnerLogin: null,
+        headRepositorySshUrl: null,
+        headRepositoryUrl: null,
+        isCrossRepository: false,
+        headRefKind: "pull-ref",
+      },
+    });
+
+    expect(localBranchName).toBe("pr-5");
+  });
+
+  it("prefixes pr-<number> with the fork owner for a pull-ref-only head", () => {
+    const { service } = makeService(() => ok(""));
+
+    const localBranchName = service.buildPrLocalBranchName?.({
+      headRef: "refs/pull/5/head",
+      checkoutTarget: {
+        number: 5,
+        baseRefName: "main",
+        headRefName: "refs/pull/5/head",
+        headOwnerLogin: "contributor",
+        headRepositorySshUrl: null,
+        headRepositoryUrl: null,
+        isCrossRepository: true,
+        headRefKind: "pull-ref",
+      },
+    });
+
+    expect(localBranchName).toBe("contributor/pr-5");
+  });
+
+  it("does not double the pr number for a deleted fork's pull-ref-only head", () => {
+    const { service } = makeService(() => ok(""));
+
+    const localBranchName = service.buildPrLocalBranchName?.({
+      headRef: "refs/pull/5/head",
+      checkoutTarget: {
+        number: 5,
+        baseRefName: "main",
+        headRefName: "refs/pull/5/head",
+        headOwnerLogin: null,
+        headRepositorySshUrl: null,
+        headRepositoryUrl: null,
+        isCrossRepository: true,
+        headRefKind: "pull-ref",
+      },
+    });
+
+    expect(localBranchName).toBe("pr-5");
+  });
+
+  it("returns the pull head ref for default checkout refs", () => {
+    const { service } = makeService(() => ok(""));
+
+    expect(service.defaultCheckoutRefs?.({ changeRequestNumber: 5, headRef: "patch-1" })).toEqual([
+      { remoteName: "origin", remoteRef: "refs/pull/5/head" },
+      { remoteName: "upstream", remoteRef: "refs/pull/5/head" },
+    ]);
   });
 
   it("creates a pull request and parses the resulting URL and index", async () => {

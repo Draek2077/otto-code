@@ -6,11 +6,18 @@ const path = require("node:path");
 const { setTimeout: delay } = require("node:timers/promises");
 const { chromium } = require("playwright");
 const { extractFile } = require("@electron/asar");
+const { WebSocket } = require("ws");
+const assert = require("node:assert/strict");
+const { smokeArtifactPreview } = require("./otto-artifacts.electron.cjs"); // OTTO(artifacts): observe the real packaged preview boundary.
 
-const EXECUTABLE_NAME = "Otto";
-// A cold packaged macOS runner can spend most of a minute starting the renderer
-// and daemon before the native dictionary is ready for the spellcheck journey.
-const SMOKE_TIMEOUT_MS = 120_000;
+// OTTO(identity): verify the shipped Otto executable, CLI, origin, and pid file.
+const {
+  OTTO_PRODUCT_NAME,
+  OTTO_CLI_COMMAND,
+  OTTO_URL_SCHEME,
+} = require("@getpaseo/protocol/otto/identity");
+const EXECUTABLE_NAME = OTTO_PRODUCT_NAME;
+const SMOKE_TIMEOUT_MS = 60_000;
 const EXIT_TIMEOUT_MS = 10_000;
 const TERMINAL_CAPTURE_ATTEMPTS = 20;
 const TERMINAL_CAPTURE_INTERVAL_MS = 500;
@@ -21,7 +28,6 @@ const REQUIRED_DESKTOP_BRIDGE_KEYS = [
   "events",
   "window",
   "dialog",
-  "pdf",
   "notification",
   "opener",
   "editor",
@@ -32,6 +38,29 @@ const REQUIRED_DESKTOP_BRIDGE_KEYS = [
 
 function createTempDir(prefix) {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+}
+
+async function assertBuiltinPluginsStarted(listen) {
+  const { DaemonClient } = await import("@getpaseo/client/internal/daemon-client");
+  const { builtinPlugins } =
+    await import("../../server/dist/server/server/plugins/builtin/index.js");
+  const client = new DaemonClient({
+    url: `ws://${listen}/ws`,
+    clientId: "packaged-builtin-smoke",
+    webSocketFactory: (url, options) =>
+      new WebSocket(url, options?.protocols, { headers: options?.headers }),
+  });
+  try {
+    await client.connect();
+    const catalog = await client.getPluginCatalog();
+    assert.deepEqual(
+      catalog.map(({ id }) => id).sort(),
+      [...builtinPlugins].sort(),
+      "Every built-in plugin must start in the packaged desktop daemon",
+    );
+  } finally {
+    await client.close();
+  }
 }
 
 function assertExecutable(filePath, label) {
@@ -57,66 +86,31 @@ function getExecutablePath(appPath) {
 
 function getCliShimPath(appPath) {
   if (process.platform === "darwin") {
-    return path.join(appPath, "Contents", "Resources", "bin", "otto");
+    return path.join(appPath, "Contents", "Resources", "bin", OTTO_CLI_COMMAND);
   }
 
   if (process.platform === "win32") {
-    return path.join(appPath, "resources", "bin", "otto.cmd");
+    return path.join(appPath, "resources", "bin", `${OTTO_CLI_COMMAND}.cmd`);
   }
 
-  return path.join(appPath, "resources", "bin", "otto");
+  return path.join(appPath, "resources", "bin", OTTO_CLI_COMMAND);
 }
 
 function getMacMainExecutablePath(appPath) {
   return path.join(appPath, "Contents", "MacOS", EXECUTABLE_NAME);
 }
 
-function ensureLinuxSandboxPermissions(appPath) {
-  if (process.platform !== "linux") {
-    return;
-  }
-
-  const sandboxPath = path.join(appPath, "chrome-sandbox");
-  if (!fs.existsSync(sandboxPath)) {
-    throw new Error(`Chromium sandbox helper does not exist: ${sandboxPath}`);
-  }
-
-  const hasRequiredPermissions = () => {
-    const stat = fs.statSync(sandboxPath);
-    return stat.uid === 0 && (stat.mode & 0o7777) === 0o4755;
-  };
-  if (hasRequiredPermissions()) {
-    return;
-  }
-
-  const chown = spawnSync("sudo", ["-n", "chown", "root:root", sandboxPath], {
-    encoding: "utf8",
-  });
-  const chmod =
-    chown.status === 0
-      ? spawnSync("sudo", ["-n", "chmod", "4755", sandboxPath], { encoding: "utf8" })
-      : null;
-  if (chown.error || chown.status !== 0 || chmod?.error || chmod?.status !== 0) {
-    throw new Error(
-      `Failed to configure Chromium sandbox helper ${sandboxPath}. Run: sudo chown root:root ${sandboxPath} && sudo chmod 4755 ${sandboxPath}.\n${chown.stderr?.trim() || chmod?.stderr?.trim() || chown.error || chmod?.error || "Permissions remained incorrect."}`,
-    );
-  }
-  if (!hasRequiredPermissions()) {
-    throw new Error(`Chromium sandbox helper permissions remained incorrect: ${sandboxPath}`);
-  }
-}
-
-function getLaunchCommand(executablePath) {
+function getLaunchCommand(executablePath, args) {
   if (process.platform !== "linux") {
     return {
       command: executablePath,
-      args: [],
+      args,
     };
   }
 
   return {
     command: "xvfb-run",
-    args: ["-a", "--server-args=-screen 0 1280x800x24", executablePath],
+    args: ["-a", "--server-args=-screen 0 1280x800x24", executablePath, ...args],
   };
 }
 
@@ -135,7 +129,7 @@ function shellQuoteCliArg(value) {
 function getTerminalHookSmokeCommand(marker) {
   if (process.platform === "win32") {
     const script = [
-      "& $env:OTTO_HOOK_CLI hooks codex Stop",
+      "& $env:PASEO_HOOK_CLI hooks codex Stop",
       "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
       `Write-Output '${marker}'`,
     ].join("; ");
@@ -143,7 +137,7 @@ function getTerminalHookSmokeCommand(marker) {
     return `powershell.exe -NoProfile -NonInteractive -EncodedCommand ${encodedScript}`;
   }
 
-  return `"$OTTO_HOOK_CLI" hooks codex Stop && echo ${marker}`;
+  return `"$PASEO_HOOK_CLI" hooks codex Stop && echo ${marker}`;
 }
 
 function getShellCommand(script) {
@@ -161,49 +155,20 @@ function getShellCommand(script) {
 }
 
 function createDefaultDaemonEnv(extraEnv) {
-  const env = {
-    ...process.env,
+  return {
+    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_"))),
     ...extraEnv,
   };
-
-  delete env.OTTO_HOME;
-  delete env.OTTO_LISTEN;
-  return env;
 }
 
 function createIsolatedDesktopEnv({ home, listen, userData, cdpPort }) {
-  const electronFlags = [
-    "--remote-debugging-address=127.0.0.1",
-    `--remote-debugging-port=${cdpPort}`,
-    // The installed Windows app commonly runs above 200% display scaling. Keep
-    // the native context-menu coordinates and the renderer anchor honest at the
-    // same scale where the shipped spellcheck regression was observed.
-    ...(process.platform === "win32" ? ["--force-device-scale-factor=2.25"] : []),
-  ];
-  const env = {
-    ...process.env,
-    OTTO_HOME: home,
-    OTTO_LISTEN: listen,
-    OTTO_ELECTRON_USER_DATA_DIR: userData,
-    // Same reason the tab-bridge E2E sets this. First paint on a packaged cold
-    // start under xvfb runs past the 15s GPU startup-paint watchdog, especially
-    // with the daemon saturating the runner fetching local speech models. Left
-    // armed, the watchdog reads a slow paint as a hung GPU and relaunches into
-    // software rendering, and the relaunch takes down the window this smoke is
-    // waiting on - which is why no otto://app/ page ever appeared.
-    OTTO_FORCE_GPU: "1",
-    OTTO_ELECTRON_FLAGS: electronFlags.join(" "),
+  return {
+    ...createDefaultDaemonEnv({ HOME: home, USERPROFILE: home }),
+    PASEO_HOME: home,
+    PASEO_LISTEN: listen,
+    PASEO_ELECTRON_USER_DATA_DIR: userData,
+    PASEO_ELECTRON_FLAGS: `--remote-debugging-address=127.0.0.1 --remote-debugging-port=${cdpPort}`,
   };
-  // OTTO_DESKTOP_SMOKE means two different things depending on who reads it.
-  // after-pack.js reads it as "run the packaged smoke once packing finishes";
-  // main.ts reads it as "this launch is a daemon-only smoke run" and returns
-  // through runDesktopSmokeIfRequested without ever creating a window. Inherited
-  // from the build process into the app we launch here, the second meaning won:
-  // the app started a daemon, waited on stdin, and exited, while this harness
-  // sat out its full deadline waiting for a renderer that by design was never
-  // coming. Strip it so the launch is an ordinary GUI start.
-  delete env.OTTO_DESKTOP_SMOKE;
-  return env;
 }
 
 function configureIsolatedDaemonHome(home, listen) {
@@ -344,21 +309,23 @@ function formatLogs({ stdout, stderr, userData, daemonHome }) {
   ].join("\n\n");
 }
 
-async function writeFailureArtifacts({ page, stdout, stderr, userData, daemonHome, error }) {
-  const artifactDir = process.env.OTTO_DESKTOP_SMOKE_ARTIFACT_DIR?.trim();
+async function writeSmokeArtifacts({ page, stdout, stderr, userData, daemonHome, error }) {
+  const artifactDir = process.env.PASEO_DESKTOP_SMOKE_ARTIFACT_DIR?.trim();
   if (!artifactDir) {
     return;
   }
 
   fs.mkdirSync(artifactDir, { recursive: true });
   fs.writeFileSync(
-    path.join(artifactDir, "failure.txt"),
-    `${error instanceof Error ? (error.stack ?? error.message) : String(error)}\n\n${formatLogs({
-      stdout,
-      stderr,
-      userData,
-      daemonHome,
-    })}\n`,
+    path.join(artifactDir, error ? "failure.txt" : "success.txt"),
+    `${error instanceof Error ? (error.stack ?? error.message) : String(error ?? "Packaged desktop smoke passed")}\n\n${formatLogs(
+      {
+        stdout,
+        stderr,
+        userData,
+        daemonHome,
+      },
+    )}\n`,
   );
 
   const desktopLog = readIfExists(path.join(userData, "logs", "main.log"));
@@ -378,8 +345,8 @@ async function writeFailureArtifacts({ page, stdout, stderr, userData, daemonHom
         rootChildCount: document.querySelector("#root")?.childElementCount ?? 0,
         rootText: document.querySelector("#root")?.textContent?.trim().slice(0, 2_000) ?? "",
         bridgeKeys:
-          typeof window.ottoDesktop === "object" && window.ottoDesktop !== null
-            ? Object.keys(window.ottoDesktop)
+          typeof window.paseoDesktop === "object" && window.paseoDesktop !== null
+            ? Object.keys(window.paseoDesktop)
             : [],
       }))
       .catch((evaluationError) => ({ evaluationError: String(evaluationError) }));
@@ -387,6 +354,19 @@ async function writeFailureArtifacts({ page, stdout, stderr, userData, daemonHom
       path.join(artifactDir, "renderer.json"),
       `${JSON.stringify(renderer, null, 2)}\n`,
     );
+    // OTTO(artifacts): preserve child-frame state when a real preview cannot render.
+    const frames = await Promise.all(
+      page.frames().map(async (frame) => ({
+        url: frame.url(),
+        state: await frame
+          .evaluate(() => ({
+            title: document.title,
+            text: document.body?.textContent?.slice(0, 2000) ?? "",
+          }))
+          .catch((frameError) => ({ error: String(frameError) })),
+      })),
+    );
+    fs.writeFileSync(path.join(artifactDir, "frames.json"), JSON.stringify(frames, null, 2));
     await page
       .screenshot({ path: path.join(artifactDir, "renderer.png"), fullPage: true })
       .catch(() => undefined);
@@ -438,31 +418,6 @@ function releaseChildHandles(child) {
   child.stdout?.destroy();
   child.stderr?.destroy();
   child.unref();
-}
-
-async function waitForPackagedExecutableUnlock(executablePath, timeoutMs = EXIT_TIMEOUT_MS) {
-  if (process.platform !== "win32") {
-    return;
-  }
-
-  const deadline = Date.now() + timeoutMs;
-  while (true) {
-    try {
-      const handle = await fs.promises.open(executablePath, "r+");
-      await handle.close();
-      return;
-    } catch (error) {
-      if (
-        Date.now() >= deadline ||
-        !(error instanceof Error) ||
-        !("code" in error) ||
-        (error.code !== "EBUSY" && error.code !== "EPERM")
-      ) {
-        throw error;
-      }
-      await delay(100);
-    }
-  }
 }
 
 async function removeTempDir(tempDir) {
@@ -523,27 +478,17 @@ async function connectToPackagedApp({
 }
 
 async function waitForPackagedAppPage(browser, deadline) {
-  let observedUrls = [];
   while (Date.now() < deadline) {
-    const pages = browser.contexts().flatMap((context) => context.pages());
-    const page = pages.find((candidate) => candidate.url().startsWith("otto://app/"));
+    const page = browser
+      .contexts()
+      .flatMap((context) => context.pages())
+      .find((candidate) => candidate.url().startsWith(`${OTTO_URL_SCHEME}://app/`));
     if (page) {
       return page;
     }
-    // Remember what WAS open. A bare "timed out" cannot distinguish a renderer
-    // that never opened from one that opened on the wrong URL (a failed
-    // protocol fetch lands on about:blank), and the packaged app logs nothing
-    // between creating the window and painting it.
-    if (pages.length > 0) {
-      observedUrls = pages.map((candidate) => candidate.url());
-    }
     await delay(250);
   }
-  throw new Error(
-    `Timed out waiting for the packaged otto://app/ renderer. Pages seen: ${
-      observedUrls.length > 0 ? observedUrls.join(", ") : "(none - no renderer ever opened)"
-    }`,
-  );
+  throw new Error("Timed out waiting for the packaged Otto renderer");
 }
 
 async function assertPackagedRendererLoaded(page, deadline) {
@@ -557,8 +502,8 @@ async function assertPackagedRendererLoaded(page, deadline) {
   );
 
   const bridgeKeys = await page.evaluate(() =>
-    typeof window.ottoDesktop === "object" && window.ottoDesktop !== null
-      ? Object.keys(window.ottoDesktop)
+    typeof window.paseoDesktop === "object" && window.paseoDesktop !== null
+      ? Object.keys(window.paseoDesktop)
       : [],
   );
   const missingBridgeKeys = REQUIRED_DESKTOP_BRIDGE_KEYS.filter((key) => !bridgeKeys.includes(key));
@@ -567,184 +512,6 @@ async function assertPackagedRendererLoaded(page, deadline) {
       `Packaged renderer is missing desktop preload bridge keys: ${missingBridgeKeys.join(", ")}. Present keys: ${bridgeKeys.join(", ") || "<none>"}`,
     );
   }
-
-  await verifyPrintToPdf(page);
-}
-
-async function waitForPackagedAppSettled(page, deadline) {
-  await page.waitForFunction(
-    () => {
-      const root = document.querySelector("#root");
-      return (
-        location.pathname !== "/" &&
-        root instanceof HTMLElement &&
-        (root.innerText?.trim().length ?? 0) > 0
-      );
-    },
-    undefined,
-    { timeout: remainingTime(deadline) },
-  );
-}
-
-async function verifySpellcheckContextMenu(page, deadline) {
-  const testId = "packaged-spellcheck-input";
-  const misspelling = "mispeling";
-  // macOS detects the spelling language from context, so use a real sentence.
-  const prefix = "This is a ";
-
-  await page.evaluate(
-    async ({ testId: targetTestId }) => {
-      window.__ottoSpellcheckSmoke = { contexts: [], events: [] };
-      await window.ottoDesktop.events.on("spellcheck-context", (context) => {
-        window.__ottoSpellcheckSmoke.contexts.push(context);
-      });
-      window.addEventListener(
-        "contextmenu",
-        (event) => {
-          window.__ottoSpellcheckSmoke.events.push({
-            clientX: event.clientX,
-            clientY: event.clientY,
-            pageX: event.pageX,
-            pageY: event.pageY,
-            defaultPrevented: event.defaultPrevented,
-            target: event.target instanceof Element ? event.target.tagName : null,
-          });
-        },
-        true,
-      );
-      document.querySelector(`[data-testid="${targetTestId}"]`)?.remove();
-      const input = document.createElement("textarea");
-      input.dataset.testid = targetTestId;
-      input.lang = "en-US";
-      input.spellcheck = true;
-      input.setAttribute("aria-label", "Packaged spellcheck input");
-      Object.assign(input.style, {
-        position: "fixed",
-        left: "80px",
-        top: "80px",
-        width: "360px",
-        height: "80px",
-        padding: "12px",
-        font: "20px sans-serif",
-        color: "#111",
-        background: "#fff",
-        zIndex: "0",
-      });
-      document.body.append(input);
-    },
-    { testId },
-  );
-
-  const input = page.locator(`[data-testid="${testId}"]`);
-  await input.click();
-  await page.keyboard.type(`${prefix}${misspelling} in an English sentence.`);
-  const box = await input.boundingBox();
-  if (!box) {
-    throw new Error("Packaged spellcheck input has no bounding box");
-  }
-  // Click the middle of the typo instead of the padding or a glyph boundary.
-  const wordCenterX = await input.evaluate(
-    (element, { prefix: beforeWord, misspelling: word }) => {
-      const style = getComputedStyle(element);
-      const context = document.createElement("canvas").getContext("2d");
-      if (!context) throw new Error("Cannot measure packaged spellcheck word");
-      context.font = style.font;
-      return (
-        (Number.parseFloat(style.borderLeftWidth) || 0) +
-        (Number.parseFloat(style.paddingLeft) || 0) +
-        context.measureText(beforeWord).width +
-        context.measureText(word).width / 2
-      );
-    },
-    { prefix, misspelling },
-  );
-
-  // At high display scaling the desktop window can cross the compact-width
-  // threshold, where the same context menu uses its bottom-sheet surface.
-  // Require the visible real surface in either supported presentation.
-  const menu = page.locator(
-    '[data-testid="text-selection-context-menu"]:visible, [data-testid="text-selection-context-menu-content"]:visible',
-  );
-  // Native dictionaries initialize asynchronously after the app selects the
-  // system language. A single click keeps the journey user-realistic; give a
-  // clean runner time to download and classify instead of retrying the gesture.
-  await delay(20_000);
-  await page.mouse.click(box.x + wordCenterX, box.y + 24, { button: "right" });
-  await menu
-    .getByText("Add to Dictionary", { exact: true })
-    .waitFor({
-      timeout: Math.min(3_000, remainingTime(deadline)),
-    })
-    .catch(() => undefined);
-  const menuText = (await menu.isVisible()) ? (await menu.innerText()).trim() : "<menu hidden>";
-
-  if (!menuText.includes("Add to Dictionary")) {
-    const diagnostics = await page.evaluate(() => window.__ottoSpellcheckSmoke);
-    throw new Error(
-      `Packaged spellcheck menu never received a native misspelling context. Last menu text: ${JSON.stringify(menuText)}. Diagnostics: ${JSON.stringify(diagnostics)}`,
-    );
-  }
-
-  const standardActions = new Set(["Cut", "Copy", "Paste", "Select all", "Add to Dictionary"]);
-  const suggestion = menuText
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find((line) => line && !standardActions.has(line));
-  if (!suggestion) {
-    throw new Error(`Packaged spellcheck menu had no dictionary suggestion: ${menuText}`);
-  }
-
-  await menu.getByText(suggestion, { exact: true }).click();
-  await page.waitForFunction(
-    ({ testId: targetTestId, misspelling: targetMisspelling }) => {
-      const element = document.querySelector(`[data-testid="${targetTestId}"]`);
-      return element instanceof HTMLTextAreaElement && !element.value.includes(targetMisspelling);
-    },
-    { testId, misspelling },
-    { timeout: remainingTime(deadline) },
-  );
-  console.log(
-    `Packaged desktop smoke: native spellcheck suggested ${JSON.stringify(suggestion)} and replaced the misspelling`,
-  );
-}
-
-/**
- * Print a document and check the bytes really are a PDF.
- *
- * `webContents.printToPDF` has no headless stand-in, so the markdown PDF export
- * has nothing below this that can prove it produces a file. This is the real
- * production handler on the real packaged app - the smoke adds no branch to
- * main, it just calls what the export calls.
- */
-async function verifyPrintToPdf(page) {
-  const result = await page.evaluate(async () => {
-    const printHtml = window.ottoDesktop?.pdf?.printHtml;
-    if (typeof printHtml !== "function") {
-      return { error: "ottoDesktop.pdf.printHtml is not a function" };
-    }
-    try {
-      const base64 = await printHtml({
-        html: "<!doctype html><html><body><h1>Otto smoke</h1></body></html>",
-      });
-      if (typeof base64 !== "string" || base64.length === 0) {
-        return { error: `printHtml returned ${typeof base64} of length ${base64?.length}` };
-      }
-      // Decode just the header rather than the whole file.
-      return { header: atob(base64.slice(0, 12)).slice(0, 5), length: base64.length };
-    } catch (error) {
-      return { error: String(error) };
-    }
-  });
-
-  if (result.error) {
-    throw new Error(`Packaged renderer could not print to PDF: ${result.error}`);
-  }
-  if (result.header !== "%PDF-") {
-    throw new Error(
-      `Packaged renderer printed something that is not a PDF: header ${JSON.stringify(result.header)}`,
-    );
-  }
-  console.log(`Packaged desktop smoke: printToPDF produced ${result.length} base64 chars of PDF`);
 }
 
 async function waitForRendererStartedDaemon({
@@ -761,7 +528,7 @@ async function waitForRendererStartedDaemon({
 
   while (Date.now() < deadline) {
     try {
-      lastStatus = await page.evaluate(() => window.ottoDesktop.invoke("desktop_daemon_status"));
+      lastStatus = await page.evaluate(() => window.paseoDesktop.invoke("desktop_daemon_status"));
       if (
         lastStatus?.status === "running" &&
         lastStatus.desktopManaged === true &&
@@ -894,28 +661,19 @@ async function smokeCliShim({ appPath, env }) {
 }
 
 async function smokeColdCliDaemonStart({ appPath }) {
-  const home = createTempDir("otto-smoke-cli-daemon-home-");
-  const pidPath = path.join(home, "otto.pid");
+  const home = createTempDir("paseo-smoke-cli-daemon-home-");
+  const pidPath = path.join(home, `${OTTO_CLI_COMMAND}.pid`);
   const port = await reserveLocalTcpPort();
   const listen = `127.0.0.1:${port}`;
-  const env = createDefaultDaemonEnv();
+  const env = createDefaultDaemonEnv({ HOME: home, USERPROFILE: home });
+  configureIsolatedDaemonHome(home, listen);
 
   try {
     console.log("Packaged desktop smoke: cold-starting daemon through bundled CLI shim");
     await runCliShimCommand({
       appPath,
       env,
-      args: [
-        "daemon",
-        "start",
-        "--home",
-        home,
-        "--listen",
-        listen,
-        "--no-relay",
-        "--no-mcp",
-        "--no-inject-mcp",
-      ],
+      args: ["daemon", "start", "--home", home],
       label: "Bundled CLI shim cold daemon start",
     });
 
@@ -968,8 +726,8 @@ function assertCleanDaemonStatusOutput(output) {
 }
 
 async function smokeCliTerminal({ appPath, env }) {
-  const cwd = createTempDir("otto-smoke-terminal-cwd-");
-  const marker = `otto-packaged-terminal-smoke-${Date.now()}`;
+  const cwd = createTempDir("paseo-smoke-terminal-cwd-");
+  const marker = `paseo-packaged-terminal-smoke-${Date.now()}`;
   const name = `packaged-smoke-${process.pid}-${Date.now()}`;
   let terminalId = null;
 
@@ -1047,34 +805,97 @@ async function stopCliDaemon({ appPath, env }) {
   });
 }
 
-// Otto: upstream expects `${EXECUTABLE_NAME}.desktop`. Otto's desktopName instead
-// matches the app id Electron derives from the packaged "name" field
-// ("@otto-code/desktop" -> "otto-code-desktop"), which is also the .desktop entry's
-// StartupWMClass. Requiring "Otto.desktop" would reopen the detached taskbar icon
-// bug; see "Taskbar/dock icon detached" in docs/desktop-linux.md.
+async function openSmokeWorkspace({ appPath, env, page, daemonHome }) {
+  const projectPath = path.join(daemonHome, "sandbox-smoke-project");
+  fs.mkdirSync(projectPath);
+  fs.writeFileSync(path.join(projectPath, "README.md"), "Packaged Linux sandbox smoke\n");
+  const workspace = await runCliShimJsonCommand({
+    appPath,
+    env,
+    args: [
+      "workspace",
+      "create",
+      "--isolation",
+      "local",
+      "--path",
+      projectPath,
+      "--title",
+      "Sandbox smoke workspace",
+    ],
+    label: "Create packaged smoke workspace",
+  });
+  await page.getByRole("button", { name: "Sandbox smoke workspace", exact: true }).click();
+  await page.waitForURL((url) => url.pathname.endsWith(`/workspace/${workspace.workspaceId}`));
+  await page.getByRole("button", { name: "Agent", exact: true }).click();
+  await page.getByRole("textbox", { name: "Message agent..." }).click();
+  console.log(`Packaged desktop smoke: renderer opened workspace ${workspace.workspaceId}`);
+}
+
+async function assertSandboxState({ browser, page, expectedSandbox, stdout, stderr }) {
+  const diagnostics = await page.evaluate(() =>
+    window.paseoDesktop.invoke("desktop_sandbox_diagnostics"),
+  );
+  if (diagnostics.enabled !== expectedSandbox) {
+    throw new Error(
+      `Unexpected sandbox decision: ${JSON.stringify(diagnostics)}; expected enabled=${expectedSandbox}`,
+    );
+  }
+  if (!stdout.join("").includes("[desktop] app startup")) {
+    throw new Error("Missing production app startup log");
+  }
+  const session = await browser.newBrowserCDPSession();
+  const { processInfo } = await session.send("SystemInfo.getProcessInfo");
+  await session.detach();
+  const renderers = processInfo.filter((info) => info.type === "renderer");
+  if (renderers.length === 0) throw new Error("No renderer process found");
+  for (const renderer of renderers) {
+    const status = fs.readFileSync(`/proc/${renderer.id}/status`, "utf8");
+    const security = status
+      .split("\n")
+      .filter((line) => /^(NoNewPrivs|Seccomp|Uid|Gid):/.test(line))
+      .join("; ");
+    const report = `Sandbox evidence: enabled=${expectedSandbox}; ${diagnostics.reason}; renderer ${renderer.id}: ${security}`;
+    console.log(report);
+    stdout.push(`${report}\n`);
+    if (
+      expectedSandbox &&
+      (!/^NoNewPrivs:\s+1$/m.test(status) || !/^Seccomp:\s+2$/m.test(status))
+    ) {
+      throw new Error(`Renderer lacks OS sandbox: ${report}\n${stderr.join("")}`);
+    }
+  }
+}
+
 function assertLinuxDesktopIdentity(appPath) {
   if (process.platform === "linux") {
+    assert.deepEqual(
+      fs.readFileSync(path.join(appPath, "resources", "icon.png")),
+      fs.readFileSync(path.join(__dirname, "..", "assets", "icon.png")),
+      "Packaged Linux windows must have the Paseo icon at their runtime lookup path",
+    );
     const metadata = JSON.parse(
       extractFile(path.join(appPath, "resources", "app.asar"), "package.json").toString(),
     );
-    const expected = `${String(metadata.name).replace(/^@/, "").replace(/\//g, "-")}.desktop`;
-    if (metadata.desktopName !== expected) {
+    if (metadata.desktopName !== `${EXECUTABLE_NAME}.desktop`) {
       throw new Error(
-        `Packaged Linux desktop identity ${JSON.stringify(metadata.desktopName)} does not match ${expected}`,
+        `Packaged Linux desktop identity ${JSON.stringify(metadata.desktopName)} does not match ${EXECUTABLE_NAME}.desktop`,
       );
     }
   }
 }
 
-async function smokePackagedDesktopApp({ appPath }) {
-  const executablePath = getExecutablePath(appPath);
+async function smokePackagedDesktopApp({
+  appPath,
+  executablePath = getExecutablePath(appPath),
+  launchArgs = [],
+  expectedSandbox,
+}) {
   assertExecutable(executablePath, "Packaged app executable");
   assertLinuxDesktopIdentity(appPath);
-  ensureLinuxSandboxPermissions(appPath);
   await smokeColdCliDaemonStart({ appPath });
 
-  const userData = createTempDir("otto-smoke-user-data-");
-  const daemonHome = createTempDir("otto-smoke-daemon-home-");
+  const userData = createTempDir("paseo-smoke-user-data-");
+  const daemonHome = createTempDir("paseo-smoke-daemon-home-");
   const daemonPort = await reserveLocalTcpPort();
   let cdpPort = await reserveLocalTcpPort();
   for (let attempt = 0; cdpPort === daemonPort && attempt < 10; attempt += 1) {
@@ -1094,7 +915,7 @@ async function smokePackagedDesktopApp({ appPath }) {
 
   const stdout = [];
   const stderr = [];
-  const launch = getLaunchCommand(executablePath);
+  const launch = getLaunchCommand(executablePath, launchArgs);
   console.log(`Packaged desktop smoke: launching ${launch.command} ${launch.args.join(" ")}`);
   const child = spawn(launch.command, launch.args, {
     detached: process.platform !== "win32",
@@ -1131,30 +952,12 @@ async function smokePackagedDesktopApp({ appPath }) {
       daemonHome,
       deadline,
     });
-    // Renderer-side failures are invisible in the app's main-process log, which
-    // is silent between creating the window and painting it. Surfacing them here
-    // is the difference between "timed out" and knowing which request 404'd.
-    for (const context of browser.contexts()) {
-      context.on("page", (opened) => {
-        console.log(`Packaged desktop smoke: renderer page opened at ${opened.url()}`);
-        opened.on("console", (message) => {
-          if (message.type() === "error") {
-            console.log(`Packaged desktop smoke: renderer console error: ${message.text()}`);
-          }
-        });
-        opened.on("pageerror", (error) => {
-          console.log(`Packaged desktop smoke: renderer page error: ${error.message}`);
-        });
-        opened.on("requestfailed", (request) => {
-          console.log(
-            `Packaged desktop smoke: renderer request failed ${request.url()} - ${
-              request.failure()?.errorText ?? "unknown"
-            }`,
-          );
-        });
-      });
-    }
     page = await waitForPackagedAppPage(browser, deadline);
+    // OTTO(artifacts): renderer/CSP diagnostics are evidence, never a smoke-only app path.
+    page.on("pageerror", (error) => stderr.push(`Renderer error: ${error.message}\n`));
+    page.on("console", (message) => {
+      if (message.type() === "error") stderr.push(`Renderer console: ${message.text()}\n`);
+    });
     await assertPackagedRendererLoaded(page, deadline);
     console.log("Packaged desktop smoke: real app renderer and preload bridge loaded");
     const status = await waitForRendererStartedDaemon({
@@ -1167,16 +970,22 @@ async function smokePackagedDesktopApp({ appPath }) {
       deadline,
     });
     console.log("Packaged desktop smoke: renderer-started desktop daemon reported running");
-    await waitForPackagedAppSettled(page, deadline);
-    await verifySpellcheckContextMenu(page, deadline);
+    await assertBuiltinPluginsStarted(listen);
+    console.log("Packaged desktop smoke: every built-in plugin started");
+    await smokeArtifactPreview({ page, listen, daemonHome, cdpPort }); // OTTO(artifacts): no provider/model launches.
     await smokeCliShim({ appPath, env });
     await smokeCliTerminal({ appPath, env });
+    if (expectedSandbox !== undefined) {
+      await assertSandboxState({ browser, page, expectedSandbox, stdout, stderr });
+      await openSmokeWorkspace({ appPath, env, page, daemonHome });
+    }
+    await writeSmokeArtifacts({ page, stdout, stderr, userData, daemonHome });
     await stopDaemonForCleanup();
     console.log(
       `Packaged desktop smoke passed: real renderer and preload loaded; renderer-started desktop daemon pid ${status.pid}, listen ${status.listen}; CLI shim daemon status and terminal smoke succeeded`,
     );
   } catch (error) {
-    await writeFailureArtifacts({ page, stdout, stderr, userData, daemonHome, error }).catch(
+    await writeSmokeArtifacts({ page, stdout, stderr, userData, daemonHome, error }).catch(
       (artifactError) => {
         console.warn(`Packaged desktop smoke: failed to write failure artifacts: ${artifactError}`);
       },
@@ -1197,10 +1006,6 @@ async function smokePackagedDesktopApp({ appPath }) {
       }
     }
     releaseChildHandles(child);
-    // Windows can report the process as exited before releasing its executable
-    // image. electron-builder edits that file immediately after afterPack, so
-    // returning early turns a passed smoke into a nondeterministic EBUSY build.
-    await waitForPackagedExecutableUnlock(executablePath);
     await removeTempDir(userData);
     await removeTempDir(daemonHome);
   }

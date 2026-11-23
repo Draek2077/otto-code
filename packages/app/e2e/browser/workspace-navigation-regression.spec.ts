@@ -1,4 +1,8 @@
-import { buildHostAgentDetailRoute, buildHostWorkspaceRoute } from "@/utils/host-routes";
+import {
+  buildHostAgentDetailRoute,
+  buildHostWorkspaceOpenRoute,
+  buildHostWorkspaceRoute,
+} from "@/utils/host-routes";
 import { expect, test, type Page } from "../support/fixtures";
 import { gotoAppShell, openSettings } from "../support/helpers/app";
 import {
@@ -7,6 +11,7 @@ import {
   expectWorkspaceTabVisible,
   openWorkspaceWithAgents,
 } from "../support/helpers/archive-tab";
+import { clickNewChat } from "../support/helpers/launcher";
 import { expectComposerVisible } from "../support/helpers/composer";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { seedWorkspace } from "../support/helpers/seed-client";
@@ -71,10 +76,7 @@ async function expectNoLoadingPane(page: Page): Promise<void> {
 }
 
 async function getVisibleDraftTabCount(page: Page): Promise<number> {
-  return page
-    .locator('[data-testid^="workspace-tab-draft"][aria-selected]')
-    .filter({ visible: true })
-    .count();
+  return page.locator('[data-testid^="workspace-tab-draft"]').filter({ visible: true }).count();
 }
 
 async function closeFirstVisibleDraftTab(page: Page): Promise<void> {
@@ -114,28 +116,31 @@ test.describe("Workspace navigation regression", () => {
 
     await page.evaluate((data) => {
       globalThis.dispatchEvent(
-        new CustomEvent("otto:web-notification-click", {
+        new CustomEvent("paseo:web-notification-click", {
           detail: { data: { ...data, reason: "finished" } },
           cancelable: true,
         }),
       );
     }, target);
 
-    await expectAppRoute(page, buildHostWorkspaceRoute(target.serverId, target.workspaceId), {
-      timeout: 30_000,
-    });
+    await expectAppRoute(
+      page,
+      buildHostWorkspaceOpenRoute(target.serverId, target.workspaceId, `agent:${target.agentId}`),
+      { timeout: 30_000 },
+    );
     await expect(page.getByText("Connecting", { exact: true })).toBeVisible();
     await expect(page.getByText("Notification Host", { exact: true })).toBeVisible();
     await expect(page.getByText("Add a project", { exact: true })).toHaveCount(0);
   });
 
-  test("keeps one replacement draft after returning from settings and closing the last tab", async ({
+  test("shows the New launcher after returning from settings and closing the last agent draft tab", async ({
     page,
     withWorkspace,
   }) => {
     const workspace = await withWorkspace({ prefix: "workspace-settings-back-tab-" });
 
     await workspace.navigateTo();
+    await clickNewChat(page);
     await expect.poll(() => getVisibleDraftTabCount(page), { timeout: 30_000 }).toBe(1);
 
     await openSettings(page);
@@ -145,7 +150,12 @@ test.describe("Workspace navigation regression", () => {
 
     await closeFirstVisibleDraftTab(page);
 
-    await expect.poll(() => getVisibleDraftTabCount(page), { timeout: 30_000 }).toBe(1);
+    await expect.poll(() => getVisibleDraftTabCount(page), { timeout: 30_000 }).toBe(0);
+    await expect(
+      page
+        .getByTestId("workspace-new-tab-panel")
+        .getByRole("button", { name: "Agent", exact: true }),
+    ).toBeVisible();
   });
 
   test("keeps the workspace rendered while reconnecting to the host", async ({ page }) => {
@@ -175,6 +185,9 @@ test.describe("Workspace navigation regression", () => {
       });
       await waitForWorkspaceTabsVisible(page);
       await expectWorkspaceTabVisible(page, agent.id);
+      // The reconnect toast belongs to the visible agent panel, which mounts
+      // after the tab strip. Drop the connection only after that panel is ready.
+      await expectComposerVisible(page);
 
       await daemonGate.drop();
       await daemonGate.waitForBlockedConnection();
@@ -270,14 +283,14 @@ test.describe("Workspace navigation regression", () => {
       await ws.close({ code: 1008, reason: "Blocked cold offline workspace route test." });
     });
 
-    await page.goto(buildHostWorkspaceRoute(serverId, "/tmp/otto-missing-workspace"));
+    await page.goto(buildHostWorkspaceRoute(serverId, "/tmp/paseo-missing-workspace"));
 
     await expectHostConnectingOrOffline(page);
     await expectMenuButtonVisible(page);
     await expectWorkspaceHeaderAbsent(page);
     await expectWorkspaceTabsAbsent(page);
     await openSettings(page);
-    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page).toHaveURL(/\/settings\/general$/);
   });
 
   test("cold workspace URL keeps sidebar workspace navigation functional", async ({ page }) => {
@@ -409,7 +422,7 @@ test.describe("Workspace navigation regression", () => {
       await page.evaluate(
         ({ agentId, serverId: targetServerId, workspaceId }) => {
           globalThis.dispatchEvent(
-            new CustomEvent("otto:web-notification-click", {
+            new CustomEvent("paseo:web-notification-click", {
               detail: {
                 data: {
                   serverId: targetServerId,

@@ -7,7 +7,7 @@ import pino from "pino";
 import { beforeAll, beforeEach, describe, expect, test } from "vitest";
 
 import { OpenCodeAgentClient } from "../agent/providers/opencode-agent.js";
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { canRunRealProvider } from "./real-provider-test-config.js";
 
@@ -25,7 +25,7 @@ describe("daemon E2E (real opencode) - slow plugin readiness", () => {
   });
 
   test("a fresh dedicated generation starts while a global plugin initializes slowly", async () => {
-    const root = mkdtempSync(path.join(tmpdir(), "otto-opencode-slow-plugin-"));
+    const root = mkdtempSync(path.join(tmpdir(), "paseo-opencode-slow-plugin-"));
     const cwd = path.join(root, "worktree");
     const configHome = path.join(root, "config");
     const dataHome = path.join(root, "data");
@@ -60,13 +60,13 @@ describe("daemon E2E (real opencode) - slow plugin readiness", () => {
         OPENCODE_DISABLE_AUTO_UPDATE: "1",
       },
     });
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       agentClients: { opencode: openCode },
       logger,
     });
     const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "opencode-slow-plugin" } });
+    await client.fetchAgents({ subscribe: {} });
 
     try {
       const agent = await client.createAgent({

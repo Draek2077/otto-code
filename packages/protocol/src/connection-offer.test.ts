@@ -20,7 +20,7 @@ describe("connection offer", () => {
       v: 2,
       serverId: "server-123",
       daemonPublicKeyB64: "pubkey",
-      relay: { endpoint: "relay.otto-code.ai:443" },
+      relay: { endpoint: "relay.paseo.sh:443" },
     };
 
     expect(decodeOfferFragmentPayload(encodeBase64UrlNoPadUtf8(JSON.stringify(payload)))).toEqual(
@@ -33,13 +33,11 @@ describe("connection offer", () => {
       v: 2,
       serverId: "server-123",
       daemonPublicKeyB64: "pubkey",
-      relay: { endpoint: "relay.otto-code.ai:443" },
+      relay: { endpoint: "relay.paseo.sh:443" },
     });
     const encoded = encodeBase64UrlNoPadUtf8(JSON.stringify(offer));
 
-    expect(parseConnectionOfferFromUrl(`https://app.otto-code.ai/#offer=${encoded}`)).toEqual(
-      offer,
-    );
+    expect(parseConnectionOfferFromUrl(`https://app.paseo.sh/#offer=${encoded}`)).toEqual(offer);
   });
 
   it("leaves relay TLS unset when absent", () => {
@@ -67,7 +65,7 @@ describe("connection offer", () => {
     });
     const encoded = encodeBase64UrlNoPadUtf8(JSON.stringify(offer));
 
-    expect(parseConnectionOfferFromUrl(`https://app.otto-code.ai/#offer=${encoded}`)).toEqual({
+    expect(parseConnectionOfferFromUrl(`https://app.paseo.sh/#offer=${encoded}`)).toEqual({
       v: 2,
       serverId: "server-123",
       daemonPublicKeyB64: "pubkey",
@@ -76,6 +74,6 @@ describe("connection offer", () => {
   });
 
   it("returns null when the URL has no offer fragment", () => {
-    expect(parseConnectionOfferFromUrl("https://app.otto-code.ai/pair")).toBeNull();
+    expect(parseConnectionOfferFromUrl("https://app.paseo.sh/pair")).toBeNull();
   });
 });

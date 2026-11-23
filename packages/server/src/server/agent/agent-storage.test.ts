@@ -5,7 +5,7 @@ import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { promises as fs } from "node:fs";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
-import { AgentStorage, parseStoredAgentRecord, type StoredAgentRecord } from "./agent-storage.js";
+import { AgentStorage } from "./agent-storage.js";
 import { buildConfigOverrides, buildSessionConfig } from "../persistence-hooks.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type {
@@ -113,7 +113,6 @@ function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent
     currentModeId: overrides.currentModeId ?? core.config.modeId ?? null,
     pendingPermissions: overrides.pendingPermissions ?? new Map<string, AgentPermissionRequest>(),
     activeForegroundTurnId: core.activeForegroundTurnId,
-    steerQueue: [],
     foregroundTurnWaiters: new Set(),
     unsubscribeSession: null,
     timeline: overrides.timeline ?? [],
@@ -163,7 +162,7 @@ describe("AgentStorage", () => {
           systemPrompt: "Be terse and explicit.",
           providerOptions: { allowedTools: ["Read"] },
           mcpServers: {
-            otto: {
+            paseo: {
               type: "stdio",
               command: "node",
               args: ["/tmp/mcp-stdio-socket-bridge-cli.mjs", "--socket", "/tmp/test.sock"],
@@ -181,7 +180,7 @@ describe("AgentStorage", () => {
     expect(record.config?.model).toBe("gpt-5.1");
     expect(record.config?.systemPrompt).toBe("Be terse and explicit.");
     expect(record.config?.mcpServers).toEqual({
-      otto: {
+      paseo: {
         type: "stdio",
         command: "node",
         args: ["/tmp/mcp-stdio-socket-bridge-cli.mjs", "--socket", "/tmp/test.sock"],
@@ -396,42 +395,6 @@ describe("AgentStorage", () => {
     expect(record?.archivedAt).toBe("2025-01-03T00:00:00.000Z");
   });
 
-  test("a concurrent streaming persist never rolls a fresh title back to the provisional", async () => {
-    const agentId = "agent-title-race";
-    // Chat starts with the provisional first-line title.
-    await storage.applySnapshot(createManagedAgent({ id: agentId }), {
-      title: "First prompt line",
-    });
-
-    // The auto-title writer's setTitle and a streaming background persist (a
-    // title-less applySnapshot, which is meant to PRESERVE the stored title)
-    // fire around the same tick. The persist must not read the stale provisional
-    // title and write it back over the freshly generated one - the lost-update
-    // race that made the visualizer/chat title snap back to the first prompt.
-    await Promise.all([
-      storage.setTitle(agentId, "AI Title"),
-      storage.applySnapshot(createManagedAgent({ id: agentId, lifecycle: "running" })),
-    ]);
-    expect((await storage.get(agentId))?.title).toBe("AI Title");
-
-    // Same guarantee with the enqueue order reversed (persist first, then the
-    // title write).
-    await Promise.all([
-      storage.applySnapshot(
-        createManagedAgent({
-          id: agentId,
-          lifecycle: "idle",
-          updatedAt: new Date("2025-02-01T00:00:00.000Z"),
-        }),
-      ),
-      storage.setTitle(agentId, "AI Title v2"),
-    ]);
-    expect((await storage.get(agentId))?.title).toBe("AI Title v2");
-
-    const reloaded = new AgentStorage(storagePath, logger);
-    expect((await reloaded.get(agentId))?.title).toBe("AI Title v2");
-  });
-
   test("list returns all agents including internal ones", async () => {
     // Create a normal agent
     await storage.applySnapshot(
@@ -611,234 +574,5 @@ describe("AgentStorage", () => {
     const afterReload = new AgentStorage(storagePath, logger);
     const after = await afterReload.list();
     expect(after.some((r) => r.id === agentId)).toBe(false);
-  });
-
-  // The workspace half of the owner index. The descriptor rebuild that runs on
-  // every agent lifecycle event asks for one workspace's records; a seeded home
-  // carries thousands, so this has to answer without walking the cache.
-  async function seedOwnedRecords(
-    records: Array<{ id: string; workspaceId?: string }>,
-  ): Promise<void> {
-    for (const input of records) {
-      await storage.upsert(ownedRecord(input));
-    }
-  }
-
-  test("list(scope) returns only the records owned by the requested workspaces", async () => {
-    await seedOwnedRecords([
-      { id: "a-1", workspaceId: "ws-a" },
-      { id: "a-2", workspaceId: "ws-a" },
-      { id: "b-1", workspaceId: "ws-b" },
-      { id: "unowned" },
-    ]);
-
-    const scoped = await storage.list({ workspaceIds: new Set(["ws-a"]) });
-
-    expect(scopedIds(scoped)).toEqual(["a-1", "a-2"]);
-  });
-
-  test("list(scope) adds records named by id, deduped against the workspace hits", async () => {
-    await seedOwnedRecords([
-      { id: "a-1", workspaceId: "ws-a" },
-      { id: "b-1", workspaceId: "ws-b" },
-      { id: "unowned" },
-    ]);
-
-    const scoped = await storage.list({
-      workspaceIds: new Set(["ws-a"]),
-      agentIds: new Set(["a-1", "b-1", "unowned", "never-existed"]),
-    });
-
-    expect(scopedIds(scoped)).toEqual(["a-1", "b-1", "unowned"]);
-  });
-
-  test("a record that moves workspace leaves its old workspace's scope", async () => {
-    await seedOwnedRecords([{ id: "mover", workspaceId: "ws-a" }]);
-
-    await storage.upsert(ownedRecord({ id: "mover", workspaceId: "ws-b" }));
-
-    const inOldWorkspace = await storage.list({ workspaceIds: new Set(["ws-a"]) });
-    const inNewWorkspace = await storage.list({ workspaceIds: new Set(["ws-b"]) });
-    expect(scopedIds(inOldWorkspace)).toEqual([]);
-    expect(scopedIds(inNewWorkspace)).toEqual(["mover"]);
-  });
-
-  test("a removed record leaves its workspace's scope", async () => {
-    await seedOwnedRecords([
-      { id: "a-1", workspaceId: "ws-a" },
-      { id: "a-2", workspaceId: "ws-a" },
-    ]);
-
-    await storage.remove("a-1");
-
-    const scoped = await storage.list({ workspaceIds: new Set(["ws-a"]) });
-    expect(scopedIds(scoped)).toEqual(["a-2"]);
-  });
-
-  test("the workspace owner index survives a cold reload from disk", async () => {
-    await seedOwnedRecords([
-      { id: "a-1", workspaceId: "ws-a" },
-      { id: "b-1", workspaceId: "ws-b" },
-    ]);
-
-    const reloaded = new AgentStorage(storagePath, logger);
-    const scoped = await reloaded.list({ workspaceIds: new Set(["ws-b"]) });
-
-    expect(scopedIds(scoped)).toEqual(["b-1"]);
-  });
-
-  test("an empty scope matches nothing, rather than falling back to everything", async () => {
-    await seedOwnedRecords([{ id: "a-1", workspaceId: "ws-a" }]);
-
-    const scoped = await storage.list({});
-    expect(scopedIds(scoped)).toEqual([]);
-  });
-});
-
-function ownedRecord(input: { id: string; workspaceId?: string }): StoredAgentRecord {
-  return {
-    id: input.id,
-    provider: "claude",
-    cwd: "/tmp/project",
-    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-    createdAt: "2026-03-01T12:00:00.000Z",
-    updatedAt: "2026-03-01T12:00:00.000Z",
-    labels: {},
-    lastStatus: "idle",
-  };
-}
-
-function scopedIds(records: StoredAgentRecord[]): string[] {
-  return records.map((record) => record.id).sort();
-}
-
-// COMPAT(profileSnapshotKey): added in v0.8.13, remove after 2027-02-22.
-// A stored agent written before the personality/profile convergence carries
-// `config.personalitySnapshot` with a `personalityId` inside it. Loading has to
-// tolerate that shape forever-until-the-date, and converge the file while it is
-// at it. This touches real user data, so it is tested against files on disk
-// rather than through the parse helper alone.
-describe("AgentStorage pre-convergence records", () => {
-  let tmpDir: string;
-  let storagePath: string;
-  let storage: AgentStorage;
-  const logger = createTestLogger();
-
-  const legacySnapshot = {
-    personalityId: "personality_builtin_sage",
-    name: "Sage",
-    provider: "claude",
-    model: "claude-opus-4-8",
-    effortDegraded: false,
-    respectGlobalAppendPrompt: true,
-    roles: ["advisor"],
-  };
-
-  function legacyRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
-    return {
-      id: "legacy-agent",
-      provider: "claude",
-      cwd: "/tmp/legacy-project",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      labels: {},
-      lastStatus: "closed",
-      config: { model: "claude-opus-4-8", personalitySnapshot: legacySnapshot },
-      ...overrides,
-    };
-  }
-
-  async function writeLegacyFile(record: Record<string, unknown>): Promise<string> {
-    // Mirrors projectDirNameFromCwd for "/tmp/legacy-project": the root "/"
-    // sanitizes away entirely, so there is no leading separator.
-    const dir = path.join(storagePath, "tmp-legacy-project");
-    await fs.mkdir(dir, { recursive: true });
-    const filePath = path.join(dir, `${String(record["id"])}.json`);
-    await fs.writeFile(filePath, JSON.stringify(record, null, 2), "utf8");
-    return filePath;
-  }
-
-  beforeEach(() => {
-    tmpDir = mkdtempSync(path.join(os.tmpdir(), "agent-registry-legacy-"));
-    storagePath = path.join(tmpDir, "agents");
-    storage = new AgentStorage(storagePath, logger);
-  });
-
-  afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
-  });
-
-  test("renames the keys on parse", () => {
-    const parsed = parseStoredAgentRecord(legacyRecord());
-    expect(parsed.config?.profileSnapshot?.profileId).toBe("personality_builtin_sage");
-  });
-
-  test("loads a record written under the old keys", async () => {
-    await writeLegacyFile(legacyRecord());
-
-    const loaded = await storage.list();
-    const record = loaded.find((entry) => entry.id === "legacy-agent");
-
-    expect(record?.config?.profileSnapshot?.profileId).toBe("personality_builtin_sage");
-    expect(record?.config?.profileSnapshot?.name).toBe("Sage");
-  });
-
-  test("rewrites the file so the store converges", async () => {
-    const filePath = await writeLegacyFile(legacyRecord());
-    await storage.list();
-
-    const onDisk = JSON.parse(await fs.readFile(filePath, "utf8")) as Record<string, unknown>;
-    const config = onDisk["config"] as Record<string, unknown>;
-    expect(config).not.toHaveProperty("personalitySnapshot");
-    expect((config["profileSnapshot"] as Record<string, unknown>)["profileId"]).toBe(
-      "personality_builtin_sage",
-    );
-    expect(config["profileSnapshot"]).not.toHaveProperty("personalityId");
-  });
-
-  test("keeps unknown fields a newer daemon wrote", async () => {
-    // A migration has no business dropping a field it does not recognize, so
-    // the normalized RAW json is written rather than the parsed record.
-    const filePath = await writeLegacyFile(legacyRecord({ somethingNewer: { keep: "me" } }));
-    await storage.list();
-
-    const onDisk = JSON.parse(await fs.readFile(filePath, "utf8")) as Record<string, unknown>;
-    expect(onDisk["somethingNewer"]).toEqual({ keep: "me" });
-  });
-
-  test("leaves an already-converged record untouched", async () => {
-    const converged = legacyRecord({
-      id: "modern-agent",
-      config: {
-        model: "claude-opus-4-8",
-        profileSnapshot: { ...legacySnapshot, personalityId: undefined, profileId: "p-modern" },
-      },
-    });
-    const filePath = await writeLegacyFile(converged);
-    const before = await fs.readFile(filePath, "utf8");
-
-    await storage.list();
-
-    expect(await fs.readFile(filePath, "utf8")).toBe(before);
-  });
-
-  test("prefers the new key when a record somehow carries both", async () => {
-    // Only possible if an older daemon appended the legacy key back onto a file
-    // a newer one had already migrated.
-    await writeLegacyFile(
-      legacyRecord({
-        id: "both-keys-agent",
-        config: {
-          model: "claude-opus-4-8",
-          personalitySnapshot: legacySnapshot,
-          profileSnapshot: { ...legacySnapshot, personalityId: undefined, profileId: "p-winner" },
-        },
-      }),
-    );
-
-    const loaded = await storage.list();
-    const record = loaded.find((entry) => entry.id === "both-keys-agent");
-
-    expect(record?.config?.profileSnapshot?.profileId).toBe("p-winner");
   });
 });

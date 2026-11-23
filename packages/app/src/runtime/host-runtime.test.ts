@@ -1,26 +1,25 @@
-import { deriveAgentStreamTurnLiveness } from "@/timeline/session-stream-reducers";
-import type { AgentStreamEventPayload, SessionOutboundMessage } from "@otto-code/protocol/messages";
-import type { AgentPermissionRequest } from "@otto-code/protocol/agent-types";
-import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
-import { isAgentArchiving, setAgentArchiving } from "@/hooks/use-archive-agent";
+// OTTO(identity): assertions follow Otto identity values.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AppStateStatus } from "react-native";
-import { bindHostRuntimeAppState } from "@/navigation/host-runtime-bootstrap";
-
-vi.hoisted(() => {
-  Object.defineProperty(globalThis, "__DEV__", { value: false, configurable: true });
-});
+import {
+  bindHostRuntimeAppState,
+  startHostRuntimeBootstrap,
+} from "@/navigation/host-runtime-bootstrap";
 import type {
   DaemonClient,
   ConnectionState,
   FetchAgentsEntry,
   FetchAgentsOptions,
-} from "@otto-code/client/internal/daemon-client";
-import type { ConnectionOffer } from "@otto-code/protocol/connection-offer";
+} from "@getpaseo/client/internal/daemon-client";
+import { DaemonAuthenticationError } from "@getpaseo/client/internal/daemon-client";
+import type { ConnectionOffer } from "@getpaseo/protocol/connection-offer";
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import type { AgentPermissionRequest } from "@getpaseo/protocol/agent-types";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
 import { defaultHostAppearance } from "@/hosts/appearance";
 import { useSessionStore, type Agent } from "@/stores/session-store";
-import { useWorkspaceLabels } from "@/workspace-labels";
+import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
+import { isAgentArchiving, setAgentArchiving } from "@/hooks/use-archive-agent";
 import { queryClient } from "@/data/query-client";
 import {
   HostRuntimeController,
@@ -31,32 +30,42 @@ import {
 } from "./host-runtime";
 import type { ReplicaRow, ReplicaRowStore } from "./replica-cache/row-store";
 
-vi.mock("@/desktop/browser/automation/handler", () => ({
-  mountBrowserAutomationDaemonClientHandler: vi.fn(() => () => undefined),
-}));
+import { subscriptionFixture } from "./subscription-fixture";
+import { readDesktopManagedLocalCredential } from "@/desktop/daemon/local-credential";
+import type { HostConfirmationRequest } from "./host-confirmation";
 
-// AsyncStorage's web build reads `window.localStorage`, which the node test environment does not
-// have, so every store built without an explicit `storage` logged a "window is not defined" stack
-// trace from persistHosts. Returning null / no-op matches what those tests already observed (a
-// throwing getItem was caught and treated as an empty registry) without the stderr noise. Tests
-// that assert on persistence pass `createMemoryHostRuntimeStorage` instead.
-vi.mock("@react-native-async-storage/async-storage", () => ({
-  default: {
-    getItem: vi.fn(async () => null),
-    setItem: vi.fn(async () => undefined),
-    removeItem: vi.fn(async () => undefined),
-  },
-}));
+it("requests the managed connection credential through desktop main without a web hint", async () => {
+  const requests: string[] = [];
+  const connection: HostConnection = {
+    id: "direct:localhost:6767",
+    type: "directTcp",
+    endpoint: "localhost:6767",
+  };
+  let token = "local-token";
+  const invoke = async (listen: string) => {
+    requests.push(listen);
+    return token;
+  };
+  expect(await readDesktopManagedLocalCredential(connection, invoke)).toBe("local-token");
+  token = "rotated-token";
+  expect(await readDesktopManagedLocalCredential(connection, invoke)).toBe("rotated-token");
+  expect(requests).toEqual(["localhost:6767", "localhost:6767"]);
+});
 
 class FakeDaemonClient {
+  supportsBackgroundWorkspaces(): boolean {
+    return false;
+  }
   private state: ConnectionState = { status: "idle" };
   private listeners = new Set<(status: ConnectionState) => void>();
   private error: string | null = null;
+  authFailureReason: "password_required" | "incorrect_password" | null = null;
   private heartbeatRttMs: number | null = null;
   private latencyMeasurementFailure: Error | null = null;
   private latencyMeasurementsRequested: Array<{ timeoutMs?: number }> = [];
   public connectCalls = 0;
   public ensureConnectedCalls = 0;
+  public connectionVerifications = 0;
   public reconnectEnabledChanges: boolean[] = [];
   public fetchAgentsCalls: FetchAgentsOptions[] = [];
   public fetchAgentsResponses: Array<
@@ -65,29 +74,37 @@ class FakeDaemonClient {
   public sentAgentMessages: Array<Parameters<DaemonClient["sendAgentMessage"]>> = [];
   public sendAgentMessageFailures: Error[] = [];
   public sendAgentMessageResponses: Promise<void>[] = [];
-  private eventHandlers = new Map<string, Set<(message: unknown) => void>>();
-  public listWorkspaceLabelsCalls: unknown[] = [];
+  private agentUpdateListeners = new Set<
+    (message: Extract<SessionOutboundMessage, { type: "agent_update" }>) => void
+  >();
   private fetchWaiters = new Set<() => void>();
   private agentListenerWaiters = new Set<() => void>();
   private sentMessageWaiters = new Set<() => void>();
 
-  on(event: string, handler: (message: unknown) => void): () => void {
-    const handlers = this.eventHandlers.get(event) ?? new Set();
-    handlers.add(handler);
-    this.eventHandlers.set(event, handlers);
+  on(
+    type: "agent_update",
+    listener: (message: Extract<SessionOutboundMessage, { type: "agent_update" }>) => void,
+  ): () => void {
+    if (type === "agent_update") this.agentUpdateListeners.add(listener);
     for (const waiter of this.agentListenerWaiters) waiter();
-    return () => handlers.delete(handler);
+    return () => this.agentUpdateListeners.delete(listener);
   }
 
-  emit(event: string, message: unknown): void {
-    for (const handler of this.eventHandlers.get(event) ?? []) handler(message);
+  observeAgents(options: Parameters<DaemonClient["observeAgents"]>[0]) {
+    return subscriptionFixture(this.fetchAgents({ ...options, subscribe: {} }), (receive) =>
+      this.on("agent_update", receive),
+    );
+  }
+
+  observeEvents() {
+    return subscriptionFixture(Promise.resolve({}), () => () => {});
   }
 
   async waitForAgentUpdates(): Promise<void> {
-    if (this.eventHandlers.get("agent_update")?.size) return;
+    if (this.agentUpdateListeners.size > 0) return;
     await new Promise<void>((resolve) => {
       const waiter = () => {
-        if (!this.eventHandlers.get("agent_update")?.size) return;
+        if (this.agentUpdateListeners.size === 0) return;
         this.agentListenerWaiters.delete(waiter);
         resolve();
       };
@@ -96,7 +113,9 @@ class FakeDaemonClient {
   }
 
   agentUpdate(payload: Extract<SessionOutboundMessage, { type: "agent_update" }>["payload"]): void {
-    this.emit("agent_update", { type: "agent_update", payload });
+    for (const listener of this.agentUpdateListeners) {
+      listener({ type: "agent_update", payload });
+    }
   }
 
   async connect(): Promise<void> {
@@ -117,7 +136,6 @@ class FakeDaemonClient {
     if (response) await response;
     const failure = this.sendAgentMessageFailures.shift();
     if (failure) throw failure;
-    return { queued: false, queuedMessageId: null };
   }
 
   async waitForSentMessages(count: number): Promise<void> {
@@ -132,8 +150,9 @@ class FakeDaemonClient {
     });
   }
 
-  ensureConnected(): void {
+  ensureConnected(options?: { verify?: boolean }): void {
     this.ensureConnectedCalls += 1;
+    if (options?.verify) this.connectionVerifications += 1;
     if (this.state.status !== "connected") {
       this.setConnectionState({ status: "connected" });
     }
@@ -143,8 +162,27 @@ class FakeDaemonClient {
     return this.state;
   }
 
-  getLastServerInfoMessage() {
-    return { features: { workspaceLabels: true } };
+  public ownedSubscriptions = true;
+  private daemonVersion: string | null = "0.8.0";
+
+  getLastServerInfoMessage(): ReturnType<DaemonClient["getLastServerInfoMessage"]> {
+    if (this.daemonVersion === null) return null;
+    return {
+      status: "server_info",
+      serverId: "srv_test",
+      hostname: "test",
+      version: this.daemonVersion,
+      features: { ownedSubscriptions: this.ownedSubscriptions },
+    };
+  }
+
+  // Like the real client, the server info is cleared while disconnected and replaced by the
+  // restarted daemon's handshake before the client reports connected again.
+  daemonRestartsAs(version: string): void {
+    this.daemonVersion = null;
+    this.setConnectionState({ status: "disconnected", reason: "Connection lost" });
+    this.daemonVersion = version;
+    this.setConnectionState({ status: "connected" });
   }
 
   subscribeConnectionStatus(listener: (status: ConnectionState) => void): () => void {
@@ -184,24 +222,6 @@ class FakeDaemonClient {
       };
       this.fetchWaiters.add(waiter);
     });
-  }
-
-  async fetchWorkspaces(): Promise<Awaited<ReturnType<DaemonClient["fetchWorkspaces"]>>> {
-    return {
-      requestId: "workspaces",
-      entries: [],
-      emptyProjects: [],
-      pageInfo: { hasMore: false, nextCursor: null, prevCursor: null },
-    };
-  }
-
-  async listWorkspaceLabels(options: unknown) {
-    this.listWorkspaceLabelsCalls.push(options);
-    return {
-      requestId: "workspace-labels",
-      labels: [{ name: "Urgent", color: "red" }],
-      sync: { mode: "snapshot", generation: "labels-generation", headSeq: 0, removals: [] },
-    };
   }
 
   async ping(): Promise<{ rttMs: number }> {
@@ -258,9 +278,8 @@ class FakeDaemonClient {
 
 afterEach(() => {
   vi.useRealTimers();
-  delete (globalThis as Record<string, unknown>).__OTTO_INITIAL_DAEMON_CONNECTION__;
+  delete (globalThis as Record<string, unknown>).__PASEO_INITIAL_DAEMON_CONNECTION__;
   delete (globalThis as { window?: unknown }).window;
-  useWorkspaceLabels.setState({ hosts: {} });
 });
 
 function useHostRuntimeClock(): void {
@@ -372,7 +391,7 @@ function makeFetchAgentsEntry(input: {
         currentBranch: null,
         remoteUrl: null,
         worktreeRoot: null,
-        isOttoOwnedWorktree: false,
+        isPaseoOwnedWorktree: false,
         mainRepoRoot: null,
       },
     },
@@ -389,19 +408,20 @@ function agentPermission(id: string): AgentPermissionRequest {
 
 function makeHost(input?: Partial<HostProfile>): HostProfile {
   const direct: HostConnection = {
-    id: "direct:lan:6868",
+    id: "direct:lan:6767",
     type: "directTcp",
-    endpoint: "lan:6868",
+    endpoint: "lan:6767",
   };
   const relay: HostConnection = {
-    id: "relay:relay.otto-code.ai:443",
+    id: "relay:relay.paseo.sh:443",
     type: "relay",
-    relayEndpoint: "relay.otto-code.ai:443",
+    relayEndpoint: "relay.paseo.sh:443",
     daemonPublicKeyB64: "pk_test",
   };
 
   return {
     serverId: input?.serverId ?? "srv_test",
+    ...(input?.password ? { password: input.password } : {}),
     label: input?.label ?? "test host",
     appearance: input?.appearance ?? defaultHostAppearance(),
     lifecycle: input?.lifecycle ?? {},
@@ -418,7 +438,7 @@ function makeOffer(input?: Partial<ConnectionOffer>): ConnectionOffer {
     serverId: input?.serverId ?? "srv_offer",
     daemonPublicKeyB64: input?.daemonPublicKeyB64 ?? "pk_test_offer",
     relay: {
-      endpoint: input?.relay?.endpoint ?? "relay.otto-code.ai:443",
+      endpoint: input?.relay?.endpoint ?? "relay.paseo.sh:443",
       useTls: input?.relay?.useTls ?? false,
     },
   };
@@ -430,7 +450,7 @@ function encodeOfferUrl(payload: unknown): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
     .replace(/=+$/g, "");
-  return `https://app.otto-code.ai/#offer=${encoded}`;
+  return `https://app.paseo.sh/#offer=${encoded}`;
 }
 
 function makeDeps(
@@ -490,6 +510,63 @@ function makeConnectedProbeClient(latencyMs: number): FakeDaemonClient {
   client.setConnectionState({ status: "connected" });
   client.ping = async () => ({ rttMs: latencyMs });
   return client;
+}
+
+/**
+ * Answers every host confirmation the store asks, the way the sheet does, and
+ * records each request.
+ */
+function answerHostConfirmations(
+  store: HostRuntimeStore,
+  answer: boolean | ((request: HostConfirmationRequest, index: number) => boolean),
+): HostConfirmationRequest[] {
+  const requests: HostConfirmationRequest[] = [];
+  store.subscribeHostConfirmation(() => {
+    const pending = store.getPendingHostConfirmation();
+    if (!pending) return;
+    requests.push(pending);
+    store.answerHostConfirmation(
+      pending.id,
+      typeof answer === "function" ? answer(pending, requests.length - 1) : answer,
+    );
+  });
+  return requests;
+}
+
+function requirePendingConfirmation(store: HostRuntimeStore): HostConfirmationRequest {
+  const pending = store.getPendingHostConfirmation();
+  if (!pending) throw new Error("Expected a pending host confirmation");
+  return pending;
+}
+
+function createPairingStore(
+  input: {
+    hostname?: string;
+    password?: string;
+    connectAttempts?: string[];
+    serverIdForHost?: (host: HostProfile) => string;
+    storage?: HostRuntimeStorage;
+  } = {},
+): HostRuntimeStore {
+  return new HostRuntimeStore({
+    storage: input.storage ?? createMemoryHostRuntimeStorage(),
+    deps: {
+      createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+      connectToDaemon: async ({ host, connection }) => {
+        input.connectAttempts?.push(connection.id);
+        if (input.password && host.password !== input.password) {
+          throw new DaemonAuthenticationError("password_required");
+        }
+        return {
+          client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+          serverId: input.serverIdForHost?.(host) ?? host.serverId,
+          hostname: input.hostname ?? "paired",
+        };
+      },
+      getClientId: async () => "cid_pairing",
+      readInitialConnectionHint: () => null,
+    },
+  });
 }
 
 function createMemoryHostRuntimeStorage(entries: Record<string, string> = {}): HostRuntimeStorage {
@@ -580,6 +657,21 @@ function onceHostListMatches(store: HostRuntimeStore, predicate: () => boolean):
   });
 }
 
+function onceHostSnapshotMatches(
+  store: HostRuntimeStore,
+  serverId: string,
+  predicate: (snapshot: ReturnType<HostRuntimeStore["getSnapshot"]>) => boolean,
+): Promise<void> {
+  if (predicate(store.getSnapshot(serverId))) return Promise.resolve();
+  return new Promise((resolve) => {
+    const unsubscribe = store.subscribe(serverId, () => {
+      if (!predicate(store.getSnapshot(serverId))) return;
+      unsubscribe();
+      resolve();
+    });
+  });
+}
+
 class BrowserClientLifecycle {
   public active: Array<{ serverId: string; connectionId: string }> = [];
 
@@ -593,11 +685,47 @@ class BrowserClientLifecycle {
 }
 
 describe("HostRuntimeController", () => {
+  it("publishes an old host and mounts observations through the client interface", async () => {
+    const host = makeHost();
+    const client = new FakeDaemonClient();
+    client.ownedSubscriptions = false;
+    let mounts = 0;
+    const controller = new HostRuntimeController({
+      host,
+      deps: {
+        createClient: () => client as unknown as DaemonClient,
+        connectToDaemon: async () => ({
+          client: client as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: null,
+        }),
+        getClientId: async () => "app-version-gate",
+        mountClientHandlers: () => {
+          mounts++;
+          return () => {};
+        },
+      },
+    });
+    const publishedClients: Array<DaemonClient | null> = [];
+    const stop = controller.subscribe(() => publishedClients.push(controller.getSnapshot().client));
+    await controller.activateConnection({ connectionId: host.connections[0]!.id });
+    expect(controller.getSnapshot()).toMatchObject({
+      connectionStatus: "online",
+      client,
+      lastError: null,
+    });
+    expect(mounts).toBe(1);
+    expect(publishedClients).toContain(client);
+    expect(client.fetchAgentsCalls).toEqual([]);
+    stop();
+    await controller.stop();
+  });
+
   it("replaces the active relay client when re-pairing changes the daemon public key", async () => {
     const oldRelay: HostConnection = {
-      id: "relay:wss:relay.otto-code.ai:443",
+      id: "relay:wss:relay.paseo.sh:443",
       type: "relay",
-      relayEndpoint: "relay.otto-code.ai:443",
+      relayEndpoint: "relay.paseo.sh:443",
       useTls: true,
       daemonPublicKeyB64: "pk_old",
     };
@@ -645,9 +773,9 @@ describe("HostRuntimeController", () => {
     const host = makeHost({
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -669,9 +797,9 @@ describe("HostRuntimeController", () => {
       // Intentionally do not emit a connected state; stay in idle.
     };
 
-    await controller.activateConnection({ connectionId: "direct:lan:6868" });
+    await controller.activateConnection({ connectionId: "direct:lan:6767" });
 
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
     expect(controller.getSnapshot().connectionStatus).toBe("connecting");
     expect(controller.getSnapshot().agentDirectoryStatus).toBe("initial_loading");
   });
@@ -680,9 +808,9 @@ describe("HostRuntimeController", () => {
     const host = makeHost({
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -702,14 +830,14 @@ describe("HostRuntimeController", () => {
       },
     });
 
-    await controller.activateConnection({ connectionId: "direct:lan:6868" });
+    await controller.activateConnection({ connectionId: "direct:lan:6767" });
 
     expect(seenClientIds).toEqual(["cid_runtime_stable"]);
     expect(controller.getSnapshot().connectionStatus).toBe("online");
   });
 
   it("keeps browser client lifecycle tied to the active host runtime client", async () => {
-    const host = makeHost({ preferredConnectionId: "direct:lan:6868" });
+    const host = makeHost({ preferredConnectionId: "direct:lan:6767" });
     const fakeClient = makeConnectedProbeClient(12);
     const lifecycle = new BrowserClientLifecycle();
     const controller = new HostRuntimeController({
@@ -729,12 +857,12 @@ describe("HostRuntimeController", () => {
     await controller.start({
       autoProbe: false,
       initialConnection: {
-        connectionId: "direct:lan:6868",
+        connectionId: "direct:lan:6767",
         existingClient: fakeClient as unknown as DaemonClient,
       },
     });
 
-    expect(lifecycle.active).toEqual([{ serverId: "srv_test", connectionId: "direct:lan:6868" }]);
+    expect(lifecycle.active).toEqual([{ serverId: "srv_test", connectionId: "direct:lan:6767" }]);
 
     await controller.stop();
 
@@ -742,11 +870,11 @@ describe("HostRuntimeController", () => {
   });
 
   it("adopts the first successful probe on startup", async () => {
-    const host = makeHost({ preferredConnectionId: "direct:lan:6868" });
+    const host = makeHost({ preferredConnectionId: "direct:lan:6767" });
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 82,
-      "relay:relay.otto-code.ai:443": 18,
+      "direct:lan:6767": 82,
+      "relay:relay.paseo.sh:443": 18,
     };
     const controller = new HostRuntimeController({
       host,
@@ -754,9 +882,8 @@ describe("HostRuntimeController", () => {
     });
 
     await controller.start({ autoProbe: false });
-
     const snapshot = controller.getSnapshot();
-    expect(snapshot.activeConnectionId).toBe("direct:lan:6868");
+    expect(snapshot.activeConnectionId).toBe("direct:lan:6767");
     expect(snapshot.connectionStatus).toBe("online");
     expect(clients).toHaveLength(2);
     expect(snapshot.client).toBe(clients[0] as unknown as DaemonClient);
@@ -765,7 +892,7 @@ describe("HostRuntimeController", () => {
   });
 
   it("activates the first successful probe without waiting for slower probes", async () => {
-    const host = makeHost({ preferredConnectionId: "direct:lan:6868" });
+    const host = makeHost({ preferredConnectionId: "direct:lan:6767" });
     const slowPing = createDeferred<number>();
     const clients: FakeDaemonClient[] = [];
 
@@ -776,8 +903,8 @@ describe("HostRuntimeController", () => {
           throw new Error("should adopt the probe client");
         },
         connectToDaemon: async ({ host: hostProfile, connection }) => {
-          const client = makeConnectedProbeClient(connection.id === "direct:lan:6868" ? 12 : 30);
-          if (connection.id === "relay:relay.otto-code.ai:443") {
+          const client = makeConnectedProbeClient(connection.id === "direct:lan:6767" ? 12 : 30);
+          if (connection.id === "relay:relay.paseo.sh:443") {
             client.ping = async () => ({ rttMs: await slowPing.promise });
           }
           clients.push(client);
@@ -797,7 +924,7 @@ describe("HostRuntimeController", () => {
     while (Date.now() < timeoutAt) {
       const snapshot = controller.getSnapshot();
       if (
-        snapshot.activeConnectionId === "direct:lan:6868" &&
+        snapshot.activeConnectionId === "direct:lan:6767" &&
         snapshot.connectionStatus === "online"
       ) {
         break;
@@ -805,7 +932,7 @@ describe("HostRuntimeController", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     }
 
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
     expect(controller.getSnapshot().connectionStatus).toBe("online");
 
     slowPing.resolve(30);
@@ -814,11 +941,11 @@ describe("HostRuntimeController", () => {
 
   it("ranks the live connection by its heartbeat RTT without pinging it again", async () => {
     useHostRuntimeClock();
-    const host = makeHost({ preferredConnectionId: "direct:lan:6868" });
+    const host = makeHost({ preferredConnectionId: "direct:lan:6767" });
     const probeAttempts: string[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 12,
-      "relay:relay.otto-code.ai:443": 65,
+      "direct:lan:6767": 12,
+      "relay:relay.paseo.sh:443": 65,
     };
     const controller = new HostRuntimeController({
       host,
@@ -846,7 +973,7 @@ describe("HostRuntimeController", () => {
     });
 
     await controller.start({ autoProbe: false });
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
 
     probeAttempts.length = 0;
     const activeClient = controller.getSnapshot().client as unknown as FakeDaemonClient;
@@ -857,9 +984,9 @@ describe("HostRuntimeController", () => {
     await controller.runProbeCycleNow();
 
     expect(probeAttempts).toEqual([]);
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
     expect(controller.getSnapshot().connectionStatus).toBe("online");
-    expect(controller.getSnapshot().probeByConnectionId.get("direct:lan:6868")).toEqual({
+    expect(controller.getSnapshot().probeByConnectionId.get("direct:lan:6767")).toEqual({
       status: "available",
       latencyMs: 42,
     });
@@ -917,9 +1044,9 @@ describe("HostRuntimeController", () => {
       serverId: "srv_old",
       connections: [
         {
-          id: "direct:localhost:6868",
+          id: "direct:localhost:6767",
           type: "directTcp",
-          endpoint: "localhost:6868",
+          endpoint: "localhost:6767",
         },
       ],
     });
@@ -943,7 +1070,7 @@ describe("HostRuntimeController", () => {
 
     expect(controller.getSnapshot().connectionStatus).toBe("connecting");
     expect(controller.getSnapshot().activeConnectionId).toBeNull();
-    expect(controller.getSnapshot().probeByConnectionId.get("direct:localhost:6868")).toEqual({
+    expect(controller.getSnapshot().probeByConnectionId.get("direct:localhost:6767")).toEqual({
       status: "unavailable",
       latencyMs: null,
     });
@@ -952,11 +1079,11 @@ describe("HostRuntimeController", () => {
 
   it("keeps the live connection when one probe cycle looks slow", async () => {
     useHostRuntimeClock();
-    const host = makeHost({ preferredConnectionId: "direct:lan:6868" });
+    const host = makeHost({ preferredConnectionId: "direct:lan:6767" });
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 15,
-      "relay:relay.otto-code.ai:443": 55,
+      "direct:lan:6767": 15,
+      "relay:relay.paseo.sh:443": 55,
     };
     const controller = new HostRuntimeController({
       host,
@@ -964,19 +1091,19 @@ describe("HostRuntimeController", () => {
     });
 
     await controller.start({ autoProbe: false });
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
     const initialClient = controller.getSnapshot().client;
     expect(initialClient).toBeTruthy();
 
     const activeClient = initialClient as unknown as FakeDaemonClient;
     activeClient.heartbeatReportsRtt(200);
     activeClient.latencyMeasurementsFailWith("active measurement failed");
-    latencies["relay:relay.otto-code.ai:443"] = 42;
+    latencies["relay:relay.paseo.sh:443"] = 42;
     await vi.advanceTimersByTimeAsync(120_000);
     await controller.runProbeCycleNow();
 
     const snapshot = controller.getSnapshot();
-    expect(snapshot.activeConnectionId).toBe("direct:lan:6868");
+    expect(snapshot.activeConnectionId).toBe("direct:lan:6767");
     expect(snapshot.connectionStatus).toBe("online");
     expect(snapshot.client).toBe(initialClient);
     expect(activeClient.isDisposed()).toBe(false);
@@ -985,9 +1112,9 @@ describe("HostRuntimeController", () => {
   it("does not mark the live connection unavailable before its first heartbeat resolves", async () => {
     useHostRuntimeClock();
     const direct: HostConnection = {
-      id: "direct:lan:6868",
+      id: "direct:lan:6767",
       type: "directTcp",
-      endpoint: "lan:6868",
+      endpoint: "lan:6767",
     };
     const host = makeHost({
       connections: [direct],
@@ -1020,11 +1147,11 @@ describe("HostRuntimeController", () => {
 
   it("backs off inactive connection probes while a host is online", async () => {
     useHostRuntimeClock();
-    const host = makeHost({ preferredConnectionId: "direct:lan:6868" });
+    const host = makeHost({ preferredConnectionId: "direct:lan:6767" });
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 10,
-      "relay:relay.otto-code.ai:443": 50,
+      "direct:lan:6767": 10,
+      "relay:relay.paseo.sh:443": 50,
     };
     const controller = new HostRuntimeController({
       host,
@@ -1032,15 +1159,15 @@ describe("HostRuntimeController", () => {
     });
 
     await controller.start({ autoProbe: false });
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
     const activeClient = controller.getSnapshot().client as unknown as FakeDaemonClient;
     const initialClientCount = clients.length;
     const initialRelayProbe = controller
       .getSnapshot()
-      .probeByConnectionId.get("relay:relay.otto-code.ai:443");
+      .probeByConnectionId.get("relay:relay.paseo.sh:443");
 
-    latencies["direct:lan:6868"] = 12;
-    latencies["relay:relay.otto-code.ai:443"] = 25;
+    latencies["direct:lan:6767"] = 12;
+    latencies["relay:relay.paseo.sh:443"] = 25;
     activeClient.heartbeatReportsRtt(12);
     await vi.advanceTimersByTimeAsync(60_000);
 
@@ -1048,22 +1175,20 @@ describe("HostRuntimeController", () => {
 
     const snapshot = controller.getSnapshot();
     expect(clients.length).toBe(initialClientCount);
-    expect(snapshot.probeByConnectionId.get("direct:lan:6868")).toEqual({
+    expect(snapshot.probeByConnectionId.get("direct:lan:6767")).toEqual({
       status: "available",
       latencyMs: 12,
     });
-    expect(snapshot.probeByConnectionId.get("relay:relay.otto-code.ai:443")).toEqual(
-      initialRelayProbe,
-    );
+    expect(snapshot.probeByConnectionId.get("relay:relay.paseo.sh:443")).toEqual(initialRelayProbe);
   });
 
   it("switches only after the faster alternative wins consecutive probes", async () => {
     useHostRuntimeClock();
-    const host = makeHost({ preferredConnectionId: "direct:lan:6868" });
+    const host = makeHost({ preferredConnectionId: "direct:lan:6767" });
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 15,
-      "relay:relay.otto-code.ai:443": 60,
+      "direct:lan:6767": 15,
+      "relay:relay.paseo.sh:443": 60,
     };
     const controller = new HostRuntimeController({
       host,
@@ -1071,25 +1196,25 @@ describe("HostRuntimeController", () => {
     });
 
     await controller.start({ autoProbe: false });
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
     const activeClient = controller.getSnapshot().client as unknown as FakeDaemonClient;
 
-    latencies["direct:lan:6868"] = 95;
-    latencies["relay:relay.otto-code.ai:443"] = 30;
+    latencies["direct:lan:6767"] = 95;
+    latencies["relay:relay.paseo.sh:443"] = 30;
     activeClient.heartbeatReportsRtt(95);
     await vi.advanceTimersByTimeAsync(120_000);
     await controller.runProbeCycleNow();
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
 
     await vi.advanceTimersByTimeAsync(120_000);
     await controller.runProbeCycleNow();
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
 
-    let switched = controller.getSnapshot().activeConnectionId === "relay:relay.otto-code.ai:443";
+    let switched = controller.getSnapshot().activeConnectionId === "relay:relay.paseo.sh:443";
     for (let index = 0; index < 6 && !switched; index += 1) {
       await vi.advanceTimersByTimeAsync(120_000);
       await controller.runProbeCycleNow();
-      switched = controller.getSnapshot().activeConnectionId === "relay:relay.otto-code.ai:443";
+      switched = controller.getSnapshot().activeConnectionId === "relay:relay.paseo.sh:443";
     }
     expect(switched).toBe(true);
     expect(controller.getSnapshot().client).not.toBeNull();
@@ -1097,11 +1222,11 @@ describe("HostRuntimeController", () => {
 
   it("does not switch on a transient latency spike", async () => {
     useHostRuntimeClock();
-    const host = makeHost({ preferredConnectionId: "direct:lan:6868" });
+    const host = makeHost({ preferredConnectionId: "direct:lan:6767" });
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 15,
-      "relay:relay.otto-code.ai:443": 80,
+      "direct:lan:6767": 15,
+      "relay:relay.paseo.sh:443": 80,
     };
     const controller = new HostRuntimeController({
       host,
@@ -1109,39 +1234,39 @@ describe("HostRuntimeController", () => {
     });
 
     await controller.start({ autoProbe: false });
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
     const activeClient = controller.getSnapshot().client as unknown as FakeDaemonClient;
 
-    latencies["direct:lan:6868"] = 100;
-    latencies["relay:relay.otto-code.ai:443"] = 20;
+    latencies["direct:lan:6767"] = 100;
+    latencies["relay:relay.paseo.sh:443"] = 20;
     activeClient.heartbeatReportsRtt(100);
     await vi.advanceTimersByTimeAsync(120_000);
     await controller.runProbeCycleNow();
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
 
-    latencies["direct:lan:6868"] = 20;
-    latencies["relay:relay.otto-code.ai:443"] = 90;
+    latencies["direct:lan:6767"] = 20;
+    latencies["relay:relay.paseo.sh:443"] = 90;
     activeClient.heartbeatReportsRtt(20);
     await vi.advanceTimersByTimeAsync(120_000);
     await controller.runProbeCycleNow();
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
 
-    latencies["direct:lan:6868"] = 100;
-    latencies["relay:relay.otto-code.ai:443"] = 20;
+    latencies["direct:lan:6767"] = 100;
+    latencies["relay:relay.paseo.sh:443"] = 20;
     activeClient.heartbeatReportsRtt(100);
     await vi.advanceTimersByTimeAsync(120_000);
     await controller.runProbeCycleNow();
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
 
     await vi.advanceTimersByTimeAsync(120_000);
     await controller.runProbeCycleNow();
-    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6868");
+    expect(controller.getSnapshot().activeConnectionId).toBe("direct:lan:6767");
 
-    let switched = controller.getSnapshot().activeConnectionId === "relay:relay.otto-code.ai:443";
+    let switched = controller.getSnapshot().activeConnectionId === "relay:relay.paseo.sh:443";
     for (let index = 0; index < 6 && !switched; index += 1) {
       await vi.advanceTimersByTimeAsync(120_000);
       await controller.runProbeCycleNow();
-      switched = controller.getSnapshot().activeConnectionId === "relay:relay.otto-code.ai:443";
+      switched = controller.getSnapshot().activeConnectionId === "relay:relay.paseo.sh:443";
     }
     expect(switched).toBe(true);
   });
@@ -1150,8 +1275,8 @@ describe("HostRuntimeController", () => {
     const host = makeHost();
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 12,
-      "relay:relay.otto-code.ai:443": 65,
+      "direct:lan:6767": 12,
+      "relay:relay.paseo.sh:443": 65,
     };
     const controller = new HostRuntimeController({
       host,
@@ -1171,7 +1296,7 @@ describe("HostRuntimeController", () => {
     });
 
     const latest = observed[observed.length - 1];
-    expect(latest?.activeConnectionId).toBe("direct:lan:6868");
+    expect(latest?.activeConnectionId).toBe("direct:lan:6767");
     expect(latest?.connectionStatus).toBe("error");
     expect(latest?.lastError).toBe("transport closed");
     unsubscribe();
@@ -1181,9 +1306,9 @@ describe("HostRuntimeController", () => {
     const host = makeHost({
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -1192,7 +1317,7 @@ describe("HostRuntimeController", () => {
       host,
       deps: makeDeps(
         {
-          "direct:lan:6868": 12,
+          "direct:lan:6767": 12,
         },
         clients,
       ),
@@ -1216,9 +1341,9 @@ describe("HostRuntimeController", () => {
       const host = makeHost({
         connections: [
           {
-            id: "direct:lan:6868",
+            id: "direct:lan:6767",
             type: "directTcp",
-            endpoint: "lan:6868",
+            endpoint: "lan:6767",
           },
         ],
       });
@@ -1227,7 +1352,7 @@ describe("HostRuntimeController", () => {
         host,
         deps: makeDeps(
           {
-            "direct:lan:6868": 12,
+            "direct:lan:6767": 12,
           },
           clients,
         ),
@@ -1254,8 +1379,8 @@ describe("HostRuntimeController", () => {
     const host = makeHost();
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 12,
-      "relay:relay.otto-code.ai:443": 65,
+      "direct:lan:6767": 12,
+      "relay:relay.paseo.sh:443": 65,
     };
     const controller = new HostRuntimeController({
       host,
@@ -1274,8 +1399,8 @@ describe("HostRuntimeController", () => {
     const host = makeHost();
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 12,
-      "relay:relay.otto-code.ai:443": 65,
+      "direct:lan:6767": 12,
+      "relay:relay.paseo.sh:443": 65,
     };
     const controller = new HostRuntimeController({
       host,
@@ -1283,6 +1408,7 @@ describe("HostRuntimeController", () => {
     });
 
     await controller.start({ autoProbe: false });
+    const firstEpoch = controller.getSnapshot().connectionEpoch;
     controller.markAgentDirectorySyncReady();
     expect(controller.getSnapshot().agentDirectoryStatus).toBe("ready");
     expect(controller.getSnapshot().hasEverLoadedAgentDirectory).toBe(true);
@@ -1297,14 +1423,15 @@ describe("HostRuntimeController", () => {
     clients[0]?.setConnectionState({ status: "connected" });
     expect(controller.getSnapshot().connectionStatus).toBe("online");
     expect(controller.getSnapshot().agentDirectoryStatus).toBe("ready");
+    expect(controller.getSnapshot().connectionEpoch).toBe(firstEpoch + 1);
   });
 
   it("stores directory sync errors as non-blocking after a successful directory load", async () => {
     const host = makeHost();
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 12,
-      "relay:relay.otto-code.ai:443": 65,
+      "direct:lan:6767": 12,
+      "relay:relay.paseo.sh:443": 65,
     };
     const controller = new HostRuntimeController({
       host,
@@ -1325,8 +1452,8 @@ describe("HostRuntimeController", () => {
     const host = makeHost();
     const clients: FakeDaemonClient[] = [];
     const latencies: Record<string, number | Error> = {
-      "direct:lan:6868": 12,
-      "relay:relay.otto-code.ai:443": 65,
+      "direct:lan:6767": 12,
+      "relay:relay.paseo.sh:443": 65,
     };
     const controller = new HostRuntimeController({
       host,
@@ -1354,14 +1481,14 @@ describe("HostRuntimeController", () => {
     const host = makeHost({
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
         {
-          id: "relay:relay.otto-code.ai:443",
+          id: "relay:relay.paseo.sh:443",
           type: "relay",
-          relayEndpoint: "relay.otto-code.ai:443",
+          relayEndpoint: "relay.paseo.sh:443",
           daemonPublicKeyB64: "pk_test",
         },
       ],
@@ -1371,7 +1498,7 @@ describe("HostRuntimeController", () => {
     const deps: HostRuntimeControllerDeps = {
       createClient: ({ connection }) => {
         const client = new FakeDaemonClient();
-        if (connection.id === "direct:lan:6868") {
+        if (connection.id === "direct:lan:6767") {
           client.connect = async () => {
             client.connectCalls += 1;
             await firstConnectGate.promise;
@@ -1403,23 +1530,23 @@ describe("HostRuntimeController", () => {
       }
     };
 
-    const switchDirect = controller.activateConnection({ connectionId: "direct:lan:6868" });
+    const switchDirect = controller.activateConnection({ connectionId: "direct:lan:6767" });
     await waitUntil(() => {
       const snapshot = controller.getSnapshot();
       return (
         createdClients.length === 1 &&
-        snapshot.activeConnectionId === "direct:lan:6868" &&
+        snapshot.activeConnectionId === "direct:lan:6767" &&
         snapshot.connectionStatus === "connecting"
       );
     });
 
     const switchRelay = controller.activateConnection({
-      connectionId: "relay:relay.otto-code.ai:443",
+      connectionId: "relay:relay.paseo.sh:443",
     });
     await waitUntil(() => {
       const snapshot = controller.getSnapshot();
       return (
-        snapshot.activeConnectionId === "relay:relay.otto-code.ai:443" &&
+        snapshot.activeConnectionId === "relay:relay.paseo.sh:443" &&
         snapshot.connectionStatus === "online"
       );
     });
@@ -1428,7 +1555,7 @@ describe("HostRuntimeController", () => {
     await Promise.allSettled([switchDirect, switchRelay]);
 
     const snapshot = controller.getSnapshot();
-    expect(snapshot.activeConnectionId).toBe("relay:relay.otto-code.ai:443");
+    expect(snapshot.activeConnectionId).toBe("relay:relay.paseo.sh:443");
     expect(snapshot.connectionStatus).toBe("online");
     expect(snapshot.lastError).toBeNull();
     expect(createdClients).toHaveLength(2);
@@ -1439,9 +1566,9 @@ describe("HostRuntimeController", () => {
     const host = makeHost({
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -1479,7 +1606,7 @@ describe("HostRuntimeController", () => {
 
     slowProbe.resolve(900);
     await Promise.all([first, second]);
-    const probeAfterCycle = controller.getSnapshot().probeByConnectionId.get("direct:lan:6868");
+    const probeAfterCycle = controller.getSnapshot().probeByConnectionId.get("direct:lan:6767");
     expect(probeAfterCycle).toEqual({
       status: "available",
       latencyMs: 900,
@@ -1491,9 +1618,9 @@ describe("HostRuntimeController", () => {
     const host = makeHost({
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -1619,6 +1746,8 @@ describe("HostRuntimeStore", () => {
       expect(clientA.reconnectEnabledChanges.at(-1)).toBe(true);
       expect(clientB.reconnectEnabledChanges.at(-1)).toBe(true);
       expect(clientA.ensureConnectedCalls).toBe(1);
+      expect(clientA.connectionVerifications).toBe(1);
+      expect(clientB.connectionVerifications).toBe(1);
       expect(clientB.ensureConnectedCalls).toBe(1);
       expect(store.getSnapshot(hostA.serverId)?.connectionStatus).toBe("online");
       expect(store.getSnapshot(hostB.serverId)?.connectionStatus).toBe("online");
@@ -1632,8 +1761,8 @@ describe("HostRuntimeStore", () => {
     const host = makeHost({ connections: [makeHost().connections[0]!] });
     const revocation = createDeferred<void>();
     const storage = createMemoryHostRuntimeStorage({
-      "@otto:daemon-registry": JSON.stringify([host]),
-      "@otto:e2e": "1",
+      "@paseo:daemon-registry": JSON.stringify([host]),
+      "@paseo:e2e": "1",
     });
     const store = new HostRuntimeStore({
       storage,
@@ -1658,8 +1787,8 @@ describe("HostRuntimeStore", () => {
     const host = makeHost({ connections: [makeHost().connections[0]!] });
     const revokedServerIds: string[] = [];
     const storage = createMemoryHostRuntimeStorage({
-      "@otto:daemon-registry": JSON.stringify([host]),
-      "@otto:e2e": "1",
+      "@paseo:daemon-registry": JSON.stringify([host]),
+      "@paseo:e2e": "1",
     });
     const store = new HostRuntimeStore({
       storage,
@@ -1688,8 +1817,8 @@ describe("HostRuntimeStore", () => {
         return backingStore.read(...args);
       },
     };
-    await storage.setItem("@otto:daemon-registry", JSON.stringify([host]));
-    await storage.setItem("@otto:e2e", "1");
+    await storage.setItem("@paseo:daemon-registry", JSON.stringify([host]));
+    await storage.setItem("@paseo:e2e", "1");
     const session = useSessionStore.getState();
 
     const store = new HostRuntimeStore({
@@ -1767,7 +1896,7 @@ describe("HostRuntimeStore", () => {
   it("exposes the default appearance for a host stored before the field existed", async () => {
     const storage = createMemoryHostRuntimeStorage();
     await storage.setItem(
-      "@otto:daemon-registry",
+      "@paseo:daemon-registry",
       JSON.stringify([
         {
           serverId: "srv_legacy",
@@ -1779,7 +1908,7 @@ describe("HostRuntimeStore", () => {
         },
       ]),
     );
-    await storage.setItem("@otto:e2e", "1");
+    await storage.setItem("@paseo:e2e", "1");
     const store = createAppearanceStore(storage);
 
     const registryLoaded = onceHostListMatches(store, () => store.isHostRegistryLoaded());
@@ -1794,8 +1923,8 @@ describe("HostRuntimeStore", () => {
   it("records a chosen host color and writes it through to storage", async () => {
     const host = makeHost({ serverId: "srv_appearance", updatedAt: new Date(0).toISOString() });
     const storage = createMemoryHostRuntimeStorage();
-    await storage.setItem("@otto:daemon-registry", JSON.stringify([host]));
-    await storage.setItem("@otto:e2e", "1");
+    await storage.setItem("@paseo:daemon-registry", JSON.stringify([host]));
+    await storage.setItem("@paseo:e2e", "1");
     const store = createAppearanceStore(storage);
 
     const registryLoaded = onceHostListMatches(store, () => store.isHostRegistryLoaded());
@@ -1813,7 +1942,7 @@ describe("HostRuntimeStore", () => {
     expect(updated?.appearance).toEqual({ color: "teal", badgeDisplay: null });
     expect(updated?.updatedAt).not.toBe(host.updatedAt);
 
-    const persisted = await storage.getItem("@otto:daemon-registry");
+    const persisted = await storage.getItem("@paseo:daemon-registry");
     expect(JSON.parse(persisted ?? "[]")[0].appearance).toEqual({
       color: "teal",
       badgeDisplay: null,
@@ -1828,8 +1957,8 @@ describe("HostRuntimeStore", () => {
       appearance: { color: "amber", badgeDisplay: null },
     });
     const storage = createMemoryHostRuntimeStorage();
-    await storage.setItem("@otto:daemon-registry", JSON.stringify([host]));
-    await storage.setItem("@otto:e2e", "1");
+    await storage.setItem("@paseo:daemon-registry", JSON.stringify([host]));
+    await storage.setItem("@paseo:e2e", "1");
     const store = createAppearanceStore(storage);
 
     const registryLoaded = onceHostListMatches(store, () => store.isHostRegistryLoaded());
@@ -1845,7 +1974,7 @@ describe("HostRuntimeStore", () => {
 
     expect(store.getHosts()[0]?.appearance).toEqual({ color: "amber", badgeDisplay: "icon" });
 
-    const persisted = await storage.getItem("@otto:daemon-registry");
+    const persisted = await storage.getItem("@paseo:daemon-registry");
     expect(JSON.parse(persisted ?? "[]")[0].appearance).toEqual({
       color: "amber",
       badgeDisplay: "icon",
@@ -1857,8 +1986,8 @@ describe("HostRuntimeStore", () => {
   it("keeps host appearance unchanged when persistence fails", async () => {
     const host = makeHost({ serverId: "srv_appearance" });
     const storage = createMemoryHostRuntimeStorage();
-    await storage.setItem("@otto:daemon-registry", JSON.stringify([host]));
-    await storage.setItem("@otto:e2e", "1");
+    await storage.setItem("@paseo:daemon-registry", JSON.stringify([host]));
+    await storage.setItem("@paseo:e2e", "1");
     const store = createAppearanceStore(storage);
 
     const registryLoaded = onceHostListMatches(store, () => store.isHostRegistryLoaded());
@@ -1878,8 +2007,8 @@ describe("HostRuntimeStore", () => {
   it("serializes overlapping host appearance writes", async () => {
     const host = makeHost({ serverId: "srv_appearance" });
     const storage = createMemoryHostRuntimeStorage();
-    await storage.setItem("@otto:daemon-registry", JSON.stringify([host]));
-    await storage.setItem("@otto:e2e", "1");
+    await storage.setItem("@paseo:daemon-registry", JSON.stringify([host]));
+    await storage.setItem("@paseo:e2e", "1");
     const store = createAppearanceStore(storage);
 
     const registryLoaded = onceHostListMatches(store, () => store.isHostRegistryLoaded());
@@ -1904,7 +2033,7 @@ describe("HostRuntimeStore", () => {
     await Promise.all([color, display]);
 
     expect(store.getHosts()[0]?.appearance).toEqual({ color: "teal", badgeDisplay: "icon" });
-    const persistedHosts = JSON.parse((await storage.getItem("@otto:daemon-registry")) ?? "[]");
+    const persistedHosts = JSON.parse((await storage.getItem("@paseo:daemon-registry")) ?? "[]");
     expect(persistedHosts[0]?.appearance).toEqual({ color: "teal", badgeDisplay: "icon" });
     store.syncHosts([]);
   });
@@ -1956,9 +2085,9 @@ describe("HostRuntimeStore", () => {
     const host = makeHost({
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -1996,6 +2125,7 @@ describe("HostRuntimeStore", () => {
 
     expect(fakeClient.fetchAgentsCalls).toHaveLength(1);
     expect(fakeClient.fetchAgentsCalls[0]).toEqual({
+      scope: "active",
       sort: [{ key: "updated_at", direction: "desc" }],
       subscribe: {},
       page: { limit: 200 },
@@ -2012,6 +2142,7 @@ describe("HostRuntimeStore", () => {
 
     await store.refreshAgentDirectory({ serverId: host.serverId });
     expect(fakeClient.fetchAgentsCalls[2]).toEqual({
+      scope: "active",
       sort: [{ key: "updated_at", direction: "desc" }],
       page: { limit: 200 },
     });
@@ -2021,137 +2152,14 @@ describe("HostRuntimeStore", () => {
     useSessionStore.getState().clearSession(host.serverId);
   });
 
-  it("connects workspace labels during the normal directory bootstrap", async () => {
-    const host = makeHost({
-      connections: [
-        {
-          id: "direct:lan:6868",
-          type: "directTcp",
-          endpoint: "lan:6868",
-        },
-      ],
-    });
-    const fakeClient = new FakeDaemonClient();
-    fakeClient.setConnectionState({ status: "connected" });
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => fakeClient as unknown as DaemonClient,
-        connectToDaemon: async ({ host: hostProfile }) => ({
-          client: fakeClient as unknown as DaemonClient,
-          serverId: hostProfile.serverId,
-          hostname: hostProfile.label ?? null,
-        }),
-        getClientId: async () => "cid_test_runtime",
-      },
-    });
-
-    let releaseDemand: (() => void) | undefined;
-    try {
-      store.syncHosts([host]);
-      await waitForHostOnline(store, host.serverId);
-      useSessionStore.getState().updateSessionServerInfo(host.serverId, {
-        serverId: host.serverId,
-        hostname: null,
-        version: "0.9.10",
-        features: { workspaceLabels: true, workspaceMultiplicity: true },
-      });
-      releaseDemand = store.acquireDirectoryDemand(host.serverId);
-      await vi.waitFor(() => {
-        expect(fakeClient.listWorkspaceLabelsCalls).toHaveLength(1);
-        expect(fakeClient.listWorkspaceLabelsCalls[0]).toMatchObject({
-          subscriptionId: `workspace-labels:${host.serverId}`,
-        });
-      });
-      expect(useWorkspaceLabels.getState().hosts[host.serverId]).toEqual({
-        serverId: host.serverId,
-        status: "online",
-        error: null,
-        labels: [{ name: "Urgent", color: "red" }],
-      });
-    } finally {
-      releaseDemand?.();
-      store.syncHosts([]);
-    }
-  });
-
-  it("reconnects workspace labels after a live server-id reconciliation", async () => {
-    const originalServerId = "local:lan:6868";
-    const reconciledServerId = "srv_reconciled_labels";
-    const host = makeHost({
-      serverId: originalServerId,
-      connections: [
-        {
-          id: "direct:lan:6868",
-          type: "directTcp",
-          endpoint: "lan:6868",
-        },
-      ],
-    });
-    const fakeClient = new FakeDaemonClient();
-    fakeClient.setConnectionState({ status: "connected" });
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => fakeClient as unknown as DaemonClient,
-        connectToDaemon: async ({ host: hostProfile }) => ({
-          client: fakeClient as unknown as DaemonClient,
-          serverId: hostProfile.serverId,
-          hostname: hostProfile.label ?? null,
-        }),
-        getClientId: async () => "cid_test_runtime",
-      },
-    });
-
-    let releaseDemand: (() => void) | undefined;
-    try {
-      store.syncHosts([host]);
-      await waitForHostOnline(store, host.serverId);
-      useSessionStore.getState().updateSessionServerInfo(host.serverId, {
-        serverId: host.serverId,
-        hostname: null,
-        version: "0.9.10",
-        features: { workspaceLabels: true, workspaceMultiplicity: true },
-      });
-      releaseDemand = store.acquireDirectoryDemand(host.serverId);
-      await vi.waitFor(() => {
-        expect(fakeClient.listWorkspaceLabelsCalls).toHaveLength(1);
-      });
-
-      releaseDemand?.();
-      store.reconcileServerId(originalServerId, reconciledServerId);
-      useSessionStore.getState().updateSessionServerInfo(reconciledServerId, {
-        serverId: reconciledServerId,
-        hostname: null,
-        version: "0.9.10",
-        features: { workspaceLabels: true, workspaceMultiplicity: true },
-      });
-      releaseDemand = store.acquireDirectoryDemand(reconciledServerId);
-
-      await vi.waitFor(() => {
-        expect(fakeClient.listWorkspaceLabelsCalls).toEqual([
-          { subscriptionId: `workspace-labels:${originalServerId}` },
-          { subscriptionId: `workspace-labels:${reconciledServerId}` },
-        ]);
-      });
-      expect(useWorkspaceLabels.getState().hosts[reconciledServerId]).toEqual({
-        serverId: reconciledServerId,
-        status: "online",
-        error: null,
-        labels: [{ name: "Urgent", color: "red" }],
-      });
-    } finally {
-      releaseDemand?.();
-      store.syncHosts([]);
-    }
-  });
-
-  it("refreshes the agent directory on explicit demand without a preexisting session", async () => {
+  it("owns the session replica for the registered host lifecycle", async () => {
     const host = makeHost({
       serverId: "srv_no_session",
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -2173,7 +2181,7 @@ describe("HostRuntimeStore", () => {
     await waitForHostOnline(store, host.serverId);
     const load = store.refreshAgentDirectory({
       serverId: host.serverId,
-      subscribe: { subscriptionId: "app:srv_no_session" },
+      subscribe: {},
       page: { limit: 200 },
     });
     await fakeClient.waitForFetches(1);
@@ -2186,7 +2194,7 @@ describe("HostRuntimeStore", () => {
     expect(fakeClient.fetchAgentsCalls[0]).toEqual({
       scope: "active",
       sort: [{ key: "updated_at", direction: "desc" }],
-      subscribe: { subscriptionId: "app:srv_no_session" },
+      subscribe: {},
       page: { limit: 200 },
     });
 
@@ -2194,16 +2202,10 @@ describe("HostRuntimeStore", () => {
     expect(useSessionStore.getState().sessions[host.serverId]).toBeUndefined();
   });
 
-  it("invalidates the host-aggregated queries when a host comes online", async () => {
+  it("shows the restarted daemon's version after the same client reconnects", async () => {
     const host = makeHost({
-      serverId: "srv_aggregate_invalidation",
-      connections: [
-        {
-          id: "direct:lan:6868",
-          type: "directTcp",
-          endpoint: "lan:6868",
-        },
-      ],
+      serverId: "srv_restarted",
+      connections: [{ id: "direct:lan:6767", type: "directTcp", endpoint: "lan:6767" }],
     });
     const fakeClient = new FakeDaemonClient();
     fakeClient.setConnectionState({ status: "connected" });
@@ -2219,111 +2221,19 @@ describe("HostRuntimeStore", () => {
       },
     });
 
-    // Simulate the cold-start race the invalidation exists for: the aggregated
-    // queries cached an empty result while the host was still connecting.
-    const seededKeys = [
-      ["projects", host.serverId],
-      ["schedules", host.serverId],
-      ["artifacts", host.serverId, null],
-    ] as const;
-    for (const key of seededKeys) {
-      queryClient.setQueryData(key, { seededBeforeOnline: true });
-      queryClient.getQueryCache().find({ queryKey: key })?.setState({ isInvalidated: false });
-    }
-
-    try {
-      store.syncHosts([host]);
-
-      const allInvalidated = () =>
-        seededKeys.every(
-          (key) => queryClient.getQueryCache().find({ queryKey: key })?.state.isInvalidated,
-        );
-      await vi.waitFor(() => expect(allInvalidated()).toBe(true));
-    } finally {
-      store.syncHosts([]);
-      for (const key of seededKeys) {
-        queryClient.removeQueries({ queryKey: key });
-      }
-    }
-  });
-
-  it("bootstraps legacy daemons from unscoped agents and creates path-backed workspaces", async () => {
-    const host = makeHost({
-      serverId: "srv_legacy_workspace_daemon",
-      connections: [
-        {
-          id: "direct:lan:6868",
-          type: "directTcp",
-          endpoint: "lan:6868",
-        },
-      ],
-    });
-    const fakeClient = new FakeDaemonClient();
-    fakeClient.setConnectionState({ status: "connected" });
-    fakeClient.fetchAgentsResponses.push(
-      makeFetchAgentsPayload({
-        entries: [
-          makeFetchAgentsEntry({
-            id: "agent-legacy",
-            cwd: "/repo/legacy-app",
-            updatedAt: "2026-06-18T12:00:00.000Z",
-            title: "Legacy daemon agent",
-          }),
-        ],
-        subscriptionId: "app:srv_legacy_workspace_daemon",
-      }),
-    );
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => fakeClient as unknown as DaemonClient,
-        connectToDaemon: async ({ host: hostProfile }) => ({
-          client: fakeClient as unknown as DaemonClient,
-          serverId: hostProfile.serverId,
-          hostname: hostProfile.label ?? null,
-        }),
-        getClientId: async () => "cid_test_runtime",
-      },
-    });
-
-    const sessionStore = useSessionStore.getState();
-    sessionStore.initializeSession(host.serverId, fakeClient as unknown as DaemonClient);
-    sessionStore.updateSessionServerInfo(host.serverId, {
-      serverId: host.serverId,
-      hostname: null,
-      version: "0.1.96",
-    });
     store.syncHosts([host]);
     await waitForHostOnline(store, host.serverId);
-    const load = store.refreshAgentDirectory({
-      serverId: host.serverId,
-      subscribe: { subscriptionId: "app:srv_legacy_workspace_daemon" },
-      page: { limit: 200 },
-    });
-    await fakeClient.waitForFetches(1);
-    await load;
+    expect(useSessionStore.getState().sessions[host.serverId]?.serverInfo?.version).toBe("0.8.0");
 
-    expect(fakeClient.fetchAgentsCalls).toEqual([
-      {
-        sort: [{ key: "updated_at", direction: "desc" }],
-        subscribe: { subscriptionId: "app:srv_legacy_workspace_daemon" },
-        page: { limit: 200 },
-      },
-    ]);
-    const session = useSessionStore.getState().sessions[host.serverId];
-    expect(session?.agents.get("agent-legacy")?.workspaceId).toBe("/repo/legacy-app");
-    expect(Array.from(session?.workspaces.values() ?? [])).toEqual([
-      expect.objectContaining({
-        id: "/repo/legacy-app",
-        workspaceDirectory: "/repo/legacy-app",
-        name: "legacy-app",
-      }),
-    ]);
+    fakeClient.daemonRestartsAs("0.9.1");
+
+    expect(store.getSnapshot(host.serverId)?.client).toBe(fakeClient);
+    expect(useSessionStore.getState().sessions[host.serverId]?.serverInfo?.version).toBe("0.9.1");
 
     store.syncHosts([]);
-    useSessionStore.getState().clearSession(host.serverId);
   });
 
-  it("drains legacy snapshot and buffered running transitions exactly once", async () => {
+  it("drains snapshot and buffered running transitions exactly once", async () => {
     const host = makeHost({
       serverId: "srv_legacy_transitions",
       connections: [{ id: "direct:lan:6767", type: "directTcp", endpoint: "lan:6767" }],
@@ -2410,7 +2320,7 @@ describe("HostRuntimeStore", () => {
     await waitForHostOnline(store, host.serverId);
     const load = store.refreshAgentDirectory({
       serverId: host.serverId,
-      subscribe: { subscriptionId: `app:${host.serverId}` },
+      subscribe: {},
       page: { limit: 200 },
     });
     await fakeClient.waitForFetches(2);
@@ -2432,8 +2342,8 @@ describe("HostRuntimeStore", () => {
         ({ id, status, workspaceId }) => [id, status, workspaceId],
       ),
     ).toEqual([
-      ["legacy-snapshot", "idle", "/legacy/repo"],
-      ["legacy-buffered", "idle", "/legacy/repo"],
+      ["legacy-snapshot", "idle", snapshotAgent.agent.workspaceId],
+      ["legacy-buffered", "idle", bufferedAgent.agent.workspaceId],
     ]);
 
     store.syncHosts([]);
@@ -2445,9 +2355,9 @@ describe("HostRuntimeStore", () => {
       serverId: "srv_paged",
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -2458,7 +2368,7 @@ describe("HostRuntimeStore", () => {
         entries: [
           makeFetchAgentsEntry({
             id: "agent-recent",
-            cwd: "/workspaces/otto",
+            cwd: "/workspaces/paseo",
             updatedAt: "2026-03-04T12:00:00.000Z",
             title: "Recent agent",
           }),
@@ -2471,7 +2381,7 @@ describe("HostRuntimeStore", () => {
         entries: [
           makeFetchAgentsEntry({
             id: "agent-stale-attention",
-            cwd: "/workspaces/otto-pr67-review",
+            cwd: "/workspaces/paseo-pr67-review",
             updatedAt: "2026-02-20T08:00:00.000Z",
             title: "Needs triage",
             requiresAttention: true,
@@ -2495,12 +2405,12 @@ describe("HostRuntimeStore", () => {
 
     useSessionStore
       .getState()
-      .initializeSession(host.serverId, fakeClient as unknown as DaemonClient);
+      .initializeSession(host.serverId, fakeClient as unknown as DaemonClient, 1);
     store.syncHosts([host]);
     await waitForHostOnline(store, host.serverId);
     const load = store.refreshAgentDirectory({
       serverId: host.serverId,
-      subscribe: { subscriptionId: "app:srv_paged" },
+      subscribe: {},
       page: { limit: 200 },
     });
     await fakeClient.waitForFetches(2);
@@ -2510,7 +2420,7 @@ describe("HostRuntimeStore", () => {
     expect(fakeClient.fetchAgentsCalls[0]).toEqual({
       scope: "active",
       sort: [{ key: "updated_at", direction: "desc" }],
-      subscribe: { subscriptionId: "app:srv_paged" },
+      subscribe: {},
       page: { limit: 200 },
     });
     expect(fakeClient.fetchAgentsCalls[1]).toEqual({
@@ -2519,16 +2429,9 @@ describe("HostRuntimeStore", () => {
       page: { limit: 200, cursor: "cursor-page-2" },
     });
 
-    let staleAgent =
+    const staleAgent =
       useSessionStore.getState().sessions[host.serverId]?.agents?.get("agent-stale-attention") ??
       null;
-    const staleTimeoutAt = Date.now() + 300;
-    while (!staleAgent && Date.now() < staleTimeoutAt) {
-      await new Promise((resolve) => setTimeout(resolve, 0));
-      staleAgent =
-        useSessionStore.getState().sessions[host.serverId]?.agents?.get("agent-stale-attention") ??
-        null;
-    }
     expect(staleAgent?.requiresAttention).toBe(true);
     expect(staleAgent?.attentionReason).toBe("error");
 
@@ -2597,7 +2500,7 @@ describe("HostRuntimeStore", () => {
     await waitForHostOnline(store, host.serverId);
     const load = store.refreshAgentDirectory({
       serverId: host.serverId,
-      subscribe: { subscriptionId: "app:srv_paged_delta" },
+      subscribe: {},
       page: { limit: 200 },
     });
     await fakeClient.waitForFetches(2);
@@ -2684,12 +2587,13 @@ describe("HostRuntimeStore", () => {
     });
 
     store.syncHosts([host]);
-    await fakeClient.waitForAgentUpdates();
+    await waitForHostOnline(store, host.serverId);
     const load = store.refreshAgentDirectory({
       serverId: host.serverId,
-      subscribe: { subscriptionId: `app:${host.serverId}` },
+      subscribe: {},
       page: { limit: 200 },
     });
+    await fakeClient.waitForAgentUpdates();
     fakeClient.agentUpdate({
       kind: "upsert",
       agent: { ...snapshotEntry.agent, title: "before-session" },
@@ -2735,7 +2639,7 @@ describe("HostRuntimeStore", () => {
       .initializeSession(host.serverId, fakeClient as unknown as DaemonClient, 1);
     store.syncHosts([host]);
     await waitForHostOnline(store, host.serverId);
-    await store.refreshAgentDirectory({ serverId: host.serverId });
+    await store.refreshAgentDirectory({ serverId: host.serverId, subscribe: {} });
     const olderPage = new Deferred<Awaited<ReturnType<DaemonClient["fetchAgents"]>>>();
     fakeClient.fetchAgentsResponses.push(olderPage.promise);
     const olderRefresh = store.refreshAgentDirectory({ serverId: host.serverId });
@@ -2803,7 +2707,7 @@ describe("HostRuntimeStore", () => {
       .initializeSession(host.serverId, fakeClient as unknown as DaemonClient, 1);
     store.syncHosts([host]);
     await waitForHostOnline(store, host.serverId);
-    await store.refreshAgentDirectory({ serverId: host.serverId });
+    await store.refreshAgentDirectory({ serverId: host.serverId, subscribe: {} });
 
     const olderPage = new Deferred<Awaited<ReturnType<DaemonClient["fetchAgents"]>>>();
     fakeClient.fetchAgentsResponses.push(olderPage.promise);
@@ -2976,7 +2880,7 @@ describe("HostRuntimeStore", () => {
     );
     store.syncHosts([host]);
     await waitForHostOnline(store, host.serverId);
-    const load = store.refreshAgentDirectory({ serverId: host.serverId });
+    const load = store.refreshAgentDirectory({ serverId: host.serverId, subscribe: {} });
     await fakeClient.waitForFetches(2);
     fakeClient.agentUpdate({
       kind: "upsert",
@@ -3147,6 +3051,34 @@ describe("HostRuntimeStore", () => {
     useSessionStore.getState().clearSession(host.serverId);
   });
 
+  it("drains a queued message as a steer so a turn the agent just started is not interrupted", async () => {
+    const host = makeHost({ serverId: "srv_steer_queue_drain" });
+    const fakeClient = new FakeDaemonClient();
+    const store = new HostRuntimeStore({
+      deps: {
+        createClient: () => fakeClient as unknown as DaemonClient,
+        connectToDaemon: async () => ({
+          client: fakeClient as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: null,
+        }),
+        getClientId: async () => "cid_steer_queue_drain",
+      },
+    });
+    const sessionStore = useSessionStore.getState();
+    sessionStore.initializeSession(host.serverId, fakeClient as unknown as DaemonClient, 1);
+    sessionStore.setQueuedMessages(
+      host.serverId,
+      new Map([["agent", [{ id: "queued", text: "next task", attachments: [] }]]]),
+    );
+
+    store.drainQueuedAgentMessage(host.serverId, "agent");
+    await fakeClient.waitForSentMessages(1);
+
+    expect(fakeClient.sentAgentMessages[0]?.[2]?.activeTurnBehavior).toBe("steer");
+    sessionStore.clearSession(host.serverId);
+  });
+
   it("uses legacy GitHub attachments when draining a queue for an old daemon", async () => {
     const host = makeHost({ serverId: "srv_legacy_queue_attachment" });
     const fakeClient = new FakeDaemonClient();
@@ -3278,7 +3210,7 @@ describe("HostRuntimeStore", () => {
     });
     store.syncHosts([host]);
     await waitForHostOnline(store, host.serverId);
-    const load = store.refreshAgentDirectory({ serverId: host.serverId });
+    const load = store.refreshAgentDirectory({ serverId: host.serverId, subscribe: {} });
     await fakeClient.waitForFetches(2);
     fakeClient.agentUpdate({
       kind: "upsert",
@@ -3332,9 +3264,9 @@ describe("HostRuntimeStore", () => {
       serverId: "srv_resubscribe",
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -3354,12 +3286,12 @@ describe("HostRuntimeStore", () => {
 
     useSessionStore
       .getState()
-      .initializeSession(host.serverId, fakeClient as unknown as DaemonClient);
+      .initializeSession(host.serverId, fakeClient as unknown as DaemonClient, 1);
     store.syncHosts([host]);
     await waitForHostOnline(store, host.serverId);
     await store.refreshAgentDirectory({
       serverId: host.serverId,
-      subscribe: { subscriptionId: "app:srv_resubscribe" },
+      subscribe: {},
       page: { limit: 200 },
     });
     await fakeClient.waitForFetches(1);
@@ -3377,7 +3309,7 @@ describe("HostRuntimeStore", () => {
     await waitForHostOnline(store, host.serverId);
     await store.refreshAgentDirectory({
       serverId: host.serverId,
-      subscribe: { subscriptionId: "app:srv_resubscribe" },
+      subscribe: {},
       page: { limit: 200 },
     });
     await fakeClient.waitForFetches(2);
@@ -3386,13 +3318,13 @@ describe("HostRuntimeStore", () => {
       {
         scope: "active",
         sort: [{ key: "updated_at", direction: "desc" }],
-        subscribe: { subscriptionId: "app:srv_resubscribe" },
+        subscribe: {},
         page: { limit: 200 },
       },
       {
         scope: "active",
         sort: [{ key: "updated_at", direction: "desc" }],
-        subscribe: { subscriptionId: "app:srv_resubscribe" },
+        subscribe: {},
         page: { limit: 200 },
       },
     ]);
@@ -3406,9 +3338,9 @@ describe("HostRuntimeStore", () => {
       serverId: "srv_archived_rehydrate",
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -3434,11 +3366,11 @@ describe("HostRuntimeStore", () => {
 
     useSessionStore
       .getState()
-      .initializeSession(host.serverId, fakeClient as unknown as DaemonClient);
+      .initializeSession(host.serverId, fakeClient as unknown as DaemonClient, 1);
     useSessionStore.getState().setAgents(host.serverId, () => {
       const stale = makeFetchAgentsEntry({
         id: "agent-archived",
-        cwd: "/workspaces/otto",
+        cwd: "/workspaces/paseo",
         updatedAt: "2026-03-30T15:29:00.000Z",
         archivedAt: null,
         title: "Stale active copy",
@@ -3469,7 +3401,7 @@ describe("HostRuntimeStore", () => {
     await waitForHostOnline(store, host.serverId);
     await store.refreshAgentDirectory({
       serverId: host.serverId,
-      subscribe: { subscriptionId: "app:srv_archived_rehydrate" },
+      subscribe: {},
       page: { limit: 200 },
     });
     await fakeClient.waitForFetches(1);
@@ -3486,9 +3418,9 @@ describe("HostRuntimeStore", () => {
     const host = makeHost({
       connections: [
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
+          endpoint: "lan:6767",
         },
       ],
     });
@@ -3508,7 +3440,7 @@ describe("HostRuntimeStore", () => {
     let snapshot = store.getSnapshot(host.serverId);
     const timeoutAt = Date.now() + 100;
     while (
-      snapshot?.probeByConnectionId.get("direct:lan:6868")?.status !== "unavailable" &&
+      snapshot?.probeByConnectionId.get("direct:lan:6767")?.status !== "unavailable" &&
       Date.now() < timeoutAt
     ) {
       await new Promise((resolve) => setTimeout(resolve, 0));
@@ -3517,7 +3449,7 @@ describe("HostRuntimeStore", () => {
 
     expect(snapshot?.connectionStatus).toBe("connecting");
     expect(snapshot?.lastError).toBeNull();
-    expect(snapshot?.probeByConnectionId.get("direct:lan:6868")).toEqual({
+    expect(snapshot?.probeByConnectionId.get("direct:lan:6767")).toEqual({
       status: "unavailable",
       latencyMs: null,
     });
@@ -3537,53 +3469,22 @@ describe("HostRuntimeStore", () => {
     });
 
     // upsertDirectConnection goes through setHostsAndSync, which both sets
-    // this.hosts and syncs controllers - matching the real init path.
+    // this.hosts and syncs controllers — matching the real init path.
     await store.upsertDirectConnection({
       serverId: "srv_rename",
-      endpoint: "lan:6868",
+      endpoint: "lan:6767",
       label: "old name",
     });
     expect(store.getHosts().find((h) => h.serverId === "srv_rename")?.label).toBe("old name");
 
-    // This store has no explicit storage, so persistHosts writes to the stubbed AsyncStorage and
-    // drops the value; the assertion below is about the in-memory state setHostsAndSync updates.
+    // persistHosts may throw in test env (no AsyncStorage/window), but the
+    // in-memory state should still be updated by setHostsAndSync.
     await store.renameHost("srv_rename", "new name").catch(() => undefined);
 
     const renamed = store.getHosts().find((h) => h.serverId === "srv_rename");
     expect(renamed?.label).toBe("new name");
 
     store.syncHosts([]);
-  });
-
-  it("updates host appearance without dropping the other appearance field", async () => {
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
-        connectToDaemon: async ({ host }) => ({
-          client: makeConnectedProbeClient(5) as unknown as DaemonClient,
-          serverId: host.serverId,
-          hostname: host.label ?? null,
-        }),
-        getClientId: async () => "cid_test_runtime",
-      },
-      storage: createMemoryHostRuntimeStorage(),
-    });
-
-    try {
-      await store.upsertDirectConnection({
-        serverId: "srv_appearance",
-        endpoint: "lan:6868",
-        label: "Appearance host",
-      });
-      await store.setHostColor("srv_appearance", "teal");
-      await store.setHostBadgeDisplay("srv_appearance", "icon");
-
-      expect(
-        store.getHosts().find((host) => host.serverId === "srv_appearance")?.appearance,
-      ).toEqual({ color: "teal", badgeDisplay: "icon" });
-    } finally {
-      store.syncHosts([]);
-    }
   });
 
   it("preserves a manual host rename when desktop status re-advertises the daemon hostname", async () => {
@@ -3603,14 +3504,14 @@ describe("HostRuntimeStore", () => {
 
     try {
       await store.upsertConnectionFromListen({
-        listenAddress: "127.0.0.1:6868",
+        listenAddress: "127.0.0.1:6767",
         serverId: "srv_desktop",
         hostname: advertisedHostname,
       });
       await store.renameHost("srv_desktop", "mac-dev");
 
       await store.upsertConnectionFromListen({
-        listenAddress: "127.0.0.1:6868",
+        listenAddress: "127.0.0.1:6767",
         serverId: "srv_desktop",
         hostname: advertisedHostname,
       });
@@ -3621,7 +3522,7 @@ describe("HostRuntimeStore", () => {
     }
   });
 
-  it("upsertDirectConnection stores SSL and password settings", async () => {
+  it("upsertDirectConnection stores SSL on the connection and password on the host", async () => {
     const store = new HostRuntimeStore({
       deps: {
         createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
@@ -3636,7 +3537,7 @@ describe("HostRuntimeStore", () => {
 
     await store.upsertDirectConnection({
       serverId: "srv_tls_password",
-      endpoint: "example.otto.test:7443",
+      endpoint: "example.paseo.test:7443",
       useTls: true,
       password: "shared-secret",
       label: "tls host",
@@ -3645,22 +3546,22 @@ describe("HostRuntimeStore", () => {
     const host = store.getHosts().find((entry) => entry.serverId === "srv_tls_password");
     expect(host?.connections).toEqual([
       {
-        id: "direct:example.otto.test:7443",
+        id: "direct:example.paseo.test:7443",
         type: "directTcp",
-        endpoint: "example.otto.test:7443",
+        endpoint: "example.paseo.test:7443",
         useTls: true,
-        password: "shared-secret",
       },
     ]);
+    expect(host?.password).toBe("shared-secret");
 
     store.syncHosts([]);
   });
 
   it("probeAndUpsertConnection learns the real server id before storing a direct host", async () => {
     const connection: HostConnection = {
-      id: "direct:lan:6868",
+      id: "direct:lan:6767",
       type: "directTcp",
-      endpoint: "lan:6868",
+      endpoint: "lan:6767",
     };
     const probeClient = makeConnectedProbeClient(5);
     const seenProbeHosts: string[] = [];
@@ -3699,9 +3600,9 @@ describe("HostRuntimeStore", () => {
 
   it("probeAndUpsertConnection replaces a matching placeholder host with the real server id", async () => {
     const connection: HostConnection = {
-      id: "direct:lan:6868",
+      id: "direct:lan:6767",
       type: "directTcp",
-      endpoint: "lan:6868",
+      endpoint: "lan:6767",
     };
     const store = new HostRuntimeStore({
       deps: {
@@ -3720,8 +3621,8 @@ describe("HostRuntimeStore", () => {
       }
     ).hosts = [
       makeHost({
-        serverId: "local:lan:6868",
-        label: "local:lan:6868",
+        serverId: "local:lan:6767",
+        label: "local:lan:6767",
         connections: [connection],
         preferredConnectionId: connection.id,
       }),
@@ -3736,19 +3637,10 @@ describe("HostRuntimeStore", () => {
   });
 
   it("uses the advertised hostname when adding a relay host from a pairing offer", async () => {
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
-        connectToDaemon: async ({ host }) => ({
-          client: makeConnectedProbeClient(5) as unknown as DaemonClient,
-          serverId: host.serverId,
-          hostname: host.label ?? null,
-        }),
-        getClientId: async () => "cid_test_runtime",
-      },
-    });
+    const store = createPairingStore({ hostname: "mbp" });
+    answerHostConfirmations(store, true);
 
-    await store.upsertConnectionFromOffer(makeOffer(), "mbp");
+    await store.beginLinkPairing().submit(encodeOfferUrl(makeOffer()));
 
     const pairedHost = store.getHosts().find((host) => host.serverId === "srv_offer");
     expect(pairedHost?.label).toBe("mbp");
@@ -3757,27 +3649,14 @@ describe("HostRuntimeStore", () => {
   });
 
   it("stores relay TLS from a pairing offer", async () => {
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
-        connectToDaemon: async ({ host }) => ({
-          client: makeConnectedProbeClient(5) as unknown as DaemonClient,
-          serverId: host.serverId,
-          hostname: host.label ?? null,
-        }),
-        getClientId: async () => "cid_test_runtime",
-      },
-    });
+    const store = createPairingStore();
+    answerHostConfirmations(store, true);
 
-    await store.upsertConnectionFromOffer(
-      makeOffer({
-        relay: {
-          endpoint: "relay.example.com:443",
-          useTls: true,
-        },
-      }),
-      "tls relay",
-    );
+    await store
+      .beginLinkPairing()
+      .submit(
+        encodeOfferUrl(makeOffer({ relay: { endpoint: "relay.example.com:443", useTls: true } })),
+      );
 
     const pairedHost = store.getHosts().find((host) => host.serverId === "srv_offer");
     expect(pairedHost?.connections).toEqual([
@@ -3794,32 +3673,23 @@ describe("HostRuntimeStore", () => {
   });
 
   it("uses TLS for old pairing URLs that omit relay TLS on port 443", async () => {
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
-        connectToDaemon: async ({ host }) => ({
-          client: makeConnectedProbeClient(5) as unknown as DaemonClient,
-          serverId: host.serverId,
-          hostname: host.label ?? null,
-        }),
-        getClientId: async () => "cid_test_runtime",
-      },
-    });
+    const store = createPairingStore();
+    answerHostConfirmations(store, true);
     const oldPairingUrl = encodeOfferUrl({
       v: 2,
       serverId: "srv_offer",
       daemonPublicKeyB64: "pk_test_offer",
-      relay: { endpoint: "relay.otto-code.ai:443" },
+      relay: { endpoint: "relay.paseo.sh:443" },
     });
 
-    await store.upsertConnectionFromOfferUrl(oldPairingUrl, "old relay");
+    await store.importConnectionLink(oldPairingUrl, "openProject");
 
     const pairedHost = store.getHosts().find((host) => host.serverId === "srv_offer");
     expect(pairedHost?.connections).toEqual([
       {
-        id: "relay:wss:relay.otto-code.ai:443",
+        id: "relay:wss:relay.paseo.sh:443",
         type: "relay",
-        relayEndpoint: "relay.otto-code.ai:443",
+        relayEndpoint: "relay.paseo.sh:443",
         useTls: true,
         daemonPublicKeyB64: "pk_test_offer",
       },
@@ -3828,28 +3698,314 @@ describe("HostRuntimeStore", () => {
     store.syncHosts([]);
   });
 
-  it("preserves the existing host label when re-pairing an existing relay host", async () => {
-    const store = new HostRuntimeStore({
-      deps: {
-        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
-        connectToDaemon: async ({ host }) => ({
-          client: makeConnectedProbeClient(5) as unknown as DaemonClient,
-          serverId: host.serverId,
-          hostname: host.label ?? null,
-        }),
-        getClientId: async () => "cid_test_runtime",
+  it("probes a pairing link immediately and saves only after admission", async () => {
+    const store = createPairingStore({ password: "correct-password" });
+    answerHostConfirmations(store, true);
+    const offerUrl = encodeOfferUrl(makeOffer());
+    const pairing = store.beginLinkPairing();
+
+    await expect(pairing.submit(offerUrl)).rejects.toThrow("Password required");
+    expect(store.getHosts()).toHaveLength(0);
+    const result = await pairing.submit(offerUrl, "correct-password");
+    expect(result).toMatchObject({ status: "connected", serverId: "srv_offer" });
+    expect(store.getHosts()[0]?.password).toBe("correct-password");
+    store.syncHosts([]);
+  });
+
+  it("asks before a pairing link adds a new host, and Cancel saves and connects nothing", async () => {
+    const connectAttempts: string[] = [];
+    const store = createPairingStore({ connectAttempts });
+    const requests = answerHostConfirmations(store, false);
+    const offerUrl = encodeOfferUrl(makeOffer());
+    const relayLink = "relay://relay.example:443/srv_relay?key=AAAA&ssl=true";
+
+    // `#offer=` in the app URL, then a QR scan, then the pair-link and add-host modals.
+    await expect(store.importConnectionLink(offerUrl, "openProject")).resolves.toEqual({
+      status: "cancelled",
+    });
+    await expect(store.importConnectionLink(offerUrl, "hostRoot")).resolves.toEqual({
+      status: "cancelled",
+    });
+    await expect(store.beginLinkPairing().submit(offerUrl)).resolves.toEqual({
+      status: "cancelled",
+    });
+    await expect(store.beginLinkPairing().submit(relayLink)).resolves.toEqual({
+      status: "cancelled",
+    });
+
+    expect(requests).toEqual([
+      ...Array.from({ length: 3 }, () => ({
+        id: expect.any(Number),
+        serverId: "srv_offer",
+        keyFingerprint: "pkte stof fer",
+        relayEndpoint: "relay.paseo.sh:443",
+        kind: "newHost",
+      })),
+      {
+        id: expect.any(Number),
+        serverId: "srv_relay",
+        keyFingerprint: "AAAA",
+        relayEndpoint: "relay.example:443",
+        kind: "newHost",
       },
-      storage: createMemoryHostRuntimeStorage(),
-    });
+    ]);
+    expect(store.getHosts()).toEqual([]);
+    expect(connectAttempts).toEqual([]);
+    store.syncHosts([]);
+  });
 
-    await store.upsertRelayConnection({
+  it("connects a saved host from a matching pairing link without asking", async () => {
+    const store = createPairingStore();
+    const requests = answerHostConfirmations(store, true);
+    const offerUrl = encodeOfferUrl(makeOffer());
+    await store.beginLinkPairing().submit(offerUrl);
+    expect(requests).toHaveLength(1);
+
+    await expect(store.importConnectionLink(offerUrl, "openProject")).resolves.toEqual({
+      status: "connected",
       serverId: "srv_offer",
-      relayEndpoint: "relay.otto-code.ai:443",
-      daemonPublicKeyB64: "pk_test_offer",
-      label: "Custom name",
+    });
+    await expect(store.importConnectionLink(offerUrl, "hostRoot")).resolves.toEqual({
+      status: "connected",
+      serverId: "srv_offer",
+    });
+    await expect(store.beginLinkPairing().submit(offerUrl)).resolves.toMatchObject({
+      status: "connected",
     });
 
-    await store.upsertConnectionFromOffer(makeOffer(), "mbp");
+    expect(requests).toHaveLength(1);
+    expect(store.getHosts()).toHaveLength(1);
+    store.syncHosts([]);
+  });
+
+  it("asks when a pairing link changes a saved host's key, relay, or TLS setting", async () => {
+    const store = createPairingStore();
+    const requests = answerHostConfirmations(store, (_request, index) => index === 0);
+    await store.beginLinkPairing().submit(encodeOfferUrl(makeOffer()));
+    const savedHosts = store.getHosts();
+
+    const changedLinks = [
+      makeOffer({ daemonPublicKeyB64: "pk_other_key" }),
+      makeOffer({ relay: { endpoint: "relay.example:443", useTls: false } }),
+      makeOffer({ relay: { endpoint: "relay.paseo.sh:443", useTls: true } }),
+    ].map(encodeOfferUrl);
+    for (const link of changedLinks) {
+      await expect(store.importConnectionLink(link, "openProject")).resolves.toEqual({
+        status: "cancelled",
+      });
+      await expect(store.beginLinkPairing().submit(link)).resolves.toEqual({
+        status: "cancelled",
+      });
+    }
+
+    expect(requests.map((request) => request.kind)).toEqual([
+      "newHost",
+      ...Array.from({ length: 6 }, () => "changedConnection"),
+    ]);
+    expect(store.getHosts()).toEqual(savedHosts);
+    store.syncHosts([]);
+  });
+
+  it("asks once per pairing flow and link when the host asks for a password", async () => {
+    const store = createPairingStore({ password: "correct-password" });
+    const requests = answerHostConfirmations(store, (_request, index) => index < 2);
+    const offerUrl = encodeOfferUrl(makeOffer());
+    const pairing = store.beginLinkPairing();
+
+    await expect(pairing.submit(offerUrl)).rejects.toThrow("Password required");
+    await expect(pairing.submit(offerUrl, "wrong-password")).rejects.toThrow();
+    expect(requests).toHaveLength(1);
+
+    // A new pairing flow for the same link asks again.
+    await expect(store.beginLinkPairing().submit(offerUrl, "wrong-password")).rejects.toThrow();
+    expect(requests).toHaveLength(2);
+
+    await expect(pairing.submit(offerUrl, "correct-password")).resolves.toMatchObject({
+      status: "connected",
+    });
+    expect(requests).toHaveLength(2);
+    expect(store.getHosts()[0]).toMatchObject({
+      serverId: "srv_offer",
+      password: "correct-password",
+    });
+
+    // A different link in the same flow asks again.
+    const otherKeyUrl = encodeOfferUrl(makeOffer({ daemonPublicKeyB64: "pk_other_key" }));
+    await expect(pairing.submit(otherKeyUrl, "correct-password")).resolves.toEqual({
+      status: "cancelled",
+    });
+    expect(requests).toHaveLength(3);
+    store.syncHosts([]);
+  });
+
+  it("continues a scanned link's password retry without asking again", async () => {
+    const store = createPairingStore({ password: "correct-password" });
+    const requests = answerHostConfirmations(store, true);
+    const link = "relay://relay.example:443/srv_pair?key=AAAA&ssl=true";
+
+    const outcome = await store.importConnectionLink(link, "hostRoot");
+    expect(outcome).toMatchObject({ status: "password_required", link });
+    expect(store.getHosts()).toHaveLength(0);
+    if (outcome.status !== "password_required") throw new Error("expected password_required");
+
+    await outcome.pairing.submit(outcome.link, "correct-password");
+    expect(requests).toHaveLength(1);
+    expect(store.getHosts()[0]).toMatchObject({
+      serverId: "srv_pair",
+      password: "correct-password",
+    });
+    store.syncHosts([]);
+  });
+
+  it("keeps a host confirmation pending until it is answered, and a newer one cancels it", async () => {
+    const store = createPairingStore();
+    const first = store.importConnectionLink(encodeOfferUrl(makeOffer()), "openProject");
+    await vi.waitFor(() =>
+      expect(store.getPendingHostConfirmation()).toMatchObject({ serverId: "srv_offer" }),
+    );
+
+    const second = store.importConnectionLink(
+      encodeOfferUrl(makeOffer({ serverId: "srv_second" })),
+      "openProject",
+    );
+    await expect(first).resolves.toEqual({ status: "cancelled" });
+    await vi.waitFor(() =>
+      expect(store.getPendingHostConfirmation()).toMatchObject({ serverId: "srv_second" }),
+    );
+
+    store.answerHostConfirmation(requirePendingConfirmation(store).id, true);
+    await expect(second).resolves.toEqual({ status: "connected", serverId: "srv_second" });
+    expect(store.getPendingHostConfirmation()).toBeNull();
+    expect(store.getHosts().map((host) => host.serverId)).toEqual(["srv_second"]);
+    store.syncHosts([]);
+  });
+
+  it("ignores an answer for a host confirmation that a newer one replaced", async () => {
+    const store = createPairingStore();
+    const first = store.importConnectionLink(encodeOfferUrl(makeOffer()), "openProject");
+    await vi.waitFor(() =>
+      expect(store.getPendingHostConfirmation()).toMatchObject({ serverId: "srv_offer" }),
+    );
+    const firstRequest = requirePendingConfirmation(store);
+    const second = store.importConnectionLink(
+      encodeOfferUrl(makeOffer({ serverId: "srv_second" })),
+      "openProject",
+    );
+    await expect(first).resolves.toEqual({ status: "cancelled" });
+
+    // Connect tapped on the first sheet as the second link arrives.
+    store.answerHostConfirmation(firstRequest.id, true);
+
+    const secondRequest = requirePendingConfirmation(store);
+    expect(secondRequest.serverId).toBe("srv_second");
+    store.answerHostConfirmation(secondRequest.id, false);
+    await expect(second).resolves.toEqual({ status: "cancelled" });
+    expect(store.getHosts()).toEqual([]);
+  });
+
+  it("waits for saved hosts to load before deciding whether a pairing link asks", async () => {
+    const savedHost = makeHost({
+      serverId: "srv_offer",
+      connections: [
+        {
+          id: "relay:relay.paseo.sh:443",
+          type: "relay",
+          relayEndpoint: "relay.paseo.sh:443",
+          useTls: false,
+          daemonPublicKeyB64: "pk_test_offer",
+        },
+      ],
+    });
+    const store = createPairingStore({
+      storage: createMemoryHostRuntimeStorage({
+        "@paseo:daemon-registry": JSON.stringify([savedHost]),
+        "@paseo:e2e": "1",
+      }),
+    });
+    const requests = answerHostConfirmations(store, true);
+
+    await expect(
+      store.importConnectionLink(encodeOfferUrl(makeOffer()), "openProject"),
+    ).resolves.toEqual({ status: "connected", serverId: "srv_offer" });
+
+    expect(requests).toEqual([]);
+    expect(store.getHosts().map((host) => host.serverId)).toEqual(["srv_offer"]);
+    store.syncHosts([]);
+  });
+
+  it("adds hosts by address and the default localhost without asking", async () => {
+    const store = createPairingStore({
+      serverIdForHost: (host) =>
+        host.connections[0]?.type === "directTcp" ? `srv_${host.connections[0].endpoint}` : "",
+    });
+    const requests = answerHostConfirmations(store, false);
+
+    await store.boot();
+    await store.probeAndUpsertDirectConnection({ endpoint: "10.0.0.5:6767" });
+
+    expect(requests).toEqual([]);
+    expect(store.getHosts().map((host) => host.serverId)).toEqual([
+      "srv_localhost:6868",
+      "srv_10.0.0.5:6767",
+    ]);
+    store.syncHosts([]);
+  });
+
+  it("authenticates Remote SSH probes with the entered daemon password and stores it verbatim", async () => {
+    const store = createPairingStore({
+      password: " s3cret ",
+      serverIdForHost: (host) => (host.connections[0]?.type === "remoteSsh" ? "srv_ssh" : ""),
+    });
+    answerHostConfirmations(store, false);
+
+    await store.boot();
+    await store.probeAndUpsertRemoteSshConnection({
+      host: "deploy@example.com",
+      password: " s3cret ",
+    });
+
+    const host = store.getHosts().find((entry) => entry.serverId === "srv_ssh");
+    expect(host?.password).toBe(" s3cret ");
+    expect(host?.connections[0]).toMatchObject({
+      type: "remoteSsh",
+      host: "deploy@example.com",
+    });
+
+    // The fix promises the saved password is sent on every connection: a later
+    // cycle must authenticate from the stored profile alone.
+    await store.runProbeCycleNow("srv_ssh");
+    await waitForHostOnline(store, "srv_ssh");
+    store.syncHosts([]);
+  });
+
+  it("rejects Remote SSH probes without the daemon password, the way the daemon does", async () => {
+    const store = createPairingStore({
+      password: "s3cret",
+      serverIdForHost: (host) => (host.connections[0]?.type === "remoteSsh" ? "srv_ssh" : ""),
+    });
+    answerHostConfirmations(store, false);
+
+    await store.boot();
+    const failure = await store
+      .probeAndUpsertRemoteSshConnection({ host: "deploy@example.com" })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(failure).toBeInstanceOf(DaemonAuthenticationError);
+    expect((failure as DaemonAuthenticationError).reason).toBe("password_required");
+    expect(store.getHosts().find((entry) => entry.serverId === "srv_ssh")).toBeUndefined();
+    store.syncHosts([]);
+  });
+
+  it("preserves the existing host label when re-pairing an existing relay host", async () => {
+    const store = createPairingStore({ hostname: "mbp" });
+    answerHostConfirmations(store, true);
+
+    await store.beginLinkPairing().submit(encodeOfferUrl(makeOffer()));
+    await store.renameHost("srv_offer", "Custom name");
+
+    await store.beginLinkPairing().submit(encodeOfferUrl(makeOffer()));
 
     const pairedHost = store.getHosts().find((host) => host.serverId === "srv_offer");
     expect(pairedHost?.label).toBe("Custom name");
@@ -3864,31 +4020,31 @@ describe("readInitialDaemonConnectionHint", () => {
   });
 
   it("parses a valid listen-only hint", () => {
-    (globalThis as Record<string, unknown>).__OTTO_INITIAL_DAEMON_CONNECTION__ = {
-      listen: "localhost:6868",
+    (globalThis as Record<string, unknown>).__PASEO_INITIAL_DAEMON_CONNECTION__ = {
+      listen: "localhost:6767",
     };
     expect(readInitialDaemonConnectionHint({ isWebRuntime: true })).toEqual({
-      listen: "localhost:6868",
+      listen: "localhost:6767",
       useTls: false,
     });
   });
 
   it("preserves useTls when explicitly true", () => {
-    (globalThis as Record<string, unknown>).__OTTO_INITIAL_DAEMON_CONNECTION__ = {
-      listen: "otto.example.com:443",
+    (globalThis as Record<string, unknown>).__PASEO_INITIAL_DAEMON_CONNECTION__ = {
+      listen: "paseo.example.com:443",
       useTls: true,
     };
     expect(readInitialDaemonConnectionHint({ isWebRuntime: true })).toEqual({
-      listen: "otto.example.com:443",
+      listen: "paseo.example.com:443",
       useTls: true,
     });
   });
 
   it("ignores invalid shapes", () => {
-    (globalThis as Record<string, unknown>).__OTTO_INITIAL_DAEMON_CONNECTION__ = "localhost:6868";
+    (globalThis as Record<string, unknown>).__PASEO_INITIAL_DAEMON_CONNECTION__ = "localhost:6767";
     expect(readInitialDaemonConnectionHint({ isWebRuntime: true })).toBeNull();
 
-    (globalThis as Record<string, unknown>).__OTTO_INITIAL_DAEMON_CONNECTION__ = {
+    (globalThis as Record<string, unknown>).__PASEO_INITIAL_DAEMON_CONNECTION__ = {
       useTls: true,
     };
     expect(readInitialDaemonConnectionHint({ isWebRuntime: true })).toBeNull();
@@ -3896,6 +4052,326 @@ describe("readInitialDaemonConnectionHint", () => {
 });
 
 describe("HostRuntimeStore initial connection hint bootstrap", () => {
+  it("starts saved remote-host probes while desktop daemon startup is still pending", async () => {
+    const host = makeHost({
+      serverId: "srv_remote_saved",
+      connections: [
+        { id: "direct:remote.example:6799", type: "directTcp", endpoint: "remote.example:6799" },
+      ],
+    });
+    const storage = createMemoryHostRuntimeStorage();
+    await storage.setItem("@paseo:daemon-registry", JSON.stringify([host]));
+    let remoteProbeStarted = false;
+    let finishDesktopStart: (() => void) | undefined;
+    const desktopStartPending = new Promise<void>((resolve) => {
+      finishDesktopStart = resolve;
+    });
+    const store = new HostRuntimeStore({
+      storage,
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async () => {
+          remoteProbeStarted = true;
+          return {
+            client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+            serverId: host.serverId,
+            hostname: host.label,
+          };
+        },
+        getClientId: async () => "cid_remote_saved",
+      },
+    });
+    startHostRuntimeBootstrap({
+      store,
+      shouldStartDaemon: true,
+      daemonStartService: {
+        startIfEnabled: async () => {
+          await desktopStartPending;
+          return { ok: true };
+        },
+      },
+    });
+    try {
+      await vi.waitFor(() => expect(remoteProbeStarted).toBe(true), { timeout: 400 });
+      expect(store.isHostRegistryLoaded()).toBe(true);
+    } finally {
+      finishDesktopStart?.();
+      await store.boot();
+      store.syncHosts([]);
+    }
+  });
+  it("resolves a local credential for a reopened saved desktop host connection", async () => {
+    const host = makeHost({
+      serverId: "srv_desktop_reopened",
+      connections: [{ id: "direct:localhost:6799", type: "directTcp", endpoint: "localhost:6799" }],
+    });
+    const storage = createMemoryHostRuntimeStorage();
+    await storage.setItem("@paseo:daemon-registry", JSON.stringify([host]));
+    const credentialRequests: string[] = [];
+    const store = new HostRuntimeStore({
+      storage,
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async ({ host: probeHost, connection }) => {
+          expect(probeHost.password).toBeUndefined();
+          const credential = await readDesktopManagedLocalCredential(connection, async (listen) => {
+            credentialRequests.push(listen);
+            return listen === "localhost:6799" ? "local-token" : null;
+          });
+          expect(credential).toBe("local-token");
+          return {
+            client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+            serverId: host.serverId,
+            hostname: host.label,
+          };
+        },
+        getClientId: async () => "cid_desktop_reopened",
+      },
+    });
+    startHostRuntimeBootstrap({
+      store,
+      shouldStartDaemon: true,
+      daemonStartService: {
+        startIfEnabled: async () => ({ ok: true }),
+      },
+    });
+    await waitForHostOnline(store, host.serverId);
+    expect(credentialRequests).toContain("localhost:6799");
+    store.syncHosts([]);
+  });
+  it("requires a new password and stops reconnecting after a previously connected client is rejected", async () => {
+    const client = makeConnectedProbeClient(5);
+    const host = makeHost({
+      serverId: "srv_changed_password",
+      password: "old-password",
+      connections: [{ id: "direct:lan:6767", type: "directTcp", endpoint: "lan:6767" }],
+    });
+    const store = new HostRuntimeStore({
+      storage: createMemoryHostRuntimeStorage(),
+      deps: {
+        createClient: () => client as unknown as DaemonClient,
+        connectToDaemon: async () => ({
+          client: client as unknown as DaemonClient,
+          serverId: host.serverId,
+          hostname: host.label,
+        }),
+        getClientId: async () => "cid_changed_password",
+      },
+    });
+    store.syncHosts([host], {
+      initialConnectionByServerId: new Map([
+        [
+          host.serverId,
+          {
+            connectionId: host.connections[0]!.id,
+            existingClient: client as unknown as DaemonClient,
+          },
+        ],
+      ]),
+    });
+    await waitForHostOnline(store, host.serverId);
+    client.authFailureReason = "incorrect_password";
+    client.setConnectionState({ status: "disconnected", reason: "Incorrect password" });
+    await onceHostSnapshotMatches(
+      store,
+      host.serverId,
+      (snapshot) => snapshot?.authFailureReason === "incorrect_password",
+    );
+    expect(store.getSnapshot(host.serverId)?.lastError).toBe("Incorrect password");
+    expect(client.reconnectEnabledChanges.at(-1)).toBe(false);
+    store.syncHosts([]);
+  });
+
+  it("tries another connection after the active connection rejects its password", async () => {
+    const relayClient = makeConnectedProbeClient(5);
+    const directClient = makeConnectedProbeClient(5);
+    const host = makeHost({
+      serverId: "srv_rejected_relay_with_local_direct",
+      password: "stale-password",
+      preferredConnectionId: "relay:remote:443",
+      connections: [
+        {
+          id: "relay:remote:443",
+          type: "relay",
+          relayEndpoint: "remote:443",
+          daemonPublicKeyB64: "pk_test_offer",
+        },
+        { id: "direct:localhost:6799", type: "directTcp", endpoint: "localhost:6799" },
+      ],
+    });
+    const probeAttempts: string[] = [];
+    const store = new HostRuntimeStore({
+      storage: createMemoryHostRuntimeStorage(),
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async ({ connection }) => {
+          probeAttempts.push(connection.id);
+          if (connection.type === "relay")
+            throw new DaemonAuthenticationError("incorrect_password");
+          return {
+            client: directClient as unknown as DaemonClient,
+            serverId: host.serverId,
+            hostname: host.label,
+          };
+        },
+        getClientId: async () => "cid_rejected_relay_with_local_direct",
+      },
+    });
+    store.syncHosts([host], {
+      initialConnectionByServerId: new Map([
+        [
+          host.serverId,
+          {
+            connectionId: "relay:remote:443",
+            existingClient: relayClient as unknown as DaemonClient,
+          },
+        ],
+      ]),
+    });
+    await waitForHostOnline(store, host.serverId);
+    relayClient.authFailureReason = "incorrect_password";
+    relayClient.setConnectionState({ status: "disconnected", reason: "Incorrect password" });
+    await onceHostSnapshotMatches(
+      store,
+      host.serverId,
+      (snapshot) => snapshot?.authFailureReason === "incorrect_password",
+    );
+    await store.runProbeCycleNow(host.serverId);
+    await onceHostSnapshotMatches(
+      store,
+      host.serverId,
+      (snapshot) =>
+        snapshot?.connectionStatus === "online" &&
+        snapshot.activeConnectionId === "direct:localhost:6799",
+    );
+    expect(probeAttempts).toContain("direct:localhost:6799");
+    expect(probeAttempts).not.toContain("relay:remote:443");
+    store.syncHosts([]);
+  });
+
+  it("keeps five rejected hosts red with independent password errors", async () => {
+    let probeAttempts = 0;
+    const store = new HostRuntimeStore({
+      storage: createMemoryHostRuntimeStorage(),
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async () => {
+          probeAttempts += 1;
+          throw new DaemonAuthenticationError("password_required");
+        },
+        getClientId: async () => "cid_five_rejected_hosts",
+      },
+    });
+    for (let index = 1; index <= 5; index += 1) {
+      const serverId = `srv_rejected_${index}`;
+      await store.upsertDirectConnection({ serverId, endpoint: `host-${index}:6767` });
+      await onceHostSnapshotMatches(
+        store,
+        serverId,
+        (snapshot) => snapshot?.authFailureReason === "password_required",
+      );
+    }
+    for (let index = 1; index <= 5; index += 1) {
+      const snapshot = store.getSnapshot(`srv_rejected_${index}`);
+      expect(snapshot?.connectionStatus).toBe("error");
+      expect(snapshot?.lastError).toBe("Password required");
+    }
+    const attemptsBeforeRetry = probeAttempts;
+    await store.runProbeCycleNow("srv_rejected_1");
+    expect(probeAttempts).toBe(attemptsBeforeRetry);
+    store.syncHosts([]);
+  });
+  it("imports a deep link without waiting for admission, then leaves a rejected saved host red", async () => {
+    const store = new HostRuntimeStore({
+      storage: createMemoryHostRuntimeStorage(),
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async () => {
+          throw new DaemonAuthenticationError("password_required");
+        },
+        getClientId: async () => "cid_deep_link",
+      },
+    });
+    answerHostConfirmations(store, true);
+    const link = "relay://relay.example:443/srv_deep?key=AAAA&ssl=true";
+    await expect(store.importConnectionLink(link, "openProject")).resolves.toEqual({
+      status: "connected",
+      serverId: "srv_deep",
+    });
+    expect(store.getHosts()).toHaveLength(1);
+    await onceHostSnapshotMatches(
+      store,
+      "srv_deep",
+      (snapshot) => snapshot?.authFailureReason === "password_required",
+    );
+    expect(store.getSnapshot("srv_deep")?.connectionStatus).toBe("error");
+    store.syncHosts([]);
+  });
+  it("stops connecting to a host removed while its first probe is pending", async () => {
+    useHostRuntimeClock();
+    const firstProbe = createDeferred<void>();
+    let connectCalls = 0;
+    const store = new HostRuntimeStore({
+      storage: createMemoryHostRuntimeStorage(),
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async ({ host }) => {
+          connectCalls += 1;
+          if (connectCalls === 1) await firstProbe.promise;
+          return {
+            client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+            serverId: host.serverId,
+            hostname: host.label ?? null,
+          };
+        },
+        getClientId: async () => "cid_test_removed_host",
+      },
+    });
+    await store.upsertDirectConnection({ serverId: "srv_removed", endpoint: "lan:6767" });
+    await vi.waitFor(() => expect(connectCalls).toBe(1));
+
+    await store.removeHost("srv_removed");
+    firstProbe.resolve();
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(connectCalls).toBe(1);
+    expect(store.getSnapshot("srv_removed")).toBeNull();
+    expect(useSessionStore.getState().sessions["srv_removed"]).toBeUndefined();
+  });
+
+  it("saves and reconnects a rejected saved host after changing its password", async () => {
+    const store = new HostRuntimeStore({
+      storage: createMemoryHostRuntimeStorage(),
+      deps: {
+        createClient: () => new FakeDaemonClient() as unknown as DaemonClient,
+        connectToDaemon: async ({ host }) => {
+          if (host.password !== "correct-password")
+            throw new DaemonAuthenticationError("password_required");
+          return {
+            client: makeConnectedProbeClient(5) as unknown as DaemonClient,
+            serverId: host.serverId,
+            hostname: host.label,
+          };
+        },
+        getClientId: async () => "cid_test_password_setting",
+      },
+    });
+    await store.upsertDirectConnection({ serverId: "srv_test", endpoint: "lan:6767" });
+    await onceHostSnapshotMatches(
+      store,
+      "srv_test",
+      (snapshot) => snapshot?.authFailureReason === "password_required",
+    );
+    expect(store.getSnapshot("srv_test")?.connectionStatus).toBe("error");
+    await store.setHostPassword("srv_test", "correct-password");
+    await waitForHostOnline(store, "srv_test");
+    expect(store.getHosts()[0]?.password).toBe("correct-password");
+    expect(store.getSnapshot("srv_test")?.authFailureReason).toBeNull();
+    await store.setHostPassword("srv_test", "");
+    expect(store.getHosts()[0]?.password).toBeUndefined();
+    store.syncHosts([]);
+  });
+
   it("attempts the explicit initial connection hint before default localhost bootstrap", async () => {
     const seenProbes: { endpoint: string; useTls?: boolean }[] = [];
     const store = new HostRuntimeStore({
@@ -3913,7 +4389,7 @@ describe("HostRuntimeStore initial connection hint bootstrap", () => {
         },
         getClientId: async () => "cid_test_runtime",
         readInitialConnectionHint: () => ({
-          listen: "daemon-origin:6868",
+          listen: "daemon-origin:6767",
           useTls: true,
         }),
       },
@@ -3924,12 +4400,12 @@ describe("HostRuntimeStore initial connection hint bootstrap", () => {
     store.boot();
     await hostAdded;
 
-    expect(seenProbes).toContainEqual({ endpoint: "daemon-origin:6868", useTls: true });
+    expect(seenProbes).toContainEqual({ endpoint: "daemon-origin:6767", useTls: true });
     const host = store.getHosts()[0];
     expect(host?.serverId).toBe("srv_hint");
     expect(host?.connections).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ endpoint: "daemon-origin:6868", useTls: true }),
+        expect.objectContaining({ endpoint: "daemon-origin:6767", useTls: true }),
       ]),
     );
 
@@ -3963,239 +4439,5 @@ describe("HostRuntimeStore initial connection hint bootstrap", () => {
 
     expect(seenProbes).not.toContainEqual(expect.objectContaining({ endpoint: "metro-host:8081" }));
     expect(store.getHosts()).toHaveLength(0);
-  });
-});
-
-async function createQueuedTurnRuntime(serverId: string) {
-  const host = makeHost({ serverId });
-  const client = new FakeDaemonClient();
-  client.setConnectionState({ status: "connected" });
-  const runtime = new HostRuntimeStore({
-    deps: {
-      createClient: () => client as unknown as DaemonClient,
-      connectToDaemon: async () => ({
-        client: client as unknown as DaemonClient,
-        serverId,
-        hostname: null,
-      }),
-      getClientId: async () => `client-${serverId}`,
-    },
-  });
-  const session = useSessionStore.getState();
-  session.initializeSession(serverId, client as unknown as DaemonClient, 1);
-  runtime.syncHosts([host]);
-  await waitForHostOnline(runtime, serverId);
-  await runtime.refreshAgentDirectory({ serverId });
-  const snapshot = makeFetchAgentsEntry({
-    id: "agent",
-    cwd: "/repo",
-    updatedAt: "2026-09-13T10:00:00.000Z",
-  }).agent;
-  const running = replicaAgent(
-    {
-      ...snapshot,
-      status: "running",
-      activeTurn: { turnId: "turn-1", startedAt: snapshot.updatedAt },
-    },
-    serverId,
-  );
-  runtime.acceptAgentSnapshot(serverId, running);
-  const queued = [{ id: "queued", text: "next user instruction", attachments: [] }];
-  session.setQueuedMessages(serverId, new Map([["agent", queued]]));
-  const receive = (event: AgentStreamEventPayload) => {
-    // Mirrors the session event handoff: outcome before the shared liveness close.
-    runtime.observeAgentStreamTurnOutcome(serverId, "agent", event);
-    runtime.applyAgentTurnLiveness(
-      serverId,
-      "agent",
-      deriveAgentStreamTurnLiveness([
-        {
-          event,
-          timestamp: new Date("2026-09-13T10:00:01.000Z"),
-          seq: undefined,
-          epoch: undefined,
-        },
-      ]),
-    );
-  };
-  const readQueue = () =>
-    useSessionStore.getState().sessions[serverId]?.queuedMessages.get("agent");
-  const cleanup = () => {
-    runtime.syncHosts([]);
-    session.clearSession(serverId);
-  };
-  return { host, client, runtime, session, running, queued, receive, readQueue, cleanup };
-}
-
-describe("Otto automatic queued-turn delivery at the directory owner", () => {
-  it("Stop holds a directory-only closure after RPC settlement and reconnect until a new turn", async () => {
-    const fixture = await createQueuedTurnRuntime("queue-local-stop");
-    try {
-      const serverId = fixture.host.serverId;
-      const requestId = fixture.runtime.beginAgentCancellation(serverId, "agent");
-      // Composer settles both resolved and rejected cancellation RPCs here. A
-      // rejected Stop still expresses the user's intent to hold pending input.
-      fixture.runtime.settleAgentCancellation(serverId, "agent", requestId);
-      fixture.runtime.applyAgentTurnLiveness(serverId, "agent", {
-        type: "snapshot",
-        activeTurn: null,
-      });
-      expect(fixture.readQueue()).toEqual(fixture.queued);
-      expect(fixture.client.sentAgentMessages).toHaveLength(0);
-      fixture.client.setConnectionState({ status: "disconnected", reason: "client_closed" });
-      fixture.client.setConnectionState({ status: "connected" });
-      await waitForHostOnline(fixture.runtime, serverId);
-      fixture.runtime.drainQueuedAgentMessage(serverId, "agent");
-      expect(fixture.readQueue()).toEqual(fixture.queued);
-      expect(fixture.client.sentAgentMessages).toHaveLength(0);
-      fixture.receive({ type: "turn_started", provider: "codex", turnId: "turn-2" });
-      fixture.receive({ type: "turn_completed", provider: "codex", turnId: "turn-2" });
-      await fixture.client.waitForSentMessages(1);
-      await vi.waitFor(() => expect(fixture.readQueue()).toEqual([]));
-    } finally {
-      fixture.cleanup();
-    }
-  });
-
-  it.each(["removal", "identity replacement"] as const)(
-    "%s clears the old session queue and its hold before the identity is reused",
-    async (change) => {
-      const fixture = await createQueuedTurnRuntime(`queue-clear-${change}`);
-      try {
-        const serverId = fixture.host.serverId;
-        fixture.runtime.beginAgentCancellation(serverId, "agent");
-        if (change === "removal") fixture.runtime.syncHosts([]);
-        else fixture.runtime.reconcileServerId(serverId, `${serverId}-replacement`);
-        expect(fixture.readQueue()).toBeUndefined();
-        if (change === "identity replacement") {
-          // Reuse the same live controller as the identity owner does. Removing
-          // it and creating another with this fixture's one client would race
-          // old-controller shutdown against new-controller startup.
-          fixture.runtime.reconcileServerId(`${serverId}-replacement`, serverId);
-        }
-        // This is a new session, not migration of the deleted session's queue.
-        fixture.client.setConnectionState({ status: "connected" });
-        fixture.runtime.syncHosts([fixture.host]);
-        await waitForHostOnline(fixture.runtime, serverId);
-        fixture.runtime.acceptAgentSnapshot(serverId, {
-          ...fixture.running,
-          status: "idle",
-          turn: { phase: "idle", cancellationRequestId: null },
-        });
-        fixture.session.setQueuedMessages(serverId, new Map([["agent", fixture.queued]]));
-        fixture.runtime.drainQueuedAgentMessage(serverId, "agent");
-        await fixture.client.waitForSentMessages(1);
-        await vi.waitFor(() => expect(fixture.readQueue()).toEqual([]));
-      } finally {
-        fixture.cleanup();
-      }
-    },
-  );
-
-  it("drains once on successful stream closure before the idle snapshot arrives", async () => {
-    const fixture = await createQueuedTurnRuntime("queue-success-outcome");
-    try {
-      const completed = { type: "turn_completed", provider: "codex", turnId: "turn-1" } as const;
-      fixture.receive(completed);
-      fixture.receive(completed);
-      await fixture.client.waitForSentMessages(1);
-      await vi.waitFor(() => expect(fixture.readQueue()).toEqual([]));
-      expect(fixture.client.sentAgentMessages).toHaveLength(1);
-      // Canonical directory metadata is not rewritten by the timeline queue.
-      expect(
-        useSessionStore.getState().sessions[fixture.host.serverId]?.agents.get("agent")?.status,
-      ).toBe("running");
-    } finally {
-      fixture.cleanup();
-    }
-  });
-
-  it.each(["turn_failed", "turn_canceled"] as const)(
-    "%s holds queued input through retry/reconnect until a new turn",
-    async (type) => {
-      const fixture = await createQueuedTurnRuntime(`queue-held-${type}`);
-      try {
-        fixture.receive(
-          type === "turn_failed"
-            ? { type, provider: "codex", turnId: "turn-1", error: "provider failed" }
-            : { type, provider: "codex", turnId: "turn-1", reason: "user canceled" },
-        );
-        expect(fixture.readQueue()).toEqual(fixture.queued);
-        expect(fixture.client.sentAgentMessages).toHaveLength(0);
-        // A duplicated start/completion for the held turn cannot release its input.
-        fixture.receive({ type: "turn_started", provider: "codex", turnId: "turn-1" });
-        fixture.receive({ type: "turn_completed", provider: "codex", turnId: "turn-1" });
-        fixture.runtime.drainQueuedAgentMessage(fixture.host.serverId, "agent");
-        expect(fixture.readQueue()).toEqual(fixture.queued);
-        fixture.client.setConnectionState({ status: "disconnected", reason: "client_closed" });
-        fixture.client.setConnectionState({ status: "connected" });
-        await waitForHostOnline(fixture.runtime, fixture.host.serverId);
-        fixture.runtime.drainQueuedAgentMessage(fixture.host.serverId, "agent");
-        expect(fixture.readQueue()).toEqual(fixture.queued);
-        expect(fixture.client.sentAgentMessages).toHaveLength(0);
-        fixture.receive({ type: "turn_started", provider: "codex", turnId: "turn-2" });
-        fixture.receive({ type: "turn_completed", provider: "codex", turnId: "turn-2" });
-        await fixture.client.waitForSentMessages(1);
-        await vi.waitFor(() => expect(fixture.readQueue()).toEqual([]));
-        expect(fixture.client.sentAgentMessages).toHaveLength(1);
-      } finally {
-        fixture.cleanup();
-      }
-    },
-  );
-
-  it.each(["error", "closed"] as const)(
-    "holds automatic retry for a %s directory snapshot",
-    async (status) => {
-      const fixture = await createQueuedTurnRuntime(`queue-snapshot-${status}`);
-      try {
-        fixture.runtime.acceptAgentSnapshot(fixture.host.serverId, {
-          ...fixture.running,
-          status,
-          turn: { phase: "idle", cancellationRequestId: null },
-        });
-        fixture.runtime.drainQueuedAgentMessage(fixture.host.serverId, "agent");
-        expect(fixture.readQueue()).toEqual(fixture.queued);
-        expect(fixture.client.sentAgentMessages).toHaveLength(0);
-      } finally {
-        fixture.cleanup();
-      }
-    },
-  );
-
-  it("leaves delivery to a daemon-owned steer queue", async () => {
-    const fixture = await createQueuedTurnRuntime("queue-daemon-owner");
-    try {
-      fixture.session.updateSessionServerInfo(fixture.host.serverId, {
-        serverId: fixture.host.serverId,
-        hostname: null,
-        version: null,
-        features: { steerQueue: true },
-      });
-      fixture.receive({ type: "turn_completed", provider: "codex", turnId: "turn-1" });
-      fixture.runtime.drainQueuedAgentMessage(fixture.host.serverId, "agent");
-      expect(fixture.readQueue()).toEqual(fixture.queued);
-      expect(fixture.client.sentAgentMessages).toHaveLength(0);
-    } finally {
-      fixture.cleanup();
-    }
-  });
-
-  it("ignores an unrelated identified failed turn when deciding queue delivery", async () => {
-    const fixture = await createQueuedTurnRuntime("queue-unrelated-outcome");
-    try {
-      fixture.receive({
-        type: "turn_failed",
-        provider: "codex",
-        turnId: "old-turn",
-        error: "old failure",
-      });
-      fixture.receive({ type: "turn_completed", provider: "codex", turnId: "turn-1" });
-      await fixture.client.waitForSentMessages(1);
-      await vi.waitFor(() => expect(fixture.readQueue()).toEqual([]));
-      expect(fixture.client.sentAgentMessages).toHaveLength(1);
-    } finally {
-      fixture.cleanup();
-    }
   });
 });

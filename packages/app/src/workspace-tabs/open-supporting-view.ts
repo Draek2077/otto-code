@@ -1,3 +1,12 @@
+import {
+  collectAllPanes,
+  collectAllTabs,
+  createWorkspaceLayoutWithExplorerSidebar,
+  DEFAULT_PANE_ID,
+  findPaneContainingTab,
+  resolveExplorerSidebarPaneId,
+  useWorkspaceLayoutStore,
+} from "@/stores/workspace-layout-store";
 import type { OpenInSidePanePreferences, PullRequestOpenLocation } from "@/hooks/use-settings";
 import type { ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
 import {
@@ -8,9 +17,8 @@ import {
 } from "@/workspace-tabs/explorer-sidebar";
 import {
   openPreferredWorkspaceTarget,
-  openWorkspaceTargetBeside,
+  openWorkspaceTargetAtLocation,
 } from "@/workspace-tabs/open-beside";
-import { DEFAULT_PANE_ID, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 
 interface WorkspaceViewInput {
   isCompact: boolean;
@@ -38,10 +46,9 @@ export function openWorkspaceChanges(input: OpenWorkspaceChangesInput): string |
     return null;
   }
   return openPreferredWorkspaceTarget({
-    isCompact: input.isCompact,
     workspaceKey: input.workspaceKey,
     target: { kind: "working_diff" },
-    source: "chatFiles",
+    source: "diffs",
     preferences: input.preferences,
   });
 }
@@ -61,19 +68,53 @@ export function openWorkspacePullRequest(input: OpenWorkspacePullRequestInput): 
     openExplorerView(input, "pr");
     return null;
   }
-  if (!input.workspaceKey) return null;
-  if (input.destination === "side") {
-    return openWorkspaceTargetBeside({
-      workspaceKey: input.workspaceKey,
-      target: { kind: "pull_request" },
-    });
-  }
-  // Explorer seeds a PR tab even before the reader opens it. The explicit
-  // destination setting must place that singleton, not merely reveal its seed.
-  return useWorkspaceLayoutStore.getState().openTab({
+  return openWorkspaceTargetAtLocation({
     workspaceKey: input.workspaceKey,
     target: { kind: "pull_request" },
-    intent: "reveal",
-    placement: { mode: "pane", paneId: DEFAULT_PANE_ID },
+    location: input.destination,
+  });
+}
+
+/** Adds a detected desktop PR once without revealing or selecting its destination. */
+export function autoOpenWorkspacePullRequest(input: {
+  workspaceKey: string | null;
+  destination: PullRequestOpenLocation;
+}): string | null {
+  if (!input.workspaceKey) return null;
+  const workspaceKey = input.workspaceKey;
+  const store = useWorkspaceLayoutStore.getState();
+  return store.autoOpenPullRequestTab(workspaceKey, () => {
+    const layout =
+      store.layoutByWorkspace[workspaceKey] ?? createWorkspaceLayoutWithExplorerSidebar();
+    // A background open finds an existing PR tab wherever the user left it.
+    if (collectAllTabs(layout.root).some((tab) => tab.target.kind === "pull_request")) {
+      return {};
+    }
+    const explorerPaneId = resolveExplorerSidebarPaneId(
+      layout,
+      store.explorerSidebarPaneIdByWorkspace[workspaceKey],
+    );
+    let paneId = explorerPaneId;
+    if (input.destination === "side") {
+      paneId = store.ensureSidePane(workspaceKey, { focus: false });
+    } else if (input.destination === "main") {
+      const panes = collectAllPanes(layout.root);
+      const mainPane =
+        panes.find((pane) => pane.id === DEFAULT_PANE_ID) ??
+        panes.find((pane) => pane.id !== explorerPaneId && !pane.hidden);
+      paneId = mainPane?.id ?? null;
+    }
+    const changes =
+      input.destination === "explorer"
+        ? collectAllTabs(layout.root).find(
+            (tab) =>
+              tab.target.kind === "changes_tree" &&
+              findPaneContainingTab(layout.root, tab.tabId)?.id === paneId,
+          )
+        : undefined;
+    return {
+      placement: paneId ? { mode: "prefer", paneId } : undefined,
+      insertionPosition: changes ? { afterTabId: changes.tabId } : undefined,
+    };
   });
 }

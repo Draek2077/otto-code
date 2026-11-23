@@ -3,11 +3,10 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { createJiti } from "jiti";
+import type { z } from "zod";
 import { describe, expect, it } from "vitest";
-import { sessionOutboundValidators } from "../../src/generated/validation/ws-outbound-dispatch.aot.js";
-import { SessionOutboundMessageSchema } from "../../src/messages.js";
+import { WSOutboundMessageSchema } from "../../src/messages.js";
 import { validateWSOutboundMessage } from "../../src/validation/ws-outbound.js";
-import { ZOD_ONLY_OUTBOUND_MESSAGE_TYPES } from "../../codegen/ws-outbound-zod-only-types.js";
 
 interface GeneratedSchema {
   safeParse(input: unknown): { success: boolean; data?: unknown };
@@ -23,7 +22,7 @@ const require = createRequire(import.meta.url);
 async function compileInlineSchema(sourceSchema: string): Promise<GeneratedSchema> {
   const scratchRoot = resolve(protocolRoot, "../../.tmp");
   await mkdir(scratchRoot, { recursive: true });
-  const tempDir = await mkdtemp(join(scratchRoot, "otto-zod-aot-"));
+  const tempDir = await mkdtemp(join(scratchRoot, "paseo-zod-aot-"));
 
   try {
     const sourcePath = join(tempDir, "schema.source.js");
@@ -263,98 +262,7 @@ const SourceSchema = z.object({
 
   it("emits runtime imports with .js extensions", async () => {
     const generated = await readFile(generatedWSOutboundPath, "utf8");
-    expect(generated).toContain('from "./ws-outbound-metadata.aot.js"');
-  });
-
-  it("dispatches every compiled session message type to exactly one generated validator", () => {
-    const declaredTypes = SessionOutboundMessageSchema.options.flatMap(
-      (option) => option.shape.type._zod.def.values,
-    );
-    expect(new Set(declaredTypes).size).toBe(declaredTypes.length);
-    for (const zodOnlyType of ZOD_ONLY_OUTBOUND_MESSAGE_TYPES) {
-      expect(declaredTypes).toContain(zodOnlyType);
-    }
-    const compiledTypes = declaredTypes.filter(
-      (type) => !ZOD_ONLY_OUTBOUND_MESSAGE_TYPES.has(type),
-    );
-    expect([...sessionOutboundValidators.keys()].sort()).toEqual(compiledTypes.sort());
-  });
-
-  it("validates Zod-only session message types through the Zod fallback", () => {
-    const counters = {};
-    const result = validateWSOutboundMessage({
-      type: "session",
-      message: {
-        type: "stats.activity.get.response",
-        payload: {
-          requestId: "r1",
-          today: counters,
-          yesterday: counters,
-          last7Days: counters,
-          last30Days: counters,
-          allTime: counters,
-        },
-      },
-    });
-    expect(result.success).toBe(true);
-    if (result.success && result.data.type === "session") {
-      expect(result.data.message).toMatchObject({ payload: { today: { messagesSent: 0 } } });
-    }
-  });
-
-  it("keeps every generated validator small enough for Hermes to compile", async () => {
-    // A single whole-envelope validator (about 6.9 MB in one function) needed more than 12 GB
-    // for hermesc and killed the Android release build. Per type, the largest is under 400 KB.
-    const generated = await readFile(generatedWSOutboundPath, "utf8");
-    const validators = generated.split(/\n(?=export const )/).slice(1);
-    expect(validators).toHaveLength(
-      SessionOutboundMessageSchema.options.length - ZOD_ONLY_OUTBOUND_MESSAGE_TYPES.size + 1,
-    );
-    expect(Math.max(...validators.map((validator) => validator.length))).toBeLessThan(1_000_000);
-  });
-
-  it("keeps every generated condition chain shallow enough for hermesc to parse", async () => {
-    // hermesc parses `a && b && ...` as nested nodes and the Windows build rejects nesting past
-    // about 510 (a 500-term chain compiles, 511 fails). 400 leaves headroom. A schema that cannot
-    // fit goes in codegen/ws-outbound-zod-only-types.ts.
-    const generated = await readFile(generatedWSOutboundPath, "utf8");
-    const deepest = Math.max(...generated.split("\n").map((line) => line.split("&&").length - 1));
-    expect(deepest).toBeLessThan(400);
-  });
-
-  it("falls back to Zod errors for unknown and rejected session messages", () => {
-    expect(
-      validateWSOutboundMessage({ type: "session", message: { type: "not_a_message_type" } })
-        .success,
-    ).toBe(false);
-
-    const rejected = validateWSOutboundMessage({
-      type: "session",
-      message: { type: "read_project_config_response", payload: { requestId: 42 } },
-    });
-    expect(rejected.success).toBe(false);
-    if (!rejected.success) {
-      expect(rejected.error.issues.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("keeps unknown envelope keys on a valid session message", () => {
-    const envelope = {
-      type: "session",
-      trace: "kept",
-      message: {
-        type: "read_project_config_response",
-        payload: {
-          requestId: "project-config-read",
-          repoRoot: "/repo",
-          ok: true,
-          config: null,
-          revision: null,
-        },
-      },
-    };
-
-    expect(validateWSOutboundMessage(envelope)).toEqual({ success: true, data: envelope });
+    expect(generated).toContain('from "./ws-outbound-schema-metadata.js"');
   });
 
   it("accepts a forge.search.response envelope", () => {
@@ -409,5 +317,87 @@ const SourceSchema = z.object({
       },
     });
     expect(result.success).toBe(true);
+  });
+
+  it("keeps each generated validator function small", async () => {
+    // A single function for the whole protocol made V8's Maglev tier spend ~800 MB and seconds compiling it.
+    const generated = await readFile(generatedWSOutboundPath, "utf8");
+    const starts = [...generated.matchAll(/function safeParse_\w+\(/g)].map((match) => match.index);
+    const sizes = starts.map((start, index) => (starts[index + 1] ?? generated.length) - start);
+
+    expect(Math.max(...sizes)).toBeLessThan(1_000_000);
+    expect(sizes.length).toBeGreaterThan(1);
+  });
+
+  it("keeps nested union issue paths rooted at the envelope", () => {
+    // Generated validators root branch issues at the input; runtime Zod reports them relative to the union.
+    const envelope = {
+      type: "session",
+      message: {
+        type: "read_project_config_response",
+        payload: { repoRoot: "/repo", ok: true, config: {}, revision: { mtimeMs: 1, size: 1 } },
+      },
+    };
+    const paths = (issues: z.core.$ZodIssue[]): PropertyKey[][] =>
+      issues.flatMap((issue) => [
+        issue.path,
+        ...(issue.code === "invalid_union" ? paths(issue.errors.flat()) : []),
+      ]);
+
+    const result = validateWSOutboundMessage(envelope);
+
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(paths(result.error.issues)).toEqual([
+      ["message", "payload"],
+      ["message", "payload", "requestId"],
+      ["message", "payload", "requestId"],
+      ["message", "payload", "ok"],
+      ["message", "payload", "error"],
+    ]);
+  });
+
+  it("applies defaults from the matching session message schema", () => {
+    const envelope = {
+      type: "session",
+      message: {
+        type: "agent_update",
+        payload: {
+          kind: "upsert",
+          agent: {
+            id: "agent-1",
+            provider: "claude",
+            cwd: "/repo",
+            model: "model",
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            lastUserMessageAt: "2026-01-01T00:00:00.000Z",
+            status: "initializing",
+            capabilities: {
+              supportsStreaming: false,
+              supportsSessionPersistence: false,
+              supportsDynamicModes: false,
+              supportsMcpServers: false,
+              supportsReasoningStream: false,
+              supportsToolInvocations: false,
+            },
+            currentModeId: "default",
+            availableModes: [],
+            pendingPermissions: [],
+            persistence: { provider: "claude", sessionId: "session-1" },
+            title: "Agent",
+          },
+        },
+      },
+    };
+
+    const result = validateWSOutboundMessage(envelope);
+    const expected = WSOutboundMessageSchema.safeParse(envelope);
+
+    expect(expected.success).toBe(true);
+    expect(result).toEqual(expected);
+    expect(result.success && result.data).toMatchObject({
+      message: { payload: { agent: { capabilities: { supportsRewindConversation: false } } } },
+    });
   });
 });

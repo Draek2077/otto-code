@@ -1,9 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   hasMultipleVisiblePanes,
-  resolvePaneMaximizeToggle,
   resolveSplitContainerRoot,
-  shouldClearMaximizedPane,
   splitNodeContainsPane,
 } from "@/components/split-container-focus";
 import type { SplitNode } from "@/stores/workspace-layout-store";
@@ -62,58 +60,5 @@ describe("split focus root", () => {
         group: { ...root.group, children: [pane("left"), hiddenPane("right")] },
       }),
     ).toBe(false);
-  });
-
-  it("restores the split when focus moves to another pane", () => {
-    expect(
-      shouldClearMaximizedPane({
-        maximizedPaneId: "left",
-        focusedPaneId: "right",
-        focusModeEnabled: false,
-        workspaceHasMultiplePanes: true,
-        root,
-      }),
-    ).toBe(true);
-    expect(
-      shouldClearMaximizedPane({
-        maximizedPaneId: "left",
-        focusedPaneId: "left",
-        focusModeEnabled: false,
-        workspaceHasMultiplePanes: true,
-        root,
-      }),
-    ).toBe(false);
-  });
-
-  it("focuses an unfocused pane before maximizing it", () => {
-    const transition = resolvePaneMaximizeToggle({
-      maximizedPaneId: null,
-      workspaceKey: "server:workspace",
-      paneId: "left",
-    });
-
-    expect(transition).toEqual({
-      next: { workspaceKey: "server:workspace", paneId: "left" },
-      focusPaneId: "left",
-    });
-    expect(
-      shouldClearMaximizedPane({
-        maximizedPaneId: transition.next?.paneId ?? null,
-        focusedPaneId: transition.focusPaneId,
-        focusModeEnabled: false,
-        workspaceHasMultiplePanes: true,
-        root,
-      }),
-    ).toBe(false);
-  });
-
-  it("restores the maximized pane without manufacturing another focus change", () => {
-    expect(
-      resolvePaneMaximizeToggle({
-        maximizedPaneId: "left",
-        workspaceKey: "server:workspace",
-        paneId: "left",
-      }),
-    ).toEqual({ next: null, focusPaneId: null });
   });
 });

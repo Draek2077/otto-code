@@ -1,56 +1,129 @@
-import type { AgentUsage } from "@otto-code/protocol/agent-types";
 import type { StreamItem } from "@/types/stream";
 import { startsNewTurn } from "@/agent-stream/turn-membership";
 
 export interface TurnTiming {
   completedAt: Date;
   durationMs: number | null;
-  /** Present only for turns whose turn_completed event was observed live. */
-  usage?: AgentUsage;
 }
 
 export interface StreamTurnTiming {
   byAssistantId: Map<string, TurnTiming>;
   runningStartedAt: Date | null;
-  /**
-   * Rough size of the running turn's streamed content so far (assistant text,
-   * reasoning, and tool-call payloads) at ~4 chars per token. Real usage only
-   * arrives at request boundaries, so this is what lets the count tick up with
-   * each incoming chunk. Null when the agent is idle or nothing streamed yet.
-   */
-  runningEstimatedTokens: number | null;
-  isActive: boolean;
 }
 
-const ESTIMATED_CHARS_PER_TOKEN = 4;
+interface OpenTurn {
+  userAt: Date | null;
+  lastItemAt: Date | null;
+  assistantIds: readonly string[];
+  previousItem: StreamItem | null;
+}
 
-// Tool payload sizes are cached by payload identity. The merge logic reuses
-// the existing detail object when an update doesn't change it, so status-only
-// item replacements (running → completed) don't re-stringify large payloads -
-// only genuinely new tool output does.
-const toolCallCharsCache = new WeakMap<object, number>();
+interface HeadTurnTiming {
+  additions: Map<string, TurnTiming>;
+  byAssistantId: Map<string, TurnTiming>;
+}
 
-function estimateItemStreamedChars(item: StreamItem): number {
-  if (item.kind === "assistant_message" || item.kind === "thought") {
-    return item.text.length;
+interface TailTurnTiming {
+  completed: Map<string, TurnTiming>;
+  openTurn: OpenTurn;
+  lastHead: HeadTurnTiming | null;
+}
+
+const EMPTY_OPEN_TURN: OpenTurn = {
+  userAt: null,
+  lastItemAt: null,
+  assistantIds: [],
+  previousItem: null,
+};
+
+function closeTurn(turn: OpenTurn, into: Map<string, TurnTiming>): void {
+  if (!turn.lastItemAt || turn.assistantIds.length === 0) {
+    return;
   }
-  if (item.kind === "tool_call") {
-    const payloadObject: object =
-      item.payload.source === "agent" ? item.payload.data.detail : item.payload.data;
-    const cached = toolCallCharsCache.get(payloadObject);
-    if (cached !== undefined) {
-      return cached;
-    }
-    let chars = 0;
-    try {
-      chars = JSON.stringify(payloadObject)?.length ?? 0;
-    } catch {
-      chars = 0;
-    }
-    toolCallCharsCache.set(payloadObject, chars);
-    return chars;
+  const timing: TurnTiming = {
+    completedAt: turn.lastItemAt,
+    durationMs: turn.userAt ? Math.max(0, turn.lastItemAt.getTime() - turn.userAt.getTime()) : null,
+  };
+  for (const id of turn.assistantIds) {
+    into.set(id, timing);
   }
-  return 0;
+}
+
+function walkTurns(
+  items: readonly StreamItem[],
+  from: OpenTurn,
+  into: Map<string, TurnTiming>,
+): OpenTurn {
+  let userAt = from.userAt;
+  let lastItemAt = from.lastItemAt;
+  let assistantIds = [...from.assistantIds];
+  let previousItem = from.previousItem;
+  for (const item of items) {
+    if (startsNewTurn(item, previousItem)) {
+      closeTurn({ userAt, lastItemAt, assistantIds, previousItem }, into);
+      userAt = item.kind === "user_message" ? item.timestamp : null;
+      lastItemAt = null;
+      assistantIds = [];
+    }
+    lastItemAt = item.timestamp;
+    if (item.kind === "assistant_message") {
+      assistantIds.push(item.id);
+    }
+    previousItem = item;
+  }
+  return { userAt, lastItemAt, assistantIds, previousItem };
+}
+
+function areTimingsEqual(a: Map<string, TurnTiming>, b: Map<string, TurnTiming>): boolean {
+  if (a.size !== b.size) {
+    return false;
+  }
+  for (const [id, timing] of a) {
+    const other = b.get(id);
+    if (
+      !other ||
+      other.completedAt.getTime() !== timing.completedAt.getTime() ||
+      other.durationMs !== timing.durationMs
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// The tail walk is cached by array identity so a streamed delta, which only replaces the
+// head, walks the head from the carried open turn. The returned Map keeps its identity
+// while the head adds no completed turn, so memos keyed on it do not miss per tick.
+const tailTurnTimingCache = new WeakMap<StreamItem[], TailTurnTiming>();
+
+function getTailTurnTiming(tail: StreamItem[]): TailTurnTiming {
+  const cached = tailTurnTimingCache.get(tail);
+  if (cached) {
+    return cached;
+  }
+  const completed = new Map<string, TurnTiming>();
+  const openTurn = walkTurns(tail, EMPTY_OPEN_TURN, completed);
+  const timing: TailTurnTiming = { completed, openTurn, lastHead: null };
+  tailTurnTimingCache.set(tail, timing);
+  return timing;
+}
+
+function resolveByAssistantId(
+  tail: TailTurnTiming,
+  additions: Map<string, TurnTiming>,
+): Map<string, TurnTiming> {
+  if (additions.size === 0) {
+    return tail.completed;
+  }
+  if (tail.lastHead && areTimingsEqual(tail.lastHead.additions, additions)) {
+    return tail.lastHead.byAssistantId;
+  }
+  const byAssistantId = new Map(tail.completed);
+  for (const [id, timing] of additions) {
+    byAssistantId.set(id, timing);
+  }
+  tail.lastHead = { additions, byAssistantId };
+  return byAssistantId;
 }
 
 export function deriveStreamTurnTiming(params: {
@@ -59,78 +132,14 @@ export function deriveStreamTurnTiming(params: {
   tail: StreamItem[];
   head: StreamItem[];
 }): StreamTurnTiming {
-  const byAssistantId = new Map<string, TurnTiming>();
-  let currentUserAt: Date | null = null;
-  let currentLastItemAt: Date | null = null;
-  let currentAssistantIds: string[] = [];
-  let currentUsage: AgentUsage | undefined;
-  let currentStreamedChars = 0;
-  let previousItem: StreamItem | null = null;
-
-  const flushCompletedTurn = () => {
-    if (!currentLastItemAt || currentAssistantIds.length === 0) {
-      return;
-    }
-    const timing: TurnTiming = {
-      completedAt: currentLastItemAt,
-      durationMs: currentUserAt
-        ? Math.max(0, currentLastItemAt.getTime() - currentUserAt.getTime())
-        : null,
-      ...(currentUsage ? { usage: currentUsage } : {}),
-    };
-    for (const id of currentAssistantIds) {
-      byAssistantId.set(id, timing);
-    }
-  };
-
-  const visitItem = (item: StreamItem) => {
-    // Falls through rather than returning: the item that opened the turn is
-    // still part of it, and `previousItem` has to advance or every later item
-    // is measured against a null predecessor and reads as another turn start.
-    if (startsNewTurn(item, previousItem)) {
-      flushCompletedTurn();
-      currentUserAt = item.kind === "user_message" ? item.timestamp : null;
-      currentLastItemAt = null;
-      currentAssistantIds = [];
-      currentUsage = undefined;
-      currentStreamedChars = 0;
-    }
-    currentLastItemAt = item.timestamp;
-    currentStreamedChars += estimateItemStreamedChars(item);
-    if (item.kind === "assistant_message") {
-      currentAssistantIds.push(item.id);
-      if (item.turnUsage) {
-        currentUsage = item.turnUsage;
-      }
-    }
-    previousItem = item;
-  };
-
-  for (const item of params.tail) {
-    visitItem(item);
-  }
-  for (const item of params.head) {
-    visitItem(item);
-  }
-
-  const runningStartedAt = params.isTurnActive ? params.activeTurnStartedAt : null;
+  const tail = getTailTurnTiming(params.tail);
+  const additions = new Map<string, TurnTiming>();
+  const openTurn = walkTurns(params.head, tail.openTurn, additions);
   if (!params.isTurnActive) {
-    flushCompletedTurn();
+    closeTurn(openTurn, additions);
   }
-
-  // After the walk, currentStreamedChars holds the last turn's total - which
-  // is the in-flight turn exactly when the agent is running. Exact values are
-  // fine here: the only per-tick re-render is the small token Text (the
-  // spinner is memo-isolated in the footer).
-  const runningEstimatedTokens =
-    params.isTurnActive && currentStreamedChars > 0
-      ? Math.round(currentStreamedChars / ESTIMATED_CHARS_PER_TOKEN)
-      : null;
-
   return {
-    byAssistantId,
-    runningStartedAt,
-    runningEstimatedTokens,
-    isActive: params.isTurnActive,
+    byAssistantId: resolveByAssistantId(tail, additions),
+    runningStartedAt: params.isTurnActive ? params.activeTurnStartedAt : null,
   };
 }

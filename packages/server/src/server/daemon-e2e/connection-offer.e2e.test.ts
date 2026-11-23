@@ -6,10 +6,9 @@ import os from "node:os";
 import { mkdtemp, rm } from "node:fs/promises";
 import { Writable } from "node:stream";
 import { spawn } from "node:child_process";
-import { quoteWindowsArgument, quoteWindowsCommand } from "../../utils/windows-command.js";
 
 import { generateLocalPairingOffer } from "../pairing-offer.js";
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
 function createCapturingLogger() {
   const lines: string[] = [];
@@ -24,14 +23,14 @@ function createCapturingLogger() {
 }
 
 async function getPairingOfferUrl(args: {
-  ottoHome: string;
+  paseoHome: string;
   relayEnabled?: boolean;
   relayEndpoint?: string;
   relayPublicEndpoint?: string;
   appBaseUrl?: string;
 }): Promise<string> {
   const pairing = await generateLocalPairingOffer({
-    ottoHome: args.ottoHome,
+    paseoHome: args.paseoHome,
     relayEnabled: args.relayEnabled,
     relayEndpoint: args.relayEndpoint,
     relayPublicEndpoint: args.relayPublicEndpoint,
@@ -78,11 +77,11 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
   });
 
   test("emits relay-only offer URL with stable serverId", async () => {
-    process.env.OTTO_PRIMARY_LAN_IP = "192.168.1.12";
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
 
     const { logger } = createCapturingLogger();
 
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       listen: "0.0.0.0",
       logger,
       relayEnabled: true,
@@ -90,13 +89,13 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
 
     try {
       const offerUrl = await getPairingOfferUrl({
-        ottoHome: daemon.ottoHome,
+        paseoHome: daemon.paseoHome,
         relayEnabled: daemon.config.relayEnabled,
         relayEndpoint: daemon.config.relayEndpoint,
         relayPublicEndpoint: daemon.config.relayPublicEndpoint,
         appBaseUrl: daemon.config.appBaseUrl,
       });
-      expect(offerUrl.startsWith("https://app.otto-code.me/#offer=")).toBe(true);
+      expect(offerUrl.startsWith("https://app.paseo.sh/#offer=")).toBe(true);
 
       const offer = decodeOfferFromFragmentUrl(offerUrl) as {
         v: number;
@@ -109,7 +108,7 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
       expect(typeof offer.serverId).toBe("string");
       expect(offer.serverId.length).toBeGreaterThan(0);
       expect(offer.serverId.startsWith("srv_")).toBe(true);
-      expect(offer.relay.endpoint).toBe("relay.otto-code.me:443");
+      expect(offer.relay.endpoint).toBe("relay.paseo.sh:443");
       expect(typeof offer.daemonPublicKeyB64).toBe("string");
       expect(offer.daemonPublicKeyB64.length).toBeGreaterThan(0);
       expect(() => Buffer.from(offer.daemonPublicKeyB64, "base64")).not.toThrow();
@@ -121,16 +120,16 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
   });
 
   test("persists serverId and daemon keypair across daemon restarts", async () => {
-    process.env.OTTO_PRIMARY_LAN_IP = "192.168.1.12";
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
 
-    const tempHomeRoot = await mkdtemp(path.join(os.tmpdir(), "otto-offer-home-"));
+    const tempHomeRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-offer-home-"));
 
     const { logger: logger1 } = createCapturingLogger();
-    const daemon1 = await createTestOttoDaemon({
+    const daemon1 = await createTestPaseoDaemon({
       listen: "0.0.0.0",
       logger: logger1,
       relayEnabled: true,
-      ottoHomeRoot: tempHomeRoot,
+      paseoHomeRoot: tempHomeRoot,
       cleanup: false,
     });
 
@@ -139,7 +138,7 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
 
     try {
       const offerUrl1 = await getPairingOfferUrl({
-        ottoHome: daemon1.ottoHome,
+        paseoHome: daemon1.paseoHome,
         relayEnabled: daemon1.config.relayEnabled,
         relayEndpoint: daemon1.config.relayEndpoint,
         relayPublicEndpoint: daemon1.config.relayPublicEndpoint,
@@ -154,18 +153,18 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
       await daemon1.close();
 
       const { logger: logger2 } = createCapturingLogger();
-      const daemon2 = await createTestOttoDaemon({
+      const daemon2 = await createTestPaseoDaemon({
         listen: "0.0.0.0",
         logger: logger2,
         relayEnabled: true,
-        ottoHomeRoot: tempHomeRoot,
+        paseoHomeRoot: tempHomeRoot,
         cleanup: false,
       });
       staticDir2 = daemon2.staticDir;
 
       try {
         const offerUrl2 = await getPairingOfferUrl({
-          ottoHome: daemon2.ottoHome,
+          paseoHome: daemon2.paseoHome,
           relayEnabled: daemon2.config.relayEnabled,
           relayEndpoint: daemon2.config.relayEndpoint,
           relayPublicEndpoint: daemon2.config.relayPublicEndpoint,
@@ -197,45 +196,30 @@ describe("ConnectionOfferV2 (daemon E2E)", () => {
   });
 
   test("respects --no-relay (CLI) by not emitting a pairing offer", async () => {
-    process.env.OTTO_PRIMARY_LAN_IP = "192.168.1.12";
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
 
-    const tempHome = await mkdtemp(path.join(os.tmpdir(), "otto-offer-e2e-"));
+    const tempHome = await mkdtemp(path.join(os.tmpdir(), "paseo-offer-e2e-"));
     const port = await getAvailablePort();
 
     const serverRoot = path.resolve(import.meta.dirname, "../../..");
     const supervisorPath = path.join(serverRoot, "scripts/supervisor-entrypoint.ts");
-    // npm writes the `.bin` shim as `tsx.cmd` on Windows; the extensionless
-    // name only exists for POSIX shells, so spawn cannot find it there. Node
-    // then refuses to exec a .cmd without a shell (CVE-2024-27980), so Windows
-    // needs `shell: true` plus the cmd.exe quoting the repo helper applies.
-    const isWindows = process.platform === "win32";
-    const tsxBin = path.resolve(
-      serverRoot,
-      "../../node_modules/.bin",
-      isWindows ? "tsx.cmd" : "tsx",
-    );
+    const tsxBin = path.resolve(serverRoot, "../../node_modules/.bin/tsx");
 
     const env = {
       ...process.env,
-      OTTO_HOME: tempHome,
-      OTTO_LISTEN: `0.0.0.0:${port}`,
+      PASEO_HOME: tempHome,
+      PASEO_LISTEN: `0.0.0.0:${port}`,
       OPENAI_API_KEY: "",
-      OTTO_DICTATION_ENABLED: "0",
-      OTTO_VOICE_MODE_ENABLED: "0",
-      OTTO_LOG_FORMAT: "json",
+      PASEO_DICTATION_ENABLED: "0",
+      PASEO_VOICE_MODE_ENABLED: "0",
+      PASEO_LOG_FORMAT: "json",
     };
 
     const stdoutLines: string[] = [];
-    const spawnArgs = [supervisorPath, "--dev", "--no-relay"];
-    const proc = spawn(
-      isWindows ? quoteWindowsCommand(tsxBin) : tsxBin,
-      isWindows ? spawnArgs.map(quoteWindowsArgument) : spawnArgs,
-      {
-        env,
-        stdio: ["ignore", "pipe", "pipe"],
-        shell: isWindows,
-      },
-    );
+    const proc = spawn(tsxBin, [supervisorPath, "--dev", "--no-relay"], {
+      env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
 
     try {
       const sawListeningLog = await new Promise<boolean>((resolve, reject) => {

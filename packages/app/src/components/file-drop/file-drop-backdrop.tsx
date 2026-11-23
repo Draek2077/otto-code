@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet as RNStyleSheet } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import Animated, { useAnimatedStyle, withTiming } from "react-native-reanimated";
-import { Upload } from "@/components/icons/material-icons";
+import { Upload } from "lucide-react-native";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import type { Theme } from "@/styles/theme";
@@ -12,7 +12,7 @@ const primaryIconColorMapping = (theme: Theme) => ({ color: theme.colors.primary
 
 /**
  * Drop overlay rendered by FileDropZone. Reads `isDragging` on the UI thread so the dim
- * only ever repaints the backdrop - never the surrounding tree.
+ * only ever repaints the backdrop — never the surrounding tree.
  */
 export function FileDropBackdrop() {
   const { t } = useTranslation();
@@ -32,15 +32,13 @@ export function FileDropBackdrop() {
 
   // Animated.View keeps only plain-RN positioning; theme-dependent paint lives on the
   // non-animated children (applying themed Unistyles styles to an Animated.View crashes
-  // on theme change - see docs/unistyles.md).
+  // on theme change — see docs/unistyles.md).
   return (
     <Animated.View style={overlayStyle} pointerEvents="none">
       <View style={styles.backdrop} />
       <View style={styles.content}>
         <ThemedUpload size={32} uniProps={primaryIconColorMapping} />
-        <Text style={styles.text}>
-          {ctx.feedbackLabel ?? t("composer.attachments.dropFilesHere")}
-        </Text>
+        <Text style={styles.text}>{t("composer.attachments.dropFilesHere")}</Text>
       </View>
     </Animated.View>
   );

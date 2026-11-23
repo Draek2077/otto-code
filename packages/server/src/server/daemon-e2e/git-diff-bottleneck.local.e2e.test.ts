@@ -6,20 +6,20 @@ import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { createDaemonTestContext } from "../test-utils/index.js";
 
-const RUN = process.env.OTTO_GIT_DIFF_BOTTLENECK_E2E === "1";
+const RUN = process.env.PASEO_GIT_DIFF_BOTTLENECK_E2E === "1";
 const LARGE_CHANGESET_SIZE = Number.parseInt(
-  process.env.OTTO_GIT_DIFF_BOTTLENECK_FILE_COUNT ?? "1200",
+  process.env.PASEO_GIT_DIFF_BOTTLENECK_FILE_COUNT ?? "1200",
   10,
 );
 
 function tmpRepo(): string {
-  return mkdtempSync(path.join(tmpdir(), "otto-git-diff-bottleneck-"));
+  return mkdtempSync(path.join(tmpdir(), "paseo-git-diff-bottleneck-"));
 }
 
 function initGitRepo(cwd: string): void {
   execSync("git init -b main", { cwd, stdio: "pipe" });
-  execSync('git config user.email "test@test.com"', { cwd, stdio: "pipe" });
-  execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
+  execSync("git config user.email 'test@test.com'", { cwd, stdio: "pipe" });
+  execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
 }
 
 function seedLargeDirtyRepo(cwd: string, fileCount: number): void {
@@ -28,7 +28,7 @@ function seedLargeDirtyRepo(cwd: string, fileCount: number): void {
     writeFileSync(path.join(cwd, "files", `f-${i}.txt`), `line ${i}\n`);
   }
   execSync("git add .", { cwd, stdio: "pipe" });
-  execSync('git -c commit.gpgsign=false commit -m "init"', {
+  execSync("git -c commit.gpgsign=false commit -m 'init'", {
     cwd,
     stdio: "pipe",
   });

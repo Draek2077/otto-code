@@ -1,3 +1,4 @@
+// OTTO(identity): match Otto product copy and documentation URLs.
 import { expect, type Locator, type Page } from "@playwright/test";
 
 const CHANGELOG_SOURCE_URL =

@@ -8,7 +8,6 @@ import {
 } from "./types.js";
 
 const ScheduleCreateNewAgentConfigSchema = ScheduleTargetSchema.options[1].shape.config;
-const ScheduleWorkflowTargetSchema = ScheduleTargetSchema.options[2];
 
 const ScheduleCreateTargetSchema = z.discriminatedUnion("type", [
   z.object({
@@ -23,7 +22,6 @@ const ScheduleCreateTargetSchema = z.discriminatedUnion("type", [
     type: z.literal("new-agent"),
     config: ScheduleCreateNewAgentConfigSchema,
   }),
-  ScheduleWorkflowTargetSchema,
 ]);
 
 export const ScheduleCreateRequestSchema = z.object({
@@ -80,10 +78,8 @@ export const ScheduleRunOnceRequestSchema = z.object({
 });
 
 const ScheduleUpdateNewAgentConfigSchema = z.object({
+  agentProfile: z.string().min(1).nullable().optional(), // OTTO(schedule-profiles)
   provider: z.string().trim().min(1).optional(),
-  // Personality binding by name - or the "@team-scheduler" sentinel. Explicit
-  // null clears a stored binding; omission leaves it untouched.
-  personality: z.string().trim().min(1).nullable().optional(),
   model: z.string().trim().min(1).nullable().optional(),
   modeId: z.string().trim().min(1).nullable().optional(),
   thinkingOptionId: z.string().trim().min(1).nullable().optional(),

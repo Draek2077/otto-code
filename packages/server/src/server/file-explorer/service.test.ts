@@ -12,8 +12,8 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
-import { runGitCommand } from "../../utils/run-git-command.js";
+import { describe, expect, it, vi } from "vitest";
+import { runGitCommand, snapshotGitCommandRuntimeMetrics } from "../../utils/run-git-command.js";
 import {
   createExplorerEntry,
   deleteExplorerEntry,
@@ -51,7 +51,7 @@ describe("file explorer service", () => {
         expectedRevision: current.revision,
       });
 
-      expect(result.status).toBe("ok");
+      expect(result.status).toBe("written");
       expect((await readExplorerFile({ root, relativePath: "notes.txt" })).content).toBe("after");
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -78,7 +78,7 @@ describe("file explorer service", () => {
           expectedRevision: current.revision,
         });
 
-        expect(result.status).toBe("ok");
+        expect(result.status).toBe("written");
         expect((await stat(filePath)).mode & 0o7777).toBe(0o764);
       } finally {
         await rm(root, { recursive: true, force: true });
@@ -99,9 +99,7 @@ describe("file explorer service", () => {
         expectedModifiedAt: "2020-01-01T00:00:00.000Z",
       });
 
-      // A conflict carries the on-disk content back with it, so the editor can
-      // show the divergence without a second read.
-      expect(result).toMatchObject({ status: "conflict", content: "newer on disk" });
+      expect(result).toMatchObject({ status: "conflict", version: { status: "ready" } });
       expect((await readExplorerFile({ root, relativePath: "notes.txt" })).content).toBe(
         "newer on disk",
       );
@@ -110,12 +108,8 @@ describe("file explorer service", () => {
     }
   });
 
-  // Otto decides staleness on the content hash, not on a revision token built
-  // from mtime. That is the stronger test: mtime is only millisecond-precise on
-  // some filesystems, so a rewrite inside the same tick keeps the timestamp the
-  // editor last saw. The hash still differs, and the write is refused.
-  it("prefers the content hash over a matching display timestamp", async () => {
-    const root = await createTempDir("otto-file-revision-");
+  it("prefers the high-precision revision token over the display timestamp", async () => {
+    const root = await createTempDir("paseo-file-revision-");
     try {
       const filePath = path.join(root, "notes.txt");
       await writeFile(filePath, "on disk", "utf8");
@@ -128,7 +122,7 @@ describe("file explorer service", () => {
         relativePath: "notes.txt",
         content: "stale local edit",
         expectedModifiedAt: current.modifiedAt,
-        expectedHash: "0000000000000000000000000000000000000000000000000000000000000000",
+        expectedRevision: `${current.revision}-stale`,
       });
 
       expect(result.status).toBe("conflict");
@@ -141,37 +135,21 @@ describe("file explorer service", () => {
   it("never creates a missing file through the write API", async () => {
     const root = await createTempDir("paseo-file-missing-");
     try {
-      // The editor only saves files it opened, so a missing target is refused
-      // rather than quietly created. Re-creating a file the user deleted is a
-      // separate, explicit intent: `allowCreate`, exercised below.
-      await expect(
-        writeExplorerFile({
-          root,
-          relativePath: "missing.txt",
-          content: "new file",
-          expectedModifiedAt: "2020-01-01T00:00:00.000Z",
-        }),
-      ).rejects.toThrow("File no longer exists on disk");
-
-      const created = await writeExplorerFile({
+      const result = await writeExplorerFile({
         root,
         relativePath: "missing.txt",
         content: "new file",
         expectedModifiedAt: "2020-01-01T00:00:00.000Z",
-        allowCreate: true,
       });
 
-      expect(created.status).toBe("ok");
-      expect((await readExplorerFile({ root, relativePath: "missing.txt" })).content).toBe(
-        "new file",
-      );
+      expect(result).toMatchObject({ status: "conflict", version: { status: "missing" } });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
 
   it("reads .ex files as text", async () => {
-    const root = await createTempDir("otto-file-explorer-");
+    const root = await createTempDir("paseo-file-explorer-");
 
     try {
       const filePath = path.join(root, "sample.ex");
@@ -193,7 +171,7 @@ describe("file explorer service", () => {
   });
 
   it("reads unknown extension text files as text", async () => {
-    const root = await createTempDir("otto-file-explorer-");
+    const root = await createTempDir("paseo-file-explorer-");
 
     try {
       const filePath = path.join(root, "notes.customext");
@@ -215,7 +193,7 @@ describe("file explorer service", () => {
   });
 
   it("classifies files with null bytes as binary", async () => {
-    const root = await createTempDir("otto-file-explorer-");
+    const root = await createTempDir("paseo-file-explorer-");
 
     try {
       const filePath = path.join(root, "blob.weird");
@@ -357,7 +335,7 @@ describe("file explorer service", () => {
   });
 
   it("expands a ~ prefix in relative paths against the user home directory", async () => {
-    const root = await createHomeTempDir(".otto-file-explorer-home-");
+    const root = await createHomeTempDir(".paseo-file-explorer-home-");
 
     try {
       const filePath = path.join(root, "sample.txt");
@@ -377,7 +355,7 @@ describe("file explorer service", () => {
   });
 
   it("allows home to be the scoped root for tilde file previews", async () => {
-    const root = await createHomeTempDir(".otto-file-explorer-home-root-");
+    const root = await createHomeTempDir(".paseo-file-explorer-home-root-");
 
     try {
       const filePath = path.join(root, "sample.txt");
@@ -398,7 +376,7 @@ describe("file explorer service", () => {
   });
 
   it("rejects ~-prefixed paths that resolve outside the workspace", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "otto-file-explorer-outside-home-"));
+    const root = await mkdtemp(path.join(os.tmpdir(), "paseo-file-explorer-outside-home-"));
 
     try {
       await expect(
@@ -412,32 +390,48 @@ describe("file explorer service", () => {
     }
   });
 
-  it("creates files and directories, refusing duplicates and escapes", async () => {
+  it("creates files and directories, refusing duplicates and separator names", async () => {
     const root = await createTempDir("paseo-entry-create-");
     try {
-      const file = await createExplorerEntry({ root, relativePath: "notes.txt", kind: "file" });
-      expect(file).toMatchObject({ status: "ok", path: "notes.txt", kind: "file" });
-      expect((await stat(path.join(root, "notes.txt"))).isFile()).toBe(true);
-
-      const dir = await createExplorerEntry({ root, relativePath: "docs", kind: "directory" });
-      expect(dir).toMatchObject({ status: "ok", path: "docs", kind: "directory" });
-      const nested = await createExplorerEntry({
+      const file = await createExplorerEntry({
         root,
-        relativePath: "docs/guide.md",
+        parentPath: ".",
+        name: "notes.txt",
         kind: "file",
       });
-      expect(nested).toMatchObject({ status: "ok", path: "docs/guide.md", kind: "file" });
+      expect(file).toEqual({ status: "ok", path: "notes.txt" });
+      expect((await stat(path.join(root, "notes.txt"))).isFile()).toBe(true);
+
+      const dir = await createExplorerEntry({
+        root,
+        parentPath: ".",
+        name: "docs",
+        kind: "directory",
+      });
+      expect(dir).toEqual({ status: "ok", path: "docs" });
+      const nested = await createExplorerEntry({
+        root,
+        parentPath: "docs",
+        name: "guide.md",
+        kind: "file",
+      });
+      expect(nested).toEqual({ status: "ok", path: "docs/guide.md" });
 
       const duplicate = await createExplorerEntry({
         root,
-        relativePath: "notes.txt",
+        parentPath: ".",
+        name: "notes.txt",
         kind: "file",
       });
-      expect(duplicate).toEqual({ status: "exists" });
+      expect(duplicate.status).toBe("error");
 
-      await expect(
-        createExplorerEntry({ root, relativePath: "../escape", kind: "directory" }),
-      ).rejects.toThrow("Access outside of workspace is not allowed");
+      const traversal = await createExplorerEntry({
+        root,
+        parentPath: ".",
+        name: "../escape",
+        kind: "directory",
+      });
+      expect(traversal.status).toBe("error");
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -494,14 +488,9 @@ describe("file explorer service", () => {
       const tracked = await renameExplorerEntry({
         root,
         relativePath: "tracked.txt",
-        newRelativePath: "renamed.txt",
+        name: "renamed.txt",
       });
-      expect(tracked).toEqual({
-        status: "ok",
-        from: "tracked.txt",
-        to: "renamed.txt",
-        kind: "file",
-      });
+      expect(tracked).toEqual({ status: "ok", path: "renamed.txt" });
       expect((await runGitCommand(["status", "--short"], { cwd: root })).stdout.trim()).toBe(
         "R  tracked.txt -> renamed.txt",
       );
@@ -509,14 +498,9 @@ describe("file explorer service", () => {
       const trackedFolder = await renameExplorerEntry({
         root,
         relativePath: "tracked-folder",
-        newRelativePath: "renamed-folder",
+        name: "renamed-folder",
       });
-      expect(trackedFolder).toEqual({
-        status: "ok",
-        from: "tracked-folder",
-        to: "renamed-folder",
-        kind: "directory",
-      });
+      expect(trackedFolder).toEqual({ status: "ok", path: "renamed-folder" });
       const gitStatus = (await runGitCommand(["status", "--short"], { cwd: root })).stdout;
       expect(gitStatus).toContain("tracked-folder/inside.txt -> renamed-folder/inside.txt");
 
@@ -524,19 +508,137 @@ describe("file explorer service", () => {
       const untracked = await renameExplorerEntry({
         root,
         relativePath: "untracked.txt",
-        newRelativePath: "moved.txt",
+        name: "moved.txt",
       });
-      expect(untracked).toEqual({
-        status: "ok",
-        from: "untracked.txt",
-        to: "moved.txt",
-        kind: "file",
-      });
+      expect(untracked).toEqual({ status: "ok", path: "moved.txt" });
       expect((await stat(path.join(root, "moved.txt"))).isFile()).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("renames an untracked bracketed filename without matching a tracked sibling", async () => {
+    const root = await createTempDir("paseo-entry-literal-rename-");
+    try {
+      await runGitCommand(["init"], { cwd: root });
+      await writeFile(path.join(root, "i.tsx"), "tracked\n", "utf8");
+      await runGitCommand(["add", "i.tsx"], { cwd: root });
+      await writeFile(path.join(root, "[id].tsx"), "untracked\n", "utf8");
+
+      snapshotGitCommandRuntimeMetrics();
+      const result = await renameExplorerEntry({
+        root,
+        relativePath: "[id].tsx",
+        name: "renamed.tsx",
+      });
+
+      expect(result).toEqual({ status: "ok", path: "renamed.tsx" });
+      expect(snapshotGitCommandRuntimeMetrics().operationsTop).toEqual([
+        ["ls-files", 1],
+        ["rev-parse", 1],
+      ]);
+      expect(await readFile(path.join(root, "renamed.tsx"), "utf8")).toBe("untracked\n");
+      await expect(stat(path.join(root, "[id].tsx"))).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readFile(path.join(root, "i.tsx"), "utf8")).toBe("tracked\n");
+      expect((await runGitCommand(["ls-files", "-z"], { cwd: root })).stdout).toBe("i.tsx\0");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("renames an untracked bracketed folder without matching a tracked sibling", async () => {
+    const root = await createTempDir("paseo-folder-literal-rename-");
+    try {
+      await runGitCommand(["init"], { cwd: root });
+      await mkdir(path.join(root, "i"));
+      await writeFile(path.join(root, "i", "route.tsx"), "tracked\n", "utf8");
+      await runGitCommand(["add", "i"], { cwd: root });
+      await mkdir(path.join(root, "[id]"));
+      await writeFile(path.join(root, "[id]", "route.tsx"), "untracked\n", "utf8");
+
+      const result = await renameExplorerEntry({ root, relativePath: "[id]", name: "route" });
+
+      expect(result).toEqual({ status: "ok", path: "route" });
+      expect(await readFile(path.join(root, "route", "route.tsx"), "utf8")).toBe("untracked\n");
+      await expect(stat(path.join(root, "[id]"))).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readFile(path.join(root, "i", "route.tsx"), "utf8")).toBe("tracked\n");
+      expect((await runGitCommand(["ls-files", "-z"], { cwd: root })).stdout).toBe("i/route.tsx\0");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("uses Git to rename a tracked bracketed filename and preserves its tracked sibling", async () => {
+    const root = await createTempDir("paseo-tracked-literal-rename-");
+    try {
+      await runGitCommand(["init"], { cwd: root });
+      await writeFile(path.join(root, "[id].tsx"), "tracked route\n", "utf8");
+      await writeFile(path.join(root, "i.tsx"), "tracked sibling\n", "utf8");
+      await runGitCommand(["add", "--", "[id].tsx", "i.tsx"], { cwd: root });
+
+      const result = await renameExplorerEntry({
+        root,
+        relativePath: "[id].tsx",
+        name: "renamed.tsx",
+      });
+
+      expect(result).toEqual({ status: "ok", path: "renamed.tsx" });
+      expect(await readFile(path.join(root, "renamed.tsx"), "utf8")).toBe("tracked route\n");
+      await expect(stat(path.join(root, "[id].tsx"))).rejects.toMatchObject({ code: "ENOENT" });
+      expect(await readFile(path.join(root, "i.tsx"), "utf8")).toBe("tracked sibling\n");
+      expect((await runGitCommand(["ls-files", "-z"], { cwd: root })).stdout).toBe(
+        "i.tsx\0renamed.tsx\0",
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    {
+      sourcePath: "[id].tsx",
+      sourceFile: "[id].tsx",
+      targetName: "renamed.tsx",
+      targetFile: "renamed.tsx",
+    },
+    {
+      sourcePath: "[id]",
+      sourceFile: "[id]/route.tsx",
+      targetName: "route",
+      targetFile: "route/route.tsx",
+    },
+  ])(
+    "keeps tracked renames in the index with inherited literal pathspecs ($sourcePath)",
+    async ({ sourcePath, sourceFile, targetName, targetFile }) => {
+      const root = await createTempDir("paseo-inherited-literal-rename-");
+      try {
+        vi.stubEnv("GIT_LITERAL_PATHSPECS", "1");
+        await runGitCommand(["init"], { cwd: root });
+        await mkdir(path.dirname(path.join(root, sourceFile)), { recursive: true });
+        await writeFile(path.join(root, sourceFile), "tracked route\n", "utf8");
+        await writeFile(path.join(root, "i.tsx"), "tracked sibling\n", "utf8");
+        await runGitCommand(["add", "."], { cwd: root });
+
+        const result = await renameExplorerEntry({
+          root,
+          relativePath: sourcePath,
+          name: targetName,
+        });
+
+        expect(result).toEqual({ status: "ok", path: targetName });
+        expect(await readFile(path.join(root, targetFile), "utf8")).toBe("tracked route\n");
+        await expect(stat(path.join(root, sourcePath))).rejects.toMatchObject({ code: "ENOENT" });
+        expect(await readFile(path.join(root, "i.tsx"), "utf8")).toBe("tracked sibling\n");
+        expect((await runGitCommand(["ls-files", "-z"], { cwd: root })).stdout).toBe(
+          `i.tsx\0${targetFile}\0`,
+        );
+        expect(process.env.GIT_LITERAL_PATHSPECS).toBe("1");
+      } finally {
+        vi.unstubAllEnvs();
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it("supports case-only renames for tracked and untracked files", async () => {
     const root = await createTempDir("paseo-entry-case-rename-");
@@ -551,13 +653,13 @@ describe("file explorer service", () => {
       );
 
       await expect(
-        renameExplorerEntry({ root, relativePath: "Tracked.txt", newRelativePath: "tracked.txt" }),
-      ).resolves.toEqual({ status: "ok", from: "Tracked.txt", to: "tracked.txt", kind: "file" });
+        renameExplorerEntry({ root, relativePath: "Tracked.txt", name: "tracked.txt" }),
+      ).resolves.toEqual({ status: "ok", path: "tracked.txt" });
       expect((await stat(path.join(root, "tracked.txt"))).isFile()).toBe(true);
 
       await expect(
-        renameExplorerEntry({ root, relativePath: "Loose.txt", newRelativePath: "loose.txt" }),
-      ).resolves.toEqual({ status: "ok", from: "Loose.txt", to: "loose.txt", kind: "file" });
+        renameExplorerEntry({ root, relativePath: "Loose.txt", name: "loose.txt" }),
+      ).resolves.toEqual({ status: "ok", path: "loose.txt" });
       expect((await stat(path.join(root, "loose.txt"))).isFile()).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -572,25 +674,17 @@ describe("file explorer service", () => {
       await link(path.join(root, "source.txt"), path.join(root, "source-link.txt"));
 
       await expect(
-        renameExplorerEntry({ root, relativePath: "source.txt", newRelativePath: "existing.txt" }),
-      ).resolves.toEqual({ status: "exists" });
+        renameExplorerEntry({ root, relativePath: "source.txt", name: "existing.txt" }),
+      ).resolves.toEqual({ status: "error", error: '"existing.txt" already exists' });
       await expect(
-        renameExplorerEntry({
-          root,
-          relativePath: "source.txt",
-          newRelativePath: "source-link.txt",
-        }),
-      ).resolves.toEqual({ status: "exists" });
+        renameExplorerEntry({ root, relativePath: "source.txt", name: "source-link.txt" }),
+      ).resolves.toEqual({ status: "error", error: '"source-link.txt" already exists' });
       await expect(
-        renameExplorerEntry({
-          root,
-          relativePath: "source.txt",
-          newRelativePath: "../outside.txt",
-        }),
-      ).rejects.toThrow("Access outside of workspace is not allowed");
+        renameExplorerEntry({ root, relativePath: "source.txt", name: "../outside.txt" }),
+      ).resolves.toEqual({ status: "error", error: "Name cannot contain path separators" });
       await expect(
-        renameExplorerEntry({ root, relativePath: ".", newRelativePath: "renamed-root" }),
-      ).rejects.toThrow("The workspace root cannot be created, renamed, or deleted");
+        renameExplorerEntry({ root, relativePath: ".", name: "renamed-root" }),
+      ).resolves.toEqual({ status: "error", error: "Cannot rename the workspace root" });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -601,26 +695,21 @@ describe("file explorer service", () => {
     try {
       await writeFile(path.join(root, "doomed.txt"), "bye", "utf8");
       const removedFile = await deleteExplorerEntry({ root, relativePath: "doomed.txt" });
-      expect(removedFile).toEqual({ status: "ok", path: "doomed.txt", kind: "file" });
+      expect(removedFile).toEqual({ status: "ok", path: "doomed.txt" });
       await expect(stat(path.join(root, "doomed.txt"))).rejects.toThrow();
 
-      await createExplorerEntry({ root, relativePath: "nested", kind: "directory" });
+      await createExplorerEntry({ root, parentPath: ".", name: "nested", kind: "directory" });
       await writeFile(path.join(root, "nested", "inner.txt"), "hi", "utf8");
-      const removedDir = await deleteExplorerEntry({
-        root,
-        relativePath: "nested",
-        recursive: true,
-      });
-      expect(removedDir).toEqual({ status: "ok", path: "nested", kind: "directory" });
+      const removedDir = await deleteExplorerEntry({ root, relativePath: "nested" });
+      expect(removedDir).toEqual({ status: "ok", path: "nested" });
       await expect(stat(path.join(root, "nested"))).rejects.toThrow();
 
-      await expect(deleteExplorerEntry({ root, relativePath: "." })).rejects.toThrow(
-        "The workspace root cannot be created, renamed, or deleted",
-      );
+      const rootDelete = await deleteExplorerEntry({ root, relativePath: "." });
+      expect(rootDelete.status).toBe("error");
 
-      await expect(deleteExplorerEntry({ root, relativePath: "../outside" })).rejects.toThrow(
-        "Access outside of workspace is not allowed",
-      );
+      await expect(
+        deleteExplorerEntry({ root, relativePath: "../outside" }),
+      ).resolves.toMatchObject({ status: "error" });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

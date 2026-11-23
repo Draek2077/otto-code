@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { highlightCode, isLanguageSupported, type HighlightToken } from "@otto-code/highlight";
+import { highlightCode, isLanguageSupported, type HighlightToken } from "@getpaseo/highlight";
+import { unquoteGitPath } from "../../utils/git-quoted-path.js";
 
 const MAX_DIFF_HIGHLIGHT_LINE_CHARS = 10_000;
 
@@ -20,112 +21,35 @@ export interface DiffHunk {
 
 export interface ParsedDiffFile {
   path: string;
-  /** Present on renames, matching the protocol's optional `oldPath`. */
-  oldPath?: string;
   isNew: boolean;
   isDeleted: boolean;
   additions: number;
   deletions: number;
   hunks: DiffHunk[];
-  /** Complete parser-safe snapshots, when the caller can read both sides. */
-  beforeSource?: string;
-  afterSource?: string;
   status?: "ok" | "too_large" | "binary";
+  // OTTO(structural-diff)
+  structuralSource?: { before: string; after: string };
 }
 
 interface HighlightDiffWithFileContentOptions {
   oldFileContent?: string | null;
   newFileContent?: string | null;
-}
-
-// Full-file highlighting buys the parser real context, but nothing bounds the file it runs
-// over: the 1 MB cap in `checkout-git.ts` bounds the *patch* text, not the file behind it. A
-// one-line edit to a 1.5 MB lockfile would otherwise push ~3 MB (old side plus new side)
-// through Lezer on the daemon thread on every watcher-driven refresh. Past this size the
-// hunk-reconstructed tokens are close enough, and they are already computed either way.
-const MAX_FULL_FILE_HIGHLIGHT_CHARS = 256 * 1024;
-
-export function isFullFileHighlightable(fileContent: string): boolean {
-  return fileContent.length <= MAX_FULL_FILE_HIGHLIGHT_CHARS;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
 }
 
 interface ParseAndHighlightDiffOptions {
   getOldFileContent?: (file: ParsedDiffFile) => Promise<string | null>;
   getNewFileContent?: (file: ParsedDiffFile) => Promise<string | null>;
-  /**
-   * Bounds file-content reads and highlighting for callers whose callbacks use
-   * scarce shared resources such as the daemon-wide Git command limiter.
-   */
-  maxConcurrentFiles?: number;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
 }
 
 /**
  * Parse a unified diff into structured data
  */
-/**
- * Which prefix a patch header carries is the author's configuration, not a constant:
- * the default `a/` and `b/`, mnemonic `c/ i/ w/ o/` (`diff.mnemonicPrefix`), custom
- * `diff.srcPrefix`/`dstPrefix`, or none (`diff.noprefix`). Otto pins its own git reads,
- * but a patch from an agent, a forge, or a paste arrives however its author's git emits
- * it, so the prefix is derived here instead of assumed. Everything below stays a pure
- * function of the header, and a header that resists it falls through to "unknown"
- * rather than to a guess.
- */
-function stripLeadingSegment(value: string): string | null {
-  const separator = value.indexOf("/");
-  if (separator <= 0 || separator === value.length - 1) {
-    return null;
-  }
-  return value.slice(separator + 1);
-}
-
-/**
- * The path both sides of a header agree on. Whatever prefix pair git applied is
- * exactly what makes the two sides differ, so a shared remainder after dropping one
- * leading segment is the real path. Equal sides mean no prefix at all.
- */
-function resolveSharedHeaderPath(oldPath: string, newPath: string): string | null {
-  if (oldPath === newPath) {
-    return oldPath;
-  }
-  const oldRest = stripLeadingSegment(oldPath);
-  return oldRest !== null && oldRest === stripLeadingSegment(newPath) ? oldRest : null;
-}
-
-/**
- * `diff --git <old> <new>` leaves spaces unquoted, so the split between the two
- * sides is ambiguous. Every candidate split is tried and the first one whose sides
- * agree on a path wins.
- */
-function resolveDiffGitHeaderPath(firstLine: string): string | null {
-  for (
-    let separator = firstLine.indexOf(" ");
-    separator !== -1;
-    separator = firstLine.indexOf(" ", separator + 1)
-  ) {
-    const path = resolveSharedHeaderPath(
-      firstLine.slice(0, separator),
-      firstLine.slice(separator + 1),
-    );
-    if (path) {
-      return path;
-    }
-  }
-  return null;
-}
-
-/** Renames and copies carry the one prefix-free path pair git ever emits. */
-function extractRenameTargetPath(lines: string[]): string | null {
-  for (const prefix of ["rename to ", "copy to "]) {
-    const line = lines.find((candidate) => candidate.startsWith(prefix));
-    if (line) {
-      const path = line.slice(prefix.length).trimEnd();
-      if (path) {
-        return path;
-      }
-    }
-  }
-  return null;
+// Git's default patch headers use paired a/path and b/path prefixes, while
+// diff.noprefix emits plain paths that may legitimately start with a/ or b/.
+function usesDiffPathPrefixes(oldPath: string, newPath: string): boolean {
+  return oldPath.startsWith("a/") && newPath.startsWith("b/");
 }
 
 function extractPathFromMetadata(lines: string[], prefix: "--- " | "+++ "): string | null {
@@ -134,46 +58,41 @@ function extractPathFromMetadata(lines: string[], prefix: "--- " | "+++ "): stri
     return null;
   }
 
-  const path = line.slice(prefix.length).replace(/\t.*$/, "").trimEnd();
+  const path = unquoteGitPath(line.slice(prefix.length).replace(/\t.*$/, ""));
   return path === "/dev/null" ? null : path;
 }
 
 function extractPathFromDiffHeader(lines: string[]): string {
-  const renameTarget = extractRenameTargetPath(lines);
-  if (renameTarget) {
-    return renameTarget;
+  const firstLine = lines[0] ?? "";
+  const prefixedPathMatch = firstLine.match(/^a\/(.+) b\/(.+)$/);
+  if (prefixedPathMatch) {
+    return prefixedPathMatch[2];
   }
 
-  const headerPath = resolveDiffGitHeaderPath(lines[0] ?? "");
-  if (headerPath) {
-    return headerPath;
-  }
-
-  const oldMetadataPath = extractPathFromMetadata(lines, "--- ");
-  const newMetadataPath = extractPathFromMetadata(lines, "+++ ");
-  if (oldMetadataPath && newMetadataPath) {
-    const sharedMetadataPath = resolveSharedHeaderPath(oldMetadataPath, newMetadataPath);
-    if (sharedMetadataPath) {
-      return sharedMetadataPath;
+  const quotedPathMatch =
+    firstLine.match(/^("(?:\\.|[^"\\])*") (.+)$/) ?? firstLine.match(/^(.+) ("(?:\\.|[^"\\])*")$/);
+  if (quotedPathMatch) {
+    const oldPath = unquoteGitPath(quotedPathMatch[1]);
+    const newPath = unquoteGitPath(quotedPathMatch[2]);
+    if (usesDiffPathPrefixes(oldPath, newPath)) {
+      return newPath.slice(2);
     }
+    return newPath;
   }
 
-  const metadataPath = newMetadataPath ?? oldMetadataPath;
+  const metadataPath =
+    extractPathFromMetadata(lines, "+++ ") ?? extractPathFromMetadata(lines, "--- ");
   if (metadataPath) {
     return metadataPath;
   }
 
+  const pathMatch = firstLine.match(/^(\S+)\s+(\S+)$/);
+  if (pathMatch) {
+    const [, oldPath, newPath] = pathMatch;
+    const path = newPath === "/dev/null" ? oldPath : newPath;
+    return usesDiffPathPrefixes(oldPath, newPath) ? path.slice(2) : path;
+  }
   return "unknown";
-}
-
-function isMetadataLine(line: string): boolean {
-  return (
-    line.startsWith("index ") ||
-    line.startsWith("--- ") ||
-    line.startsWith("+++ ") ||
-    line.startsWith("new file mode") ||
-    line.startsWith("deleted file mode")
-  );
 }
 
 function parseHunkHeader(line: string): DiffHunk | null {
@@ -202,8 +121,6 @@ function parseSectionBody(lines: string[]): ParsedSectionBody {
 
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
-
-    if (isMetadataLine(line)) continue;
 
     const newHunk = parseHunkHeader(line);
     if (newHunk) {
@@ -419,37 +336,78 @@ export async function highlightDiffWithFileContent(
     return file;
   }
 
-  const reconstructedTokens = buildReconstructedTokenLookups(file);
-  let newTokensByLine = reconstructedTokens.newTokensByLine;
-  let oldTokensByLine = reconstructedTokens.oldTokensByLine;
-
-  if (
-    typeof options.oldFileContent === "string" &&
-    isFullFileHighlightable(options.oldFileContent)
-  ) {
-    oldTokensByLine =
-      buildFullFileTokenLookup(options.oldFileContent, file.path) ?? oldTokensByLine;
-  }
-
+  // OTTO(structural-diff): reuse the full texts already read for syntax highlighting.
+  let newContent = options.newFileContent;
+  let newTokensByLine: Map<number, HighlightToken[]> | null = null;
+  const oldTokensByLine =
+    typeof options.oldFileContent === "string"
+      ? buildFullFileTokenLookup(options.oldFileContent, file.path)
+      : null;
   if (typeof options.newFileContent === "string") {
-    if (isFullFileHighlightable(options.newFileContent)) {
-      newTokensByLine =
-        buildFullFileTokenLookup(options.newFileContent, file.path) ?? newTokensByLine;
+    newTokensByLine = buildFullFileTokenLookup(options.newFileContent, file.path);
+  } else {
+    try {
+      const fileContent = await readFile(resolve(cwd, file.path), "utf-8");
+      // OTTO(structural-diff): undefined means a working-tree comparison.
+      // An unavailable immutable blob is null and cannot be replaced with the current checkout.
+      if (options.newFileContent === undefined) newContent = fileContent;
+      newTokensByLine = buildFullFileTokenLookup(fileContent, file.path);
+    } catch {
+      // Deleted or unavailable files use reconstructed tokens below.
     }
+  }
+
+  if (options.includeStructuralSource) {
+    file = withStructuralSource(file, options.oldFileContent, newContent);
+  }
+
+  if (newTokensByLine && oldTokensByLine)
     return applyTokensToHunks(file, newTokensByLine, oldTokensByLine);
+  const reconstructedTokens = buildReconstructedTokenLookups(file);
+  return applyTokensToHunks(
+    file,
+    newTokensByLine ?? reconstructedTokens.newTokensByLine,
+    oldTokensByLine ?? reconstructedTokens.oldTokensByLine,
+  );
+}
+
+function withStructuralSource(
+  file: ParsedDiffFile,
+  oldContent: string | null | undefined,
+  newContent: string | null | undefined,
+) {
+  // OTTO(structural-diff): empty source is only authoritative for a new or deleted file.
+  // A subsequent working-tree read can race a new save. Verify all original
+  // hunk coordinates before attaching its snapshots as syntax evidence.
+  const before = file.isNew ? "" : oldContent;
+  const after = file.isDeleted ? "" : newContent;
+  if (
+    typeof before === "string" &&
+    typeof after === "string" &&
+    before.length <= 16000 &&
+    after.length <= 16000 &&
+    file.hunks.length > 0 &&
+    matchesStructuralSource(file, before, after)
+  ) {
+    file = { ...file, structuralSource: { before, after } };
   }
 
-  const filePath = resolve(cwd, file.path);
-  try {
-    const fileContent = await readFile(filePath, "utf-8");
-    if (isFullFileHighlightable(fileContent)) {
-      newTokensByLine = buildFullFileTokenLookup(fileContent, file.path) ?? newTokensByLine;
-    }
-  } catch {
-    // If file read fails (deleted file, etc.), fall back to reconstructed new-side tokens.
-  }
+  return file;
+}
 
-  return applyTokensToHunks(file, newTokensByLine, oldTokensByLine);
+function matchesStructuralSource(file: ParsedDiffFile, before: string, after: string) {
+  if (before.includes("\0") || after.includes("\0")) return false;
+  const oldLines = before.split("\n");
+  const newLines = after.split("\n");
+  return file.hunks.every((hunk) => {
+    let oldIndex = hunk.oldStart - 1;
+    let newIndex = hunk.newStart - 1;
+    return hunk.lines.every((line) => {
+      if (line.type === "header") return true;
+      if (line.type !== "add" && oldLines[oldIndex++] !== line.content) return false;
+      return line.type === "remove" || newLines[newIndex++] === line.content;
+    });
+  });
 }
 
 function applyTokensToHunks(
@@ -500,38 +458,19 @@ export async function parseAndHighlightDiff(
 ): Promise<ParsedDiffFile[]> {
   const files = parseDiff(diffText);
 
-  const maxConcurrentFiles = Math.max(1, options.maxConcurrentFiles ?? files.length);
-  const highlightedFiles: ParsedDiffFile[] = [];
-  let nextIndex = 0;
-  const highlightNextFile = async () => {
-    while (nextIndex < files.length) {
-      const index = nextIndex;
-      nextIndex += 1;
-      const file = files[index];
+  const highlightedFiles = await Promise.all(
+    files.map(async (file) => {
       const [oldFileContent, newFileContent] = await Promise.all([
         options.getOldFileContent?.(file),
         options.getNewFileContent?.(file),
       ]);
-      const highlighted = await highlightDiffWithFileContent(file, cwd, {
+
+      return highlightDiffWithFileContent(file, cwd, {
         oldFileContent: oldFileContent ?? undefined,
-        newFileContent: newFileContent ?? undefined,
+        newFileContent: options.getNewFileContent ? (newFileContent ?? null) : undefined,
+        includeStructuralSource: options.includeStructuralSource, // OTTO(structural-diff)
       });
-      // Structural alignment needs the exact complete snapshots. Retain only
-      // the same bounded content we already parse for full-file highlighting,
-      // so the existing checkout frame guard remains authoritative.
-      highlightedFiles[index] = {
-        ...highlighted,
-        ...(typeof oldFileContent === "string" && isFullFileHighlightable(oldFileContent)
-          ? { beforeSource: oldFileContent }
-          : {}),
-        ...(typeof newFileContent === "string" && isFullFileHighlightable(newFileContent)
-          ? { afterSource: newFileContent }
-          : {}),
-      };
-    }
-  };
-  await Promise.all(
-    Array.from({ length: Math.min(maxConcurrentFiles, files.length) }, () => highlightNextFile()),
+    }),
   );
 
   return highlightedFiles;

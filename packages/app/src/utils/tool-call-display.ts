@@ -1,6 +1,5 @@
 export {
   buildToolCallDisplayModel,
-  getToolDisplayName,
   type ToolCallDisplayInput,
   type ToolCallDisplayModel,
-} from "@otto-code/protocol/tool-call-display";
+} from "@getpaseo/protocol/tool-call-display";

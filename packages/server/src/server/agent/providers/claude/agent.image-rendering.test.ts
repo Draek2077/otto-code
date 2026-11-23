@@ -4,17 +4,13 @@ import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { describe, expect, test } from "vitest";
 
 import { createTestLogger } from "../../../../test-utils/test-logger.js";
-import { withTemporaryOttoHome } from "../../../../test-utils/temp-otto-home.js";
 import type { AgentStreamEvent, AgentTimelineItem } from "../../agent-sdk-types.js";
 import { ClaudeAgentClient } from "./agent.js";
 
 const ONE_BY_ONE_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+X1r0AAAAASUVORK5CYII=";
-const MATERIALIZED_PNG_PATH_PATTERN = /attachments[\\/][0-9a-f]{64}\.png$/;
-
-// Materialized images live under $OTTO_HOME; give the suite its own so it never
-// writes into the developer's real ~/.otto.
-withTemporaryOttoHome("otto-home-claude-image-test");
+const MATERIALIZED_PNG_PATH_PATTERN =
+  /paseo-attachments(?:-[^\\/]+)?[\\/](?:[^\\/]+[\\/])?[0-9a-f]{64}\.png$/;
 
 interface ClaudeImageTestSession {
   translateMessageToEvents(message: SDKMessage): AgentStreamEvent[];
@@ -144,11 +140,11 @@ function imageMessages(items: AgentTimelineItem[]): string[] {
   return items
     .filter((item) => item.type === "assistant_message")
     .map((item) => (item as { text: string }).text)
-    .filter((text) => text.startsWith("!["));
+    .filter((text) => text.trimStart().startsWith("!["));
 }
 
 function markdownImageSource(markdown: string): string {
-  const match = markdown.match(/^!\[[^\]]*]\((.*)\)$/);
+  const match = markdown.trim().match(/^!\[[^\]]*]\((.*)\)$/);
   if (!match) {
     throw new Error(`Expected markdown image, got: ${markdown}`);
   }

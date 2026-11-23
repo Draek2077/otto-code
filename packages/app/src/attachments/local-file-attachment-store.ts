@@ -3,11 +3,8 @@ import {
   type AttachmentStore,
   type AttachmentStorageType,
   type AttachmentMetadata,
-  type AttachmentStoreUsage,
-  type ClearPreviewAttachmentsResult,
   type SaveAttachmentInput,
 } from "@/attachments/types";
-import { isPreviewAttachmentId } from "@/attachments/preview-pins";
 import {
   fileUriToPath,
   generateAttachmentId,
@@ -47,9 +44,10 @@ async function ensureDirectory(fileSystem: AttachmentFileSystem, uri: string): P
   await fileSystem.makeDirectory(uri, { intermediates: true });
 }
 
-async function dataUrlToBytes(dataUrl: string): Promise<Uint8Array> {
-  const response = await fetch(dataUrl);
-  return new Uint8Array(await response.arrayBuffer());
+function dataUrlToBytes(dataUrl: string): Uint8Array {
+  // React Native's fetch cannot read data URLs. Decode the embedded bytes locally.
+  const { base64 } = parseDataUrl(dataUrl);
+  return Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
 }
 
 async function blobToBytes(blob: Blob): Promise<Uint8Array> {
@@ -73,7 +71,7 @@ async function writeFromSource(input: {
 
   let bytes: Uint8Array;
   if (input.source.kind === "data_url") {
-    bytes = await dataUrlToBytes(input.source.dataUrl);
+    bytes = dataUrlToBytes(input.source.dataUrl);
   } else if (input.source.kind === "blob") {
     bytes = await blobToBytes(input.source.blob);
   } else {
@@ -204,53 +202,6 @@ export function createLocalFileAttachmentStore(params: {
           });
         }),
       );
-    },
-
-    async usage(): Promise<AttachmentStoreUsage> {
-      const usage = { previewCount: 0, previewBytes: 0, otherCount: 0, otherBytes: 0 };
-      if (!baseDirectory) {
-        return usage;
-      }
-      await ensureDirectory(fileSystem, baseDirectory);
-      const entries = await fileSystem.listDirectory(baseDirectory);
-      await Promise.all(
-        entries.map(async (entryName) => {
-          const info = await fileSystem.getInfo(`${baseDirectory}${entryName}`);
-          const size = info.exists && !info.isDirectory ? (info.size ?? 0) : 0;
-          if (isPreviewAttachmentId(entryName.split(".", 1)[0] ?? "")) {
-            usage.previewCount += 1;
-            usage.previewBytes += size;
-          } else {
-            usage.otherCount += 1;
-            usage.otherBytes += size;
-          }
-        }),
-      );
-      return usage;
-    },
-
-    async clearPreviews(): Promise<ClearPreviewAttachmentsResult> {
-      if (!baseDirectory) {
-        return { deleted: 0, freedBytes: 0 };
-      }
-      await ensureDirectory(fileSystem, baseDirectory);
-      const entries = await fileSystem.listDirectory(baseDirectory);
-      const previews = entries.filter((entryName) =>
-        isPreviewAttachmentId(entryName.split(".", 1)[0] ?? ""),
-      );
-
-      let deleted = 0;
-      let freedBytes = 0;
-      await Promise.all(
-        previews.map(async (entryName) => {
-          const uri = `${baseDirectory}${entryName}`;
-          const info = await fileSystem.getInfo(uri);
-          await fileSystem.delete(uri, { idempotent: true });
-          deleted += 1;
-          freedBytes += info.exists && !info.isDirectory ? (info.size ?? 0) : 0;
-        }),
-      );
-      return { deleted, freedBytes };
     },
   };
 }

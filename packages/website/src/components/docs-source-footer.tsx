@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import type { Doc } from "~/docs";
 
 const GITHUB_BASE_URL = "https://github.com/Draek2077/otto-code/blob/main";

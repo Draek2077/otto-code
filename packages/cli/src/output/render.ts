@@ -100,15 +100,5 @@ export function renderError(error: CommandError, options: Partial<OutputOptions>
     return `${prefix}${message}\n${error.details}`;
   }
 
-  if (error.diagnostics?.length) {
-    const diagnostics = error.diagnostics
-      .map(
-        (diagnostic) =>
-          `${diagnostic.path || "document"}: ${diagnostic.message}\nRecovery: ${diagnostic.recovery}`,
-      )
-      .join("\n");
-    return `${prefix}${message}\n${diagnostics}`;
-  }
-
   return `${prefix}${message}`;
 }

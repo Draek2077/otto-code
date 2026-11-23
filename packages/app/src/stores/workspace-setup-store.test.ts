@@ -126,7 +126,6 @@ describe("workspace-setup-store", () => {
       pendingWorkspaceSetup: null,
       snapshots: {},
       requestedKeys: new Set(),
-      emptyKeys: new Set(),
       surfacedFailedSetupKeys: new Set(),
     });
   });
@@ -146,6 +145,8 @@ describe("workspace-setup-store", () => {
       sourceWorkspaceId: "42",
       displayName: "project",
       creationMethod: "open_project",
+      creationId: expect.any(String),
+      worktreeSlug: expect.any(String),
     });
   });
 
@@ -216,7 +217,7 @@ describe("workspace-setup-store", () => {
           log: "",
           commands: [],
         },
-        error: "Failed to parse otto.json",
+        error: "Failed to parse paseo.json",
         updatedAt: Date.now(),
       }),
     ).toBe(true);
@@ -269,26 +270,6 @@ describe("workspace-setup-store", () => {
     ]);
   });
 
-  it("announces a blocked setup once until the workspace or host is cleared", () => {
-    const store = useWorkspaceSetupStore.getState();
-    const identity = { serverId: "blocked-host", workspaceId: "42" };
-    const push = () =>
-      store.upsertProgress({
-        serverId: identity.serverId,
-        payload: { ...makeSnapshot("blocked"), workspaceId: identity.workspaceId },
-      });
-    push();
-    expect(store.claimFailedSetupSurface(identity)).toBe(true);
-    push();
-    expect(store.claimFailedSetupSurface(identity)).toBe(false);
-    store.removeWorkspace(identity);
-    push();
-    expect(store.claimFailedSetupSurface(identity)).toBe(true);
-    store.clearServer(identity.serverId);
-    push();
-    expect(store.claimFailedSetupSurface(identity)).toBe(true);
-  });
-
   it("ensureSetupStatus does not refetch while a request is in flight", async () => {
     const deferred = createDeferred<WorkspaceSetupStatusResult>();
     const { client, calls } = makeClient(() => deferred.promise);
@@ -335,11 +316,7 @@ describe("workspace-setup-store", () => {
     expect(storedSnapshots()).toHaveLength(0);
   });
 
-  // A null snapshot from the right workspace is an answer ("no setup here"),
-  // not a failure. Retrying it made every navigation to a setup-free workspace
-  // re-ask forever; the only things that can change the answer are a progress
-  // push, a workspace removal, and a reconnect, each covered below.
-  it("ensureSetupStatus does not re-ask after a null-snapshot response", async () => {
+  it("ensureSetupStatus retries after a null-snapshot response", async () => {
     const { client, calls } = makeClient(nullThenResolve());
 
     ensureSetupStatus(client);
@@ -349,71 +326,8 @@ describe("workspace-setup-store", () => {
 
     ensureSetupStatus(client);
     await flush();
-    expect(calls).toEqual(["42"]);
-    expect(storedSnapshots()).toHaveLength(0);
-  });
-
-  it("a setup-progress push clears the cached null answer", async () => {
-    const { client, calls } = makeClient((workspaceId) =>
-      Promise.resolve(setupResult(workspaceId, null)),
-    );
-
-    ensureSetupStatus(client);
-    await flush();
-    expect(calls).toEqual(["42"]);
-
-    useWorkspaceSetupStore.getState().upsertProgress({
-      serverId: "server-1",
-      payload: { workspaceId: "42", ...DEFAULT_SNAPSHOT },
-    });
-
-    expect(useWorkspaceSetupStore.getState().emptyKeys.size).toBe(0);
-    expect(storedSnapshots()).toHaveLength(1);
-  });
-
-  it("clearResolvedEmpty re-arms the workspace so a reconnect asks once more", async () => {
-    const { client, calls } = makeClient(nullThenResolve());
-
-    ensureSetupStatus(client);
-    await flush();
-    expect(calls).toEqual(["42"]);
-
-    useWorkspaceSetupStore.getState().clearResolvedEmpty("server-1");
-    ensureSetupStatus(client);
-    await flush();
-
     expect(calls).toEqual(["42", "42"]);
     expect(storedSnapshots()).toHaveLength(1);
-  });
-
-  it("clearResolvedEmpty leaves other hosts' cached answers alone", async () => {
-    const { client, calls } = makeClient((workspaceId) =>
-      Promise.resolve(setupResult(workspaceId, null)),
-    );
-
-    ensureSetupStatus(client);
-    await flush();
-    expect(calls).toEqual(["42"]);
-
-    useWorkspaceSetupStore.getState().clearResolvedEmpty("server-2");
-    ensureSetupStatus(client);
-    await flush();
-
-    expect(calls).toEqual(["42"]);
-  });
-
-  it("removing the workspace clears its cached null answer", async () => {
-    const { client, calls } = makeClient(nullThenResolve());
-
-    ensureSetupStatus(client);
-    await flush();
-    expect(calls).toEqual(["42"]);
-
-    useWorkspaceSetupStore.getState().removeWorkspace({ serverId: "server-1", workspaceId: "42" });
-    ensureSetupStatus(client);
-    await flush();
-
-    expect(calls).toEqual(["42", "42"]);
   });
 
   it("ensureSetupStatus retries after a mismatched-workspace response", async () => {

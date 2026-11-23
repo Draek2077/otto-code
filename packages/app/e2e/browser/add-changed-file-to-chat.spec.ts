@@ -1,10 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { test, expect } from "../support/fixtures";
-import { composerLocator } from "../support/helpers/composer";
-import { moneyShot } from "../support/helpers/evidence";
+import { test, expect, type Page } from "../support/fixtures";
 import { seedMockAgentWorkspace, openAgentRoute } from "../support/helpers/mock-agent";
 import { openChangesPanel } from "../support/helpers/workspace-tabs";
+
+function visibleComposer(page: Page) {
+  return page.locator("textarea[data-composer-input]").filter({ visible: true }).first();
+}
 
 test("adds a changed file to the focused chat without replacing its composer draft", async ({
   page,
@@ -26,27 +28,21 @@ test("adds a changed file to the focused chat without replacing its composer dra
       agentId: workspace.agentId,
     });
 
-    const agentComposer = composerLocator(page);
+    const agentComposer = visibleComposer(page);
     await expect(agentComposer).toBeEditable({ timeout: 30_000 });
     await agentComposer.fill("Preserve this thought");
 
     await openChangesPanel(page);
-    const changedFile = page.getByTestId("diff-file-0").filter({ visible: true });
-    await expect(changedFile).toContainText("changed file.ts");
-
-    // Keep the chat selected while interacting with its Explorer diff.
-    await agentComposer.click();
-    await changedFile.click({ button: "right" });
+    const changedFile = page.getByText("changed file.ts", { exact: true }).first();
+    await expect(changedFile).toBeVisible({ timeout: 30_000 });
+    await page.getByTestId("diff-file-0-toggle").click({ button: "right" });
     await page.getByTestId("diff-file-0-add-to-chat").click();
 
     const attachment = page.getByTestId("composer-workspace-file-attachment-pill");
     await expect(attachment).toContainText("changed file.ts");
     await expect(attachment).toContainText(relativePath);
     await expect(agentComposer).toHaveValue("Preserve this thought");
-    await moneyShot(
-      page,
-      "the changed file is attached to the focused chat and its existing draft is preserved",
-    );
+    await expect(agentComposer).toBeFocused();
   } finally {
     await workspace.cleanup();
   }

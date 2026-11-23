@@ -4,10 +4,9 @@ import { useTranslation } from "react-i18next";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import type {
   CheckoutPrStatusResponse,
-  GitHostingProviderId,
   PullRequestTimelineResponse,
-} from "@otto-code/protocol/messages";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+} from "@getpaseo/protocol/messages";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import type { Forge } from "@/git/forge";
 import { i18n } from "@/i18n/i18next";
@@ -29,8 +28,6 @@ export interface UsePrPaneDataResult {
   data: PrPaneData | null;
   forge: Forge;
   prNumber: number | null;
-  /** Git hosting provider for this workspace, so the PR tab shows the right mark. */
-  hostingProvider: GitHostingProviderId;
   isLoading: boolean;
   activityLoading: boolean;
   isRefreshing: boolean;
@@ -162,7 +159,6 @@ export interface SelectPrPaneStateInput {
   timelineError: Error | null;
   timelineIsLoading: boolean;
   timelineIsFetching: boolean;
-  hostingProvider?: GitHostingProviderId;
   statusLoadFailedLabel?: string;
   activityLoadFailedLabel?: string;
 }
@@ -182,8 +178,6 @@ export function selectPrPaneState(input: SelectPrPaneStateInput): UsePrPaneDataR
     data,
     forge: input.forge ?? "github",
     prNumber: identity.prNumber,
-    // Defaults to GitHub for legacy daemons that don't describe the provider.
-    hostingProvider: input.hostingProvider ?? "github",
     isLoading: input.statusIsLoading || timelinePending,
     activityLoading: timelinePending,
     isRefreshing: statusRefreshing || timelineRefreshing,
@@ -257,7 +251,7 @@ export function usePrPaneData({
     enabled: shouldFetchTimeline,
     staleTime: Infinity,
     // Refetch on mount only after explicit invalidation (reconnect, or a pushed PR status
-    // change) - see useCheckoutStatusQuery for the rationale.
+    // change) — see useCheckoutStatusQuery for the rationale.
     refetchOnMount: true,
     refetchOnReconnect: false,
     refetchOnWindowFocus: false,
@@ -279,7 +273,6 @@ export function usePrPaneData({
     timelineError: timelineQuery.error,
     timelineIsLoading: timelineQuery.isLoading,
     timelineIsFetching: timelineQuery.isFetching,
-    hostingProvider: checkoutPrStatus.hostingProvider,
     statusLoadFailedLabel: t("workspace.git.pr.errors.statusLoadFailed"),
     activityLoadFailedLabel: t("workspace.git.pr.errors.activityLoadFailed"),
   });

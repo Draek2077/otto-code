@@ -1,25 +1,20 @@
-// The composer toolbar degrades in one direction only: it gives up text before
-// it gives up size. Each stage below collapses exactly one control group to
-// icon-only, in least-consulted-first order, so a narrowing pane loses one
-// label at a time instead of flipping the whole row at once. Only after the
-// last stage - every control already icon-only - may the row scale uniformly
-// (see `input/toolbar-scale.ts`). Scaling while any control still shows text
-// is the defect this ladder exists to prevent.
-export const COMPOSER_CONTROL_STAGES = [
-  "full",
-  "feature-icons",
-  "thinking-icon",
-  "mode-icon",
-  "model-icon",
-] as const;
+export type ComposerControlDensity = "full" | "condensed" | "tight";
 
-export type ComposerControlStage = (typeof COMPOSER_CONTROL_STAGES)[number];
+export interface ComposerControlPresence {
+  hasModel: boolean;
+  hasThinking: boolean;
+  hasMode: boolean;
+  features: readonly ComposerFeatureControlPresence[];
+  fontScale: number;
+}
+
+export type ComposerFeatureControlPresence = { type: "toggle" } | { type: "select"; label: string };
 
 export interface ComposerControlPresentation {
-  showModelLabel: boolean;
+  showCarets: boolean;
   showThinkingLabel: boolean;
   showModeLabel: boolean;
-  showFeatureLabels: boolean;
+  aggregateFeatures: boolean;
 }
 
 export const COMPOSER_TOOLBAR_GEOMETRY = {
@@ -30,61 +25,110 @@ export const COMPOSER_TOOLBAR_GEOMETRY = {
   caretSize: 14,
 } as const;
 
-// Retreating to a roomier stage needs more width than staying put, so a pane
-// parked on a boundary cannot flip-flop between two stages every frame.
-export const COMPOSER_STAGE_HYSTERESIS = 12;
+const DENSITY_HYSTERESIS = 12;
 
-/**
- * Advance or retreat by at most one stage per measurement.
- *
- * Stage selection is driven entirely by measured widths - never by estimated
- * label metrics - because the only reliable answer to "does this fit" is the
- * layout engine's. `measuredNeededByStage` records the intrinsic width the row
- * reported the last time it rendered at each stage, so widening retreats to a
- * stage we have proof will fit rather than to a guess.
- */
-export function resolveNextComposerControlStage(input: {
+function normalizedFontScale(fontScale: number): number {
+  return Number.isFinite(fontScale) ? Math.max(1, fontScale) : 1;
+}
+
+function sumControlWidths(widths: number[]): number {
+  if (widths.length === 0) return 0;
+  return (
+    widths.reduce((total, width) => total + width, 0) +
+    (widths.length - 1) * COMPOSER_TOOLBAR_GEOMETRY.controlGap
+  );
+}
+
+function estimateLabelWidth(label: string, fontScale: number): number {
+  return Array.from(label).length * 7 * fontScale;
+}
+
+function resolveFeatureControlWidth(
+  feature: ComposerFeatureControlPresence,
+  fontScale: number,
+): number {
+  if (feature.type === "toggle") return COMPOSER_TOOLBAR_GEOMETRY.controlSize;
+  return (
+    COMPOSER_TOOLBAR_GEOMETRY.controlSize +
+    COMPOSER_TOOLBAR_GEOMETRY.iconLabelGap +
+    COMPOSER_TOOLBAR_GEOMETRY.labelPadding * 2 +
+    estimateLabelWidth(feature.label, fontScale)
+  );
+}
+
+function resolveCondensedFloor(controls: ComposerControlPresence): number {
+  const fontScale = normalizedFontScale(controls.fontScale);
+  const widths: number[] = [];
+  if (controls.hasModel) widths.push(36 + 60 * fontScale);
+  if (controls.hasThinking) widths.push(COMPOSER_TOOLBAR_GEOMETRY.controlSize);
+  if (controls.hasMode) widths.push(36 + 96 * fontScale);
+  if (controls.features.length > 0) widths.push(COMPOSER_TOOLBAR_GEOMETRY.controlSize);
+  return sumControlWidths(widths);
+}
+
+function resolveFullFloor(controls: ComposerControlPresence): number {
+  const fontScale = normalizedFontScale(controls.fontScale);
+  const widths: number[] = [];
+  if (controls.hasModel) widths.push(50 + 70 * fontScale);
+  if (controls.hasThinking) widths.push(54 + 48 * fontScale);
+  if (controls.hasMode) widths.push(54 + 96 * fontScale);
+  for (const feature of controls.features) {
+    widths.push(resolveFeatureControlWidth(feature, fontScale));
+  }
+  return sumControlWidths(widths);
+}
+
+export function resolveComposerControlDensity(input: {
   availableWidth: number;
-  neededWidth: number;
-  stageIndex: number;
-  measuredNeededByStage: readonly (number | undefined)[];
-}): number {
-  const { availableWidth, neededWidth } = input;
-  const lastStage = COMPOSER_CONTROL_STAGES.length - 1;
-  const stageIndex = Math.min(Math.max(input.stageIndex, 0), lastStage);
-  if (availableWidth <= 0) return stageIndex;
+  currentDensity: ComposerControlDensity;
+  controls: ComposerControlPresence;
+}): ComposerControlDensity {
+  const fullFloor = resolveFullFloor(input.controls);
+  const condensedFloor = resolveCondensedFloor(input.controls);
 
-  if (neededWidth > availableWidth) {
-    return stageIndex < lastStage ? stageIndex + 1 : stageIndex;
+  if (input.currentDensity === "full") {
+    if (input.availableWidth >= fullFloor - DENSITY_HYSTERESIS) return "full";
+    return input.availableWidth >= condensedFloor ? "condensed" : "tight";
   }
 
-  if (stageIndex > 0) {
-    const previousNeeded = input.measuredNeededByStage[stageIndex - 1];
-    if (
-      previousNeeded !== undefined &&
-      availableWidth >= previousNeeded + COMPOSER_STAGE_HYSTERESIS
-    ) {
-      return stageIndex - 1;
-    }
+  if (input.currentDensity === "condensed") {
+    if (input.availableWidth >= fullFloor + DENSITY_HYSTERESIS) return "full";
+    if (input.availableWidth < condensedFloor - DENSITY_HYSTERESIS) return "tight";
+    return "condensed";
   }
 
-  return stageIndex;
+  if (input.availableWidth >= fullFloor + DENSITY_HYSTERESIS) return "full";
+  if (input.availableWidth >= condensedFloor + DENSITY_HYSTERESIS) return "condensed";
+  return "tight";
 }
 
 export function resolveComposerControlPresentation(
-  stage: ComposerControlStage,
+  density: ComposerControlDensity,
 ): ComposerControlPresentation {
-  const reached = COMPOSER_CONTROL_STAGES.indexOf(stage);
-  const collapsedAt = (at: ComposerControlStage) => reached < COMPOSER_CONTROL_STAGES.indexOf(at);
+  if (density === "full") {
+    return {
+      showCarets: true,
+      showThinkingLabel: true,
+      showModeLabel: true,
+      aggregateFeatures: false,
+    };
+  }
+  if (density === "condensed") {
+    return {
+      showCarets: false,
+      showThinkingLabel: false,
+      showModeLabel: true,
+      aggregateFeatures: true,
+    };
+  }
   return {
-    showFeatureLabels: collapsedAt("feature-icons"),
-    showThinkingLabel: collapsedAt("thinking-icon"),
-    showModeLabel: collapsedAt("mode-icon"),
-    showModelLabel: collapsedAt("model-icon"),
+    showCarets: false,
+    showThinkingLabel: false,
+    showModeLabel: false,
+    aggregateFeatures: true,
   };
 }
 
-/** True once every control is icon-only, which is the only point scaling may begin. */
-export function isComposerControlStageFullyCollapsed(stage: ComposerControlStage): boolean {
-  return COMPOSER_CONTROL_STAGES.indexOf(stage) >= COMPOSER_CONTROL_STAGES.length - 1;
+export function resolveComposerToolbarGlyphSize(platform: "web" | "native"): number {
+  return platform === "native" ? 20 : 16;
 }

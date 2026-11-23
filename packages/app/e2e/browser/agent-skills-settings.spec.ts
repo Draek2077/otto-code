@@ -70,14 +70,16 @@ test.describe("Host agent skills", () => {
     const dismissedWarning = answerNextRemovalWarning(page, "dismiss");
     await saveSkillSelection(page);
     const dismissedDialog = await dismissedWarning;
-    expect(dismissedDialog).toContain("Remove deselected skills?");
-    for (const skill of removed) expect(dismissedDialog).toContain(skill);
+    expect(dismissedDialog.message()).toContain("Remove deselected skills?");
+    for (const skill of removed) expect(dismissedDialog.message()).toContain(skill);
     await expectInstalledSkills(skills, skills.available);
     await expectSavedSelection(skills, { mode: "all" });
 
     const acceptedWarning = answerNextRemovalWarning(page, "accept");
     await saveSkillSelection(page);
-    expect(await acceptedWarning).toContain("Anything you added inside those skill folders");
+    expect((await acceptedWarning).message()).toContain(
+      "Anything you added inside those skill folders",
+    );
     await expectInstalledSkills(skills, retained);
     await expectSavedSelection(skills, { mode: "custom", skills: retained });
   });
@@ -93,7 +95,7 @@ test.describe("Host agent skills", () => {
 
     const warning = answerNextRemovalWarning(page, "dismiss");
     await saveSkillSelection(page);
-    expect(await warning).toContain(partial);
+    expect((await warning).message()).toContain(partial);
     await expectSkillFile(skills, "claude", partial, "SKILL.md");
     await expectSavedSelection(skills, { mode: "all" });
   });
@@ -114,7 +116,7 @@ test.describe("Host agent skills", () => {
 
     const warning = answerNextRemovalWarning(page, "dismiss");
     await saveSkillSelection(page);
-    expect(await warning).toContain(drift);
+    expect((await warning).message()).toContain(drift);
     await expectSkillFile(skills, "claude", drift, "notes/mine.md");
     await expectSavedSelection(skills, { mode: "custom", skills: retained });
   });

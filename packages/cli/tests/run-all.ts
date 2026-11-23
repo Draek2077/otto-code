@@ -1,16 +1,15 @@
-#!/usr/bin/env npx tsx
+#!/usr/bin/env npx zx
 
 /**
- * Test runner for Otto CLI E2E tests
+ * Test runner for Paseo CLI E2E tests
  *
  * Runs all test phases as separate subprocesses with a bounded worker pool
  * so independent tests run concurrently. Each test file already isolates
- * its own daemon (ephemeral port + tmp OTTO_HOME), so parallelism is safe.
+ * its own daemon (ephemeral port + tmp PASEO_HOME), so parallelism is safe.
  */
 
 import { spawn } from "child_process";
-import { findPosixShell, MISSING_SHELL_MESSAGE } from "./helpers/posix-shell.ts";
-import { existsSync } from "fs";
+import { $ } from "zx";
 import { mkdtemp, readdir, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { join, dirname, delimiter } from "path";
@@ -19,24 +18,18 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..", "..", "..");
 
-// `npx` is `npx.cmd` on Windows and Node refuses to exec a .cmd without a
-// shell, so spawning it directly killed every test with ENOENT before it ran a
-// line. Resolve tsx's own CLI entry instead and run it under this same Node
-// binary: no shell, no PATHEXT lookup, nothing to quote.
-const TSX_ENTRY = fileURLToPath(import.meta.resolve("tsx/cli"));
-
 // npm workspace scripts only add the local node_modules/.bin to PATH; hoisted
-// packages live in the root. Prepend it so `npx otto` resolves locally.
+// packages live in the root. Prepend it so `npx paseo` resolves locally.
 const rootNodeModulesBin = join(repoRoot, "node_modules", ".bin");
 const args = process.argv.slice(2);
 const testEnvDefaults = {
-  OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
-  OTTO_DICTATION_ENABLED: process.env.OTTO_DICTATION_ENABLED ?? "0",
-  OTTO_VOICE_MODE_ENABLED: process.env.OTTO_VOICE_MODE_ENABLED ?? "0",
+  PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
+  PASEO_DICTATION_ENABLED: process.env.PASEO_DICTATION_ENABLED ?? "0",
+  PASEO_VOICE_MODE_ENABLED: process.env.PASEO_VOICE_MODE_ENABLED ?? "0",
 };
 
 const DEFAULT_CONCURRENCY = 4;
-const concurrencyEnv = process.env.OTTO_CLI_TEST_CONCURRENCY;
+const concurrencyEnv = process.env.PASEO_CLI_TEST_CONCURRENCY;
 const parsedConcurrency = concurrencyEnv ? Number.parseInt(concurrencyEnv, 10) : NaN;
 const concurrency =
   Number.isFinite(parsedConcurrency) && parsedConcurrency > 0
@@ -49,11 +42,11 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-const shardTotal = parsePositiveInt(process.env.OTTO_CLI_TEST_SHARD_TOTAL, 1);
-const shardIndexRaw = parsePositiveInt(process.env.OTTO_CLI_TEST_SHARD, 1);
+const shardTotal = parsePositiveInt(process.env.PASEO_CLI_TEST_SHARD_TOTAL, 1);
+const shardIndexRaw = parsePositiveInt(process.env.PASEO_CLI_TEST_SHARD, 1);
 if (shardIndexRaw < 1 || shardIndexRaw > shardTotal) {
   throw new Error(
-    `OTTO_CLI_TEST_SHARD=${shardIndexRaw} out of range for SHARD_TOTAL=${shardTotal}`,
+    `PASEO_CLI_TEST_SHARD=${shardIndexRaw} out of range for SHARD_TOTAL=${shardTotal}`,
   );
 }
 const shardIndex = shardIndexRaw - 1;
@@ -72,36 +65,23 @@ for (let i = 0; i < args.length; i++) {
   }
 }
 
+$.verbose = false;
+
 interface Failure {
   test: string;
   error: string;
 }
 
-// Runs an npm script directly instead of through a shell. Nothing here needs
-// shell semantics, and routing it through `bash -lc` made a bash-less host
-// (Windows) die on the very first command with a zx quoting error.
-async function runNpmScript(label: string, script: string, cwd: string): Promise<void> {
+async function runCommand(label: string, command: string): Promise<void> {
   console.log(`\n${"─".repeat(50)}`);
   console.log(`🔧 ${label}...`);
   console.log("─".repeat(50));
 
-  const exitCode = await new Promise<number>((resolve, reject) => {
-    // npm is npm.cmd on Windows, which Node refuses to exec without a shell.
-    // The script name is a literal, so it goes in the command string rather
-    // than an args array - that keeps the shell with nothing to escape (and
-    // avoids Node's DEP0190 warning about args passed alongside `shell`).
-    const proc = spawn(`npm run ${script}`, {
-      cwd,
-      shell: true,
-      stdio: "inherit",
-    });
-    proc.on("error", reject);
-    proc.on("exit", (code) => resolve(code ?? 1));
-  });
-
-  if (exitCode !== 0) {
-    const error = `${label} failed (exit code ${exitCode})`;
-    console.error(`\n❌ ${error}`);
+  const result = await $`bash -lc ${command}`.nothrow();
+  if (result.exitCode !== 0) {
+    const error = result.stderr || result.stdout || `Exit code: ${result.exitCode}`;
+    console.error(`\n❌ ${label} failed`);
+    console.error(error);
     throw new Error(error);
   }
 }
@@ -124,7 +104,7 @@ async function writeJsonSummary({
     JSON.stringify(
       {
         suite: "cli-local",
-        command: "npm run test:local --workspace=@otto-code/cli",
+        command: "npm run test:local --workspace=@getpaseo/cli",
         counts: {
           passed,
           failed,
@@ -142,26 +122,7 @@ async function writeJsonSummary({
   );
 }
 
-// Resolve the shell up front so a host without one is told what it is missing
-// instead of getting a zx stack trace ten minutes into a build. Each test file
-// resolves its own shell the same way; this only decides whether to start.
-const posixShell = findPosixShell();
-if (!posixShell) {
-  console.error(`❌ ${MISSING_SHELL_MESSAGE}`);
-  await writeJsonSummary({
-    passed: 0,
-    failed: 1,
-    failures: [{ test: "preflight", error: MISSING_SHELL_MESSAGE }],
-  });
-  process.exit(1);
-}
-
-// Pin every child to the shell the preflight validated instead of letting each
-// one re-derive it. `bash` on PATH is a plain name on Linux, not a path, so only
-// propagate something the child can actually stat.
-const shellEnv = existsSync(posixShell) ? { OTTO_TEST_BASH: posixShell } : {};
-
-console.log("🧪 Otto CLI E2E Test Runner\n");
+console.log("🧪 Paseo CLI E2E Test Runner\n");
 console.log("=".repeat(50));
 
 // Discover all test files
@@ -216,7 +177,10 @@ let passed = 0;
 let failed = 0;
 const failures: Failure[] = [];
 
-await runNpmScript("Building server stack", "build:server", repoRoot);
+await runCommand(
+  "Building server stack",
+  `npm --prefix ${JSON.stringify(repoRoot)} run build:server`,
+);
 
 type TestOutcome =
   | { status: "passed"; durationMs: number }
@@ -231,19 +195,23 @@ async function runSingleTest(testFile: string): Promise<TestOutcome> {
   const testPath = join(__dirname, testFile);
   const testName = testFile.replace(/\.test\.ts$/, "");
   const startedAt = Date.now();
-  const npmCache = await mkdtemp(join(tmpdir(), "otto-cli-test-npm-cache-"));
+  const npmCache = await mkdtemp(join(tmpdir(), "paseo-cli-test-npm-cache-"));
+  const osHome = await mkdtemp(join(tmpdir(), "paseo-cli-test-os-home-"));
 
   try {
     return await new Promise<TestOutcome>((resolve) => {
-      const proc = spawn(process.execPath, [TSX_ENTRY, testPath], {
+      const proc = spawn("npx", ["tsx", testPath], {
         env: {
-          ...process.env,
+          ...Object.fromEntries(
+            Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_")),
+          ),
+          HOME: osHome,
+          USERPROFILE: osHome,
           PATH: [rootNodeModulesBin, process.env.PATH].filter(Boolean).join(delimiter),
           npm_config_cache: npmCache,
-          ...shellEnv,
-          OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: testEnvDefaults.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD,
-          OTTO_DICTATION_ENABLED: testEnvDefaults.OTTO_DICTATION_ENABLED,
-          OTTO_VOICE_MODE_ENABLED: testEnvDefaults.OTTO_VOICE_MODE_ENABLED,
+          PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: testEnvDefaults.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD,
+          PASEO_DICTATION_ENABLED: testEnvDefaults.PASEO_DICTATION_ENABLED,
+          PASEO_VOICE_MODE_ENABLED: testEnvDefaults.PASEO_VOICE_MODE_ENABLED,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -286,6 +254,7 @@ async function runSingleTest(testFile: string): Promise<TestOutcome> {
     });
   } finally {
     await rm(npmCache, { recursive: true, force: true });
+    await rm(osHome, { recursive: true, force: true });
   }
 }
 

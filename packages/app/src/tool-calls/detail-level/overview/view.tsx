@@ -1,19 +1,19 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import React, { memo, useCallback, useMemo, useRef, type ReactNode } from "react";
 import { ScrollView } from "react-native";
 import { useTranslation } from "react-i18next";
-import { Wrench } from "@/components/icons/material-icons";
+import { Wrench } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { ExpandableBadge } from "@/components/message";
+import { useIsCompactFormFactor } from "@/constants/layout";
 import { type OverviewSummary, type OverviewToolCallGroup } from "./model";
-import type { ExpandAllCommand } from "@/agent-stream/view";
+import { OverviewToolCallGroupSheet } from "./sheet";
 
 interface OverviewGroupProps {
   group: OverviewToolCallGroup;
   expanded: boolean;
   isLastInSequence: boolean;
   onExpandedChange: (groupId: string, expanded: boolean) => void;
-  children: (expandAllCommand: ExpandAllCommand | null) => ReactNode;
-  expandAllCommand?: ExpandAllCommand | null;
+  children: ReactNode;
 }
 
 const TOOL_CALL_GROUP_MAX_HEIGHT = 400;
@@ -42,7 +42,7 @@ function useOverviewSummary(summary: OverviewSummary): string {
       [summary.readFileCount, "toolCallGroup.readFiles"],
       [summary.searchCount, "toolCallGroup.searches"],
       [summary.otherToolCount, "toolCallGroup.otherTools"],
-      [summary.ottoCallCount, "toolCallGroup.ottoCalls"],
+      [summary.paseoCallCount, "toolCallGroup.paseoCalls"],
     ] as const;
     for (const [count, key] of entries) {
       if (count > 0) {
@@ -59,37 +59,19 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
   isLastInSequence,
   onExpandedChange,
   children,
-  expandAllCommand,
 }: OverviewGroupProps) {
   const scrollRef = useRef<ScrollView>(null);
+  const isCompact = useIsCompactFormFactor();
   const aggregateSummary = useOverviewSummary(group.summary);
-  const [childExpandAllCommand, setChildExpandAllCommand] = useState<ExpandAllCommand | null>(null);
-  const effectiveExpanded = expandAllCommand?.expanded ?? expanded;
   const scrollToLatest = useCallback(() => {
     scrollRef.current?.scrollToEnd({ animated: false });
   }, []);
   const toggle = useCallback(() => {
-    onExpandedChange(group.run.id, !effectiveExpanded);
-  }, [effectiveExpanded, group.run.id, onExpandedChange]);
-  const expandAll = useCallback(() => {
-    setChildExpandAllCommand((current) => ({
-      expanded: true,
-      revision: (current?.revision ?? 0) + 1,
-    }));
-    onExpandedChange(group.run.id, true);
-  }, [group.run.id, onExpandedChange]);
-  const collapseAll = useCallback(() => {
-    setChildExpandAllCommand((current) => ({
-      expanded: false,
-      revision: (current?.revision ?? 0) + 1,
-    }));
+    onExpandedChange(group.run.id, !expanded);
+  }, [expanded, group.run.id, onExpandedChange]);
+  const close = useCallback(() => {
     onExpandedChange(group.run.id, false);
   }, [group.run.id, onExpandedChange]);
-  useEffect(() => {
-    if (expandAllCommand) {
-      setChildExpandAllCommand(expandAllCommand);
-    }
-  }, [expandAllCommand]);
   const renderDetails = useCallback(
     () => (
       <ScrollView
@@ -100,11 +82,30 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
         showsVerticalScrollIndicator
         onContentSizeChange={scrollToLatest}
       >
-        {children(childExpandAllCommand)}
+        {children}
       </ScrollView>
     ),
-    [children, childExpandAllCommand, scrollToLatest],
+    [children, scrollToLatest],
   );
+
+  if (isCompact) {
+    return (
+      <>
+        <ExpandableBadge
+          testID="tool-call-group"
+          label={aggregateSummary}
+          icon={Wrench}
+          isLoading={group.isLoading}
+          isExpanded={false}
+          isLastInSequence={isLastInSequence}
+          onToggle={toggle}
+        />
+        <OverviewToolCallGroupSheet visible={expanded} summary={aggregateSummary} onClose={close}>
+          {children}
+        </OverviewToolCallGroupSheet>
+      </>
+    );
+  }
 
   return (
     <ExpandableBadge
@@ -112,13 +113,11 @@ export const OverviewToolCallGroupView = memo(function OverviewToolCallGroupView
       label={aggregateSummary}
       icon={Wrench}
       isLoading={group.isLoading}
-      isExpanded={effectiveExpanded}
+      isExpanded={expanded}
       isLastInSequence={isLastInSequence}
       onToggle={toggle}
       renderDetails={renderDetails}
       borderlessWhenExpanded
-      onExpandAll={expandAll}
-      onCollapseAll={collapseAll}
     />
   );
 });

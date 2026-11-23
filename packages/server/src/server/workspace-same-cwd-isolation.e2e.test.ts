@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { DaemonClient } from "./test-utils/index.js";
-import { createTestOttoDaemon } from "./test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { createTestLogger } from "../test-utils/test-logger.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { getAskModeConfig } from "./daemon-e2e/agent-configs.js";
@@ -23,27 +23,9 @@ import {
   createPersistedWorkspaceRecord,
 } from "./workspace-registry.js";
 
-/**
- * Temp-dir teardown that cannot fail the test it is cleaning up after.
- *
- * On Windows a just-closed daemon can still hold handles under the workspace
- * directory for a moment, so a bare `rmSync` throws EPERM from `finally` - which
- * replaces the real assertion failure (or success) with an unrelated teardown
- * error. Retry briefly, then give up: a leaked temp dir is the OS's problem, a
- * masked test result is ours.
- */
-function removeTempDir(dir: string): void {
-  try {
-    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
-  } catch {
-    // Intentionally ignored - see above.
-  }
-}
-
 const WORKSPACE_A = "wks_same_cwd_a";
 const WORKSPACE_B = "wks_same_cwd_b";
 const LEGACY_OWNER_WORKSPACE = "wks_legacy_owner";
-const LEGACY_SIBLING_WORKSPACE = "wks_legacy_sibling";
 const PERMISSION_WAIT_MS = 15_000;
 const SNAPSHOT_STORM_PROVIDER_COUNT = 18;
 const SNAPSHOT_STORM_MODELS_PER_PROVIDER = 150;
@@ -122,7 +104,7 @@ function createSnapshotStormClients(): SnapshotStormProviderClient[] {
 }
 
 async function createSnapshotStormDaemon(clients: SnapshotStormProviderClient[]) {
-  return createTestOttoDaemon({
+  return createTestPaseoDaemon({
     mcpEnabled: false,
     isDev: true,
     agentClients: {
@@ -166,14 +148,14 @@ function collectProviderSnapshotUpdateBytes(client: DaemonClient): {
 }
 
 // Seed two active workspaces that share one cwd, so we can prove agent
-// ownership and status stay workspaceId-scoped - a sibling that owns nothing
+// ownership and status stay workspaceId-scoped — a sibling that owns nothing
 // active stays done. Both registry files must exist on disk before the daemon starts:
 // bootstrapWorkspaceRegistries skips materialization when both files are
 // present, leaving these seeded records untouched.
-function seedSameCwdWorkspaces(): { ottoHomeRoot: string; cwd: string } {
-  const ottoHomeRoot = mkdtempSync(path.join(tmpdir(), "otto-same-cwd-home-"));
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-same-cwd-dir-"));
-  const projectsDir = path.join(ottoHomeRoot, ".otto", "projects");
+function seedSameCwdWorkspaces(): { paseoHomeRoot: string; cwd: string } {
+  const paseoHomeRoot = mkdtempSync(path.join(tmpdir(), "paseo-same-cwd-home-"));
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-same-cwd-dir-"));
+  const projectsDir = path.join(paseoHomeRoot, ".paseo", "projects");
   mkdirSync(projectsDir, { recursive: true });
 
   const project = createPersistedProjectRecord({
@@ -211,14 +193,14 @@ function seedSameCwdWorkspaces(): { ottoHomeRoot: string; cwd: string } {
     JSON.stringify([workspaceA, workspaceB]),
   );
 
-  return { ottoHomeRoot, cwd };
+  return { paseoHomeRoot, cwd };
 }
 
-async function seedWorkspaceWithLegacyAgent(): Promise<{ ottoHomeRoot: string; cwd: string }> {
-  const ottoHomeRoot = mkdtempSync(path.join(tmpdir(), "otto-legacy-agent-home-"));
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-legacy-agent-dir-"));
-  const ottoHome = path.join(ottoHomeRoot, ".otto");
-  const projectsDir = path.join(ottoHome, "projects");
+async function seedWorkspaceWithLegacyAgent(): Promise<{ paseoHomeRoot: string; cwd: string }> {
+  const paseoHomeRoot = mkdtempSync(path.join(tmpdir(), "paseo-legacy-agent-home-"));
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-legacy-agent-dir-"));
+  const paseoHome = path.join(paseoHomeRoot, ".paseo");
+  const projectsDir = path.join(paseoHome, "projects");
   mkdirSync(projectsDir, { recursive: true });
 
   const project = createPersistedProjectRecord({
@@ -238,25 +220,11 @@ async function seedWorkspaceWithLegacyAgent(): Promise<{ ottoHomeRoot: string; c
     createdAt: "2026-03-01T00:00:00.000Z",
     updatedAt: "2026-03-01T00:00:00.000Z",
   });
-  // A pre-guard same-cwd duplicate. These can no longer be created (the daemon
-  // refuses a second visible workspace on an occupied directory) but they still
-  // exist on disk for anyone who accumulated them before 2026-07-16, so seeding
-  // is now the only honest way to reach this state - and the reason the legacy
-  // backfill still has to attribute by workspaceId rather than by cwd.
-  const sibling = createPersistedWorkspaceRecord({
-    workspaceId: LEGACY_SIBLING_WORKSPACE,
-    projectId: project.projectId,
-    cwd,
-    kind: "directory",
-    displayName: "duplicate",
-    createdAt: "2026-03-02T00:00:00.000Z",
-    updatedAt: "2026-03-02T00:00:00.000Z",
-  });
 
   writeFileSync(path.join(projectsDir, "projects.json"), JSON.stringify([project]));
-  writeFileSync(path.join(projectsDir, "workspaces.json"), JSON.stringify([workspace, sibling]));
+  writeFileSync(path.join(projectsDir, "workspaces.json"), JSON.stringify([workspace]));
 
-  const agentStorage = new AgentStorage(path.join(ottoHome, "agents"), createTestLogger());
+  const agentStorage = new AgentStorage(path.join(paseoHome, "agents"), createTestLogger());
   await agentStorage.initialize();
   await agentStorage.upsert({
     id: "legacy-cwd-only-agent",
@@ -276,7 +244,7 @@ async function seedWorkspaceWithLegacyAgent(): Promise<{ ottoHomeRoot: string; c
     archivedAt: null,
   });
 
-  return { ottoHomeRoot, cwd };
+  return { paseoHomeRoot, cwd };
 }
 
 async function statusByWorkspaceId(client: DaemonClient): Promise<Map<string, string>> {
@@ -311,9 +279,9 @@ async function waitForPermission(client: DaemonClient, agentId: string) {
   return parked;
 }
 
-test("daemon bootstrap migrates cwd-only legacy agents onto one same-cwd sibling only", async () => {
-  const { ottoHomeRoot, cwd } = await seedWorkspaceWithLegacyAgent();
-  const daemon = await createTestOttoDaemon({ ottoHomeRoot });
+test("daemon bootstrap migrates cwd-only legacy agents before same-cwd workspaces are added", async () => {
+  const { paseoHomeRoot, cwd } = await seedWorkspaceWithLegacyAgent();
+  const daemon = await createTestPaseoDaemon({ paseoHomeRoot });
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${daemon.port}/ws`,
     appVersion: "0.1.82",
@@ -321,46 +289,44 @@ test("daemon bootstrap migrates cwd-only legacy agents onto one same-cwd sibling
 
   try {
     await client.connect();
-
-    // The backfill attributes the cwd-only agent to the older workspace and only
-    // that one. Its same-cwd sibling owns nothing, so its status is done -
-    // status is per id, never shared across same-cwd workspaces.
     expect(await legacyAgentWorkspaceId(client)).toBe(LEGACY_OWNER_WORKSPACE);
-    expect(await agentIdsOwnedByWorkspace(client, LEGACY_OWNER_WORKSPACE)).toEqual([
-      "legacy-cwd-only-agent",
-    ]);
-    expect(await agentIdsOwnedByWorkspace(client, LEGACY_SIBLING_WORKSPACE)).toEqual([]);
     expect(await statusByWorkspaceId(client)).toEqual(
-      new Map([
-        [LEGACY_OWNER_WORKSPACE, "running"],
-        [LEGACY_SIBLING_WORKSPACE, "done"],
-      ]),
+      new Map([[LEGACY_OWNER_WORKSPACE, "running"]]),
     );
 
-    // Pre-guard duplicates are tolerated; adding another is not. The registry is
-    // unchanged by the refusal.
     const created = await client.createWorkspace({
       source: { kind: "directory", path: cwd, projectId: "prj_legacy_agent" },
       title: "Fresh same-cwd workspace",
     });
-    expect(created.workspace).toBeNull();
-    expect(created.errorCode).toBe("workspace_directory_occupied");
+    const createdWorkspaceId = created.workspace?.id;
+    if (!createdWorkspaceId) {
+      throw new Error(created.error ?? "Expected same-cwd workspace to be created");
+    }
+
+    // The migrated legacy agent stays owned by LEGACY_OWNER. The freshly created
+    // same-cwd workspace owns nothing, so its status is done — status is per id,
+    // never shared across same-cwd workspaces.
+    expect(await legacyAgentWorkspaceId(client)).toBe(LEGACY_OWNER_WORKSPACE);
+    expect(await agentIdsOwnedByWorkspace(client, LEGACY_OWNER_WORKSPACE)).toEqual([
+      "legacy-cwd-only-agent",
+    ]);
+    expect(await agentIdsOwnedByWorkspace(client, createdWorkspaceId)).toEqual([]);
     expect(await statusByWorkspaceId(client)).toEqual(
       new Map([
         [LEGACY_OWNER_WORKSPACE, "running"],
-        [LEGACY_SIBLING_WORKSPACE, "done"],
+        [createdWorkspaceId, "done"],
       ]),
     );
   } finally {
     await client.close().catch(() => undefined);
     await daemon.close();
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 });
 
 test("workspace.create directory source with firstAgentContext generates a daemon-visible workspace title", async () => {
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-named-local-dir-"));
-  const daemon = await createTestOttoDaemon({
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-named-local-dir-"));
+  const daemon = await createTestPaseoDaemon({
     agentClients: { mock: new MockLoadTestAgentClient() },
   });
   const client = new DaemonClient({
@@ -392,12 +358,12 @@ test("workspace.create directory source with firstAgentContext generates a daemo
   } finally {
     await client.close().catch(() => undefined);
     await daemon.close();
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 20_000);
 
 test("local workspace auto-title does not broadcast provider snapshot warm-up to clients", async () => {
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-title-snapshot-storm-"));
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-title-snapshot-storm-"));
   const stormClients = createSnapshotStormClients();
   const daemon = await createSnapshotStormDaemon(stormClients);
   const client = new DaemonClient({
@@ -408,6 +374,7 @@ test("local workspace auto-title does not broadcast provider snapshot warm-up to
 
   try {
     await client.connect();
+    await client.observeEvents(["providers_snapshot_update"]).ready;
     await client.getProvidersSnapshot({ cwd });
     await expect
       .poll(
@@ -440,17 +407,13 @@ test("local workspace auto-title does not broadcast provider snapshot warm-up to
     snapshotUpdates.unsubscribe();
     await client.close().catch(() => undefined);
     await daemon.close();
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 20_000);
 
 test("create_agent_request with workspaceId does not retitle an existing workspace", async () => {
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-agent-submit-title-"));
-  // isDev, because "mock" only exists in DEV_AGENT_PROVIDER_DEFINITIONS and
-  // buildRegistry drops an injected agentClient that has no definition to
-  // attach to - so without this the spawn below fails provider resolution.
-  const daemon = await createTestOttoDaemon({
-    isDev: true,
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-agent-submit-title-"));
+  const daemon = await createTestPaseoDaemon({
     agentClients: { mock: new MockLoadTestAgentClient() },
   });
   const client = new DaemonClient({
@@ -487,22 +450,13 @@ test("create_agent_request with workspaceId does not retitle an existing workspa
   } finally {
     await client.close().catch(() => undefined);
     await daemon.close();
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 20_000);
 
-// One directory = one live workspace: creating a second visible workspace on an
-// occupied directory is refused, and refusing must not disturb the occupant.
-// (Before 2026-07-16 this test created a second and third same-cwd workspace and
-// expected success; the guard now makes that the wrong spec. Isolation across
-// same-cwd siblings is still covered - by the seeded pre-guard duplicates in the
-// tests below, which is the state that legitimately still exists on disk.)
-test("refuses a second same-cwd local workspace without disturbing the occupant", async () => {
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-running-same-cwd-create-"));
-  // isDev for the same reason as the retitle test above: "mock" is a dev-only
-  // provider definition, and an injected client alone does not register it.
-  const daemon = await createTestOttoDaemon({
-    isDev: true,
+test("creating another same-cwd local workspace keeps running status on the owning workspace only", async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-running-same-cwd-create-"));
+  const daemon = await createTestPaseoDaemon({
     agentClients: { mock: new MockLoadTestAgentClient() },
   });
   const client = new DaemonClient({
@@ -522,6 +476,15 @@ test("refuses a second same-cwd local workspace without disturbing the occupant"
       throw new Error(first.error ?? "Expected first workspace to be created");
     }
 
+    const second = await client.createWorkspace({
+      source: { kind: "directory", path: cwd },
+      title: "Second same-cwd workspace",
+    });
+    const secondWorkspaceId = second.workspace?.id;
+    if (!secondWorkspaceId) {
+      throw new Error(second.error ?? "Expected second workspace to be created");
+    }
+
     const agent = await client.createAgent({
       provider: "mock",
       cwd,
@@ -533,29 +496,42 @@ test("refuses a second same-cwd local workspace without disturbing the occupant"
 
     await client.waitForAgentUpsert(agent.id, (snapshot) => snapshot.status === "running", 15_000);
 
-    // The guard rejects, naming the occupant so the client can steer to it.
-    const second = await client.createWorkspace({
-      source: { kind: "directory", path: cwd },
-      title: "Second same-cwd workspace",
-    });
-    expect(second.workspace).toBeNull();
-    expect(second.errorCode).toBe("workspace_directory_occupied");
-    expect(second.error).toContain("First same-cwd workspace");
+    // Only the workspace that owns the agent is running. The same-cwd sibling
+    // owns nothing active and stays done — status never fans out across a cwd.
+    expect(await statusByWorkspaceId(client)).toEqual(
+      new Map([
+        [firstWorkspaceId, "running"],
+        [secondWorkspaceId, "done"],
+      ]),
+    );
 
-    // A refused create is inert: the occupant keeps running and no second row
-    // appeared for it to fan out to.
+    const third = await client.createWorkspace({
+      source: { kind: "directory", path: cwd },
+      title: "Third same-cwd workspace",
+    });
+    const thirdWorkspaceId = third.workspace?.id;
+    if (!thirdWorkspaceId) {
+      throw new Error(third.error ?? "Expected third workspace to be created");
+    }
+
     expect((await client.fetchAgent({ agentId: agent.id }))?.agent.status).toBe("running");
-    expect(await statusByWorkspaceId(client)).toEqual(new Map([[firstWorkspaceId, "running"]]));
+    expect(await statusByWorkspaceId(client)).toEqual(
+      new Map([
+        [firstWorkspaceId, "running"],
+        [secondWorkspaceId, "done"],
+        [thirdWorkspaceId, "done"],
+      ]),
+    );
   } finally {
     await client.close().catch(() => undefined);
     await daemon.close();
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 30_000);
 
 test("two workspaces sharing one cwd compute agent status per workspaceId", async () => {
-  const { ottoHomeRoot, cwd } = seedSameCwdWorkspaces();
-  const daemon = await createTestOttoDaemon({ ottoHomeRoot });
+  const { paseoHomeRoot, cwd } = seedSameCwdWorkspaces();
+  const daemon = await createTestPaseoDaemon({ paseoHomeRoot });
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${daemon.port}/ws`,
     appVersion: "0.1.82",
@@ -574,7 +550,7 @@ test("two workspaces sharing one cwd compute agent status per workspaceId", asyn
 
     // 1. Agent created in workspace A carries workspaceId A. Ask mode + a
     //    write parks the agent on a pending permission, which drives the
-    //    "needs_input" signal onto workspace A only - its same-cwd sibling B
+    //    "needs_input" signal onto workspace A only — its same-cwd sibling B
     //    owns nothing and stays done.
     const agentA = await client.createAgent({
       ...getAskModeConfig("codex"),
@@ -600,7 +576,7 @@ test("two workspaces sharing one cwd compute agent status per workspaceId", asyn
       ]),
     );
 
-    // 2. Terminal created in A is visible in A's list, but never in B's -
+    // 2. Terminal created in A is visible in A's list, but never in B's —
     //    exercises the workspaceId terminal filter at the daemon boundary.
     const createdTerminal = await client.createTerminal(cwd, "A terminal", undefined, {
       workspaceId: WORKSPACE_A,
@@ -618,7 +594,7 @@ test("two workspaces sharing one cwd compute agent status per workspaceId", asyn
     expect(listForB.terminals.some((terminal) => terminal.id === terminalId)).toBe(false);
 
     // 3. Agent created in workspace B carries workspaceId B and parks too. Now
-    //    each workspace owns its own parked agent, so both read needs_input -
+    //    each workspace owns its own parked agent, so both read needs_input —
     //    by per-id ownership, not by sharing a cwd.
     const agentB = await client.createAgent({
       ...getAskModeConfig("codex"),
@@ -648,6 +624,6 @@ test("two workspaces sharing one cwd compute agent status per workspaceId", asyn
   } finally {
     await client.close().catch(() => undefined);
     await daemon.close();
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 180000);

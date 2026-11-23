@@ -1,7 +1,6 @@
 import type { Command } from "commander";
-import { isCompleteGitRemote } from "@otto-code/protocol/git-remote";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
-import { buildDaemonConnectionCommandError, connectToDaemon } from "../utils/client.js";
+import { isCompleteGitRemote } from "@getpaseo/protocol/git-remote";
+import { connectToDaemon } from "../utils/client.js";
 import type { CommandError, OutputSchema, SingleResult } from "../output/index.js";
 import type { CommandOptions } from "../output/with-output.js";
 
@@ -45,18 +44,14 @@ export async function runCloneCommand(
     throw cmdError("INVALID_ARGUMENT", "--protocol is required for owner/repo repository names");
   }
 
-  let client: DaemonClient;
-  try {
-    client = await connectToDaemon({ host: options.host });
-  } catch (err) {
-    throw buildDaemonConnectionCommandError({ host: options.host, error: err });
-  }
+  const client = await connectToDaemon({ target: options.daemonTarget });
 
   if (client.getLastServerInfoMessage()?.features?.projectGithubClone !== true) {
     await client.close().catch(() => {});
     throw cmdError(
       "UNSUPPORTED_BY_HOST",
       "This daemon does not support cloning GitHub repos.",
+      // OTTO(identity)
       "Update the host to a newer Otto version.",
     );
   }

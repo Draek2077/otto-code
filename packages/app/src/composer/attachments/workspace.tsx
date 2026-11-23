@@ -15,7 +15,7 @@ import {
 } from "@/attachments/workspace-attachment-utils";
 import {
   getAttachmentKey,
-  removeSentWorkspaceAttachments,
+  removeSentContextAttachments,
   removeWorkspaceAttachmentsMatching,
 } from "./workspace-cleanup";
 import { useClearReviewDraft } from "@/review/store";
@@ -55,6 +55,7 @@ function getOpenAccessibilityLabel(
   attachment: WorkspaceComposerAttachment,
   t: ReturnType<typeof useTranslation>["t"],
 ): string {
+  if (attachment.kind === "editor_context") return "Open file context"; // OTTO(editor)
   if (attachment.kind === "browser_element") {
     return t("composer.attachments.openBrowserElement");
   }
@@ -64,12 +65,6 @@ function getOpenAccessibilityLabel(
   if (attachment.kind === "chat_history") {
     return "Open chat history attachment";
   }
-  if (attachment.kind === "file_context") {
-    return "Open file context attachment";
-  }
-  if (attachment.kind === "rendered_document") {
-    return "Open document annotation";
-  }
   return t("composer.attachments.openReview");
 }
 
@@ -77,6 +72,7 @@ function getRemoveAccessibilityLabel(
   attachment: WorkspaceComposerAttachment,
   t: ReturnType<typeof useTranslation>["t"],
 ): string {
+  if (attachment.kind === "editor_context") return "Remove file context"; // OTTO(editor)
   if (attachment.kind === "browser_element") {
     return t("composer.attachments.removeBrowserElement");
   }
@@ -86,24 +82,12 @@ function getRemoveAccessibilityLabel(
   if (attachment.kind === "chat_history") {
     return "Remove chat history attachment";
   }
-  if (attachment.kind === "file_context") {
-    return "Remove file context attachment";
-  }
-  if (attachment.kind === "rendered_document") {
-    return "Remove document annotation";
-  }
   return t("composer.attachments.removeReview");
 }
 
 function getPillTestID(attachment: WorkspaceComposerAttachment): string {
   if (attachment.kind === "chat_history") {
     return "composer-chat-history-attachment-pill";
-  }
-  if (attachment.kind === "file_context") {
-    return "composer-file-context-attachment-pill";
-  }
-  if (attachment.kind === "rendered_document") {
-    return "composer-rendered-document-attachment-pill";
   }
   return "composer-review-attachment-pill";
 }
@@ -174,7 +158,7 @@ function useWorkspaceAttachmentBinding({
           clearReviewDraft({ key: attachment.reviewDraftKey });
         }
       }
-      removeSentWorkspaceAttachments(attachments);
+      removeSentContextAttachments(attachments);
     },
     [clearReviewDraft],
   );
@@ -183,28 +167,27 @@ function useWorkspaceAttachmentBinding({
     ({ selectedAttachments: current, index }: RemoveWorkspaceAttachmentInput) => {
       const selected = current[index];
       if (isWorkspaceAttachment(selected)) {
-        if (selected.kind === "review") {
-          clearReviewDraft({ key: selected.reviewDraftKey });
-          removeWorkspaceAttachmentsMatching(getAttachmentKey(selected));
-          suppressWorkspaceAttachment(selected);
+        if (
+          selected.kind === "browser_element" ||
+          selected.kind === "editor_context" || // OTTO(editor)
+          selected.kind === "chat_history" ||
+          isPullRequestContextAttachment(selected)
+        ) {
+          const selectedKey = getAttachmentKey(selected);
+          removeWorkspaceAttachmentsMatching(selectedKey);
           return true;
         }
-        removeWorkspaceAttachmentsMatching(getAttachmentKey(selected));
+        suppressWorkspaceAttachment(selected);
         return true;
       }
       return false;
     },
-    [clearReviewDraft, suppressWorkspaceAttachment],
+    [suppressWorkspaceAttachment],
   );
 
   const openAttachment = useCallback(
     ({ attachment }: OpenWorkspaceAttachmentInput) => {
-      if (
-        !isWorkspaceAttachment(attachment) ||
-        (attachment.kind !== "review" &&
-          attachment.kind !== "file_context" &&
-          attachment.kind !== "rendered_document")
-      ) {
+      if (!isWorkspaceAttachment(attachment) || attachment.kind !== "review") {
         return false;
       }
       onOpenWorkspaceAttachment?.(attachment);

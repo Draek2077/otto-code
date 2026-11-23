@@ -20,34 +20,50 @@ describe("desktop sidebar layout", () => {
     ).toBe(false);
   });
 
-  it("gives the sidebar the top-left corner only while it covers the window controls", () => {
+  it("keeps the sidebar toggle window-owned beside left window controls", () => {
     expect(
       resolveDesktopAppChromeLayout({
         desktopSidebarRendered: true,
         hasTopLeftWindowControls: true,
+        sidebarControlsEnabled: true,
       }),
     ).toEqual({
       sidebarCorners: "top-left",
       contentCorners: "top-right",
+      sidebarToggleOwner: "window",
     });
     expect(
       resolveDesktopAppChromeLayout({
         desktopSidebarRendered: true,
         hasTopLeftWindowControls: false,
+        sidebarControlsEnabled: true,
       }),
     ).toEqual({
       sidebarCorners: "none",
       contentCorners: "both",
+      sidebarToggleOwner: "content",
     });
     expect(
       resolveDesktopAppChromeLayout({
         desktopSidebarRendered: false,
         hasTopLeftWindowControls: true,
+        sidebarControlsEnabled: true,
       }),
     ).toEqual({
       sidebarCorners: "none",
       contentCorners: "both",
+      sidebarToggleOwner: "window",
     });
+  });
+
+  it("hides the window-owned sidebar toggle when app chrome is suppressed", () => {
+    expect(
+      resolveDesktopAppChromeLayout({
+        desktopSidebarRendered: false,
+        hasTopLeftWindowControls: true,
+        sidebarControlsEnabled: false,
+      }).sidebarToggleOwner,
+    ).toBe("none");
   });
 
   it("clamps a persisted wide sidebar to preserve the center pane", () => {
@@ -63,9 +79,7 @@ describe("desktop sidebar layout", () => {
   });
 
   it("yields app navigation when settings needs the shell width", () => {
-    const settingsMinimum = resolveDesktopAppContentMinimum({
-      isSettingsRoute: true,
-    });
+    const settingsMinimum = resolveDesktopAppContentMinimum({ isSettingsRoute: true });
     expect(settingsMinimum).toBe(720);
     expect(
       canDesktopAppSidebarShare({
@@ -77,16 +91,10 @@ describe("desktop sidebar layout", () => {
   });
 
   it("imposes no content minimum outside settings", () => {
-    expect(
-      resolveDesktopAppContentMinimum({
-        isSettingsRoute: false,
-      }),
-    ).toBe(0);
+    expect(resolveDesktopAppContentMinimum({ isSettingsRoute: false })).toBe(0);
     expect(
       canDesktopAppSidebarShare({
-        contentMinimumWidth: resolveDesktopAppContentMinimum({
-          isSettingsRoute: false,
-        }),
+        contentMinimumWidth: resolveDesktopAppContentMinimum({ isSettingsRoute: false }),
         requestedSidebarWidth: 320,
         viewportWidth: 751,
       }),

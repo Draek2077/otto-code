@@ -1,7 +1,10 @@
 import { Platform } from "react-native";
 import { getElectronHost } from "@/desktop/electron/host";
 import type { BrowserKeyboardPolicy } from "@/desktop/browser/shortcuts";
-import type { SessionInboundMessage, SessionOutboundMessage } from "@otto-code/protocol/messages";
+import type { BrowserFaviconLookup } from "@/otto/browser/favicon-cache"; // OTTO(browser-favicon)
+import type { WakeWordBridge } from "@/otto/speech/wake/bridge"; // OTTO(wake-word)
+import type { ZoomRecorderBridge } from "@/otto/zoom-recorder/bridge"; // OTTO(zoom-recorder)
+import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 type BrowserAutomationExecuteRequest = Extract<
   SessionOutboundMessage,
@@ -58,11 +61,6 @@ export interface DesktopNotificationBridge {
   sendNotification?: (
     payload: string | { title: string; body?: string; data?: Record<string, unknown> },
   ) => Promise<boolean>;
-  reconcile?: (input: {
-    serverId: string;
-    agentIds: string[];
-    workspaceIds: string[];
-  }) => Promise<void>;
 }
 
 export interface DesktopOpenerBridge {
@@ -89,81 +87,6 @@ export interface DesktopEditorBridge {
   openTarget?: (input: DesktopEditorOpenTargetInput) => Promise<void>;
 }
 
-export interface DesktopWakeWordBridge {
-  capabilities?: () => Promise<{
-    available: boolean;
-    safePhraseSupported: boolean;
-    modelVersion?: string;
-  }>;
-  start?: (input: { phrase: string; sensitivity: number }) => Promise<void>;
-  audio?: (pcm: string) => Promise<void>;
-  stop?: () => Promise<void>;
-}
-
-export type DesktopZoomRecorderState =
-  | "unavailable"
-  | "idle"
-  | "setup"
-  | "recording"
-  | "transcribing"
-  | "ready"
-  | "error";
-
-export interface DesktopZoomRecorderStatus {
-  available: boolean;
-  enabled: boolean;
-  modelReady: boolean;
-  modelBytes: number;
-  state: DesktopZoomRecorderState;
-  detail: string;
-  ownerPid?: number;
-}
-
-export interface DesktopZoomRecorderBridge {
-  status?: () => Promise<DesktopZoomRecorderStatus>;
-  enable?: () => Promise<DesktopZoomRecorderStatus>;
-  disable?: () => Promise<DesktopZoomRecorderStatus>;
-  takeOver?: () => Promise<DesktopZoomRecorderStatus>;
-  deleteModel?: () => Promise<DesktopZoomRecorderStatus>;
-  listPendingTranscripts?: () => Promise<
-    Array<{ token: string; content: string; occurredAt: string }>
-  >;
-  acknowledgeTranscript?: (token: string) => Promise<void>;
-}
-
-export type DesktopLocalMeetingTranscriptDeliveryState =
-  | "local_only"
-  | "waiting_for_secure_connection"
-  | "delivery_failed";
-
-export interface DesktopLocalMeetingTranscript {
-  id: string;
-  provider: string;
-  title: string;
-  content: string;
-  occurredAt: string;
-  createdAt: string;
-  updatedAt: string;
-  deliveryState: DesktopLocalMeetingTranscriptDeliveryState;
-}
-
-export interface DesktopMeetingTranscriptsBridge {
-  listLocal?: () => Promise<DesktopLocalMeetingTranscript[]>;
-  createLocal?: (input: {
-    provider: string;
-    title: string;
-    content: string;
-    occurredAt: string;
-    deliveryState: DesktopLocalMeetingTranscriptDeliveryState;
-  }) => Promise<DesktopLocalMeetingTranscript>;
-  updateLocal?: (input: {
-    id: string;
-    title?: string;
-    content?: string;
-  }) => Promise<DesktopLocalMeetingTranscript | null>;
-  deleteLocal?: (id: string) => Promise<boolean>;
-}
-
 export interface DesktopWebUtilsBridge {
   getPathForFile?: (file: File) => string;
 }
@@ -171,15 +94,10 @@ export interface DesktopWebUtilsBridge {
 export interface DesktopMenuBridge {
   showContextMenu?: (input?: { kind?: "terminal"; hasSelection?: boolean }) => Promise<void>;
   setCapturingShortcut?: (capturing: boolean) => Promise<void>;
-  /** Applies an opaque spelling operation from the current native right click. */
-  applySpellcheckAction?: (action: Record<string, unknown>) => Promise<boolean>;
 }
 
 export interface DesktopWindowChromeUpdate {
   backgroundColor?: string;
-  /** The window controls' glyph colour. Otto themes the overlay controls to
-   *  match the title bar rather than leaving them at the OS default. */
-  foregroundColor?: string;
   trafficLightOffsetY?: number;
 }
 
@@ -196,8 +114,6 @@ export interface DesktopWindowBridge {
     handler: (event: TEvent) => void,
   ) => Promise<() => void> | (() => void);
   setBadgeCount?: (count?: number) => Promise<void>;
-  /** Flash/highlight the tray icon while a chat needs the user. Otto-only. */
-  setTrayAttention?: (active: boolean) => Promise<void>;
   onDragDropEvent?: <TEvent = unknown>(
     handler: (event: TEvent) => void,
   ) => Promise<() => void> | (() => void);
@@ -205,8 +121,6 @@ export interface DesktopWindowBridge {
 
 export interface DesktopWindowModuleBridge {
   openNew?: (options?: { pendingOpenProjectPath?: string | null }) => Promise<void>;
-  /** Tells main the renderer has painted, so it can reveal the window. */
-  signalReady?: () => void;
   getCurrentWindow?: () => DesktopWindowBridge;
 }
 
@@ -219,7 +133,8 @@ export interface DesktopAgentNavigationBridge {
 }
 
 export type DesktopBrowserShortcutEvent =
-  | { browserId?: string; action: "focus-url" | "find" }
+  | { browserId?: string; action: "focus-url" }
+  | { browserId: string; action: "find-in-page" } // OTTO(browser-actions): routed to the matching interactive guest.
   | { browserId: string; action: "new-tab" };
 
 export interface DesktopBrowserNewTabRequestEvent {
@@ -234,6 +149,7 @@ export interface DesktopAttachedBrowserRegistration {
 }
 
 export interface DesktopBrowserBridge {
+  resolveFavicon?: (input: BrowserFaviconLookup) => Promise<string | null>; // OTTO(browser-favicon): bounded main-owned image resolution.
   setShortcutPolicy?: (input: BrowserKeyboardPolicy) => Promise<void>;
   readonly profilePartition?: string;
   registerAttachedBrowser?: (input: DesktopAttachedBrowserRegistration) => Promise<void>;
@@ -255,27 +171,6 @@ export interface DesktopBrowserBridge {
   ) => Promise<string | null>;
   /** Copy element text and/or an image to the system clipboard from main. */
   copyElement?: (payload: { text?: string; imageDataUrl?: string }) => Promise<boolean>;
-  /**
-   * Fetch a tab's favicon in main with the tab's own session and return it as
-   * a bounded data: URL, or null when there is no usable icon. The renderer's
-   * CSP blocks remote images, so this is the only way a favicon reaches it.
-   */
-  resolveFavicon?: (input: {
-    browserId: string;
-    faviconUrl: string | null;
-    pageUrl: string | null;
-  }) => Promise<string | null>;
-}
-
-export interface DesktopPdfBridge {
-  /**
-   * Render a standalone HTML document to PDF bytes, base64-encoded.
-   *
-   * Optional like every other bridge member: an older desktop shell simply
-   * does not have it, and the caller omits the affordance rather than
-   * offering one that cannot work.
-   */
-  printHtml?: (input: { html: string }) => Promise<string>;
 }
 
 export interface DesktopInvokeBridge {
@@ -283,26 +178,22 @@ export interface DesktopInvokeBridge {
 }
 
 export interface DesktopHostBridge {
+  documentExport?: { print(html: string): Promise<string> }; // OTTO(editor): optional only until the desktop shell is updated.
+  wakeWord?: WakeWordBridge; // OTTO(wake-word): private device IPC, never relay identity.
+  zoomRecorder?: ZoomRecorderBridge; // OTTO(zoom-recorder): host-local capture and transcript library.
+  // OTTO(visualizer): the native owner can hide while Chromium still considers the page visible.
+  visualizerWindow?: { getSnapshot(): boolean; subscribe(listener: () => void): () => void };
   platform?: string;
-  arch?: string;
   windowChromeMode?: string;
   invoke?: DesktopInvokeBridge["invoke"];
   getPendingOpenProject?: () => Promise<string | null>;
-  getPendingOpenTarget?: () => Promise<{
-    kind: "directory-shell" | "file";
-    path: string;
-  } | null>;
   agentNavigation?: DesktopAgentNavigationBridge;
   events?: DesktopEventsBridge;
   window?: DesktopWindowModuleBridge;
   dialog?: DesktopDialogBridge;
-  pdf?: DesktopPdfBridge;
   notification?: DesktopNotificationBridge;
   opener?: DesktopOpenerBridge;
   editor?: DesktopEditorBridge;
-  wakeWord?: DesktopWakeWordBridge;
-  zoomRecorder?: DesktopZoomRecorderBridge;
-  meetingTranscripts?: DesktopMeetingTranscriptsBridge;
   webUtils?: DesktopWebUtilsBridge;
   menu?: DesktopMenuBridge;
   browser?: DesktopBrowserBridge;
@@ -310,7 +201,7 @@ export interface DesktopHostBridge {
 
 declare global {
   interface Window {
-    ottoDesktop?: DesktopHostBridge;
+    paseoDesktop?: DesktopHostBridge;
   }
 }
 

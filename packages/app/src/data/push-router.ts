@@ -1,21 +1,14 @@
+import type { OwnedSubscription } from "@getpaseo/client";
 import type { Query, QueryCacheNotifyEvent, QueryClient, QueryKey } from "@tanstack/react-query";
 import type {
-  CodeDiagnostic,
   ListTerminalsResponse,
   MutableDaemonConfig,
   SessionOutboundMessage,
-} from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/messages";
 import { agentCommandsQueryRoot } from "@/hooks/agent-commands-query";
 import { shareCheckoutDiff } from "@/git/diff-sharing";
 import { orderCheckoutDiffFiles } from "@/git/diff-order";
-import { applyBrainStatusChanged, invalidateBrainStatusAfterReconnect } from "@/data/brain-status";
-import { applyBrainLogLineAdded, invalidateBrainLogsAfterReconnect } from "@/data/brain-logs";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
-import { applyRunUpdate, applyRunsCleared } from "@/data/runs";
-import { applyOrchestrationGraphsChanged } from "@/data/workflow-graphs";
-import { applyPromptTemplatesChanged } from "@/data/prompt-templates";
-import { useLspActivityStore } from "@/stores/lsp-activity-store";
-import { useLspDiagnosticsStore } from "@/stores/lsp-diagnostics-store";
 import { daemonPairingOfferQueryKey } from "@/data/daemon-pairing";
 import { type ProviderSnapshotCache } from "@/data/provider-snapshot-cache";
 import {
@@ -29,23 +22,12 @@ type ProvidersSnapshotUpdateMessage = Extract<
   SessionOutboundMessage,
   { type: "providers_snapshot_update" }
 >;
-type CheckoutDiffUpdateMessage = Extract<SessionOutboundMessage, { type: "checkout_diff_update" }>;
 type SubscribeCheckoutDiffResponseMessage = Extract<
   SessionOutboundMessage,
   { type: "subscribe_checkout_diff_response" }
 >;
 type StatusMessage = Extract<SessionOutboundMessage, { type: "status" }>;
 type TerminalsChangedMessage = Extract<SessionOutboundMessage, { type: "terminals_changed" }>;
-type ServerDataEventType =
-  | "providers_snapshot_update"
-  | "checkout_diff_update"
-  | "subscribe_checkout_diff_response"
-  | "status"
-  | "terminals_changed"
-  | "runs.updated.notification"
-  | "runs.cleared.notification"
-  | "runs.graphs.changed.notification"
-  | "runs.templates.changed.notification";
 type CheckoutDiffResponsePayload = SubscribeCheckoutDiffResponseMessage["payload"];
 type CheckoutDiffCachePayload = Omit<CheckoutDiffResponsePayload, "subscriptionId">;
 type ListTerminalsPayload = ListTerminalsResponse["payload"];
@@ -54,6 +36,7 @@ interface CheckoutDiffCompare {
   mode: "uncommitted" | "base";
   baseRef?: string;
   ignoreWhitespace?: boolean;
+  includeStructuralSource?: true; // OTTO(structural-diff)
 }
 
 interface CheckoutDiffRoute {
@@ -65,12 +48,20 @@ interface CheckoutDiffRoute {
   compare: CheckoutDiffCompare;
 }
 
+interface CheckoutDiffRegistration extends CheckoutDiffRoute {
+  subscription: OwnedSubscription<CheckoutDiffResponsePayload>;
+}
+
 interface WorkspaceTerminalsRoute {
   domain: "workspaceTerminals";
   enabled: boolean;
   serverId: string;
   cwd: string;
   workspaceId?: string;
+}
+
+interface WorkspaceTerminalsRegistration extends WorkspaceTerminalsRoute {
+  subscription: OwnedSubscription<TerminalsChangedMessage["payload"]>;
 }
 
 type ServerDataRoute = CheckoutDiffRoute | WorkspaceTerminalsRoute;
@@ -82,19 +73,10 @@ export interface ServerDataQueryMeta extends Record<string, unknown> {
 export type ProvidersSnapshotUpdate = ProvidersSnapshotUpdateMessage;
 
 interface ServerDataPushClient {
-  getProvidersSnapshot: import("@otto-code/client/internal/daemon-client").DaemonClient["getProvidersSnapshot"];
-  on<TType extends ServerDataEventType>(
-    type: TType,
-    handler: (message: Extract<SessionOutboundMessage, { type: TType }>) => void,
-  ): () => void;
-  subscribeCheckoutDiff(
-    cwd: string,
-    compare: CheckoutDiffCompare,
-    options: { subscriptionId: string; requestId?: string },
-  ): Promise<CheckoutDiffResponsePayload>;
-  unsubscribeCheckoutDiff(subscriptionId: string): void;
-  subscribeTerminals(input: { cwd: string; workspaceId?: string }): void;
-  unsubscribeTerminals(input: { cwd: string; workspaceId?: string }): void;
+  getProvidersSnapshot: import("@getpaseo/client/internal/daemon-client").DaemonClient["getProvidersSnapshot"];
+  observeEvents: import("@getpaseo/client/internal/daemon-client").DaemonClient["observeEvents"];
+  observeCheckoutDiff: import("@getpaseo/client/internal/daemon-client").DaemonClient["observeCheckoutDiff"];
+  observeTerminals: import("@getpaseo/client/internal/daemon-client").DaemonClient["observeTerminals"];
 }
 
 interface PushRouterInput {
@@ -127,14 +109,6 @@ const RECONNECT_REPAIR_POLICIES: ReconnectRepairPolicy[] = [
     },
   },
   {
-    domain: "brainStatus",
-    invalidate: invalidateBrainStatusAfterReconnect,
-  },
-  {
-    domain: "brainLogs",
-    invalidate: invalidateBrainLogsAfterReconnect,
-  },
-  {
     domain: "daemonPairingOffer",
     invalidate: ({ queryClient, serverId }) => {
       void queryClient.invalidateQueries({ queryKey: daemonPairingOfferQueryKey(serverId) });
@@ -157,52 +131,6 @@ const RECONNECT_REPAIR_POLICIES: ReconnectRepairPolicy[] = [
     },
   },
 ];
-const reconnectSubscriptionRepairsByServerId = new Map<string, Set<() => void>>();
-
-/**
- * How long a workspace's terminal subscription outlives its last observer.
- *
- * The terminals query is `enabled` on route focus, so leaving a workspace drops
- * its observers and coming back adds them again - and the daemon answers every
- * subscribe with a full `terminals_changed` snapshot. Twelve workspace
- * round-trips that changed nothing therefore produced 51-67 of them, which was
- * the largest inbound cost on the navigation path once the redundant timeline
- * fetches were gone.
- *
- * This is a debounce on that churn, not a retention policy: it only delays the
- * unsubscribe, so a round-trip inside the window costs nothing and a workspace
- * genuinely left still stops pushing shortly after. Deliberately short enough
- * that it never becomes a second, competing answer to "how long do we keep
- * workspace state alive" - that question belongs to the workspace deck's
- * mounted set (`screens/workspace/workspace-deck-retention.ts`).
- */
-export const TERMINAL_SUBSCRIPTION_LINGER_MS = 15_000;
-
-/**
- * How long a checkout's diff subscription outlives its last observer.
- *
- * Same debounce as the terminals window above, for the same reason, on a path
- * the user hits far more often. The explorer sidebar unmounts completely when
- * it is toggled shut (`useSidebarSlide` returns null), which takes the Files
- * tree's `useChangedFilePaths` with it - and that hook mounts the *full*
- * checkout diff query, because deciding whether to offer a row's "View changes"
- * needs the changed-path set and the daemon has no lighter RPC for it. So the
- * last observer went away on close, and reopening re-subscribed, and the daemon
- * answers every subscribe with the whole tokenized diff snapshot.
- *
- * Measured on a 1,720-directory fixture with 120 changed files: every single
- * open pulled 3.64 MB over the socket and blocked the main thread for up to
- * 595 ms, on the Files tab, with the Changes tab never opened. The same toggle
- * against a clean tree cost 523 B - so the payload was the whole spike, both
- * the "slow communication" and the dropped frames the report described.
- *
- * This delays the unsubscribe only: a toggle inside the window costs nothing,
- * and a sidebar genuinely left shut stops pushing shortly after. It does not
- * make the snapshot itself any cheaper - reopening after the window still pays
- * full price, which is the separate payload-size problem tracked in the
- * static-code audit's structural items.
- */
-export const CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS = 15_000;
 
 export function checkoutDiffPushRoute(input: {
   enabled: boolean;
@@ -247,10 +175,6 @@ export function invalidateServerDataQueriesAfterReconnect(input: {
   for (const policy of RECONNECT_REPAIR_POLICIES) {
     policy.invalidate(input);
   }
-  for (const repairSubscriptions of reconnectSubscriptionRepairsByServerId.get(input.serverId) ??
-    []) {
-    repairSubscriptions();
-  }
 }
 
 export async function applyProvidersSnapshotUpdate(input: {
@@ -291,49 +215,8 @@ export async function applyProvidersSnapshotUpdate(input: {
 }
 
 export function mountServerDataPushRouter(input: PushRouterInput): () => void {
-  const activeCheckoutDiffSubscriptions = new Map<string, CheckoutDiffRoute>();
-  const activeTerminalSubscriptions = new Map<string, WorkspaceTerminalsRoute>();
-  // Subscriptions whose observers went away but whose unsubscribe has not
-  // fired yet. They stay in `activeTerminalSubscriptions` the whole time, so a
-  // workspace revisited inside the window is a timer cancel rather than an
-  // unsubscribe/subscribe pair.
-  const pendingTerminalUnsubscribes = new Map<string, ReturnType<typeof setTimeout>>();
-  // Same idea for the checkout diff, which the explorer sidebar's Files tree
-  // drops and re-adds on every open/close toggle.
-  const pendingCheckoutDiffUnsubscribes = new Map<string, ReturnType<typeof setTimeout>>();
-
-  function cancelPendingTerminalUnsubscribe(key: string): void {
-    const timer = pendingTerminalUnsubscribes.get(key);
-    if (timer === undefined) {
-      return;
-    }
-    clearTimeout(timer);
-    pendingTerminalUnsubscribes.delete(key);
-  }
-
-  function clearPendingTerminalUnsubscribes(): void {
-    for (const timer of pendingTerminalUnsubscribes.values()) {
-      clearTimeout(timer);
-    }
-    pendingTerminalUnsubscribes.clear();
-  }
-
-  function cancelPendingCheckoutDiffUnsubscribe(subscriptionId: string): void {
-    const timer = pendingCheckoutDiffUnsubscribes.get(subscriptionId);
-    if (timer === undefined) {
-      return;
-    }
-    clearTimeout(timer);
-    pendingCheckoutDiffUnsubscribes.delete(subscriptionId);
-  }
-
-  function clearPendingCheckoutDiffUnsubscribes(): void {
-    for (const timer of pendingCheckoutDiffUnsubscribes.values()) {
-      clearTimeout(timer);
-    }
-    pendingCheckoutDiffUnsubscribes.clear();
-  }
-
+  const activeCheckoutDiffSubscriptions = new Map<string, CheckoutDiffRegistration>();
+  const activeTerminalSubscriptions = new Map<string, WorkspaceTerminalsRegistration>();
   let disposed = false;
 
   function reconcileSubscriptions(
@@ -368,61 +251,22 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
       client: input.client,
       desired: desiredCheckoutDiffSubscriptions,
       serverId: input.serverId,
-      cancelPendingUnsubscribe: cancelPendingCheckoutDiffUnsubscribe,
-      scheduleUnsubscribe: (subscriptionId, route) => {
-        if (pendingCheckoutDiffUnsubscribes.has(subscriptionId)) {
-          return;
-        }
-        pendingCheckoutDiffUnsubscribes.set(
-          subscriptionId,
-          setTimeout(() => {
-            pendingCheckoutDiffUnsubscribes.delete(subscriptionId);
-            if (disposed || activeCheckoutDiffSubscriptions.get(subscriptionId) !== route) {
-              return;
-            }
-            activeCheckoutDiffSubscriptions.delete(subscriptionId);
-            unsubscribeCheckoutDiff(input.client, subscriptionId);
-          }, CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS),
-        );
-      },
+      queryClient: input.queryClient,
     });
     reconcileTerminalSubscriptions({
       active: activeTerminalSubscriptions,
       client: input.client,
       desired: desiredTerminalSubscriptions,
-      cancelPendingUnsubscribe: cancelPendingTerminalUnsubscribe,
-      scheduleUnsubscribe: (key, route) => {
-        if (pendingTerminalUnsubscribes.has(key)) {
-          return;
-        }
-        pendingTerminalUnsubscribes.set(
-          key,
-          setTimeout(() => {
-            pendingTerminalUnsubscribes.delete(key);
-            if (disposed || activeTerminalSubscriptions.get(key) !== route) {
-              return;
-            }
-            activeTerminalSubscriptions.delete(key);
-            input.client.unsubscribeTerminals(workspaceTerminalSubscriptionInput(route));
-          }, TERMINAL_SUBSCRIPTION_LINGER_MS),
-        );
-      },
+      apply: (route, payload) =>
+        applyTerminalsChanged({
+          activeCheckoutDiffSubscriptions,
+          activeTerminalSubscriptions,
+          queryClient: input.queryClient,
+          serverId: input.serverId,
+          route,
+          message: { type: "terminals_changed", payload },
+        }),
     });
-  }
-
-  function resetSubscriptionsAfterReconnect(): void {
-    const fallbackActive = {
-      checkoutDiff: new Map(activeCheckoutDiffSubscriptions),
-      workspaceTerminals: new Map(activeTerminalSubscriptions),
-    };
-    // A pending unsubscribe is for a socket that no longer exists; the daemon
-    // dropped every subscription when it went away. Firing it after the
-    // re-subscribe would tear down the fresh one.
-    clearPendingTerminalUnsubscribes();
-    clearPendingCheckoutDiffUnsubscribes();
-    activeCheckoutDiffSubscriptions.clear();
-    activeTerminalSubscriptions.clear();
-    reconcileSubscriptions(fallbackActive);
   }
 
   const unsubscribeQueryCache = input.queryClient.getQueryCache().subscribe((event) => {
@@ -436,202 +280,131 @@ export function mountServerDataPushRouter(input: PushRouterInput): () => void {
     }
     reconcileSubscriptions();
   });
-  const unsubscribeProviders = input.client.on("providers_snapshot_update", (message) => {
-    void applyProvidersSnapshotUpdate({
-      client: input.client,
-      queryClient: input.queryClient,
-      serverId: input.serverId,
-      message,
-    }).catch(() => {
-      /* Query state owns fetch failures; reconnect/refetch repairs them. */
-    });
-  });
-  const unsubscribeDaemonConfig = input.client.on("status", (message) => {
-    applyDaemonConfigStatus({ queryClient: input.queryClient, serverId: input.serverId, message });
-    applyLspActivityStatus({ serverId: input.serverId, message });
-    applyLspDiagnosticsStatus({ serverId: input.serverId, message });
-    applyBrainStatusChanged({
-      queryClient: input.queryClient,
-      serverId: input.serverId,
-      message,
-    });
-    applyBrainLogLineAdded({ queryClient: input.queryClient, serverId: input.serverId, message });
-  });
-  const unsubscribeCheckoutDiffUpdate = input.client.on("checkout_diff_update", (message) => {
-    applyCheckoutDiffUpdate({
-      activeCheckoutDiffSubscriptions,
-      queryClient: input.queryClient,
-      serverId: input.serverId,
-      message,
-    });
-  });
-  const unsubscribeCheckoutDiffResponse = input.client.on(
-    "subscribe_checkout_diff_response",
-    (message) => {
-      applyCheckoutDiffSubscribeResponse({
-        activeCheckoutDiffSubscriptions,
-        queryClient: input.queryClient,
-        serverId: input.serverId,
-        message,
-      });
+  const events = input.client.observeEvents([
+    "providers_snapshot_update",
+    "status.daemon_config_changed",
+  ]);
+  events.subscribe({
+    snapshot: () => {},
+    update: (message) => {
+      if (message.type === "providers_snapshot_update") {
+        void applyProvidersSnapshotUpdate({
+          client: input.client,
+          queryClient: input.queryClient,
+          serverId: input.serverId,
+          message,
+        }).catch(() => {
+          /* Query state owns fetch failures; reconnect/refetch repairs them. */
+        });
+      }
+      if (message.type === "status")
+        applyDaemonConfigStatus({
+          queryClient: input.queryClient,
+          serverId: input.serverId,
+          message,
+        });
     },
-  );
-  const unsubscribeTerminalsChanged = input.client.on("terminals_changed", (message) => {
-    applyTerminalsChanged({
-      activeCheckoutDiffSubscriptions,
-      activeTerminalSubscriptions,
-      queryClient: input.queryClient,
-      serverId: input.serverId,
-      message,
-    });
   });
-  const unsubscribeRunUpdate = input.client.on("runs.updated.notification", (message) => {
-    applyRunUpdate({
-      queryClient: input.queryClient,
-      serverId: input.serverId,
-      run: message.payload.run,
-    });
-  });
-  const unsubscribeRunsCleared = input.client.on("runs.cleared.notification", (message) => {
-    applyRunsCleared({
-      queryClient: input.queryClient,
-      serverId: input.serverId,
-      runIds: message.payload.runIds,
-    });
-  });
-  const unsubscribeGraphsChanged = input.client.on(
-    "runs.graphs.changed.notification",
-    (message) => {
-      applyOrchestrationGraphsChanged({
-        queryClient: input.queryClient,
-        serverId: input.serverId,
-        graphs: message.payload.graphs,
-      });
-    },
-  );
-  const unsubscribeTemplatesChanged = input.client.on(
-    "runs.templates.changed.notification",
-    (message) => {
-      applyPromptTemplatesChanged({
-        queryClient: input.queryClient,
-        serverId: input.serverId,
-        templates: message.payload.templates,
-      });
-    },
-  );
-  let reconnectSubscriptionRepairs = reconnectSubscriptionRepairsByServerId.get(input.serverId);
-  if (!reconnectSubscriptionRepairs) {
-    reconnectSubscriptionRepairs = new Set();
-    reconnectSubscriptionRepairsByServerId.set(input.serverId, reconnectSubscriptionRepairs);
-  }
-  reconnectSubscriptionRepairs.add(resetSubscriptionsAfterReconnect);
 
   reconcileSubscriptions();
 
   return () => {
     disposed = true;
-    reconnectSubscriptionRepairs.delete(resetSubscriptionsAfterReconnect);
-    if (reconnectSubscriptionRepairs.size === 0) {
-      reconnectSubscriptionRepairsByServerId.delete(input.serverId);
-    }
     unsubscribeQueryCache();
-    unsubscribeProviders();
-    unsubscribeDaemonConfig();
-    unsubscribeCheckoutDiffUpdate();
-    unsubscribeCheckoutDiffResponse();
-    unsubscribeTerminalsChanged();
-    unsubscribeRunUpdate();
-    unsubscribeRunsCleared();
-    unsubscribeGraphsChanged();
-    unsubscribeTemplatesChanged();
-    clearPendingCheckoutDiffUnsubscribes();
-    for (const subscriptionId of activeCheckoutDiffSubscriptions.keys()) {
-      unsubscribeCheckoutDiff(input.client, subscriptionId);
+    void events.release().catch(console.error);
+    for (const current of activeCheckoutDiffSubscriptions.values()) {
+      void current.subscription.release().catch(console.error);
     }
     activeCheckoutDiffSubscriptions.clear();
-    clearPendingTerminalUnsubscribes();
     for (const route of activeTerminalSubscriptions.values()) {
-      input.client.unsubscribeTerminals(workspaceTerminalSubscriptionInput(route));
+      void route.subscription.release().catch(console.error);
     }
     activeTerminalSubscriptions.clear();
   };
 }
 
 function reconcileCheckoutDiffSubscriptions(input: {
-  active: Map<string, CheckoutDiffRoute>;
+  active: Map<string, CheckoutDiffRegistration>;
   client: ServerDataPushClient;
   desired: Map<string, CheckoutDiffRoute>;
   serverId: string;
-  cancelPendingUnsubscribe: (subscriptionId: string) => void;
-  scheduleUnsubscribe: (subscriptionId: string, route: CheckoutDiffRoute) => void;
+  queryClient: QueryClient;
 }): void {
-  for (const [subscriptionId, current] of input.active) {
-    const desired = input.desired.get(subscriptionId);
-    if (desired && areCheckoutDiffRoutesEqual(current, desired)) {
-      // Wanted again - if it was on its way out, it isn't any more, and no
-      // subscribe is needed because it was never actually torn down. This is
-      // the sidebar-toggle case, and what keeps it from re-pulling the snapshot.
-      input.cancelPendingUnsubscribe(subscriptionId);
-      continue;
-    }
-    if (desired) {
-      // Same id, different comparison: the subscription is wrong rather than
-      // unwanted, so replace it now instead of lingering on stale parameters.
-      input.cancelPendingUnsubscribe(subscriptionId);
-      unsubscribeCheckoutDiff(input.client, subscriptionId);
-      input.active.delete(subscriptionId);
-      continue;
-    }
-    input.scheduleUnsubscribe(subscriptionId, current);
+  for (const [key, current] of input.active) {
+    const desired = input.desired.get(key);
+    if (desired && areCheckoutDiffRoutesEqual(current, desired)) continue;
+    input.active.delete(key);
+    void current.subscription.release().catch(console.error);
   }
-
-  for (const [subscriptionId, desired] of input.desired) {
-    if (input.active.has(subscriptionId)) {
-      continue;
-    }
-    input.active.set(subscriptionId, desired);
-    void input.client
-      .subscribeCheckoutDiff(desired.cwd, desired.compare, {
-        subscriptionId,
-        requestId: `push-router:${input.serverId}:${subscriptionId}`,
-      })
-      .catch((error) => {
-        if (areCheckoutDiffRoutesEqual(input.active.get(subscriptionId), desired)) {
-          input.active.delete(subscriptionId);
-        }
-        console.error("[server-data] subscribeCheckoutDiff failed", {
+  for (const [key, desired] of input.desired) {
+    if (input.active.has(key)) continue;
+    const subscription = input.client.observeCheckoutDiff(desired.cwd, desired.compare);
+    const registration = { ...desired, subscription };
+    input.active.set(key, registration);
+    const apply = (
+      payload: Omit<CheckoutDiffResponsePayload, "requestId"> & { requestId?: string },
+    ) => {
+      if (input.active.get(key) !== registration) return;
+      const { subscriptionId, ...snapshot } = payload;
+      setCheckoutDiffPayload({
+        activeCheckoutDiffSubscriptions: input.active,
+        queryClient: input.queryClient,
+        serverId: input.serverId,
+        subscriptionId: key,
+        payload: {
+          ...snapshot,
+          files: orderCheckoutDiffFiles(payload.files),
+          requestId: payload.requestId ?? `subscription:${subscriptionId}`,
+        },
+      });
+    };
+    subscription.subscribe({
+      snapshot: apply,
+      update: (message) => {
+        if (message.type === "checkout_diff_update") apply(message.payload);
+      },
+      error: (error) => {
+        if (input.active.get(key) === registration) input.active.delete(key);
+        console.error("[server-data] observeCheckoutDiff failed", {
           serverId: input.serverId,
           cwd: desired.cwd,
           error,
         });
-      });
+      },
+    });
   }
 }
 
 function reconcileTerminalSubscriptions(input: {
-  active: Map<string, WorkspaceTerminalsRoute>;
+  active: Map<string, WorkspaceTerminalsRegistration>;
   client: ServerDataPushClient;
   desired: Map<string, WorkspaceTerminalsRoute>;
-  cancelPendingUnsubscribe: (key: string) => void;
-  scheduleUnsubscribe: (key: string, route: WorkspaceTerminalsRoute) => void;
+  apply(route: WorkspaceTerminalsRoute, payload: TerminalsChangedMessage["payload"]): void;
 }): void {
   for (const [key, current] of input.active) {
     const desired = input.desired.get(key);
-    if (desired && areWorkspaceTerminalsRoutesEqual(current, desired)) {
-      // Wanted again - if it was on its way out, it isn't any more, and no
-      // subscribe is needed because it was never actually torn down.
-      input.cancelPendingUnsubscribe(key);
-      continue;
-    }
-    input.scheduleUnsubscribe(key, current);
+    if (desired && areWorkspaceTerminalsRoutesEqual(current, desired)) continue;
+    input.active.delete(key);
+    void current.subscription.release().catch(console.error);
   }
-
   for (const [key, desired] of input.desired) {
-    if (input.active.has(key)) {
-      continue;
-    }
-    input.active.set(key, desired);
-    input.client.subscribeTerminals(workspaceTerminalSubscriptionInput(desired));
+    if (input.active.has(key)) continue;
+    const subscription = input.client.observeTerminals(workspaceTerminalSubscriptionInput(desired));
+    const registration = { ...desired, subscription };
+    input.active.set(key, registration);
+    const apply = (payload: TerminalsChangedMessage["payload"]) => {
+      if (input.active.get(key) === registration) input.apply(desired, payload);
+    };
+    subscription.subscribe({
+      snapshot: apply,
+      update: (message) => {
+        if (message.type === "terminals_changed") apply(message.payload);
+      },
+      error: (error) => {
+        if (input.active.get(key) === registration) input.active.delete(key);
+        console.error("[server-data] observeTerminals failed", { cwd: desired.cwd, error });
+      },
+    });
   }
 }
 
@@ -650,52 +423,6 @@ function applyDaemonConfigStatus(input: {
   );
   void input.queryClient.invalidateQueries({
     queryKey: daemonPairingOfferQueryKey(input.serverId),
-  });
-}
-
-function applyCheckoutDiffUpdate(input: {
-  activeCheckoutDiffSubscriptions: Map<string, CheckoutDiffRoute>;
-  queryClient: QueryClient;
-  serverId: string;
-  message: CheckoutDiffUpdateMessage;
-}): void {
-  setCheckoutDiffPayload({
-    activeCheckoutDiffSubscriptions: input.activeCheckoutDiffSubscriptions,
-    queryClient: input.queryClient,
-    serverId: input.serverId,
-    subscriptionId: input.message.payload.subscriptionId,
-    payload: {
-      cwd: input.message.payload.cwd,
-      files: orderCheckoutDiffFiles(input.message.payload.files),
-      error: input.message.payload.error,
-      ...(input.message.payload.diffTooLarge !== undefined
-        ? { diffTooLarge: input.message.payload.diffTooLarge }
-        : {}),
-      requestId: `subscription:${input.message.payload.subscriptionId}`,
-    },
-  });
-}
-
-function applyCheckoutDiffSubscribeResponse(input: {
-  activeCheckoutDiffSubscriptions: Map<string, CheckoutDiffRoute>;
-  queryClient: QueryClient;
-  serverId: string;
-  message: SubscribeCheckoutDiffResponseMessage;
-}): void {
-  setCheckoutDiffPayload({
-    activeCheckoutDiffSubscriptions: input.activeCheckoutDiffSubscriptions,
-    queryClient: input.queryClient,
-    serverId: input.serverId,
-    subscriptionId: input.message.payload.subscriptionId,
-    payload: {
-      cwd: input.message.payload.cwd,
-      files: orderCheckoutDiffFiles(input.message.payload.files),
-      error: input.message.payload.error,
-      ...(input.message.payload.diffTooLarge !== undefined
-        ? { diffTooLarge: input.message.payload.diffTooLarge }
-        : {}),
-      requestId: input.message.payload.requestId,
-    },
   });
 }
 
@@ -733,6 +460,7 @@ function applyTerminalsChanged(input: {
   queryClient: QueryClient;
   serverId: string;
   message: TerminalsChangedMessage;
+  route: WorkspaceTerminalsRoute;
 }): void {
   for (const query of input.queryClient.getQueryCache().getAll()) {
     const route = getActiveServerDataRoute(query, input.serverId, {
@@ -742,7 +470,7 @@ function applyTerminalsChanged(input: {
     if (
       !route ||
       route.domain !== "workspaceTerminals" ||
-      route.cwd !== input.message.payload.cwd
+      !areWorkspaceTerminalsRoutesEqual(route, input.route)
     ) {
       continue;
     }
@@ -766,6 +494,14 @@ function getActiveServerDataRoute(
 ): ServerDataRoute | null {
   if (query.getObserversCount() === 0) {
     return null;
+  }
+  // Query metadata belongs to the last observer that updated its options. A
+  // retained hidden panel must not cancel demand from another visible panel.
+  const observerRoutes = query.observers
+    .map((observer) => getServerDataRoute({ meta: observer.options.meta }))
+    .filter((route): route is ServerDataRoute => route !== null);
+  if (observerRoutes.length > 0) {
+    return observerRoutes.find((route) => route.enabled && route.serverId === serverId) ?? null;
   }
   const route = getServerDataRoute(query);
   if (route) {
@@ -863,7 +599,7 @@ function canEventChangeDesiredSubscriptions(type: QueryCacheNotifyEvent["type"])
   );
 }
 
-function getServerDataRoute(query: Query): ServerDataRoute | null {
+function getServerDataRoute(query: Pick<Query, "meta">): ServerDataRoute | null {
   const meta = query.meta;
   if (!isRecord(meta) || !isRecord(meta.serverData)) {
     return null;
@@ -920,6 +656,7 @@ function readCheckoutDiffCompare(value: unknown): CheckoutDiffCompare | null {
   const mode = value.mode;
   const baseRef = value.baseRef;
   const ignoreWhitespace = value.ignoreWhitespace;
+  const includeStructuralSource = value.includeStructuralSource; // OTTO(structural-diff)
   if (mode !== "uncommitted" && mode !== "base") {
     return null;
   }
@@ -933,6 +670,7 @@ function readCheckoutDiffCompare(value: unknown): CheckoutDiffCompare | null {
     mode,
     ...(baseRef ? { baseRef } : {}),
     ...(ignoreWhitespace !== undefined ? { ignoreWhitespace } : {}),
+    ...(includeStructuralSource === true ? { includeStructuralSource } : {}),
   };
 }
 
@@ -946,7 +684,8 @@ function areCheckoutDiffRoutesEqual(
     left.cwd === right.cwd &&
     left.compare.mode === right.compare.mode &&
     left.compare.baseRef === right.compare.baseRef &&
-    left.compare.ignoreWhitespace === right.compare.ignoreWhitespace
+    left.compare.ignoreWhitespace === right.compare.ignoreWhitespace &&
+    left.compare.includeStructuralSource === right.compare.includeStructuralSource // OTTO(structural-diff)
   );
 }
 
@@ -957,7 +696,8 @@ function isCheckoutDiffQueryKeyForRoute(queryKey: QueryKey, route: CheckoutDiffR
     queryKey[2] === route.cwd &&
     queryKey[3] === route.compare.mode &&
     queryKey[4] === (route.compare.baseRef ?? "") &&
-    queryKey[5] === (route.compare.ignoreWhitespace === true)
+    queryKey[5] === (route.compare.ignoreWhitespace === true) &&
+    (queryKey[6] === "structural-source") === (route.compare.includeStructuralSource === true) // OTTO(structural-diff)
   );
 }
 
@@ -986,61 +726,12 @@ function workspaceTerminalSubscriptionInput(route: WorkspaceTerminalsRoute): {
   };
 }
 
-function unsubscribeCheckoutDiff(client: ServerDataPushClient, subscriptionId: string): void {
-  try {
-    client.unsubscribeCheckoutDiff(subscriptionId);
-  } catch {
-    // Disconnect cleanup can race with explicit subscription teardown.
-  }
-}
-
 function isQueryForServer(queryKey: QueryKey, kind: string, serverId: string): boolean {
   return queryKey.length >= 2 && queryKey[0] === kind && queryKey[1] === serverId;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isLspActivityChangedPayload(
-  payload: unknown,
-): payload is { status: "lsp_activity_changed"; busyRoots: string[] } {
-  return (
-    isRecord(payload) &&
-    payload.status === "lsp_activity_changed" &&
-    Array.isArray(payload.busyRoots) &&
-    payload.busyRoots.every((root) => typeof root === "string")
-  );
-}
-
-function applyLspActivityStatus(input: { serverId: string; message: StatusMessage }): void {
-  if (!isLspActivityChangedPayload(input.message.payload)) {
-    return;
-  }
-  useLspActivityStore.getState().setBusyRoots(input.serverId, input.message.payload.busyRoots);
-}
-
-function isLspDiagnosticsChangedPayload(
-  payload: unknown,
-): payload is { status: "lsp_diagnostics_changed"; path: string; diagnostics: CodeDiagnostic[] } {
-  return (
-    isRecord(payload) &&
-    payload.status === "lsp_diagnostics_changed" &&
-    typeof payload.path === "string" &&
-    Array.isArray(payload.diagnostics)
-  );
-}
-
-function applyLspDiagnosticsStatus(input: { serverId: string; message: StatusMessage }): void {
-  const payload = input.message.payload;
-  if (!isLspDiagnosticsChangedPayload(payload)) {
-    return;
-  }
-  useLspDiagnosticsStore.getState().setDocument({
-    serverId: input.serverId,
-    path: payload.path,
-    diagnostics: payload.diagnostics,
-  });
 }
 
 function isDaemonConfigChangedPayload(

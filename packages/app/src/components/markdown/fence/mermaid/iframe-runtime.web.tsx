@@ -1,33 +1,29 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { MermaidRenderRequest } from "./render-model";
-import { getIsElectron } from "@/constants/platform";
-import { ElectronMermaidRuntime } from "./otto/electron-runtime.web";
-import {
-  parseMermaidRuntimeMessage,
-  type MermaidRuntimeMessage,
-  type MermaidRuntimeRenderMessage,
-} from "./runtime/messages";
+import { useCallback, useEffect, useRef } from "react";
+import type { DiagramColorScheme, MermaidRenderRequest } from "./render-model";
+import { mermaidRuntimeHtml } from "./runtime/html.gen";
+import { parseMermaidRuntimeMessage, type MermaidRuntimeRenderMessage } from "./runtime/messages";
 import { MermaidRuntimeRequestDriver } from "./runtime/request-driver";
 
-export type MermaidRenderedMessage = Extract<MermaidRuntimeMessage, { type: "rendered" }>;
+export interface MermaidRenderedMessage {
+  revision: number;
+  source: string;
+  colorScheme: DiagramColorScheme;
+  height: number;
+  width: number;
+}
 
-export interface MermaidIframeRuntimeProps {
+interface MermaidIframeRuntimeProps {
   request: MermaidRenderRequest | null;
   onRendered: (message: MermaidRenderedMessage) => void;
   onRenderFailed: (revision: number) => void;
 }
 
-export interface LoadedMermaidRuntimeProps extends MermaidIframeRuntimeProps {
-  runtimeHtml: string;
-}
-
 /** Sandboxed Mermaid renderer. Sizing and gestures belong to the surrounding viewport. */
-function BrowserMermaidRuntime({
+export function MermaidIframeRuntime({
   request,
   onRendered,
   onRenderFailed,
-  runtimeHtml,
-}: LoadedMermaidRuntimeProps) {
+}: MermaidIframeRuntimeProps) {
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const driverRef = useRef<MermaidRuntimeRequestDriver | null>(null);
   driverRef.current ??= new MermaidRuntimeRequestDriver();
@@ -40,8 +36,6 @@ function BrowserMermaidRuntime({
       revision: current.revision,
       source: current.source,
       colorScheme: current.colorScheme,
-      themeKey: current.themeKey,
-      themeVariables: current.themeVariables,
       interactive: false,
     };
     target.postMessage(message, "*");
@@ -81,7 +75,7 @@ function BrowserMermaidRuntime({
       aria-hidden
       inert
       sandbox="allow-scripts"
-      srcDoc={runtimeHtml}
+      srcDoc={mermaidRuntimeHtml}
       tabIndex={-1}
       style={iframeStyle}
     />
@@ -96,38 +90,3 @@ const iframeStyle: React.CSSProperties = {
   pointerEvents: "none",
   background: "transparent",
 };
-
-// The browser and desktop transports share one lazy runtime payload and request contract.
-let runtimeHtmlPromise: Promise<string> | null = null;
-function loadRuntimeHtml(): Promise<string> {
-  runtimeHtmlPromise ??= import("./runtime/html.gen").then((module) => module.mermaidRuntimeHtml);
-  return runtimeHtmlPromise;
-}
-
-export function MermaidIframeRuntime(props: MermaidIframeRuntimeProps) {
-  const [runtimeHtml, setRuntimeHtml] = useState<string | null>(null);
-  const propsRef = useRef(props);
-  propsRef.current = props;
-  useEffect(() => {
-    let cancelled = false;
-    void loadRuntimeHtml().then(
-      (html) => {
-        if (!cancelled) setRuntimeHtml(html);
-        return html;
-      },
-      () => {
-        const current = propsRef.current;
-        if (!cancelled && current.request) current.onRenderFailed(current.request.revision);
-      },
-    );
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  if (!runtimeHtml) return null;
-  return getIsElectron() ? (
-    <ElectronMermaidRuntime {...props} runtimeHtml={runtimeHtml} />
-  ) : (
-    <BrowserMermaidRuntime {...props} runtimeHtml={runtimeHtml} />
-  );
-}

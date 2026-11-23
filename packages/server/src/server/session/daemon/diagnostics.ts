@@ -16,7 +16,7 @@ interface DiagnosticEntry {
 }
 
 export interface DaemonDiagnosticsOptions {
-  ottoHome: string;
+  paseoHome: string;
   serverId: string | undefined;
   daemonVersion: string | undefined;
   daemonRuntimeConfig: DaemonRuntimeConfig | undefined;
@@ -25,6 +25,7 @@ export interface DaemonDiagnosticsOptions {
   listWorkspaces: () => Promise<PersistedWorkspaceRecord[]>;
   listProviderAvailability: () => Promise<ProviderAvailability[]>;
   getWebSocketRuntimeMetrics: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  getObservationMetrics?: () => Record<string, number>;
   logger: pino.Logger;
 }
 
@@ -61,6 +62,7 @@ const LOG_TAIL_MAX_BYTES = 64 * 1024;
 
 export async function collectDaemonDiagnostics(options: DaemonDiagnosticsOptions): Promise<string> {
   const sections: string[] = [
+    // OTTO(identity)
     formatSection("Otto diagnostics", [
       { label: "Collected at", value: new Date().toISOString() },
       { label: "Server ID", value: options.serverId ?? "unknown" },
@@ -68,6 +70,16 @@ export async function collectDaemonDiagnostics(options: DaemonDiagnosticsOptions
     ]),
   ];
 
+  if (options.getObservationMetrics)
+    sections.push(
+      formatSection(
+        "Session observations",
+        Object.entries(options.getObservationMetrics()).map(([label, value]) => ({
+          label,
+          value: String(value),
+        })),
+      ),
+    );
   sections.push(
     await safeSection("Daemon process", () => collectProcessEntries(options), options.logger),
   );
@@ -122,7 +134,8 @@ function collectProcessEntries(options: DaemonDiagnosticsOptions): DiagnosticEnt
     { label: "PATH", value: getEnvValue("PATH", "Path") ?? "unset" },
     { label: "Shell", value: formatDaemonShell() },
     { label: "Uptime", value: formatDurationMs(process.uptime() * 1000) },
-    { label: "Otto home", value: options.ottoHome },
+    // OTTO(identity)
+    { label: "Otto home", value: options.paseoHome },
     { label: "RSS", value: formatBytes(memory.rss) },
     {
       label: "Heap used",
@@ -156,11 +169,11 @@ function collectSystemEntries(): DiagnosticEntry[] {
 }
 
 async function collectDiskEntries(options: DaemonDiagnosticsOptions): Promise<DiagnosticEntry[]> {
-  const stats = await statfs(options.ottoHome);
+  const stats = await statfs(options.paseoHome);
   const freeBytes = stats.bavail * stats.bsize;
   const totalBytes = stats.blocks * stats.bsize;
   return [
-    { label: "Path", value: options.ottoHome },
+    { label: "Path", value: options.paseoHome },
     { label: "Free", value: `${formatBytes(freeBytes)} / ${formatBytes(totalBytes)}` },
   ];
 }
@@ -413,7 +426,7 @@ async function checkTool(command: string, args: string[]): Promise<string> {
 }
 
 async function safeLogTailSection(options: DaemonDiagnosticsOptions): Promise<string> {
-  const logPath = path.join(options.ottoHome, "daemon.log");
+  const logPath = path.join(options.paseoHome, "daemon.log");
   try {
     const tail = await tailFile(logPath, LOG_TAIL_LINES, LOG_TAIL_MAX_BYTES);
     return ["Daemon log tail", `  Path: ${logPath}`, tail ? tail : "  No log lines found"].join(
@@ -545,7 +558,7 @@ export function redactDiagnostic(
   }
 
   return redacted
-    .replace(/otto:\/\/\S+/gi, "otto://[redacted]")
+    .replace(/(?:otto|paseo):\/\/\S+/gi, "otto://[redacted]") // OTTO(identity)
     .replace(
       /([?&](?:password|token|secret|key|publicKey|daemonPublicKeyB64)=)[^&\s"']+/gi,
       "$1[redacted]",

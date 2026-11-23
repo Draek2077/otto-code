@@ -1,19 +1,15 @@
-import { getForgeDefinition } from "@otto-code/protocol/forge-manifest";
-import { normalizeHost } from "@otto-code/protocol/git-remote";
+import { getForgeDefinition } from "@getpaseo/protocol/forge-manifest";
+import { normalizeHost } from "@getpaseo/protocol/git-remote";
 import { createGitHubService, probeGitHubHost } from "./github-service.js";
 import type { ForgeService } from "./forge-service.js";
 import { createGiteaService, resolveGiteaFamilyForge } from "./gitea-service.js";
 import { createGitLabService, probeGitLabHost } from "./gitlab-service.js";
+import { createBitbucketService } from "./otto/bitbucket/service.js"; // OTTO(bitbucket): native REST adapter, no CLI sign-in.
 
 export type ForgeServiceFactory = () => ForgeService;
 
 export interface ForgeAdapterRegistration {
-  /**
-   * A native forge creates its own service here. Provider-backed forges are
-   * composed at daemon bootstrap, where their credential resolver lives, and
-   * supply the service through WorkspaceGitService's override seam instead.
-   */
-  createService?: ForgeServiceFactory;
+  createService: ForgeServiceFactory;
   matchesHost?: (host: string) => boolean;
   probeHost?: (host: string) => Promise<boolean>;
 }
@@ -63,7 +59,7 @@ export class ForgeRegistry {
       return null;
     }
     const adapter = this.#adapters.get(normalizedForge);
-    return adapter?.createService?.() ?? null;
+    return adapter ? adapter.createService() : null;
   }
 
   matchHost(host: string): string | null {
@@ -136,6 +132,10 @@ function matchesCloudHost(forgeId: string): ((host: string) => boolean) | undefi
 }
 
 export const defaultForgeRegistry = new ForgeRegistry([
+  [
+    "bitbucket-cloud",
+    { createService: createBitbucketService, matchesHost: matchesCloudHost("bitbucket-cloud") },
+  ], // OTTO(bitbucket): the daemon supplies its owning account through forgeOverrides.
   // GitHub Enterprise Server is recognized at runtime by probeHost, exactly like
   // self-hosted GitLab/Gitea: github.com short-circuits via matchHost, so the
   // probe only runs on non-cloud hosts. The PR-status poll gates on the resolver
@@ -148,10 +148,6 @@ export const defaultForgeRegistry = new ForgeRegistry([
       probeHost: probeGitHubHost,
     },
   ],
-  // Bitbucket Cloud's REST adapter is provider-owned because its credentials
-  // live in the daemon configuration, not a CLI profile. Bootstrap binds that
-  // adapter to this registered Forge id; the registry owns host identity.
-  ["bitbucket-cloud", { matchesHost: matchesCloudHost("bitbucket-cloud") }],
   [
     "gitlab",
     {

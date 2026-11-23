@@ -1,4 +1,5 @@
 import { Text, View } from "react-native";
+import type { ReactNode } from "react"; // OTTO(editor)
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -20,6 +21,9 @@ export function FilePanelBar({
   cursor,
   vimMode,
   conflict,
+  actions, // OTTO(editor)
+  showMetadata = true, // OTTO(editor): source metadata lives in its responsive status strip.
+  modeControl, // OTTO(editor): owned three-mode control; unchanged fallback for read-only previews.
 }: {
   size: number;
   lineCount?: number;
@@ -29,6 +33,9 @@ export function FilePanelBar({
   cursor?: { line: number; column: number };
   vimMode?: string | null;
   conflict?: FileConflictAlertState;
+  actions?: ReactNode; // OTTO(editor): owned toolbar contribution, no extra row.
+  showMetadata?: boolean; // OTTO(editor)
+  modeControl?: ReactNode; // OTTO(editor)
 }) {
   const { t } = useTranslation();
   const previewModes = [
@@ -44,25 +51,31 @@ export function FilePanelBar({
       <PaneContentToolbar testID="file-panel-bar">
         <View style={styles.row}>
           <View style={styles.metadata}>
-            <Text
-              style={styles.whisper}
-              accessibilityLabel={t("panels.file.editor.fileSize", { size: formatFileSize(size) })}
-            >
-              {formatFileSize(size)}
-            </Text>
-            {lineCount !== undefined ? (
-              <Text
-                style={styles.whisper}
-                accessibilityLabel={t("panels.file.editor.lines", { count: lineCount })}
-              >
-                {t("panels.file.editor.lines", { count: lineCount })}
-              </Text>
+            {showMetadata ? (
+              <>
+                <Text
+                  style={styles.whisper}
+                  accessibilityLabel={t("panels.file.editor.fileSize", {
+                    size: formatFileSize(size),
+                  })}
+                >
+                  {formatFileSize(size)}
+                </Text>
+                {lineCount !== undefined ? (
+                  <Text
+                    style={styles.whisper}
+                    accessibilityLabel={t("panels.file.editor.lines", { count: lineCount })}
+                  >
+                    {t("panels.file.editor.lines", { count: lineCount })}
+                  </Text>
+                ) : null}
+              </>
             ) : null}
           </View>
           <View
             style={styles.status}
             accessibilityLabel={
-              editorStatus
+              editorStatus && showMetadata // OTTO(editor): the source footer owns its status label.
                 ? t("panels.file.editor.editorStatus", { status: editorStatus })
                 : undefined
             }
@@ -99,40 +112,17 @@ export function FilePanelBar({
               </Text>
             ) : null}
           </View>
-          {mode && onModeChange ? (
-            <SegmentedControl
-              size="xs"
-              value={mode}
-              onValueChange={onModeChange}
-              testID="file-preview-mode"
-              options={previewModes}
-            />
-          ) : null}
-          {editorStatus === "saving" ? (
-            <>
-              <ThemedSpinner size="sm" uniProps={spinnerMapping} />
-              <Text style={styles.secondary}>{t("panels.file.editor.saving")}</Text>
-            </>
-          ) : null}
-          {editorStatus === "error" ? (
-            <Text style={styles.error}>{t("panels.file.editor.saveFailed")}</Text>
-          ) : null}
-          {vimMode ? (
-            <Text
-              style={styles.vim}
-              accessibilityLabel={t("panels.file.editor.vimMode", { mode: vimMode })}
-            >
-              {vimMode}
-            </Text>
-          ) : null}
-          {cursor ? (
-            <Text
-              style={styles.whisper}
-              accessibilityLabel={t("panels.file.editor.cursor", cursor)}
-            >
-              Ln {cursor.line}, Col {cursor.column}
-            </Text>
-          ) : null}
+          {actions /* OTTO(editor) */}
+          {modeControl ??
+            (mode && onModeChange ? (
+              <SegmentedControl
+                size="xs"
+                value={mode}
+                onValueChange={onModeChange}
+                testID="file-preview-mode"
+                options={previewModes}
+              />
+            ) : null)}
         </View>
       </PaneContentToolbar>
       {conflict ? <FileConflictAlert state={conflict} /> : null}
@@ -164,18 +154,14 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[2],
   },
-  secondary: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
-  // COMPAT(foregroundExtraMuted): Otto has a third text tier
-  // (foregroundExtraMuted); Otto's themes stop at muted, and each tint would
-  // need its own value. Use muted until that lands. Not date-bound: it clears
-  // when the theme grows the tier, and this alias is then a one-line delete.
-  whisper: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.xs },
-  error: { color: theme.colors.palette.red[300], fontSize: theme.fontSize.xs },
+  secondary: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  whisper: { color: theme.colors.foregroundExtraMuted, fontSize: theme.fontSize.sm },
+  error: { color: theme.colors.palette.red[300], fontSize: theme.fontSize.sm },
   dirtyDot: {
     width: 6,
     height: 6,
     borderRadius: theme.borderRadius.full,
-    backgroundColor: theme.colors.foregroundMuted,
+    backgroundColor: theme.colors.foregroundExtraMuted,
   },
   status: {
     flexShrink: 0,

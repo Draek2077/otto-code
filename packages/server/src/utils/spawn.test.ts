@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import { buildSelfNodeCommand } from "../server/otto-env.js";
+import { buildSelfNodeCommand } from "../server/paseo-env.js";
 import { execCommand, spawnProcess } from "./spawn.js";
 
 const printEnvScript = `
@@ -12,9 +12,9 @@ const keys = [
   "CUSTOM",
   "ELECTRON_NO_ATTACH_CONSOLE",
   "ELECTRON_RUN_AS_NODE",
-  "OTTO_DESKTOP_MANAGED",
-  "OTTO_NODE_ENV",
-  "OTTO_SUPERVISED",
+  "PASEO_DESKTOP_MANAGED",
+  "PASEO_NODE_ENV",
+  "PASEO_SUPERVISED",
 ];
 const values = Object.fromEntries(keys.map((key) => [key, process.env[key] ?? null]));
 console.log(JSON.stringify(values));
@@ -35,11 +35,7 @@ describe("execCommand", () => {
   });
 
   test("returns stdout and stderr for a successful command", async () => {
-    const command =
-      process.platform === "win32"
-        ? { command: process.execPath, args: ["-e", "console.log('hello')"] }
-        : { command: "echo", args: ["hello"] };
-    const result = await execCommand(command.command, command.args);
+    const result = await execCommand("echo", ["hello"]);
 
     expect(result.stdout.trim()).toBe("hello");
     expect(result.stderr).toBe("");
@@ -81,14 +77,14 @@ describe("execCommand", () => {
         ELECTRON_RUN_AS_NODE: "0",
         CUSTOM: "from-base",
         PATH: process.env.PATH,
-        OTTO_NODE_ENV: "production",
-        OTTO_SUPERVISED: "1",
+        PASEO_NODE_ENV: "production",
+        PASEO_SUPERVISED: "1",
       },
       env: {
         CUSTOM: "from-env",
         ELECTRON_NO_ATTACH_CONSOLE: "1",
-        OTTO_DESKTOP_MANAGED: "1",
-        OTTO_NODE_ENV: "test",
+        PASEO_DESKTOP_MANAGED: "1",
+        PASEO_NODE_ENV: "test",
       },
       envOverlay: {
         CUSTOM: "from-overlay",
@@ -100,20 +96,20 @@ describe("execCommand", () => {
       CUSTOM: "from-overlay",
       ELECTRON_NO_ATTACH_CONSOLE: null,
       ELECTRON_RUN_AS_NODE: null,
-      OTTO_DESKTOP_MANAGED: null,
-      OTTO_NODE_ENV: null,
-      OTTO_SUPERVISED: null,
+      PASEO_DESKTOP_MANAGED: null,
+      PASEO_NODE_ENV: null,
+      PASEO_SUPERVISED: null,
     });
   });
 
   test("does not inherit process.env when env replacement is supplied", async () => {
-    process.env.OTTO_TEST_SHOULD_NOT_LEAK = "leaked";
+    process.env.PASEO_TEST_SHOULD_NOT_LEAK = "leaked";
     try {
       const result = await execCommand(
         process.execPath,
         [
           "-e",
-          "console.log(JSON.stringify({ leaked: process.env.OTTO_TEST_SHOULD_NOT_LEAK ?? null }))",
+          "console.log(JSON.stringify({ leaked: process.env.PASEO_TEST_SHOULD_NOT_LEAK ?? null }))",
         ],
         {
           env: {
@@ -124,7 +120,7 @@ describe("execCommand", () => {
 
       expect(JSON.parse(result.stdout.trim())).toEqual({ leaked: null });
     } finally {
-      delete process.env.OTTO_TEST_SHOULD_NOT_LEAK;
+      delete process.env.PASEO_TEST_SHOULD_NOT_LEAK;
     }
   });
 
@@ -133,11 +129,11 @@ describe("execCommand", () => {
       baseEnv: {
         ELECTRON_RUN_AS_NODE: "0",
         PATH: process.env.PATH,
-        OTTO_NODE_ENV: "production",
+        PASEO_NODE_ENV: "production",
       },
       envOverlay: {
         CUSTOM: "spawn-overlay",
-        OTTO_SUPERVISED: "1",
+        PASEO_SUPERVISED: "1",
       },
     });
 
@@ -157,23 +153,23 @@ describe("execCommand", () => {
       CUSTOM: "spawn-overlay",
       ELECTRON_NO_ATTACH_CONSOLE: null,
       ELECTRON_RUN_AS_NODE: null,
-      OTTO_DESKTOP_MANAGED: null,
-      OTTO_NODE_ENV: null,
-      OTTO_SUPERVISED: null,
+      PASEO_DESKTOP_MANAGED: null,
+      PASEO_NODE_ENV: null,
+      PASEO_SUPERVISED: null,
     });
   });
 
-  test("internal env mode preserves Otto-owned launcher env", async () => {
+  test("internal env mode preserves Paseo-owned launcher env", async () => {
     const result = await execCommand(process.execPath, ["-e", printEnvScript], {
       envMode: "internal",
       baseEnv: {
         ELECTRON_RUN_AS_NODE: "1",
         PATH: process.env.PATH,
-        OTTO_NODE_ENV: "production",
+        PASEO_NODE_ENV: "production",
       },
       envOverlay: {
         CUSTOM: "internal",
-        OTTO_SUPERVISED: "1",
+        PASEO_SUPERVISED: "1",
       },
     });
 
@@ -181,9 +177,9 @@ describe("execCommand", () => {
       CUSTOM: "internal",
       ELECTRON_NO_ATTACH_CONSOLE: null,
       ELECTRON_RUN_AS_NODE: "1",
-      OTTO_DESKTOP_MANAGED: null,
-      OTTO_NODE_ENV: "production",
-      OTTO_SUPERVISED: "1",
+      PASEO_DESKTOP_MANAGED: null,
+      PASEO_NODE_ENV: "production",
+      PASEO_SUPERVISED: "1",
     });
   });
 
@@ -214,9 +210,9 @@ describe("execCommand", () => {
       CUSTOM: "from-helper",
       ELECTRON_NO_ATTACH_CONSOLE: null,
       ELECTRON_RUN_AS_NODE: "1",
-      OTTO_DESKTOP_MANAGED: null,
-      OTTO_NODE_ENV: null,
-      OTTO_SUPERVISED: null,
+      PASEO_DESKTOP_MANAGED: null,
+      PASEO_NODE_ENV: null,
+      PASEO_SUPERVISED: null,
     });
   });
 });

@@ -3,8 +3,10 @@ import {
   compareMatchScores,
   type MatchScore,
   scoreTextFields,
-} from "@otto-code/protocol/search/text-match";
+} from "@getpaseo/protocol/search/text-match";
 import type { CommandCenterContribution } from "./contributions";
+import type { CommandCenterListMetrics } from "./list-metrics";
+import type { ChatMessageResult } from "@/otto/history/message-result"; // OTTO(chat-search)
 
 /** Sections that reorder by how well they match the query. */
 export const CONTRIBUTION_SECTION_BAND = 0;
@@ -43,13 +45,21 @@ export function compareCommandCenterScores(
   return left.fieldRank - right.fieldRank || compareMatchScores(left.match, right.match);
 }
 
+export interface CommandCenterWorkspaceProject {
+  viewKey: string;
+  name: string;
+  iconDataUri: string | null;
+}
+
 export interface CommandCenterWorkspaceResult {
   kind: "workspace";
   id: string;
   title: string;
   subtitle: string;
+  project: CommandCenterWorkspaceProject;
   /** PR/MR number backing this workspace, so a number query can match it exactly. */
   changeRequestNumber: number | null;
+  activityAt: Date | null;
   run(): void;
 }
 
@@ -59,6 +69,7 @@ export interface CommandCenterAgentResult {
   agent: AggregatedAgent;
   title: string;
   subtitle: string;
+  activityAt: Date | null;
   run(): void;
 }
 
@@ -71,18 +82,6 @@ export interface CommandCenterFileResult {
   run(): void;
 }
 
-export interface CommandCenterMessageResult {
-  kind: "message";
-  provider: string;
-  serverId: string;
-  id: string;
-  title: string;
-  subtitle: string;
-  snippet: string;
-  archived: boolean;
-  run(): Promise<void>;
-}
-
 export interface CommandCenterContributionResult {
   kind: "contribution";
   id: string;
@@ -93,10 +92,10 @@ export interface CommandCenterContributionResult {
 }
 
 export type CommandCenterResult =
-  | CommandCenterMessageResult
   | CommandCenterWorkspaceResult
   | CommandCenterAgentResult
   | CommandCenterFileResult
+  | ChatMessageResult // OTTO(chat-search)
   | CommandCenterContributionResult;
 
 export interface CommandCenterResultSection {
@@ -139,8 +138,6 @@ export interface CommandCenterSearchFields {
   hidden: readonly string[];
 }
 
-const MATCH_OPTIONS = { subsequence: false } as const;
-
 /**
  * The one definition of "how well did this row match", shared by every scored row kind. Null
  * means the row is filtered out, so scoring and filtering are the same pass — a separate boolean
@@ -151,19 +148,17 @@ const MATCH_OPTIONS = { subsequence: false } as const;
  * only ever widen the result set: tokens hold no whitespace, so any token that was found in the
  * old space-joined haystack lies entirely within one field and is still found here.
  *
- * Subsequence matching is off, unlike the composer's slash-command list. Each token has to be a
- * run of adjacent characters, so `lab des` matches and `labdes` does not. It widens hard enough
- * that almost any typo finds something, and this list preselects its first row: a query the user
- * expects to find nothing would instead put an unrelated action under Enter.
+ * Subsequence matches stay within each word, so `lbl dsgn` finds "Label as Design"
+ * while `labdes` cannot assemble a match across those words.
  */
 export function scoreSearchFields(
   query: string,
   fields: CommandCenterSearchFields,
 ): CommandCenterScore | null {
-  const visible = scoreTextFields(query, [...fields.visible], MATCH_OPTIONS);
+  const visible = scoreTextFields(query, [...fields.visible]);
   if (visible) return { fieldRank: VISIBLE_FIELD_RANK, match: visible };
   if (fields.hidden.length === 0) return null;
-  const match = scoreTextFields(query, [...fields.visible, ...fields.hidden], MATCH_OPTIONS);
+  const match = scoreTextFields(query, [...fields.visible, ...fields.hidden]);
   return match ? { fieldRank: KEYWORD_FIELD_RANK, match } : null;
 }
 
@@ -186,17 +181,13 @@ function contributionSearchFields(
   return { visible, hidden: contribution.keywords };
 }
 
-// Standard 8px search-row insets, a 28px title/pill line, and two 16px detail lines.
-export const COMMAND_CENTER_MESSAGE_ROW_HEIGHT = 76;
-
-function resultHeight(result: CommandCenterResult): number {
-  if (result.kind === "message") return COMMAND_CENTER_MESSAGE_ROW_HEIGHT;
-  if (result.kind === "workspace" || result.kind === "agent") return 56;
-  if (result.kind === "file") return 36;
-  if (result.contribution.presentation.kind === "action") {
-    return result.contribution.presentation.subtitle ? 56 : 36;
-  }
-  return 36;
+/** Whether the row draws a second, subtitle line under its title. */
+function hasSubtitleLine(result: CommandCenterResult): boolean {
+  if (result.kind === "message") return true; // OTTO(chat-search)
+  if (result.kind === "workspace" || result.kind === "agent") return true;
+  if (result.kind === "file") return false;
+  const presentation = result.contribution.presentation;
+  return presentation.kind === "action" && Boolean(presentation.subtitle);
 }
 
 /**
@@ -224,22 +215,42 @@ function resultScore(result: CommandCenterResult): CommandCenterScore | undefine
 /** Rows shown when nothing has been typed, per pinned category. */
 const DEFAULT_CATEGORY_RESULT_LIMIT = 5;
 
+/** A built-in row (workspace or agent) that orders by how recently it saw activity. */
+export interface CommandCenterRecentRow {
+  activityAt: Date | null;
+}
+
+/** Most recent first. A row with no timestamp sorts after every row that has one. */
+export function compareByRecency(left: CommandCenterRecentRow, right: CommandCenterRecentRow) {
+  return (right.activityAt?.getTime() ?? 0) - (left.activityAt?.getTime() ?? 0);
+}
+
+/**
+ * Rank built-in rows by the kind of match they made: which fields matched, then the matcher's
+ * tier. Offset and spread are deliberately left out. They only say where in the title the word
+ * happened to sit, so "usage" in "Deliver sidebar usage" and in "expose usage data" would be
+ * ordered by sentence position. Leaving them out makes those rows equal, and recency decides.
+ */
+export function compareBuiltInScores(left: CommandCenterScore, right: CommandCenterScore): number {
+  return left.fieldRank - right.fieldRank || left.match.tier - right.match.tier;
+}
+
 /**
  * Filter and rank already-built rows. Rows in, rows out — building them needs translations,
  * navigation callbacks and the project tree, none of which matching cares about, so that stays
  * with the caller and this stays testable without mounting React.
  *
- * `tiebreak` is the caller's own ordering (alphabetical for workspaces, status and recency for
- * agents). It decides equal-scoring rows, so an agent awaiting input still outranks an idle one
- * that matched exactly as well.
+ * Rows rank by `compareBuiltInScores`; rows that rank equally, including every row of an empty
+ * query, go most recent first.
  */
-export function filterAndRankBuiltInResults<Row>(
+export function filterAndRankBuiltInResults<Row extends CommandCenterRecentRow>(
   rows: readonly Row[],
   query: string,
   fieldsOf: (row: Row) => CommandCenterSearchFields,
-  tiebreak: (left: Row, right: Row) => number,
 ): Row[] {
-  if (!query.trim()) return rows.slice(0, DEFAULT_CATEGORY_RESULT_LIMIT);
+  if (!query.trim()) {
+    return [...rows].sort(compareByRecency).slice(0, DEFAULT_CATEGORY_RESULT_LIMIT);
+  }
 
   const scored: { row: Row; score: CommandCenterScore }[] = [];
   for (const row of rows) {
@@ -248,7 +259,7 @@ export function filterAndRankBuiltInResults<Row>(
   }
   scored.sort(
     (left, right) =>
-      compareCommandCenterScores(left.score, right.score) || tiebreak(left.row, right.row),
+      compareBuiltInScores(left.score, right.score) || compareByRecency(left.row, right.row),
   );
   return scored.map((entry) => entry.row);
 }
@@ -314,6 +325,7 @@ export function buildContributionSections(
 
 export function projectCommandCenterRows(
   sections: readonly CommandCenterResultSection[],
+  metrics: CommandCenterListMetrics,
 ): CommandCenterListProjection {
   const populated = sections
     .filter((section) => section.results.length > 0)
@@ -326,10 +338,8 @@ export function projectCommandCenterRows(
 
   for (const [sectionIndex, section] of populated.entries()) {
     const divider = sectionIndex > 0;
-    let sectionHeight = 0;
-    if (section.title && divider) sectionHeight = 49;
-    if (section.title && !divider) sectionHeight = 32;
-    if (!section.title && divider) sectionHeight = 17;
+    const sectionHeight =
+      (divider ? metrics.sectionDivider : 0) + (section.title ? metrics.sectionTitle : 0);
     if (sectionHeight > 0) {
       offsets.push(offset);
       rows.push({
@@ -342,7 +352,7 @@ export function projectCommandCenterRows(
       offset += sectionHeight;
     }
     for (const result of section.results) {
-      const height = resultHeight(result);
+      const height = hasSubtitleLine(result) ? metrics.twoLineRow : metrics.singleLineRow;
       offsets.push(offset);
       rowIndexByResultId.set(result.id, rows.length);
       rows.push({ kind: "result", key: result.id, result, height });

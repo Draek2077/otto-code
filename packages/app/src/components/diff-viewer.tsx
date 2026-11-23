@@ -2,200 +2,163 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, ScrollView as RNScrollView } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
-import { styles } from "./diff-viewer/styles";
+import { StyleSheet } from "react-native-unistyles";
 import type { DiffLine } from "@/utils/tool-call-parsers";
-import { highlightDiffLines } from "@/utils/diff-highlight";
-import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { diffLinePrefix } from "@/utils/diff-highlight";
+import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import { lineNumberGutterWidth } from "./code-insets";
-import type { ReviewableDiffTarget } from "@/utils/diff-layout";
-import { type InlineReviewActions } from "@/review";
+import { getCodeInsets } from "./code-insets";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { isWeb } from "@/constants/platform";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { resolveCompactFontSize } from "@/appearance/apply";
-import { useAppSettingValue, useAppSettings } from "@/hooks/use-settings";
-import { type DiffDocument, type DiffPresentation } from "@/utils/diff-document";
+import { DiffPresentationControl, useDiffPresentation } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 import {
-  DiffCodeLineHeightContext,
-  DiffCodeTypographyContext,
-  DiffLineNumberWidthContext,
-  DiffLineRow,
-  DiffReviewActionsContext,
-  DiffReviewViewportContext,
-  DiffSyntaxTokensContext,
-  StructuralDiff,
-  largestDiffLineNumber,
-  useDiffPresentation,
-  type DiffLeadingGutter,
-  type DiffLineContextMenuHandler,
-} from "./diff-viewer/diff-viewer-content";
-
-// Back-compat: review surfaces import these types from this file.
-export type {
-  DiffLineContextMenuHandler,
-  DiffLeadingGutter,
-} from "./diff-viewer/diff-viewer-content";
+  buildStructuralDiffRows,
+  getStructuralDiffUnavailableReason,
+  type DiffPresentation,
+  type StructuralDiffInput,
+} from "@/otto/diff/structural";
 
 const ScrollView = isWeb ? RNScrollView : GHScrollView;
 
-const selectCodeFontSize = (settings: { codeFontSize: number }) => settings.codeFontSize;
-
 interface DiffViewerProps {
-  diffLines: readonly DiffLine[];
-  /**
-   * Rich review surfaces provide their canonical document so Structural keeps
-   * native hunk boundaries, syntax tokens, coordinates, and review metadata.
-   */
-  document?: DiffDocument;
-  /** Existing review surfaces retain their native comment state and composer. */
-  reviewActions?: InlineReviewActions;
-  /** Web review panes can continue to route a right-click through their shared menu. */
-  onLineContextMenu?: DiffLineContextMenuHandler;
-  /** Optional surface-owned context immediately left of the shared number rail. */
-  leadingGutter?: DiffLeadingGutter;
-  /** Enables syntax-aware structural alignment when a source path is known. */
-  filePath?: string | null;
-  source?: DiffDocument["source"];
-  /** Complete source snapshots enable parser-safe Structural eligibility. */
-  beforeSource?: string | null;
-  afterSource?: string | null;
-  /** Controlled local choice for richer parent review panes. */
-  presentation?: DiffPresentation;
-  /**
-   * The Changes surface's unified/side-by-side choice. Structural keeps its
-   * semantic pairing in either layout, but honors an explicit split choice
-   * rather than silently replacing it with the unified presentation.
-   */
-  layout?: "unified" | "split";
+  diffLines: DiffLine[];
   maxHeight?: number;
   emptyLabel?: string;
   fillAvailableHeight?: boolean;
-  /** `top` / `bottom` are for hosts that own the opposite separator. */
-  frame?: "full" | "top" | "bottom" | "none";
-  /**
-   * Render inside a parent document scroller. Hunk review needs one vertical
-   * reading flow, not a stack of independently scrolling mini-diffs.
-   */
-  embedded?: boolean;
-  // "Wrap long lines" appearance setting: soft-wrap long diff lines instead of
-  // horizontal scrolling. Visual only - selection/copy still yields the
-  // original unwrapped text.
-  wrap?: boolean;
+  structuralSource?: Omit<StructuralDiffInput, "lines">; // OTTO(structural-diff)
+  previewPresentation?: DiffPresentation; // OTTO(structural-diff)
+}
+
+function DiffLineRow({ line }: { line: DiffLine }) {
+  const lineContainerStyle = React.useMemo(
+    () => [
+      styles.line,
+      line.type === "header" && styles.headerLine,
+      line.type === "add" && styles.addLine,
+      line.type === "remove" && styles.removeLine,
+      line.type === "context" && styles.contextLine,
+    ],
+    [line.type],
+  );
+  const plainLineTextStyle = React.useMemo(
+    () => [
+      styles.lineText,
+      line.type === "header" && styles.headerText,
+      line.type === "add" && styles.addText,
+      line.type === "remove" && styles.removeText,
+      line.type === "context" && styles.contextText,
+    ],
+    [line.type],
+  );
+
+  const prefixStyle = React.useMemo(
+    () => [
+      line.type === "add" && styles.addText,
+      line.type === "remove" && styles.removeText,
+      line.type === "context" && styles.contextText,
+    ],
+    [line.type],
+  );
+
+  if (line.tokens) {
+    return (
+      <View style={lineContainerStyle}>
+        <Text style={styles.lineText}>
+          <Text style={prefixStyle}>{diffLinePrefix(line)}</Text>
+          <DiffTokens tokens={line.tokens} />
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={lineContainerStyle}>
+      {line.segments ? (
+        <Text style={styles.lineText}>
+          <Text style={line.type === "add" ? styles.addText : styles.removeText}>
+            {line.content[0]}
+          </Text>
+          {line.segments.map((segment) => (
+            <DiffSegment
+              key={`${segment.changed ? "c" : "u"}:${segment.text}`}
+              segment={segment}
+              lineType={line.type}
+            />
+          ))}
+        </Text>
+      ) : (
+        <Text style={plainLineTextStyle}>{line.content}</Text>
+      )}
+    </View>
+  );
+}
+
+function DiffTokens({ tokens }: { tokens: NonNullable<DiffLine["tokens"]> }) {
+  const keyed = React.useMemo(
+    () => tokens.map((token, index) => ({ key: `${index}-${token.text}`, token })),
+    [tokens],
+  );
+  return (
+    <>
+      {keyed.map(({ key, token }) => (
+        <Text key={key} style={token.style ? syntaxTokenStyleFor(token.style) : undefined}>
+          {token.text}
+        </Text>
+      ))}
+    </>
+  );
+}
+
+function DiffSegment({
+  segment,
+  lineType,
+}: {
+  segment: NonNullable<DiffLine["segments"]>[number];
+  lineType: DiffLine["type"];
+}) {
+  const segmentStyle = React.useMemo(
+    () => [
+      lineType === "add" ? styles.addText : styles.removeText,
+      segment.changed && (lineType === "add" ? styles.addHighlight : styles.removeHighlight),
+    ],
+    [lineType, segment.changed],
+  );
+  return <Text style={segmentStyle}>{segment.text}</Text>;
 }
 
 export function DiffViewer({
   diffLines,
-  document,
-  reviewActions: suppliedReviewActions,
-  onLineContextMenu,
-  leadingGutter,
-  filePath,
-  source = "patch",
-  beforeSource,
-  afterSource,
-  presentation,
-  layout,
   maxHeight,
   emptyLabel,
   fillAvailableHeight = false,
-  frame = "full",
-  embedded = false,
-  wrap,
+  structuralSource,
+  previewPresentation, // OTTO(structural-diff)
 }: DiffViewerProps) {
   const { t } = useTranslation();
   const [scrollViewWidth, setScrollViewWidth] = React.useState(0);
-  const [surfaceWidth, setSurfaceWidth] = React.useState(0);
-  const [reviewGutterWidth, setReviewGutterWidth] = React.useState(0);
-  const configuredCodeFontSize = useAppSettingValue(selectCodeFontSize);
-  const { settings } = useAppSettings();
-  const isCompact = useIsCompactFormFactor();
-  const codeFontSize = resolveCompactFontSize(configuredCodeFontSize, isCompact);
-  // Changes owns wrapping. A shared viewer must never inherit that surface's
-  // preference merely because it happens to render a diff.
-  const resolvedWrap = wrap ?? false;
-  // Split is owned by the full Changes viewer. Other diff surfaces use the
-  // shared Structural renderer in its compact unified presentation unless
-  // they later introduce and explicitly pass their own layout control.
-  const resolvedLayout = layout ?? "unified";
-  const codeLineHeight = Math.round(codeFontSize * 1.5);
-  const codeTypography = React.useMemo(() => {
-    const monoFontFamily = settings.monoFontFamily.trim();
-    return {
-      fontSize: codeFontSize,
-      lineHeight: codeLineHeight,
-      ...(monoFontFamily ? { fontFamily: monoFontFamily } : null),
-    };
-  }, [codeFontSize, codeLineHeight, settings.monoFontFamily]);
-  const lineNumberCellWidth = React.useMemo(
-    () =>
-      lineNumberGutterWidth(
-        largestDiffLineNumber(document?.lines ?? diffLines),
-        codeFontSize,
-        0,
-        1,
-      ),
-    [codeFontSize, diffLines, document?.lines],
-  );
-  const diffPresentation = useDiffPresentation({
-    diffLines,
-    document,
-    filePath,
-    source,
-    beforeSource,
-    afterSource,
-    presentation,
-  });
-  const syntaxTokens = React.useMemo(() => {
-    const originalLines = diffPresentation.document.lines;
-    const highlightedLines = highlightDiffLines(
-      [...originalLines],
-      diffPresentation.document.filePath,
-    );
-    const mapped = new Map<DiffLine, NonNullable<DiffLine["tokens"]>>();
-    highlightedLines.forEach((line, index) => {
-      const original = originalLines[index];
-      if (original && !original.tokens && line.tokens) mapped.set(original, line.tokens);
-    });
-    return mapped;
-  }, [diffPresentation.document.filePath, diffPresentation.document.lines]);
-  const reviewActions = React.useMemo(() => {
-    const targets = new Map<
-      DiffLine,
-      { old: ReviewableDiffTarget | null; new: ReviewableDiffTarget | null }
-    >();
-    for (const hunk of diffPresentation.document.hunks ?? []) {
-      for (const line of hunk.lines) {
-        targets.set(line.line, { old: line.oldReviewTarget, new: line.newReviewTarget });
-      }
-    }
-    return { targets, reviewActions: suppliedReviewActions, onLineContextMenu, leadingGutter };
-  }, [diffPresentation.document.hunks, leadingGutter, onLineContextMenu, suppliedReviewActions]);
   const resolvedEmptyLabel = emptyLabel ?? t("diffViewer.empty");
-  const showDesktopWebScrollbar = isWeb && !isCompact;
-  const verticalScrollRef = React.useRef<RNScrollView>(null);
-  const verticalScrollbar = useWebScrollViewScrollbar(verticalScrollRef, {
-    enabled: showDesktopWebScrollbar,
-  });
+  // OTTO(structural-diff): compact review surfaces keep their established line renderer.
+  const { presentation: selectedPresentation, select } = useDiffPresentation();
+  const presentation = previewPresentation ?? selectedPresentation;
+  const structural = React.useMemo(() => {
+    if (!structuralSource || presentation !== "structural") return null;
+    const input = { ...structuralSource, lines: diffLines };
+    const reason = getStructuralDiffUnavailableReason(input);
+    const rows = reason
+      ? null
+      : buildStructuralDiffRows(input).map((row, index) => ({
+          row,
+          key:
+            row.kind === "header"
+              ? `header:${row.content}:${index}`
+              : `pair:${row.left?.content}:${row.right?.content}:${index}`,
+        }));
+    return { reason, rows };
+  }, [diffLines, presentation, structuralSource]);
   const handleInnerLayout = React.useCallback(
     (e: { nativeEvent: { layout: { width: number } } }) =>
       setScrollViewWidth(e.nativeEvent.layout.width),
     [],
-  );
-  const handleSurfaceLayout = React.useCallback(
-    (event: { nativeEvent: { layout: { width: number } } }) =>
-      setSurfaceWidth(event.nativeEvent.layout.width),
-    [],
-  );
-  const reviewViewport = React.useMemo(
-    () => ({
-      width: surfaceWidth || scrollViewWidth,
-      gutterWidth: reviewGutterWidth,
-      pinToViewport: !resolvedWrap,
-      wrap: resolvedWrap,
-      onGutterWidthChange: setReviewGutterWidth,
-    }),
-    [resolvedWrap, reviewGutterWidth, scrollViewWidth, surfaceWidth],
   );
 
   const outerScrollStyle = React.useMemo(
@@ -206,44 +169,23 @@ export function DiffViewer({
     ],
     [maxHeight, fillAvailableHeight],
   );
-  const verticalWrapperStyle = React.useMemo(
-    () => (fillAvailableHeight ? styles.fillHeight : undefined),
-    [fillAvailableHeight],
-  );
   const linesContainerStyle = React.useMemo(
     () => [
       styles.linesContainer,
-      resolvedWrap && styles.linesContainerWrap,
-      !resolvedWrap && scrollViewWidth > 0 && inlineUnistylesStyle({ minWidth: scrollViewWidth }),
+      scrollViewWidth > 0 && inlineUnistylesStyle({ minWidth: scrollViewWidth }),
     ],
-    [resolvedWrap, scrollViewWidth],
+    [scrollViewWidth],
   );
-  const keyedDiffLines = React.useMemo(() => {
-    const hunks = diffPresentation.document.hunks;
-    if (!hunks || hunks.length === 0) {
-      return diffLines.map((line, index) => ({
-        key: `${index}-${line.type}-${line.content}`,
-        line,
-      }));
-    }
-    const displayLines: DiffLine[] = [];
-    for (const hunk of hunks) {
-      displayLines.push({ type: "header", content: hunk.header });
-      for (const documentLine of hunk.lines) {
-        if (documentLine.line.type !== "header") displayLines.push(documentLine.line);
-      }
-    }
-    return displayLines.map((line, index) => ({
-      key: `${index}-${line.type}-${line.content}`,
-      line,
-    }));
-  }, [diffLines, diffPresentation.document.hunks]);
+  const keyedDiffLines = React.useMemo(
+    () => diffLines.map((line, index) => ({ key: `${index}-${line.type}-${line.content}`, line })),
+    [diffLines],
+  );
   const webVerticalContentStyle = React.useMemo(
     () => [styles.verticalContent, fillAvailableHeight && styles.fillHeight],
     [fillAvailableHeight],
   );
 
-  if (!diffPresentation.document.lines.length) {
+  if (!diffLines.length) {
     return (
       <View style={styles.emptyState}>
         <Text style={styles.emptyText}>{resolvedEmptyLabel}</Text>
@@ -253,103 +195,140 @@ export function DiffViewer({
 
   const lines = (
     <View style={linesContainerStyle} dataSet={CODE_SURFACE_DATASET}>
-      {keyedDiffLines.map(({ key, line }) => (
-        <DiffLineRow key={key} line={line} wrap={resolvedWrap} />
-      ))}
-    </View>
-  );
-
-  // With wrap on, the horizontal scroller is skipped and long lines soft-wrap
-  // inside the vertical scroll instead.
-  const renderScrollableContent = (content: React.ReactNode) => {
-    const horizontalScroll = resolvedWrap ? (
-      <View style={styles.horizontalContent}>{content}</View>
-    ) : (
-      <ScrollView
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={!showDesktopWebScrollbar}
-        contentContainerStyle={styles.horizontalContent}
-        onLayout={handleInnerLayout}
-      >
-        {content}
-      </ScrollView>
-    );
-
-    return (
-      <View style={verticalWrapperStyle}>
-        <ScrollView
-          ref={verticalScrollRef}
-          style={outerScrollStyle}
-          contentContainerStyle={webVerticalContentStyle}
-          nestedScrollEnabled
-          onLayout={verticalScrollbar.onLayout}
-          onScroll={verticalScrollbar.onScroll}
-          onContentSizeChange={verticalScrollbar.onContentSizeChange}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!showDesktopWebScrollbar}
-        >
-          {horizontalScroll}
-        </ScrollView>
-        {verticalScrollbar.overlay}
-      </View>
-    );
-  };
-  const renderContent = (content: React.ReactNode) => {
-    if (!embedded) {
-      return renderScrollableContent(content);
-    }
-    // The outer article owns vertical scrolling. Long unwrapped lines still
-    // retain a local horizontal rail, which is the only axis this segment owns.
-    return resolvedWrap ? (
-      <View style={styles.horizontalContent}>{content}</View>
-    ) : (
-      <ScrollView
-        horizontal
-        nestedScrollEnabled
-        showsHorizontalScrollIndicator={!showDesktopWebScrollbar}
-        contentContainerStyle={styles.horizontalContent}
-        onLayout={handleInnerLayout}
-      >
-        {content}
-      </ScrollView>
-    );
-  };
-  const lineContent = renderContent(lines);
-  const structuralContent = renderContent(
-    <View style={linesContainerStyle} dataSet={CODE_SURFACE_DATASET}>
-      <StructuralDiff document={diffPresentation.document} layout={resolvedLayout} />
-    </View>,
-  );
-  const diffSurface = (
-    <View
-      style={[
-        styles.diffSurface,
-        frame === "top" && styles.diffSurfaceTopOnly,
-        frame === "bottom" && styles.diffSurfaceBottomOnly,
-        frame === "none" && styles.diffSurfaceFrameless,
-      ]}
-      onLayout={handleSurfaceLayout}
-    >
-      {diffPresentation.effectivePresentation === "structural" ? structuralContent : lineContent}
-    </View>
-  );
-
-  return (
-    <DiffReviewActionsContext.Provider value={reviewActions}>
-      <DiffReviewViewportContext.Provider value={reviewViewport}>
-        <DiffLineNumberWidthContext.Provider value={lineNumberCellWidth}>
-          <DiffCodeTypographyContext.Provider value={codeTypography}>
-            <DiffCodeLineHeightContext.Provider value={codeLineHeight}>
-              <DiffSyntaxTokensContext.Provider value={syntaxTokens}>
-                <View style={fillAvailableHeight ? styles.fillHeight : undefined}>
-                  {diffSurface}
+      {structural?.rows
+        ? structural.rows.map(({ row, key }) =>
+            row.kind === "header" ? (
+              <Text key={key} style={styles.headerText}>
+                {row.content}
+              </Text>
+            ) : (
+              <View style={styles.structuralRow} key={key}>
+                <View style={styles.structuralCell}>
+                  {row.left ? <DiffLineRow line={row.left} /> : null}
                 </View>
-              </DiffSyntaxTokensContext.Provider>
-            </DiffCodeLineHeightContext.Provider>
-          </DiffCodeTypographyContext.Provider>
-        </DiffLineNumberWidthContext.Provider>
-      </DiffReviewViewportContext.Provider>
-    </DiffReviewActionsContext.Provider>
+                <View style={styles.structuralCell}>
+                  {row.right ? <DiffLineRow line={row.right} /> : null}
+                </View>
+              </View>
+            ),
+          )
+        : keyedDiffLines.map(({ key, line }) => <DiffLineRow key={key} line={line} />)}
+    </View>
+  );
+
+  const horizontalScroll = (
+    <ScrollView
+      horizontal
+      nestedScrollEnabled
+      showsHorizontalScrollIndicator
+      contentContainerStyle={styles.horizontalContent}
+      onLayout={handleInnerLayout}
+    >
+      {lines}
+    </ScrollView>
+  );
+
+  const content = (
+    <ScrollView
+      style={outerScrollStyle}
+      contentContainerStyle={webVerticalContentStyle}
+      nestedScrollEnabled
+      showsVerticalScrollIndicator
+    >
+      {horizontalScroll}
+    </ScrollView>
+  );
+
+  if (!structuralSource) return content;
+  return (
+    <View style={fillAvailableHeight ? styles.fillHeight : undefined}>
+      {previewPresentation === undefined ? (
+        <DiffPresentationControl value={presentation} onChange={select} />
+      ) : null}
+      {structural?.reason ? <Text style={styles.structuralNotice}>{structural.reason}</Text> : null}
+      {content}
+    </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => {
+  const insets = getCodeInsets(theme);
+
+  return {
+    structuralRow: { flexDirection: "row" },
+    structuralCell: { flex: 1, minWidth: 180 },
+    structuralNotice: { color: theme.colors.foregroundMuted, paddingHorizontal: theme.spacing[2] },
+    verticalScroll: {},
+    fillHeight: {
+      flex: 1,
+      minHeight: 0,
+    },
+    verticalContent: {
+      flexGrow: 1,
+      paddingBottom: insets.extraBottom,
+    },
+    horizontalContent: {
+      flexDirection: "column" as const,
+      paddingRight: insets.extraRight,
+    },
+    linesContainer: {
+      alignSelf: "flex-start",
+      padding: insets.padding,
+    },
+    line: {
+      minWidth: "100%",
+      paddingHorizontal: 0,
+      paddingVertical: theme.spacing[1],
+    },
+    lineText: {
+      fontFamily: theme.fontFamily.mono,
+      fontSize: theme.fontSize.code,
+      color: theme.colors.foreground,
+      ...(isWeb
+        ? {
+            whiteSpace: "pre",
+            overflowWrap: "normal",
+          }
+        : null),
+    },
+    headerLine: {
+      backgroundColor: theme.colors.surface1,
+    },
+    headerText: {
+      color: theme.colors.foregroundMuted,
+    },
+    addLine: {
+      backgroundColor: "rgba(46, 160, 67, 0.15)",
+    },
+    addText: {
+      color: theme.colors.foreground,
+    },
+    removeLine: {
+      backgroundColor: "rgba(248, 81, 73, 0.1)",
+    },
+    removeText: {
+      color: theme.colors.foreground,
+    },
+    addHighlight: {
+      backgroundColor: "rgba(46, 160, 67, 0.4)",
+    },
+    removeHighlight: {
+      backgroundColor: "rgba(248, 81, 73, 0.35)",
+    },
+    contextLine: {
+      backgroundColor: theme.colors.surface1,
+    },
+    contextText: {
+      color: theme.colors.foregroundMuted,
+    },
+    emptyState: {
+      padding: theme.spacing[4],
+      alignItems: "center" as const,
+      justifyContent: "center" as const,
+    },
+    emptyText: {
+      fontSize: theme.fontSize.base,
+      color: theme.colors.foregroundMuted,
+    },
+  };
+});

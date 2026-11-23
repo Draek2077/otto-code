@@ -1,8 +1,7 @@
-import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 interface RuntimeMetricsLogger {
   info(obj: object, msg?: string): void;
-  debug(obj: object, msg?: string): void;
 }
 
 interface RuntimeMetricsHandlerTiming {
@@ -31,54 +30,7 @@ interface RuntimeMetricsOptions {
   windowMs?: number;
 }
 
-/**
- * Session totals, never pruned. The rolling buckets answer "what is happening
- * now"; these answer "what has this connection cost the JS thread since the app
- * started", which is the number you need when the complaint is that the app gets
- * slower the longer it stays open.
- */
-export interface DaemonClientTrafficTotals {
-  messages: number;
-  bytes: number;
-  /** Main-thread ms spent inside inbound message handlers. */
-  handlerMs: number;
-  binaryFrames: number;
-  /** Distinct inbound message types seen. */
-  types: number;
-}
-
-export interface DaemonClientTrafficHotspot {
-  type: string;
-  count: number;
-  totalMs: number;
-  maxMs: number;
-  bytes: number;
-}
-
-/**
- * One inbound session-message dispatch, retained only long enough to align it
- * with a browser Long Animation Frame in the app's performance capture.
- *
- * `at` is an epoch timestamp so callers can compare it directly to the LoAF
- * API. The phase timings are synchronous main-thread work and sum to
- * approximately `totalMs`; small gaps are metric bookkeeping.
- */
-export interface DaemonClientInboundDispatchTiming {
-  at: number;
-  type: string;
-  /** Set for agent-scoped messages, so a capture can tell one hot agent from a spread. */
-  agentId?: string;
-  bytes: number;
-  decodeAndValidateMs: number;
-  internalDispatchMs: number;
-  rawListenersMs: number;
-  typedHandlersMs: number;
-  totalMs: number;
-}
-
 const DEFAULT_ROLLING_WINDOW_MS = 60_000;
-/** Bounded independently from rolling log buckets: this is capture evidence, not telemetry. */
-export const INBOUND_DISPATCH_TIMING_CAPACITY = 500;
 
 export class DaemonClientRuntimeMetrics {
   private readonly startedAt = Date.now();
@@ -90,13 +42,6 @@ export class DaemonClientRuntimeMetrics {
   private readonly inboundAgentStreamCounts = new Map<string, number>();
   private readonly inboundAgentStreamByAgentCounts = new Map<string, number>();
   private readonly inboundBinaryFrameCounts = new Map<string, number>();
-  // Cumulative, deliberately outside the bucket pruning above.
-  private totalMessages = 0;
-  private totalBytes = 0;
-  private totalHandlerMs = 0;
-  private totalBinaryFrames = 0;
-  private readonly cumulativeByType = new Map<string, DaemonClientTrafficHotspot>();
-  private readonly inboundDispatchTimings: DaemonClientInboundDispatchTiming[] = [];
 
   constructor(
     private readonly logger: RuntimeMetricsLogger,
@@ -113,78 +58,6 @@ export class DaemonClientRuntimeMetrics {
     incrementCount(this.inboundMessageCounts, type, 1);
     incrementCount(this.inboundMessageBytes, type, bytes);
     incrementHandlerTiming(this.inboundMessageHandlerMs, type, handlerMs);
-    this.totalMessages += 1;
-    this.recordCumulative(type, bytes, handlerMs);
-  }
-
-  getTrafficTotals(): DaemonClientTrafficTotals {
-    return {
-      messages: this.totalMessages,
-      bytes: this.totalBytes,
-      handlerMs: this.totalHandlerMs,
-      binaryFrames: this.totalBinaryFrames,
-      types: this.cumulativeByType.size,
-    };
-  }
-
-  /** Inbound message types ranked by the main-thread time they have cost. */
-  getTrafficHotspots(limit = 15): DaemonClientTrafficHotspot[] {
-    // Copied out so a caller cannot mutate the running totals.
-    const rows: DaemonClientTrafficHotspot[] = [];
-    for (const row of this.cumulativeByType.values()) {
-      rows.push({
-        type: row.type,
-        count: row.count,
-        totalMs: row.totalMs,
-        maxMs: row.maxMs,
-        bytes: row.bytes,
-      });
-    }
-    rows.sort((left, right) => right.totalMs - left.totalMs);
-    return rows.slice(0, limit);
-  }
-
-  recordInboundDispatch(timing: DaemonClientInboundDispatchTiming): void {
-    this.inboundDispatchTimings.push(cloneInboundDispatchTiming(timing));
-    if (this.inboundDispatchTimings.length > INBOUND_DISPATCH_TIMING_CAPACITY) {
-      this.inboundDispatchTimings.splice(
-        0,
-        this.inboundDispatchTimings.length - INBOUND_DISPATCH_TIMING_CAPACITY,
-      );
-    }
-  }
-
-  /**
-   * Recent inbound dispatches for a performance capture. Copies keep capture
-   * consumers from mutating a live client's bounded ring.
-   */
-  getInboundDispatchTimings(sinceMs?: number): DaemonClientInboundDispatchTiming[] {
-    return this.inboundDispatchTimings
-      .filter((timing) => sinceMs === undefined || timing.at >= sinceMs)
-      .map(cloneInboundDispatchTiming);
-  }
-
-  // Shared by JSON messages and binary frames; the per-sink totals
-  // (`totalMessages` / `totalBinaryFrames`) are bumped by the callers so a
-  // binary frame is never counted as both.
-  private recordCumulative(type: string, bytes: number, handlerMs: number): void {
-    this.totalBytes += bytes;
-    this.totalHandlerMs += handlerMs;
-    const existing = this.cumulativeByType.get(type);
-    if (existing) {
-      existing.count += 1;
-      existing.bytes += bytes;
-      existing.totalMs += handlerMs;
-      existing.maxMs = Math.max(existing.maxMs, handlerMs);
-      return;
-    }
-    this.cumulativeByType.set(type, {
-      type,
-      count: 1,
-      bytes,
-      totalMs: handlerMs,
-      maxMs: handlerMs,
-    });
   }
 
   recordAgentStream(
@@ -200,8 +73,6 @@ export class DaemonClientRuntimeMetrics {
     incrementCount(this.inboundBinaryFrameCounts, kind, 1);
     incrementCount(this.inboundMessageBytes, `binary:${kind}`, bytes);
     incrementHandlerTiming(this.inboundMessageHandlerMs, `binary:${kind}`, handlerMs);
-    this.totalBinaryFrames += 1;
-    this.recordCumulative(`binary:${kind}`, bytes, handlerMs);
   }
 
   flush(options?: { final?: boolean }): void {
@@ -219,10 +90,7 @@ export class DaemonClientRuntimeMetrics {
       return;
     }
 
-    // Debug, not info: the rolling totals are read on demand by the app's
-    // Performance Diagnostics Capture (getTrafficTotals), so the periodic line
-    // only floods the console for anyone not actively hunting a wire problem.
-    this.logger.debug(
+    this.logger.info(
       {
         windowMs: Math.min(this.windowMs, Math.max(0, now - this.startedAt)),
         rollingWindowMs: this.windowMs,
@@ -336,22 +204,6 @@ function cloneHandlerTimingMap(
       { count: value.count, totalMs: value.totalMs, maxMs: value.maxMs },
     ]),
   );
-}
-
-function cloneInboundDispatchTiming(
-  timing: DaemonClientInboundDispatchTiming,
-): DaemonClientInboundDispatchTiming {
-  return {
-    at: timing.at,
-    type: timing.type,
-    agentId: timing.agentId,
-    bytes: timing.bytes,
-    decodeAndValidateMs: timing.decodeAndValidateMs,
-    internalDispatchMs: timing.internalDispatchMs,
-    rawListenersMs: timing.rawListenersMs,
-    typedHandlersMs: timing.typedHandlersMs,
-    totalMs: timing.totalMs,
-  };
 }
 
 function mergeCountMap(target: Map<string, number>, source: Map<string, number>): void {

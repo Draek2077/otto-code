@@ -1,14 +1,14 @@
 ---
 title: Plugin quickstart
 description: Build, install, share, and update a trusted Otto plugin.
-nav: Paseo v0.8 (current)
+nav: Paseo v0.8 (historical)
 order: 46
 category: Plugins
 ---
 
 # Plugin quickstart
 
-> **For the Paseo v0.8 API integrated into Otto.** Use the [v0.7 docs](/docs/plugins/v0.7)
+> **For the Paseo v0.8 API integrated into Otto.** Use the [current guide](/docs/plugins) for the Paseo 0.12 API. Use the [v0.7 docs](/docs/plugins/v0.7)
 > only when maintaining the historical mixed-entry API.
 
 > **Experimental:** The plugin API is still evolving, so expect breaking changes and updates to

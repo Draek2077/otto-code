@@ -1,42 +1,40 @@
-import { type ReactElement, useCallback, useEffect, useMemo } from "react";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { type ReactElement, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { ForgeBrandIcon } from "@/git/forge-icon";
-import { ActivityIndicator, Text, View, type PressableStateCallbackType } from "react-native";
+import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { useMutation } from "@tanstack/react-query";
-import { Check, ChevronDown } from "@/components/icons/material-icons";
+import { Check, ChevronDown } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { EditorAppIcon } from "@/components/icons/editor-app-icons";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { EditorTargetIcon } from "@/components/icons/editor-target-icon";
 import {
-  SplitButton,
-  SplitButtonMenuTrigger,
-  SplitButtonPrimary,
-} from "@/components/ui/split-button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useToast } from "@/contexts/toast-context";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
+import { useCheckoutPrStatusQuery } from "@/git/use-pr-status-query";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { resolvePreferredEditorId, usePreferredEditor } from "@/hooks/use-preferred-editor";
-import { openLink } from "@/utils/open-link";
+import { openExternalUrl } from "@/utils/open-external-url";
 import { isAbsolutePath } from "@/utils/path";
 import { isWeb } from "@/constants/platform";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
 import { resolveWorkspaceFilePaths, type WorkspaceFileLocation } from "@/workspace/file-open";
 import { planWorkspaceOpenTargets } from "@/workspace/open-in-editor/planner";
 import type { Theme } from "@/styles/theme";
-import { HEADER_CONTROL_HEIGHT, buttonControlHeight } from "@/components/ui/control-geometry";
+import { ForgeBrandIcon } from "@/git/forge-icon";
+import { getForgePresentation } from "@/git/forge";
+import { buttonControlHeight, HEADER_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
+import { extraMutedIconColorMapping } from "@/components/ui/icon-button-chrome";
 
 interface WorkspaceOpenInEditorButtonProps {
   serverId: string;
   cwd: string;
   activeFile?: WorkspaceFileLocation | null;
   hideLabels?: boolean;
-  /** Reports whether this workspace contributes a visible toolbar control. */
-  onAvailabilityChange?: (available: boolean) => void;
-  // Stretch to fill the available width (content stays centered).
-  fill?: boolean;
-  tooltipSide?: "top" | "bottom";
 }
 
 interface OpenTarget {
@@ -46,13 +44,17 @@ interface OpenTarget {
   onOpen: () => Promise<void> | void;
 }
 
-const ThemedActivityIndicator = withUnistyles(ActivityIndicator);
-const ThemedEditorAppIcon = withUnistyles(EditorAppIcon);
+const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
+const ThemedEditorTargetIcon = withUnistyles(EditorTargetIcon);
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedCheckIcon = withUnistyles(Check);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+
+function renderForgeOpenTargetIcon(icon: string): ReactElement {
+  return <ForgeBrandIcon iconKind={icon} size={16} uniProps={mutedColorMapping} />;
+}
 
 interface OpenTargetMenuItemProps {
   target: OpenTarget;
@@ -63,7 +65,7 @@ interface OpenTargetMenuItemProps {
 function OpenTargetMenuItem({ target, isPreferred, onSelect }: OpenTargetMenuItemProps) {
   const handleSelect = useCallback(() => onSelect(target), [onSelect, target]);
   const trailing = useMemo(
-    () => (isPreferred ? <ThemedCheckIcon size="md" uniProps={mutedColorMapping} /> : undefined),
+    () => (isPreferred ? <ThemedCheckIcon size={16} uniProps={mutedColorMapping} /> : undefined),
     [isPreferred],
   );
   return (
@@ -83,9 +85,6 @@ export function WorkspaceOpenInEditorButton({
   cwd,
   activeFile,
   hideLabels,
-  onAvailabilityChange,
-  fill,
-  tooltipSide = "bottom",
 }: WorkspaceOpenInEditorButtonProps) {
   const { t } = useTranslation();
   const toast = useToast();
@@ -114,6 +113,10 @@ export function WorkspaceOpenInEditorButton({
     serverId,
     cwd: shouldQueryCheckout ? cwd : "",
   });
+  const { resolvedForge } = useCheckoutPrStatusQuery({
+    serverId,
+    cwd: shouldQueryCheckout ? cwd : "",
+  });
 
   const targets = useMemo<OpenTarget[]>(
     () =>
@@ -125,19 +128,23 @@ export function WorkspaceOpenInEditorButton({
         canUseDesktopBridge: isDesktopOpenAvailable,
         isLocalExecution: isLocalDaemon,
         checkoutStatus,
+        forge: resolvedForge,
       }).map((target) => {
         if (target.source === "forge") {
+          const presentation = getForgePresentation(target.forge);
           return {
             id: target.id,
             label: target.label,
-            icon: <ForgeBrandIcon iconKind={target.forge} size="md" uniProps={mutedColorMapping} />,
-            onOpen: () => openLink(target.url),
+            icon: renderForgeOpenTargetIcon(presentation.icon),
+            onOpen: () => openExternalUrl(target.url),
           };
         }
         return {
           id: target.id,
           label: target.label,
-          icon: <ThemedEditorAppIcon editorId={target.id} size="md" uniProps={mutedColorMapping} />,
+          icon: (
+            <ThemedEditorTargetIcon icon={target.icon} size={16} uniProps={mutedColorMapping} />
+          ),
           onOpen: () => openDesktopTarget(target.openInput),
         };
       }),
@@ -146,6 +153,7 @@ export function WorkspaceOpenInEditorButton({
       checkoutStatus,
       cwd,
       desktopOpenTargets,
+      resolvedForge,
       isDesktopOpenAvailable,
       isLocalDaemon,
       resolvedFile,
@@ -182,15 +190,13 @@ export function WorkspaceOpenInEditorButton({
     [updatePreferredEditor],
   );
 
-  const rowStyle = useMemo(() => [styles.row, Boolean(fill) && styles.fillItem], [fill]);
   const primaryPressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
-      styles.splitButtonPrimary,
-      Boolean(fill) && styles.fillItem,
+      hideLabels ? styles.splitButtonPrimaryIconOnly : styles.splitButtonPrimary,
       (Boolean(hovered) || pressed) && styles.splitButtonPrimaryHovered,
       openMutation.isPending && styles.splitButtonPrimaryDisabled,
     ],
-    [fill, openMutation.isPending],
+    [hideLabels, openMutation.isPending],
   );
 
   const caretTriggerStyle = useCallback(
@@ -207,76 +213,55 @@ export function WorkspaceOpenInEditorButton({
     }
   }, [primaryOption, handleOpenTarget]);
 
-  const isAvailable = canResolveWorkspace && primaryOption !== null && targets.length > 0;
-  useEffect(() => onAvailabilityChange?.(isAvailable), [isAvailable, onAvailabilityChange]);
-
-  if (!isAvailable) {
+  if (!canResolveWorkspace || !primaryOption || targets.length === 0) {
     return null;
   }
 
-  const primaryTooltipLabel = activeFileName
-    ? t("workspace.git.openInEditor.openFileIn", {
-        fileName: activeFileName,
-        target: primaryOption.label,
-      })
-    : t("workspace.git.openInEditor.openIn", {
-        target: primaryOption.label,
-      });
-
   return (
-    <View style={rowStyle}>
-      <SplitButton hasMenu={targets.length > 1} style={Boolean(fill) && styles.fillItem}>
-        <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger asChild>
-            <SplitButtonPrimary
-              testID="workspace-open-in-editor-primary"
-              style={primaryPressableStyle}
-              onPress={handlePrimaryPress}
-              disabled={openMutation.isPending}
-              accessibilityRole="button"
-              accessibilityLabel={primaryTooltipLabel}
-            >
-              {openMutation.isPending ? (
-                <ThemedActivityIndicator
-                  size="small"
-                  uniProps={foregroundColorMapping}
-                  style={styles.splitButtonSpinnerOnly}
-                />
-              ) : (
-                <View style={styles.splitButtonContent}>
-                  {primaryOption.icon}
-                  {!hideLabels && (
-                    <Text style={styles.splitButtonText} numberOfLines={1}>
-                      {t("workspace.git.openInEditor.open")}
-                    </Text>
-                  )}
-                </View>
+    <View style={styles.row}>
+      <View style={styles.splitButton}>
+        <Pressable
+          testID="workspace-open-in-editor-primary"
+          style={primaryPressableStyle}
+          onPress={handlePrimaryPress}
+          disabled={openMutation.isPending}
+          accessibilityRole="button"
+          accessibilityLabel={
+            activeFileName
+              ? t("workspace.git.openInEditor.openFileIn", {
+                  fileName: activeFileName,
+                  target: primaryOption.label,
+                })
+              : t("workspace.git.openInEditor.openIn", {
+                  target: primaryOption.label,
+                })
+          }
+        >
+          {openMutation.isPending ? (
+            <ThemedLoadingSpinner
+              size="small"
+              uniProps={foregroundColorMapping}
+              style={styles.splitButtonSpinnerOnly}
+            />
+          ) : (
+            <View style={styles.splitButtonContent}>
+              {primaryOption.icon}
+              {!hideLabels && (
+                <Text style={styles.splitButtonText}>{t("workspace.git.openInEditor.open")}</Text>
               )}
-            </SplitButtonPrimary>
-          </TooltipTrigger>
-          <TooltipContent side={tooltipSide} align="center" offset={8}>
-            <Text style={styles.tooltipText}>{primaryTooltipLabel}</Text>
-          </TooltipContent>
-        </Tooltip>
+            </View>
+          )}
+        </Pressable>
         {targets.length > 1 ? (
           <DropdownMenu>
-            <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
-              <TooltipTrigger asChild>
-                <SplitButtonMenuTrigger
-                  testID="workspace-open-in-editor-caret"
-                  style={caretTriggerStyle}
-                  accessibilityRole="button"
-                  accessibilityLabel={t("workspace.git.openInEditor.chooseEditor")}
-                >
-                  <ThemedChevronDown size="md" uniProps={mutedColorMapping} />
-                </SplitButtonMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent side={tooltipSide} align="center" offset={8}>
-                <Text style={styles.tooltipText}>
-                  {t("workspace.git.openInEditor.chooseEditor")}
-                </Text>
-              </TooltipContent>
-            </Tooltip>
+            <DropdownMenuTrigger
+              testID="workspace-open-in-editor-caret"
+              style={caretTriggerStyle}
+              accessibilityRole="button"
+              accessibilityLabel={t("workspace.git.openInEditor.chooseEditor")}
+            >
+              <ThemedChevronDown size={16} uniProps={extraMutedIconColorMapping} />
+            </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
               minWidth={148}
@@ -294,7 +279,7 @@ export function WorkspaceOpenInEditorButton({
             </DropdownMenuContent>
           </DropdownMenu>
         ) : null}
-      </SplitButton>
+      </View>
     </View>
   );
 }
@@ -306,20 +291,23 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     flexShrink: 0,
   },
-  fillItem: {
-    flexGrow: 1,
-    flexShrink: 1,
-    minWidth: 0,
+  splitButton: {
+    height: {
+      xs: buttonControlHeight.xs,
+      md: HEADER_CONTROL_HEIGHT,
+    },
+    flexDirection: "row",
+    alignItems: "stretch",
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
+    overflow: "hidden",
   },
   splitButtonPrimary: {
     paddingHorizontal: {
       xs: theme.spacing[3],
       md: theme.spacing[2],
     },
-    // Same vertical inset as the git Commit split button: the two controls
-    // share one recipe (label line height + this inset + the border), so they
-    // arrive at the same height naturally instead of being pinned to match.
-    paddingVertical: theme.spacing[1],
     justifyContent: "center",
     position: "relative",
   },
@@ -333,35 +321,26 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   splitButtonPrimaryHovered: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
+    backgroundColor: theme.colors.surface2,
   },
   splitButtonPrimaryDisabled: {
     opacity: 0.6,
   },
   splitButtonText: {
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.5,
+    fontSize: theme.fontSize.base,
+    lineHeight: theme.fontSize.base * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
-    flexShrink: 1,
-  },
-  tooltipText: {
-    color: theme.colors.popoverForeground,
-    fontSize: theme.fontSize.sm,
   },
   splitButtonContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     gap: theme.spacing[2],
-    // Icon-only content (16px) is shorter than the label's line height, so
-    // the content keeps the label's line height as its minimum. That is what
-    // lets the icon-only state come out the same height as the labeled one.
-    minHeight: theme.fontSize.sm * 1.5,
+    minHeight: theme.fontSize.base * 1.5,
   },
   splitButtonSpinnerOnly: {
     transform: [{ scale: 0.8 }],
-    minHeight: theme.fontSize.sm * 1.5,
   },
   splitButtonCaret: {
     width: {
@@ -370,8 +349,10 @@ const styles = StyleSheet.create((theme) => ({
     },
     alignItems: "center",
     justifyContent: "center",
+    borderLeftWidth: theme.borderWidth[1],
+    borderLeftColor: theme.colors.borderAccent,
   },
   splitButtonCaretHovered: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
+    backgroundColor: theme.colors.surface2,
   },
 }));

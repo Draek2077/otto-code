@@ -11,7 +11,7 @@ export const gotoHome = async (page: Page) => {
   const entryButton = page
     .getByText("Add a project", { exact: true })
     .or(page.getByText("Add project", { exact: true }))
-    .or(page.getByText("New chat", { exact: true }))
+    .or(page.getByText("New agent", { exact: true }))
     .first();
 
   await expect
@@ -35,7 +35,7 @@ export const openSettings = async (page: Page) => {
   const settingsButton = page.locator('[data-testid="sidebar-settings"]:visible').first();
   await expect(settingsButton).toBeVisible();
   await settingsButton.click();
-  await expect(page).toHaveURL(/\/settings$/);
+  await expect(page).toHaveURL(/\/settings\/general$/);
 };
 
 export const setWorkingDirectory = async (page: Page, directory: string) => {
@@ -355,74 +355,23 @@ export const selectModel = async (page: Page, model: string) => {
     }
   }
 
-  // Wait for the model dropdown to open. Match the search box by its testID
-  // first: the accessible name is derived from a placeholder ("Search
-  // models...") that role+name matching does not reliably expose here, so the
-  // name-only lookup could miss a search box that was on screen. Other helpers
-  // (schedules) already key off the testID.
+  // Wait for the model dropdown to open
   const searchInput = page
     .getByTestId("model-search-input")
-    .or(page.getByRole("textbox", { name: /search model/i }))
-    .first();
-
-  // The picker opens on the ALL-PROVIDERS list, which has no search box - that
-  // only exists once a provider is opened (see combined-model-selector's
-  // per-provider header). Waiting for the search box straight away therefore
-  // timed out against a dialog that was open and healthy. Drill into providers
-  // until the requested model is on screen.
-  if (!(await searchInput.isVisible({ timeout: 5000 }).catch(() => false))) {
-    const openDialog = page.getByRole("dialog").first();
-    // The pressable row is two levels above the "N models" count text
-    // (row > trailing group > count), and only the row carries the handler.
-    const providerCounts = openDialog.getByText(/^\d+ models?$/);
-    const providerCount = await providerCounts.count();
-    for (let index = 0; index < providerCount; index += 1) {
-      await providerCounts
-        .nth(index)
-        .locator("xpath=../..")
-        .click({ force: true })
-        .catch(() => undefined);
-      if (!(await searchInput.isVisible({ timeout: 5000 }).catch(() => false))) {
-        continue;
-      }
-      await searchInput.fill(normalizedModel);
-      const candidate = openDialog
-        .getByText(new RegExp(`^${escapeRegex(normalizedModel)}$`, "i"))
-        .first();
-      if (await candidate.isVisible({ timeout: 3000 }).catch(() => false)) {
-        break;
-      }
-      // Wrong provider - step back out and try the next one.
-      await page
-        .getByRole("button", { name: /back/i })
-        .first()
-        .click()
-        .catch(() => undefined);
-    }
-  }
-
+    .or(page.getByTestId("model-search-all-input"))
+    .filter({ visible: true });
   await expect(searchInput).toBeVisible({ timeout: 10000 });
 
   // Type to search/filter models
   await searchInput.fill(normalizedModel);
 
-  const dialog = page.getByRole("dialog");
-  const exactOption = dialog
-    .getByText(new RegExp(`^${escapeRegex(normalizedModel)}$`, "i"))
-    .first();
-  const exactVisible = await exactOption.isVisible().catch(() => false);
-  if (exactVisible) {
-    await exactOption.click({ force: true });
-  } else {
-    // Modern labels include version suffixes (for example "Haiku 4.5"), so
-    // select the first filtered result using keyboard confirm.
-    await searchInput.press("Enter");
-  }
-
-  // Wait for dropdown to close
-  if (await searchInput.isVisible().catch(() => false)) {
-    await page.keyboard.press("Escape").catch(() => undefined);
-  }
+  // OTTO(model-picker): the provider and cross-provider views both accept a model ID or label.
+  const escaped = escapeRegex(normalizedModel);
+  const byId = page.getByTestId(new RegExp(`^model-row-.+-${escaped}$`, "i"));
+  const byLabel = page.getByTestId(/^model-row-/).filter({
+    has: page.getByText(new RegExp(`^${escaped}$`, "i")),
+  });
+  await byId.or(byLabel).filter({ visible: true }).click();
   await expect(searchInput).not.toBeVisible({ timeout: 5000 });
 };
 

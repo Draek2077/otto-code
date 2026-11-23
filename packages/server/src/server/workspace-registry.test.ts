@@ -28,6 +28,21 @@ describe("resolveWorkspaceName", () => {
     );
   });
 
+  test("createPersistedWorkspaceRecord defaults background to false and preserves explicit intent", () => {
+    const base = {
+      workspaceId: "ws-1",
+      projectId: "proj-1",
+      cwd: "/tmp/repo",
+      kind: "local_checkout" as const,
+      displayName: "main",
+      createdAt: "2026-03-01T00:00:00.000Z",
+      updatedAt: "2026-03-01T00:00:00.000Z",
+    };
+    expect(createPersistedWorkspaceRecord(base).background).toBe(false);
+    expect(createPersistedWorkspaceRecord({ ...base, background: false }).background).toBe(false);
+    expect(createPersistedWorkspaceRecord({ ...base, background: true }).background).toBe(true);
+  });
+
   test("resolveWorkspaceDisplayName applies the same rule over the persisted record", () => {
     const record = createPersistedWorkspaceRecord({
       workspaceId: "ws-1",
@@ -262,41 +277,6 @@ describe("workspace registries", () => {
     expect(await projectRegistry.get(archived.projectId)).toEqual(archived);
   });
 
-  // The v0.2.5 merge changed `deriveProjectKey` to lowercase GitHub owner/repo,
-  // so every install that had persisted a mixed-case key re-derives a different
-  // one on upgrade. The audit predicted duplicate projects from that. It does
-  // not happen, and this pins the reason: lookup is by rootPath, and a project
-  // found that way has its stale key rewritten in place. The mixed-case
-  // `projectId` deliberately survives, because it is an opaque primary key that
-  // workspace records point at. Never compare a stored projectId against a
-  // freshly derived key: that comparison is what would create the duplicate.
-  test("rewrites a legacy mixed-case project key in place instead of duplicating the project", async () => {
-    await projectRegistry.initialize();
-    const rootPath = path.join(tmpDir, "upgraded-root");
-    const legacy = createPersistedProjectRecord({
-      projectId: "remote:github.com/Draek2077/otto-code",
-      rootPath,
-      kind: "git",
-      displayName: "otto-code",
-      projectKey: "remote:github.com/Draek2077/otto-code",
-      createdAt: "2026-03-01T00:00:00.000Z",
-      updatedAt: "2026-03-01T00:00:00.000Z",
-    });
-    await projectRegistry.upsert(legacy);
-
-    const afterUpgrade = await projectRegistry.getOrCreateActiveByRoot({
-      rootPath,
-      kind: "git",
-      displayName: "otto-code",
-      projectKey: "remote:github.com/draek2077/otto-code",
-      timestamp: "2026-03-02T00:00:00.000Z",
-    });
-
-    expect(afterUpgrade.projectId).toBe(legacy.projectId);
-    expect(afterUpgrade.projectKey).toBe("remote:github.com/draek2077/otto-code");
-    expect(await projectRegistry.list()).toEqual([afterUpgrade]);
-  });
-
   test("refreshes the oldest active legacy duplicate kind without rewriting its identity", async () => {
     await projectRegistry.initialize();
     const rootPath = path.join(tmpDir, "legacy-root");
@@ -340,13 +320,13 @@ describe("workspace registries", () => {
   test("reuses an active project for Windows lexical-equivalent root spellings", async () => {
     await projectRegistry.initialize();
     const first = await projectRegistry.getOrCreateActiveByRoot({
-      rootPath: "C:\\Users\\Otto\\Repo",
+      rootPath: "C:\\Users\\Paseo\\Repo",
       kind: "git",
       displayName: "Repo",
       timestamp: "2026-03-01T00:00:00.000Z",
     });
     const second = await projectRegistry.getOrCreateActiveByRoot({
-      rootPath: "c:/users/otto/repo/.",
+      rootPath: "c:/users/paseo/repo/.",
       kind: "git",
       displayName: "Repo",
       timestamp: "2026-03-02T00:00:00.000Z",

@@ -1,7 +1,7 @@
 import {
   forwardRef,
   useCallback,
-  useState,
+  useMemo,
   type PropsWithChildren,
   type ReactElement,
   type ReactNode,
@@ -21,7 +21,7 @@ import {
   useMenuState,
   type MenuCompactMode,
 } from "./menu-context";
-import { useControlStatePreview } from "@/components/ui/control-state-preview";
+import { isWeb } from "@/constants/platform";
 
 /**
  * Owns one menu's state. Wrap a trigger and a `MenuSurface` in it.
@@ -50,7 +50,6 @@ export interface MenuTriggerState {
   pressed: boolean;
   hovered: boolean;
   open: boolean;
-  focused?: boolean;
 }
 
 type TriggerStyleProp = StyleProp<ViewStyle> | ((state: MenuTriggerState) => StyleProp<ViewStyle>);
@@ -58,13 +57,7 @@ type TriggerStyleProp = StyleProp<ViewStyle> | ((state: MenuTriggerState) => Sty
 export interface MenuTriggerProps extends Omit<PressableProps, "style" | "children"> {
   style?: TriggerStyleProp;
   children: ReactNode | ((state: MenuTriggerState) => ReactNode);
-  /** Ref prop used by wrappers such as TooltipTrigger that cannot target JSX's forwarded ref. */
-  triggerRef?: Ref<View | null>;
-  /** The parent frame owns the focus treatment, so suppress the trigger's browser outline. */
-  suppressFocusOutline?: boolean;
 }
-
-const SUPPRESSED_FOCUS_OUTLINE_STYLE = { outlineWidth: 0 } as ViewStyle;
 
 function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
   if (!ref) return;
@@ -76,100 +69,59 @@ function assignRef<T>(ref: Ref<T> | undefined, value: T | null): void {
 }
 
 export const MenuTrigger = forwardRef<View, MenuTriggerProps>(function MenuTrigger(
-  {
-    children,
-    disabled,
-    style,
-    triggerRef,
-    suppressFocusOutline = false,
-    onFocus,
-    onBlur,
-    ...props
-  },
+  { children, disabled, style, accessibilityState, ...props },
   forwardedRef,
 ): ReactElement {
   const ctx = useMenuContext("MenuTrigger");
-  const [eventFocused, setEventFocused] = useState(false);
-  const preview = useControlStatePreview();
-  const focused = preview?.focused ?? eventFocused;
 
   const handleTriggerRef = useCallback(
     (node: View | null) => {
       assignRef(ctx.triggerRef, node);
       assignRef(forwardedRef, node);
-      assignRef(triggerRef, node);
     },
-    [ctx.triggerRef, forwardedRef, triggerRef],
+    [ctx.triggerRef, forwardedRef],
   );
 
-  const handlePress = useCallback<NonNullable<PressableProps["onPress"]>>(
-    (event) => {
-      event.stopPropagation();
-      if (disabled) return;
-      ctx.setOpen(!ctx.open);
-    },
-    [disabled, ctx],
-  );
+  const handlePress = useCallback(() => {
+    if (disabled) return;
+    ctx.setOpen(!ctx.open);
+  }, [disabled, ctx]);
 
   const pressableStyle = useCallback(
-    ({
-      pressed: eventPressed,
-      hovered: eventHovered = false,
-    }: PressableStateCallbackType & { hovered?: boolean }) => {
-      const state: MenuTriggerState = {
-        pressed: preview?.pressed ?? eventPressed,
-        hovered: preview?.hovered ?? eventHovered,
-        open: preview?.open ?? ctx.open,
-        focused,
-      };
+    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => {
       if (typeof style === "function") {
-        return [style(state), suppressFocusOutline ? SUPPRESSED_FOCUS_OUTLINE_STYLE : null];
+        return style({ pressed, hovered, open: ctx.open });
       }
-      return [style, suppressFocusOutline ? SUPPRESSED_FOCUS_OUTLINE_STYLE : null];
+      return style;
     },
-    [style, ctx.open, focused, preview, suppressFocusOutline],
+    [style, ctx.open],
   );
 
   const renderChildren = useCallback(
-    ({
-      pressed: eventPressed,
-      hovered: eventHovered = false,
-    }: PressableStateCallbackType & { hovered?: boolean }) => {
-      const state: MenuTriggerState = {
-        pressed: preview?.pressed ?? eventPressed,
-        hovered: preview?.hovered ?? eventHovered,
-        open: preview?.open ?? ctx.open,
-        focused,
-      };
+    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => {
+      const state: MenuTriggerState = { pressed, hovered, open: ctx.open };
       return typeof children === "function" ? children(state) : children;
     },
-    [children, ctx.open, focused, preview],
+    [children, ctx.open],
   );
-
-  const handleFocus = useCallback<NonNullable<PressableProps["onFocus"]>>(
-    (event) => {
-      setEventFocused(true);
-      onFocus?.(event);
-    },
-    [onFocus],
+  const resolvedAccessibilityState = useMemo(
+    () => ({ ...accessibilityState, disabled: Boolean(disabled), expanded: ctx.open }),
+    [accessibilityState, ctx.open, disabled],
   );
-  const handleBlur = useCallback<NonNullable<PressableProps["onBlur"]>>(
-    (event) => {
-      setEventFocused(false);
-      onBlur?.(event);
-    },
-    [onBlur],
+  const webExpandedState = useMemo(
+    () => (isWeb ? ({ "aria-expanded": ctx.open } as const) : null),
+    [ctx.open],
   );
 
   return (
     <Pressable
       {...props}
+      {...webExpandedState}
       ref={handleTriggerRef}
       collapsable={false}
       disabled={disabled}
+      accessibilityState={resolvedAccessibilityState}
       onPress={handlePress}
-      onFocus={handleFocus}
-      onBlur={handleBlur}
       style={pressableStyle}
     >
       {renderChildren}

@@ -7,7 +7,7 @@ import pino from "pino";
 import { createDaemonTestContext, type DaemonTestContext } from "./test-utils/index.js";
 import { getFullAccessConfig } from "./daemon-e2e/agent-configs.js";
 import { OpenAITTS } from "./speech/providers/openai/tts.js";
-import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 type SessionMessage<T extends SessionOutboundMessage["type"]> = Extract<
   SessionOutboundMessage,
@@ -31,8 +31,10 @@ function makeErrorHandler(reject: (error: Error) => void) {
   };
 }
 
-function makeSpeakToolHandler(resolve: (value: string) => void) {
-  return (msg: SessionMessage<"agent_stream" | "agent.timeline.replacement">) => {
+function makeSpeakToolHandler(
+  resolve: (value: string) => void,
+): Parameters<DaemonTestContext["client"]["subscribeAgentTimeline"]>[1] {
+  return (msg) => {
     if (msg.type !== "agent_stream") return;
     if (msg.payload.event.type !== "timeline") return;
     const item = msg.payload.event.item;
@@ -45,7 +47,7 @@ function makeSpeakToolHandler(resolve: (value: string) => void) {
 
 const openaiApiKey = process.env.OPENAI_API_KEY ?? null;
 const shouldRun =
-  process.env.OTTO_VOICE_LOCAL_AGENT_E2E === "1" && Boolean(openaiApiKey) && !process.env.CI;
+  process.env.PASEO_VOICE_LOCAL_AGENT_E2E === "1" && Boolean(openaiApiKey) && !process.env.CI;
 
 function waitForSignal<T>(
   timeoutMs: number,

@@ -3,22 +3,75 @@ import path from "node:path";
 import { isBuiltin } from "node:module";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
+import { z } from "zod";
 import { describe, expect, it } from "vitest";
+import * as server from "./server/index.js";
 
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const entries = {
   ".": "shared",
   "./server": "server",
   "./server/provider": "server",
+  "./server/usage": "server",
   "./server/acp": "server",
+  // OTTO(provider-harness): every owned export retains the SDK's runtime boundary proof.
+  "./server/otto-openai": "server",
+  "./server/otto-brain": "server",
+  "./server/otto-kanban": "server", // OTTO(kanban): concrete host library stays Node-only.
+  "./server/otto-preview": "server", // OTTO(preview): shared daemon/provider launch parser remains Node-only.
+  "./server/otto-browser": "server", // OTTO(browser-host): shared snapshot/ref engine, never a UI module.
+  "./otto/preview": "shared", // OTTO(preview): structural RPC data contains no Node imports.
+  "./otto/artifacts": "shared", // OTTO(artifacts): bounded structural contracts only.
+  "./otto/architectural-views": "shared", // OTTO(architectural-views): structural data and explicit bounded JSON preflight.
+  "./otto/workflows": "shared", // OTTO(workflows): documents and scoped RPC only; no engine/agent runtime.
+  "./otto/schedules": "shared", // OTTO(schedules): structural targets/origins/audit, never scheduler or provider execution.
+  "./otto/workflows/judge-verdict": "shared", // OTTO(workflows): structured verdict declarations and pure interpretation.
+  "./otto/connectors": "shared", // OTTO(connectors): catalog and structural RPC only; no authorization runtime.
+  "./otto/speech": "shared", // OTTO(speech): structural selections and bounded RPC only.
+  "./otto/suggested-task": "shared", // OTTO(suggested-tasks): structural timeline card only.
+  "./otto/terminal": "shared", // OTTO(terminal): structural host preferences and diagnostics only.
+  "./otto/workspace-git": "shared", // OTTO(git-fetch): structural preferences/RPC only, never a Git process or UI import.
+  "./otto/editor": "shared", // OTTO(editor): bounded structural editor RPCs.
+  "./otto/editor-solution": "shared", // OTTO(editor): read-only solution DTOs, no SDK/runtime imports.
+  "./otto/editor-links": "shared", // OTTO(editor): pure host-relative path formatting.
+  "./otto/editor-images": "shared", // OTTO(editor): pure image asset naming and link formatting.
+  "./otto/host-browser": "shared", // OTTO(browser-host): structural viewer/command contracts, no runtime code.
+  "./otto/kanban": "shared", // OTTO(kanban): structural RPC/model definitions only.
+  "./otto/openai-settings": "shared",
+  "./otto/atlassian-settings": "shared", // OTTO(integration): structural contracts, never credentials or native binding.
+  "./otto/bitbucket-connections": "shared", // OTTO(bitbucket): host-scoped structural contracts, no credential runtime.
+  "./otto/project-knowledge": "shared", // OTTO(knowledge): structural records and scoped RPC only.
+  "./otto/context-management": "shared", // OTTO(context-management): structural reports/RPC, no provider or filesystem code.
+  "./otto/browser-history": "shared", // OTTO(browser-history): host-scoped structural RPC only.
   "./client": "client",
   "./client/host": "client",
   "./client/react-native": "client",
   "./client/ui": "client",
+  "./client/otto-brain": "client",
+  "./client/otto-knowledge": "client", // OTTO(knowledge): app-only presentation bridge.
+  "./client/otto-preview": "client", // OTTO(preview): trusted app-owned workspace controls.
+  "./client/otto-artifacts": "client", // OTTO(artifacts): app-owned presentation bridge.
+  "./client/otto-architectural-views": "client", // OTTO(architectural-views): trusted app-only viewer/chat presentation.
+  "./client/otto-workflows": "client", // OTTO(workflows): trusted presentation bridge.
+  "./client/otto-schedules": "client", // OTTO(schedules): app-owned storage Settings bridge.
+  "./client/otto-visualizer": "client", // OTTO(visualizer): presentation never enters a server module.
+  "./client/otto-bitbucket": "client", // OTTO(bitbucket): app-owned settings bridge.
+  "./client/otto-connectors": "client", // OTTO(connectors): app-owned Settings presentation.
+  "./client/otto-speech": "client", // OTTO(speech): app-owned Settings presentation.
+  "./client/otto-widgets": "client", // OTTO(widgets): app-owned, sandboxed timeline presentation.
+  "./client/otto-suggested-tasks": "client", // OTTO(suggested-tasks): app-owned timeline actions.
 } as const;
 const uiDependency = /^(react(?:-dom|-native)?|use-sync-external-store)(\/|$)/;
 const serverModule = /^server\//;
 const clientModule = /^client\//;
+const sharedDependencies = new Set([
+  "zod",
+  "@getpaseo/protocol/agent-types",
+  "@getpaseo/protocol/otto/profile-binding", // OTTO(agent-profiles): structural Workflow snapshots.
+  "@getpaseo/protocol/otto/checkout-diff", // OTTO(file-history): shared structural diff data.
+  "@getpaseo/protocol/schedule/types", // OTTO(schedules): pure DTOs and provider manifest types.
+  "@getpaseo/protocol/browser-automation/rpc-schemas",
+]);
 
 function resolveLocal(importer: string, specifier: string): string {
   const base = path.resolve(path.dirname(importer), specifier.replace(/\.js$/, ""));
@@ -49,12 +102,11 @@ function boundaryViolations(entry: string, runtime: "shared" | "server" | "clien
         if (runtime !== "server" && serverModule.test(module)) violations.push(label);
         pending.push(local);
       } else if (runtime === "shared") {
-        if (specifier !== "zod" && specifier !== "@otto-code/protocol/agent-types")
-          violations.push(label);
+        if (!sharedDependencies.has(specifier)) violations.push(label);
       } else if (runtime === "server") {
-        if (uiDependency.test(specifier) || /^@otto-code\/plugin\/client(\/|$)/.test(specifier))
+        if (uiDependency.test(specifier) || /^@getpaseo\/plugin\/client(\/|$)/.test(specifier))
           violations.push(label);
-      } else if (isBuiltin(specifier) || /^@otto-code\/plugin\/server(\/|$)/.test(specifier)) {
+      } else if (isBuiltin(specifier) || /^@getpaseo\/plugin\/server(\/|$)/.test(specifier)) {
         violations.push(label);
       }
     }
@@ -63,6 +115,10 @@ function boundaryViolations(entry: string, runtime: "shared" | "server" | "clien
 }
 
 describe("plugin SDK import boundaries", () => {
+  it("publishes process capabilities without their Windows implementation helpers", () => {
+    expect(Object.keys(server).sort()).toEqual(["execCommand", "spawnProcess", "terminateProcess"]);
+  });
+
   it("classifies every published entry", () => {
     const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
     expect(Object.keys(manifest.exports).sort()).toEqual(Object.keys(entries).sort());
@@ -71,12 +127,16 @@ describe("plugin SDK import boundaries", () => {
   it.each(Object.entries(entries))(
     "%s respects its %s boundary, including type dependencies",
     (specifier, runtime) => {
-      const name =
-        specifier === "."
-          ? "index"
-          : specifier.slice(2) +
-            (specifier === "./client" || specifier === "./server" ? "/index" : "");
-      expect(boundaryViolations(path.join(sourceDirectory, `${name}.ts`), runtime)).toEqual([]);
+      // OTTO(architectural-views): inspect the actual published source target, including multi-file entries.
+      const manifest = z
+        .object({ exports: z.record(z.string(), z.object({ source: z.string() })) })
+        .parse(JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")));
+      expect(
+        boundaryViolations(
+          path.resolve(sourceDirectory, "..", manifest.exports[specifier].source),
+          runtime,
+        ),
+      ).toEqual([]);
     },
   );
 });
@@ -103,8 +163,8 @@ describe("plugin example import boundaries", () => {
       if (specifier.startsWith(".")) {
         const imported = owner(resolveLocal(file, specifier));
         if (imported !== "shared" && imported !== runtime) violations.push(specifier);
-      } else if (specifier.startsWith("@otto-code/plugin")) {
-        const entry = specifier.replace("@otto-code/plugin", ".") as keyof typeof entries;
+      } else if (specifier.startsWith("@getpaseo/plugin")) {
+        const entry = specifier.replace("@getpaseo/plugin", ".") as keyof typeof entries;
         if (
           entry === "./client/host" ||
           !(entry in entries) ||

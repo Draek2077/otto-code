@@ -1,16 +1,21 @@
 import { describe, expect, test } from "vitest";
+import { withTimeout } from "../../utils/promise-timeout.js";
+import { DaemonClient } from "../test-utils/daemon-client.js";
 import { WebSocket } from "ws";
 import pino from "pino";
 import { Writable } from "node:stream";
 import net from "node:net";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
-import { createRequire } from "node:module";
 import { Buffer } from "node:buffer";
+import { createHash, randomBytes } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 
 import { generateLocalPairingOffer } from "../pairing-offer.js";
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
-import { createClientChannel, type Transport } from "@otto-code/relay/e2ee";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
+import { FILE_EXPLORER_STREAM_CHUNK_BYTES } from "../file-explorer/service.js";
+import { createClientChannel, type Transport } from "@getpaseo/relay/e2ee";
 import {
   deriveSharedKey,
   decrypt,
@@ -18,10 +23,10 @@ import {
   exportPublicKey,
   generateKeyPair,
   importPublicKey,
-} from "@otto-code/relay";
-import { buildRelayWebSocketUrl } from "@otto-code/protocol/daemon-endpoints";
-import { ConnectionOfferSchema } from "@otto-code/protocol/connection-offer";
-import { WSOutboundMessageSchema } from "@otto-code/protocol/messages";
+} from "@getpaseo/relay";
+import { buildRelayWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
+import { ConnectionOfferSchema } from "@getpaseo/protocol/connection-offer";
+import { WSOutboundMessageSchema } from "@getpaseo/protocol/messages";
 
 const nodeMajor = Number((process.versions.node ?? "0").split(".")[0] ?? "0");
 const shouldRunRelayE2e = process.env.FORCE_RELAY_E2E === "1" || nodeMajor < 25;
@@ -39,14 +44,14 @@ function createCapturingLogger() {
 }
 
 async function getPairingOfferUrl(args: {
-  ottoHome: string;
+  paseoHome: string;
   relayEnabled?: boolean;
   relayEndpoint?: string;
   relayPublicEndpoint?: string;
   appBaseUrl?: string;
 }): Promise<string> {
   const pairing = await generateLocalPairingOffer({
-    ottoHome: args.ottoHome,
+    paseoHome: args.paseoHome,
     relayEnabled: args.relayEnabled,
     relayEndpoint: args.relayEndpoint,
     relayPublicEndpoint: args.relayPublicEndpoint,
@@ -72,6 +77,10 @@ function decodeOfferFromFragmentUrl(url: string): {
   const json = Buffer.from(encoded, "base64url").toString("utf8");
   const offer = ConnectionOfferSchema.parse(JSON.parse(json));
   return { serverId: offer.serverId, daemonPublicKeyB64: offer.daemonPublicKeyB64 };
+}
+
+function sha256(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 function encodeCiphertext(ciphertext: ArrayBuffer): string {
@@ -189,32 +198,6 @@ async function waitForCapturedLog(
     relayStdoutLines = [];
     relayPort = await getAvailablePort();
     const relayDir = path.resolve(process.cwd(), "../relay");
-    // Spawn wrangler's JS entrypoint under this same Node rather than going
-    // through `npx`. The npm shims are `.cmd` files on Windows, and since the
-    // CVE-2024-27980 mitigation Node refuses to spawn those without a shell
-    // (EINVAL); a bare "npx" fails the other way, with ENOENT, because spawn
-    // does not consult PATHEXT. Resolving the module skips both traps, and
-    // skips an npx resolution round-trip per test.
-    relayProcess = spawn(
-      process.execPath,
-      [
-        createRequire(import.meta.url).resolve("wrangler/bin/wrangler.js"),
-        "dev",
-        "--local",
-        "--ip",
-        "127.0.0.1",
-        "--port",
-        String(relayPort),
-        "--live-reload=false",
-        "--show-interactive-dev-session=false",
-      ],
-      {
-        cwd: relayDir,
-        env: { ...process.env },
-        stdio: ["ignore", "pipe", "pipe"],
-        detached: false,
-      },
-    );
     const relayArgs = [
       "wrangler",
       "dev",
@@ -227,23 +210,22 @@ async function waitForCapturedLog(
       "--show-interactive-dev-session=false",
     ];
     if (options.useLocalRelay) {
-      relayArgs.push("--var", "OTTO_RELAY_UPSTREAM:");
+      relayArgs.push("--var", "PASEO_RELAY_UPSTREAM:");
     }
-    relayProcess = spawn("npx", relayArgs, {
-      cwd: relayDir,
-      env: { ...process.env },
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: false,
-    });
-
-    // Without a listener, a failure to spawn (a missing npx, a blocked exec)
-    // is emitted as an unhandled 'error' that takes down the whole worker and
-    // is reported against whichever file happened to be running. Capture it so
-    // the 30s waitForServer below reports the real cause instead.
-    let relaySpawnError: Error | null = null;
-    relayProcess.on("error", (error: Error) => {
-      relaySpawnError = error;
-    });
+    relayProcess = spawn(
+      process.execPath,
+      [
+        "--experimental-vm-modules",
+        path.resolve(relayDir, "../../node_modules/wrangler/wrangler-dist/cli.js"),
+        ...relayArgs.slice(1),
+      ],
+      {
+        cwd: relayDir,
+        env: { ...process.env },
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: false,
+      },
+    );
 
     relayProcess.stdout?.on("data", (data: Buffer) => {
       const lines = data
@@ -267,17 +249,7 @@ async function waitForCapturedLog(
       }
     });
 
-    try {
-      await waitForServer(relayPort, 30000);
-    } catch (error) {
-      if (relaySpawnError) {
-        throw new Error(
-          `Failed to start wrangler for the relay: ${(relaySpawnError as Error).message}`,
-          { cause: error },
-        );
-      }
-      throw error;
-    }
+    await waitForServer(relayPort, 30000);
     await waitForRelayWebSocketReady(relayPort, 60000);
   };
 
@@ -287,13 +259,80 @@ async function waitForCapturedLog(
     relayProcess = null;
   };
 
+  test("oversized attachments fail without disconnecting or resubmitting over the relay", async () => {
+    await startRelay({ useLocalRelay: true });
+    const daemon = await createTestPaseoDaemon({
+      relayEnabled: true,
+      relayEndpoint: `127.0.0.1:${relayPort}`,
+      relayUseTls: false,
+      relayPublicUseTls: false,
+    });
+    let client: DaemonClient | null = null;
+    try {
+      const offerUrl = await getPairingOfferUrl({
+        paseoHome: daemon.paseoHome,
+        relayEnabled: true,
+        relayEndpoint: daemon.config.relayEndpoint,
+      });
+      const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
+      client = new DaemonClient({
+        url: buildRelayWebSocketUrl({
+          endpoint: `127.0.0.1:${relayPort}`,
+          useTls: false,
+          serverId,
+          role: "client",
+        }),
+        e2ee: { enabled: true, daemonPublicKeyB64 },
+        reconnect: { baseDelayMs: 100, maxDelayMs: 100 },
+      });
+      await client.connect();
+      const statuses: string[] = [];
+      client.subscribeConnectionStatus((state) => statuses.push(state.status));
+      for (const imageMiB of [30, 61]) {
+        // Attachments are base64 in the JSON, then E2EE base64 expands the frame again.
+        const images = [
+          { data: "A".repeat(4 * Math.ceil((imageMiB * 1024 * 1024) / 3)), mimeType: "image/png" },
+        ];
+        await expect(
+          withTimeout(
+            client.createWorkspace({
+              source: { kind: "directory", path: daemon.staticDir },
+              agent: {
+                provider: "claude",
+                cwd: daemon.staticDir,
+                initialPrompt: "Describe these screens.",
+                images,
+              },
+            }),
+            10000,
+            "Workspace creation did not settle",
+          ),
+        ).rejects.toThrow(/too large.*32\.0 MiB/);
+        expect((await client.fetchAgents()).entries).toEqual([]);
+      }
+      const agent = await client.createAgent({ provider: "claude", cwd: daemon.staticDir });
+      await expect(
+        client.sendMessage(agent.id, "Describe these screens.", {
+          images: [{ data: "A".repeat(40 * 1024 * 1024), mimeType: "image/png" }],
+        }),
+      ).rejects.toThrow(/too large.*32\.0 MiB/);
+      await client.sendMessage(agent.id, "A small follow-up still works.");
+      expect((await client.fetchAgents()).entries).toHaveLength(1);
+      expect(statuses).toEqual(["connected"]);
+    } finally {
+      await client?.close();
+      await daemon.close();
+      await stopRelay();
+    }
+  }, 60000);
+
   test("daemon connects to relay and client ping/pong works through relay", async () => {
-    process.env.OTTO_PRIMARY_LAN_IP = "192.168.1.12";
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
 
     const { logger, lines } = createCapturingLogger();
     await startRelay();
 
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       listen: "127.0.0.1",
       logger,
       relayEnabled: true,
@@ -302,7 +341,7 @@ async function waitForCapturedLog(
 
     try {
       const offerUrl = await getPairingOfferUrl({
-        ottoHome: daemon.ottoHome,
+        paseoHome: daemon.paseoHome,
         relayEnabled: daemon.config.relayEnabled,
         relayEndpoint: daemon.config.relayEndpoint,
         relayPublicEndpoint: daemon.config.relayPublicEndpoint,
@@ -429,12 +468,12 @@ async function waitForCapturedLog(
   }, 90000);
 
   test("daemon closes a relay client that sends an unsupported handshake key", async () => {
-    process.env.OTTO_PRIMARY_LAN_IP = "192.168.1.12";
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
 
     const { logger, lines } = createCapturingLogger();
     await startRelay({ useLocalRelay: true });
 
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       listen: "127.0.0.1",
       logger,
       relayEnabled: true,
@@ -443,7 +482,7 @@ async function waitForCapturedLog(
 
     try {
       const offerUrl = await getPairingOfferUrl({
-        ottoHome: daemon.ottoHome,
+        paseoHome: daemon.paseoHome,
         relayEnabled: daemon.config.relayEnabled,
         relayEndpoint: daemon.config.relayEndpoint,
         relayPublicEndpoint: daemon.config.relayPublicEndpoint,
@@ -545,12 +584,12 @@ async function waitForCapturedLog(
   }, 90000);
 
   test("daemon keeps relay socket open while idle (no handshake timeout loop)", async () => {
-    process.env.OTTO_PRIMARY_LAN_IP = "192.168.1.12";
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
 
     const { logger, lines } = createCapturingLogger();
     await startRelay();
 
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       listen: "127.0.0.1",
       logger,
       relayEnabled: true,
@@ -559,7 +598,7 @@ async function waitForCapturedLog(
 
     try {
       const offerUrl = await getPairingOfferUrl({
-        ottoHome: daemon.ottoHome,
+        paseoHome: daemon.paseoHome,
         relayEnabled: daemon.config.relayEnabled,
         relayEndpoint: daemon.config.relayEndpoint,
         relayPublicEndpoint: daemon.config.relayPublicEndpoint,
@@ -586,7 +625,7 @@ async function waitForCapturedLog(
       expect(staleLines.length).toBe(0);
       // Guard against the dual-ping regression: if a JSON {type:"ping"} reaches the DO during
       // the idle window, the DO logs `legacy_json_ping_received`. The current daemon code must
-      // not send JSON pings on the control socket - only protocol pings via socket.ping().
+      // not send JSON pings on the control socket — only protocol pings via socket.ping().
       const legacyPingLines = relayStdoutLines.filter((l) =>
         l.includes("legacy_json_ping_received"),
       );
@@ -691,12 +730,12 @@ async function waitForCapturedLog(
   }, 90000);
 
   test("daemon accepts a relay client that pipelines app hello after E2EE hello", async () => {
-    process.env.OTTO_PRIMARY_LAN_IP = "192.168.1.12";
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
 
     const { logger, lines } = createCapturingLogger();
     await startRelay();
 
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       listen: "127.0.0.1",
       logger,
       relayEnabled: true,
@@ -705,7 +744,7 @@ async function waitForCapturedLog(
 
     try {
       const offerUrl = await getPairingOfferUrl({
-        ottoHome: daemon.ottoHome,
+        paseoHome: daemon.paseoHome,
         relayEnabled: daemon.config.relayEnabled,
         relayEndpoint: daemon.config.relayEndpoint,
         relayPublicEndpoint: daemon.config.relayPublicEndpoint,
@@ -827,6 +866,69 @@ async function waitForCapturedLog(
     } finally {
       await daemon.close();
       await stopRelay();
+    }
+  }, 90000);
+
+  test("reads a workspace file over the E2EE relay session byte-for-byte", async () => {
+    process.env.PASEO_PRIMARY_LAN_IP = "192.168.1.12";
+
+    const { logger, lines } = createCapturingLogger();
+    let daemon: Awaited<ReturnType<typeof createTestPaseoDaemon>> | null = null;
+    let workspaceDir: string | null = null;
+    const fileName = "rapport données.bin";
+    const source = randomBytes(4 * FILE_EXPLORER_STREAM_CHUNK_BYTES + 123);
+    let client: DaemonClient | null = null;
+
+    try {
+      await startRelay({ useLocalRelay: true });
+      daemon = await createTestPaseoDaemon({
+        listen: "127.0.0.1",
+        logger,
+        relayEnabled: true,
+        relayEndpoint: `127.0.0.1:${relayPort}`,
+      });
+      workspaceDir = await mkdtemp(path.join(os.tmpdir(), "paseo-relay-download-"));
+      await writeFile(path.join(workspaceDir, fileName), source);
+      const offerUrl = await getPairingOfferUrl({
+        paseoHome: daemon.paseoHome,
+        relayEnabled: daemon.config.relayEnabled,
+        relayEndpoint: daemon.config.relayEndpoint,
+        relayPublicEndpoint: daemon.config.relayPublicEndpoint,
+        appBaseUrl: daemon.config.appBaseUrl,
+      });
+      const { serverId, daemonPublicKeyB64 } = decodeOfferFromFragmentUrl(offerUrl);
+
+      client = new DaemonClient({
+        url: buildRelayWebSocketUrl({
+          endpoint: `127.0.0.1:${relayPort}`,
+          useTls: false,
+          serverId,
+          role: "client",
+        }),
+        clientType: "cli",
+        connectTimeoutMs: 30_000,
+        e2ee: { enabled: true, daemonPublicKeyB64 },
+        reconnect: { enabled: false },
+      });
+      await client.connect();
+
+      const result = await client.readFile(workspaceDir, fileName, undefined, undefined, 0);
+
+      expect(result.size).toBe(source.byteLength);
+      expect(result.bytes.byteLength).toBe(source.byteLength);
+      expect(sha256(result.bytes)).toBe(sha256(source));
+    } catch (err) {
+      const tail = lines.slice(-50).join("");
+      // eslint-disable-next-line no-console
+      console.error("daemon logs (tail):\n", tail);
+      throw err;
+    } finally {
+      await client?.close().catch(() => undefined);
+      await daemon?.close();
+      await stopRelay();
+      if (workspaceDir) {
+        await rm(workspaceDir, { recursive: true, force: true });
+      }
     }
   }, 90000);
 });

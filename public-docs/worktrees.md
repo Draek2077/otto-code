@@ -6,6 +6,8 @@ order: 11
 category: Workspaces
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Git worktrees
 
 Git worktrees are one kind of workspace.

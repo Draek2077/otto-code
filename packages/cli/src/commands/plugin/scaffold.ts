@@ -1,8 +1,38 @@
-import { PASEO_PLUGIN_API_VERSION } from "@otto-code/protocol/plugin-compatibility";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { PluginIdSchema } from "@otto-code/protocol/messages";
+import { PluginIdSchema } from "@getpaseo/protocol/messages";
 import { resolveCliVersion } from "../../version.js";
+// OTTO(paseo-version): retain SDK import names while installing Otto's published SDK.
+import { OTTO_NPM_SCOPE, OTTO_PASEO_BASE_VERSION } from "@getpaseo/protocol/otto/identity";
+
+// OTTO(identity): product name in the overview and greeting templates.
+const OVERVIEW = `<!--
+OVERVIEW.md is required to list your plugin in the registry. Keep it beside
+paseo-plugin.json in your repository at the pinned commit and in your npm package.
+Replace this comment with useful facts before publishing.
+
+This overview is for people choosing a plugin in Otto, on the plugin page under
+its install command. README assumes a GitHub audience and includes technical
+details, installation instructions, and badges. Long, AI-generated READMEs leave
+people reading past that material to understand what the plugin does.
+
+Write these parts in order, including only what helps someone decide to install:
+
+1. Describe what your plugin is and does in plain terms first.
+2. Explain how it works only when it is not obvious.
+3. Explain setup when needed: settings, accounts, tokens, providers, tools, or
+   other plugins. Include applicable daemon version and operating system
+   requirements. Setup guidance is allowed; installation instructions are not.
+4. Explain capabilities and settings worth understanding, what each option does,
+   what the plugin reads or sends and where, permissions, and known limits.
+
+Length follows complexity; a theme needs one paragraph. Choose headings only
+when they help. Use sentence case and plain factual language, with no em dashes.
+Omit installation commands, badges, changelog, contributing or license sections,
+marketing, and unsupported claims. Avoid implementation filler such as empty
+cleanup functions, theme-token field lists, or lists of absent features.
+-->
+`;
 
 const TSCONFIG = {
   compilerOptions: {
@@ -21,22 +51,28 @@ const TSCONFIG = {
   include: ["**/*.ts", "**/*.tsx"],
 };
 
-const CLIENT_ENTRY = `import type { PluginClientContext } from "@otto-code/plugin/client";
-import { GreetingSurface } from "./client/greeting";
+const CLIENT_ENTRY = `import type { PluginClientContext, PluginSidebarItemProps } from "@getpaseo/plugin/client";
+import { SidebarRow } from "@getpaseo/plugin/client/ui";
+import { GreetingScreen } from "./client/greeting";
+
+function GreetingItem({ currentScreen, openScreen }: PluginSidebarItemProps) {
+  return (
+    <SidebarRow
+      icon="MessageCircle"
+      active={currentScreen?.screenId === "greeting"}
+      onPress={() => openScreen({ screenId: "greeting" })}
+    />
+  );
+}
 
 export default function contribute(client: PluginClientContext) {
-  client.addSurface("greeting", GreetingSurface);
-  client.addSidebarItem({
-    id: "greeting",
-    title: "Greeting",
-    icon: "MessageCircle",
-    surface: "greeting",
-  });
+  client.addScreen({ id: "greeting", title: "Greeting", Component: GreetingScreen });
+  client.addSidebarHeaderItem({ id: "greeting", title: "Greeting", Component: GreetingItem });
   return () => {};
 }
 `;
 
-const SERVER_ENTRY = `import type { PluginServerContext } from "@otto-code/plugin/server";
+const SERVER_ENTRY = `import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { createGreeting } from "./server/greeting";
 import { greetingRpc } from "./shared/greeting";
 
@@ -46,7 +82,7 @@ export default function contribute(server: PluginServerContext) {
 }
 `;
 
-const SHARED_GREETING = `import { defineRpc } from "@otto-code/plugin";
+const SHARED_GREETING = `import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const greetingRpc = defineRpc({
@@ -56,7 +92,7 @@ export const greetingRpc = defineRpc({
 });
 `;
 
-const SERVER_GREETING = `import type { RpcInput } from "@otto-code/plugin";
+const SERVER_GREETING = `import type { RpcInput } from "@getpaseo/plugin";
 import { greetingRpc } from "../shared/greeting";
 
 export function createGreeting({ name }: RpcInput<typeof greetingRpc>) {
@@ -64,15 +100,16 @@ export function createGreeting({ name }: RpcInput<typeof greetingRpc>) {
 }
 `;
 
-const CLIENT_GREETING = `import type { PluginSurfaceProps } from "@otto-code/plugin/client";
-import { useRpc } from "@otto-code/plugin/client";
+// OTTO(identity)
+const CLIENT_GREETING = `import type { PluginScreenProps } from "@getpaseo/plugin/client";
+import { useRpc } from "@getpaseo/plugin/client";
 import { useMutation } from "@tanstack/react-query";
 import { useMemo } from "react";
 import { Pressable, Text, View } from "react-native";
 import { greetingRpc } from "../shared/greeting";
 import { openExternal } from "./web";
 
-export function GreetingSurface({ theme, layout }: PluginSurfaceProps) {
+export function GreetingScreen({ theme, layout }: PluginScreenProps) {
   const createGreeting = useRpc(greetingRpc);
   const greeting = useMutation({ mutationFn: createGreeting });
   const styles = useMemo(
@@ -148,9 +185,20 @@ export async function scaffoldPluginDirectory(
     name: id,
     private: true,
     version: "0.0.0",
+    files: [
+      "paseo-plugin.json",
+      "OVERVIEW.md",
+      "index.client.ts",
+      "index.client.tsx",
+      "index.server.ts",
+      "index.server.tsx",
+      "client/",
+      "server/",
+      "shared/",
+    ],
     scripts: { typecheck: "tsc --noEmit" },
     devDependencies: {
-      "@otto-code/plugin": version,
+      "@getpaseo/plugin": `npm:${OTTO_NPM_SCOPE}/plugin@${version}`,
       "@tanstack/react-query": "^5.90.11",
       "@types/react": "~19.2.0",
       react: "19.1.0",
@@ -161,9 +209,20 @@ export async function scaffoldPluginDirectory(
   };
   const files = new Map<string, string>([
     [
-      "otto-plugin.json",
-      `${JSON.stringify({ id, requirements: { paseo: `>=${PASEO_PLUGIN_API_VERSION}` } }, null, 2)}\n`,
+      "paseo-plugin.json",
+      `${JSON.stringify(
+        {
+          id,
+          $comment:
+            'Add "name": "My plugin" to set a display name. Add "icon": "assets/icon.png" for a PNG inside the package. Add image or video paths (relative to this manifest) or HTTPS URLs to media. Include local assets in package.json files.',
+          media: [],
+          requirements: { paseo: `>=${OTTO_PASEO_BASE_VERSION}` },
+        },
+        null,
+        2,
+      )}\n`,
     ],
+    ["OVERVIEW.md", OVERVIEW],
     ["package.json", `${JSON.stringify(packageJson, null, 2)}\n`],
     ["tsconfig.json", `${JSON.stringify(TSCONFIG, null, 2)}\n`],
     ["index.client.tsx", CLIENT_ENTRY],

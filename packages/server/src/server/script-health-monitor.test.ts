@@ -9,7 +9,7 @@ import { findFreePort, ScriptRouteStore } from "./script-proxy.js";
 import { ScriptHealthMonitor, type ScriptHealthEntry } from "./script-health-monitor.js";
 import { spawnWorkspaceScript } from "./worktree-bootstrap.js";
 import { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
-import type { TerminalManager } from "../terminal/terminal-manager.js";
+import type { TerminalManager } from "./terminal/terminal-manager.js";
 
 interface TcpServerHandle {
   port: number;
@@ -18,7 +18,7 @@ interface TcpServerHandle {
 
 function createWorkspaceRepo(options?: {
   branchName?: string;
-  ottoConfig?: Record<string, unknown>;
+  paseoConfig?: Record<string, unknown>;
 }): { tempDir: string; repoDir: string; cleanup: () => void } {
   const tempDir = realpathSync(mkdtempSync(path.join(tmpdir(), "script-health-monitor-")));
   const repoDir = path.join(tempDir, "repo");
@@ -33,8 +33,8 @@ function createWorkspaceRepo(options?: {
   });
   execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir, stdio: "pipe" });
   writeFileSync(path.join(repoDir, "README.md"), "hello\n");
-  if (options?.ottoConfig) {
-    writeFileSync(path.join(repoDir, "otto.json"), JSON.stringify(options.ottoConfig, null, 2));
+  if (options?.paseoConfig) {
+    writeFileSync(path.join(repoDir, "paseo.json"), JSON.stringify(options.paseoConfig, null, 2));
   }
   execFileSync("git", ["add", "."], { cwd: repoDir, stdio: "pipe" });
   execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "initial"], {
@@ -99,14 +99,14 @@ function createStubTerminalManager(
   };
 }
 
-async function startTcpServer(): Promise<TcpServerHandle> {
+async function startTcpServer(host = "127.0.0.1"): Promise<TcpServerHandle> {
   const server = net.createServer((socket) => {
     socket.end();
   });
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    server.listen(0, host, () => {
       server.off("error", reject);
       resolve();
     });
@@ -151,6 +151,45 @@ describe("ScriptHealthMonitor", () => {
 
     await Promise.all(Array.from(servers, (server) => closeServer(server)));
     servers.clear();
+  });
+
+  it.each(["127.0.0.1", "::1"])("reports a service bound only to %s as healthy", async (host) => {
+    const service = await startTcpServer(host);
+    servers.add(service.server);
+    const serviceProxy = new ScriptRouteStore();
+    serviceProxy.registerWorkspaceService({
+      workspaceId: "workspace-a",
+      projectSlug: "repo",
+      branchName: "main",
+      scriptName: "api",
+      port: service.port,
+    });
+    const updates: ScriptHealthEntry[][] = [];
+    const monitor = new ScriptHealthMonitor({
+      serviceProxy,
+      onChange: (_workspaceId, scripts) => updates.push(scripts),
+      pollIntervalMs: 10,
+      probeTimeoutMs: 100,
+      graceMs: 0,
+      failuresBeforeStopped: 1,
+    });
+    monitor.start();
+    try {
+      await vi.waitFor(() => {
+        expect(updates).toEqual([
+          [
+            {
+              scriptName: "api",
+              hostname: "api--repo.localhost",
+              port: service.port,
+              health: "healthy",
+            },
+          ],
+        ]);
+      });
+    } finally {
+      monitor.stop();
+    }
   });
 
   it("starts new service routes in pending and transitions to healthy after the grace period", async () => {
@@ -428,7 +467,7 @@ describe("ScriptHealthMonitor", () => {
     servers.add(service.server);
 
     const workspace = createWorkspaceRepo({
-      ottoConfig: {
+      paseoConfig: {
         scripts: {
           typecheck: { command: "npm run typecheck" },
           api: { type: "service", command: "npm run api", port: service.port },
@@ -444,7 +483,7 @@ describe("ScriptHealthMonitor", () => {
       await Promise.all(
         ["typecheck", "api"].map((scriptName) =>
           spawnWorkspaceScript({
-            workspaceDirectory: workspace.repoDir,
+            repoRoot: workspace.repoDir,
             workspaceId: workspace.repoDir,
             projectSlug: "repo",
             branchName: null,

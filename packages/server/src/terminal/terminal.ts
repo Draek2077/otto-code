@@ -1,25 +1,40 @@
+import { ottoTerminalEnvironment } from "../server/otto/terminal/environment.js"; // OTTO(terminal-environment)
 import * as pty from "node-pty";
 import xterm, { type Terminal as TerminalType } from "@xterm/headless";
 import { randomUUID } from "crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
+import {
+  accessSync,
+  chmodSync,
+  constants,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  statSync,
+} from "node:fs";
 import { tmpdir, userInfo } from "node:os";
 import { basename, delimiter, dirname, extname, join, resolve as resolvePath } from "node:path";
+import {
+  terminalShellOverride,
+  terminalTitleMode,
+  terminalInitialTitle,
+  terminalNextTitle,
+} from "../server/otto/terminal/launch.js"; // OTTO(terminal)
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
-import { createExternalProcessEnv } from "../server/otto-env.js";
+import { createExternalProcessEnv } from "../server/paseo-env.js";
 import { writePrivateFileAtomicSync } from "../server/private-files.js";
-import { findExecutable } from "../executable-resolution/executable-resolution.js";
-import type { TerminalCell, TerminalState } from "@otto-code/protocol/messages";
-import { TerminalInputModeTracker } from "@otto-code/protocol/terminal-input-mode";
+import {
+  findExecutable,
+  findExecutableWithoutProbing,
+} from "../executable-resolution/executable-resolution.js";
+import type { TerminalCell, TerminalState } from "@getpaseo/protocol/messages";
+import { TerminalInputModeTracker } from "@getpaseo/protocol/terminal-input-mode";
 import { TerminalActivityTracker } from "./activity/terminal-activity-tracker.js";
-import type {
-  TerminalActivity,
-  TerminalActivityState,
-} from "@otto-code/protocol/terminal-activity";
+import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
 
 const { Terminal } = xterm;
 const require = createRequire(import.meta.url);
-const OTTO_CLI_BIN_ENTRY = "@otto-code/cli/bin/otto";
+const PASEO_CLI_BIN_ENTRY = "@getpaseo/cli/bin/paseo";
 let nodePtySpawnHelperChecked = false;
 const TERMINAL_TITLE_DEBOUNCE_MS = 150;
 const TERMINAL_EXIT_OUTPUT_LINE_LIMIT = 12;
@@ -34,6 +49,20 @@ export interface TerminalExitInfo {
   exitCode: number | null;
   signal: number | null;
   lastOutputLines: string[];
+}
+
+// The field is assigned explicitly rather than declared as a constructor
+// parameter property: the terminal worker loads this module under
+// --experimental-strip-types, which erases types but cannot emit the
+// assignment a parameter property implies.
+export class TerminalCommandNotFoundError extends Error {
+  readonly command: string;
+
+  constructor(command: string) {
+    super(`${command}: command not found`);
+    this.name = "TerminalCommandNotFoundError";
+    this.command = command;
+  }
 }
 
 export interface TerminalCommandFinishedInfo {
@@ -81,10 +110,6 @@ export interface TerminalSession {
   name: string;
   cwd: string;
   workspaceId: string;
-  /** Embedded sessions belong to a host pane rather than a standalone workspace tab. */
-  presentation?: "embedded";
-  /** Stable owner identity for an embedded session that can survive renderer reloads. */
-  presentationOwner?: string;
   send(msg: ClientMessage): void;
   subscribe(listener: (msg: ServerMessage) => void, options?: TerminalSubscribeOptions): () => void;
   onExit(listener: (info: TerminalExitInfo) => void): () => void;
@@ -100,7 +125,6 @@ export interface TerminalSession {
   setActivity(state: TerminalActivityState): void;
   clearActivityAttention(): boolean;
   setTitle(title: string): void;
-  clearTitle(): void;
   getExitInfo(): TerminalExitInfo | null;
   kill(): void;
   killAndWait(options?: { gracefulTimeoutMs?: number; forceTimeoutMs?: number }): Promise<void>;
@@ -124,6 +148,7 @@ function parseCommandFinishedOsc(data: string): TerminalCommandFinishedInfo | nu
 }
 
 export interface CreateTerminalOptions {
+  ottoPreferences?: import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
   id?: string;
   cwd: string;
   workspaceId: string;
@@ -134,12 +159,8 @@ export interface CreateTerminalOptions {
   cols?: number;
   name?: string;
   title?: string;
-  titleMode?: "auto" | "default";
-  titleIncludePaths?: boolean;
   command?: string;
   args?: string[];
-  presentation?: "embedded";
-  presentationOwner?: string;
 }
 
 function toTerminalActivity(snapshot: {
@@ -157,6 +178,10 @@ function toTerminalActivity(snapshot: {
   };
 }
 
+function resolveInitialTitleMode(presetTitle: string | undefined): "auto" | "manual" {
+  return presetTitle?.trim() ? "manual" : "auto";
+}
+
 function isTerminalActivityInterruptInput(data: string): boolean {
   return data === "\x03" || data === "\x1b";
 }
@@ -165,8 +190,8 @@ interface BuildTerminalEnvironmentInput {
   shell: string;
   env: Record<string, string>;
   zshShellIntegrationDir?: string;
-  ottoCliBinDir?: string | null;
-  ottoHookCliPath?: string | null;
+  paseoCliBinDir?: string | null;
+  paseoHookCliPath?: string | null;
 }
 
 interface EnsureNodePtySpawnHelperExecutableOptions {
@@ -341,8 +366,8 @@ function escapeCmdExeArgument(rawArg: string): string {
  * (`ERROR_FILE_NOT_FOUND`). Worse, conpty completes the spawn asynchronously on
  * its own conout worker thread, so that failure surfaces as an uncaught
  * exception that takes down the whole terminal worker process. Resolving the
- * real path up front - and routing `.cmd`/`.bat` shims through `cmd.exe /c`
- * (node-pty has no `shell` option) - keeps the profile launchable.
+ * real path up front — and routing `.cmd`/`.bat` shims through `cmd.exe /c`
+ * (node-pty has no `shell` option) — keeps the profile launchable.
  *
  * Non-Windows and the default-shell path (no explicit command) are unchanged.
  */
@@ -401,18 +426,18 @@ function resolveExternalProcessPath(filePath: string): string {
   return filePath.replace(/\.asar(?=[/\\]|$)/, ".asar.unpacked");
 }
 
-export function resolveOttoCliBinDir(): string | null {
-  const cliExecutable = resolveOttoCliExecutablePath();
+export function resolvePaseoCliBinDir(): string | null {
+  const cliExecutable = resolvePaseoCliExecutablePath();
   return cliExecutable ? dirname(cliExecutable) : null;
 }
 
-export function resolveOttoCliExecutablePath(): string | null {
-  const configuredCli = process.env.OTTO_CLI?.trim();
+export function resolvePaseoCliExecutablePath(): string | null {
+  const configuredCli = process.env.PASEO_CLI?.trim();
   if (configuredCli) {
     return resolvePath(configuredCli);
   }
 
-  const cliEntrypoint = resolveOttoCliBinEntrypoint();
+  const cliEntrypoint = resolvePaseoCliBinEntrypoint();
   if (!cliEntrypoint) {
     return null;
   }
@@ -420,7 +445,7 @@ export function resolveOttoCliExecutablePath(): string | null {
   const externalCliEntrypoint = resolveExternalProcessPath(cliEntrypoint);
   const npmBinDir = findNpmBinDir(dirname(externalCliEntrypoint));
   if (npmBinDir) {
-    const shim = resolveOttoCliShim(npmBinDir);
+    const shim = resolvePaseoCliShim(npmBinDir);
     if (shim) {
       return shim;
     }
@@ -429,9 +454,9 @@ export function resolveOttoCliExecutablePath(): string | null {
   return externalCliEntrypoint;
 }
 
-function resolveOttoCliBinEntrypoint(): string | null {
+function resolvePaseoCliBinEntrypoint(): string | null {
   try {
-    return require.resolve(OTTO_CLI_BIN_ENTRY);
+    return require.resolve(PASEO_CLI_BIN_ENTRY);
   } catch {
     return null;
   }
@@ -441,7 +466,7 @@ function findNpmBinDir(startPath: string): string | null {
   let current = startPath;
   while (true) {
     const candidate = join(current, "node_modules", ".bin");
-    if (hasOttoCliShim(candidate)) {
+    if (hasPaseoCliShim(candidate)) {
       return candidate;
     }
 
@@ -453,12 +478,12 @@ function findNpmBinDir(startPath: string): string | null {
   }
 }
 
-function hasOttoCliShim(binDir: string): boolean {
-  return resolveOttoCliShim(binDir) !== null;
+function hasPaseoCliShim(binDir: string): boolean {
+  return resolvePaseoCliShim(binDir) !== null;
 }
 
-function resolveOttoCliShim(binDir: string): string | null {
-  for (const name of ottoCliShimNames()) {
+function resolvePaseoCliShim(binDir: string): string | null {
+  for (const name of paseoCliShimNames()) {
     const candidate = join(binDir, name);
     if (existsSync(candidate)) {
       return candidate;
@@ -467,7 +492,8 @@ function resolveOttoCliShim(binDir: string): string | null {
   return null;
 }
 
-function ottoCliShimNames(): string[] {
+function paseoCliShimNames(): string[] {
+  // OTTO(identity): the CLI is installed as otto.
   return process.platform === "win32" ? ["otto.cmd", "otto.exe", "otto"] : ["otto"];
 }
 
@@ -478,18 +504,7 @@ function resolveZshShellIntegrationRuntimeDir(): string {
   } catch {
     // keep fallback
   }
-  return join(tmpdir(), `${username}-otto-zsh-${process.pid}`);
-}
-
-/**
- * zsh refuses to parse scripts with CRLF endings: the trailing `\r` becomes part of
- * the token, so a blank line runs `^M` as a command and `fi\r` never closes its `if`.
- * The shipped sources can pick up CRLF anywhere along the way (a Windows checkout with
- * `core.autocrlf=true` publishes them straight into the tarball), so normalize at the
- * point of use rather than trusting whatever bytes reached disk.
- */
-function readZshShellIntegrationScript(filePath: string): string {
-  return readFileSync(filePath, "utf8").replace(/\r\n/g, "\n");
+  return join(tmpdir(), `${username}-paseo-zsh-${process.pid}`);
 }
 
 function prepareZshShellIntegrationRuntimeDir(sourceDir = resolveZshShellIntegrationDir()): string {
@@ -499,11 +514,11 @@ function prepareZshShellIntegrationRuntimeDir(sourceDir = resolveZshShellIntegra
   chmodSync(runtimeDir, 0o700);
   writePrivateFileAtomicSync(
     join(runtimeDir, ".zshenv"),
-    readZshShellIntegrationScript(join(readableSourceDir, ".zshenv")),
+    readFileSync(join(readableSourceDir, ".zshenv")),
   );
   writePrivateFileAtomicSync(
-    join(runtimeDir, "otto-integration.zsh"),
-    readZshShellIntegrationScript(join(readableSourceDir, "otto-integration.zsh")),
+    join(runtimeDir, "paseo-integration.zsh"),
+    readFileSync(join(readableSourceDir, "paseo-integration.zsh")),
   );
   return runtimeDir;
 }
@@ -515,28 +530,28 @@ export function buildTerminalEnvironment(
     TERM: "xterm-256color",
     TERM_PROGRAM: "kitty",
   });
-  const envWithAgentHooks = prependOttoCliToPath(
+  const envWithAgentHooks = prependPaseoCliToPath(
     baseEnv,
-    input.ottoCliBinDir === undefined ? resolveOttoCliBinDir() : input.ottoCliBinDir,
+    input.paseoCliBinDir === undefined ? resolvePaseoCliBinDir() : input.paseoCliBinDir,
   );
-  const envWithHookCli = injectOttoHookCli(
+  const envWithHookCli = injectPaseoHookCli(
     envWithAgentHooks,
-    input.ottoHookCliPath === undefined ? resolveOttoCliExecutablePath() : input.ottoHookCliPath,
+    input.paseoHookCliPath === undefined ? resolvePaseoCliExecutablePath() : input.paseoHookCliPath,
   );
 
   if (basename(input.shell) !== "zsh") {
-    return envWithHookCli;
+    return ottoTerminalEnvironment(envWithHookCli); // OTTO(terminal-environment)
   }
 
   const originalZdotdir = envWithHookCli.ZDOTDIR ?? "";
-  return {
+  return ottoTerminalEnvironment({
     ...envWithHookCli,
-    OTTO_ZSH_ZDOTDIR: originalZdotdir,
+    PASEO_ZSH_ZDOTDIR: originalZdotdir,
     ZDOTDIR: prepareZshShellIntegrationRuntimeDir(input.zshShellIntegrationDir),
-  };
+  }); // OTTO(terminal-environment)
 }
 
-function injectOttoHookCli(
+function injectPaseoHookCli(
   env: Record<string, string>,
   cliPath: string | null,
 ): Record<string, string> {
@@ -546,11 +561,11 @@ function injectOttoHookCli(
 
   return {
     ...env,
-    OTTO_HOOK_CLI: resolvePath(resolveExternalProcessPath(cliPath)),
+    PASEO_HOOK_CLI: resolvePath(resolveExternalProcessPath(cliPath)),
   };
 }
 
-function prependOttoCliToPath(
+function prependPaseoCliToPath(
   env: Record<string, string>,
   cliBinDir: string | null,
 ): Record<string, string> {
@@ -599,7 +614,9 @@ function extractCell(terminal: TerminalType, row: number, col: number): Terminal
   const bg = bgMode !== 0 ? cell.getBgColor() : undefined;
 
   return {
-    char: cell.getChars() || " ",
+    // Wide chars (CJK) span two cells; xterm returns "" for the zero-width
+    // continuation. Collapsing it to " " injects a real space on restore.
+    char: cell.getWidth() === 0 ? "" : cell.getChars() || " ",
     fg,
     bg,
     fgMode: fgMode !== 0 ? fgMode : undefined,
@@ -658,7 +675,9 @@ function extractScrollback(
           const fg = fgMode !== 0 ? cell.getFgColor() : undefined;
           const bg = bgMode !== 0 ? cell.getBgColor() : undefined;
           rowCells.push({
-            char: cell.getChars() || " ",
+            // Wide chars (CJK) span two cells; xterm returns "" for the zero-width
+            // continuation. Collapsing it to " " injects a real space on restore.
+            char: cell.getWidth() === 0 ? "" : cell.getChars() || " ",
             fg,
             bg,
             fgMode: fgMode !== 0 ? fgMode : undefined,
@@ -684,8 +703,8 @@ function extractScrollback(
 }
 
 // xterm marks a line `isWrapped` when it is a continuation of the PREVIOUS line.
-// The snapshot carries the inverse, tmux-style flag - "this row continues onto the
-// next row" - so the client can rejoin and reflow logical lines. So row y's flag is
+// The snapshot carries the inverse, tmux-style flag — "this row continues onto the
+// next row" — so the client can rejoin and reflow logical lines. So row y's flag is
 // whether line y+1 is a wrapped continuation.
 function lineContinuesToNext(terminal: TerminalType, absoluteRow: number): boolean {
   return terminal.buffer.active.getLine(absoluteRow + 1)?.isWrapped === true;
@@ -744,7 +763,7 @@ function extractCursorState(terminal: TerminalType): TerminalState["cursor"] {
   };
 }
 
-function normalizeProcessToken(token: string, includePaths: boolean): string {
+function normalizeProcessToken(token: string): string {
   if (token.length === 0) {
     return token;
   }
@@ -765,7 +784,7 @@ function normalizeProcessToken(token: string, includePaths: boolean): string {
   const assignmentMatch = rawToken.match(/^([A-Za-z_][A-Za-z0-9_]*=)(.+)$/);
   const prefix = assignmentMatch ? assignmentMatch[1] : "";
   const value = assignmentMatch ? assignmentMatch[2] : rawToken;
-  if (includePaths || (!value.includes("/") && !value.includes("\\"))) {
+  if (!value.includes("/")) {
     return token;
   }
 
@@ -773,10 +792,7 @@ function normalizeProcessToken(token: string, includePaths: boolean): string {
   return quote ? `${quote}${normalized}${quote}` : normalized;
 }
 
-export function normalizeProcessTitle(
-  processTitle: string,
-  options: { includePaths?: boolean } = {},
-): string | undefined {
+export function normalizeProcessTitle(processTitle: string): string | undefined {
   const trimmed = processTitle.trim().replace(/\s+/g, " ");
   if (trimmed.length === 0) {
     return undefined;
@@ -784,7 +800,7 @@ export function normalizeProcessTitle(
 
   const normalized = trimmed
     .split(" ")
-    .map((token) => normalizeProcessToken(token, options.includePaths === true))
+    .map((token) => normalizeProcessToken(token))
     .join(" ")
     .trim();
   return normalized.length > 0 ? normalized : undefined;
@@ -814,11 +830,8 @@ const PACKAGE_MANAGER_SCRIPT_NAMES = new Map<string, string>([
   ["yarn.js", "yarn"],
 ]);
 
-export function humanizeProcessTitle(
-  processTitle: string,
-  options: { includePaths?: boolean } = {},
-): string | undefined {
-  const normalized = normalizeProcessTitle(processTitle, options);
+export function humanizeProcessTitle(processTitle: string): string | undefined {
+  const normalized = normalizeProcessTitle(processTitle);
   if (!normalized) {
     return undefined;
   }
@@ -852,28 +865,7 @@ export function humanizeProcessTitle(
     }
   }
 
-  if (options.includePaths) {
-    return normalized;
-  }
-  const command = basename(first);
-  return [command, ...tokens.slice(1)].join(" ").trim();
-}
-
-function resolveInitialTerminalTitle(input: {
-  presetTitle?: string;
-  titleMode: "auto" | "default" | "manual";
-  titleIncludePaths: boolean;
-  name: string;
-  command?: string;
-  args: string[];
-}): string | undefined {
-  const manualTitle = input.presetTitle?.trim() || undefined;
-  const processTitle = input.command ? [input.command, ...input.args].join(" ") : null;
-  const autoTitle = processTitle
-    ? (humanizeProcessTitle(processTitle, { includePaths: input.titleIncludePaths }) ??
-      normalizeProcessTitle(processTitle, { includePaths: input.titleIncludePaths }))
-    : undefined;
-  return manualTitle ?? (input.titleMode === "default" ? input.name : autoTitle);
+  return normalized;
 }
 
 function extractLastOutputLines(terminal: TerminalType, limit: number): string[] {
@@ -928,25 +920,76 @@ function extractLastOutputLinesFromText(text: string, limit: number): string[] {
   return lines.slice(-limit);
 }
 
+function isExecutableFile(path: string): boolean {
+  try {
+    if (!statSync(path).isFile()) {
+      return false;
+    }
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export interface AssertTerminalCommandCanStartInput {
+  command: string | undefined;
+  // The terminal's own cwd and environment, not the daemon's: execve in the
+  // child resolves against those, so anything else produces false negatives.
+  cwd: string;
+  env: Record<string, string>;
+  platform?: NodeJS.Platform;
+}
+
+// node-pty spawns directly through execve on POSIX, with no shell, so a command
+// that does not exist fails inside the spawn helper and surfaces as exit code 1
+// with no output -- indistinguishable from `false` or any program that simply
+// failed. Resolving it up front is the only signal that separates "cannot start"
+// from "ran and exited non-zero", and it lets the create report the failure
+// instead of handing back a terminal that dies immediately. Windows keeps
+// resolving inside resolveTerminalSpawnCommand, which has its own shim handling
+// and its own fallback for an unresolved command.
+export async function assertTerminalCommandCanStart(
+  input: AssertTerminalCommandCanStartInput,
+): Promise<void> {
+  const { command, cwd, env } = input;
+  const platform = input.platform ?? process.platform;
+  if (command === undefined || platform === "win32") {
+    return;
+  }
+
+  // A path-ish command is resolved by execve against the child's cwd, never
+  // through PATH and never against the daemon's working directory.
+  if (command.includes("/")) {
+    if (isExecutableFile(resolvePath(cwd, command))) {
+      return;
+    }
+    throw new TerminalCommandNotFoundError(command);
+  }
+
+  const resolved = await findExecutableWithoutProbing(command, {
+    path: env[getPathEnvKey(env)],
+    cwd,
+  });
+  if (!resolved) {
+    throw new TerminalCommandNotFoundError(command);
+  }
+}
+
 export async function createTerminal(options: CreateTerminalOptions): Promise<TerminalSession> {
   const {
     cwd,
     workspaceId,
-    presentation,
-    presentationOwner,
-    shell,
     env = {},
     activityEnv = {},
     rows = 24,
     cols = 80,
     name = "Terminal",
     title: presetTitle,
-    titleMode: configuredTitleMode = "auto",
-    titleIncludePaths = false,
     command,
     args = [],
   } = options;
-  const resolvedShell = shell ?? resolveDefaultTerminalShell();
+  const resolvedShell = (await terminalShellOverride(options)) ?? resolveDefaultTerminalShell(); // OTTO(terminal): explicit commands/shells retain precedence.
 
   const id = options.id ?? randomUUID();
   const listeners = new Set<(msg: ServerMessage) => void>();
@@ -966,7 +1009,8 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   const recentOutputChunks: string[] = [];
   let recentOutputLength = 0;
   let title: string | undefined;
-  let titleMode: "auto" | "default" | "manual" = presetTitle ? "manual" : configuredTitleMode;
+  const titlePolicy = options.ottoPreferences; // OTTO(terminal): captured for this session, not changed by later settings edits.
+  let titleMode = terminalTitleMode(resolveInitialTitleMode(presetTitle), titlePolicy); // OTTO(terminal)
   let pendingTitle: string | undefined;
   let titleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   let pendingInput = "";
@@ -991,19 +1035,23 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
   const { command: spawnCommand, args: spawnArgs } = command
     ? await resolveTerminalSpawnCommand(command, args)
     : { command: resolvedShell, args: [] as string[] };
+  const terminalEnv = buildTerminalEnvironment({
+    shell: spawnCommand,
+    env: {
+      ...env,
+      ...activityEnv,
+      PASEO_WORKSPACE_ID: workspaceId,
+    },
+  });
+
+  await assertTerminalCommandCanStart({ command, cwd, env: terminalEnv });
+
   const ptyProcess = pty.spawn(spawnCommand, spawnArgs, {
     name: "xterm-256color",
     cols,
     rows,
     cwd,
-    env: buildTerminalEnvironment({
-      shell: spawnCommand,
-      env: {
-        ...env,
-        ...activityEnv,
-        OTTO_WORKSPACE_ID: workspaceId,
-      },
-    }),
+    env: terminalEnv,
   });
 
   function emitTitleChange(nextTitle: string | undefined): void {
@@ -1040,12 +1088,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     titleChangeSubscription = null;
   }
 
-  function normalizeAutomaticTitle(nextTitle: string): string | undefined {
-    const trimmed = nextTitle.trim();
-    if (!trimmed) return undefined;
-    return titleIncludePaths ? trimmed : (normalizeProcessTitle(trimmed) ?? trimmed);
-  }
-
   function setTitle(nextTitle: string): void {
     const manualTitle = nextTitle.trim();
     if (!manualTitle) {
@@ -1058,39 +1100,22 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     emitTitleChange(manualTitle);
   }
 
-  function clearTitle(): void {
-    if (titleMode !== "manual") return;
-    titleMode = configuredTitleMode;
-    emitTitleChange(titleMode === "default" ? name : autoTitle);
-    if (titleMode === "auto" && !titleChangeSubscription) {
-      titleChangeSubscription = terminal.onTitleChange((nextTitle) => {
-        if (disposed || killed || titleMode !== "auto") return;
-        pendingTitle = normalizeAutomaticTitle(nextTitle);
-        if (titleDebounceTimer) clearTimeout(titleDebounceTimer);
-        titleDebounceTimer = setTimeout(() => {
-          titleDebounceTimer = null;
-          emitTitleChange(pendingTitle);
-          pendingTitle = undefined;
-        }, TERMINAL_TITLE_DEBOUNCE_MS);
-      });
-    }
+  const initialManualTitle = presetTitle?.trim() || undefined;
+  const processTitle = command ? [command, ...args].join(" ") : null;
+  let initialTitle = initialManualTitle;
+  if (!initialTitle && processTitle) {
+    initialTitle = humanizeProcessTitle(processTitle) ?? normalizeProcessTitle(processTitle);
   }
-
-  const autoTitle = command
-    ? (humanizeProcessTitle([command, ...args].join(" "), { includePaths: titleIncludePaths }) ??
-      normalizeProcessTitle([command, ...args].join(" "), { includePaths: titleIncludePaths }))
-    : undefined;
-  const initialTitle = resolveInitialTerminalTitle({
-    presetTitle,
-    titleMode,
-    titleIncludePaths,
+  initialTitle = terminalInitialTitle({
+    manual: initialManualTitle,
+    initial: initialTitle,
+    process: processTitle,
     name,
-    command,
-    args,
-  });
+    preferences: titlePolicy,
+  }); // OTTO(terminal)
   emitTitleChange(initialTitle);
 
-  // Respond to DA1 queries (CSI c or CSI 0 c) - apps like nvim query terminal capabilities
+  // Respond to DA1 queries (CSI c or CSI 0 c) — apps like nvim query terminal capabilities
   terminal.parser.registerCsiHandler({ final: "c" }, (params) => {
     if (params.length === 0 || (params.length === 1 && params[0] === 0)) {
       ptyProcess.write("\x1b[?62;4;22c");
@@ -1136,7 +1161,7 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
       if (disposed || killed) {
         return;
       }
-      pendingTitle = normalizeAutomaticTitle(nextTitle);
+      pendingTitle = terminalNextTitle(nextTitle, titlePolicy); // OTTO(terminal)
       if (titleDebounceTimer) {
         clearTimeout(titleDebounceTimer);
       }
@@ -1618,8 +1643,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     name,
     cwd,
     workspaceId,
-    ...(presentation ? { presentation } : {}),
-    ...(presentationOwner ? { presentationOwner } : {}),
     send,
     subscribe,
     onExit,
@@ -1635,7 +1658,6 @@ export async function createTerminal(options: CreateTerminalOptions): Promise<Te
     setActivity,
     clearActivityAttention,
     setTitle,
-    clearTitle,
     getExitInfo,
     kill,
     killAndWait,

@@ -6,6 +6,8 @@ order: 51
 category: TypeScript SDK
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # SDK quickstart
 
 ```bash

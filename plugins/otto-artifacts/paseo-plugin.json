@@ -1,0 +1,5 @@
+{
+  "id": "otto-artifacts",
+  "name": "Otto Artifacts",
+  "requirements": { "paseo": ">=0.12.0" }
+}

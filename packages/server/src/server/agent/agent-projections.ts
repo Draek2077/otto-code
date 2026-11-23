@@ -15,17 +15,15 @@ import type {
   AgentSessionConfig,
   AgentRuntimeInfo,
   AgentUsage,
-  AgentContextCategory,
-  ContextComposition,
   ImportableProviderSession,
-  ObservedSubagentUpdate,
 } from "./agent-sdk-types.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { JsonValue } from "../json-utils.js";
-import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
-import { isStoredAgentProviderAvailable, toAgentPersistenceHandle } from "../persistence-hooks.js";
-import { steerQueuePreview, type SteerQueueEntry } from "./steer-queue-state.js";
-import { costCoverageOf, observedLifetimeUsage, type AgentLifetimeUsage } from "./turn-usage.js";
+import {
+  isStoredAgentProviderAvailable,
+  resolveStoredAgentUpdatedAt,
+  toAgentPersistenceHandle,
+} from "../persistence-hooks.js";
 export type { ManagedAgent };
 
 interface ProjectionOptions {
@@ -99,79 +97,10 @@ export function toStoredAgentRecord(
       ? agent.attention.attentionTimestamp.toISOString()
       : null,
     internal: options?.internal,
-    unattended: agent.unattended,
-    guardrailDenials: agent.guardrailDenials,
-    lastGuardrailDenialAt: agent.lastGuardrailDenialAt,
     owner: agent.owner,
   } satisfies StoredAgentRecord;
 }
 
-/**
- * Project the daemon-owned steering queue for the wire. Returns undefined for an
- * empty queue so the field stays absent rather than shipping `[]` on every
- * snapshot. See docs/chat-lifecycle.md (queued delivery).
- */
-function toQueuedMessagePayloads(
-  // A live ManagedAgent always has one; the projection is also handed
-  // hand-built snapshots (imports, tests), same as `availableModes` above.
-  queue: readonly SteerQueueEntry[] | undefined,
-): AgentSnapshotPayload["queuedMessages"] {
-  if (!queue || queue.length === 0) {
-    return undefined;
-  }
-  return queue.map((entry) => {
-    // Everything that is not the message's own prose. Images and file/PR/issue
-    // blocks are obvious; a text ATTACHMENT (added-to-chat file, folder, chat
-    // history, review) also counts, because the user attached it and expects to
-    // see it in the row's count. It is told apart from a plain prompt text
-    // block by its required `mimeType` - TextAttachmentSchema declares it,
-    // buildAgentPrompt's own text block never carries one. Counting only
-    // `type !== "text"` undercounted every added-to-chat file, so the daemon
-    // path disagreed with the client-held queue on the very same message.
-    const attachmentCount =
-      typeof entry.prompt === "string"
-        ? 0
-        : entry.prompt.filter((block) => block.type !== "text" || "mimeType" in block).length;
-    return {
-      id: entry.id,
-      preview: steerQueuePreview(entry),
-      enqueuedAt: entry.enqueuedAt,
-      ...(attachmentCount > 0 ? { attachmentCount } : {}),
-      // Only surface the non-default source so the wire stays lean; absent = user.
-      ...(entry.source === "system" ? { source: "system" as const } : {}),
-    };
-  });
-}
-
-/**
- * Carry the spawning Agent Profile's identity onto the snapshot so the row keeps
- * its name and spinner colors. See docs/agent-profiles.md.
- *
- * COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22. Both
- * spellings go out together: a client older than the rename only knows the
- * personality-named trio, and dropping it here would blank the identity on
- * every row it draws. Delete the legacy half when the floor passes v0.8.13.
- */
-function applyProfileIdentity(
-  payload: AgentSnapshotPayload,
-  snapshot: AgentSessionConfig["profileSnapshot"],
-): void {
-  if (snapshot?.spinner !== undefined) {
-    payload.personalitySpinner = snapshot.spinner;
-    payload.agentProfileSpinner = snapshot.spinner;
-  }
-  if (snapshot?.name !== undefined) {
-    payload.personalityName = snapshot.name;
-    payload.agentProfileName = snapshot.name;
-  }
-  if (snapshot?.profileId !== undefined) {
-    payload.personalityId = snapshot.profileId;
-    payload.agentProfileId = snapshot.profileId;
-  }
-}
-
-// The wire projection intentionally owns all optional compatibility fields in one place.
-// eslint-disable-next-line complexity
 export function toAgentPayload(
   agent: ManagedAgent,
   options?: ProjectionOptions,
@@ -182,21 +111,6 @@ export function toAgentPayload(
     runtimeInfo,
     configuredThinkingOptionId: thinkingOptionId,
   });
-  // `activeTurn` means a turn is in flight now. The manager clears its turn
-  // identity at the matching terminal event, and the lifecycle gate keeps this
-  // payload honest if an older or malformed in-memory record still has one.
-  const activeTurnId =
-    agent.lifecycle === "running" &&
-    "activeTurnId" in agent &&
-    typeof agent.activeTurnId === "string"
-      ? agent.activeTurnId
-      : null;
-  const activeTurnStartedAt =
-    activeTurnId !== null &&
-    "activeTurnStartedAt" in agent &&
-    agent.activeTurnStartedAt instanceof Date
-      ? agent.activeTurnStartedAt
-      : null;
 
   const payload: AgentSnapshotPayload = {
     id: agent.id,
@@ -211,10 +125,10 @@ export function toAgentPayload(
     updatedAt: agent.updatedAt.toISOString(),
     lastUserMessageAt: agent.lastUserMessageAt ? agent.lastUserMessageAt.toISOString() : null,
     status: agent.lifecycle,
-    activeTurn: activeTurnId
+    activeTurn: agent.activeTurnId
       ? {
-          turnId: activeTurnId,
-          startedAt: activeTurnStartedAt?.toISOString() ?? null,
+          turnId: agent.activeTurnId,
+          startedAt: agent.activeTurnStartedAt?.toISOString() ?? null,
         }
       : null,
     capabilities: cloneCapabilities(agent.capabilities),
@@ -225,12 +139,7 @@ export function toAgentPayload(
     persistence: projectPersistenceHandleForWire(agent.persistence),
     title: options?.title ?? null,
     labels: agent.labels,
-    // Internal agents (e.g. artifact generation) have no client watching to
-    // approve/prompt them - render their tab read-only like an observed
-    // subagent. Other ManagedAgents stay attended; true observed subagents
-    // are produced by a separate projection (see observed-subagent-registry).
-    // See .otto/knowledge/projects/observed-subagents.md.
-    attend: agent.internal ? "observed" : "attended",
+    ...(agent.internal ? { internal: true } : {}),
   };
 
   const usage = sanitizeUsage(agent.lastUsage);
@@ -238,35 +147,9 @@ export function toAgentPayload(
     payload.lastUsage = usage;
   }
 
-  // Same lifetime-total field observed subagents use (toObservedSubagentPayload
-  // below) - populated here too so the subagent track shows every row the same
-  // way regardless of how the child was spawned. See accumulateAgentTokens in
-  // agent-manager.ts.
-  if (typeof agent.cumulativeTokens === "number" && Number.isFinite(agent.cumulativeTokens)) {
-    payload.cumulativeTokens = agent.cumulativeTokens;
-  }
-
-  applyCumulativeUsage(payload, agent.cumulativeUsage);
-
-  // Same liveness signals observed rows carry, so a native (create_chat) child
-  // reads identically in the track. Sourced from its own timeline rather than a
-  // provider task report - see AgentManager.recordNativeSubagentToolActivity.
-  applySubagentLiveness(payload, {
-    toolUseCount: agent.toolUseCount,
-    currentTool: agent.currentTool,
-    status: agent.lifecycle,
-  });
-
-  const queuedMessages = toQueuedMessagePayloads(agent.steerQueue);
-  if (queuedMessages) {
-    payload.queuedMessages = queuedMessages;
-  }
-
   if (agent.lastError !== undefined) {
     payload.lastError = agent.lastError;
   }
-
-  applyProfileIdentity(payload, agent.config.profileSnapshot);
 
   // Handle attention state
   payload.requiresAttention = agent.attention.requiresAttention;
@@ -330,7 +213,7 @@ export function buildStoredAgentPayload(
   } as const;
 
   const createdAt = new Date(record.createdAt);
-  const updatedAt = new Date(resolveStoredAgentPayloadUpdatedAt(record));
+  const updatedAt = new Date(resolveStoredAgentUpdatedAt(record));
   const lastUserMessageAt = record.lastUserMessageAt ? new Date(record.lastUserMessageAt) : null;
 
   const runtimeInfo = buildStoredRuntimeInfo(record);
@@ -365,200 +248,10 @@ export function buildStoredAgentPayload(
     attentionReason: record.attentionReason ?? null,
     attentionTimestamp: record.attentionTimestamp ?? null,
     archivedAt: record.archivedAt ?? null,
-    archiveBytes: record.archiveBytes,
+    ...(record.internal ? { internal: true } : {}),
     labels: normalizeLabels(record.labels),
-    attend: "attended",
-    ...buildStoredAgentPayloadTail(record, providerAvailable),
-  };
-}
-
-// Optional payload fields for a stored agent, factored out to keep
-// buildStoredAgentPayload under the complexity budget.
-function buildStoredAgentPayloadTail(
-  record: StoredAgentRecord,
-  providerAvailable: boolean,
-): Partial<AgentSnapshotPayload> {
-  const tail: Partial<AgentSnapshotPayload> = {};
-  // COMPAT(agentProfileFields): both spellings, same values - see
-  // applyProfileIdentity above for why the legacy trio still goes out.
-  const spinner = record.config?.profileSnapshot?.spinner;
-  if (spinner) {
-    tail.personalitySpinner = spinner;
-    tail.agentProfileSpinner = spinner;
-  }
-  const profileName = record.config?.profileSnapshot?.name;
-  if (profileName) {
-    tail.personalityName = profileName;
-    tail.agentProfileName = profileName;
-  }
-  const profileId = record.config?.profileSnapshot?.profileId;
-  if (profileId) {
-    tail.personalityId = profileId;
-    tail.agentProfileId = profileId;
-  }
-  if (!providerAvailable) {
-    tail.providerUnavailable = true;
-  }
-  return tail;
-}
-
-// Observed subagents have no Otto runtime - all interactive capabilities are
-// false so the client hides model/mode/thinking/rewind controls, leaving a
-// read-only pane. Tool invocations stay true so the transcript renders tool
-// calls. See .otto/knowledge/projects/observed-subagents.md.
-const OBSERVED_SUBAGENT_CAPABILITIES: AgentCapabilityFlags = {
-  supportsStreaming: false,
-  supportsSessionPersistence: false,
-  supportsDynamicModes: false,
-  supportsMcpServers: false,
-  supportsReasoningStream: false,
-  supportsToolInvocations: true,
-  supportsRewindConversation: false,
-  supportsRewindFiles: false,
-  supportsRewindBoth: false,
-};
-
-// The naming rule lives in the protocol package so the app's visualizer can
-// derive the exact same child label for subagent_dispatch/return edges. Keep
-// the re-export so server call sites and tests keep their import path.
-export {
-  deriveObservedSubagentTitle,
-  observedUpdateHasTitleSource,
-} from "@otto-code/protocol/observed-subagent-title";
-
-export function toObservedSubagentPayload(input: {
-  id: string;
-  parentAgentId: string;
-  provider: AgentProvider;
-  cwd: string;
-  workspaceId?: string;
-  createdAt: string;
-  title: string;
-  cumulativeTokens?: number;
-  // Carried-forward full usage split + the subagent's own model, resolved by the
-  // manager across updates. Preferred over `update.usage`/hardcoded null so the
-  // breakdown and (possibly-cheaper) model survive a scalar-only final update.
-  lastUsage?: AgentUsage;
-  model?: string;
-  // Liveness counters resolved by the manager across updates (monotonic count,
-  // latest tool). See applySubagentLiveness for the terminal-clearing rule.
-  toolUseCount?: number;
-  currentTool?: string;
-  // Resolved by the manager (latched, and inherited from the parent row), not
-  // read off `update` - a status-only refresh omits it.
-  backgrounded?: boolean;
-  update: ObservedSubagentUpdate;
-}): AgentSnapshotPayload {
-  const { update } = input;
-  const title = input.title;
-  const nowIso = new Date().toISOString();
-  const isError = update.status === "error";
-  const requiresAttention = update.requiresAttention ?? isError;
-  let attentionReason: "error" | "finished" | null = null;
-  if (requiresAttention) {
-    attentionReason = isError ? "error" : "finished";
-  }
-
-  const payload: AgentSnapshotPayload = {
-    id: input.id,
-    provider: input.provider,
-    cwd: input.cwd,
-    ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
-    model: input.model ?? null,
-    thinkingOptionId: null,
-    effectiveThinkingOptionId: null,
-    createdAt: input.createdAt,
-    updatedAt: nowIso,
-    lastUserMessageAt: null,
-    status: update.status,
-    capabilities: { ...OBSERVED_SUBAGENT_CAPABILITIES },
-    currentModeId: null,
-    availableModes: [],
-    pendingPermissions: [],
-    persistence: null,
-    title,
-    labels: { [PARENT_AGENT_ID_LABEL]: input.parentAgentId },
-    attend: "observed",
-    ...(input.backgrounded ? { backgrounded: true } : {}),
-    requiresAttention,
-    attentionReason,
-    attentionTimestamp: requiresAttention ? nowIso : null,
-  };
-
-  const usage = sanitizeUsage(input.lastUsage ?? update.usage);
-  if (usage !== undefined) {
-    payload.lastUsage = usage;
-  }
-
-  if (typeof input.cumulativeTokens === "number" && Number.isFinite(input.cumulativeTokens)) {
-    payload.cumulativeTokens = input.cumulativeTokens;
-  }
-
-  // An observed sub-agent's carried-forward usage is ALREADY its own running
-  // total (its accumulator sums across its messages), so this is a projection,
-  // not an accumulation. Its `totalCostUsd` is priced on the sub-agent's OWN
-  // model and is exactly what the parent's residual backs out, which is what
-  // keeps parent + Σ children from double-counting.
-  applyCumulativeUsage(payload, observedLifetimeUsage(input.lastUsage ?? update.usage));
-
-  applySubagentLiveness(payload, {
-    toolUseCount: input.toolUseCount,
-    currentTool: input.currentTool,
-    status: update.status,
-  });
-
-  return payload;
-}
-
-/**
- * Attach the sub-agents-track liveness signals to a snapshot: how much work the
- * agent has done (`toolUseCount`, cumulative - it stays on a finished row, which
- * is the whole point of "89 tool uses") and what it is doing right now
- * (`currentTool`, dropped the moment the agent is terminal - a finished agent
- * isn't "running Bash"). Absent inputs leave the fields off entirely so the row
- * omits the readout instead of showing a stale or invented value.
- * Shared by both projections so observed and native sub-agent rows read alike.
- * See docs/chat-lifecycle.md (the subagents track).
- */
-function applySubagentLiveness(
-  payload: AgentSnapshotPayload,
-  input: { toolUseCount?: number; currentTool?: string; status: AgentSnapshotPayload["status"] },
-): void {
-  if (typeof input.toolUseCount === "number" && Number.isFinite(input.toolUseCount)) {
-    payload.toolUseCount = input.toolUseCount;
-  }
-  const isLive = input.status === "initializing" || input.status === "running";
-  if (isLive && input.currentTool) {
-    payload.currentTool = input.currentTool;
-  }
-}
-
-/**
- * Attach the lifetime spend split + cost to a snapshot. Shared by both
- * projections so a native child and an observed sub-agent expose the same
- * shape, and a chat total can sum them without caring which it is.
- *
- * Omitted entirely when there is nothing to report, and `costUsd` is omitted
- * unless the provider genuinely priced something - an absent cost is the honest
- * answer for a local model, and it is what makes the client show a blank
- * instead of an estimate. `costCoverage` travels with it so a partially-priced
- * total is never read as complete.
- */
-function applyCumulativeUsage(
-  payload: AgentSnapshotPayload,
-  usage: AgentLifetimeUsage | undefined,
-): void {
-  if (!usage) {
-    return;
-  }
-  const costUsd = usage.costUsd;
-  payload.cumulativeUsage = {
-    inputTokens: usage.inputTokens,
-    cachedInputTokens: usage.cachedInputTokens,
-    cacheCreationInputTokens: usage.cacheCreationInputTokens,
-    outputTokens: usage.outputTokens,
-    ...(typeof costUsd === "number" && Number.isFinite(costUsd) && costUsd > 0 ? { costUsd } : {}),
-    costCoverage: costCoverageOf(usage),
+    ...(typeof record.lastError === "string" ? { lastError: record.lastError } : {}),
+    ...(providerAvailable ? {} : { providerUnavailable: true }),
   };
 }
 
@@ -601,23 +294,6 @@ export function toRecentProviderSessionDescriptorPayload(
   };
 }
 
-export function resolveStoredAgentPayloadUpdatedAt(record: StoredAgentRecord): string {
-  const timestamps = [record.updatedAt, record.lastActivityAt]
-    .filter((value): value is string => typeof value === "string" && value.length > 0)
-    .map((value) => ({
-      raw: value,
-      parsed: Date.parse(value),
-    }))
-    .filter((value) => !Number.isNaN(value.parsed));
-
-  if (timestamps.length === 0) {
-    return record.updatedAt;
-  }
-
-  timestamps.sort((a, b) => b.parsed - a.parsed);
-  return timestamps[0].raw;
-}
-
 function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentConfig | null {
   const serializable: SerializableAgentConfig = {};
   if (config.modeId) {
@@ -646,17 +322,12 @@ function buildSerializableConfig(config: AgentSessionConfig): SerializableAgentC
       preapproved: config.toolPolicy.preapproved.map((grant) => ({ ...grant })),
     };
   }
+  if (config.ottoProfile) serializable.ottoProfile = config.ottoProfile; // OTTO(agent-teams)
   if (config.systemPrompt) {
     serializable.systemPrompt = config.systemPrompt;
   }
   if (config.mcpServers) {
     serializable.mcpServers = config.mcpServers;
-  }
-  if (config.profileSnapshot) {
-    serializable.profileSnapshot = config.profileSnapshot;
-  }
-  if (config.teamSnapshot) {
-    serializable.teamSnapshot = config.teamSnapshot;
   }
   return Object.keys(serializable).length ? serializable : null;
 }
@@ -774,7 +445,7 @@ function sanitizeMetadataArray(value: unknown): AgentMetadata[] | undefined {
   return sanitized.length > 0 ? sanitized : undefined;
 }
 
-type UsageNumericField = Exclude<keyof AgentUsage, "contextComposition" | "contextCategories">;
+type UsageNumericField = Exclude<keyof AgentUsage, never>;
 
 function assignFiniteNumber(
   source: { [key: string]: JsonValue },
@@ -789,62 +460,6 @@ function assignFiniteNumber(
   return raw === undefined || raw === null;
 }
 
-const CONTEXT_COMPOSITION_FIELDS: (keyof ContextComposition)[] = [
-  "systemPrompt",
-  "userMessages",
-  "toolResults",
-  "reasoning",
-  "subagentResults",
-];
-
-function sanitizeContextComposition(value: JsonValue | undefined): ContextComposition | undefined {
-  if (value === undefined || value === null || !isJsonObject(value)) {
-    return undefined;
-  }
-  const result: ContextComposition = {};
-  for (const field of CONTEXT_COMPOSITION_FIELDS) {
-    const raw = value[field];
-    if (typeof raw === "number" && Number.isFinite(raw)) {
-      result[field] = raw;
-    }
-  }
-  return Object.keys(result).length ? result : undefined;
-}
-
-/**
- * The provider's own labelled split. Unlike the fixed-key composition this is an
- * open-ended list, so entries are validated structurally (label + finite count)
- * rather than against a known field set - a provider inventing a new category
- * must reach the client intact, not be silently dropped.
- */
-function sanitizeContextCategories(
-  value: JsonValue | undefined,
-): AgentContextCategory[] | undefined {
-  if (!Array.isArray(value)) {
-    return undefined;
-  }
-  const result: AgentContextCategory[] = [];
-  for (const entry of value) {
-    if (!isJsonObject(entry)) {
-      continue;
-    }
-    const name = entry["name"];
-    const tokens = entry["tokens"];
-    if (typeof name !== "string" || !name || typeof tokens !== "number") {
-      continue;
-    }
-    if (!Number.isFinite(tokens)) {
-      continue;
-    }
-    result.push({
-      name,
-      tokens,
-      ...(entry["isDeferred"] === true ? { isDeferred: true } : {}),
-    });
-  }
-  return result.length ? result : undefined;
-}
-
 function sanitizeUsage(value: unknown): AgentUsage | undefined {
   const sanitized = sanitizeOptionalJson(value);
   if (!sanitized || !isJsonObject(sanitized)) {
@@ -854,7 +469,6 @@ function sanitizeUsage(value: unknown): AgentUsage | undefined {
   const fields: UsageNumericField[] = [
     "inputTokens",
     "cachedInputTokens",
-    "cacheCreationInputTokens",
     "outputTokens",
     "totalCostUsd",
     "contextWindowMaxTokens",
@@ -864,14 +478,6 @@ function sanitizeUsage(value: unknown): AgentUsage | undefined {
     if (!assignFiniteNumber(sanitized, result, field)) {
       return undefined;
     }
-  }
-  const composition = sanitizeContextComposition(sanitized["contextComposition"]);
-  if (composition) {
-    result.contextComposition = composition;
-  }
-  const categories = sanitizeContextCategories(sanitized["contextCategories"]);
-  if (categories) {
-    result.contextCategories = categories;
   }
   return Object.keys(result).length ? result : undefined;
 }

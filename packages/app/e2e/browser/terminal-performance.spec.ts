@@ -12,7 +12,7 @@ const LINE_COUNT = 50_000;
 const THROUGHPUT_BUDGET_MS = 30_000;
 const KEYSTROKE_SAMPLE_COUNT = 20;
 const KEYSTROKE_P95_BUDGET_MS = 150;
-const RUN_MANUAL_TERMINAL_PERF = process.env.OTTO_TERMINAL_PERF_E2E === "1";
+const RUN_MANUAL_TERMINAL_PERF = process.env.PASEO_TERMINAL_PERF_E2E === "1";
 const terminalPerfDescribe = RUN_MANUAL_TERMINAL_PERF ? test.describe : test.describe.skip;
 
 terminalPerfDescribe("Terminal wire performance", () => {
@@ -68,7 +68,7 @@ terminalPerfDescribe("Terminal wire performance", () => {
       });
 
       console.log(
-        `[perf] Throughput: ${report.throughputMBps} MB/s - ${LINE_COUNT} lines in ${elapsedMs}ms`,
+        `[perf] Throughput: ${report.throughputMBps} MB/s — ${LINE_COUNT} lines in ${elapsedMs}ms`,
       );
 
       expect(
@@ -132,7 +132,7 @@ terminalPerfDescribe("Terminal wire performance", () => {
       });
 
       console.log(
-        `[perf] Keystroke latency - p50: ${report.p50Ms}ms, p95: ${report.p95Ms}ms, max: ${report.maxMs}ms`,
+        `[perf] Keystroke latency — p50: ${report.p50Ms}ms, p95: ${report.p95Ms}ms, max: ${report.maxMs}ms`,
       );
 
       expect(

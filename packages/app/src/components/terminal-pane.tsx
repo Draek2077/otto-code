@@ -1,23 +1,28 @@
+import { TerminalFind, type TerminalPaneFindHandle } from "@/terminal/find";
+import type { TerminalFindResult } from "@/terminal/runtime/terminal-emulator-runtime";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Clipboard from "expo-clipboard";
-import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+import {
+  Pressable,
+  Text,
+  View,
+  type LayoutChangeEvent,
+  type PressableStateCallbackType,
+} from "react-native";
 import Animated, { runOnJS, useAnimatedReaction } from "react-native-reanimated";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import {
-  Keyboard as KeyboardIcon,
-  KeyboardOff as KeyboardOffIcon,
-} from "@/components/icons/material-icons";
-import type { TerminalKeyInput } from "@otto-code/protocol/terminal-key-input";
-import type { TerminalState } from "@otto-code/protocol/messages";
+import { Keyboard as KeyboardIcon, KeyboardOff as KeyboardOffIcon } from "lucide-react-native";
+import type { TerminalKeyInput } from "@getpaseo/protocol/terminal-key-input";
+import type { TerminalState } from "@getpaseo/protocol/messages";
 import {
   DEFAULT_TERMINAL_INPUT_MODE_STATE,
   type TerminalInputModeState,
-} from "@otto-code/protocol/terminal-input-mode";
+} from "@getpaseo/protocol/terminal-input-mode";
 import { useTranslation } from "react-i18next";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { useKeyboardShiftStyle } from "@/hooks/use-keyboard-shift-style";
+import { useKeyboardShiftStyle } from "@/keyboard/shift";
 import { useAppActivelyVisible } from "@/hooks/use-app-visible";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import {
@@ -32,9 +37,10 @@ import {
 } from "@/terminal/runtime/terminal-key-dispatch";
 import {
   getTerminalVirtualKeyboardControlId,
+  resolveTerminalVirtualKeyboardRows,
+  shouldShowTerminalVirtualKeyBar,
   shouldShowTerminalFloatingCopyAction,
   shouldShowTerminalPasteAction,
-  TERMINAL_VIRTUAL_KEYBOARD_ROWS,
   type TerminalVirtualKeyboardControl,
 } from "@/terminal/runtime/terminal-virtual-keyboard";
 import { pasteTerminalClipboard } from "@/terminal/runtime/terminal-paste";
@@ -55,6 +61,7 @@ import { usePanelStore } from "@/stores/panel-store";
 import { useBlockMobilePanelOpenGestures } from "@/mobile-panels/provider";
 import { useSessionStore } from "@/stores/session-store";
 import { toXtermTheme } from "@/utils/to-xterm-theme";
+import { useTerminalFonts } from "@/otto/terminal/use-fonts"; // OTTO(terminal-fonts)
 import TerminalEmulator, { type TerminalEmulatorHandle } from "./terminal-emulator";
 import { TerminalFloatingCopyAction, TerminalPasteAction } from "./terminal-copy-paste-actions";
 import {
@@ -71,36 +78,28 @@ import {
   type TerminalRendererReadyChange,
 } from "@/utils/terminal-renderer-readiness";
 import { useAppSettings } from "@/hooks/use-settings";
-import { resolveWorkspaceFilePaths } from "@/workspace/file-open";
-import {
-  classifyForResolution,
-  fetchDaemonDirectoryResolution,
-  fetchDaemonResolution,
-  getAmbiguousSuggestionQuery,
-} from "@/assistant-file-links/resolver";
+import { terminalLinkCandidate, createTerminalPathOpener } from "@/otto/terminal/paths"; // OTTO(terminal-paths)
 import type {
   TerminalLocalFileLinkSource,
   TerminalLocalFileLinkTarget,
 } from "@/terminal/local-links/terminal-local-link-provider";
-import {
-  normalizeWorkspaceFileLocation,
-  type OpenFileDisposition,
-  type WorkspaceFileOpenRequest,
-} from "@/workspace/file-open";
+import { type OpenFileDisposition, type WorkspaceFileOpenRequest } from "@/workspace/file-open";
 
 interface TerminalPaneProps {
+  onExit?: () => void; // OTTO(editor): file-owned PTYs reuse this stream's exit event.
   serverId: string;
   cwd: string;
   terminalId: string;
   isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
+  onOpenDirectory: (path: string) => void; // OTTO(terminal-paths)
   onOpenFileExplorer: () => void;
-  onNavigateToFolder: (path: string) => void;
   onOpenWorkspaceFile: (request: WorkspaceFileOpenRequest) => void;
 }
 
 const TERMINAL_REFIT_DELAYS_MS = [0, 48, 144, 320];
 const TERMINAL_RESIZE_DEBOUNCE_MS = 100;
+const TERMINAL_KEY_BAR_MAX_WIDTH = 880;
 
 const MODIFIER_LABELS = {
   ctrl: "Ctrl",
@@ -146,8 +145,16 @@ function ModifierButton({ modifier, active, onToggle }: ModifierButtonProps) {
     () => [styles.keyButtonText, active && styles.keyButtonTextActive],
     [active],
   );
+  const accessibilityState = useMemo(() => ({ selected: active }), [active]);
   return (
-    <Pressable testID={`terminal-key-${modifier}`} onPress={handlePress} style={pressableStyle}>
+    <Pressable
+      accessibilityLabel={MODIFIER_LABELS[modifier]}
+      accessibilityRole="button"
+      accessibilityState={accessibilityState}
+      testID={`terminal-key-${modifier}`}
+      onPress={handlePress}
+      style={pressableStyle}
+    >
       <Text style={textStyle}>{MODIFIER_LABELS[modifier]}</Text>
     </Pressable>
   );
@@ -170,7 +177,13 @@ function VirtualKeyButton({ id, label, keyValue, onSend }: VirtualKeyButtonProps
     [],
   );
   return (
-    <Pressable testID={`terminal-key-${id}`} onPress={handlePress} style={pressableStyle}>
+    <Pressable
+      accessibilityLabel={label}
+      accessibilityRole="button"
+      testID={`terminal-key-${id}`}
+      onPress={handlePress}
+      style={pressableStyle}
+    >
       <Text style={styles.keyButtonText}>{label}</Text>
     </Pressable>
   );
@@ -205,7 +218,7 @@ function KeyboardToggleButton({
       onPress={onToggle}
       style={pressableStyle}
     >
-      <Icon color={iconColor} size="md" />
+      <Icon color={iconColor} size={16} />
     </Pressable>
   );
 }
@@ -217,29 +230,34 @@ export function TerminalPane({
   isWorkspaceFocused,
   isPaneFocused,
   onOpenFileExplorer,
-  onNavigateToFolder,
+  onOpenDirectory, // OTTO(terminal-paths)
   onOpenWorkspaceFile,
+  onExit, // OTTO(editor)
 }: TerminalPaneProps) {
   const { t } = useTranslation();
   const retainedPanelActive = useRetainedPanelActive();
   const isAppActivelyVisible = useAppActivelyVisible();
   const { theme } = useUnistyles();
   const { settings } = useAppSettings();
-  const xtermTheme = useMemo(
-    () => toXtermTheme(theme.colors.terminal, theme.colors.surfaceCode),
-    [theme],
-  );
+  const [terminalFontsReady, terminalFontError] = useTerminalFonts(); // OTTO(terminal-fonts)
+  const xtermTheme = useMemo(() => toXtermTheme(theme.colors.terminal), [theme]);
   const terminalFontFamily = useMemo(() => {
     const trimmed = settings.monoFontFamily.trim();
     return trimmed.length > 0 ? trimmed : undefined;
   }, [settings.monoFontFamily]);
   const isMobile = useIsCompactFormFactor();
+  const showVirtualKeyBar = shouldShowTerminalVirtualKeyBar({ isNative, isCompact: isMobile });
+  const [keyBarWidth, setKeyBarWidth] = useState(0);
+  const virtualKeyboardRows = resolveTerminalVirtualKeyboardRows({
+    isCompact: isMobile,
+    availableWidth: keyBarWidth,
+  });
   const mobileView = usePanelStore((state) => state.mobilePanel.target);
   const showMobileAgentList = usePanelStore((state) => state.showMobileAgentList);
   const swipeGesturesEnabled = isMobile;
   const { shift: keyboardShift, style: keyboardPaddingStyle } = useKeyboardShiftStyle({
     mode: "padding",
-    enabled: isMobile,
+    enabled: isNative || isMobile,
   });
   const [keyboardInset, setKeyboardInset] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -281,6 +299,12 @@ export function TerminalPane({
   const [resizeRequestToken, setResizeRequestToken] = useState(0);
   useBlockMobilePanelOpenGestures(isMobile && isWorkspaceFocused && isPaneFocused && hasSelection);
   const emulatorRef = useRef<TerminalEmulatorHandle>(null);
+  const findRef = useRef<TerminalPaneFindHandle>(null);
+  const handleFindRequest = useCallback(() => findRef.current?.open(), []);
+  const handleFindResult = useCallback(
+    (result: TerminalFindResult) => findRef.current?.update(result),
+    [],
+  );
   const terminalIdRef = useRef<string>(terminalId);
   const terminalPresentedRef = useRef(isTerminalPresented);
   terminalPresentedRef.current = isTerminalPresented;
@@ -298,7 +322,7 @@ export function TerminalPane({
   }, [terminalId]);
 
   const refreshClipboardAvailability = useCallback(async () => {
-    if (!isMobile) {
+    if (!showVirtualKeyBar) {
       setHasClipboardText(false);
       return;
     }
@@ -308,7 +332,7 @@ export function TerminalPane({
     } catch {
       setHasClipboardText(false);
     }
-  }, [isMobile]);
+  }, [showVirtualKeyBar]);
 
   useEffect(() => {
     void refreshClipboardAvailability();
@@ -340,6 +364,7 @@ export function TerminalPane({
   }, [isMobile, isWorkspaceFocused, mobileView]);
   const handleRendererReadyChange = useCallback(
     (change: TerminalRendererReadyChange) => {
+      if (!change.isReady && change.streamKey === terminalStreamKey) findRef.current?.reset();
       setRendererReadyStreamKey((current) => applyTerminalRendererReadyChange(current, change));
       if (!shouldReplayTerminalSnapshotForRenderer({ change, terminalStreamKey })) {
         return;
@@ -441,7 +466,7 @@ export function TerminalPane({
 
   const handleKeyboardChange = useCallback(
     (nextShift: number) => {
-      setKeyboardInset(isMobile ? nextShift : 0);
+      setKeyboardInset(isNative || isMobile ? nextShift : 0);
       setIsKeyboardVisible(nextShift > 0);
       pulseKeyboardRefits();
     },
@@ -463,31 +488,12 @@ export function TerminalPane({
     [handleKeyboardChange],
   );
 
-  useEffect(() => {
-    if (!client || !isConnected || !isWorkspaceFocused) {
-      return;
-    }
-
-    return client.on("terminal_stream_exit", (message) => {
-      if (message.type !== "terminal_stream_exit") {
-        return;
-      }
-
-      const exitedTerminalId = message.payload.terminalId;
-      if (!exitedTerminalId) {
-        return;
-      }
-
-      workspaceTerminalSession.snapshots.clear({ terminalId: exitedTerminalId });
-      if (terminalIdRef.current === exitedTerminalId) {
-        emulatorRef.current?.clear();
-      }
-      streamControllerRef.current?.handleTerminalExit({
-        terminalId: exitedTerminalId,
-      });
-      setModifiers({ ...EMPTY_MODIFIERS });
-    });
-  }, [client, isConnected, isWorkspaceFocused, workspaceTerminalSession.snapshots]);
+  const handleStreamExit = useStableEvent((exitedTerminalId: string) => {
+    workspaceTerminalSession.snapshots.clear({ terminalId: exitedTerminalId });
+    if (terminalIdRef.current === exitedTerminalId) emulatorRef.current?.clear();
+    setModifiers({ ...EMPTY_MODIFIERS });
+    if (terminalIdRef.current === exitedTerminalId) onExit?.(); // OTTO(editor)
+  });
 
   useEffect(() => {
     measuredTerminalSizeRef.current = null;
@@ -575,6 +581,7 @@ export function TerminalPane({
       onOutput: handleStreamOutput,
       onRestore: handleStreamRestore,
       onSnapshot: handleStreamSnapshot,
+      onExit: handleStreamExit,
       getRestoreOptions: getStreamRestoreOptions,
       onStatusChange: handleStreamControllerStatus,
     });
@@ -595,6 +602,7 @@ export function TerminalPane({
     handleStreamOutput,
     handleStreamRestore,
     handleStreamSnapshot,
+    handleStreamExit,
     isConnected,
   ]);
 
@@ -903,82 +911,38 @@ export function TerminalPane({
   const handleInputModeChange = useCallback((state: TerminalInputModeState) => {
     inputModeRef.current = state;
   }, []);
+  // OTTO(terminal-paths): reuse canonical workspace path/Explorer rules, with no filesystem lookup on hover.
+  const [terminalLinkError, setTerminalLinkError] = useState<string | null>(null);
+  const terminalPaths = useMemo(
+    () =>
+      createTerminalPathOpener({
+        root: cwd,
+        client,
+        openFile: onOpenWorkspaceFile,
+        openDirectory: onOpenDirectory,
+      }),
+    [client, cwd, onOpenDirectory, onOpenWorkspaceFile],
+  );
+  useEffect(() => {
+    if (!isTerminalPresented) terminalPaths.cancel();
+    return () => terminalPaths.cancel();
+  }, [isTerminalPresented, terminalPaths]);
   const handleResolveLocalFileLink = useCallback(
-    async (source: TerminalLocalFileLinkSource): Promise<TerminalLocalFileLinkTarget | null> => {
-      const resolution = classifyForResolution(
-        { href: source.text, text: source.text, sourceType: "inline-code" },
-        { workspaceRoot: cwd },
-      );
-      if (resolution.kind === "resolved") {
-        if (resolution.value.kind !== "file") {
-          return null;
-        }
-        if (client && !resolution.value.target.lineStart) {
-          const normalizedRoot = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
-          const normalizedTarget = resolution.value.target.path.replace(/\\/g, "/");
-          if (normalizedTarget === normalizedRoot) {
-            return { ...resolution.value.target, kind: "directory" };
-          }
-          if (normalizedTarget.startsWith(`${normalizedRoot}/`)) {
-            try {
-              const directoryTarget = await fetchDaemonDirectoryResolution({
-                ambiguousQuery: getAmbiguousSuggestionQuery(resolution.value.target, cwd),
-                token: source.text,
-                target: resolution.value.target,
-                workspaceRoot: cwd,
-                getDirectorySuggestions: (input) => client.getDirectorySuggestions(input),
-              });
-              return { ...directoryTarget, kind: "directory" };
-            } catch {
-              // The path is a file when no matching directory exists.
-            }
-          }
-        }
-        return { ...resolution.value.target, kind: "file" };
-      }
-      if (!client) {
-        return null;
-      }
-      try {
-        const fileTarget = await fetchDaemonResolution({
-          ambiguousQuery: resolution.ambiguousQuery,
-          token: resolution.token,
-          target: resolution.target,
-          workspaceRoot: cwd,
-          getDirectorySuggestions: (input) => client.getDirectorySuggestions(input),
-        });
-        return { ...fileTarget, kind: "file" };
-      } catch {
-        try {
-          const directoryTarget = await fetchDaemonDirectoryResolution({
-            ambiguousQuery: resolution.ambiguousQuery,
-            token: resolution.token,
-            target: resolution.target,
-            workspaceRoot: cwd,
-            getDirectorySuggestions: (input) => client.getDirectorySuggestions(input),
-          });
-          return { ...directoryTarget, kind: "directory" };
-        } catch {
-          return null;
-        }
-      }
-    },
-    [client, cwd],
+    (source: TerminalLocalFileLinkSource) => Promise.resolve(terminalLinkCandidate(source, cwd)),
+    [cwd],
   );
   const handleOpenLocalFileLink = useCallback(
     (target: TerminalLocalFileLinkTarget, disposition: OpenFileDisposition) => {
-      const location = normalizeWorkspaceFileLocation(target);
-      if (!location) {
-        return;
-      }
-      if (target.kind === "directory") {
-        const resolvedPath = resolveWorkspaceFilePaths({ path: location.path, workspaceRoot: cwd });
-        onNavigateToFolder(resolvedPath?.relativePath ?? ".");
-        return;
-      }
-      onOpenWorkspaceFile({ location, disposition });
+      setTerminalLinkError(null);
+      void terminalPaths
+        .open(target, disposition)
+        .catch((error) =>
+          setTerminalLinkError(
+            error instanceof Error ? error.message : "The host could not open this terminal path.",
+          ),
+        );
     },
-    [cwd, onNavigateToFolder, onOpenWorkspaceFile],
+    [terminalPaths],
   );
 
   const toggleModifier = useCallback(
@@ -1018,10 +982,11 @@ export function TerminalPane({
     () => [styles.container, keyboardPaddingStyle],
     [keyboardPaddingStyle],
   );
-  const terminalGestureContainerStyle = useMemo(
-    () => [styles.terminalGestureContainer, isMobile && styles.terminalGestureContainerMobile],
-    [isMobile],
-  );
+
+  const handleKeyBarLayout = useCallback((event: LayoutChangeEvent) => {
+    const width = event.nativeEvent.layout.width;
+    if (width > 0) setKeyBarWidth(width);
+  }, []);
 
   const handleSwipeRight = useCallback(() => {
     if (!swipeGesturesEnabled) return;
@@ -1101,38 +1066,53 @@ export function TerminalPane({
   return (
     <Animated.View style={containerStyle}>
       <View style={styles.outputContainer}>
-        <View style={terminalGestureContainerStyle}>
-          <TerminalEmulator
-            ref={emulatorRef}
-            dom={TERMINAL_EMULATOR_DOM_PROPS}
-            streamKey={terminalStreamKey}
-            supportsTerminalInputModeReplay={supportsTerminalInputModeReplay}
-            testId="terminal-surface"
-            xtermTheme={xtermTheme}
-            scrollbackLines={settings.terminalScrollbackLines}
-            fontFamily={terminalFontFamily}
-            fontSize={settings.terminalFontSize}
-            keyboardInset={keyboardInset}
-            isKeyboardVisible={isKeyboardVisible}
-            swipeGesturesEnabled={swipeGesturesEnabled}
-            initialSnapshot={initialSnapshot}
-            onRendererReadyChange={handleRendererReadyChange}
-            onSwipeRight={handleSwipeRight}
-            onSwipeLeft={handleSwipeLeft}
-            onInput={handleTerminalData}
-            onFocus={handleTerminalFocus}
-            onResize={handleTerminalResize}
-            onTerminalKey={handleTerminalKey}
-            onInputModeChange={handleInputModeChange}
-            onSelectionChange={handleSelectionChange}
-            onResolveLocalFileLink={handleResolveLocalFileLink}
-            onOpenLocalFileLink={handleOpenLocalFileLink}
-            onPendingModifiersConsumed={handlePendingModifiersConsumed}
-            pendingModifiers={modifiers}
-            focusRequestToken={focusRequestToken}
-            resizeRequestToken={resizeRequestToken}
-          />
+        <View style={styles.terminalGestureContainer}>
+          {/* OTTO(terminal-fonts): attach after font loading so xterm measures the final fallback. */}
+          {terminalFontsReady || terminalFontError ? (
+            <TerminalEmulator
+              ref={emulatorRef}
+              dom={TERMINAL_EMULATOR_DOM_PROPS}
+              streamKey={terminalStreamKey}
+              supportsTerminalInputModeReplay={supportsTerminalInputModeReplay}
+              testId="terminal-surface"
+              xtermTheme={xtermTheme}
+              scrollbackLines={settings.terminalScrollbackLines}
+              fontFamily={terminalFontFamily}
+              fontSize={settings.codeFontSize}
+              keyboardInset={keyboardInset}
+              isKeyboardVisible={isKeyboardVisible}
+              swipeGesturesEnabled={swipeGesturesEnabled}
+              initialSnapshot={initialSnapshot}
+              onRendererReadyChange={handleRendererReadyChange}
+              onSwipeRight={handleSwipeRight}
+              onSwipeLeft={handleSwipeLeft}
+              onFindRequest={handleFindRequest}
+              onFindResult={handleFindResult}
+              onInput={handleTerminalData}
+              onFocus={handleTerminalFocus}
+              onResize={handleTerminalResize}
+              onTerminalKey={handleTerminalKey}
+              onInputModeChange={handleInputModeChange}
+              onSelectionChange={handleSelectionChange}
+              onResolveLocalFileLink={handleResolveLocalFileLink}
+              onOpenLocalFileLink={handleOpenLocalFileLink}
+              onPendingModifiersConsumed={handlePendingModifiersConsumed}
+              pendingModifiers={modifiers}
+              focusRequestToken={focusRequestToken}
+              resizeRequestToken={resizeRequestToken}
+            />
+          ) : null}
         </View>
+
+        <TerminalFind
+          key={terminalStreamKey}
+          ref={findRef}
+          terminal={emulatorRef}
+          active={
+            isTerminalPresented && isPaneFocused && rendererReadyStreamKey === terminalStreamKey
+          }
+          focusTerminal={requestTerminalFocus}
+        />
 
         {showLoadingOverlay ? (
           <View style={styles.attachOverlay} pointerEvents="none" testID="terminal-attach-loading">
@@ -1146,7 +1126,14 @@ export function TerminalPane({
           </View>
         ) : null}
       </View>
-
+      {/* OTTO(terminal-fonts): a failed asset does not hide the working terminal. */}
+      {terminalFontError ? (
+        <Text style={styles.statusError}>
+          Terminal symbol font could not load. Reopen this terminal to retry.
+        </Text>
+      ) : null}
+      {terminalLinkError ? <Text style={styles.statusError}>{terminalLinkError}</Text> : null}{" "}
+      {/* OTTO(terminal-paths) */}
       {streamError ? (
         <View style={styles.errorRow}>
           <Text style={styles.statusError} numberOfLines={2}>
@@ -1154,11 +1141,14 @@ export function TerminalPane({
           </Text>
         </View>
       ) : null}
-
-      {isMobile ? (
+      {showVirtualKeyBar ? (
         <View style={styles.keyboardContainer} testID="terminal-virtual-keyboard">
-          <View style={styles.keyboardRows}>
-            {TERMINAL_VIRTUAL_KEYBOARD_ROWS.map((row) => (
+          <View
+            style={styles.keyboardRows}
+            onLayout={handleKeyBarLayout}
+            testID={isNative && !isMobile ? "terminal-virtual-keyboard-native-wide" : undefined}
+          >
+            {virtualKeyboardRows.map((row) => (
               <View
                 key={row.map(getTerminalVirtualKeyboardControlId).join(":")}
                 style={styles.keyboardRow}
@@ -1188,9 +1178,6 @@ const styles = StyleSheet.create((theme) => ({
   terminalGestureContainer: {
     flex: 1,
     minHeight: 0,
-  },
-  terminalGestureContainerMobile: {
-    padding: 5,
   },
   attachOverlay: {
     ...StyleSheet.absoluteFillObject,
@@ -1224,6 +1211,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   keyboardRows: {
     gap: theme.spacing[1],
+    width: "100%",
+    maxWidth: TERMINAL_KEY_BAR_MAX_WIDTH,
+    alignSelf: "center",
   },
   keyboardRow: {
     flexDirection: "row",
@@ -1243,7 +1233,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   keyButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surface2,
   },
   keyButtonActive: {
     borderColor: theme.colors.primary,

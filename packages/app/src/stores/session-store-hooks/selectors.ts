@@ -5,7 +5,6 @@ import {
   type WorkspaceStructureProject,
 } from "@/projects/workspace-structure";
 import type { DesktopBadgeWorkspaceStatus } from "@/utils/desktop-badge-state";
-import type { WorkspaceChangeIndicator } from "@/hooks/use-settings/storage";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
 import type { ProjectDescriptor, WorkspaceDescriptor } from "../session-store";
 
@@ -100,72 +99,6 @@ export function selectWorkspace(
   return workspaceKey ? (workspaces?.get(workspaceKey) ?? null) : null;
 }
 
-export function selectProjectDiffStat(
-  state: SessionsSnapshot,
-  workspaces: ReadonlyArray<{ serverId: string; workspaceId: string }>,
-): { additions: number; deletions: number } | null {
-  return selectProjectChangeStat(state, workspaces, "branch");
-}
-
-/**
- * Select the +/- stat displayed for one workspace. `uncommitted` is relative
- * to HEAD (and includes untracked files); `branch` is relative to its resolved
- * base; `hidden` suppresses the indicator entirely.
- */
-export function selectWorkspaceChangeStat(
-  workspace: Pick<WorkspaceDescriptor, "workingTreeDiffStat" | "diffStat">,
-  indicator: WorkspaceChangeIndicator,
-): { additions: number; deletions: number } | null {
-  switch (indicator) {
-    case "uncommitted":
-      return workspace.workingTreeDiffStat ?? null;
-    case "branch":
-      return workspace.diffStat;
-    case "hidden":
-      return null;
-  }
-}
-
-/**
- * The UI never renders an empty +/- badge. Keep that presentation rule beside
- * the mode selector so every workspace-level indicator agrees on both its
- * comparison base and whether it has anything to show.
- */
-export function selectVisibleWorkspaceChangeStat(
-  workspace: Pick<WorkspaceDescriptor, "workingTreeDiffStat" | "diffStat">,
-  indicator: WorkspaceChangeIndicator,
-): { additions: number; deletions: number } | null {
-  const diffStat = selectWorkspaceChangeStat(workspace, indicator);
-  return diffStat && (diffStat.additions > 0 || diffStat.deletions > 0) ? diffStat : null;
-}
-
-/**
- * Aggregate the same mode-specific +/- stat used by workspace rows. This keeps
- * a project header from silently falling back to branch-versus-base totals.
- */
-export function selectProjectChangeStat(
-  state: SessionsSnapshot,
-  workspaces: ReadonlyArray<{ serverId: string; workspaceId: string }>,
-  indicator: WorkspaceChangeIndicator,
-): { additions: number; deletions: number } | null {
-  if (indicator === "hidden") {
-    return null;
-  }
-
-  let additions = 0;
-  let deletions = 0;
-  let hasDiffStat = false;
-  for (const { serverId, workspaceId } of workspaces) {
-    const workspace = selectWorkspace(state, serverId, workspaceId);
-    const diffStat = workspace ? selectWorkspaceChangeStat(workspace, indicator) : null;
-    if (!diffStat) continue;
-    hasDiffStat = true;
-    additions += diffStat.additions;
-    deletions += diffStat.deletions;
-  }
-  return hasDiffStat ? { additions, deletions } : null;
-}
-
 export function selectWorkspaceFields<T>(
   state: SessionsSnapshot,
   serverId: string | null,
@@ -182,24 +115,6 @@ export function selectWorkspaceDirectory(
   workspaceId: string | null,
 ): string | null {
   return selectWorkspace(state, serverId, workspaceId)?.workspaceDirectory || null;
-}
-
-/**
- * The workspace's project grouping key (`WorkspaceDescriptor.projectId`) - a
- * repo-remote key like `remote:host/owner/repo` when the repo has a git
- * remote, otherwise a filesystem path (main repo root, or cwd for non-git).
- * Distinct from `workspaceDirectory`/`projectRootPath`, which are always
- * real paths: this is the opaque id worktrees of the same repo share, and
- * the same value the server stamps onto artifacts via `create_artifact`'s
- * `resolveArtifactProjectId`. Compare artifact.projectId against this with
- * `artifactBelongsToProject`, never against a cwd/path.
- */
-export function selectWorkspaceProjectId(
-  state: SessionsSnapshot,
-  serverId: string | null,
-  workspaceId: string | null,
-): string | null {
-  return selectWorkspace(state, serverId, workspaceId)?.projectId || null;
 }
 
 export function selectWorkspaceExists(
@@ -369,8 +284,6 @@ export function selectWorkspaceKeys(state: SessionsSnapshot, serverId: string | 
   return workspaces ? Array.from(workspaces.keys()) : EMPTY_WORKSPACE_KEYS;
 }
 
-const recommendedProjectPathsCache = new WeakMap<Map<string, WorkspaceDescriptor>, string[]>();
-
 export function selectRecommendedProjectPaths(
   state: SessionsSnapshot,
   serverId: string | null,
@@ -382,17 +295,9 @@ export function selectRecommendedProjectPaths(
   if (!workspaces) {
     return EMPTY_WORKSPACE_KEYS;
   }
-  // Workspaces maps are replaced on write, so the map identity keys the derived list and
-  // unrelated store writes (agent streaming) skip the rebuild.
-  const cached = recommendedProjectPathsCache.get(workspaces);
-  if (cached) {
-    return cached;
-  }
-  const paths = Array.from(workspaces.values())
+  return Array.from(workspaces.values())
     .map((workspace) => workspace.projectRootPath)
     .filter((path) => path.length > 0);
-  recommendedProjectPathsCache.set(workspaces, paths);
-  return paths;
 }
 
 export function selectHasWorkspaces(state: SessionsSnapshot, serverId: string | null): boolean {
@@ -402,30 +307,14 @@ export function selectHasWorkspaces(state: SessionsSnapshot, serverId: string | 
   return (state.sessions[serverId]?.workspaces?.size ?? 0) > 0;
 }
 
-// Last-call cache keyed on the identities of every session's workspaces map, so store writes that
-// leave all workspaces untouched (agent streaming) return the previous array without a rescan.
-let badgeStatusesCache: {
-  workspaceMaps: Map<string, WorkspaceDescriptor>[];
-  statuses: DesktopBadgeWorkspaceStatus[];
-} | null = null;
-
 export function selectWorkspaceStatusesForBadges(
   state: SessionsSnapshot,
 ): DesktopBadgeWorkspaceStatus[] {
-  const workspaceMaps = Object.values(state.sessions).map((session) => session.workspaces);
-  if (
-    badgeStatusesCache &&
-    badgeStatusesCache.workspaceMaps.length === workspaceMaps.length &&
-    badgeStatusesCache.workspaceMaps.every((map, index) => map === workspaceMaps[index])
-  ) {
-    return badgeStatusesCache.statuses;
-  }
   const statuses: DesktopBadgeWorkspaceStatus[] = [];
-  for (const workspaces of workspaceMaps) {
-    for (const workspace of workspaces.values()) {
+  for (const session of Object.values(state.sessions)) {
+    for (const workspace of session.workspaces.values()) {
       statuses.push(workspace.status);
     }
   }
-  badgeStatusesCache = { workspaceMaps, statuses };
   return statuses;
 }

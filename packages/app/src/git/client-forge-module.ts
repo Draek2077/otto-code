@@ -1,14 +1,13 @@
 import type { ComponentType } from "react";
 import type { ReactNode } from "react";
 import type { z } from "zod";
-import type { CheckoutPrMergeMethod, CheckoutPrStatusResponse } from "@otto-code/protocol/messages";
+import type { CheckoutPrMergeMethod, CheckoutPrStatusResponse } from "@getpaseo/protocol/messages";
 import type { Theme } from "@/styles/theme";
 import type { Forge } from "@/git/forge";
 import type { PrPaneCheck } from "@/git/pull-request-panel/data";
-import type { IconSizeProp } from "@/components/icons/icon-size";
 
 export interface ForgeIconProps {
-  size?: IconSizeProp;
+  size?: number;
   color?: string;
 }
 
@@ -195,16 +194,14 @@ export function defineForgeFacts<TFacts extends ForgeSpecificEnvelope>(
 /**
  * Pure logic half of a forge: URL grammar and runtime-facts derivations. Kept
  * free of any React/React-Native imports so logic consumers (URL builders,
- * merge-capability, native-check fallbacks) - and the Node-based e2e harness
- * that transitively imports them - never pull the client's rendering stack.
+ * merge-capability, native-check fallbacks) — and the Node-based e2e harness
+ * that transitively imports them — never pull the client's rendering stack.
  */
 export interface ClientForgeLogicModule<
   TFacts extends ForgeSpecificEnvelope = ForgeSpecificEnvelope,
 > {
   readonly id: string;
   readonly urlGrammar?: ForgeUrlGrammar;
-  /** Reference-only support does not advertise branch/file URL building. */
-  readonly referencePaths?: readonly ForgeReferencePath[];
   readonly facts?: ClientForgeFactsEntry<TFacts>;
 }
 

@@ -13,6 +13,7 @@ import type {
   OmpThinkingLevel,
 } from "./rpc-types.js";
 import type { ProviderRuntimeSettings } from "../../provider-launch-config.js";
+import { readOnlyPiArgs } from "../../../otto/context-management/native-generation-policy.js"; // OTTO(context-generation)
 
 export interface OmpRuntimeLaunch {
   cwd: string;
@@ -29,6 +30,7 @@ export interface OmpRuntimeLaunch {
 }
 
 export interface OmpStartSessionInput {
+  ottoReadOnlyGeneration?: true; // OTTO(context-generation): no saved provider/profile field.
   cwd: string;
   signal?: AbortSignal;
   env?: Record<string, string>;
@@ -42,16 +44,23 @@ export interface OmpStartSessionInput {
   extraArgs?: string[];
 }
 
+export interface OmpPromptInput {
+  message: string;
+  images?: Array<{ type: "image"; data: string; mimeType: string }>;
+  streamingBehavior?: "steer" | "followUp";
+}
+
 export interface OmpRuntimeSession {
+  readonly environment: Record<string, string>;
   onEvent(callback: (event: OmpRuntimeEvent) => void): () => void;
-  prompt(
-    message: string,
-    images?: Array<{ type: "image"; data: string; mimeType: string }>,
-  ): Promise<OmpPromptAck>;
+  // With streamingBehavior, a busy OMP queues the message instead of rejecting it, and an
+  // idle OMP starts a run with it.
+  prompt(input: OmpPromptInput): Promise<OmpPromptAck>;
   compact(customInstructions?: string): Promise<void>;
   setAutoCompaction(enabled: boolean): Promise<void>;
   abort(): Promise<void>;
   getState(): Promise<OmpSessionState>;
+  setFastMode(enabled: boolean): Promise<{ enabled: boolean; active: boolean }>;
   getMessages(): Promise<OmpAgentMessage[]>;
   getAvailableModels(timeoutMs?: number | null): Promise<OmpModel[]>;
   setModel(provider: string, modelId: string): Promise<OmpModel>;
@@ -65,11 +74,10 @@ export interface OmpRuntimeSession {
   branch(entryId: string): Promise<{ text: string }>;
   getBranchMessages(): Promise<Array<{ entryId: string; text: string }>>;
   activeBranchEntryId?: string;
-  steer(message: string, images?: Array<{ type: "image"; data: string; mimeType: string }>): void;
-  followUp(
+  steer(
     message: string,
     images?: Array<{ type: "image"; data: string; mimeType: string }>,
-  ): void;
+  ): Promise<void>;
   handoff(customInstructions?: string): Promise<void>;
   respondToExtensionUiRequest(
     id: string,
@@ -97,6 +105,10 @@ export function buildOmpLaunch(input: {
   const protocolMode = input.session.protocolMode ?? "rpc";
   const systemPrompt = input.session.systemPrompt?.trim();
   appendOmpLaunchArgs(argv, input.session, protocolMode, systemPrompt);
+  if (input.session.ottoReadOnlyGeneration) {
+    // OTTO(context-generation): native tool names/extensions cannot be restored by a profile.
+    argv.splice(1, argv.length - 1, ...readOnlyPiArgs(argv.slice(1)), "--no-rules", "--no-title");
+  }
 
   return {
     cwd: input.session.cwd,

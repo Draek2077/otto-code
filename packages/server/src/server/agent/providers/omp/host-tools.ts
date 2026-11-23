@@ -2,10 +2,11 @@ import type { Logger } from "pino";
 
 import {
   addModelVisibleStructuredContent,
-  serializeOttoToolInputParameters,
-} from "../../tools/otto-tool-serialization.js";
-import type { OttoToolCatalog, OttoToolResult } from "../../tools/types.js";
+  serializePaseoToolInputParameters,
+} from "../../tools/paseo-tool-serialization.js";
+import type { PaseoToolCatalog, PaseoToolResult } from "../../tools/types.js";
 import type { OmpRuntimeSession } from "./runtime.js";
+import type { OmpMcpBridge } from "./mcp-bridge.js";
 import {
   OmpRpcHostToolCallRequestSchema,
   OmpRpcHostToolCancelRequestSchema,
@@ -24,19 +25,18 @@ interface PendingOmpHostToolCall {
 
 interface OmpHostToolRouterInput {
   runtimeSession: OmpRuntimeSession;
-  catalog: OttoToolCatalog;
+  catalog?: PaseoToolCatalog;
+  bridge?: OmpMcpBridge;
   logger: Logger;
 }
 
-const routersByRuntimeSession = new WeakMap<OmpRuntimeSession, OmpHostToolRouter>();
-
-export function serializeOmpHostTools(catalog: OttoToolCatalog): OmpRpcHostToolDefinition[] {
+export function serializeOmpHostTools(catalog: PaseoToolCatalog): OmpRpcHostToolDefinition[] {
   return [...catalog.tools.values()].map((tool) => {
     const definition: OmpRpcHostToolDefinition = {
       name: tool.name,
       description: tool.description,
       loadMode: "essential",
-      parameters: serializeOttoToolInputParameters(tool),
+      parameters: serializePaseoToolInputParameters(tool),
     };
     if (tool.title) {
       definition.label = tool.title;
@@ -45,20 +45,11 @@ export function serializeOmpHostTools(catalog: OttoToolCatalog): OmpRpcHostToolD
   });
 }
 
-export async function setOmpHostTools(
-  runtimeSession: OmpRuntimeSession,
-  catalog: OttoToolCatalog,
-): Promise<string[]> {
-  return await runtimeSession.setHostTools(serializeOmpHostTools(catalog));
-}
-
 export function handleOmpHostToolRuntimeEvent(
   event: unknown,
-  input: {
-    runtimeSession: OmpRuntimeSession;
-    ottoTools?: OttoToolCatalog;
-    logger: Logger;
-  },
+  router: OmpHostToolRouter | undefined,
+  runtimeSession: OmpRuntimeSession,
+  logger: Logger,
 ): boolean {
   if (!isRecord(event) || typeof event.type !== "string" || !isOmpHostToolEventType(event.type)) {
     return false;
@@ -66,9 +57,8 @@ export function handleOmpHostToolRuntimeEvent(
 
   const call = OmpRpcHostToolCallRequestSchema.safeParse(event);
   if (call.success) {
-    const router = getRouter(input);
     if (!router) {
-      sendMissingCatalogResult(input.runtimeSession, call.data);
+      sendMissingCatalogResult(runtimeSession, call.data);
       return true;
     }
     router.handleCall(call.data);
@@ -77,52 +67,22 @@ export function handleOmpHostToolRuntimeEvent(
 
   const cancel = OmpRpcHostToolCancelRequestSchema.safeParse(event);
   if (cancel.success) {
-    getRouter(input)?.handleCancel(cancel.data.targetId);
+    router?.handleCancel(cancel.data.targetId);
     return true;
   }
 
   const update = OmpRpcHostToolUpdateSchema.safeParse(event);
   if (update.success) {
-    input.logger.debug({ id: update.data.id }, "Ignoring unexpected inbound OMP host tool update");
+    logger.debug({ id: update.data.id }, "Ignoring unexpected inbound OMP host tool update");
     return true;
   }
 
-  input.logger.debug({ event }, "Dropped malformed OMP host tool frame");
+  logger.debug({ event }, "Dropped malformed OMP host tool frame");
   return true;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function clearOmpHostToolState(runtimeSession: OmpRuntimeSession): void {
-  routersByRuntimeSession.get(runtimeSession)?.clear();
-  routersByRuntimeSession.delete(runtimeSession);
-}
-
-export async function waitForOmpHostToolsIdle(runtimeSession: OmpRuntimeSession): Promise<void> {
-  await routersByRuntimeSession.get(runtimeSession)?.waitForIdle();
-}
-
-function getRouter(input: {
-  runtimeSession: OmpRuntimeSession;
-  ottoTools?: OttoToolCatalog;
-  logger: Logger;
-}): OmpHostToolRouter | null {
-  if (!input.ottoTools) {
-    return null;
-  }
-  const existing = routersByRuntimeSession.get(input.runtimeSession);
-  if (existing) {
-    return existing;
-  }
-  const router = new OmpHostToolRouter({
-    runtimeSession: input.runtimeSession,
-    catalog: input.ottoTools,
-    logger: input.logger,
-  });
-  routersByRuntimeSession.set(input.runtimeSession, router);
-  return router;
 }
 
 function sendMissingCatalogResult(
@@ -132,6 +92,7 @@ function sendMissingCatalogResult(
   runtimeSession.sendHostToolResult(
     toOmpHostToolErrorResult(
       request.id,
+      // OTTO(identity)
       `Host tool "${request.toolName}" was called before Otto tools were registered`,
     ),
   );
@@ -141,9 +102,10 @@ function isOmpHostToolEventType(type: string): boolean {
   return type === "host_tool_call" || type === "host_tool_cancel" || type === "host_tool_update";
 }
 
-class OmpHostToolRouter {
+export class OmpHostToolRouter {
   private readonly runtimeSession: OmpRuntimeSession;
-  private readonly catalog: OttoToolCatalog;
+  private readonly catalog?: PaseoToolCatalog;
+  readonly bridge?: OmpMcpBridge;
   private readonly logger: Logger;
   private readonly pendingCalls = new Map<string, PendingOmpHostToolCall>();
   private readonly idleWaiters = new Set<() => void>();
@@ -151,7 +113,15 @@ class OmpHostToolRouter {
   constructor(input: OmpHostToolRouterInput) {
     this.runtimeSession = input.runtimeSession;
     this.catalog = input.catalog;
+    this.bridge = input.bridge;
     this.logger = input.logger;
+  }
+
+  async register(): Promise<string[]> {
+    return await this.runtimeSession.setHostTools([
+      ...(this.catalog ? serializeOmpHostTools(this.catalog) : []),
+      ...(this.bridge?.definitions ?? []),
+    ]);
   }
 
   handleCall(request: OmpRpcHostToolCallRequest): void {
@@ -183,6 +153,11 @@ class OmpHostToolRouter {
     this.resolveIdleWaiters();
   }
 
+  async close(): Promise<void> {
+    this.clear();
+    await this.bridge?.close();
+  }
+
   waitForIdle(): Promise<void> {
     if (this.pendingCalls.size === 0) return Promise.resolve();
     return new Promise((resolve) => this.idleWaiters.add(resolve));
@@ -193,15 +168,20 @@ class OmpHostToolRouter {
     entry: PendingOmpHostToolCall,
   ): Promise<void> {
     try {
-      const result = await this.catalog.executeTool(request.toolName, request.arguments, {
-        signal: entry.controller.signal,
-        sendUpdate: (update) => {
-          if (entry.canceled || entry.controller.signal.aborted) {
-            return;
-          }
-          this.sendUpdate(request.id, update);
-        },
-      });
+      const result = this.bridge?.tool(request.toolName)
+        ? await this.bridge.execute(request.toolName, request.arguments, entry.controller.signal)
+        : ((await this.catalog?.executeTool(request.toolName, request.arguments, {
+            signal: entry.controller.signal,
+            sendUpdate: (update) => {
+              if (entry.canceled || entry.controller.signal.aborted) {
+                return;
+              }
+              this.sendUpdate(request.id, update);
+            },
+          })) ?? {
+            content: [{ type: "text", text: `Unknown host tool: ${request.toolName}` }],
+            isError: true,
+          });
       if (entry.canceled || entry.controller.signal.aborted) {
         return;
       }
@@ -223,7 +203,7 @@ class OmpHostToolRouter {
     this.idleWaiters.clear();
   }
 
-  private sendUpdate(callId: string, result: OttoToolResult): void {
+  private sendUpdate(callId: string, result: PaseoToolResult): void {
     const update: OmpRpcHostToolUpdate = {
       type: "host_tool_update",
       id: callId,
@@ -233,7 +213,7 @@ class OmpHostToolRouter {
   }
 }
 
-function toOmpHostToolResult(id: string, result: OttoToolResult): OmpRpcHostToolResult {
+function toOmpHostToolResult(id: string, result: PaseoToolResult): OmpRpcHostToolResult {
   const modelVisibleResult = addModelVisibleStructuredContent(result);
   const mappedResult = toOmpAgentToolResult(modelVisibleResult);
   return {
@@ -257,7 +237,7 @@ function toOmpHostToolErrorResult(id: string, error: unknown): OmpRpcHostToolRes
   };
 }
 
-function toOmpAgentToolResult(result: OttoToolResult): OmpAgentToolResult {
+function toOmpAgentToolResult(result: PaseoToolResult): OmpAgentToolResult {
   const mapped: OmpAgentToolResult = {
     content: result.content.map((item) => ({ ...item })),
   };

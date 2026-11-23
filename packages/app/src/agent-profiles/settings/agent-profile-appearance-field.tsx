@@ -3,16 +3,16 @@ import { Pressable, View, type PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Check, ChevronDown } from "@/components/icons/material-icons";
+import { Check, ChevronDown } from "lucide-react-native";
 import { Combobox, type ComboboxOption } from "@/components/ui/combobox";
 import {
   createControlGeometry,
   resolveControlInteractionStyles,
   type FieldControlSize,
 } from "@/components/ui/control-geometry";
-import { Field, type FieldProps } from "@/components/ui/form-field";
+import { Field } from "@/components/ui/form-field";
 import { identityForeground } from "@/styles/identity-colors";
-import type { Theme } from "@/styles/theme";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { AgentProfileGlyph } from "../internal/agent-profile-glyph";
 import {
   AGENT_PROFILE_COLORS,
@@ -83,7 +83,11 @@ function IconCell({
       accessibilityLabel={iconKey ?? "default"}
       testID={`agent-profile-icon-cell-${iconKey ?? "default"}`}
     >
-      <AgentProfileGlyph {...(iconKey ? { icon: iconKey } : {})} color={color} size="lg" />
+      <AgentProfileGlyph
+        {...(iconKey ? { icon: iconKey } : {})}
+        color={color}
+        size={ICON_SIZE.lg}
+      />
     </Pressable>
   );
 }
@@ -120,7 +124,7 @@ function ColorCell({
       <View style={swatchStyle}>
         {selected ? (
           <ThemedCheck
-            size="sm"
+            size={ICON_SIZE.sm}
             uniProps={color === "none" ? foregroundMutedMapping : onIdentityMapping}
           />
         ) : null}
@@ -137,7 +141,6 @@ function ColorCell({
  */
 export function AgentProfileAppearanceField({
   label,
-  Label,
   icon,
   color,
   onChange,
@@ -147,7 +150,6 @@ export function AgentProfileAppearanceField({
   triggerTestID,
 }: {
   label: string;
-  Label?: FieldProps["Label"];
   icon: string;
   color: string;
   onChange: (next: { icon: string; color: string }) => void;
@@ -204,7 +206,7 @@ export function AgentProfileAppearanceField({
   const header = useMemo(() => ({ title: label }), [label]);
 
   return (
-    <Field label={label} Label={Label} testID={testID}>
+    <Field label={label} testID={testID}>
       <View ref={anchorRef} collapsable={false}>
         <Pressable
           onPress={handleTriggerPress}
@@ -217,9 +219,9 @@ export function AgentProfileAppearanceField({
           <AgentProfileGlyph
             {...(selectedIcon ? { icon: selectedIcon } : {})}
             color={selectedColor}
-            size="md"
+            size={ICON_SIZE.md}
           />
-          <ThemedChevronDown size="sm" uniProps={foregroundMutedMapping} />
+          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
         </Pressable>
       </View>
       <Combobox

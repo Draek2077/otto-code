@@ -1,3 +1,4 @@
+// OTTO(identity): test the installed Otto identity.
 import { describe, expect, it } from "vitest";
 import { AgentNavigationInbox, parseAgentDeepLinkFromArgv } from "./agent-navigation.js";
 

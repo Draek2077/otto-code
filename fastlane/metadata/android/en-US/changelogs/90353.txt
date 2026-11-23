@@ -9,4 +9,4 @@ Fixed
 - Show read-only status and parent ownership when viewing Codex subagents
 - Label Codex messages, waits, and interruptions without creating extra subagents
 
-Full notes: https://paseo.sh/changelog
+Full notes: https://otto-code.me/changelog

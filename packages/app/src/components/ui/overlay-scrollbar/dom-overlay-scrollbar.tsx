@@ -16,18 +16,11 @@ export function DomOverlayScrollbar({
   const syncMetrics = useCallback(() => {
     const scrollContainer = scrollContainerRef.current;
     if (!scrollContainer) return;
-    const next = {
+    setMetrics({
       offset: Math.max(0, scrollContainer.scrollTop),
       viewportSize: Math.max(0, scrollContainer.clientHeight),
       contentSize: Math.max(0, scrollContainer.scrollHeight),
-    };
-    setMetrics((current) =>
-      current.offset === next.offset &&
-      current.viewportSize === next.viewportSize &&
-      current.contentSize === next.contentSize
-        ? current
-        : next,
-    );
+    });
   }, [scrollContainerRef]);
 
   useLayoutEffect(() => {

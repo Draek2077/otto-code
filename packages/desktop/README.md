@@ -1,3 +1,3 @@
 # desktop
 
-Electron desktop app for Otto.
+Electron desktop app for Paseo.

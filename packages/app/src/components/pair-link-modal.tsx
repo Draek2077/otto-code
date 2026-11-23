@@ -1,19 +1,32 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { Link } from "@/components/icons/material-icons";
+import { Link } from "lucide-react-native";
 import type { HostProfile } from "@/types/host-connection";
-import { useHosts, useHostMutations } from "@/runtime/host-runtime";
-import { decodeOfferFragmentPayload, normalizeHostPort } from "@/utils/daemon-endpoints";
-import { connectToDaemon } from "@/utils/test-daemon-connection";
-import { ConnectionOfferSchema } from "@otto-code/protocol/connection-offer";
+import { useHosts, useHostMutations, type PasswordRequiredPairing } from "@/runtime/host-runtime";
+import { parseRelayConnectionUri } from "@/utils/daemon-endpoints";
+import { parseConnectionOfferFromUrl } from "@getpaseo/protocol/connection-offer";
 import { AdaptiveModalSheet, AdaptiveTextInput, type SheetHeader } from "./adaptive-modal-sheet";
+import { getConnectionAuthFailureReason } from "@/utils/test-daemon-connection";
+import { PairingTargetTracker } from "./pair-link-credentials";
 import { Button } from "@/components/ui/button";
 import type { EditingTextInputHandle } from "@/components/ui/text-input";
+import { OTTO_APP_BASE_URL } from "@getpaseo/protocol/otto/identity";
 
 const FLEX_ONE_STYLE = { flex: 1 } as const;
+
+function parsedHostLabel(input: string): string {
+  try {
+    if (input.startsWith("relay://") || input.includes("#connect=")) {
+      return parseRelayConnectionUri(input).offer.serverId;
+    }
+    return parseConnectionOfferFromUrl(input)?.serverId ?? "host";
+  } catch {
+    return "host";
+  }
+}
 
 const styles = StyleSheet.create((theme) => ({
   helper: {
@@ -41,16 +54,17 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.destructive,
     fontSize: theme.fontSize.base,
   },
-  footer: {
-    flex: 1,
+  actions: {
     flexDirection: "row",
-    alignItems: "center",
     gap: theme.spacing[3],
+    marginTop: theme.spacing[2],
   },
 }));
 
 export interface PairLinkModalProps {
   visible: boolean;
+  /** Continues a confirmed pairing whose host asked for a password. */
+  passwordRequired?: PasswordRequiredPairing;
   onClose: () => void;
   onCancel?: () => void;
   onSaved?: (result: {
@@ -61,25 +75,60 @@ export interface PairLinkModalProps {
   }) => void;
 }
 
-export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkModalProps) {
+export function PairLinkModal({
+  visible,
+  passwordRequired,
+  onClose,
+  onCancel,
+  onSaved,
+}: PairLinkModalProps) {
+  return (
+    <PairLinkModalContent
+      key={`${visible}:${passwordRequired?.link ?? ""}`}
+      visible={visible}
+      passwordRequired={passwordRequired}
+      onClose={onClose}
+      onCancel={onCancel}
+      onSaved={onSaved}
+    />
+  );
+}
+
+function PairLinkModalContent({
+  visible,
+  passwordRequired,
+  onClose,
+  onCancel,
+  onSaved,
+}: PairLinkModalProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const daemons = useHosts();
-  const { upsertConnectionFromOfferUrl: upsertDaemonFromOfferUrl } = useHostMutations();
+  const { beginLinkPairing } = useHostMutations();
+  const [pairing] = useState(() => passwordRequired?.pairing ?? beginLinkPairing());
+  const initialUrl = passwordRequired?.link;
   const isMobile = useIsCompactFormFactor();
 
-  const offerUrlRef = useRef("");
+  const offerUrlRef = useRef(initialUrl ?? "");
+  const targetTracker = useRef(new PairingTargetTracker(initialUrl));
   const inputRef = useRef<EditingTextInputHandle>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [password, setPassword] = useState("");
+  const [needsPassword, setNeedsPassword] = useState(passwordRequired !== undefined);
+  const [passwordResetKey, resetPasswordInput] = useReducer((key: number) => key + 1, 0);
 
   const clearInput = useCallback(() => {
     offerUrlRef.current = "";
+    targetTracker.current = new PairingTargetTracker();
     inputRef.current?.replaceText("");
+    setPassword("");
+    setNeedsPassword(false);
+    resetPasswordInput();
   }, []);
 
   const pairIcon = useMemo(
-    () => <Link size="md" color={theme.colors.accentForeground} />,
+    () => <Link size={16} color={theme.colors.accentForeground} />,
     [theme.colors.accentForeground],
   );
 
@@ -97,74 +146,53 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
     (onCancel ?? onClose)();
   }, [isSaving, clearInput, onCancel, onClose]);
 
-  const handleSave = useCallback(async () => {
-    if (isSaving) return;
-    const raw = offerUrlRef.current.trim();
-    if (!raw) {
-      setErrorMessage(t("pairing.link.errors.required"));
-      return;
-    }
-    if (!raw.includes("#offer=")) {
-      setErrorMessage(t("pairing.link.errors.missingOffer"));
-      return;
-    }
+  const handleSave = useCallback(
+    async (input?: string) => {
+      if (isSaving) return;
+      const raw = (input ?? offerUrlRef.current).trim();
+      if (!raw) {
+        setErrorMessage(t("pairing.link.errors.required"));
+        return;
+      }
+      if (!raw.includes("#offer=") && !raw.startsWith("relay://") && !raw.includes("#connect=")) {
+        setErrorMessage(t("pairing.link.errors.missingOffer"));
+        return;
+      }
 
-    const parsedOffer = (() => {
       try {
-        const idx = raw.indexOf("#offer=");
-        const encoded = raw.slice(idx + "#offer=".length).trim();
-        if (!encoded) {
-          throw new Error(t("pairing.link.errors.emptyOffer"));
-        }
-        const payload = decodeOfferFragmentPayload(encoded);
-        return ConnectionOfferSchema.parse(payload);
+        setIsSaving(true);
+        setErrorMessage("");
+        const result = await pairing.submit(raw, password || undefined);
+        if (result.status === "cancelled") return;
+        const { profile, serverId, hostname } = result;
+        const isNewHost = !daemons.some((daemon) => daemon.serverId === serverId);
+        onSaved?.({ profile, serverId, hostname, isNewHost });
+        handleClose();
       } catch (error) {
-        const message = error instanceof Error ? error.message : t("pairing.link.errors.invalid");
+        const message =
+          error instanceof Error ? error.message : t("pairing.link.errors.unableToPair");
         setErrorMessage(message);
+        if (getConnectionAuthFailureReason(error)) {
+          setNeedsPassword(true);
+          return;
+        }
         if (!isMobile) {
           Alert.alert(t("pairing.link.alert.failedTitle"), message);
         }
-        return null;
+      } finally {
+        setIsSaving(false);
       }
-    })();
-
-    if (!parsedOffer) {
-      return;
-    }
-
-    try {
-      setIsSaving(true);
-      setErrorMessage("");
-
-      const { client, hostname } = await connectToDaemon(
-        {
-          id: "probe",
-          type: "relay",
-          relayEndpoint: normalizeHostPort(parsedOffer.relay.endpoint),
-          useTls: parsedOffer.relay.useTls,
-          daemonPublicKeyB64: parsedOffer.daemonPublicKeyB64,
-        },
-        { serverId: parsedOffer.serverId },
-      );
-      await client.close().catch(() => undefined);
-
-      const isNewHost = !daemons.some((daemon) => daemon.serverId === parsedOffer.serverId);
-      const profile = await upsertDaemonFromOfferUrl(raw, hostname ?? undefined);
-      onSaved?.({ profile, serverId: parsedOffer.serverId, hostname, isNewHost });
-      handleClose();
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : t("pairing.link.errors.unableToPair");
-      setErrorMessage(message);
-      if (!isMobile) {
-        Alert.alert(t("pairing.link.alert.failedTitle"), message);
-      }
-    } finally {
-      setIsSaving(false);
-    }
-  }, [daemons, handleClose, isMobile, isSaving, onSaved, t, upsertDaemonFromOfferUrl]);
+    },
+    [daemons, handleClose, isMobile, isSaving, onSaved, password, t, pairing],
+  );
 
   const handleChangeOfferUrl = useCallback((next: string) => {
+    if (targetTracker.current.changeUrl(next)) {
+      setPassword("");
+      setNeedsPassword(false);
+      resetPasswordInput();
+      setErrorMessage("");
+    }
     offerUrlRef.current = next;
   }, []);
 
@@ -174,9 +202,52 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
 
   const header = useMemo<SheetHeader>(() => ({ title: t("pairing.link.title") }), [t]);
 
-  const footer = useMemo(
-    () => (
-      <View style={styles.footer}>
+  return (
+    <AdaptiveModalSheet
+      header={header}
+      visible={visible}
+      onClose={handleClose}
+      testID="pair-link-modal"
+    >
+      <Text style={styles.helper}>{t("pairing.link.helper")}</Text>
+
+      <View style={styles.field}>
+        <Text style={styles.label}>{t("pairing.link.label")}</Text>
+        <AdaptiveTextInput
+          ref={inputRef}
+          initialValue={initialUrl}
+          testID="pair-link-input"
+          nativeID="pair-link-input"
+          accessibilityLabel={t("pairing.link.label")}
+          onChangeText={handleChangeOfferUrl}
+          placeholder={`${OTTO_APP_BASE_URL}/#offer=...`} /* OTTO(identity) */
+          placeholderTextColor={theme.colors.foregroundMuted}
+          style={styles.input}
+          autoFocus
+          autoCapitalize="none"
+          autoCorrect={false}
+          keyboardType="url"
+        />
+        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+      </View>
+
+      {needsPassword ? (
+        <View style={styles.field}>
+          <Text style={styles.label}>
+            {t("pairing.hostPassword.title", { host: parsedHostLabel(offerUrlRef.current) })}
+          </Text>
+          <AdaptiveTextInput
+            testID="pair-link-password-input"
+            resetKey={`pair-link-password-${passwordResetKey}`}
+            accessibilityLabel={t("pairing.hostPassword.label")}
+            onChangeText={setPassword}
+            secureTextEntry
+            style={styles.input}
+          />
+        </View>
+      ) : null}
+
+      <View style={styles.actions}>
         <Button
           style={FLEX_ONE_STYLE}
           variant="secondary"
@@ -200,38 +271,6 @@ export function PairLinkModal({ visible, onClose, onCancel, onSaved }: PairLinkM
         >
           {isSaving ? t("pairing.link.actions.pairing") : t("pairing.link.actions.pair")}
         </Button>
-      </View>
-    ),
-    [handleCancel, handleSavePress, isSaving, pairIcon, t],
-  );
-
-  return (
-    <AdaptiveModalSheet
-      header={header}
-      visible={visible}
-      onClose={handleClose}
-      footer={footer}
-      testID="pair-link-modal"
-    >
-      <Text style={styles.helper}>{t("pairing.link.helper")}</Text>
-
-      <View style={styles.field}>
-        <Text style={styles.label}>{t("pairing.link.label")}</Text>
-        <AdaptiveTextInput
-          ref={inputRef}
-          testID="pair-link-input"
-          nativeID="pair-link-input"
-          accessibilityLabel={t("pairing.link.label")}
-          onChangeText={handleChangeOfferUrl}
-          placeholder="https://app.otto-code.me/#offer=..."
-          placeholderTextColor={theme.colors.foregroundMuted}
-          style={styles.input}
-          autoFocus
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-        />
-        {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
       </View>
     </AdaptiveModalSheet>
   );

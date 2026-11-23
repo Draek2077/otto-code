@@ -1,8 +1,5 @@
 import { describe, expect, test } from "vitest";
-import {
-  getParentAgentIdFromLabels,
-  PARENT_AGENT_ID_LABEL,
-} from "@otto-code/protocol/agent-labels";
+import { getParentAgentIdFromLabels, PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import type { StoredAgentRecord } from "./agent-storage.js";
@@ -220,6 +217,25 @@ describe("agent lifecycle commands", () => {
     expect(manager.cancelledAgentIds).toEqual(["agent-1"]);
     expect(manager.clearedAttentionAgentIds).toEqual(["agent-1"]);
     expect(manager.archivedAgentIds).toEqual(["agent-1"]);
+  });
+
+  test("archives a live internal agent without touching storage", async () => {
+    const storage = new FakeLifecycleAgentStorage();
+    const manager = new FakeLifecycleAgentManager(storage);
+    manager.liveAgents.set("agent-1", { ...managedAgent("agent-1", "idle"), internal: true });
+
+    const result = await archiveAgentCommand(
+      { agentManager: manager, agentStorage: storage, logger },
+      "agent-1",
+    );
+
+    expect(result).toEqual({
+      agentId: "agent-1",
+      archivedAt: "2026-05-10T10:00:00.000Z",
+      record: null,
+    });
+    expect(manager.archivedAgentIds).toEqual(["agent-1"]);
+    expect(storage.upserts).toEqual([]);
   });
 
   test("archives a live agent when its graceful cancellation is rejected", async () => {

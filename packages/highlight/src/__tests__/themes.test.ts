@@ -46,30 +46,6 @@ describe("resolveSyntaxColors", () => {
             expect(colors[style]).toMatch(/^#[0-9a-fA-F]{6}$/);
           }
         });
-
-        it("has semi-transparent rgba diff background colors", () => {
-          expect(colors.diffAdded).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
-          expect(colors.diffRemoved).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
-          expect(colors.diffAddedForeground).toMatch(/^#[0-9a-fA-F]{6}$/);
-          expect(colors.diffRemovedForeground).toMatch(/^#[0-9a-fA-F]{6}$/);
-          expect(colors.diffFormatting).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
-          expect(colors.diffFormatting).not.toBe(colors.diffAdded);
-          expect(colors.diffFormatting).not.toBe(colors.diffRemoved);
-        });
-
-        it("has a dedicated foreground color for moved or compactly renamed code", () => {
-          expect(colors.diffMoved).toMatch(/^#[0-9a-fA-F]{6}$/);
-          expect(colors.diffMoved).not.toBe(colors.diffAdded);
-          expect(colors.diffMoved).not.toBe(colors.diffRemoved);
-        });
-
-        it("derives intraline emphasis colors that share the diff hues", () => {
-          const hue = (rgba: string) => rgba.slice(0, rgba.lastIndexOf(","));
-          expect(colors.diffAddedEmphasis).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
-          expect(colors.diffRemovedEmphasis).toMatch(/^rgba\(\d+, \d+, \d+, 0(\.\d+)?\)$/);
-          expect(hue(colors.diffAddedEmphasis)).toBe(hue(colors.diffAdded));
-          expect(hue(colors.diffRemovedEmphasis)).toBe(hue(colors.diffRemoved));
-        });
       });
     }
   }
@@ -82,35 +58,19 @@ describe("resolveSyntaxColors", () => {
     expect(resolveSyntaxColors("github", "dark")).toEqual(darkHighlightColors);
   });
 
-  it("every theme ships a distinct light and dark palette (no dark-only shortcuts)", () => {
-    for (const id of SYNTAX_THEME_IDS) {
-      const light = resolveSyntaxColors(id, "light");
-      const dark = resolveSyntaxColors(id, "dark");
-      expect(light).not.toEqual(dark);
+  it("dark-only themes ignore the color scheme", () => {
+    for (const id of ["dracula"] as const) {
+      expect(resolveSyntaxColors(id, "light")).toEqual(resolveSyntaxColors(id, "dark"));
     }
   });
 
-  it("light palettes never use pure white as the base/variable text color", () => {
-    for (const id of SYNTAX_THEME_IDS) {
-      const light = resolveSyntaxColors(id, "light");
-      expect(light.variable.toLowerCase()).not.toBe("#ffffff");
-    }
-  });
-
-  it("dark palettes never use pure black as the base/variable text color", () => {
-    for (const id of SYNTAX_THEME_IDS) {
-      const dark = resolveSyntaxColors(id, "dark");
-      expect(dark.variable.toLowerCase()).not.toBe("#000000");
-    }
-  });
-
-  it("jetbrains uses a light text palette in light mode", () => {
-    const light = resolveSyntaxColors("jetbrains", "light");
-    const dark = resolveSyntaxColors("jetbrains", "dark");
+  it("nord uses a dark text palette in light mode", () => {
+    const light = resolveSyntaxColors("nord", "light");
+    const dark = resolveSyntaxColors("nord", "dark");
 
     expect(light).not.toEqual(dark);
-    expect(light.variable).toBe("#000000");
-    expect(light.comment).toBe("#8c8c8c");
+    expect(light.variable).toBe("#2e3440");
+    expect(light.comment).toBe("#6b7280");
   });
 });
 
@@ -124,8 +84,7 @@ describe("isSyntaxThemeId", () => {
   it("rejects unknown ids", () => {
     expect(isSyntaxThemeId("auto")).toBe(false);
     expect(isSyntaxThemeId("github-light")).toBe(false);
-    expect(isSyntaxThemeId("dracula")).toBe(false);
-    expect(isSyntaxThemeId("one")).toBe(false);
+    expect(isSyntaxThemeId("one-dark")).toBe(false);
     expect(isSyntaxThemeId("nope")).toBe(false);
   });
 });

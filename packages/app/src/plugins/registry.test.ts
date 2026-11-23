@@ -1,14 +1,16 @@
-import { PASEO_PLUGIN_API_VERSION } from "@otto-code/protocol/plugin-compatibility";
+import appPackage from "../../package.json";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { pluginRegistry as registry } from "./registry";
+
+const audio = { play: async () => 0 };
 
 vi.mock("./navigation", () => ({
   createPluginNavigation: () => ({}),
 }));
 vi.mock("./client-runtime", () => ({
   createPluginClientRuntime: () => ({
-    otto: {},
+    paseo: { dispose: async () => {} },
     rpc: async () => undefined,
     openSurface: () => undefined,
     openPanel: () => undefined,
@@ -29,11 +31,8 @@ const pluginRegistry = {
   ) {
     return registry.installCatalog(
       serverId,
-      catalog.map((entry) => ({
-        ...entry,
-        requirements: { paseo: `>=${PASEO_PLUGIN_API_VERSION}` },
-      })),
-      { ...options, client: daemonClient },
+      catalog.map((entry) => ({ ...entry, requirements: { paseo: `>=${appPackage.version}` } })),
+      { ...options, client: daemonClient, audio },
     );
   },
 };
@@ -77,15 +76,6 @@ afterEach(() => {
 });
 
 describe("PluginRegistry", () => {
-  it("uses the integrated SDK version for a range that excludes the Otto product version", () => {
-    registry.installCatalog(
-      "host-a",
-      [{ id: "example", requirements: { paseo: "^0.8.0" }, clientBundle: bundle("compatible") }],
-      { client: daemonClient },
-    );
-    expect(installedPluginIds()).toEqual(["example"]);
-    expect(registry.getEvaluationError("host-a", "example")).toBeUndefined();
-  });
   it("publishes synchronous setup once after storing the installation", () => {
     const snapshots: string[][] = [];
     const unsubscribe = pluginRegistry.subscribe(() => {

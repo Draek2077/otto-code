@@ -1,7 +1,7 @@
 import type { Command } from "commander";
-import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
-import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
-import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
+import { connectToDaemon } from "../../utils/client.js";
 import type { CommandOptions, ListResult, OutputSchema, CommandError } from "../../output/index.js";
 
 export function addInspectOptions(cmd: Command): Command {
@@ -149,7 +149,7 @@ function toInspectData(snapshot: AgentSnapshotPayload): AgentInspect {
       id: p.id,
       tool: p.name ?? "unknown",
     })),
-    Worktree: snapshot.labels?.["otto.worktree"] ?? null,
+    Worktree: snapshot.labels?.["paseo.worktree"] ?? null,
     ParentAgentId: snapshot.labels?.[PARENT_AGENT_ID_LABEL] ?? null,
   };
 }
@@ -217,30 +217,18 @@ export async function runInspectCommand(
   options: AgentInspectOptions,
   _command: Command,
 ): Promise<AgentInspectResult> {
-  const host = getDaemonHost({ host: options.host });
-
   // Validate arguments
   if (!agentIdArg || agentIdArg.trim().length === 0) {
     const error: CommandError = {
       code: "MISSING_AGENT_ID",
       message: "Agent ID is required",
+      // OTTO(identity)
       details: "Usage: otto agent inspect <id>",
     };
     throw error;
   }
 
-  let client;
-  try {
-    client = await connectToDaemon({ host: options.host });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const error: CommandError = {
-      code: "DAEMON_NOT_RUNNING",
-      message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: "Start the daemon with: otto daemon start",
-    };
-    throw error;
-  }
+  const client = await connectToDaemon({ target: options.daemonTarget });
 
   try {
     const fetchResult = await client.fetchAgent({ agentId: agentIdArg });
@@ -248,6 +236,7 @@ export async function runInspectCommand(
       const error: CommandError = {
         code: "AGENT_NOT_FOUND",
         message: `Agent not found: ${agentIdArg}`,
+        // OTTO(identity)
         details: 'Use "otto ls" to list available agents',
       };
       throw error;

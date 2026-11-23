@@ -8,54 +8,6 @@ directly only when you are building a third trigger shape.
 Do not add a third menu implementation. The two that existed were byte-identical from
 `computePosition` down, and the copies drifted: only one of them ever grew a sheet.
 
-## Text selection menus
-
-Desktop and browser Otto UI text is owned by the root
-`TextSelectionMenuProvider`, not Chromium's context menu. An unclaimed right click opens the
-standard action group: static text gets **Copy** and **Select all**; a text input additionally gets
-**Cut** and **Paste**. Disabled actions remain visible when their target has no selection, and every
-row prints its platform shortcut.
-
-On Electron, an editable misspelling adds the native spellchecker’s suggestions and **Add to
-Dictionary** above that standard group. The menu stays Otto-owned, while its short-lived native
-operation token keeps replacement and dictionary changes bound to the word that produced that
-right click. Browser and mobile hosts omit this Electron-only group because the web platform does
-not expose native dictionary suggestions to renderer code.
-
-Editable Electron targets stop DOM event propagation but must not call `preventDefault()` on
-`contextmenu`: canceling that default also suppresses the main process's `context-menu` event and
-its spelling data. Electron displays no native menu unless the main process explicitly opens one,
-so preserving that event still leaves presentation with Otto. Browser targets keep canceling the
-default to suppress Chromium's own menu.
-
-A target with a specific context menu claims an **unselected** browser event, while a non-empty text
-selection always yields to the root standard group. That keeps Copy available from selected labels
-inside workspace rows and tabs. To build a hybrid menu, wrap the target in
-`TextSelectionMenuHybridScope`, then call
-`useTextSelectionContextMenu().open(event, { beforeStandardActions, selectAllScope })`. The caller
-supplies only actions above the standard group; the provider owns the clipboard operation,
-availability, separators, shortcuts, and Select all scope. Browser guests and isolated webviews
-remain native-owned because their selections do not belong to the Otto renderer.
-
-A surface that only wants to **add** actions for selected text, without owning the right click,
-wraps itself in `TextSelectionActionsScope` with a `resolve` callback. When a right click lands on a
-read-only selection that lies inside the scope, the root capture handler calls `resolve` with the
-selected text and prepends what it returns: `beforeStandardActions`, plus submenu `pages` for a
-`MenuSubTrigger`. Returning null leaves the standard group untouched, and editable controls never
-consult a scope. Routing, spellcheck, and the standard group stay with the provider.
-
-The chat transcript uses this for its **Chat** submenu. **Explain**, **Contest**, **Research**, and
-**Complete** each carry a one-line description, and each quotes the selection under a short
-instruction (`chat/selection-prompt.ts`). Delivery goes through the sender the chat's composer
-registers in `composer/chat-prompt-sender.ts`, which does exactly what Enter would at that moment
-(send when idle, otherwise queue, steer, or interrupt) and never reads or writes the draft. A chat
-with no mounted composer registers no sender, so its transcript offers no Chat submenu.
-
-CodeMirror surfaces with a registered editor context menu mark their wrapper with
-`data-otto-editor-context-menu`. The root capture handler yields to that editor, whose menu owns
-Cut, Copy, Paste, Select all, and editor-specific actions such as Add selection to chat. Editors
-without a registered menu retain the root fallback.
-
 ## Two presentations
 
 `MenuRoot` picks one from form factor, never from platform — a tablet in a narrow split view
@@ -99,6 +51,11 @@ from its own `Pressable`. `MenuItem` is not the only row shape on the engine —
 is another, with its own icons and hover-revealed actions — but both hand the press to the engine
 and take `closeOnSelect` to say whether choosing them ends the surface. A row that owns its press
 outright leaves the surface open behind whatever it opened, and skips the iOS wait.
+
+A row whose result opens a sheet passes `closeOnSelect={false}`: the sheet stacks over the menu
+sheet and uncovers it on close, so the menu is where the user lands next. A row that opens a tab
+closes, because the tab replaces the pane the menu belongs to. The subagents track asks the layout
+store which one a row is (`useSubagentOpensInSheet`), since the answer changes with the layout.
 
 ## Pages
 
@@ -191,19 +148,6 @@ and a column of icons there is decoration competing with the values you actually
   is worked with a thumb just as a sheet is, and sizing off the sheet would leave it at the desktop
   height. `md` is where `useIsCompactFormFactor` divides, so row height and the popover/sheet choice
   turn over together.
-- **Every glyph in a row is drawn at the row's scale, whatever the call site asked for.** Leading
-  icons are built at 14 or 16 across the app, usually as module-level constant elements that no
-  hook can reach, so the row re-sizes what it is handed rather than the app sweeping a hundred
-  call sites and waiting for the next one to reintroduce the drift. It **sets** the size and must
-  never scale it: a call site that already sized its glyph through `useIconSize()` hands over an
-  already compact-scaled number, and doubling that lands at 4x, which is how one menu ended up
-  drawing 28, 32 and 56pt glyphs in three consecutive rows. Setting is idempotent, so a row is one
-  size no matter what the call site did. It only touches an element that already takes a numeric
-  `size`, so a slot holding a View, an avatar, or an icon sized through `uniProps` comes back
-  untouched.
-- **The icon-to-label gap follows the same split** - 8pt for a pointer, 12pt below `md`. A gap that
-  reads as separation beside a 28pt row reads as the icon crowding the label once the row grows to
-  40, so the two numbers turn over together with the row height.
 - The desktop height only holds because the label's `lineHeight` is pinned — 18 line + 8 padding +
   2 border is exactly 28. Leave it to the platform and content outgrows `minHeight`, which then does
   nothing. Compact is the other way round: `minHeight` leads and the label centres in it.
@@ -235,31 +179,33 @@ Independent toggles stay on their page as a checkmark list. A pick-one group can
 below a `MenuSeparator`; make selecting the checked row clear it, so "none" doesn't need a row of
 its own.
 
-When a checkmark list has a useful single-choice accelerator, `onAlternateSelect` runs on desktop
-right-click and touch long-press while a regular press keeps the normal toggle behavior.
-
 ## Gotchas
 
-- **Animation never owns web geometry.** Web menus use Web Animations for opacity and scale,
-  starting once the anchor is positioned. Reanimated's custom web keyframe cleanup restores a
-  captured position and size after the animation; that can restore the initial `(-9999, -9999)`
-  measurement box and make an open menu disappear. Clearing height at the animation duration
-  does not prevent the later position rewrite. Native menus retain Reanimated entering animations.
+- **Released height.** Reanimated's web entering animation leaves an inline height snapshot on
+  the surface. `AnchoredSurface` clears it, and a `revision` prop re-clears it when content
+  identity changes — a pushed page taller than the one it replaced is clipped without that.
+- **Animate only once placed.** The same snapshot carries top/left, and Reanimated writes it back
+  750ms after mount. `AnchoredSurface` remounts the surface when its position resolves so the
+  entering animation never ends at the off-screen measuring position; on a slow machine that
+  write moved the open menu back off-screen.
 - **Sheets size to content.** `enableDynamicSizing`, not fixed snap points. A pushed page is
   rarely the height of the page before it.
 - **The sheet's content is teleported out of the menu's subtree**, so `MenuSheetSurface` rebuilds
   both menu contexts through the sheet's `contextBridge`. Providing them around the modal puts
   them on the wrong side of the portal and every item inside throws. Gotcha 7 in
   [floating-panels.md](floating-panels.md).
-- **Contributed chat menu content renders outside the transcript.** A transcript element hands
-  actions to the chat menu through `useChatContextMenuTarget().openTarget(...)`, but that content
-  is rendered in the menu surface, which is a _sibling_ of the transcript. Every provider mounted
-  inside the transcript is therefore absent: a hook that throws on a missing context (the file
-  link resolver did) turns one right click into a full app crash. Pass what the content needs as
-  props. `ChatContextMenuContentBoundary` catches the rest and closes the menu instead.
 - **One overlay per menu.** Submenus render inside their parent's layer and paint no second
   backdrop, so there is exactly one `Modal` on native no matter how deep the menu goes.
-- Anchoring, flipping, and edge clamping live in `menu-anchor.ts` and are unit-tested. Fix
-  positioning bugs there, not at a call site.
+- **Sheet stacking and backdrop dismissal belong to `IsolatedBottomSheetModal`.** Menus only
+  request a backdrop opacity. See [floating-panels.md](floating-panels.md#gotcha-6--bottom-sheet-refs-are-not-lifecycle-truth).
+- **A menu closes when its panel leaves the screen.** `MenuSurface` closes the menu when its
+  retained panel goes inactive. Hiding the surface alone leaves the open state behind, and the
+  menu would reappear with the panel on the next tab switch.
+- **Retained panels own visibility.** The shared menu surface unmounts when its panel becomes
+  inactive. An async action can navigate before its menu closes; a hidden panel must not leave a
+  portal backdrop blocking the destination. On web the chat suspends one commit after it goes
+  inactive, and that inactive commit is where the surface unmounts.
+- Anchoring, flipping, and edge clamping live in `components/ui/anchor.ts`, shared with the hover
+  card, and are unit-tested. Fix positioning bugs there, not at a call site.
 - Everything else about floating surfaces on Android — Portal/Modal escape, lifecycle gates,
   status-bar offset, the open flash — is in [floating-panels.md](floating-panels.md).

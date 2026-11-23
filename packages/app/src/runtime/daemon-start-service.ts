@@ -27,7 +27,6 @@ export async function upsertDesktopDaemonConnection(
   if (store.getHosts().some((host) => host.serverId === serverId)) {
     return { ok: true };
   }
-
   const listenAddress = daemon.listen?.trim() ?? "";
   if (!listenAddress) {
     return { ok: false, error: "Desktop daemon did not return a listen address." };
@@ -90,14 +89,6 @@ export class DaemonStartService {
     }
   }
 
-  /**
-   * Surface an error raised outside a start attempt (the bootstrap gate), so the
-   * splash shows it the same way a failed start would.
-   */
-  recordError(message: string): void {
-    this.setLastError(message);
-  }
-
   getLastError(): string | null {
     return this.lastError;
   }
@@ -151,7 +142,7 @@ export class DaemonStartService {
 }
 
 let singletonDaemonStartService: DaemonStartService | null = null;
-const DAEMON_START_SERVICE_GLOBAL_KEY = "__ottoDaemonStartService";
+const DAEMON_START_SERVICE_GLOBAL_KEY = "__paseoDaemonStartService";
 
 type DaemonStartServiceGlobal = typeof globalThis & {
   [DAEMON_START_SERVICE_GLOBAL_KEY]?: DaemonStartService;

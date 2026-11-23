@@ -1,10 +1,7 @@
+# OTTO(security): report source findings on a separate schedule and on demand.
 name: CodeQL
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
   schedule:
     - cron: "23 8 * * 1"
   workflow_dispatch:
@@ -17,21 +14,18 @@ jobs:
   analyze-javascript-typescript:
     name: Analyze JavaScript and TypeScript
     runs-on: ubuntu-latest
-    # The initial repository scan exceeded 20 minutes while CodeQL was still
-    # analyzing the shipped TypeScript corpus. Keep a firm ceiling, but allow
-    # enough time for a complete result to replace legacy Default-setup data.
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4
+        uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
         with:
           languages: javascript-typescript
           build-mode: none
           config-file: ./.github/codeql-config.yml
 
-      - name: Analyze
-        uses: github/codeql-action/analyze@v4
+      - name: Analyze and upload findings
+        uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4
         with:
           category: /language:javascript-typescript

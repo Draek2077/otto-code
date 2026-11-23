@@ -1,5 +1,5 @@
 import { LRUCache } from "lru-cache";
-import { parseGitRemoteLocation, type GitRemoteLocation } from "@otto-code/protocol/git-remote";
+import { parseGitRemoteLocation, type GitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import { resolveSshHostname, type SshHostnameResolver } from "../utils/ssh-hostname.js";
 import { defaultResolveRemoteUrl } from "./forge-cli-command.js";
 import type { ForgeService } from "./forge-service.js";
@@ -25,7 +25,6 @@ export interface CreateForgeResolverOptions {
   resolveRemoteUrl?: (cwd: string) => Promise<string | null>;
   createService?: (forge: string) => ForgeService | null;
   probeForge?: ForgeHostProbe;
-  configuredForge?: (host: string) => string | null;
   resolveSshHostname?: SshHostnameResolver;
   now?: () => number;
 }
@@ -68,7 +67,6 @@ export function createForgeResolver(options: CreateForgeResolverOptions = {}): F
   const probeForge = options.probeForge ?? probeRegisteredForgeHost;
   const resolveSsh = options.resolveSshHostname ?? resolveSshHostname;
   const now = options.now ?? Date.now;
-  const matchForge = (host: string) => options.configuredForge?.(host) ?? forgeForHost(host);
   const services = new Map<string, ForgeService>();
   // Cache the per-host probe result so the synchronous resolveFromRemoteUrl can
   // reuse a forge discovered by an earlier async resolve. Positive results are
@@ -81,11 +79,11 @@ export function createForgeResolver(options: CreateForgeResolverOptions = {}): F
   // Coalesce concurrent probes of the same host so "never re-probe" holds under
   // concurrency: callers racing on the same host await one shared probe.
   const inFlightProbes = new Map<string, Promise<string | null>>();
-  // resolveRemoteUrl spawns `git config` - memoize per cwd so repeated resolve()
+  // resolveRemoteUrl spawns `git config` — memoize per cwd so repeated resolve()
   // calls (the PR-status poll hits this every cycle) don't re-spawn it. TTL'd
   // (not permanent, unlike a positive host probe) so a remote added/changed
-  // from outside Otto - `git remote add`/`set-url` run in a terminal - is
-  // still picked up within a cycle instead of staying pinned forever; a Otto
+  // from outside Paseo — `git remote add`/`set-url` run in a terminal — is
+  // still picked up within a cycle instead of staying pinned forever; a Paseo
   // git mutation still busts it immediately via invalidate(cwd).
   const remoteUrlByCwd = new LRUCache<
     string,
@@ -172,7 +170,7 @@ export function createForgeResolver(options: CreateForgeResolverOptions = {}): F
     if (!host) {
       return null;
     }
-    const forge = matchForge(host) ?? readFreshProbe(host) ?? null;
+    const forge = forgeForHost(host) ?? readFreshProbe(host) ?? null;
     if (!forge) {
       return null;
     }
@@ -189,7 +187,7 @@ export function createForgeResolver(options: CreateForgeResolverOptions = {}): F
     if (!location) {
       return null;
     }
-    const directForge = matchForge(location.host);
+    const directForge = forgeForHost(location.host);
     if (directForge) {
       return buildResolution(directForge, location.host);
     }
@@ -233,7 +231,7 @@ export function createForgeResolver(options: CreateForgeResolverOptions = {}): F
       return { host: location.host };
     }
 
-    const resolvedForge = matchForge(resolvedHost);
+    const resolvedForge = forgeForHost(resolvedHost);
     if (resolvedForge) {
       return { host: resolvedHost, forge: resolvedForge };
     }

@@ -27,15 +27,13 @@ describe("loadChangesPreferencesFromStorage", () => {
     const result = await loadChangesPreferencesFromStorage(storage);
 
     expect(result).toEqual({
-      presentation: "line",
+      ...DEFAULT_CHANGES_PREFERENCES,
       layout: "unified",
       desktopTreeVisible: false,
       wrapLines: true,
       hideWhitespace: false,
-      pinnedToolbarItems: DEFAULT_CHANGES_PREFERENCES.pinnedToolbarItems,
-      inlineDiff: true,
+      inlineDiff: false,
       commitsCollapsed: true,
-      commitType: "none",
     });
     expect(storage.entries.get(CHANGES_PREFERENCES_STORAGE_KEY)).toBe(JSON.stringify(result));
   });
@@ -54,36 +52,16 @@ describe("loadChangesPreferencesFromStorage", () => {
     const result = await loadChangesPreferencesFromStorage(storage);
 
     expect(result).toEqual({
-      presentation: "line",
+      ...DEFAULT_CHANGES_PREFERENCES,
       layout: "split",
       desktopTreeVisible: true,
       hideWhitespace: true,
       wrapLines: false,
-      pinnedToolbarItems: DEFAULT_CHANGES_PREFERENCES.pinnedToolbarItems,
-      inlineDiff: true,
+      inlineDiff: false,
       commitsCollapsed: true,
-      commitType: "none",
     });
     expect(storage.entries.get(CHANGES_PREFERENCES_STORAGE_KEY)).toBe(persisted);
     expect(storage.entries.size).toBe(1);
-  });
-
-  it("loads a persisted pinned-toolbar set verbatim", async () => {
-    const persisted = JSON.stringify({
-      layout: "unified",
-      viewMode: "flat",
-      hideWhitespace: false,
-      wrapLines: false,
-      pinnedToolbarItems: ["wrap", "refresh"],
-    });
-    const storage = createInMemoryKeyValueStorage({
-      [CHANGES_PREFERENCES_STORAGE_KEY]: persisted,
-    });
-
-    const result = await loadChangesPreferencesFromStorage(storage);
-
-    expect(result.pinnedToolbarItems).toEqual(["wrap", "refresh"]);
-    expect(storage.entries.get(CHANGES_PREFERENCES_STORAGE_KEY)).toBe(persisted);
   });
 });
 
@@ -113,35 +91,9 @@ describe("changes preferences commitsCollapsed", () => {
   });
 });
 
-describe("changes preferences commitType", () => {
-  it("defaults to no type prefix", () => {
-    expect(DEFAULT_CHANGES_PREFERENCES.commitType).toBe("none");
-  });
-
-  it("round-trips a persisted commit type", async () => {
-    const storage = createInMemoryKeyValueStorage({
-      [CHANGES_PREFERENCES_STORAGE_KEY]: JSON.stringify({ commitType: "fix" }),
-    });
-
-    const prefs = await loadChangesPreferencesFromStorage(storage);
-
-    expect(prefs.commitType).toBe("fix");
-  });
-
-  it("falls back to none for an unknown commit type", async () => {
-    const storage = createInMemoryKeyValueStorage({
-      [CHANGES_PREFERENCES_STORAGE_KEY]: JSON.stringify({ commitType: "wip" }),
-    });
-
-    const prefs = await loadChangesPreferencesFromStorage(storage);
-
-    expect(prefs.commitType).toBe("none");
-  });
-});
-
 describe("changes preferences inlineDiff", () => {
-  it("opens Changes with inline diff by default", () => {
-    expect(DEFAULT_CHANGES_PREFERENCES.inlineDiff).toBe(true);
+  it("keeps inline diff disabled by default", () => {
+    expect(DEFAULT_CHANGES_PREFERENCES.inlineDiff).toBe(false);
   });
 
   it("round-trips the inline diff preference", async () => {
@@ -156,6 +108,28 @@ describe("changes preferences inlineDiff", () => {
 });
 
 describe("saveChangesPreferences", () => {
+  // OTTO(structural-diff): preserve a 0.9.35 saved default and the other Changes settings.
+  it("round-trips legacy Structural and keeps unrelated preferences when switching to Line", async () => {
+    const legacy = {
+      presentation: "structural",
+      layout: "split",
+      wrapLines: true,
+      pinnedToolbarItems: ["push"],
+      commitType: "fix",
+    };
+    const storage = createInMemoryKeyValueStorage({
+      [CHANGES_PREFERENCES_STORAGE_KEY]: JSON.stringify(legacy),
+    });
+    const loaded = await loadChangesPreferencesFromStorage(storage);
+    expect(loaded).toMatchObject(legacy);
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(CHANGES_PREFERENCES_QUERY_KEY, loaded);
+    await saveChangesPreferences({ queryClient, storage, updates: { presentation: "line" } });
+    expect(JSON.parse(storage.entries.get(CHANGES_PREFERENCES_STORAGE_KEY)!)).toMatchObject({
+      ...legacy,
+      presentation: "line",
+    });
+  });
   it("merges updates onto cached preferences and persists the result", async () => {
     const storage = createInMemoryKeyValueStorage();
     const queryClient = new QueryClient();

@@ -1,6 +1,6 @@
-import type { AgentSessionConfig } from "@otto-code/protocol/agent-types";
-import type { AgentSnapshotPayload, CreateAgentRequestMessage } from "@otto-code/protocol/messages";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
+import type { AgentSnapshotPayload, CreateAgentRequestMessage } from "@getpaseo/protocol/messages";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { encodeImages } from "@/utils/encode-images";
 import type { UserMessageImageAttachment } from "@/types/stream";
 
@@ -11,8 +11,6 @@ export interface WorkspaceDraftAgentRequest {
   clientMessageId: string;
   images?: UserMessageImageAttachment[];
   attachments?: CreateAgentRequestMessage["attachments"];
-  personality?: CreateAgentRequestMessage["personality"];
-  architecturalViewDraft?: CreateAgentRequestMessage["architecturalViewDraft"];
 }
 
 /**
@@ -28,10 +26,6 @@ export async function requestWorkspaceDraftAgent(
     config: request.config,
     workspaceId: request.workspaceId,
     clientMessageId: request.clientMessageId,
-    ...(request.personality ? { personality: request.personality } : {}),
-    ...(request.architecturalViewDraft
-      ? { architecturalViewDraft: request.architecturalViewDraft }
-      : {}),
     ...(request.text ? { initialPrompt: request.text } : {}),
     ...(images && images.length > 0 ? { images } : {}),
     ...(request.attachments && request.attachments.length > 0

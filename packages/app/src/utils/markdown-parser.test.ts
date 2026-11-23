@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { createMarkdownParser } from "./markdown-parser";
 
-// Literal sequences covered by current or historical typography substitutions.
-// Sourced from markdown-it's replacements and smartquotes rules.
-// `--flag` is deliberately absent: the en-dash rules need
+// Every string markdown-it's typographer would rewrite, with the character it
+// would rewrite it to. Sourced from markdown-it/lib/rules_core/replacements.js
+// and smartquotes.js. `--flag` is deliberately absent: the en-dash rules need
 // whitespace or a word character on both sides, so a CLI flag after a space is
 // never touched and asserting on it would prove nothing.
-const LITERAL_SEQUENCES = [
+const REWRITTEN_BY_TYPOGRAPHER = [
   "(c)",
   "(C)",
   "(r)",
@@ -32,7 +32,7 @@ describe("createMarkdownParser", () => {
   it("renders every typographer-rewritten sequence verbatim", () => {
     const parser = createMarkdownParser({ linkify: true });
 
-    for (const source of LITERAL_SEQUENCES) {
+    for (const source of REWRITTEN_BY_TYPOGRAPHER) {
       expect(parser.renderInline(source)).toBe(escapeHtml(source));
     }
   });
@@ -43,9 +43,7 @@ describe("createMarkdownParser", () => {
     const typographer = createMarkdownParser({ linkify: true });
     typographer.set({ typographer: true });
 
-    // These representative substitutions remain active in markdown-it 15;
-    // historical (p)/(P) spellings above must stay verbatim regardless of version.
-    for (const source of ["(c)", "wait for it...", 'run --name="my repo"']) {
+    for (const source of REWRITTEN_BY_TYPOGRAPHER) {
       expect(typographer.renderInline(source)).not.toBe(escapeHtml(source));
     }
   });

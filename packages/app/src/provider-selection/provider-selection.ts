@@ -3,18 +3,31 @@ import type {
   AgentModelDefinition,
   AgentProvider,
   ProviderSnapshotEntry,
-} from "@otto-code/protocol/agent-types";
-import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
-import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
-import { buildFavoriteModelKey, type FavoriteModelRow } from "@/hooks/use-form-preferences";
+} from "@getpaseo/protocol/agent-types";
+import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
+import type { DraftCommandTarget } from "@/hooks/use-agent-commands-query";
 import { i18n } from "@/i18n/i18next";
-import { compareMatchScores, scoreTextFields } from "@otto-code/protocol/search/text-match";
+import { compareMatchScores, scoreTextFields } from "@getpaseo/protocol/search/text-match";
 import { filterSelectableModels } from "./model-catalog";
 
-export type ProviderSelectionModelRow = FavoriteModelRow & {
-  family?: string;
+export interface ProviderSelectionModelRow {
+  /**
+   * Row identity — `provider:modelId`. Used as the React key and as the row's
+   * stable handle across list rebuilds. The name is historical; it has nothing
+   * to do with the removed favourites feature.
+   */
+  favoriteKey: string;
+  provider: string;
+  providerLabel: string;
+  modelId: string;
+  modelLabel: string;
+  description?: string;
   isDefault?: boolean;
-};
+}
+
+function buildModelRowKey(provider: string, modelId: string): string {
+  return `${provider}:${modelId}`;
+}
 
 export type ProviderModelSelection =
   | { kind: "models"; rows: ProviderSelectionModelRow[] }
@@ -41,38 +54,18 @@ export interface ProviderSelectionReadiness {
   reason?: string;
 }
 
-/**
- * Provider snapshots can contain a transport error with an endpoint embedded
- * in it. That is useful in logs, but it is noisy and fragile as the picker’s
- * primary status. Keep the actionable part of the daemon’s message while
- * leaving connection details to the provider settings and host logs.
- */
-export function presentProviderModelSelectionError(input: {
-  providerLabel: string;
-  message: string;
-}): string {
-  const message = input.message.trim();
-  const escapedLabel = input.providerLabel.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const endpointError = new RegExp(`^Cannot reach ${escapedLabel} at \\S+ \\([^)]*\\)\\.\\s*`, "i");
-  if (endpointError.test(message)) {
-    return `Cannot reach ${input.providerLabel}. ${message.replace(endpointError, "")}`;
-  }
-  return message;
-}
-
 function buildModelRows(
   provider: string,
   providerLabel: string,
   models: AgentModelDefinition[],
 ): ProviderSelectionModelRow[] {
   return models.map((model) => ({
-    favoriteKey: buildFavoriteModelKey({ provider, modelId: model.id }),
+    favoriteKey: buildModelRowKey(provider, model.id),
     provider,
     providerLabel,
     modelId: model.id,
     modelLabel: model.label,
     description: model.description ?? model.id,
-    family: model.family,
     isDefault: model.isDefault,
   }));
 }
@@ -82,7 +75,7 @@ function buildSyntheticDefaultRow(
   providerLabel: string,
 ): ProviderSelectionModelRow {
   return {
-    favoriteKey: buildFavoriteModelKey({ provider, modelId: "" }),
+    favoriteKey: buildModelRowKey(provider, ""),
     provider,
     providerLabel,
     modelId: "",
@@ -110,6 +103,7 @@ function buildModelSelection(
 function buildEntryModelSelection(
   entry: ProviderSnapshotEntry,
   label: string,
+  isConnected: boolean,
 ): ProviderModelSelection {
   if ((entry.models?.length ?? 0) > 0) {
     return buildModelSelection(entry.provider, label, entry.models ?? null);
@@ -118,7 +112,9 @@ function buildEntryModelSelection(
     return buildModelSelection(entry.provider, label, entry.models ?? null);
   }
   if (entry.status === "loading") {
-    return { kind: "loading" };
+    return isConnected
+      ? { kind: "loading" }
+      : { kind: "error", message: i18n.t("providerSelection.readiness.hostDisconnected") };
   }
   return {
     kind: "error",
@@ -149,6 +145,7 @@ export function buildProviderSelectorProviders(input: {
 
 export function buildSelectableProviderSelectorProviders(
   entries: ProviderSnapshotEntry[] | undefined,
+  isConnected = true,
 ): ProviderSelectorProvider[] {
   return (entries ?? [])
     .filter((entry) => entry.enabled)
@@ -157,7 +154,7 @@ export function buildSelectableProviderSelectorProviders(
       return {
         id: entry.provider,
         label,
-        modelSelection: buildEntryModelSelection(entry, label),
+        modelSelection: buildEntryModelSelection(entry, label, isConnected),
       };
     });
 }
@@ -221,6 +218,10 @@ export function buildSelectedTriggerLabel(modelLabel: string): string {
   return modelLabel;
 }
 
+/**
+ * Cross-provider result rows need the provider named up front: the same model
+ * label ships on several providers at once.
+ */
 export function buildProviderQualifiedDescription(row: ProviderSelectionModelRow): string {
   return row.description ? `${row.providerLabel} · ${row.description}` : row.providerLabel;
 }
@@ -275,6 +276,23 @@ export function resolveEffectiveComposerModelId(selection: ProviderSelectionStat
   );
 }
 
+// The mode picker shows the first offered mode when the selected one isn't
+// offered (e.g. a remembered mode the provider no longer advertises), so the
+// submitted mode must match that display. A provider with no modes gets none.
+// While the provider is still loading its modes aren't known yet, so the
+// selected mode is kept.
+export function resolveEffectiveComposerModeId(
+  selection: ProviderSelectionState,
+  isModelLoading: boolean,
+): string {
+  const selectedModeId = selection.modeId.trim();
+  if (isModelLoading) {
+    return selectedModeId;
+  }
+  const modeIds = selection.modeOptions.map((mode) => mode.id);
+  return modeIds.includes(selectedModeId) ? selectedModeId : (modeIds[0] ?? "");
+}
+
 export function resolveEffectiveComposerThinkingOptionId(
   selection: ProviderSelectionState,
   effectiveModelId: string,
@@ -289,19 +307,22 @@ export function resolveEffectiveComposerThinkingOptionId(
   return selectedModelDefinition?.defaultThinkingOptionId ?? "";
 }
 
-export function buildDraftCommandConfig(input: {
+export function buildDraftCommandTarget(input: {
   selection: ProviderSelectionState;
   cwd: string;
   effectiveModelId: string;
   effectiveThinkingOptionId: string;
   featureValues?: Record<string, unknown>;
-}): DraftCommandConfig | undefined {
+}): DraftCommandTarget {
   const cwd = input.cwd.trim();
-  if (!input.selection.provider || !cwd) {
-    return undefined;
+  if (!cwd) {
+    return { status: "needs-project" };
+  }
+  if (!input.selection.provider) {
+    return { status: "needs-provider" };
   }
 
-  return {
+  const config = {
     provider: input.selection.provider,
     cwd,
     ...(input.selection.modeOptions.length > 0 && input.selection.modeId !== ""
@@ -313,6 +334,7 @@ export function buildDraftCommandConfig(input: {
       : {}),
     ...(input.featureValues ? { featureValues: input.featureValues } : {}),
   };
+  return { status: "ready", config };
 }
 
 export function resolveSubmissionReadiness(input: {
@@ -327,10 +349,13 @@ export function resolveSubmissionReadiness(input: {
   };
   autoSubmitConfig: { provider: string; model: string | null } | null;
   workspaceDirectory: string | null;
-  hasClient: boolean;
+  isConnected: boolean;
 }): ProviderSelectionReadiness {
   if (!input.allowsEmptyAutoSubmit && !input.text.trim()) {
     return { ok: false, reason: i18n.t("providerSelection.readiness.initialPromptRequired") };
+  }
+  if (!input.isConnected) {
+    return { ok: false, reason: i18n.t("providerSelection.readiness.hostDisconnected") };
   }
   if (input.providerCount === 0) {
     return { ok: false, reason: i18n.t("providerSelection.readiness.noProviders") };
@@ -347,9 +372,6 @@ export function resolveSubmissionReadiness(input: {
   }
   if (!input.workspaceDirectory) {
     return { ok: false, reason: i18n.t("providerSelection.readiness.workspaceDirectoryNotFound") };
-  }
-  if (!input.hasClient) {
-    return { ok: false, reason: i18n.t("providerSelection.readiness.hostDisconnected") };
   }
   return { ok: true };
 }

@@ -1,8 +1,30 @@
 // Browser compatibility tests run a real daemon in a separate Node runtime.
-import { createTestOttoDaemon } from "./otto-daemon.js";
+//
+// argv: <daemonVersion> [port] [paseoHomeRoot]
+// A fixed port and a caller-owned home let a test stop this daemon and start a
+// replacement under the same endpoint and serverId.
+import path from "node:path";
+import { createTestPaseoDaemon } from "./paseo-daemon.js";
 
-const daemon = await createTestOttoDaemon({
-  daemonVersion: process.argv[2],
+const [, , daemonVersion, portArg, paseoHomeRoot] = process.argv;
+const listenPort = portArg ? Number(portArg) : 0;
+if (!Number.isInteger(listenPort) || listenPort < 0) {
+  throw new Error(`Invalid versioned daemon port: ${portArg ?? ""}`);
+}
+
+const daemon = await createTestPaseoDaemon({
+  // OTTO(paseo-version): this fixture deliberately simulates another Paseo API release.
+  pluginApiVersion: daemonVersion,
+  daemonVersion,
+  ...(listenPort > 0 ? { listenPort } : {}),
+  ...(paseoHomeRoot
+    ? {
+        paseoHomeRoot,
+        staticDir: path.join(paseoHomeRoot, "static"),
+        // The caller removes the home so a replacement daemon keeps the same serverId.
+        cleanup: false,
+      }
+    : {}),
   pluginsEnabled: true,
   mcpEnabled: false,
   corsAllowedOrigins: ["*"],

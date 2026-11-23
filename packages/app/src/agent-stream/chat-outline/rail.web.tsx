@@ -1,30 +1,11 @@
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-  type RefObject,
-} from "react";
-import { flushSync } from "react-dom";
+import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Pressable, Text, View, type PointerEvent as RNPointerEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useReducedMotion } from "react-native-reanimated";
+import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { createChatOutlineHoverIntent } from "./hover-intent";
-import { useChatOutlineLayout } from "./layout";
-import {
-  chatOutlineSegmentContains,
-  chatOutlineSegmentLabel,
-  MIN_OUTLINE_PROMPTS,
-  promptTickMagnification,
-  resolveChatOutlineGutter,
-  segmentChatOutlinePrompts,
-  type ChatOutlineSegment,
-} from "./model";
+import { promptTickMagnification } from "./model";
 import type { ChatOutlineRailProps } from "./rail";
 
 // Hover tracking lives on the rail and the slots, never on the Pressable inside them:
@@ -41,37 +22,7 @@ const PREVIEW_WIDTH = 260;
 const PREVIEW_HEIGHT = 48;
 const PREVIEW_GAP = 4;
 
-/**
- * Whether the pane is wide enough for the rail, or `null` until it has a real
- * width. RN-web reports onLayout after paint, which painted one frame with the
- * wrong gutter; this reads the width before the first paint and commits resize
- * crossings synchronously from the observer, which also runs before paint. A
- * retained tab under `display: none` measures 0 and keeps its last answer.
- */
-function usePaneIsWide(measureRef: RefObject<View | null>): boolean | null {
-  const [isWide, setIsWide] = useState<boolean | null>(null);
-  useLayoutEffect(() => {
-    const node = measureRef.current as unknown as HTMLElement | null;
-    if (!node) return;
-    const apply = (width: number) => {
-      if (width <= 0) return;
-      const next = width >= MIN_PANEL_WIDTH;
-      setIsWide((current) => (current === next ? current : next));
-    };
-    apply(node.getBoundingClientRect().width);
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[entries.length - 1]?.contentRect.width;
-      if (width !== undefined) flushSync(() => apply(width));
-    });
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [measureRef]);
-  return isWide;
-}
-
 export const ChatOutlineRail = memo(function ChatOutlineRail({
-  enabled,
-  hasPromptIndex,
   prompts,
   activePrompt,
   onJumpToPrompt,
@@ -80,9 +31,7 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
   const activeSeq = useSyncExternalStore(activePrompt.subscribe, activePrompt.getActiveSeq);
   const prefersReducedMotion = useReducedMotion();
-  const measureRef = useRef<View>(null);
-  const isPaneWide = usePaneIsWide(measureRef);
-  const { isRailVisible: isGutterVisible, setRailVisible } = useChatOutlineLayout();
+  const { onLayout, isBelow: isPanelNarrow } = useContainerWidthBelow(MIN_PANEL_WIDTH);
 
   const hoverIntent = useMemo(
     () =>
@@ -111,23 +60,9 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
   );
   const handlePointerLeaveRail = useCallback(() => hoverIntent.leave(), [hoverIntent]);
   useEffect(() => () => hoverIntent.dispose(), [hoverIntent]);
-  const gutter = resolveChatOutlineGutter({
-    enabled,
-    hasPromptIndex,
-    promptCount: prompts.length,
-    isPaneWide,
-  });
-  // The rail is the gutter's only writer, and it writes before paint. An
-  // unknown input leaves the gutter as it is rather than guessing.
-  useLayoutEffect(() => {
-    if (gutter !== null) setRailVisible(gutter);
-  }, [gutter, setRailVisible]);
-  useLayoutEffect(() => () => setRailVisible(false), [setRailVisible]);
-  // Ticks follow the gutter itself, so the rail never draws outside its space.
-  const isRailVisible = isGutterVisible && prompts.length >= MIN_OUTLINE_PROMPTS;
   useEffect(() => {
-    if (!isRailVisible) hoverIntent.leave();
-  }, [hoverIntent, isRailVisible]);
+    if (isPanelNarrow) hoverIntent.leave();
+  }, [hoverIntent, isPanelNarrow]);
   const handleFocusChange = useCallback((index: number, focused: boolean) => {
     setFocusedIndex((current) => {
       if (focused) return index;
@@ -138,11 +73,12 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
   // The pointer owns the magnified band while it is on the rail; keyboard focus drives the
   // same band and the same preview once the pointer leaves.
   const attentionIndex = hoveredIndex ?? focusedIndex;
-  const segments = useMemo(() => segmentChatOutlinePrompts(prompts), [prompts]);
+
+  if (prompts.length < 2) return null;
 
   return (
-    <View ref={measureRef} style={styles.panelMeasure} pointerEvents="box-none">
-      {isRailVisible ? (
+    <View style={styles.panelMeasure} pointerEvents="box-none" onLayout={onLayout}>
+      {isPanelNarrow ? null : (
         <View
           style={styles.rail}
           role="tablist"
@@ -151,13 +87,14 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
           onPointerMove={handlePointerMoveRail}
           onPointerLeave={handlePointerLeaveRail}
         >
-          {segments.map((segment, index) => (
+          {prompts.map((prompt, index) => (
             <ChatOutlineTick
-              key={segment.startSeq}
+              key={prompt.seq}
               index={index}
-              segment={segment}
-              label={chatOutlineSegmentLabel(segment, prompts.length)}
-              isActive={chatOutlineSegmentContains(segment, activeSeq)}
+              seq={prompt.seq}
+              preview={prompt.preview}
+              label={`${index + 1} of ${prompts.length}: ${prompt.preview}`}
+              isActive={prompt.seq === activeSeq}
               hasAttention={index === attentionIndex}
               magnification={
                 prefersReducedMotion || attentionIndex === null
@@ -170,14 +107,15 @@ export const ChatOutlineRail = memo(function ChatOutlineRail({
             />
           ))}
         </View>
-      ) : null}
+      )}
     </View>
   );
 });
 
 interface ChatOutlineTickProps {
   index: number;
-  segment: ChatOutlineSegment;
+  seq: number;
+  preview: string;
   label: string;
   isActive: boolean;
   hasAttention: boolean;
@@ -189,7 +127,8 @@ interface ChatOutlineTickProps {
 
 const ChatOutlineTick = memo(function ChatOutlineTick({
   index,
-  segment,
+  seq,
+  preview,
   label,
   isActive,
   hasAttention,
@@ -199,9 +138,9 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
   onJumpToPrompt,
 }: ChatOutlineTickProps) {
   const handlePress = useCallback(() => {
-    onJumpToPrompt(segment.target.seq);
+    onJumpToPrompt(seq);
     onFocusChange(index, false);
-  }, [index, onFocusChange, onJumpToPrompt, segment.target.seq]);
+  }, [index, onFocusChange, onJumpToPrompt, seq]);
   const handlePointerEnter = useCallback(() => onHover(index), [index, onHover]);
   const handleFocus = useCallback(() => onFocusChange(index, true), [index, onFocusChange]);
   const handleBlur = useCallback(() => onFocusChange(index, false), [index, onFocusChange]);
@@ -223,7 +162,7 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
         accessibilityRole="tab"
         aria-selected={isActive}
         accessibilityLabel={label}
-        testID={`chat-outline-tick-${segment.target.seq}`}
+        testID={`chat-outline-tick-${seq}`}
       >
         <View
           style={[
@@ -237,9 +176,7 @@ const ChatOutlineTick = memo(function ChatOutlineTick({
       {hasAttention ? (
         <View style={styles.preview} pointerEvents="none" aria-hidden testID="chat-outline-preview">
           <Text style={styles.previewText} numberOfLines={2}>
-            {segment.startIndex === segment.endIndex - 1
-              ? segment.target.preview
-              : `Prompts ${segment.startIndex + 1}–${segment.endIndex}: ${segment.target.preview}`}
+            {preview}
           </Text>
         </View>
       ) : null}

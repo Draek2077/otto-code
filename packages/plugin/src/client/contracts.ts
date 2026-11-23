@@ -1,6 +1,6 @@
 import type { ComponentType } from "react";
-import type { OttoApi } from "@otto-code/client";
-import type { AgentTimelineItem } from "@otto-code/protocol/agent-types";
+import type { PaseoApi } from "@getpaseo/client";
+import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import type { ZodType, input as ZodInput, output as ZodOutput } from "zod";
 import type { PluginRpcContract } from "../rpc.js";
 import type {
@@ -33,12 +33,71 @@ export interface PluginHostProps {
 interface PluginNavigableHostProps extends PluginHostProps {
   /** Client-owned navigation. Undefined on older hosts; hide dependent affordances when absent. */
   readonly navigation?: {
-    readonly openAgent: (input: { readonly agentId: string }) => void;
-    readonly openWorkspace: (input: { readonly workspaceId: string }) => void;
+    /** Present only on Electron. The browser runs locally; serverId selects workspace ownership. */
+    readonly openBrowser?: (input: {
+      readonly url: string;
+      readonly workspaceId: string;
+      readonly serverId?: string;
+    }) => void;
+    readonly openAgent: (input: { readonly agentId: string; readonly serverId?: string }) => void;
+    readonly openWorkspace: (input: {
+      readonly workspaceId: string;
+      readonly serverId?: string;
+    }) => void;
+    /** OTTO(kanban): canonical app-owned project settings, bound to this surface's host. */
+    // COMPAT(ottoProjectSettingsNavigation): added in v0.10.0; remove optional after 2027-04-24.
+    readonly openProjectSettings?: (input: {
+      readonly projectId: string;
+      readonly serverId?: string;
+    }) => void;
   };
 }
 
-export interface PluginSurfaceProps extends PluginNavigableHostProps {}
+/** String keys and values: params travel in the screen's URL. */
+export type PluginScreenParams = Record<string, string>;
+
+export interface PluginOpenScreenInput {
+  screenId: string;
+  params?: PluginScreenParams;
+}
+
+export interface PluginScreenLocation {
+  screenId: string;
+  params: PluginScreenParams;
+}
+
+export interface PluginSurfaceProps extends PluginNavigableHostProps {
+  /** OTTO(plugin-activity): app visibility and retained-panel activity, owned by the app. */
+  // COMPAT(pluginSurfaceActivity): added in v0.10.0; remove optional after 2027-04-25.
+  readonly active?: boolean;
+}
+
+export interface PluginScreenProps extends PluginSurfaceProps {
+  /** The params the screen was opened with; `{}` when none. */
+  params: PluginScreenParams;
+}
+
+export interface PluginPopoverProps extends PluginHostProps {
+  close(): void;
+  openScreen(input: PluginOpenScreenInput): void;
+}
+
+export interface PluginSidebarItemProps extends PluginHostProps {
+  /** This plugin's screen open on this item's host, with its params, else null. */
+  currentScreen: PluginScreenLocation | null;
+  openScreen(input: PluginOpenScreenInput): void;
+  /** Anchored to the item on wide layouts; a bottom sheet on compact layouts. */
+  openPopover(Content: ComponentType<PluginPopoverProps>): void;
+}
+
+export interface PluginSidebarItemContribution {
+  id: string;
+  /** Settings row label, accessibility label, and default label for SidebarRow. */
+  title: string;
+  /** OTTO(sidebar-icons): Lucide name for this item's settings row. */
+  icon?: string;
+  Component: ComponentType<PluginSidebarItemProps>;
+}
 
 export interface PluginIconProps {
   name: string;
@@ -75,10 +134,21 @@ export interface PluginClientOpenPanelOptions extends PluginOpenPanelOptions {
   agentId?: string;
 }
 
-export interface PluginClientContext extends PluginCommandCapabilities {
-  addSettingsScreen(contribution: PluginSettingsScreenContribution): PluginCleanup;
+// COMPAT(pluginSidebarAliases): added in v0.11.0, remove after 2027-03-29
+interface PluginClientContextAliases {
+  /** @deprecated Use `addScreen`. */
   addSurface(id: string, Component: ComponentType<PluginSurfaceProps>): PluginCleanup;
+  /** @deprecated Use `addSidebarHeaderItem`. */
   addSidebarItem(contribution: PluginSidebarContribution): PluginCleanup;
+}
+
+export interface PluginClientContext extends PluginCommandCapabilities, PluginClientContextAliases {
+  /** Play a base64-encoded audio file on this client; resolves when playback ends. */
+  playAudio(source: { base64: string; mimeType: string }): Promise<void>;
+  addSettingsScreen(contribution: PluginSettingsScreenContribution): PluginCleanup;
+  addScreen(contribution: PluginScreenContribution): PluginCleanup;
+  addSidebarHeaderItem(contribution: PluginSidebarItemContribution): PluginCleanup;
+  addSidebarFooterItem(contribution: PluginSidebarItemContribution): PluginCleanup;
   addWorkspacePanel(contribution: PluginWorkspacePanelContribution): PluginCleanup;
   addCommandCenterItem(contribution: PluginCommandCenterItemContribution): PluginCleanup;
   addSlashCommand(contribution: PluginClientSlashCommandContribution): PluginCleanup;
@@ -114,11 +184,21 @@ export interface PluginSettingsScreenContribution {
   Component: ComponentType<PluginSurfaceProps>;
 }
 
+/** The screen header's title: fixed, or derived from the params the screen was opened with. */
+export type PluginScreenTitle = string | ((params: PluginScreenParams) => string);
+
+export interface PluginScreenContribution {
+  id: string;
+  title: PluginScreenTitle;
+  Component: ComponentType<PluginScreenProps>;
+}
+
 export interface PluginSurfaceContribution {
   id: string;
   Component: ComponentType<PluginSurfaceProps>;
 }
 
+/** @deprecated Use `PluginSidebarItemContribution` with `addSidebarHeaderItem`. */
 export interface PluginSidebarContribution {
   id: string;
   title: string;
@@ -160,11 +240,13 @@ export interface PluginTimelineRendererContribution<Schema extends ZodType = Zod
 }
 
 export interface PluginCommandCapabilities {
-  otto: OttoApi;
+  paseo: PaseoApi;
   rpc<InputSchema extends ZodType, OutputSchema extends ZodType>(
     contract: PluginRpcContract<InputSchema, OutputSchema>,
     input: ZodInput<InputSchema>,
   ): Promise<ZodOutput<OutputSchema>>;
+  openScreen(input: PluginOpenScreenInput): void;
+  /** @deprecated Use `openScreen`. */
   openSurface(id: string): void;
   openSettings(id: string): void;
 }

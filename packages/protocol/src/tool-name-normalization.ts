@@ -1,3 +1,4 @@
+import { OTTO_MCP_SERVER_NAME } from "./otto/identity.js";
 const TOOL_TOKEN_REGEX = /[a-z0-9]+/g;
 const STANDARD_NAMESPACE_SEPARATOR_REGEX = /[.:/]/;
 
@@ -39,7 +40,14 @@ export function isLikelyNamespacedToolName(name: string): boolean {
   return false;
 }
 
-export function isOttoToolName(name: string): boolean {
+// OTTO(identity): the agent MCP server is named otto; Paseo-named tool calls stay recognized.
+function isOttoMcpServerSegment(segment: string): boolean {
+  return [OTTO_MCP_SERVER_NAME, "paseo"].some(
+    (name) => segment === name || segment.startsWith(`${name}_`),
+  );
+}
+
+export function isPaseoToolName(name: string): boolean {
   const normalized = normalizeToolName(name);
   if (isSpeakToolName(normalized)) {
     return false;
@@ -49,32 +57,24 @@ export function isOttoToolName(name: string): boolean {
     return (
       segments.length >= 3 &&
       segments[0] === "mcp" &&
-      (segments[1] === "otto" || segments[1].startsWith("otto_"))
+      isOttoMcpServerSegment(segments[1]) /* OTTO(identity) */
     );
   }
   if (normalized.includes(".")) {
     const firstSegment = normalized.split(".")[0];
-    return firstSegment === "otto" || firstSegment.startsWith("otto_");
+    return isOttoMcpServerSegment(firstSegment) /* OTTO(identity) */;
   }
   return false;
 }
 
-export function getOttoToolLeafName(name: string): string | null {
-  return getNamespacedToolLeafName(name, "otto");
-}
-
 export function getPaseoToolLeafName(name: string): string | null {
-  return getNamespacedToolLeafName(name, "paseo");
-}
-
-function getNamespacedToolLeafName(name: string, namespace: "otto" | "paseo"): string | null {
   const normalized = normalizeToolName(name);
   if (normalized.includes("__")) {
     const segments = normalized.split("__").filter((s) => s.length > 0);
     if (
       segments.length >= 3 &&
       segments[0] === "mcp" &&
-      (segments[1] === namespace || segments[1].startsWith(`${namespace}_`))
+      isOttoMcpServerSegment(segments[1]) /* OTTO(identity) */
     ) {
       return segments.slice(2).join("__");
     }
@@ -82,37 +82,10 @@ function getNamespacedToolLeafName(name: string, namespace: "otto" | "paseo"): s
   }
   if (normalized.includes(".")) {
     const firstSegment = normalized.split(".")[0];
-    if (firstSegment === namespace || firstSegment.startsWith(`${namespace}_`)) {
+    if (isOttoMcpServerSegment(firstSegment) /* OTTO(identity) */) {
       return normalized.split(".").slice(1).join(".");
     }
     return null;
-  }
-  return null;
-}
-
-/**
- * Strip a leading MCP namespace for DISPLAY, returning the bare tool id.
- *
- * Tools hosted over MCP arrive namespaced as `mcp__<server>__<tool>` (Claude
- * Code format). The `mcp__<server>__` part is transport plumbing that means
- * nothing to a reader - "Create issue", not "mcp__linear__create_issue". This
- * generalizes {@link getOttoToolLeafName} to ANY server so every MCP tool reads
- * cleanly, not just Otto's own.
- *
- * Returns `null` when the name carries no `mcp__…__` namespace, so callers keep
- * plain tool names (`Read`, `bash`) and dotted/other forms untouched. Case is
- * preserved - MCP tool ids are already snake_case and callers humanize after.
- * `speak` is never treated as namespaced (it renders as a chat bubble, not an
- * action row).
- */
-export function getMcpToolLeafName(name: string): string | null {
-  const trimmed = name.trim();
-  if (!trimmed || isSpeakToolName(trimmed) || !trimmed.includes("__")) {
-    return null;
-  }
-  const segments = trimmed.split("__").filter((segment) => segment.length > 0);
-  if (segments.length >= 3 && segments[0].toLowerCase() === "mcp") {
-    return segments.slice(2).join("__");
   }
   return null;
 }

@@ -1,15 +1,7 @@
 import { z } from "zod";
 import type { AgentMode } from "./agent-types.js";
 
-// Tiers map to signal colors in the client (safe=green, moderate=yellow,
-// dangerous=red, planning=blue); "neutral" renders in the default text color.
-export type AgentModeColorTier =
-  | "neutral"
-  | "safe"
-  | "moderate"
-  | "dangerous"
-  | "planning"
-  | `#${string}`;
+export type AgentModeColorTier = "safe" | "moderate" | "dangerous" | "planning" | `#${string}`;
 // Open string by design: the client looks icons up in a registry and falls back
 // to a default for unknown values. Daemon downgrades unknown icons for clients
 // that pre-date the open-string contract (see CLIENT_CAPS.customModeIcons).
@@ -24,16 +16,6 @@ export type AgentProviderModeDefinition = Omit<AgentMode, "icon" | "colorTier"> 
   AgentModeVisuals & {
     // Marks the provider's most-permissioned no-prompt mode. Selecting it means tools run without approval; the runtime mechanism is provider-specific.
     isUnattended?: boolean;
-    // The provider picks the model itself per turn in this mode, so a model the
-    // user chose cannot stick. An explicit pick moves the agent out of the mode
-    // rather than losing to it. Absent = the mode leaves the model alone.
-    selectsModel?: boolean;
-    // False = a mode the runtime can put an agent INTO (unattended runs, or the
-    // auto→dontAsk coercion for models that can't run Auto) but that a user may
-    // never pick themselves. It is hidden from every mode dropdown and, on a live
-    // agent, locks the mode control (the agent is stuck in it). Absent = a normal
-    // user-selectable mode. See isUserSelectableMode.
-    userSelectable?: boolean;
   };
 
 // TODO: `modes` should not be static. Providers (especially ACP) report their
@@ -55,57 +37,38 @@ export interface AgentProviderDefinition {
 
 const CLAUDE_MODES: AgentProviderModeDefinition[] = [
   {
+    id: "plan",
+    label: "Plan Mode",
+    description: "Analyze the codebase without executing tools or edits",
+    icon: "ShieldEllipsis",
+    colorTier: "planning",
+  },
+  {
     id: "default",
     label: "Always Ask",
     description: "Prompts for permission the first time a tool is used",
-    icon: "ShieldQuestionMark",
-    colorTier: "neutral",
+    icon: "Shield",
+    colorTier: "safe",
   },
   {
     id: "acceptEdits",
     label: "Accept File Edits",
     description: "Automatically approves edit-focused tools without prompting",
-    icon: "ShieldPerson",
-    colorTier: "safe",
-  },
-  {
-    id: "plan",
-    label: "Plan Mode",
-    description: "Analyze the codebase without executing tools or edits",
-    icon: "ShieldToggle",
-    colorTier: "planning",
+    icon: "ShieldPlus",
+    colorTier: "moderate",
   },
   {
     id: "auto",
     label: "Auto mode",
     description: "Uses a model classifier to review permission prompts automatically",
-    icon: "LocalPolice",
-    colorTier: "moderate",
-    // Auto also lets the CLI pick the model per turn. Codex's unrelated "auto"
-    // mode is a permission level only, which is exactly why this is a flag and
-    // not a check on the mode id.
-    selectsModel: true,
-  },
-  {
-    id: "dontAsk",
-    label: "Don't Ask",
-    description: "Runs without prompting; actions not pre-approved are denied",
-    // Guarded unattended mode: more dangerous than acceptEdits (edits only) but
-    // safer than bypass (deny-by-default vs. run-everything), so it sits at the
-    // "moderate" tier alongside Auto.
     icon: "ShieldCheck",
     colorTier: "moderate",
-    isUnattended: true,
-    // System-assigned only: the coercion target for unattended runs and for Auto
-    // on models that can't run it (Haiku). Users never pick it - it's hidden from
-    // mode dropdowns and locks the control when it's an agent's active mode.
-    userSelectable: false,
   },
   {
     id: "bypassPermissions",
     label: "Bypass",
     description: "Skip all permission prompts (use with caution)",
-    icon: "PrivacyTip",
+    icon: "ShieldOff",
     colorTier: "dangerous",
     isUnattended: true,
   },
@@ -116,7 +79,7 @@ const CODEX_MODES: AgentProviderModeDefinition[] = [
     id: "auto",
     label: "Default Permissions",
     description: "Edit files and run commands with Codex's default approval flow.",
-    icon: "ShieldAlert",
+    icon: "Shield",
     colorTier: "moderate",
   },
   {
@@ -124,14 +87,14 @@ const CODEX_MODES: AgentProviderModeDefinition[] = [
     label: "Auto-review",
     description:
       "Same workspace-write permissions as Default, but eligible `on-request` approvals are routed through the auto-reviewer subagent.",
-    icon: "ShieldQuestionMark",
+    icon: "ShieldCheck",
     colorTier: "moderate",
   },
   {
     id: "full-access",
     label: "Full Access",
     description: "Edit files, run commands, and access the network without additional prompts.",
-    icon: "ShieldAlert",
+    icon: "ShieldOff",
     colorTier: "dangerous",
     isUnattended: true,
   },
@@ -142,14 +105,14 @@ const COPILOT_MODES: AgentProviderModeDefinition[] = [
     id: "https://agentclientprotocol.com/protocol/session-modes#agent",
     label: "Agent",
     description: "Default agent mode for conversational interactions",
-    icon: "ShieldAlert",
+    icon: "Shield",
     colorTier: "moderate",
   },
   {
     id: "https://agentclientprotocol.com/protocol/session-modes#plan",
     label: "Plan",
     description: "Plan mode for creating and executing multi-step plans",
-    icon: "ShieldCheck",
+    icon: "ShieldEllipsis",
     colorTier: "planning",
   },
   {
@@ -167,15 +130,40 @@ const OPENCODE_MODES: AgentProviderModeDefinition[] = [
     id: "build",
     label: "Build",
     description: "Allows edits and tool execution for implementation work",
-    icon: "Bot",
+    icon: "Shield",
     colorTier: "moderate",
   },
   {
     id: "plan",
     label: "Plan",
     description: "Read-only planning mode that avoids file edits",
-    icon: "Bot",
+    icon: "ShieldEllipsis",
     colorTier: "planning",
+  },
+];
+
+export const OMP_MODES: AgentProviderModeDefinition[] = [
+  {
+    id: "full",
+    label: "Full Access",
+    description: "Launches OMP with yolo approval mode so tools run without prompts.",
+    icon: "ShieldOff",
+    colorTier: "dangerous",
+    isUnattended: true,
+  },
+  {
+    id: "write",
+    label: "Write Approval",
+    description: "Launches OMP with write approval mode — reads are free, writes require approval.",
+    icon: "ShieldAlert",
+    colorTier: "moderate",
+  },
+  {
+    id: "ask",
+    label: "Always Ask",
+    description: "Launches OMP with always-ask approval mode for write and exec tools.",
+    icon: "ShieldCheck",
+    colorTier: "safe",
   },
 ];
 
@@ -186,19 +174,6 @@ const MOCK_LOAD_TEST_MODES: AgentProviderModeDefinition[] = [
     description: "Streams repeated markdown, reasoning, and tool calls for app stress testing",
     icon: "ShieldOff",
     colorTier: "dangerous",
-  },
-  {
-    id: "dontAsk",
-    label: "Don't Ask",
-    description: "Runs without prompting; actions not pre-approved are denied",
-    icon: "ShieldCheck",
-    colorTier: "moderate",
-    // Dev-only mirror of Claude's guarded unattended mode so deterministic E2E
-    // specs can exercise the system-assigned surfaces: the unattended coercion
-    // target for mock schedule runs, and the locked mode badge on a live agent
-    // stuck in a non-user-selectable mode.
-    isUnattended: true,
-    userSelectable: false,
   },
   {
     id: "approval-test",
@@ -219,46 +194,12 @@ const MOCK_SLOW_MODES: AgentProviderModeDefinition[] = [
   },
 ];
 
-export const OMP_MODES: AgentProviderModeDefinition[] = [
-  {
-    id: "full",
-    label: "Full Access",
-    description: "Launches OMP with yolo approval mode so tools run without prompts.",
-    icon: "ShieldOff",
-    colorTier: "dangerous",
-    isUnattended: true,
-  },
-  {
-    id: "write",
-    label: "Write Approval",
-    description: "Launches OMP with write approval mode: reads are free, writes require approval.",
-    icon: "ShieldAlert",
-    colorTier: "moderate",
-  },
-  {
-    id: "ask",
-    label: "Always Ask",
-    description: "Launches OMP with always-ask approval mode for write and exec tools.",
-    icon: "ShieldCheck",
-    colorTier: "safe",
-  },
-];
-
-/**
- * The daemon's built-in local AI host (see the definition below). Exported so
- * other protocol/server/client code can recognize this id without repeating
- * the string literal - notably ProviderOverridesSchema's builtin-provider
- * check in provider-config.ts, which otherwise requires `extends`/`label` on
- * any `providers.otto-brain` config entry.
- */
-export const OTTO_BRAIN_PROVIDER_ID = "otto-brain";
-
 export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
   {
     id: "claude",
     label: "Claude",
     description: "Anthropic's multi-tool assistant with MCP support, streaming, and deep reasoning",
-    defaultModeId: "default",
+    defaultModeId: "auto",
     modes: CLAUDE_MODES,
     voice: {
       enabled: true,
@@ -270,7 +211,7 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     id: "codex",
     label: "Codex",
     description: "OpenAI's Codex workspace agent with sandbox controls and optional network access",
-    defaultModeId: "auto",
+    defaultModeId: "auto-review",
     modes: CODEX_MODES,
     voice: {
       enabled: true,
@@ -289,7 +230,10 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
     id: "opencode",
     label: "OpenCode",
     description: "Open-source coding assistant with multi-provider model support",
-    defaultModeId: "build",
+    // No static default: OpenCode users can rename or delete any agent,
+    // including "build". Leaving this unset means the daemon and OpenCode
+    // itself decide (see normalizeOpenCodeModeId in opencode-agent.ts).
+    defaultModeId: null,
     modes: OPENCODE_MODES,
     voice: {
       enabled: true,
@@ -305,24 +249,11 @@ export const AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [
   },
   {
     id: "omp",
-    label: "OMP",
-    description: "Pi-compatible coding agent distributed as Oh My Pi",
+    label: "Oh My Pi",
+    description: "Multi-provider coding agent with native approvals, host tools, and subagents",
     enabledByDefault: false,
-    defaultModeId: "ask",
+    defaultModeId: "full",
     modes: OMP_MODES,
-  },
-  {
-    // The daemon's own local AI host. Built in rather than a catalog-installed
-    // OpenAI-compatible profile: its endpoint and credential come from the
-    // brain settings (Settings -> Host -> Otto Brain), never from per-provider
-    // URL/API-key fields. Modes are empty here for the same reason every
-    // openai-compat provider's are: the client reports them at catalog time.
-    id: OTTO_BRAIN_PROVIDER_ID,
-    label: "Otto Brain",
-    description:
-      "Otto's built-in local AI host. Serves your local models over an OpenAI-compatible endpoint, no external server required.",
-    defaultModeId: "default",
-    modes: [],
   },
 ];
 
@@ -379,22 +310,6 @@ export function getUnattendedModeId(
 ): string | undefined {
   const definition = definitions.find((entry) => entry.id === provider);
   return definition?.modes.find((mode) => mode.isUnattended)?.id;
-}
-
-/**
- * Whether a user may pick this mode themselves. False only for modes explicitly
- * flagged `userSelectable: false` in the static manifest (Claude "dontAsk") - a
- * system-assigned mode that agents can run in but no one selects by hand. Unknown
- * modes (dynamic/ACP, custom providers) default to selectable. The flag is a
- * static property of the mode, so this always consults the built-in manifest
- * rather than snapshot-derived definitions (which don't carry it).
- */
-export function isUserSelectableMode(provider: string, modeId: string): boolean {
-  const definition = [...AGENT_PROVIDER_DEFINITIONS, ...DEV_AGENT_PROVIDER_DEFINITIONS].find(
-    (entry) => entry.id === provider,
-  );
-  const mode = definition?.modes.find((entry) => entry.id === modeId);
-  return mode?.userSelectable !== false;
 }
 
 export function getModeVisuals(

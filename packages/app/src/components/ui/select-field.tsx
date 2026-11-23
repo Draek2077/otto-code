@@ -5,19 +5,22 @@ import {
   View,
   type NativeSyntheticEvent,
   type PressableStateCallbackType,
-  type StyleProp,
   type TargetedEvent,
-  type ViewStyle,
 } from "react-native";
-import { ChevronDown } from "@/components/icons/material-icons";
+import { ChevronDown } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Combobox, ComboboxItem, type ComboboxOption } from "@/components/ui/combobox";
+import {
+  Combobox,
+  ComboboxItem,
+  type ComboboxOption,
+  type ComboboxDesktopPlacement,
+} from "@/components/ui/combobox";
 import {
   createControlGeometry,
   resolveControlInteractionStyles,
   type FieldControlSize,
 } from "@/components/ui/control-geometry";
-import { Field, type FieldProps } from "@/components/ui/form-field";
+import { Field } from "@/components/ui/form-field";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 
@@ -43,7 +46,6 @@ export interface SelectFieldRenderOptionInput<TValue> {
 }
 
 export interface SelectFieldProps<TValue> {
-  Label?: FieldProps["Label"];
   label: string;
   value: TValue | null;
   selectedDisplay: SelectFieldDisplay | null;
@@ -62,17 +64,14 @@ export interface SelectFieldProps<TValue> {
   getValueKey?: (value: TValue) => string;
   renderOption?: (input: SelectFieldRenderOptionInput<TValue>) => ReactElement;
   triggerLeading?: ReactNode;
-  // Override the trigger's box geometry (e.g. a shorter min-height / tighter
-  // vertical padding for dense toolbars) without changing the shared `size`
-  // presets. Applied last, so it wins over the size style.
-  triggerStyle?: StyleProp<ViewStyle>;
   field?: boolean;
   testID?: string;
   triggerTestID?: string;
+  // OTTO(schedules): forward the existing popup direction for long forms; defaults stay unchanged.
+  desktopPlacement?: ComboboxDesktopPlacement;
 }
 
 export interface SelectFieldTriggerProps {
-  Label?: FieldProps["Label"];
   display?: SelectFieldDisplay | null;
   label?: string;
   isPlaceholder?: boolean;
@@ -84,7 +83,6 @@ export interface SelectFieldTriggerProps {
   loading?: boolean;
   leading?: ReactNode;
   size?: FieldControlSize;
-  style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
@@ -125,7 +123,6 @@ function useVisibleSelectOptions<TValue>(
 }
 
 export function SelectFieldTrigger({
-  Label = Text,
   display,
   label: explicitLabel,
   isPlaceholder: explicitIsPlaceholder,
@@ -137,7 +134,6 @@ export function SelectFieldTrigger({
   loading = false,
   leading,
   size = "md",
-  style,
   testID,
 }: SelectFieldTriggerProps): ReactElement {
   const sizeStyle = size === "sm" ? styles.triggerSm : styles.triggerMd;
@@ -155,9 +151,8 @@ export function SelectFieldTrigger({
         },
         { hovered, focused, active, disabled },
       ),
-      style,
     ],
-    [active, disabled, focused, hovered, sizeStyle, style],
+    [active, disabled, focused, hovered, sizeStyle],
   );
   const label = explicitLabel ?? display?.label ?? placeholder;
   const isPlaceholder = explicitIsPlaceholder ?? display == null;
@@ -169,22 +164,21 @@ export function SelectFieldTrigger({
   return (
     <View pointerEvents="none" style={triggerStyle} testID={testID}>
       {leading}
-      <Label style={textStyle} numberOfLines={1}>
+      <Text style={textStyle} numberOfLines={1}>
         {label}
-      </Label>
+      </Text>
       {loading ? (
         <View style={styles.spinnerSlot}>
-          <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedMapping} />
+          <ThemedLoadingSpinner size={ICON_SIZE.sm} uniProps={foregroundMutedMapping} />
         </View>
       ) : null}
-      <ThemedChevronDown size="md" uniProps={foregroundMutedMapping} />
+      <ThemedChevronDown size={ICON_SIZE.md} uniProps={foregroundMutedMapping} />
     </View>
   );
 }
 
 export function SelectField<TValue>({
   label,
-  Label,
   value,
   selectedDisplay,
   options,
@@ -202,10 +196,10 @@ export function SelectField<TValue>({
   getValueKey,
   renderOption,
   triggerLeading,
-  triggerStyle,
   field = true,
   testID,
   triggerTestID,
+  desktopPlacement,
 }: SelectFieldProps<TValue>): ReactElement {
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
@@ -315,7 +309,6 @@ export function SelectField<TValue>({
         >
           {({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => (
             <SelectFieldTrigger
-              Label={field ? undefined : Label}
               display={selectedDisplay}
               placeholder={placeholder}
               hovered={Boolean(hovered)}
@@ -325,7 +318,6 @@ export function SelectField<TValue>({
               loading={loading}
               leading={triggerLeading}
               size={size}
-              style={triggerStyle}
             />
           )}
         </Pressable>
@@ -342,6 +334,7 @@ export function SelectField<TValue>({
         onOpenChange={setOpen}
         anchorRef={anchorRef}
         renderOption={renderComboboxOption}
+        desktopPlacement={desktopPlacement}
       />
     </>
   );
@@ -351,7 +344,7 @@ export function SelectField<TValue>({
   }
 
   return (
-    <Field Label={Label} label={label} hint={fieldHint} error={error} testID={testID}>
+    <Field label={label} hint={fieldHint} error={error} testID={testID}>
       {control}
     </Field>
   );
@@ -385,25 +378,13 @@ const styles = StyleSheet.create((theme) => {
     controlDisabled: {
       ...geometry.controlDisabled,
     },
-    // `flexBasis: "auto"` (not `flex: 1`'s implicit basis of 0) is load-bearing:
-    // with a 0 basis the label contributes nothing to the trigger's intrinsic
-    // width, so on native (Yoga does not grow flexible children inside an
-    // auto-width parent) a `field={false}` trigger sitting in a settings row
-    // collapses to padding + chevron and renders as a single ellipsized
-    // character. The desktop popover takes its minimum width from the measured
-    // trigger, so the option list collapses with it. It still grows into the
-    // free space and still shrinks to an ellipsis when the row is tight.
     triggerText: {
-      flexGrow: 1,
-      flexShrink: 1,
-      flexBasis: "auto",
+      flex: 1,
       minWidth: 0,
       color: theme.colors.foreground,
     },
     placeholderText: {
-      flexGrow: 1,
-      flexShrink: 1,
-      flexBasis: "auto",
+      flex: 1,
       minWidth: 0,
       color: theme.colors.foregroundMuted,
     },

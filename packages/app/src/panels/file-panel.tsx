@@ -1,24 +1,12 @@
 import { Text, View } from "react-native";
-import type { WorkspaceFileTabTarget } from "@/workspace/file-open";
-import { FileText } from "@/components/icons/material-icons";
+import { useMemo } from "react";
 import invariant from "tiny-invariant";
 import { useTranslation } from "react-i18next";
-import { FileTabPane } from "@/components/file-tab-pane";
-import {
-  buildEditorBufferKey,
-  isEditorBufferDirty,
-  removeEditorBuffer,
-  useEditorBufferStore,
-} from "@/editor/editor-buffer-store";
-import { hasActiveExternalFileEditor } from "@/editor/external-file-editor";
-import { i18n } from "@/i18n/i18next";
+import { FilePane } from "@/file-pane/pane";
 import { usePaneContext } from "@/panels/pane-context";
-import { usePublishPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { definePanel } from "@/panels/panel-registry";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
-import { PanelDescriptorContext } from "@/panels/panel-registry";
-import { formatFileTabTooltipPath } from "@/panels/file-tab-tooltip-path";
-import { confirmDialog } from "@/utils/confirm-dialog";
+import { createMaterialFileIcon } from "@/components/material-file-icon";
 
 const CENTERED_PADDED_STYLE = {
   flex: 1,
@@ -27,82 +15,25 @@ const CENTERED_PADDED_STYLE = {
   padding: 16,
 } as const;
 
-function useFilePanelDirty(
-  target: WorkspaceFileTabTarget,
-  context: Pick<PanelDescriptorContext, "serverId" | "workspaceId">,
-) {
-  // External tabs key their buffer by the workspace serving the file, not the
-  // host pane's, so the dirty indicator must read the same key.
-  const bufferWorkspaceId = target.origin?.workspaceId ?? context.workspaceId;
-  return useEditorBufferStore(
-    (state) =>
-      state.buffers[
-        buildEditorBufferKey({
-          serverId: context.serverId,
-          workspaceId: bufferWorkspaceId,
-          path: target.path,
-        })
-      ]?.dirty ?? false,
-  );
-}
-
-function useFilePanelDescriptor(target: WorkspaceFileTabTarget, context: PanelDescriptorContext) {
-  const workspaceDirectory = useWorkspaceDirectory(context.serverId, context.workspaceId);
+function useFilePanelDescriptor(target: { kind: "file"; path: string }) {
   const fileName = target.path.split("/").findLast(Boolean) ?? target.path;
+  const icon = useMemo(() => createMaterialFileIcon(fileName), [fileName]);
   return {
     label: fileName,
     subtitle: target.path,
-    tooltip: formatFileTabTooltipPath(target, workspaceDirectory),
+    tooltip: target.path,
     titleState: "ready" as const,
-    icon: FileText,
+    icon,
     statusBucket: null,
   };
-}
-
-/** Mode switches retain the buffer; closing requires explicit discard when dirty. */
-async function confirmDiscardEditorBuffer(bufferId: {
-  serverId: string;
-  workspaceId: string;
-  path: string;
-}): Promise<boolean> {
-  if (hasActiveExternalFileEditor(bufferId)) {
-    const confirmed = await confirmDialog({
-      title: i18n.t("editor.externalEditorDialog.title"),
-      message: i18n.t("editor.externalEditorDialog.message"),
-      confirmLabel: i18n.t("editor.externalEditorDialog.confirm"),
-      cancelLabel: i18n.t("editor.cancel"),
-      destructive: true,
-    });
-    if (!confirmed) return false;
-  }
-  if (!isEditorBufferDirty(bufferId)) {
-    removeEditorBuffer(bufferId);
-    return true;
-  }
-  const confirmed = await confirmDialog({
-    title: i18n.t("editor.discardDialog.title"),
-    message: i18n.t("editor.discardDialog.message"),
-    confirmLabel: i18n.t("editor.discardDialog.confirm"),
-    cancelLabel: i18n.t("editor.cancel"),
-    destructive: true,
-  });
-  if (confirmed) removeEditorBuffer(bufferId);
-  return confirmed;
 }
 
 function FilePanel() {
   const { t } = useTranslation();
   const { serverId, workspaceId, target, fileNavigationRevision } = usePaneContext();
-  const paneWorkspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
+  const workspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
   invariant(target.kind === "file", "FilePanel requires file target");
-  const dirty = useFilePanelDirty(target, { serverId, workspaceId });
-  usePublishPanelInstanceAttributes({ modified: dirty });
-  // An external file is served from its owning workspace, or from its own
-  // directory when it is outside every registered workspace.
-  const origin = target.origin;
-  const effectiveWorkspaceId = origin?.workspaceId ?? workspaceId;
-  const effectiveRoot = origin?.cwd ?? paneWorkspaceDirectory;
-  if (!effectiveRoot) {
+  if (!workspaceDirectory) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
         <Text>{t("panels.file.directoryMissing")}</Text>
@@ -110,13 +41,11 @@ function FilePanel() {
     );
   }
   return (
-    <FileTabPane
+    <FilePane
       serverId={serverId}
-      workspaceId={effectiveWorkspaceId}
-      workspaceRoot={effectiveRoot}
+      workspaceRoot={workspaceDirectory}
       location={target}
-      navigationRevision={fileNavigationRevision}
-      workspaceActionsEnabled={origin?.outsideAnyProject !== true}
+      navigationRevision={fileNavigationRevision ?? 0}
     />
   );
 }
@@ -124,11 +53,4 @@ function FilePanel() {
 export const filePanelRegistration = definePanel("file", {
   component: FilePanel,
   useDescriptor: useFilePanelDescriptor,
-  confirmClose(target, context) {
-    return confirmDiscardEditorBuffer({
-      serverId: context.serverId,
-      workspaceId: target.origin?.workspaceId ?? context.workspaceId,
-      path: target.path,
-    });
-  },
 });

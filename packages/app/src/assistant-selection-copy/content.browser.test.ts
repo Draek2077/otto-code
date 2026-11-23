@@ -3,12 +3,12 @@ import { createAssistantSelectionClipboardContent } from "./content.web";
 
 const fixture = `
   <div data-testid="assistant-message">
-    <div data-otto-markdown-tag="p">Prefix <span data-otto-markdown-tag="strong">bold text</span> and <span data-otto-markdown-tag="code">inline code</span> suffix.</div>
-    <div data-otto-markdown-tag="ul">
-      <div data-otto-markdown-tag="li"><span data-otto-markdown-ignore="true" data-otto-markdown-list-marker="true">•</span><div><span>First bullet text</span></div></div>
-      <div data-otto-markdown-tag="li"><span data-otto-markdown-ignore="true" data-otto-markdown-list-marker="true">•</span><div><span>Second bullet text</span></div></div>
+    <div data-paseo-markdown-tag="p">Prefix <span data-paseo-markdown-tag="strong">bold text</span> and <span data-paseo-markdown-tag="code">inline code</span> suffix.</div>
+    <div data-paseo-markdown-tag="ul">
+      <div data-paseo-markdown-tag="li"><span data-paseo-markdown-ignore="true" data-paseo-markdown-list-marker="true">•</span><div><span>First bullet text</span></div></div>
+      <div data-paseo-markdown-tag="li"><span data-paseo-markdown-ignore="true" data-paseo-markdown-list-marker="true">•</span><div><span>Second bullet text</span></div></div>
     </div>
-    <div data-otto-markdown-tag="pre" data-otto-markdown-language="ts"><span data-otto-markdown-tag="code">const answer = true;</span></div>
+    <div data-paseo-markdown-tag="pre" data-paseo-markdown-language="ts"><span data-paseo-markdown-tag="code">const answer = true;</span></div>
   </div>
 `;
 
@@ -87,6 +87,31 @@ function selectNodeContents(element: Element): Selection {
   return selection;
 }
 
+interface TranscriptMessage {
+  messageId: string;
+  blocks: string[];
+}
+
+/**
+ * The web transcript's shape: a scroll container holding one row per Markdown block,
+ * each row carrying its message id and wrapping its own assistant message element.
+ */
+function mountTranscript(messages: TranscriptMessage[]): HTMLElement {
+  const transcript = document.createElement("div");
+  transcript.setAttribute("data-testid", "agent-chat-scroll");
+  for (const { messageId, blocks } of messages) {
+    for (const [index, text] of blocks.entries()) {
+      const row = document.createElement("div");
+      row.setAttribute("data-history-row-id", `${messageId}:block:${index}`);
+      row.setAttribute("data-message-id", messageId);
+      row.innerHTML = `<div data-testid="assistant-message"><div data-paseo-markdown-tag="p">${text}</div></div>`;
+      transcript.append(row);
+    }
+  }
+  document.body.append(transcript);
+  return transcript;
+}
+
 function copiedMarkdown(selection: Selection): string | null {
   return createAssistantSelectionClipboardContent(selection)?.plainText ?? null;
 }
@@ -101,7 +126,7 @@ describe("assistant selection copy ranges", () => {
     expect(createAssistantSelectionClipboardContent(null)).toBeNull();
 
     const message = mountFixture();
-    const strong = fixtureElement(message, '[data-otto-markdown-tag="strong"]');
+    const strong = fixtureElement(message, '[data-paseo-markdown-tag="strong"]');
     expect(copiedMarkdown(selectText(strong, 2, 2))).toBeNull();
 
     const outside = document.createElement("span");
@@ -110,11 +135,87 @@ describe("assistant selection copy ranges", () => {
     expect(copiedMarkdown(selectText(outside, 0, 7))).toBeNull();
   });
 
+  it("copies a selection that runs across the block rows of one message", () => {
+    const transcript = mountTranscript([
+      { messageId: "message-1", blocks: ["First paragraph.", "Second paragraph."] },
+    ]);
+    const blocks = transcript.querySelectorAll('[data-paseo-markdown-tag="p"]');
+    expect(copiedMarkdown(selectRange(blocks[0]!, 6, blocks[1]!, 6))).toBe("paragraph.\n\nSecond");
+  });
+
+  // Chrome anchors a drag that starts in the gap below an image at the start of the
+  // image's rendered internals: the background-image layer, ahead of the hidden `img`.
+  // Only the text after it is highlighted.
+  it("leaves out an image when the selection starts in the gap below it", () => {
+    const transcript = mountTranscript([
+      {
+        messageId: "message-1",
+        blocks: [
+          "Before the image.",
+          '<div data-paseo-markdown-tag="img" data-paseo-markdown-src="https://example.test/chart.png" data-paseo-markdown-alt="chart"><div><div style="background-image: url(blob:https://example.test/preview)"></div><img src="blob:https://example.test/preview" alt=""></div></div>',
+          "After the image.",
+        ],
+      },
+    ]);
+    const frame = fixtureElement(transcript, '[data-paseo-markdown-tag="img"]');
+    const range = document.createRange();
+    range.setStart(frame.firstElementChild!.firstElementChild!, 0);
+    range.setEnd(textNode(fixtureElement(transcript, '[data-paseo-markdown-tag="p"]', 2)), 9);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+
+    expect(copiedMarkdown(selection)).toBe("After the");
+  });
+
+  it("keeps a failed image when the selection starts in its error text", () => {
+    const transcript = mountTranscript([
+      {
+        messageId: "message-1",
+        blocks: [
+          '<div data-paseo-markdown-tag="img" data-paseo-markdown-src="https://example.test/chart.png" data-paseo-markdown-alt="chart"><div>Image failed to load</div></div>',
+          "After the image.",
+        ],
+      },
+    ]);
+    const frame = fixtureElement(transcript, '[data-paseo-markdown-tag="img"]');
+    const selection = selectRange(
+      frame.firstElementChild!,
+      6,
+      fixtureElement(transcript, '[data-paseo-markdown-tag="p"]', 1),
+      9,
+    );
+
+    expect(copiedMarkdown(selection)).toBe("![chart](https://example.test/chart.png)\n\nAfter the");
+  });
+
+  it("does not replace the browser clipboard for a selection reaching a second message", () => {
+    const transcript = mountTranscript([
+      { messageId: "message-1", blocks: ["First paragraph.", "Second paragraph."] },
+      { messageId: "message-2", blocks: ["Reply paragraph."] },
+    ]);
+    const blocks = transcript.querySelectorAll('[data-paseo-markdown-tag="p"]');
+    expect(copiedMarkdown(selectRange(blocks[1]!, 0, blocks[2]!, 5))).toBeNull();
+  });
+
+  // A retained inactive panel renders the same agent, so the same message id can exist
+  // twice in the document. A group is only ever read out of one transcript, and rows
+  // that belong to no transcript are not a group at all.
+  it("does not assemble a message group from rows outside a transcript", () => {
+    const transcript = mountTranscript([
+      { messageId: "message-1", blocks: ["First paragraph.", "Second paragraph."] },
+    ]);
+    document.body.append(...transcript.children);
+    transcript.remove();
+    const blocks = document.querySelectorAll('[data-paseo-markdown-tag="p"]');
+    expect(copiedMarkdown(selectRange(blocks[0]!, 0, blocks[1]!, 17))).toBeNull();
+  });
+
   it("does not replace the browser clipboard for a range spanning assistant messages", () => {
     const firstMessage = mountFixture();
     const secondMessage = mountFixture();
-    const firstText = fixtureElement(firstMessage, '[data-otto-markdown-tag="strong"]');
-    const secondText = fixtureElement(secondMessage, '[data-otto-markdown-tag="strong"]');
+    const firstText = fixtureElement(firstMessage, '[data-paseo-markdown-tag="strong"]');
+    const secondText = fixtureElement(secondMessage, '[data-paseo-markdown-tag="strong"]');
     expect(copiedMarkdown(selectRange(firstText, 0, secondText, 4))).toBeNull();
   });
 
@@ -146,7 +247,7 @@ describe("assistant selection copy ranges", () => {
     "copies a partial $tag range without expanding to its delimiters",
     ({ tag, range, expected, forbiddenHtml }) => {
       const message = mountFixture();
-      const element = fixtureElement(message, `[data-otto-markdown-tag="${tag}"]`);
+      const element = fixtureElement(message, `[data-paseo-markdown-tag="${tag}"]`);
       const content = createAssistantSelectionClipboardContent(
         selectText(element, range[0], range[1]),
       );
@@ -159,8 +260,8 @@ describe("assistant selection copy ranges", () => {
     "copies all content selected from inside a %s element without its syntax",
     (tag) => {
       const message = mountFixture();
-      const element = fixtureElement(message, '[data-otto-markdown-tag="strong"]');
-      element.setAttribute("data-otto-markdown-tag", tag);
+      const element = fixtureElement(message, '[data-paseo-markdown-tag="strong"]');
+      element.setAttribute("data-paseo-markdown-tag", tag);
       const content = createAssistantSelectionClipboardContent(
         selectText(element, 0, textNode(element).length),
       );
@@ -171,7 +272,7 @@ describe("assistant selection copy ranges", () => {
 
   it("copies complete inline code without delimiters when the selection stays inside", () => {
     const message = mountFixture();
-    const element = fixtureElement(message, '[data-otto-markdown-tag="code"]');
+    const element = fixtureElement(message, '[data-paseo-markdown-tag="code"]');
     const content = createAssistantSelectionClipboardContent(
       selectText(element, 0, textNode(element).length),
     );
@@ -181,14 +282,14 @@ describe("assistant selection copy ranges", () => {
 
   it("keeps a complete inline node but drops formatting from a partial node at the other edge", () => {
     const message = mountFixture();
-    const strong = fixtureElement(message, '[data-otto-markdown-tag="strong"]');
-    const code = fixtureElement(message, '[data-otto-markdown-tag="code"]');
+    const strong = fixtureElement(message, '[data-paseo-markdown-tag="strong"]');
+    const code = fixtureElement(message, '[data-paseo-markdown-tag="code"]');
     expect(copiedMarkdown(selectRange(strong, 0, code, 6))).toBe("**bold text** and inline");
   });
 
   it("copies list-item text without inventing a bullet", () => {
     const message = mountFixture();
-    const itemText = fixtureElement(message, '[data-otto-markdown-tag="li"] div span');
+    const itemText = fixtureElement(message, '[data-paseo-markdown-tag="li"] div span');
     const content = createAssistantSelectionClipboardContent(
       selectText(itemText, 0, textNode(itemText).length),
     );
@@ -199,14 +300,14 @@ describe("assistant selection copy ranges", () => {
 
   it("retains a bullet when the range includes the marker and the complete item", () => {
     const message = mountFixture();
-    const item = fixtureElement(message, '[data-otto-markdown-tag="li"]');
+    const item = fixtureElement(message, '[data-paseo-markdown-tag="li"]');
     expect(copiedMarkdown(selectNodeContents(item))).toBe("- First bullet text");
   });
 
   it("retains a bullet when a drag selects from the rendered marker through the item text", () => {
     const message = mountFixture();
-    const marker = fixtureElement(message, '[data-otto-markdown-list-marker="true"]');
-    const itemText = fixtureElement(message, '[data-otto-markdown-tag="li"] div span');
+    const marker = fixtureElement(message, '[data-paseo-markdown-list-marker="true"]');
+    const itemText = fixtureElement(message, '[data-paseo-markdown-tag="li"] div span');
 
     const content = createAssistantSelectionClipboardContent(
       selectRange(marker, 0, itemText, textNode(itemText).length),
@@ -219,16 +320,16 @@ describe("assistant selection copy ranges", () => {
 
   it("retains a bullet when a drag includes the marker and part of the item text", () => {
     const message = mountFixture();
-    const marker = fixtureElement(message, '[data-otto-markdown-list-marker="true"]');
-    const itemText = fixtureElement(message, '[data-otto-markdown-tag="li"] div span');
+    const marker = fixtureElement(message, '[data-paseo-markdown-list-marker="true"]');
+    const itemText = fixtureElement(message, '[data-paseo-markdown-tag="li"] div span');
 
     expect(copiedMarkdown(selectRange(marker, 0, itemText, 5))).toBe("- First");
   });
 
   it("does not invent a bullet when a drag starts after the rendered marker", () => {
     const message = mountFixture();
-    const marker = fixtureElement(message, '[data-otto-markdown-list-marker="true"]');
-    const itemText = fixtureElement(message, '[data-otto-markdown-tag="li"] div span');
+    const marker = fixtureElement(message, '[data-paseo-markdown-list-marker="true"]');
+    const itemText = fixtureElement(message, '[data-paseo-markdown-tag="li"] div span');
 
     expect(
       copiedMarkdown(
@@ -239,8 +340,8 @@ describe("assistant selection copy ranges", () => {
 
   it("retains every selected marker across a partial multi-item drag", () => {
     const message = mountFixture();
-    const markerSelector = '[data-otto-markdown-list-marker="true"]';
-    const textSelector = '[data-otto-markdown-tag="li"] div span';
+    const markerSelector = '[data-paseo-markdown-list-marker="true"]';
+    const textSelector = '[data-paseo-markdown-tag="li"] div span';
     const firstMarker = fixtureElement(message, markerSelector);
     const secondText = fixtureElement(message, textSelector, 1);
 
@@ -251,30 +352,56 @@ describe("assistant selection copy ranges", () => {
 
   it("retains the original number when a marker drag starts mid-list", () => {
     const message = mountFixture();
-    const list = fixtureElement(message, '[data-otto-markdown-tag="ul"]');
-    list.setAttribute("data-otto-markdown-tag", "ol");
-    list.setAttribute("data-otto-markdown-list-start", "5");
-    const markers = list.querySelectorAll<HTMLElement>('[data-otto-markdown-list-marker="true"]');
+    const list = fixtureElement(message, '[data-paseo-markdown-tag="ul"]');
+    list.setAttribute("data-paseo-markdown-tag", "ol");
+    list.setAttribute("data-paseo-markdown-list-start", "5");
+    const markers = list.querySelectorAll<HTMLElement>('[data-paseo-markdown-list-marker="true"]');
     markers.item(0).textContent = "5.";
     markers.item(1).textContent = "6.";
-    const secondMarker = fixtureElement(list, '[data-otto-markdown-list-marker="true"]', 1);
-    const secondText = fixtureElement(list, '[data-otto-markdown-tag="li"] div span', 1);
+    const secondMarker = fixtureElement(list, '[data-paseo-markdown-list-marker="true"]', 1);
+    const secondText = fixtureElement(list, '[data-paseo-markdown-tag="li"] div span', 1);
 
     expect(
       copiedMarkdown(selectRange(secondMarker, 0, secondText, textNode(secondText).length)),
     ).toBe("6. Second bullet text");
   });
 
+  it("keeps the next number when a drag crosses a code block nested in an item", () => {
+    const message = mountFixture();
+    const list = fixtureElement(message, '[data-paseo-markdown-tag="ul"]');
+    list.outerHTML = [
+      '<div data-paseo-markdown-tag="ol" data-paseo-markdown-list-start="1">',
+      '<div data-paseo-markdown-tag="li">',
+      '<div data-paseo-markdown-ignore="true" data-paseo-markdown-list-marker="true">1.</div>',
+      "<div><div><span>Install it:</span></div>",
+      '<div data-paseo-markdown-tag="pre" data-paseo-markdown-language="sh">',
+      '<div data-paseo-markdown-tag="code"><span>brew install foo</span></div>',
+      '<button data-paseo-markdown-ignore="true">Copy</button>',
+      "</div></div>",
+      "</div>",
+      '<div data-paseo-markdown-tag="li">',
+      '<div data-paseo-markdown-ignore="true" data-paseo-markdown-list-marker="true">2.</div>',
+      "<div><div><span>Done.</span></div></div>",
+      "</div>",
+      "</div>",
+    ].join("");
+
+    const content = copyAcross(message, "Install it:", "Done.");
+
+    expect(content?.plainText).toBe("Install it:\n\n```sh\nbrew install foo\n```\n\n2. Done.");
+    expect(content?.html).toContain("<div>2. Done.</div>");
+  });
+
   it("retains nested markers when a drag includes the complete outer item", () => {
     const message = mountFixture();
-    const firstItem = fixtureElement(message, '[data-otto-markdown-tag="li"]');
+    const firstItem = fixtureElement(message, '[data-paseo-markdown-tag="li"]');
     firstItem.innerHTML = [
-      '<span data-otto-markdown-ignore="true" data-otto-markdown-list-marker="true">•</span>',
+      '<span data-paseo-markdown-ignore="true" data-paseo-markdown-list-marker="true">•</span>',
       "<div>",
       "<span>Outer text</span>",
-      '<div data-otto-markdown-tag="ul">',
-      '<div data-otto-markdown-tag="li">',
-      '<span data-otto-markdown-ignore="true" data-otto-markdown-list-marker="true">•</span>',
+      '<div data-paseo-markdown-tag="ul">',
+      '<div data-paseo-markdown-tag="li">',
+      '<span data-paseo-markdown-ignore="true" data-paseo-markdown-list-marker="true">•</span>',
       "<div><span>Inner text</span></div>",
       "</div>",
       "</div>",
@@ -282,11 +409,11 @@ describe("assistant selection copy ranges", () => {
     ].join("");
     const outerMarker = fixtureElement(
       firstItem,
-      ':scope > [data-otto-markdown-list-marker="true"]',
+      ':scope > [data-paseo-markdown-list-marker="true"]',
     );
     const innerText = fixtureElement(
       firstItem,
-      ':scope [data-otto-markdown-tag="ul"] > [data-otto-markdown-tag="li"] > div > span',
+      ':scope [data-paseo-markdown-tag="ul"] > [data-paseo-markdown-tag="li"] > div > span',
     );
 
     expect(copiedMarkdown(selectRange(outerMarker, 0, innerText, textNode(innerText).length))).toBe(
@@ -296,11 +423,11 @@ describe("assistant selection copy ranges", () => {
 
   it("preserves paragraph breaks when rich HTML flattens a loose list item", () => {
     const message = mountFixture();
-    const item = fixtureElement(message, '[data-otto-markdown-tag="li"]');
+    const item = fixtureElement(message, '[data-paseo-markdown-tag="li"]');
     item.replaceChildren();
     item.insertAdjacentHTML(
       "beforeend",
-      '<div data-otto-markdown-tag="p">First paragraph</div><div data-otto-markdown-tag="p">Second paragraph</div>',
+      '<div data-paseo-markdown-tag="p">First paragraph</div><div data-paseo-markdown-tag="p">Second paragraph</div>',
     );
 
     const content = createAssistantSelectionClipboardContent(selectNodeContents(item));
@@ -310,7 +437,7 @@ describe("assistant selection copy ranges", () => {
 
   it("omits a partial leading bullet and retains the marker crossed before the trailing item", () => {
     const message = mountFixture();
-    const selector = '[data-otto-markdown-tag="li"] div span';
+    const selector = '[data-paseo-markdown-tag="li"] div span';
     const first = fixtureElement(message, selector);
     const second = fixtureElement(message, selector, 1);
     expect(copiedMarkdown(selectRange(first, 6, second, textNode(second).length))).toBe(
@@ -322,7 +449,7 @@ describe("assistant selection copy ranges", () => {
     const message = mountFixture();
     const blockCode = fixtureElement(
       message,
-      '[data-otto-markdown-tag="pre"] [data-otto-markdown-tag="code"]',
+      '[data-paseo-markdown-tag="pre"] [data-paseo-markdown-tag="code"]',
     );
     const content = createAssistantSelectionClipboardContent(selectText(blockCode, 6, 12));
     expect(content?.plainText).toBe("answer");
@@ -330,11 +457,25 @@ describe("assistant selection copy ranges", () => {
     expect(content?.html).not.toContain("<pre>");
   });
 
+  it("copies an image as its Markdown when the selection stays inside the rendered image", () => {
+    const message = mountFixture();
+    const frame = document.createElement("div");
+    frame.setAttribute("data-paseo-markdown-tag", "img");
+    frame.setAttribute("data-paseo-markdown-src", "https://example.test/chart.png");
+    frame.setAttribute("data-paseo-markdown-alt", "chart");
+    frame.innerHTML = '<div><div><img src="blob:https://example.test/preview" alt=""></div></div>';
+    message.prepend(frame);
+
+    expect(copiedMarkdown(selectNodeContents(fixtureElement(frame, "img").parentElement!))).toBe(
+      "![chart](https://example.test/chart.png)",
+    );
+  });
+
   it("copies code without a fence when every character is selected inside the block", () => {
     const message = mountFixture();
     const blockCode = fixtureElement(
       message,
-      '[data-otto-markdown-tag="pre"] [data-otto-markdown-tag="code"]',
+      '[data-paseo-markdown-tag="pre"] [data-paseo-markdown-tag="code"]',
     );
     expect(copiedMarkdown(selectText(blockCode, 0, textNode(blockCode).length))).toBe(
       "const answer = true;",
@@ -350,21 +491,28 @@ describe("assistant selection copy ranges", () => {
  * Turndown, so those cases need a fixture shaped like the real thing.
  */
 function highlightedFixture(language: string | null): string {
-  const languageAttribute =
-    language === null ? "" : ` data-otto-markdown-language="${escapeAttribute(language)}"`;
   return [
     '<div data-testid="assistant-message">',
-    `<div data-otto-markdown-tag="pre"${languageAttribute}>`,
-    '<span data-otto-markdown-tag="code">',
+    '<div data-paseo-markdown-tag="p"><span>Before the block.</span></div>',
+    highlightedCodeBlock(language),
+    '<div data-paseo-markdown-tag="p"><span>After the block.</span></div>',
+    "</div>",
+  ].join("");
+}
+
+function highlightedCodeBlock(language: string | null): string {
+  const languageAttribute =
+    language === null ? "" : ` data-paseo-markdown-language="${escapeAttribute(language)}"`;
+  return [
+    `<div data-paseo-markdown-tag="pre"${languageAttribute}>`,
+    '<span data-paseo-markdown-tag="code">',
     "<span>const</span><span> answer</span><span> = 1;</span>",
     "<span>\n</span>",
     "<span>  if</span><span> (answer)</span><span> {</span>",
     "<span>\n</span>",
     "<span>    doThing();</span>",
     "</span>",
-    '<div data-otto-markdown-ignore="true"><span>Copy</span></div>',
-    "</div>",
-    '<div data-otto-markdown-tag="p"><span>After the block.</span></div>',
+    '<div data-paseo-markdown-ignore="true"><span>Copy</span></div>',
     "</div>",
   ].join("");
 }
@@ -535,11 +683,70 @@ describe("assistant selection copy inside highlighted code", () => {
     const message = mountHighlighted();
     const blockCode = fixtureElement(
       message,
-      '[data-otto-markdown-tag="pre"] [data-otto-markdown-tag="code"]',
+      '[data-paseo-markdown-tag="pre"] [data-paseo-markdown-tag="code"]',
     );
 
     expect(copiedMarkdown(selectNodeContents(blockCode))).toBe(
       "const answer = 1;\n  if (answer) {\n    doThing();",
+    );
+  });
+
+  // A drag that starts or ends in the gap beside a block anchors the selection at the
+  // edge of the neighbouring block. Nothing outside the code is highlighted or selected.
+  it("copies code without a fence when the selection only touches the end of the block before it", () => {
+    const message = mountHighlighted();
+    const before = tokenText(message, "Before the block.");
+
+    const content = copyBetween(
+      [before, before.length],
+      [tokenText(message, "    doThing();"), 14],
+    );
+
+    expect(content?.plainText).toBe("const answer = 1;\n  if (answer) {\n    doThing();");
+  });
+
+  it("copies code without a fence when the selection only touches the start of the block after it", () => {
+    const message = mountHighlighted();
+
+    const content = copyBetween(
+      [tokenText(message, "const"), 0],
+      [tokenText(message, "After the block."), 0],
+    );
+
+    expect(content?.plainText).toBe("const answer = 1;\n  if (answer) {\n    doThing();");
+  });
+
+  it("copies code without a fence when the selection only touches the row before the block", () => {
+    const transcript = mountTranscript([{ messageId: "message-1", blocks: ["Run this:", "code"] }]);
+    const codeRow = transcript.querySelectorAll('[data-testid="assistant-message"]')[1]!;
+    codeRow.innerHTML = highlightedCodeBlock("typescript");
+    const before = tokenText(transcript, "Run this:");
+
+    const content = copyBetween(
+      [before, before.length],
+      [tokenText(transcript, "    doThing();"), 14],
+    );
+
+    expect(content?.plainText).toBe("const answer = 1;\n  if (answer) {\n    doThing();");
+  });
+
+  it("keeps an image selected beside the code in the copy", () => {
+    const message = mountHighlighted();
+    const image = document.createElement("div");
+    image.setAttribute("data-paseo-markdown-tag", "p");
+    // The rendered `img` shows a preview URL with no alt text; the frame carries the Markdown.
+    image.innerHTML =
+      '<div data-paseo-markdown-tag="img" data-paseo-markdown-src="https://example.test/chart.png" data-paseo-markdown-alt="chart"><img src="blob:https://example.test/preview" alt=""></div>';
+    message.querySelector('[data-paseo-markdown-tag="pre"]')!.before(image);
+    const before = tokenText(message, "Before the block.");
+
+    const content = copyBetween(
+      [before, before.length],
+      [tokenText(message, "    doThing();"), 14],
+    );
+
+    expect(content?.plainText).toBe(
+      "![chart](https://example.test/chart.png)\n\n```typescript\nconst answer = 1;\n  if (answer) {\n    doThing();\n```",
     );
   });
 
@@ -552,4 +759,59 @@ describe("assistant selection copy inside highlighted code", () => {
       "```typescript\nconst answer = 1;\n  if (answer) {\n    doThing();\n```\n\nAfter the block.",
     );
   });
+});
+
+describe("semantic library output", () => {
+  it("copies a partial strong span as plain text", () => {
+    const host = document.createElement("div");
+    host.innerHTML =
+      '<div data-testid="assistant-message"><p>Before <strong>bold text</strong> after</p></div>';
+    document.body.append(host);
+    const text = host.querySelector("strong")!.firstChild!;
+    const range = document.createRange();
+    range.setStart(text, 1);
+    range.setEnd(text, 4);
+    const selection = window.getSelection()!;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    expect(createAssistantSelectionClipboardContent(selection)?.plainText).toBe("old");
+    expect(createAssistantSelectionClipboardContent(selection)?.html).not.toContain("<strong>");
+    host.remove();
+  });
+});
+
+it("copies native semantic ordered lists with their original numbers", () => {
+  const host = document.createElement("div");
+  host.innerHTML =
+    '<div data-testid="assistant-message"><ol start="3"><li>Third item</li><li>Fourth item</li></ol></div>';
+  document.body.append(host);
+  const selection = selectNodeContents(host.querySelector("ol")!);
+  const content = createAssistantSelectionClipboardContent(selection);
+  expect(content?.plainText).toContain("3. Third item");
+  expect(content?.plainText).toContain("4. Fourth item");
+  host.remove();
+});
+
+it("copies a selection inside semantic inline code without Markdown escaping", () => {
+  const message = mountFixture();
+  message.innerHTML = "<p>Run <code>apply_patch</code> now.</p>";
+  const code = fixtureElement(message, "code");
+  expect(createAssistantSelectionClipboardContent(selectText(code, 0, 11))?.plainText).toBe(
+    "apply_patch",
+  );
+});
+
+it("copies a workspace image path instead of its temporary display URL", () => {
+  const message = mountFixture();
+  const sources = JSON.stringify({ "blob:preview": "assets/chart.png" });
+  message.innerHTML = '<div><img src="blob:preview" alt="chart"></div>';
+  message.firstElementChild!.setAttribute("data-paseo-markdown-image-sources", sources);
+  const selection = window.getSelection()!;
+  const range = document.createRange();
+  range.selectNode(message.querySelector("img")!);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  expect(createAssistantSelectionClipboardContent(selection)?.plainText).toBe(
+    "![chart](assets/chart.png)",
+  );
 });

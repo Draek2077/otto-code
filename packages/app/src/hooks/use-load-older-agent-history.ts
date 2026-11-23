@@ -37,23 +37,6 @@ export interface LoadOlderAgentHistoryDeps {
   failedMessage?: string;
 }
 
-/**
- * Loads the previous page of an agent's timeline.
- *
- * Returns whether the caller should consider a load to be underway. The web
- * viewport's history-start pagination state machine asks for a page and then
- * abandons its in-flight request unless this answers `true`, so the two "nothing
- * happened" cases have to be distinguished:
- *
- * - A load is already in flight: `true`, because one *is* underway and the
- *   machine should keep waiting for it rather than re-arming.
- * - There is nothing to load, or no client to load it with: `false`, so the
- *   machine releases the request instead of waiting for a page that will never
- *   arrive.
- *
- * A failed fetch still counts as started. It began, it was reported to the
- * reader by toast, and the machine re-arms on the next scroll into the band.
- */
 export async function loadOlderAgentHistory(
   agentId: string,
   deps: LoadOlderAgentHistoryDeps,

@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 // Source of truth for per-agent marketing landing pages.
 // To add a new agent, append an entry here and create a 4-line route file at
 // `src/routes/<slug>.tsx`. The sitemap (vite.config) reads `AGENT_PAGE_SLUGS`.

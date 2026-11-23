@@ -10,7 +10,6 @@ export const BrowserAutomationErrorCodeSchema = z.enum([
   "browser_denied",
   "browser_unsupported",
   "browser_stale_ref",
-  "browser_element_not_found",
   "browser_unknown_error",
 ]);
 
@@ -20,8 +19,6 @@ const BROWSER_AUTOMATION_BROWSER_ID_MESSAGE =
   "browserId must be a real id returned by browser_new_tab or browser_list_tabs";
 const BROWSER_AUTOMATION_WAIT_CONDITION_MESSAGE =
   "browser_wait requires exactly one of text or url";
-const BROWSER_AUTOMATION_INSPECT_TARGET_MESSAGE =
-  "browser_inspect requires exactly one of selector or ref";
 
 export const BROWSER_AUTOMATION_COMMAND_NAMES = [
   "list_tabs",
@@ -43,15 +40,9 @@ export const BROWSER_AUTOMATION_COMMAND_NAMES = [
   "drag",
   "logs",
   "evaluate",
-  "inspect",
-  "network",
   "scroll",
   "resize",
   "close_tab",
-  "focus_tab",
-  "page_text",
-  "set_color_scheme",
-  "screenshot_element",
 ] as const;
 
 export const BrowserAutomationCommandNameSchema = z.enum(BROWSER_AUTOMATION_COMMAND_NAMES);
@@ -88,26 +79,6 @@ export const BrowserAutomationNewTabCommandSchema = z.object({
   args: z
     .object({
       url: BrowserAutomationHttpUrlSchema.optional(),
-      /**
-       * "split-right" opens the tab in the workspace's remembered side pane,
-       * creating that pane on first use. Later tabs join its tab strip instead
-       * of creating additional panes. Used by preview_start so previews remain
-       * visible alongside the pane the user was already looking at.
-       */
-      layout: z.enum(["default", "split-right"]).optional(),
-      /**
-       * Sent by preview_start when the tab is the designated preview tab for
-       * a dev server, so the app creates it with preview-tab identity (icon,
-       * lifecycle status) instead of a generic browser tab. Absent for plain
-       * browser_new_tab calls and from daemons older than this field.
-       */
-      preview: z
-        .object({
-          serverId: z.string().min(1),
-          serverName: z.string().min(1),
-          cwd: z.string().min(1),
-        })
-        .optional(),
     })
     .strict()
     .default({}),
@@ -238,26 +209,6 @@ export const BrowserAutomationEvaluateCommandSchema = z.object({
   }),
 });
 
-export const BrowserAutomationInspectCommandSchema = z.object({
-  command: z.literal("inspect"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    selector: z.string().min(1).optional(),
-    ref: BrowserAutomationRefSchema.optional(),
-    styles: z.array(z.string().min(1)).max(50).optional(),
-  }).refine((args) => Number(Boolean(args.selector)) + Number(Boolean(args.ref)) === 1, {
-    message: BROWSER_AUTOMATION_INSPECT_TARGET_MESSAGE,
-  }),
-});
-
-export const BrowserAutomationNetworkCommandSchema = z.object({
-  command: z.literal("network"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    filter: z.enum(["all", "failed"]).default("all"),
-    /** When set, fetch the response body for this captured request instead of listing. */
-    requestId: z.string().min(1).optional(),
-  }),
-});
-
 export const BrowserAutomationScrollCommandSchema = z.object({
   command: z.literal("scroll"),
   args: BrowserAutomationTabTargetSchema.extend({
@@ -280,34 +231,6 @@ export const BrowserAutomationCloseTabCommandSchema = z.object({
   args: BrowserAutomationTabTargetSchema,
 });
 
-export const BrowserAutomationFocusTabCommandSchema = z.object({
-  command: z.literal("focus_tab"),
-  args: BrowserAutomationTabTargetSchema,
-});
-
-export const BrowserAutomationPageTextCommandSchema = z.object({
-  command: z.literal("page_text"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    maxChars: z.number().int().positive().max(100_000).default(20_000),
-  }),
-});
-
-export const BrowserAutomationColorSchemeSchema = z.enum(["light", "dark", "auto"]);
-
-export const BrowserAutomationSetColorSchemeCommandSchema = z.object({
-  command: z.literal("set_color_scheme"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    colorScheme: BrowserAutomationColorSchemeSchema,
-  }),
-});
-
-export const BrowserAutomationScreenshotElementCommandSchema = z.object({
-  command: z.literal("screenshot_element"),
-  args: BrowserAutomationTabTargetSchema.extend({
-    ref: BrowserAutomationRefSchema,
-  }),
-});
-
 export const BrowserAutomationCommandSchema = z.discriminatedUnion("command", [
   BrowserAutomationListTabsCommandSchema,
   BrowserAutomationNewTabCommandSchema,
@@ -328,54 +251,20 @@ export const BrowserAutomationCommandSchema = z.discriminatedUnion("command", [
   BrowserAutomationDragCommandSchema,
   BrowserAutomationLogsCommandSchema,
   BrowserAutomationEvaluateCommandSchema,
-  BrowserAutomationInspectCommandSchema,
-  BrowserAutomationNetworkCommandSchema,
   BrowserAutomationScrollCommandSchema,
   BrowserAutomationResizeCommandSchema,
   BrowserAutomationCloseTabCommandSchema,
-  BrowserAutomationFocusTabCommandSchema,
-  BrowserAutomationPageTextCommandSchema,
-  BrowserAutomationSetColorSchemeCommandSchema,
-  BrowserAutomationScreenshotElementCommandSchema,
 ]);
 
 export const BrowserAutomationTabInfoSchema = z.object({
   browserId: BrowserAutomationBrowserIdSchema,
   workspaceId: z.string().min(1).optional(),
-  // Optional attribution lets the daemon recover per-chat reuse and limits
-  // from restored desktop tabs without counting the user's own tabs.
-  openedByAgentId: z.string().min(1).optional(),
-  isPreview: z.boolean().optional(),
   url: z.string(),
   title: z.string(),
   isActive: z.boolean().default(false),
   isLoading: z.boolean().default(false),
   canGoBack: z.boolean().optional(),
   canGoForward: z.boolean().optional(),
-  // Whether the tab's webview is attached and drivable. Reported explicitly so
-  // that "not drivable" is never expressed by leaving the tab OUT of the list:
-  // a tab the user can see on screen must always appear, or callers conclude it
-  // was closed and open a replacement. `starting` = registered, webview not
-  // attached yet; `detached` = it was attached and its contents are gone (a
-  // pane that stopped compositing looks like this). `url`/`title` are empty for
-  // both, because only the live webview knows them.
-  // COMPAT(browserTabStatus): added in v0.7.5; absent ⇒ "ready", which is how
-  // every pre-0.7.5 host behaved. Drop the gate when floor >= v0.7.5.
-  status: z.enum(["starting", "ready", "detached"]).optional(),
-  // Geometry of the presented tab, in CSS pixels. `viewport*` is the size the
-  // page lays out and screenshots at; `pane*` is the region the user's browser
-  // pane gives it. They diverge whenever a fixed device size is selected (by
-  // the pane's device picker or by browser_resize): the frame is cropped to the
-  // pane, never scaled to fit, so a caller that cannot see both numbers cannot
-  // tell that the user is looking at a slice of the page.
-  // COMPAT(browserTabGeometry): added in v0.9.8; absent ⇒ the tab has never
-  // been presented, or the host predates the field. Drop the gate when floor
-  // >= v0.9.8.
-  viewportMode: z.enum(["responsive", "fixed"]).optional(),
-  viewportWidth: z.number().int().positive().optional(),
-  viewportHeight: z.number().int().positive().optional(),
-  paneWidth: z.number().int().positive().optional(),
-  paneHeight: z.number().int().positive().optional(),
 });
 
 export const BrowserAutomationListTabsResultSchema = z.object({
@@ -477,24 +366,6 @@ export const BrowserAutomationScreenshotResultSchema = z.object({
   dataBase64: z.string().min(1),
   width: z.number().int().nonnegative(),
   height: z.number().int().nonnegative(),
-  /**
-   * CSS-pixel → image-pixel ratio when the capture was scaled to fit the
-   * vision-model legibility budget. Absent when captured 1:1 (or from hosts
-   * older than this field).
-   */
-  scale: z.number().positive().optional(),
-});
-
-export const BrowserAutomationScreenshotElementResultSchema = z.object({
-  command: z.literal("screenshot_element"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  ref: BrowserAutomationRefSchema,
-  mimeType: z.literal("image/png"),
-  dataBase64: z.string().min(1),
-  width: z.number().int().nonnegative(),
-  height: z.number().int().nonnegative(),
-  /** Render scale used for the clip - above 1 means the element was re-rendered zoomed in. */
-  scale: z.number().positive().optional(),
 });
 
 export const BrowserAutomationUploadResultSchema = z.object({
@@ -562,56 +433,6 @@ export const BrowserAutomationEvaluateResultSchema = z.object({
   truncated: z.boolean(),
 });
 
-export const BrowserAutomationInspectResultSchema = z.object({
-  command: z.literal("inspect"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  selector: z.string().optional(),
-  ref: BrowserAutomationRefSchema.optional(),
-  /** How many elements matched the selector; the first match is inspected. */
-  matchCount: z.number().int().nonnegative(),
-  tagName: z.string(),
-  id: z.string(),
-  className: z.string(),
-  text: z.string(),
-  box: z.object({
-    x: z.number(),
-    y: z.number(),
-    width: z.number(),
-    height: z.number(),
-  }),
-  styles: z.record(z.string(), z.string()),
-});
-
-export const BrowserAutomationNetworkRequestEntrySchema = z.object({
-  requestId: z.string().min(1),
-  url: z.string(),
-  method: z.string(),
-  resourceType: z.string().optional(),
-  status: z.number().int().optional(),
-  statusText: z.string().optional(),
-  mimeType: z.string().optional(),
-  encodedDataLength: z.number().optional(),
-  /** CDP error text when the request failed at the network layer. */
-  failed: z.string().optional(),
-  finished: z.boolean().default(false),
-});
-
-export const BrowserAutomationNetworkResultSchema = z.object({
-  command: z.literal("network"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  /** Present when listing captured requests (no requestId in args). */
-  requests: z.array(BrowserAutomationNetworkRequestEntrySchema).optional(),
-  /** Present when a specific requestId's body was fetched. */
-  body: z
-    .object({
-      requestId: z.string().min(1),
-      body: z.string(),
-      base64Encoded: z.boolean().default(false),
-      truncated: z.boolean().default(false),
-    })
-    .optional(),
-});
-
 export const BrowserAutomationScrollResultSchema = z.object({
   command: z.literal("scroll"),
   browserId: BrowserAutomationBrowserIdSchema,
@@ -634,28 +455,6 @@ export const BrowserAutomationCloseTabResultSchema = z.object({
   browserId: BrowserAutomationBrowserIdSchema,
 });
 
-export const BrowserAutomationFocusTabResultSchema = z.object({
-  command: z.literal("focus_tab"),
-  browserId: BrowserAutomationBrowserIdSchema,
-});
-
-export const BrowserAutomationPageTextResultSchema = z.object({
-  command: z.literal("page_text"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  url: z.string(),
-  title: z.string(),
-  /** Which container the text came from: reader-mode article/main first, body fallback. */
-  source: z.enum(["article", "main", "body"]),
-  text: z.string(),
-  truncated: z.boolean(),
-});
-
-export const BrowserAutomationSetColorSchemeResultSchema = z.object({
-  command: z.literal("set_color_scheme"),
-  browserId: BrowserAutomationBrowserIdSchema,
-  colorScheme: BrowserAutomationColorSchemeSchema,
-});
-
 export const BrowserAutomationResultSchema = z.discriminatedUnion("command", [
   BrowserAutomationListTabsResultSchema,
   BrowserAutomationNewTabResultSchema,
@@ -676,15 +475,9 @@ export const BrowserAutomationResultSchema = z.discriminatedUnion("command", [
   BrowserAutomationDragResultSchema,
   BrowserAutomationLogsResultSchema,
   BrowserAutomationEvaluateResultSchema,
-  BrowserAutomationInspectResultSchema,
-  BrowserAutomationNetworkResultSchema,
   BrowserAutomationScrollResultSchema,
   BrowserAutomationResizeResultSchema,
   BrowserAutomationCloseTabResultSchema,
-  BrowserAutomationFocusTabResultSchema,
-  BrowserAutomationPageTextResultSchema,
-  BrowserAutomationSetColorSchemeResultSchema,
-  BrowserAutomationScreenshotElementResultSchema,
 ]);
 
 export const BrowserAutomationErrorSchema = z.object({
@@ -705,6 +498,7 @@ export const BrowserAutomationDialogEventSchema = z.object({
 export const BrowserAutomationExecuteRequestSchema = z
   .object({
     type: z.literal("browser.automation.execute.request"),
+    subscriptionId: z.string().optional(),
     requestId: z.string().min(1),
     agentId: z.string().min(1).optional(),
     cwd: z.string().min(1).optional(),
@@ -732,19 +526,14 @@ export const BrowserAutomationExecuteResponseSchema = z.object({
 });
 
 export type BrowserAutomationErrorCode = z.infer<typeof BrowserAutomationErrorCodeSchema>;
-export type BrowserAutomationColorScheme = z.infer<typeof BrowserAutomationColorSchemeSchema>;
 export type BrowserAutomationCommandName = z.infer<typeof BrowserAutomationCommandNameSchema>;
 export type BrowserAutomationCommand = z.infer<typeof BrowserAutomationCommandSchema>;
 export type BrowserAutomationResult = z.infer<typeof BrowserAutomationResultSchema>;
-export type BrowserAutomationTabInfo = z.infer<typeof BrowserAutomationTabInfoSchema>;
 export type BrowserAutomationConsoleLogEntry = z.infer<
   typeof BrowserAutomationConsoleLogEntrySchema
 >;
 export type BrowserAutomationNetworkLogEntry = z.infer<
   typeof BrowserAutomationNetworkLogEntrySchema
->;
-export type BrowserAutomationNetworkRequestEntry = z.infer<
-  typeof BrowserAutomationNetworkRequestEntrySchema
 >;
 export type BrowserAutomationDialogEvent = z.infer<typeof BrowserAutomationDialogEventSchema>;
 export type BrowserAutomationExecuteRequest = z.infer<typeof BrowserAutomationExecuteRequestSchema>;

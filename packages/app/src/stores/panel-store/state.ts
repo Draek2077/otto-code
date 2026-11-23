@@ -21,56 +21,9 @@ export interface DesktopSidebarState {
 
 export type SortOption = "name" | "modified" | "size";
 
-/**
- * The Files tab's two lenses: the filesystem as it lays itself out, or the tree as the build
- * system sees it.
- *
- * **"Solution", never "Project"** - Project is already an Otto noun (a grouping of workspaces
- * sharing a git remote), and a .NET project is a completely different thing that appears on
- * screen at the same time. See docs/glossary.md.
- */
-export type ExplorerViewMode = "files" | "solution";
-
-export function isExplorerViewMode(value: unknown): value is ExplorerViewMode {
-  return value === "files" || value === "solution";
-}
-
-/**
- * Per-checkout, like the explorer tab itself: which lens makes sense is a fact about *this*
- * repository, not a global preference. A user with one .NET repo and five TypeScript ones should
- * not have the .NET choice follow them everywhere.
- */
-export function resolveExplorerViewMode(input: {
-  serverId: string;
-  cwd: string;
-  hasSolutions: boolean;
-  explorerViewModeByCheckout: Record<string, ExplorerViewMode>;
-}): ExplorerViewMode {
-  // No solutions means no switcher, so any remembered choice is unreachable and must not strand
-  // the tab on an empty lens - the same coercion `resolveExplorerTabForCheckout` does for `isGit`.
-  if (!input.hasSolutions) {
-    return "files";
-  }
-  const key = buildExplorerCheckoutKey(input.serverId, input.cwd);
-  const remembered = key === null ? undefined : input.explorerViewModeByCheckout[key];
-  return isExplorerViewMode(remembered) ? remembered : "files";
-}
-
 export const DEFAULT_SIDEBAR_WIDTH = 320;
-export const MIN_SIDEBAR_WIDTH = 225;
+export const MIN_SIDEBAR_WIDTH = 200;
 export const MAX_SIDEBAR_WIDTH = 600;
-
-// Context Management's left column (summary + tree). Persisted app-wide rather
-// than per-workspace: it's a reading preference about this tool, not a fact
-// about any one project.
-export const DEFAULT_CONTEXT_SIDEBAR_WIDTH = 320;
-export const MIN_CONTEXT_SIDEBAR_WIDTH = 240;
-export const MAX_CONTEXT_SIDEBAR_WIDTH = 720;
-
-// Manage knowledge's left column. Persisted app-wide as a reading preference.
-export const DEFAULT_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH = 340;
-export const MIN_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH = 260;
-export const MAX_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH = 520;
 
 export const DEFAULT_TREE_RAIL_WIDTH = 260;
 export const MIN_TREE_RAIL_WIDTH = 180;
@@ -100,10 +53,6 @@ export function clampSidebarWidth(width: number): number {
 
 export function clampTreeRailWidth(width: number): number {
   return clampNumber(width, MIN_TREE_RAIL_WIDTH, MAX_TREE_RAIL_WIDTH);
-}
-
-export function clampContextSidebarWidth(width: number): number {
-  return clampNumber(width, MIN_CONTEXT_SIDEBAR_WIDTH, MAX_CONTEXT_SIDEBAR_WIDTH);
 }
 
 export function selectIsAgentListOpen(state: PanelCoreState, input: PanelLayoutInput): boolean {
@@ -167,8 +116,7 @@ export function buildToggleFileExplorerPatch(
   return { mobilePanel: setMobilePanelTarget(state.mobilePanel, "agent") };
 }
 
-const ExplorerTabSchema = z.enum(["changes", "files", "search", "pr"]);
-const ExplorerViewModeSchema = z.enum(["files", "solution"]);
+const ExplorerTabSchema = z.enum(["changes", "files", "pr"]);
 const DesktopSidebarStorageSchema = z.strictObject({
   agentListOpen: z.boolean().optional(),
   focusModeEnabled: z.boolean().optional(),
@@ -191,8 +139,6 @@ export const PanelPersistedStateSchema = z.strictObject({
   desktop: DesktopSidebarStorageSchema.optional(),
   explorerTab: ExplorerTabSchema.optional(),
   explorerTabByCheckout: z.record(z.string(), ExplorerTabSchema).optional(),
-  explorerViewModeByCheckout: z.record(z.string(), ExplorerViewModeSchema).optional(),
-  explorerSolutionByCheckout: z.record(z.string(), z.string()).optional(),
   expandedPathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
   // Accepted only so migration can discard the former per-file diff expansion state.
   diffExpandedPathsByWorkspace: z.record(z.string(), z.array(z.string())).optional(),
@@ -201,8 +147,6 @@ export const PanelPersistedStateSchema = z.strictObject({
   sidebarWidth: z.number().optional(),
   // Accepted only so migration can discard the former docked explorer sidebar width.
   explorerWidth: z.number().optional(),
-  contextSidebarWidth: z.number().optional(),
-  projectKnowledgeSidebarWidth: z.number().optional(),
   explorerSortOption: z.enum(["name", "modified", "size"]).optional(),
   explorerShowHiddenFiles: z.boolean().optional(),
   explorerFilesSplitRatio: z.number().optional(),
@@ -232,22 +176,6 @@ function migratePanelExplorerTabByCheckout(state: MigratablePanelState, version:
   state.explorerTabByCheckout = next;
 }
 
-/** Same shape as `explorerTabByCheckout`: drop anything that is not a known mode. */
-function migrateExplorerViewModeByCheckout(state: MigratablePanelState): void {
-  const stored = state.explorerViewModeByCheckout;
-  if (typeof stored !== "object" || stored === null) {
-    state.explorerViewModeByCheckout = {};
-    return;
-  }
-  const next: Record<string, ExplorerViewMode> = {};
-  for (const [key, value] of Object.entries(stored as Record<string, unknown>)) {
-    if (isExplorerViewMode(value)) {
-      next[key] = value;
-    }
-  }
-  state.explorerViewModeByCheckout = next;
-}
-
 function migratePanelDesktopFocusMode(state: MigratablePanelState): void {
   const desktop = state.desktop;
   if (!desktop) {
@@ -266,11 +194,25 @@ function migratePanelDesktopFocusMode(state: MigratablePanelState): void {
   }
 }
 
+// v16 narrowed the rail. Existing installs almost all carry the old 320 default,
+// so the reset is what makes the narrower rail visible to anyone but a new user.
+function migrateTreeRailWidth(state: MigratablePanelState, version: number): void {
+  if (version < 16 || typeof state.treeRailWidth !== "number") {
+    delete state.explorerFilesSplitRatio;
+    state.treeRailWidth = DEFAULT_TREE_RAIL_WIDTH;
+    return;
+  }
+  state.treeRailWidth = clampTreeRailWidth(state.treeRailWidth);
+}
+
 export function migratePanelState(persistedState: unknown, version: number): MigratablePanelState {
   const result = PanelPersistedStateSchema.safeParse(persistedState);
   const state: MigratablePanelState = result.success ? result.data : {};
+
+  // The docked explorer sidebar is gone; wider layouts render the explorer as
+  // workspace tabs. Left behind, `fileExplorerOpen` kept drawing a sidebar that
+  // nothing could close.
   delete state.explorerWidth;
-  delete state.explorerFilesSplitRatio;
   if (state.desktop) {
     delete state.desktop.fileExplorerOpen;
   }
@@ -291,13 +233,7 @@ export function migratePanelState(persistedState: unknown, version: number): Mig
   ) {
     state.expandedPathsByWorkspace = {};
   }
-  if (
-    version < 10 ||
-    typeof state.diffExpandedPathsByWorkspace !== "object" ||
-    !state.diffExpandedPathsByWorkspace
-  ) {
-    state.diffExpandedPathsByWorkspace = {};
-  }
+  delete state.diffExpandedPathsByWorkspace;
   if (
     version < 12 ||
     typeof state.diffCollapsedFoldersByWorkspace !== "object" ||
@@ -305,18 +241,19 @@ export function migratePanelState(persistedState: unknown, version: number): Mig
   ) {
     state.diffCollapsedFoldersByWorkspace = {};
   }
-  if (typeof state.contextSidebarWidth !== "number") {
-    state.contextSidebarWidth = DEFAULT_CONTEXT_SIDEBAR_WIDTH;
-  } else {
-    state.contextSidebarWidth = clampContextSidebarWidth(state.contextSidebarWidth);
+  if (
+    typeof state.collapsedFilePathsByWorkspace !== "object" ||
+    !state.collapsedFilePathsByWorkspace
+  ) {
+    state.collapsedFilePathsByWorkspace = {};
   }
-  state.projectKnowledgeSidebarWidth = normalizeProjectKnowledgeSidebarWidth(
-    state.projectKnowledgeSidebarWidth,
-  );
   if (typeof state.explorerShowHiddenFiles !== "boolean") {
     state.explorerShowHiddenFiles = true;
   }
-  migrateExplorerViewModeByCheckout(state);
+  migrateTreeRailWidth(state, version);
+  if (typeof state.fileTreeVisible !== "boolean") {
+    state.fileTreeVisible = true;
+  }
   if (version < 12) {
     // Compact panel position is transient UI state. Cold starts always begin
     // at content, regardless of what an older version persisted.
@@ -325,16 +262,6 @@ export function migratePanelState(persistedState: unknown, version: number): Mig
   }
 
   return state;
-}
-
-function normalizeProjectKnowledgeSidebarWidth(width: unknown): number {
-  if (typeof width !== "number" || !Number.isFinite(width)) {
-    return DEFAULT_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH;
-  }
-  return Math.max(
-    MIN_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH,
-    Math.min(MAX_PROJECT_KNOWLEDGE_SIDEBAR_WIDTH, width),
-  );
 }
 
 export { buildExplorerCheckoutKey, resolveExplorerTabForCheckout };

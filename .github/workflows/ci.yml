@@ -8,530 +8,733 @@ on:
   merge_group:
   workflow_dispatch:
 
+# A newer push to the same ref cancels the run still in progress, main included.
+# A full run costs about 200 runner-minutes against the org's 20 concurrent
+# jobs, and a superseded main run only answers a question the newer commit
+# answers again.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
-
-permissions:
-  contents: read
+  cancel-in-progress: true
 
 env:
   # CI does not use the CUDA execution provider, and the onnxruntime-node
   # postinstall download from NuGet is large enough to make npm ci flaky.
   ONNXRUNTIME_NODE_INSTALL: skip
-  # Keep wrapper and platform binaries on a published, verified release.
-  # Floating 1.18.29 failed ETARGET during run 33924801496's provider setup.
-  OTTO_CI_OPENCODE_VERSION: "1.18.28"
 
-# Every job runs on every push. There used to be a `changes` job
-# (dorny/paths-filter) gating the rest, and the skip was wired as a per-step
-# `if:` guard, so an unaffected commit ran a single `echo` and the job reported
-# **success**. All eight Playwright shards would go green having executed zero
-# tests. The result: between 2026-08-07 and 2026-08-18, 80 consecutive CI runs
-# produced 55 failures, 22 cancellations and 3 "successes" - and all 3 of those
-# successes had skipped Playwright entirely. A continuously red suite was
-# indistinguishable from a healthy one, and 0.8.10 shipped on a cancelled run.
-#
-# If you reinstate path filtering to save runner minutes, put the condition on
-# the *job* (`if:` at job level), never on its steps: a filtered job must report
-# `skipped`, never `success`.
 jobs:
-  format:
+  changes:
+    name: changes
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      full: ${{ github.event_name != 'pull_request' || steps.filter.outputs.routing != 'false' || steps.filter.outputs.workspace != 'false' || steps.filter.outputs.ci != 'false' }}
+      format: ${{ steps.filter.outputs.format }}
+      quality: ${{ steps.filter.outputs.quality }}
+      hub: ${{ steps.filter.outputs.hub }}
+      server: ${{ steps.filter.outputs.server }}
+      desktop: ${{ steps.filter.outputs.desktop }}
+      app: ${{ steps.filter.outputs.app }}
+      sdk: ${{ steps.filter.outputs.sdk }}
+      browser: ${{ steps.filter.outputs.browser }}
+      relay: ${{ steps.filter.outputs.relay }}
+      cli: ${{ steps.filter.outputs.cli }}
     steps:
-      - uses: actions/checkout@v7.0.1
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: node scripts/npm-retry.mjs ci
-
-      - name: Check formatting
-        run: npx oxfmt --check .
-
-      # This runs here, in the first job, because it is the only check that can
-      # catch a workflow GitHub refuses to start at all. It used to live in the
-      # `changes` job; that job was deleted on 2026-08-18 and the step went with
-      # it, and the same commit left a valueless `env:` key behind. GitHub
-      # rejected the file, every push since produced zero jobs and a 0s
-      # failure, and nothing said so louder than a red X.
-      - name: Validate CI workflow
-        run: node --test scripts/ci-workflow.test.mjs scripts/ci-diagnose.test.mjs scripts/browser-download.test.mjs scripts/daemon-launch-contract.test.mjs scripts/sync-fdroid-changelogs.test.mjs scripts/publish-release-packages.test.mjs
-
-  lint:
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
+
+      - name: Detect affected CI contracts
+        id: filter
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3.0.3
+        with:
+          filters: .github/ci-paths.yml
+
+      - name: Validate CI contracts
+        run: node --test scripts/ci-workflow.test.mjs scripts/daemon-launch-contract.test.mjs scripts/sync-fdroid-changelogs.test.mjs scripts/upload-release-assets.test.mjs
+
+      # OTTO(integration): keep the fork boundary and release/dev adapters under CI.
+      - name: Verify Otto integration seams
+        run: node scripts/otto/seams.mjs --check
+
+      - name: Test Otto release and dev adapters
+        run: node --test scripts/otto/dev-environment.test.mjs scripts/otto/npm-rename.test.mjs scripts/otto/verify-android-signing.test.mjs scripts/otto/app-acceptance.test.mjs scripts/otto/wake-word.test.mjs scripts/publish-release-packages.test.mjs scripts/ensure-github-release.test.mjs scripts/otto/trace-native-files.test.mjs
+
+      # OTTO(metro-resources): guard dependency visibility and Windows worker limits without launching Metro.
+      - name: Test Otto Metro resource policy
+        run: node --test packages/app/otto/metro-resource-policy.test.cjs
+
+      # OTTO(connectors): Node fixtures stay outside Vitest's server discovery.
+      - name: Test Google Connector artifact registration
+        run: node --test scripts/otto/materialize-google-connectors.test.mjs
+
+  quality:
+    name: quality
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.format != 'false' || needs.changes.outputs.quality != 'false' || needs.changes.outputs.relay != 'false' || needs.changes.outputs.sdk != 'false') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
           cache: "npm"
 
-      # Pure file analysis (no deps, under a second), so it runs before install
-      # and fails fast. docs/testing.md promises this gate; without it the E2E
-      # coverage matrix silently drifts, which is how 21 imported specs reached
-      # main unmapped.
-      - name: Check E2E coverage matrix
-        run: npm run e2e:coverage
-
-      - name: Check module size ceilings
-        run: npm run size:ceilings:check
-
       - name: Install dependencies
+        id: install
         run: node scripts/npm-retry.mjs ci
 
-      - name: Test merge integration guard
-        run: node --test scripts/merge-orphan-guard.test.mjs
+      # OTTO(typed-route-boundary): exercise the installed dependency patch after npm ci.
+      - name: Test Expo route watcher ownership
+        run: node --test packages/app/otto/typed-route-policy.test.cjs
 
-      # Advance these pre-merge/upstream pins together when adopting upstream;
-      # docs/upstream-merges.md describes the contract review and baseline.
-      - name: Check merge integration entry points
-        run: >-
-          node scripts/merge-orphan-guard.mjs --integrations
-          --before f152f0069bb84444386caff7dd5d58148b77875a
-          --at b8e24677e12b226c7c38c1c3a40649daa9f1152f
-          --after HEAD --json
+      # Explicit status checks keep independent domains running after a failure.
+      # A failed step still fails quality; no continue-on-error or success shim.
+      - name: Check formatting
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.format != 'false') }}
+        run: npm run format:check
 
       - name: Lint lockfile
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npx --yes lockfile-lint --path package-lock.json --type npm --allowed-hosts npm --validate-https --validate-integrity
 
       - name: Verify dependency signatures
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npm audit signatures
 
       - name: Lint
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
         run: npm run lint
 
-  typecheck:
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7.0.1
+      # OTTO(identity): generated artwork must match Otto masters on every build.
+      - name: Verify Otto brand assets
+        run: node scripts/otto/generate-brand-assets.mjs --check
 
-      - uses: actions/setup-node@v7
+      - name: Test lint rules
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+        run: node --test scripts/oxlint/paseo-plugin.test.mjs
+
+      - name: Build relay
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.relay != 'false') }}
+        run: npm run build:relay
+
+      - name: Run relay tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.relay != 'false') }}
+        run: npm run test --workspace=@getpaseo/relay
+        # OTTO(ci): exercise the local relay, not the deployment's external cutover proxy.
+        env:
+          CLOUDFLARE_INCLUDE_PROCESS_ENV: "true"
+          PASEO_RELAY_UPSTREAM: ""
+
+      - name: Build client dependencies
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        run: npm run build:relay && npm run build:client
+
+      - name: Build plugin SDK
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        run: npm run build:plugin
+
+      - name: Run plugin SDK tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        run: npm run test --workspace=@getpaseo/plugin
+
+      - name: Run protocol tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        run: npm run test --workspace=@getpaseo/protocol
+
+      - name: Run client tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        run: npm run test --workspace=@getpaseo/client
+
+      - name: Run highlight tests
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        run: npm run test --workspace=@getpaseo/highlight
+
+      - name: Typecheck client examples
+        if: ${{ !cancelled() && steps.install.outcome == 'success' && (needs.changes.outputs.full != 'false' || needs.changes.outputs.sdk != 'false') }}
+        run: npm run typecheck:examples --workspace=@getpaseo/client
+
+  typecheck:
+    name: typecheck
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.quality != 'false') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
           cache: "npm"
 
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
+
+      - name: Verify dependency patch recovery
+        run: node --test scripts/postinstall-patches.test.mjs
+
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build server stack
         run: npm run build:server
+
+      # OTTO(architectural-views): source fallbacks cannot mask a missing packaged runtime.
+      - name: Verify packaged Architectural Views renderer
+        run: node --test scripts/otto/archify-package.test.mjs
+
+      - name: Verify built-in plugins from built output
+        run: node --test scripts/builtin-plugins-dist.test.mjs
+
+      # OTTO(wake-word): native source consumes this workspace's generated declarations.
+      - name: Build native app dependency
+        run: npm run build --workspace=@getpaseo/expo-two-way-audio
 
       - name: Typecheck all packages
         run: npm run typecheck
 
-      # release:check (scripts/release-check.mjs) gates releases on this job, so it
-      # must cover all eight packages npm Publish ships.
+      # OTTO(fixture-contracts): fixture APIs must typecheck without scratch configs.
+      - name: Typecheck Otto fixture contracts
+        run: |
+          npm run typecheck:otto-fixtures --workspace=@getpaseo/plugin
+          npm run typecheck --workspace=@getpaseo/protocol -- -p tsconfig.otto-tests.json
+          npm run typecheck --workspace=@getpaseo/client -- -p tsconfig.otto-tests.json
+          npm run typecheck --workspace=@getpaseo/brain -- -p tsconfig.tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-knowledge-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-brain-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-kanban-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-preview-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-browser-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-context-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-artifacts-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-terminal-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-workflow-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-schedule-tests.json
+          npm run typecheck --workspace=@getpaseo/server -- -p tsconfig.otto-architectural-views-tests.json
+          npm run typecheck --workspace=@getpaseo/cli -- -p tsconfig.otto-architectural-views-tests.json
+          npm run typecheck --workspace=@getpaseo/cli -- -p tsconfig.otto-workflow-tests.json
+          npm run typecheck --workspace=@getpaseo/builtin-plugins -- -p otto-kanban/tsconfig.tests.json
+
+      - name: Run website tests
+        run: npm exec --workspace=@getpaseo/website -- vitest run src --bail=1
+
+      # OTTO(website): Otto's retained site has its own unit tests and build.
+      - name: Build Otto website
+        run: npm run build --workspace=@getpaseo/website
+
+      # OTTO(release): check the publish-time Otto package names as well.
+      - name: Pack Otto release packages
+        run: |
+          npm run build:daemon-web-ui
+          node scripts/publish-release-packages.mjs --pack-only --ignore-scripts --out .tmp/release-packages
+
       - name: Verify public package contents
         run: |
-          npm pack --dry-run --ignore-scripts --workspace=@otto-code/highlight
-          npm pack --dry-run --ignore-scripts --workspace=@otto-code/relay
-          npm pack --dry-run --ignore-scripts --workspace=@otto-code/protocol
-          npm pack --dry-run --ignore-scripts --workspace=@otto-code/client
-          npm pack --dry-run --ignore-scripts --workspace=@otto-code/plugin
-          npm pack --dry-run --ignore-scripts --workspace=@otto-code/server
-          npm pack --dry-run --ignore-scripts --workspace=@otto-code/brain
-          npm pack --dry-run --ignore-scripts --workspace=@otto-code/cli
+          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/protocol
+          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/client
+          npm pack --dry-run --ignore-scripts --workspace=@getpaseo/server
 
-  server-tests:
-    if: ${{ !cancelled() }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    name: server-tests (${{ matrix.os }})
-    # A green Linux run finishes in under 16 minutes. Without a cap, a suite
-    # that prints its results and then fails to exit on a leaked handle sits
-    # here until GitHub's 360-minute default. Windows runs the unit suite once
-    # on a single worker, then the integration suite.
-    timeout-minutes: ${{ matrix.os == 'windows-latest' && 60 || 30 }}
+  server-tests-ubuntu:
+    name: server-tests (ubuntu-latest)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
+      - &server_capacity
+        name: Log runner capacity
+        run: |
+          node -e "const os = require('node:os'); console.log(JSON.stringify({cpus: os.cpus().length, model: os.cpus()[0].model, ramGiB: os.totalmem() / 2 ** 30}))"
+
+      - &server_checkout
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-node@v7
+      - &server_node
+        uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
           cache: "npm"
 
-      - name: Fetch origin/main (worktree tests)
+      - &server_fetch
+        name: Fetch origin/main (worktree tests)
+        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
         run: git fetch --no-tags origin main:refs/remotes/origin/main
+
+      - &server_install
+        name: Install dependencies
+        run: node scripts/npm-retry.mjs ci
+
+      - &server_agent_clis
+        name: Install agent CLIs for provider tests
+        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
+        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code opencode-ai
+
+      - &server_editor_sdk
+        uses: ./.github/actions/otto-editor-dotnet
+
+      - &server_build
+        name: Build server dependencies
+        # OTTO(editor): real solution fixtures consume the packaged sidecar.
+        run: npm run build:server-deps && npm run build:dotnet-probe
+
+      - name: Run server tests
+        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
+        run: npm run test --workspace=@getpaseo/server
+        env: &server_test_env
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+      - &server_plugin_tests
+        name: Run built-in plugin tests
+        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
+        # OTTO(ci): provider fixtures spawn child processes; serialize files so
+        # Windows runners do not contend across independent fake-provider hosts.
+        run: npm run test --workspace=@getpaseo/builtin-plugins -- --maxWorkers=1 --no-file-parallelism
+
+      # OTTO(brain): fixture-only tests; no real models or downloads.
+      - &server_brain_tests
+        name: Run standalone Brain tests
+        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
+        run: npm run test --workspace=@getpaseo/brain -- --maxWorkers=2
+
+      - &server_hub_contract
+        name: Run Hub CLI/daemon contract
+        if: ${{ needs.changes.outputs.full == 'false' && needs.changes.outputs.server == 'false' && needs.changes.outputs.hub != 'false' }}
+        run: npm run test:hub-cli-contract --workspace=@getpaseo/server
+
+  server-tests-windows:
+    name: server-tests (windows-latest)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' || needs.changes.outputs.hub != 'false') }}
+    runs-on: windows-latest
+    steps:
+      - *server_capacity
+      - *server_checkout
+      - *server_node
+      - *server_fetch
+      - *server_install
+      - *server_agent_clis
+      - *server_editor_sdk
+      - *server_build
+
+      - name: Run server unit tests
+        if: ${{ needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false' }}
+        run: npm run test:unit --workspace=@getpaseo/server
+        env: *server_test_env
+
+      - *server_plugin_tests
+      - *server_brain_tests
+      - *server_hub_contract
+
+  # Keep the serial integration chain off the Windows unit critical path.
+  server-integration-windows:
+    name: server-integration (windows-latest)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
+    runs-on: windows-latest
+    steps:
+      - *server_capacity
+      - *server_checkout
+      - *server_node
+      - *server_fetch
+      - *server_install
+      - *server_agent_clis
+      - *server_editor_sdk
+      - *server_build
+
+      - name: Run server integration tests
+        run: npm run test:integration --workspace=@getpaseo/server
+        env: *server_test_env
+
+  # native-recursive.ts serves darwin and win32, but windows-latest above is the only
+  # runner that exercises it. macOS — the platform the reported watcher bug was on —
+  # otherwise has no server-test coverage. Scoped to the observer/watcher suites to
+  # bound runtime.
+  server-tests-macos:
+    name: server-tests (macos-15, file observation)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
 
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
-      - name: Install agent CLIs for provider tests
-        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code opencode-ai@${{ env.OTTO_CI_OPENCODE_VERSION }}
-      - name: Report OpenCode version
-        run: opencode --version
 
-      # Terminal hook integration tests execute bin/otto, which imports the
-      # compiled CLI and server. Dependency declarations alone are insufficient.
-      - name: Build server stack
-        run: npm run build:server
+      - name: Build server dependencies
+        run: npm run build:server-deps
 
-      - name: Run server tests
-        if: matrix.os != 'windows-latest'
-        run: npm run test --workspace=@otto-code/server
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-
-      # Run failures once: native watcher roots are normalized at the OS
-      # boundary, and retries would obscure regressions and double job time.
-      - name: Run server tests (Windows)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
+      - name: Run file observation tests
+        # OTTO(test-allocation): run native watcher stress fixtures serially;
+        # each fixture retains its concurrent writes and assertions.
         run: |
-          npm run test:unit --workspace=@otto-code/server -- --maxWorkers=1
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          npm run test:integration --workspace=@otto-code/server
-          exit $LASTEXITCODE
-        env:
-          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          npm run test:unit --workspace=@getpaseo/server -- \
+            src/server/file-observer \
+            src/server/workspace-git-service.observation.test.ts \
+            src/server/workspace-git-service.observation.integration.test.ts \
+            --bail=1 --maxWorkers=1
 
-  desktop-tests:
-    if: ${{ !cancelled() }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  desktop-tests-ubuntu:
+    name: desktop-tests (ubuntu-latest)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
       contents: read
-    steps:
-      - uses: actions/checkout@v7.0.1
+    steps: &desktop_test_steps
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
           cache: "npm"
 
       - name: Install dependencies with retry
         run: node scripts/npm-retry.mjs ci
 
-      - name: Setup Python for Linux recorder packaging
-        if: matrix.os == 'ubuntu-latest'
-        uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: packages/desktop/resources/zoom-recorder/requirements-build.txt
-
-      - name: Install Zoom Recorder build dependencies
-        if: matrix.os == 'ubuntu-latest'
-        run: python -m pip install -r packages/desktop/resources/zoom-recorder/requirements-build.txt
-
-      - name: Run Zoom Recorder routing and capture tests
-        if: matrix.os == 'ubuntu-latest'
-        run: python -m unittest discover -s packages/desktop/resources/zoom-recorder/tests
-
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build server stack
         run: npm run build:server
 
-      - name: Run desktop tests
-        run: npm run test --workspace=@otto-code/desktop
+      # OTTO(zoom-recorder): validate the real helper on both supported release hosts.
+      - name: Build and smoke-test Zoom Recorder
+        if: ${{ runner.arch == 'X64' }}
+        uses: ./.github/actions/otto-zoom-recorder
 
-      - name: Build app dependencies for desktop E2E
-        if: matrix.os == 'ubuntu-latest'
-        run: npm run build:app-deps
+      - name: Run desktop tests
+        run: npm run test --workspace=@getpaseo/desktop
+
+      # OTTO(artifacts): protocol-only observer regressions launch no Electron process.
+      - name: Verify packaged Artifact observer protocol
+        run: node --test packages/desktop/e2e/otto-artifact-frame.test.cjs
+
+      # OTTO(preview): production process-tree ownership is proved on Linux and Windows, never the installed app.
+      - name: Verify native Preview process ownership
+        run: npm run test:e2e:otto-preview --workspace=@getpaseo/server
 
       - name: Install virtual display
-        if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install -y xvfb xauth
+        if: ${{ runner.os == 'Linux' }}
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth xdotool
 
-      - name: Run real Electron browser tab bridge E2E
-        if: matrix.os == 'ubuntu-latest'
-        run: npm run test:e2e:browser-tab-bridge --workspace=@otto-code/desktop
+      - name: Install Playwright browser
+        if: ${{ runner.os == 'Linux' }}
+        run: npx playwright install chromium
+
+      # OTTO(browser-host): source-bound streaming and the shared ref engine use a real isolated Chromium page only in CI.
+      - name: Verify native Host Browser automation and streaming
+        run: npm run test:e2e:otto-host-browser --workspace=@getpaseo/server
         env:
-          OTTO_TAB_BRIDGE_E2E_ARTIFACT_DIR: ${{ runner.temp }}/browser-tab-bridge-e2e
+          OTTO_HOST_BROWSER_ARTIFACT_DIR: ${{ runner.temp }}/otto-host-browser
 
-      - name: Upload browser tab bridge diagnostics
-        uses: actions/upload-artifact@v7
-        if: failure() && matrix.os == 'ubuntu-latest'
+      - name: Upload Host Browser proof
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
         with:
-          name: browser-tab-bridge-e2e
-          path: ${{ runner.temp }}/browser-tab-bridge-e2e
+          name: otto-host-browser-${{ runner.os }}
+          path: ${{ runner.temp }}/otto-host-browser
           if-no-files-found: ignore
           retention-days: 7
 
-      - name: Build and smoke unpacked desktop app
-        if: matrix.os == 'ubuntu-latest'
-        run: npm run build:desktop -- --publish never --linux --x64 --dir
-        env:
-          EP_GH_IGNORE_TIME: true
-          OTTO_DESKTOP_SMOKE: "1"
-          OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
-          # Use the system Python installed above; this skips the before-pack
-          # hook's venv provisioning (which would install the deps a second time).
-          OTTO_ZOOM_RECORDER_PYTHON: python
+      - name: Verify Windows daemon process control
+        if: ${{ runner.os == 'Windows' }}
+        run: npx vitest run packages/cli/src/commands/daemon/lifecycle.e2e.test.ts --bail=1 --maxWorkers=1 -t "Windows unbound|managed two-home"
 
-      - name: Upload packaged smoke diagnostics
-        if: failure() && matrix.os == 'ubuntu-latest'
-        uses: actions/upload-artifact@v7
+      - name: Run desktop lifecycle E2E (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        run: xvfb-run -a --server-args="-screen 0 1280x800x24" npm run test:e2e:lifecycle --workspace=@getpaseo/desktop
+        env:
+          PASEO_DESKTOP_LIFECYCLE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-lifecycle
+
+      - name: Upload desktop lifecycle screenshots
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() && runner.os == 'Linux' }}
         with:
-          name: desktop-packaged-smoke-linux-x64
-          path: ${{ runner.temp }}/desktop-smoke
+          name: desktop-lifecycle
+          path: ${{ runner.temp }}/desktop-lifecycle
           if-no-files-found: ignore
           retention-days: 7
 
+      - name: Run desktop lifecycle E2E (Windows)
+        if: ${{ runner.os == 'Windows' }}
+        run: npm run test:e2e:lifecycle --workspace=@getpaseo/desktop
+
+      - name: Run desktop renderer E2E
+        if: ${{ runner.os == 'Linux' }}
+        run: npm run test:e2e:renderer --workspace=@getpaseo/desktop
+
+      # OTTO(test): keep renderer traces and screenshots when a desktop assertion fails.
+      - name: Upload desktop renderer diagnostics
+        uses: actions/upload-artifact@v4
+        if: ${{ failure() && runner.os == 'Linux' }}
+        with:
+          name: desktop-renderer-e2e
+          path: |
+            packages/desktop/test-results/
+            packages/desktop/playwright-report/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Run desktop browser E2E
+        if: ${{ runner.os == 'Linux' }}
+        run: npm run test:e2e:browser-tabs --workspace=@getpaseo/desktop
+        env:
+          PASEO_DESKTOP_BROWSER_E2E_ARTIFACT_DIR: ${{ runner.temp }}/desktop-browser-e2e
+
+      - name: Upload desktop browser diagnostics
+        uses: actions/upload-artifact@v4
+        if: ${{ failure() && runner.os == 'Linux' }}
+        with:
+          name: desktop-browser-e2e
+          path: ${{ runner.temp }}/desktop-browser-e2e
+          if-no-files-found: ignore
+          retention-days: 7
+
+  desktop-tests-windows:
+    name: desktop-tests (windows-latest)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.desktop != 'false') }}
+    runs-on: windows-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps: *desktop_test_steps
+
+  # OTTO(ci): the locked Playwright browser supports Ubuntu 24.04. Use it for app tests and browser shards.
   app-tests:
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    name: app-tests
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.app != 'false') }}
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
           cache: "npm"
 
       - name: Install dependencies with retry
         run: node scripts/npm-retry.mjs ci
+
       - name: Install Playwright browsers
         timeout-minutes: 10
-        run: npm run browsers:install
+        run: npx playwright install chromium
 
       - name: Build app dependencies
         run: npm run build:app-deps
 
-      - name: Run app unit and browser tests
-        run: npm run test --workspace=@otto-code/app
+      # OTTO(visualizer): every platform ships the same deterministic offline renderer.
+      - name: Verify committed Visualizer renderer
+        run: git diff --exit-code -- packages/app/src/otto/visualizer/visualizer-bundle.gen.ts
 
-  android-native-tests:
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7.0.1
+      - name: Run app unit tests
+        run: npm run test --workspace=@getpaseo/app
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: "npm"
-
-      - uses: actions/setup-java@v6.0.1
-        with:
-          distribution: "temurin"
-          java-version: "17"
-
-      - uses: gradle/actions/setup-gradle@v5
-
-      - name: Install dependencies with retry
-        run: node scripts/npm-retry.mjs ci
-
-      - name: Build client dependencies
-        run: npm run build:client
-
-      - name: Generate the native Android project
-        working-directory: packages/app
-        env:
-          APP_VARIANT: development
-        run: npx expo prebuild --platform android --non-interactive
-
-      - name: Compile and test the Android wake-word module
-        working-directory: packages/app/android
-        run: >-
-          ./gradlew
-          :otto-code-expo-two-way-audio:testDebugUnitTest
-          --tests expo.modules.twowayaudio.WakeWordHandoffBufferTest
-          --no-daemon
-
-  sdk-tests:
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7.0.1
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: node scripts/npm-retry.mjs ci
-      - name: Build client dependencies
-        run: npm run build:client
-
-      - name: Build plugin SDK
-        run: npm run build:plugin
-
-      - name: Run plugin SDK tests
-        run: npm run test --workspace=@otto-code/plugin
-
-      - name: Typecheck plugin examples
-        run: npm run typecheck --workspace=@otto-code/plugin
-
-      - name: Run protocol tests
-        run: npm run test --workspace=@otto-code/protocol
-
-      - name: Run client tests
-        run: npm run test --workspace=@otto-code/client
-
-      - name: Typecheck client examples
-        run: npm run typecheck:examples --workspace=@otto-code/client
-
-  playwright:
-    if: ${{ !cancelled() }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { label: "shard 1/8", shard: 1, desktop: false }
-          - { label: "shard 2/8", shard: 2, desktop: false }
-          - { label: "shard 3/8", shard: 3, desktop: false }
-          - { label: "shard 4/8", shard: 4, desktop: false }
-          - { label: "shard 5/8", shard: 5, desktop: false }
-          - { label: "shard 6/8", shard: 6, desktop: false }
-          - { label: "shard 7/8", shard: 7, desktop: false }
-          - { label: "shard 8/8", shard: 8, desktop: false }
-          - { label: "desktop overlay", shard: "desktop", desktop: true }
-    name: playwright (${{ matrix.label }})
-    runs-on: ubuntu-latest
-    # The suite is ~370 tests at roughly 26 seconds each on a hosted runner, and
-    # `workers: 1` in playwright.config.ts is deliberate (the specs share one
-    # daemon/relay/Metro stack). That is ~2.7 hours of serial work: at 4 shards a
-    # single shard needs ~45 minutes of test time on top of ~5 minutes of job
-    # setup, so the old 35-minute cap killed every shard mid-run and the tier had
-    # never once completed. Eight shards puts a shard around 22 minutes; the cap
-    # stays well above that so a genuinely hung suite still cannot run for hours.
-    timeout-minutes: 65
+  playwright-1:
+    name: playwright (shard 1/8)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    runs-on: ubuntu-24.04
     env:
-      # Stay below `timeout-minutes` above. When a shard runs past the job cap the
-      # runner SIGKILLs it, and a killed shard reports nothing at all: you learn it
-      # was cancelled and not one word about which tests failed. That is how this
-      # tier stayed undiagnosed after the v0.2.5 merge. Playwright's own global
-      # timeout ends the run cleanly and still prints the results it has, so it is
-      # the one that should fire first. The job cap stays as the backstop for a
-      # process wedged too hard for Playwright to report at all.
-      #
-      # The margin is wide because the cap covers job setup (install, browsers,
-      # two builds) as well as the run itself.
-      E2E_GLOBAL_TIMEOUT_MINUTES: "55"
-    steps:
-      - uses: actions/checkout@v7.0.1
+      PLAYWRIGHT_SHARD: "1/8"
+      PLAYWRIGHT_ARTIFACT: "1"
+    steps: &playwright_test_steps
+      - name: Log runner capacity
+        run: |
+          node -e "const os = require('node:os'); console.log(JSON.stringify({cpus: os.cpus().length, model: os.cpus()[0].model, ramGiB: os.totalmem() / 2 ** 30}))"
 
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
           cache: "npm"
 
       - name: Install dependencies with retry
         run: node scripts/npm-retry.mjs ci
+
       - name: Install Playwright browsers
         timeout-minutes: 10
-        run: npm run browsers:install
+        run: npx playwright install chromium
 
+      # OTTO(editor): the shared browser matrix also exercises real file-owned PTYs.
+      - name: Install editor fixture tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends vim neovim
+
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build server stack
         run: npm run build:server
 
       - name: Build native app dependency
-        run: npm run build --workspace=@otto-code/expo-two-way-audio
+        run: npm run build --workspace=@getpaseo/expo-two-way-audio
 
       - name: Install agent CLIs for provider tests
-        if: ${{ !matrix.desktop }}
-        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai@${{ env.OTTO_CI_OPENCODE_VERSION }}
-      - name: Report OpenCode version
-        if: ${{ !matrix.desktop }}
-        run: opencode --version
+        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
 
       - name: Run Playwright E2E tests
-        if: ${{ !matrix.desktop }}
-        run: npm run test:e2e --workspace=@otto-code/app -- --shard=${{ matrix.shard }}/8
+        run: npm run test:e2e --workspace=@getpaseo/app -- --shard=${{ env.PLAYWRIGHT_SHARD }}
         env:
+          # OTTO(ci): compile one graph across feature visits to bound Metro's memory.
+          EXPO_NO_METRO_LAZY: "1"
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-
-      # The desktop-overlay specs live in packages/desktop/e2e/ (docs/testing.md),
-      # not in the app package. They drive the renderer in a plain Chromium with
-      # E2E_DESKTOP_RUNTIME=1, so they need this job's Metro/server stack rather
-      # than the Electron binary the desktop-tests job builds.
-      - name: Run desktop-overlay Playwright tests
-        if: ${{ matrix.desktop }}
-        run: npm run test:e2e:renderer --workspace=@otto-code/desktop
+          E2E_WORKERS: "2"
+          # File groups are weighted by observed reporter durations.
+          # Share of the test list per shard, rebalanced from the Playwright step
+          # minutes of five eight-shard runs so the slowest and fastest shards meet.
+          PWTEST_SHARD_WEIGHTS: "85:94:117:128:91:103:127:85"
 
       - name: Upload test artifacts
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         if: failure()
         with:
-          name: playwright-results-${{ matrix.shard }}
+          name: playwright-results-${{ env.PLAYWRIGHT_ARTIFACT }}
           path: |
             packages/app/test-results/
             packages/app/playwright-report/
-            packages/desktop/test-results/
-          if-no-files-found: ignore
           retention-days: 7
 
-  relay-tests:
-    if: ${{ !cancelled() }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v7.0.1
+  playwright-2:
+    name: playwright (shard 2/8)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    runs-on: ubuntu-24.04
+    env:
+      PLAYWRIGHT_SHARD: "2/8"
+      PLAYWRIGHT_ARTIFACT: "2"
+    steps: *playwright_test_steps
 
-      - uses: actions/setup-node@v7
+  playwright-3:
+    name: playwright (shard 3/8)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    runs-on: ubuntu-24.04
+    env:
+      PLAYWRIGHT_SHARD: "3/8"
+      PLAYWRIGHT_ARTIFACT: "3"
+    steps: *playwright_test_steps
+
+  playwright-4:
+    name: playwright (shard 4/8)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    runs-on: ubuntu-24.04
+    env:
+      PLAYWRIGHT_SHARD: "4/8"
+      PLAYWRIGHT_ARTIFACT: "4"
+    steps: *playwright_test_steps
+
+  playwright-5:
+    name: playwright (shard 5/8)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    runs-on: ubuntu-24.04
+    env:
+      PLAYWRIGHT_SHARD: "5/8"
+      PLAYWRIGHT_ARTIFACT: "5"
+    steps: *playwright_test_steps
+
+  playwright-6:
+    name: playwright (shard 6/8)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    runs-on: ubuntu-24.04
+    env:
+      PLAYWRIGHT_SHARD: "6/8"
+      PLAYWRIGHT_ARTIFACT: "6"
+    steps: *playwright_test_steps
+
+  playwright-7:
+    name: playwright (shard 7/8)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    runs-on: ubuntu-24.04
+    env:
+      PLAYWRIGHT_SHARD: "7/8"
+      PLAYWRIGHT_ARTIFACT: "7"
+    steps: *playwright_test_steps
+
+  playwright-8:
+    name: playwright (shard 8/8)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.browser != 'false') }}
+    runs-on: ubuntu-24.04
+    env:
+      PLAYWRIGHT_SHARD: "8/8"
+      PLAYWRIGHT_ARTIFACT: "8"
+    steps: *playwright_test_steps
+
+  cli-tests-1:
+    name: cli-tests (shard 1/3)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    runs-on: ubuntu-latest
+    env:
+      PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
+      PASEO_DICTATION_ENABLED: "0"
+      PASEO_VOICE_MODE_ENABLED: "0"
+      PASEO_CLI_TEST_SHARD: "1"
+      PASEO_CLI_TEST_SHARD_TOTAL: "3"
+    steps: &cli_test_steps
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
           cache: "npm"
 
       - name: Install dependencies
         run: node scripts/npm-retry.mjs ci
-
-      - name: Build relay
-        run: npm run build:relay
-
-      - name: Run relay tests
-        run: npm run test --workspace=@otto-code/relay
-
-  cli-tests:
-    if: ${{ !cancelled() }}
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: [1, 2, 3]
-    runs-on: ubuntu-latest
-    name: cli-tests (shard ${{ matrix.shard }}/3)
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7.0.1
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "24"
-          cache: "npm"
-
-      - name: Install dependencies
-        run: node scripts/npm-retry.mjs ci
-
-      - name: Build server stack
-        run: npm run build:server
 
       - name: Install agent CLIs for provider tests
-        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai@${{ env.OTTO_CI_OPENCODE_VERSION }}
-      - name: Report OpenCode version
-        run: opencode --version
+        run: node scripts/npm-retry.mjs install -g @anthropic-ai/claude-code @openai/codex@0.105.0 opencode-ai
 
-      - name: Run CLI tests
-        run: npm run test --workspace=@otto-code/cli
-        env:
-          OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
-          OTTO_DICTATION_ENABLED: "0"
-          OTTO_VOICE_MODE_ENABLED: "0"
-          OTTO_CLI_TEST_SHARD: ${{ matrix.shard }}
-          OTTO_CLI_TEST_SHARD_TOTAL: "3"
+      # The local runner builds its dependencies and shards its own E2E files.
+      - name: Run CLI E2E tests
+        run: npm run test:local --workspace=@getpaseo/cli
+
+      # Source tests do not read PASEO_CLI_TEST_SHARD. Run them once, on the
+      # shortest E2E shard, after its runner has built the server stack.
+      - name: Run CLI source tests
+        if: ${{ env.PASEO_CLI_TEST_SHARD == '3' }}
+        run: npm run test:unit --workspace=@getpaseo/cli
+
+  cli-tests-2:
+    name: cli-tests (shard 2/3)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    runs-on: ubuntu-latest
+    env:
+      PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
+      PASEO_DICTATION_ENABLED: "0"
+      PASEO_VOICE_MODE_ENABLED: "0"
+      PASEO_CLI_TEST_SHARD: "2"
+      PASEO_CLI_TEST_SHARD_TOTAL: "3"
+    steps: *cli_test_steps
+
+  cli-tests-3:
+    name: cli-tests (shard 3/3)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.cli != 'false') }}
+    runs-on: ubuntu-latest
+    env:
+      PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0"
+      PASEO_DICTATION_ENABLED: "0"
+      PASEO_VOICE_MODE_ENABLED: "0"
+      PASEO_CLI_TEST_SHARD: "3"
+      PASEO_CLI_TEST_SHARD_TOTAL: "3"
+    steps: *cli_test_steps

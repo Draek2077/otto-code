@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { createServerFn } from "@tanstack/react-start";
 import { getWebsiteCacheContext } from "./cloudflare-cache";
 import { getBlockingColdCache } from "./github-cache";

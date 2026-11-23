@@ -1,7 +1,6 @@
-import type { FSWatcher } from "node:fs";
-import { watchDirectory } from "../../utils/watch-directory.js";
+import { watch, type FSWatcher } from "node:fs";
 import path from "node:path";
-import type { FileVersion } from "@otto-code/protocol/messages";
+import type { FileVersion } from "@getpaseo/protocol/messages";
 import { getExplorerFileVersion, resolveExplorerFilePath } from "./service.js";
 
 interface FileWatch {
@@ -36,7 +35,7 @@ interface ObservedFile {
 
 const nodeDependencies: FileObserverDependencies = {
   watchDirectory(directory, onChange, onError) {
-    const watcher: FSWatcher = watchDirectory(directory, {}, (_event, filename) => {
+    const watcher: FSWatcher = watch(directory, (_event, filename) => {
       onChange(filename === null ? null : filename.toString());
     });
     watcher.on("error", onError);

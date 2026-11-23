@@ -1,20 +1,18 @@
 import { test, expect } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { removeTempDir } from "../test-utils/remove-temp-dir.js";
-
 import { DaemonClient } from "./test-utils/index.js";
-import { createTestOttoDaemon } from "./test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { getFullAccessConfig } from "./daemon-e2e/agent-configs.js";
-import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
+import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 
-// The daemon-level workspace contract that `otto run` depends on: each
+// The daemon-level workspace contract that `paseo run` depends on: each
 // local-backed createWorkspace for a cwd mints a fresh, distinct workspace,
 // createAgent stamps the agent with the workspaceId it is given, and attaching
 // to an existing workspace by id creates no new record. The CLI's own flag
-// precedence (--workspace > $OTTO_WORKSPACE_ID > --worktree > bare) is covered
+// precedence (--workspace > $PASEO_WORKSPACE_ID > --worktree > bare) is covered
 // in packages/cli/src/commands/agent/run.test.ts; this test only proves the
 // daemon behaviors the CLI builds on.
 
@@ -32,9 +30,9 @@ async function mintLocalWorkspace(client: DaemonClient, cwd: string): Promise<st
 }
 
 test("daemon resolves human and managed CLI workspace ownership", async () => {
-  const daemon = await createTestOttoDaemon();
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-cli-run-cwd-"));
-  const otherCwd = mkdtempSync(path.join(tmpdir(), "otto-cli-run-other-cwd-"));
+  const daemon = await createTestPaseoDaemon();
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-cli-run-cwd-"));
+  const otherCwd = mkdtempSync(path.join(tmpdir(), "paseo-cli-run-other-cwd-"));
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${daemon.port}/ws`,
     appVersion: "0.1.82",
@@ -42,7 +40,7 @@ test("daemon resolves human and managed CLI workspace ownership", async () => {
 
   try {
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "test" } });
+    await client.fetchAgents({ subscribe: {} });
 
     // A bare run mints a fresh local workspace for the cwd, then the agent is
     // stamped with that workspace's id.
@@ -78,7 +76,7 @@ test("daemon resolves human and managed CLI workspace ownership", async () => {
     expect(idsAfterTwoMints).toContain(secondWorkspaceId);
 
     // Attaching to an existing workspace by id (how --workspace and
-    // $OTTO_WORKSPACE_ID land a run) creates no new workspace record: the
+    // $PASEO_WORKSPACE_ID land a run) creates no new workspace record: the
     // agent lands in the named workspace and the workspace set is unchanged.
     const idsBeforeAttach = await workspaceIds(client);
     const attachedAgent = await client.createAgent({
@@ -124,7 +122,7 @@ test("daemon resolves human and managed CLI workspace ownership", async () => {
   } finally {
     await client.close().catch(() => undefined);
     await daemon.close();
-    removeTempDir(cwd);
-    removeTempDir(otherCwd);
+    rmSync(cwd, { recursive: true, force: true });
+    rmSync(otherCwd, { recursive: true, force: true });
   }
 }, 180000);

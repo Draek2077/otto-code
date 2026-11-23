@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import type pino from "pino";
-import { createClientChannel, type Transport } from "@otto-code/relay/e2ee";
-import { exportPublicKey, generateKeyPair } from "@otto-code/relay";
+import pino from "pino";
+import { createClientChannel, type Transport } from "@getpaseo/relay/e2ee";
+import { exportPublicKey, generateKeyPair } from "@getpaseo/relay";
 import { startRelayTransport } from "./relay-transport";
 
 function createMockLogger() {
@@ -146,12 +146,43 @@ describe("relay-transport control lifecycle", () => {
     vi.useRealTimers();
   });
 
+  test("releases a stalled encrypted data connection without restarting control", async () => {
+    vi.useFakeTimers();
+    let attachments = 0;
+    controllers.push(
+      startRelayTransport({
+        logger: pino({ level: "silent" }),
+        attachSocket: async () => {
+          attachments += 1;
+        },
+        relayEndpoint: "relay.paseo.sh:443",
+        relayUseTls: true,
+        serverId: "srv_test",
+        daemonKeyPair: generateKeyPair(),
+        createWebSocket: relay.createWebSocket,
+      }),
+    );
+    const control = relay.sockets[0];
+    control.open();
+    const connected = JSON.stringify({ type: "connected", connectionId: "stalled" });
+    control.message(connected);
+    const stalled = relay.sockets[1];
+    stalled.open();
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(stalled.terminateCalls).toBe(1);
+    expect(attachments).toBe(0);
+    expect(control.terminateCalls).toBe(0);
+    control.message(connected);
+    expect(relay.sockets).toHaveLength(3);
+    expect(relay.sockets[2].url).toBe(stalled.url);
+  });
+
   test("logs relay_control_connected only after first valid control message", () => {
     const logger = createMockLogger();
     const controller = startRelayTransport({
       logger: logger as unknown as pino.Logger,
       attachSocket: async () => {},
-      relayEndpoint: "relay.otto-code.ai:443",
+      relayEndpoint: "relay.paseo.sh:443",
       relayUseTls: true,
       serverId: "srv_test",
       createWebSocket: relay.createWebSocket,
@@ -175,7 +206,7 @@ describe("relay-transport control lifecycle", () => {
     const controller = startRelayTransport({
       logger: logger as unknown as pino.Logger,
       attachSocket: async () => {},
-      relayEndpoint: "relay.otto-code.ai:443",
+      relayEndpoint: "relay.paseo.sh:443",
       relayUseTls: true,
       serverId: "srv_test",
       createWebSocket: relay.createWebSocket,
@@ -199,7 +230,7 @@ describe("relay-transport control lifecycle", () => {
     const controller = startRelayTransport({
       logger: logger as unknown as pino.Logger,
       attachSocket: async () => {},
-      relayEndpoint: "relay.otto-code.ai:443",
+      relayEndpoint: "relay.paseo.sh:443",
       relayUseTls: true,
       serverId: "srv_test",
       createWebSocket: relay.createWebSocket,
@@ -227,7 +258,7 @@ describe("relay-transport control lifecycle", () => {
     const controller = startRelayTransport({
       logger: logger as unknown as pino.Logger,
       attachSocket,
-      relayEndpoint: "relay.otto-code.ai:443",
+      relayEndpoint: "relay.paseo.sh:443",
       relayUseTls: true,
       serverId: "srv_test",
       createWebSocket: relay.createWebSocket,
@@ -265,7 +296,7 @@ describe("relay-transport control lifecycle", () => {
     const controller = startRelayTransport({
       logger: logger as unknown as pino.Logger,
       attachSocket: async (socket) => resolveAttached?.(socket),
-      relayEndpoint: "relay.otto-code.me:443",
+      relayEndpoint: "relay.paseo.sh:443",
       relayUseTls: true,
       serverId: "srv_test",
       daemonKeyPair,
@@ -327,107 +358,6 @@ describe("relay-transport control lifecycle", () => {
     dataSocket.completeNextSend();
     await sending;
     expect(completed).toBe(true);
-  });
-
-  test("caps the number of concurrent data sockets", () => {
-    const logger = createMockLogger();
-    const controller = startRelayTransport({
-      logger: logger as unknown as pino.Logger,
-      attachSocket: async () => {},
-      relayEndpoint: "relay.otto-code.ai:443",
-      relayUseTls: true,
-      serverId: "srv_test",
-      createWebSocket: relay.createWebSocket,
-    });
-    controllers.push(controller);
-
-    const control = relay.sockets[0];
-    control.open();
-    control.message(JSON.stringify({ type: "sync", connectionIds: [] }));
-    for (let i = 0; i < 40; i++) {
-      control.message(JSON.stringify({ type: "connected", connectionId: `clt_flood_${i}` }));
-    }
-
-    // 1 control socket + at most 32 data sockets; notifications past the cap are dropped.
-    expect(relay.sockets.length).toBe(33);
-    expect(hasLogMessage(logger, "warn", "relay_data_socket_cap_reached")).toBe(true);
-  });
-
-  test("terminates data sockets that never open within the attach deadline", async () => {
-    vi.useFakeTimers();
-    const logger = createMockLogger();
-    const controller = startRelayTransport({
-      logger: logger as unknown as pino.Logger,
-      attachSocket: async () => {},
-      relayEndpoint: "relay.otto-code.ai:443",
-      relayUseTls: true,
-      serverId: "srv_test",
-      createWebSocket: relay.createWebSocket,
-    });
-    controllers.push(controller);
-
-    const control = relay.sockets[0];
-    control.open();
-    control.message(JSON.stringify({ type: "sync", connectionIds: [] }));
-    control.message(JSON.stringify({ type: "connected", connectionId: "clt_never_opens" }));
-
-    const dataSocket = relay.sockets[1];
-    expect(dataSocket).toBeDefined();
-
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(dataSocket.terminateCalls).toBe(1);
-    expect(hasLogMessage(logger, "warn", "relay_data_attach_timeout_terminating")).toBe(true);
-  });
-
-  test("terminates data sockets that open but never complete the E2EE attach", async () => {
-    vi.useFakeTimers();
-    const logger = createMockLogger();
-    const controller = startRelayTransport({
-      logger: logger as unknown as pino.Logger,
-      attachSocket: async () => {},
-      relayEndpoint: "relay.otto-code.ai:443",
-      relayUseTls: true,
-      serverId: "srv_test",
-      daemonKeyPair: generateKeyPair(),
-      createWebSocket: relay.createWebSocket,
-    });
-    controllers.push(controller);
-
-    const control = relay.sockets[0];
-    control.open();
-    control.message(JSON.stringify({ type: "sync", connectionIds: [] }));
-    control.message(JSON.stringify({ type: "connected", connectionId: "clt_silent" }));
-
-    const dataSocket = relay.sockets[1];
-    dataSocket.open();
-    // The client never sends its handshake init, so createDaemonChannel never resolves.
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(dataSocket.terminateCalls).toBe(1);
-    expect(hasLogMessage(logger, "warn", "relay_data_attach_timeout_terminating")).toBe(true);
-  });
-
-  test("does not terminate data sockets that attach before the deadline", async () => {
-    vi.useFakeTimers();
-    const logger = createMockLogger();
-    const controller = startRelayTransport({
-      logger: logger as unknown as pino.Logger,
-      attachSocket: async () => {},
-      relayEndpoint: "relay.otto-code.ai:443",
-      relayUseTls: true,
-      serverId: "srv_test",
-      createWebSocket: relay.createWebSocket,
-    });
-    controllers.push(controller);
-
-    const control = relay.sockets[0];
-    control.open();
-    control.message(JSON.stringify({ type: "sync", connectionIds: [] }));
-    control.message(JSON.stringify({ type: "connected", connectionId: "clt_attached" }));
-
-    const dataSocket = relay.sockets[1];
-    dataSocket.open();
-    await vi.advanceTimersByTimeAsync(30_000);
-    expect(dataSocket.terminateCalls).toBe(0);
   });
 
   test("uses relayUseTls for control and data socket URLs", () => {

@@ -7,15 +7,16 @@ For terminal output, which is a separate pipeline with separate budgets, see [te
 ## The pipeline
 
 ```
-provider text events (incremental where the provider supports them)
-  → AgentStreamCoalescer (daemon, leading + trailing, 60ms text coalescing window per agent)
+provider deltas (every provider streams incrementally)
+  → AgentStreamCoalescer (daemon, leading + trailing, ≤1 message per 60ms per agent)
   → recordTimeline: one canonical row per flushed item
   → agent_stream ws message
   → reducer queue (app, one commit per frame) → session store
-  → paced reveal (app, per assistant/reasoning item) → markdown blocks → paint
+  → source-item plugin transforms → Markdown presentation / tool grouping
+  → paced reveal (app, per displayed item) → paint
 ```
 
-Provider adapters normalize their stream contracts. Built-in incremental sources include Claude via `includePartialMessages`, Codex via `agent_message_delta`, ACP agents via `agent_message_chunk`, Pi and OMP via `text_delta`; plugin and OpenAI-compatible providers enter the same provider-neutral stream boundary. Do not infer incremental delivery from provider registration alone.
+Every provider delivers incremental text, so there is no provider that needs special handling: Claude via `includePartialMessages`, Codex via `agent_message_delta`, ACP agents via `agent_message_chunk`, Pi and OMP via `text_delta`.
 
 ## Why the reveal is paced
 
@@ -27,27 +28,81 @@ So arrival sets a _target_ and the reveal rate is derived from the backlog inste
 
 - **The coalescer is leading + trailing.** The first delta after an idle window flushes synchronously; only the rest of the burst waits for the trailing timer. Reverting to trailing-only adds a full window to the first character of every turn. Same shape and the same reason as `TerminalOutputCoalescer`.
 - **The leading flush adds a canonical row, and that is fine.** A burst's first chunk lands as its own timeline row. `mergeAssistantChunks` / `mergeReasoningChunks` in `timeline-projection.ts` join contiguous same-turn rows, and clients read the projected timeline, so history is unaffected. Tests that assert on raw rows have to account for the extra row; tests that assert on what a client sees do not.
-- **The store holds full text; rendering has its own budget.** `capAssistantMessageForRender` limits each rendered assistant message to 32,000 JavaScript string units at a safe grapheme boundary, then `useRevealedText` paces its growth. Full-message actions retain their source text; selection and scroll geometry follow the rendered slice. Neither the cap nor pacing truncates canonical storage.
+- **The store holds the full text; only the rendered slice is paced.** Copy, selection, the chat outline, and scroll geometry all read the same string the user can see. Pacing the store instead would leave the bottom anchor chasing a content height that is ahead of the reveal.
+- **One source assistant message is one display row.** Presentation projects plugin output and caches unchanged history. The shared [Markdown renderer](markdown-renderer.md) owns rendering on every platform. Chat paces the visible source and applies a 32,000-character render cap on web; native keeps the complete message. The native renderer keeps closed blocks in a stable head and sends the paced suffix to a separate tail view during streaming; completion reunites them for selection. This stays inside the renderer, without promoting blocks into timeline history.
+- **Message identity survives completion.** Assistant row ids are source message ids. Plugin rows can replace a source, so find, scroll-to-message and history reveal still use `getStreamItemMessageId`. Width-specific measurements describe whole rendered messages.
 - **First sight of a text is revealed whole.** Only growth is paced. This is what makes history hydration, timeline replay, a virtualized row remounting on scroll, and an already-finished message all render complete on first paint without a special case for each.
-- **Leaving `phase: "streaming"` snaps the reveal.** Turn presentation comes from canonical agent liveness. A completed turn must never hold unrevealed characters. Otto retained panes pass an activity flag to the same reveal hook: hidden panes cancel their frame work and a resumed pane snaps its accumulated backlog. There is no second shared reveal ticker or user-row-based turn inference.
+- **Leaving `phase: "streaming"` snaps the reveal.** A completed turn must never be left holding characters. `layoutStream` sets the phase, so anything outside the live head with an active turn is already complete.
 - **The reducer queue commits on a frame, with a timer as the ceiling.** A frame callback never fires in a hidden tab, so a timer races it and wins when nothing is painting — the store has to keep advancing either way.
 - **A history row re-renders only when its item or layout item identity changes.** The inverted
   FlatList hands every mounted cell a new `index` and `ref` whenever a row is prepended, so without a
   memo boundary each coalesced tick re-rendered every mounted row (about 50 on a phone, 100–250 ms of
   JS per tick). `layoutStream` keeps a layout item's identity when nothing about it changed,
   `useRevisedHistoryRows` hands a fresh item identity to rows whose tool-call group, expanded state,
-  or breakpoint changed, and `HistoryStreamRow` memoizes on both. Every viewport runs its history
+  or breakpoint changed, and `StreamRow` memoizes on both. Every viewport runs its history
   through that hook; the web viewport once skipped it and history hosts of a live tool group went
   stale. A new field on `StreamLayoutItem` must be added to `areLayoutItemsEquivalent`, or sharing
   silently stops.
+- **Streaming cost must not grow with revealed history.** Reading older messages must not
+  make the next reply progressively more expensive to display. Reuse unchanged history work
+  while text arrives, and release obsolete window caches as the reader reveals more history;
+  window caches must stay bounded while their source timeline remains loaded.
+
+<!-- OTTO(action-groups): presentation-only action grouping uses the existing row and scroll owners. -->
+
+## Otto action grouping
+
+In Detailed tool-call mode, **Group consecutive actions** collapses runs of two or
+more completed tools and reasoning into expandable summaries. Running actions stay
+visible below the summary, including parallel calls that complete out of order.
+Messages, plans, plugin content, notifications, compaction markers and explicit
+turn boundaries separate runs. Failed actions remain inspectable and the summary
+shows their failure count. Overview mode retains Paseo's existing presentation.
+
+`packages/app/src/otto/chat/action-groups.ts` decorates the existing presentation
+after plugin transforms. It groups retained history only; the live head stays
+unchanged until committed. Canonical rows, source cursors, persistence and model
+requests do not contain groups. Tail identity caches the projection during text
+deltas, and unchanged runs retain their host objects so row memoization still
+works. The cache retains only the current groups, including when older pages extend
+a run. Existing group IDs survive backward pagination extending the same run.
+
+Collapsed groups mount no member views. Expansion mounts 25 actions at a time;
+**Show more actions** reveals another batch. Collapse releases member views.
+The group uses the current tool and reasoning controls inside the existing
+transcript, without a nested scroller, another virtualizer, timers or scroll writes.
+The existing group-expansion revision channel updates the memoized history host.
+Opening or closing a group explicitly hands position ownership to the reader
+through the existing viewport's `holdReadingPosition` handle. Web cancels pending
+bottom following and captures its current reading anchor; native detaches its
+bottom controller while FlatList maintains the visible row. Neither path writes
+an offset. Sending a message, jumping to the bottom, and ordinary bottom-reaching
+gestures retain their existing follow behavior.
+
+When the oldest loaded row is a compressed action group and remote history remains,
+the group exposes **Load older messages** through the normal history loader.
+Automatic near-start loading pauses there: continually loading pages to fill a
+viewport with collapsed action summaries could otherwise drain the whole history.
+Ordinary history and local window revelation retain the base pagination policy.
+
+The device preference keeps the 0.9 key `groupConsecutiveActions`, defaults to true,
+and preserves an explicit false value. It lives alongside the existing Chat detail
+settings. This presentation does not depend on which provider produced the actions.
+
+## Native parsing cost
+
+The native library reparses and measures its entire `markdown` prop on each update. During streaming, the renderer splits source at an mdast block boundary and memoizes the head, so per-frame updates parse only the tail. Boundary discovery runs when a source line completes, rather than on every reveal frame. The unfinished line and final parsed block stay in the tail, preserving list continuation, setext headings, tables and open fences. Reference-dependent source and HTML retain a larger tail because later source can change their meaning. A single long block therefore still carries its full parsing cost.
+
+Completion restores one native text view per Mermaid-delimited segment, so selection crosses prose paragraphs again. The head retains its trailing block margin while split. JS reveal remains the pacing source; native opacity animation stays disabled.
 
 ## Measuring
 
 - **Smoothness (user-perceived):** `packages/app/e2e/browser/agent-stream-smoothness.spec.ts`, gated behind `PASEO_AGENT_STREAM_PERF_E2E=1`. Drives the mock provider's `bursty-stream` model and reports coefficient of variation of characters painted per frame (smoothness) plus p95 gap between visible updates (stalls). Both numbers are needed: a stalled stream is perfectly smooth.
 - **Reproducing bursty arrival:** the `bursty-stream` model in `mock-load-test-agent.ts` emits uneven runs of tokens separated by idle gaps. Burst sizes come from a seeded generator, so a run repeats exactly.
 - **Rate policy in isolation:** `computeRevealStep` in `packages/app/src/agent-stream/text-reveal.ts` is pure; `text-reveal.test.ts` covers convergence and burst flattening without a renderer.
+- **Per-delta cost on a long timeline:** `npx vitest bench --project unit src/agent-stream/stream-tick.bench.ts` from `packages/app` replays 200 deltas over a 2,000-item timeline through the pure model and layout pipeline, with the default mounted window and with history fully revealed. It measures the JS work per delta, not paint.
 
-Historical upstream measurements (2026-08; not measurements of this integration, Expo web against a local dev daemon, real Claude Haiku agent, ~8.5s samples during active streaming). Setting `TEXT_REVEAL_HORIZON_MS` to 0 makes the reveal paint on arrival, which is how the baseline column was taken:
+Healthy numbers (2026-08, Expo web against a local dev daemon, real Claude Haiku agent, ~8.5s samples during active streaming). Setting `TEXT_REVEAL_HORIZON_MS` to 0 makes the reveal paint on arrival, which is how the baseline column was taken:
 
 |                                  | paint on arrival | paced |
 | -------------------------------- | ---------------- | ----- |

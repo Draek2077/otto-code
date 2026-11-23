@@ -1,8 +1,9 @@
+// OTTO(identity): assertions follow Otto identity values.
 import { describe, expect, it } from "vitest";
 import { buildSshTunnelArgs, parseSshTransportUri, validateSshHost } from "./ssh-transport.js";
 
 describe("SSH transport", () => {
-  it("parses SSH targets with Otto's installed remote daemon port", () => {
+  it("parses SSH targets with Otto's default daemon port", () => {
     expect(parseSshTransportUri("ssh://deploy@example.com:2222")).toEqual({
       host: "deploy@example.com",
       sshPort: 2222,

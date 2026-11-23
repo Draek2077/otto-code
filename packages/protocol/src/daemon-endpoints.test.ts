@@ -7,6 +7,8 @@ import {
   extractHostPortFromWebSocketUrl,
   normalizeRelayProtocolVersion,
   parseConnectionUri,
+  parseRelayConnectionUri,
+  serializeRelayConnectionUri,
   serializeConnectionUri,
   serializeConnectionUriForStorage,
   shouldUseTlsForDefaultHostedRelay,
@@ -14,15 +16,15 @@ import {
 
 describe("connection URI parsing", () => {
   test("round-trips a tcp host and port", () => {
-    const parsed = parseConnectionUri("tcp://localhost:6868");
+    const parsed = parseConnectionUri("tcp://localhost:6767");
 
     expect(parsed).toEqual({
       host: "localhost",
-      port: 6868,
+      port: 6767,
       isIpv6: false,
       useTls: false,
     });
-    expect(serializeConnectionUri(parsed)).toBe("tcp://localhost:6868");
+    expect(serializeConnectionUri(parsed)).toBe("tcp://localhost:6767");
   });
 
   test("round-trips an SSL-enabled tcp host and port", () => {
@@ -38,15 +40,15 @@ describe("connection URI parsing", () => {
   });
 
   test("round-trips an IPv6 host", () => {
-    const parsed = parseConnectionUri("tcp://[::1]:6868?ssl=true");
+    const parsed = parseConnectionUri("tcp://[::1]:6767?ssl=true");
 
     expect(parsed).toEqual({
       host: "::1",
-      port: 6868,
+      port: 6767,
       isIpv6: true,
       useTls: true,
     });
-    expect(serializeConnectionUri(parsed)).toBe("tcp://[::1]:6868?ssl=true");
+    expect(serializeConnectionUri(parsed)).toBe("tcp://[::1]:6767?ssl=true");
   });
 
   test("rejects a missing port", () => {
@@ -54,29 +56,29 @@ describe("connection URI parsing", () => {
   });
 
   test("rejects an invalid scheme", () => {
-    expect(() => parseConnectionUri("http://localhost:6868")).toThrow(
+    expect(() => parseConnectionUri("http://localhost:6767")).toThrow(
       "Connection URI protocol must be tcp:",
     );
   });
 
   test("parses password without including it in the public serializer", () => {
-    const parsed = parseConnectionUri("tcp://localhost:6868?ssl=true&password=secret");
+    const parsed = parseConnectionUri("tcp://localhost:6767?ssl=true&password=secret");
 
     expect(parsed).toEqual({
       host: "localhost",
-      port: 6868,
+      port: 6767,
       isIpv6: false,
       useTls: true,
       password: "secret",
     });
-    expect(serializeConnectionUri(parsed)).toBe("tcp://localhost:6868?ssl=true");
+    expect(serializeConnectionUri(parsed)).toBe("tcp://localhost:6767?ssl=true");
     expect(serializeConnectionUriForStorage(parsed)).toBe(
-      "tcp://localhost:6868?ssl=true&password=secret",
+      "tcp://localhost:6767?ssl=true&password=secret",
     );
   });
 
   test("rejects userinfo passwords", () => {
-    expect(() => parseConnectionUri("tcp://:secret@localhost:6868?ssl=true")).toThrow(
+    expect(() => parseConnectionUri("tcp://:secret@localhost:6767?ssl=true")).toThrow(
       "Connection URI userinfo is not supported",
     );
   });
@@ -90,8 +92,8 @@ describe("daemon websocket URLs", () => {
   });
 
   test("uses wss for non-443 ports when TLS is enabled", () => {
-    expect(buildDaemonWebSocketUrl("example.com:6868", { useTls: true })).toBe(
-      "wss://example.com:6868/ws",
+    expect(buildDaemonWebSocketUrl("example.com:6767", { useTls: true })).toBe(
+      "wss://example.com:6767/ws",
     );
   });
 });
@@ -100,7 +102,7 @@ describe("relay websocket URL versioning", () => {
   test("defaults relay URLs to v2", () => {
     const url = new URL(
       buildRelayWebSocketUrl({
-        endpoint: "relay.otto-code.ai:443",
+        endpoint: "relay.paseo.sh:443",
         useTls: true,
         serverId: "srv_test",
         role: "client",
@@ -114,7 +116,7 @@ describe("relay websocket URL versioning", () => {
   test("includes connectionId when provided (server data sockets)", () => {
     const url = new URL(
       buildRelayWebSocketUrl({
-        endpoint: "relay.otto-code.ai:443",
+        endpoint: "relay.paseo.sh:443",
         useTls: true,
         serverId: "srv_test",
         role: "server",
@@ -128,7 +130,7 @@ describe("relay websocket URL versioning", () => {
   test("allows explicitly requesting v1 relay URLs", () => {
     const url = new URL(
       buildRelayWebSocketUrl({
-        endpoint: "relay.otto-code.ai:443",
+        endpoint: "relay.paseo.sh:443",
         useTls: true,
         serverId: "srv_test",
         role: "server",
@@ -153,7 +155,7 @@ describe("relay websocket URLs", () => {
   test("uses ws for port 443 when TLS is disabled", () => {
     const url = new URL(
       buildRelayWebSocketUrl({
-        endpoint: "relay.otto-code.ai:443",
+        endpoint: "relay.paseo.sh:443",
         useTls: false,
         serverId: "srv_test",
         role: "client",
@@ -166,7 +168,7 @@ describe("relay websocket URLs", () => {
   test("uses wss for non-443 ports when TLS is enabled", () => {
     const url = new URL(
       buildRelayWebSocketUrl({
-        endpoint: "relay.otto-code.ai:6868",
+        endpoint: "relay.paseo.sh:6767",
         useTls: true,
         serverId: "srv_test",
         role: "client",
@@ -191,8 +193,8 @@ describe("relay websocket URLs", () => {
 });
 
 describe("shouldUseTlsForDefaultHostedRelay", () => {
-  test("returns true for the hosted Otto relay on port 443", () => {
-    expect(shouldUseTlsForDefaultHostedRelay("relay.otto-code.ai:443")).toBe(true);
+  test("returns true for the hosted Paseo relay on port 443", () => {
+    expect(shouldUseTlsForDefaultHostedRelay("relay.paseo.sh:443")).toBe(true);
   });
 
   test("returns true for any self-hosted relay on port 443", () => {
@@ -209,5 +211,24 @@ describe("shouldUseTlsForDefaultHostedRelay", () => {
 
   test("returns false for malformed endpoints", () => {
     expect(shouldUseTlsForDefaultHostedRelay("not-an-endpoint")).toBe(false);
+  });
+});
+
+describe("relay connection URI", () => {
+  test("round-trips the offer and password through a direct URI and connect wrapper", () => {
+    const parts = {
+      offer: {
+        v: 2 as const,
+        serverId: "srv_test",
+        daemonPublicKeyB64: "abc+/=",
+        relay: { endpoint: "relay.paseo.sh:443", useTls: true },
+      },
+      password: "two words",
+    };
+    const uri = serializeRelayConnectionUri(parts);
+    expect(parseRelayConnectionUri(uri)).toEqual(parts);
+    expect(
+      parseRelayConnectionUri(`https://app.paseo.sh/#connect=${encodeURIComponent(uri)}`),
+    ).toEqual(parts);
   });
 });

@@ -1,5 +1,5 @@
-import type { Page } from "@playwright/test";
-import { test, expect } from "../support/fixtures";
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
+import { test, expect } from "../support/helpers/otto-individual-actions"; // OTTO(chat-actions)
 import {
   awaitAssistantMessage,
   expectAgentIdle,
@@ -18,7 +18,6 @@ import {
 } from "../support/helpers/agent-bottom-anchor";
 import { delayCreatedAgentInitialTailResponse } from "../support/helpers/agent-timeline-gate";
 import { selectModel } from "../support/helpers/app";
-import { seedAppSettings } from "../support/helpers/settings";
 import { clickNewChat } from "../support/helpers/launcher";
 import { expectComposerVisible, startRunningMockAgent } from "../support/helpers/composer";
 import {
@@ -29,16 +28,7 @@ import {
 
 const SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE = 360;
 
-// Action grouping (default on) keeps reabsorbing the mock stream's completed
-// tool calls into one collapsed row, so the transcript's rendered height
-// plateaus and the scroll-away tests can never accumulate enough scrollable
-// distance. These tests assert scroll anchoring, not grouping - seed the
-// setting off so every action renders as its own row again.
-async function disableActionGrouping(page: Page): Promise<void> {
-  // Merge rather than replace: writing a bare blob here used to drop
-  // `hasCompletedSetupWizard`, dropping the whole spec into the first-run wizard.
-  await seedAppSettings(page, { groupConsecutiveActions: false });
-}
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 test.describe("Agent stream UI", () => {
   test("keeps running agent chrome after page refresh", async ({ page }) => {
@@ -63,11 +53,6 @@ test.describe("Agent stream UI", () => {
 
   test("auto-scroll sticks to bottom across token bursts", async ({ page }) => {
     test.setTimeout(120_000);
-    // The mock stream emits tool calls; with action grouping on (default) the
-    // completed rows collapse and the transcript height plateaus, so growth can
-    // stall inside the poll window. Render every action as its own row, matching
-    // the scroll-away anchor tests below.
-    await disableActionGrouping(page);
     const agent = await startRunningMockAgent(page, {
       prefix: "stream-scroll-",
       model: "one-minute-stream",
@@ -106,18 +91,12 @@ test.describe("Agent stream UI", () => {
       }
 
       await page.evaluate((block) => {
-        const evidence = {
-          addedNodes: 0,
-          characterDataMutations: 0,
-          removedNodes: 0,
-        };
+        const evidence = { addedNodes: 0, characterDataMutations: 0, removedNodes: 0 };
         const observer = new MutationObserver((records) => {
           for (const record of records) {
             evidence.addedNodes += record.addedNodes.length;
             evidence.removedNodes += record.removedNodes.length;
-            if (record.type === "characterData") {
-              evidence.characterDataMutations += 1;
-            }
+            if (record.type === "characterData") evidence.characterDataMutations += 1;
           }
         });
         observer.observe(block, { characterData: true, childList: true, subtree: true });
@@ -167,8 +146,7 @@ test.describe("Agent stream UI", () => {
   });
 
   test("keeps the viewport fixed after the user scrolls away during a stream", async ({ page }) => {
-    test.setTimeout(240_000);
-    await disableActionGrouping(page);
+    test.setTimeout(120_000);
     const agent = await seedMockAgentWorkspace({
       repoPrefix: "stream-scroll-away-",
       title: "Scroll-away anchor",
@@ -183,22 +161,13 @@ test.describe("Agent stream UI", () => {
       });
       await expectComposerVisible(page);
       await agent.client.sendAgentMessage(agent.agentId, "Stream for scroll-away anchor test.");
-      await expect(
-        page
-          .getByRole("button", {
-            name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
-          })
-          .first(),
-      ).toBeVisible({
+      await expect(page.getByRole("button", { name: /stop|cancel/i }).first()).toBeVisible({
         timeout: 30_000,
       });
       await awaitAssistantMessage(page);
-      // Tighter chat typography slowed how fast the rendered transcript
-      // gains height, so give the stream longer to produce enough
-      // scrollable distance.
       await waitForScrollableChat(page, {
         minScrollableDistance: SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE,
-        timeout: 120_000,
+        timeout: 30_000,
       });
       const baseline = await scrollChatAwayFromBottom(page, {
         deltaY: -900,
@@ -217,8 +186,7 @@ test.describe("Agent stream UI", () => {
     page,
     withWorkspace,
   }) => {
-    test.setTimeout(240_000);
-    await disableActionGrouping(page);
+    test.setTimeout(180_000);
     const timelineGate = await delayCreatedAgentInitialTailResponse(page);
     const workspace = await withWorkspace({
       prefix: "stream-scroll-away-delayed-history-",
@@ -242,13 +210,7 @@ test.describe("Agent stream UI", () => {
     });
     await timelineGate.waitForCreatedAgent();
     await timelineGate.waitForDelayedResponse();
-    await expect(
-      page
-        .getByRole("button", {
-          name: /stop agent|canceling agent|interrupt agent|send and interrupt/i,
-        })
-        .first(),
-    ).toBeVisible({
+    await expect(page.getByRole("button", { name: /stop|cancel/i }).first()).toBeVisible({
       timeout: 30_000,
     });
     // Reasoning rows collapse when the mock starts its next assistant response. Wait past
@@ -256,7 +218,7 @@ test.describe("Agent stream UI", () => {
     await awaitAssistantMessage(page, "Now I have a clearer picture.");
     await waitForScrollableChat(page, {
       minScrollableDistance: SCROLL_AWAY_MIN_SCROLLABLE_DISTANCE,
-      timeout: 120_000,
+      timeout: 45_000,
     });
     const baseline = await scrollChatAwayFromBottom(page, {
       deltaY: -900,

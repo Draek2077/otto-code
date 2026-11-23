@@ -6,11 +6,13 @@ import {
   ArrowRight,
   Columns2,
   Copy,
-  Diff,
   Files,
   Focus,
+  GitBranch,
+  GitCompareArrows,
+  GitPullRequest,
   Globe,
-  Checklist,
+  ListChecks,
   Move,
   PanelRight,
   Pencil,
@@ -21,8 +23,7 @@ import {
   SquarePen,
   SquareTerminal,
   X,
-} from "@/components/icons/material-icons";
-import { GitBranch, GitPullRequest } from "@/components/icons/lucide";
+} from "lucide-react-native";
 import { getIsElectron } from "@/constants/platform";
 import { supportsDesktopPaneSplits, useIsCompactFormFactor } from "@/constants/layout";
 import { GIT_ACTION_ICONS } from "@/git/action-icons";
@@ -67,7 +68,7 @@ const WORKSPACE_COMMAND_CENTER_ICONS = {
   newBrowser: getCommandCenterIcon(Globe),
   splitRight: getCommandCenterIcon(Columns2),
   splitDown: getCommandCenterIcon(Rows2),
-  changes: getCommandCenterIcon(Diff),
+  changes: getCommandCenterIcon(GitCompareArrows),
   files: getCommandCenterIcon(Files),
   pullRequest: getCommandCenterIcon(GitPullRequest),
   previousTab: getCommandCenterIcon(ArrowLeft),
@@ -85,7 +86,7 @@ const WORKSPACE_COMMAND_CENTER_ICONS = {
   copyBranchName: getCommandCenterIcon(GitBranch),
   pin: getCommandCenterIcon(Pin),
   unpin: getCommandCenterIcon(PinOff),
-  showSetup: getCommandCenterIcon(Checklist),
+  showSetup: getCommandCenterIcon(ListChecks),
   toggleFocusMode: getCommandCenterIcon(Focus),
 };
 
@@ -204,6 +205,7 @@ export function useWorkspaceCommandCenterActions(): void {
   const { overrides } = useKeyboardShortcutOverrides();
   const { gitActions, isGit } = useGitActions({
     serverId: serverId ?? "",
+    workspaceId, // OTTO(git-fetch): selected workspace identity.
     cwd: cwd ?? "",
     icons: GIT_ACTION_ICONS,
   });

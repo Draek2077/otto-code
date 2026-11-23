@@ -8,20 +8,20 @@ interface StatusBadgeProps {
   label: string;
   variant?: StatusBadgeVariant;
   leading?: ReactNode;
+  /** `xs` fits beside a line of `sm` text: the same label on tighter padding. */
+  size?: "sm" | "xs";
 }
 
-// One shared pill for every status across Artifacts, Schedules, and
-// Orchestrations: same shape, same three-color scheme (green/yellow/red),
-// title case applied uniformly here so callers can pass raw status strings.
-export function StatusBadge({ label, variant = "muted", leading }: StatusBadgeProps) {
+export function StatusBadge({ label, variant = "muted", leading, size = "sm" }: StatusBadgeProps) {
   const pillStyle = useMemo(
     () => [
       styles.pill,
+      size === "xs" && styles.pillXs,
       variant === "success" && styles.pillSuccess,
       variant === "warning" && styles.pillWarning,
       variant === "error" && styles.pillError,
     ],
-    [variant],
+    [size, variant],
   );
   const textStyle = useMemo(
     () => [
@@ -53,25 +53,26 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     paddingVertical: 3,
   },
-  // Pass calibrated theme surface tokens straight through. Unistyles cannot
-  // resolve colors computed from a theme value inside StyleSheet.create.
+  pillXs: {
+    paddingHorizontal: theme.spacing[1.5],
+    paddingVertical: 1,
+  },
   pillSuccess: {
-    backgroundColor: theme.colors.statusSuccessSurface,
-    borderColor: theme.colors.statusSuccess,
+    backgroundColor: theme.colors.statusSuccessTint,
+    borderColor: "transparent",
   },
   pillWarning: {
-    backgroundColor: theme.colors.statusWarningSurface,
-    borderColor: theme.colors.statusWarning,
+    backgroundColor: theme.colors.statusWarningTint,
+    borderColor: "transparent",
   },
   pillError: {
-    backgroundColor: theme.colors.statusDangerSurface,
-    borderColor: theme.colors.statusDanger,
+    backgroundColor: theme.colors.statusDangerTint,
+    borderColor: "transparent",
   },
   pillText: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
-    textTransform: "capitalize",
   },
   pillTextSuccess: {
     color: theme.colors.statusSuccess,

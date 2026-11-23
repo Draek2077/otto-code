@@ -6,7 +6,6 @@ import {
   createBrowserRecord,
   normalizeBrowserIndexState,
   normalizeBrowserUrl,
-  rehydrateBrowserRecord,
   removeBrowserFromIndex,
   sanitizeBrowsersForPersist,
 } from "./state";
@@ -44,15 +43,6 @@ describe("normalizeBrowserUrl", () => {
 });
 
 describe("createBrowserRecord", () => {
-  it("retains AI creator identity through persistence and restore", () => {
-    const record = {
-      ...createBrowserRecord({ browserId: "b1", initialUrl: "https://example.com", now: 1000 }),
-      openedByAgentId: "agent-1",
-    };
-    const saved = sanitizeBrowsersForPersist(withRecords([record]));
-    const restored = normalizeBrowserIndexState(saved).browsersById.b1;
-    expect(rehydrateBrowserRecord("b1", restored).openedByAgentId).toBe("agent-1");
-  });
   it("normalizes the initial URL and starts with idle state", () => {
     const record = createBrowserRecord({
       browserId: "b1",
@@ -62,7 +52,6 @@ describe("createBrowserRecord", () => {
 
     expect(record).toEqual({
       browserId: "b1",
-      renderMode: "native",
       url: "http://localhost:8081",
       title: "",
       isLoading: false,
@@ -72,62 +61,7 @@ describe("createBrowserRecord", () => {
       lastError: null,
       viewport: { mode: "responsive" },
       createdAt: 1000,
-      isPreview: false,
-      previewServerId: null,
-      previewServerName: null,
-      previewCwd: null,
-      previewStatus: "ready",
     });
-  });
-
-  it("keeps hosted ownership across restore while legacy records stay native", () => {
-    const hosted = createBrowserRecord({
-      browserId: "hosted",
-      initialUrl: "https://example.com",
-      now: 1000,
-      renderMode: "hosted",
-    });
-    expect(rehydrateBrowserRecord("hosted", hosted).renderMode).toBe("hosted");
-    expect(
-      normalizeBrowserIndexState({ browsersById: { hosted } }).browsersById.hosted?.renderMode,
-    ).toBe("hosted");
-    const legacy = { ...hosted, renderMode: undefined };
-    expect(rehydrateBrowserRecord("legacy", legacy).renderMode).toBe("native");
-  });
-
-  it("marks the record as a preview tab when requested", () => {
-    const record = createBrowserRecord({
-      browserId: "b1",
-      initialUrl: "http://127.0.0.1:8081",
-      now: 1000,
-      isPreview: true,
-      previewServerId: "srv_1",
-    });
-
-    expect(record.isPreview).toBe(true);
-    expect(record.previewServerId).toBe("srv_1");
-  });
-});
-
-describe("rehydrateBrowserRecord", () => {
-  it("keeps the last URL from the retired browser store", () => {
-    const original = createBrowserRecord({
-      browserId: "b1",
-      initialUrl: "https://otto-code.me/docs",
-      now: 1000,
-    });
-    const persisted = sanitizeBrowsersForPersist({
-      browsersById: {
-        b1: { ...original, isLoading: true, lastError: "connection refused" },
-      },
-    });
-    const { viewport: _legacyViewport, ...legacyRecord } = persisted.browsersById.b1!;
-    const record = rehydrateBrowserRecord("b1", legacyRecord);
-
-    expect(record.url).toBe("https://otto-code.me/docs");
-    expect(record.isLoading).toBe(false);
-    expect(record.lastError).toBe(null);
-    expect(record.viewport).toEqual({ mode: "responsive" });
   });
 });
 
@@ -172,17 +106,6 @@ describe("applyBrowserPatch", () => {
     const next = applyBrowserPatch(initial, "missing", { title: "x" });
 
     expect(next).toBe(initial);
-  });
-
-  it("applies an isPreview-only patch instead of treating it as a no-op", () => {
-    const initial = withRecords([
-      createBrowserRecord({ browserId: "b1", initialUrl: "https://a.test", now: 0 }),
-    ]);
-
-    const next = applyBrowserPatch(initial, "b1", { isPreview: true });
-
-    expect(next).not.toBe(initial);
-    expect(next.browsersById.b1?.isPreview).toBe(true);
   });
 
   it("returns the same state when the browser id is blank", () => {
@@ -253,27 +176,6 @@ describe("sanitizeBrowsersForPersist", () => {
 });
 
 describe("normalizeBrowserIndexState", () => {
-  it("preserves saved URLs when another record or optional metadata is invalid", () => {
-    const valid = createBrowserRecord({
-      browserId: "good",
-      initialUrl: "https://otto-code.me/docs",
-      now: 0,
-    });
-    const invalidMetadata = {
-      ...valid,
-      browserId: "old",
-      url: "https://example.org/important",
-      viewport: { mode: "fixed", width: 0, height: 800 },
-    };
-    const restored = normalizeBrowserIndexState({
-      browsersById: { good: valid, old: invalidMetadata, broken: null },
-    });
-    expect(restored.browsersById.good?.url).toBe("https://otto-code.me/docs");
-    expect(restored.browsersById.old?.url).toBe("https://example.org/important");
-    expect(restored.browsersById.old?.viewport).toEqual({ mode: "responsive" });
-    expect(Object.keys(restored.browsersById)).toEqual(["good", "old"]);
-  });
-
   it("defaults legacy persisted records to Responsive", () => {
     const legacy = createBrowserRecord({
       browserId: "b1",

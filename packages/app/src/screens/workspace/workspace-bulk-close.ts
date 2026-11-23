@@ -1,4 +1,4 @@
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { i18n } from "@/i18n/i18next";
 
@@ -21,17 +21,16 @@ export interface BulkCloseConfirmationLabels {
 
 export const DEFAULT_BULK_CLOSE_CONFIRMATION_LABELS: BulkCloseConfirmationLabels = {
   all: ({ agents, terminals, tabs }) =>
-    `This will archive ${agents} agent(s), close ${terminals} terminal(s), and close ${tabs} tab(s). Any running process or external file editor in those terminals and tabs will be stopped immediately.`,
+    `This will archive ${agents} agent(s), close ${terminals} terminal(s), and close ${tabs} tab(s). Any running process in a closed terminal will be stopped immediately.`,
   agentsAndTerminals: ({ agents, terminals }) =>
     `This will archive ${agents} agent(s) and close ${terminals} terminal(s). Any running process in a closed terminal will be stopped immediately.`,
   terminalsAndTabs: ({ terminals, tabs }) =>
-    `This will close ${terminals} terminal(s) and close ${tabs} tab(s). Any running process or external file editor in those terminals and tabs will be stopped immediately.`,
+    `This will close ${terminals} terminal(s) and close ${tabs} tab(s). Any running process in a closed terminal will be stopped immediately.`,
   agentsAndTabs: ({ agents, tabs }) =>
-    `This will archive ${agents} agent(s) and close ${tabs} tab(s). Any external file editor in a closed tab will be stopped immediately.`,
+    `This will archive ${agents} agent(s) and close ${tabs} tab(s).`,
   terminals: ({ terminals }) =>
     `This will close ${terminals} terminal(s). Any running process in a closed terminal will be stopped immediately.`,
-  tabs: ({ tabs }) =>
-    `This will close ${tabs} tab(s). Any external file editor in a closed tab will be stopped immediately.`,
+  tabs: ({ tabs }) => `This will close ${tabs} tab(s).`,
   agents: ({ agents }) => `This will archive ${agents} agent(s).`,
 };
 

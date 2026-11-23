@@ -38,7 +38,7 @@ export interface ConnectDaemonClientOptions {
 
 /**
  * Connects an in-test daemon client over the isolated E2E daemon's WebSocket.
- * The port-6868 guard keeps tests off the developer daemon. Each helper passes
+ * The port-6767 guard keeps tests off the developer daemon. Each helper passes
  * its own typed client interface as the generic.
  */
 export async function connectDaemonClient<ClientInstance extends { connect(): Promise<void> }>(
@@ -63,4 +63,11 @@ function loadAppVersion(): string {
     throw new Error(`Missing app version in ${packageJsonPath}`);
   }
   return packageJson.version;
+}
+
+export async function loadProtocolSchemas(): Promise<typeof import("@getpaseo/protocol/messages")> {
+  const moduleUrl = pathToFileURL(
+    path.resolve(__dirname, "../../../../../packages/protocol/dist/messages.js"),
+  ).href;
+  return import(moduleUrl);
 }

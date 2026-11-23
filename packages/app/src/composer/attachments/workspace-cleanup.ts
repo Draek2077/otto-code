@@ -1,11 +1,9 @@
 import type { ComposerAttachment, WorkspaceComposerAttachment } from "@/attachments/types";
 import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachments-store";
-import {
-  isPullRequestContextAttachment,
-  isWorkspaceAttachment,
-} from "@/attachments/workspace-attachment-utils";
+import { isPullRequestContextAttachment } from "@/attachments/workspace-attachment-utils";
 
 export function getAttachmentKey(attachment: WorkspaceComposerAttachment): string {
+  if (attachment.kind === "editor_context") return `editor:${attachment.id}`; // OTTO(editor)
   if (attachment.kind === "browser_element") {
     return JSON.stringify({
       type: "browser_element",
@@ -23,12 +21,7 @@ export function getAttachmentKey(attachment: WorkspaceComposerAttachment): strin
       id: attachment.id,
     });
   }
-  if (
-    attachment.kind === "chat_history" ||
-    attachment.kind === "meeting_transcript" ||
-    attachment.kind === "file_context" ||
-    attachment.kind === "rendered_document"
-  ) {
+  if (attachment.kind === "chat_history") {
     return JSON.stringify({
       kind: attachment.kind,
       id: attachment.id,
@@ -61,15 +54,20 @@ export function removeWorkspaceAttachmentsMatching(selectedKey: string): void {
   }
 }
 
-function isSentWorkspaceAttachment(
+function isSentContextAttachment(
   attachment: ComposerAttachment,
 ): attachment is WorkspaceComposerAttachment {
-  return isWorkspaceAttachment(attachment);
+  return (
+    attachment.kind === "browser_element" ||
+    attachment.kind === "editor_context" || // OTTO(editor)
+    attachment.kind === "chat_history" ||
+    isPullRequestContextAttachment(attachment)
+  );
 }
 
-export function removeSentWorkspaceAttachments(attachments: readonly ComposerAttachment[]): void {
-  const sentWorkspaceKeys = attachments.filter(isSentWorkspaceAttachment).map(getAttachmentKey);
-  for (const key of sentWorkspaceKeys) {
+export function removeSentContextAttachments(attachments: readonly ComposerAttachment[]): void {
+  const sentContextKeys = attachments.filter(isSentContextAttachment).map(getAttachmentKey);
+  for (const key of sentContextKeys) {
     removeWorkspaceAttachmentsMatching(key);
   }
 }

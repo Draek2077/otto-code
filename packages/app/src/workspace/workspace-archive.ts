@@ -13,10 +13,7 @@ export interface WorkspaceArchiveTarget {
 }
 
 interface WorkspaceArchiveClient {
-  archiveWorkspace: (
-    workspaceId: string,
-    options?: { branchDisposition?: "keep" | "delete" },
-  ) => Promise<{ error: string | null; deletedBranch?: string | null }>;
+  archiveWorkspace: (workspaceId: string) => Promise<{ error: string | null }>;
 }
 
 interface OptimisticWorkspaceArchiveSnapshot {
@@ -75,30 +72,23 @@ function restoreOptimisticallyHiddenWorkspace(input: {
 async function archiveWorkspaceOrThrow(input: {
   client: WorkspaceArchiveClient;
   workspaceId: string;
-  branchDisposition?: "keep" | "delete";
-}): Promise<{ deletedBranch: string | null }> {
-  const payload = await input.client.archiveWorkspace(
-    input.workspaceId,
-    input.branchDisposition ? { branchDisposition: input.branchDisposition } : undefined,
-  );
+}): Promise<void> {
+  const payload = await input.client.archiveWorkspace(input.workspaceId);
   if (payload.error) {
     throw new Error(payload.error);
   }
-  return { deletedBranch: payload.deletedBranch ?? null };
 }
 
 export async function archiveWorkspaceOptimistically(input: {
   client: WorkspaceArchiveClient;
   workspace: WorkspaceArchiveTarget;
-  branchDisposition?: "keep" | "delete";
-}): Promise<{ deletedBranch: string | null }> {
+}): Promise<void> {
   const snapshot = hideWorkspaceOptimistically(input.workspace);
 
   try {
-    return await archiveWorkspaceOrThrow({
+    await archiveWorkspaceOrThrow({
       client: input.client,
       workspaceId: input.workspace.workspaceId,
-      branchDisposition: input.branchDisposition,
     });
   } catch (error) {
     restoreOptimisticallyHiddenWorkspace({

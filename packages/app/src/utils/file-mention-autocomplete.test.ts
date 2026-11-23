@@ -3,7 +3,6 @@ import {
   applyFileMentionReplacement,
   findActiveFileMention,
   formatQuotedFileMentionPath,
-  removeFileMention,
 } from "./file-mention-autocomplete";
 
 describe("findActiveFileMention", () => {
@@ -49,34 +48,80 @@ describe("findActiveFileMention", () => {
     });
     expect(mention).toBeNull();
   });
+
+  it("returns null for the issue #1364 angle-bracket email example", () => {
+    const text = "user <12345+user@noreply.example.com>";
+    const mention = findActiveFileMention({
+      text,
+      cursorIndex: text.length,
+    });
+    expect(mention).toBeNull();
+  });
+
+  it("returns null for email addresses (word char before @)", () => {
+    const text = "alice@example.com";
+    const mention = findActiveFileMention({
+      text,
+      cursorIndex: text.length,
+    });
+    expect(mention).toBeNull();
+  });
+
+  it("returns null for email addresses (+ immediately before @)", () => {
+    // Local part ends with + so the character at index-1 is '+', not a word char.
+    const text = "noreply+@example.com";
+    const mention = findActiveFileMention({
+      text,
+      cursorIndex: text.length,
+    });
+    expect(mention).toBeNull();
+  });
+
+  it("returns null for plus-tagged email local parts", () => {
+    const text = "noreply+tag@example.com";
+    const mention = findActiveFileMention({
+      text,
+      cursorIndex: text.length,
+    });
+    expect(mention).toBeNull();
+  });
+
+  it("returns null when query contains angle brackets", () => {
+    const text = "check @foo<bar> end";
+    const mention = findActiveFileMention({
+      text,
+      cursorIndex: text.indexOf(" end"),
+    });
+    expect(mention).toBeNull();
+  });
+
+  it("returns null when query ends with a closing angle bracket", () => {
+    const text = "check @foo>";
+    const mention = findActiveFileMention({
+      text,
+      cursorIndex: text.length,
+    });
+    expect(mention).toBeNull();
+  });
+
+  it("still detects a file mention after an email in the same input", () => {
+    const text = "user <12345+user@noreply.example.com> and also @file";
+    const mention = findActiveFileMention({
+      text,
+      cursorIndex: text.length,
+    });
+    expect(mention).toEqual({
+      start: text.lastIndexOf("@"),
+      end: text.length,
+      query: "file",
+    });
+  });
 });
 
-// The quoted, escaped form is the intended user-visible representation of a
-// file mention (see formatQuotedFileMentionPath for why): the composer shows
-// exactly what the agent receives, and copy/rewind/history never diverge from
-// it. These tests pin that contract, including the escaping that keeps the
-// path unambiguous for the model.
 describe("formatQuotedFileMentionPath", () => {
   it("quotes workspace-relative paths using file mention escaping", () => {
     expect(formatQuotedFileMentionPath('src/changed "file".ts')).toBe(
       '"src/changed \\"file\\".ts"',
-    );
-  });
-
-  it("escapes backslashes before double quotes", () => {
-    expect(formatQuotedFileMentionPath("src\\dir\\file.ts")).toBe('"src\\\\dir\\\\file.ts"');
-  });
-
-  it("escapes backslashes that directly precede quotes", () => {
-    // Input dir\"file.ts -> backslash first, then quote: dir\\\"file.ts,
-    // wrapped -> "dir\\\"file.ts". Order matters: a quote-first pass would
-    // turn the backslash into part of the quote's escape.
-    expect(formatQuotedFileMentionPath('dir\\"file.ts')).toBe('"dir\\\\\\"file.ts"');
-  });
-
-  it("leaves plain relative paths unquoted in content, only wrapped", () => {
-    expect(formatQuotedFileMentionPath("src/components/chat.tsx")).toBe(
-      '"src/components/chat.tsx"',
     );
   });
 });
@@ -100,20 +145,5 @@ describe("applyFileMentionReplacement", () => {
       relativePath: 'src/"quoted".ts',
     });
     expect(next).toBe('"src/\\"quoted\\".ts"');
-  });
-});
-
-describe("removeFileMention", () => {
-  it("drops the @query and leaves the prose around it joined", () => {
-    const text = "open @src/com next";
-    expect(removeFileMention({ text, mention: { start: 5, end: 13, query: "src/com" } })).toBe(
-      "open  next",
-    );
-  });
-
-  it("empties the input when the mention was all of it", () => {
-    expect(
-      removeFileMention({ text: "@src/com", mention: { start: 0, end: 8, query: "src/com" } }),
-    ).toBe("");
   });
 });

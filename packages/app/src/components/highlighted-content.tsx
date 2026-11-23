@@ -17,16 +17,11 @@ interface HighlightedLinesProps {
   // 1-based line number of the first line; when set, a line-number gutter is
   // rendered (used by Read, which carries a server-normalized offset).
   startLine?: number;
-  // "Wrap long lines" appearance setting: soft-wrap long lines instead of
-  // relying on a surrounding horizontal scroller. Visual only - selection/copy
-  // still yields the original unwrapped text. Tokenization is untouched, so
-  // syntax highlighting is unaffected.
-  wrap?: boolean;
 }
 
-function ContentLine({ line, wrap }: { line: KeyedLine; wrap: boolean }) {
+function ContentLine({ line }: { line: KeyedLine }) {
   return (
-    <Text selectable style={wrap ? LINE_TEXT_WRAP_STYLE : styles.lineText}>
+    <Text selectable style={styles.lineText}>
       {line.tokens.length === 0
         ? ZERO_WIDTH
         : line.tokens.map(({ key, token }: KeyedToken) => (
@@ -42,17 +37,15 @@ const GutteredLine = React.memo(function GutteredLine({
   line,
   lineNumber,
   digits,
-  wrap,
 }: {
   line: KeyedLine;
   lineNumber: number;
   digits: number;
-  wrap: boolean;
 }) {
   return (
     <View style={styles.row}>
       <Text style={styles.gutterText}>{String(lineNumber).padStart(digits)} </Text>
-      <ContentLine line={line} wrap={wrap} />
+      <ContentLine line={line} />
     </View>
   );
 });
@@ -60,12 +53,12 @@ const GutteredLine = React.memo(function GutteredLine({
 // Renders pre-tokenized lines (from the shared highlight cache), optionally with
 // a line-number gutter. Callers decide whether to highlight at all, so the
 // expensive size-cap / unsupported-language fallback stays a single plain Text.
-export function HighlightedLines({ lines, startLine, wrap = false }: HighlightedLinesProps) {
+export function HighlightedLines({ lines, startLine }: HighlightedLinesProps) {
   if (startLine === undefined) {
     return (
       <View dataSet={CODE_SURFACE_DATASET}>
         {lines.map((line) => (
-          <ContentLine key={line.key} line={line} wrap={wrap} />
+          <ContentLine key={line.key} line={line} />
         ))}
       </View>
     );
@@ -76,43 +69,10 @@ export function HighlightedLines({ lines, startLine, wrap = false }: Highlighted
   return (
     <View dataSet={CODE_SURFACE_DATASET}>
       {lines.map((line, index) => (
-        <GutteredLine
-          key={line.key}
-          line={line}
-          lineNumber={startLine + index}
-          digits={digits}
-          wrap={wrap}
-        />
+        <GutteredLine key={line.key} line={line} lineNumber={startLine + index} digits={digits} />
       ))}
     </View>
   );
-}
-
-/**
- * Pre-tokenized lines as inline spans for a caller-owned parent `<Text>`,
- * newlines included.
- *
- * `HighlightedLines` renders one `<View>` per line, so it can't be mixed with
- * plain text inside a single `<Text>`. This is for the case where it has to be:
- * the shell command that shares a Text with its `$` prompt and its (unhighlighted)
- * output. Style comes from the parent - these spans only carry token colors.
- */
-export function highlightedSpans(lines: KeyedLine[]): React.ReactNode[] {
-  const spans: React.ReactNode[] = [];
-  lines.forEach((line, lineIndex) => {
-    if (lineIndex > 0) spans.push(<Text key={`${line.key}-nl`}>{"\n"}</Text>);
-    for (const { key, token } of line.tokens) {
-      spans.push(
-        <Text
-          key={`${line.key}-${key}`}
-          style={token.style ? syntaxTokenStyleFor(token.style) : undefined}
-        >
-          {token.text}
-        </Text>,
-      );
-    }
-  });
-  return spans;
 }
 
 const styles = StyleSheet.create((theme) => ({
@@ -141,19 +101,4 @@ const styles = StyleSheet.create((theme) => ({
         }
       : null),
   },
-  // Layered over lineText when "Wrap long lines" is on. flexShrink keeps a
-  // wrapped line inside the gutter row's remaining width instead of pushing
-  // the row wider; web needs the explicit pre-wrap (lineText forces `pre`).
-  lineTextWrap: {
-    flexShrink: 1,
-    minWidth: 0,
-    ...(isWeb
-      ? {
-          whiteSpace: "pre-wrap" as const,
-          overflowWrap: "anywhere" as const,
-        }
-      : null),
-  },
 }));
-
-const LINE_TEXT_WRAP_STYLE = [styles.lineText, styles.lineTextWrap];

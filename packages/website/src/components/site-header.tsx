@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import "~/styles.css";
 import { GitHubIcon } from "~/components/brand-icons";
 import { useStars } from "~/routes/__root";

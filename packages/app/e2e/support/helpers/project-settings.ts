@@ -1,3 +1,4 @@
+// OTTO(identity): fixture paths and labels follow Otto's persisted identity.
 import { chmod, readFile, writeFile } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import path from "node:path";
@@ -74,17 +75,14 @@ export async function editWorktreeSetup(page: Page, setupCommands: string[]): Pr
     .fill(setupCommands.join("\n"));
 }
 
-export async function clickSaveProjectSettings(page: Page): Promise<void> {
-  await page.getByTestId("save-button").click();
-}
-
-export async function clickRetryProjectSettingsSave(page: Page): Promise<void> {
-  // action-0 is always "Try again"; action-1 is always "Reload".
-  // The write-failed callout renders these two buttons in a fixed order.
-  await page.getByTestId("write-failed-callout-action-0").click();
-}
-
 export async function clickReloadProjectSettings(page: Page): Promise<void> {
+  // OTTO(settings): only an open preference draft needs discard confirmation.
+  if (
+    await page
+      .locator('[data-testid="stale-callout"], [data-testid="write-failed-callout"]')
+      .count()
+  )
+    page.once("dialog", (dialog) => void dialog.accept());
   // Scope to the active error callout so the locator is unambiguous.
   // At most one error callout renders at a time.
   await page.locator('[data-testid$="-callout"]').getByRole("button", { name: "Reload" }).click();
@@ -169,15 +167,6 @@ export async function expectNoProjectSettingsError(
   await expect(page.getByTestId(errorCalloutTestId[kind])).not.toBeVisible({ timeout });
 }
 
-export async function expectWriteFailedCalloutActions(page: Page): Promise<void> {
-  await expect(page.getByTestId("write-failed-callout-action-0")).toHaveText("Try again");
-  await expect(page.getByTestId("write-failed-callout-action-1")).toHaveText("Reload");
-}
-
-export async function expectSaveButtonDisabled(page: Page): Promise<void> {
-  await expect(page.getByTestId("save-button")).toBeDisabled();
-}
-
 export async function expectUncommittedSetupWarning(page: Page): Promise<void> {
   const warning = page.getByRole("alert").filter({ hasText: "Commit otto.json changes" });
   await expect(warning).toContainText("Commit otto.json changes");
@@ -238,18 +227,17 @@ export async function removeProjectScript(page: Page, scriptName: string): Promi
   // from the row's testID to avoid scoped locator unreliability.
   const id = (await row.getAttribute("data-testid"))!.replace("script-row-", "");
   await page.getByTestId(`script-row-menu-${id}`).click();
-  await page.getByTestId(`script-action-${id}-remove`).click();
-  // Removal is gated by the in-app ConfirmDialogHost, not a native window.confirm.
-  await page.getByTestId("confirm-dialog-confirm").click();
+  page.once("dialog", (dialog) => void dialog.accept());
+  await page.getByRole("menuitem", { name: "Remove" }).click();
 }
 
 // --- File manipulation ---
 
-export async function corruptOttoConfig(repoPath: string): Promise<void> {
+export async function corruptPaseoConfig(repoPath: string): Promise<void> {
   await writeFile(path.join(repoPath, "otto.json"), "{not valid json}");
 }
 
-export async function bumpOttoConfigOnDisk(repoPath: string): Promise<void> {
+export async function bumpPaseoConfigOnDisk(repoPath: string): Promise<void> {
   const configPath = path.join(repoPath, "otto.json");
   const raw = await readFile(configPath, "utf8");
   const config = JSON.parse(raw) as Record<string, unknown>;
@@ -257,25 +245,25 @@ export async function bumpOttoConfigOnDisk(repoPath: string): Promise<void> {
   await writeFile(configPath, JSON.stringify(config, null, 2) + "\n");
 }
 
-export async function restoreOttoConfig(
+export async function restorePaseoConfig(
   repoPath: string,
   config: Record<string, unknown>,
 ): Promise<void> {
   await writeFile(path.join(repoPath, "otto.json"), JSON.stringify(config, null, 2) + "\n");
 }
 
-export function commitOttoConfig(repoPath: string): void {
+export function commitPaseoConfig(repoPath: string): void {
   execFileSync("git", ["add", "otto.json"], { cwd: repoPath });
   execFileSync("git", ["commit", "-m", "Update project config"], { cwd: repoPath });
 }
 
 // The daemon writes atomically via a temp file + rename, so blocking writes requires
 // removing write permission from the *directory*, not just the file.
-export async function blockOttoConfigWrites(repoPath: string): Promise<void> {
+export async function blockPaseoConfigWrites(repoPath: string): Promise<void> {
   await chmod(repoPath, 0o555);
 }
 
-export async function unblockOttoConfigWrites(repoPath: string): Promise<void> {
+export async function unblockPaseoConfigWrites(repoPath: string): Promise<void> {
   await chmod(repoPath, 0o755);
 }
 

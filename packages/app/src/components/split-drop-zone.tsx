@@ -2,7 +2,7 @@ import { useMemo, type Ref } from "react";
 import { useDroppable } from "@dnd-kit/core";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { PaneOverlay } from "@/components/ui/pane-overlay";
+import { WorkspaceTabDropLayer } from "@/otto/workspace/tab-drag-layer"; // OTTO(tab-drag): paint the dock preview above guest surfaces.
 
 export type SplitDropZonePosition = "center" | "left" | "right" | "top" | "bottom";
 
@@ -50,14 +50,12 @@ export function SplitDropZone({ paneId, active, preview }: SplitDropZoneProps) {
 
   return (
     <View ref={setNodeRef as unknown as Ref<View>} style={styles.overlay} pointerEvents="none">
-      <PaneOverlay pointerEvents="none" clip>
-        {previewStyles ? (
-          <>
-            <View pointerEvents="none" style={previewStyles.overlay} />
-            <View pointerEvents="none" style={previewStyles.frame} />
-          </>
-        ) : null}
-      </PaneOverlay>
+      {previewStyles ? (
+        <WorkspaceTabDropLayer>
+          <View pointerEvents="none" style={previewStyles.overlay} />
+          <View pointerEvents="none" style={previewStyles.frame} />
+        </WorkspaceTabDropLayer>
+      ) : null}
     </View>
   );
 }
@@ -136,22 +134,18 @@ function getPreviewFrameStyle(position: SplitDropZonePosition) {
 
 const styles = StyleSheet.create((theme) => ({
   overlay: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
     zIndex: 40,
   },
   previewOverlay: {
+    position: "absolute",
     backgroundColor: theme.colors.accent,
     opacity: 0.6,
-    position: "absolute",
     borderRadius: theme.borderRadius.md,
   },
   previewFrame: {
-    borderColor: theme.colors.accent,
     position: "absolute",
+    borderColor: theme.colors.accent,
     borderRadius: theme.borderRadius.md,
     borderWidth: 2,
   },

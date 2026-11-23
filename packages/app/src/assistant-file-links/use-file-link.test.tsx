@@ -12,8 +12,8 @@ import type { DirectorySuggestionResult } from "./resolver";
 import { useFileLink } from "./use-file-link";
 import type { OpenFileDisposition } from "@/workspace/file-open";
 
-vi.mock("@/utils/open-link", () => ({
-  openLink: vi.fn(async () => {}),
+vi.mock("@/utils/open-external-url", () => ({
+  openExternalUrl: vi.fn(async () => {}),
 }));
 
 const SOURCE = {
@@ -176,7 +176,7 @@ describe("useFileLink", () => {
             lineStart: undefined,
             lineEnd: undefined,
           },
-          disposition: "side",
+          disposition: "preferred",
         },
       ]);
     });
@@ -271,29 +271,6 @@ describe("useFileLink", () => {
     expect(getDirectorySuggestions).toHaveBeenCalledTimes(1);
   });
 
-  it("resolves a filename when a context menu needs its project actions", async () => {
-    const getDirectorySuggestions = vi.fn(async () =>
-      resolvedSuggestions([{ path: "docs/dumm.md", kind: "file" }]),
-    );
-    const openedFiles: OpenedFile[] = [];
-    const { result } = renderHook(() => useFileLink(SOURCE), {
-      wrapper: createWrapper({ client: { getDirectorySuggestions }, openedFiles }),
-    });
-
-    let target: InlinePathTarget | null = null;
-    await act(async () => {
-      target = await result.current.resolve();
-    });
-
-    expect(target).toEqual({
-      raw: "dumm.md",
-      path: "/Users/test/project/docs/dumm.md",
-      lineStart: undefined,
-      lineEnd: undefined,
-    });
-    expect(getDirectorySuggestions).toHaveBeenCalledTimes(1);
-  });
-
   it("does not open a stale result after the workspace changes", async () => {
     const deferred = createDeferred<DirectorySuggestionResult>();
     const getDirectorySuggestions = vi.fn(() => deferred.promise);
@@ -345,75 +322,6 @@ describe("useFileLink", () => {
       expect(getDirectorySuggestions).toHaveBeenCalledTimes(1);
     });
     expect(openedFiles).toEqual([]);
-  });
-});
-
-describe("useFileLink hoverState", () => {
-  function renderHoverState(
-    source: Parameters<typeof useFileLink>[0],
-    getDirectorySuggestions: TestClient["getDirectorySuggestions"] = async () =>
-      resolvedSuggestions([]),
-  ) {
-    return renderHook(() => useFileLink(source), {
-      wrapper: createWrapper({ client: { getDirectorySuggestions }, openedFiles: [] }),
-    });
-  }
-
-  it("advertises an http(s) URL as openable", () => {
-    const { result } = renderHoverState({ href: "https://example.com/a", markup: "linkify" });
-    expect(result.current.hoverState).toEqual({ kind: "external", url: "https://example.com/a" });
-  });
-
-  it("marks schemes the opener refuses as unopenable", () => {
-    const { result } = renderHoverState({ href: "vscode://file/x.ts", text: "x" });
-    expect(result.current.hoverState).toEqual({ kind: "unopenable", href: "vscode://file/x.ts" });
-  });
-
-  it("shows the decoded href of a Windows path markdown-it percent-encoded", () => {
-    const { result } = renderHoverState({
-      href: "C:%5CUsers%5Cme%5Cnotes.ps1",
-      text: "notes.ps1",
-    });
-    expect(result.current.hoverState).toEqual({
-      kind: "unopenable",
-      href: String.raw`C:\Users\me\notes.ps1`,
-    });
-  });
-
-  it("shows a directly resolvable file path", () => {
-    const { result } = renderHoverState({ href: "docs/guide.md", text: "guide" });
-    expect(result.current.hoverState).toMatchObject({
-      kind: "file",
-      target: { path: "/Users/test/project/docs/guide.md" },
-    });
-  });
-
-  it("moves a looked-up file from resolving to unresolved when nothing matches", async () => {
-    const { result } = renderHoverState(SOURCE);
-    expect(result.current.hoverState).toEqual({ kind: "resolving", token: "dumm.md" });
-
-    act(() => {
-      result.current.onHoverIn();
-    });
-    await waitFor(() => {
-      expect(result.current.hoverState).toEqual({ kind: "unresolved", token: "dumm.md" });
-    });
-  });
-
-  it("moves a looked-up file from resolving to its resolved path", async () => {
-    const { result } = renderHoverState(SOURCE, async () =>
-      resolvedSuggestions([{ path: "docs/dumm.md", kind: "file" }]),
-    );
-
-    act(() => {
-      result.current.onHoverIn();
-    });
-    await waitFor(() => {
-      expect(result.current.hoverState).toMatchObject({
-        kind: "file",
-        target: { path: "/Users/test/project/docs/dumm.md" },
-      });
-    });
   });
 });
 

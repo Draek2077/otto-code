@@ -1,4 +1,3 @@
-import { TREE_RAILS_ALL_CONTINUE, withTreeRail } from "@/components/tree-rail-mask";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 
 // Builds a directory hierarchy from the `ParsedDiffFile[]` the Changes view
@@ -42,8 +41,6 @@ export interface DiffTreeFolderRow {
   /** compressed display label, e.g. "packages/app/src" */
   displayName: string;
   depth: number;
-  /** which indent rails keep running below this row - see tree-rail-mask.ts */
-  ancestorMask: number;
   additions: number;
   deletions: number;
 }
@@ -53,8 +50,6 @@ export interface DiffTreeFileRow {
   file: ParsedDiffFile;
   fileIndex: number;
   depth: number;
-  /** which indent rails keep running below this row - see tree-rail-mask.ts */
-  ancestorMask: number;
 }
 
 export type DiffTreeRow = DiffTreeFolderRow | DiffTreeFileRow;
@@ -144,7 +139,7 @@ interface DirStats {
 const EMPTY_DIR_STATS: DirStats = { additions: 0, deletions: 0 };
 
 // Single post-order pass computing every directory node's aggregate stats from
-// its already-summed children - O(n), vs. re-walking each subtree per folder row.
+// its already-summed children — O(n), vs. re-walking each subtree per folder row.
 function computeDirStats(root: DiffTreeDirNode): Map<DiffTreeDirNode, DirStats> {
   const statsByNode = new Map<DiffTreeDirNode, DirStats>();
   function visit(node: DiffTreeDirNode): DirStats {
@@ -178,21 +173,11 @@ export function flattenDiffTree(
   const statsByNode = computeDirStats(root);
   const rows: DiffTreeRow[] = [];
 
-  function walk(node: DiffTreeDirNode, depth: number, parentMask: number): void {
-    const lastIndex = node.children.length - 1;
-    node.children.forEach((child, index) => {
-      // `depth` is the child's own depth, so the bit it sets is the one its rail
-      // column reads back when the row renders.
-      const mask = withTreeRail(parentMask, depth, index !== lastIndex);
+  function walk(node: DiffTreeDirNode, depth: number): void {
+    for (const child of node.children) {
       if (child.kind === "file") {
-        rows.push({
-          kind: "file",
-          file: child.file,
-          fileIndex: child.fileIndex,
-          depth,
-          ancestorMask: mask,
-        });
-        return;
+        rows.push({ kind: "file", file: child.file, fileIndex: child.fileIndex, depth });
+        continue;
       }
       const stats = statsByNode.get(child) ?? EMPTY_DIR_STATS;
       rows.push({
@@ -200,21 +185,20 @@ export function flattenDiffTree(
         dirPath: child.dirPath,
         displayName: child.name,
         depth,
-        ancestorMask: mask,
         additions: stats.additions,
         deletions: stats.deletions,
       });
       if (!collapsed.has(child.dirPath)) {
-        walk(child, depth + 1, mask);
+        walk(child, depth + 1);
       }
-    });
+    }
   }
 
-  walk(root, 0, TREE_RAILS_ALL_CONTINUE);
+  walk(root, 0);
   return rows;
 }
 
-/** Every directory path in the (compressed) tree - used for "collapse all folders". */
+/** Every directory path in the (compressed) tree — used for "collapse all folders". */
 export function collectDirPaths(root: DiffTreeDirNode): string[] {
   const paths: string[] = [];
   function walk(node: DiffTreeDirNode): void {

@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { ProjectCheckoutLitePayload } from "@otto-code/protocol/messages";
+import type { ProjectCheckoutLitePayload } from "@getpaseo/protocol/messages";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { createTestLogger } from "../test-utils/test-logger.js";
@@ -194,7 +194,7 @@ class ObservedPlacements {
     this.service = new WorkspaceReconciliationService({
       projectRegistry: this.projects,
       workspaceRegistry: this.workspaces,
-      workspaceGitService: { getCheckoutLite: async (cwd) => this.readCheckout(cwd) },
+      workspaceGitService: { getCheckout: async (cwd) => this.readCheckout(cwd) },
       logger,
       watchProjectRoot,
       clock: this.clock,
@@ -257,7 +257,7 @@ class ObservedPlacements {
       currentBranch: branch,
       remoteUrl: null,
       worktreeRoot: rootPath,
-      isOttoOwnedWorktree: false,
+      isPaseoOwnedWorktree: false,
       mainRepoRoot: null,
     });
   }
@@ -337,14 +337,15 @@ class ObservedPlacements {
         projectId: spec.id,
         rootPath,
         kind: "non_git",
-        displayName: spec.id,
-        // Seed the key reconciliation derives, so a metadata pass has nothing to backfill.
+        // Seeded records already carry the key reconciliation derives, so a fixture's
+        // first pass reports only what its test is about.
         projectKey: deriveProjectKey({
           rootPath,
           remoteUrl: null,
           worktreeRoot: null,
           mainRepoRoot: null,
         }),
+        displayName: spec.id,
         createdAt: TIMESTAMP,
         updatedAt: TIMESTAMP,
         archivedAt: spec.archived ? TIMESTAMP : null,
@@ -379,7 +380,7 @@ class ObservedPlacements {
         currentBranch: null,
         remoteUrl: null,
         worktreeRoot: null,
-        isOttoOwnedWorktree: false,
+        isPaseoOwnedWorktree: false,
         mainRepoRoot: null,
       }
     );
@@ -480,13 +481,11 @@ describe("observed workspace placement", () => {
   });
 
   test("archives missing workspace directories on the periodic pass", async () => {
-    // The workspace lives below the project root: deleting the root itself would
-    // take the whole project Offline, which reconciliation deliberately leaves alone.
     const observed = new ObservedPlacements([
       {
         id: "project-one",
         root: "repo",
-        workspaces: [{ id: "workspace-one", cwd: "repo/feature" }],
+        workspaces: [{ id: "workspace-one", cwd: "repo/worktree-one" }],
       },
     ]);
     await observed.start();
@@ -500,13 +499,11 @@ describe("observed workspace placement", () => {
   });
 
   test("preserves a periodic full pass queued behind metadata reconciliation", async () => {
-    // The workspace lives below the project root: deleting the root itself would
-    // take the whole project Offline, which reconciliation deliberately leaves alone.
     const observed = new ObservedPlacements([
       {
         id: "project-one",
         root: "repo",
-        workspaces: [{ id: "workspace-one", cwd: "repo/feature" }],
+        workspaces: [{ id: "workspace-one", cwd: "repo/worktree-one" }],
       },
     ]);
     await observed.start();

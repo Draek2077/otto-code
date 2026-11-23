@@ -111,7 +111,12 @@ class VSCodeBridge {
   }
 
   private handleMessage = (e: MessageEvent) => {
-    const data = e.data
+    // OTTO PATCH: the app-owned entry validates the versioned transport before
+    // delivering to this render-only bridge. Raw window messages are ignored.
+    return
+  }
+
+  receiveHostMessage(data: MessageEvent['data']): void {
     if (!data || typeof data.type !== 'string') { return }
 
     switch (data.type) {

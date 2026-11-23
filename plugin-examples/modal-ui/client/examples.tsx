@@ -1,4 +1,4 @@
-import type { PluginSurfaceProps } from "@otto-code/plugin/client";
+import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   Modal,
   ScrollView,
@@ -6,7 +6,7 @@ import {
   TextInput,
   copyText,
   useToast,
-} from "@otto-code/plugin/client/react-native";
+} from "@getpaseo/plugin/client/react-native";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   Pressable,
@@ -60,7 +60,7 @@ export function ModalExamples({ theme }: Pick<PluginSurfaceProps, "theme">) {
 
   const copy = useCallback(async () => {
     try {
-      await copyText("Copied from Otto");
+      await copyText("Copied from Paseo");
       toast.show("Text copied", { variant: "success" });
     } catch {
       toast.error("Could not copy text. Select the text and use Copy.");
@@ -96,7 +96,7 @@ export function ModalExamples({ theme }: Pick<PluginSurfaceProps, "theme">) {
   const form = (
     <View style={styles.form} testID="modal-example-form">
       <Text selectable style={color}>
-        Otto clipboard example
+        Paseo clipboard example
       </Text>
       <Pressable accessibilityRole="button" style={button} onPress={copy}>
         <Text style={color}>Copy text</Text>

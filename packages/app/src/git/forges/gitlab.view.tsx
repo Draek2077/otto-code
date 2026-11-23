@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo, type ReactNode } from "react";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { CircleCheck, ExternalLink } from "@/components/icons/material-icons";
+import { CircleCheck, ExternalLink } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import type { CheckoutPipelineJob, CheckoutPipelineStage } from "@otto-code/protocol/messages";
+import type { CheckoutPipelineJob, CheckoutPipelineStage } from "@getpaseo/protocol/messages";
 import { GitLabIcon } from "@/components/icons/gitlab-icon";
 import {
   definePaneContribution,
@@ -178,7 +178,7 @@ function GitLabPipelineSection({
         ) : null}
         {summary.url ? (
           <View style={sectionKitStyles.checkTrailing}>
-            <ThemedExternalLink size="xs" uniProps={foregroundMutedColorMapping} />
+            <ThemedExternalLink size={12} uniProps={foregroundMutedColorMapping} />
           </View>
         ) : null}
       </Pressable>

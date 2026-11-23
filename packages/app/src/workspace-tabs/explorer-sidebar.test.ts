@@ -8,7 +8,6 @@ vi.mock("@react-native-async-storage/async-storage", () => ({
   },
 }));
 
-import { resolveCompactExplorerTabs } from "@/components/compact-explorer-sidebar-host-state";
 import { usePanelStore } from "@/stores/panel-store";
 import {
   collectAllTabs,
@@ -17,14 +16,11 @@ import {
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import {
-  filterExplorerSidebarTabs,
   isExplorerSidebarOpen,
-  openExplorerSidebarTab,
   openExplorerSidebarView,
   resolveExplorerSidebarPresentation,
   toggleExplorerSidebar,
 } from "@/workspace-tabs/explorer-sidebar";
-import type { WorkspaceTab } from "@/workspace-tabs/model";
 
 const WORKSPACE_KEY = "server-1:ws-main";
 const CHECKOUT = { serverId: "server-1", cwd: "/tmp/repo", isGit: true };
@@ -119,96 +115,5 @@ describe("Explorer sidebar", () => {
 
     expect(isExplorerSidebarOpen(input)).toBe(true);
     expect(usePanelStore.getState().explorerTab).toBe("files");
-  });
-
-  it("opens Search in User mode", () => {
-    openExplorerSidebarTab({
-      isCompact: true,
-      isDeveloperMode: false,
-      workspaceKey: WORKSPACE_KEY,
-      checkout: CHECKOUT,
-      tab: "search",
-    });
-
-    expect(usePanelStore.getState().mobilePanel.target).toBe("file-explorer");
-    expect(usePanelStore.getState().explorerTab).toBe("search");
-  });
-
-  it("preserves the stored view while User mode presents only Files and Search", () => {
-    usePanelStore.getState().setExplorerTabForCheckout({ ...CHECKOUT, tab: "changes" });
-    const input = {
-      isCompact: true,
-      isDeveloperMode: false,
-      workspaceKey: WORKSPACE_KEY,
-      checkout: CHECKOUT,
-    };
-    toggleExplorerSidebar(input);
-    expect(usePanelStore.getState().mobilePanel.target).toBe("file-explorer");
-    const activeTab = usePanelStore.getState().explorerTab;
-    expect(activeTab).toBe("changes");
-    expect(
-      resolveCompactExplorerTabs({
-        activeTab,
-        isDeveloperMode: false,
-        isGit: true,
-        hasProjectSearch: true,
-        showPullRequest: true,
-      }),
-    ).toEqual({ activeTab: "files", tabs: ["files", "search"] });
-    toggleExplorerSidebar(input);
-    toggleExplorerSidebar({ ...input, isDeveloperMode: true });
-    expect(usePanelStore.getState().explorerTab).toBe("changes");
-    expect(
-      resolveCompactExplorerTabs({
-        activeTab: usePanelStore.getState().explorerTab,
-        isDeveloperMode: true,
-        isGit: true,
-        hasProjectSearch: true,
-        showPullRequest: true,
-      }).activeTab,
-    ).toBe("changes");
-  });
-
-  it("keeps Files and Search in the User-mode desktop Explorer", () => {
-    const input = {
-      isCompact: false,
-      isDeveloperMode: false,
-      supportsPaneSplits: true,
-      workspaceKey: WORKSPACE_KEY,
-      checkout: CHECKOUT,
-    };
-    toggleExplorerSidebar(input);
-
-    const state = useWorkspaceLayoutStore.getState();
-    const layout = state.layoutByWorkspace[WORKSPACE_KEY];
-    const paneId = selectExplorerSidebarPaneId(state, WORKSPACE_KEY);
-    const pane = paneId && layout ? findPaneById(layout.root, paneId) : null;
-    const focusedTab = layout
-      ? (collectAllTabs(layout.root).find((tab) => tab.tabId === pane?.focusedTabId) ?? null)
-      : null;
-    expect(focusedTab?.target.kind).toBe("files");
-    const paneTabs =
-      layout && pane
-        ? collectAllTabs(layout.root).filter((tab) => pane.tabIds.includes(tab.tabId))
-        : [];
-    expect(filterExplorerSidebarTabs(paneTabs, false).map((tab) => tab.target.kind)).toEqual([
-      "files",
-      "project_search",
-    ]);
-  });
-
-  it("keeps the registered pull-request tab out of the Explorer until a PR is detected", () => {
-    const tabs: WorkspaceTab[] = [
-      { tabId: "files", target: { kind: "files" }, createdAt: 1 },
-      { tabId: "pr", target: { kind: "pull_request" }, createdAt: 1 },
-    ];
-
-    expect(filterExplorerSidebarTabs(tabs, true, false).map((tab) => tab.target.kind)).toEqual([
-      "files",
-    ]);
-    expect(filterExplorerSidebarTabs(tabs, true, true).map((tab) => tab.target.kind)).toEqual([
-      "files",
-      "pull_request",
-    ]);
   });
 });

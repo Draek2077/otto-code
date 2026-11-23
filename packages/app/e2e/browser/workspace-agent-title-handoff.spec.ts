@@ -1,10 +1,12 @@
 import { test, expect } from "../support/fixtures";
 import { expectComposerVisible, submitMessage } from "../support/helpers/composer";
-import { clickNewChat } from "../support/helpers/launcher";
 import { delayCreatedAgentInitialTailResponse } from "../support/helpers/agent-timeline-gate";
 import { delayBrowserAgentCreatedStatus } from "../support/helpers/new-workspace";
 import { seedWorkspace, type SeedDaemonClient } from "../support/helpers/seed-client";
-import { waitForWorkspaceTabsVisible } from "../support/helpers/workspace-tabs";
+import {
+  createAgentTabFromMenu,
+  waitForWorkspaceTabsVisible,
+} from "../support/helpers/workspace-tabs";
 import { getServerId } from "../support/helpers/server-id";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 
@@ -57,7 +59,7 @@ test.describe("Workspace agent title handoff", () => {
     try {
       await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.workspaceId));
       await waitForWorkspaceTabsVisible(page);
-      await clickNewChat(page);
+      await createAgentTabFromMenu(page);
       await expectComposerVisible(page);
 
       const prompt = "Keep the optimistic agent pane visible during handoff";
@@ -100,7 +102,7 @@ test.describe("Workspace agent title handoff", () => {
     try {
       await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.workspaceId));
       await waitForWorkspaceTabsVisible(page);
-      await clickNewChat(page);
+      await createAgentTabFromMenu(page);
       await expectComposerVisible(page);
 
       const promptTitle = "Investigate optimistic tab title handoff";

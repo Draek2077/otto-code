@@ -6,7 +6,7 @@ import pino from "pino";
 import { expect, test } from "vitest";
 import { CodexAppServerAgentClient } from "../agent/providers/codex-app-server-agent.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestOttoDaemon, type TestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon, type TestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
 async function expectContextAfterWorkspaceRestore(legacyNativeArchive: boolean): Promise<void> {
   const root = mkdtempSync(path.join(tmpdir(), "paseo-archive-codex-"));
@@ -31,17 +31,17 @@ async function expectContextAfterWorkspaceRestore(legacyNativeArchive: boolean):
   );
   const logger = pino({ level: "warn" });
   const provider = new CodexAppServerAgentClient(logger);
-  let daemon: TestOttoDaemon | undefined;
+  let daemon: TestPaseoDaemon | undefined;
   let client: DaemonClient | undefined;
   try {
-    daemon = await createTestOttoDaemon({
+    daemon = await createTestPaseoDaemon({
       agentClients: { codex: provider },
       logger,
       pluginsEnabled: false,
     });
     client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws`, appVersion: "0.8.0" });
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "archive-qa" } });
+    await client.fetchAgents({ subscribe: {} });
     const agent = await client.createAgent({
       config: {
         provider: "codex",

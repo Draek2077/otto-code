@@ -1,13 +1,11 @@
 import { useState, useCallback, useMemo } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { ComboboxOption } from "@/components/ui/combobox";
 import type { ToastApi } from "@/components/toast-host";
 import { invalidateCheckoutGitQueriesForClient } from "@/git/query-keys";
 import { createBranchSwitcherOperations } from "@/git/branch-switcher-operations";
-import { stashSwitchAndPop } from "@/git/stash-switch-pop";
-import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { confirmDialog } from "@/utils/confirm-dialog";
 
 interface UseBranchSwitcherInput {
@@ -28,16 +26,7 @@ interface UseBranchSwitcherResult {
   setIsOpen: (open: boolean) => void;
   handleBranchSelect: (branchId: string) => void;
   invalidateStashAndCheckout: () => Promise<void>;
-  /** True while a `git checkout` for this workspace is in flight daemon-side. */
-  isSwitching: boolean;
 }
-
-interface BranchSuggestionEntry {
-  name: string;
-  checkedOutElsewhere?: boolean;
-}
-
-type SwitchAttempt = { ok: true } | { ok: false; message: string };
 
 export function useBranchSwitcher({
   client,
@@ -63,23 +52,9 @@ export function useBranchSwitcher({
     [client, workspaceDirectory],
   );
 
-  // The switch itself runs through the checkout-actions store so the rest of the
-  // git UI (header action buttons, other checkout mutations) sees one shared
-  // "switch-branch is pending" signal and can lock itself while it runs.
-  const runSwitchBranch = useCheckoutGitActionsStore((s) => s.switchBranch);
-  const isSwitching = useCheckoutGitActionsStore((s) =>
-    workspaceDirectory
-      ? s.getStatus({
-          serverId: normalizedServerId,
-          cwd: workspaceDirectory,
-          actionId: "switch-branch",
-        }) === "pending"
-      : false,
-  );
-
   const branchSuggestionsQuery = useQuery({
     queryKey: ["branchSuggestions", normalizedServerId, normalizedWorkspaceId],
-    queryFn: async (): Promise<BranchSuggestionEntry[]> => {
+    queryFn: async () => {
       if (!operations) {
         throw new Error(t("common.errors.daemonClientUnavailable"));
       }
@@ -87,9 +62,7 @@ export function useBranchSwitcher({
       if (payload.error) {
         throw new Error(payload.error);
       }
-      // Older daemons only send the flat name list; without details nothing is
-      // disabled, which matches their (post-hoc error) behavior anyway.
-      return payload.branchDetails ?? (payload.branches ?? []).map((name) => ({ name }));
+      return payload.branches ?? [];
     },
     enabled: isOpen && isGitCheckout && Boolean(operations) && isConnected,
     retry: false,
@@ -98,24 +71,8 @@ export function useBranchSwitcher({
 
   const branchOptions = useMemo<ComboboxOption[]>(() => {
     const branches = branchSuggestionsQuery.data ?? [];
-    const checkedOutElsewhereLabel = t("branchSwitcher.checkedOutElsewhere");
-    return branches.map((branch) => {
-      // Git refuses to check out a branch that another worktree already has
-      // checked out, so surface that up front instead of erroring after.
-      const disabled = branch.checkedOutElsewhere === true && branch.name !== currentBranchName;
-      const option: ComboboxOption = { id: branch.name, label: branch.name };
-      if (disabled) {
-        option.disabled = true;
-        option.description = checkedOutElsewhereLabel;
-      }
-      return option;
-    });
-  }, [branchSuggestionsQuery.data, currentBranchName, t]);
-
-  const disabledBranchIds = useMemo(
-    () => new Set(branchOptions.filter((option) => option.disabled).map((option) => option.id)),
-    [branchOptions],
-  );
+    return branches.map((name) => ({ id: name, label: name }));
+  }, [branchSuggestionsQuery.data]);
 
   const stashListQueryKey = useMemo(
     () => ["stashList", normalizedServerId, normalizedWorkspaceId] as const,
@@ -133,33 +90,11 @@ export function useBranchSwitcher({
     ]);
   }, [queryClient, stashListQueryKey, normalizedServerId, workspaceDirectory]);
 
-  const performSwitch = useCallback(
-    async (branchId: string): Promise<SwitchAttempt> => {
-      if (!workspaceDirectory) {
-        return { ok: false, message: t("branchSwitcher.failedToSwitch") };
-      }
-      try {
-        await runSwitchBranch({
-          serverId: normalizedServerId,
-          cwd: workspaceDirectory,
-          branch: branchId,
-        });
-        return { ok: true };
-      } catch (err) {
-        return {
-          ok: false,
-          message: err instanceof Error ? err.message : t("branchSwitcher.failedToSwitch"),
-        };
-      }
-    },
-    [normalizedServerId, runSwitchBranch, t, workspaceDirectory],
-  );
-
   const maybeRestoreStashForBranch = useCallback(
     async (branchId: string) => {
       if (!operations) return;
       try {
-        const stashPayload = await operations.listOttoStashes();
+        const stashPayload = await operations.listPaseoStashes();
         const targetStash = stashPayload.entries.find((e) => e.branch === branchId);
         if (!targetStash) return;
         const shouldRestore = await confirmDialog({
@@ -177,13 +112,13 @@ export function useBranchSwitcher({
         }
         await invalidateStashAndCheckout();
       } catch {
-        // Non-critical - user can still restore on next branch switch
+        // Non-critical — user can still restore on next branch switch
       }
     },
     [operations, invalidateStashAndCheckout, toast, t],
   );
 
-  const stashSwitchAndPopCurrentChanges = useCallback(
+  const stashAndSwitch = useCallback(
     async (branchId: string) => {
       if (!operations) return;
       const shouldStash = await confirmDialog({
@@ -195,15 +130,15 @@ export function useBranchSwitcher({
       if (!shouldStash) return;
 
       try {
-        const result = await stashSwitchAndPop({
-          saveStash: () => operations.saveStash(currentBranchName ?? undefined),
-          switchBranch: () => performSwitch(branchId),
-          // The stash just created is on top. A failed pop leaves it there, so
-          // conflicts preserve the work instead of silently dropping it.
-          popStash: () => operations.popStash(0),
-        });
-        if (!result.ok) {
-          toast.error(result.message);
+        const stashPayload = await operations.saveStash(currentBranchName ?? undefined);
+        if (stashPayload.error) {
+          toast.error(stashPayload.error.message);
+          return;
+        }
+        await invalidateStashAndCheckout();
+        const switchPayload = await operations.switchBranch(branchId);
+        if (switchPayload.error) {
+          toast.error(switchPayload.error.message);
           return;
         }
         await invalidateStashAndCheckout();
@@ -211,62 +146,44 @@ export function useBranchSwitcher({
         toast.error(err instanceof Error ? err.message : t("branchSwitcher.failedToStash"));
       }
     },
-    [operations, currentBranchName, invalidateStashAndCheckout, performSwitch, toast, t],
+    [operations, currentBranchName, invalidateStashAndCheckout, toast, t],
   );
 
   const handleBranchSelect = useCallback(
     (branchId: string) => {
       if (branchId === currentBranchName) return;
-      // Disabled options are non-pressable, but keyboard selection still lands
-      // here - refuse instead of letting git error after the fact.
-      if (disabledBranchIds.has(branchId)) return;
-      if (!workspaceDirectory) return;
-      // Re-entry guard: one switch at a time per checkout. Read the store
-      // imperatively so a stale render can't sneak a second switch through.
-      const status = useCheckoutGitActionsStore.getState().getStatus({
-        serverId: normalizedServerId,
-        cwd: workspaceDirectory,
-        actionId: "switch-branch",
-      });
-      if (status === "pending") return;
 
       void (async () => {
         if (!operations) return;
-        const result = await performSwitch(branchId);
-        if (!result.ok) {
-          // If the error is about uncommitted changes, offer the stash dialog
-          if (result.message.toLowerCase().includes("uncommitted")) {
-            await stashSwitchAndPopCurrentChanges(branchId);
+        try {
+          const payload = await operations.switchBranch(branchId);
+          if (payload.error) {
+            // If the error is about uncommitted changes, offer the stash dialog
+            if (payload.error.message.toLowerCase().includes("uncommitted")) {
+              await stashAndSwitch(branchId);
+              return;
+            }
+            toast.error(payload.error.message);
             return;
           }
-          toast.error(result.message);
-          return;
+          // Success — refresh and check for stashes on the target branch
+          await invalidateStashAndCheckout();
+          await maybeRestoreStashForBranch(branchId);
+        } catch (err) {
+          toast.error(err instanceof Error ? err.message : t("branchSwitcher.failedToSwitch"));
         }
-        // Success - refresh and check for stashes on the target branch
-        await invalidateStashAndCheckout();
-        await maybeRestoreStashForBranch(branchId);
       })();
     },
     [
       operations,
       currentBranchName,
-      disabledBranchIds,
       invalidateStashAndCheckout,
       maybeRestoreStashForBranch,
-      normalizedServerId,
-      performSwitch,
-      stashSwitchAndPopCurrentChanges,
+      stashAndSwitch,
+      t,
       toast,
-      workspaceDirectory,
     ],
   );
 
-  return {
-    branchOptions,
-    isOpen,
-    setIsOpen,
-    handleBranchSelect,
-    invalidateStashAndCheckout,
-    isSwitching,
-  };
+  return { branchOptions, isOpen, setIsOpen, handleBranchSelect, invalidateStashAndCheckout };
 }

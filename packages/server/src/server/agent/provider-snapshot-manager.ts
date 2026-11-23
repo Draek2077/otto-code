@@ -1,3 +1,4 @@
+import { normalizeAgentModelCatalog } from "@getpaseo/protocol/agent-types";
 import { createHash } from "node:crypto";
 import { EventEmitter } from "node:events";
 import { homedir } from "node:os";
@@ -31,42 +32,31 @@ import type {
   AgentProviderRuntimeSettingsMap,
   ProviderOverride,
 } from "./provider-launch-config.js";
-import type {
-  ConnectorConfig,
-  ProviderActionBreakerConfig,
-  ProviderCompactionConfig,
-} from "@otto-code/protocol/provider-config";
-import type { ModelTier } from "@otto-code/protocol/agent-types";
-import type { ModelTierOverride, ModelVisibilityOverride } from "@otto-code/protocol/messages";
-import { resolveModelTier } from "@otto-code/protocol/model-tiers";
 import {
   buildProviderRegistry,
   shutdownAgentClients,
   type ProviderDefinition,
 } from "./provider-registry.js";
-import { BUILTIN_PROVIDER_IDS } from "@otto-code/protocol/provider-manifest";
-import type { BrainProviderEndpointResolver } from "./provider-registry.js";
+import { BUILTIN_PROVIDER_IDS } from "@getpaseo/protocol/provider-manifest";
 import { applyMutableProviderConfigToOverrides } from "../daemon-config-store.js";
 import {
   formatProviderDiagnostic,
   formatProviderDiagnosticError,
 } from "./providers/diagnostic-utils.js";
 import type { MutableDaemonConfig } from "../daemon-config-store.js";
-import type { HubExecutionAgentValidationIssue } from "@otto-code/protocol/messages";
+import type { HubExecutionAgentValidationIssue } from "@getpaseo/protocol/messages";
 import {
   type AgentConfigurationValidationInput,
   validateAgentConfigurationAgainstProvider,
 } from "./agent-configuration-validator.js";
-import type { ProviderRegistration } from "@otto-code/plugin/server/provider";
+import type { ProviderRegistration } from "@getpaseo/plugin/server/provider";
 import { PluginAgentClientRegistry } from "./plugin-provider.js";
 
 const DEFAULT_REFRESH_TIMEOUT_MS = 120_000;
 const MAX_REFRESH_TIMEOUT_MS = 2_147_483_647;
 const DEFAULT_DIAGNOSTIC_TIMEOUT_MS = 120_000;
-const PROVIDER_REFRESH_DEADLINE_ENV = "OTTO_PROVIDER_REFRESH_TIMEOUT_MS";
-export const GLOBAL_PROVIDER_SNAPSHOT_KEY = "otto:global";
-
-const PROVIDER_PROBE_RETRY_AFTER_MS = 30_000;
+const PROVIDER_REFRESH_DEADLINE_ENV = "PASEO_PROVIDER_REFRESH_TIMEOUT_MS";
+export const GLOBAL_PROVIDER_SNAPSHOT_KEY = "paseo:global";
 
 function validRefreshDeadline(value: unknown): number | undefined {
   return typeof value === "number" &&
@@ -131,49 +121,7 @@ export interface ProviderSnapshotManagerOptions {
   extraClients?: Partial<Record<AgentProvider, AgentClient>>;
   refreshTimeoutMs?: number;
   diagnosticTimeoutMs?: number;
-  /** User per-model tier tags, applied when stamping model tiers at ingest. */
-  modelTierOverrides?: ModelTierOverride[];
-  /** Host-owned model-picker visibility, applied beside tier stamping. */
-  modelVisibilityOverrides?: ModelVisibilityOverride[];
-  /** Daemon-wide connector registry, injected into the openai-compat provider. */
-  connectors?: readonly ConnectorConfig[];
-  /** Endpoint source for the built-in otto-brain provider; see BuildProviderRegistryOptions. */
-  brainEndpoint?: BrainProviderEndpointResolver;
   openCodeBridge?: OpenCodeBridge;
-}
-
-// provider → (modelId → tier), the lookup form of the stored override array.
-type ModelTierOverrideIndex = Map<string, Map<string, ModelTier>>;
-type ModelVisibilityOverrideIndex = Map<string, Map<string, boolean>>;
-
-function buildModelTierOverrideIndex(
-  overrides?: readonly ModelTierOverride[],
-): ModelTierOverrideIndex {
-  const index: ModelTierOverrideIndex = new Map();
-  for (const override of overrides ?? []) {
-    let byModel = index.get(override.provider);
-    if (!byModel) {
-      byModel = new Map();
-      index.set(override.provider, byModel);
-    }
-    byModel.set(override.modelId, override.tier);
-  }
-  return index;
-}
-
-function buildModelVisibilityOverrideIndex(
-  overrides?: readonly ModelVisibilityOverride[],
-): ModelVisibilityOverrideIndex {
-  const index: ModelVisibilityOverrideIndex = new Map();
-  for (const override of overrides ?? []) {
-    let byModel = index.get(override.provider);
-    if (!byModel) {
-      byModel = new Map();
-      index.set(override.provider, byModel);
-    }
-    byModel.set(override.modelId, override.visible);
-  }
-  return index;
 }
 
 interface ProviderSnapshotRefreshOptions {
@@ -215,19 +163,11 @@ export interface ResolveProviderCreateConfigOptions {
   featureValues: Record<string, unknown> | undefined;
   parent: ManagedAgent | null;
   unattended: boolean;
-  // Requested/default model, when known. Forwarded to the provider's
-  // resolveCreateConfig so model-aware unattended-target selection can run.
-  model?: string | null;
 }
 
 export interface ResolvedProviderCreateConfig {
   modeId: string | undefined;
   featureValues: Record<string, unknown> | undefined;
-  // The effective unattended signal after OR-ing in an unattended parent - the
-  // same value that drove mode coercion. Callers stamp this onto the session
-  // config so the deny-responder arms for children of unattended parents, not
-  // just directly-unattended runs. See docs/safe-unattended.md.
-  unattended: boolean;
 }
 
 interface ResolveDefaultModelOptions {
@@ -245,28 +185,7 @@ export interface AgentManagerProviderState {
   providerDefinitions: Partial<
     Record<
       AgentProvider,
-      {
-        enabled: boolean;
-        derivedFromProviderId: string | null;
-        /**
-         * Provider-level compaction config for daemon-hosted conversations
-         * (openai-compat). Forwarded so live sessions can absorb settings
-         * edits without a restart.
-         */
-        compaction: ProviderCompactionConfig | null;
-        /**
-         * Provider-level max-tool-rounds override for daemon-hosted providers
-         * (openai-compat). Forwarded so live sessions absorb settings edits
-         * without a restart. null = resolved as unset (built-in default).
-         */
-        maxToolRounds: number | null;
-        /**
-         * Provider-level action circuit-breaker config for daemon-hosted
-         * providers (openai-compat). Forwarded so live sessions absorb settings
-         * edits without a restart. null = resolved as unset (disabled).
-         */
-        actionBreaker: ProviderActionBreakerConfig | null;
-      } & Pick<ProviderDefinition, "validateOptions" | "applyOptions" | "applyToolPolicy">
+      Pick<ProviderDefinition, "enabled" | "derivedFromProviderId" | "applyToolPolicy">
     >
   >;
   clients: Partial<Record<AgentProvider, AgentClient>>;
@@ -288,8 +207,6 @@ interface CatalogBinding {
 }
 
 interface ProviderCatalog {
-  sourceEntry?: ProviderSnapshotEntry;
-  failedAt?: number;
   result?: ProviderSnapshotRecord;
   stale?: boolean;
   load?: Promise<void>;
@@ -334,20 +251,12 @@ export class ProviderSnapshotManager {
   private baseProviderOverrides: Record<string, ProviderOverride> | undefined;
   private generation: RegistryGeneration;
   private providerClients: Record<AgentProvider, AgentClient>;
-  private modelTierOverrides: ModelTierOverrideIndex;
-  private modelVisibilityOverrides: ModelVisibilityOverrideIndex;
-  private connectors: readonly ConnectorConfig[] | undefined;
-  private readonly brainEndpoint: BrainProviderEndpointResolver | undefined;
   private readonly ownedClients = new Set<AgentClient>();
   private readonly pluginProviders: PluginAgentClientRegistry;
+  private pluginProvidersSettled = false;
 
   constructor(options: ProviderSnapshotManagerOptions) {
     this.logger = options.logger;
-    this.modelTierOverrides = buildModelTierOverrideIndex(options.modelTierOverrides);
-    this.modelVisibilityOverrides = buildModelVisibilityOverrideIndex(
-      options.modelVisibilityOverrides,
-    );
-    this.connectors = options.connectors;
     this.pluginProviders = new PluginAgentClientRegistry(
       options.logger.child({ module: "plugin-providers" }),
     );
@@ -359,7 +268,6 @@ export class ProviderSnapshotManager {
     this.runtimeSettings = options.runtimeSettings;
     this.providerOverrides = options.providerOverrides;
     this.baseProviderOverrides = options.providerOverrides;
-    this.brainEndpoint = options.brainEndpoint;
     this.refreshTimeoutMs = providerRefreshDeadline(options.refreshTimeoutMs);
     this.diagnosticTimeoutMs = resolveDiagnosticTimeoutMs(
       options.diagnosticTimeoutMs,
@@ -371,7 +279,6 @@ export class ProviderSnapshotManager {
     );
     this.providerClients = {
       ...this.extraClients,
-      ...this.pluginProviders.clients(),
     } as Record<AgentProvider, AgentClient>;
     for (const client of Object.values(this.providerClients)) this.ownedClients.add(client);
   }
@@ -401,12 +308,7 @@ export class ProviderSnapshotManager {
     for (const catalogs of this.catalogs.values()) {
       for (const provider of providersToRefresh) {
         const catalog = catalogs.get(provider);
-        if (catalog)
-          catalogs.set(provider, {
-            result: catalog.result,
-            sourceEntry: catalog.sourceEntry,
-            stale: true,
-          });
+        if (catalog) catalogs.set(provider, { result: catalog.result, stale: true });
       }
     }
     // Refresh each known target: provider keys coalesce reads, while target-scoped
@@ -438,41 +340,16 @@ export class ProviderSnapshotManager {
     await this.refreshSnapshotForCwd(options);
   }
 
-  /**
-   * Re-probe one provider in every snapshot already materialized (the settings
-   * scope plus each workspace's). For providers whose availability is owned by
-   * the daemon rather than by the user's environment - otto-brain, whose host
-   * the daemon itself starts and stops - the alternative is a row that keeps
-   * claiming "available" until something else happens to refresh it.
-   */
-  async refreshProviderEverywhere(provider: AgentProvider): Promise<void> {
-    if (!this.hasProvider(provider)) return;
-    // Host-owned availability invalidates every bound catalog without reloading other providers.
-    for (const catalogs of this.catalogs.values()) {
-      const catalog = catalogs.get(provider);
-      if (catalog)
-        catalogs.set(provider, {
-          result: catalog.result,
-          sourceEntry: catalog.sourceEntry,
-          stale: true,
-        });
-    }
-    await Promise.all(
-      [...this.targets.keys()].map((cwd) =>
-        this.warmUp(
-          resolveProviderSnapshotTarget(cwd === GLOBAL_PROVIDER_SNAPSHOT_KEY ? undefined : cwd),
-          [provider],
-        ),
-      ),
-    );
-  }
-
   listRegisteredProviderIds(): AgentProvider[] {
     return this.getProviderIds();
   }
 
   hasProvider(provider: AgentProvider): boolean {
     return Object.prototype.hasOwnProperty.call(this.generation.definitions, provider);
+  }
+
+  supportsConfigRequiredProvider(provider: AgentProvider): boolean {
+    return this.pluginProviders.definitions()[provider]?.requiresConfiguration === true;
   }
 
   getProviderLabel(provider: AgentProvider): string {
@@ -486,7 +363,6 @@ export class ProviderSnapshotManager {
   private createAgentManagerState(
     definitions: Record<AgentProvider, ProviderDefinition>,
     providerClients: Record<AgentProvider, AgentClient>,
-    providerOverrides = this.providerOverrides,
   ): AgentManagerProviderState {
     const providerDefinitions: AgentManagerProviderState["providerDefinitions"] = {};
     const clients: AgentManagerProviderState["clients"] = {};
@@ -494,11 +370,6 @@ export class ProviderSnapshotManager {
       providerDefinitions[provider] = {
         enabled: definition.enabled,
         derivedFromProviderId: definition.derivedFromProviderId,
-        compaction: providerOverrides?.[provider]?.compaction ?? null,
-        maxToolRounds: providerOverrides?.[provider]?.maxToolRounds ?? null,
-        actionBreaker: providerOverrides?.[provider]?.actionBreaker ?? null,
-        validateOptions: definition.validateOptions,
-        applyOptions: definition.applyOptions,
         applyToolPolicy: definition.applyToolPolicy,
       };
       if (definition.enabled) {
@@ -513,17 +384,28 @@ export class ProviderSnapshotManager {
     return { providerDefinitions, clients };
   }
 
+  /** Called after built-in and configured plugin startup has completed, including disabled plugins. */
+  settlePluginProviders(): void {
+    if (this.pluginProvidersSettled) return;
+    this.pluginProvidersSettled = true;
+    this.warnUnknownProviderOverrides();
+  }
+
+  private warnUnknownProviderOverrides(): void {
+    if (!this.pluginProvidersSettled) return;
+    for (const [provider, override] of Object.entries(this.providerOverrides ?? {})) {
+      if (!override.extends && !this.generation.definitions[provider]) {
+        this.logger.warn({ provider }, "Provider override matches no registered provider");
+      }
+    }
+  }
+
   replacePluginProviders(
     registrations: readonly ProviderRegistration[],
   ): AgentManagerProviderState {
     for (const registration of registrations) {
-      if (
-        (this.generation.definitions[registration.id] || this.extraClients[registration.id]) &&
-        !this.pluginProviders.has(registration.id)
-      ) {
-        throw new Error(
-          `Plugin provider '${registration.id}' conflicts with a configured provider`,
-        );
+      if (BUILTIN_PROVIDER_IDS.includes(registration.id) || this.extraClients[registration.id]) {
+        throw new Error(`Plugin provider '${registration.id}' conflicts with a built-in provider`);
       }
     }
     const previousPlugins = this.pluginProviders.definitions();
@@ -533,17 +415,30 @@ export class ProviderSnapshotManager {
     this.pluginProviders.replace(registrations);
     const plugins = this.pluginProviders.definitions();
     const retiredProviders = Object.keys(previousPlugins).filter(
-      (provider) => previousPlugins[provider] !== plugins[provider],
+      (provider) =>
+        previousPlugins[provider] !== plugins[provider] &&
+        !this.providerOverrides?.[provider]?.extends,
     );
-    const definitions = { ...this.generation.definitions };
+    const definitions = this.buildRegistry(this.runtimeSettings, this.providerOverrides);
     const changed = new Set<AgentProvider>();
-    for (const provider of new Set([...Object.keys(previousPlugins), ...Object.keys(plugins)])) {
-      if (previousPlugins[provider] !== plugins[provider]) changed.add(provider);
-      delete definitions[provider];
-      delete clients[provider];
+    for (const provider of new Set([...this.generation.order, ...Object.keys(definitions)])) {
+      const before = this.generation.definitions[provider];
+      const after = definitions[provider];
+      const registrationChanged =
+        previousPlugins[provider] !== plugins[provider] &&
+        !this.providerOverrides?.[provider]?.extends;
+      if (
+        registrationChanged ||
+        !before ||
+        !after ||
+        !isDeepStrictEqual(before.configuration, after.configuration)
+      ) {
+        changed.add(provider);
+        delete clients[provider];
+      } else {
+        definitions[provider] = before;
+      }
     }
-    Object.assign(definitions, plugins);
-    Object.assign(clients, this.pluginProviders.clients());
     for (const client of Object.values(clients)) this.ownedClients.add(client);
     const generation = this.createGeneration(definitions, this.providerOverrides);
     const state = this.createAgentManagerState(definitions, clients);
@@ -620,11 +515,9 @@ export class ProviderSnapshotManager {
       ];
     }
 
-    const definition = this.requireProvider(input.provider);
     return validateAgentConfigurationAgainstProvider({
       input,
       provider,
-      validateOptions: definition.validateOptions,
     });
   }
 
@@ -667,30 +560,14 @@ export class ProviderSnapshotManager {
     });
     const definition = this.requireProvider(input.provider);
     const parent = input.parent ? this.resolveParent(input.parent) : null;
-    const effectiveUnattended = input.unattended || parent?.isUnattended === true;
-    const resolved = await definition.resolveCreateConfig({
+    return definition.resolveCreateConfig({
       provider: input.provider,
       requestedMode: input.requestedMode,
       featureValues: input.featureValues,
       parent,
-      unattended: effectiveUnattended,
+      unattended: input.unattended || parent?.isUnattended === true,
       availableModes: entry.modes ?? [],
-      model: input.model,
     });
-    return { ...resolved, unattended: effectiveUnattended };
-  }
-
-  async getProviderDiscoveryDiagnostic(
-    provider: AgentProvider,
-    options: import("@otto-code/protocol/provider-discovery").ProviderDiscoveryOptions,
-    imports: import("./import-session-metadata.js").DiscoveryImportContext,
-  ): Promise<import("@otto-code/protocol/provider-discovery").ProviderDiscoveryDiagnostic> {
-    const definition = this.generation.definitions[provider];
-    if (!definition?.enabled) throw new Error("Discovery diagnostic requires an enabled provider");
-    const client = this.ensureClient(provider, definition);
-    if (!client.diagnoseDiscovery)
-      throw new Error("Provider does not support discovery diagnostics");
-    return client.diagnoseDiscovery(options, imports);
   }
 
   async getProviderDiagnostic(provider: AgentProvider): Promise<ProviderDiagnosticResult> {
@@ -711,35 +588,17 @@ export class ProviderSnapshotManager {
       snapshotEntryPromise,
     ]);
 
-    const modelCount = entry.status === "ready" ? String(entry.models?.length ?? 0) : "-";
+    const modelCount = entry.status === "ready" ? String(entry.models?.length ?? 0) : "—";
     const status = formatProviderStatus(entry);
     const diagnostic = `${baseDiagnostic}\n  Models: ${modelCount}\n  Status: ${status}`;
     return { provider, diagnostic };
   }
 
-  /**
-   * The removed-provider list may arrive either as a bare array or inside the
-   * options object. Both spellings are in use - the daemon-config subscriber
-   * passes the array, callers that also set other options pass
-   * `removeProviders` - and they used to be two separate removal passes, so
-   * whichever form a caller did not use silently removed nothing.
-   */
   applyMutableProviderConfig(
     mutableProviders: MutableDaemonConfig["providers"] | undefined,
-    removedProviderIdsOrOptions?: string[] | ApplyMutableProviderConfigOptions,
-    maybeOptions: ApplyMutableProviderConfigOptions = {},
+    options: ApplyMutableProviderConfigOptions = {},
   ): AgentManagerProviderState {
-    const options = Array.isArray(removedProviderIdsOrOptions)
-      ? maybeOptions
-      : (removedProviderIdsOrOptions ?? maybeOptions);
-    const removeProviders = [
-      ...(Array.isArray(removedProviderIdsOrOptions) ? removedProviderIdsOrOptions : []),
-      ...(options.removeProviders ?? []),
-    ];
-    const prepared = this.prepareMutableProviderConfig(mutableProviders, {
-      ...options,
-      removeProviders,
-    });
+    const prepared = this.prepareMutableProviderConfig(mutableProviders, options);
     prepared.commit();
     return prepared.agentManagerState;
   }
@@ -769,9 +628,9 @@ export class ProviderSnapshotManager {
         definitions[provider] = before;
       }
     }
-    Object.assign(clients, this.extraClients, this.pluginProviders.clients());
+    Object.assign(clients, this.extraClients);
     const generation = this.createGeneration(definitions, providerOverrides);
-    const agentManagerState = this.createAgentManagerState(definitions, clients, providerOverrides);
+    const agentManagerState = this.createAgentManagerState(definitions, clients);
     return {
       agentManagerState,
       commit: () => {
@@ -793,6 +652,7 @@ export class ProviderSnapshotManager {
     }
     this.generation = generation;
     this.providerClients = clients;
+    this.warnUnknownProviderOverrides();
     for (const [key, catalogs] of this.catalogs) {
       for (const provider of changed) catalogs.delete(provider);
       if (catalogs.size === 0) this.catalogs.delete(key);
@@ -814,102 +674,6 @@ export class ProviderSnapshotManager {
   setRefreshTimeoutMs(refreshTimeoutMs: number | undefined): void {
     this.refreshTimeoutMs = providerRefreshDeadline(refreshTimeoutMs);
     this.diagnosticTimeoutMs = resolveDiagnosticTimeoutMs(undefined, this.refreshTimeoutMs);
-  }
-
-  /** Connector changes retire only Otto clients that consume the shared local tool catalog. */
-  setConnectors(connectors: readonly ConnectorConfig[] | undefined): AgentManagerProviderState {
-    if (isDeepStrictEqual(this.connectors, connectors)) return this.getAgentManagerProviderState();
-    const previousConnectors = this.connectors;
-    this.connectors = connectors;
-    try {
-      const definitions = this.buildRegistry(this.runtimeSettings, this.providerOverrides);
-      const changed = new Set<AgentProvider>();
-      const clients = { ...this.providerClients };
-      for (const provider of this.generation.order) {
-        if (
-          provider === "otto-brain" ||
-          this.providerOverrides?.[provider]?.extends === "openai-compatible"
-        ) {
-          changed.add(provider);
-          delete clients[provider];
-        } else {
-          definitions[provider] = this.generation.definitions[provider]!;
-        }
-      }
-      Object.assign(clients, this.extraClients, this.pluginProviders.clients());
-      const state = this.createAgentManagerState(definitions, clients);
-      this.installGeneration(
-        this.createGeneration(definitions, this.providerOverrides),
-        clients,
-        changed,
-      );
-      return state;
-    } catch (error) {
-      this.connectors = previousConnectors;
-      throw error;
-    }
-  }
-
-  /** Restamp published catalog data without discovery, retaining full raw models for Settings. */
-  setModelTierOverrides(overrides: readonly ModelTierOverride[] | undefined): void {
-    this.modelTierOverrides = buildModelTierOverrideIndex(overrides);
-    this.restampCatalogMetadata();
-  }
-
-  setModelVisibilityOverrides(overrides: readonly ModelVisibilityOverride[] | undefined): void {
-    this.modelVisibilityOverrides = buildModelVisibilityOverrideIndex(overrides);
-    this.restampCatalogMetadata();
-  }
-
-  private restampCatalogMetadata(): void {
-    for (const catalogs of this.catalogs.values()) {
-      for (const [provider, catalog] of catalogs) {
-        if (!catalog.sourceEntry) continue;
-        catalog.result = this.identifyCatalogEntry(provider, catalog.sourceEntry);
-      }
-    }
-    this.publishTargets(this.targets.keys());
-  }
-
-  private identifyCatalogEntry(
-    provider: AgentProvider,
-    entry: ProviderSnapshotEntry,
-  ): ProviderSnapshotRecord {
-    return identifyEntry(
-      structuredClone({
-        ...entry,
-        ...(entry.models ? { models: this.stampModelMetadata(provider, entry.models) } : {}),
-      }),
-    );
-  }
-
-  // Stamp each model's `tier` at ingest: a user override wins, else inference
-  // (catalog → name pattern). Undefined leaves the model tier-less for the
-  // consumer's context-window heuristic.
-  private stampModelTiers(
-    provider: AgentProvider,
-    models: readonly AgentModelDefinition[],
-  ): AgentModelDefinition[] {
-    const overrides = this.modelTierOverrides.get(provider);
-    return models.map((model) => ({
-      ...model,
-      tier: resolveModelTier(model, overrides?.get(model.id)),
-    }));
-  }
-
-  private stampModelMetadata(
-    provider: AgentProvider,
-    models: readonly AgentModelDefinition[],
-  ): AgentModelDefinition[] {
-    const visibility = this.modelVisibilityOverrides.get(provider);
-    const stampedModels: AgentModelDefinition[] = [];
-    for (const model of this.stampModelTiers(provider, models)) {
-      const { isVisible: _previousVisibility, ...base } = model;
-      stampedModels.push(
-        visibility?.get(model.id) === false ? { ...base, isVisible: false } : base,
-      );
-    }
-    return stampedModels;
   }
 
   on(event: "change", listener: ProviderSnapshotChangeListener): this {
@@ -947,20 +711,12 @@ export class ProviderSnapshotManager {
     const registry = buildProviderRegistry(this.logger, {
       runtimeSettings,
       providerOverrides,
+      pluginProviders: this.pluginProviders.definitions(),
       workspaceGitService: this.workspaceGitService,
       managedProcesses: this.managedProcesses,
-      connectors: this.connectors,
-      brainEndpoint: this.brainEndpoint,
       openCodeBridge: this.openCodeBridge,
       isDev: this.isDev,
     });
-
-    for (const [provider, definition] of Object.entries(this.pluginProviders.definitions())) {
-      if (registry[provider]) {
-        throw new Error(`Plugin provider '${provider}' conflicts with a configured provider`);
-      }
-      registry[provider] = definition;
-    }
 
     for (const [provider, client] of Object.entries(this.extraClients) as Array<
       [AgentProvider, AgentClient]
@@ -1208,11 +964,7 @@ export class ProviderSnapshotManager {
       catalogs.set(provider, catalog);
     }
     this.publishTargets([snapshotCwd]);
-    const retryable =
-      catalog.failedAt !== undefined &&
-      Date.now() - catalog.failedAt >= PROVIDER_PROBE_RETRY_AFTER_MS;
-    if (!force && (catalog.load || (catalog.result && !catalog.stale && !retryable)))
-      return catalog.load;
+    if (!force && (catalog.load || (catalog.result && !catalog.stale))) return catalog.load;
     catalog.stale = false;
 
     const current = catalog;
@@ -1230,10 +982,7 @@ export class ProviderSnapshotManager {
           client,
           publish: (entry) => {
             if (!isCurrent()) return false;
-            current.sourceEntry = structuredClone(entry);
-            current.result = this.identifyCatalogEntry(provider, current.sourceEntry);
-            current.failedAt =
-              entry.status === "error" || entry.status === "unavailable" ? Date.now() : undefined;
+            current.result = identifyEntry(structuredClone(entry));
             const boundTargets = [...this.targets].flatMap(([cwd, target]) =>
               target.bindings.get(provider)?.key === key ? [cwd] : [],
             );
@@ -1289,13 +1038,20 @@ export class ProviderSnapshotManager {
         return;
       }
 
+      const models = normalizeAgentModelCatalog(catalog.models);
+      if (models.length !== catalog.models.length) {
+        this.logger.warn(
+          { provider, discardedRows: catalog.models.length - models.length },
+          "Provider catalog contains repeated model IDs; retaining the first definition",
+        );
+      }
       setEntry({
         ...base,
         defaultModeId:
           catalog.defaultModeId === undefined ? base.defaultModeId : catalog.defaultModeId,
         status: "ready",
         enabled: true,
-        models: catalog.models,
+        models,
         modes: catalog.modes,
         fetchedAt: new Date().toISOString(),
       });
@@ -1434,7 +1190,7 @@ export function isGlobalProviderSnapshotKey(cwd: string): boolean {
 function identifyEntry(entry: ProviderSnapshotEntry): ProviderSnapshotRecord {
   const { fetchedAt: _fetchedAt, ...content } = entry;
   const contentHash = createHash("sha256")
-    .update(JSON.stringify(["otto.provider-result/1", content]))
+    .update(JSON.stringify(["paseo.provider-result/1", content]))
     .digest("base64url");
   return { entry, contentHash };
 }

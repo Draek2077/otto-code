@@ -7,7 +7,6 @@ import argparse
 import importlib.util
 import os
 import platform
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,6 +17,7 @@ DESKTOP_ROOT = Path(__file__).resolve().parents[1]
 HELPER_ROOT = DESKTOP_ROOT / "resources" / "zoom-recorder"
 ENTRY_POINT = HELPER_ROOT / "otto_zoom_recorder.py"
 OUTPUT_ROOT = HELPER_ROOT / "bin" / "x64"
+SCRATCH_ROOT = DESKTOP_ROOT.parents[1] / ".tmp"
 
 COMMON_MODULES = ("numpy", "onnx_asr", "onnxruntime", "soundfile", "PyInstaller")
 WINDOWS_MODULES = ("comtypes", "process_audio_capture", "psutil", "pycaw", "sounddevice")
@@ -41,11 +41,14 @@ def build(output: Path) -> None:
 
     require_modules(COMMON_MODULES + (WINDOWS_MODULES if system == "Windows" else ()))
 
-    executable_name = "otto-zoom-recorder.exe" if system == "Windows" else "otto-zoom-recorder"
-    build_root = DESKTOP_ROOT / ".build" / "zoom-recorder"
-    shutil.rmtree(build_root, ignore_errors=True)
     output.mkdir(parents=True, exist_ok=True)
+    SCRATCH_ROOT.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="zoom-recorder-build-", dir=SCRATCH_ROOT) as scratch:
+        freeze(system, output, Path(scratch))
 
+
+def freeze(system: str, output: Path, build_root: Path) -> None:
+    executable_name = "otto-zoom-recorder.exe" if system == "Windows" else "otto-zoom-recorder"
     command = [
         sys.executable,
         "-m",
@@ -86,7 +89,9 @@ def build(output: Path) -> None:
             ]
         )
     command.append(str(ENTRY_POINT))
-    subprocess.run(command, check=True, cwd=HELPER_ROOT)
+    env = os.environ.copy()
+    env["PYINSTALLER_CONFIG_DIR"] = str(build_root / "cache")
+    subprocess.run(command, check=True, cwd=HELPER_ROOT, env=env)
 
     executable = output / executable_name
     if not executable.is_file():
@@ -96,7 +101,7 @@ def build(output: Path) -> None:
 
 def smoke_test(executable: Path) -> None:
     """Prove the frozen native helper starts without touching a user's cache."""
-    with tempfile.TemporaryDirectory(prefix="otto-zoom-recorder-smoke-") as data_root:
+    with tempfile.TemporaryDirectory(prefix="zoom-recorder-smoke-", dir=SCRATCH_ROOT) as data_root:
         env = os.environ.copy()
         env["ZOOM_RECORDER_HOME"] = data_root
         for args in (("--version",), ("status",)):

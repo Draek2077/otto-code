@@ -1,1 +1,2 @@
-export * from "@otto-code/protocol/browser-automation/aria-snapshot-script";
+// OTTO(browser-host): native and daemon browsers share Paseo's unchanged snapshot/ref implementation.
+export * from "@getpaseo/plugin/server/otto-browser";

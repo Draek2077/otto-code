@@ -1,46 +1,26 @@
 import { z } from "zod";
+import type { HighlightToken } from "@getpaseo/highlight";
+
 export interface DiffSegment {
   text: string;
   changed: boolean;
 }
 
-/**
- * The daemon protocol transports syntax roles as strings so a newer host can
- * add a role without breaking an older client. Renderers map unknown roles to
- * their base code color.
- */
-export interface DiffToken {
-  text: string;
-  style: string | null;
-}
-
 export interface DiffLine {
   type: "add" | "remove" | "context" | "header";
   content: string;
-  /** 1-based source coordinate before the change, when the producer knows it. */
-  oldLineNumber?: number;
-  /** 1-based source coordinate after the change, when the producer knows it. */
-  newLineNumber?: number;
   segments?: DiffSegment[];
   // Syntax-highlight tokens for the code on this line (prefix char excluded),
   // attached by highlightDiffLines when the file's language is supported.
-  tokens?: DiffToken[];
+  tokens?: HighlightToken[];
 }
 
-function splitIntoLines(text: string, preserveTerminator = false): string[] {
+function splitIntoLines(text: string): string[] {
   if (!text) {
     return [];
   }
 
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
-  // A terminal newline terminates the final source line; it is not an extra
-  // empty display line. Preserve deliberate blank lines before that newline.
-  //
-  // Round-trip callers opt out: rebuilding text from the diff joins the lines
-  // back with "\n", so for them the terminator is content that has to survive
-  // the split, and a proposal that only adds or drops it is a real change.
-  if (!preserveTerminator && lines.at(-1) === "") lines.pop();
-  return lines;
+  return text.replace(/\r\n/g, "\n").split("\n");
 }
 
 function splitIntoWords(text: string): string[] {
@@ -154,46 +134,9 @@ function computeWordLevelDiff(
   };
 }
 
-function addSingleLineIntralineSegments(diff: DiffLine[]): void {
-  // Only attach intraline segments when a complete changed run has one line
-  // on each side. A multi-line run can contain wrapping, insertion, movement,
-  // or reordered statements. Pairing arbitrary adjacent `-` and `+` lines in
-  // that run gives the fragments the wrong counterpart and can make unchanged
-  // text appear highlighted in a Structural view.
-  for (let start = 0; start < diff.length; ) {
-    if (diff[start]?.type !== "remove" && diff[start]?.type !== "add") {
-      start += 1;
-      continue;
-    }
-    let end = start;
-    const removals: DiffLine[] = [];
-    const additions: DiffLine[] = [];
-    while (end < diff.length && (diff[end]?.type === "remove" || diff[end]?.type === "add")) {
-      const line = diff[end]!;
-      if (line.type === "remove") removals.push(line);
-      else additions.push(line);
-      end += 1;
-    }
-    if (removals.length === 1 && additions.length === 1) {
-      const { oldSegments, newSegments } = computeWordLevelDiff(
-        removals[0]!.content.slice(1),
-        additions[0]!.content.slice(1),
-      );
-      removals[0]!.segments = oldSegments;
-      additions[0]!.segments = newSegments;
-    }
-    start = end;
-  }
-}
-
-export function buildLineDiff(
-  originalText: string,
-  updatedText: string,
-  options?: { preserveTrailingNewline?: boolean },
-): DiffLine[] {
-  const preserveTerminator = options?.preserveTrailingNewline === true;
-  const originalLines = splitIntoLines(originalText, preserveTerminator);
-  const updatedLines = splitIntoLines(updatedText, preserveTerminator);
+export function buildLineDiff(originalText: string, updatedText: string): DiffLine[] {
+  const originalLines = splitIntoLines(originalText);
+  const updatedLines = splitIntoLines(updatedText);
 
   const hasAnyContent = originalLines.length > 0 || updatedLines.length > 0;
   if (!hasAnyContent) {
@@ -215,47 +158,48 @@ export function buildLineDiff(
   }
 
   const diff: DiffLine[] = [];
-  let oldLineNumber = 1;
-  let newLineNumber = 1;
 
   let i = 0;
   let j = 0;
   while (i < m && j < n) {
     if (originalLines[i] === updatedLines[j]) {
-      diff.push({
-        type: "context",
-        content: ` ${originalLines[i]}`,
-        oldLineNumber,
-        newLineNumber,
-      });
+      diff.push({ type: "context", content: ` ${originalLines[i]}` });
       i += 1;
       j += 1;
-      oldLineNumber += 1;
-      newLineNumber += 1;
     } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      diff.push({ type: "remove", content: `-${originalLines[i]}`, oldLineNumber });
+      diff.push({ type: "remove", content: `-${originalLines[i]}` });
       i += 1;
-      oldLineNumber += 1;
     } else {
-      diff.push({ type: "add", content: `+${updatedLines[j]}`, newLineNumber });
+      diff.push({ type: "add", content: `+${updatedLines[j]}` });
       j += 1;
-      newLineNumber += 1;
     }
   }
 
   while (i < m) {
-    diff.push({ type: "remove", content: `-${originalLines[i]}`, oldLineNumber });
+    diff.push({ type: "remove", content: `-${originalLines[i]}` });
     i += 1;
-    oldLineNumber += 1;
   }
 
   while (j < n) {
-    diff.push({ type: "add", content: `+${updatedLines[j]}`, newLineNumber });
+    diff.push({ type: "add", content: `+${updatedLines[j]}` });
     j += 1;
-    newLineNumber += 1;
   }
 
-  addSingleLineIntralineSegments(diff);
+  // Post-process to add word-level segments for adjacent remove/add pairs
+  for (let idx = 0; idx < diff.length - 1; idx++) {
+    const curr = diff[idx];
+    const next = diff[idx + 1];
+
+    if (curr.type === "remove" && next.type === "add") {
+      // Strip the leading -/+ from content for comparison
+      const oldLineText = curr.content.slice(1);
+      const newLineText = next.content.slice(1);
+
+      const { oldSegments, newSegments } = computeWordLevelDiff(oldLineText, newLineText);
+      curr.segments = oldSegments;
+      next.segments = newSegments;
+    }
+  }
 
   return diff;
 }
@@ -267,8 +211,6 @@ export function parseUnifiedDiff(diffText?: string): DiffLine[] {
 
   const lines = splitIntoLines(diffText);
   const diff: DiffLine[] = [];
-  let oldLineNumber: number | undefined;
-  let newLineNumber: number | undefined;
 
   for (const line of lines) {
     if (!line.length) {
@@ -278,24 +220,19 @@ export function parseUnifiedDiff(diffText?: string): DiffLine[] {
 
     if (line.startsWith("@@")) {
       diff.push({ type: "header", content: line });
-      const hunk = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(line);
-      oldLineNumber = hunk ? Number(hunk[1]) : undefined;
-      newLineNumber = hunk ? Number(hunk[2]) : undefined;
       continue;
     }
 
     if (line.startsWith("+")) {
       if (!line.startsWith("+++")) {
-        diff.push({ type: "add", content: line, newLineNumber });
-        if (newLineNumber !== undefined) newLineNumber += 1;
+        diff.push({ type: "add", content: line });
       }
       continue;
     }
 
     if (line.startsWith("-")) {
       if (!line.startsWith("---")) {
-        diff.push({ type: "remove", content: line, oldLineNumber });
-        if (oldLineNumber !== undefined) oldLineNumber += 1;
+        diff.push({ type: "remove", content: line });
       }
       continue;
     }
@@ -314,9 +251,7 @@ export function parseUnifiedDiff(diffText?: string): DiffLine[] {
       continue;
     }
 
-    diff.push({ type: "context", content: line, oldLineNumber, newLineNumber });
-    if (oldLineNumber !== undefined) oldLineNumber += 1;
-    if (newLineNumber !== undefined) newLineNumber += 1;
+    diff.push({ type: "context", content: line });
   }
 
   return diff;
@@ -401,116 +336,5 @@ export function extractTaskEntriesFromToolCall(
       .filter((entry) => entry.text.length > 0);
   }
 
-  return null;
-}
-
-// ---- Incremental checklist tools (Claude Agent SDK: TaskCreate/TaskUpdate/TaskList) ----
-//
-// Unlike TodoWrite/update_plan (which resend the whole list every call), these
-// tools mutate one task at a time and identify tasks by an `id` the SDK assigns.
-// TaskCreate returns that id in its OUTPUT; TaskUpdate/TaskList reference it. The
-// reducer accumulates these ops into one evolving checklist - see stream.ts.
-
-/**
- * A single mutation to the running checklist, extracted from one completed
- * Task* tool call. `sync` (from TaskList) is authoritative and replaces the set.
- */
-export type TaskListOperation =
-  | { kind: "create"; id: string | null; text: string }
-  | { kind: "update"; id: string; status?: TaskStatus; text?: string; deleted?: boolean }
-  | { kind: "sync"; tasks: { id: string; text: string; status: TaskStatus }[] };
-
-const CHECKLIST_TASK_TOOLS = new Set(["taskcreate", "taskupdate", "tasklist", "taskget"]);
-
-/**
- * The checklist Task* family, by normalized name. Note this deliberately does
- * NOT match the bare `Task` tool (subagent fan-out) or `TaskOutput`/`TaskStop`
- * (background-task control) - only the todo-list tools.
- */
-export function isChecklistTaskTool(toolName: string): boolean {
-  return CHECKLIST_TASK_TOOLS.has(normalizeToolName(toolName));
-}
-
-const TaskCreateInputSchema = z.object({ subject: z.string() });
-const TaskCreateOutputSchema = z.object({ task: z.object({ id: z.string() }) });
-const TaskUpdateInputSchema = z.object({
-  taskId: z.string(),
-  status: z.enum(["pending", "in_progress", "completed", "deleted"]).optional(),
-  subject: z.string().optional(),
-});
-const TaskListOutputSchema = z.object({
-  tasks: z.array(z.object({ id: z.string(), subject: z.string(), status: TaskStatusSchema })),
-});
-
-// Tool I/O may reach us as a structured object or a JSON-encoded string,
-// depending on how the provider serializes the result - tolerate both.
-function coerceToolPayload(value: unknown): unknown {
-  if (typeof value === "string") {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-  return value;
-}
-
-export function extractTaskListOperation(
-  toolName: string,
-  input: unknown,
-  output: unknown,
-): TaskListOperation | null {
-  const normalized = normalizeToolName(toolName);
-  const inputRecord = coerceToolPayload(input);
-  const outputRecord = coerceToolPayload(output);
-
-  if (normalized === "taskcreate") {
-    const parsedInput = TaskCreateInputSchema.safeParse(inputRecord);
-    if (!parsedInput.success) {
-      return null;
-    }
-    const text = parsedInput.data.subject.trim();
-    if (!text) {
-      return null;
-    }
-    const parsedOutput = TaskCreateOutputSchema.safeParse(outputRecord);
-    return { kind: "create", id: parsedOutput.success ? parsedOutput.data.task.id : null, text };
-  }
-
-  if (normalized === "taskupdate") {
-    const parsedInput = TaskUpdateInputSchema.safeParse(inputRecord);
-    if (!parsedInput.success) {
-      return null;
-    }
-    const { taskId, status, subject } = parsedInput.data;
-    if (status === "deleted") {
-      return { kind: "update", id: taskId, deleted: true };
-    }
-    // `status` is now narrowed to TaskStatus | undefined (deleted handled above).
-    const text = subject?.trim();
-    return {
-      kind: "update",
-      id: taskId,
-      status,
-      text: text && text.length > 0 ? text : undefined,
-    };
-  }
-
-  if (normalized === "tasklist") {
-    const parsedOutput = TaskListOutputSchema.safeParse(outputRecord);
-    if (!parsedOutput.success) {
-      return null;
-    }
-    return {
-      kind: "sync",
-      tasks: parsedOutput.data.tasks.map((task) => ({
-        id: task.id,
-        text: task.subject,
-        status: task.status,
-      })),
-    };
-  }
-
-  // taskget and anything else in the family are reads - no list mutation.
   return null;
 }

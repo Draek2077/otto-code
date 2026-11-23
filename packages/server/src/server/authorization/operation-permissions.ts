@@ -1,4 +1,3 @@
-import { OTTO_INBOUND_PERMISSION, OTTO_OUTBOUND_PERMISSION } from "./otto-operation-permissions.js";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../messages.js";
 import type { DaemonPermission } from "./index.js";
 
@@ -7,11 +6,10 @@ type OutboundOperation = SessionOutboundMessage["type"];
 export type PermissionRequirement = DaemonPermission | readonly DaemonPermission[] | null;
 
 const INBOUND_PERMISSION = {
-  "search.chats.query.request": "workspace.read",
-  "search.chats.resolve.request": "workspace.read",
-  ...OTTO_INBOUND_PERMISSION,
   abort_request: "workspace.write",
   "agent.config.apply.request": ["workspace.write", "hub.execute"],
+  "agent.profile.memory.request": ["daemon.manage"], // OTTO(profile-memory)
+  "agent.profile.author.request": ["daemon.manage", "hub.execute"], // OTTO(profile-authoring)
   "agent.detach.request": "workspace.write",
   "agent.fork_context.request": "workspace.read",
   "agent.provider_subagents.list.request": "workspace.read",
@@ -22,8 +20,11 @@ const INBOUND_PERMISSION = {
   "agent.skills.reconcile.request": "daemon.manage",
   "agent.skills.save_selection.request": "daemon.manage",
   "agent.skills.uninstall.request": "daemon.manage",
+  "agent.timeline.search.request": "workspace.read",
   "agent.timeline.list_prompts.request": "workspace.read",
   "agent.timeline.append.request": "workspace.write",
+  "browser.host.register.request": ["workspace.write"],
+  "subscription.release.request": null,
   "session.events.set_subscription.request": ["workspace.read", "daemon.read", "hub.execute"],
   "agent.timeline.set_subscription.request": ["workspace.read", "hub.execute"],
   agent_permission_response: "workspace.write",
@@ -64,7 +65,9 @@ const INBOUND_PERMISSION = {
   client_heartbeat: "workspace.read",
   close_items_request: "workspace.manage",
   create_agent_request: ["workspace.write", "hub.execute"],
-  create_otto_worktree_request: "workspace.manage",
+  "agent.create.request": ["workspace.write", "hub.execute"],
+  "creation.subscribe.request": "workspace.read",
+  create_paseo_worktree_request: "workspace.manage",
   create_terminal_request: "workspace.write",
   "daemon.config.reload.request": "daemon.manage",
   "daemon.get_pairing_offer.request": "access.manage",
@@ -78,6 +81,11 @@ const INBOUND_PERMISSION = {
   dictation_stream_start: "workspace.write",
   directory_suggestions_request: "workspace.read",
   fetch_agent_history_request: "workspace.read",
+  "history.archives.get_summary.request": "workspace.read", // OTTO(history)
+  "history.archives.review_clear.request": "workspace.write", // OTTO(history)
+  "history.archives.clear_reviewed.request": "workspace.write", // OTTO(history)
+  "search.chats.query.request": "workspace.read", // OTTO(chat-search)
+  "search.chats.resolve.request": "workspace.read", // OTTO(chat-search)
   fetch_agent_request: ["workspace.read", "hub.execute"],
   fetch_agent_timeline_request: ["workspace.read", "hub.execute"],
   fetch_agents_request: ["workspace.read", "hub.execute"],
@@ -120,6 +128,8 @@ const INBOUND_PERMISSION = {
   "loop/stop": "automation.manage",
   open_in_editor_request: "workspace.write",
   open_project_request: "workspace.manage",
+  paseo_worktree_archive_request: "workspace.manage",
+  paseo_worktree_list_request: "workspace.read",
   ping: "daemon.read",
   "plugin.catalog.get.request": "daemon.manage",
   "plugin.directory.inspect.request": "daemon.manage",
@@ -134,6 +144,8 @@ const INBOUND_PERMISSION = {
   "plugin.source.install.request": "daemon.manage",
   "plugin.source.status.request": "daemon.manage",
   "plugin.source.update.request": "daemon.manage",
+  "plugin.source.update.preview.request": "daemon.manage",
+  "plugin.source.update.apply.request": "daemon.manage",
   "project.add.request": "workspace.manage",
   "project.create_directory.request": "workspace.manage",
   "project.github.clone.request": "workspace.manage",
@@ -144,6 +156,7 @@ const INBOUND_PERMISSION = {
   "project.rename.request": "workspace.manage",
   project_icon_request: "workspace.read",
   "provider.usage.list.request": "daemon.read",
+  "usage.list_reports.request": "daemon.read",
   provider_diagnostic_request: "daemon.read",
   pull_request_timeline_request: "workspace.read",
   "push.unregister.request": "workspace.read",
@@ -174,6 +187,7 @@ const INBOUND_PERMISSION = {
   stash_list_request: "workspace.read",
   stash_pop_request: "workspace.write",
   stash_save_request: "workspace.write",
+  "checkout.diff.get.request": "workspace.read",
   subscribe_checkout_diff_request: "workspace.read",
   subscribe_terminal_request: "workspace.read",
   subscribe_terminals_request: "workspace.read",
@@ -201,18 +215,21 @@ const INBOUND_PERMISSION = {
   "workspace.script.list.request": "workspace.read",
   "workspace.script.start.request": "workspace.write",
   "workspace.script.stop.request": "workspace.write",
-  "workspace.title.set.request": "workspace.manage",
+  "workspace.title.set.request": ["workspace.manage", "hub.execute"],
   workspace_setup_status_request: "workspace.read",
   "workspace.setup.run.request": "workspace.write",
   write_project_config_request: "workspace.write",
 } as const satisfies Record<InboundOperation, PermissionRequirement>;
 
 const OUTBOUND_PERMISSION = {
-  "search.chats.query.response": "workspace.read",
-  "search.chats.resolve.response": "workspace.read",
-  ...OTTO_OUTBOUND_PERMISSION,
+  "agent.create.response": ["workspace.write", "hub.execute"],
+  "agent.create.update": ["workspace.write", "hub.execute"],
+  "workspace.create.update": "workspace.manage",
+  "creation.subscribe.response": "workspace.read",
   activity_log: "workspace.read",
   "agent.config.apply.response": ["workspace.write", "hub.execute"],
+  "agent.profile.memory.response": ["daemon.manage"], // OTTO(profile-memory)
+  "agent.profile.author.response": ["daemon.manage", "hub.execute"], // OTTO(profile-authoring)
   "agent.detach.response": "workspace.write",
   "agent.fork_context.response": "workspace.read",
   "agent.provider_subagents.list.response": "workspace.read",
@@ -224,9 +241,12 @@ const OUTBOUND_PERMISSION = {
   "agent.skills.reconcile.response": "daemon.manage",
   "agent.skills.save_selection.response": "daemon.manage",
   "agent.skills.uninstall.response": "daemon.manage",
+  "agent.timeline.search.response": "workspace.read",
   "agent.timeline.list_prompts.response": "workspace.read",
   "agent.timeline.append.response": "workspace.write",
   "agent.timeline.replacement": ["workspace.read", "hub.execute"],
+  "browser.host.register.response": ["workspace.write"],
+  "subscription.release.response": null,
   "session.events.set_subscription.response": ["workspace.read", "daemon.read", "hub.execute"],
   "agent.timeline.set_subscription.response": ["workspace.read", "hub.execute"],
   agent_archived: ["workspace.read", "hub.execute"],
@@ -275,7 +295,7 @@ const OUTBOUND_PERMISSION = {
   checkout_switch_branch_response: "workspace.write",
   clear_agent_attention_response: "workspace.write",
   close_items_response: "workspace.manage",
-  create_otto_worktree_response: "workspace.manage",
+  create_paseo_worktree_response: "workspace.manage",
   create_terminal_response: "workspace.write",
   "daemon.config.reload.response": "daemon.manage",
   "daemon.get_pairing_offer.response": "access.manage",
@@ -290,6 +310,11 @@ const OUTBOUND_PERMISSION = {
   dictation_stream_partial: "workspace.write",
   directory_suggestions_response: "workspace.read",
   fetch_agent_history_response: "workspace.read",
+  "history.archives.get_summary.response": "workspace.read", // OTTO(history)
+  "history.archives.review_clear.response": "workspace.write", // OTTO(history)
+  "history.archives.clear_reviewed.response": "workspace.write", // OTTO(history)
+  "search.chats.query.response": "workspace.read", // OTTO(chat-search)
+  "search.chats.resolve.response": "workspace.read", // OTTO(chat-search)
   fetch_agent_response: ["workspace.read", "hub.execute"],
   fetch_agent_timeline_response: ["workspace.read", "hub.execute"],
   fetch_agents_response: ["workspace.read", "hub.execute"],
@@ -334,6 +359,8 @@ const OUTBOUND_PERMISSION = {
   "loop/stop/response": "automation.manage",
   open_in_editor_response: "workspace.read",
   open_project_response: "workspace.manage",
+  paseo_worktree_archive_response: "workspace.manage",
+  paseo_worktree_list_response: "workspace.read",
   "plugin.catalog.get.response": "daemon.manage",
   "plugin.directory.inspect.response": "daemon.manage",
   "plugin.directory.install.response": "daemon.manage",
@@ -347,6 +374,8 @@ const OUTBOUND_PERMISSION = {
   "plugin.source.install.response": "daemon.manage",
   "plugin.source.status.response": "daemon.manage",
   "plugin.source.update.response": "daemon.manage",
+  "plugin.source.update.preview.response": "daemon.manage",
+  "plugin.source.update.apply.response": "daemon.manage",
   pong: "daemon.read",
   "project.add.response": "workspace.manage",
   "project.create_directory.response": "workspace.manage",
@@ -359,6 +388,8 @@ const OUTBOUND_PERMISSION = {
   "project.update": "workspace.read",
   project_icon_response: "workspace.read",
   "provider.usage.list.response": "daemon.read",
+  "usage.list_reports.update": "daemon.read",
+  "usage.list_reports.response": "daemon.read",
   provider_diagnostic_response: "daemon.read",
   providers_snapshot_update: ["daemon.read", "hub.execute"],
   pull_request_timeline_response: "workspace.read",
@@ -388,6 +419,7 @@ const OUTBOUND_PERMISSION = {
   stash_pop_response: "workspace.read",
   stash_save_response: "workspace.read",
   status: "daemon.read",
+  "checkout.diff.get.response": "workspace.read",
   subscribe_checkout_diff_response: "workspace.read",
   subscribe_terminal_response: "workspace.read",
   "terminal.rename.response": "workspace.write",
@@ -415,7 +447,7 @@ const OUTBOUND_PERMISSION = {
   "workspace.script.list.response": "workspace.read",
   "workspace.script.start.response": "workspace.write",
   "workspace.script.stop.response": "workspace.write",
-  "workspace.title.set.response": "workspace.manage",
+  "workspace.title.set.response": ["workspace.manage", "hub.execute"],
   workspace_setup_progress: "workspace.read",
   workspace_setup_status_response: "workspace.read",
   "workspace.setup.run.response": "workspace.write",

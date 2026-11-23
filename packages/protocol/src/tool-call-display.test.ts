@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { buildToolCallDisplayModel, getToolDisplayName } from "./tool-call-display.js";
+import { buildToolCallDisplayModel } from "./tool-call-display.js";
 
 describe("shared tool-call display mapping", () => {
   it("builds summary from canonical detail", () => {
@@ -59,19 +59,19 @@ describe("shared tool-call display mapping", () => {
 
   it("builds display model for worktree setup detail", () => {
     const display = buildToolCallDisplayModel({
-      name: "otto_worktree_setup",
+      name: "paseo_worktree_setup",
       status: "running",
       error: null,
       detail: {
         type: "worktree_setup",
-        worktreePath: "/tmp/repo/.otto/worktrees/repo/branch",
+        worktreePath: "/tmp/repo/.paseo/worktrees/repo/branch",
         branchName: "feature-branch",
         log: "==> [1/1] Running: npm install\n",
         commands: [
           {
             index: 1,
             command: "npm install",
-            cwd: "/tmp/repo/.otto/worktrees/repo/branch",
+            cwd: "/tmp/repo/.paseo/worktrees/repo/branch",
             log: "==> [1/1] Running: npm install\n",
             status: "running",
             exitCode: null,
@@ -135,44 +135,34 @@ describe("shared tool-call display mapping", () => {
     });
   });
 
-  it("humanizes Otto MCP tool names (Claude Code format)", () => {
+  it("humanizes Paseo MCP tool names (Claude Code format)", () => {
     const display = buildToolCallDisplayModel({
-      name: "mcp__otto__create_chat",
+      name: "mcp__paseo__create_agent",
       status: "running",
       error: null,
       detail: { type: "unknown", input: null, output: null },
     });
-    expect(display.displayName).toBe("Create chat");
+    expect(display.displayName).toBe("Create agent");
   });
 
-  it("humanizes Otto MCP tool names (Codex format)", () => {
+  it("humanizes Paseo MCP tool names (Codex format)", () => {
     const display = buildToolCallDisplayModel({
-      name: "otto.create_chat",
+      name: "paseo.create_agent",
       status: "running",
       error: null,
       detail: { type: "unknown", input: null, output: null },
     });
-    expect(display.displayName).toBe("Create chat");
+    expect(display.displayName).toBe("Create agent");
   });
 
-  it("humanizes list_chats Otto tool", () => {
+  it("humanizes list_agents Paseo tool", () => {
     const display = buildToolCallDisplayModel({
-      name: "mcp__otto__list_chats",
+      name: "mcp__paseo__list_agents",
       status: "running",
       error: null,
       detail: { type: "unknown", input: null, output: null },
     });
-    expect(display.displayName).toBe("List chats");
-  });
-
-  it("humanizes a non-Otto MCP tool by dropping its namespace", () => {
-    const display = buildToolCallDisplayModel({
-      name: "mcp__linear__create_issue",
-      status: "running",
-      error: null,
-      detail: { type: "unknown", input: null, output: null },
-    });
-    expect(display.displayName).toBe("Create issue");
+    expect(display.displayName).toBe("List agents");
   });
 
   it("does not override speak tool display name", () => {
@@ -183,30 +173,6 @@ describe("shared tool-call display mapping", () => {
       detail: { type: "unknown", input: null, output: null },
     });
     expect(display.displayName).toBe("Speak");
-  });
-
-  describe("getToolDisplayName", () => {
-    it("strips the MCP/Otto namespace and sentence-cases the leaf", () => {
-      expect(getToolDisplayName("mcp__otto__suggest_task")).toBe("Suggest task");
-      expect(getToolDisplayName("otto.list_chats")).toBe("List chats");
-      expect(getToolDisplayName("suggest_task")).toBe("Suggest task");
-    });
-
-    it("splits camelCase / PascalCase tool ids into words", () => {
-      expect(getToolDisplayName("WebSearch")).toBe("Web search");
-      expect(getToolDisplayName("MultiEdit")).toBe("Multi edit");
-      expect(getToolDisplayName("ExitPlanMode")).toBe("Exit plan mode");
-    });
-
-    it("prefers curated names for lowercase compound tools the splitter can't segment", () => {
-      expect(getToolDisplayName("websearch")).toBe("Web search");
-      expect(getToolDisplayName("todowrite")).toBe("Update todos");
-      expect(getToolDisplayName("ls")).toBe("List files");
-    });
-
-    it("falls back to a readable name for unknown tools", () => {
-      expect(getToolDisplayName("some_new_tool")).toBe("Some new tool");
-    });
   });
 
   it("labels plan detail rows as Plan", () => {

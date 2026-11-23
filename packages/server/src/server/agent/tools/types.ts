@@ -1,60 +1,62 @@
 import type { z } from "zod";
-import type { ProviderOttoToolsPolicy } from "@otto-code/protocol/provider-config";
+import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-config";
 
-export interface OttoToolExecutionContext {
-  signal?: AbortSignal;
-  sendUpdate?: (update: OttoToolResult) => void;
+export class PaseoToolInputError extends Error {
+  readonly status = 400;
+
+  constructor(
+    message: string,
+    readonly issues?: z.ZodError["issues"],
+  ) {
+    super(message);
+    this.name = "PaseoToolInputError";
+  }
 }
 
-export interface OttoToolResult {
+export interface PaseoToolExecutionContext {
+  signal?: AbortSignal;
+  sendUpdate?: (update: PaseoToolResult) => void;
+}
+
+export interface PaseoToolResult {
   content: Array<{ type: string; text?: string; [key: string]: unknown }>;
   structuredContent?: unknown;
   isError?: boolean;
 }
 
-export interface OttoToolConfig {
-  /** Connector grants are governed by host connector switches, not Otto groups. */
-  source?: "connector";
+export interface PaseoToolConfig {
+  annotations?: { readOnlyHint?: boolean }; // OTTO(connectors): preserve vendor/native read-only hints through the shared MCP bridge.
   title?: string;
   description?: string;
   inputSchema?: z.ZodRawShape | z.ZodType;
   outputSchema?: z.ZodRawShape;
 }
 
-/** All built-in groups register through the catalog's single policy gate. */
-export type RegisterOttoTool = (
-  name: string,
-  config: OttoToolConfig,
-  // Tool inputs are validated against their schema at the catalog execution boundary.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handler: (input: any, context: OttoToolExecutionContext) => Promise<OttoToolResult>,
-) => void;
-
-export interface OttoToolDefinition extends OttoToolConfig {
+export interface PaseoToolDefinition extends PaseoToolConfig {
   name: string;
   description: string;
-  handler: (input: unknown, context: OttoToolExecutionContext) => Promise<OttoToolResult>;
+  handler: (input: unknown, context: PaseoToolExecutionContext) => Promise<PaseoToolResult>;
 }
 
-export interface OttoToolCatalog {
-  tools: ReadonlyMap<string, OttoToolDefinition>;
-  getTool(name: string): OttoToolDefinition | undefined;
+export interface PaseoToolCatalog {
+  tools: ReadonlyMap<string, PaseoToolDefinition>;
+  getTool(name: string): PaseoToolDefinition | undefined;
   executeTool(
     name: string,
     input: unknown,
-    context?: OttoToolExecutionContext,
-  ): Promise<OttoToolResult>;
+    context?: PaseoToolExecutionContext,
+  ): Promise<PaseoToolResult>;
 }
 
-export interface OttoToolRuntimeContext {
+export interface PaseoToolRuntimeContext {
+  callerCwd?: string; // OTTO(connectors): trusted launch scope exists before the new agent is registered.
+  callerPurpose?: "interactive" | "history"; // OTTO(connectors): history hydration does not acquire account tools.
   callerAgentId?: string;
-  /** Daemon-resolved launch cwd; the agent may not be registered yet. */
-  callerCwd?: string;
-  ottoToolPolicy?: ProviderOttoToolsPolicy;
+  paseoToolPolicy?: ProviderPaseoToolsPolicy;
   enableVoiceTools?: boolean;
   voiceOnly?: boolean;
 }
 
-export type OttoToolCatalogFactory = (
-  context: OttoToolRuntimeContext,
-) => OttoToolCatalog | Promise<OttoToolCatalog>;
+export type PaseoToolCatalogFactory = (
+  context: PaseoToolRuntimeContext,
+) => PaseoToolCatalog | Promise<PaseoToolCatalog>;

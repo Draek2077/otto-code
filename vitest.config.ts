@@ -2,6 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { configDefaults, defineConfig } from "vitest/config";
 
+// React's test APIs require its development build, even in a production shell.
+process.env.NODE_ENV = "test";
+
 const appDir = path.resolve(__dirname, "packages/app");
 const appNodeModules = path.resolve(appDir, "node_modules");
 const rootNodeModules = path.resolve(__dirname, "node_modules");
@@ -31,11 +34,11 @@ export default defineConfig({
     ],
     alias: [
       {
-        find: /^@otto-code\/relay\/e2ee$/,
+        find: /^@getpaseo\/relay\/e2ee$/,
         replacement: path.resolve(__dirname, "packages/relay/src/e2ee.ts"),
       },
       {
-        find: /^@otto-code\/relay$/,
+        find: /^@getpaseo\/relay$/,
         replacement: path.resolve(__dirname, "packages/relay/src/index.ts"),
       },
       { find: "@", replacement: path.resolve(appDir, "src") },
@@ -61,7 +64,6 @@ export default defineConfig({
     env: {
       PASEO_GIT_MAX_PROCESSES_PER_SECOND: "10000",
     },
-    // `.tmp` is scratch per AGENTS.md and can hold stale copies of the repo.
-    exclude: [...configDefaults.exclude, "**/.claude/**", "**/.dev/**", "**/.tmp/**"],
+    exclude: [...configDefaults.exclude, "**/.claude/**", "**/.dev/**"],
   },
 });

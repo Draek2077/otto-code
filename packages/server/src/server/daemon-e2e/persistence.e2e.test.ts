@@ -1,11 +1,10 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
 import type { SessionOutboundMessage } from "../messages.js";
-import { removeTempDir } from "../../test-utils/remove-temp-dir.js";
 
 function tmpCwd(): string {
   return mkdtempSync(path.join(tmpdir(), "daemon-e2e-"));
@@ -62,6 +61,7 @@ describe("daemon E2E - persistence", () => {
       const resumed = await ctx.client.resumeAgent(handle);
       expect(resumed.provider).toBe("codex");
       expect(resumed.cwd).toBe(cwd);
+      await ctx.client.subscribeAgentTimeline(resumed.id, () => {}).ready;
 
       messages.length = 0;
       await ctx.client.sendMessage(resumed.id, "What did I ask you to say earlier?");
@@ -73,17 +73,17 @@ describe("daemon E2E - persistence", () => {
 
       await ctx.client.deleteAgent(resumed.id);
     } finally {
-      removeTempDir(cwd);
+      rmSync(cwd, { recursive: true, force: true });
     }
   }, 30_000);
 
   test("timeline survives daemon restart", async () => {
     const cwd = tmpCwd();
-    const ottoHomeRoot = mkdtempSync(path.join(tmpdir(), "otto-home-root-"));
+    const paseoHomeRoot = mkdtempSync(path.join(tmpdir(), "paseo-home-root-"));
     try {
       // Start daemon with a stable on-disk home so "restart" can observe persisted timeline.
       await ctx.cleanup();
-      ctx = await createDaemonTestContext({ ottoHomeRoot, cleanup: false });
+      ctx = await createDaemonTestContext({ paseoHomeRoot, cleanup: false });
       unsubscribe?.();
       messages = [];
       unsubscribe = ctx.client.subscribeRawMessages((message) => {
@@ -105,7 +105,7 @@ describe("daemon E2E - persistence", () => {
       expect(afterMessage.final?.persistence).toBeTruthy();
 
       await ctx.cleanup();
-      ctx = await createDaemonTestContext({ ottoHomeRoot, cleanup: false });
+      ctx = await createDaemonTestContext({ paseoHomeRoot, cleanup: false });
       unsubscribe?.();
       messages = [];
       unsubscribe = ctx.client.subscribeRawMessages((message) => {
@@ -127,8 +127,8 @@ describe("daemon E2E - persistence", () => {
     } finally {
       await ctx.cleanup();
       cleaned = true;
-      removeTempDir(cwd);
-      removeTempDir(ottoHomeRoot);
+      rmSync(cwd, { recursive: true, force: true });
+      rmSync(paseoHomeRoot, { recursive: true, force: true });
     }
   }, 30_000);
 });

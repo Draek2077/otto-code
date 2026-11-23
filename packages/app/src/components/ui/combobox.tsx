@@ -7,31 +7,31 @@ import {
   useRef,
   useState,
 } from "react";
-import type { ElementRef, ReactElement, ReactNode } from "react";
+import type { ReactElement, ReactNode } from "react";
 import {
-  type LayoutChangeEvent,
-  Modal,
-  Platform,
-  Pressable,
-  type PressableStateCallbackType,
-  ScrollView,
-  StatusBar,
-  type StyleProp,
-  Text,
-  type TextStyle,
-  useWindowDimensions,
   View,
+  Text,
+  Pressable,
+  Modal,
+  ScrollView,
+  Platform,
+  StatusBar,
+  useWindowDimensions,
+  type LayoutChangeEvent,
+  type PressableStateCallbackType,
+  type StyleProp,
   type ViewStyle,
 } from "react-native";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import type { EditingTextInputHandle } from "@/components/ui/text-input";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { BottomSheetScrollView, BottomSheetBackdrop } from "@gorhom/bottom-sheet";
-import { FadeIn, FadeOut } from "react-native-reanimated";
-import { Check, File, Folder, Search } from "@/components/icons/material-icons";
-import { compactUp } from "@/styles/theme";
+import { BottomSheetScrollView, type BottomSheetBackgroundProps } from "@gorhom/bottom-sheet";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { Check, File, Folder, Search } from "lucide-react-native";
 import {
   flip,
   offset as floatingOffset,
@@ -48,19 +48,19 @@ import {
 } from "./combobox-options";
 import type { ComboboxOptionModel } from "./combobox-options";
 import { isWeb } from "@/constants/platform";
-import { useIsolatedBottomSheetVisibility } from "./isolated-bottom-sheet-modal";
+import {
+  IsolatedBottomSheetModal,
+  SheetVisibleFrame,
+  useIsolatedBottomSheetVisibility,
+} from "./isolated-bottom-sheet-modal";
 import {
   AdaptiveTextInput,
-  BottomSheetVisibleContent,
   InlineHeaderView,
   SheetHeaderView,
   type SheetHeader,
 } from "@/components/adaptive-modal-sheet";
-import { SheetSurfaceModal } from "@/components/ui/sheet-chrome";
 import { FloatingSurface } from "@/components/ui/floating";
 import { useDismissKeyboardOnOpen } from "@/components/ui/keyboard-dismiss";
-import { SearchClearButton } from "@/components/ui/search-clear-button";
-import { useControlStatePreview } from "@/components/ui/control-state-preview";
 import {
   getOverlayRoot,
   OverlayLayerProvider,
@@ -68,8 +68,6 @@ import {
   useWebOverlayRegistration,
 } from "@/lib/overlay-root";
 import { buildDesktopFrameStyle } from "./combobox-frame-style";
-import { getCenteredOptionScrollOffset } from "./combobox-scroll";
-import { type EditingTextInputHandle } from "@/components/ui/text-input";
 
 export { buildDesktopFrameStyle } from "./combobox-frame-style";
 
@@ -134,8 +132,6 @@ export interface ComboboxProps {
   footer?: ReactNode;
   /** When true, selecting an option does not close the picker (multi-select mode). */
   keepOpenOnSelect?: boolean;
-  /** When the mobile sheet opens, centers the selected option in its scroll viewport. */
-  mobileScrollToValueOnOpen?: boolean;
   anchorRef: React.RefObject<View | null>;
   children?: ReactNode;
 }
@@ -161,29 +157,43 @@ function toNumericStyleValue(value: unknown): number | null {
   return null;
 }
 
+function ComboboxSheetBackground({ style }: BottomSheetBackgroundProps) {
+  const { theme } = useUnistyles();
+
+  const combinedStyle = useMemo(
+    () => [
+      style,
+      {
+        backgroundColor: theme.colors.surface0,
+        borderTopLeftRadius: theme.borderRadius["2xl"],
+        borderTopRightRadius: theme.borderRadius["2xl"],
+      },
+    ],
+    [style, theme.colors.surface0, theme.borderRadius],
+  );
+
+  return <Animated.View pointerEvents="none" style={combinedStyle} />;
+}
+
 export interface SearchInputProps {
-  value: string;
   placeholder: string;
   onChangeText: (text: string) => void;
   onSubmitEditing?: () => void;
   autoFocus?: boolean;
+  useBottomSheetInput?: boolean;
   resetKey?: string | number;
 }
 
 export function SearchInput({
-  value,
   placeholder,
   onChangeText,
   onSubmitEditing,
   autoFocus = false,
+  useBottomSheetInput: _useBottomSheetInput = false,
   resetKey,
 }: SearchInputProps): ReactElement {
   const { theme } = useUnistyles();
   const inputRef = useRef<EditingTextInputHandle>(null);
-  const clearSearch = useCallback(() => {
-    inputRef.current?.replaceText("");
-    onChangeText("");
-  }, [onChangeText]);
 
   useEffect(() => {
     if (autoFocus && IS_WEB && inputRef.current) {
@@ -196,20 +206,11 @@ export function SearchInput({
 
   return (
     <View style={styles.searchInputContainer}>
-      <Search size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-      {/* One input for both cases: AdaptiveTextInput picks the bottom-sheet
-          variant itself on compact native, so the branch that used to exist
-          here only duplicated the field. */}
+      <Search size={16} color={theme.colors.foregroundMuted} />
       <AdaptiveTextInput
         ref={inputRef}
-        initialValue={value}
-        // outlineStyle is web-only; the cast is what the RN style type cannot express.
-        style={
-          [
-            styles.searchInput,
-            IS_WEB && ({ outlineStyle: "none" } as object),
-          ] as StyleProp<TextStyle>
-        }
+        // @ts-expect-error - outlineStyle is web-only
+        style={[styles.searchInput, IS_WEB && { outlineStyle: "none" }]}
         placeholder={placeholder}
         placeholderTextColor={theme.colors.foregroundMuted}
         resetKey={resetKey}
@@ -218,63 +219,41 @@ export function SearchInput({
         autoCorrect={false}
         onSubmitEditing={onSubmitEditing}
       />
-      {value ? <SearchClearButton onPress={clearSearch} /> : null}
     </View>
   );
 }
 
 export interface ComboboxItemProps {
   label: string;
-  /** Overrides the default label color (e.g. agent mode tier colors). */
-  labelColor?: string;
   description?: string;
   kind?: "directory" | "file";
   leadingSlot?: ReactNode;
   trailingSlot?: ReactNode;
-  /**
-   * A separately interactive trailing control. Unlike `trailingSlot`, this is
-   * rendered beside the row button so web never nests buttons.
-   */
-  trailingAction?: ReactNode;
   selected?: boolean;
   active?: boolean;
   disabled?: boolean;
   accessibilityLabel?: string;
   /** When true, bumps hover/pressed colors up one surface level (for items on elevated backgrounds). */
   elevated?: boolean;
-  /**
-   * Dense variant: reduced row height/padding so long lists fit more items on
-   * screen (currently the model/personality picker). Desktop-only shrink -
-   * compact breakpoints keep the default touch-friendly height.
-   */
-  dense?: boolean;
   onPress: () => void;
   testID?: string;
 }
 
 export function ComboboxItem({
   label,
-  labelColor,
   description,
   kind,
   leadingSlot,
   trailingSlot,
-  trailingAction,
   selected,
   active,
   disabled,
   accessibilityLabel,
   elevated,
-  dense,
   onPress,
   testID,
 }: ComboboxItemProps): ReactElement {
   const { theme } = useUnistyles();
-  const preview = useControlStatePreview();
-  const [rowHoveredState, setRowHovered] = useState(false);
-  const rowHovered = preview?.hovered ?? rowHoveredState;
-  const handleRowPointerEnter = useCallback(() => setRowHovered(true), []);
-  const handleRowPointerLeave = useCallback(() => setRowHovered(false), []);
 
   let leadingContent: ReactElement | null = null;
   if (leadingSlot) {
@@ -282,38 +261,26 @@ export function ComboboxItem({
   } else if (kind === "directory") {
     leadingContent = (
       <View style={styles.comboboxItemLeadingSlot}>
-        <Folder size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        <Folder size={16} color={theme.colors.foregroundMuted} />
       </View>
     );
   } else if (kind === "file") {
     leadingContent = (
       <View style={styles.comboboxItemLeadingSlot}>
-        <File size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
+        <File size={16} color={theme.colors.foregroundMuted} />
       </View>
     );
   }
 
   const itemPressableStyle = useCallback(
-    ({
-      pressed: eventPressed,
-      hovered: eventHovered = false,
-    }: PressableStateCallbackType & {
-      hovered?: boolean;
-    }) => {
-      const hovered = preview?.hovered ?? eventHovered;
-      const pressed = preview?.pressed ?? eventPressed;
-      return [
-        styles.comboboxItem,
-        IS_WEB && styles.comboboxItemNoFocusOutline,
-        Boolean(trailingAction) && styles.comboboxItemWithAction,
-        dense && styles.comboboxItemDense,
-        hovered && (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
-        pressed && (elevated ? styles.comboboxItemPressedElevated : styles.comboboxItemPressed),
-        active && styles.comboboxItemActive,
-        disabled && styles.comboboxItemDisabled,
-      ];
-    },
-    [elevated, active, disabled, dense, preview, trailingAction],
+    ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.comboboxItem,
+      hovered && (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
+      pressed && (elevated ? styles.comboboxItemPressedElevated : styles.comboboxItemPressed),
+      active && styles.comboboxItemActive,
+      disabled && styles.comboboxItemDisabled,
+    ],
+    [elevated, active, disabled],
   );
 
   const itemContentStyle = useMemo(
@@ -321,13 +288,7 @@ export function ComboboxItem({
     [description],
   );
 
-  const itemLabelStyle = useMemo(
-    () => [styles.comboboxItemLabel, labelColor ? { color: labelColor } : null],
-    [labelColor],
-  );
-
-  const accessibilityState = useMemo(() => ({ selected, disabled }), [selected, disabled]);
-  const item = (
+  return (
     <Pressable
       testID={testID}
       disabled={disabled}
@@ -335,12 +296,10 @@ export function ComboboxItem({
       style={itemPressableStyle}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      accessibilityState={accessibilityState}
-      aria-selected={selected}
     >
       {leadingContent}
       <View style={itemContentStyle}>
-        <Text numberOfLines={1} style={itemLabelStyle}>
+        <Text numberOfLines={1} style={styles.comboboxItemLabel}>
           {label}
         </Text>
         {description ? (
@@ -352,38 +311,12 @@ export function ComboboxItem({
       {selected || trailingSlot ? (
         <View style={styles.comboboxItemTrailingContainer}>
           <View style={styles.comboboxItemTrailingSlot}>
-            {selected ? (
-              <Check size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
-            ) : null}
+            {selected ? <Check size={16} color={theme.colors.foregroundMuted} /> : null}
           </View>
           {trailingSlot}
         </View>
       ) : null}
     </Pressable>
-  );
-
-  if (!trailingAction) return item;
-
-  // The row's paint has to live out here, not on the inner Pressable. That Pressable is
-  // `flex: 1` and stops where the trailing action begins, so painting hover there left a
-  // bare strip down the right edge of every row that carries an action - the host picker
-  // is the one everybody sees. Hover is tracked on this wrapper View per docs/hover.md
-  // (hover on a View, press on an inner Pressable); the Pressable keeps its own pressed
-  // paint for the label half, which is the half that actually took the press.
-  return (
-    <View
-      onPointerEnter={handleRowPointerEnter}
-      onPointerLeave={handleRowPointerLeave}
-      style={[
-        styles.comboboxItemActionRow,
-        rowHovered && (elevated ? styles.comboboxItemHoveredElevated : styles.comboboxItemHovered),
-        active && styles.comboboxItemActive,
-        active && styles.comboboxItemFocused,
-      ]}
-    >
-      {item}
-      <View style={styles.comboboxItemAction}>{trailingAction}</View>
-    </View>
   );
 }
 
@@ -403,37 +336,22 @@ interface OptionRowProps {
   active: boolean;
   onSelect: (id: string) => void;
   renderOption: RenderOptionFn | undefined;
-  onSelectedOptionLayout?: (event: LayoutChangeEvent) => void;
 }
 
-function OptionRow({
-  option,
-  selected,
-  active,
-  onSelect,
-  renderOption,
-  onSelectedOptionLayout,
-}: OptionRowProps) {
+function OptionRow({ option, selected, active, onSelect, renderOption }: OptionRowProps) {
   const handlePress = useCallback(() => onSelect(option.id), [onSelect, option.id]);
   if (renderOption) {
-    return (
-      <View onLayout={selected ? onSelectedOptionLayout : undefined}>
-        {renderOption({ option, selected, active, onPress: handlePress })}
-      </View>
-    );
+    return <View>{renderOption({ option, selected, active, onPress: handlePress })}</View>;
   }
   return (
-    <View onLayout={selected ? onSelectedOptionLayout : undefined}>
-      <ComboboxItem
-        label={option.label}
-        description={option.description}
-        kind={option.kind}
-        selected={selected}
-        active={active}
-        disabled={option.disabled}
-        onPress={handlePress}
-      />
-    </View>
+    <ComboboxItem
+      label={option.label}
+      description={option.description}
+      kind={option.kind}
+      selected={selected}
+      active={active}
+      onPress={handlePress}
+    />
   );
 }
 
@@ -444,7 +362,6 @@ interface OptionsListProps {
   emptyText: string;
   onSelect: (id: string) => void;
   renderOption: RenderOptionFn | undefined;
-  onSelectedOptionLayout?: (event: LayoutChangeEvent) => void;
 }
 
 function OptionsList({
@@ -454,7 +371,6 @@ function OptionsList({
   emptyText,
   onSelect,
   renderOption,
-  onSelectedOptionLayout,
 }: OptionsListProps): ReactElement {
   if (options.length === 0) {
     return <ComboboxEmpty>{emptyText}</ComboboxEmpty>;
@@ -469,7 +385,6 @@ function OptionsList({
           active={index === activeIndex}
           onSelect={onSelect}
           renderOption={renderOption}
-          onSelectedOptionLayout={onSelectedOptionLayout}
         />
       ))}
     </>
@@ -936,10 +851,7 @@ function buildFloatingMiddleware(input: FloatingMiddlewareInput) {
   const { collisionPadding, isDesktopAboveSearch, setAvailableSize, setReferenceWidth } = input;
   return [
     floatingOffset(isWeb ? 5 : 4),
-    // flip so the popover opens above the trigger when the space below is too
-    // short for the options; above-search mode positions itself manually from
-    // the trigger's bottom edge and must not flip.
-    ...(isDesktopAboveSearch ? [] : [flip({ padding: collisionPadding })]),
+    ...(isWeb ? [] : [flip({ padding: collisionPadding })]),
     ...(isDesktopAboveSearch ? [] : [shift({ padding: collisionPadding })]),
     floatingSize({
       padding: collisionPadding,
@@ -1005,6 +917,7 @@ interface MobileBodyProps {
   snapPoints: string[];
   handleSheetChange: BottomSheetVisibility["handleSheetChange"];
   handleSheetDismiss: BottomSheetVisibility["handleSheetDismiss"];
+  handleIndicatorStyle: { backgroundColor: string };
   titleColor: string;
   title: string;
   header: SheetHeader | undefined;
@@ -1029,71 +942,26 @@ interface MobileBodyProps {
   renderOption: RenderOptionFn | undefined;
   children: ReactNode;
   safeAreaBottom: number;
-  isOpen: boolean;
-  scrollToSelectedOptionOnOpen: boolean;
 }
 
 function MobileComboboxBody(props: MobileBodyProps): ReactElement {
-  const scrollRef = useRef<ElementRef<typeof BottomSheetScrollView>>(null);
-  const [selectedOptionLayout, setSelectedOptionLayout] = useState<{
-    top: number;
-    height: number;
-  } | null>(null);
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
-  const hasScrolledToSelectedOption = useRef(false);
-
-  const handleSelectedOptionLayout = useCallback((event: LayoutChangeEvent) => {
-    const { height, y } = event.nativeEvent.layout;
-    setSelectedOptionLayout({ top: y, height });
-  }, []);
-  const handleScrollViewportLayout = useCallback((event: LayoutChangeEvent) => {
-    setViewportHeight(event.nativeEvent.layout.height);
-  }, []);
-
-  useEffect(() => {
-    if (!props.isOpen) {
-      hasScrolledToSelectedOption.current = false;
-      return;
-    }
-    if (
-      !props.scrollToSelectedOptionOnOpen ||
-      hasScrolledToSelectedOption.current ||
-      !selectedOptionLayout ||
-      !viewportHeight
-    ) {
-      return;
-    }
-
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollTo({
-        y: getCenteredOptionScrollOffset({
-          optionTop: selectedOptionLayout.top,
-          optionHeight: selectedOptionLayout.height,
-          viewportHeight,
-        }),
-        animated: false,
-      });
-      hasScrolledToSelectedOption.current = true;
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [props.isOpen, props.scrollToSelectedOptionOnOpen, selectedOptionLayout, viewportHeight]);
-
-  const renderBackdrop = useCallback(
-    (backdropProps: React.ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
-        {...backdropProps}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.45}
-      />
-    ),
-    [],
+  const comboboxTitleStyle = useMemo(
+    () => [styles.comboboxTitle, { color: props.titleColor }],
+    [props.titleColor],
+  );
+  const { footer, safeAreaBottom } = props;
+  const frameStyle = useMemo(
+    () => [styles.mobileSheetFrame, { paddingBottom: footer ? 0 : safeAreaBottom }],
+    [footer, safeAreaBottom],
+  );
+  const footerStyle = useMemo(
+    () => [styles.footer, { paddingBottom: safeAreaBottom }],
+    [safeAreaBottom],
   );
 
-  const comboboxHeader = useMemo<SheetHeader>(() => ({ title: props.title }), [props.title]);
-  const frameStyle = useMemo(
-    () => [styles.mobileSheetFrame, { paddingBottom: props.safeAreaBottom }],
-    [props.safeAreaBottom],
+  const footerView = useMemo(
+    () => (footer ? <View style={footerStyle}>{footer}</View> : undefined),
+    [footer, footerStyle],
   );
 
   const body = props.hasChildren ? (
@@ -1106,12 +974,11 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
       emptyText={props.emptyText}
       onSelect={props.handleSelect}
       renderOption={props.renderOption}
-      onSelectedOptionLayout={handleSelectedOptionLayout}
     />
   );
 
   return (
-    <SheetSurfaceModal
+    <IsolatedBottomSheetModal
       ref={props.bottomSheetRef}
       contextBridge={null}
       snapPoints={props.snapPoints}
@@ -1119,37 +986,33 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
       enableDynamicSizing={false}
       onChange={props.handleSheetChange}
       onDismiss={props.handleSheetDismiss}
-      backdropComponent={renderBackdrop}
+      backdropOpacity={0.45}
       enablePanDownToClose
+      backgroundComponent={ComboboxSheetBackground}
+      handleIndicatorStyle={props.handleIndicatorStyle}
       keyboardBehavior="extend"
       keyboardBlurBehavior="none"
       presentation={props.presentation}
     >
-      {/* This sheet rests at its first detent but gorhom lays the column out for the
-          last one, so without this clamp the tail of a long option list renders below
-          the screen edge and cannot be scrolled to. */}
-      <BottomSheetVisibleContent>
+      <SheetVisibleFrame footer={footerView}>
         <View style={frameStyle}>
           {props.header ? (
             <SheetHeaderView header={props.header} onClose={props.onClose} />
           ) : (
             <>
-              {/* The shared sheet header, so a picker's title sits where every other sheet's
-                does. No close button: a picker closes by choosing, dragging down, or tapping
-                the backdrop, and an X is chrome on the one surface that needs none. */}
-              <SheetHeaderView
-                header={comboboxHeader}
-                onClose={props.onClose}
-                showCloseButton={false}
-              />
+              <View style={styles.bottomSheetHeader}>
+                <Text key={props.titleColor} style={comboboxTitleStyle}>
+                  {props.title}
+                </Text>
+              </View>
               {props.stickyHeader}
               {!props.hasChildren && props.searchable ? (
                 <SearchInput
-                  value={props.searchQuery}
                   placeholder={props.searchPlaceholder}
                   onChangeText={props.setSearchQueryWithCallback}
                   onSubmitEditing={props.handleSubmitSearch}
                   autoFocus={false}
+                  useBottomSheetInput
                   resetKey={props.searchResetKey}
                 />
               ) : null}
@@ -1159,7 +1022,6 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
             body
           ) : (
             <BottomSheetScrollView
-              ref={scrollRef}
               style={styles.mobileSheetBody}
               contentContainerStyle={[
                 styles.comboboxScrollContent,
@@ -1167,15 +1029,13 @@ function MobileComboboxBody(props: MobileBodyProps): ReactElement {
               ]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              onLayout={handleScrollViewportLayout}
             >
               {body}
             </BottomSheetScrollView>
           )}
-          {props.footer ? <View style={styles.footer}>{props.footer}</View> : null}
         </View>
-      </BottomSheetVisibleContent>
-    </SheetSurfaceModal>
+      </SheetVisibleFrame>
+    </IsolatedBottomSheetModal>
   );
 }
 
@@ -1276,11 +1136,11 @@ function DesktopComboboxOptionsBody(props: {
       {props.header ? <InlineHeaderView header={props.header} /> : props.stickyHeader}
       {props.header || !props.searchable ? null : (
         <SearchInput
-          value={props.searchQuery}
           placeholder={props.searchPlaceholder}
           onChangeText={props.setSearchQueryWithCallback}
           onSubmitEditing={props.handleSubmitSearch}
           autoFocus
+          useBottomSheetInput={false}
         />
       )}
       {props.effectiveOptionsPosition === "above-search" ? (
@@ -1403,24 +1263,10 @@ function DesktopComboboxBody(props: DesktopBodyProps): ReactElement {
       visible={props.isOpen}
       onRequestClose={props.handleClose}
     >
-      {overlay}
+      {/* Android Modal opens a separate window outside the app's gesture root. */}
+      <GestureHandlerRootView style={styles.desktopOverlay}>{overlay}</GestureHandlerRootView>
     </Modal>
   );
-}
-
-function resolveComboboxCopy(input: {
-  placeholder?: string;
-  emptyText?: string;
-  title?: string;
-  defaultPlaceholder: string;
-  defaultEmptyText: string;
-  defaultTitle: string;
-}): { placeholder: string; emptyText: string; title: string } {
-  return {
-    placeholder: input.placeholder ?? input.defaultPlaceholder,
-    emptyText: input.emptyText ?? input.defaultEmptyText,
-    title: input.title ?? input.defaultTitle,
-  };
 }
 
 export function Combobox({
@@ -1454,24 +1300,14 @@ export function Combobox({
   stickyHeader,
   footer,
   keepOpenOnSelect = false,
-  mobileScrollToValueOnOpen = false,
   anchorRef,
   children,
 }: ComboboxProps): ReactElement | null {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const {
-    placeholder: resolvedPlaceholder,
-    emptyText: resolvedEmptyText,
-    title: resolvedTitle,
-  } = resolveComboboxCopy({
-    placeholder,
-    emptyText,
-    title,
-    defaultPlaceholder: t("common.placeholders.search"),
-    defaultEmptyText: t("common.empty.noOptionsMatchSearch"),
-    defaultTitle: t("common.actions.select"),
-  });
+  const resolvedPlaceholder = placeholder ?? t("common.placeholders.search");
+  const resolvedEmptyText = emptyText ?? t("common.empty.noOptionsMatchSearch");
+  const resolvedTitle = title ?? t("common.actions.select");
   const isMobile = useIsCompactFormFactor();
   const floatingLayer = useOverlayLayer("floating");
   const safeAreaInsets = useSafeAreaInsets();
@@ -1698,6 +1534,11 @@ export function Combobox({
 
   useDismissKeyboardOnOpen(isOpen, isMobile);
 
+  const handleIndicatorStyle = useMemo(
+    () => ({ backgroundColor: theme.colors.palette.zinc[600] }),
+    [theme.colors.palette.zinc],
+  );
+
   const desktopFrameStyle = useMemo(
     () =>
       buildDesktopFrameStyle({
@@ -1735,6 +1576,7 @@ export function Combobox({
         snapPoints={snapPoints}
         handleSheetChange={handleSheetChange}
         handleSheetDismiss={handleSheetDismiss}
+        handleIndicatorStyle={handleIndicatorStyle}
         titleColor={titleColor}
         title={resolvedTitle}
         header={header}
@@ -1758,8 +1600,6 @@ export function Combobox({
         handleSelect={handleSelect}
         renderOption={renderOption}
         safeAreaBottom={safeAreaInsets.bottom}
-        isOpen={isOpen}
-        scrollToSelectedOptionOnOpen={mobileScrollToValueOnOpen}
       >
         {children}
       </MobileComboboxBody>
@@ -1827,7 +1667,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     paddingVertical: theme.spacing[3],
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   comboboxItem: {
     flexDirection: "row",
@@ -1844,69 +1684,26 @@ const styles = StyleSheet.create((theme) => ({
           marginBottom: theme.spacing[1],
         }),
   },
-  comboboxItemNoFocusOutline: {
-    outlineWidth: 0,
-    outlineColor: "transparent",
-  },
-  comboboxItemDense: {
-    minHeight: {
-      xs: 36,
-      md: 28,
-    },
-    paddingVertical: {
-      xs: theme.spacing[2],
-      md: theme.spacing[1],
-    },
-  },
-  comboboxItemWithAction: {
-    flex: 1,
-    ...(IS_WEB
-      ? {}
-      : {
-          marginHorizontal: 0,
-          marginBottom: 0,
-        }),
-  },
-  comboboxItemActionRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    ...(IS_WEB
-      ? {}
-      : {
-          marginHorizontal: theme.spacing[1],
-          marginBottom: theme.spacing[1],
-        }),
-  },
-  comboboxItemAction: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingRight: theme.spacing[3],
-  },
   comboboxItemHovered: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
+    backgroundColor: theme.colors.surface1,
   },
   comboboxItemHoveredElevated: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
+    backgroundColor: theme.colors.surface2,
   },
   comboboxItemPressed: {
-    backgroundColor: theme.colors.surfaceInteractivePressed,
+    backgroundColor: theme.colors.surface1,
   },
   comboboxItemPressedElevated: {
-    backgroundColor: theme.colors.surfaceInteractivePressed,
+    backgroundColor: theme.colors.surface2,
   },
   comboboxItemActive: {
-    backgroundColor: theme.colors.surfaceInteractiveSelected,
-  },
-  comboboxItemFocused: {
-    outlineWidth: 1,
-    outlineColor: theme.colors.accent,
-    outlineOffset: -1,
+    backgroundColor: theme.colors.surface1,
   },
   comboboxItemDisabled: {
     opacity: 0.55,
   },
   comboboxItemTrailingSlot: {
-    width: compactUp(16),
+    width: 16,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -1926,17 +1723,17 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   comboboxItemLeadingSlot: {
-    width: compactUp(16),
+    width: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   comboboxItemLabel: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
     flexShrink: 0,
   },
   comboboxItemDescription: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },
@@ -1944,11 +1741,20 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   footer: {
     borderTopWidth: 1,
     borderTopColor: theme.colors.border,
+  },
+  bottomSheetHeader: {
+    paddingHorizontal: theme.spacing[6],
+    paddingBottom: theme.spacing[2],
+  },
+  comboboxTitle: {
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.medium,
+    textAlign: "left",
   },
   comboboxScrollContent: {
     paddingBottom: theme.spacing[8],
@@ -1986,7 +1792,7 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1],
   },
   desktopChildrenScrollContent: {
-    // No padding - custom children (e.g. model selector) control their own spacing
+    // No padding — custom children (e.g. model selector) control their own spacing
   },
   desktopChildrenBody: {
     flex: 1,

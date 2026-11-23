@@ -17,11 +17,11 @@ test("a workspace with an existing agent never presents New during startup", asy
 
   try {
     await page.addInitScript(() => {
-      Reflect.set(globalThis, "__ottoSawVisibleNewTab", false);
+      Reflect.set(globalThis, "__paseoSawVisibleNewTab", false);
       function recordVisibleNewTab() {
         const panel = document.querySelector('[data-testid="workspace-new-tab-panel"]');
         if (panel?.getClientRects().length) {
-          Reflect.set(globalThis, "__ottoSawVisibleNewTab", true);
+          Reflect.set(globalThis, "__paseoSawVisibleNewTab", true);
         }
       }
       window.addEventListener("DOMContentLoaded", () => {
@@ -40,7 +40,7 @@ test("a workspace with an existing agent never presents New during startup", asy
     await expect(page.getByTestId("workspace-new-tab-panel").filter({ visible: true })).toHaveCount(
       0,
     );
-    expect(await page.evaluate(() => Reflect.get(globalThis, "__ottoSawVisibleNewTab"))).toBe(
+    expect(await page.evaluate(() => Reflect.get(globalThis, "__paseoSawVisibleNewTab"))).toBe(
       false,
     );
   } finally {

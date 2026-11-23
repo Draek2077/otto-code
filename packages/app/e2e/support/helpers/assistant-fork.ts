@@ -83,10 +83,16 @@ export async function forkMostRecentAssistantTurnToNewTab(page: Page): Promise<v
   await page.getByRole("menuitem", { name: "Fork in a new tab" }).click();
 }
 
-export async function expectInFlightForkUnavailable(page: Page): Promise<void> {
-  await expect(inFlightTurn(page)).toBeVisible();
+export async function expectInFlightForkAvailable(page: Page): Promise<void> {
   const trigger = inFlightTurn(page).getByRole("button", { name: "Fork chat" });
-  await expect(trigger).toHaveCount(0);
+  await expect(trigger).toHaveCount(1, { timeout: 30_000 });
+  await expect(trigger).toBeVisible();
+}
+
+export async function forkInFlightTurnToNewTab(page: Page): Promise<void> {
+  const trigger = inFlightTurn(page).getByRole("button", { name: "Fork chat" });
+  await openForkMenu(page, trigger);
+  await page.getByRole("menuitem", { name: "Fork in a new tab" }).click();
 }
 
 export async function forkMostRecentAssistantTurnToNewWorkspace(page: Page): Promise<void> {

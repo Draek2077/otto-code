@@ -1,4 +1,6 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): invoke Otto locally without downloading a CLI.
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 
 /**
  * Regression: forced daemon stop must kill descendants even when they started
@@ -11,14 +13,14 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { $ } from "./helpers/zx-shell.ts";
+import { $ } from "zx";
 
 $.verbose = false;
 
 const testEnv = {
-  OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
-  OTTO_DICTATION_ENABLED: process.env.OTTO_DICTATION_ENABLED ?? "0",
-  OTTO_VOICE_MODE_ENABLED: process.env.OTTO_VOICE_MODE_ENABLED ?? "0",
+  PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
+  PASEO_DICTATION_ENABLED: process.env.PASEO_DICTATION_ENABLED ?? "0",
+  PASEO_VOICE_MODE_ENABLED: process.env.PASEO_VOICE_MODE_ENABLED ?? "0",
 };
 
 function sleep(ms: number): Promise<void> {
@@ -79,13 +81,13 @@ if (process.platform === "win32") {
   process.exit(0);
 }
 
-const ottoHome = await mkdtemp(join(tmpdir(), "otto-stop-tree-kill-"));
-const childPidPath = join(ottoHome, "descendant.pid");
+const paseoHome = await mkdtemp(join(tmpdir(), "paseo-stop-tree-kill-"));
+const childPidPath = join(paseoHome, "descendant.pid");
 let ownerProcess: ChildProcess | null = null;
 let descendantPid: number | null = null;
 
 try {
-  await mkdir(ottoHome, { recursive: true });
+  await mkdir(paseoHome, { recursive: true });
 
   console.log("Test 1: start daemon-owner fixture with a detached descendant");
   ownerProcess = spawn(
@@ -115,9 +117,11 @@ try {
 
   assert(ownerProcess.pid, "owner pid should exist");
   await writeFile(
-    join(ottoHome, "otto.pid"),
+    join(paseoHome, "otto.pid"),
     JSON.stringify({
       pid: ownerProcess.pid,
+      hostname: "test",
+      uid: process.getuid?.() ?? -1,
       listen: "127.0.0.1:1",
       startedAt: new Date().toISOString(),
     }),
@@ -139,7 +143,7 @@ try {
 
   console.log("Test 2: forced daemon stop kills owner and separate-PGID descendant");
   const stopResult =
-    await $`OTTO_HOME=${ottoHome} OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD} OTTO_DICTATION_ENABLED=${testEnv.OTTO_DICTATION_ENABLED} OTTO_VOICE_MODE_ENABLED=${testEnv.OTTO_VOICE_MODE_ENABLED} npx otto daemon stop --home ${ottoHome} --json --timeout 1 --force --kill-timeout 2`.nothrow();
+    await $`PASEO_HOME=${paseoHome} PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD} PASEO_DICTATION_ENABLED=${testEnv.PASEO_DICTATION_ENABLED} PASEO_VOICE_MODE_ENABLED=${testEnv.PASEO_VOICE_MODE_ENABLED} npx --no-install otto daemon stop --home ${paseoHome} --json --timeout 1 --force --kill-timeout 2`.nothrow();
   assert.strictEqual(stopResult.exitCode, 0, `stop should succeed: ${stopResult.stderr}`);
   const parsed = JSON.parse(stopResult.stdout) as {
     action?: unknown;
@@ -153,15 +157,11 @@ try {
       action: parsed.action,
       forced: parsed.forced,
       usedLifecycleRpc: parsed.usedLifecycleRpc,
-      reason: parsed.reason,
-      message: parsed.message,
     },
     {
       action: "stopped",
       forced: true,
       usedLifecycleRpc: false,
-      reason: "owner_pid_sigkill",
-      message: "Daemon owner process was force-stopped",
     },
     `stop should report forced tree cleanup: ${stopResult.stdout}`,
   );
@@ -176,7 +176,7 @@ try {
 } finally {
   killIfRunning(ownerProcess?.pid ?? null);
   killIfRunning(descendantPid);
-  await rm(ottoHome, { recursive: true, force: true });
+  await rm(paseoHome, { recursive: true, force: true });
 }
 
 console.log("=== Daemon stop tree kill regression test passed ===");

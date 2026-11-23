@@ -1,6 +1,5 @@
-import { buildBackupActions, getBackupWorkspaceMessage } from "./backup-policy";
 import { afterEach, describe, expect, it } from "vitest";
-import { CheckoutPrStatusSchema } from "@otto-code/protocol/messages";
+import { CheckoutPrStatusSchema } from "@getpaseo/protocol/messages";
 import { i18n } from "@/i18n/i18next";
 
 import { buildGitActions, type BuildGitActionsInput } from "./policy";
@@ -71,8 +70,7 @@ function createInput(
     pullRequestMergeable: "UNKNOWN",
     mergeCapability: deriveMergeCapability(pullRequestGithub),
     hasRemote: false,
-    gitFetchEnabled: false,
-    isOttoOwnedWorktree: false,
+    isPaseoOwnedWorktree: false,
     isOnBaseBranch: true,
     hasUncommittedChanges: false,
     baseRefAvailable: true,
@@ -100,11 +98,6 @@ function createInput(
         handler: () => undefined,
       },
       "pull-and-push": {
-        disabled: false,
-        status: "idle",
-        handler: () => undefined,
-      },
-      fetch: {
         disabled: false,
         status: "idle",
         handler: () => undefined,
@@ -186,17 +179,6 @@ describe("git-actions-policy", () => {
     ]);
   });
 
-  it("adds Fetch to the Git tools when the host supports it", () => {
-    const actions = buildGitActions(createInput({ hasRemote: true, gitFetchEnabled: true }));
-
-    expect(actions.secondary.map((action) => action.id)).toContain("fetch");
-    expect(actions.secondary.find((action) => action.id === "fetch")).toMatchObject({
-      label: "Fetch",
-      pendingLabel: "Fetching...",
-      successLabel: "Fetched",
-    });
-  });
-
   it("prioritizes pull when the branch is behind origin", () => {
     const actions = buildGitActions(
       createInput({
@@ -225,11 +207,11 @@ describe("git-actions-policy", () => {
     });
   });
 
-  it("keeps push available for a no-upstream Otto worktree with local commits", () => {
+  it("keeps push available for a no-upstream Paseo worktree with local commits", () => {
     const actions = buildGitActions(
       createInput({
         hasRemote: true,
-        isOttoOwnedWorktree: true,
+        isPaseoOwnedWorktree: true,
         isOnBaseBranch: false,
         aheadCount: 1,
         aheadOfOrigin: null,
@@ -438,7 +420,7 @@ describe("git-actions-policy", () => {
   it("offers archive workspace for Git checkouts and worktrees", () => {
     const localCheckout = buildGitActions(createInput({ hasUncommittedChanges: true }));
     const worktree = buildGitActions(
-      createInput({ hasUncommittedChanges: true, isOttoOwnedWorktree: true }),
+      createInput({ hasUncommittedChanges: true, isPaseoOwnedWorktree: true }),
     );
 
     expect(localCheckout.secondary.some((action) => action.id === "archive-workspace")).toBe(true);
@@ -452,8 +434,8 @@ describe("git-actions-policy", () => {
     expect(actions.secondary.some((action) => action.id === "archive-workspace")).toBe(true);
   });
 
-  it("still promotes archive as primary for an idle Otto-owned worktree", () => {
-    const actions = buildGitActions(createInput({ isOttoOwnedWorktree: true }));
+  it("still promotes archive as primary for an idle Paseo-owned worktree", () => {
+    const actions = buildGitActions(createInput({ isPaseoOwnedWorktree: true }));
 
     expect(actions.primary).toMatchObject({ id: "archive-workspace" });
   });
@@ -498,38 +480,6 @@ describe("git-actions-policy", () => {
       id: "merge-pr-squash",
       label: "Merge PR (squash)",
     });
-  });
-
-  it("offers direct PR merge for Bitbucket, which never reports a mergeable state", () => {
-    const actions = buildGitActions(
-      createInput({
-        hasRemote: true,
-        isOnBaseBranch: false,
-        aheadCount: 2,
-        hasPullRequest: true,
-        pullRequestUrl: "https://bitbucket.org/acme/app/pull-requests/456",
-        pullRequestState: "open",
-        // Bitbucket Cloud always reports UNKNOWN. Without a bitbucket forge
-        // module the capability is null and the policy falls back to demanding
-        // MERGEABLE, which Bitbucket can never produce.
-        pullRequestMergeable: "UNKNOWN",
-        pullRequestGithub: {
-          forge: "bitbucket",
-          mergeStrategiesAllowed: ["merge", "squash"],
-          defaultMergeStrategy: "merge",
-          approvalCount: 1,
-          changesRequestedCount: 0,
-        },
-        shipDefault: "pr",
-      }),
-    );
-
-    expect(actions.primary).toMatchObject({ id: "merge-pr-merge" });
-    // Only the strategies Bitbucket allows stay enabled; rebase is not one.
-    expect(actions.secondary).toEqual(
-      expect.arrayContaining([expect.objectContaining({ id: "merge-pr-squash", disabled: false })]),
-    );
-    expect(actions.secondary.find((action) => action.id === "merge-pr-rebase")).toBeUndefined();
   });
 
   it("offers direct PR merge when GitHub says the PR is mergeable even if the local branch is behind", () => {
@@ -660,7 +610,7 @@ describe("git-actions-policy", () => {
 
     expect(actions.primary).toMatchObject({
       id: "merge-branch",
-      label: "Merge into {{baseRef}}",
+      label: "Merge locally",
     });
   });
 
@@ -780,7 +730,7 @@ describe("git-actions-policy", () => {
     ]);
   });
 
-  it("uses the base-ref merge label for the local merge action", () => {
+  it("uses Merge locally for the local merge action", () => {
     const actions = buildGitActions(
       createInput({
         isOnBaseBranch: false,
@@ -789,7 +739,7 @@ describe("git-actions-policy", () => {
     );
     const action = actions.secondary.find((entry) => entry.id === "merge-branch");
 
-    expect(action).toMatchObject({ label: "Merge into {{baseRef}}" });
+    expect(action).toMatchObject({ label: "Merge locally" });
   });
 
   it("uses the active language for policy-owned action labels and unavailable messages", async () => {
@@ -1111,7 +1061,7 @@ describe("git-actions-policy", () => {
         pullRequestState: "open",
         pullRequestMergeable: "MERGEABLE",
         pullRequestGithub: githubStatus(),
-        isOttoOwnedWorktree: true,
+        isPaseoOwnedWorktree: true,
       }),
     );
 
@@ -1134,65 +1084,5 @@ describe("git-actions-policy", () => {
       "merge-pr-merge",
       "merge-pr-rebase",
     ]);
-  });
-});
-
-describe("User mode backups", () => {
-  it.each(["main", "master"])("allows the main workspace on %s", (currentBranch) => {
-    expect(getBackupWorkspaceMessage({ isGit: true, currentBranch, isWorktree: false })).toBeNull();
-  });
-  it.each(["feature/report", "HEAD", null])(
-    "blocks writes outside main/master (%s)",
-    (currentBranch) => {
-      const message = getBackupWorkspaceMessage({ isGit: true, currentBranch, isWorktree: false });
-      const actions = buildBackupActions(
-        createInput({ hasRemote: true, gitFetchEnabled: true }),
-        message,
-      );
-      expect(message).toContain("main workspace");
-      expect([actions.primary, ...actions.secondary].every((action) => action?.disabled)).toBe(
-        true,
-      );
-    },
-  );
-  it("blocks a worktree even if its branch is named main", () => {
-    expect(
-      getBackupWorkspaceMessage({ isGit: true, currentBranch: "main", isWorktree: true }),
-    ).toContain("main workspace");
-  });
-  it("keeps save and remote backup outcomes separate and omits all development actions", () => {
-    const input = createInput({
-      hasRemote: true,
-      gitFetchEnabled: true,
-      hasUncommittedChanges: true,
-      hasPullRequest: true,
-      shouldPromoteArchive: true,
-    });
-    const actions = buildBackupActions(input, null);
-    expect(actions.primary?.label).toBe("Save version");
-    expect(actions.primary?.handler).toBe(input.runtime.commit.handler);
-    expect(actions.primary?.description).toContain("local version");
-    expect(actions.secondary.map((action) => action.id)).toEqual(["fetch", "pull", "push"]);
-    expect(actions.menu).toEqual([]);
-    expect(actions.secondary.find((action) => action.id === "pull")?.unavailableMessage).toContain(
-      "Save a version",
-    );
-  });
-  it("explains local-only backups and respects disabled fetching", () => {
-    const actions = buildBackupActions(createInput({ hasRemote: false }), null);
-    expect(actions.secondary.map((action) => action.id)).toEqual(["pull", "push"]);
-    expect(actions.secondary[0]?.unavailableMessage).toContain("local version history only");
-  });
-  it("prevents uploading over newer remote versions", () => {
-    const actions = buildBackupActions(createInput({ hasRemote: true, behindOfOrigin: 2 }), null);
-    expect(actions.secondary.find((action) => action.id === "push")?.unavailableMessage).toContain(
-      "Download the newer versions",
-    );
-  });
-  it("locks every backup action while another operation is pending", () => {
-    const input = createInput({ hasRemote: true, gitFetchEnabled: true });
-    input.runtime.push.status = "pending";
-    const actions = buildBackupActions(input, null);
-    expect([actions.primary, ...actions.secondary].every((action) => action?.disabled)).toBe(true);
   });
 });

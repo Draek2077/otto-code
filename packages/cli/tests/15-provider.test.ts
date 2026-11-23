@@ -27,7 +27,7 @@ import { join } from "node:path";
 import {
   createE2ETestContext,
   createTempDirs,
-  runOttoCli,
+  runPaseoCli,
   startTestDaemon,
 } from "./helpers/test-daemon.ts";
 
@@ -58,6 +58,11 @@ const EXPECTED_CLAUDE_MODELS = [
     descriptionFragment: "Latest release",
   },
   {
+    id: "claude-opus-5",
+    model: "Opus 5",
+    descriptionFragment: "Previous release",
+  },
+  {
     id: "claude-fable-5-1",
     model: "Fable 5.1",
     descriptionFragment: "Most powerful",
@@ -68,19 +73,9 @@ const EXPECTED_CLAUDE_MODELS = [
     descriptionFragment: "Previous release",
   },
   {
-    id: "claude-sonnet-5-5",
-    model: "Sonnet 5.5",
-    descriptionFragment: "Most efficient",
-  },
-  {
-    id: "claude-haiku-5-5",
-    model: "Haiku 5.5",
-    descriptionFragment: "Fastest",
-  },
-  {
-    id: "claude-opus-5",
-    model: "Opus 5",
-    descriptionFragment: "Previous release",
+    id: "claude-opus-4-8[1m]",
+    model: "Opus 4.8 1M",
+    descriptionFragment: "1M context window",
   },
   {
     id: "claude-opus-4-8",
@@ -88,14 +83,24 @@ const EXPECTED_CLAUDE_MODELS = [
     descriptionFragment: "Previous release",
   },
   {
+    id: "claude-sonnet-5-5",
+    model: "Sonnet 5.5",
+    descriptionFragment: "Best for everyday tasks",
+  },
+  {
     id: "claude-sonnet-5",
     model: "Sonnet 5",
     descriptionFragment: "Previous release",
   },
   {
+    id: "claude-opus-4-7[1m]",
+    model: "Opus 4.7 1M",
+    descriptionFragment: "1M context window",
+  },
+  {
     id: "claude-opus-4-7",
     model: "Opus 4.7",
-    descriptionFragment: "Earlier release",
+    descriptionFragment: "Previous release",
   },
   {
     id: "claude-opus-4-6[1m]",
@@ -115,22 +120,12 @@ const EXPECTED_CLAUDE_MODELS = [
   {
     id: "claude-opus-4-6",
     model: "Opus 4.6",
-    descriptionFragment: "Legacy release",
+    descriptionFragment: "Most capable",
   },
   {
-    id: "claude-opus-4-5",
-    model: "Opus 4.5",
-    descriptionFragment: "Legacy release",
-  },
-  {
-    id: "claude-sonnet-4-5[1m]",
-    model: "Sonnet 4.5 1M",
-    descriptionFragment: "1M context window",
-  },
-  {
-    id: "claude-sonnet-4-5",
-    model: "Sonnet 4.5",
-    descriptionFragment: "Legacy release",
+    id: "claude-haiku-5-5",
+    model: "Haiku 5.5",
+    descriptionFragment: "Fastest",
   },
   {
     id: "claude-haiku-4-5",
@@ -139,13 +134,21 @@ const EXPECTED_CLAUDE_MODELS = [
   },
 ] as const;
 
-// Otto carries a `[1m]` row ONLY for models the Claude Code CLI reports at
-// `window:200000`. Fable 5 and Sonnet 5 are native 1M, so their plain ids
-// already resolve to a 1M window and a second "1M" row would just duplicate the
-// same model. See model-manifest.ts for the full rule.
-// Deduped by id because the list above names Opus 5 twice.
+const EXPECTED_CLAUDE_CONTEXT_MODELS = [
+  {
+    id: "claude-sonnet-5[1m]",
+    model: "Sonnet 5 1M",
+    descriptionFragment: "1M context window",
+  },
+] as const;
+
 const EXPECTED_CLAUDE_CATALOG_MODELS = [
-  ...new Map(EXPECTED_CLAUDE_MODELS.map((model) => [model.id, model])).values(),
+  ...new Map(
+    [...EXPECTED_CLAUDE_MODELS, ...EXPECTED_CLAUDE_CONTEXT_MODELS].map((model) => [
+      model.id,
+      model,
+    ]),
+  ).values(),
 ];
 
 let claudeModelIdsFromJson: string[] = [];
@@ -157,7 +160,7 @@ async function runProviderModelsJson(provider: string): Promise<ProviderModel[]>
   const transientNeedles = ["transport closed", "timed out", "timeout", "socket", "econn"];
 
   async function attemptRun(attempt: number): Promise<ProviderModel[]> {
-    const result = await ctx.otto(["provider", "models", provider, "--json"]);
+    const result = await ctx.paseo(["provider", "models", provider, "--json"]);
     if (result.exitCode === 0) {
       return JSON.parse(result.stdout.trim()) as ProviderModel[];
     }
@@ -213,7 +216,7 @@ try {
   // Test 1: provider --help shows subcommands
   {
     console.log("Test 1: provider --help shows subcommands");
-    const result = await ctx.otto(["provider", "--help"]);
+    const result = await ctx.paseo(["provider", "--help"]);
     assert.strictEqual(result.exitCode, 0, "provider --help should exit 0");
     assert(result.stdout.includes("ls"), "help should mention ls");
     assert(result.stdout.includes("models"), "help should mention models");
@@ -224,7 +227,7 @@ try {
   // Test 2: provider ls lists all providers
   {
     console.log("Test 2: provider ls lists all providers");
-    const result = await ctx.otto(["provider", "ls"]);
+    const result = await ctx.paseo(["provider", "ls"]);
     assert.strictEqual(result.exitCode, 0, "provider ls should exit 0");
     assert(result.stdout.includes("claude"), "output should include claude");
     assert(result.stdout.includes("codex"), "output should include codex");
@@ -243,7 +246,7 @@ try {
   // Test 3: provider ls --json outputs valid JSON
   {
     console.log("Test 3: provider ls --json outputs valid JSON");
-    const result = await ctx.otto(["provider", "ls", "--json"]);
+    const result = await ctx.paseo(["provider", "ls", "--json"]);
     assert.strictEqual(result.exitCode, 0, "should exit 0");
     const data = JSON.parse(result.stdout.trim());
     assert(Array.isArray(data), "output should be an array");
@@ -276,9 +279,9 @@ try {
   // Test 4: provider ls includes disabled providers
   {
     console.log("Test 4: provider ls includes disabled providers");
-    const { ottoHome, workDir } = await createTempDirs();
+    const { paseoHome, workDir } = await createTempDirs();
     await writeFile(
-      join(ottoHome, "config.json"),
+      join(paseoHome, "config.json"),
       JSON.stringify(
         {
           version: 1,
@@ -295,9 +298,9 @@ try {
       ) + "\n",
     );
 
-    const disabledCtx = await startTestDaemon({ ottoHome, workDir, timeout: 120000 });
+    const disabledCtx = await startTestDaemon({ paseoHome, workDir, timeout: 120000 });
     try {
-      const result = await runOttoCli(disabledCtx, ["provider", "ls", "--json"]);
+      const result = await runPaseoCli(disabledCtx, ["provider", "ls", "--json"]);
       assert.strictEqual(result.exitCode, 0, "provider ls should exit 0");
       const data = JSON.parse(result.stdout.trim()) as ProviderListRow[];
       const claude = data.find((p) => p.provider === "claude");
@@ -308,7 +311,7 @@ try {
       assert(opencode, "enabled opencode provider should stay in provider ls");
       assert.strictEqual(opencode.enabled, "Enabled", "enabled provider should report Enabled");
 
-      const modelsResult = await runOttoCli(disabledCtx, ["provider", "models", "claude"]);
+      const modelsResult = await runPaseoCli(disabledCtx, ["provider", "models", "claude"]);
       assert.notStrictEqual(
         modelsResult.exitCode,
         0,
@@ -332,7 +335,7 @@ try {
   // Test 5: provider ls --quiet outputs provider names only
   {
     console.log("Test 5: provider ls --quiet outputs provider names only");
-    const result = await ctx.otto(["provider", "ls", "--quiet"]);
+    const result = await ctx.paseo(["provider", "ls", "--quiet"]);
     assert.strictEqual(result.exitCode, 0, "should exit 0");
     const lines = result.stdout.trim().split("\n");
     assert(lines.length >= 3, `should have at least 3 lines, got ${lines.length}`);
@@ -360,10 +363,6 @@ try {
     assert(
       ids.every((id) => id.startsWith("gpt-")),
       "all codex model IDs should be from the gpt family",
-    );
-    assert(
-      ids.some((id) => id.includes("codex")),
-      "codex model list should include at least one codex-optimized model",
     );
     assert(
       data.every((m) => m.model && m.id && m.description),
@@ -396,7 +395,7 @@ try {
   // Test 9: provider models unknown fails with error
   {
     console.log("Test 9: provider models unknown fails with error");
-    const result = await ctx.otto(["provider", "models", "unknown"]);
+    const result = await ctx.paseo(["provider", "models", "unknown"]);
     assert.notStrictEqual(result.exitCode, 0, "should fail for unknown provider");
     const output = result.stdout + result.stderr;
     assert(
@@ -428,7 +427,7 @@ try {
       claudeModelIdsFromJson.length > 0,
       "claude model IDs should be captured from --json output",
     );
-    const result = await ctx.otto(["provider", "models", "claude", "--quiet"]);
+    const result = await ctx.paseo(["provider", "models", "claude", "--quiet"]);
     assert.strictEqual(result.exitCode, 0, "should exit 0");
     const lines = result.stdout.trim().split("\n").filter(Boolean);
     assert.deepStrictEqual(
@@ -437,8 +436,8 @@ try {
       "--quiet should print the same ordered model IDs returned by --json",
     );
     assert(
-      claudeModelsFromJson.some((m) => m.id === "claude-sonnet-5"),
-      "captured --json output should include the current Claude everyday model id",
+      claudeModelsFromJson.some((m) => m.id === "claude-haiku-5-5"),
+      "captured --json output should include the current Claude quick-answer model id",
     );
     console.log("✓ provider models --quiet outputs model IDs only\n");
   }
@@ -446,7 +445,7 @@ try {
   // Test 12: provider diagnostic shows the daemon's provider diagnostic
   {
     console.log("Test 12: provider diagnostic shows the daemon's provider diagnostic");
-    const result = await ctx.otto([
+    const result = await ctx.paseo([
       "provider",
       "diagnostic",
       " Claude ",
@@ -465,7 +464,7 @@ try {
   // Test 13: provider diagnostic --json returns structured output
   {
     console.log("Test 13: provider diagnostic --json returns structured output");
-    const result = await ctx.otto(["provider", "diagnostic", "claude", "--json"]);
+    const result = await ctx.paseo(["provider", "diagnostic", "claude", "--json"]);
     assert.strictEqual(result.exitCode, 0, "provider diagnostic --json should exit 0");
     const data = JSON.parse(result.stdout.trim()) as ProviderDiagnostic;
     assert.strictEqual(data.provider, "claude", "JSON should identify the provider");

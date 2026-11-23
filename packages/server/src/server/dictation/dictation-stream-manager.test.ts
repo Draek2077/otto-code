@@ -76,17 +76,17 @@ const tick = async (): Promise<void> => {
 
 describe("DictationStreamManager (finish buffer-too-small tolerance)", () => {
   const env = {
-    dictationDebug: process.env.OTTO_DICTATION_DEBUG,
+    dictationDebug: process.env.PASEO_DICTATION_DEBUG,
   };
 
   beforeEach(() => {
     vi.useFakeTimers();
-    process.env.OTTO_DICTATION_DEBUG = "false";
+    process.env.PASEO_DICTATION_DEBUG = "false";
   });
 
   afterEach(() => {
     vi.useRealTimers();
-    process.env.OTTO_DICTATION_DEBUG = env.dictationDebug;
+    process.env.PASEO_DICTATION_DEBUG = env.dictationDebug;
   });
 
   it("treats buffer-too-small as benign and finalizes with existing transcripts", async () => {
@@ -132,7 +132,7 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
     persisted?: unknown;
   }): string {
     const result = resolveSpeechConfig({
-      ottoHome: "/tmp/otto-home",
+      paseoHome: "/tmp/paseo-home",
       env: params.env ?? ({} as NodeJS.ProcessEnv),
       persisted: PersistedConfigSchema.parse(params.persisted ?? {}),
     });
@@ -163,20 +163,20 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
     expect(sttProvider.lastLanguage).toBe("en");
   });
 
-  it("uses OTTO_DICTATION_LANGUAGE when set", async () => {
+  it("uses PASEO_DICTATION_LANGUAGE when set", async () => {
     const sttProvider = await startWithResolvedDictationLanguage({
       env: {
-        OTTO_DICTATION_LANGUAGE: "pt",
+        PASEO_DICTATION_LANGUAGE: "pt",
       } as NodeJS.ProcessEnv,
     });
 
     expect(sttProvider.lastLanguage).toBe("pt");
   });
 
-  it("treats empty OTTO_DICTATION_LANGUAGE as unset", async () => {
+  it("treats empty PASEO_DICTATION_LANGUAGE as unset", async () => {
     const sttProvider = await startWithResolvedDictationLanguage({
       env: {
-        OTTO_DICTATION_LANGUAGE: "  ",
+        PASEO_DICTATION_LANGUAGE: "  ",
       } as NodeJS.ProcessEnv,
     });
 
@@ -202,7 +202,7 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
   it("uses env dictation language over settings dictation STT language", async () => {
     const sttProvider = await startWithResolvedDictationLanguage({
       env: {
-        OTTO_DICTATION_LANGUAGE: "pt",
+        PASEO_DICTATION_LANGUAGE: "pt",
       } as NodeJS.ProcessEnv,
       persisted: {
         features: {
@@ -246,8 +246,8 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
   });
 
   it("auto-commits while streaming and assembles final transcript in segment order", async () => {
-    const originalDebug = process.env.OTTO_DICTATION_DEBUG;
-    process.env.OTTO_DICTATION_DEBUG = "false";
+    const originalDebug = process.env.PASEO_DICTATION_DEBUG;
+    process.env.PASEO_DICTATION_DEBUG = "false";
 
     try {
       const session = new FakeRealtimeSession();
@@ -291,9 +291,9 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
       expect((final?.payload as { text?: string } | undefined)?.text).toBe("hello world");
     } finally {
       if (originalDebug === undefined) {
-        delete process.env.OTTO_DICTATION_DEBUG;
+        delete process.env.PASEO_DICTATION_DEBUG;
       } else {
-        process.env.OTTO_DICTATION_DEBUG = originalDebug;
+        process.env.PASEO_DICTATION_DEBUG = originalDebug;
       }
     }
   });
@@ -485,8 +485,8 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
 
   it("drops dangling uncommitted non-final transcripts when finishing after silence tail clear", async () => {
     vi.useFakeTimers();
-    const previousDebug = process.env.OTTO_DICTATION_DEBUG;
-    process.env.OTTO_DICTATION_DEBUG = "false";
+    const previousDebug = process.env.PASEO_DICTATION_DEBUG;
+    process.env.PASEO_DICTATION_DEBUG = "false";
     try {
       const session = new FakeRealtimeSession();
       const emitted: Array<{ type: string; payload: unknown }> = [];
@@ -529,8 +529,59 @@ describe("DictationStreamManager (provider-agnostic provider)", () => {
       expect(error).toBeUndefined();
       expect((final?.payload as { text?: string } | undefined)?.text).toBe("hello");
     } finally {
-      process.env.OTTO_DICTATION_DEBUG = previousDebug;
+      process.env.PASEO_DICTATION_DEBUG = previousDebug;
       vi.useRealTimers();
     }
   });
+});
+
+it("cancellation during STT bootstrap closes the producer and never acknowledges a late connection", async () => {
+  let connected!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    connected = resolve;
+  });
+  class ConnectingSession extends FakeRealtimeSession {
+    override async connect(): Promise<void> {
+      await gate;
+    }
+  }
+  const session = new ConnectingSession();
+  const messages: Array<{ type: string }> = [];
+  const manager = new DictationStreamManager({
+    logger: pino({ level: "silent" }),
+    emit: (message) => messages.push(message),
+    sessionId: "cancel-bootstrap",
+    stt: new FakeSttProvider(session),
+  });
+  const starting = manager.handleStart("dictation", "audio/pcm;rate=24000;bits=16");
+  manager.handleCancel("dictation");
+  expect(session.closed).toBe(true);
+  connected();
+  await starting;
+  expect(messages).toEqual([]);
+  manager.cleanupAll();
+});
+
+it("closes every dictation stream when one provider cleanup fails", async () => {
+  class FailingCloseSession extends FakeRealtimeSession {
+    override close(): void {
+      super.close();
+      throw new Error("provider cleanup failed");
+    }
+  }
+  const first = new FailingCloseSession();
+  const second = new FakeRealtimeSession();
+  const sessions = [first, second];
+  const manager = new DictationStreamManager({
+    logger: pino({ level: "silent" }),
+    sessionId: "cleanup-failure",
+    emit: () => {},
+    stt: { id: "controlled", createSession: () => sessions.shift()! },
+  });
+  await manager.handleStart("first", "audio/pcm;rate=24000;bits=16");
+  await manager.handleStart("second", "audio/pcm;rate=24000;bits=16");
+  expect(() => manager.cleanupAll()).toThrow();
+  expect(first.closed).toBe(true);
+  expect(second.closed).toBe(true);
+  expect(manager.hasDemand).toBe(false);
 });

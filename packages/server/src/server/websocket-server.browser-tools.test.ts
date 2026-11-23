@@ -5,9 +5,9 @@ import type {
   BrowserAutomationCommandName,
   BrowserAutomationExecuteRequest,
   BrowserAutomationExecuteResponse,
-} from "@otto-code/protocol/browser-automation/rpc-schemas";
-import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@otto-code/protocol/browser-automation/rpc-schemas";
-import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
+} from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import type pino from "pino";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -87,7 +87,7 @@ describe("WebSocketServer browser tools wiring", () => {
 
     expect(request).toMatchObject({
       type: "browser.automation.execute.request",
-      requestId: expect.stringMatching(/^req-1:/),
+      requestId: "req-1",
       command: { command: "list_tabs", args: {} },
     });
 
@@ -101,7 +101,7 @@ describe("WebSocketServer browser tools wiring", () => {
     });
 
     await expect(resultPromise).resolves.toEqual({
-      requestId: "req-1",
+      requestId: request.requestId,
       ok: true,
       result: { command: "list_tabs", tabs: [] },
     });
@@ -124,28 +124,31 @@ describe("WebSocketServer browser tools wiring", () => {
 
     await browserHost.disconnect();
 
-    expect(harness.broker.getRegisteredClientCount()).toBe(1);
+    expect(harness.broker.getRegisteredClientCount()).toBe(0);
     expect(harness.broker.getPendingRequestCount()).toBe(0);
     await pendingExpectation;
 
     await expect(
       harness.broker.execute({ command: { command: "list_tabs", args: {} } }),
-    ).resolves.toMatchObject({ ok: true, result: { command: "list_tabs", tabs: [] } });
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "browser_no_host" },
+    });
   });
 
   it("keeps browser automation registered when a browser host client resumes", async () => {
     const harness = await startBrowserToolsDaemonHarness();
     const clientId = "browser-host-client-1";
-    await harness.connectBrowserHostClient({
+    const originalBrowserHost = await harness.connectBrowserHostClient({
       clientId,
       capabilities: browserHostCapabilities(),
     });
+    await originalBrowserHost.disconnect();
 
     const resumedBrowserHost = await harness.connectBrowserHostClient({
       clientId,
       capabilities: browserHostCapabilities(),
     });
-    await rememberBrowserTab(harness, resumedBrowserHost);
 
     const resultPromise = harness.broker.execute({
       command: { command: "click", args: { browserId: BROWSER_ID, ref: "@e1" } },
@@ -173,7 +176,6 @@ describe("WebSocketServer browser tools wiring", () => {
       clientId,
       capabilities: browserHostCapabilities(),
     });
-    await rememberBrowserTab(harness, browserHost);
 
     const pendingResult = harness.broker.execute({
       command: { command: "snapshot", args: { browserId: BROWSER_ID } },
@@ -181,6 +183,7 @@ describe("WebSocketServer browser tools wiring", () => {
     await browserHost.nextBrowserRequest();
     expect(harness.broker.getPendingRequestCount()).toBe(1);
 
+    await browserHost.disconnect();
     await harness.connectBrowserHostClient({
       clientId,
       capabilities: browserHostCapabilities(["list_tabs"]),
@@ -190,42 +193,10 @@ describe("WebSocketServer browser tools wiring", () => {
       ok: false,
       error: { code: "browser_no_host", retryable: true },
     });
-    expect(harness.broker.getRegisteredClientCount()).toBe(2);
+    expect(harness.broker.getRegisteredClientCount()).toBe(1);
     expect(harness.broker.getPendingRequestCount()).toBe(0);
   });
 });
-
-async function rememberBrowserTab(
-  harness: BrowserToolsDaemonHarness,
-  host: BrowserHostClientHandle,
-): Promise<void> {
-  const listing = harness.broker.execute({
-    workspaceId: "workspace-test",
-    command: { command: "list_tabs", args: {} },
-  });
-  const request = await host.nextBrowserRequest();
-  host.respondToBrowserRequest({
-    type: "browser.automation.execute.response",
-    payload: {
-      requestId: request.requestId,
-      ok: true,
-      result: {
-        command: "list_tabs",
-        tabs: [
-          {
-            browserId: BROWSER_ID,
-            workspaceId: "workspace-test",
-            url: "https://example.com",
-            title: "Example",
-            isActive: true,
-            isLoading: false,
-          },
-        ],
-      },
-    },
-  });
-  await listing;
-}
 
 async function startBrowserToolsDaemonHarness(): Promise<BrowserToolsDaemonHarness> {
   const httpServer = createServer();
@@ -256,6 +227,11 @@ async function startBrowserToolsDaemonHarness(): Promise<BrowserToolsDaemonHarne
       });
 
       await client.connect();
+      const capability = (options.capabilities ?? browserHostCapabilities())[
+        CLIENT_CAPS.browserHost
+      ] as { hostKind: "desktop app"; supportedCommands: BrowserAutomationCommandName[] };
+      const observation = client.registerBrowserHost(capability);
+      await observation.ready;
 
       return {
         clientId: clientId ?? "",
@@ -263,10 +239,11 @@ async function startBrowserToolsDaemonHarness(): Promise<BrowserToolsDaemonHarne
         respondToBrowserRequest: (response) =>
           client.sendBrowserAutomationExecuteResponse(response),
         async disconnect() {
+          await observation.release();
           requests.close();
           clients.delete(client);
           await client.close();
-          await waitFor(() => broker.getRegisteredClientCount() === 1);
+          await waitFor(() => broker.getRegisteredClientCount() === 0);
         },
       };
     },
@@ -304,7 +281,6 @@ function createVoiceAssistantWebSocketServer(params: {
   const { httpServer, broker } = params;
   const agentManager = {
     setAgentAttentionCallback() {},
-    setAgentActivelyWatchedProbe() {},
     subscribe: () => () => {},
     getMetricsSnapshot: () => ({
       total: 0,
@@ -316,11 +292,6 @@ function createVoiceAssistantWebSocketServer(params: {
   const daemonConfigStore = {
     onApply: () => () => {},
     onChange: () => () => {},
-    onFieldChange: () => () => {},
-    // The constructor reads config to seed the LSP pool and the .NET solution service. Both are
-    // unrelated to browser tools, but an unstubbed `get` throws before the server is built, so
-    // this whole file fails at construction rather than on anything it means to assert.
-    get: () => ({ lsp: undefined, dotnetSolutionManagement: undefined }),
   };
 
   return new VoiceAssistantWebSocketServer(
@@ -330,7 +301,7 @@ function createVoiceAssistantWebSocketServer(params: {
     createStub<AgentManager>(agentManager),
     createStub<AgentStorage>({}),
     createStub<DownloadTokenStore>({}),
-    "/tmp/otto-browser-tools-websocket-test",
+    "/tmp/paseo-browser-tools-websocket-test",
     createStub<DaemonConfigStore>(daemonConfigStore),
     null,
     { allowedOrigins: new Set(["*"]) },

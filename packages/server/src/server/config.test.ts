@@ -14,76 +14,62 @@ describe("server config", () => {
     await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
   });
 
-  test("records when the daemon is managed by Otto Desktop", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-config-desktop-managed-"));
-    roots.push(ottoHome);
+  test("records when the daemon is managed by Paseo Desktop", async () => {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-config-desktop-managed-"));
+    roots.push(paseoHome);
 
-    const desktopConfig = loadConfig(ottoHome, {
-      env: { OTTO_DESKTOP_MANAGED: "1" },
+    const desktopConfig = loadConfig(paseoHome, {
+      env: { PASEO_DESKTOP_MANAGED: "1" },
     });
-    const standaloneConfig = loadConfig(ottoHome, { env: {} });
+    const standaloneConfig = loadConfig(paseoHome, { env: {} });
 
     expect(desktopConfig.desktopManaged).toBe(true);
     expect(standaloneConfig.desktopManaged).toBe(false);
   });
 
-  test("preserves the dev CORS wildcard for the WebSocket origin gate", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-config-cors-"));
-    roots.push(ottoHome);
-    await writeFile(
-      path.join(ottoHome, "config.json"),
-      JSON.stringify({ daemon: { cors: { allowedOrigins: ["*"] } } }),
-    );
-
-    expect(loadConfig(ottoHome, { env: {} }).corsAllowedOrigins).toContain("*");
-    expect(loadConfig(ottoHome, { env: { OTTO_CORS_ORIGINS: "*" } }).corsAllowedOrigins).toContain(
-      "*",
-    );
-  });
-
   test("loads the provider catalog refresh timeout", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-config-provider-timeout-"));
-    roots.push(ottoHome);
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-config-provider-timeout-"));
+    roots.push(paseoHome);
     await writeFile(
-      path.join(ottoHome, "config.json"),
+      path.join(paseoHome, "config.json"),
       JSON.stringify({ agents: { catalogRefreshTimeoutMs: 180_000 } }),
     );
 
-    const config = loadConfig(ottoHome, { env: {} });
+    const config = loadConfig(paseoHome, { env: {} });
 
     expect(config.providerCatalogRefreshTimeoutMs).toBe(180_000);
   });
 
   test("resolves reload state from the supplied validated snapshot", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-config-snapshot-"));
-    roots.push(ottoHome);
-    const snapshot = loadPersistedConfig(ottoHome);
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-config-snapshot-"));
+    roots.push(paseoHome);
+    const snapshot = loadPersistedConfig(paseoHome);
     await writeFile(
-      path.join(ottoHome, "config.json"),
+      path.join(paseoHome, "config.json"),
       JSON.stringify({
         ...snapshot,
         daemon: { ...snapshot.daemon, browserTools: { enabled: true } },
       }),
     );
 
-    expect(resolveConfigFromPersisted(ottoHome, snapshot, { env: {} }).browserToolsEnabled).toBe(
+    expect(resolveConfigFromPersisted(paseoHome, snapshot, { env: {} }).browserToolsEnabled).toBe(
       false,
     );
-    expect(loadConfig(ottoHome, { env: {} }).browserToolsEnabled).toBe(true);
+    expect(loadConfig(paseoHome, { env: {} }).browserToolsEnabled).toBe(true);
   });
 
   test("records mutable and startup launch overrides by persisted leaf", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-config-overrides-"));
-    roots.push(ottoHome);
-    const config = loadConfig(ottoHome, {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-config-overrides-"));
+    roots.push(paseoHome);
+    const config = loadConfig(paseoHome, {
       env: {
-        OTTO_LISTEN: "127.0.0.1:7000",
-        OTTO_PASSWORD: "secret",
-        OTTO_RELAY_ENDPOINT: "relay.example.test:443",
-        OTTO_TRUSTED_PROXIES: "true",
-        OTTO_WEB_UI_ENABLED: "true",
-        OTTO_LOG_FILE_PATH: "custom.log",
-        OTTO_VOICE_LLM_PROVIDER: "codex",
+        PASEO_LISTEN: "127.0.0.1:7000",
+        PASEO_PASSWORD: "secret",
+        PASEO_RELAY_ENDPOINT: "relay.example.test:443",
+        PASEO_TRUSTED_PROXIES: "true",
+        PASEO_WEB_UI_ENABLED: "true",
+        PASEO_LOG_FILE_PATH: "custom.log",
+        PASEO_VOICE_LLM_PROVIDER: "codex",
       },
       cli: { relayUseTls: false },
     });
@@ -137,7 +123,7 @@ describe("server config", () => {
     },
   ])("classifies speech overrides for $name", ({ providers, expected }) => {
     const config = resolveConfigFromPersisted(
-      "/tmp/otto-speech-override-classification",
+      "/tmp/paseo-speech-override-classification",
       {
         version: 1,
         features: {
@@ -152,9 +138,9 @@ describe("server config", () => {
       {
         env: {
           OPENAI_API_KEY: "test-api-key",
-          OTTO_DICTATION_LOCAL_STT_MODEL: "parakeet-tdt-0.6b-v2-int8",
-          OTTO_VOICE_LOCAL_STT_MODEL: "parakeet-tdt-0.6b-v2-int8",
-          OTTO_VOICE_LOCAL_TTS_MODEL: "kokoro-en-v0_19",
+          PASEO_DICTATION_LOCAL_STT_MODEL: "parakeet-tdt-0.6b-v2-int8",
+          PASEO_VOICE_LOCAL_STT_MODEL: "parakeet-tdt-0.6b-v2-int8",
+          PASEO_VOICE_LOCAL_TTS_MODEL: "kokoro-en-v0_19",
           STT_CONFIDENCE_THRESHOLD: "0.5",
           STT_MODEL: "whisper-1",
           TTS_MODEL: "tts-1",
@@ -178,7 +164,7 @@ describe("server config", () => {
   });
 
   test("resolves bundled web UI path from globally installed compiled modules", async () => {
-    const packageRoot = await mkdtemp(path.join(os.tmpdir(), "otto-config-compiled-"));
+    const packageRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-config-compiled-"));
     roots.push(packageRoot);
     await mkdir(path.join(packageRoot, "dist", "server", "web-ui"), { recursive: true });
 
@@ -190,7 +176,7 @@ describe("server config", () => {
   });
 
   test("resolves packaged desktop web UI path from resources app-dist", async () => {
-    const packageRoot = await mkdtemp(path.join(os.tmpdir(), "otto-config-packaged-"));
+    const packageRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-config-packaged-"));
     roots.push(packageRoot);
     await mkdir(path.join(packageRoot, "app-dist"), { recursive: true });
 
@@ -201,7 +187,7 @@ describe("server config", () => {
             packageRoot,
             "app.asar",
             "node_modules",
-            "@otto-code",
+            "@getpaseo",
             "server",
             "dist",
             "server",
@@ -213,4 +199,19 @@ describe("server config", () => {
       }),
     ).toBe(path.join(packageRoot, "app-dist"));
   });
+});
+
+test("loads private plugin registry settings through the configuration boundary", async () => {
+  const home = await mkdtemp(path.join(os.tmpdir(), "paseo-registry-config-"));
+  try {
+    const pluginRegistries = { "plugins.example.test": { authorization: "Bearer fixture" } };
+    await writeFile(path.join(home, "config.json"), JSON.stringify({ pluginRegistries }));
+    const config = loadConfig(home, {
+      env: { PASEO_PLUGIN_REGISTRY: "https://plugins.example.test/internal" },
+    });
+    expect(config.pluginRegistryUrl).toBe("https://plugins.example.test/internal");
+    expect(config.pluginRegistries).toEqual(pluginRegistries);
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
 });

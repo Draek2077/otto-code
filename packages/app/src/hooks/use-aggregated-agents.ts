@@ -19,55 +19,28 @@ export interface AggregatedAgentsResult {
   refreshAll: () => void;
 }
 
-const EMPTY_SESSION_AGENTS: Record<string, Map<string, Agent> | undefined> = {};
-const noopUnsubscribe = () => undefined;
-
-/**
- * Keeps every host's agent directory synced while `enabled`, without subscribing the caller to
- * the agents themselves. For consumers that read agents imperatively or through a narrow selector.
- */
-export function useAgentDirectoryDemand(enabled: boolean): void {
-  const daemons = useHosts();
-  const runtime = getHostRuntimeStore();
-  const serverIds = useMemo(() => daemons.map((daemon) => daemon.serverId), [daemons]);
-  useEffect(() => {
-    if (!enabled) return;
-    const releases = serverIds.map((serverId) => runtime.acquireDirectoryDemand(serverId));
-    return () => releases.forEach((release) => release());
-  }, [enabled, runtime, serverIds]);
-}
-
 export function useAggregatedAgents(options?: {
   includeArchived?: boolean;
   demand?: boolean;
-  /**
-   * When false the hook neither demands directories nor subscribes to the session store, and
-   * returns an empty list. Lets permanently mounted callers (a closed palette) skip the
-   * several-times-a-second agent churn while any agent streams.
-   */
-  enabled?: boolean;
 }): AggregatedAgentsResult {
   const daemons = useHosts();
   const runtime = getHostRuntimeStore();
   const includeArchived = options?.includeArchived ?? false;
-  const enabled = options?.enabled ?? true;
-  const demand = enabled && (options?.demand ?? true);
+  const demand = options?.demand ?? true;
   const serverIds = useMemo(() => daemons.map((daemon) => daemon.serverId), [daemons]);
-  useAgentDirectoryDemand(demand);
-  const subscribeRuntime = useCallback(
-    (onStoreChange: () => void) =>
-      enabled ? runtime.subscribeAll(onStoreChange) : noopUnsubscribe,
-    [enabled, runtime],
-  );
+  useEffect(() => {
+    if (!demand) return;
+    const releases = serverIds.map((serverId) => runtime.acquireDirectoryDemand(serverId));
+    return () => releases.forEach((release) => release());
+  }, [demand, runtime, serverIds]);
   const runtimeVersion = useSyncExternalStore(
-    subscribeRuntime,
+    (onStoreChange) => runtime.subscribeAll(onStoreChange),
     () => runtime.getVersion(),
     () => runtime.getVersion(),
   );
 
   const sessionAgents = useSessionStore(
     useShallow((state) => {
-      if (!enabled) return EMPTY_SESSION_AGENTS;
       const result: Record<string, Map<string, Agent> | undefined> = {};
       for (const [serverId, session] of Object.entries(state.sessions)) {
         result[serverId] = session.agents;
@@ -81,10 +54,10 @@ export function useAggregatedAgents(options?: {
     for (const serverId of serverIds) void runtime.refreshDirectories(serverId);
   }, [demand, runtime, serverIds]);
 
-  // Keyed by "serverId:agentId" - reuse the previous AggregatedAgent object when
+  // Keyed by "serverId:agentId" — reuse the previous AggregatedAgent object when
   // none of its fields changed, so downstream memo/shallow comparisons can bail early.
   const prevAgentsRef = useRef<Map<string, AggregatedAgent>>(new Map());
-  // Preserved sorted array - returned as-is when every element kept its identity
+  // Preserved sorted array — returned as-is when every element kept its identity
   // and order, so callers using reference equality skip re-renders entirely.
   const prevSortedRef = useRef<AggregatedAgent[]>([]);
 
@@ -122,7 +95,6 @@ export function useAggregatedAgents(options?: {
           attentionReason: agent.attentionReason,
           attentionTimestamp: agent.attentionTimestamp,
           archivedAt: agent.archivedAt,
-          archiveBytes: agent.archiveBytes,
           createdAt: agent.createdAt,
           labels: agent.labels,
           projectPlacement: agent.projectPlacement,

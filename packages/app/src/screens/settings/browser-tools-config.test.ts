@@ -1,4 +1,4 @@
-import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
+import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
 import { describe, expect, it } from "vitest";
 import {
   BROWSER_TOOLS_WARNING,
@@ -12,61 +12,11 @@ function makeConfig(browserToolsEnabled = false): MutableDaemonConfig {
     relay: { enabled: false },
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: browserToolsEnabled },
-    lsp: {
-      enabled: true,
-      languages: {},
-      maxRunningServers: 6,
-      idleMinutes: 10,
-      backgroundIdleMinutes: 2,
-    },
-    dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
     providers: {},
-    metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
-    savedProviderEndpoints: [],
-    agentBehaviors: {
-      promptSuggestions: true,
-      agentProgressSummaries: true,
-      notifyOnFinishDefault: true,
-      todoNudge: true,
-      todoReconcileOnIdle: true,
-      stallGuardThreshold: 15,
-    },
-    agentPersonalities: { personalities: [] },
-    agentProfiles: [],
-    agentTeams: { teams: [] },
-    modelTierOverrides: [],
-    modelVisibilityOverrides: [],
-    connectors: [],
+    metadataGeneration: { providers: [] },
     autoArchiveAfterMerge: false,
-    hideMergeIntoBaseAction: false,
-    attachmentImageMaxAgeDays: 30,
-    attachmentImageMaxTotalMb: 512,
     enableTerminalAgentHooks: false,
     appendSystemPrompt: "",
-    brain: {
-      enabled: false,
-      autoStart: false,
-      mode: "local",
-      remote: { host: "", port: 1234, secure: false, authToken: null, certFingerprint: null },
-      listen: { host: "127.0.0.1", port: 1234 },
-      defaultModel: null,
-      maxLoadedModels: 1,
-      lockedModels: [],
-      runtime: { source: "auto", path: null, logVerbosity: 3 },
-      lockModel: false,
-      allowRemoteConfig: false,
-      allowInsecureBind: false,
-      authMode: "none",
-      authToken: null,
-      tls: {
-        mode: "off",
-        certFile: null,
-        keyFile: null,
-        hostname: null,
-        certDir: null,
-        renewBeforeDays: 30,
-      },
-    },
   };
 }
 
@@ -75,7 +25,7 @@ describe("browser tools opt-in config", () => {
     expect(getBrowserToolsCardState({ isConnected: true, config: makeConfig(false) })).toEqual({
       isVisible: true,
       isEnabled: false,
-      title: "Enable Browser tools",
+      title: "Browser tools",
       warning: BROWSER_TOOLS_WARNING,
     });
   });

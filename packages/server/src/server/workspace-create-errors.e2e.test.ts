@@ -1,18 +1,18 @@
 import { test, expect } from "vitest";
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { DaemonClient } from "./test-utils/index.js";
-import { createTestOttoDaemon } from "./test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 
 // workspace.create has four reject branches before it ever touches the
 // registries; this pins each one's errorCode (or, for project-not-found, its
 // message) as seen by the daemon client, so the CLI/app contract on top of them
 // stays covered.
 test("workspace.create surfaces each early-reject error branch", async () => {
-  const daemon = await createTestOttoDaemon();
-  const missingDir = path.join(tmpdir(), `otto-workspace-create-missing-${Date.now()}`);
+  const daemon = await createTestPaseoDaemon();
+  const missingDir = path.join(tmpdir(), `paseo-workspace-create-missing-${Date.now()}`);
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${daemon.port}/ws`,
     appVersion: "0.1.82",
@@ -47,5 +47,32 @@ test("workspace.create surfaces each early-reject error branch", async () => {
     await client.close().catch(() => undefined);
     await daemon.close();
     rmSync(missingDir, { recursive: true, force: true });
+  }
+}, 180000);
+
+test("workspace creation replay rejects a checkout removed after completion", async () => {
+  const daemon = await createTestPaseoDaemon();
+  const directory = mkdtempSync(path.join(tmpdir(), "workspace-replay-"));
+  const client = new DaemonClient({
+    url: `ws://127.0.0.1:${daemon.port}/ws`,
+    appVersion: "0.1.82",
+  });
+  try {
+    await client.connect();
+    const request = {
+      source: { kind: "directory" as const, path: directory },
+      idempotencyKey: "removed-checkout",
+    };
+    const created = await client.createWorkspace(request);
+    expect(created.error).toBeNull();
+    expect(created.workspace).not.toBeNull();
+    rmSync(directory, { recursive: true, force: true });
+    const replayed = await client.createWorkspace(request);
+    expect(replayed.workspace).toBeNull();
+    expect(replayed.errorCode).toBe("directory_not_found");
+  } finally {
+    await client.close().catch(() => undefined);
+    await daemon.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 }, 180000);

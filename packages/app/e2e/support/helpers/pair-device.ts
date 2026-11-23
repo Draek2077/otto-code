@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, type Page } from "@playwright/test";
 import type { IsolatedHostDaemon } from "./isolated-host-daemon";
 import type { OutdatedDaemon } from "./daemon-update";
@@ -23,7 +24,7 @@ export async function prepareLocalPairingHost(
   additionalHosts: PairingHostInput[] = [],
 ): Promise<void> {
   await page.addInitScript((localServerId) => {
-    (window as unknown as { ottoDesktop: unknown }).ottoDesktop = {
+    (window as unknown as { paseoDesktop: unknown }).paseoDesktop = {
       platform: "darwin",
       invoke: async (command: string) => {
         if (command === "desktop_daemon_status") {
@@ -217,4 +218,25 @@ export function expectDaemonPidUnchanged(
 ): void {
   expect(before).toBeDefined();
   expect(after).toBe(before);
+}
+
+export async function expectCompletePairingQr(page: Page): Promise<void> {
+  const qr = page.getByRole("img", { name: "Pairing QR code" });
+  await qr.scrollIntoViewIfNeeded();
+  // IntersectionObserver rounds fractional sheet/scroll coordinates.
+  await expect(qr).toBeInViewport({ ratio: 0.999 });
+  const bounds = await qr.evaluate((element) => {
+    const tile = element.parentElement;
+    if (!tile) throw new Error("Pairing QR tile is missing");
+    const qrRect = element.getBoundingClientRect();
+    const tileRect = tile.getBoundingClientRect();
+    return {
+      qr: { x: qrRect.x, y: qrRect.y, right: qrRect.right, bottom: qrRect.bottom },
+      tile: { x: tileRect.x, y: tileRect.y, right: tileRect.right, bottom: tileRect.bottom },
+    };
+  });
+  expect(bounds.qr.x).toBeGreaterThanOrEqual(bounds.tile.x);
+  expect(bounds.qr.y).toBeGreaterThanOrEqual(bounds.tile.y);
+  expect(bounds.qr.right).toBeLessThanOrEqual(bounds.tile.right);
+  expect(bounds.qr.bottom).toBeLessThanOrEqual(bounds.tile.bottom);
 }

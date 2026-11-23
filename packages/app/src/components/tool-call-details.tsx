@@ -1,118 +1,32 @@
 import React, { useMemo, type ReactNode } from "react";
-import { readStartedWorkflowRunId, WorkflowToolLink } from "@/components/workflow-tool-link";
 import {
   View,
   Text,
   ScrollView as RNScrollView,
   type StyleProp,
-  type TextStyle,
   type ViewStyle,
 } from "react-native";
 import { ScrollView as GHScrollView } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import type { ToolCallDetail } from "@otto-code/protocol/agent-types";
+import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import {
   buildPaseoToolDetailSections,
   type PaseoToolDetailSection,
-} from "@otto-code/protocol/paseo-tool-call-detail";
+} from "@getpaseo/protocol/paseo-tool-presentation/index";
 import { buildLineDiff, parseUnifiedDiff, type DiffLine } from "@/utils/tool-call-parsers";
 import { highlightDiffLines } from "@/utils/diff-highlight";
 import { hasMeaningfulToolCallDetail } from "@/utils/tool-call-detail-state";
-import { getToolDisplayName } from "@/utils/tool-call-display";
-import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
 import { extensionFromPath, highlightToKeyedLines } from "@/utils/highlight-cache";
-import { HighlightedLines, highlightedSpans } from "./highlighted-content";
+import { HighlightedLines } from "./highlighted-content";
 import { DiffViewer } from "./diff-viewer";
 import { getCodeInsets } from "./code-insets";
 import { isWeb } from "@/constants/platform";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { useWrapCodeLines } from "@/hooks/use-wrap-code-lines";
 
 const ScrollView = isWeb ? RNScrollView : GHScrollView;
-
-// Vertical code/output scroll with the auto-hiding desktop-web overlay
-// scrollbar. Sections share this so each scroll area gets its own overlay
-// without hand-wiring a ref + hook at every call site.
-function CodeVerticalScroll({
-  style,
-  contentContainerStyle,
-  fill = false,
-  children,
-}: {
-  style: StyleProp<ViewStyle>;
-  contentContainerStyle?: StyleProp<ViewStyle>;
-  fill?: boolean;
-  children: ReactNode;
-}) {
-  const isCompact = useIsCompactFormFactor();
-  const showDesktopWebScrollbar = isWeb && !isCompact;
-  const ref = React.useRef<RNScrollView>(null);
-  const scrollbar = useWebScrollViewScrollbar(ref, { enabled: showDesktopWebScrollbar });
-  const scrollView = (
-    <ScrollView
-      ref={ref}
-      style={style}
-      contentContainerStyle={contentContainerStyle}
-      nestedScrollEnabled
-      onLayout={scrollbar.onLayout}
-      onScroll={scrollbar.onScroll}
-      onContentSizeChange={scrollbar.onContentSizeChange}
-      scrollEventThrottle={16}
-      showsVerticalScrollIndicator={!showDesktopWebScrollbar}
-    >
-      {children}
-    </ScrollView>
-  );
-  if (!showDesktopWebScrollbar) return scrollView;
-  return (
-    <View style={fill ? styles.fillHeight : undefined}>
-      {scrollView}
-      {scrollbar.overlay}
-    </View>
-  );
-}
-
-// Nested horizontal code scroll. An auto-hiding overlay can't pin to the
-// viewport when it lives inside a vertically-scrolling parent, so on desktop
-// web we drop the old always-on tinted scrollbar and hide the native
-// indicator (scrolling still works via trackpad / shift-wheel).
-//
-// With `wrap` (the "Wrap long lines" appearance setting, default on) the
-// horizontal scroller is skipped entirely and long lines soft-wrap instead -
-// callers pair this with the pre-wrap text style from DetailStyles.
-function CodeHorizontalScroll({
-  style,
-  contentContainerStyle,
-  wrap = false,
-  children,
-}: {
-  style?: StyleProp<ViewStyle>;
-  contentContainerStyle?: StyleProp<ViewStyle>;
-  wrap?: boolean;
-  children: ReactNode;
-}) {
-  const isCompact = useIsCompactFormFactor();
-  const showDesktopWebScrollbar = isWeb && !isCompact;
-  const wrapStyle = useMemo(() => [style, contentContainerStyle], [style, contentContainerStyle]);
-  if (wrap) {
-    return <View style={wrapStyle}>{children}</View>;
-  }
-  return (
-    <ScrollView
-      horizontal
-      nestedScrollEnabled
-      style={style}
-      contentContainerStyle={contentContainerStyle}
-      showsHorizontalScrollIndicator={!showDesktopWebScrollbar}
-    >
-      {children}
-    </ScrollView>
-  );
-}
 
 // ---- Content Component ----
 
@@ -138,13 +52,6 @@ interface DetailStyles {
   resolvedMaxHeight: number | undefined;
   shouldFill: boolean;
   isFullBleed: boolean;
-  // "Wrap long lines" appearance setting: soft-wrap code/tool output instead of
-  // horizontal scrolling. codeTextStyle/codeTextErrorStyle carry the matching
-  // pre vs. pre-wrap monospace text style so sections stay in sync with the
-  // CodeHorizontalScroll `wrap` prop.
-  wrap: boolean;
-  codeTextStyle: StyleProp<TextStyle>;
-  codeTextErrorStyle: StyleProp<TextStyle>;
 }
 
 function resolveIsFullBleed(detail: ToolCallDetail | undefined): boolean {
@@ -164,7 +71,6 @@ function useDetailStyles(
   detail: ToolCallDetail | undefined,
   resolvedMaxHeight: number | undefined,
   fillAvailableHeight: boolean,
-  wrap: boolean,
 ): DetailStyles {
   const isFullBleed = resolveIsFullBleed(detail);
   const shouldFill = resolveShouldFill(detail, fillAvailableHeight);
@@ -201,8 +107,8 @@ function useDetailStyles(
     ],
     [resolvedMaxHeight],
   );
-  const jsonScrollCombined = useMemo(() => styles.jsonScroll, []);
-  const jsonScrollErrorCombined = useMemo(() => [styles.jsonScroll, styles.jsonScrollError], []);
+  const jsonScrollCombined = styles.jsonScroll;
+  const jsonScrollErrorCombined = [styles.jsonScroll, styles.jsonScrollError];
   const fullBleedContainerStyle = useMemo(
     () => [
       isFullBleed ? styles.fullBleedContainer : styles.paddedContainer,
@@ -228,9 +134,6 @@ function useDetailStyles(
     resolvedMaxHeight,
     shouldFill,
     isFullBleed,
-    wrap,
-    codeTextStyle: wrap ? SCROLL_TEXT_WRAP_STYLE : styles.scrollText,
-    codeTextErrorStyle: wrap ? SCROLL_TEXT_ERROR_WRAP_STYLE : SCROLL_TEXT_ERROR_STYLE,
   };
 }
 
@@ -254,31 +157,30 @@ function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
   const normalizedCommand = command.replace(/\n+$/, "");
   const commandOutput = (output ?? "").replace(/^\n+/, "");
   const hasOutput = commandOutput.length > 0;
-  // The command is shell source and gets the shell grammar; the output below it
-  // is whatever the program printed and stays plain - highlighting arbitrary
-  // stdout as shell paints false structure onto it.
-  const commandSpans = useMemo(() => {
-    const lines = highlightToKeyedLines(normalizedCommand, "sh");
-    return lines ? highlightedSpans(lines) : null;
-  }, [normalizedCommand]);
   return (
     <View style={ds.sectionFillStyle}>
       <View style={ds.codeBlockFillStyle}>
-        <CodeVerticalScroll
+        <ScrollView
           style={ds.codeVerticalScrollStyle}
           contentContainerStyle={styles.codeVerticalContent}
-          fill={ds.shouldFill}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator
         >
-          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent} wrap={ds.wrap}>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator
+            contentContainerStyle={styles.codeHorizontalContent}
+          >
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
-              <Text selectable style={ds.codeTextStyle}>
+              <Text selectable style={styles.scrollText}>
                 <Text style={styles.shellPrompt}>$ </Text>
-                {commandSpans ?? normalizedCommand}
+                {normalizedCommand}
                 {hasOutput ? `\n\n${commandOutput}` : ""}
               </Text>
             </View>
-          </CodeHorizontalScroll>
-        </CodeVerticalScroll>
+          </ScrollView>
+        </ScrollView>
       </View>
     </View>
   );
@@ -302,19 +204,25 @@ function WorktreeSetupDetailSection({
   return (
     <View style={ds.sectionFillStyle}>
       <View style={ds.codeBlockFillStyle}>
-        <CodeVerticalScroll
+        <ScrollView
           style={ds.codeVerticalScrollStyle}
           contentContainerStyle={styles.codeVerticalContent}
-          fill={ds.shouldFill}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator
         >
-          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent} wrap={ds.wrap}>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator
+            contentContainerStyle={styles.codeHorizontalContent}
+          >
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
-              <Text selectable style={ds.codeTextStyle}>
+              <Text selectable style={styles.scrollText}>
                 {hasLog ? setupLog : `Preparing worktree ${branchName} at ${worktreePath}`}
               </Text>
             </View>
-          </CodeHorizontalScroll>
-        </CodeVerticalScroll>
+          </ScrollView>
+        </ScrollView>
       </View>
     </View>
   );
@@ -404,33 +312,37 @@ function SubAgentActionRow({ action }: { action: SubAgentActivityRow }) {
 }
 
 function formatSubAgentToolName(toolName: string): string {
-  // Same friendly, namespace-stripped label as the main tool-call rows, so
-  // sub-agent activity reads identically ("mcp__otto__browser_click" ->
-  // "Browser Click").
-  return getToolDisplayName(toolName);
+  const trimmed = toolName.trim();
+  if (!trimmed) {
+    return toolName;
+  }
+  return trimmed
+    .replace(/[._-]+/g, " ")
+    .split(" ")
+    .filter((segment) => segment.length > 0)
+    .map((segment) => `${segment[0]?.toUpperCase() ?? ""}${segment.slice(1)}`)
+    .join(" ");
 }
 
 function SubAgentLogText({
   activityLog,
   fallbackHeader,
   hasActions,
-  textStyle,
 }: {
   activityLog: string;
   fallbackHeader: string;
   hasActions: boolean;
-  textStyle: StyleProp<TextStyle>;
 }) {
   if (activityLog.length > 0) {
     return (
-      <Text selectable style={textStyle}>
+      <Text selectable style={styles.scrollText}>
         {activityLog}
       </Text>
     );
   }
   if (!hasActions) {
     return (
-      <Text selectable style={textStyle}>
+      <Text selectable style={styles.scrollText}>
         {fallbackHeader}
       </Text>
     );
@@ -456,12 +368,18 @@ function SubAgentDetailSection({
   return (
     <View style={ds.sectionFillStyle}>
       <View style={ds.codeBlockFillStyle}>
-        <CodeVerticalScroll
+        <ScrollView
           style={ds.codeVerticalScrollStyle}
           contentContainerStyle={styles.codeVerticalContent}
-          fill={ds.shouldFill}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator
         >
-          <CodeHorizontalScroll contentContainerStyle={styles.codeHorizontalContent} wrap={ds.wrap}>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator
+            contentContainerStyle={styles.codeHorizontalContent}
+          >
             <View style={styles.codeLine} dataSet={CODE_SURFACE_DATASET}>
               {childSessionId ? (
                 <Text selectable style={styles.subAgentSessionText}>
@@ -479,45 +397,41 @@ function SubAgentDetailSection({
                 activityLog={remainingLog}
                 fallbackHeader={fallbackHeader}
                 hasActions={hasActions}
-                textStyle={ds.codeTextStyle}
               />
             </View>
-          </CodeHorizontalScroll>
-        </CodeVerticalScroll>
+          </ScrollView>
+        </ScrollView>
       </View>
     </View>
   );
 }
 
 interface EditDetailProps {
+  detail: Extract<ToolCallDetail, { type: "edit" }>; // OTTO(structural-diff)
   diffLines: DiffLine[] | undefined;
-  filePath?: string | null;
-  /** Full snapshots let the shared renderer safely opt into Structural. */
-  beforeSource?: string | null;
-  afterSource?: string | null;
   ds: DetailStyles;
 }
 
-function EditDetailSection({
-  diffLines,
-  filePath,
-  beforeSource,
-  afterSource,
-  ds,
-}: EditDetailProps) {
+function EditDetailSection({ detail, diffLines, ds }: EditDetailProps) {
+  // A tool edit may be a patch or exact replacement snippets. Only the supplied
+  // before/after pair can provide parser evidence.
+  const structuralSource = useMemo(
+    () => ({
+      filePath: detail.filePath,
+      beforeSource: detail.unifiedDiff ? undefined : detail.oldString,
+      afterSource: detail.unifiedDiff ? undefined : detail.newString,
+    }),
+    [detail.filePath, detail.unifiedDiff, detail.oldString, detail.newString],
+  );
   return (
     <View style={ds.sectionFillStyle}>
       {diffLines ? (
         <View style={ds.codeBlockFillStyle}>
           <DiffViewer
             diffLines={diffLines}
-            filePath={filePath}
-            source="agent-edit"
-            beforeSource={beforeSource}
-            afterSource={afterSource}
+            structuralSource={structuralSource}
             maxHeight={ds.resolvedMaxHeight}
             fillAvailableHeight={ds.shouldFill}
-            wrap={ds.wrap}
           />
         </View>
       ) : null}
@@ -546,21 +460,22 @@ function ScrollableTextSection({
     [content, filePath],
   );
   const body = (
-    <CodeVerticalScroll
+    <ScrollView
       style={ds.scrollAreaFillStyle}
       contentContainerStyle={styles.scrollContent}
-      fill={ds.shouldFill}
+      nestedScrollEnabled
+      showsVerticalScrollIndicator={true}
     >
-      <CodeHorizontalScroll wrap={ds.wrap}>
+      <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator={true}>
         {keyedLines ? (
-          <HighlightedLines lines={keyedLines} startLine={startLine} wrap={ds.wrap} />
+          <HighlightedLines lines={keyedLines} startLine={startLine} />
         ) : (
-          <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
+          <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
             {content}
           </Text>
         )}
-      </CodeHorizontalScroll>
-    </CodeVerticalScroll>
+      </ScrollView>
+    </ScrollView>
   );
   if (!wrapInSectionFill) return body;
   return <View style={ds.sectionFillStyle}>{body}</View>;
@@ -575,27 +490,35 @@ interface FetchDetailProps {
 function FetchDetailSection({ url, result, ds }: FetchDetailProps) {
   return (
     <View style={ds.sectionFillStyle}>
-      <CodeVerticalScroll
+      <ScrollView
         style={ds.scrollAreaFillStyle}
         contentContainerStyle={styles.scrollContent}
-        fill={ds.shouldFill}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator
       >
-        <CodeHorizontalScroll wrap={ds.wrap}>
-          <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
+        <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator>
+          <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
             {result ? `${url}\n\n${result}` : url}
           </Text>
-        </CodeHorizontalScroll>
-      </CodeVerticalScroll>
+        </ScrollView>
+      </ScrollView>
     </View>
   );
 }
 
-function PlainTextSection({ text }: { text: string }) {
+function ScrollablePlainTextSection({ text, ds }: { text: string; ds: DetailStyles }) {
   return (
-    <View style={styles.plainTextSection}>
-      <Text selectable style={styles.plainText}>
-        {text}
-      </Text>
+    <View style={styles.section}>
+      <ScrollView
+        style={ds.scrollAreaStyle}
+        contentContainerStyle={styles.scrollContent}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator
+      >
+        <Text selectable style={styles.plainText}>
+          {text}
+        </Text>
+      </ScrollView>
     </View>
   );
 }
@@ -613,20 +536,25 @@ function buildSearchSections(detail: SearchDetail, ds: DetailStyles): ReactNode[
   if (detail.content) {
     out.push(
       <View key="search-content" style={styles.section}>
-        <CodeVerticalScroll style={ds.scrollAreaStyle} contentContainerStyle={styles.scrollContent}>
-          <CodeHorizontalScroll wrap={ds.wrap}>
-            <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
+        <ScrollView
+          style={ds.scrollAreaStyle}
+          contentContainerStyle={styles.scrollContent}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator
+        >
+          <ScrollView horizontal nestedScrollEnabled showsHorizontalScrollIndicator>
+            <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
               {detail.content}
             </Text>
-          </CodeHorizontalScroll>
-        </CodeVerticalScroll>
+          </ScrollView>
+        </ScrollView>
       </View>,
     );
   }
   if (detail.filePaths && detail.filePaths.length > 0) {
     out.push(
       <View key="search-files" style={styles.section}>
-        <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
+        <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
           {detail.filePaths.join("\n")}
         </Text>
       </View>,
@@ -635,7 +563,7 @@ function buildSearchSections(detail: SearchDetail, ds: DetailStyles): ReactNode[
   if (detail.webResults && detail.webResults.length > 0) {
     out.push(
       <View key="search-web-results" style={styles.section}>
-        <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
+        <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
           {detail.webResults.map((entry) => `${entry.title}\n${entry.url}`).join("\n\n")}
         </Text>
       </View>,
@@ -644,7 +572,7 @@ function buildSearchSections(detail: SearchDetail, ds: DetailStyles): ReactNode[
   if (detail.annotations && detail.annotations.length > 0) {
     out.push(
       <View key="search-annotations" style={styles.section}>
-        <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
+        <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
           {detail.annotations.join("\n\n")}
         </Text>
       </View>,
@@ -671,13 +599,7 @@ function buildUnknownSections(detail: UnknownDetail, ds: DetailStyles, t: TFunct
     typeof detail.input === "string" && detail.output === null ? detail.input : null;
 
   if (plainInputText !== null) {
-    return [
-      <View key="unknown-plain-text" style={styles.plainTextSection}>
-        <Text selectable style={styles.plainText}>
-          {plainInputText}
-        </Text>
-      </View>,
-    ];
+    return [<ScrollablePlainTextSection key="unknown-plain-text" text={plainInputText} ds={ds} />];
   }
 
   const sectionsFromTopLevel = [
@@ -704,15 +626,17 @@ function buildUnknownSections(detail: UnknownDetail, ds: DetailStyles, t: TFunct
     );
     out.push(
       <View key={`${section.title}-value`} style={styles.section}>
-        <CodeHorizontalScroll
+        <ScrollView
+          horizontal
+          nestedScrollEnabled
           style={ds.jsonScrollCombined}
           contentContainerStyle={styles.jsonContent}
-          wrap={ds.wrap}
+          showsHorizontalScrollIndicator={true}
         >
-          <Text selectable style={ds.codeTextStyle} dataSet={CODE_SURFACE_DATASET}>
+          <Text selectable style={styles.scrollText} dataSet={CODE_SURFACE_DATASET}>
             {value}
           </Text>
-        </CodeHorizontalScroll>
+        </ScrollView>
       </View>,
     );
   }
@@ -790,16 +714,7 @@ function buildDetailSections(
     ];
   }
   if (detail.type === "edit") {
-    return [
-      <EditDetailSection
-        key="edit"
-        diffLines={diffLines}
-        filePath={detail.filePath}
-        beforeSource={detail.oldString}
-        afterSource={detail.newString}
-        ds={ds}
-      />,
-    ];
+    return [<EditDetailSection key="edit" detail={detail} diffLines={diffLines} ds={ds} />];
   }
   if (detail.type === "write") {
     return [
@@ -835,7 +750,7 @@ function buildDetailSections(
   }
   if (detail.type === "plain_text") {
     if (!detail.text) return [];
-    return [<PlainTextSection key="plain-text" text={detail.text} />];
+    return [<ScrollablePlainTextSection key="plain-text" text={detail.text} ds={ds} />];
   }
   if (detail.type === "unknown") {
     return buildPaseoUnknownSections(toolName, detail) ?? buildUnknownSections(detail, ds, t);
@@ -847,16 +762,22 @@ function ErrorSection({ errorText, ds }: { errorText: string; ds: DetailStyles }
   const { t } = useTranslation();
   return (
     <View style={styles.section}>
-      <Text style={SECTION_TITLE_ERROR_STYLE}>{t("toolCallDetails.error")}</Text>
-      <CodeHorizontalScroll
+      <Text style={[styles.sectionTitle, styles.errorText]}>{t("toolCallDetails.error")}</Text>
+      <ScrollView
+        horizontal
+        nestedScrollEnabled
         style={ds.jsonScrollErrorCombined}
         contentContainerStyle={styles.jsonContent}
-        wrap={ds.wrap}
+        showsHorizontalScrollIndicator={true}
       >
-        <Text selectable style={ds.codeTextErrorStyle} dataSet={CODE_SURFACE_DATASET}>
+        <Text
+          selectable
+          style={[styles.scrollText, styles.errorText]}
+          dataSet={CODE_SURFACE_DATASET}
+        >
           {errorText}
         </Text>
-      </CodeHorizontalScroll>
+      </ScrollView>
     </View>
   );
 }
@@ -881,18 +802,10 @@ export function ToolCallDetailsContent({
 }: ToolCallDetailsContentProps) {
   const { t } = useTranslation();
   const resolvedMaxHeight = fillAvailableHeight ? undefined : (maxHeight ?? 300);
-  // Select-narrowed settings read: re-renders only when the flag flips, never
-  // per streamed chunk or on unrelated settings writes.
-  const wrap = useWrapCodeLines();
-  const ds = useDetailStyles(detail, resolvedMaxHeight, fillAvailableHeight, wrap);
+  const ds = useDetailStyles(detail, resolvedMaxHeight, fillAvailableHeight);
   const diffLines = useDiffLines(detail);
 
   const sections: ReactNode[] = buildDetailSections(toolName, detail, diffLines, ds, t);
-  const workflowRunId =
-    detail?.type === "unknown" ? readStartedWorkflowRunId(toolName, detail.output) : null;
-  if (workflowRunId) {
-    sections.unshift(<WorkflowToolLink key="workflow-link" runId={workflowRunId} />);
-  }
 
   if (errorText) {
     sections.push(<ErrorSection key="error" errorText={errorText} ds={ds} />);
@@ -983,17 +896,11 @@ const styles = StyleSheet.create((theme) => {
       flex: 1,
       minHeight: 0,
     },
-    plainTextSection: {
-      gap: theme.spacing[2],
-      padding: theme.spacing[3],
-    },
     plainText: {
       fontFamily: theme.fontFamily.ui,
-      // Matches assistant prose (theme.fontSize.sm) - see createMarkdownStyles'
-      // `body`/`text` for the same convention.
-      fontSize: theme.fontSize.sm,
+      fontSize: theme.fontSize.base,
       color: theme.colors.foreground,
-      lineHeight: Math.round(theme.fontSize.sm * 1.4),
+      lineHeight: 22,
       overflowWrap: "anywhere",
     },
     sectionTitle: {
@@ -1007,21 +914,18 @@ const styles = StyleSheet.create((theme) => {
       color: theme.colors.foregroundMuted,
       fontSize: theme.fontSize.sm,
     },
-    // Every code/terminal surface in a tool card sits on `surfaceCode` - the
-    // same well the editor paints (styles/theme.ts). Boxed or full-bleed, a
-    // command, a diff, a file read and a JSON payload are one material.
     diffContainer: {
       borderWidth: theme.borderWidth[1],
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.base,
       overflow: "hidden",
-      backgroundColor: theme.colors.surfaceCode,
+      backgroundColor: theme.colors.surface2,
     },
     fullBleedBlock: {
       borderWidth: 0,
       borderRadius: 0,
       overflow: "hidden",
-      backgroundColor: theme.colors.surfaceCode,
+      backgroundColor: theme.colors.surface1,
     },
     codeVerticalScroll: {},
     codeVerticalContent: {
@@ -1040,7 +944,7 @@ const styles = StyleSheet.create((theme) => {
       borderWidth: theme.borderWidth[1],
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.base,
-      backgroundColor: theme.colors.surfaceCode,
+      backgroundColor: theme.colors.surface2,
     },
     scrollContent: {
       padding: insets.padding,
@@ -1054,20 +958,6 @@ const styles = StyleSheet.create((theme) => {
         ? {
             whiteSpace: "pre",
             overflowWrap: "normal",
-          }
-        : null),
-    },
-    // Layered over scrollText when "Wrap long lines" is on. Web needs the
-    // explicit pre-wrap (scrollText forces `pre`); native Text soft-wraps by
-    // itself once the horizontal ScrollView is gone. Soft wraps are visual
-    // only - selection/copy still yields the original unwrapped text.
-    scrollTextWrap: {
-      flexShrink: 1,
-      minWidth: 0,
-      ...(isWeb
-        ? {
-            whiteSpace: "pre-wrap" as const,
-            overflowWrap: "anywhere" as const,
           }
         : null),
     },
@@ -1106,7 +996,7 @@ const styles = StyleSheet.create((theme) => {
       borderWidth: theme.borderWidth[1],
       borderColor: theme.colors.border,
       borderRadius: theme.borderRadius.base,
-      backgroundColor: theme.colors.surfaceCode,
+      backgroundColor: theme.colors.surface2,
     },
     jsonScrollError: {
       borderColor: theme.colors.destructive,
@@ -1121,7 +1011,6 @@ const styles = StyleSheet.create((theme) => {
       color: theme.colors.foregroundMuted,
       fontSize: theme.fontSize.base,
       fontStyle: "italic",
-      padding: theme.spacing[3],
     },
     loadingContainer: {
       gap: theme.spacing[2],
@@ -1147,8 +1036,3 @@ const styles = StyleSheet.create((theme) => {
     },
   };
 });
-
-const SECTION_TITLE_ERROR_STYLE = [styles.sectionTitle, styles.errorText];
-const SCROLL_TEXT_ERROR_STYLE = [styles.scrollText, styles.errorText];
-const SCROLL_TEXT_WRAP_STYLE = [styles.scrollText, styles.scrollTextWrap];
-const SCROLL_TEXT_ERROR_WRAP_STYLE = [styles.scrollText, styles.errorText, styles.scrollTextWrap];

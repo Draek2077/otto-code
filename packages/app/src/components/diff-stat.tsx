@@ -1,20 +1,16 @@
-import { useMemo } from "react";
-import { View, Text, type StyleProp, type ViewStyle } from "react-native";
+import { View, Text } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { compactUp } from "@/styles/theme";
 import { formatDiffCount } from "@/git/file-header-presentation";
 
 interface DiffStatProps {
   additions: number;
   deletions: number;
-  style?: StyleProp<ViewStyle>;
   testID?: string;
 }
 
-export function DiffStat({ additions, deletions, style, testID }: DiffStatProps) {
-  const rowStyle = useMemo(() => (style ? [styles.row, style] : styles.row), [style]);
+export function DiffStat({ additions, deletions, testID }: DiffStatProps) {
   return (
-    <View style={rowStyle} testID={testID}>
+    <View style={styles.row} testID={testID}>
       <Text style={styles.additions}>+{formatDiffCount(additions)}</Text>
       <Text style={styles.deletions}>-{formatDiffCount(deletions)}</Text>
     </View>
@@ -25,18 +21,18 @@ const styles = StyleSheet.create((theme) => ({
   row: {
     flexDirection: "row",
     alignItems: "center",
-    height: compactUp(20),
-    gap: compactUp(4),
+    height: 20,
+    gap: 4,
     flexShrink: 0,
   },
   additions: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.syntax.diffAddedForeground,
+    color: theme.colors.statusSuccess,
   },
   deletions: {
     fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
-    color: theme.colors.syntax.diffRemovedForeground,
+    color: theme.colors.statusDanger,
   },
 }));

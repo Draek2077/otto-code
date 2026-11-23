@@ -1,3 +1,4 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
 name: Release Notes Sync
 
 on:

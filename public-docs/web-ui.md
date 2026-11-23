@@ -6,6 +6,8 @@ order: 6
 category: Getting started
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Self-hosting the web UI
 
 Otto's daemon can serve the browser web app itself, from the same address it already uses for the API. You don't need the hosted app at [app.otto-code.me](https://app.otto-code.me): point a browser at your own daemon and you get the full UI, connected to your own agents, on infrastructure you control.

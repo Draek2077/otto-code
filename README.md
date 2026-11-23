@@ -1,8 +1,16 @@
+<!-- OTTO(identity): Otto distribution names; internal Paseo API identifiers stay upstream. -->
 <p align="center">
   <img src="packages/website/public/logo.svg" width="64" height="64" alt="Otto logo">
 </p>
 
 <h1 align="center">Otto</h1>
+
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">简体中文</a> ·
+  <a href="README.ja.md">日本語</a> ·
+  <a href="README.ko.md">한국어</a>
+</p>
 
 <p align="center">
   <a href="https://github.com/Draek2077/otto-code/stargazers">
@@ -11,60 +19,37 @@
   <a href="https://github.com/Draek2077/otto-code/releases">
     <img src="https://img.shields.io/github/v/release/Draek2077/otto-code?style=flat&logo=github" alt="GitHub release">
   </a>
-  <a href="https://github.com/Draek2077/otto-code/issues">
-    <img src="https://img.shields.io/github/issues/Draek2077/otto-code?style=flat&logo=github" alt="GitHub issues">
-  </a>
 </p>
 
-<p align="center">One interface for Claude Code, Codex, Copilot, OpenCode, and Pi agents.</p>
+<p align="center">One interface for Claude Code, Codex, Copilot, OpenCode, Pi, Antigravity, and Muse Code agents.</p>
 
-> [!NOTE]
-> **Otto is a modified fork of [Paseo](https://github.com/getpaseo)** (© 2025–present
-> Mohamed Boudra), reworked toward an autonomous AI coding IDE. It remains licensed
-> under AGPL-3.0. See [NOTICE](NOTICE) for full attribution and a summary of changes.
+Otto is an open source agentic development environment for desktop, mobile, web, and CLI. Open the desktop app and work: agents, editor, terminals, diffs, pull requests, and a browser in one window. Run many agents at once, each in its own worktree, on one machine or several. The mobile app is the full app, native on iOS and Android.
 
-<p align="center">
-  <img src="https://otto-code.me/hero-mockup.png" alt="Otto app screenshot" width="100%">
-</p>
-
-<p align="center">
-  <img src="https://otto-code.me/mobile-mockup.png" alt="Otto mobile app" width="100%">
-</p>
-
-> [!NOTE]
-> This is a one-person project run in spare time, and I'm obsessed with it; so if you message me you will get a reply instantly.
-> [Open an issue](https://github.com/Draek2077/otto-code/issues), or provide feedback right in the app to my discord!
-
----
-
-## Why I'm building this
-
-I'm Philippe. Otto isn't a startup and I'm not trying to sell you anything - it's the
-environment I want to work in, and the way I'm getting better at agentic coding. Most of
-Otto is written by the agents Otto runs, which is either the point or the joke, depending
-on the day.
-
-The problem I keep hitting: agents can now do an enormous amount of work on their own, and
-it's genuinely hard to see what they did, what it cost, and where it went sideways. So the
-work here leans toward **observability and accounting** - real per-subagent token and cost
-numbers, a live visualizer of the orchestration graph, browser-verified previews so an agent
-proves a change instead of just claiming it - and toward **pulling good open-source pieces
-into one setup that actually works end to end**, instead of five tools that half-talk to
-each other.
-
-That's the whole thesis: let AI do the autonomous work, but make the operation legible while
-it happens. If that matches how you work, I'd like the help - issues, comments, and PRs all
-welcome.
-
----
-
-Run agents in parallel on your own machines. Ship from your phone or your desk.
-
+- **Parallel agents:** Run many agents at once, each in its own worktree.
+- **Built-in orchestration:** Agents in Otto can create worktrees, launch other agents, and talk to them, across providers.
+- **Complete development workflow:** Edit files, review diffs, open pull requests, and run terminals, in split panes you arrange how you want.
 - **Self-hosted:** Agents run on your machine with your full dev environment. Use your tools, your configs, and your skills.
-- **Multi-provider:** Claude Code, Codex, Copilot, OpenCode, and Pi through the same interface. Pick the right model for each job.
+- **Multi-provider:** Claude Code, Codex, Copilot, OpenCode, Pi, Antigravity, and Muse Code through the same interface. Pick the right model for each job.
 - **Voice control:** Dictate tasks or talk through problems in voice mode. Hands-free when you need it.
 - **Cross-device:** iOS, Android, desktop, web, and CLI. Start work at your desk, check in from your phone, script it from the terminal.
 - **Privacy-first:** Otto doesn't have any telemetry, tracking, or forced log-ins.
+
+[Run parallel tasks in Otto](https://otto-code.me/docs/parallel-development): start agents in separate worktrees, review their diffs, run each app, and check it in the built-in browser.
+
+## Plugins
+
+Plugins run on the daemon and show up in every client you connect, with the same UI on desktop, web,
+iOS, and Android. Write a plugin once and it is on your phone.
+
+- **UI:** screens, sidebar items, workspace panels, Command Center items, slash commands, composer pills, attachment sources, timeline items, themes.
+- **Agent lifecycle:** change configuration, environment, and MCP servers, answer permissions, follow up when a turn ends.
+- **Providers:** add a coding agent as a provider.
+
+Install from the registry with `otto plugin add owner/slug`, or from Git or a local directory.
+
+**[Paseo plugin registry](https://paseo.sh/plugins)** · **[Plugin docs](public-docs/plugins/index.md)**
+
+Plugins run with access to your daemon machine and inside connected clients; install only code you trust.
 
 ## Getting Started
 
@@ -79,6 +64,8 @@ You need at least one agent CLI installed and configured with your credentials:
 - [GitHub Copilot](https://github.com/features/copilot/cli/)
 - [OpenCode](https://github.com/anomalyco/opencode)
 - [Pi](https://pi.dev)
+- [Antigravity](https://otto-code.me/docs/supported-providers#antigravity)
+- [Muse Code](https://otto-code.me/docs/muse-code)
 
 ### Desktop app (recommended)
 
@@ -86,16 +73,16 @@ Download it from [otto-code.me/download](https://otto-code.me/download) or the [
 
 To connect from your phone, open **Settings → your host → Pair Device**.
 
-### CLI / headless
+### Server
 
-Install the CLI and start Otto:
+For a server, a VM, or any machine without the desktop app. Install the CLI and start the daemon:
 
 ```bash
 npm install -g @otto-code/cli
 otto
 ```
 
-Otto starts locally, then asks whether to enable the end-to-end encrypted relay for device pairing. If you decline, connect directly over TCP, Tailscale, or another VPN. This path is useful for servers and remote machines.
+Otto starts, then asks whether to enable the end-to-end encrypted relay for device pairing. If you decline, connect directly over TCP, Tailscale, or another VPN. The desktop, mobile, and web apps connect to this daemon like any other host.
 
 For full setup and configuration, see:
 
@@ -110,10 +97,10 @@ Run the Otto daemon and self-hosted web UI in Docker:
 ```bash
 docker run -d --name otto \
   -p 6868:6868 \
-  -e OTTO_PASSWORD=change-me \
+  -e PASEO_PASSWORD=change-me \
   -v "$PWD/otto-home:/home/otto" \
   -v "$PWD:/workspace" \
-  ghcr.io/draek2077/otto:latest
+  ghcr.io/draek2077/otto-code:latest
 ```
 
 Open `http://localhost:6868` after it starts. Extend the base image with the agent CLIs you use, then provide credentials through environment variables or the persistent `/home/otto` volume. See the [Docker documentation](docs/docker.md) for full setup details.
@@ -131,7 +118,7 @@ otto attach abc123                # stream live output
 otto send abc123 "also add tests" # follow-up task
 
 # run on a remote daemon; --cwd is a path on that host
-otto --host workstation.local:6868 run --cwd /workspace "run the full test suite"
+otto run --host workstation.local:6868 --cwd /workspace "run the full test suite"
 ```
 
 See the [full CLI reference](https://otto-code.me/docs/cli) for more.
@@ -141,9 +128,9 @@ See the [full CLI reference](https://otto-code.me/docs/cli) for more.
 Build issue integrations, dashboards, and orchestration services with `@otto-code/client`:
 
 ```ts
-import { createOttoClient } from "@otto-code/client";
+import { createPaseoClient } from "@otto-code/client";
 
-const client = createOttoClient({ url: "ws://127.0.0.1:6868/ws" });
+const client = createPaseoClient({ url: "ws://127.0.0.1:6868/ws" });
 await client.connect();
 
 const agent = await client.agents.create({
@@ -162,17 +149,17 @@ See the [SDK quickstart](https://otto-code.me/docs/sdk/quickstart), [recipes](ht
 
 ## Skills
 
-Skills teach your agent to use Otto to orchestrate other agents.
+The upstream Paseo skills teach agents to orchestrate work. Their filenames and API identifiers stay upstream; use the `otto` command for this distribution.
 
 ```bash
-npx skills add Draek2077/otto-code
+npx skills add getpaseo/paseo
 ```
 
 Then use them in any agent conversation:
 
-- `/otto-handoff` - hand off work between agents. I use this to plan with Claude and then handoff to Codex to implement.
-- `/otto-advisor` - spin up a single agent as an advisor for a second opinion, without delegating the work itself.
-- `/otto-committee` - form a committee of two contrasting agents to step back, do root cause analysis, and produce a plan.
+- `/paseo-handoff` — hand off work between agents. I use this to plan with Claude and then handoff to Codex to implement.
+- `/paseo-advisor` — spin up a single agent as an advisor for a second opinion, without delegating the work itself.
+- `/paseo-committee` — form a committee of two contrasting agents to step back, do root cause analysis, and produce a plan.
 
 ## Development
 
@@ -182,7 +169,7 @@ Quick monorepo package map:
 - `packages/app`: Expo client (iOS, Android, web)
 - `packages/cli`: `otto` CLI for daemon and agent workflows
 - `packages/desktop`: Electron desktop app
-- `packages/relay`: Relay package for remote connectivity
+- `packages/relay`: Relay transport and encryption used by the daemon and clients
 - `packages/website`: Marketing site and documentation (`otto-code.me`)
 
 Common commands:
@@ -204,150 +191,13 @@ npm run build:server
 npm run typecheck
 ```
 
-## Documentation
+## Related projects
 
-Use the documentation tree for its intended audience:
+- [getpaseo/paseo-relay](https://github.com/getpaseo/paseo-relay) — official distributed relay, written in Elixir
+- [paseo-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode) — VS Code extension
 
-| Tree                                 | Audience and purpose                                                                                                 |
-| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| [docs/](docs/README.md)              | Engineering specification, architecture, subsystem behavior and conventions                                          |
-| [public-docs/](public-docs/index.md) | User manual published on otto-code.me                                                                                |
-| Otto Knowledge (`.otto/knowledge/`)  | Project charters, delivery history, architecture, decisions, findings and references, managed through Otto Knowledge |
-| [AGENTS.md](AGENTS.md)               | Working rules for agents; CLAUDE.md delegates to this file                                                           |
+## License and upstream
 
-### Quick links into `docs/`
-
-**Start here** - [Product](docs/product.md) ·
-[Architecture](docs/architecture.md) ·
-[Glossary](docs/glossary.md) ·
-[Coding standards](docs/coding-standards.md) ·
-[Development](docs/development.md)
-
-**Chat, agents and orchestration** - [Chat lifecycle](docs/chat-lifecycle.md) ·
-[Agent personalities](docs/agent-profiles.md) ·
-[Agent teams](docs/agent-teams.md) ·
-[Subagent accounting](docs/subagent-accounting.md) ·
-[Workflow node capabilities](docs/workflow-node-capabilities.md) ·
-[Safe unattended runs](docs/safe-unattended.md) ·
-[Suggested tasks](docs/suggested-tasks.md) ·
-[Timeline sync](docs/timeline-sync.md) ·
-[Visualizer](docs/visualizer.md) ·
-[Activity stats](docs/activity-stats.md) ·
-[Terminal activity](docs/terminal-activity.md)
-
-**Workspaces, files and git** - [Workspace lifecycle](docs/workspace-lifecycle.md) ·
-[New project](docs/new-project.md) ·
-[Changes view](docs/changes-view.md) ·
-[Git providers](docs/git-providers.md) ·
-[Git file history](docs/git-file-history.md)
-
-**Editor and code intelligence** - [Text editor](docs/text-editor.md) ·
-[Code intelligence (LSP)](docs/code-intelligence.md) ·
-[Markdown rendering](docs/markdown-rendering.md) ·
-[File icons](docs/file-icons.md)
-
-**Providers and integration** - [Providers](docs/providers.md) ·
-[Custom providers](docs/custom-providers.md) ·
-[Preview](docs/preview.md) ·
-[Service proxy](docs/service-proxy.md)
-
-**Client and UI** - [Design tokens](docs/design.md) ·
-[Unistyles](docs/unistyles.md) ·
-[Hover](docs/hover.md) ·
-[Floating panels](docs/floating-panels.md) ·
-[Mobile panels](docs/mobile-panels.md) ·
-[Expo Router](docs/expo-router.md) ·
-[Forms](docs/forms.md) ·
-[UI icons](docs/ui-icons.md) ·
-[Text effects](docs/text-effects.md) ·
-[Onboarding](docs/onboarding.md) ·
-[i18n](docs/i18n.md) ·
-[Feature flags](docs/feature-flags.md)
-
-**Protocol, data and performance** - [RPC namespacing](docs/rpc-namespacing.md) ·
-[Protocol validation](docs/protocol-validation.md) ·
-[Data model](docs/data-model.md) ·
-[Token economy](docs/token-economy.md) ·
-[Terminal performance](docs/terminal-performance.md)
-
-**Testing** - [Testing](docs/testing.md) ·
-[Mobile testing](docs/mobile-testing.md) ·
-[Ad-hoc daemon testing](docs/ad-hoc-daemon-testing.md) ·
-[Browser capture harness](docs/browser-capture-harness.md)
-
-**Build, release and operations** - [Release](docs/release.md) ·
-[Fork release guide](docs/fork-release-guide.md) ·
-[Upstream merges](docs/upstream-merges.md) ·
-[Android](docs/android.md) ·
-[Desktop Linux](docs/desktop-linux.md) ·
-[Docker](docs/docker.md)
-
-**Reference** - [Project knowledge](docs/project-knowledge.md) ·
-[OpenCode event baseline](docs/opencode-global-event-baseline.md)
-
-### Repository documents
-
-[CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [CHANGELOG.md](CHANGELOG.md) ·
-[LICENSE](LICENSE) · [NOTICE](NOTICE)
-
-## Community
-
-- [paseo-relay](https://github.com/zenghongtu/paseo-relay) - self-hosted relay in Go (built for the upstream Paseo project)
-- [paseo-vscode](https://marketplace.visualstudio.com/items?itemName=hinnes.paseo-vscode) - VS Code extension (built for the upstream Paseo project)
-
----
-
-<p align="center">
-  <a href="https://star-history.com/#Draek2077/otto-code&Date">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=Draek2077/otto-code&type=Date&theme=dark">
-      <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=Draek2077/otto-code&type=Date">
-      <img src="https://api.star-history.com/svg?repos=Draek2077/otto-code&type=Date" alt="Star history chart for Draek2077/otto-code" width="600" style="max-width: 100%;">
-    </picture>
-  </a>
-</p>
-
-## License
-
-Otto retains its **AGPL-3.0** license. The historical Paseo fork base used AGPL-3.0; the Paseo 0.8.0 intake carries Apache-2.0. See [LICENSE](LICENSE), [LICENSE-Paseo](LICENSE-Paseo) and [NOTICE](NOTICE).
-
-## Credits & attribution
-
-Otto stands on two open-source projects, and I'd rather name them properly than bury
-them in a footer.
-
-### Paseo - by Mohamed Boudra
-
-Otto is a modified fork of **[Paseo](https://github.com/getpaseo)**, created by
-**Mohamed Boudra** and contributors, © 2025 to present. The historical fork base was AGPL-3.0; Paseo 0.8.0 is Apache-2.0. Otto preserves both license texts and upstream attribution.
-
-Mo got the hard parts right before I ever showed up: agent process lifecycle, a clean
-WebSocket protocol, genuinely cross-platform clients, an end-to-end encrypted relay.
-Starting there is what let the work here go into features instead of plumbing. Otto keeps
-the full foundation intact with upstream history preserved.
-→ [Sponsor Mo](https://github.com/sponsors/boudra)
-
-### Agent Flow - by Simon Patole
-
-Otto's **Visualizer** - the live node-graph of agents, subagents, tool calls, and timeline
-that makes an autonomous run something you can watch instead of guess at - is the render
-layer of **[Agent Flow](https://github.com/patoles/agent-flow)** (Apache-2.0) by
-**[Simon Patole](https://github.com/patoles)**, vendored as a git subtree.
-
-It's beautiful work, and it fit because Simon kept rendering separate from event collection
-behind a small documented bridge protocol. That one decision let Otto drive the same graph
-from its own provider-neutral event stream, so it lights up for Claude, Codex, OpenCode, or
-a local model alike - not just the runtime the original ingests. Adapting it has been the
-most enjoyable part of building Otto. Carried patches and the Apache-2.0 state-changes
-notice live in `vendor/agent-flow/OTTO-PATCHES.md`; upstream PRs are preferred over carrying
-them. Agent Flow's name and logos are its own and Otto never ships them as its branding -
-the feature is called "Visualizer" for exactly that reason.
-→ [Star Agent Flow](https://github.com/patoles/agent-flow)
-
-### Notices
-
-The original copyright notice is preserved verbatim in [LICENSE](LICENSE). A summary
-of what Otto changes relative to Paseo, along with full attribution, lives in
-[NOTICE](NOTICE). Otto is an independent project and is not endorsed by or affiliated
-with the Paseo project, the Agent Flow project, or their authors. Otto takes no
-sponsorships of its own - support goes upstream.
+Otto is distributed under [AGPL-3.0-or-later](LICENSE). It is built on
+[Paseo](https://github.com/getpaseo/paseo); the upstream license is retained in
+[LICENSE-Paseo](LICENSE-Paseo), with attribution in [NOTICE](NOTICE).

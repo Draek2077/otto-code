@@ -1,4 +1,4 @@
-import { memo, type ReactElement, type ReactNode, useCallback, useMemo, useState } from "react";
+import { memo, type ReactElement, useCallback, useMemo, useState } from "react";
 import {
   Text,
   View,
@@ -11,8 +11,8 @@ import { DiffStat } from "@/components/diff-stat";
 import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
 import { FileChangeIcon } from "@/components/file-change-icon";
 import { MaterialFileIcon } from "@/components/material-file-icon";
+import { ManualCommitFileCheckbox } from "@/otto/workspace-git/commit-context"; // OTTO(manual-commit): selection is scoped by the owning Changes surface.
 import {
-  TreeIndentGuides,
   treeRowPaddingLeft,
   workspaceTreeRowStyles,
   WORKSPACE_PANE_TRAILING_GLYPH_RAIL,
@@ -31,7 +31,6 @@ import {
 } from "@/git/file-header-presentation";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import { usePaneSurface, type PaneSurface } from "@/panels/pane-context";
 
 export interface FileHeaderProps {
   file: ParsedDiffFile;
@@ -40,8 +39,6 @@ export interface FileHeaderProps {
   showsBodyState?: boolean;
   isSelected?: boolean;
   depth?: number;
-  /** Which ancestor guide rails continue below this tree row. */
-  ancestorMask?: number;
   showDir?: boolean;
   interactive?: boolean;
   onActivate?: (path: string) => void;
@@ -56,8 +53,6 @@ export interface FileHeaderProps {
   onDownload?: (path: string) => void;
   onDuplicate?: (path: string) => void;
   onRevert?: (path: string, oldPath?: string) => void;
-  selectionControl?: ReactNode;
-  contextMenuAfter?: ReactNode;
   onHeaderHeightChange?: (path: string, height: number) => void;
   testID?: string;
   canvasRendered?: boolean;
@@ -122,11 +117,9 @@ function fileHeaderPressFeedbackStyle(showsBodyState: boolean, canvasRendered: b
   return showsBodyState ? styles.documentPressFeedback : workspaceTreeRowStyles.active;
 }
 
-function fileHeaderSurfaceStyle(showsBodyState: boolean, surface: PaneSurface) {
+function fileHeaderContainerStyle(showsBodyState: boolean) {
   if (!showsBodyState) return null;
-  return surface === "explorer"
-    ? styles.documentContainerExplorer
-    : styles.documentContainerWorkspace;
+  return styles.documentContainer;
 }
 
 function fileHeaderNameStyle(showsBodyState: boolean, isHovered: boolean) {
@@ -154,7 +147,6 @@ function FileHeaderMenu({
   onDownload,
   onDuplicate,
   onRevert,
-  contextMenuAfter,
   testID,
 }: FileHeaderProps) {
   const openFile = useCallback(() => onOpenFile?.(file.path), [file.path, onOpenFile]);
@@ -176,7 +168,7 @@ function FileHeaderMenu({
     <FileActionsContextMenuContent
       fileKind="file"
       fileExists={!file.isDeleted}
-      onEditFile={onOpenFile ? openFile : undefined}
+      onOpenFile={onOpenFile ? openFile : undefined}
       onOpenToSide={onOpenToSide ? openToSide : undefined}
       onCopyPath={onCopyPath ? copyPath : undefined}
       onCopyRelativePath={onCopyRelativePath ? copyRelativePath : undefined}
@@ -186,7 +178,6 @@ function FileHeaderMenu({
       onAddToChat={onAddToChat ? addToChat : undefined}
       onDuplicate={!file.isDeleted && onDuplicate ? duplicate : undefined}
       onRevert={onRevert ? revert : undefined}
-      afterActions={contextMenuAfter}
       testIDPrefix={testID}
     />
   );
@@ -199,20 +190,16 @@ export const FileHeader = memo(function FileHeader({
   showsBodyState = true,
   isSelected = false,
   depth = 0,
-  ancestorMask,
   showDir = true,
   interactive = true,
   onActivate,
   onSelect,
   onHeaderHeightChange,
-  selectionControl,
-  contextMenuAfter,
   testID,
   canvasRendered = false,
   onActiveChange,
   ...actions
 }: FileHeaderProps) {
-  const surface = usePaneSurface();
   const hover = useFileHeaderHover(interactive, onActiveChange);
   const dragSourceRef = useWorkspaceFileDragSource({
     enabled: interactive,
@@ -263,22 +250,21 @@ export const FileHeader = memo(function FileHeader({
   );
   const fileName = fileNameForPath(file.path);
   const nameStyle = fileHeaderNameStyle(showsBodyState, hover.isHovered);
-  // Only added and deleted carry a glyph; a modified file is the unmarked case.
-  const change = fileChange(file);
-  const changeIcon = change === "modified" ? null : <FileChangeIcon change={change} />;
+  const changeIcon = <FileChangeIcon change={fileChange(file)} />;
   const content = (
     <View
       style={[styles.content, showsBodyState && styles.documentContent]}
-      testID={headerTestId(testID, "header-content")}
+      testID={testID ? `${testID}-header-content` : undefined}
     >
       <View ref={dragSourceRef} style={showDir ? styles.left : [styles.left, styles.leftTree]}>
-        {selectionControl}
+        <ManualCommitFileCheckbox path={file.path} enabled={!showsBodyState} />
+        {/* OTTO(manual-commit) */}
         {showDir ? null : (
           <View style={styles.icon}>
             <MaterialFileIcon fileName={fileName} size={WORKSPACE_TREE_ICON_SIZE} />
           </View>
         )}
-        <Text style={nameStyle} numberOfLines={1} testID={headerTestId(testID, "name")}>
+        <Text style={nameStyle} numberOfLines={1} testID={testID ? `${testID}-name` : undefined}>
           {fileName}
         </Text>
         {showDir ? (
@@ -293,7 +279,7 @@ export const FileHeader = memo(function FileHeader({
         <DiffStat
           additions={file.additions}
           deletions={file.deletions}
-          testID={headerTestId(testID, "stat")}
+          testID={testID ? `${testID}-stat` : undefined}
         />
         {changeIcon}
       </View>
@@ -322,7 +308,7 @@ export const FileHeader = memo(function FileHeader({
   if (interactive) {
     trigger = (
       <ContextMenuTrigger
-        testID={headerTestId(testID, "toggle")}
+        testID={testID ? `${testID}-toggle` : undefined}
         style={canvasPressableStyle}
         highlightStyle={fileHeaderPressFeedbackStyle(showsBodyState, canvasRendered)}
         onPressIn={handlePressIn}
@@ -352,8 +338,7 @@ export const FileHeader = memo(function FileHeader({
     <View
       style={[
         styles.container,
-        showsBodyState && styles.documentContainer,
-        fileHeaderSurfaceStyle(showsBodyState, surface),
+        fileHeaderContainerStyle(showsBodyState),
         canvasRendered && styles.canvasInteraction,
       ]}
       onLayout={interaction.onLayout}
@@ -362,7 +347,6 @@ export const FileHeader = memo(function FileHeader({
       testID={testID}
       accessibilityLabel={accessibilityLabel}
     >
-      {!showDir ? <TreeIndentGuides depth={depth} ancestorMask={ancestorMask} /> : null}
       <ContextMenu>
         <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
           <TooltipTrigger asChild>{trigger}</TooltipTrigger>
@@ -371,13 +355,7 @@ export const FileHeader = memo(function FileHeader({
           </TooltipContent>
         </Tooltip>
         {interactive ? (
-          <FileHeaderMenu
-            file={file}
-            testID={testID}
-            contextMenuAfter={contextMenuAfter}
-            {...actions}
-            bodyVisible={bodyVisible}
-          />
+          <FileHeaderMenu file={file} testID={testID} {...actions} bodyVisible={bodyVisible} />
         ) : null}
       </ContextMenu>
     </View>
@@ -388,14 +366,9 @@ const styles = StyleSheet.create((theme) => ({
   container: { width: "100%", overflow: "hidden", userSelect: "none" },
   documentContainer: {
     height: 30,
+    backgroundColor: theme.colors.surface0,
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.borderAccent,
-  },
-  documentContainerWorkspace: {
-    backgroundColor: theme.colors.surfaceWorkspace,
-  },
-  documentContainerExplorer: {
-    backgroundColor: theme.colors.surfaceSidebarPanel,
   },
   header: {
     flexDirection: "row",
@@ -406,10 +379,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     minWidth: 0,
     zIndex: 2,
-    elevation: 2,
     userSelect: "none",
   },
   documentHeader: {
+    elevation: 2,
     height: 28,
     paddingLeft: 0,
     paddingRight: 0,
@@ -479,7 +452,3 @@ const styles = StyleSheet.create((theme) => ({
   directorySpacer: { flex: 1, minWidth: 0 },
   tooltip: { color: theme.colors.popoverForeground, fontSize: theme.fontSize.base },
 }));
-
-function headerTestId(prefix: string | undefined, suffix: string): string | undefined {
-  return prefix ? `${prefix}-${suffix}` : undefined;
-}

@@ -1,47 +1,30 @@
-import { useCallback, useMemo, useState, type ReactElement } from "react";
-import { Pressable, ScrollView, Text, View, type PressableStateCallbackType } from "react-native";
+import { useCallback, useMemo, type ReactElement, type ReactNode } from "react";
+import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
-import {
-  Archive,
-  ChevronDown,
-  ChevronRight,
-  Stop,
-  Unlink,
-} from "@/components/icons/material-icons";
+import { Archive, Unlink } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { getProviderIcon } from "@/components/provider-icons";
-import { LiveElapsed } from "@/components/live-elapsed";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useProviderIcon } from "@/components/provider-icons";
+import { ComposerTrackActions, ComposerTrackPill, ComposerTrackRow } from "@/composer/tracks";
+import { mutedIconColorMapping } from "@/components/ui/icon-button-chrome";
+import { ToolbarButton, paneContentToolbarIconSize } from "@/components/ui/pane-content-toolbar";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { ChatWidthBounds } from "@/components/chat-width-bounds";
-import { ComposerTrackSeamShadow } from "@/composer/track-seam-shadow";
-import { COMPOSER_TRACK_LAYERS, ComposerTrackTransition } from "@/composer/track-transition";
 import { isNative } from "@/constants/platform";
 import {
   WorkspaceTabIcon,
   type WorkspaceTabPresentation,
-} from "@/screens/workspace/workspace-tab-icon";
+} from "@/screens/workspace/workspace-tab-presentation";
 import type { Theme } from "@/styles/theme";
-import type { ClearableSubagentRow } from "./clear-completed-subagents";
-import { useProviderSubagentControl } from "./use-provider-subagent-control";
+import { useAgentFactsLine } from "@/panels/agent-facts-line";
+import { getPanelManifest } from "@/panels/panel-manifest";
 import type { SubagentRow } from "./select";
+import type { ArchiveFinishedStatus } from "./use-archive-finished";
 import {
+  buildSubagentPillPresentation,
   buildSubagentRowPresentationData,
-  formatCompactTokenCount,
-  formatHeaderLabel,
-  formatSubagentCurrentTool,
-  formatSubagentElapsed,
-  formatSubagentToolUseCount,
-  isSubagentRowRunning,
-  partitionSubagentRows,
-  resolveSubagentRowAction,
-  type SubagentRowAction,
+  countFinishedSubagents,
 } from "./track-presentation";
 
 const ThemedArchive = withUnistyles(Archive);
-const ThemedChevronDown = withUnistyles(ChevronDown);
-const ThemedChevronRight = withUnistyles(ChevronRight);
-const ThemedStop = withUnistyles(Stop);
 const ThemedUnlink = withUnistyles(Unlink);
 
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -53,33 +36,31 @@ export interface SubagentsTrackProps {
   serverId: string;
   rows: SubagentRow[];
   onOpenSubagent: (id: string) => void;
-  /**
-   * Opens a provider subagent, which is addressed by its `(parent, subagent)`
-   * pair rather than an agent id. Separate from `onOpenSubagent` because the
-   * two row kinds open onto genuinely different things.
-   */
   onOpenProviderSubagent: (parentAgentId: string, subagentId: string) => void;
+  /**
+   * Whether opening this row shows it in a sheet. A sheet stacks over the list and uncovers it on
+   * close, so the list stays open; a tab replaces the list's pane, so choosing it ends the list.
+   */
+  opensInSheet: (row: SubagentRow) => boolean;
   onArchiveSubagent: (id: string) => void;
-  onStopSubagent: (id: string) => void;
-  onClearCompleted: (rows: readonly ClearableSubagentRow[]) => void;
+  onArchiveFinished?: () => void;
+  archiveFinishedStatus?: ArchiveFinishedStatus;
   onDetachSubagent?: (id: string) => void;
-  // Tokens from rows already cleared out of this track, added into the header
-  // total so the honest fan-out cost survives the clear. See
-  // subagents/cleared-subagent-tokens-store.ts.
-  clearedTokens?: number;
 }
 
-const SUBAGENTS_LIST_MAX_HEIGHT = 200;
+const IDLE_ARCHIVE_FINISHED_STATUS: ArchiveFinishedStatus = { kind: "idle" };
 
-function buildRowPresentation(row: SubagentRow, serverId: string): WorkspaceTabPresentation {
+const ROW_ICON_SIZE = 14;
+
+function useRowPresentation(row: SubagentRow, serverId: string): WorkspaceTabPresentation {
+  const icon = useProviderIcon(row.provider, serverId);
+  const data = buildSubagentRowPresentationData(row);
   return {
-    ...buildSubagentRowPresentationData(row),
+    ...data,
+    tooltip: data.label,
     modified: false,
-    icon: getProviderIcon(row.provider, serverId),
-    // Personality-spawned subagents keep their identity colors on the glyph
-    // and busy loader; rows without one fall back to the plain themed icon.
-    personalitySpinner: row.kind === "otto" ? (row.personalitySpinner ?? null) : null,
-    provider: row.provider,
+    showCloseButton: getPanelManifest(data.kind).showCloseButton,
+    icon,
   };
 }
 
@@ -88,236 +69,111 @@ export function SubagentsTrack({
   rows,
   onOpenSubagent,
   onOpenProviderSubagent,
+  opensInSheet,
   onArchiveSubagent,
-  onStopSubagent,
-  onClearCompleted,
+  onArchiveFinished,
+  archiveFinishedStatus = IDLE_ARCHIVE_FINISHED_STATUS,
   onDetachSubagent,
-  clearedTokens = 0,
-}: SubagentsTrackProps): ReactElement {
-  const [expanded, setExpanded] = useState(false);
-  const [completedExpanded, setCompletedExpanded] = useState(false);
-  // Rows the user just stopped stay pinned in the active list instead of
-  // instantly tidying into the collapsed Completed group under their pointer.
-  // Toggling the track open/closed is the natural boundary that unpins them.
-  const [pinnedIds, setPinnedIds] = useState<ReadonlySet<string>>(() => new Set());
+}: SubagentsTrackProps): ReactElement | null {
+  const { t } = useTranslation();
 
-  const toggleExpanded = useCallback(() => {
-    setExpanded((current) => !current);
-    setPinnedIds((pins) => (pins.size > 0 ? new Set<string>() : pins));
-  }, []);
-  const toggleCompletedExpanded = useCallback(() => {
-    setCompletedExpanded((current) => !current);
-  }, []);
-
-  const handleStopSubagent = useCallback(
-    (id: string) => {
-      setPinnedIds((pins) => {
-        if (pins.has(id)) {
-          return pins;
-        }
-        const next = new Set(pins);
-        next.add(id);
-        return next;
-      });
-      onStopSubagent(id);
-    },
-    [onStopSubagent],
-  );
-
-  const { active, completed } = useMemo(
-    () => partitionSubagentRows(rows, pinnedIds),
-    [rows, pinnedIds],
-  );
-  const completedClearRows = useMemo<ClearableSubagentRow[]>(
-    () =>
-      completed.map((row) => ({
-        id: row.id,
-        providerParentAgentId: row.kind === "provider" ? row.parentAgentId : undefined,
-        cumulativeTokens: row.kind === "otto" ? row.cumulativeTokens : undefined,
-      })),
-    [completed],
-  );
-  const handleClearCompleted = useCallback(() => {
-    onClearCompleted(completedClearRows);
-  }, [onClearCompleted, completedClearRows]);
-
-  const surfaceStyle = useMemo(
-    () => [styles.surface, expanded && styles.surfaceExpanded],
-    [expanded],
-  );
-
-  const headerStyle = useCallback(
-    ({ hovered, pressed }: PressableStateCallbackType) => [
-      styles.header,
-      expanded ? styles.headerDivider : styles.headerCollapsed,
-      (hovered || pressed) && styles.headerActive,
-    ],
-    [expanded],
-  );
-
-  if (rows.length === 0) {
-    // An empty wrapper, not `null`: the transition owns the dismount so the card
-    // can sink away instead of vanishing. See composer/track-transition.web.tsx.
-    return <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.subagents} />;
+  const isArchivingFinished = archiveFinishedStatus.kind === "archiving";
+  const isArchiveFinishedFailed = archiveFinishedStatus.kind === "failed";
+  if (rows.length === 0 && !isArchivingFinished && !isArchiveFinishedFailed) {
+    return null;
   }
 
-  const headerLabel = formatHeaderLabel({ active, completed }, clearedTokens);
+  const pill = buildSubagentPillPresentation(t, rows);
+  const finishedCount = countFinishedSubagents(rows);
+  const showArchiveFinished = finishedCount > 0 || isArchivingFinished || isArchiveFinishedFailed;
 
   return (
-    <ComposerTrackTransition layer={COMPOSER_TRACK_LAYERS.subagents}>
-      <View style={styles.outer} testID="subagents-track">
-        <ChatWidthBounds style={styles.track}>
-          <View style={surfaceStyle}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={headerLabel}
-              testID="subagents-track-header"
-              onPress={toggleExpanded}
-              style={headerStyle}
-            >
-              {expanded ? (
-                <ThemedChevronDown size="chromeXs" uniProps={foregroundMutedColorMapping} />
-              ) : (
-                <ThemedChevronRight size="chromeXs" uniProps={foregroundMutedColorMapping} />
-              )}
-              <Text style={styles.headerLabel} numberOfLines={1}>
-                {headerLabel}
-              </Text>
-            </Pressable>
-            {expanded ? (
-              <ScrollView
-                style={styles.scroll}
-                contentContainerStyle={styles.scrollContent}
-                showsVerticalScrollIndicator={false}
-                nestedScrollEnabled
-              >
-                {active.map((row) => (
-                  <SubagentsTrackRow
-                    serverId={serverId}
-                    key={row.id}
-                    row={row}
-                    onOpenSubagent={onOpenSubagent}
-                    onOpenProviderSubagent={onOpenProviderSubagent}
-                    onArchiveSubagent={onArchiveSubagent}
-                    onStopSubagent={handleStopSubagent}
-                    onDetachSubagent={onDetachSubagent}
-                  />
-                ))}
-                {completed.length > 0 ? (
-                  <CompletedSubagentsGroup
-                    serverId={serverId}
-                    rows={completed}
-                    flushTop={active.length === 0}
-                    expanded={completedExpanded}
-                    onToggle={toggleCompletedExpanded}
-                    onClear={handleClearCompleted}
-                    onOpenSubagent={onOpenSubagent}
-                    onOpenProviderSubagent={onOpenProviderSubagent}
-                    onArchiveSubagent={onArchiveSubagent}
-                    onStopSubagent={handleStopSubagent}
-                    onDetachSubagent={onDetachSubagent}
-                  />
-                ) : null}
-              </ScrollView>
-            ) : null}
-          </View>
-          <ComposerTrackSeamShadow layer={COMPOSER_TRACK_LAYERS.subagents} />
-        </ChatWidthBounds>
-      </View>
-    </ComposerTrackTransition>
+    <ComposerTrackPill
+      testID="subagents-track-header"
+      segments={pill.segments}
+      accessibilityLabel={pill.accessibilityLabel}
+      panelTitle={t("subagents.title")}
+    >
+      {showArchiveFinished && onArchiveFinished ? (
+        <ComposerTrackActions divided={rows.length > 0}>
+          <ArchiveFinishedRow
+            status={archiveFinishedStatus}
+            disabled={isArchivingFinished}
+            onPress={onArchiveFinished}
+          />
+        </ComposerTrackActions>
+      ) : null}
+      {rows.map((row) => (
+        <SubagentsTrackRow
+          key={row.id}
+          row={row}
+          serverId={serverId}
+          onOpenSubagent={onOpenSubagent}
+          onOpenProviderSubagent={onOpenProviderSubagent}
+          opensInSheet={opensInSheet(row)}
+          onArchiveSubagent={onArchiveSubagent}
+          onDetachSubagent={onDetachSubagent}
+        />
+      ))}
+    </ComposerTrackPill>
   );
 }
 
-interface CompletedSubagentsGroupProps {
-  serverId: string;
-  rows: SubagentRow[];
-  /** No active rows above - drop the separator gap so the group sits flush. */
-  flushTop: boolean;
-  expanded: boolean;
-  onToggle: () => void;
-  onClear: () => void;
-  onOpenSubagent: (id: string) => void;
-  onOpenProviderSubagent: (parentAgentId: string, subagentId: string) => void;
-  onArchiveSubagent: (id: string) => void;
-  onStopSubagent: (id: string) => void;
-  onDetachSubagent?: (id: string) => void;
-}
-
-// Finished work tidies itself but stays reachable: terminal, non-attention rows
-// collapse into a "Completed (N)" group (collapsed by default) with a bulk
-// "Clear all completed". See docs/agent-lifecycle.md (Item 6).
-function CompletedSubagentsGroup({
-  serverId,
-  rows,
-  flushTop,
-  expanded,
-  onToggle,
-  onClear,
-  onOpenSubagent,
-  onOpenProviderSubagent,
-  onArchiveSubagent,
-  onStopSubagent,
-  onDetachSubagent,
-}: CompletedSubagentsGroupProps): ReactElement {
+/**
+ * Bulk archive, as a row above the list rather than an icon next to the count. The pill has no
+ * header to hang an icon off, and a destructive-ish action reads better with its name attached.
+ */
+function ArchiveFinishedRow({
+  status,
+  disabled,
+  onPress,
+}: {
+  status: ArchiveFinishedStatus;
+  disabled: boolean;
+  onPress: () => void;
+}): ReactElement {
   const { t } = useTranslation();
-  const headerLabel = t("subagents.completedGroup", { count: rows.length });
-  const clearLabel = t("subagents.clearCompleted");
+
+  const renderRow = useCallback(
+    ({ active }: { active: boolean }) => (
+      <>
+        <ThemedArchive
+          size={ROW_ICON_SIZE}
+          uniProps={active ? foregroundColorMapping : foregroundMutedColorMapping}
+        />
+        <Text style={styles.rowLabel} numberOfLines={1}>
+          {t("subagents.archiveFinishedAction")}
+        </Text>
+        {status.kind === "archiving" ? (
+          <Text style={styles.rowTrailing} testID="subagents-track-archive-progress">
+            {status.completedCount}/{status.totalCount}
+          </Text>
+        ) : null}
+        {status.kind === "failed" ? (
+          <Text style={styles.rowTrailing} testID="subagents-track-archive-failed">
+            {t("subagents.archiveFinishedRetry", {
+              failed: status.failedCount,
+              total: status.totalCount,
+            })}
+          </Text>
+        ) : null}
+      </>
+    ),
+    [status, t],
+  );
 
   return (
-    <View
-      style={flushTop ? styles.completedGroupFlush : styles.completedGroup}
-      testID="subagents-track-completed-group"
+    <ComposerTrackRow
+      accessibilityLabel={t("subagents.archiveFinishedAction")}
+      testID="subagents-track-archive-finished"
+      disabled={disabled}
+      // Progress and the retry count land on this row, so the panel is where the result of
+      // pressing it shows up. Dismissing would hide the thing the press produces.
+      closeOnSelect={false}
+      onPress={onPress}
     >
-      <View style={styles.completedHeaderRow}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={headerLabel}
-          testID="subagents-track-completed-toggle"
-          onPress={onToggle}
-          style={styles.completedToggle}
-        >
-          {expanded ? (
-            <ThemedChevronDown size="chromeXs" uniProps={foregroundMutedColorMapping} />
-          ) : (
-            <ThemedChevronRight size="chromeXs" uniProps={foregroundMutedColorMapping} />
-          )}
-          <Text style={styles.completedLabel} numberOfLines={1}>
-            {headerLabel}
-          </Text>
-        </Pressable>
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger asChild>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={clearLabel}
-              testID="subagents-track-clear-completed"
-              onPress={onClear}
-              style={styles.clearButton}
-              hitSlop={8}
-            >
-              <Text style={styles.clearButtonText}>{clearLabel}</Text>
-            </Pressable>
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{t("subagents.clearCompletedTooltip")}</Text>
-          </TooltipContent>
-        </Tooltip>
-      </View>
-      {expanded
-        ? rows.map((row) => (
-            <SubagentsTrackRow
-              serverId={serverId}
-              key={row.id}
-              row={row}
-              onOpenSubagent={onOpenSubagent}
-              onOpenProviderSubagent={onOpenProviderSubagent}
-              onArchiveSubagent={onArchiveSubagent}
-              onStopSubagent={onStopSubagent}
-              onDetachSubagent={onDetachSubagent}
-            />
-          ))
-        : null}
-    </View>
+      {renderRow}
+    </ComposerTrackRow>
   );
 }
 
@@ -326,8 +182,8 @@ interface SubagentsTrackRowProps {
   row: SubagentRow;
   onOpenSubagent: (id: string) => void;
   onOpenProviderSubagent: (parentAgentId: string, subagentId: string) => void;
+  opensInSheet: boolean;
   onArchiveSubagent: (id: string) => void;
-  onStopSubagent: (id: string) => void;
   onDetachSubagent?: (id: string) => void;
 }
 
@@ -336,160 +192,93 @@ function SubagentsTrackRow({
   row,
   onOpenSubagent,
   onOpenProviderSubagent,
+  opensInSheet,
   onArchiveSubagent,
-  onStopSubagent,
   onDetachSubagent,
 }: SubagentsTrackRowProps): ReactElement {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
-  const [hovered, setHovered] = useState(false);
-  const [pressed, setPressed] = useState(false);
-  const presentation = useMemo(() => buildRowPresentation(row, serverId), [row, serverId]);
+  const presentation = useRowPresentation(row, serverId);
   const displayLabel =
     presentation.titleState === "loading" ? t("common.states.loading") : presentation.label;
-  const rowAction = resolveSubagentRowAction(row);
-  const tokenLabel = row.kind === "otto" ? formatCompactTokenCount(row.cumulativeTokens) : null;
-  // Liveness readouts, in the same order Claude's own background-task panel
-  // uses: elapsed · tokens · tool uses · current tool. Each is null when the
-  // provider doesn't report it, so the row degrades to what it can honestly say.
-  const toolUseLabel = row.kind === "otto" ? formatSubagentToolUseCount(row.toolUseCount) : null;
-  const currentToolLabel = row.kind === "otto" ? formatSubagentCurrentTool(row.currentTool) : null;
-  const isRunning = isSubagentRowRunning(row);
-  const frozenElapsed = formatSubagentElapsed(row);
-  // The two row kinds open onto different things. An Otto subagent is a real
-  // agent and routes by agent id; a provider subagent only exists inside its
-  // parent's timeline, so it opens a tab keyed by the (parent, subagent) pair.
-  // Sending both through `onOpenSubagent` navigated provider rows to an agent
-  // id the daemon had never registered.
   const handlePress = useCallback(() => {
     if (row.kind === "provider") {
       onOpenProviderSubagent(row.parentAgentId, row.id);
-      return;
+    } else {
+      onOpenSubagent(row.id);
     }
-    onOpenSubagent(row.id);
   }, [onOpenProviderSubagent, onOpenSubagent, row]);
-  const controlProvider = useProviderSubagentControl(serverId);
   const handleArchivePress = useCallback(() => {
-    if (row.kind === "provider") controlProvider(row.parentAgentId, row.id, "archive");
-    else onArchiveSubagent(row.id);
-  }, [controlProvider, onArchiveSubagent, row]);
-  const handleStopPress = useCallback(() => {
-    if (row.kind === "provider") controlProvider(row.parentAgentId, row.id, "stop");
-    else onStopSubagent(row.id);
-  }, [controlProvider, onStopSubagent, row]);
+    onArchiveSubagent(row.id);
+  }, [onArchiveSubagent, row.id]);
   const handleDetachPress = useCallback(() => {
     onDetachSubagent?.(row.id);
   }, [onDetachSubagent, row.id]);
-  const handlePointerEnter = useCallback(() => setHovered(true), []);
-  const handlePointerLeave = useCallback(() => setHovered(false), []);
-  const handlePressIn = useCallback(() => setPressed(true), []);
-  const handlePressOut = useCallback(() => setPressed(false), []);
   const actionsAlwaysVisible = isNative || isCompact;
-  const actionsVisible = actionsAlwaysVisible || hovered;
-  // Observed subagents have no runtime to detach - hide the action for them.
-  const detachHandler =
-    row.kind !== "otto" || row.attend === "observed" ? undefined : onDetachSubagent;
+
+  const renderRow = useCallback(
+    ({ active }: { active: boolean }) => (
+      <>
+        <WorkspaceTabIcon presentation={presentation} backdrop={active ? "surface2" : "surface1"} />
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle} numberOfLines={1}>
+            {displayLabel}
+          </Text>
+          {row.kind === "paseo" ? (
+            <PaseoSubagentFacts serverId={serverId} agentId={row.id} />
+          ) : (
+            <SubagentFacts rowId={row.id} text={presentation.subtitle} />
+          )}
+        </View>
+        {row.kind === "paseo" ? (
+          <SubagentRowActions
+            rowId={row.id}
+            displayLabel={displayLabel}
+            compact={isCompact}
+            visible={actionsAlwaysVisible || active}
+            onDetachPress={onDetachSubagent ? handleDetachPress : undefined}
+            onArchivePress={handleArchivePress}
+          />
+        ) : null}
+      </>
+    ),
+    [
+      actionsAlwaysVisible,
+      displayLabel,
+      handleArchivePress,
+      handleDetachPress,
+      isCompact,
+      onDetachSubagent,
+      presentation,
+      row.kind,
+      row.id,
+      serverId,
+    ],
+  );
 
   return (
-    // Wrapper View handles hover so moving the pointer between the row and
-    // the archive button doesn't drop the hover state - the same pattern
-    // used by sidebar workspace rows.
-    <View
-      onPointerEnter={handlePointerEnter}
-      onPointerLeave={handlePointerLeave}
-      style={hovered || pressed ? styles.rowActive : styles.row}
+    <ComposerTrackRow
+      accessibilityLabel={displayLabel}
+      testID={`subagents-track-row-${row.id}`}
+      closeOnSelect={!opensInSheet}
+      onPress={handlePress}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={displayLabel}
-        testID={`subagents-track-row-${row.id}`}
-        onPress={handlePress}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        style={styles.rowOpen}
-      >
-        <WorkspaceTabIcon presentation={presentation} active />
-        <Text style={styles.rowLabel} numberOfLines={1}>
-          {displayLabel}
-        </Text>
-        <SubagentElapsed
-          rowId={row.id}
-          startedAt={row.createdAt}
-          isRunning={isRunning}
-          frozenElapsed={frozenElapsed}
-        />
-        {tokenLabel ? (
-          <Text
-            style={styles.rowTokens}
-            numberOfLines={1}
-            testID={`subagents-track-tokens-${row.id}`}
-          >
-            {tokenLabel}
-          </Text>
-        ) : null}
-        {toolUseLabel ? (
-          <Text
-            style={styles.rowMeta}
-            numberOfLines={1}
-            testID={`subagents-track-tool-uses-${row.id}`}
-          >
-            {toolUseLabel}
-          </Text>
-        ) : null}
-        {currentToolLabel ? (
-          <Text
-            style={styles.rowCurrentTool}
-            numberOfLines={1}
-            testID={`subagents-track-current-tool-${row.id}`}
-          >
-            {currentToolLabel}
-          </Text>
-        ) : null}
-      </Pressable>
-      <SubagentRowActions
-        rowId={row.id}
-        displayLabel={displayLabel}
-        visible={row.kind === "provider" || actionsVisible}
-        rowAction={rowAction}
-        onDetachPress={detachHandler ? handleDetachPress : undefined}
-        onArchivePress={handleArchivePress}
-        onStopPress={handleStopPress}
-      />
-    </View>
+      {renderRow}
+    </ComposerTrackRow>
   );
 }
 
-// Elapsed run time - a live ticker while the subagent works, then frozen at its
-// createdAt→updatedAt duration once terminal. The Claude background-task panel's
-// clearest liveness signal; here it complements the token readout.
-// See docs/chat-lifecycle.md (the subagents track).
-function SubagentElapsed({
-  rowId,
-  startedAt,
-  isRunning,
-  frozenElapsed,
-}: {
-  rowId: string;
-  startedAt: Date;
-  isRunning: boolean;
-  frozenElapsed: string | null;
-}): ReactElement | null {
-  if (isRunning) {
-    return (
-      <LiveElapsed
-        startedAt={startedAt}
-        active
-        style={styles.rowMeta}
-        testID={`subagents-track-elapsed-${rowId}`}
-      />
-    );
-  }
-  if (!frozenElapsed) {
-    return null;
-  }
+/** The same facts line the agent's sheet shows when it opens without its composer. */
+function PaseoSubagentFacts({ serverId, agentId }: { serverId: string; agentId: string }) {
+  const text = useAgentFactsLine(serverId, agentId);
+  return <SubagentFacts rowId={agentId} text={text} />;
+}
+
+function SubagentFacts({ rowId, text }: { rowId: string; text: string | null }) {
+  if (!text) return null;
   return (
-    <Text style={styles.rowMeta} numberOfLines={1} testID={`subagents-track-elapsed-${rowId}`}>
-      {frozenElapsed}
+    <Text style={styles.rowFacts} numberOfLines={1} testID={`subagents-track-row-facts-${rowId}`}>
+      {text}
     </Text>
   );
 }
@@ -497,21 +286,20 @@ function SubagentElapsed({
 function SubagentRowActions({
   rowId,
   displayLabel,
+  compact,
   visible,
-  rowAction,
   onDetachPress,
   onArchivePress,
-  onStopPress,
 }: {
   rowId: string;
   displayLabel: string;
+  compact: boolean;
   visible: boolean;
-  rowAction: SubagentRowAction;
   onDetachPress?: () => void;
   onArchivePress: () => void;
-  onStopPress: () => void;
 }): ReactElement {
   const { t } = useTranslation();
+  const iconSize = paneContentToolbarIconSize(compact);
   return (
     <View
       style={visible ? styles.actionClusterVisible : styles.actionClusterHidden}
@@ -519,230 +307,95 @@ function SubagentRowActions({
     >
       {onDetachPress ? (
         <SubagentActionButton
-          accessibilityLabel={t("subagents.detachAction", { label: displayLabel })}
-          testID={`subagents-track-detach-${rowId}`}
+          label={t("subagents.detachAction", { label: displayLabel })}
           tooltipLabel={t("subagents.detachTooltip")}
-          icon="detach"
-          visible={visible}
+          compact={compact}
           onPress={onDetachPress}
-        />
+          testID={`subagents-track-detach-${rowId}`}
+        >
+          <ThemedUnlink size={iconSize} uniProps={mutedIconColorMapping} />
+        </SubagentActionButton>
       ) : null}
-      {rowAction === "stop" ? (
-        // Running/initializing: Stop transitions to terminal, keeps the row.
-        <SubagentActionButton
-          accessibilityLabel={t("subagents.stopAction", { label: displayLabel })}
-          testID={`subagents-track-stop-${rowId}`}
-          tooltipLabel={t("subagents.stopTooltip")}
-          icon="stop"
-          visible={visible}
-          onPress={onStopPress}
-        />
-      ) : (
-        // Terminal: Archive drops the row from the track.
-        <SubagentActionButton
-          accessibilityLabel={t("subagents.archiveAction", { label: displayLabel })}
-          testID={`subagents-track-archive-${rowId}`}
-          tooltipLabel={t("subagents.archiveTooltip")}
-          icon="archive"
-          visible={visible}
-          onPress={onArchivePress}
-        />
-      )}
+      <SubagentActionButton
+        label={t("subagents.archiveAction", { label: displayLabel })}
+        tooltipLabel={t("subagents.archiveTooltip")}
+        compact={compact}
+        onPress={onArchivePress}
+        testID={`subagents-track-archive-${rowId}`}
+      >
+        <ThemedArchive size={iconSize} uniProps={mutedIconColorMapping} />
+      </SubagentActionButton>
     </View>
   );
 }
 
-type SubagentActionIcon = "archive" | "detach" | "stop";
-
-function renderSubagentActionIcon(icon: SubagentActionIcon, isActive: boolean): ReactElement {
-  const uniProps = isActive ? foregroundColorMapping : foregroundMutedColorMapping;
-  if (icon === "detach") {
-    return <ThemedUnlink size="chromeSm" uniProps={uniProps} />;
-  }
-  if (icon === "stop") {
-    return <ThemedStop size="chromeSm" uniProps={uniProps} />;
-  }
-  return <ThemedArchive size="chromeSm" uniProps={uniProps} />;
-}
-
+/** The standard icon action, with a tooltip that names the action without repeating the row. */
 function SubagentActionButton({
-  accessibilityLabel,
-  testID,
+  label,
   tooltipLabel,
-  icon,
-  visible,
+  compact,
   onPress,
+  testID,
+  children,
 }: {
-  accessibilityLabel: string;
-  testID: string;
+  label: string;
   tooltipLabel: string;
-  icon: SubagentActionIcon;
-  visible: boolean;
+  compact: boolean;
   onPress: () => void;
+  testID: string;
+  children: ReactNode;
 }): ReactElement {
+  const tooltip = useMemo(
+    () => <Text style={styles.tooltipText}>{tooltipLabel}</Text>,
+    [tooltipLabel],
+  );
   return (
-    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-      <TooltipTrigger asChild disabled={!visible}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={accessibilityLabel}
-          testID={testID}
-          onPress={onPress}
-          style={styles.actionButton}
-          hitSlop={8}
-        >
-          {({ hovered, pressed }) => renderSubagentActionIcon(icon, hovered || pressed)}
-        </Pressable>
-      </TooltipTrigger>
-      <TooltipContent side="top" align="center" offset={8}>
-        <Text style={styles.tooltipText}>{tooltipLabel}</Text>
-      </TooltipContent>
-    </Tooltip>
+    <ToolbarButton
+      label={label}
+      tooltip={tooltip}
+      tooltipSide="top"
+      compact={compact}
+      onPress={onPress}
+      testID={testID}
+    >
+      {children}
+    </ToolbarButton>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  outer: {
-    width: "100%",
-    alignItems: "center",
-    paddingHorizontal: theme.spacing[4],
-  },
-  track: {
-    width: "100%",
-    marginBottom: -theme.spacing[4],
-  },
-  surface: {
-    alignSelf: "stretch",
-    backgroundColor: theme.colors.surface1,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.borderAccent,
-    borderBottomWidth: 0,
-    borderTopLeftRadius: theme.borderRadius["2xl"],
-    borderTopRightRadius: theme.borderRadius["2xl"],
-    overflow: "hidden",
-  },
-  surfaceExpanded: {
-    paddingBottom: theme.spacing[4],
-  },
-  header: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-  },
-  headerCollapsed: {
-    paddingBottom: theme.spacing[6],
-  },
-  headerActive: {
-    backgroundColor: theme.colors.surface2,
-  },
-  headerDivider: {
-    borderBottomWidth: theme.borderWidth[1],
-    borderBottomColor: theme.colors.border,
-  },
-  headerLabel: {
-    flexShrink: 1,
-    minWidth: 0,
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-  },
-  scroll: {
-    maxHeight: SUBAGENTS_LIST_MAX_HEIGHT,
-  },
-  scrollContent: {
-    paddingVertical: theme.spacing[1],
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-  },
-  rowActive: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-    backgroundColor: theme.colors.surface2,
-  },
-  rowOpen: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    // Keep the full-height/leading row hit area while actions remain siblings.
-    marginVertical: -theme.spacing[2],
-    paddingVertical: theme.spacing[2],
-    marginLeft: -theme.spacing[3],
-    paddingLeft: theme.spacing[3],
-  },
+  // `flexBasis: "auto"` rather than `flex: 1`: a zero-basis label contributes nothing to the row's
+  // intrinsic width, so the panel measures itself at its floor and truncates every label at once.
   rowLabel: {
-    flex: 1,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: "auto",
     minWidth: 0,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
   },
-  rowTokens: {
-    flexShrink: 0,
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-    fontVariant: ["tabular-nums"],
-  },
-  rowMeta: {
-    flexShrink: 0,
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-    fontVariant: ["tabular-nums"],
-  },
-  // The live tool name reads as the answer to "what is it doing", not another
-  // statistic - same muted tone as the numbers but no tabular figures, and
-  // capped/shrinkable so a long MCP tool name truncates instead of squeezing
-  // the row label out.
-  rowCurrentTool: {
+  // Title over facts. The facts sit under the title rather than beside it, so a long task name
+  // keeps the row's full width and neither line truncates the other.
+  rowText: {
+    flexGrow: 1,
     flexShrink: 1,
-    maxWidth: 120,
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.foregroundMuted,
-  },
-  completedGroup: {
-    marginTop: theme.spacing[1],
-    borderTopWidth: theme.borderWidth[1],
-    borderTopColor: theme.colors.border,
-  },
-  // The separator only earns its space when active rows sit above the group.
-  completedGroupFlush: {},
-  completedHeaderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[2],
-  },
-  completedToggle: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    flexShrink: 1,
+    flexBasis: "auto",
     minWidth: 0,
   },
-  completedLabel: {
-    flexShrink: 1,
-    minWidth: 0,
-    fontSize: theme.fontSize.xs,
+  rowTitle: {
+    fontSize: theme.fontSize.base,
+    color: theme.colors.foreground,
+  },
+  rowFacts: {
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
-  clearButton: {
-    flexShrink: 0,
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-  },
-  clearButtonText: {
-    fontSize: theme.fontSize.xs,
+  // Progress on the archive row. It shrinks twice as fast as the label, so a long retry count
+  // gives way first instead of squeezing the thing that names the row.
+  rowTrailing: {
+    flexShrink: 2,
+    minWidth: 0,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   actionClusterVisible: {
@@ -757,13 +410,8 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     opacity: 0,
   },
-  actionButton: {
-    padding: theme.spacing[1],
-    alignItems: "center",
-    justifyContent: "center",
-  },
   tooltipText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
 }));

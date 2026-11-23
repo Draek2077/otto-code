@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 
-import { createTestOttoDaemon } from "../src/server/test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../src/server/test-utils/paseo-daemon.js";
 import { DaemonClient } from "../src/server/test-utils/daemon-client.js";
 import { OpenAITTS } from "../src/server/speech/providers/openai/tts.js";
 import { withTimeout } from "../src/utils/promise-timeout.js";
@@ -22,8 +22,8 @@ async function main(): Promise<void> {
     throw new Error("OPENAI_API_KEY is required");
   }
 
-  const logger = pino({ level: process.env.OTTO_LOG_LEVEL ?? "info" });
-  const daemon = await createTestOttoDaemon({
+  const logger = pino({ level: process.env.PASEO_LOG_LEVEL ?? "info" });
+  const daemon = await createTestPaseoDaemon({
     logger,
     agentClients: {},
     openai: { stt: { apiKey }, tts: { apiKey } },
@@ -49,7 +49,7 @@ async function main(): Promise<void> {
 
   try {
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "voice-debug" } });
+    await client.fetchAgents({ subscribe: {} });
 
     const voiceCwd = mkdtempSync(path.join(tmpdir(), "voice-roundtrip-debug-"));
     const voiceAgent = await client.createAgent({
@@ -88,7 +88,7 @@ async function main(): Promise<void> {
       }
     });
 
-    const offStream = client.on("agent_stream", (msg) => {
+    const offStream = client.subscribeAgentTimeline(voiceAgentId, (msg) => {
       if (msg.type !== "agent_stream") return;
       if (msg.payload.event.type !== "timeline") return;
       const item = msg.payload.event.item;
@@ -99,6 +99,8 @@ async function main(): Promise<void> {
         status: item.status,
       });
     });
+
+    await offStream.ready;
 
     let audioChunkCount = 0;
     const firstAudio = new Promise<void>((resolve) => {

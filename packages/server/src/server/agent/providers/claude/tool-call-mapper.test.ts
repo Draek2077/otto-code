@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  mapClaudeCanceledToolCall,
   mapClaudeCompletedToolCall,
   mapClaudeFailedToolCall,
   mapClaudeRunningToolCall,
@@ -15,6 +16,40 @@ function expectMapped<T>(item: T | null): T {
 }
 
 describe("claude tool-call mapper", () => {
+  it("preserves a plan's original tool identity and outcome for live and replayed results", () => {
+    const proposal = { name: "ExitPlanMode", callId: "plan-tool-1", input: { plan: "Ship it" } };
+    const pending = expectMapped(mapClaudeRunningToolCall(proposal));
+    const rejected = expectMapped(
+      mapClaudeFailedToolCall({ ...proposal, error: "Denied by user" }),
+    );
+    const approved = expectMapped(mapClaudeCompletedToolCall(proposal));
+    const canceled = expectMapped(mapClaudeCanceledToolCall(proposal));
+    expect(canceled).toMatchObject({
+      callId: proposal.callId,
+      name: "plan_approval",
+      status: "canceled",
+      detail: { type: "plan", text: "Ship it" },
+    });
+    expect(pending).toMatchObject({
+      callId: "plan-tool-1",
+      detail: { type: "plan", text: "Ship it" },
+    });
+    expect(rejected).toMatchObject({
+      callId: pending.callId,
+      name: "plan_approval",
+      status: "completed",
+      error: null,
+      detail: pending.detail,
+      metadata: { approved: false },
+    });
+    expect(approved).toMatchObject({
+      callId: pending.callId,
+      name: "plan_approval",
+      status: "completed",
+      detail: pending.detail,
+      metadata: { approved: true },
+    });
+  });
   it("maps running shell calls with canonical fields", () => {
     const item = expectMapped(
       mapClaudeRunningToolCall({
@@ -249,7 +284,7 @@ describe("claude tool-call mapper", () => {
       mapClaudeCompletedToolCall({
         callId: "claude-glob-1",
         name: "Glob",
-        input: { pattern: "**/.claude/commands/otto*" },
+        input: { pattern: "**/.claude/commands/paseo*" },
         output: {
           durationMs: 7,
           numFiles: 2,
@@ -264,7 +299,7 @@ describe("claude tool-call mapper", () => {
     expect(item.name).toBe("Glob");
     expect(item.detail).toEqual({
       type: "search",
-      query: "**/.claude/commands/otto*",
+      query: "**/.claude/commands/paseo*",
       toolName: "glob",
       filePaths: ["a.txt", "b.txt"],
       numFiles: 2,
@@ -280,7 +315,7 @@ describe("claude tool-call mapper", () => {
         name: "Grep",
         input: {
           pattern: '\\\\\\"cli\\\\\\""',
-          path: "/workspaces/otto/packages/desktop/src",
+          path: "/workspaces/paseo/packages/desktop/src",
           output_mode: "content",
           "-n": true,
         },
@@ -401,7 +436,7 @@ describe("claude tool-call mapper", () => {
     const item = expectMapped(
       mapClaudeCompletedToolCall({
         callId: "claude-speak-1",
-        name: "mcp__otto__speak",
+        name: "mcp__paseo__speak",
         input: { text: "Voice response from Claude." },
         output: { ok: true },
       }),
@@ -419,7 +454,7 @@ describe("claude tool-call mapper", () => {
     const item = expectMapped(
       mapClaudeCompletedToolCall({
         callId: "claude-speak-2",
-        name: "mcp__otto_voice__speak",
+        name: "mcp__paseo_voice__speak",
         input: { text: "Hey! I can hear you." },
         output: { ok: true },
       }),
@@ -442,48 +477,5 @@ describe("claude tool-call mapper", () => {
     });
 
     expect(item).toBeNull();
-  });
-
-  // The subagent fan-out tool must carry a sub_agent detail from its FIRST
-  // running item - per-callId consumers (visualizer dispatch/return, chat
-  // sub-agent card) never see the sidechain tracker's later enriched updates.
-  it.each(["Task", "Agent"])("maps a running %s call to a sub_agent detail", (name) => {
-    const item = expectMapped(
-      mapClaudeRunningToolCall({
-        callId: "claude-task-1",
-        name,
-        input: {
-          description: "Scan repo files",
-          subagent_type: "general-purpose",
-          prompt: "List the files in this repo.",
-        },
-        output: null,
-      }),
-    );
-
-    expect(item.detail).toEqual({
-      type: "sub_agent",
-      subAgentType: "general-purpose",
-      description: "Scan repo files",
-      log: "",
-    });
-  });
-
-  it("maps a completed Agent call's report text into the sub_agent log", () => {
-    const item = expectMapped(
-      mapClaudeCompletedToolCall({
-        callId: "claude-task-1",
-        name: "Agent",
-        input: { description: "Scan repo files", subagent_type: "general-purpose" },
-        output: { output: "The repo contains only a README.md." },
-      }),
-    );
-
-    expect(item.detail).toEqual({
-      type: "sub_agent",
-      subAgentType: "general-purpose",
-      description: "Scan repo files",
-      log: "The repo contains only a README.md.",
-    });
   });
 });

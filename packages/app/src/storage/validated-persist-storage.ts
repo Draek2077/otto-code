@@ -1,5 +1,7 @@
 import { z } from "zod";
 import type { PersistStorage, StateStorage } from "zustand/middleware";
+// OTTO(storage): the upstream adapter remains intact inside an Otto preservation boundary.
+import { preserveOttoPersistStorage } from "@/otto/validated-persist-storage";
 
 export function createValidatedPersistStorage<State>(
   backingStorage: StateStorage,
@@ -10,7 +12,7 @@ export function createValidatedPersistStorage<State>(
     version: z.number().int().nonnegative().optional(),
   });
 
-  return {
+  return preserveOttoPersistStorage(backingStorage, stateSchema, {
     getItem: async (name) => {
       const raw = await backingStorage.getItem(name);
       if (raw === null) return null;
@@ -39,5 +41,5 @@ export function createValidatedPersistStorage<State>(
       await backingStorage.setItem(name, JSON.stringify(result.data));
     },
     removeItem: (name) => backingStorage.removeItem(name),
-  };
+  });
 }

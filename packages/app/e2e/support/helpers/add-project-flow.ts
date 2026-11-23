@@ -47,7 +47,7 @@ async function openAddProjectFlowSurface(
   page: Page,
   expectedPage: "host" | "method",
 ): Promise<void> {
-  await page.getByTestId("sidebar-add-project").click();
+  await page.locator('[data-testid="sidebar-add-project"]:visible').click();
   await expect(addProjectFlow(page)).toBeVisible({ timeout: 30_000 });
   await expectAddProjectPage(page, expectedPage);
 }
@@ -74,6 +74,7 @@ export async function expectNewWorkspaceForAddedProject(
   page: Page,
   input: {
     serverId: string;
+    projectId: string;
     projectName: string;
     projectPath: string;
   },
@@ -82,14 +83,33 @@ export async function expectNewWorkspaceForAddedProject(
   const url = new URL(page.url());
   expect(url.pathname).toBe("/new");
   expect(url.searchParams.get("serverId")).toBe(input.serverId);
-  // Sidebar project rows are keyed by their aggregate view key, while the
-  // New workspace route carries the daemon's opaque project id. They are
-  // intentionally different identities, so assert that routing selected an
-  // id and that the corresponding named project is presented to the user.
-  expect(url.searchParams.get("projectId")).toMatch(/^prj_/u);
+  expect(url.searchParams.get("projectId")).toBe(input.projectId);
   expect(url.searchParams.get("dir")).toBe(input.projectPath);
   await expect(page.getByRole("button", { name: "Workspace project" })).toContainText(
     input.projectName,
     { timeout: 30_000 },
   );
+}
+
+export async function navigateAddProjectResults(
+  page: Page,
+  key: "ArrowDown" | "ArrowUp",
+  count: number,
+): Promise<void> {
+  for (let index = 0; index < count; index += 1) await page.keyboard.press(key);
+}
+
+export async function expectAddProjectResultVisible(page: Page, text: string): Promise<void> {
+  const results = page.getByTestId("add-project-flow-results");
+  const row = results.getByRole("button").filter({ has: page.getByText(text, { exact: true }) });
+  await expect
+    .poll(async () => {
+      const viewport = await results.boundingBox();
+      const bounds = await row.boundingBox();
+      if (!viewport || !bounds) return false;
+      return (
+        bounds.y >= viewport.y - 1 && bounds.y + bounds.height <= viewport.y + viewport.height + 1
+      );
+    })
+    .toBe(true);
 }

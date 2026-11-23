@@ -10,7 +10,7 @@ import {
   ExternalLink,
   Settings,
   Terminal,
-} from "@/components/icons/material-icons";
+} from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { HostProfile } from "@/types/host-connection";
 import { getHostRuntimeStore, isHostRuntimeConnected, useHosts } from "@/runtime/host-runtime";
@@ -20,12 +20,13 @@ import { PairLinkModal } from "./pair-link-modal";
 import { Button } from "@/components/ui/button";
 import { resolveAppVersion } from "@/utils/app-version";
 import { formatVersionWithPrefix } from "@/desktop/updates/desktop-updates";
-import { buildOpenProjectRoute, buildSetupRoute } from "@/utils/host-routes";
-import { OttoLogo } from "@/components/icons/otto-logo";
-import { openLink } from "@/utils/open-link";
+import { buildOpenProjectRoute } from "@/utils/host-routes";
+import { PaseoLogo } from "@/components/icons/paseo-logo";
+import { openExternalUrl } from "@/utils/open-external-url";
+import { isFdroidBuild } from "@/constants/build-profile";
 import { isWeb, isNative } from "@/constants/platform";
-import { useAppSettings } from "@/hooks/use-settings";
 import { isElectronRuntime } from "@/desktop/host";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 interface WelcomeAction {
   key: "scan-qr" | "direct-connection" | "remote-ssh" | "paste-pairing-link";
@@ -84,9 +85,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
     paddingVertical: theme.spacing[4],
     borderRadius: theme.borderRadius.xl,
-    // surface1, not surface2: `border` is nearly identical to surface2 on this
-    // theme, which swallows the button's own outline.
-    backgroundColor: theme.colors.surface1,
+    backgroundColor: theme.colors.surface2,
     borderWidth: 1,
     borderColor: theme.colors.border,
   },
@@ -180,39 +179,18 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
   const [isPasteLinkOpen, setIsPasteLinkOpen] = useState(false);
   const hosts = useHosts();
   const anyOnlineServerId = useAnyHostOnline(hosts.map((h) => h.serverId));
-  const { settings, isLoading: isSettingsLoading } = useAppSettings();
-  const hasCompletedWizard = settings.hasCompletedSetupWizard;
 
-  // When a host comes online, navigate away from the welcome screen.
-  // For fresh devices that haven't completed the wizard, go to the setup
-  // wizard so they can configure providers, teams, etc. For existing devices,
-  // go straight to the project selection screen.
-  // Guard on settings hydration - DEFAULT_CLIENT_SETTINGS has
-  // hasCompletedSetupWizard === false, so unhydrated state would flash the
-  // wizard in front of a returning user (the same class of bug the bootstrap
-  // prevents with isSetupWizardStateLoaded).
   useEffect(() => {
     if (!anyOnlineServerId) return;
-    if (isSettingsLoading) return;
-    if (!hasCompletedWizard) {
-      router.replace(buildSetupRoute());
-    } else {
-      router.replace(buildOpenProjectRoute());
-    }
-  }, [anyOnlineServerId, hasCompletedWizard, isSettingsLoading, router]);
+    router.replace(buildOpenProjectRoute());
+  }, [anyOnlineServerId, router]);
 
-  // "Finish onboarding" callback exposed to child modals. For fresh devices
-  // this is a no-op - the effect above owns navigation when a host comes
-  // online. We only navigate here for existing devices (wizard already done)
-  // so that both paths agree on the destination.
   const finishOnboarding = useCallback(() => {
-    if (hasCompletedWizard) {
-      router.replace(buildOpenProjectRoute());
-    }
-  }, [hasCompletedWizard, router]);
+    router.replace(buildOpenProjectRoute());
+  }, [router]);
 
-  const handleOpenOttoSite = useCallback(() => {
-    void openLink("https://otto-code.me");
+  const handleOpenPaseoSite = useCallback(() => {
+    void openExternalUrl(OTTO_WEBSITE_URL /* OTTO(identity) */);
   }, []);
 
   const handleOpenSettings = useCallback(() => {
@@ -237,51 +215,52 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
     [onHostAdded, finishOnboarding],
   );
 
-  const actions: WelcomeAction[] = isWeb
-    ? [
-        {
-          key: "direct-connection",
-          label: t("pairing.connectionMethods.direct.title"),
-          testID: "welcome-direct-connection",
-          primary: true,
-          icon: Link2,
-          onPress: handleOpenDirect,
-        },
-        {
-          key: "paste-pairing-link",
-          label: t("pairing.connectionMethods.pasteLink.title"),
-          testID: "welcome-paste-pairing-link",
-          primary: false,
-          icon: ClipboardPaste,
-          onPress: handleOpenPasteLink,
-        },
-      ]
-    : [
-        {
-          key: "scan-qr",
-          label: t("pairing.connectionMethods.scanQr.title"),
-          testID: "welcome-scan-qr",
-          primary: true,
-          icon: QrCode,
-          onPress: handleScanQr,
-        },
-        {
-          key: "direct-connection",
-          label: t("pairing.connectionMethods.direct.title"),
-          testID: "welcome-direct-connection",
-          primary: false,
-          icon: Link2,
-          onPress: handleOpenDirect,
-        },
-        {
-          key: "paste-pairing-link",
-          label: t("pairing.connectionMethods.pasteLink.title"),
-          testID: "welcome-paste-pairing-link",
-          primary: false,
-          icon: ClipboardPaste,
-          onPress: handleOpenPasteLink,
-        },
-      ];
+  const actions: WelcomeAction[] =
+    isWeb || isFdroidBuild
+      ? [
+          {
+            key: "direct-connection",
+            label: t("pairing.connectionMethods.direct.title"),
+            testID: "welcome-direct-connection",
+            primary: true,
+            icon: Link2,
+            onPress: handleOpenDirect,
+          },
+          {
+            key: "paste-pairing-link",
+            label: t("pairing.connectionMethods.pasteLink.title"),
+            testID: "welcome-paste-pairing-link",
+            primary: false,
+            icon: ClipboardPaste,
+            onPress: handleOpenPasteLink,
+          },
+        ]
+      : [
+          {
+            key: "scan-qr",
+            label: t("pairing.connectionMethods.scanQr.title"),
+            testID: "welcome-scan-qr",
+            primary: true,
+            icon: QrCode,
+            onPress: handleScanQr,
+          },
+          {
+            key: "direct-connection",
+            label: t("pairing.connectionMethods.direct.title"),
+            testID: "welcome-direct-connection",
+            primary: false,
+            icon: Link2,
+            onPress: handleOpenDirect,
+          },
+          {
+            key: "paste-pairing-link",
+            label: t("pairing.connectionMethods.pasteLink.title"),
+            testID: "welcome-paste-pairing-link",
+            primary: false,
+            icon: ClipboardPaste,
+            onPress: handleOpenPasteLink,
+          },
+        ];
 
   if (isElectronRuntime()) {
     actions.splice(1, 0, {
@@ -308,14 +287,15 @@ export function WelcomeScreen({ onHostAdded }: WelcomeScreenProps) {
         testID="welcome-screen"
       >
         <View style={styles.content}>
-          <OttoLogo size={96} />
+          <PaseoLogo size={96} />
           <View style={styles.copyBlock}>
             <Text style={styles.title}>{t("onboarding.title")}</Text>
             <Text style={styles.subtitle}>{t("onboarding.subtitle")}</Text>
             {isNative ? (
-              <Pressable style={styles.setupLink} onPress={handleOpenOttoSite}>
+              <Pressable style={styles.setupLink} onPress={handleOpenPaseoSite}>
                 <Text style={styles.setupLinkText}>otto-code.me</Text>
-                <ExternalLink size="sm" color={theme.colors.accent} />
+                {/* OTTO(identity) */}
+                <ExternalLink size={14} color={theme.colors.accent} />
               </Pressable>
             ) : null}
           </View>
@@ -379,7 +359,7 @@ function WelcomeActionButton({ action }: WelcomeActionButtonProps) {
   return (
     <Pressable style={buttonStyle} onPress={action.onPress} testID={action.testID}>
       <Icon
-        size="mdPlus"
+        size={18}
         color={action.primary ? theme.colors.accentForeground : theme.colors.foreground}
       />
       <Text style={textStyle}>{action.label}</Text>

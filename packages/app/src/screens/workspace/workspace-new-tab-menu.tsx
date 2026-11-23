@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { TerminalProfileIcon } from "@/components/terminal-profile-icon";
@@ -16,8 +17,14 @@ import {
   type WorkspaceTabLaunchItem,
   type WorkspaceTabLaunchPurpose,
 } from "@/workspace-tabs/launcher";
+import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import type { PaneHost } from "@/panels/panel-manifest";
 import type { PanelIconProps } from "@/panels/panel-registry";
+import {
+  ARTIFACT_MENU_PAGE,
+  isArtifactMenuItem,
+  useArtifactMenuPages,
+} from "@/otto/artifacts/workspace-menu"; // OTTO(artifacts): choose a concrete document before opening a workspace tab.
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
@@ -61,6 +68,16 @@ function WorkspaceNewTabMenuItem({
     [item.shortcutActionId],
   );
   const handleSelect = useCallback(() => item.launch({ kind: "open", paneId }), [item, paneId]);
+  if (isArtifactMenuItem(item.id))
+    return (
+      <DropdownMenuSubTrigger
+        id={ARTIFACT_MENU_PAGE}
+        leading={leading}
+        testID="workspace-artifacts-picker"
+      >
+        Artifacts
+      </DropdownMenuSubTrigger>
+    ); // OTTO(artifacts)
 
   return (
     <DropdownMenuItem
@@ -84,14 +101,27 @@ export function WorkspaceNewTabMenuContent({
   serverId,
   purpose,
   host,
+  panePanelKinds,
   paneId,
 }: {
   serverId: string;
   purpose: WorkspaceTabLaunchPurpose;
   host: PaneHost;
+  panePanelKinds: readonly WorkspaceTabTarget["kind"][];
   paneId?: string;
 }) {
-  const groups = useWorkspaceTabLaunchCatalog({ serverId, purpose, host });
+  const groups = useWorkspaceTabLaunchCatalog({
+    serverId,
+    purpose,
+    host,
+    surface: "menu",
+    panePanelKinds,
+  });
+  const artifactPages = useArtifactMenuPages(
+    serverId,
+    groups.flatMap((group) => group.items).find((item) => isArtifactMenuItem(item.id)),
+    paneId,
+  ); // OTTO(artifacts)
 
   return (
     <DropdownMenuContent
@@ -100,6 +130,7 @@ export function WorkspaceNewTabMenuContent({
       offset={4}
       minWidth={200}
       testID="workspace-new-tab-menu"
+      pages={artifactPages}
     >
       {groups.map((group, index) => (
         <View key={group.id}>

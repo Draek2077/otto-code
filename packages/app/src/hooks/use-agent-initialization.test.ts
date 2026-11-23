@@ -49,7 +49,7 @@ afterEach(() => {
 });
 
 describe("ensureAgentIsInitialized", () => {
-  it("catches up after the last synced row when authoritative history is loaded", () => {
+  it("catches up after loaded authoritative history", () => {
     const client = new FakeDaemonClient();
     const runtime = new FakeTimelineRuntime();
     useSessionStore.getState().initializeSession(serverId, client as never);
@@ -74,14 +74,10 @@ describe("ensureAgentIsInitialized", () => {
         serverId,
         agentId,
         request: {
-          // A synced range means the rows up to `endSeq` are already held, so
-          // resuming asks for what came after them rather than refetching the
-          // tail. See planTimelineResumeFetch.
           direction: "after",
           cursor: { epoch: "epoch-1", seq: 42 },
           limit: TIMELINE_FETCH_PAGE_SIZE,
           projection: "projected",
-          includePromptIndex: true,
         },
       },
     ]);
@@ -109,7 +105,6 @@ describe("ensureAgentIsInitialized", () => {
           direction: "tail",
           limit: TIMELINE_FETCH_PAGE_SIZE,
           projection: "projected",
-          includePromptIndex: true,
         },
       },
     ]);
@@ -153,7 +148,6 @@ describe("ensureAgentIsInitialized", () => {
           direction: "tail",
           limit: TIMELINE_FETCH_PAGE_SIZE,
           projection: "projected",
-          includePromptIndex: true,
         },
       },
     ]);
@@ -198,7 +192,6 @@ describe("ensureAgentIsInitialized", () => {
           cursor: { epoch: "epoch-1", seq: 12 },
           limit: TIMELINE_FETCH_PAGE_SIZE,
           projection: "projected",
-          includePromptIndex: true,
         },
       },
     ]);

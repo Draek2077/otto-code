@@ -1,8 +1,38 @@
 # Data Model
 
-Otto uses **file-based JSON persistence** instead of a traditional database. All data is validated at runtime with Zod schemas. Most stores write atomically (write to temp file, then rename); a few still use plain `writeFile` - see each section. Persisted stores use their own schema and migration boundaries; protocol compatibility relies on additive optional fields and explicit post-validation normalization. See [protocol-validation.md](protocol-validation.md) for the wire contract.
+## Project identity
 
-Server-side stores live under `$OTTO_HOME` (defaults to `~/.otto`). Artifacts can instead be repository-owned at `{projectRoot}/.otto/artifacts/`, selected independently per project (see [Artifacts](#6-artifacts)).
+Projects are allocated for the exact root selected by the caller, normalized lexically with `path.resolve` (never `realpath`). New project IDs are opaque `prj_<16 hex>` values. Existing remote-shaped or path-shaped IDs are retained as readable compatibility records and are never rekeyed. An active exact root is idempotent; archived-only matches do not resurrect an old project. Workspace `projectId` is stable membership: reconciliation may update git-derived kind and branch metadata, but never rehomes a workspace or changes a project's root, ID, or default name.
+
+`projectKey` is a persisted, opaque equivalence key used only to group the same logical project
+across hosts. It is separate from the host-local `projectId`; today's producer prefers a normalized
+Git remote and otherwise uses the local project root. Consumers never derive it from live Git.
+Creation persists it with the project, and normal boot reconciliation fills it for
+older records where the field is absent—there is no migration.
+
+`kind` and `projectKey` are mutable metadata, not identity. Workspace reconciliation watches active project roots and
+updates those fields and `updatedAt` when Git facts change, preserving the project's ID, root path,
+names, and workspace foreign keys. Attached workspaces are independently refreshed
+from their own cwd, so an explicit project root never implies a workspace checkout. Empty projects
+are observed too.
+
+The workspace registry model defines placement once: initial directory/worktree construction,
+mutable reconciliation fields, and the persisted-to-wire checkout projection. Its update policy
+preserves `displayName` and `baseBranch`. `WorkspaceProvisioningService` owns the corresponding
+registry writes, so directory opens, agent imports, and worktree creation all enter through that
+service instead of constructing records independently. The workspace record is then the durable
+placement authority: `cwd` is the exact execution directory, while `worktreeRoot` is the backing
+checkout root. They intentionally differ for an exact subproject inside a worktree. Archive,
+restore, branch auto-name, and descriptor flows consume those persisted facts rather than
+rediscovering ownership from a directory that may already be gone. Reconciliation may refresh
+mutable placement facts, but never changes `projectId`, `cwd`, `displayName`, or `baseBranch`.
+Workspace archive runs lifecycle teardown from the exact `cwd` but removes only the backing
+`worktreeRoot` after its last active reference disappears. Worktree recovery recreates that backing
+checkout from `mainRepoRoot`, then restores the relative path from `worktreeRoot` to `cwd`.
+
+Paseo uses **file-based JSON persistence** instead of a traditional database. All data is validated at runtime with Zod schemas. Most stores write atomically (write to temp file, then rename); a few still use plain `writeFile` — see each section. There is no schema-versioning/migration framework — schemas rely on optional fields with defaults for forward compatibility, with a small amount of inline normalization in `persisted-config.ts` for legacy provider/speech entries.
+
+All server-side stores live under `$PASEO_HOME` (defaults to `~/.paseo`).
 
 ## Store Surface Rules
 
@@ -13,11 +43,12 @@ Store APIs own persistence atomicity and should not make services coordinate raw
 ## Directory layout
 
 ```
-$OTTO_HOME/
+$PASEO_HOME/
 ├── config.json                          # Daemon configuration
 ├── server-id                            # Stable daemon identifier (plain text, "srv_<base64url>")
 ├── daemon-keypair.json                  # E2EE keypair for relay (mode 0600)
-├── otto.pid                            # Daemon PID lock file
+├── paseo.pid                            # Daemon PID lock file
+├── local-credential                     # Per-run local client credential (mode 0600)
 ├── daemon.log                           # Default log file (path configurable)
 ├── agents/
 │   └── {sanitized-cwd}/
@@ -32,12 +63,11 @@ $OTTO_HOME/
 │   └── icons/                           # Host-local custom project icon images
 ├── runtime/
 │   └── managed-processes/
-│       └── {recordId}.json              # Helper processes owned by Otto; reconciled on daemon bootstrap
+│       └── {recordId}.json              # Helper processes owned by Paseo; reconciled on daemon bootstrap
 ├── plugins/
-│   ├── sources.json                      # Git origin, ref, commit, and managed checkout ownership
-│   └── {pluginId}/{version}/checkout/    # Source checkout for one installed Git commit
-├── push-tokens.json                     # Expo push notification tokens
-└── activity-stats.json                  # Daemon-wide usage counters (see docs/activity-stats.md)
+│   ├── sources.json                      # Managed kind and Git acquisition remote
+│   └── {pluginId}/{uuid}/                # Git checkout or npm package/lockfile/dependency tree
+└── push-tokens.json                     # Expo push notification tokens
 ```
 
 The `agents/{sanitized-cwd}/` directory name is derived from the agent's `cwd` by stripping the filesystem root and replacing path separators with `-` (Windows drive letters become a `C-` style prefix). Persistent server stores write atomically by writing a temp file in the target directory and then renaming it into place.
@@ -46,7 +76,7 @@ The `agents/{sanitized-cwd}/` directory name is derived from the agent's `cwd` b
 
 ## 1. Agent Record
 
-**Path:** `$OTTO_HOME/agents/{project-dir}/{agentId}.json`
+**Path:** `$PASEO_HOME/agents/{project-dir}/{agentId}.json`
 
 Each agent is stored as a separate JSON file, grouped by project directory.
 
@@ -55,13 +85,13 @@ Each agent is stored as a separate JSON file, grouped by project directory.
 | `id`                 | `string`                                 | UUID, primary key                                                                                                                                                                                                                                                                                                                                                                   |
 | `provider`           | `string`                                 | Agent provider (`"claude"`, `"codex"`, `"opencode"`, etc.)                                                                                                                                                                                                                                                                                                                          |
 | `cwd`                | `string`                                 | Working directory the agent operates in                                                                                                                                                                                                                                                                                                                                             |
-| `workspaceId`        | `string?`                                | Owning workspace id - the single source of ownership. Every agent is stamped with one at create time; legacy cwd-only records are backfilled once by `migrations/backfill-workspace-id.migration.ts` (the only place a cwd→id mapping exists). Runtime code never infers ownership or status from cwd: status is computed per `workspaceId`, and same-cwd siblings are independent. |
+| `workspaceId`        | `string?`                                | Owning workspace id — the single source of ownership. Every agent is stamped with one at create time; legacy cwd-only records are backfilled once by `migrations/backfill-workspace-id.migration.ts` (the only place a cwd→id mapping exists). Runtime code never infers ownership or status from cwd: status is computed per `workspaceId`, and same-cwd siblings are independent. |
 | `createdAt`          | `string` (ISO 8601)                      | Creation timestamp                                                                                                                                                                                                                                                                                                                                                                  |
 | `updatedAt`          | `string` (ISO 8601)                      | Last update timestamp                                                                                                                                                                                                                                                                                                                                                               |
 | `lastActivityAt`     | `string?` (ISO 8601)                     | Last activity timestamp                                                                                                                                                                                                                                                                                                                                                             |
 | `lastUserMessageAt`  | `string?` (ISO 8601)                     | Last user message timestamp                                                                                                                                                                                                                                                                                                                                                         |
 | `title`              | `string?`                                | User-visible title                                                                                                                                                                                                                                                                                                                                                                  |
-| `labels`             | `Record<string, string>`                 | Key-value labels (default `{}`). Otto uses `otto.parent-agent-id` for parentage and client-scoped `otto.open-agent-tab.*` labels while managed subagent tabs are open. See [chat-lifecycle.md](./chat-lifecycle.md).                                                                                                                                                                |
+| `labels`             | `Record<string, string>`                 | Key-value labels (default `{}`). Paseo uses `paseo.parent-agent-id` for parentage and client-scoped `paseo.open-agent-tab.*` labels while managed subagent tabs are open — see [agent-lifecycle.md](./agent-lifecycle.md)                                                                                                                                                           |
 | `lastStatus`         | `AgentStatus`                            | One of: `"initializing"`, `"idle"`, `"running"`, `"error"`, `"closed"`. `closed` means the record is resumable but has no live provider runtime; archive remains represented separately by `archivedAt`.                                                                                                                                                                            |
 | `lastModeId`         | `string?`                                | Last active mode ID                                                                                                                                                                                                                                                                                                                                                                 |
 | `config`             | `SerializableConfig?`                    | Agent session configuration (see below)                                                                                                                                                                                                                                                                                                                                             |
@@ -147,15 +177,17 @@ Terminal activity contributes to the workspace status bucket **per `workspaceId`
 
 ## 2. Daemon Configuration
 
-**Path:** `$OTTO_HOME/config.json`
+**Path:** `$PASEO_HOME/config.json`
 
 Single file, validated with `PersistedConfigSchema`.
 
 `agents.skills.selection` is the daemon host's orchestration-skill preference. Missing means
-`{ mode: "all" }`. Installed state is not persisted; the daemon derives it from its three managed
-skill directories and keeps config plus filesystem convergence behind one serialized owner.
+`{ mode: "all" }`. Installed state is not persisted; the daemon derives it from the shared
+`~/.agents/skills` and Claude skill directories and keeps config plus filesystem convergence behind
+one serialized owner. Codex discovers the shared directory. Updates retire unchanged files from
+Paseo-managed copies in `~/.codex/skills`, preserving user edits and untracked files.
 
-`otto reload` reads and validates this file once inside the daemon. That snapshot drives resolution,
+`paseo reload` reads and validates this file once inside the daemon. That snapshot drives resolution,
 classification, application, and reload bookkeeping. `DaemonConfigStore` owns applying runtime-safe
 fields and their removal/default semantics; session handlers and the CLI only relay the structured
 result. Normal config patches persist only the requested fields, so launch overrides and resolved
@@ -166,7 +198,7 @@ snapshot so a mixed edit can apply its live subset and still name the paths that
 {
   version: 1,
   daemon: {
-    listen: "127.0.0.1:6868",
+    listen: "127.0.0.1:6767",
     hostnames: true | string[],   // legacy alias `allowedHosts` is migrated on load
     trustedProxies: true | string[], // defaults to ["loopback"]; Express proxy names/CIDRs
     mcp: { enabled: boolean, injectIntoAgents: boolean },
@@ -182,7 +214,11 @@ snapshot so a mixed edit can apply its live subset and still name the paths that
     baseUrl: string
   },
   worktrees?: {
-    root?: string            // optional root for new worktrees; defaults to $OTTO_HOME/worktrees
+    root?: string            // optional root for new worktrees; defaults to $PASEO_HOME/worktrees
+    servicePorts?: {         // optional dynamic service port allocation policy
+      range?: string         // inclusive range, e.g. "3000-4000"
+      portScript?: string    // executable that receives service/workspace context and prints one TCP port
+    }
   },
   providers: {
     openai: {
@@ -221,11 +257,13 @@ snapshot so a mixed edit can apply its live subset and still name the paths that
 
 All fields are optional with sensible defaults.
 
-Git-managed plugins still appear as directory sources in `config.json`. This keeps the plugin
-runtime and protocol config compatible with directory-only clients. `plugins/sources.json` owns the
-Git-specific origin, tracking ref, installed commit, repository subdirectory, and checkout root.
-Otto writes it atomically. An update creates and validates a new version directory before changing
-the configured directory path; successful activation removes the old version.
+Managed plugins appear as directory sources in `config.json`; it owns the active path and enabled
+state. `plugins/sources.json` is written atomically and stores only managed kind and the Git acquisition
+remote. Installed revision, package/subdirectory identity and ownership root come from retained
+artifacts and the fixed managed layout; [managed source ownership](plugins.md#managed-source-ownership)
+explains their authority. An update prepares a new directory before replacing the active path and
+removing the previous version. Old record fields are accepted at the store boundary and ignored;
+there is no startup migration or persistent update policy.
 
 ### Profile lists
 
@@ -233,7 +271,7 @@ the configured directory path; successful activation removes the old version.
 array, never merges entries, so a client sends the complete next list on every add, edit, reorder
 and remove. List order is the display order.
 
-Absent and empty mean different things for terminal profiles: omitting the key falls back to
+Absent and empty mean different things for terminal profiles — omitting the key falls back to
 `DEFAULT_TERMINAL_PROFILES`, while `[]` means the user removed them all. Agent profiles have no
 defaults, so both mean none.
 
@@ -242,13 +280,13 @@ rather than storing something it cannot describe. That is why the client gates t
 UI on `server_info.features.agentProfiles` instead of letting a save appear to succeed against an
 older daemon.
 
-### Agent provider Otto tools
+### Agent provider Paseo tools
 
-`agents.providers` is keyed by the exact provider ID used to launch the agent. Built-in and plugin providers use their registered IDs; Otto also registers `otto-brain` and
-OpenAI-compatible provider definitions. Custom provider IDs are their literal
+`agents.providers` is keyed by the exact provider ID used to launch the agent. The built-in IDs are
+`claude`, `codex`, `copilot`, `opencode`, `pi`, and `omp`. Custom provider IDs are their literal
 configuration keys, such as `my-claude` or `zai`, not the provider named by `extends`.
 
-Each entry may include a Otto-tool policy:
+Each entry may include a Paseo-tool policy:
 
 ```json
 {
@@ -257,7 +295,7 @@ Each entry may include a Otto-tool policy:
       "my-claude": {
         "extends": "claude",
         "label": "My Claude",
-        "ottoTools": {
+        "paseoTools": {
           "enabled": true,
           "disabledTools": ["browser_evaluate"]
         }
@@ -267,20 +305,19 @@ Each entry may include a Otto-tool policy:
 }
 ```
 
-Absent `ottoTools`, or absent fields within it, means Otto tools are enabled and all tools are
-allowed. `enabled: false` disables the provider's Otto catalog; `disabledTools` lists exact tool
-IDs to omit. Exact-name denies also cover `speak` and separately granted connector or graph-query
-tools. Disabling the built-in catalog does not revoke those separate connector or graph grants;
-their own authorization and host switches still apply.
-Browser tools also require `daemon.browserTools.enabled` and a connected browser host. Provider
-policy intersects host tool groups and workspace access; enabling a provider cannot widen either ceiling.
+Absent `paseoTools`, or absent fields within it, means Paseo tools are enabled and all tools are
+allowed. `enabled: false` disables the provider's Paseo catalog; `disabledTools` lists exact tool
+IDs to omit. The policy covers the core and browser catalog, not the voice-only `speak` tool.
+Browser tools also require `daemon.browserTools.enabled` and a connected browser host.
 This policy controls the catalog presented to an agent. It is not an authorization boundary for
 agents that can access the host through a shell.
 
 `daemon.mcp.injectIntoAgents` is the global override. When it is `false`, no provider receives
-Otto tools; otherwise the provider policy applies. Provider and global policy are resolved when a
+Paseo tools; otherwise the provider policy applies. Provider and global policy are resolved when a
 session is created, resumed, imported, or reloaded, so configuration changes affect the next
 session rather than an already-running one.
+
+`agents.metadataGeneration.providers` controls the preferred structured-generation fallback order for daemon-side metadata tasks such as commit messages, PR text, branch names, and generated agent titles. Entries are tried first in the configured order, then Paseo falls through to dynamically discovered defaults and finally the current selection when available.
 
 ### Git process limits
 
@@ -306,27 +343,27 @@ requests.
 
 Environment variables override `config.json`:
 
-| Environment variable                | Setting                  |
-| ----------------------------------- | ------------------------ |
-| `OTTO_GIT_MAX_PROCESSES_PER_SECOND` | `maxProcessesPerSecond`  |
-| `OTTO_GIT_MAX_PROCESS_CONCURRENCY`  | `maxProcessConcurrency`  |
-| `OTTO_GIT_CONCURRENCY`              | Legacy concurrency alias |
+| Environment variable                 | Setting                  |
+| ------------------------------------ | ------------------------ |
+| `PASEO_GIT_MAX_PROCESSES_PER_SECOND` | `maxProcessesPerSecond`  |
+| `PASEO_GIT_MAX_PROCESS_CONCURRENCY`  | `maxProcessConcurrency`  |
+| `PASEO_GIT_CONCURRENCY`              | Legacy concurrency alias |
 
-`OTTO_GIT_MAX_PROCESS_CONCURRENCY` wins when it and the legacy alias are both set. Run `otto reload`
+`PASEO_GIT_MAX_PROCESS_CONCURRENCY` wins when it and the legacy alias are both set. Run `paseo reload`
 after changing `config.json`. Environment changes require a daemon restart; the launch environment
 remains authoritative during reload.
 
-`agents.metadataGeneration.providers` controls the preferred structured-generation fallback order for daemon-side metadata tasks such as commit messages, PR text, branch names, and generated agent titles. Entries are tried first in the configured order, then Otto falls through to dynamically discovered defaults and finally the current selection when available.
+`agents.metadataGeneration.providers` controls the preferred structured-generation fallback order for daemon-side metadata tasks such as commit messages, PR text, branch names, and generated agent titles. Entries are tried first in the configured order, then Paseo falls through to dynamically discovered defaults and finally the current selection when available.
 
 Local speech model ids are intentionally narrow: STT uses `parakeet-tdt-0.6b-v2-int8`, TTS uses `kokoro-en-v0_19`, and turn detection uses the bundled Silero VAD model.
 
 Set these to select OpenAI instead of local speech:
 
-| Env var                       | Applies to                      |
-| ----------------------------- | ------------------------------- |
-| `OTTO_VOICE_STT_PROVIDER`     | Voice mode STT provider         |
-| `OTTO_DICTATION_STT_PROVIDER` | Composer dictation STT provider |
-| `OTTO_VOICE_TTS_PROVIDER`     | Voice mode TTS provider         |
+| Env var                        | Applies to                      |
+| ------------------------------ | ------------------------------- |
+| `PASEO_VOICE_STT_PROVIDER`     | Voice mode STT provider         |
+| `PASEO_DICTATION_STT_PROVIDER` | Composer dictation STT provider |
+| `PASEO_VOICE_TTS_PROVIDER`     | Voice mode TTS provider         |
 
 OpenAI speech can be configured under `providers.openai`. STT and TTS resolve independently, so they can point at different endpoints:
 
@@ -347,9 +384,9 @@ OpenAI speech can be configured under `providers.openai`. STT and TTS resolve in
 }
 ```
 
-`providers.openai.stt` is used for both composer dictation and voice mode speech-to-text; `providers.openai.tts` is used for voice mode text-to-speech. The equivalent env vars are `OPENAI_STT_API_KEY`/`OPENAI_STT_BASE_URL` and `OPENAI_TTS_API_KEY`/`OPENAI_TTS_BASE_URL`. Each feature falls back to `providers.openai.apiKey`/`providers.openai.baseUrl`, then `OPENAI_API_KEY`/`OPENAI_BASE_URL`, when its own fields are unset. These settings apply only to Otto OpenAI speech features, not to Codex or other OpenAI-backed tools.
+`providers.openai.stt` is used for both composer dictation and voice mode speech-to-text; `providers.openai.tts` is used for voice mode text-to-speech. The equivalent env vars are `OPENAI_STT_API_KEY`/`OPENAI_STT_BASE_URL` and `OPENAI_TTS_API_KEY`/`OPENAI_TTS_BASE_URL`. Each feature falls back to `providers.openai.apiKey`/`providers.openai.baseUrl`, then `OPENAI_API_KEY`/`OPENAI_BASE_URL`, when its own fields are unset. These settings apply only to Paseo OpenAI speech features, not to Codex or other OpenAI-backed tools.
 
-Otto uses these paths under the configured OpenAI base URL:
+Paseo uses these paths under the configured OpenAI base URL:
 
 - dictation STT: `/v1/audio/transcriptions`
 - voice mode STT: `/v1/audio/transcriptions`
@@ -359,95 +396,55 @@ Otto uses these paths under the configured OpenAI base URL:
 
 ## 3. Schedule
 
-**Path:** `$OTTO_HOME/schedules/{id}.json`
+**Path:** `$PASEO_HOME/schedules/{id}.json`
 
 One file per schedule. ID is 8 hex characters.
 
-| Field                    | Type                                  | Description                                                                                                                                         |
-| ------------------------ | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                     | `string`                              | 8-char hex ID                                                                                                                                       |
-| `name`                   | `string?`                             | Human-readable name                                                                                                                                 |
-| `prompt`                 | `string`                              | The prompt to send                                                                                                                                  |
-| `cadence`                | `ScheduleCadence`                     | Timing (see below)                                                                                                                                  |
-| `target`                 | `ScheduleTarget`                      | What to run (see below)                                                                                                                             |
-| `status`                 | `"active" \| "paused" \| "completed"` | Current state                                                                                                                                       |
-| `createdAt`              | `string` (ISO 8601)                   |                                                                                                                                                     |
-| `updatedAt`              | `string` (ISO 8601)                   |                                                                                                                                                     |
-| `nextRunAt`              | `string?` (ISO 8601)                  | Next scheduled execution                                                                                                                            |
-| `lastRunAt`              | `string?` (ISO 8601)                  | Last execution time                                                                                                                                 |
-| `lastRunStatus`          | `"succeeded" \| "failed"?`            | Outcome of the last run                                                                                                                             |
-| `lastRunError`           | `string?`                             | Error message from the last run                                                                                                                     |
-| `lastRunPersonalityName` | `string?` (nullable)                  | Personality that executed the last run (null = none); mirrors the run-level field so `ScheduleSummary` can show the executor without loading `runs` |
-| `lastRunProvider`        | `string?` (nullable)                  | Provider that executed the last run                                                                                                                 |
-| `lastRunModel`           | `string?` (nullable)                  | Model that executed the last run                                                                                                                    |
-| `pausedAt`               | `string?` (ISO 8601)                  | When paused                                                                                                                                         |
-| `expiresAt`              | `string?` (ISO 8601)                  | Auto-expire time                                                                                                                                    |
-| `maxRuns`                | `number?`                             | Max executions before completing                                                                                                                    |
-| `runs`                   | `ScheduleRun[]`                       | Execution history                                                                                                                                   |
+| Field       | Type                                  | Description                      |
+| ----------- | ------------------------------------- | -------------------------------- |
+| `id`        | `string`                              | 8-char hex ID                    |
+| `name`      | `string?`                             | Human-readable name              |
+| `prompt`    | `string`                              | The prompt to send               |
+| `cadence`   | `ScheduleCadence`                     | Timing (see below)               |
+| `target`    | `ScheduleTarget`                      | What to run (see below)          |
+| `status`    | `"active" \| "paused" \| "completed"` | Current state                    |
+| `createdAt` | `string` (ISO 8601)                   |                                  |
+| `updatedAt` | `string` (ISO 8601)                   |                                  |
+| `nextRunAt` | `string?` (ISO 8601)                  | Next scheduled execution         |
+| `lastRunAt` | `string?` (ISO 8601)                  | Last execution time              |
+| `pausedAt`  | `string?` (ISO 8601)                  | When paused                      |
+| `expiresAt` | `string?` (ISO 8601)                  | Auto-expire time                 |
+| `maxRuns`   | `number?`                             | Max executions before completing |
+| `runs`      | `ScheduleRun[]`                       | Execution history                |
 
 ### Nested: ScheduleCadence (discriminated union on `type`)
 
-- `{ type: "every", everyMs: number }` - interval in milliseconds
-- `{ type: "cron", expression: string, timezone?: string }` - cron expression; absent `timezone` means UTC, present `timezone` is an IANA time zone used for local wall-clock recurrence
+- `{ type: "cron", expression: string, timezone?: string }` — canonical cadence for new writes; absent `timezone` means UTC
+- `{ type: "every", everyMs: number }` — legacy rolling interval, still readable and executable during the compatibility window
 
 ### Nested: ScheduleTarget (discriminated union on `type`)
 
-- `{ type: "agent", agentId: string }` - send to existing agent
-- `{ type: "new-agent", config: { provider, cwd, modeId?, model?, thinkingOptionId?, title?, providerOptions?, featureValues?, systemPrompt?, mcpServers? } }` - create a new agent
+- `{ type: "agent", agentId: string }` — send to existing agent
+- `{ type: "new-agent", config: { provider, cwd, modeId?, model?, thinkingOptionId?, title?, providerOptions?, featureValues?, systemPrompt?, mcpServers? } }` — create a new agent
 
 ### Nested: ScheduleRun
 
-| Field             | Type                                   | Description                                      |
-| ----------------- | -------------------------------------- | ------------------------------------------------ |
-| `id`              | `string`                               | Run ID                                           |
-| `scheduledFor`    | `string` (ISO 8601)                    | Intended execution time                          |
-| `startedAt`       | `string` (ISO 8601)                    |                                                  |
-| `endedAt`         | `string?` (ISO 8601)                   |                                                  |
-| `status`          | `"running" \| "succeeded" \| "failed"` |                                                  |
-| `agentId`         | `string?` (UUID)                       | Agent used for this run                          |
-| `personalityName` | `string?` (nullable)                   | Personality that executed this run (null = none) |
-| `provider`        | `string?` (nullable)                   | Provider that executed this run                  |
-| `model`           | `string?` (nullable)                   | Model that executed this run                     |
-| `output`          | `string?`                              | Agent output text                                |
-| `error`           | `string?`                              | Error message if failed                          |
-
----
-
-## Project identity
-
-Projects are allocated for the exact root selected by the caller, normalized lexically with `path.resolve` (never `realpath`). New project IDs are opaque `prj_<16 hex>` values. Existing remote-shaped or path-shaped IDs are retained as readable compatibility records and are never rekeyed. An active exact root is idempotent; archived-only matches do not resurrect an old project. Workspace `projectId` is stable membership: reconciliation may update git-derived kind and branch metadata, but never rehomes a workspace or changes a project's root, ID, or default name.
-
-`projectKey` is a persisted, opaque equivalence key used only to group the same logical project
-across hosts. It is separate from the host-local `projectId`; today's producer prefers a normalized
-Git remote and otherwise uses the local project root. Consumers never derive it from live Git.
-Creation persists it with the project, and normal boot reconciliation fills it for
-older records where the field is absent. There is no migration.
-
-`kind` and `projectKey` are mutable metadata, not identity. Workspace reconciliation watches active project roots and
-updates those fields and `updatedAt` when Git facts change, preserving the project's ID, root path,
-names, and workspace foreign keys. Attached workspaces are independently refreshed
-from their own cwd, so an explicit project root never implies a workspace checkout. Empty projects
-are observed too.
-
-The workspace registry model defines placement once: initial directory/worktree construction,
-mutable reconciliation fields, and the persisted-to-wire checkout projection. Its update policy
-preserves `displayName` and `baseBranch`. `WorkspaceProvisioningService` owns the corresponding
-registry writes, so directory opens, agent imports, and worktree creation all enter through that
-service instead of constructing records independently. The workspace record is then the durable
-placement authority: `cwd` is the exact execution directory, while `worktreeRoot` is the backing
-checkout root. They intentionally differ for an exact subproject inside a worktree. Archive,
-restore, branch auto-name, and descriptor flows consume those persisted facts rather than
-rediscovering ownership from a directory that may already be gone. Reconciliation may refresh
-mutable placement facts, but never changes `projectId`, `cwd`, `displayName`, or `baseBranch`.
-Workspace archive runs lifecycle teardown from the exact `cwd` but removes only the backing
-`worktreeRoot` after its last active reference disappears. Worktree recovery recreates that backing
-checkout from `mainRepoRoot`, then restores the relative path from `worktreeRoot` to `cwd`.
+| Field          | Type                                   | Description             |
+| -------------- | -------------------------------------- | ----------------------- |
+| `id`           | `string`                               | Run ID                  |
+| `scheduledFor` | `string` (ISO 8601)                    | Intended execution time |
+| `startedAt`    | `string` (ISO 8601)                    |                         |
+| `endedAt`      | `string?` (ISO 8601)                   |                         |
+| `status`       | `"running" \| "succeeded" \| "failed"` |                         |
+| `agentId`      | `string?` (UUID)                       | Agent used for this run |
+| `output`       | `string?`                              | Agent output text       |
+| `error`        | `string?`                              | Error message if failed |
 
 ---
 
 ## 4. Project Registry
 
-**Path:** `$OTTO_HOME/projects/projects.json`
+**Path:** `$PASEO_HOME/projects/projects.json`
 
 Array of project records.
 
@@ -482,7 +479,7 @@ workspace together with its owning project.
 
 ## 5. Workspace Registry
 
-**Path:** `$OTTO_HOME/projects/workspaces.json`
+**Path:** `$PASEO_HOME/projects/workspaces.json`
 
 Array of workspace records. A workspace is a specific working directory within a project.
 
@@ -496,8 +493,8 @@ Array of workspace records. A workspace is a specific working directory within a
 | `title`                        | `string \| null`                                             | User-set name override layered over `displayName`. Null means "use `displayName`".                                                                                                            |
 | `branch`                       | `string \| null`                                             | The current Git branch for git-backed workspaces. Separate from `displayName`/`title`; a background branch refresh never rewrites the name.                                                   |
 | `worktreeRoot`                 | `string \| null`                                             | Backing checkout/worktree root. May differ from `cwd` for exact subprojects and remains persisted after the worktree is deleted so restore can reproduce the placement.                       |
-| `baseBranch`                   | `string \| null`                                             | Normalized branch the Otto worktree was created from; null for directories, local checkouts, and checkout-branch worktrees                                                                    |
-| `isOttoOwnedWorktree`          | `boolean`                                                    | Whether Otto owns and may remove/recreate the backing `worktreeRoot`                                                                                                                          |
+| `baseBranch`                   | `string \| null`                                             | Comparison base retained across archive and restore. Branch-off creation stores the resolved ref; legacy and PR-checkout records hold a bare name. Null means no recorded base.               |
+| `isPaseoOwnedWorktree`         | `boolean`                                                    | Whether Paseo owns and may remove/recreate the backing `worktreeRoot`                                                                                                                         |
 | `mainRepoRoot`                 | `string \| null`                                             | Main repository root for worktree checkouts, independent of both exact `cwd` and backing `worktreeRoot`                                                                                       |
 | `createdAt`                    | `string` (ISO 8601)                                          |                                                                                                                                                                                               |
 | `updatedAt`                    | `string` (ISO 8601)                                          |                                                                                                                                                                                               |
@@ -507,11 +504,11 @@ Array of workspace records. A workspace is a specific working directory within a
 | `pinnedAt`                     | `string \| null` (ISO 8601)                                  | Pinned-to-top-of-sidebar timestamp; null means "not pinned"                                                                                                                                   |
 | `untrustedSource`              | `{ kind: "change_request", forge, number, headRepository }?` | Provenance captured when a cross-repository change request creates the workspace. Missing means repository automation is allowed; explicit setup removes the field.                           |
 
-> **Opaque-ID invariant:** `workspaceId` is opaque identity, never a filesystem path. Filesystem and git operations take `cwd`/`workspaceDirectory` only, never the id. A compatibility-only first-materialization bootstrap still groups pre-registry agent records by path and Git remote so existing installs retain their legacy records. That grouping never runs against a live registry, and its keys are not runtime project or workspace identity.
+> **Opaque-ID invariant:** `workspaceId` is opaque identity, never a filesystem path. Filesystem and git operations take `cwd`/`workspaceDirectory` only — never the id. A compatibility-only first-materialization bootstrap still groups pre-registry agent records by path and Git remote so existing installs retain their legacy records. That grouping never runs against a live registry, and its keys are not runtime project or workspace identity.
 
 ### Workspace label catalog
 
-**Path:** `$OTTO_HOME/projects/workspace-labels.json`
+**Path:** `$PASEO_HOME/projects/workspace-labels.json`
 
 The catalog is shared by every workspace on one host. A definition contains a display name and one
 of the ten identity colour names (`WORKSPACE_LABEL_COLORS` in
@@ -538,59 +535,11 @@ history surfaces tolerate transient orphaned workspaces by omitting those rows s
 blank the whole History screen, but mutation paths should repair or remove the orphaned state rather
 than treating it as valid.
 
-**Two workspaces may share a `cwd`, but nothing creates one implicitly.** A same-directory sibling
-exists only because the user explicitly asked for it. Every path that needs a workspace for a
-directory adopts the one the request came from: `create_agent_request` and `import_agent_request`
-both carry an optional `workspaceId` and honour it, and a request without one resolves by directory
-(`findOrCreateWorkspaceForDirectory`) rather than minting. Import used to mint unconditionally, which
-left a duplicate workspace in the sidebar owning the chat the user had just imported in place.
-
 ---
 
-## 6. Artifacts
+## 6. Push Token Store
 
-**Paths:** Repository: `{projectRoot}/.otto/artifacts/{artifactId}.json` + `{artifactId}.html`. Host: `$OTTO_HOME/project-artifacts/{stable-project-key}/{artifactId}.json` + `{artifactId}.html`.
-
-Artifacts have their own storage policy, independent of Knowledge, Schedules, and Workflows. A project may override the host-wide Artifacts default with **Repository** or **This host**. `ArtifactStoreResolver` resolves the owning store and `ArtifactStoreRegistry` routes every operation to it. Reads aggregate the repository, host, and legacy host-global stores, but changing the preference never moves files. An artifact without resolved ownership is shown as **Legacy location** and can explicitly move to either destination. The **Move to repository** / **Move to this host** card action transfers only a settled artifact: it stages the destination JSON, HTML, and last-good snapshot, preserves run history, rolls back a failed promotion, and leaves the setting unchanged. Each artifact is a metadata JSON file plus a sibling self-contained HTML file, written atomically.
-
-`ArtifactWatcher` validates generation output and continues monitoring each ready artifact. A valid external HTML change is sanitized, becomes the new last-known-good output, and refreshes connected clients. An invalid or missing external file remains untouched, makes the record recoverably errored, and blocks preview. The durable `{artifactId}.html.last-good` snapshot can then be restored only through the explicit repair action, including `otto artifact repair <id>`. Regeneration uses a separate transient `.bak` backup, which also recovers an interrupted regeneration after daemon restart. Generated HTML is checked by `html-validator.ts` before an artifact is marked `ready`.
-
-Generation is agent-based, not a bespoke completion call: `ArtifactService` (`artifact-service.ts`) spawns a normal Otto agent (`AgentManager.createAgent`) with the user's chosen provider/model and a dedicated system prompt (`artifact-prompt.ts`) that constrains output to a **single, completely self-contained HTML file** - all CSS/JS inline, mirroring Claude Code's artifact discipline. The run streams as a live generation log while `status` is `generating`, its generation identity lands in the `generationAgentId`/`generationProvider`/`generationModel` fields below, and cancel interrupts the agent run. `otto artifact cancel <id>` provides the same explicit recovery from the CLI: it stops the generation and returns the artifact to a recoverable error state, restoring last-good output when the cancelled run was a regeneration. An artifact created from a chat also persists that chat as its latest durable source; the card exposes a read-only **View source chat** action and reports the normal unavailable state if the chat was deleted. An artifact created by a Schedule's new-agent run persists that Schedule and exact run identity; the card discloses it, but a Schedule deep link is not available yet. Existing-agent Schedule runs and Workflow source adapters remain pending. Iteration ("re-prompt to modify") is the same flow re-pointed at an existing artifact: the service resets it to `generating` and spawns a fresh generation agent that rewrites the HTML in place, which the watcher then pushes to any open artifact tab. That visual generation is explicit: `otto artifact regenerate <id>` invokes it through the CLI, while `otto artifact update-data <id> --data '<json>'` changes only the declared backing data.
-
-Agents can create artifacts too, via the `create_artifact` Otto tool (`packages/server/src/server/agent/tools/otto-tools.ts`): it defaults provider/model/thinking/project from the calling agent, returns immediately with `status: "generating"` (the description must be self-contained - the generation agent cannot see the calling conversation), and broadcasts `artifact.created.notification` so every connected client sees it live. The tool runs against a daemon-global `ArtifactService` instance wired in `bootstrap.ts`; client-initiated artifact RPCs use that same daemon-owned service. Client mutations broadcast artifact lifecycle notifications to all connected sessions; correlated responses return only to the requester.
-
-**Workspace discovery:** Artifacts remain project-owned. **Add artifact** records the artifact id on the daemon's workspace record through `artifact.workspace.attach.request`. The normal sequenced workspace directory carries optional `artifactIds` to every connected client and in reconnect snapshots. Membership is scoped to the opaque workspace id, so sibling workspaces sharing a directory do not acquire each other's artifact tabs. The daemon validates that the artifact exists and belongs to the workspace's project before attaching it. Deleting an artifact through the client removes its workspace associations.
-
-Clients discover newly attached artifacts in background tabs without changing focus or pane placement. A local discovery receipt preserves tab dismissal across reload; closing a tab does not detach it for other clients. This receipt lives separately from the strict persisted layout format. The `artifactWorkspaceDiscovery` capability gates adding an artifact to a shared workspace. Hosts without it show an update message. Existing tabs created before shared membership was supported remain local until the user adds the artifact again.
-
-Newly generated artifacts also carry one `<script type="application/json" id="otto-artifact-data">` block. It is the artifact's mutable data contract: `inspect_artifact` exposes its parsed JSON, and `update_artifact_data` atomically replaces only that block. The daemon does not rewrite any bytes outside the block, so data updates cannot change the artifact's HTML structure, CSS, or JavaScript. `otto artifact ls [--project <project-root-or-id>]` lists the durable library through the daemon, including resolved storage and source labels. The Artifacts card opens the same contract in an explicit **Update data** sheet, and `otto artifact data <id>` / `otto artifact update-data <id> --data '<json>'` use the same daemon-owned path. `otto artifact move <id> --to repository|host` uses the same daemon-owned ownership transfer as the card. Older artifacts without the block must be regenerated before they support data-only updates.
-
-Metadata (`ArtifactMetadataSchema`, `packages/protocol/src/artifacts/types.ts`):
-
-| Field                                                        | Type                                   | Description                                                                                                                                                                                              |
-| ------------------------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`                                                         | `string`                               | Primary key; also the file basename                                                                                                                                                                      |
-| `name`, `description`                                        | `string`                               | User/agent-supplied                                                                                                                                                                                      |
-| `projectId`                                                  | `string`                               | Owning project                                                                                                                                                                                           |
-| `filePath`                                                   | `string`                               | Path of the HTML file                                                                                                                                                                                    |
-| `kind`                                                       | `"html"`                               | Only kind today                                                                                                                                                                                          |
-| `starred`                                                    | `boolean`                              |                                                                                                                                                                                                          |
-| `status`                                                     | `"generating" \| "ready" \| "error"`   | Generation lifecycle                                                                                                                                                                                     |
-| `createdAt`, `updatedAt`                                     | `string` (ISO 8601)                    |                                                                                                                                                                                                          |
-| `generationAgentId`, `generationProvider`, `generationModel` | `string \| null`                       | Provenance of the generating agent run                                                                                                                                                                   |
-| `generationPersonalityName`                                  | `string \| null` (optional)            | Personality that generated (last generated) the artifact; null/absent when none. Shown on the card's executor line alongside provider/model                                                              |
-| `source`                                                     | Chat, Workflow, or Schedule (optional) | Latest daemon-stamped durable origin. Chat has a read-only deep link; new-agent Schedule runs stamp an exact source but do not deep-link yet. Workflow and existing-agent Schedule adapters are pending. |
-| `storageLocation`                                            | `"repository" \| "host"` (optional)    | Resolved ownership location at creation; it does not change when the project preference changes                                                                                                          |
-| `repairAvailable`                                            | `boolean` (optional)                   | A retained last-known-good HTML snapshot can explicitly repair an invalid external edit                                                                                                                  |
-| `errorMessage`                                               | `string \| null`                       | Set when `status === "error"`                                                                                                                                                                            |
-
-Availability is gated by the `artifacts` capability flag in `server_info.features.*` (COMPAT(artifacts), added v0.4.1). Independent storage, repair, data-only updates, explicit ownership moves, and source-chat disclosure have their own additive capability flags: `artifactStoreLocation`, `artifactRepair`, `artifactDataUpdate`, `artifactStoreMove`, and `artifactProvenance`.
-
----
-
-## 7. Push Token Store
-
-**Path:** `$OTTO_HOME/push-tokens.json`
+**Path:** `$PASEO_HOME/push-tokens.json`
 
 ```json
 {
@@ -602,15 +551,16 @@ Simple set of Expo push notification tokens. Loaded with permissive parsing (fil
 
 ---
 
-## 8. Daemon meta files
+## 7. Daemon meta files
 
-These small files are not validated as full Zod schemas but are persisted under `$OTTO_HOME` for daemon identity and runtime coordination.
+These small files are not validated as full Zod schemas but are persisted under `$PASEO_HOME` for daemon identity and runtime coordination.
 
 | Path                  | Format                                                         | Notes                                                                             |
 | --------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| `server-id`           | Plain text, e.g. `srv_<base64url>`                             | Stable per-`$OTTO_HOME` daemon ID. Overridable via `OTTO_SERVER_ID` env.          |
+| `server-id`           | Plain text, e.g. `srv_<base64url>`                             | Stable per-`$PASEO_HOME` daemon ID. Overridable via `PASEO_SERVER_ID` env.        |
 | `daemon-keypair.json` | `{ v: 2, publicKeyB64, secretKeyB64 }` (libsodium box keypair) | E2EE relay identity. Written with mode `0600`. Regenerated if file is unreadable. |
-| `otto.pid`            | JSON `{ pid, startedAt, ... }`                                 | PID lock; prevents two daemons sharing one `$OTTO_HOME`.                          |
+| `paseo.pid`           | JSON `{ pid, startedAt, ... }`                                 | PID lock; prevents two daemons sharing one `$PASEO_HOME`.                         |
+| `local-credential`    | 32 random bytes encoded as base64url text                      | Rotated before each listen and deleted on shutdown; mode `0600`.                  |
 | `daemon.log`          | Pino log output                                                | Default location; path/rotation configurable via `log.file` in `config.json`.     |
 
 ---
@@ -621,10 +571,10 @@ These live in React Native `AsyncStorage` or browser `IndexedDB`, not on the dae
 
 ### Keying convention: directory-backed vs workspace-owned
 
-Right-sidebar client state splits on whether it is determined by the directory or owned by the workspace (two workspaces can share one `cwd`). The split is enforced by the cache key, so changing a key changes the sharing semantics - see [architecture.md](architecture.md#right-sidebar-boundary-directory-backed-vs-workspace-owned) for the full table.
+Right-sidebar client state splits on whether it is determined by the directory or owned by the workspace (two workspaces can share one `cwd`). The split is enforced by the cache key, so changing a key changes the sharing semantics — see [architecture.md](architecture.md#right-sidebar-boundary-directory-backed-vs-workspace-owned) for the full table.
 
 - **Directory-backed** (shared by same-`cwd` workspaces): keyed by `(serverId, cwd)`. Git status/diff, GitHub PR status, PR timeline, file preview content. These are TanStack Query caches, not persisted stores.
-- **Workspace-owned** (independent per workspace): keyed by `workspaceId`, with `cwd` used only as a fallback when no `workspaceId` is present. Review draft comments (`@otto:review-draft-store`), diff-mode overrides (in-memory), workspace composer attachments, and file-explorer nav/expand state. The `workspaceId` part of these keys is **opaque** - never parse it back into a path.
+- **Workspace-owned** (independent per workspace): keyed by `workspaceId`, with `cwd` used only as a fallback when no `workspaceId` is present. Review draft comments (`@paseo:review-draft-store`), diff-mode overrides (in-memory), workspace composer attachments, and file-explorer nav/expand state. The `workspaceId` part of these keys is **opaque** — never parse it back into a path.
 
 ### Replica row store
 
@@ -639,7 +589,10 @@ host, kinds, and ids. Opening a cached workspace uses exact workspace and projec
 directory scan. One invalid row is deleted and returned as a miss without affecting other rows.
 An invalid directory row and its affected checkpoint cursor are repaired in one transaction, so a
 later launch cannot accept a checkpoint for a partial baseline. Directory changes and their
-checkpoint are also applied in one transaction.
+checkpoint are also applied in one transaction. Reads wait for accepted changes to reach storage,
+then retry only when a requested row changes during the read. Unrelated agent streams do not
+invalidate the read. Directory baseline replacements and host removal or renaming still invalidate
+the affected reads.
 
 The cache is capped at 32 MiB and evicts whole hosts in least-recently-written order. Budget
 bookkeeping may scan opaque row sizes during a deferred write, never during host registry startup or
@@ -648,7 +601,7 @@ source code, prompts, and tool output; encrypted-at-rest storage is a separate s
 
 ### Draft Store
 
-**AsyncStorage key:** `otto-drafts` (version 2)
+**AsyncStorage key:** `paseo-drafts` (version 2)
 
 ```typescript
 {
@@ -664,7 +617,7 @@ source code, prompts, and tool output; encrypted-at-rest storage is a separate s
 
 ### Attachment Store (Web)
 
-**IndexedDB database:** `otto-attachment-bytes`, object store: `attachments`
+**IndexedDB database:** `paseo-attachment-bytes`, object store: `attachments`
 
 Stores binary attachment blobs keyed by attachment ID.
 

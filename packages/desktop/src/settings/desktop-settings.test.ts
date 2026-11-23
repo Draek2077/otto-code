@@ -10,7 +10,7 @@ import {
 } from "./desktop-settings";
 
 async function createTempUserDataDir(): Promise<string> {
-  return await mkdtemp(path.join(os.tmpdir(), "otto-desktop-settings-"));
+  return await mkdtemp(path.join(os.tmpdir(), "paseo-desktop-settings-"));
 }
 
 function settingsFilePath(userDataPath: string): string {
@@ -86,15 +86,6 @@ describe("desktop-settings", () => {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
       },
-      tray: {
-        showIcon: true,
-        minimizeOnClose: true,
-        startMinimized: false,
-      },
-      quit: {
-        warnBeforeQuit: false,
-        onlyWarnForActiveAgents: false,
-      },
     });
   });
 
@@ -117,30 +108,8 @@ describe("desktop-settings", () => {
         manageBuiltInDaemon: true,
         keepRunningAfterQuit: false,
       },
-      tray: {
-        showIcon: true,
-        minimizeOnClose: true,
-        startMinimized: false,
-      },
-      quit: {
-        warnBeforeQuit: false,
-        onlyWarnForActiveAgents: false,
-      },
     });
     expect(files).toEqual(["desktop-settings.json"]);
-  });
-
-  it("persists an explicit tray-icon choice", async () => {
-    const userDataPath = await createTempUserDataDir();
-    directories.add(userDataPath);
-
-    await createDesktopSettingsStore({ userDataPath }).patch({
-      tray: { showIcon: false },
-    });
-
-    const settings = await createDesktopSettingsStore({ userDataPath }).get();
-
-    expect(settings.tray.showIcon).toBe(false);
   });
 
   it("defaults notification sounds on for existing settings documents", async () => {
@@ -306,15 +275,6 @@ describe("desktop-settings", () => {
         manageBuiltInDaemon: false,
         keepRunningAfterQuit: false,
       },
-      tray: {
-        showIcon: true,
-        minimizeOnClose: true,
-        startMinimized: false,
-      },
-      quit: {
-        warnBeforeQuit: false,
-        onlyWarnForActiveAgents: false,
-      },
     });
     expect(ignoredSecondMigration).toEqual(migrated);
   });
@@ -348,7 +308,7 @@ describe("desktop-settings", () => {
       migrations: Record<string, boolean>;
     };
 
-    expect(persisted.settings.tray).toEqual({ ...DEFAULT_DESKTOP_SETTINGS.tray, enabled: true });
+    expect(persisted.settings.tray).toEqual({ enabled: true });
     expect(persisted.settings.daemon.futureFlag).toBe(7);
     expect(persisted.migrations.futureMigrationApplied).toBe(true);
     expect(persisted.futureDocumentKey).toBe("kept");
@@ -357,10 +317,6 @@ describe("desktop-settings", () => {
       releaseChannel: "beta",
       notifications: { playSound: false },
       daemon: { manageBuiltInDaemon: true, keepRunningAfterQuit: false },
-      // Otto models tray and quit, so the public projection carries their
-      // defaults while the foreign `tray.enabled` key survives only on disk.
-      tray: DEFAULT_DESKTOP_SETTINGS.tray,
-      quit: DEFAULT_DESKTOP_SETTINGS.quit,
     });
   });
 
@@ -382,7 +338,7 @@ describe("desktop-settings", () => {
       settings: { releaseChannel: string; tray: unknown };
     };
 
-    expect(persisted.settings.tray).toEqual({ ...DEFAULT_DESKTOP_SETTINGS.tray, enabled: true });
+    expect(persisted.settings.tray).toEqual({ enabled: true });
     expect(persisted.settings.releaseChannel).toBe("beta");
   });
 
@@ -405,36 +361,6 @@ describe("desktop-settings", () => {
     };
 
     expect(persisted.settings.releaseChannel).toBe("stable");
-    expect(persisted.settings.tray).toEqual({ ...DEFAULT_DESKTOP_SETTINGS.tray, enabled: true });
-  });
-  it("retains independent Otto tray and quit preferences plus unknown future storage fields", async () => {
-    const userDataPath = await createTempUserDataDir();
-    directories.add(userDataPath);
-    await writeFile(
-      settingsFilePath(userDataPath),
-      JSON.stringify({
-        version: 1,
-        settings: {
-          ...DEFAULT_DESKTOP_SETTINGS,
-          tray: {
-            showIcon: false,
-            minimizeOnClose: true,
-            startMinimized: true,
-            futureTray: "keep",
-          },
-          quit: { warnBeforeQuit: true, onlyWarnForActiveAgents: true, futureQuit: 7 },
-        },
-        migrations: { legacyRendererSettingsImported: true, daemonStopOnQuitDefaultApplied: true },
-      }),
-    );
-    const store = createDesktopSettingsStore({ userDataPath });
-    const settings = await store.patch({ notifications: { playSound: false } });
-    expect(settings.tray).toEqual({ showIcon: false, minimizeOnClose: true, startMinimized: true });
-    expect(settings.quit).toEqual({ warnBeforeQuit: true, onlyWarnForActiveAgents: true });
-    const persisted = JSON.parse(await readFile(settingsFilePath(userDataPath), "utf8"));
-    expect(persisted.settings.tray.futureTray).toBe("keep");
-    expect(persisted.settings.quit.futureQuit).toBe(7);
-    const reloaded = await createDesktopSettingsStore({ userDataPath }).get();
-    expect(reloaded).toEqual(settings);
+    expect(persisted.settings.tray).toEqual({ enabled: true });
   });
 });

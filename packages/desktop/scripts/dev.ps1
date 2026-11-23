@@ -2,31 +2,24 @@ $ErrorActionPreference = "Stop"
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $DesktopDir = (Resolve-Path "$ScriptDir\..").Path
+$AppDir = (Resolve-Path "$DesktopDir\..\app").Path
 $RootDir = (Resolve-Path "$DesktopDir\..\..").Path
 $env:PATH = "$RootDir\node_modules\.bin;$env:PATH"
 
-# Metro resolves workspace packages through their published entrypoints, so build
-# the app dependencies before it starts. `dist/` is ignored and absent after a
-# fresh install.
-npm --prefix $RootDir run build:app-deps
-
+# OTTO(dev-runtime): refresh the source-matched daemon before Electron manages it.
+npm --prefix $RootDir run build:dev-runtime
+if ($LASTEXITCODE) { throw 'Could not build the Otto development daemon.' }
 # Build the Electron main process
-npm --prefix $DesktopDir run build:main
+npm run build:main
 
-# Take the lowest free port in the desktop band so dev browser storage keeps the
-# same localhost origin across restarts. Fall back only when earlier ports are busy.
-#
-# The band starts at 8082, NOT 8081: `8081` belongs to the root-checkout Expo
-# (`dev:app`, and the `otto-dev` preview config), and desktop dev must never claim
-# it - otherwise the two collide whenever both are up, which is the whole reason
-# the lanes own fixed ports. Kept identical to scripts/dev.sh; the two drifted
-# apart once and Windows silently stole 8081 for a while.
+# Prefer Metro's stable default port so dev browser storage keeps the same
+# localhost origin across restarts. Fall back only when earlier ports are busy.
 $PreviousNoColor = $env:NO_COLOR
 $PreviousForceColor = $env:FORCE_COLOR
 try {
     $env:NO_COLOR = "1"
     $env:FORCE_COLOR = "0"
-    $env:EXPO_PORT = (npx get-port-cli 8082 8083 8084 8085 8086 8087 8088 8089).Trim()
+    $env:EXPO_PORT = (npx get-port-cli 8081 8082 8083 8084 8085).Trim()
 } finally {
     if ($null -eq $PreviousNoColor) {
         Remove-Item Env:\NO_COLOR -ErrorAction SilentlyContinue
@@ -42,53 +35,40 @@ try {
 
 # Set EXPO_DEV_URL in the environment so Electron inherits it
 $env:EXPO_DEV_URL = "http://localhost:$($env:EXPO_PORT)"
-$env:EXPO_PUBLIC_OTTO_DEV_BUILD_LABEL = (git -C $RootDir branch --show-current).Trim()
+$env:EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL = (git -C $RootDir branch --show-current).Trim()
 
-$env:OTTO_DEV_ROOT = $RootDir
-$env:OTTO_DEV_RUNTIME_FALLBACK_ROOT = $RootDir
+$env:PASEO_DEV_ROOT = $RootDir
+$env:PASEO_DEV_RUNTIME_FALLBACK_ROOT = $RootDir
 $DevRuntime = node "$ScriptDir\dev-runtime.mjs" | ConvertFrom-Json
-$env:OTTO_ELECTRON_FLAGS = $DevRuntime.electronFlags
-$env:OTTO_ELECTRON_USER_DATA_DIR = $DevRuntime.userDataDir
-Remove-Item Env:\OTTO_DEV_RUNTIME_FALLBACK_ROOT -ErrorAction SilentlyContinue
+$env:PASEO_ELECTRON_FLAGS = $DevRuntime.electronFlags
+$env:PASEO_ELECTRON_USER_DATA_DIR = $DevRuntime.userDataDir
+Remove-Item Env:\PASEO_DEV_RUNTIME_FALLBACK_ROOT -ErrorAction SilentlyContinue
 
-# Fully isolate the dev instance from a production Otto install so `npm run dev`
-# works while the installed app is open. Without this the dev build loses the
-# Electron single-instance lock to the installed app and quits, and ends up
-# pointed at the production daemon, whose CORS allowlist rejects the Metro origin.
-. "$RootDir\scripts\dev-home.ps1"
-$Dev = Initialize-OttoDevEnvironment
+# Allow any origin in dev so Electron on random ports works.
+# SECURITY: wildcard CORS is unsafe in production — only acceptable here because
+# the daemon binds to localhost and this script is never used for production.
+$env:PASEO_CORS_ORIGINS = "*"
 
-# A userData dir of its own is what breaks the single-instance lock tie with the
-# installed app. Sibling of the dev OTTO_HOME, matching scripts/dev.sh.
-if (-not $env:OTTO_ELECTRON_USER_DATA_DIR) {
-    $env:OTTO_ELECTRON_USER_DATA_DIR = Join-Path (Get-OttoDevStateDir) "user-data"
-}
-New-Item -ItemType Directory -Force -Path $env:OTTO_ELECTRON_USER_DATA_DIR | Out-Null
-
-if (-not $Dev.ManagedHome) {
-    Write-Host "  (custom OTTO_HOME - leaving its config.json untouched)"
-}
+# OTTO(dev-isolation): share the root launcher's Otto home and port.
+. "$RootDir/scripts/dev-home.ps1"
+$DevEnvironment = Initialize-OttoDevEnvironment
+New-Item -ItemType Directory -Force -Path $env:PASEO_ELECTRON_USER_DATA_DIR | Out-Null
 
 Write-Host @"
 ======================================================
-  Otto Desktop Dev (Windows)
+  Paseo Desktop Dev (Windows)
 ======================================================
   Metro:      http://localhost:$($env:EXPO_PORT)
-  Daemon:     $($Dev.Listen) (isolated)
-  OTTO_HOME:  $($Dev.Home)
-  userData:   $($env:OTTO_ELECTRON_USER_DATA_DIR)
+  Daemon:     $($env:PASEO_LISTEN) (isolated)
+  PASEO_HOME: $($env:PASEO_HOME)
+  userData:   $($env:PASEO_ELECTRON_USER_DATA_DIR)
 ======================================================
 "@
 
-# Launch Metro + Electron together, kill both on exit. Same runner as
-# scripts/dev.sh - it owns the Metro heap bump, the port wait, and the teardown.
-#
-# This must NOT go back to building shell command strings for `concurrently`.
-# Windows PowerShell 5.1 passes arguments to a native command by wrapping them in
-# quotes without escaping the quotes already inside, so a command string carrying
-# a quoted path came back out of CommandLineToArgvW split at the first space in
-# that path: `cd C:\Users\Philippe` and `Durand\...\app && ...` arrived as two
-# separate commands, and concurrently ran four of them. Any checkout whose path
-# contains a space hit it. dev-runner.mjs passes the directory as a spawn `cwd`
-# option, so no shell ever parses it.
-node (Join-Path $ScriptDir "dev-runner.mjs")
+# Launch Metro + Electron together, kill both on exit
+concurrently `
+    --kill-others `
+    --names "metro,electron" `
+    --prefix-colors "magenta,cyan" `
+    "cd `"$AppDir`" && cross-env PASEO_WEB_PLATFORM=electron npx expo start --port $($env:EXPO_PORT)" `
+    "npx wait-on tcp:$($env:EXPO_PORT) && npx electron `"$DesktopDir`""

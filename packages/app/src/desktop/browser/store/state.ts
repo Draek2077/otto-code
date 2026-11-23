@@ -1,18 +1,13 @@
 import { z } from "zod";
 
-/** Lifecycle of a preview tab's dev server within this app session. Always renormalized to "idle" (or "ready" for non-preview tabs) before writing to storage and again on rehydration, so a restored tab is re-verified rather than trusted. */
-export type PreviewStatus = "idle" | "starting" | "ready" | "error" | "needs-start";
-
 export type BrowserViewport =
   | { mode: "responsive" }
   | { mode: "fixed"; width: number; height: number };
 
 export const RESPONSIVE_BROWSER_VIEWPORT: BrowserViewport = { mode: "responsive" };
+
 export interface BrowserRecord {
   browserId: string;
-  /** Persisted creator identity for chat reuse and the combined browser/preview limit. */
-  openedByAgentId?: string;
-  renderMode: "native" | "hosted";
   url: string;
   title: string;
   isLoading: boolean;
@@ -22,16 +17,6 @@ export interface BrowserRecord {
   lastError: string | null;
   viewport: BrowserViewport;
   createdAt: number;
-  /** True for tabs opened by the Preview button / preview_start's tab binding - rendered with a distinct icon so they read as "the preview", not a user-opened browser tab. */
-  isPreview: boolean;
-  /** The dev server this tab previews, when isPreview is true. Lets closing/stopping target the exact server instead of every browser tab. */
-  previewServerId: string | null;
-  /** launch.json configuration name, captured at creation time so the server can be restarted after an app restart invalidates previewServerId. */
-  previewServerName: string | null;
-  /** cwd the dev server was launched from, captured at creation time for the same reason. */
-  previewCwd: string | null;
-  /** Meaningless for non-preview tabs (always "ready" there). */
-  previewStatus: PreviewStatus;
 }
 
 export type BrowserRecordPatch = Partial<Omit<BrowserRecord, "browserId" | "createdAt">>;
@@ -51,8 +36,6 @@ const BrowserViewportSchema = z.discriminatedUnion("mode", [
 
 const BrowserRecordSchema = z.strictObject({
   browserId: z.string(),
-  openedByAgentId: z.string().min(1).optional(),
-  renderMode: z.enum(["native", "hosted"]).optional().default("native"),
   url: z.string(),
   title: z.string(),
   isLoading: z.boolean(),
@@ -62,14 +45,6 @@ const BrowserRecordSchema = z.strictObject({
   lastError: z.string().nullable(),
   viewport: BrowserViewportSchema.optional().default(RESPONSIVE_BROWSER_VIEWPORT),
   createdAt: z.number(),
-  isPreview: z.boolean().optional().default(false),
-  previewServerId: z.string().nullable().optional().default(null),
-  previewServerName: z.string().nullable().optional().default(null),
-  previewCwd: z.string().nullable().optional().default(null),
-  previewStatus: z
-    .enum(["idle", "starting", "ready", "error", "needs-start"])
-    .optional()
-    .default("ready"),
 });
 
 export const BrowserIndexStateSchema: z.ZodType<BrowserIndexState> = z.strictObject({
@@ -100,29 +75,8 @@ function browserViewportsEqual(left: BrowserViewport, right: BrowserViewport): b
 }
 
 export function normalizeBrowserIndexState(value: unknown): BrowserIndexState {
-  const index = z.object({ browsersById: z.record(z.string(), z.unknown()) }).safeParse(value);
-  if (!index.success) {
-    return { browsersById: {} };
-  }
-  const browsersById: Record<string, BrowserRecord> = {};
-  for (const [browserId, raw] of Object.entries(index.data.browsersById)) {
-    const record = BrowserRecordSchema.safeParse(raw);
-    if (record.success) {
-      browsersById[browserId] = record.data;
-      continue;
-    }
-    // The address is durable user data. Invalid metadata in this or another
-    // tab must never discard a usable address during restore.
-    const address = z.object({ url: z.string().trim().min(1) }).safeParse(raw);
-    if (address.success) {
-      browsersById[browserId] = createBrowserRecord({
-        browserId,
-        initialUrl: address.data.url,
-        now: 0,
-      });
-    }
-  }
-  return { browsersById };
+  const result = BrowserIndexStateSchema.safeParse(value);
+  return result.success ? result.data : { browsersById: {} };
 }
 
 export function trimNonEmpty(value: string | null | undefined): string | null {
@@ -154,16 +108,9 @@ export function createBrowserRecord(input: {
   browserId: string;
   initialUrl: string | null | undefined;
   now: number;
-  renderMode?: "native" | "hosted";
-  isPreview?: boolean;
-  previewServerId?: string | null;
-  previewServerName?: string | null;
-  previewCwd?: string | null;
-  previewStatus?: PreviewStatus;
 }): BrowserRecord {
   return {
     browserId: input.browserId,
-    renderMode: input.renderMode ?? "native",
     url: normalizeBrowserUrl(input.initialUrl),
     title: "",
     isLoading: false,
@@ -173,60 +120,6 @@ export function createBrowserRecord(input: {
     lastError: null,
     viewport: RESPONSIVE_BROWSER_VIEWPORT,
     createdAt: input.now,
-    isPreview: input.isPreview ?? false,
-    previewServerId: input.previewServerId ?? null,
-    previewServerName: input.previewServerName ?? null,
-    previewCwd: input.previewCwd ?? null,
-    previewStatus: input.previewStatus ?? (input.isPreview ? "starting" : "ready"),
-  };
-}
-
-/**
- * Normalizes a rehydrated (persisted) record, including ones written before
- * previewServerName/previewCwd/previewStatus existed - those come back as
- * `undefined`, which matches none of PreviewStatus's variants, so without this
- * an old preview tab would render a permanently blank overlay (the bootstrap
- * and ready-navigate effects only match "idle"/"ready" respectively).
- */
-export function rehydrateBrowserRecord(
-  browserId: string,
-  raw: Partial<BrowserRecord> | undefined,
-): BrowserRecord {
-  const persisted = normalizePersistedBrowserFields(raw);
-  const fallback = createBrowserRecord({
-    browserId,
-    initialUrl: raw?.url,
-    now: persisted.createdAt,
-    ...persisted,
-  });
-  return {
-    ...fallback,
-    ...raw,
-    browserId,
-    url: normalizeBrowserUrl(raw?.url),
-    viewport: normalizeBrowserViewport(raw?.viewport),
-    ...persisted,
-  };
-}
-
-function normalizePersistedBrowserFields(raw: Partial<BrowserRecord> | undefined): {
-  createdAt: number;
-  renderMode: "native" | "hosted";
-  isPreview: boolean;
-  previewServerId: string | null;
-  previewServerName: string | null;
-  previewCwd: string | null;
-  previewStatus: PreviewStatus;
-} {
-  const isPreview = raw?.isPreview ?? false;
-  return {
-    createdAt: raw?.createdAt ?? Date.now(),
-    renderMode: raw?.renderMode === "hosted" ? "hosted" : "native",
-    isPreview,
-    previewServerId: raw?.previewServerId ?? null,
-    previewServerName: raw?.previewServerName ?? null,
-    previewCwd: raw?.previewCwd ?? null,
-    previewStatus: isPreview ? "idle" : "ready",
   };
 }
 
@@ -262,13 +155,7 @@ export function applyBrowserPatch<S extends BrowserIndexState>(
     nextRecord.canGoForward === existing.canGoForward &&
     nextRecord.faviconUrl === existing.faviconUrl &&
     nextRecord.lastError === existing.lastError &&
-    browserViewportsEqual(nextRecord.viewport, existing.viewport) &&
-    nextRecord.isPreview === existing.isPreview &&
-    nextRecord.previewServerId === existing.previewServerId &&
-    nextRecord.previewServerName === existing.previewServerName &&
-    nextRecord.previewCwd === existing.previewCwd &&
-    nextRecord.previewStatus === existing.previewStatus &&
-    nextRecord.renderMode === existing.renderMode
+    browserViewportsEqual(nextRecord.viewport, existing.viewport)
   ) {
     return state;
   }
@@ -305,14 +192,7 @@ export function sanitizeBrowsersForPersist(state: BrowserIndexState): {
     browsersById: Object.fromEntries(
       Object.entries(state.browsersById).map(([browserId, browser]) => [
         browserId,
-        {
-          ...browser,
-          isLoading: false,
-          lastError: null,
-          // Never trust a persisted "ready"/"error"/etc - the process behind it
-          // may be gone by the time this is rehydrated. Re-verify from scratch.
-          previewStatus: browser.isPreview ? "idle" : browser.previewStatus,
-        },
+        { ...browser, isLoading: false, lastError: null },
       ]),
     ),
   };

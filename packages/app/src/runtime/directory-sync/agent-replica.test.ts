@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { DaemonClient, FetchAgentsEntry } from "@otto-code/client/internal/daemon-client";
-import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
-import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
+import type { DaemonClient, FetchAgentsEntry } from "@getpaseo/client/internal/daemon-client";
+import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
+import {
+  selectAgentTimelineState,
+  selectAgentTurnPresentation,
+  useSessionStore,
+} from "@/stores/session-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import type { DirectoryReplicaMutation } from "@/runtime/replica-cache";
 import { AgentDirectoryReplica } from "./agent-replica";
@@ -45,7 +49,7 @@ function entry(agent: AgentSnapshotPayload): FetchAgentsEntry {
         currentBranch: null,
         remoteUrl: null,
         worktreeRoot: null,
-        isOttoOwnedWorktree: false,
+        isPaseoOwnedWorktree: false,
         mainRepoRoot: null,
       },
     },
@@ -53,6 +57,50 @@ function entry(agent: AgentSnapshotPayload): FetchAgentsEntry {
 }
 
 describe("AgentDirectoryReplica", () => {
+  it.each(["delta", "snapshot"] as const)(
+    "does not erase freshly fetched history when the active directory removes it by %s",
+    (removal) => {
+      const serverId = `agent-replica-history-${removal}`;
+      const store = useSessionStore.getState();
+      store.initializeSession(serverId, null);
+      const replica = new AgentDirectoryReplica(
+        serverId,
+        () => undefined,
+        () => undefined,
+      );
+      const archived = { ...payload("archived"), archivedAt: "2026-09-11T00:00:00.000Z" };
+      replica.submitTimelineAgent(replica.captureTimeline("agent"), archived);
+      store.applyAgentTimelineResponseState(serverId, "agent", {
+        items: [
+          {
+            kind: "assistant_message",
+            id: "reply",
+            text: "server history",
+            timestamp: new Date(),
+            timelineCursor: { epoch: "e", seq: 1 },
+          },
+        ],
+        head: [],
+        range: { epoch: "e", startSeq: 1, endSeq: 1 },
+        older: "none",
+        newer: false,
+        synchronized: true,
+        acknowledgedClientMessageIds: [],
+      });
+      if (removal === "delta") replica.applyDelta({ kind: "remove", agentId: "agent" });
+      else replica.commitSnapshot([], []);
+      expect(selectAgentTimelineState(store.getSession(serverId), "agent")).toMatchObject({
+        status: "synced",
+        items: [{ text: "server history" }],
+      });
+      replica.remove("agent");
+      expect(selectAgentTimelineState(store.getSession(serverId), "agent")).toMatchObject({
+        status: "cold",
+      });
+      store.clearSession(serverId);
+    },
+  );
+
   it("does not let a late cache read replace newer live turn state", () => {
     const serverId = "agent-replica-late-cache";
     const store = useSessionStore.getState();
@@ -285,92 +333,6 @@ describe("AgentDirectoryReplica", () => {
     store.clearSession(serverId);
   });
 
-  it.each(["delta", "snapshot", "timeline"] as const)(
-    "preserves observed turn identity through a legacy %s but honors explicit close and replacement",
-    (source) => {
-      const serverId = `agent-replica-legacy-turn-${source}`;
-      const store = useSessionStore.getState();
-      store.initializeSession(serverId, null as unknown as DaemonClient);
-      try {
-        const replica = new AgentDirectoryReplica(
-          serverId,
-          () => undefined,
-          () => undefined,
-        );
-        replica.commitSnapshot([entry(payload("initial"))], []);
-        const startedAt = new Date("2026-07-17T00:02:00.000Z");
-        replica.applyTurnLiveness("agent", {
-          type: "stream_open",
-          turn: { turnId: "turn-A", startedAt },
-        });
-        replica.applyTurnLiveness("agent", { type: "cancellation_started", requestId: 7 });
-        const apply = (agent: AgentSnapshotPayload) => {
-          if (source === "delta")
-            replica.applyDelta({ kind: "upsert", agent, project: entry(agent).project });
-          else if (source === "snapshot") replica.commitSnapshot([entry(agent)], []);
-          else
-            expect(replica.submitTimelineAgent(replica.captureTimeline("agent"), agent)).toBe(true);
-        };
-        const legacy = { ...payload("legacy running"), status: "running" as const };
-        expect(legacy).not.toHaveProperty("activeTurn");
-        apply(legacy);
-        expect(store.getSession(serverId)?.agents.get("agent")?.turn).toEqual({
-          phase: "open",
-          turnId: "turn-A",
-          startedAt,
-          cancellationRequestId: 7,
-        });
-        expect(selectAgentTurnPresentation(store.getSession(serverId), "agent")).toMatchObject({
-          isActive: true,
-          isCancelling: true,
-          turnId: "turn-A",
-          startedAt,
-        });
-        apply({ ...legacy, activeTurn: null });
-        expect(store.getSession(serverId)?.agents.get("agent")?.status).toBe("running");
-        expect(selectAgentTurnPresentation(store.getSession(serverId), "agent")).toEqual({
-          isActive: false,
-          isCancelling: false,
-          turnId: null,
-          startedAt: null,
-        });
-        replica.applyTurnLiveness("agent", {
-          type: "stream_open",
-          turn: { turnId: "turn-A", startedAt },
-        });
-        apply({ ...legacy, status: "idle", activeTurn: { turnId: "turn-B", startedAt: null } });
-        expect(selectAgentTurnPresentation(store.getSession(serverId), "agent")).toEqual({
-          isActive: true,
-          isCancelling: false,
-          turnId: "turn-B",
-          startedAt: null,
-        });
-      } finally {
-        store.clearSession(serverId);
-      }
-    },
-  );
-
-  it("still presents an initially anonymous legacy running snapshot as active", () => {
-    const serverId = "agent-replica-legacy-initial";
-    const store = useSessionStore.getState();
-    store.initializeSession(serverId, null as unknown as DaemonClient);
-    try {
-      const replica = new AgentDirectoryReplica(
-        serverId,
-        () => undefined,
-        () => undefined,
-      );
-      replica.commitSnapshot([entry({ ...payload("legacy"), status: "running" })], []);
-      expect(selectAgentTurnPresentation(store.getSession(serverId), "agent")).toMatchObject({
-        isActive: true,
-        turnId: null,
-      });
-    } finally {
-      store.clearSession(serverId);
-    }
-  });
-
   it("keeps membership authoritative across remove, stale timeline, and re-add", () => {
     const serverId = "agent-replica";
     const store = useSessionStore.getState();
@@ -405,6 +367,27 @@ describe("AgentDirectoryReplica", () => {
     expect(
       useSessionStore.getState().sessions[serverId]?.agents.get("agent")?.projectPlacement,
     ).toEqual(directoryPlacement);
+    store.clearSession(serverId);
+  });
+
+  it("keeps a timeline-hydrated agent when a sequenced catch-up carries no entries", () => {
+    const serverId = "agent-replica-timeline-membership";
+    const store = useSessionStore.getState();
+    store.initializeSession(serverId, null as unknown as DaemonClient);
+    const replica = new AgentDirectoryReplica(
+      serverId,
+      () => undefined,
+      () => undefined,
+    );
+
+    // A conversation opened from history arrives over its timeline, without the
+    // project placement the directory carries, and is a member from then on.
+    replica.submitTimelineAgent(replica.captureTimeline("agent"), payload("timeline only"));
+    expect(useSessionStore.getState().sessions[serverId]?.agents.has("agent")).toBe(true);
+
+    replica.commitChanges([], [], []);
+
+    expect(useSessionStore.getState().sessions[serverId]?.agents.has("agent")).toBe(true);
     store.clearSession(serverId);
   });
 });

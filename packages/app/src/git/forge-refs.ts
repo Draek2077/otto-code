@@ -1,5 +1,5 @@
-import { FORGE_DEFINITIONS } from "@otto-code/protocol/forge-manifest";
-import { normalizeHost, parseGitRemoteLocation } from "@otto-code/protocol/git-remote";
+import { FORGE_DEFINITIONS } from "@getpaseo/protocol/forge-manifest";
+import { normalizeHost, parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import type { ForgeReferencePath } from "@/git/client-forge-module";
 import { CLIENT_FORGE_LOGIC_MODULES } from "@/git/forges";
 
@@ -118,9 +118,7 @@ function registeredReferencePaths(
   forgeIds: ReadonlySet<string> | null,
 ): readonly ForgeReferencePath[] {
   return CLIENT_FORGE_LOGIC_MODULES.flatMap((module) =>
-    !forgeIds || forgeIds.has(module.id)
-      ? (module.urlGrammar?.referencePaths ?? []).concat(module.referencePaths ?? [])
-      : [],
+    !forgeIds || forgeIds.has(module.id) ? (module.urlGrammar?.referencePaths ?? []) : [],
   );
 }
 

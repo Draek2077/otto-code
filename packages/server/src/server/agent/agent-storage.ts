@@ -1,50 +1,22 @@
-import { promises as fs } from "node:fs";
+import { ProfileBinding } from "@getpaseo/protocol/otto/agent-teams"; // OTTO(agent-teams)
+import { promises as fs, type Dirent } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import type { Logger } from "pino";
 
-import { writeJsonFileAtomic } from "../atomic-file.js";
+// OTTO(store-continuity): keep Otto-only fields when Paseo rewrites an agent record.
+import { writeOttoAgentRecord } from "../otto/store-continuity.js";
+// OTTO(history): review and remove only the exact Otto archive record owned by this index.
+import { inspectArchiveRecordFile } from "../otto/history/archive-record-file.js";
+import type {
+  ArchiveRecordRemoval,
+  ReviewedArchiveRecord,
+} from "../otto/history/archive-review.js";
 import { AgentFeatureSchema, AgentStatusSchema } from "../messages.js";
 import { toStoredAgentRecord } from "./agent-projections.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
 import { AgentOwnerSchema, daemonExecutionKey, type DaemonAgentOwner } from "./agent-owner.js";
-
-// Frozen profile snapshot as stored on disk. Roles are kept as a loose string
-// array here (not the ProfileRole enum) so an old record whose role
-// vocabulary drifted never fails to load - buildStoredAgentConfig re-normalizes
-// them to the known set on read. Mirrors ResolvedProfileSnapshot.
-const PROFILE_SNAPSHOT_STORAGE_SCHEMA = z
-  .object({
-    profileId: z.string(),
-    name: z.string(),
-    provider: z.string(),
-    model: z.string(),
-    modeId: z.string().optional(),
-    thinkingOptionId: z.string().optional(),
-    effortLevel: z.string().optional(),
-    effortMatch: z.enum(["exact-id", "level", "nearest"]).optional(),
-    effortDegraded: z.boolean(),
-    systemPrompt: z.string().optional(),
-    respectGlobalAppendPrompt: z.boolean(),
-    spinner: z.object({ glowA: z.string(), glowB: z.string() }).optional(),
-    voice: z.object({ provider: z.string(), model: z.string(), name: z.string() }).optional(),
-    roles: z.array(z.string()),
-  })
-  .nullable()
-  .optional();
-
-// Frozen born-team snapshot as stored on disk. Mirrors ResolvedTeamSnapshot;
-// only prompt-recomposition and provenance fields are frozen, never membership.
-const TEAM_SNAPSHOT_STORAGE_SCHEMA = z
-  .object({
-    teamId: z.string(),
-    name: z.string(),
-    avatarColor: z.string().optional(),
-    teamPrompt: z.string().optional(),
-  })
-  .nullable()
-  .optional();
 
 const SERIALIZABLE_CONFIG_SCHEMA = z
   .object({
@@ -52,8 +24,7 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
     model: z.string().nullable().optional(),
     thinkingOptionId: z.string().nullable().optional(),
     featureValues: z.record(z.string(), z.unknown()).nullable().optional(),
-    extra: z.record(z.string(), z.any()).nullable().optional(),
-    providerOptions: z.record(z.string(), z.json()).nullable().optional(),
+    providerOptions: z.record(z.string(), z.unknown()).nullable().optional(),
     toolPolicy: z
       .object({
         preapproved: z.array(
@@ -63,10 +34,9 @@ const SERIALIZABLE_CONFIG_SCHEMA = z
       .strict()
       .nullable()
       .optional(),
+    ottoProfile: ProfileBinding.optional(), // OTTO(agent-teams)
     systemPrompt: z.string().nullable().optional(),
     mcpServers: z.record(z.string(), z.any()).nullable().optional(),
-    profileSnapshot: PROFILE_SNAPSHOT_STORAGE_SCHEMA,
-    teamSnapshot: TEAM_SNAPSHOT_STORAGE_SCHEMA,
   })
   .nullable()
   .optional();
@@ -112,14 +82,7 @@ const STORED_AGENT_SCHEMA = z.object({
   attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
   attentionTimestamp: z.string().nullable().optional(),
   internal: z.boolean().optional(),
-  // Guardrail (safe-unattended Phase 2): created-unattended flag plus the
-  // running count / timestamp of policy-denied permission escalations. Additive
-  // optional fields; older records simply omit them.
-  unattended: z.boolean().optional(),
-  guardrailDenials: z.number().optional(),
-  lastGuardrailDenialAt: z.string().optional(),
   archivedAt: z.string().nullable().optional(),
-  archiveBytes: z.number().int().nonnegative().optional(),
   owner: AgentOwnerSchema.optional(),
 });
 
@@ -129,109 +92,26 @@ export type SerializableAgentConfig = Pick<
   | "model"
   | "thinkingOptionId"
   | "featureValues"
-  | "extra"
   | "providerOptions"
   | "toolPolicy"
+  | "ottoProfile" // OTTO(agent-teams)
   | "systemPrompt"
   | "mcpServers"
-  | "profileSnapshot"
-  | "teamSnapshot"
 >;
 
 export type StoredAgentRecord = z.infer<typeof STORED_AGENT_SCHEMA>;
-
-/**
- * COMPAT(profileSnapshotKey): added in v0.8.13, remove after 2027-02-22.
- *
- * Rename the pre-convergence stored keys in place, before validation. The
- * schema only knows the new names, so this is the single point that has to
- * understand the old ones.
- *
- * It exists even though a migration pass rewrites these files at startup,
- * because the rewrite is not the correctness guarantee - this is. A record can
- * still arrive with the old keys after the pass has run: the pass crashed
- * halfway, an older daemon wrote to the same OTTO_HOME afterwards, or the user
- * downgraded and came back. Reading has to tolerate that regardless, and once
- * it does, the pass is only there so the on-disk state converges and this
- * function can be deleted on the date above.
- */
-export function normalizeStoredAgentRecord(value: unknown): unknown {
-  if (typeof value !== "object" || value === null) {
-    return value;
-  }
-  const record = value as Record<string, unknown>;
-  const config = record["config"];
-  if (typeof config !== "object" || config === null) {
-    return value;
-  }
-  const configRecord = config as Record<string, unknown>;
-  // NOTE: these two string literals are the pre-convergence key names and must
-  // stay spelled that way. A project-wide rename of `personalitySnapshot`
-  // silently rewrote them once, which turned this function into a no-op that
-  // still typechecked and still passed every test that did not read a legacy
-  // file from disk.
-  const legacySnapshot = configRecord["personalitySnapshot"];
-  if (legacySnapshot === undefined) {
-    return value;
-  }
-  const { personalitySnapshot: _dropped, ...restConfig } = configRecord;
-  // A record carrying both keeps the new one: it can only mean a newer daemon
-  // already wrote this file and an older one appended the legacy key back.
-  const snapshot =
-    restConfig["profileSnapshot"] !== undefined
-      ? restConfig["profileSnapshot"]
-      : renameSnapshotId(legacySnapshot);
-  return { ...record, config: { ...restConfig, profileSnapshot: snapshot } };
-}
-
-function renameSnapshotId(snapshot: unknown): unknown {
-  if (typeof snapshot !== "object" || snapshot === null) {
-    return snapshot;
-  }
-  const record = snapshot as Record<string, unknown>;
-  if (record["personalityId"] === undefined) {
-    return snapshot;
-  }
-  const { personalityId, ...rest } = record;
-  return { ...rest, profileId: rest["profileId"] ?? personalityId };
-}
-
 export function parseStoredAgentRecord(value: unknown): StoredAgentRecord {
-  return STORED_AGENT_SCHEMA.parse(normalizeStoredAgentRecord(value));
-}
-
-// Guardrail fields (safe-unattended Phase 2) are not rehydrated onto the live
-// agent, so a resumed agent's fresh in-memory value would clobber the persisted
-// running total on the next snapshot. Keep the larger count / most-recent
-// timestamp and never drop a persisted `unattended` flag.
-function preserveGuardrailFields(
-  record: StoredAgentRecord,
-  existing: StoredAgentRecord | null,
-): void {
-  if (!existing) {
-    return;
-  }
-  if ((record.guardrailDenials ?? 0) < (existing.guardrailDenials ?? 0)) {
-    record.guardrailDenials = existing.guardrailDenials;
-  }
-  if (record.lastGuardrailDenialAt === undefined && existing.lastGuardrailDenialAt !== undefined) {
-    record.lastGuardrailDenialAt = existing.lastGuardrailDenialAt;
-  }
-  if (record.unattended === undefined && existing.unattended !== undefined) {
-    record.unattended = existing.unattended;
-  }
+  return STORED_AGENT_SCHEMA.parse(value);
 }
 
 export class AgentStorage {
   private cache: Map<string, StoredAgentRecord> = new Map();
-  private daemonAgentIdsByExecution: Map<string, string> = new Map();
-  private daemonExecutionKeysByAgentId: Map<string, string> = new Map();
-  private agentIdsByWorkspaceId: Map<string, Set<string>> = new Map();
-  private workspaceIdByAgentId: Map<string, string> = new Map();
   private pathById: Map<string, string> = new Map();
   private pathsById: Map<string, Set<string>> = new Map();
   private pendingWrites: Map<string, Promise<void>> = new Map();
   private deleting: Set<string> = new Set();
+  private daemonAgentIdsByExecution: Map<string, string> = new Map();
+  private daemonExecutionKeysByAgentId: Map<string, string> = new Map();
   private loaded = false;
   private baseDir: string;
   private loadPromise: Promise<StoredAgentRecord[]> | null = null;
@@ -246,65 +126,14 @@ export class AgentStorage {
     await this.load();
   }
 
-  /**
-   * Every stored record, or - with `scope` - the records reachable from it,
-   * resolved through the owner index instead of a full scan. A seeded home
-   * carries thousands of archived records, and the descriptor rebuild that runs
-   * on every agent lifecycle event only needs the handful owned by the
-   * workspaces it is rebuilding (plus, by id, the out-of-scope parents a
-   * subagent chain points at).
-   *
-   * `scope` narrows what is FETCHED, and callers must stay correct against a
-   * superset - the descriptor rebuild is, since it drops any agent whose
-   * workspace it is not building. That is what lets the scope be a pure
-   * optimization rather than a second source of truth about which agents count.
-   *
-   * A record with no `workspaceId` is reachable by id only: it has no owning
-   * workspace to be scoped to.
-   */
-  async list(scope?: {
-    workspaceIds?: ReadonlySet<string>;
-    agentIds?: ReadonlySet<string>;
-  }): Promise<StoredAgentRecord[]> {
+  async list(): Promise<StoredAgentRecord[]> {
     await this.load();
-    if (!scope) {
-      return Array.from(this.cache.values());
-    }
-
-    const matchedIds = new Set<string>();
-    for (const workspaceId of scope.workspaceIds ?? []) {
-      for (const agentId of this.agentIdsByWorkspaceId.get(workspaceId) ?? []) {
-        matchedIds.add(agentId);
-      }
-    }
-    for (const agentId of scope.agentIds ?? []) {
-      matchedIds.add(agentId);
-    }
-
-    const records: StoredAgentRecord[] = [];
-    for (const agentId of matchedIds) {
-      const record = this.cache.get(agentId);
-      if (record) {
-        records.push(record);
-      }
-    }
-    return records;
+    return Array.from(this.cache.values());
   }
 
   async get(agentId: string): Promise<StoredAgentRecord | null> {
     await this.load();
     return this.cache.get(agentId) ?? null;
-  }
-
-  async getRecordBytes(agentId: string): Promise<number> {
-    await this.load();
-    const filePath = this.pathById.get(agentId);
-    if (!filePath) return 0;
-    try {
-      return (await fs.stat(filePath)).size;
-    } catch {
-      return 0;
-    }
   }
 
   async listByProviderSession(
@@ -331,73 +160,29 @@ export class AgentStorage {
     return agentId ? (this.cache.get(agentId) ?? null) : null;
   }
 
-  private indexOwner(record: StoredAgentRecord): void {
-    this.removeOwnerIndex(record.id);
-    if (record.owner?.kind === "daemon") {
-      const key = daemonExecutionKey(record.owner);
-      const previousAgentId = this.daemonAgentIdsByExecution.get(key);
-      if (previousAgentId && previousAgentId !== record.id) {
-        this.daemonExecutionKeysByAgentId.delete(previousAgentId);
-      }
-      this.daemonAgentIdsByExecution.set(key, record.id);
-      this.daemonExecutionKeysByAgentId.set(record.id, key);
-    }
-    if (record.workspaceId) {
-      const siblings = this.agentIdsByWorkspaceId.get(record.workspaceId) ?? new Set<string>();
-      siblings.add(record.id);
-      this.agentIdsByWorkspaceId.set(record.workspaceId, siblings);
-      this.workspaceIdByAgentId.set(record.id, record.workspaceId);
-    }
-  }
-
-  private removeOwnerIndex(agentId: string): void {
-    // A chat that moves workspace re-indexes through here, so the workspace half
-    // must be unlinked even when the record carries no daemon-execution key.
-    const workspaceId = this.workspaceIdByAgentId.get(agentId);
-    if (workspaceId) {
-      const siblings = this.agentIdsByWorkspaceId.get(workspaceId);
-      if (siblings) {
-        siblings.delete(agentId);
-        if (siblings.size === 0) {
-          this.agentIdsByWorkspaceId.delete(workspaceId);
-        }
-      }
-      this.workspaceIdByAgentId.delete(agentId);
-    }
-
-    const key = this.daemonExecutionKeysByAgentId.get(agentId);
-    if (!key) return;
-    if (this.daemonAgentIdsByExecution.get(key) === agentId) {
-      this.daemonAgentIdsByExecution.delete(key);
-    }
-    this.daemonExecutionKeysByAgentId.delete(agentId);
-  }
-
   async upsert(record: StoredAgentRecord): Promise<void> {
     await this.load();
-    await this.queueRecordWrite(record.id, () => record);
+    await this.queueRecordWrite(record);
   }
 
-  /**
-   * Serialize a per-agent record write. The record is BUILT inside the chained
-   * callback (after the previous write for this agent has fully settled - its
-   * `writeRecord` cache.set included), not captured before enqueuing. That
-   * closes a lost-update race for read-modify-write callers like
-   * {@link applySnapshot}/{@link setTitle}: a title-less background persist that
-   * would otherwise read a stale title before a concurrent `setTitle`, then
-   * write it back afterwards, now re-reads the latest persisted title at the
-   * moment it runs - so the newer title survives. The build callback returning
-   * `null` skips the write (record vanished); throwing surfaces to the caller.
-   */
-  private queueRecordWrite(agentId: string, build: () => StoredAgentRecord | null): Promise<void> {
+  private queueRecordWrite(record: StoredAgentRecord): Promise<void> {
+    return this.queueRecordMutation(record.id, () => record);
+  }
+
+  private queueRecordMutation(
+    agentId: string,
+    mutate: (existing: StoredAgentRecord | null) => StoredAgentRecord,
+  ): Promise<void> {
     const prev = this.pendingWrites.get(agentId) ?? Promise.resolve();
-    // Sequence after the previous op settles either way, so one failed write
-    // never poisons the writes queued behind it (the caller still observes this
-    // op's own outcome via `tracked`).
-    const next = prev.then(
-      () => this.runRecordWrite(agentId, build),
-      () => this.runRecordWrite(agentId, build),
-    );
+    const next = prev.then(async () => {
+      if (this.deleting.has(agentId)) {
+        return undefined;
+      }
+
+      const record = mutate(this.cache.get(agentId) ?? null);
+      await this.writeRecord(record);
+      return undefined;
+    });
 
     const tracked = next.finally(() => {
       if (this.pendingWrites.get(agentId) === tracked) {
@@ -409,26 +194,12 @@ export class AgentStorage {
     return tracked;
   }
 
-  private async runRecordWrite(
-    agentId: string,
-    build: () => StoredAgentRecord | null,
-  ): Promise<void> {
-    if (this.deleting.has(agentId)) {
-      return;
-    }
-    const record = build();
-    if (!record) {
-      return;
-    }
-    await this.writeRecord(record);
-  }
-
   private async writeRecord(record: StoredAgentRecord): Promise<void> {
     const agentId = record.id;
     const nextPath = this.buildRecordPath(record);
     const previousPath = this.pathById.get(agentId);
 
-    await writeJsonFileAtomic(nextPath, record);
+    await writeOttoAgentRecord(nextPath, record, previousPath, parseStoredAgentRecord); // OTTO(store-continuity)
     this.addIndexedPath(agentId, nextPath);
 
     if (previousPath && previousPath !== nextPath) {
@@ -441,16 +212,50 @@ export class AgentStorage {
     }
 
     this.cache.set(agentId, record);
-    this.pathById.set(agentId, nextPath);
-    // Keep the owner index in step with the cache. It used to be built only by
-    // the disk load pass, so a hub execution's agent was not findable by its
-    // (daemonId, executionId) until the daemon restarted - every replayed or
-    // reconnected create missed the idempotency lookup and spawned a duplicate.
     this.indexOwner(record);
+    this.pathById.set(agentId, nextPath);
   }
 
   beginDelete(agentId: string): void {
     this.deleting.add(agentId);
+  }
+
+  // OTTO(history): reviewed bulk removal uses the same write fence and index as ordinary deletion.
+  async inspectReviewedArchive(agentId: string): Promise<ReviewedArchiveRecord | null> {
+    await this.load();
+    await this.waitForPendingWrite(agentId);
+    if (this.deleting.has(agentId)) return null;
+    return (await this.inspectIndexedArchive(agentId))?.record ?? null;
+  }
+
+  async removeReviewedArchive(review: ReviewedArchiveRecord): Promise<ArchiveRecordRemoval> {
+    const agentId = review.agentId;
+    await this.load();
+    if (this.deleting.has(agentId)) return { status: "changed" };
+    this.beginDelete(agentId);
+    let removed = false;
+    try {
+      await this.waitForPendingWrite(agentId);
+      const file = await this.inspectIndexedArchive(agentId);
+      if (!file || file.record.revision !== review.revision) return { status: "changed" };
+      await fs.unlink(file.path);
+      removed = true;
+      this.forgetRecord(agentId);
+      return { status: "deleted", bytes: file.record.bytes };
+    } catch (error) {
+      this.logger.warn({ err: error, agentId }, "Could not remove reviewed archive record");
+      return { status: "failed" };
+    } finally {
+      if (!removed) this.deleting.delete(agentId);
+    }
+  }
+
+  private async inspectIndexedArchive(agentId: string) {
+    const paths = this.pathsById.get(agentId);
+    const expected = this.cache.get(agentId);
+    const indexedPath = this.pathById.get(agentId);
+    if (!expected || !indexedPath || paths?.size !== 1 || !paths.has(indexedPath)) return null;
+    return inspectArchiveRecordFile({ directory: this.baseDir, indexedPath, expected });
   }
 
   async remove(agentId: string): Promise<void> {
@@ -474,6 +279,10 @@ export class AgentStorage {
       }),
     );
 
+    this.forgetRecord(agentId);
+  }
+
+  private forgetRecord(agentId: string): void {
     this.cache.delete(agentId);
     this.removeOwnerIndex(agentId);
     this.pathById.delete(agentId);
@@ -489,39 +298,31 @@ export class AgentStorage {
       options !== undefined && Object.prototype.hasOwnProperty.call(options, "title");
     const hasInternalOverride =
       options !== undefined && Object.prototype.hasOwnProperty.call(options, "internal");
-    // Build inside the serialized write chain (see queueRecordWrite): `existing`
-    // is read at the moment this write runs, so a title we mean to preserve
-    // reflects any concurrent setTitle that has since landed instead of a stale
-    // pre-enqueue snapshot.
-    await this.queueRecordWrite(agent.id, () => {
-      const existing = this.cache.get(agent.id) ?? null;
+    await this.queueRecordMutation(agent.id, (existing) => {
       const record = toStoredAgentRecord(agent, {
         title: hasTitleOverride ? (options?.title ?? null) : (existing?.title ?? null),
         createdAt: existing?.createdAt,
         internal: hasInternalOverride ? options?.internal : (agent.internal ?? existing?.internal),
       });
 
-      // Preserve soft-delete/archive status across snapshot flushes.
-      // `archivedAt` is not part of the ManagedAgent snapshot, so a naive projection
-      // would wipe it during normal persistence (including on daemon restart).
+      // Preserve soft-delete/archive status across snapshot flushes. The
+      // projection runs inside the per-agent write queue so it cannot commit a
+      // stale pre-archive record after the archive mutation.
       if (existing && existing.archivedAt !== undefined) {
         record.archivedAt = existing.archivedAt;
       }
-
-      preserveGuardrailFields(record, existing);
       return record;
     });
   }
 
   async setTitle(agentId: string, title: string): Promise<void> {
     await this.load();
-    await this.queueRecordWrite(agentId, () => {
-      const record = this.cache.get(agentId) ?? null;
-      if (!record) {
-        throw new Error(`Agent ${agentId} not found`);
-      }
-      return { ...record, title };
-    });
+    await this.waitForPendingWrite(agentId);
+    const record = await this.get(agentId);
+    if (!record) {
+      throw new Error(`Agent ${agentId} not found`);
+    }
+    await this.upsert({ ...record, title });
   }
 
   async flush(): Promise<void> {
@@ -544,12 +345,10 @@ export class AgentStorage {
 
   private async doLoad(): Promise<StoredAgentRecord[]> {
     this.cache.clear();
-    this.daemonAgentIdsByExecution.clear();
-    this.daemonExecutionKeysByAgentId.clear();
-    this.agentIdsByWorkspaceId.clear();
-    this.workspaceIdByAgentId.clear();
     this.pathById.clear();
     this.pathsById.clear();
+    this.daemonAgentIdsByExecution.clear();
+    this.daemonExecutionKeysByAgentId.clear();
 
     try {
       const records = await this.scanDisk();
@@ -568,7 +367,7 @@ export class AgentStorage {
 
   private async scanDisk(): Promise<StoredAgentRecord[]> {
     const records: StoredAgentRecord[] = [];
-    let entries: Array<import("node:fs").Dirent> = [];
+    let entries: Dirent[] = [];
     try {
       entries = await fs.readdir(this.baseDir, { withFileTypes: true });
     } catch (error) {
@@ -624,47 +423,10 @@ export class AgentStorage {
     try {
       const content = await fs.readFile(filePath, "utf8");
       const parsed = JSON.parse(content);
-      // COMPAT(profileSnapshotKey): added in v0.8.13, remove after 2027-02-22.
-      // normalizeStoredAgentRecord returns the SAME reference when it changed
-      // nothing, so this is a free check on the overwhelmingly common path.
-      const normalized = normalizeStoredAgentRecord(parsed);
-      const record = STORED_AGENT_SCHEMA.parse(normalized);
-      if (normalized !== parsed) {
-        await this.rewriteMigratedRecord(filePath, normalized);
-      }
-      return record;
+      return parseStoredAgentRecord(parsed);
     } catch (error) {
       this.logger.error({ err: error, filePath }, "Skipping invalid agent record");
       return null;
-    }
-  }
-
-  /**
-   * COMPAT(profileSnapshotKey): added in v0.8.13, remove after 2027-02-22.
-   *
-   * Converge one pre-convergence record on disk, so the read-side rename can be
-   * deleted on the date above instead of living forever.
-   *
-   * Driven by the load rather than a separate startup sweep: it only touches
-   * records the daemon actually opens, it is atomic per file, and it cannot
-   * leave the store half-migrated in a way that matters - reading already
-   * tolerates either shape, so an interrupted run just means fewer files
-   * converged this time.
-   *
-   * The NORMALIZED RAW json is written, not the parsed record: parsing strips
-   * unknown keys, and a migration has no business dropping a field it does not
-   * recognize. A failure here is logged and swallowed - a read-only store or a
-   * permissions problem must not stop an agent from loading.
-   */
-  private async rewriteMigratedRecord(filePath: string, normalized: unknown): Promise<void> {
-    try {
-      await writeJsonFileAtomic(filePath, normalized);
-      this.logger.info({ filePath }, "Migrated stored agent to the profile snapshot key");
-    } catch (error) {
-      this.logger.warn(
-        { err: error, filePath },
-        "Could not rewrite stored agent during profile-key migration; it still loads",
-      );
     }
   }
 
@@ -688,6 +450,32 @@ export class AgentStorage {
     if (paths.size === 0) {
       this.pathsById.delete(agentId);
     }
+  }
+
+  private indexOwner(record: StoredAgentRecord): void {
+    this.removeOwnerIndex(record.id);
+    if (record.owner?.kind === "daemon") {
+      const key = daemonExecutionKey(record.owner);
+      const previousAgentId = this.daemonAgentIdsByExecution.get(key);
+      if (previousAgentId && previousAgentId !== record.id) {
+        this.daemonExecutionKeysByAgentId.delete(previousAgentId);
+      }
+      this.daemonAgentIdsByExecution.set(key, record.id);
+      this.daemonExecutionKeysByAgentId.set(record.id, key);
+    }
+  }
+
+  private removeOwnerIndex(agentId: string): void {
+    const key = this.daemonExecutionKeysByAgentId.get(agentId);
+    if (!key) return;
+    if (this.daemonAgentIdsByExecution.get(key) === agentId) {
+      this.daemonAgentIdsByExecution.delete(key);
+    }
+    this.daemonExecutionKeysByAgentId.delete(agentId);
+  }
+
+  private async waitForPendingWrite(agentId: string): Promise<void> {
+    await (this.pendingWrites.get(agentId) ?? Promise.resolve()).catch(() => undefined);
   }
 }
 

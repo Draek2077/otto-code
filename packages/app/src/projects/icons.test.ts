@@ -4,7 +4,7 @@ import { resolveProjectIconLookup } from "./icons";
 describe("project icon lookup", () => {
   const target = {
     projectId: "prj_host_local",
-    iconWorkingDir: "/projects/otto",
+    iconWorkingDir: "/projects/paseo",
   };
 
   it("uses the host-local project ID with custom-icon-capable daemons", () => {
@@ -17,7 +17,7 @@ describe("project icon lookup", () => {
   it("uses the project directory with legacy daemons", () => {
     expect(resolveProjectIconLookup(target, false)).toEqual({
       kind: "legacy",
-      cwd: "/projects/otto",
+      cwd: "/projects/paseo",
     });
   });
 

@@ -18,15 +18,14 @@ interface SpawnResult {
 
 const tempDirs: string[] = [];
 const JSON_ARG = '{"key":"value with spaces","nested":{"quote":"\\"yes\\""}}';
-const CMD_METACHARACTER_ARG = "literal & | ^ < > ! with spaces";
 
 const ASSERT_SCRIPT_BODY = `
 if (process.argv.includes("--version")) {
   console.log("fake-cli 1.0.0");
   process.exit(0);
 }
-const expected = JSON.parse(process.env.OTTO_EXPECTED_ARGV_JSON);
-const sliceFrom = process.env.OTTO_ARGV_SLICE_FROM ? Number(process.env.OTTO_ARGV_SLICE_FROM) : 2;
+const expected = JSON.parse(process.env.PASEO_EXPECTED_ARGV_JSON);
+const sliceFrom = process.env.PASEO_ARGV_SLICE_FROM ? Number(process.env.PASEO_ARGV_SLICE_FROM) : 2;
 const actual = process.argv.slice(sliceFrom);
 if (JSON.stringify(actual) !== JSON.stringify(expected)) {
   console.error("ARGV_MISMATCH");
@@ -43,13 +42,13 @@ function makeFixture(): {
   assertScript: string;
   expectedArgs: string[];
 } {
-  const root = mkdtempSync(path.join(tmpdir(), "otto spawn regression "));
+  const root = mkdtempSync(path.join(tmpdir(), "paseo spawn regression "));
   tempDirs.push(root);
 
-  const fakeDaemonNode = path.join(root, "Fake Otto.exe");
+  const fakeDaemonNode = path.join(root, "Fake Paseo.exe");
   copyFileSync(process.execPath, fakeDaemonNode);
 
-  const expectedArgs = ["--config", JSON_ARG, CMD_METACHARACTER_ARG];
+  const expectedArgs = ["--config", JSON_ARG];
   const assertScript = path.join(root, "assert-argv.js");
   writeFileSync(
     assertScript,
@@ -59,7 +58,7 @@ if (process.argv.includes("--version")) {
   process.exit(0);
 }
 
-const expected = JSON.parse(process.env.OTTO_EXPECTED_ARGV_JSON);
+const expected = JSON.parse(process.env.PASEO_EXPECTED_ARGV_JSON);
 const actual = process.argv.slice(2);
 if (JSON.stringify(actual) !== JSON.stringify(expected)) {
   console.error("ARGV_MISMATCH");
@@ -127,11 +126,16 @@ async function runFixture(params: {
   command: string;
   args: string[];
   shell?: boolean;
+  env?: NodeJS.ProcessEnv;
 }): Promise<SpawnResult> {
   const child = spawnProcess(params.command, params.args, {
     env: {
       ...process.env,
-      OTTO_EXPECTED_ARGV_JSON: JSON.stringify(["--config", JSON_ARG, CMD_METACHARACTER_ARG]),
+      ...params.env,
+      // Terminal color settings must not add Node warnings to the argv fixture's stderr.
+      NO_COLOR: undefined,
+      FORCE_COLOR: undefined,
+      PASEO_EXPECTED_ARGV_JSON: JSON.stringify(["--config", JSON_ARG]),
     },
     stdio: ["ignore", "pipe", "pipe"],
     ...(params.shell === undefined ? {} : { shell: params.shell }),
@@ -149,11 +153,11 @@ interface LaunchFixture {
 }
 
 function makeLaunchFixture(ext: "exe" | "cmd" | "bat"): LaunchFixture {
-  const root = mkdtempSync(path.join(tmpdir(), `otto-launch-${ext}-`));
+  const root = mkdtempSync(path.join(tmpdir(), `paseo-launch-${ext}-`));
   tempDirs.push(root);
 
   // Unique base name so a globally installed binary cannot satisfy findExecutable.
-  const command = `otto-launch-fake-${path.basename(root)}`;
+  const command = `paseo-launch-fake-${path.basename(root)}`;
   const userArgs = ["--config", JSON_ARG];
   const expectedArgvJson = JSON.stringify(userArgs);
 
@@ -217,8 +221,10 @@ async function findAndLaunch(fixture: LaunchFixture): Promise<{
     const child = spawnProcess(found, fixture.args, {
       env: {
         ...process.env,
-        OTTO_EXPECTED_ARGV_JSON: fixture.expectedArgvJson,
-        OTTO_ARGV_SLICE_FROM: String(fixture.sliceFrom),
+        NO_COLOR: undefined,
+        FORCE_COLOR: undefined,
+        PASEO_EXPECTED_ARGV_JSON: fixture.expectedArgvJson,
+        PASEO_ARGV_SLICE_FROM: String(fixture.sliceFrom),
       },
       stdio: ["ignore", "pipe", "pipe"],
     });
@@ -250,9 +256,9 @@ describe.runIf(isPlatform("win32"))("Windows spawn launch regression", () => {
     });
 
     expect(result.error).toBeNull();
-    expect(result.stderr).toBe("");
     expect(result.code).toBe(0);
     expect(result.signal).toBeNull();
+    expect(result.stderr).toBe("");
     expect(result.stdout.trim()).toBe("ARGV_OK");
   });
 
@@ -286,34 +292,6 @@ describe.runIf(isPlatform("win32"))("Windows spawn launch regression", () => {
     expect(result.signal).toBeNull();
     expect(result.stderr).toBe("");
     expect(result.stdout.trim()).toBe("ARGV_OK");
-  });
-
-  test("runs a bare native node command without DEP0190", async () => {
-    const warnings: Error[] = [];
-    const onWarning = (warning: Error) => warnings.push(warning);
-    process.on("warning", onWarning);
-    try {
-      const result = await runFixture({
-        command: "node",
-        args: [
-          "-e",
-          "process.stdout.write(process.argv.slice(1).join('\\n'))",
-          "--",
-          CMD_METACHARACTER_ARG,
-        ],
-      });
-
-      await new Promise<void>((resolve) => setImmediate(resolve));
-      expect(result.error).toBeNull();
-      expect(result.code).toBe(0);
-      expect(result.stderr).toBe("");
-      expect(result.stdout).toBe(CMD_METACHARACTER_ARG);
-      expect(
-        warnings.some((warning) => (warning as NodeJS.ErrnoException).code === "DEP0190"),
-      ).toBe(false);
-    } finally {
-      process.off("warning", onWarning);
-    }
   });
 
   test("finds a .exe on PATH and launches it via spawnProcess", async () => {
@@ -360,18 +338,25 @@ describe.runIf(isPlatform("win32"))("Windows spawn launch regression", () => {
 });
 
 describe.skipIf(isPlatform("win32"))("spawn launch regression smoke", () => {
-  test("direct launch with a space-containing executable works on this platform", async () => {
-    const fixture = makeFixture();
+  test.each([
+    { colors: "inherited", env: {} },
+    { colors: "conflicting", env: { NO_COLOR: "1", FORCE_COLOR: "1" } },
+  ])(
+    "direct launch with a space-containing executable works with $colors colors",
+    async ({ env }) => {
+      const fixture = makeFixture();
 
-    const result = await runFixture({
-      command: fixture.fakeDaemonNode,
-      args: [fixture.assertScript, ...fixture.expectedArgs],
-      shell: false,
-    });
+      const result = await runFixture({
+        command: fixture.fakeDaemonNode,
+        args: [fixture.assertScript, ...fixture.expectedArgs],
+        shell: false,
+        env,
+      });
 
-    expect(result.error).toBeNull();
-    expect(result.code).toBe(0);
-    expect(result.stderr).toBe("");
-    expect(result.stdout.trim()).toBe("ARGV_OK");
-  });
+      expect(result.error).toBeNull();
+      expect(result.code).toBe(0);
+      expect(result.stderr).toBe("");
+      expect(result.stdout.trim()).toBe("ARGV_OK");
+    },
+  );
 });

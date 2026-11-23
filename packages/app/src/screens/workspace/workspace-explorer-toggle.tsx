@@ -11,12 +11,13 @@ import type { ShortcutKey } from "@/utils/format-shortcut";
 
 const ThemedPanelRight = withUnistyles(PanelRight);
 
+export const EXPLORER_TOGGLE_KEYS: ShortcutKey[] = ["mod", "E"];
+
 interface WorkspaceExplorerToggleProps {
   onPress: () => void;
   label: string;
   tooltipLabel: string;
-  // A list of alternative chords, matching useShortcutKeys and the tooltip.
-  tooltipKeys: ShortcutKey[][] | null;
+  tooltipKeys: ShortcutKey[];
   accessibilityState: { expanded: boolean };
   mobile: boolean;
   style?: StyleProp<ViewStyle>;

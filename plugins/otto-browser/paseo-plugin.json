@@ -1,0 +1,1 @@
+{ "id": "otto-browser", "name": "Otto Browser", "requirements": { "paseo": ">=0.12.0" } }

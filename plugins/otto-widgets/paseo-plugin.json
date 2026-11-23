@@ -1,0 +1,5 @@
+{
+  "id": "otto-widgets",
+  "name": "Chat Widgets",
+  "requirements": { "paseo": ">=0.12.0" }
+}

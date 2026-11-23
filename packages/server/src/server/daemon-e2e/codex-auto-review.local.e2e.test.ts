@@ -12,7 +12,7 @@ import { describe, expect, test } from "vitest";
 
 import { CodexAppServerAgentClient } from "../agent/providers/codex-app-server-agent.js";
 import { createMessageCollector } from "../test-utils/message-collector.js";
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 
 const QA_REPORT_PATH = "/tmp/codex-auto-review-qa.md";
@@ -269,7 +269,7 @@ async function runScenario(modeId: "auto" | "auto-review") {
       : [approvalToolCallSse(), finalAnswerSse()],
   );
   const { logger, records } = createTraceLogger();
-  const daemon = await createTestOttoDaemon({
+  const daemon = await createTestPaseoDaemon({
     agentClients: {
       codex: new CodexAppServerAgentClient(logger, {
         env: {
@@ -288,7 +288,7 @@ async function runScenario(modeId: "auto" | "auto-review") {
   try {
     writeMockCodexConfig(codexHome, mockServer.url);
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: `codex-auto-review-${modeId}` } });
+    await client.fetchAgents({ subscribe: {} });
 
     const agent = await client.createAgent({
       provider: "codex",

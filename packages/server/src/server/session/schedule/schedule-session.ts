@@ -1,6 +1,8 @@
 import type pino from "pino";
 import type { SessionInboundMessage, SessionOutboundMessage } from "../../messages.js";
 import type { ScheduleService } from "../../schedule/service.js";
+import { isPaseoSchedule } from "@getpaseo/plugin/otto/schedules"; // OTTO(schedules): extended targets use the gated Otto contract.
+import { requirePaseoSchedule, legacyScheduleRuns } from "../../otto/schedules/legacy.js";
 
 export interface ScheduleSessionHost {
   emit(msg: SessionOutboundMessage): void;
@@ -29,7 +31,7 @@ export class ScheduleSession {
     SessionOutboundMessage,
     { type: "schedule/list/response" }
   >["payload"]["schedules"][number] {
-    const { runs: _runs, ...summary } = schedule;
+    const { runs: _runs, ...summary } = requirePaseoSchedule(schedule); // OTTO(schedules): do not emit an unknown target to an older client.
     return summary;
   }
 
@@ -103,7 +105,9 @@ export class ScheduleSession {
         type: "schedule/list/response",
         payload: {
           requestId: request.requestId,
-          schedules: schedules.map((schedule) => this.toScheduleSummary(schedule)),
+          schedules: schedules
+            .filter(isPaseoSchedule)
+            .map((schedule) => this.toScheduleSummary(schedule)), // OTTO(schedules)
           error: null,
         },
       });
@@ -121,7 +125,7 @@ export class ScheduleSession {
         type: "schedule/inspect/response",
         payload: {
           requestId: request.requestId,
-          schedule,
+          schedule: requirePaseoSchedule(schedule), // OTTO(schedules)
           error: null,
         },
       });
@@ -134,7 +138,7 @@ export class ScheduleSession {
     request: Extract<SessionInboundMessage, { type: "schedule/logs" }>,
   ): Promise<void> {
     try {
-      const runs = await this.scheduleService.logs(request.scheduleId);
+      const runs = legacyScheduleRuns(await this.scheduleService.logs(request.scheduleId)); // OTTO(schedules): preserve the original ordering and legacy run shape.
       this.host.emit({
         type: "schedule/logs/response",
         payload: {
@@ -152,7 +156,7 @@ export class ScheduleSession {
     request: Extract<SessionInboundMessage, { type: "schedule/pause" }>,
   ): Promise<void> {
     try {
-      const schedule = await this.scheduleService.pause(request.scheduleId);
+      const schedule = await this.scheduleService.pause(request.scheduleId, { legacyOnly: true }); // OTTO(schedules): validate inside the mutation queue.
       this.host.emit({
         type: "schedule/pause/response",
         payload: {
@@ -170,7 +174,7 @@ export class ScheduleSession {
     request: Extract<SessionInboundMessage, { type: "schedule/resume" }>,
   ): Promise<void> {
     try {
-      const schedule = await this.scheduleService.resume(request.scheduleId);
+      const schedule = await this.scheduleService.resume(request.scheduleId, { legacyOnly: true }); // OTTO(schedules)
       this.host.emit({
         type: "schedule/resume/response",
         payload: {
@@ -188,7 +192,7 @@ export class ScheduleSession {
     request: Extract<SessionInboundMessage, { type: "schedule/delete" }>,
   ): Promise<void> {
     try {
-      await this.scheduleService.delete(request.scheduleId);
+      await this.scheduleService.delete(request.scheduleId, { legacyOnly: true }); // OTTO(schedules)
       this.host.emit({
         type: "schedule/delete/response",
         payload: {
@@ -206,12 +210,12 @@ export class ScheduleSession {
     request: Extract<SessionInboundMessage, { type: "schedule/run-once" }>,
   ): Promise<void> {
     try {
-      const schedule = await this.scheduleService.runOnce(request.scheduleId);
+      const schedule = await this.scheduleService.runOnce(request.scheduleId, { legacyOnly: true }); // OTTO(schedules)
       this.host.emit({
         type: "schedule/run-once/response",
         payload: {
           requestId: request.requestId,
-          schedule,
+          schedule: requirePaseoSchedule(schedule), // OTTO(schedules)
           error: null,
         },
       });
@@ -226,6 +230,7 @@ export class ScheduleSession {
     try {
       const schedule = await this.scheduleService.update({
         id: request.scheduleId,
+        mutation: { legacyOnly: true }, // OTTO(schedules)
         ...(request.name !== undefined ? { name: request.name } : {}),
         ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
         ...(request.cadence !== undefined ? { cadence: request.cadence } : {}),
@@ -237,7 +242,7 @@ export class ScheduleSession {
         type: "schedule/update/response",
         payload: {
           requestId: request.requestId,
-          schedule,
+          schedule: requirePaseoSchedule(schedule), // OTTO(schedules)
           error: null,
         },
       });

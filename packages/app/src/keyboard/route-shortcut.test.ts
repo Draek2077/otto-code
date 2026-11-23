@@ -25,18 +25,14 @@ function makeCtx(overrides: Partial<ShortcutRoutingContext> = {}): ShortcutRouti
   };
 }
 
-describe("routeKeyboardShortcut - dispatch passthroughs", () => {
+describe("routeKeyboardShortcut — dispatch passthroughs", () => {
   it.each([
     ["agent.interrupt", { id: "agent.interrupt", scope: "global" }],
-    ["chat.find", { id: "chat.find", scope: "workspace" }],
-    ["workspace.tab.new", { id: "workspace.tab.new", scope: "workspace" }],
     ["workspace.tab.menu.open", { id: "workspace.tab.menu.open", scope: "workspace" }],
     ["workspace.tab.target.agent", { id: "workspace.tab.target.agent", scope: "workspace" }],
     ["workspace.tab.target.browser", { id: "workspace.tab.target.browser", scope: "workspace" }],
     ["workspace.tab.target.changes", { id: "workspace.tab.target.changes", scope: "workspace" }],
     ["workspace.tab.target.files", { id: "workspace.tab.target.files", scope: "workspace" }],
-    // Distinct from workspace.tab.new above: this one creates a workspace, so
-    // it dispatches in the sidebar's scope rather than a workspace's.
     ["workspace.new", { id: "workspace.new", scope: "sidebar" }],
     ["workspace.project.pick", { id: "workspace.project.pick", scope: "workspace" }],
     ["workspace.archive", { id: "workspace.archive", scope: "sidebar" }],
@@ -86,7 +82,7 @@ describe("routeKeyboardShortcut - dispatch passthroughs", () => {
   });
 });
 
-describe("routeKeyboardShortcut - workspace.tab.navigate", () => {
+describe("routeKeyboardShortcut — workspace.tab.navigate", () => {
   it("forwards index payloads to the workspace.tab.navigate-index dispatch", () => {
     expect(
       routeKeyboardShortcut(
@@ -127,7 +123,7 @@ describe("routeKeyboardShortcut - workspace.tab.navigate", () => {
   });
 });
 
-describe("routeKeyboardShortcut - workspace.navigate.index", () => {
+describe("routeKeyboardShortcut — workspace.navigate.index", () => {
   it("navigates to the sidebar target at index-1", () => {
     expect(
       routeKeyboardShortcut(
@@ -166,7 +162,7 @@ describe("routeKeyboardShortcut - workspace.navigate.index", () => {
   });
 });
 
-describe("routeKeyboardShortcut - workspace.navigate.relative", () => {
+describe("routeKeyboardShortcut — workspace.navigate.relative", () => {
   const STATUS_VISUAL_TARGETS = [
     { serverId: "srv", workspaceId: "needs-input" },
     { serverId: "srv", workspaceId: "running-new" },
@@ -299,7 +295,7 @@ describe("routeKeyboardShortcut - workspace.navigate.relative", () => {
   });
 });
 
-describe("routeKeyboardShortcut - message-input.action", () => {
+describe("routeKeyboardShortcut — message-input.action", () => {
   it.each([
     ["focus", "message-input.focus"],
     ["send", "message-input.send"],
@@ -325,7 +321,7 @@ describe("routeKeyboardShortcut - message-input.action", () => {
   });
 });
 
-describe("routeKeyboardShortcut - settings.toggle", () => {
+describe("routeKeyboardShortcut — settings.toggle", () => {
   it("pushes to the settings root when not currently in settings", () => {
     expect(
       routeKeyboardShortcut(
@@ -360,7 +356,7 @@ describe("routeKeyboardShortcut - settings.toggle", () => {
   });
 });
 
-describe("routeKeyboardShortcut - callbacks and pickers", () => {
+describe("routeKeyboardShortcut — callbacks and pickers", () => {
   it.each([
     ["sidebar.toggle.left", "toggle-agent-list"],
     ["sidebar.toggle.both", "toggle-both-sidebars"],
@@ -379,7 +375,25 @@ describe("routeKeyboardShortcut - callbacks and pickers", () => {
   });
 });
 
-describe("routeKeyboardShortcut - toggle dialogs", () => {
+describe("routeKeyboardShortcut — toggle dialogs", () => {
+  it("opens the command center scoped to files from a workspace", () => {
+    expect(
+      routeKeyboardShortcut({ action: "command-center.files", payload: null }, makeCtx()),
+    ).toEqual<ShortcutAction>({ kind: "command-center-toggle", nextOpen: true, scope: "files" });
+  });
+
+  it("leaves the file-search shortcut to the project-picker host outside a workspace", () => {
+    expect(
+      routeKeyboardShortcut(
+        { action: "command-center.files", payload: null },
+        makeCtx({ pathname: "/settings" }),
+      ),
+    ).toEqual<ShortcutAction>({
+      kind: "dispatch",
+      action: { id: "workspace.project.pick", scope: "workspace" },
+    });
+  });
+
   it("opens the command center when closed", () => {
     expect(
       routeKeyboardShortcut(
@@ -415,7 +429,7 @@ describe("routeKeyboardShortcut - toggle dialogs", () => {
   });
 });
 
-describe("routeKeyboardShortcut - unknown actions", () => {
+describe("routeKeyboardShortcut — unknown actions", () => {
   it("returns none for unknown action ids", () => {
     expect(
       routeKeyboardShortcut({ action: "totally.made.up", payload: null }, makeCtx()),

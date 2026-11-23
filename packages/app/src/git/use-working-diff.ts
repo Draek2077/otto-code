@@ -7,19 +7,21 @@ import {
   buildReviewDraftKey,
   useInlineReviewController,
   useReviewAttachmentSnapshot,
+  useReviewFeedback,
 } from "@/review";
 import { useCheckoutDiffQuery } from "@/git/use-diff-query";
 import { useCheckoutStatusQuery } from "@/git/use-status-query";
 import { useWorkingDiffComparison } from "@/git/working-diff-comparison";
 
 interface UseWorkingDiffOptions {
-  modeScope?: string;
   serverId: string;
   workspaceId?: string;
   cwd: string;
   ignoreWhitespace: boolean;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
   enabled: boolean;
   queryScope?: string;
+  presentation?: string;
 }
 
 export function useWorkingDiff({
@@ -27,9 +29,10 @@ export function useWorkingDiff({
   workspaceId,
   cwd,
   ignoreWhitespace,
+  includeStructuralSource,
   enabled,
   queryScope,
-  modeScope,
+  presentation,
 }: UseWorkingDiffOptions) {
   const {
     status,
@@ -53,7 +56,6 @@ export function useWorkingDiff({
     workspaceId,
     cwd,
     isDirty: hasUncommittedChanges,
-    modeScope,
   });
   const selectUncommitted = useCallback(() => selectComparison("uncommitted"), [selectComparison]);
   const selectBase = useCallback(() => selectComparison("base"), [selectComparison]);
@@ -69,6 +71,7 @@ export function useWorkingDiff({
     mode: diffMode,
     baseRef,
     ignoreWhitespace,
+    includeStructuralSource,
     enabled: enabled && isGit,
     queryScope,
   });
@@ -78,20 +81,26 @@ export function useWorkingDiff({
         serverId,
         workspaceId,
         cwd,
-        branch: currentBranchName,
         mode: diffMode,
         baseRef,
         ignoreWhitespace,
       }),
-    [baseRef, currentBranchName, cwd, diffMode, ignoreWhitespace, serverId, workspaceId],
+    [baseRef, cwd, diffMode, ignoreWhitespace, serverId, workspaceId],
   );
-  const reviewActions = useInlineReviewController({ reviewDraftKey });
+  const reviewActions = useInlineReviewController({ reviewDraftKey, presentation });
   const reviewAttachment = useReviewAttachmentSnapshot({
     key: reviewDraftKey,
     diffFiles: files,
     cwd,
     mode: diffMode,
     baseRef,
+  });
+
+  const reviewFeedback = useReviewFeedback({
+    serverId,
+    workspaceId,
+    reviewDraftKey,
+    attachment: reviewAttachment,
   });
 
   return {
@@ -111,6 +120,7 @@ export function useWorkingDiff({
     isDiffLoading,
     reviewActions,
     reviewAttachment,
+    reviewFeedback,
   };
 }
 

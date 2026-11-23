@@ -1,3 +1,4 @@
+import type { AgentMessage } from "./agent-message.js";
 import type { AgentAttachment } from "./messages.js";
 
 export type AgentProvider = string;
@@ -71,14 +72,6 @@ export interface AgentMode {
 
 export type ProviderStatus = "ready" | "loading" | "error" | "unavailable";
 
-/**
- * A model's capability tier, used to bind personality "brains" provider-
- * agnostically (deep = flagship reasoning, standard = everyday, fast = cheap/
- * high-volume). Assigned by the daemon at ingest (catalog → name pattern), with
- * a user per-model override winning; see model-tiers.ts.
- */
-export type ModelTier = "deep" | "standard" | "fast";
-
 export interface AgentModelDefinition {
   provider: AgentProvider;
   id: string;
@@ -86,33 +79,11 @@ export interface AgentModelDefinition {
   isSelectable?: boolean;
   label: string;
   description?: string;
-  /** Catalog-owned model-family identity, currently emitted by Otto Brain only. */
-  family?: string;
   isDefault?: boolean;
   metadata?: AgentMetadata;
   contextWindowMaxTokens?: number;
   thinkingOptions?: AgentSelectOption[];
   defaultThinkingOptionId?: string;
-  /**
-   * Capability tier, stamped by the daemon when it ingests the provider's model
-   * list. Optional: absent from old daemons, and from models we can't classify
-   * and the user hasn't tagged. Consumers fall back to their own inference.
-   */
-  tier?: ModelTier;
-  /**
-   * False when the host owner hid this model from model-picking surfaces.
-   * Absent means visible, including snapshots from older daemons. Visibility
-   * is presentation policy only: an existing profile or agent may continue to
-   * reference a hidden model by id.
-   */
-  isVisible?: boolean;
-  /**
-   * False when this model cannot run the provider's "auto" permission mode
-   * (e.g. Claude's classifier-based Auto mode is unsupported on Haiku). Absent
-   * = supported or unknown (including old daemons); clients only hide the Auto
-   * option on an explicit false.
-   */
-  supportsAutoMode?: boolean;
 }
 
 export interface AgentSelectOption {
@@ -130,6 +101,17 @@ export function normalizeAgentModelDefinition(model: AgentModelDefinition): Agen
     return model;
   }
   return { ...model, defaultThinkingOptionId };
+}
+
+/** A provider addresses models by ID; repeated rows retain the first definition. */
+export function normalizeAgentModelCatalog(models: AgentModelDefinition[]): AgentModelDefinition[] {
+  const ids = new Set<string>();
+  const unique = models.filter((model) => {
+    if (ids.has(model.id)) return false;
+    ids.add(model.id);
+    return true;
+  });
+  return unique.length === models.length ? models : unique;
 }
 
 export interface ProviderSnapshotEntry {
@@ -155,12 +137,6 @@ export interface AgentFeatureToggle {
   tooltip?: string;
   icon?: string;
   value: boolean;
-  /**
-   * Set when the provider reports the feature is not taking effect (or cannot
-   * be turned on) for a reason the user can act on, e.g. Claude fast mode on an
-   * account without usage credits. Absent means nothing is known to block it.
-   */
-  unavailableReason?: string;
 }
 
 export interface AgentFeatureSelect {
@@ -170,6 +146,8 @@ export interface AgentFeatureSelect {
   description?: string;
   tooltip?: string;
   icon?: string;
+  /** Desktop toolbar presentation; omitted means labeled. Mobile selectors stay labeled. */
+  desktopTrigger?: "icon" | "label";
   value: string | null;
   options: AgentSelectOption[];
 }
@@ -188,8 +166,6 @@ export interface AgentCapabilityFlags {
   supportsRewindConversation?: boolean;
   supportsRewindFiles?: boolean;
   supportsRewindBoth?: boolean;
-  /** Emits `prompt_suggestion` stream events after a turn (composer ghost text). */
-  supportsPromptSuggestions?: boolean;
 }
 
 export interface AgentPersistenceHandle {
@@ -213,82 +189,13 @@ export interface AgentRunOptions {
   maxThinkingTokens?: number;
 }
 
-/**
- * How the tokens currently occupying an agent's context window break down by
- * origin. Powers the visualizer's context ring/bar colored segments (the same
- * five categories the vendored render layer draws). Every field is optional and
- * a token count: a provider fills as many categories as it can attribute and
- * omits the rest, so richness degrades gracefully per provider - Claude
- * attributes the most; a provider that can attribute nothing omits the whole
- * object and consumers fall back to occupancy-only (no colored segments, the
- * pre-composition behavior). Counts are best-effort estimates, not billed usage;
- * they need not sum exactly to `contextWindowUsedTokens` (the consumer scales).
- */
-export interface ContextComposition {
-  /** System prompt + tool/function definitions - the fixed base cost. */
-  systemPrompt?: number;
-  /** User-authored input messages. */
-  userMessages?: number;
-  /** Tool results - file contents, search output, command output (usually the
-   * largest and most volatile category). */
-  toolResults?: number;
-  /** The agent's own reasoning / thinking blocks. */
-  reasoning?: number;
-  /** Content returned by child / observed sub-agents. */
-  subagentResults?: number;
-}
-
-/**
- * One provider-reported context-window category. `name` is a provider-supplied
- * *display label* ("Messages", "System prompt", "MCP tools") - deliberately an
- * OPEN-ENDED string and not an enum, so each provider reports the split it
- * actually has instead of being squeezed into categories it can't populate.
- *
- * Structurally identical to `AgentContextUsageCategory` on the pull path
- * (`agent.context.get_usage`, see messages.ts) *by design*: the two carry the
- * same accounting, one pushed on the agent snapshot and one pulled on demand.
- * Keep them in sync - a divergence here is how the context meter and the
- * visualizer would start disagreeing about the same agent.
- */
-export interface AgentContextCategory {
-  name: string;
-  tokens: number;
-  /** Deferred content (e.g. on-demand tool schemas) is not counted in the total. */
-  isDeferred?: boolean;
-}
-
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
-  /**
-   * Prompt tokens spent writing (not reading) the prompt cache this turn -
-   * Anthropic's `cache_creation_input_tokens`, billed above normal input.
-   * Disjoint from `inputTokens`/`cachedInputTokens`. Claude-specific today;
-   * other providers omit it. Optional/additive.
-   */
-  cacheCreationInputTokens?: number;
   outputTokens?: number;
   totalCostUsd?: number;
   contextWindowMaxTokens?: number;
   contextWindowUsedTokens?: number;
-  /**
-   * Best-effort breakdown of what fills the context window, by origin. Optional
-   * and provider-graded (see {@link ContextComposition}); absent ⇒ the consumer
-   * shows occupancy only. Added for the visualizer context ring/bar.
-   */
-  contextComposition?: ContextComposition;
-  /**
-   * The provider's OWN context-window split, with its own labels - the same
-   * accounting the `agent.context.get_usage` RPC returns, pushed here on the
-   * agent snapshot so stream/backfill consumers (the visualizer) read the very
-   * numbers the context meter shows rather than a parallel estimate.
-   *
-   * Preferred over {@link ContextComposition} wherever present. The estimate
-   * remains the coarse tier for providers that can't report a real split;
-   * absence of both ⇒ occupancy only. Optional/additive: absence is the
-   * graceful-degrade signal, so no capability flag is needed.
-   */
-  contextCategories?: AgentContextCategory[];
 }
 
 export const TOOL_CALL_ICON_NAMES = [
@@ -405,6 +312,7 @@ export type ToolCallDetail =
     };
 
 interface ToolCallBase {
+  agentMessage?: AgentMessage;
   [key: string]: unknown;
   type: "tool_call";
   callId: string;
@@ -442,11 +350,9 @@ export type ToolCallTimelineItem =
 export interface CompactionTimelineItem {
   [key: string]: unknown;
   type: "compaction";
-  // COMPAT(compactionFailedStatus): "failed" added in v0.4.3; see messages.ts.
-  status: "loading" | "completed" | "failed";
+  status: "loading" | "completed";
   trigger?: "auto" | "manual";
   preTokens?: number;
-  postTokens?: number;
 }
 
 export interface PluginTimelineItem {
@@ -466,25 +372,13 @@ export interface AgentTaskItem {
   activeForm?: string;
 }
 
-/** A daemon-materialized user image. Timeline rows carry this reference, not bytes. */
-export interface AgentTimelineImageAttachment {
-  path: string;
-  mimeType: string;
-}
-
 export type AgentTimelineItem =
-  | {
-      type: "user_message";
-      text: string;
-      messageId?: string;
-      clientMessageId?: string;
-      images?: AgentTimelineImageAttachment[];
-    }
+  | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
   | { type: "assistant_message"; text: string; messageId?: string }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: AgentTaskItem[] }
-  | { type: "error"; message: string; details?: string[] }
+  | { type: "error"; message: string }
   | {
       type: "notification";
       level: "info" | "warning" | "error";
@@ -544,99 +438,10 @@ export type AgentStreamEvent =
       provider: AgentProvider;
       reason: "finished" | "error" | "permission";
       timestamp: string;
-    }
-  // A provider-managed subagent's lifecycle changed. The daemon materializes it
-  // as a read-only "observed subagent" agent record. See .otto/knowledge/projects/observed-subagents.md.
-  | {
-      type: "observed_subagent_updated";
-      provider: AgentProvider;
-      update: ObservedSubagentUpdate;
-    }
-  // A timeline item belonging to a provider-managed subagent, routed by the
-  // daemon to the observed subagent's own timeline (keyed by `key`).
-  | {
-      type: "observed_subagent_timeline";
-      provider: AgentProvider;
-      key: string;
-      item: AgentTimelineItem;
-      turnId?: string;
-      timestamp?: string;
-    }
-  // A background shell task launched by the provider's own Bash tool (Claude:
-  // run_in_background) changed lifecycle state. Not an AI subagent - a plain
-  // shell process the daemon tracks for the Background Tasks track.
-  | {
-      type: "background_shell_task_updated";
-      provider: AgentProvider;
-      update: BackgroundShellTaskUpdate;
     };
 
 export function getAgentStreamEventTurnId(event: AgentStreamEvent): string | undefined {
   return "turnId" in event ? event.turnId : undefined;
-}
-
-/**
- * A provider-managed subagent (Claude `Task` / ultracode fan-out) reported by a
- * provider so the daemon can promote it to a read-only, separately-watchable
- * "observed subagent". `key` is a provider-local stable identifier (Claude: the
- * Task tool_use id); the daemon namespaces it under the owning agent. See
- * .otto/knowledge/projects/observed-subagents.md.
- */
-export interface ObservedSubagentUpdate {
-  key: string;
-  /** Provider task id, used to stop the subagent (Claude: `task_id`). */
-  taskId?: string;
-  sessionId?: string | null;
-  subAgentType?: string;
-  description?: string;
-  status: "initializing" | "running" | "idle" | "error" | "closed";
-  requiresAttention?: boolean;
-  usage?: AgentUsage;
-  /**
-   * True once this run is known to outlive an interrupt of the parent's turn -
-   * the provider backgrounded it, so the parent's teardown does not take it
-   * down. Sticky: the daemon keeps it set for the row's whole life, and
-   * propagates it to nested rows (a child of a backgrounded run survives too).
-   * Absent ⇒ foreground, i.e. the run dies with the turn that spawned it.
-   *
-   * Claude sets it for Workflow orchestration runs (always backgrounded) and
-   * for a Task/Agent whose tool_result turned out to be a launch ack rather
-   * than a final report. See docs/chat-lifecycle.md.
-   */
-  backgrounded?: boolean;
-  /**
-   * Tool invocations this subagent has made so far (cumulative). Neutral field
-   * any provider can set; kept monotonic by the daemon so a status-only final
-   * update can't drop the readout. Claude reads it from the SDK's per-task
-   * `usage.tool_uses`. Absent ⇒ the row shows no count.
-   */
-  toolUseCount?: number;
-  /**
-   * The tool this subagent is running (or ran last) - the "spinning _on a 90s
-   * Bash_" signal. Neutral field any provider can set; unlike the counters it is
-   * NOT monotonic (latest wins) and the daemon drops it once the row goes
-   * terminal. Claude reads it from `task_progress.last_tool_name`. Absent ⇒ the
-   * row omits it; never guess a value.
-   */
-  currentTool?: string;
-}
-
-/**
- * A background shell task reported by a provider's own Bash tool (Claude:
- * `run_in_background`). `key` is a provider-local stable identifier (Claude:
- * the Bash tool_use id); the daemon namespaces it under the owning agent.
- * Unlike {@link ObservedSubagentUpdate} this has no transcript/pane - it's a
- * plain status row (command, status, elapsed) in the Background Tasks track.
- */
-export interface BackgroundShellTaskUpdate {
-  key: string;
-  /** Provider task id, used to stop the task (Claude: `task_id`). */
-  taskId?: string;
-  command?: string;
-  description?: string;
-  status: "running" | "idle" | "error" | "closed";
-  requiresAttention?: boolean;
-  usage?: AgentUsage;
 }
 
 export type AgentPermissionRequestKind = "tool" | "plan" | "question" | "mode" | "other";
@@ -687,23 +492,6 @@ export interface AgentRunResult {
   canceled?: boolean;
 }
 
-// ── Workspace access ────────────────────────────────────────────────────────
-// How much of its workspace one agent session may touch. Provider-neutral by
-// intent: each adapter maps it onto whatever its own runtime enforces, and a
-// provider that cannot enforce it must say so (AgentCapabilities) rather than
-// accept the setting and ignore it.
-//
-// This is a *boundary*, not an instruction. "read" means the write tools are
-// not offered, so there is no write to make - never a line of prompt asking the
-// model to behave. A control a user relies on when deciding to run something
-// unattended has to be true in exactly the cases where the model is confused.
-export const WORKSPACE_ACCESS_LEVELS = ["none", "read", "write"] as const;
-export type WorkspaceAccess = (typeof WORKSPACE_ACCESS_LEVELS)[number];
-
-export function isWorkspaceAccess(value: unknown): value is WorkspaceAccess {
-  return value === "none" || value === "read" || value === "write";
-}
-
 export type JsonValue =
   | null
   | boolean
@@ -712,7 +500,7 @@ export type JsonValue =
   | JsonValue[]
   | { [key: string]: JsonValue };
 
-export type ProviderOptions = Record<string, JsonValue>;
+export type ProviderOptions = Record<string, unknown>;
 
 export interface McpToolRef {
   kind: "mcp";
@@ -737,21 +525,6 @@ export interface AgentSessionConfig {
   thinkingOptionId?: string;
   featureValues?: Record<string, unknown>;
   title?: string | null;
-  approvalPolicy?: string;
-  sandboxMode?: string;
-  /**
-   * Ceiling on what this session may do to its workspace (see
-   * WORKSPACE_ACCESS_LEVELS). Absent ⇒ "write", today's behaviour. Set by graph
-   * nodes that declare an access level; each provider adapter narrows its own
-   * tool surface to match.
-   */
-  workspaceAccess?: string;
-  networkAccess?: boolean;
-  webSearch?: boolean;
-  extra?: {
-    codex?: AgentMetadata;
-    claude?: AgentMetadata;
-  };
   providerOptions?: ProviderOptions;
   toolPolicy?: ToolPolicy;
   mcpServers?: Record<string, McpServerConfig>;

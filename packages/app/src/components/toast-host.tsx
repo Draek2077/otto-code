@@ -1,25 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Animated, Easing, Text, useWindowDimensions, View } from "react-native";
-import { showAndroidToast } from "@/components/android-toast";
+import {
+  Platform,
+  Pressable,
+  StyleSheet as NativeStyleSheet,
+  Text,
+  ToastAndroid,
+  View,
+} from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import type { Theme } from "@/styles/theme";
 import { useTranslation } from "react-i18next";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
+import { AlertTriangle, CheckCircle2, Info } from "lucide-react-native";
+import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
 import {
-  useIsCompactFormFactor,
   HEADER_INNER_HEIGHT,
   HEADER_INNER_HEIGHT_MOBILE,
   HEADER_TOP_PADDING_MOBILE,
 } from "@/constants/layout";
-import { isNative, isWeb } from "@/constants/platform";
-import type { Theme } from "@/styles/theme";
-import { AlertTriangle, CheckCircle2, Info } from "@/components/icons/material-icons";
-import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
-import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
-import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
-import { resolveExplorerSidebarWidth } from "@/components/explorer-sidebar-layout";
 
 export type ToastVariant = "default" | "info" | "success" | "warning" | "error";
 
@@ -49,17 +51,18 @@ export interface ToastApi {
 
 type ToastViewportPlacement = "app-shell" | "panel";
 
-const ThemedCheckCircle = withUnistyles(CheckCircle2);
-const ThemedAlertTriangle = withUnistyles(AlertTriangle);
-const ThemedInfo = withUnistyles(Info);
-const copiedIconProps = (theme: Theme) => ({ color: theme.colors.foreground });
-const successIconProps = (theme: Theme) => ({ color: theme.colors.primary });
-const infoIconProps = (theme: Theme) => ({ color: theme.colors.statusInfo });
-const warningIconProps = (theme: Theme) => ({ color: theme.colors.statusWarning });
-const errorIconProps = (theme: Theme) => ({ color: theme.colors.destructive });
-
 const DEFAULT_DURATION_MS = 2200;
 const TOAST_MAX_WIDTH = 480;
+const toastEntering = FadeIn.duration(140);
+const toastExiting = FadeOut.duration(140);
+const ThemedCheckCircle = withUnistyles(CheckCircle2);
+const ThemedInfo = withUnistyles(Info);
+const ThemedWarning = withUnistyles(AlertTriangle);
+const foregroundIcon = (theme: Theme) => ({ color: theme.colors.foreground });
+const infoIcon = (theme: Theme) => ({ color: theme.colors.palette.blue[300] });
+const successIcon = (theme: Theme) => ({ color: theme.colors.primary });
+const warningIcon = (theme: Theme) => ({ color: theme.colors.palette.amber[500] });
+const errorIcon = (theme: Theme) => ({ color: theme.colors.destructive });
 
 export function useToastHost(): {
   api: ToastApi;
@@ -80,7 +83,10 @@ export function useToastHost(): {
     const durationMs = options?.durationMs === undefined ? DEFAULT_DURATION_MS : options.durationMs;
     const nativeAndroid = options?.nativeAndroid ?? false;
 
-    if (nativeAndroid && nativeMessage && showAndroidToast(nativeMessage, durationMs)) {
+    if (Platform.OS === "android" && nativeAndroid && nativeMessage) {
+      const duration =
+        durationMs !== null && durationMs <= 2500 ? ToastAndroid.SHORT : ToastAndroid.LONG;
+      ToastAndroid.showWithGravity(nativeMessage, duration, ToastAndroid.TOP);
       return;
     }
 
@@ -102,7 +108,7 @@ export function useToastHost(): {
       copied: (label?: string) =>
         show(label ? t("common.states.copiedLabel", { label }) : t("common.states.copied"), {
           variant: "success",
-          icon: <ThemedCheckCircle size="mdPlus" uniProps={copiedIconProps} />,
+          icon: <ThemedCheckCircle size={18} uniProps={foregroundIcon} />,
         }),
       error: (message: string) => show(message, { variant: "error", durationMs: 3200 }),
     }),
@@ -116,54 +122,6 @@ export function useToastHost(): {
   return { api, toast, dismiss };
 }
 
-/**
- * The app-shell toast portals to the whole viewport, but on desktop the agent
- * list and file explorer are inline row siblings that shrink the content region.
- * Centering on the viewport therefore reads as off-center against the content
- * the toast belongs to, so inset by whichever sidebars are currently open.
- *
- * Compact layouts overlay their panels (nothing is taken out of the content
- * region), and the `panel` placement is already scoped to its own pane.
- */
-function useContentRegionInsets(placement: ToastViewportPlacement): {
-  left: number;
-  right: number;
-} {
-  const isCompact = useIsCompactFormFactor();
-  const isAgentListOpen = usePanelStore((state) =>
-    selectIsAgentListOpen(state, { isCompact: isCompact }),
-  );
-  const isExplorerSidebarVisible = usePanelStore((state) => state.explorerSidebarVisible);
-  const activeWorkspace = useActiveWorkspaceSelection();
-  const workspaceKey = useMemo(
-    () =>
-      activeWorkspace
-        ? buildWorkspaceTabPersistenceKey({
-            serverId: activeWorkspace.serverId,
-            workspaceId: activeWorkspace.workspaceId,
-          })
-        : null,
-    [activeWorkspace],
-  );
-  const requestedExplorerWidth = useWorkspaceLayoutStore((state) =>
-    workspaceKey ? state.explorerSidebarWidthByWorkspace[workspaceKey] : undefined,
-  );
-  const sidebarWidth = usePanelStore((state) => state.sidebarWidth);
-  const { width: viewportWidth } = useWindowDimensions();
-  const explorerWidth = resolveExplorerSidebarWidth({
-    requestedWidth: requestedExplorerWidth,
-    containerWidth: viewportWidth,
-  });
-
-  if (placement !== "app-shell" || isCompact) {
-    return { left: 0, right: 0 };
-  }
-  return {
-    left: isAgentListOpen ? sidebarWidth : 0,
-    right: isExplorerSidebarVisible ? explorerWidth : 0,
-  };
-}
-
 export function ToastViewport({
   toast,
   onDismiss,
@@ -175,9 +133,6 @@ export function ToastViewport({
 }) {
   const insets = useSafeAreaInsets();
   const isMobile = useIsCompactFormFactor();
-  const regionInsets = useContentRegionInsets(placement);
-  const opacity = useRef(new Animated.Value(0)).current;
-  const translateY = useRef(new Animated.Value(-8)).current;
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dismissDeadlineRef = useRef<number | null>(null);
   const remainingDurationRef = useRef(0);
@@ -188,28 +143,6 @@ export function ToastViewport({
       timeoutRef.current = null;
     }
   }, []);
-
-  const animateOut = useCallback(() => {
-    clearTimer();
-    Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 0,
-        duration: 140,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: isNative,
-      }),
-      Animated.timing(translateY, {
-        toValue: -8,
-        duration: 140,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: isNative,
-      }),
-    ]).start(({ finished }) => {
-      if (finished) {
-        onDismiss();
-      }
-    });
-  }, [clearTimer, onDismiss, opacity, translateY]);
 
   const scheduleDismiss = useCallback(
     (durationMs: number | null) => {
@@ -223,10 +156,10 @@ export function ToastViewport({
       remainingDurationRef.current = nextDurationMs;
       dismissDeadlineRef.current = Date.now() + nextDurationMs;
       timeoutRef.current = setTimeout(() => {
-        animateOut();
+        onDismiss();
       }, nextDurationMs);
     },
-    [animateOut, clearTimer],
+    [onDismiss, clearTimer],
   );
 
   const pauseDismiss = useCallback(() => {
@@ -244,104 +177,35 @@ export function ToastViewport({
     scheduleDismiss(remainingDurationRef.current || toast.durationMs);
   }, [scheduleDismiss, toast]);
 
+  const toastId = toast?.id;
+  const durationMs = toast?.durationMs ?? null;
   useEffect(() => {
-    if (!toast) {
-      clearTimer();
-      dismissDeadlineRef.current = null;
-      remainingDurationRef.current = 0;
-      opacity.setValue(0);
-      translateY.setValue(-8);
-      return;
-    }
-
-    clearTimer();
-    opacity.setValue(0);
-    translateY.setValue(-8);
-
-    Animated.parallel([
-      Animated.timing(opacity, {
-        toValue: 1,
-        duration: 140,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: isNative,
-      }),
-      Animated.timing(translateY, {
-        toValue: 0,
-        duration: 140,
-        easing: Easing.out(Easing.quad),
-        useNativeDriver: isNative,
-      }),
-    ]).start();
-
-    scheduleDismiss(toast.durationMs);
-
-    return () => {
-      clearTimer();
-    };
-  }, [clearTimer, opacity, scheduleDismiss, toast, translateY]);
+    scheduleDismiss(durationMs);
+    return clearTimer;
+  }, [clearTimer, durationMs, scheduleDismiss, toastId]);
 
   const headerHeight = isMobile ? HEADER_INNER_HEIGHT_MOBILE : HEADER_INNER_HEIGHT;
   const headerTopPadding = isMobile ? HEADER_TOP_PADDING_MOBILE : 0;
-
-  const toastVariant = toast?.variant;
-  const toastAnimatedStyle = useMemo(
-    () => [
-      styles.toast,
-      styles.placement(placement, insets.top + headerTopPadding + headerHeight),
-      toastVariant === "success" ? styles.toastSuccess : null,
-      toastVariant === "error" ? styles.toastError : null,
-      toastVariant === "warning" ? styles.toastWarning : null,
-      toastVariant === "info" ? styles.toastInfo : null,
-      {
-        opacity,
-        transform: [{ translateY }],
-      },
-    ],
-    [toastVariant, placement, insets.top, headerTopPadding, headerHeight, opacity, translateY],
-  );
-  const toastMessageStyle = useMemo(
-    () => [styles.message, toastVariant === "error" ? styles.messageError : null],
-    [toastVariant],
-  );
-  const containerStyle = styles.container(regionInsets.left, regionInsets.right);
-
-  if (!toast) {
-    return null;
-  }
-
-  let defaultIcon: ReactNode = null;
-  if (toast.variant === "success") {
-    defaultIcon = <ThemedCheckCircle size="mdPlus" uniProps={successIconProps} />;
-  } else if (toast.variant === "info") {
-    defaultIcon = <ThemedInfo size="mdPlus" uniProps={infoIconProps} />;
-  } else if (toast.variant === "warning") {
-    defaultIcon = <ThemedAlertTriangle size="mdPlus" uniProps={warningIconProps} />;
-  } else if (toast.variant === "error") {
-    defaultIcon = <ThemedAlertTriangle size="mdPlus" uniProps={errorIconProps} />;
-  }
-  const icon = toast.icon ?? defaultIcon;
+  const topOffset = placement === "app-shell" ? insets.top + headerTopPadding + headerHeight : 0;
 
   const content = (
-    <View style={containerStyle} pointerEvents="box-none">
-      <View style={styles.widthBoundary} pointerEvents="box-none">
-        <Animated.View
-          testID={toast.testID ?? "app-toast"}
-          onPointerEnter={isWeb ? pauseDismiss : undefined}
-          onPointerLeave={isWeb ? resumeDismiss : undefined}
-          style={toastAnimatedStyle}
-          accessibilityRole="alert"
-        >
-          {icon ? <View style={styles.iconSlot}>{icon}</View> : null}
-          {typeof toast.content === "string" ? (
-            <Text testID="app-toast-message" style={toastMessageStyle}>
-              {toast.content}
-            </Text>
-          ) : (
-            <View testID="app-toast-message" style={styles.contentSlot}>
-              {toast.content}
-            </View>
-          )}
-        </Animated.View>
+    <View
+      style={styles.container(placement, topOffset)}
+      pointerEvents="box-none"
+      collapsable={false}
+    >
+      <View style={styles.widthBoundary} pointerEvents="box-none" collapsable={false}>
+        {toast ? (
+          <Animated.View
+            entering={toastEntering}
+            exiting={toastExiting}
+            style={animatedStyles.surface}
+            testID={toast.testID ?? "app-toast"}
+            accessibilityRole="alert"
+          >
+            <ToastCard toast={toast} onHoverIn={pauseDismiss} onHoverOut={resumeDismiss} />
+          </Animated.View>
+        ) : null}
       </View>
     </View>
   );
@@ -353,18 +217,65 @@ export function ToastViewport({
   return content;
 }
 
+function ToastCard({
+  toast,
+  onHoverIn,
+  onHoverOut,
+}: {
+  toast: ToastState;
+  onHoverIn: () => void;
+  onHoverOut: () => void;
+}) {
+  let defaultIcon: ReactNode = null;
+  if (toast.variant === "info") {
+    defaultIcon = <ThemedInfo size={18} uniProps={infoIcon} />;
+  } else if (toast.variant === "success") {
+    defaultIcon = <ThemedCheckCircle size={18} uniProps={successIcon} />;
+  } else if (toast.variant === "warning") {
+    defaultIcon = <ThemedWarning size={18} uniProps={warningIcon} />;
+  } else if (toast.variant === "error") {
+    defaultIcon = <ThemedWarning size={18} uniProps={errorIcon} />;
+  }
+  const icon = toast.icon ?? defaultIcon;
+
+  return (
+    <Pressable
+      accessible={false}
+      onHoverIn={onHoverIn}
+      onHoverOut={onHoverOut}
+      style={[
+        styles.toast,
+        toast.variant === "info" ? styles.toastInfo : null,
+        toast.variant === "warning" ? styles.toastWarning : null,
+        toast.variant === "error" ? styles.toastError : null,
+      ]}
+    >
+      {icon ? <View style={styles.iconSlot}>{icon}</View> : null}
+      {typeof toast.content === "string" ? (
+        <Text testID="app-toast-message" style={styles.message}>
+          {toast.content}
+        </Text>
+      ) : (
+        <View testID="app-toast-message" style={styles.contentSlot}>
+          {toast.content}
+        </View>
+      )}
+    </Pressable>
+  );
+}
+
+const animatedStyles = NativeStyleSheet.create({
+  surface: { alignSelf: "center", maxWidth: "100%" },
+});
+
 const styles = StyleSheet.create((theme) => ({
-  // `left`/`right` are supplied at render time from the content-region insets.
-  container: (left: number, right: number) => ({
-    left: left + theme.spacing[4],
-    right: right + theme.spacing[4],
+  container: (placement: ToastViewportPlacement, topOffset: number) => ({
     position: "absolute",
-    top: 0,
+    left: theme.spacing[4],
+    right: theme.spacing[4],
+    top: topOffset + (placement === "app-shell" ? theme.spacing[2] : theme.spacing[3]),
     zIndex: OVERLAY_Z.toast,
     alignItems: "center",
-  }),
-  placement: (placement: ToastViewportPlacement, shellTop: number) => ({
-    marginTop: placement === "app-shell" ? shellTop + theme.spacing[2] : theme.spacing[3],
   }),
   widthBoundary: {
     width: "92%",
@@ -385,17 +296,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[3],
     ...theme.shadow.md,
   },
-  toastSuccess: {
-    borderColor: theme.colors.border,
+  toastInfo: {
+    borderColor: theme.colors.palette.blue[300],
+  },
+  toastWarning: {
+    borderColor: theme.colors.palette.amber[500],
   },
   toastError: {
     borderColor: theme.colors.destructive,
-  },
-  toastWarning: {
-    borderColor: theme.colors.statusWarning,
-  },
-  toastInfo: {
-    borderColor: theme.colors.statusInfo,
   },
   iconSlot: {
     alignItems: "center",
@@ -410,8 +318,5 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
-  },
-  messageError: {
-    color: theme.colors.foreground,
   },
 }));

@@ -5,8 +5,7 @@ import path from "node:path";
 import pino from "pino";
 import { afterEach, describe, expect, test } from "vitest";
 import { ensureAgentLoaded } from "./agent/agent-loading.js";
-import type { OttoDaemonConfig } from "./bootstrap.js";
-import { windowsShortPath } from "../test-utils/windows-short-path.js";
+import type { PaseoDaemonConfig } from "./bootstrap.js";
 
 const originalEnv = {
   PATH: process.env.PATH,
@@ -27,17 +26,9 @@ describe("bootstrap provider availability", () => {
   });
 
   test("loads a persisted Codex record without spawning a missing Codex binary", async () => {
-    const { createOttoDaemon } = await import("./bootstrap.js");
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), "otto-bootstrap-provider-"));
-    tempRoots.push(tempRoot);
-    // Bootstrap installs project-root watchers before checking providers. A
-    // short Windows spelling must not crash libuv during that startup path.
-    const root = process.platform === "win32" ? windowsShortPath(tempRoot) : tempRoot;
-    if (process.platform === "win32") {
-      console.info(
-        root.includes("~") ? "Bootstrap uses an 8.3 root" : "8.3 unavailable; using full root",
-      );
-    }
+    const { createPaseoDaemon } = await import("./bootstrap.js");
+    const root = await mkdtemp(path.join(os.tmpdir(), "paseo-bootstrap-provider-"));
+    tempRoots.push(root);
     const gitPath = execFileSync(process.platform === "win32" ? "where" : "which", ["git"], {
       encoding: "utf8",
     })
@@ -45,9 +36,9 @@ describe("bootstrap provider availability", () => {
       .trim();
     process.env.PATH = path.dirname(gitPath);
     expect(execFileSync("git", ["--version"], { encoding: "utf8" })).toMatch(/git version/i);
-    const ottoHome = path.join(root, ".otto");
+    const paseoHome = path.join(root, ".paseo");
     const staticDir = path.join(root, "static");
-    const agentStoragePath = path.join(ottoHome, "agents");
+    const agentStoragePath = path.join(paseoHome, "agents");
     const now = new Date("2026-04-16T00:00:00.000Z").toISOString();
     const agentId = "11111111-1111-4111-8111-111111111111";
     await mkdir(agentStoragePath, { recursive: true });
@@ -77,9 +68,9 @@ describe("bootstrap provider availability", () => {
       }),
     );
 
-    const config: OttoDaemonConfig = {
+    const config: PaseoDaemonConfig = {
       listen: "127.0.0.1:0",
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: false,
@@ -88,7 +79,7 @@ describe("bootstrap provider availability", () => {
       agentClients: {},
       agentStoragePath,
       relayEnabled: false,
-      appBaseUrl: "https://app.otto-code.me",
+      appBaseUrl: "https://app.paseo.sh",
       openai: undefined,
       speech: undefined,
     };
@@ -102,7 +93,7 @@ describe("bootstrap provider availability", () => {
     process.on("unhandledRejection", onUnhandledRejection);
     process.on("uncaughtException", onUncaughtException);
 
-    const daemon = await createOttoDaemon(config, pino({ level: "silent" }));
+    const daemon = await createPaseoDaemon(config, pino({ level: "silent" }));
     try {
       await expect(daemon.agentStorage.list()).resolves.toHaveLength(1);
       await expect(daemon.agentManager.listProviderAvailability()).resolves.toContainEqual({

@@ -1,8 +1,4 @@
-import type {
-  PluginButton,
-  PluginButtonBehavior,
-  PluginButtonIcon,
-} from "@otto-code/plugin/client";
+import type { PluginButton, PluginButtonBehavior, PluginButtonIcon } from "@getpaseo/plugin/client";
 
 export interface ButtonValidation {
   validateIconName(name: string): void;

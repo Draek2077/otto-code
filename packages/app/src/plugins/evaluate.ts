@@ -1,8 +1,11 @@
+import { ottoClientModule } from "@/otto/plugin-client-modules"; // OTTO(context-management): owned contracts and trusted UI registry.
+import type { createPluginHosts } from "./hosts";
+import { openExternalUrl } from "@/utils/open-external-url";
 import * as pluginUiRuntime from "./react-native/ui";
 import { useSettings } from "./settings/use-settings";
-import * as pluginSharedRuntime from "@otto-code/plugin";
-import { resolvePluginSdkSpecifier } from "@otto-code/plugin";
-import * as pluginClientRuntime from "@otto-code/plugin/client";
+import * as pluginSharedRuntime from "@getpaseo/plugin";
+// OTTO(provider-harness): connection definitions are the only client-safe harness export.
+import * as pluginClientRuntime from "@getpaseo/plugin/client";
 import * as React from "react";
 import * as ReactJsxRuntime from "react/jsx-runtime";
 // eslint-disable-next-line no-restricted-imports -- plugin client runtime injects host ReactNative.
@@ -14,19 +17,23 @@ import {
   type PluginAttachmentSourceContribution,
   type PluginCleanup,
   type PluginThemeContribution,
-} from "@otto-code/plugin";
+} from "@getpaseo/plugin";
 import {
   type PluginCommandCenterItemContribution,
   type PluginClientContext,
   type PluginClientSlashCommandContribution,
   type PluginSidebarContribution,
+  type PluginScreenContribution,
+  type PluginScreenProps,
+  type PluginScreenTitle,
+  type PluginSidebarItemContribution,
   type PluginSurfaceProps,
   type PluginTimelineRendererContribution,
   type PluginTimelineTransformerContribution,
   type PluginWorkspacePanelContribution,
   type PluginButtonRegistration,
-} from "@otto-code/plugin/client";
-import type { EvaluatedPlugin } from "./types";
+} from "@getpaseo/plugin/client";
+import type { EvaluatedPlugin, PluginSidebarSection } from "./types";
 import type { ComponentType } from "react";
 import { resolvePluginIcon } from "./icons";
 import { pluginReactNativeRuntime } from "./react-native/runtime";
@@ -41,7 +48,6 @@ const TIMELINE_ITEM_TYPES = new Set([
   "tool_call",
   "todo",
   "error",
-  "notification",
   "compaction",
 ]);
 
@@ -65,22 +71,42 @@ function normalizePanelLocations(
   return normalized;
 }
 
+function isComponentType(value: unknown): boolean {
+  return (
+    typeof value === "function" ||
+    (typeof value === "object" && value !== null && "$$typeof" in value)
+  );
+}
+
 function requireId(value: string, label: string): string {
   const id = value.trim();
   if (!CONTRIBUTION_ID.test(id)) throw new Error(`Invalid ${label}: ${value}`);
   return id;
 }
 
+/** A non-empty string, or a function of the screen's params resolved when the header renders. */
+function requireScreenTitle(screenId: string, title: unknown): PluginScreenTitle {
+  if (typeof title === "function") return title as PluginScreenTitle;
+  if (typeof title === "string" && title.trim()) return title.trim();
+  throw new Error(`Screen ${screenId} needs a title: a non-empty string or a function of params`);
+}
+
 export type PluginClientRuntime = Pick<
   PluginClientContext,
-  | "otto"
+  | "playAudio"
+  | "paseo"
   | "rpc"
   | "openSettings"
+  | "openScreen"
   | "openSurface"
   | "openPanel"
   | "addComposerPill"
   | "addHeaderButton"
->;
+> & {
+  hosts: ReturnType<typeof createPluginHosts>;
+  // OTTO(brain-ui): app-owned components supplied only to the trusted built-in.
+  ottoBrain?: typeof import("@getpaseo/plugin/client/otto-brain");
+};
 
 export function runPluginClientBundle(
   id: string,
@@ -91,7 +117,8 @@ export function runPluginClientBundle(
   const collector: Omit<EvaluatedPlugin, "id" | "cleanup"> = {
     surfaces: [],
     settingsScreens: [],
-    sidebarItems: [],
+    sidebarItems: { header: [], footer: [] },
+    legacySidebarItems: [],
     workspacePanels: [],
     commandCenterItems: [],
     clientSlashCommands: [],
@@ -102,7 +129,10 @@ export function runPluginClientBundle(
   };
   const surfaceIds = new Set<string>();
   const settingsScreenIds = new Set<string>();
-  const sidebarItemIds = new Set<string>();
+  const sidebarItemIds: Record<PluginSidebarSection, Set<string>> = {
+    header: new Set(),
+    footer: new Set(),
+  };
   const workspacePanelIds = new Set<string>();
   const commandCenterItemIds = new Set<string>();
   const clientSlashCommandNames = new Set<string>();
@@ -148,10 +178,30 @@ export function runPluginClientBundle(
     removals.add(remove);
     return remove;
   }
-  const pluginContext: PluginClientContext & { paseo: PluginClientContext["otto"] } = {
+  function addSidebarItem(
+    section: PluginSidebarSection,
+    contribution: PluginSidebarItemContribution,
+  ): PluginCleanup {
+    const ids = sidebarItemIds[section];
+    const normalizedId = requireId(contribution.id, `sidebar ${section} item id`);
+    if (ids.has(normalizedId))
+      throw new Error(`Duplicate sidebar ${section} item: ${normalizedId}`);
+    const title = contribution.title.trim();
+    if (!title) throw new Error(`Sidebar item ${normalizedId} has no title`);
+    if (!isComponentType(contribution.Component)) {
+      throw new Error(`Sidebar item ${normalizedId} is not a component`);
+    }
+    // OTTO(sidebar-icons): validate and retain feature-owned settings artwork.
+    if (contribution.icon !== undefined) resolvePluginIcon(contribution.icon);
+    ids.add(normalizedId);
+    return register(
+      collector.sidebarItems[section],
+      { id: normalizedId, title, icon: contribution.icon, Component: contribution.Component },
+      () => ids.delete(normalizedId),
+    );
+  }
+  const pluginContext: PluginClientContext = {
     ...runtime,
-    // Both author namespaces share this API object and the host context below.
-    paseo: runtime.otto,
     addSettingsScreen(contribution) {
       const screenId = requireId(contribution.id, "settings screen id");
       if (settingsScreenIds.has(screenId))
@@ -163,34 +213,56 @@ export function runPluginClientBundle(
         settingsScreenIds.delete(screenId),
       );
     },
-    addSurface(surfaceId: string, Component: ComponentType<PluginSurfaceProps>) {
-      const normalizedId = requireId(surfaceId, "surface id");
-      if (surfaceIds.has(normalizedId)) throw new Error(`Duplicate surface: ${normalizedId}`);
-      if (typeof Component !== "function")
-        throw new Error(`Surface ${normalizedId} is not a component`);
+    addScreen(contribution: PluginScreenContribution) {
+      if (typeof contribution !== "object" || contribution === null) {
+        throw new Error("addScreen takes { id, title, Component }");
+      }
+      const normalizedId = requireId(contribution.id, "screen id");
+      if (surfaceIds.has(normalizedId)) throw new Error(`Duplicate screen: ${normalizedId}`);
+      const title = requireScreenTitle(normalizedId, contribution.title);
+      if (!isComponentType(contribution.Component)) {
+        throw new Error(`Screen ${normalizedId} is not a component`);
+      }
       surfaceIds.add(normalizedId);
-      return register(collector.surfaces, { id: normalizedId, Component }, () =>
-        surfaceIds.delete(normalizedId),
+      return register(
+        collector.surfaces,
+        { id: normalizedId, title, Component: contribution.Component },
+        () => surfaceIds.delete(normalizedId),
       );
     },
+    addSidebarHeaderItem(contribution: PluginSidebarItemContribution) {
+      return addSidebarItem("header", contribution);
+    },
+    addSidebarFooterItem(contribution: PluginSidebarItemContribution) {
+      return addSidebarItem("footer", contribution);
+    },
+    // COMPAT(pluginSidebarAliases): added in v0.11.0, remove after 2027-03-29
+    // Titled by its id; a legacy item pointing at it lends the header its own title instead.
+    addSurface(surfaceId: string, Component: ComponentType<PluginSurfaceProps>) {
+      if (!isComponentType(Component)) throw new Error(`Screen ${surfaceId} is not a component`);
+      return pluginContext.addScreen({
+        id: surfaceId,
+        title: surfaceId,
+        Component: (props: PluginScreenProps) => React.createElement(Component, props),
+      });
+    },
+    // COMPAT(pluginSidebarAliases): added in v0.11.0, remove after 2027-03-29
     addSidebarItem(contribution: PluginSidebarContribution) {
       const normalizedId = requireId(contribution.id, "sidebar item id");
-      if (sidebarItemIds.has(normalizedId))
-        throw new Error(`Duplicate sidebar item: ${normalizedId}`);
-      if (!contribution.title.trim()) throw new Error(`Sidebar item ${normalizedId} has no title`);
       if (!contribution.icon.trim()) throw new Error(`Sidebar item ${normalizedId} has no icon`);
       resolvePluginIcon(contribution.icon.trim());
-      sidebarItemIds.add(normalizedId);
-      return register(
-        collector.sidebarItems,
-        {
-          id: normalizedId,
-          title: contribution.title.trim(),
-          icon: contribution.icon.trim(),
-          surface: requireId(contribution.surface, "sidebar surface id"),
-        },
-        () => sidebarItemIds.delete(normalizedId),
-      );
+      const legacy = {
+        id: normalizedId,
+        title: contribution.title.trim(),
+        icon: contribution.icon.trim(),
+        surface: requireId(contribution.surface, "sidebar surface id"),
+      };
+      // Shares the header's ids: the sidebar orders both kinds of item under one key.
+      const ids = sidebarItemIds.header;
+      if (ids.has(normalizedId)) throw new Error(`Duplicate sidebar header item: ${normalizedId}`);
+      if (!legacy.title) throw new Error(`Sidebar item ${normalizedId} has no title`);
+      ids.add(normalizedId);
+      return register(collector.legacySidebarItems, legacy, () => ids.delete(normalizedId));
     },
     addWorkspacePanel(contribution: PluginWorkspacePanelContribution) {
       const normalizedId = requireId(contribution.id, "workspace panel id");
@@ -372,16 +444,32 @@ export function runPluginClientBundle(
       return trackButton(runtime.addHeaderButton(contribution));
     },
   };
-  const clientSdk = { ...pluginClientRuntime, usePaseo: pluginClientRuntime.useOtto, useSettings };
   const runtimeRequire = (name: string): unknown => {
-    const canonical = resolvePluginSdkSpecifier(name)?.canonical ?? name;
-    if (canonical === "@otto-code/plugin/client/ui") return pluginUiRuntime;
+    // OTTO(brain-ui): arbitrary plugins cannot borrow the built-in's daemon controller.
+    if (name === "@getpaseo/plugin/client/otto-brain" && id === "otto-brain" && runtime.ottoBrain)
+      return runtime.ottoBrain;
+    if (name === "@getpaseo/plugin/client/ui") return pluginUiRuntime;
+    const ottoModule = ottoClientModule(id, name); // OTTO(context-management)
+    if (ottoModule !== undefined) return ottoModule;
     if (name === "react") return React;
     if (name === "react/jsx-runtime") return ReactJsxRuntime;
     if (name === "react-native") return ReactNative;
-    if (canonical === "@otto-code/plugin") return pluginSharedRuntime;
-    if (canonical === "@otto-code/plugin/client") return clientSdk;
-    if (canonical === "@otto-code/plugin/client/react-native") {
+    if (name === "@getpaseo/plugin") return pluginSharedRuntime;
+    // OTTO(provider-harness): no Node-side provider code enters the client runtime.
+    if (name === "@getpaseo/plugin/client")
+      return {
+        ...pluginClientRuntime,
+        useSettings,
+        openExternalUrl,
+        getPaseoClient: (serverId: string) => runtime.hosts.getPaseoClient(serverId),
+        useHosts: () =>
+          React.useSyncExternalStore(
+            runtime.hosts.subscribe,
+            runtime.hosts.getSnapshot,
+            runtime.hosts.getSnapshot,
+          ),
+      };
+    if (name === "@getpaseo/plugin/client/react-native") {
       return pluginReactNativeRuntime;
     }
     if (name === "@tanstack/react-query") return ReactQuery;
@@ -398,42 +486,38 @@ export function runPluginClientBundle(
   if (typeof setup !== "function") {
     throw new Error(`Plugin ${id} must default export a function`);
   }
-  let entryCleanup: PluginCleanup;
+  let entryCleanup: PluginCleanup | undefined;
   try {
     entryCleanup = setup(pluginContext);
-    if (typeof entryCleanup !== "function") {
+    if (typeof entryCleanup !== "function")
       throw new Error(`Plugin ${id} contribution must return a cleanup function`);
-    }
-  } catch (error) {
-    stopped = true;
-    for (const remove of removals) remove();
-    throw error;
-  }
-
-  try {
-    for (const item of collector.sidebarItems) {
+    for (const item of collector.legacySidebarItems) {
       if (!surfaceIds.has(item.surface)) {
         throw new Error(`Sidebar item ${item.id} references missing surface ${item.surface}`);
       }
     }
   } catch (error) {
     stopped = true;
-    for (const remove of removals) remove();
     try {
-      void Promise.resolve(entryCleanup()).catch((cleanupError) => {
+      void Promise.resolve(
+        typeof entryCleanup === "function" ? entryCleanup() : entryCleanup,
+      ).catch((cleanupError) => {
         console.warn(`[Plugins] Cleanup failed after setup error for ${id}`, cleanupError);
       });
     } catch (cleanupError) {
       console.warn(`[Plugins] Cleanup failed after setup error for ${id}`, cleanupError);
+    } finally {
+      for (const remove of removals) remove();
     }
     throw error;
   }
   setupComplete = true;
+  const cleanupEntry = entryCleanup;
   const cleanup = async () => {
     if (stopped) return;
     stopped = true;
     try {
-      await entryCleanup();
+      await cleanupEntry();
     } finally {
       for (const remove of removals) remove();
     }
@@ -444,6 +528,7 @@ export function runPluginClientBundle(
     surfaces: collector.surfaces,
     settingsScreens: collector.settingsScreens,
     sidebarItems: collector.sidebarItems,
+    legacySidebarItems: collector.legacySidebarItems,
     workspacePanels: collector.workspacePanels as EvaluatedPlugin["workspacePanels"],
     commandCenterItems: collector.commandCenterItems,
     clientSlashCommands: collector.clientSlashCommands,

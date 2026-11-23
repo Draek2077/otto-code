@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { getPosts, formatDate } from "~/posts";

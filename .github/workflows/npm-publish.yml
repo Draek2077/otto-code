@@ -1,6 +1,7 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
 name: npm Publish
 
-# Publishes the eight @otto-code/* packages when a release tag is pushed.
+# Publishes the eight @getpaseo/* packages when a release tag is pushed.
 # Authentication is npm trusted publishing (OIDC): no npm token, no 2FA prompt.
 # Each package's trusted publisher on npmjs.com names this file, so renaming it
 # breaks publishing until every package is reconfigured.
@@ -57,6 +58,8 @@ jobs:
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
 
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build release packages
         run: npm run build:server:clean
 

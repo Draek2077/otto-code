@@ -3,10 +3,11 @@ import { existsSync } from "node:fs";
 import { test, expect, type Page } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import {
-  expectExistingProjectOpened,
-  openExistingProjectFolder,
-  openNewProjectPage,
-} from "../support/helpers/project-picker-ui";
+  addProjectFlowInput,
+  chooseAddProjectMethod,
+  openAddProjectFlow,
+} from "../support/helpers/add-project-flow";
+import { expectOpenedProject } from "../support/helpers/project-picker-ui";
 import { connectSeedClient, seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
@@ -41,20 +42,22 @@ async function removeProjectFromSidebar(page: Page, projectViewKey: string): Pro
   await expect(kebab).toBeVisible({ timeout: 10_000 });
   await kebab.click();
 
+  // Removing a project raises a browser confirm; accept it so the
+  // user-confirmed removal proceeds deterministically.
+  page.once("dialog", (dialog) => void dialog.accept());
+
   const removeItem = page.getByTestId(`sidebar-project-menu-remove-${projectViewKey}`);
   await expect(removeItem).toBeVisible({ timeout: 10_000 });
   await removeItem.click();
-
-  // Removing a project opens the in-app confirm dialog (ConfirmDialogHost);
-  // accept it so the user-confirmed removal proceeds deterministically.
-  const confirmButton = page.getByTestId("confirm-dialog-confirm");
-  await expect(confirmButton).toBeVisible({ timeout: 10_000 });
-  await confirmButton.click();
 }
 
 async function addProjectFromPicker(page: Page, projectPath: string): Promise<string> {
-  await openNewProjectPage(page, "sidebar-add-project");
-  await openExistingProjectFolder(page, projectPath);
+  await openAddProjectFlow(page);
+  await chooseAddProjectMethod(page, "directory-search");
+
+  const input = addProjectFlowInput(page);
+  await input.fill(projectPath);
+  await page.keyboard.press("Enter");
 
   const projectRow = page
     .locator('[data-testid^="sidebar-project-row-"]')
@@ -74,43 +77,40 @@ async function waitForSidebarProjectListReady(page: Page): Promise<void> {
     .waitFor({ state: "visible", timeout: 60_000 });
 }
 
-test.describe("New project folder search", () => {
+test.describe("Project picker search", () => {
   test("opens a project from a fuzzy directory-name search", async ({
     page,
     projectPickerFixture,
   }) => {
     await gotoAppShell(page);
     await waitForSidebarProjectListReady(page);
-    await openNewProjectPage(page, "sidebar-add-project");
+    await openAddProjectFlow(page);
+    await chooseAddProjectMethod(page, "directory-search");
 
-    const input = page.getByTestId("new-project-directory-input");
+    const input = addProjectFlowInput(page);
     await input.fill(projectPickerFixture.fuzzyQuery);
 
-    const suggestions = page.getByTestId("new-project-directory-suggestions");
-    const suggestion = suggestions
-      .getByText(projectPickerFixture.projectName, { exact: false })
-      .first();
+    const suggestion = page.getByText(projectPickerFixture.projectName, { exact: false }).first();
     await expect(suggestion).toBeVisible({ timeout: 30_000 });
     await suggestion.click();
 
-    // Picking a suggestion fills the field; the page still needs its explicit
-    // Open action, because a folder is only one of the fields on it.
-    await page.getByTestId("new-project-submit").click();
-
-    const projectId = await expectExistingProjectOpened(page, projectPickerFixture);
+    const projectId = await expectOpenedProject(page, projectPickerFixture.projectName);
     projectPickerFixture.rememberProjectId(projectId);
   });
 
-  test("blocks the action until a folder is chosen, and says why", async ({ page }) => {
+  test("shows a loading state after typing while directory suggestions are pending", async ({
+    page,
+  }) => {
     await gotoAppShell(page);
     await waitForSidebarProjectListReady(page);
-    await openNewProjectPage(page, "sidebar-add-project");
+    await openAddProjectFlow(page);
+    await chooseAddProjectMethod(page, "directory-search");
 
-    await expect(page.getByTestId("new-project-submit")).toBeDisabled();
-    await expect(page.getByTestId("new-project-blocker")).toHaveText("Choose a folder.");
+    const input = addProjectFlowInput(page);
+    await input.fill("paseo-loading-state-no-match");
 
-    await page.getByTestId("new-project-directory-input").fill("/tmp");
-    await expect(page.getByTestId("new-project-submit")).toBeEnabled();
+    await expect(page.getByText("Start typing a path", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Loading...", { exact: true })).toBeVisible();
   });
 });
 
@@ -126,18 +126,13 @@ test.describe("Project with no workspaces persists", () => {
       await gotoAppShell(page);
       await waitForSidebarProjectListReady(page);
 
-      const projectKey = await addProjectFromPicker(page, repo.path);
-      const registeredProject = (await client.listProjects()).projects.find(
-        (project) => project.projectRootPath === repo.path,
-      );
-      expect(registeredProject).toBeDefined();
-      projectId = registeredProject!.projectId;
-      const projectRow = page.getByTestId(`sidebar-project-row-${projectKey}`);
+      projectId = await addProjectFromPicker(page, repo.path);
+      const projectRow = page.getByTestId(`sidebar-project-row-${projectId}`);
       await expect(projectRow).toBeVisible({ timeout: 30_000 });
       await expect(projectRow).toContainText(path.basename(repo.path));
-      await expect(page.getByTestId(`sidebar-workspace-list-${projectKey}`)).toHaveCount(0);
+      await expect(page.getByTestId(`sidebar-workspace-list-${projectId}`)).toHaveCount(0);
 
-      const newWorkspaceRow = page.getByTestId(`sidebar-project-new-workspace-row-${projectKey}`);
+      const newWorkspaceRow = page.getByTestId(`sidebar-project-new-workspace-row-${projectId}`);
       await expect(newWorkspaceRow).toBeVisible({ timeout: 30_000 });
       await expect(newWorkspaceRow).toContainText("New workspace");
 
@@ -163,7 +158,7 @@ test.describe("Project with no workspaces persists", () => {
       const newWorkspaceRow = page.getByTestId(
         `sidebar-project-new-workspace-row-${projectViewKey}`,
       );
-      const globalNewWorkspace = page.getByTestId("sidebar-search");
+      const globalNewWorkspace = page.getByTestId("sidebar-global-new-workspace");
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
@@ -202,6 +197,7 @@ test.describe("Project with no workspaces persists", () => {
 test.describe("Project remove", () => {
   test("removing a project from project actions removes it from the sidebar", async ({ page }) => {
     const workspace = await seedWorkspace({ repoPrefix: "project-remove-sidebar-" });
+    let readdedProjectId: string | null = null;
 
     try {
       const projectViewKey = projectEquivalenceViewKey(workspace.projectKey);
@@ -227,6 +223,11 @@ test.describe("Project remove", () => {
 
       const readded = await workspace.client.addProject(workspace.repoPath);
       expect(readded.error).toBeNull();
+      expect(readded.project).not.toBeNull();
+      readdedProjectId = readded.project?.projectId ?? "";
+      const readdedProjectKey = readded.project?.projectKey ?? "";
+      expect(readdedProjectId).not.toBe(workspace.projectId);
+      expect(readdedProjectKey).toBe(workspace.projectKey);
       expect(readded.project?.projectDisplayName).toBe(workspace.projectDisplayName);
 
       await page.reload();
@@ -235,9 +236,14 @@ test.describe("Project remove", () => {
       await expect(projectRow).toContainText(workspace.projectDisplayName);
       await expect(projectRow).not.toContainText(workspace.repoPath);
       await expect(
-        page.getByTestId(`sidebar-project-new-workspace-row-${projectViewKey}`),
+        page.getByTestId(
+          `sidebar-project-new-workspace-row-${projectEquivalenceViewKey(readdedProjectKey)}`,
+        ),
       ).toBeVisible({ timeout: 30_000 });
     } finally {
+      if (readdedProjectId) {
+        await workspace.client.removeProject(readdedProjectId).catch(() => undefined);
+      }
       await workspace.cleanup();
     }
   });

@@ -1,10 +1,8 @@
-import type { ToolCallDetail, ToolCallIconName } from "@otto-code/protocol/agent-types";
-import { isOttoToolName } from "@otto-code/protocol/tool-name-normalization";
+import type { AgentMessage } from "@getpaseo/protocol/agent-message";
+import type { ToolCallDetail, ToolCallIconName } from "@getpaseo/protocol/agent-types";
+import { isPaseoToolName } from "@getpaseo/protocol/tool-name-normalization";
 
-// `handyman` is client-only, like `otto`: the wire enum stays as-is so an old
-// client never meets an icon name it cannot parse. Skills are resolved from the
-// tool NAME here, not sent by the daemon.
-export type ToolCallIcon = ToolCallIconName | "otto" | "handyman";
+export type ToolCallIcon = ToolCallIconName | "paseo";
 
 const TOOL_DETAIL_ICON_NAMES: Record<ToolCallDetail["type"], ToolCallIcon> = {
   shell: "square_terminal",
@@ -20,7 +18,15 @@ const TOOL_DETAIL_ICON_NAMES: Record<ToolCallDetail["type"], ToolCallIcon> = {
   unknown: "wrench",
 };
 
-export function resolveToolCallIconName(toolName: string, detail?: ToolCallDetail): ToolCallIcon {
+export function resolveToolCallIconName(
+  toolName: string,
+  detail?: ToolCallDetail,
+  agentMessage?: AgentMessage,
+): ToolCallIcon {
+  // Agent messages are Paseo deliveries; the wire detail's legacy "bot" icon is for old clients.
+  if (agentMessage) {
+    return "paseo";
+  }
   const lowerName = toolName.trim().toLowerCase();
 
   if (detail?.type === "plain_text" && detail.icon) {
@@ -34,13 +40,8 @@ export function resolveToolCallIconName(toolName: string, detail?: ToolCallDetai
   if (lowerName === "speak") {
     return "mic_vocal";
   }
-  // Handyman is the app-wide glyph for a skill. Every provider that surfaces a
-  // skill invocation names the tool "Skill" (Claude, Codex, OpenCode).
-  if (lowerName === "skill") {
-    return "handyman";
-  }
-  if (isOttoToolName(lowerName)) {
-    return "otto";
+  if (isPaseoToolName(lowerName)) {
+    return "paseo";
   }
   if (lowerName === "task") {
     return "bot";

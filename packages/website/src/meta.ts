@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 const SITE_ORIGIN = "https://otto-code.me";
 
 export function pageMeta(title: string, description: string, path: string) {

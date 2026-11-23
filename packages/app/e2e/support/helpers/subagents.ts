@@ -1,4 +1,4 @@
-import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
+import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import { expect, type Page } from "@playwright/test";
 import { daemonWsRoutePattern } from "./daemon-port";
 import type { SeededWorkspace } from "./seed-client";
@@ -49,29 +49,35 @@ export async function seedParentWithSubagent(
     modeId: "load-test",
     model: "ten-second-stream",
   });
-  const child = await workspace.client.createAgent({
-    provider: "mock",
-    cwd: workspace.repoPath,
-    workspaceId: workspace.workspaceId,
-    title: input.childTitle,
-    modeId: "load-test",
-    model: "ten-second-stream",
-    labels: {
-      [PARENT_AGENT_ID_LABEL]: parent.id,
-    },
-  });
+  const child = await seedSubagent(workspace, { parentId: parent.id, title: input.childTitle });
 
   return {
     parent: {
       id: parent.id,
       title: input.parentTitle,
     },
-    child: {
-      id: child.id,
-      title: input.childTitle,
-    },
+    child,
     workspaceId: workspace.workspaceId,
   };
+}
+
+/** Seeds an idle Paseo subagent of an existing agent in the same workspace. */
+export async function seedSubagent(
+  workspace: Pick<SeededWorkspace, "client" | "repoPath" | "workspaceId">,
+  input: { parentId: string; title: string },
+): Promise<{ id: string; title: string }> {
+  const child = await workspace.client.createAgent({
+    provider: "mock",
+    cwd: workspace.repoPath,
+    workspaceId: workspace.workspaceId,
+    title: input.title,
+    modeId: "load-test",
+    model: "ten-second-stream",
+    labels: {
+      [PARENT_AGENT_ID_LABEL]: input.parentId,
+    },
+  });
+  return { id: child.id, title: input.title };
 }
 
 export async function seedParentWithCrossWorkspaceSubagent(
@@ -88,10 +94,9 @@ export async function seedParentWithCrossWorkspaceSubagent(
   });
   const createdWorkspace = await workspace.client.createWorkspace({
     source: {
-      kind: "worktree",
-      cwd: workspace.repoPath,
+      kind: "directory",
+      path: workspace.repoPath,
       projectId: workspace.projectId,
-      worktreeSlug: "subagent",
     },
     title: "Subagent workspace",
   });
@@ -101,7 +106,7 @@ export async function seedParentWithCrossWorkspaceSubagent(
 
   const child = await workspace.client.createAgent({
     provider: "mock",
-    cwd: createdWorkspace.workspace.workspaceDirectory,
+    cwd: workspace.repoPath,
     workspaceId: createdWorkspace.workspace.id,
     title: input.childTitle,
     modeId: "load-test",
@@ -135,39 +140,27 @@ export async function seedParentWithCrossWorkspaceSubagent(
  * its own whenever a row navigates away, so a flow that comes back to the parent reopens it.
  */
 export async function openSubagentsTrack(page: Page): Promise<void> {
-  const pillTrigger = page.getByTestId("subagents-pill-track");
-  if ((await pillTrigger.count()) > 0) {
-    const panel = page.getByTestId("subagents-pill-track-panel");
-    if ((await panel.count()) === 0) {
-      await pillTrigger.click();
-    }
-    await expect(panel).toBeVisible({ timeout: 30_000 });
-    return;
+  const panel = page.getByTestId("subagents-track-header-panel");
+  if ((await panel.count()) === 0) {
+    await page.getByTestId("subagents-track-header").click();
   }
+  await expect(panel).toBeVisible({ timeout: 30_000 });
+}
 
-  // Panels are an inline expander, not a popover. React Native Web does not
-  // reliably expose this Pressable's testID, so target its accessible label.
-  const panelTrigger = page.getByRole("button", { name: /sub-agent/i });
-  await expect(panelTrigger).toBeVisible({ timeout: 30_000 });
-  await panelTrigger.click();
+/** On compact the track opens as a sheet, which closes once a row is chosen. */
+export async function openSubagentFromCompactTrack(page: Page, childId: string): Promise<void> {
+  await page.getByTestId("subagents-track-header").click();
+  await page.getByTestId(`subagents-track-row-${childId}`).click();
 }
 
 export async function expectSubagentRowVisible(page: Page, childId: string): Promise<void> {
-  await expect(
-    page.locator(
-      `[data-testid="subagents-track-row-${childId}"], [data-testid="subagents-pill-row-${childId}"]`,
-    ),
-  ).toBeVisible({
+  await expect(page.getByTestId(`subagents-track-row-${childId}`)).toBeVisible({
     timeout: 30_000,
   });
 }
 
 export async function expectSubagentRowGone(page: Page, childId: string): Promise<void> {
-  await expect(
-    page.locator(
-      `[data-testid="subagents-track-row-${childId}"], [data-testid="subagents-pill-row-${childId}"]`,
-    ),
-  ).toHaveCount(0, {
+  await expect(page.getByTestId(`subagents-track-row-${childId}`)).toHaveCount(0, {
     timeout: 30_000,
   });
 }
@@ -190,25 +183,26 @@ export async function expectManagedSubagentArchived(
     .toMatchObject({ agent: { id: childId, archivedAt: expect.any(String) } });
 }
 
-// Otto replaced Paseo's bulk "Archive finished subagents" control with a per-row
-// Archive action (attended idle children stay in the active list) and a
-// "Clear all" for the Completed group. The per-row action is the one that
-// archives a finished managed child, behind the in-app ConfirmDialogHost.
-export async function archiveSubagentFromTrack(page: Page, childId: string): Promise<void> {
-  const pillRow = page.getByTestId(`subagents-pill-row-${childId}`);
-  const isPill = (await pillRow.count()) > 0;
-  const row = isPill ? pillRow : page.getByTestId(`subagents-track-row-${childId}`);
-  await expect(row).toBeVisible({ timeout: 30_000 });
-  await row.hover();
+export async function archiveFinishedSubagents(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Archive finished subagents" }).click();
+}
 
-  const archiveButton = page.getByTestId(
-    isPill ? `subagents-pill-archive-${childId}` : `subagents-track-archive-${childId}`,
-  );
-  await expect(archiveButton).toBeVisible({ timeout: 30_000 });
-  await archiveButton.click();
+export async function expectArchiveFinishedInProgress(
+  page: Page,
+  completed: number,
+  total: number,
+): Promise<void> {
+  await expect(page.getByRole("button", { name: "Archive finished subagents" })).toBeDisabled();
+  await expect(page.getByText(`${completed}/${total}`, { exact: true })).toBeVisible();
+}
 
-  await expect(page.getByText("Archive subagent?")).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId("confirm-dialog-confirm").click();
+export async function expectArchiveFinishedRetry(
+  page: Page,
+  failed: number,
+  total: number,
+): Promise<void> {
+  await expect(page.getByText(`Retry (${failed}/${total})`, { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Archive finished subagents" })).toBeEnabled();
 }
 
 export async function holdManagedSubagentArchiveRequest(
@@ -313,19 +307,16 @@ function archiveRequestId(message: WebSocketMessage, subagentId: string): string
 }
 
 export async function detachSubagentFromTrack(page: Page, childId: string): Promise<void> {
-  const pillRow = page.getByTestId(`subagents-pill-row-${childId}`);
-  const isPill = (await pillRow.count()) > 0;
-  const row = isPill ? pillRow : page.getByTestId(`subagents-track-row-${childId}`);
+  const row = page.getByTestId(`subagents-track-row-${childId}`);
   await expect(row).toBeVisible({ timeout: 30_000 });
   await row.hover();
 
-  const detachButton = page.getByTestId(
-    isPill ? `subagents-pill-detach-${childId}` : `subagents-track-detach-${childId}`,
-  );
+  page.once("dialog", (dialog) => {
+    expect(dialog.message()).toContain("Detach subagent?");
+    void dialog.accept();
+  });
+
+  const detachButton = page.getByTestId(`subagents-track-detach-${childId}`);
   await expect(detachButton).toBeVisible({ timeout: 30_000 });
   await detachButton.click();
-
-  // Detach is gated by the in-app ConfirmDialogHost, not a native window.confirm.
-  await expect(page.getByText("Detach subagent?")).toBeVisible({ timeout: 10_000 });
-  await page.getByTestId("confirm-dialog-confirm").click();
 }

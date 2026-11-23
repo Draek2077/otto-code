@@ -6,9 +6,9 @@ import type {
   BrowserAutomationConsoleLogEntry,
   BrowserAutomationDialogEvent,
   BrowserAutomationExecuteRequest,
-} from "@otto-code/protocol/browser-automation/rpc-schemas";
+} from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
-import type { BrowserRegistry, CapturedNetworkRequest, TabContents, TabImage } from "./service.js";
+import type { BrowserRegistry, TabContents, TabImage } from "./service.js";
 import { executeAutomationCommand } from "./service.js";
 import type { IsolatedKeyboardInputEvent } from "./trusted-input.js";
 
@@ -30,18 +30,18 @@ class FakeImage implements TabImage {
   public getSize(): { width: number; height: number } {
     return this.size;
   }
-
-  public resize(options: { width: number; height: number }): TabImage {
-    return new FakeImage(this.bytes, { width: options.width, height: options.height });
-  }
 }
 
 class FakeTab implements TabContents {
+  public withFrameProduction<T>(capture: () => Promise<T>): Promise<T> {
+    return capture();
+  }
   public readonly loadedUrls: string[] = [];
   public readonly scripts: string[] = [];
   public readonly actions: string[] = [];
-  public readonly capturedViewports: Array<{ stayHidden?: boolean }> = [];
+  public readonly capturedViewports: AbortSignal[] = [];
   public readonly debugCommands: Array<{ command: string; params?: Record<string, unknown> }> = [];
+  public readonly insertedText: string[] = [];
   public readonly inputEvents: IsolatedKeyboardInputEvent[] = [];
   private readonly captureStartWaiters: Array<() => void> = [];
   private readonly deferredCaptures: Array<(image: TabImage) => void> = [];
@@ -57,13 +57,6 @@ class FakeTab implements TabContents {
     children?: unknown[];
   }> = [];
   public actionScriptResult: unknown = true;
-  public inspectScriptResult: unknown = null;
-  public viewportMetricsResult: unknown = null;
-  public elementRectResult: unknown = null;
-  public captureSize = { width: 640, height: 480 };
-  public capturedNetworkRequests: CapturedNetworkRequest[] = [];
-  public networkBodies: Record<string, { body: string; base64Encoded: boolean }> = {};
-  public networkCaptureStarts = 0;
   public evaluateScriptResult: unknown = { ok: true, resultJson: "null" };
   public evaluateScriptThrows = false;
   public evaluateScriptErrorMessage = "page failed";
@@ -75,10 +68,10 @@ class FakeTab implements TabContents {
   public networkEntries: unknown[] = [];
   public consoleMessages: BrowserAutomationConsoleLogEntry[] = [];
   public dialogsToCapture: BrowserAutomationDialogEvent[] = [];
+  public paintDelayMs = 0;
   public captureNeverPaints = false;
   public captureThrows = false;
   public captureErrorMessage = "capture failed";
-  public viewportCaptureFailuresBeforeSuccess = 0;
   public deferCaptures = false;
   public fullPageScreenshotThrows = false;
   public fullPageScreenshotErrorMessage = "UnknownVizError";
@@ -126,16 +119,13 @@ class FakeTab implements TabContents {
 
   public async executeJavaScript(code: string): Promise<unknown> {
     this.scripts.push(code);
-    if (code.includes("__OTTO_VIEWPORT_METRICS__")) {
-      return this.viewportMetricsResult;
-    }
-    if (code.includes("__OTTO_ELEMENT_RECT__")) {
-      return this.elementRectResult;
+    if (code.includes("requestAnimationFrame") && this.paintDelayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, this.paintDelayMs));
     }
     if (code.includes("document.body.innerText")) {
       return this.bodyText;
     }
-    if (code.includes("__OTTO_ARIA_SNAPSHOT__")) {
+    if (code.includes("__PASEO_ARIA_SNAPSHOT__")) {
       return JSON.stringify(snapshotResult(this.snapshotNodes));
     }
     if (code.includes("Timed out waiting") || code.includes("performance.now()")) {
@@ -153,10 +143,7 @@ class FakeTab implements TabContents {
     if (code.includes("element.focus({ preventScroll: true })")) {
       return { editable: this.keypressTargetEditable };
     }
-    if (code.includes("getComputedStyle(el)")) {
-      return this.inspectScriptResult;
-    }
-    if (code.includes("__OTTO_BROWSER_EVALUATE__")) {
+    if (code.includes("__PASEO_BROWSER_EVALUATE__")) {
       if (this.evaluateScriptThrows) {
         throw new Error(this.evaluateScriptErrorMessage);
       }
@@ -181,14 +168,10 @@ class FakeTab implements TabContents {
     this.actions.push("reload");
   }
 
-  public async capturePage(options?: { stayHidden?: boolean }): Promise<TabImage> {
-    this.capturedViewports.push(options ?? {});
+  public async captureFrame(signal: AbortSignal): Promise<TabImage> {
+    this.capturedViewports.push(signal);
     this.actions.push("capture");
     this.resolveCaptureStartWaiters();
-    if (this.viewportCaptureFailuresBeforeSuccess > 0) {
-      this.viewportCaptureFailuresBeforeSuccess -= 1;
-      throw new Error(this.captureErrorMessage);
-    }
     if (this.captureThrows) {
       throw new Error(this.captureErrorMessage);
     }
@@ -200,7 +183,7 @@ class FakeTab implements TabContents {
         this.deferredCaptures.push(resolve);
       });
     }
-    return new FakeImage(undefined, this.captureSize);
+    return new FakeImage();
   }
 
   public invalidate(): void {
@@ -209,21 +192,6 @@ class FakeTab implements TabContents {
 
   public getConsoleMessages(): BrowserAutomationConsoleLogEntry[] {
     return this.consoleMessages;
-  }
-
-  public async startNetworkCapture(): Promise<void> {
-    this.networkCaptureStarts += 1;
-    this.actions.push("network:enable");
-  }
-
-  public getNetworkRequests(): CapturedNetworkRequest[] {
-    return this.capturedNetworkRequests;
-  }
-
-  public async getNetworkResponseBody(
-    requestId: string,
-  ): Promise<{ body: string; base64Encoded: boolean } | null> {
-    return this.networkBodies[requestId] ?? null;
   }
 
   public async captureDialogs<T>(
@@ -264,6 +232,10 @@ class FakeTab implements TabContents {
     this.inputEvents.push(event);
   }
 
+  public async insertText(text: string): Promise<void> {
+    this.insertedText.push(text);
+  }
+
   public waitForCaptureStart(count: number): Promise<void> {
     if (this.capturedViewports.length >= count) {
       return Promise.resolve();
@@ -293,16 +265,11 @@ class FakeTab implements TabContents {
 }
 
 class FakeRegistry implements BrowserRegistry {
-  private readonly tabs = new Map<string, { workspaceId: string; tab: FakeTab | null }>();
+  private readonly tabs = new Map<string, { workspaceId: string; tab: FakeTab }>();
   private readonly activeBrowserIdsByWorkspace = new Map<string, string>();
 
   public register(browserId: string, workspaceId: string, tab: FakeTab): void {
     this.tabs.set(browserId, { workspaceId, tab });
-  }
-
-  /** A tab that exists and is on screen, but whose webview has not attached. */
-  public registerWithoutContents(browserId: string, workspaceId: string): void {
-    this.tabs.set(browserId, { workspaceId, tab: null });
   }
 
   public setActiveBrowser(workspaceId: string, browserId: string): void {
@@ -432,7 +399,7 @@ function snapshotResult(nodes: FakeTab["snapshotNodes"]) {
       : [],
   );
   return {
-    marker: "__OTTO_ARIA_SNAPSHOT__",
+    marker: "__PASEO_ARIA_SNAPSHOT__",
     root: {
       kind: "role",
       role: "document",
@@ -521,7 +488,6 @@ describe("executeAutomationCommand", () => {
             isLoading: false,
             canGoBack: true,
             canGoForward: false,
-            status: "ready",
           },
           {
             browserId: BROWSER_B,
@@ -532,16 +498,13 @@ describe("executeAutomationCommand", () => {
             isLoading: false,
             canGoBack: true,
             canGoForward: false,
-            status: "ready",
           },
         ],
       },
     });
   });
 
-  // A dropped row is indistinguishable from a tab that never existed, which is
-  // how callers ended up opening a duplicate beside a tab already on screen.
-  test("list tabs reports a destroyed tab as detached instead of dropping it", () => {
+  test("list tabs filters destroyed tabs out of the visible tab list", () => {
     const liveTab = new FakeTab(1, "https://a.test", "A");
     const destroyedTab = new FakeTab(2, "https://dead.test", "Dead");
     destroyedTab.destroyed = true;
@@ -570,66 +533,9 @@ describe("executeAutomationCommand", () => {
             isLoading: false,
             canGoBack: true,
             canGoForward: false,
-            status: "ready",
-          },
-          {
-            browserId: BROWSER_B,
-            workspaceId: WORKSPACE_A,
-            url: "",
-            title: "",
-            isActive: false,
-            isLoading: false,
-            status: "detached",
           },
         ],
       },
-    });
-  });
-
-  test("list tabs reports a registered tab with no attached view as starting", () => {
-    const registry = new FakeRegistry();
-    registry.registerWithoutContents(BROWSER_A, WORKSPACE_A);
-
-    const result = executeAutomationCommand(
-      automationRequest({ command: "list_tabs", args: {} }, { requestId: "req-starting" }),
-      registry,
-    );
-
-    expect(result).toEqual({
-      requestId: "req-starting",
-      ok: true,
-      result: {
-        command: "list_tabs",
-        tabs: [
-          {
-            browserId: BROWSER_A,
-            workspaceId: WORKSPACE_A,
-            url: "",
-            title: "",
-            isActive: false,
-            isLoading: false,
-            status: "starting",
-          },
-        ],
-      },
-    });
-  });
-
-  test("a tab whose view has not attached yet fails retryably, not as not-found", async () => {
-    const registry = new FakeRegistry();
-    registry.registerWithoutContents(BROWSER_A, WORKSPACE_A);
-
-    const result = await executeAutomationCommand(
-      automationRequest(
-        { command: "snapshot", args: { browserId: BROWSER_A } },
-        { requestId: "req-attaching" },
-      ),
-      registry,
-    );
-
-    expect(result).toMatchObject({
-      ok: false,
-      error: { code: "browser_tab_not_found", retryable: true },
     });
   });
 
@@ -1203,15 +1109,29 @@ describe("executeAutomationCommand", () => {
       ok: true,
       result: { command: "type", browserId: BROWSER_A, ref: "@e1", x: 40, y: 30 },
     });
-    expect(browser.tab.debugCommands.at(-1)).toEqual({
-      command: "Input.insertText",
-      params: { text: "Ada" },
-    });
-    expect(browser.tab.debugCommands.slice(0, 3).map((entry) => entry.command)).toEqual([
+    expect(browser.tab.insertedText).toEqual(["Ada"]);
+    expect(browser.tab.debugCommands.map((entry) => entry.command)).toEqual([
       "Input.dispatchMouseEvent",
       "Input.dispatchMouseEvent",
       "Input.dispatchMouseEvent",
     ]);
+  });
+
+  test("type inserts text through the tab, not the window-wide debugger input", async () => {
+    const browser = new BrowserAutomationHarness();
+
+    const action = await browser.execute({
+      command: "type",
+      args: { browserId: BROWSER_A, text: "Ada" },
+    });
+
+    expect(action).toEqual({
+      requestId: "req-type",
+      ok: true,
+      result: { command: "type", browserId: BROWSER_A },
+    });
+    expect(browser.tab.insertedText).toEqual(["Ada"]);
+    expect(browser.tab.debugCommands).toEqual([]);
   });
 
   test("keypress dispatches a trusted key to the focused element when ref is omitted", async () => {
@@ -1505,7 +1425,7 @@ describe("executeAutomationCommand", () => {
         truncated: false,
       },
     });
-    expect(containsScript(browser.tab, "__OTTO_BROWSER_EVALUATE__", "() => 42")).toBe(true);
+    expect(containsScript(browser.tab, "__PASEO_BROWSER_EVALUATE__", "() => 42")).toBe(true);
   });
 
   test("evaluate returns object JSON from the page context", async () => {
@@ -1553,7 +1473,9 @@ describe("executeAutomationCommand", () => {
         truncated: false,
       },
     });
-    expect(containsScript(browser.tab, '"@e1"', "__OTTO_BROWSER_AUTOMATION__?.resolve")).toBe(true);
+    expect(containsScript(browser.tab, '"@e1"', "__PASEO_BROWSER_AUTOMATION__?.resolve")).toBe(
+      true,
+    );
   });
 
   test("evaluate returns stale ref when the target ref cannot be resolved", async () => {
@@ -1599,7 +1521,7 @@ describe("executeAutomationCommand", () => {
 
   test("evaluate returns oversized results with explicit truncation", async () => {
     const browser = new BrowserAutomationHarness();
-    browser.tab.evaluateScriptResult = { ok: true, resultJson: "x".repeat(30_010) };
+    browser.tab.evaluateScriptResult = { ok: true, resultJson: "x".repeat(80_010) };
 
     const result = await browser.execute({
       command: "evaluate",
@@ -1612,14 +1534,14 @@ describe("executeAutomationCommand", () => {
       result: {
         command: "evaluate",
         browserId: BROWSER_A,
-        resultJson: JSON.stringify("x".repeat(29_000)),
+        resultJson: JSON.stringify("x".repeat(79_000)),
         truncated: true,
       },
     });
     if (!result.ok) {
       throw new Error("Expected evaluate to succeed");
     }
-    expect(JSON.parse(result.result.resultJson)).toBe("x".repeat(29_000));
+    expect(JSON.parse(result.result.resultJson)).toBe("x".repeat(79_000));
   });
 
   test("evaluate caps oversized results inside the page script", async () => {
@@ -1631,9 +1553,9 @@ describe("executeAutomationCommand", () => {
     });
 
     expect(
-      containsScript(browser.tab, "__OTTO_BROWSER_EVALUATE__", "resultJson.length <= 30000"),
+      containsScript(browser.tab, "__PASEO_BROWSER_EVALUATE__", "resultJson.length <= 80000"),
     ).toBe(true);
-    expect(containsScript(browser.tab, "resultJson.slice(0, 29000)")).toBe(true);
+    expect(containsScript(browser.tab, "resultJson.slice(0, 79000)")).toBe(true);
   });
 
   test("screenshot captures the painted viewport", async () => {
@@ -1656,7 +1578,8 @@ describe("executeAutomationCommand", () => {
         height: 480,
       },
     });
-    expect(browser.tab.capturedViewports).toEqual([{ stayHidden: false }]);
+    expect(browser.tab.capturedViewports).toHaveLength(1);
+    expect(browser.tab.capturedViewports[0].aborted).toBe(true);
     expect(browser.tab.actions).toEqual(["invalidate", "capture"]);
   });
 
@@ -1682,6 +1605,32 @@ describe("executeAutomationCommand", () => {
         },
       });
       expect(browser.tab.actions).toEqual(["invalidate", "capture"]);
+      expect(browser.tab.capturedViewports[0].aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("paint and pixel capture share the five-second screenshot budget", async () => {
+    vi.useFakeTimers();
+    try {
+      const browser = new BrowserAutomationHarness();
+      browser.tab.paintDelayMs = 4_000;
+      browser.tab.captureNeverPaints = true;
+      let result: unknown;
+      void browser
+        .execute({
+          command: "screenshot",
+          args: { browserId: BROWSER_A },
+        })
+        .then((value) => {
+          result = value;
+          return value;
+        });
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(result).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(result).toMatchObject({ ok: false, error: { code: "screenshot_no_frame" } });
     } finally {
       vi.useRealTimers();
     }
@@ -1699,76 +1648,6 @@ describe("executeAutomationCommand", () => {
     ).rejects.toThrow("capture failed");
 
     expect(browser.tab.actions).toEqual(["invalidate", "capture"]);
-  });
-
-  test("screenshot retries UnknownVizError until the first viewport frame appears", async () => {
-    vi.useFakeTimers();
-    try {
-      const browser = new BrowserAutomationHarness();
-      browser.tab.captureErrorMessage = "UnknownVizError";
-      browser.tab.viewportCaptureFailuresBeforeSuccess = 2;
-
-      const resultPromise = browser.execute({
-        command: "screenshot",
-        args: { browserId: BROWSER_A },
-      });
-      await vi.advanceTimersByTimeAsync(400);
-
-      await expect(resultPromise).resolves.toEqual({
-        requestId: "req-screenshot",
-        ok: true,
-        result: {
-          command: "screenshot",
-          browserId: BROWSER_A,
-          mimeType: "image/png",
-          dataBase64: "iVBORwECAw==",
-          width: 640,
-          height: 480,
-        },
-      });
-      expect(browser.tab.capturedViewports).toHaveLength(3);
-      expect(browser.tab.actions).toEqual([
-        "invalidate",
-        "capture",
-        "invalidate",
-        "capture",
-        "invalidate",
-        "capture",
-      ]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  test("screenshot returns no-frame after UnknownVizError spends the retry budget", async () => {
-    vi.useFakeTimers();
-    try {
-      const browser = new BrowserAutomationHarness();
-      browser.tab.captureThrows = true;
-      browser.tab.captureErrorMessage = "UnknownVizError";
-
-      const resultPromise = browser.execute({
-        command: "screenshot",
-        args: { browserId: BROWSER_A },
-      });
-      await vi.advanceTimersByTimeAsync(5_000);
-
-      await expect(resultPromise).resolves.toEqual({
-        requestId: "req-screenshot",
-        ok: false,
-        error: {
-          code: "screenshot_no_frame",
-          message: "The tab has not painted yet. Retry the screenshot.",
-          retryable: true,
-        },
-      });
-      expect(browser.tab.capturedViewports.length).toBeGreaterThan(1);
-      expect(browser.tab.actions.filter((action) => action === "invalidate")).toHaveLength(
-        browser.tab.capturedViewports.length,
-      );
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   test("overlapping screenshots serialize through the shared capture queue", async () => {
@@ -1911,245 +1790,6 @@ describe("executeAutomationCommand", () => {
     ]);
   });
 
-  test("screenshot normalizes a high-DPR capture back to CSS pixels", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.viewportMetricsResult = { cssWidth: 320, cssHeight: 240 };
-    browser.tab.captureSize = { width: 640, height: 480 };
-
-    const result = await browser.execute({
-      command: "screenshot",
-      args: { browserId: BROWSER_A },
-    });
-
-    expect(result).toMatchObject({
-      requestId: "req-screenshot",
-      ok: true,
-      result: {
-        command: "screenshot",
-        browserId: BROWSER_A,
-        mimeType: "image/png",
-        width: 320,
-        height: 240,
-      },
-    });
-    if (!result.ok || result.result.command !== "screenshot") {
-      throw new Error("Expected screenshot result");
-    }
-    expect(result.result.scale).toBeUndefined();
-  });
-
-  test("screenshot scales an oversized viewport down to the legibility budget", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.viewportMetricsResult = { cssWidth: 2000, cssHeight: 500 };
-    browser.tab.captureSize = { width: 2000, height: 500 };
-
-    const result = await browser.execute({
-      command: "screenshot",
-      args: { browserId: BROWSER_A },
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      result: {
-        command: "screenshot",
-        width: 1568,
-        height: 392,
-        scale: 0.784,
-      },
-    });
-  });
-
-  test("screenshot with fullPage renders tall pages at reduced scale and reports it", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.layoutMetrics = {
-      cssLayoutViewport: { clientWidth: 800, clientHeight: 600 },
-      cssContentSize: { width: 800, height: 8000 },
-    };
-
-    const result = await browser.execute({
-      command: "screenshot",
-      args: { browserId: BROWSER_A, fullPage: true },
-    });
-
-    expect(result).toMatchObject({
-      ok: true,
-      result: {
-        command: "screenshot",
-        width: 157,
-        height: 1568,
-        scale: 0.196,
-      },
-    });
-    const capture = browser.tab.debugCommands.find(
-      (entry) => entry.command === "Page.captureScreenshot",
-    );
-    expect(capture?.params).toEqual({
-      format: "png",
-      captureBeyondViewport: true,
-      clip: { x: 0, y: 0, width: 800, height: 8000, scale: 0.196 },
-    });
-  });
-
-  test("screenshot_element re-renders the element clip zoomed to the budget", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.snapshotNodes = formElements();
-    requireSnapshotRefs(await browser.snapshot());
-    browser.tab.elementRectResult = { x: 100, y: 50, width: 200, height: 100 };
-
-    const result = await browser.execute({
-      command: "screenshot_element",
-      args: { browserId: BROWSER_A, ref: "@e1" },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-screenshot_element",
-      ok: true,
-      result: {
-        command: "screenshot_element",
-        browserId: BROWSER_A,
-        ref: "@e1",
-        mimeType: "image/png",
-        dataBase64: "fullPagePng",
-        width: 648,
-        height: 348,
-        scale: 3,
-      },
-    });
-    const capture = browser.tab.debugCommands.find(
-      (entry) => entry.command === "Page.captureScreenshot",
-    );
-    expect(capture?.params).toEqual({
-      format: "png",
-      captureBeyondViewport: true,
-      clip: { x: 92, y: 42, width: 216, height: 116, scale: 3 },
-    });
-  });
-
-  test("screenshot_element returns stale_ref for an unknown ref", async () => {
-    const browser = new BrowserAutomationHarness();
-
-    const result = await browser.execute({
-      command: "screenshot_element",
-      args: { browserId: BROWSER_A, ref: "@e9" },
-    });
-
-    expect(result).toMatchObject({
-      requestId: "req-screenshot_element",
-      ok: false,
-      error: { code: "browser_stale_ref" },
-    });
-  });
-
-  test("page_text extracts reader-mode text with source and truncation metadata", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.actionScriptResult = JSON.stringify({
-      source: "article",
-      text: "Reader text",
-      truncated: false,
-    });
-
-    const result = await browser.execute({
-      command: "page_text",
-      args: { browserId: BROWSER_A, maxChars: 20_000 },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-page_text",
-      ok: true,
-      result: {
-        command: "page_text",
-        browserId: BROWSER_A,
-        url: "https://a.test/form",
-        title: "Fixture",
-        source: "article",
-        text: "Reader text",
-        truncated: false,
-      },
-    });
-    expect(browser.tab.scripts.at(-1)).toContain("20000");
-  });
-
-  test("page_text fails cleanly on an unexpected script result", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.actionScriptResult = 42;
-
-    const result = await browser.execute({
-      command: "page_text",
-      args: { browserId: BROWSER_A, maxChars: 20_000 },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-page_text",
-      ok: false,
-      error: {
-        code: "browser_unknown_error",
-        message: "page_text returned an unexpected result",
-        retryable: false,
-      },
-    });
-  });
-
-  test("set_color_scheme emulates prefers-color-scheme over CDP", async () => {
-    const browser = new BrowserAutomationHarness();
-
-    const result = await browser.execute({
-      command: "set_color_scheme",
-      args: { browserId: BROWSER_A, colorScheme: "dark" },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-set_color_scheme",
-      ok: true,
-      result: { command: "set_color_scheme", browserId: BROWSER_A, colorScheme: "dark" },
-    });
-    expect(browser.tab.debugCommands).toEqual([
-      {
-        command: "Emulation.setEmulatedMedia",
-        params: { features: [{ name: "prefers-color-scheme", value: "dark" }] },
-      },
-    ]);
-  });
-
-  test("set_color_scheme auto clears the emulated preference", async () => {
-    const browser = new BrowserAutomationHarness();
-
-    const result = await browser.execute({
-      command: "set_color_scheme",
-      args: { browserId: BROWSER_A, colorScheme: "auto" },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-set_color_scheme",
-      ok: true,
-      result: { command: "set_color_scheme", browserId: BROWSER_A, colorScheme: "auto" },
-    });
-    expect(browser.tab.debugCommands).toEqual([
-      {
-        command: "Emulation.setEmulatedMedia",
-        params: { features: [{ name: "prefers-color-scheme", value: "" }] },
-      },
-    ]);
-  });
-
-  test("focus_tab is delegated to the app runtime", async () => {
-    const browser = new BrowserAutomationHarness();
-
-    const result = await browser.execute({
-      command: "focus_tab",
-      args: { browserId: BROWSER_A },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-focus_tab",
-      ok: false,
-      error: {
-        code: "browser_unsupported",
-        message: "browser_focus_tab is handled by the app runtime.",
-        retryable: false,
-      },
-    });
-  });
-
   test("screenshot with fullPage retries UnknownVizError until the first CDP frame appears", async () => {
     vi.useFakeTimers();
     try {
@@ -2241,7 +1881,7 @@ describe("executeAutomationCommand", () => {
         command: "Runtime.evaluate",
         params: {
           expression: expect.stringContaining('"@e1"'),
-          objectGroup: "otto-browser-automation",
+          objectGroup: "paseo-browser-automation",
           returnByValue: false,
         },
       },
@@ -2288,7 +1928,7 @@ describe("executeAutomationCommand", () => {
         command: "Runtime.evaluate",
         params: {
           expression: expect.stringContaining('"@e1"'),
-          objectGroup: "otto-browser-automation",
+          objectGroup: "paseo-browser-automation",
           returnByValue: false,
         },
       },
@@ -2327,212 +1967,11 @@ describe("executeAutomationCommand", () => {
         command: "Runtime.evaluate",
         params: {
           expression: expect.stringContaining('"@e1"'),
-          objectGroup: "otto-browser-automation",
+          objectGroup: "paseo-browser-automation",
           returnByValue: false,
         },
       },
       { command: "DOM.describeNode", params: { objectId: "object-1" } },
     ]);
-  });
-});
-
-describe("inspect", () => {
-  test("returns computed styles and box for a selector match", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.inspectScriptResult = JSON.stringify({
-      status: "ok",
-      matchCount: 2,
-      tagName: "BUTTON",
-      id: "save",
-      className: "btn primary",
-      text: "Save",
-      box: { x: 10, y: 20, width: 120, height: 32 },
-      styles: { color: "rgb(255, 255, 255)", "background-color": "rgb(0, 0, 255)" },
-    });
-
-    const result = await browser.execute({
-      command: "inspect",
-      args: { browserId: BROWSER_A, selector: ".btn" },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-inspect",
-      ok: true,
-      result: {
-        command: "inspect",
-        browserId: BROWSER_A,
-        selector: ".btn",
-        matchCount: 2,
-        tagName: "BUTTON",
-        id: "save",
-        className: "btn primary",
-        text: "Save",
-        box: { x: 10, y: 20, width: 120, height: 32 },
-        styles: { color: "rgb(255, 255, 255)", "background-color": "rgb(0, 0, 255)" },
-      },
-    });
-    expect(
-      browser.tab.scripts.some((script) => script.includes('document.querySelector(".btn")')),
-    ).toBe(true);
-  });
-
-  test("honors a caller-provided styles list", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.inspectScriptResult = JSON.stringify({
-      status: "ok",
-      matchCount: 1,
-      tagName: "DIV",
-      id: "",
-      className: "",
-      text: "",
-      box: { x: 0, y: 0, width: 100, height: 50 },
-      styles: { padding: "8px" },
-    });
-
-    await browser.execute({
-      command: "inspect",
-      args: { browserId: BROWSER_A, selector: "#panel", styles: ["padding"] },
-    });
-
-    const script = browser.tab.scripts.find((entry) => entry.includes("getComputedStyle(el)"));
-    expect(script).toContain('["padding"]');
-    expect(script).not.toContain("font-family");
-  });
-
-  test("returns browser_element_not_found when no element matches the selector", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.inspectScriptResult = JSON.stringify({ status: "not_found", matchCount: 0 });
-
-    const result = await browser.execute({
-      command: "inspect",
-      args: { browserId: BROWSER_A, selector: "#missing" },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-inspect",
-      ok: false,
-      error: {
-        code: "browser_element_not_found",
-        message: "No element matched selector: #missing",
-        retryable: false,
-      },
-    });
-  });
-
-  test("maps a not-found ref to a stale ref failure", async () => {
-    const browser = new BrowserAutomationHarness();
-
-    const result = await browser.execute({
-      command: "inspect",
-      args: { browserId: BROWSER_A, ref: "@e1" },
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("browser_stale_ref");
-    }
-  });
-});
-
-describe("network", () => {
-  test("starts capture and lists requests with status codes", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.capturedNetworkRequests = [
-      {
-        requestId: "55.1",
-        url: "https://a.test/api/items",
-        method: "GET",
-        resourceType: "Fetch",
-        status: 200,
-        statusText: "OK",
-        mimeType: "application/json",
-        encodedDataLength: 512,
-        finished: true,
-      },
-      {
-        requestId: "55.2",
-        url: "https://a.test/api/save",
-        method: "POST",
-        status: 500,
-        statusText: "Internal Server Error",
-        finished: true,
-      },
-    ];
-
-    const result = await browser.execute({
-      command: "network",
-      args: { browserId: BROWSER_A, filter: "all" },
-    });
-
-    expect(browser.tab.networkCaptureStarts).toBe(1);
-    expect(result.ok).toBe(true);
-    if (result.ok && result.result.command === "network") {
-      expect(result.result.requests?.map((entry) => entry.requestId)).toEqual(["55.1", "55.2"]);
-      expect(result.result.requests?.[0]?.status).toBe(200);
-      expect(result.result.body).toBeUndefined();
-    }
-  });
-
-  test("filters to failed requests including network-layer failures", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.capturedNetworkRequests = [
-      { requestId: "1", url: "https://a.test/ok", method: "GET", status: 200, finished: true },
-      { requestId: "2", url: "https://a.test/boom", method: "GET", status: 503, finished: true },
-      {
-        requestId: "3",
-        url: "https://a.test/refused",
-        method: "GET",
-        failed: "net::ERR_CONNECTION_REFUSED",
-        finished: true,
-      },
-    ];
-
-    const result = await browser.execute({
-      command: "network",
-      args: { browserId: BROWSER_A, filter: "failed" },
-    });
-
-    expect(result.ok).toBe(true);
-    if (result.ok && result.result.command === "network") {
-      expect(result.result.requests?.map((entry) => entry.requestId)).toEqual(["2", "3"]);
-    }
-  });
-
-  test("fetches a response body by requestId", async () => {
-    const browser = new BrowserAutomationHarness();
-    browser.tab.capturedNetworkRequests = [
-      { requestId: "55.1", url: "https://a.test/api", method: "GET", status: 200, finished: true },
-    ];
-    browser.tab.networkBodies["55.1"] = { body: '{"ok":true}', base64Encoded: false };
-
-    const result = await browser.execute({
-      command: "network",
-      args: { browserId: BROWSER_A, filter: "all", requestId: "55.1" },
-    });
-
-    expect(result).toEqual({
-      requestId: "req-network",
-      ok: true,
-      result: {
-        command: "network",
-        browserId: BROWSER_A,
-        body: { requestId: "55.1", body: '{"ok":true}', base64Encoded: false, truncated: false },
-      },
-    });
-  });
-
-  test("reports unknown requestIds with guidance", async () => {
-    const browser = new BrowserAutomationHarness();
-
-    const result = await browser.execute({
-      command: "network",
-      args: { browserId: BROWSER_A, filter: "all", requestId: "nope" },
-    });
-
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("browser_unknown_error");
-      expect(result.error.message).toContain("No captured request with id nope");
-    }
   });
 });

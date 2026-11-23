@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import pino from "pino";
 
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import {
   canRunRealProvider,
@@ -32,7 +32,7 @@ describe("daemon E2E (real claude) - rewind user message dedupe", () => {
   test("emits /rewind user message once in persisted timeline", async () => {
     const logger = pino({ level: "silent" });
     const cwd = tmpCwd();
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       agentClients: createRealProviderClients(["claude"], logger),
       logger,
     });
@@ -41,7 +41,7 @@ describe("daemon E2E (real claude) - rewind user message dedupe", () => {
     try {
       await client.connect();
       await client.fetchAgents({
-        subscribe: { subscriptionId: "rewind-user-message-dedupe" },
+        subscribe: {},
       });
 
       const agent = await client.createAgent({

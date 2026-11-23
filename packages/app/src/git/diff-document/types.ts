@@ -1,15 +1,16 @@
-import type { ParsedDiffFile } from "@otto-code/protocol/messages";
+import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import type { InlineReviewActions } from "@/review";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
-import type { DiffPresentation } from "@/utils/diff-document";
-import type { ReactNode } from "react";
+import type { useDiffPresentation } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 
 interface DiffDocumentBaseProps {
   files: ParsedDiffFile[];
-  /** The shared review presentation selected in Appearance. */
-  presentation?: DiffPresentation;
+  reviewPresentation?: ReturnType<typeof useDiffPresentation>; // OTTO(structural-diff)
+  /** Scrollable space kept below the last line so a floating control never traps content. */
+  contentInsetBottom?: number;
   displayPreferences: {
     layout: "unified" | "split";
+    structural?: boolean; // OTTO(structural-diff)
     wrapLines: boolean;
     codeFontSize: number;
     monoFontFamily: string;
@@ -33,8 +34,6 @@ export interface WorkingDiffMode {
   onDownload?: (path: string) => void;
   onDuplicate?: (path: string) => void;
   onRevert?: (path: string, oldPath?: string) => void;
-  renderSelectionControl?: (path: string) => ReactNode;
-  contextMenuAfter?: ReactNode;
 }
 
 export type DiffDocumentProps = DiffDocumentBaseProps &
@@ -72,8 +71,6 @@ export interface DiffPalette {
   statusSuccess: string;
   statusDanger: string;
   statusWarning: string;
-  // Looked up by token name at paint time, so this stays an open string map
-  // rather than the theme's closed set of highlight styles.
   syntax: Record<string, string>;
 }
 
@@ -175,12 +172,16 @@ export interface DiffDocumentModel {
 export interface TextMeasurer {
   measure(text: string, weight?: "regular" | "semibold"): number;
   measureAdvances?(graphemes: readonly string[]): number[];
+  /** Same width as the last cumulative advance, without computing every position. */
+  measureWidth?(graphemes: readonly string[]): number;
 }
 
 export interface BuildDiffDocumentModelInput {
   files: readonly ParsedDiffFile[];
   collapsedFilePaths: ReadonlySet<string>;
   layout: "unified" | "split";
+  /** OTTO(structural-diff): semantic alignment is opt-in on the split renderer. */
+  structural?: boolean;
   wrapLines: boolean;
   viewportWidth: number;
   typography: DiffTypography;

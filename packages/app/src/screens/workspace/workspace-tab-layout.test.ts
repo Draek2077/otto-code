@@ -1,8 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   computeWorkspaceTabLayout,
-  computeWorkspaceTabRailWidth,
-  completeWorkspaceTabLabelWidths,
   retainWorkspaceTabMeasuredWidth,
 } from "@/screens/workspace/workspace-tab-layout";
 
@@ -11,7 +9,7 @@ const metrics = {
   actionsReservedWidth: 120,
   rowPaddingHorizontal: 8,
   tabGap: 4,
-  minTabWidth: 96,
+  minTabWidth: 64,
   maxTabWidth: 160,
   tabIconWidth: 14,
   tabContentGap: 4,
@@ -31,7 +29,20 @@ describe("computeWorkspaceTabLayout", () => {
     expect(result.requiresHorizontalScrollFallback).toBe(false);
     expect(result.items).toHaveLength(3);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
-    expect(result.items.map((item) => item.width)).toEqual([96, 104, 96]);
+    expect(result.items.map((item) => item.width)).toEqual([90, 104, 83]);
+  });
+
+  it("lets short labels use their content width below the old 96px floor", () => {
+    const result = computeWorkspaceTabLayout({
+      viewportWidth: 300,
+      tabLabelWidths: [29, 52],
+      metrics: { ...metrics, actionsReservedWidth: 36 },
+    });
+    expect(result.items).toEqual([
+      { width: 64, showLabel: true },
+      { width: 86, showLabel: true },
+    ]);
+    expect(result.requiresHorizontalScrollFallback).toBe(false);
   });
 
   it("sizes a single tab between the minimum and maximum from its content", () => {
@@ -54,7 +65,7 @@ describe("computeWorkspaceTabLayout", () => {
 
     expect(result.closeButtonPolicy).toBe("all");
     expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items.map((item) => item.width)).toEqual([117, 103, 96]);
+    expect(result.items.map((item) => item.width)).toEqual([132, 102, 82]);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
   });
 
@@ -77,27 +88,27 @@ describe("computeWorkspaceTabLayout", () => {
 
   it("keeps every tab at the clickable minimum at the exact fit boundary", () => {
     const result = computeWorkspaceTabLayout({
-      viewportWidth: 532,
+      viewportWidth: 404,
       tabLabelWidths: [98, 98, 98, 98],
       metrics,
     });
 
     expect(result.closeButtonPolicy).toBe("all");
     expect(result.requiresHorizontalScrollFallback).toBe(false);
-    expect(result.items.map((item) => item.width)).toEqual([96, 96, 96, 96]);
+    expect(result.items.map((item) => item.width)).toEqual([64, 64, 64, 64]);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
   });
 
   it("uses horizontal scroll rather than shrinking below the clickable minimum", () => {
     const result = computeWorkspaceTabLayout({
-      viewportWidth: 531,
+      viewportWidth: 403,
       tabLabelWidths: [98, 98, 98, 98],
       metrics,
     });
 
     expect(result.closeButtonPolicy).toBe("all");
     expect(result.requiresHorizontalScrollFallback).toBe(true);
-    expect(result.items.map((item) => item.width)).toEqual([96, 96, 96, 96]);
+    expect(result.items.map((item) => item.width)).toEqual([64, 64, 64, 64]);
     expect(result.items.every((item) => item.showLabel)).toBe(true);
   });
 
@@ -131,94 +142,5 @@ describe("retainWorkspaceTabMeasuredWidth", () => {
 
   it("accepts the next usable layout width", () => {
     expect(retainWorkspaceTabMeasuredWidth(720, 640)).toBe(640);
-  });
-});
-
-describe("computeWorkspaceTabRailWidth", () => {
-  const railMetrics = {
-    tabIconWidth: 14,
-    tabHorizontalPadding: 12,
-    estimatedCharWidth: 7,
-    closeButtonWidth: 22,
-    maxTabWidth: 200,
-    minTabWidth: 120,
-  };
-
-  it("floors short labels at minTabWidth instead of shrinking further", () => {
-    const width = computeWorkspaceTabRailWidth({
-      tabLabelLengths: [1, 2],
-      metrics: railMetrics,
-    });
-
-    expect(width).toBe(120);
-  });
-
-  it("sizes to the widest current label between the floor and the ceiling", () => {
-    const width = computeWorkspaceTabRailWidth({
-      tabLabelLengths: [9, 12],
-      metrics: railMetrics,
-    });
-
-    expect(width).toBe(144);
-  });
-
-  it("clamps at maxTabWidth for long labels, matching today's horizontal cap", () => {
-    const width = computeWorkspaceTabRailWidth({
-      tabLabelLengths: [5, 40],
-      metrics: railMetrics,
-    });
-
-    expect(width).toBe(200);
-  });
-
-  it("falls back to minTabWidth when there are no tabs", () => {
-    const width = computeWorkspaceTabRailWidth({
-      tabLabelLengths: [],
-      metrics: railMetrics,
-    });
-
-    expect(width).toBe(120);
-  });
-});
-
-describe("resolved tab label measurement", () => {
-  it("replaces a loading fallback width only when the actual title has been measured", () => {
-    const loading = [{ key: "chat-1", label: "Agent", modified: false }];
-    const ready = [{ key: "chat-1", label: "Investigate native project routing", modified: false }];
-    const measurements = new Map([["chat-1", { label: "Agent", width: 30 }]]);
-    const fallbackWidths = completeWorkspaceTabLabelWidths(loading, measurements)!;
-    expect(completeWorkspaceTabLabelWidths(ready, measurements)).toBeNull();
-    measurements.set("chat-1", { label: ready[0]!.label, width: 180 });
-    const readyWidths = completeWorkspaceTabLabelWidths(ready, measurements)!;
-    const fallback = computeWorkspaceTabLayout({
-      viewportWidth: 1000,
-      tabLabelWidths: fallbackWidths,
-      metrics,
-    });
-    const resolved = computeWorkspaceTabLayout({
-      viewportWidth: 1000,
-      tabLabelWidths: readyWidths,
-      metrics,
-    });
-    expect(resolved.items[0]!.width).toBeGreaterThan(fallback.items[0]!.width);
-    expect(resolved.items[0]!.width).toBe(metrics.maxTabWidth);
-  });
-
-  it("waits for every new tab and reserves modified chrome without changing its label", () => {
-    const labels = [
-      { key: "a", label: "File.ts", modified: false },
-      { key: "b", label: "Other.ts", modified: false },
-    ];
-    const measurements = new Map([["a", { label: "File.ts", width: 40 }]]);
-    expect(completeWorkspaceTabLabelWidths(labels, measurements)).toBeNull();
-    measurements.set("b", { label: "Other.ts", width: 48 });
-    const clean = completeWorkspaceTabLabelWidths(labels, measurements)!;
-    const dirty = completeWorkspaceTabLabelWidths(
-      [{ ...labels[0]!, modified: true }, labels[1]!],
-      measurements,
-    )!;
-    expect(dirty[0]! - clean[0]!).toBe(12);
-    expect(dirty[1]).toBe(clean[1]);
-    expect(completeWorkspaceTabLabelWidths(labels, measurements)).toEqual(clean);
   });
 });

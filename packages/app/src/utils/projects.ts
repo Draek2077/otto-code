@@ -1,5 +1,4 @@
 import type { ProjectDescriptor, WorkspaceDescriptor } from "@/stores/session-store";
-import type { ProjectKanbanTarget } from "@otto-code/protocol/messages";
 import type { HostProjectListItem } from "@/projects/host-project-model";
 import { buildWorkspaceStructureProjects } from "@/projects/workspace-structure";
 import { selectPrHintFromStatus } from "@/git/pr-hint";
@@ -14,6 +13,7 @@ export interface WorkspaceSummary {
   archivingAt?: string;
   /** Pull/merge request number backing this workspace, so a query can find it. */
   changeRequestNumber: number | null;
+  statusEnteredAt: Date | null;
 }
 
 export interface ProjectHostEntry {
@@ -21,10 +21,6 @@ export interface ProjectHostEntry {
   projectId: string;
   projectName: string;
   projectCustomName: string | null;
-  projectOffline?: boolean;
-  customIconRevision?: string | null;
-  // This host's Kanban board target for the project; null means unconfigured.
-  projectKanban: ProjectKanbanTarget | null;
   serverName: string;
   isOnline: boolean;
   repoRoot: string;
@@ -32,14 +28,12 @@ export interface ProjectHostEntry {
   workspaces: WorkspaceSummary[];
   gitRuntime?: WorkspaceDescriptor["gitRuntime"];
   githubRuntime?: WorkspaceDescriptor["githubRuntime"];
+  customIconRevision?: string | null;
+  iconRevision?: string;
 }
 
 export interface ProjectSummary {
   viewKey: string;
-  // Shared repository identity used by Otto integrations such as Kanban.
-  // Placement-only groups fall back to viewKey so existing consumers retain a
-  // stable, non-empty identity without confusing it with a host project id.
-  projectKey: string;
   projectName: string;
   projectCustomName?: string | null;
   hosts: ProjectHostEntry[];
@@ -94,13 +88,10 @@ interface HostGroup {
   projectId: string;
   projectName: string;
   projectCustomName: string | null;
-  projectOffline?: boolean;
-  // This host's Kanban board target for the project; null means unconfigured.
-  projectKanban: ProjectKanbanTarget | null;
-  customIconRevision?: string | null;
   serverName: string;
   isOnline: boolean;
   workspaces: WorkspaceDescriptor[];
+  customIconRevision?: string | null;
   iconRevision?: string;
   // The project record exists before its first workspace. Keep its editable
   // root at the project boundary instead of deriving it from child rows.
@@ -109,23 +100,20 @@ interface HostGroup {
 
 interface ProjectGroup {
   viewKey: string;
-  projectKey: string;
   projectName: string;
   projectCustomName: string | null;
-  projectOffline?: boolean;
   hostsByServerId: Map<string, HostGroup>;
 }
 
 function findProjectMetadata(
   host: ProjectHost,
-  projectKey: string,
-): { customName: string | null; displayName: string; kanban: ProjectKanbanTarget | null } | null {
+  projectId: string,
+): { customName: string | null; displayName: string } | null {
   for (const project of host.projects) {
-    if (project.projectId === projectKey) {
+    if (project.projectId === projectId) {
       return {
         customName: project.projectCustomName ?? null,
         displayName: project.projectDisplayName,
-        kanban: project.projectKanban ?? null,
       };
     }
   }
@@ -174,6 +162,7 @@ function toWorkspaceSummary(workspace: WorkspaceDescriptor): WorkspaceSummary {
     currentBranch: currentBranch && currentBranch !== "HEAD" ? currentBranch : null,
     ...(workspace.archivingAt ? { archivingAt: workspace.archivingAt } : {}),
     changeRequestNumber: toChangeRequestNumber(workspace),
+    statusEnteredAt: workspace.statusEnteredAt,
   };
 }
 
@@ -187,9 +176,6 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
     projectId: group.projectId,
     projectName: group.projectName,
     projectCustomName: group.projectCustomName,
-    customIconRevision: canonical?.projectCustomIconRevision ?? group.customIconRevision,
-    projectKanban: group.projectKanban,
-    projectOffline: canonical?.projectOffline ?? group.projectOffline,
     serverName: group.serverName,
     isOnline: group.isOnline,
     repoRoot,
@@ -197,6 +183,8 @@ function toHostEntry(group: HostGroup): ProjectHostEntry {
     workspaces: group.workspaces.map(toWorkspaceSummary),
     gitRuntime: canonical?.gitRuntime,
     githubRuntime: canonical?.githubRuntime,
+    customIconRevision: canonical?.projectCustomIconRevision ?? group.customIconRevision,
+    iconRevision: group.iconRevision,
   };
 }
 
@@ -214,7 +202,6 @@ function toProjectSummary(draft: ProjectGroup): ProjectSummary {
   const onlineHostCount = hosts.filter((host) => host.isOnline).length;
   return {
     viewKey: draft.viewKey,
-    projectKey: draft.projectKey,
     projectName: draft.projectName,
     projectCustomName: draft.projectCustomName,
     hosts,
@@ -229,9 +216,6 @@ function addHostProjects(
   host: ProjectHost,
   hostProjects: HostProjectListItem[],
 ): void {
-  const offlineProjectIds = new Set(
-    host.projects.filter((project) => project.projectOffline).map((project) => project.projectId),
-  );
   const repoRootByProjectId = new Map(
     host.projects.map((project) => [project.projectId, project.projectRootPath]),
   );
@@ -245,7 +229,6 @@ function addHostProjects(
     if (!group) {
       group = {
         viewKey: hostProject.viewKey,
-        projectKey: hostProject.projectKey ?? hostProject.viewKey,
         projectName: customName?.displayName ?? hostProject.projectName,
         projectCustomName: customName?.customName ?? null,
         hostsByServerId: new Map(),
@@ -262,12 +245,10 @@ function addHostProjects(
         projectId,
         projectName: customName?.displayName ?? hostProject.projectName,
         projectCustomName: customName?.customName ?? null,
-        projectKanban: customName?.kanban ?? null,
-        projectOffline: offlineProjectIds.has(projectId),
-        customIconRevision: placement.customIconRevision,
         serverName: host.serverName,
         isOnline: host.isOnline,
         workspaces: [],
+        customIconRevision: placement.customIconRevision,
         iconRevision: placement.iconRevision,
         projectRoot: repoRootByProjectId.get(projectId) ?? "",
       });

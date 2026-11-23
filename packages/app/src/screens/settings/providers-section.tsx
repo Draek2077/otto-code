@@ -1,9 +1,3 @@
-import {
-  SettingsTargetText,
-  SettingsTargetLabel,
-  SettingsTargetScope,
-  useSettingsSearchRequest,
-} from "@/screens/settings-search/target";
 import { useCallback, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -17,6 +11,7 @@ import {
 } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useToast } from "@/contexts/toast-api-context";
 import { settingsStyles } from "@/styles/settings";
 import { useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
@@ -25,10 +20,11 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { buildProviderDefinitions } from "@/utils/provider-definitions";
 import {
   buildAcpProviderConfigPatch,
+  getAcpProviderCatalog,
   type AcpProviderCatalogItem,
 } from "@/hooks/use-acp-provider-catalog";
 import { ProviderCatalogList } from "@/components/provider-catalog-list";
-import { getProviderIcon } from "@/components/provider-icons";
+import { useProviderIcon } from "@/components/provider-icons";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -37,14 +33,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { useProviderSettingsStore } from "@/stores/provider-settings-store";
 import { confirmDialog } from "@/utils/confirm-dialog";
-// Otto renders its own Material-styled set rather than lucide directly; all
-// three exist there, and mixing sets inside one row shows.
-import { ChevronRight, MoreHorizontal, Trash2 } from "@/components/icons/material-icons";
 import { filterSelectableModels } from "@/provider-selection/model-catalog";
-import type { IconSizeProp } from "@/components/icons/icon-size";
+import { ChevronRight, MoreHorizontal, Trash2 } from "lucide-react-native";
 
 type ProviderDefinition = ReturnType<typeof buildProviderDefinitions>[number];
 type ProviderEntry = NonNullable<ReturnType<typeof useProvidersSnapshot>["entries"]>[number];
@@ -107,7 +100,7 @@ interface ProviderActionsMenuProps {
   providerId: string;
   providerLabel: string;
   isRemoving: boolean;
-  iconSize: IconSizeProp;
+  iconSize: number;
   foregroundColor: string;
   foregroundMutedColor: string;
   dangerColor: string;
@@ -140,7 +133,7 @@ function ProviderActionsMenu({
     ],
     [],
   );
-  const trashLeading = useMemo(() => <Trash2 size="md" color={dangerColor} />, [dangerColor]);
+  const trashLeading = useMemo(() => <Trash2 size={16} color={dangerColor} />, [dangerColor]);
 
   return (
     <DropdownMenu>
@@ -192,7 +185,7 @@ function ProviderRow({
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const isCompact = useIsCompactFormFactor();
-  const ProviderIcon = getProviderIcon(def.id, serverId);
+  const ProviderIcon = useProviderIcon(def.id, serverId);
   const providerError =
     enabled &&
     entry.status === "error" &&
@@ -240,13 +233,9 @@ function ProviderRow({
             <ProviderIcon size={theme.iconSize.md} color={theme.colors.foreground} />
             <View style={styles.textColumn}>
               <View style={styles.titleRow}>
-                <SettingsTargetText
-                  settingId="host-providers-providers-provider"
-                  style={settingsStyles.rowTitle}
-                  numberOfLines={1}
-                >
+                <Text style={settingsStyles.rowTitle} numberOfLines={1}>
                   {def.label}
-                </SettingsTargetText>
+                </Text>
                 {!isCompact ? <Text style={styles.separator}>·</Text> : null}
                 <StatusIndicator status={providerStatus} compact={isCompact} />
               </View>
@@ -337,12 +326,13 @@ export interface ProvidersSectionProps {
 }
 
 export function ProvidersSection({ serverId }: ProvidersSectionProps) {
-  const settingId = useSettingsSearchRequest();
   const { t } = useTranslation();
+  const toast = useToast();
   const isConnected = useHostRuntimeIsConnected(serverId);
+  const supportsHopliteProvider = useHostFeature(serverId, "hopliteProvider");
   const supportsProviderRemoval = useHostFeature(serverId, "providerRemoval");
   const { entries, isLoading, refresh } = useProvidersSnapshot(serverId);
-  const { patchConfig } = useDaemonConfig(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
   const openProviderSettings = useProviderSettingsStore((state) => state.open);
   const [pendingProviderId, setPendingProviderId] = useState<string | null>(null);
   const [removingProviderId, setRemovingProviderId] = useState<string | null>(null);
@@ -352,11 +342,24 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
   const providerDefinitions = useMemo(() => buildProviderDefinitions(entries), [entries]);
   const hasServer = serverId.length > 0;
 
+  /** Config owns derived providers and opt-in bundled catalog providers. */
+  const isConfigOwnedProvider = useCallback(
+    (providerId: string) =>
+      Boolean(
+        config?.providers?.[providerId] &&
+        (config.providers[providerId].extends ||
+          getAcpProviderCatalog().some(
+            (entry) => entry.id === providerId && entry.bundledProvider,
+          )),
+      ),
+    [config],
+  );
+
   const handleOpenProviderSettings = useCallback(
     (providerId: string) => {
-      openProviderSettings({ serverId, provider: providerId, settingId });
+      openProviderSettings({ serverId, provider: providerId });
     },
-    [openProviderSettings, serverId, settingId],
+    [openProviderSettings, serverId],
   );
 
   const handleToggleEnabled = useCallback(
@@ -413,18 +416,15 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
       if (installingProviderId) return;
       setInstallingProviderId(entry.id);
       try {
-        await patchConfig(buildAcpProviderConfigPatch(entry));
+        await patchConfig(buildAcpProviderConfigPatch(entry, supportsHopliteProvider));
         await refresh([entry.id]);
       } catch (error) {
-        Alert.alert(
-          t("settings.providers.addErrorTitle"),
-          error instanceof Error ? error.message : String(error),
-        );
+        toast.error(error instanceof Error ? error.message : String(error));
       } finally {
         setInstallingProviderId((current) => (current === entry.id ? null : current));
       }
     },
-    [installingProviderId, patchConfig, refresh, t],
+    [installingProviderId, patchConfig, refresh, supportsHopliteProvider, toast],
   );
 
   return (
@@ -458,7 +458,11 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
                   enabled={entry.enabled ?? true}
                   isToggling={pendingProviderId === def.id}
                   isRemoving={removingProviderId === def.id}
-                  canRemove={supportsProviderRemoval && entry.source === "custom"}
+                  canRemove={
+                    supportsProviderRemoval &&
+                    entry.source === "custom" &&
+                    isConfigOwnedProvider(def.id)
+                  }
                   isFirst={index === 0}
                   onPress={handleOpenProviderSettings}
                   onToggleEnabled={handleToggleEnabled}
@@ -471,20 +475,17 @@ export function ProvidersSection({ serverId }: ProvidersSectionProps) {
       </SettingsSection>
 
       {hasServer && isConnected ? (
-        <SettingsTargetScope settingIds={["host-providers-providers-add-provider"]}>
-          <SettingsSection
-            Label={SettingsTargetLabel}
-            title={t("settings.providers.addProvider")}
-            testID="host-page-add-provider-card"
-            style={styles.addProviderSection}
-          >
-            <ProviderCatalogList
-              serverId={serverId}
-              installingProviderId={installingProviderId}
-              onInstall={handleInstall}
-            />
-          </SettingsSection>
-        </SettingsTargetScope>
+        <SettingsSection
+          title={t("settings.providers.addProvider")}
+          testID="host-page-add-provider-card"
+          style={styles.addProviderSection}
+        >
+          <ProviderCatalogList
+            serverId={serverId}
+            installingProviderId={installingProviderId}
+            onInstall={handleInstall}
+          />
+        </SettingsSection>
       ) : null}
     </>
   );

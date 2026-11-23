@@ -2,7 +2,7 @@ import {
   compareMatchScores,
   type MatchScore,
   scoreTextFields,
-} from "@otto-code/protocol/search/text-match";
+} from "@getpaseo/protocol/search/text-match";
 
 interface CommandAutocompleteEntry {
   command: {

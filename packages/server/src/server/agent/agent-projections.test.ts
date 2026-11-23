@@ -2,17 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import { AGENT_LIFECYCLE_STATUSES } from "./agent-manager.js";
 import {
-  deriveObservedSubagentTitle,
-  observedUpdateHasTitleSource,
   buildStoredAgentPayload,
   toAgentPayload,
-  toObservedSubagentPayload,
   toRecentProviderSessionDescriptorPayload,
   toStoredAgentRecord,
   type ManagedAgent,
 } from "./agent-projections.js";
-import { parseStoredAgentRecord } from "./agent-storage.js";
-import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
 import type { AgentSession } from "./agent-sdk-types.js";
 import type {
   AgentFeature,
@@ -83,7 +78,6 @@ function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent
     currentModeId: "plan",
     pendingPermissions: pendingPermissionsOverride ?? new Map<string, AgentPermissionRequest>(),
     activeForegroundTurnId: activeForegroundTurnIdValue,
-    steerQueue: [],
     activeTurnId: activeForegroundTurnIdValue,
     activeTurnStartedAt: lifecycle === "running" ? new Date("2025-01-01T00:00:01.000Z") : null,
     foregroundTurnWaiters: new Set(),
@@ -117,24 +111,6 @@ it("projects the daemon-owned active turn identity", () => {
     turnId: "test-turn-id",
     startedAt: "2025-01-01T00:00:01.000Z",
   });
-});
-
-it("does not expose an invalid turn identity once the agent is no longer running", () => {
-  // An idle/error agent cannot have a live turn. Keep the wire invariant even
-  // for an older or malformed in-memory record that still carries an identity.
-  const settled = createManagedAgent({
-    lifecycle: "idle",
-    activeTurnId: "foreground-turn-1",
-    activeTurnStartedAt: new Date("2025-01-01T00:00:01.000Z"),
-  });
-  expect(toAgentPayload(settled).activeTurn).toBeNull();
-
-  const failed = createManagedAgent({
-    lifecycle: "error",
-    activeTurnId: "foreground-turn-1",
-    activeTurnStartedAt: new Date("2025-01-01T00:00:01.000Z"),
-  });
-  expect(toAgentPayload(failed).activeTurn).toBeNull();
 });
 
 function createPermission(overrides: Partial<AgentPermissionRequest> = {}): AgentPermissionRequest {
@@ -211,50 +187,6 @@ describe("toStoredAgentRecord", () => {
     expect(agent.config.providerOptions!.allowedTools).toEqual(["Read"]);
     record.persistence!.sessionId = "mutated";
     expect(agent.persistence!.sessionId).toBe("persist-2");
-  });
-
-  it("round-trips a personality snapshot through storage", () => {
-    const snapshot: ResolvedProfileSnapshot = {
-      profileId: "p1",
-      name: "Aria",
-      provider: "codex",
-      model: "gpt-5.4",
-      modeId: "auto",
-      thinkingOptionId: "high",
-      effortLevel: "high",
-      effortMatch: "level",
-      effortDegraded: false,
-      systemPrompt: "You are Aria.",
-      respectGlobalAppendPrompt: false,
-      spinner: { glowA: "#111111", glowB: "#222222" },
-      voice: { provider: "kokoro", model: "kokoro-multi-lang-v1_0", name: "af_heart" },
-      roles: ["chatter", "orchestrator"],
-    };
-    const agent = createManagedAgent({ config: { profileSnapshot: snapshot } });
-
-    const record = toStoredAgentRecord(agent, { title: "Aria" });
-    expect(record.config?.profileSnapshot).toEqual(snapshot);
-
-    // Survives the storage zod parse (the on-disk read path).
-    const parsed = parseStoredAgentRecord(record);
-    expect(parsed.config?.profileSnapshot).toEqual(snapshot);
-  });
-
-  it("round-trips a team snapshot through storage", () => {
-    const teamSnapshot = {
-      teamId: "team-crew",
-      name: "Shipping crew",
-      avatarColor: "#4ec4ff",
-      teamPrompt: "Work as a coordinated crew.",
-    };
-    const agent = createManagedAgent({ config: { teamSnapshot } });
-
-    const record = toStoredAgentRecord(agent, { title: "Crew agent" });
-    expect(record.config?.teamSnapshot).toEqual(teamSnapshot);
-
-    // Survives the storage zod parse (the on-disk read path).
-    const parsed = parseStoredAgentRecord(record);
-    expect(parsed.config?.teamSnapshot).toEqual(teamSnapshot);
   });
 
   it("falls back to config mode when current mode is null and handles null title", () => {
@@ -475,6 +407,17 @@ describe("toAgentPayload", () => {
     });
   });
 
+  it("carries a stored lastError onto the payload", () => {
+    const record = toStoredAgentRecord(
+      createManagedAgent({ provider: "codex", config: { provider: "codex" }, lastError: "boom" }),
+    );
+
+    expect(buildStoredAgentPayload(record, ["codex"]).lastError).toBe("boom");
+    expect(buildStoredAgentPayload({ ...record, lastError: null }, ["codex"])).not.toHaveProperty(
+      "lastError",
+    );
+  });
+
   it("omits lastUsage when not available", () => {
     const agent = createManagedAgent({ lastUsage: undefined });
     const payload = toAgentPayload(agent);
@@ -496,53 +439,6 @@ describe("toAgentPayload", () => {
       inputTokens: 10,
       contextWindowMaxTokens: 200_000,
       contextWindowUsedTokens: 42_000,
-    });
-  });
-
-  it("carries the provider's context categories through verbatim", () => {
-    const agent = createManagedAgent({
-      lastUsage: {
-        contextWindowUsedTokens: 42_000,
-        // The category list is open-ended by design: a provider inventing a
-        // label the daemon has never heard of must reach the client intact.
-        contextCategories: [
-          { name: "System prompt", tokens: 1_200 },
-          { name: "Memory files", tokens: 800 },
-          { name: "Deferred tool schemas", tokens: 9_000, isDeferred: true },
-        ],
-      },
-    });
-
-    const payload = toAgentPayload(agent);
-
-    expect(payload.lastUsage).toEqual({
-      contextWindowUsedTokens: 42_000,
-      contextCategories: [
-        { name: "System prompt", tokens: 1_200 },
-        { name: "Memory files", tokens: 800 },
-        { name: "Deferred tool schemas", tokens: 9_000, isDeferred: true },
-      ],
-    });
-  });
-
-  it("drops malformed context categories without discarding the good ones", () => {
-    const agent = createManagedAgent({
-      lastUsage: {
-        contextWindowUsedTokens: 42_000,
-        contextCategories: [
-          { name: "Messages", tokens: 500 },
-          { name: "", tokens: 10 },
-          { name: "Broken", tokens: Number.NaN },
-          { name: "Tools", tokens: "300" as unknown as number },
-        ],
-      },
-    });
-
-    const payload = toAgentPayload(agent);
-
-    expect(payload.lastUsage).toEqual({
-      contextWindowUsedTokens: 42_000,
-      contextCategories: [{ name: "Messages", tokens: 500 }],
     });
   });
 
@@ -576,49 +472,6 @@ describe("toAgentPayload", () => {
       outputTokens: 20,
       totalCostUsd: 1.25,
     });
-  });
-
-  it("surfaces cumulativeTokens the same way toObservedSubagentPayload does", () => {
-    const agent = createManagedAgent({ cumulativeTokens: 4_200 });
-
-    const payload = toAgentPayload(agent);
-
-    expect(payload.cumulativeTokens).toBe(4_200);
-  });
-
-  it("omits cumulativeTokens when not tracked", () => {
-    const agent = createManagedAgent({ cumulativeTokens: undefined });
-
-    const payload = toAgentPayload(agent);
-
-    expect(payload).not.toHaveProperty("cumulativeTokens");
-  });
-
-  it("surfaces a native child's liveness pair, and drops the tool once it stops", () => {
-    const running = createManagedAgent({
-      lifecycle: "running",
-      toolUseCount: 12,
-      currentTool: "Edit",
-    });
-
-    expect(toAgentPayload(running)).toMatchObject({ toolUseCount: 12, currentTool: "Edit" });
-
-    const idle = createManagedAgent({
-      lifecycle: "idle",
-      toolUseCount: 12,
-      currentTool: "Edit",
-    });
-    const idlePayload = toAgentPayload(idle);
-
-    expect(idlePayload.toolUseCount).toBe(12);
-    expect(idlePayload).not.toHaveProperty("currentTool");
-  });
-
-  it("omits the liveness pair when nothing has been tracked", () => {
-    const payload = toAgentPayload(createManagedAgent({}));
-
-    expect(payload).not.toHaveProperty("toolUseCount");
-    expect(payload).not.toHaveProperty("currentTool");
   });
 
   it("includes features in the snapshot payload", () => {
@@ -684,219 +537,5 @@ describe("toRecentProviderSessionDescriptorPayload", () => {
       firstPromptPreview: null,
       lastPromptPreview: null,
     });
-  });
-});
-
-describe("deriveObservedSubagentTitle", () => {
-  it("prefers the stable subAgentType over a progress summary", () => {
-    expect(
-      deriveObservedSubagentTitle({
-        subAgentType: "code-explorer",
-        description: "I have now read 14 files and am tracing the auth middleware…",
-      }),
-    ).toBe("code-explorer");
-  });
-
-  it("falls back to the description when no subAgentType is present", () => {
-    expect(deriveObservedSubagentTitle({ description: "Explore the auth flow" })).toBe(
-      "Explore the auth flow",
-    );
-  });
-
-  it("uses a generic placeholder when nothing names the subagent", () => {
-    expect(deriveObservedSubagentTitle({})).toBe("Subagent");
-  });
-
-  it("skips catch-all types like general-purpose in favor of the description", () => {
-    expect(
-      deriveObservedSubagentTitle({
-        subAgentType: "general-purpose",
-        description: "Explore the auth flow",
-      }),
-    ).toBe("Explore the auth flow");
-    expect(deriveObservedSubagentTitle({ subAgentType: "General-Purpose" })).toBe("Subagent");
-  });
-
-  it("collapses whitespace and hard-caps a wall-of-text label", () => {
-    const wall =
-      "line one\n  line two   with    lots\tof\nwhitespace that runs on and on and on forever";
-    const title = deriveObservedSubagentTitle({ description: wall });
-    expect(title.length).toBeLessThanOrEqual(60);
-    expect(title).not.toContain("\n");
-    expect(title.endsWith("…")).toBe(true);
-  });
-});
-
-describe("observedUpdateHasTitleSource", () => {
-  it("is true when a subAgentType or description is present", () => {
-    expect(observedUpdateHasTitleSource({ subAgentType: "code-explorer" })).toBe(true);
-    expect(observedUpdateHasTitleSource({ description: "do the thing" })).toBe(true);
-  });
-
-  it("is false when neither is a usable name source", () => {
-    expect(observedUpdateHasTitleSource({})).toBe(false);
-    expect(observedUpdateHasTitleSource({ subAgentType: "   ", description: "" })).toBe(false);
-  });
-
-  it("does not freeze on a catch-all type alone - a later description should win", () => {
-    expect(observedUpdateHasTitleSource({ subAgentType: "general-purpose" })).toBe(false);
-    expect(
-      observedUpdateHasTitleSource({ subAgentType: "general-purpose", description: "do it" }),
-    ).toBe(true);
-  });
-});
-
-describe("toObservedSubagentPayload", () => {
-  it("uses the provided frozen title, ignoring the update's live description", () => {
-    const payload = toObservedSubagentPayload({
-      id: "parent::sub::task-1",
-      parentAgentId: "parent",
-      provider: "claude",
-      cwd: "/tmp/project",
-      createdAt: "2026-05-02T00:00:00.000Z",
-      title: "code-explorer",
-      update: {
-        key: "task-1",
-        status: "running",
-        subAgentType: "code-explorer",
-        description: "an ever-changing progress summary that should not become the label",
-      },
-    });
-
-    expect(payload.title).toBe("code-explorer");
-    expect(payload.attend).toBe("observed");
-  });
-
-  it("projects the cumulative token total when provided", () => {
-    const payload = toObservedSubagentPayload({
-      id: "parent::sub::task-1",
-      parentAgentId: "parent",
-      provider: "claude",
-      cwd: "/tmp/project",
-      createdAt: "2026-05-02T00:00:00.000Z",
-      title: "code-explorer",
-      cumulativeTokens: 12_345,
-      update: { key: "task-1", status: "running", subAgentType: "code-explorer" },
-    });
-
-    expect(payload.cumulativeTokens).toBe(12_345);
-  });
-
-  it("omits the token total when none is provided", () => {
-    const payload = toObservedSubagentPayload({
-      id: "parent::sub::task-1",
-      parentAgentId: "parent",
-      provider: "claude",
-      cwd: "/tmp/project",
-      createdAt: "2026-05-02T00:00:00.000Z",
-      title: "code-explorer",
-      update: { key: "task-1", status: "running", subAgentType: "code-explorer" },
-    });
-
-    expect(payload.cumulativeTokens).toBeUndefined();
-  });
-
-  it("projects the subagent's own model and full usage split", () => {
-    const payload = toObservedSubagentPayload({
-      id: "parent::sub::task-1",
-      parentAgentId: "parent",
-      provider: "claude",
-      cwd: "/tmp/project",
-      createdAt: "2026-05-02T00:00:00.000Z",
-      title: "code-explorer",
-      // A subagent that ran a cheaper model than its parent, with the carried-
-      // forward split resolved by the manager.
-      model: "claude-haiku-4-5-20251001",
-      lastUsage: {
-        inputTokens: 4,
-        cachedInputTokens: 68_161,
-        cacheCreationInputTokens: 726,
-        outputTokens: 913,
-      },
-      update: { key: "task-1", status: "idle", subAgentType: "code-explorer" },
-    });
-
-    expect(payload.model).toBe("claude-haiku-4-5-20251001");
-    expect(payload.lastUsage).toEqual({
-      inputTokens: 4,
-      cachedInputTokens: 68_161,
-      cacheCreationInputTokens: 726,
-      outputTokens: 913,
-    });
-  });
-
-  it("prefers the carried-forward usage over a scalar-only final update", () => {
-    // The final update refreshes only cumulativeTokens (run-state reconcile) and
-    // carries no split of its own; the resolved lastUsage must still surface.
-    const payload = toObservedSubagentPayload({
-      id: "parent::sub::task-1",
-      parentAgentId: "parent",
-      provider: "claude",
-      cwd: "/tmp/project",
-      createdAt: "2026-05-02T00:00:00.000Z",
-      title: "code-explorer",
-      cumulativeTokens: 40_229,
-      lastUsage: { inputTokens: 4, outputTokens: 913, cachedInputTokens: 68_161 },
-      update: { key: "task-1", status: "idle" },
-    });
-
-    expect(payload.lastUsage).toEqual({
-      inputTokens: 4,
-      outputTokens: 913,
-      cachedInputTokens: 68_161,
-    });
-    expect(payload.cumulativeTokens).toBe(40_229);
-  });
-
-  it("projects the liveness pair on a running row", () => {
-    const payload = toObservedSubagentPayload({
-      id: "parent::sub::task-1",
-      parentAgentId: "parent",
-      provider: "claude",
-      cwd: "/tmp/project",
-      createdAt: "2026-05-02T00:00:00.000Z",
-      title: "code-explorer",
-      toolUseCount: 89,
-      currentTool: "Bash",
-      update: { key: "task-1", status: "running", subAgentType: "code-explorer" },
-    });
-
-    expect(payload.toolUseCount).toBe(89);
-    expect(payload.currentTool).toBe("Bash");
-  });
-
-  it("keeps the tool count but drops the current tool once the row is terminal", () => {
-    // A finished sub-agent still DID 89 tool calls, but it isn't running Bash.
-    for (const status of ["idle", "error", "closed"] as const) {
-      const payload = toObservedSubagentPayload({
-        id: "parent::sub::task-1",
-        parentAgentId: "parent",
-        provider: "claude",
-        cwd: "/tmp/project",
-        createdAt: "2026-05-02T00:00:00.000Z",
-        title: "code-explorer",
-        toolUseCount: 89,
-        currentTool: "Bash",
-        update: { key: "task-1", status },
-      });
-
-      expect(payload.toolUseCount).toBe(89);
-      expect(payload).not.toHaveProperty("currentTool");
-    }
-  });
-
-  it("omits both signals when the provider reports neither", () => {
-    const payload = toObservedSubagentPayload({
-      id: "parent::sub::task-1",
-      parentAgentId: "parent",
-      provider: "claude",
-      cwd: "/tmp/project",
-      createdAt: "2026-05-02T00:00:00.000Z",
-      title: "code-explorer",
-      update: { key: "task-1", status: "running" },
-    });
-
-    expect(payload).not.toHaveProperty("toolUseCount");
-    expect(payload).not.toHaveProperty("currentTool");
   });
 });

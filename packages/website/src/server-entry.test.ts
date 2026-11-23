@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-const calls = vi.hoisted(() => ({ render: vi.fn(), feedback: vi.fn(), redirect: vi.fn() }));
+const calls = vi.hoisted(() => ({ render: vi.fn(), feedback: vi.fn() }));
 vi.mock("@tanstack/react-start/server-entry", () => ({ default: { fetch: calls.render } }));
 vi.mock("~/canonical-url", () => ({ getCanonicalRedirect: () => null }));
-vi.mock("~/docs", () => ({ getDoc: () => undefined, getLegacyDocsRedirect: calls.redirect }));
+vi.mock("~/docs", () => ({ getDoc: () => undefined }));
 vi.mock("~/feedback-intake", () => ({
   FEEDBACK_INTAKE_PATH: "/api/feedback",
   handleFeedbackRequest: calls.feedback,
@@ -51,18 +51,17 @@ describe("SSR platform and documentation response contracts", () => {
     expect(response.headers.get("vary")).toBe("user-agent");
   });
 
-  it("redirects legacy versioned plugin docs and preserves query parameters", async () => {
-    calls.redirect.mockReturnValue("/docs/plugins/v0.8/migration");
+  // OTTO(plugins): canonical plugin URLs now serve the current Paseo API docs.
+  it("serves current plugin docs through the router without a historical redirect", async () => {
+    calls.render.mockResolvedValue(new Response("current guide"));
     const response = await entry.fetch(
       new Request("https://otto-code.me/docs/plugins/migration?from=old"),
       {},
       context,
     );
-    expect(response.status).toBe(301);
-    expect(response.headers.get("location")).toBe(
-      "https://otto-code.me/docs/plugins/v0.8/migration?from=old",
-    );
-    expect(calls.render).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+    expect(calls.render).toHaveBeenCalledOnce();
   });
 
   it("keeps Otto feedback intake ahead of document and SSR routing", async () => {
@@ -74,7 +73,6 @@ describe("SSR platform and documentation response contracts", () => {
     });
     expect(await entry.fetch(request, {}, context)).toBe(accepted);
     expect(calls.feedback).toHaveBeenCalledExactlyOnceWith(request);
-    expect(calls.redirect).not.toHaveBeenCalled();
     expect(calls.render).not.toHaveBeenCalled();
   });
 });

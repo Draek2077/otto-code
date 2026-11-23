@@ -6,6 +6,8 @@ order: 90
 category: Troubleshooting
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Troubleshooting
 
 Almost every "it works in my terminal but not in Otto" problem is the same thing: Otto and your terminal aren't searching the same `PATH`. This page covers how to spot that and fix it.

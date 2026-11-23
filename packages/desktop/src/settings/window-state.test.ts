@@ -13,7 +13,7 @@ import {
 } from "./window-state";
 
 async function createTempUserDataDir(): Promise<string> {
-  return await mkdtemp(path.join(os.tmpdir(), "otto-window-state-"));
+  return await mkdtemp(path.join(os.tmpdir(), "paseo-window-state-"));
 }
 
 function stateFilePath(userDataPath: string): string {
@@ -48,24 +48,6 @@ describe("window-state store", () => {
     const store = createWindowStateStore({ userDataPath });
 
     const state: WindowState = { x: 100, y: 200, width: 1000, height: 700, isMaximized: false };
-    await store.save(state);
-
-    expect(await store.load()).toEqual(state);
-  });
-
-  it("round-trips persisted overlay colors so the next launch can seed them", async () => {
-    const userDataPath = await createTempUserDataDir();
-    directories.add(userDataPath);
-    const store = createWindowStateStore({ userDataPath });
-
-    const state: WindowState = {
-      x: 100,
-      y: 200,
-      width: 1000,
-      height: 700,
-      isMaximized: false,
-      overlay: { backgroundColor: "#161b1a", foregroundColor: "#d4d4d8" },
-    };
     await store.save(state);
 
     expect(await store.load()).toEqual(state);
@@ -219,34 +201,5 @@ describe("clampWindowStateToWorkAreas", () => {
     const state: WindowState = { x: 100, y: 100, width: 1000, height: 700, isMaximized: true };
 
     expect(clampWindowStateToWorkAreas(state, [PRIMARY]).isMaximized).toBe(true);
-  });
-
-  it("carries persisted overlay colors through clamping so launch can seed them", () => {
-    const overlay = { backgroundColor: "#161b1a", foregroundColor: "#d4d4d8" };
-
-    // Unchanged path.
-    const inside: WindowState = {
-      x: 100,
-      y: 100,
-      width: 1000,
-      height: 700,
-      isMaximized: false,
-      overlay,
-    };
-    expect(clampWindowStateToWorkAreas(inside, [PRIMARY]).overlay).toEqual(overlay);
-
-    // Reposition/shrink path must not drop the overlay.
-    const oversized: WindowState = {
-      x: 1820,
-      y: 0,
-      width: 3000,
-      height: 2000,
-      isMaximized: false,
-      overlay,
-    };
-    expect(clampWindowStateToWorkAreas(oversized, [PRIMARY]).overlay).toEqual(overlay);
-
-    // No-display path.
-    expect(clampWindowStateToWorkAreas(inside, []).overlay).toEqual(overlay);
   });
 });

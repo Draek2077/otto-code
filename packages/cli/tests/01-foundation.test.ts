@@ -1,4 +1,5 @@
 #!/usr/bin/env npx zx
+// OTTO(identity): invoke Otto locally without downloading a CLI.
 
 /**
  * Phase 1: Foundation Tests
@@ -8,7 +9,7 @@
  * - otto --help shows commands
  */
 
-import { $ } from "./helpers/zx-shell.ts";
+import { $ } from "zx";
 
 $.verbose = false;
 

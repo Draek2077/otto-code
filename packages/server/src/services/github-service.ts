@@ -1,12 +1,20 @@
-import { homedir } from "node:os";
 import { z } from "zod";
+import { createGitHubProjectReads, type GitHubProjectReads } from "./otto/github-projects.js"; // OTTO(kanban): reuse host/account policy.
+import {
+  createGitHubProjectWrites,
+  type GitHubProjectWrites,
+} from "./otto/github-project-commands.js"; // OTTO(kanban): explicit host-owned commands.
 import {
   isGitHubHost,
   parseGitHubRemoteUrl,
   parseGitRemoteLocation,
-} from "@otto-code/protocol/git-remote";
+} from "@getpaseo/protocol/git-remote";
 import { findExecutable } from "../executable-resolution/executable-resolution.js";
 import { runGitCommand } from "../utils/run-git-command.js";
+import {
+  buildForkLocalBranchName,
+  buildPullHeadCheckoutRefs,
+} from "../utils/change-request-checkout.js";
 import { execCommand } from "../utils/spawn.js";
 import { resolveSshHostname } from "../utils/ssh-hostname.js";
 import {
@@ -25,7 +33,6 @@ import {
   createUnavailableSearchResult,
   normalizeForgeSearchKinds,
   parseOptionalTime,
-  sortPullRequestsLatestFirst,
 } from "./forge-service.js";
 import type {
   CheckAnnotation,
@@ -119,6 +126,11 @@ export const GITHUB_POLL_ALIGNMENT_MS = 5_000;
 const GITHUB_GRAPHQL_RESERVE_RATIO = 0.4;
 const GITHUB_GRAPHQL_RESET_GRACE_MS = 1_000;
 const BATCH_PR_CANDIDATE_LIMIT = 10;
+// How many of a fork branch's own pull requests are read in full. One is the
+// normal case; the rest are earlier attempts on the same branch, and the one
+// carrying the checkout's head commit is read whichever attempt it belongs to.
+const FORK_PR_VIEW_LIMIT = 3;
+const FORK_PR_PAGE_SIZE = 100;
 const FROZEN_PR_CHECKS_CACHE_MAX_ENTRIES = 512;
 const GITHUB_ENV = {
   GIT_TERMINAL_PROMPT: "0",
@@ -330,22 +342,6 @@ const GitHubPullRequestFactsGraphqlSchema = z.object({
   }),
 });
 
-const GitHubPullRequestHeadShaGraphqlSchema = z.object({
-  data: z.object({
-    repository: z
-      .object({
-        pullRequest: z
-          .object({
-            headRefOid: z.string().optional(),
-          })
-          .nullable()
-          .optional(),
-      })
-      .nullable()
-      .optional(),
-  }),
-});
-
 const CurrentPullRequestStatusSchema = z.object({
   number: z.number().optional(),
   url: z.string().catch(""),
@@ -354,8 +350,6 @@ const CurrentPullRequestStatusSchema = z.object({
   isDraft: z.boolean().optional().catch(false),
   baseRefName: z.string().catch(""),
   headRefName: z.string().catch(""),
-  // Never requested from `gh pr view/list` (older gh rejects the field), but the
-  // batched GraphQL poll carries it so merged PRs can match the checkout SHA.
   headRefOid: z.string().optional(),
   mergedAt: z.string().nullable().optional(),
   statusCheckRollup: z.unknown().optional(),
@@ -390,26 +384,6 @@ const PullRequestTimelineCommentNodeSchema = z.object({
   url: z.string().catch(""),
   createdAt: z.string().nullable().catch(null),
   author: TimelineAuthorSchema,
-  reactionGroups: z
-    .array(
-      z.object({
-        content: z
-          .enum([
-            "THUMBS_UP",
-            "THUMBS_DOWN",
-            "LAUGH",
-            "HOORAY",
-            "CONFUSED",
-            "HEART",
-            "ROCKET",
-            "EYES",
-          ])
-          .catch("THUMBS_UP"),
-        viewerHasReacted: z.boolean().catch(false),
-        users: z.object({ totalCount: z.number().catch(0) }).catch({ totalCount: 0 }),
-      }),
-    )
-    .catch([]),
 });
 
 const PullRequestReviewThreadCommentNodeSchema = PullRequestTimelineCommentNodeSchema.extend({
@@ -497,6 +471,16 @@ const GitHubRepoViewSchema = z.object({
     .optional(),
 });
 
+const ForkPullRequestRefsSchema = z.array(
+  z.object({
+    number: z.number(),
+    head: z
+      .object({ sha: z.string().catch("") })
+      .nullable()
+      .optional(),
+  }),
+);
+
 const PullRequestCheckoutTargetSchema = z.object({
   data: z.object({
     repository: z.object({
@@ -544,10 +528,8 @@ query PullRequestCheckoutTarget($owner: String!, $name: String!, $number: Int!) 
   }
 }`;
 
-// `headRefOid` is not supported by every gh release. Commit-aware matching
-// fetches it through GraphQL only when a checkout SHA makes it necessary.
 const CURRENT_PR_STATUS_BASE_FIELDS =
-  "number,url,title,state,isDraft,baseRefName,headRefName,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
+  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
 const CURRENT_PR_STATUS_FIELDS = `${CURRENT_PR_STATUS_BASE_FIELDS},statusCheckRollup`;
 
 const PULL_REQUEST_STATUS_FACTS_QUERY = `
@@ -577,15 +559,6 @@ query PullRequestStatusFacts($owner: String!, $name: String!, $number: Int!) {
   }
 }`;
 
-const PULL_REQUEST_HEAD_SHA_QUERY = `
-query PullRequestHeadSha($owner: String!, $name: String!, $number: Int!) {
-  repository(owner: $owner, name: $name) {
-    pullRequest(number: $number) {
-      headRefOid
-    }
-  }
-}`;
-
 const PULL_REQUEST_TIMELINE_QUERY = `
 query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
   repository(owner: $owner, name: $name) {
@@ -604,11 +577,6 @@ query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
             url
             avatarUrl
           }
-          reactionGroups {
-            content
-            viewerHasReacted
-            users { totalCount }
-          }
         }
         pageInfo {
           hasNextPage
@@ -625,11 +593,6 @@ query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
             login
             url
             avatarUrl
-          }
-          reactionGroups {
-            content
-            viewerHasReacted
-            users { totalCount }
           }
         }
         pageInfo {
@@ -656,11 +619,6 @@ query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
                 url
                 avatarUrl
               }
-              reactionGroups {
-                content
-                viewerHasReacted
-                users { totalCount }
-              }
               pullRequestReview {
                 id
               }
@@ -677,20 +635,6 @@ query PullRequestTimeline($owner: String!, $name: String!, $number: Int!) {
     }
   }
 }`;
-
-const SET_PULL_REQUEST_THREAD_RESOLVED_MUTATION = `
-mutation SetPullRequestThreadResolved($threadId: ID!, $resolved: Boolean!) {
-  resolve: resolveReviewThread(input: {threadId: $threadId}) @include(if: $resolved) { thread { id } }
-  unresolve: unresolveReviewThread(input: {threadId: $threadId}) @skip(if: $resolved) { thread { id } }
-}`;
-
-const SET_PULL_REQUEST_COMMENT_REACTION_MUTATION = `
-mutation SetPullRequestCommentReaction($commentId: ID!, $content: ReactionContent!, $reacted: Boolean!) {
-  add: addReaction(input: {subjectId: $commentId, content: $content}) @include(if: $reacted) { reaction { content } }
-  remove: removeReaction(input: {subjectId: $commentId, content: $content}) @skip(if: $reacted) { reaction { content } }
-}`;
-
-const GitHubMutationSchema = z.object({ data: z.unknown().optional() });
 
 const BatchPollPrNodeSchema = z.object({
   number: z.number(),
@@ -1034,45 +978,6 @@ export type GitHubCommandRunner = (
   options: GitHubCommandRunnerOptions,
 ) => Promise<GitHubCommandResult>;
 
-// Host-level gh calls (repo listing/creation) address the authenticated account,
-// not a checkout, but `gh` still needs a working directory to spawn in. The home
-// directory is the one path guaranteed to exist and guaranteed *not* to be a git
-// repo, so gh can't silently infer a repo context we didn't ask for.
-const HOST_LEVEL_GH_CWD = homedir();
-
-const GITHUB_REPO_LIST_DEFAULT_LIMIT = 30;
-const GITHUB_REPO_LIST_MAX_LIMIT = 100;
-
-// Shape of a repository as returned by the GitHub REST API. Only the fields the
-// New project page renders; `.catch()` keeps one odd repo from failing the list.
-const GitHubApiRepositorySchema = z.object({
-  name: z.string(),
-  full_name: z.string(),
-  clone_url: z.string().catch(""),
-  private: z.boolean().catch(false),
-  description: z.string().nullish().catch(null),
-  updated_at: z.string().nullish().catch(null),
-  owner: z
-    .object({ login: z.string().catch("") })
-    .nullish()
-    .catch(null),
-});
-
-const GitHubApiRepositoryCreateSchema = z.object({
-  full_name: z.string(),
-  clone_url: z.string().catch(""),
-  html_url: z.string().nullish().catch(null),
-  default_branch: z.string().nullish().catch(null),
-});
-
-const GitHubApiUserSchema = z.object({
-  login: z.string(),
-});
-
-const GitHubApiOrganizationSchema = z.object({
-  login: z.string(),
-});
-
 const DIRECT_PULL_REQUEST_MERGE_STATE_ALLOWLIST = new Set(["CLEAN", "HAS_HOOKS"]);
 
 export interface GitHubRepositorySummary {
@@ -1091,59 +996,10 @@ export interface SearchGitHubRepositoriesOptions {
   limit?: number;
 }
 
-// ── Host-level repository operations ─────────────────────────────────────
-// These address a provider account rather than a checkout: the New project
-// page uses them before any repository exists on disk, so unlike every other
-// method on this interface they take no cwd. Providers that can't do them
-// leave the method undefined and report the capability as false.
-
-export interface ListHostingRepositoriesOptions {
-  query?: string;
-  limit?: number;
-}
-
-export interface HostingRepositorySummary {
-  fullName: string;
-  name: string;
-  owner: string;
-  cloneUrl: string;
-  isPrivate: boolean;
-  description: string | null;
-  updatedAt: string | null;
-}
-
-export interface HostingOwnerSummary {
-  id: string;
-  label: string;
-  kind: string;
-}
-
-export interface CreateHostingRepositoryOptions {
-  // Null means "the authenticated identity's default namespace".
-  owner: string | null;
-  name: string;
-  description?: string;
-  visibility: "private" | "public";
-}
-
-export interface HostingRepositoryCreateResult {
-  fullName: string;
-  // HTTPS remote URL to wire as `origin`.
-  cloneUrl: string;
-  webUrl: string | null;
-  // Branch the provider initialized the remote with, when it created one.
-  defaultBranch: string | null;
-}
-
 export interface GitHubService extends ForgeService {
+  readonly projectBoards: GitHubProjectReads; // OTTO(kanban): read-only typed host bridge.
+  readonly projectBoardWrites: GitHubProjectWrites; // OTTO(kanban): no alternate CLI/auth path.
   searchRepositories(options: SearchGitHubRepositoriesOptions): Promise<GitHubRepositorySummary[]>;
-  // Host-level, cwd-free. Optional: a provider without the matching capability
-  // omits them entirely rather than throwing at call time.
-  listRepositories?(options: ListHostingRepositoriesOptions): Promise<HostingRepositorySummary[]>;
-  listOwners?(): Promise<HostingOwnerSummary[]>;
-  createRepository?(
-    options: CreateHostingRepositoryOptions,
-  ): Promise<HostingRepositoryCreateResult>;
 }
 
 export class GitHubCliMissingError extends ForgeCliMissingError {
@@ -2174,6 +2030,8 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
 
   api = {
     authProbeCanThrow: true,
+    projectBoards: createGitHubProjectReads({ run, resolveRepository: resolveRepoSlugCached }), // OTTO(kanban)
+    projectBoardWrites: createGitHubProjectWrites({ run }), // OTTO(kanban)
 
     listPullRequests(input) {
       return cached({
@@ -2197,7 +2055,7 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
             z.array(GitHubPullRequestSummarySchema),
             "[]",
           );
-          return sortPullRequestsLatestFirst(items.map(toPullRequestSummary));
+          return items.map(toPullRequestSummary);
         },
       });
     },
@@ -2259,17 +2117,11 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
     },
 
     defaultCheckoutRefs({ changeRequestNumber }) {
-      return [
-        { remoteName: "origin", remoteRef: `refs/pull/${changeRequestNumber}/head` },
-        { remoteName: "upstream", remoteRef: `refs/pull/${changeRequestNumber}/head` },
-      ];
+      return buildPullHeadCheckoutRefs(changeRequestNumber);
     },
 
     buildPrLocalBranchName({ headRef, checkoutTarget }) {
-      const owner = checkoutTarget.isCrossRepository
-        ? normalizeGitHubOwnerForBranch(checkoutTarget.headOwnerLogin)
-        : null;
-      return owner ? `${owner}/${headRef}` : headRef;
+      return buildForkLocalBranchName({ headRef, ...checkoutTarget });
     },
 
     supportsCrossRepoCheckoutWithoutRefs: true,
@@ -2387,46 +2239,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
       });
     },
 
-    async setPullRequestThreadResolved(input) {
-      await runGhJson(
-        [
-          "api",
-          "graphql",
-          "-f",
-          `query=${SET_PULL_REQUEST_THREAD_RESOLVED_MUTATION}`,
-          "-F",
-          `threadId=${input.threadId}`,
-          "-F",
-          `resolved=${input.resolved ? "true" : "false"}`,
-        ],
-        { cwd: input.cwd },
-        GitHubMutationSchema,
-        "{}",
-      );
-      api.invalidate({ cwd: input.cwd });
-    },
-
-    async setPullRequestCommentReaction(input) {
-      await runGhJson(
-        [
-          "api",
-          "graphql",
-          "-f",
-          `query=${SET_PULL_REQUEST_COMMENT_REACTION_MUTATION}`,
-          "-F",
-          `commentId=${input.commentId}`,
-          "-F",
-          `content=${input.content}`,
-          "-F",
-          `reacted=${input.reacted ? "true" : "false"}`,
-        ],
-        { cwd: input.cwd },
-        GitHubMutationSchema,
-        "{}",
-      );
-      api.invalidate({ cwd: input.cwd });
-    },
-
     getCheckDetails(input) {
       const { repoOwner, repoName, checkRunId } = input;
       if (!repoOwner || !repoName) {
@@ -2529,76 +2341,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
           };
         },
       });
-    },
-
-    async listRepositories(input) {
-      const limit = clampRepositoryListLimit(input.limit);
-      // `gh api` over /user/repos rather than `gh repo list`: the same call
-      // shape works for the search path below and needs no per-owner argument.
-      const stdout = await run(
-        [
-          "api",
-          "--paginate",
-          `/user/repos?per_page=${limit}&sort=updated&affiliation=owner,collaborator,organization_member`,
-        ],
-        { cwd: HOST_LEVEL_GH_CWD },
-      );
-      const repositories = z
-        .array(GitHubApiRepositorySchema)
-        .catch([])
-        .parse(JSON.parse(stdout || "[]"))
-        .map(toHostingRepositorySummaryFromGitHub);
-      return filterRepositoriesByQuery(repositories, input.query).slice(0, limit);
-    },
-
-    async listOwners() {
-      const [userStdout, orgsStdout] = await Promise.all([
-        run(["api", "/user"], { cwd: HOST_LEVEL_GH_CWD }),
-        // A token without the `read:org` scope still lists repos fine, so a
-        // failure here must not take the personal account down with it.
-        run(["api", "/user/orgs?per_page=100"], { cwd: HOST_LEVEL_GH_CWD }).catch(() => "[]"),
-      ]);
-      const user = GitHubApiUserSchema.parse(JSON.parse(userStdout || "{}"));
-      const organizations = z
-        .array(GitHubApiOrganizationSchema)
-        .catch([])
-        .parse(JSON.parse(orgsStdout || "[]"));
-      return [
-        { id: user.login, label: user.login, kind: "user" },
-        ...organizations.map((org) => ({ id: org.login, label: org.login, kind: "organization" })),
-      ];
-    },
-
-    async createRepository(input) {
-      // Personal repos go to /user/repos; an explicit owner that isn't the
-      // authenticated user is an org, which has its own endpoint.
-      const owner = input.owner?.trim() ?? "";
-      const endpoint = owner ? `/orgs/${owner}/repos` : "/user/repos";
-      const args = ["api", "-X", "POST", endpoint, "-f", `name=${input.name}`];
-      if (input.description) {
-        args.push("-f", `description=${input.description}`);
-      }
-      args.push("-F", `private=${input.visibility === "private" ? "true" : "false"}`);
-      let stdout: string;
-      try {
-        stdout = await run(args, { cwd: HOST_LEVEL_GH_CWD });
-      } catch (error) {
-        // A personal-account owner reaches /orgs/<user>/repos and 404s. Retry
-        // on the user endpoint rather than making the caller know which is which.
-        if (!owner) {
-          throw error;
-        }
-        stdout = await run(["api", "-X", "POST", "/user/repos", ...args.slice(4)], {
-          cwd: HOST_LEVEL_GH_CWD,
-        });
-      }
-      const created = GitHubApiRepositoryCreateSchema.parse(JSON.parse(stdout || "{}"));
-      return {
-        fullName: created.full_name,
-        cloneUrl: created.clone_url,
-        webUrl: created.html_url ?? null,
-        defaultBranch: created.default_branch ?? null,
-      };
     },
 
     async searchRepositories(input) {
@@ -2928,11 +2670,6 @@ export function createGitHubService(options: CreateGitHubServiceOptions = {}): G
   return api;
 }
 
-function normalizeGitHubOwnerForBranch(owner: string | null): string | null {
-  const normalized = owner?.trim().toLowerCase() ?? "";
-  return /^[a-z0-9-]+$/.test(normalized) ? normalized : null;
-}
-
 function getGithubStatusFacts(
   status: PullRequestCommandStatus | null | undefined,
 ): GitHubPullRequestStatusFacts | null {
@@ -3109,43 +2846,6 @@ const githubCliRunner = createForgeCliRunner({
   },
 });
 
-function clampRepositoryListLimit(limit: number | undefined): number {
-  if (!limit || !Number.isFinite(limit)) {
-    return GITHUB_REPO_LIST_DEFAULT_LIMIT;
-  }
-  return Math.min(Math.max(Math.trunc(limit), 1), GITHUB_REPO_LIST_MAX_LIMIT);
-}
-
-function toHostingRepositorySummaryFromGitHub(
-  repository: z.infer<typeof GitHubApiRepositorySchema>,
-): HostingRepositorySummary {
-  // full_name is "owner/name"; fall back to it when the owner object is absent.
-  const owner = repository.owner?.login || repository.full_name.split("/")[0] || "";
-  return {
-    fullName: repository.full_name,
-    name: repository.name,
-    owner,
-    cloneUrl: repository.clone_url,
-    isPrivate: repository.private,
-    description: repository.description ?? null,
-    updatedAt: repository.updated_at ?? null,
-  };
-}
-
-// Client-side filter. The listing endpoints these back onto return the caller's
-// own repositories rather than a search index, so a substring match over the
-// already-fetched page is both sufficient and consistent across providers.
-export function filterRepositoriesByQuery(
-  repositories: HostingRepositorySummary[],
-  query: string | undefined,
-): HostingRepositorySummary[] {
-  const needle = query?.trim().toLowerCase() ?? "";
-  if (!needle) {
-    return repositories;
-  }
-  return repositories.filter((repository) => repository.fullName.toLowerCase().includes(needle));
-}
-
 async function runGhCommand(
   args: string[],
   options: GitHubCommandRunnerOptions,
@@ -3269,15 +2969,9 @@ async function resolveCurrentPullRequestView(options: {
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
 }): Promise<CurrentPullRequestStatus | null> {
   const viewCandidate = await tryCurrentPullRequestView(options);
-  const hydratedViewCandidates = await hydratePullRequestCandidateHeadShas({
-    candidates: viewCandidate ? [viewCandidate] : [],
-    cwd: options.cwd,
-    headSha: options.headSha,
-    run: options.run,
-  });
   const viewMatch = viewCandidate
     ? pickPullRequestCandidate({
-        candidates: hydratedViewCandidates,
+        candidates: [viewCandidate],
         headRef: options.headRef,
         headSha: options.headSha,
         headRepositoryOwner: options.headRepositoryOwner,
@@ -3287,8 +2981,6 @@ async function resolveCurrentPullRequestView(options: {
     return viewMatch.status;
   }
 
-  let listHeadRef = options.headRef;
-  let listRepo: string | undefined;
   let headRepositoryOwner = options.headRepositoryOwner;
 
   if (!headRepositoryOwner) {
@@ -3300,26 +2992,22 @@ async function resolveCurrentPullRequestView(options: {
       return null;
     }
     if (parentOwner && parentName) {
-      listHeadRef = `${forkOwner}:${options.headRef}`;
-      listRepo = `${parentOwner}/${parentName}`;
+      return resolveForkPullRequestView({
+        ...options,
+        forkOwner,
+        repo: `${parentOwner}/${parentName}`,
+      });
     }
     headRepositoryOwner = forkOwner;
   }
 
   const candidates = await listCurrentPullRequestCandidates({
     cwd: options.cwd,
-    headRef: listHeadRef,
-    run: options.run,
-    repo: listRepo,
-  });
-  const hydratedCandidates = await hydratePullRequestCandidateHeadShas({
-    candidates,
-    cwd: options.cwd,
-    headSha: options.headSha,
+    headRef: options.headRef,
     run: options.run,
   });
   const match = pickPullRequestCandidate({
-    candidates: hydratedCandidates,
+    candidates,
     headRef: options.headRef,
     headSha: options.headSha,
     headRepositoryOwner,
@@ -3327,35 +3015,75 @@ async function resolveCurrentPullRequestView(options: {
   return match?.status ?? null;
 }
 
-async function hydratePullRequestCandidateHeadShas(options: {
-  candidates: ResolvedPullRequestCandidate[];
+// A fork checkout's pull request lives in the parent repository, where only
+// its head repository tells it apart from every other fork's pull request on
+// the same branch name. `gh pr list --head` cannot ask that question: it
+// forwards the whole value as a head branch name, so "owner:branch" matches
+// nothing (cli/cli#10945), and the bare branch name loses a common name like
+// `main` among the other forks crowding the candidate page. The REST pulls
+// endpoint is the only lookup that takes a head repository, so it names the
+// pull requests and the ordinary view path reads each one's status.
+async function resolveForkPullRequestView(options: {
   cwd: string;
+  headRef: string;
   headSha?: string;
+  forkOwner: string;
+  repo: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-}): Promise<ResolvedPullRequestCandidate[]> {
-  if (!options.headSha) {
-    return options.candidates;
-  }
-
-  return Promise.all(
-    options.candidates.map(async (candidate) => {
-      if (candidate.status.state === "open") {
-        return candidate;
-      }
-      const { repoOwner, repoName, number } = candidate.status;
-      if (!repoOwner || !repoName || typeof number !== "number") {
-        return candidate;
-      }
-      const headSha = await loadPullRequestHeadSha({
+}): Promise<CurrentPullRequestStatus | null> {
+  const numbers = await listForkPullRequestNumbers(options);
+  const candidates = await Promise.all(
+    numbers.map((number) =>
+      tryCurrentPullRequestView({
         cwd: options.cwd,
-        owner: repoOwner,
-        name: repoName,
-        number,
+        headRef: options.headRef,
         run: options.run,
-      });
-      return headSha ? { ...candidate, headSha } : candidate;
-    }),
+        args: ["pr", "view", String(number), "--repo", options.repo],
+      }),
+    ),
   );
+  const match = pickPullRequestCandidate({
+    candidates: candidates.filter(
+      (candidate): candidate is ResolvedPullRequestCandidate => candidate !== null,
+    ),
+    headRef: options.headRef,
+    headSha: options.headSha,
+    headRepositoryOwner: options.forkOwner,
+  });
+  return match?.status ?? null;
+}
+
+// The endpoint answers with the fork branch's pull requests, newest first, so
+// a branch reused for several attempts can carry the checkout's head commit on
+// an older one. Those are read first, and the rest of the window is filled
+// newest-first, so the full read stays bounded without dropping the attempt the
+// checkout is actually sitting on.
+async function listForkPullRequestNumbers(options: {
+  cwd: string;
+  headRef: string;
+  headSha?: string;
+  forkOwner: string;
+  repo: string;
+  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
+}): Promise<number[]> {
+  const query = new URLSearchParams({
+    state: "all",
+    per_page: String(FORK_PR_PAGE_SIZE),
+    head: `${options.forkOwner}:${options.headRef}`,
+  });
+  const args = ["api", `repos/${options.repo}/pulls?${query.toString()}`];
+  const stdout = await options.run(args, { cwd: options.cwd });
+  const refs = parseGitHubJsonOutput(stdout, ForkPullRequestRefsSchema, {
+    args,
+    cwd: options.cwd,
+    emptyFallback: "[]",
+  });
+  function carriesHeadSha(ref: (typeof refs)[number]): boolean {
+    return options.headSha !== undefined && ref.head?.sha === options.headSha;
+  }
+  return [...refs.filter(carriesHeadSha), ...refs.filter((ref) => !carriesHeadSha(ref))]
+    .slice(0, FORK_PR_VIEW_LIMIT)
+    .map((ref) => ref.number);
 }
 
 async function addCurrentPullRequestGithubFacts(options: {
@@ -3414,54 +3142,21 @@ async function loadPullRequestGithubFacts(options: {
   }
 }
 
-async function loadPullRequestHeadSha(options: {
-  cwd: string;
-  owner: string;
-  name: string;
-  number: number;
-  run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-}): Promise<string | undefined> {
-  const args = [
-    "api",
-    "graphql",
-    "-f",
-    `query=${PULL_REQUEST_HEAD_SHA_QUERY}`,
-    "-F",
-    `owner=${options.owner}`,
-    "-F",
-    `name=${options.name}`,
-    "-F",
-    `number=${options.number}`,
-  ];
-  try {
-    const stdout = await options.run(args, { cwd: options.cwd });
-    const parsed = parseGitHubJsonOutput(stdout, GitHubPullRequestHeadShaGraphqlSchema, {
-      args,
-      cwd: options.cwd,
-      emptyFallback: "{}",
-    });
-    return parsed.data.repository?.pullRequest?.headRefOid;
-  } catch (error) {
-    if (error instanceof GitHubCommandError) {
-      return undefined;
-    }
-    throw error;
-  }
-}
-
 async function tryCurrentPullRequestView(options: {
   cwd: string;
   headRef: string;
+  args?: string[];
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
 }): Promise<ResolvedPullRequestCandidate | null> {
+  const args = options.args ?? ["pr", "view"];
   try {
     const stdout = await runCurrentPullRequestStatusCommand({
       cwd: options.cwd,
       run: options.run,
-      args: ["pr", "view"],
+      args,
     });
     return parseCurrentPullRequestCandidate(stdout, options.headRef, {
-      args: ["pr", "view", "--json", CURRENT_PR_STATUS_FIELDS],
+      args: [...args, "--json", CURRENT_PR_STATUS_FIELDS],
       cwd: options.cwd,
     });
   } catch (error) {
@@ -3476,13 +3171,8 @@ async function listCurrentPullRequestCandidates(options: {
   cwd: string;
   headRef: string;
   run: (args: string[], options: GitHubCommandRunnerOptions) => Promise<string>;
-  repo?: string;
 }): Promise<ResolvedPullRequestCandidate[]> {
-  const args = ["pr", "list"];
-  if (options.repo) {
-    args.push("--repo", options.repo);
-  }
-  args.push("--state", "all", "--head", options.headRef, "--limit", "10");
+  const args = ["pr", "list", "--state", "all", "--head", options.headRef, "--limit", "10"];
   try {
     const stdout = await runCurrentPullRequestStatusCommand({
       cwd: options.cwd,
@@ -3841,6 +3531,7 @@ function toPullRequestCheckoutTarget(
     headRepositorySshUrl: pullRequest.headRepository?.sshUrl || null,
     headRepositoryUrl: pullRequest.headRepository?.url || null,
     isCrossRepository: pullRequest.isCrossRepository,
+    headRefKind: "branch",
   };
 }
 
@@ -3897,7 +3588,6 @@ function toPullRequestTimeline(
     repoOwner: identity.repoOwner,
     repoName: identity.repoName,
     items,
-    commentReactionsSupported: true,
     // S3 deliberately caps timeline fetches at the first 100 reviews, comments, and review threads.
     truncated: Boolean(
       pullRequest?.reviews.pageInfo.hasNextPage ||
@@ -3943,15 +3633,6 @@ function toPullRequestTimelineCommentItem(
     body: normalizeGitHubTimelineBody(comment.body ?? "", comment.bodyHTML ?? ""),
     createdAt: parseOptionalTime(comment.createdAt ?? null),
     url: comment.url,
-    ...(comment.reactionGroups.length > 0
-      ? {
-          reactions: comment.reactionGroups.map((reaction) => ({
-            content: reaction.content,
-            count: reaction.users.totalCount,
-            viewerHasReacted: reaction.viewerHasReacted,
-          })),
-        }
-      : {}),
   };
 }
 
@@ -4328,7 +4009,7 @@ async function resolveGitHubEnterpriseHost(cwd: string): Promise<string | null> 
     // before probing/routing, or gh would be pointed at the alias name.
     host = (await resolveSshHostname(host)) ?? host;
   }
-  // github.com (including via ssh alias) needs no GH_HOST - gh defaults there.
+  // github.com (including via ssh alias) needs no GH_HOST — gh defaults there.
   // Only a self-hosted/Enterprise host must be passed explicitly.
   if (isGitHubHost(host)) {
     return null;

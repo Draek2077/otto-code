@@ -2,66 +2,57 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
   type ReactElement,
 } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
-import { CalendarPlus, Plus } from "@/components/icons/material-icons";
+import { CalendarClock, Plus } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { MenuHeader } from "@/components/headers/menu-header";
-import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
+import { ExternalLink } from "@/components/ui/external-link";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { ScheduleFormSheet } from "@/components/schedules/schedule-form-sheet";
-import { ScheduleGrid, type ScheduleRowView } from "@/components/schedules/schedule-grid";
-import {
-  TranscriptViewDialog,
-  type TranscriptViewDialogProps,
-} from "@/components/transcript-view-dialog";
+import { SchedulesTable, type ScheduleRowView } from "@/components/schedules/schedules-table";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useAggregatedAgents } from "@/hooks/use-aggregated-agents";
 import { useProjects } from "@/hooks/use-projects";
 import {
-  resolveInitialAggregateProjectScope,
-  usePreferredWorkspaceProjectScope,
-} from "@/hooks/use-preferred-workspace-project-scope";
-import {
   useSchedules,
+  type AggregateLoadState,
   type AggregatedSchedule,
   type ScheduleHostError,
 } from "@/hooks/use-schedules";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
-import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
 import {
   resolveSchedule,
   type ScheduleBucket,
   type ScheduleTargetAgent,
 } from "@/schedules/schedule-derivation";
+import { resolveSchedulesScreenBodyState } from "./schedules-screen-state";
 import {
   buildProjectNameByCwd,
   buildScheduleProjectTargets,
-  describeScheduleCwd,
 } from "@/schedules/schedule-project-targets";
-import type { ScheduleSummary } from "@otto-code/protocol/schedule/types";
+import type { ScheduleSummary } from "@getpaseo/protocol/schedule/types";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
+import { OttoSchedulesEntry } from "@/otto/schedules/screen"; // OTTO(schedules): one capability boundary; original old-host UI stays intact.
 
 type FormState =
   | { mode: "closed" }
   | { mode: "create" }
   | { mode: "edit"; serverId: string; schedule: ScheduleSummary };
 
-type ScheduleStatusFilter = "all" | ScheduleBucket;
-
-const STATUS_FILTER_OPTIONS: { value: ScheduleStatusFilter; label: string; testID: string }[] = [
-  { value: "all", label: "All", testID: "schedules-filter-all" },
+const STATUS_FILTER_OPTIONS: { value: ScheduleBucket; label: string; testID: string }[] = [
   { value: "runnable", label: "Active", testID: "schedules-filter-active" },
-  { value: "failed", label: "Failed", testID: "schedules-filter-failed" },
   { value: "ended", label: "Ended", testID: "schedules-filter-ended" },
 ];
+
+const EMPTY_SCHEDULES: AggregatedSchedule[] = [];
 
 export function SchedulesScreen(): ReactElement {
   const isFocused = useIsFocused();
@@ -70,19 +61,15 @@ export function SchedulesScreen(): ReactElement {
     return <View style={styles.container} />;
   }
 
-  return <SchedulesScreenContent />;
+  return <OttoSchedulesEntry Legacy={SchedulesScreenContent} />;
 }
-
-const EMPTY_SCHEDULES: AggregatedSchedule[] = [];
 
 function SchedulesScreenContent(): ReactElement {
   const { loadState, hostErrors, isError, refetch } = useSchedules();
   const schedules = loadState.status === "loaded" ? loadState.data : EMPTY_SCHEDULES;
-  const isInitialLoad = loadState.status === "loading";
   const { agents } = useAggregatedAgents({ includeArchived: true });
   const { projects } = useProjects();
   const hosts = useHosts();
-  const preferredWorkspaceScope = usePreferredWorkspaceProjectScope();
   const runtime = getHostRuntimeStore();
   const runtimeVersion = useSyncExternalStore(
     (onStoreChange) => runtime.subscribeAll(onStoreChange),
@@ -108,18 +95,7 @@ function SchedulesScreenContent(): ReactElement {
 
   const [form, setForm] = useState<FormState>({ mode: "closed" });
   const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
-  const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
-  const hasExplicitScopeSelection = useRef(false);
-  const [statusFilter, setStatusFilter] = useState<ScheduleStatusFilter>("all");
-  const [transcriptTarget, setTranscriptTarget] =
-    useState<TranscriptViewDialogProps["target"]>(null);
-
-  const openCreate = useCallback(() => setForm({ mode: "create" }), []);
-  const openEdit = useCallback((schedule: AggregatedSchedule) => {
-    setForm({ mode: "edit", serverId: schedule.serverId, schedule });
-  }, []);
-  const closeForm = useCallback(() => setForm({ mode: "closed" }), []);
-  const closeTranscript = useCallback(() => setTranscriptTarget(null), []);
+  const [statusFilter, setStatusFilter] = useState<ScheduleBucket>("runnable");
 
   useEffect(() => {
     if (
@@ -130,56 +106,24 @@ function SchedulesScreenContent(): ReactElement {
     }
   }, [hosts, selectedHost]);
 
+  const openCreate = useCallback(() => setForm({ mode: "create" }), []);
+  const openEdit = useCallback((schedule: AggregatedSchedule) => {
+    setForm({ mode: "edit", serverId: schedule.serverId, schedule });
+  }, []);
+  const closeForm = useCallback(() => setForm({ mode: "closed" }), []);
+
   const agentsByKey = useMemo(() => {
     const map = new Map<string, ScheduleTargetAgent>();
     for (const agent of agents) {
-      map.set(`${agent.serverId}:${agent.id}`, {
-        title: agent.title,
-        provider: agent.provider,
-        cwd: agent.cwd,
-      });
+      map.set(`${agent.serverId}:${agent.id}`, { title: agent.title, provider: agent.provider });
     }
     return map;
   }, [agents]);
 
-  const scheduleProjectTargets = useMemo(() => buildScheduleProjectTargets(projects), [projects]);
   const projectNameByCwd = useMemo(
-    () => buildProjectNameByCwd(scheduleProjectTargets),
-    [scheduleProjectTargets],
+    () => buildProjectNameByCwd(buildScheduleProjectTargets(projects)),
+    [projects],
   );
-
-  // Every known project, whether or not it currently has schedules - mirrors
-  // the Artifacts project filter so the two screens stay consistent.
-  const projectOptions = useMemo<ProjectFilterOption[]>(() => {
-    const byId = new Map<string, ProjectFilterOption>();
-    for (const target of scheduleProjectTargets) {
-      if (!byId.has(target.cwd)) {
-        byId.set(target.cwd, { id: target.cwd, label: target.projectName });
-      }
-    }
-    return Array.from(byId.values());
-  }, [scheduleProjectTargets]);
-
-  useEffect(() => {
-    const initialScope = resolveInitialAggregateProjectScope({
-      hasExplicitSelection: hasExplicitScopeSelection.current,
-      preferredScope: preferredWorkspaceScope,
-      availableHostIds: hosts.map((host) => host.serverId),
-      projectTargets: scheduleProjectTargets,
-    });
-    if (!initialScope) return;
-    setSelectedHost(initialScope.serverId);
-    setProjectFilter(initialScope.cwd);
-  }, [hosts, preferredWorkspaceScope, scheduleProjectTargets]);
-
-  const handleSelectHost = useCallback((serverId: string) => {
-    hasExplicitScopeSelection.current = true;
-    setSelectedHost(serverId);
-  }, []);
-  const handleProjectFilterChange = useCallback((cwd: string | undefined) => {
-    hasExplicitScopeSelection.current = true;
-    setProjectFilter(cwd);
-  }, []);
 
   // Resolve every schedule's derived state and target line once, then partition
   // by the host and status filters. Sorted newest-first for a stable order
@@ -200,66 +144,45 @@ function SchedulesScreenContent(): ReactElement {
   }, [schedules, agentsByKey, projectNameByCwd, agentDirReadyHosts]);
 
   const visibleRows = useMemo<ScheduleRowView[]>(() => {
-    const singleHost = selectedHost !== ALL_HOSTS_OPTION_ID || hosts.length <= 1;
+    const singleHost = hosts.length <= 1;
     return resolvedRows
       .filter(
         ({ schedule, resolved }) =>
           (selectedHost === ALL_HOSTS_OPTION_ID || schedule.serverId === selectedHost) &&
-          (projectFilter === undefined ||
-            (resolved.cwd !== null && artifactBelongsToWorkspace(resolved.cwd, projectFilter))) &&
-          (statusFilter === "all" || resolved.bucket === statusFilter),
+          resolved.bucket === statusFilter,
       )
       .sort((a, b) => Date.parse(b.schedule.createdAt) - Date.parse(a.schedule.createdAt))
       .map(({ schedule, resolved }) => ({
         schedule,
         targetLabel: resolved.target.label,
         provider: resolved.target.provider,
-        projectName: resolved.cwd
-          ? describeScheduleCwd({
-              serverId: schedule.serverId,
-              cwd: resolved.cwd,
-              projectNameByCwd,
-            })
-          : null,
         state: resolved.state,
         serverName: schedule.serverName,
         singleHost,
       }));
-  }, [resolvedRows, projectFilter, selectedHost, statusFilter, hosts.length, projectNameByCwd]);
+  }, [resolvedRows, selectedHost, statusFilter, hosts.length]);
 
-  const visibleHostErrors = useMemo(
-    () =>
-      selectedHost === ALL_HOSTS_OPTION_ID
-        ? hostErrors
-        : hostErrors.filter((error) => error.serverId === selectedHost),
-    [hostErrors, selectedHost],
-  );
-
-  const showLoadError = isError && schedules.length === 0;
+  const showLoadError = isError && loadState.status !== "loaded";
+  const showHostFilter = hosts.length > 1;
 
   return (
     <View style={styles.container}>
       <MenuHeader title="Schedules" />
       <SchedulesScreenBody
         rows={visibleRows}
-        hostErrors={visibleHostErrors}
-        hasSchedules={schedules.length > 0}
-        isInitialLoad={isInitialLoad}
+        loadState={loadState}
+        hostErrors={hostErrors}
         showLoadError={showLoadError}
-        hosts={hosts}
-        selectedHost={selectedHost}
-        onSelectHost={handleSelectHost}
         statusFilter={statusFilter}
         onStatusFilterChange={setStatusFilter}
-        projectOptions={projectOptions}
-        projectFilter={projectFilter}
-        onProjectFilterChange={handleProjectFilterChange}
+        showHostFilter={showHostFilter}
+        hosts={hosts}
+        selectedHost={selectedHost}
+        onSelectHost={setSelectedHost}
         onRetry={refetch}
         onCreate={openCreate}
         onEdit={openEdit}
-        onOpenTranscript={setTranscriptTarget}
       />
-      <TranscriptViewDialog target={transcriptTarget} onClose={closeTranscript} />
       <ScheduleFormSheet
         serverId={form.mode === "edit" ? form.serverId : undefined}
         visible={form.mode === "create" || form.mode === "edit"}
@@ -273,42 +196,36 @@ function SchedulesScreenContent(): ReactElement {
 
 function SchedulesScreenBody({
   rows,
+  loadState,
   hostErrors,
-  hasSchedules,
-  isInitialLoad,
   showLoadError,
+  statusFilter,
+  onStatusFilterChange,
+  showHostFilter,
   hosts,
   selectedHost,
   onSelectHost,
-  statusFilter,
-  onStatusFilterChange,
-  projectOptions,
-  projectFilter,
-  onProjectFilterChange,
   onRetry,
   onCreate,
   onEdit,
-  onOpenTranscript,
 }: {
   rows: ScheduleRowView[];
+  loadState: AggregateLoadState<AggregatedSchedule>;
   hostErrors: ScheduleHostError[];
-  hasSchedules: boolean;
-  isInitialLoad: boolean;
   showLoadError: boolean;
+  statusFilter: ScheduleBucket;
+  onStatusFilterChange: (value: ScheduleBucket) => void;
+  showHostFilter: boolean;
   hosts: ReturnType<typeof useHosts>;
   selectedHost: string;
   onSelectHost: (serverId: string) => void;
-  statusFilter: ScheduleStatusFilter;
-  onStatusFilterChange: (value: ScheduleStatusFilter) => void;
-  projectOptions: ProjectFilterOption[];
-  projectFilter: string | undefined;
-  onProjectFilterChange: (projectId: string | undefined) => void;
   onRetry: () => void;
   onCreate: () => void;
   onEdit: (schedule: AggregatedSchedule) => void;
-  onOpenTranscript: (target: NonNullable<TranscriptViewDialogProps["target"]>) => void;
 }): ReactElement {
-  if (isInitialLoad) {
+  const bodyState = resolveSchedulesScreenBodyState({ loadState, showLoadError });
+
+  if (bodyState.kind === "loading") {
     return (
       <View style={styles.centered}>
         <LoadingSpinner size="large" color={styles.spinner.color} />
@@ -316,7 +233,7 @@ function SchedulesScreenBody({
     );
   }
 
-  if (showLoadError) {
+  if (bodyState.kind === "load-error") {
     return (
       <View style={styles.centered}>
         <Text style={styles.message}>Unable to load schedules</Text>
@@ -327,47 +244,40 @@ function SchedulesScreenBody({
     );
   }
 
-  if (!hasSchedules) {
+  if (bodyState.kind === "empty") {
     return (
-      <View style={styles.centered} testID="schedules-empty">
+      <View style={styles.centered}>
         {hostErrors.length > 0 ? <ScheduleHostErrorsBanner errors={hostErrors} /> : null}
-        <Text style={styles.message}>No schedules yet</Text>
-        <Button
-          variant="outline"
-          size="sm"
-          leftIcon={CalendarPlus}
-          onPress={onCreate}
-          testID="schedules-empty-new"
-        >
-          Create a schedule
-        </Button>
+        <SchedulesEmptyState onCreate={onCreate} testID="schedules-empty" />
       </View>
     );
   }
 
-  let emptyFilterText = "No schedules for this project";
-  if (statusFilter === "runnable") {
-    emptyFilterText = "No active schedules";
+  let schedulesContent: ReactElement;
+  if (rows.length > 0) {
+    schedulesContent = <SchedulesTable rows={rows} onEditSchedule={onEdit} />;
   } else if (statusFilter === "ended") {
-    emptyFilterText = "No ended schedules";
-  } else if (statusFilter === "failed") {
-    emptyFilterText = "No failed schedules";
+    schedulesContent = <SchedulesEndedEmptyState />;
+  } else {
+    schedulesContent = (
+      <View style={styles.filterEmpty}>
+        <SchedulesEmptyState onCreate={onCreate} testID="schedules-empty" />
+      </View>
+    );
   }
 
   return (
     <View style={styles.body}>
       <View style={styles.filterRow}>
-        <View style={styles.filterControls}>
-          {hosts.length > 1 ? (
-            <HostFilter hosts={hosts} selectedHost={selectedHost} onSelectHost={onSelectHost} />
-          ) : null}
-          <View style={styles.projectFilterSlot}>
-            <ProjectFilter
-              options={projectOptions}
-              value={projectFilter}
-              onChange={onProjectFilterChange}
+        <View style={styles.filterRowControls}>
+          {showHostFilter ? (
+            <HostFilter
+              hosts={hosts}
+              selectedHost={selectedHost}
+              onSelectHost={onSelectHost}
+              triggerTestID="schedules-host-filter-trigger"
             />
-          </View>
+          ) : null}
           <SegmentedControl
             size="sm"
             value={statusFilter}
@@ -377,10 +287,10 @@ function SchedulesScreenBody({
           />
         </View>
         <Button
+          variant="outline"
           leftIcon={Plus}
           onPress={onCreate}
           size="sm"
-          style={styles.newButton}
           testID="schedules-new"
         >
           New schedule
@@ -394,14 +304,44 @@ function SchedulesScreenBody({
         testID="schedules-list"
       >
         {hostErrors.length > 0 ? <ScheduleHostErrorsBanner errors={hostErrors} /> : null}
-        {rows.length > 0 ? (
-          <ScheduleGrid rows={rows} onEditSchedule={onEdit} onOpenTranscript={onOpenTranscript} />
-        ) : (
-          <View style={styles.filterEmpty}>
-            <Text style={styles.filterEmptyText}>{emptyFilterText}</Text>
-          </View>
-        )}
+        {schedulesContent}
       </ScrollView>
+    </View>
+  );
+}
+
+function SchedulesEmptyState({
+  onCreate,
+  testID,
+}: {
+  onCreate: () => void;
+  testID?: string;
+}): ReactElement {
+  return (
+    <View style={styles.emptyState} testID={testID}>
+      <CalendarClock size={styles.emptyIcon.width} color={styles.emptyIcon.color} />
+      <View style={styles.emptyTextStack}>
+        <Text style={styles.emptyTitle}>No active schedules</Text>
+        <Text style={styles.emptyDescription}>Schedules run agents on a cadence.</Text>
+        <ExternalLink
+          href={`${OTTO_WEBSITE_URL}/docs/schedules`}
+          /* OTTO(identity) */ label="See docs"
+        />
+      </View>
+      <Button variant="outline" leftIcon={Plus} onPress={onCreate} testID="schedules-empty-new">
+        New schedule
+      </Button>
+    </View>
+  );
+}
+
+function SchedulesEndedEmptyState(): ReactElement {
+  return (
+    <View style={styles.filterEmpty}>
+      <View style={styles.endedEmptyState}>
+        <CalendarClock size={styles.emptyIcon.width} color={styles.emptyIcon.color} />
+        <Text style={styles.emptyTitle}>No ended schedules</Text>
+      </View>
     </View>
   );
 }
@@ -440,34 +380,23 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    flexWrap: "wrap",
     gap: theme.spacing[3],
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingTop: theme.spacing[4],
   },
-  filterControls: {
-    flex: 1,
-    minWidth: 0,
+  filterRowControls: {
     flexDirection: "row",
     alignItems: "center",
-    flexWrap: "wrap",
     gap: theme.spacing[3],
-  },
-  projectFilterSlot: {
     flexShrink: 1,
-  },
-  // Tames the compactUp button doubling so the button, the project filter
-  // beside it, and the status filter below all share the compact 32px control
-  // height at every width.
-  newButton: {
-    minHeight: 32,
-    paddingHorizontal: theme.spacing[4],
+    flexWrap: "wrap",
   },
   scroll: {
     flex: 1,
     minHeight: 0,
   },
   scrollContent: {
+    flexGrow: 1,
     gap: theme.spacing[3],
     paddingTop: theme.spacing[4],
     paddingBottom: theme.spacing[6],
@@ -487,13 +416,36 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   filterEmpty: {
+    flexGrow: 1,
     paddingHorizontal: { xs: theme.spacing[3], md: theme.spacing[6] },
     paddingVertical: theme.spacing[6],
     alignItems: "center",
+    justifyContent: "center",
   },
-  filterEmptyText: {
+  emptyState: {
+    alignItems: "center",
+    gap: theme.spacing[4],
+    maxWidth: 420,
+    width: "100%",
+  },
+  endedEmptyState: {
+    alignItems: "center",
+    gap: theme.spacing[3],
+  },
+  emptyTextStack: {
+    alignItems: "center",
+    gap: theme.spacing[2],
+  },
+  emptyTitle: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.normal,
+    textAlign: "center",
+  },
+  emptyDescription: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
+    textAlign: "center",
   },
   message: {
     color: theme.colors.foregroundMuted,
@@ -504,5 +456,9 @@ const styles = StyleSheet.create((theme) => ({
   // useUnistyles (banned in new code).
   spinner: {
     color: theme.colors.foregroundMuted,
+  },
+  emptyIcon: {
+    color: theme.colors.foregroundMuted,
+    width: theme.iconSize.lg,
   },
 }));

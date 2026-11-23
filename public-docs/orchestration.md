@@ -6,6 +6,8 @@ order: 30
 category: Orchestration
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Orchestration
 
 Otto orchestration gives a coding agent control of the Otto daemon. The agent can discover every provider and model you have configured, create workspaces, launch other agents, send them follow-ups, and create heartbeats or schedules. The same work stays visible in the Otto app.

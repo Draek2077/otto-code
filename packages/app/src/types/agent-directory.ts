@@ -15,7 +15,6 @@ export type AgentDirectoryEntry = Pick<
   | "attentionReason"
   | "attentionTimestamp"
   | "archivedAt"
-  | "archiveBytes"
   | "createdAt"
   | "labels"
   | "projectPlacement"

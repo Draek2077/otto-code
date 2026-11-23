@@ -49,6 +49,8 @@ export interface Agent {
   // rate table, which is what used to make the numbers untrustworthy.
   costUsd?: number
   tokensMax: number
+  /** OTTO PATCH: false means the provider has not reported context occupancy. */
+  contextKnown?: boolean
   contextBreakdown: ContextBreakdown
   toolCalls: number
   timeAlive: number
@@ -164,6 +166,7 @@ export interface FileAttention {
   reads: number
   edits: number
   totalTokens: number   // how much context this file consumed
+  tokensKnown?: boolean // OTTO PATCH: absent per-file usage is not a measured zero
   lastAccessed: number
   agents: string[]      // which agents touched this file
 }

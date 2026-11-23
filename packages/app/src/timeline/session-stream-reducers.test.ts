@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from "vitest";
-import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
-import type { AgentTimelineItem, ToolCallDetail } from "@otto-code/protocol/agent-types";
+import { describe, expect, it } from "vitest";
+import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
+import type { AgentTimelineItem, ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import {
   createUserMessage,
   hydrateStreamState,
@@ -9,7 +9,6 @@ import {
 } from "@/types/stream";
 import {
   createAgentStreamReducerQueue,
-  createSessionAgentStreamReducerQueue,
   deriveAgentStreamTurnLiveness,
   processTimelineResponse,
   processAgentStreamEvent,
@@ -19,8 +18,6 @@ import {
   type AgentStreamReducerEvent,
   type TimelineCursor,
 } from "./session-stream-reducers";
-import { useSessionStore } from "@/stores/session-store";
-import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -1473,41 +1470,6 @@ describe("processTimelineResponse", () => {
     expect(getUserTexts(result.tail)).toHaveLength(0);
   });
 
-  it("never rewinds a live head that extends the canonical row on a replace", () => {
-    // A canonical replace lands on a chat whose turn is STILL RUNNING (the
-    // viewed-timeline grace window keeps canonical pages arriving for the whole
-    // turn). The live head holds more text than canonical has caught up to.
-    // Truncating it back to the canonical prefix shrinks the reveal's target,
-    // which walks its paced position backwards and re-types the same stretch on
-    // every page - the "message replays over and over mid-turn" regression.
-    // The replace is a same-epoch reset: a live turn never crosses an epoch
-    // change, and an epoch change is a destructive replacement that keeps only
-    // active submissions (docs/timeline-sync.md), so it is not this scenario.
-    const liveText = "Canonical part. Live continuation the daemon has not echoed yet.";
-
-    const result = processTimelineResponse({
-      ...baseTimelineInput,
-      currentTail: [],
-      currentHead: [makeAssistantItem(liveText, "live-head")],
-      currentCursor: { epoch: "epoch-1", startSeq: 1, endSeq: 5 },
-      payload: {
-        ...baseTimelineInput.payload,
-        reset: true,
-        epoch: "epoch-1",
-        startCursor: { seq: 10 },
-        endCursor: { seq: 10 },
-        entries: [makeTimelineEntry(10, "Canonical part.")],
-      },
-    });
-
-    // The overlap is de-duplicated (exactly one assistant item), and it carries
-    // the LONGER live text - never the truncated canonical prefix.
-    const assistantTexts = [...result.tail, ...result.head]
-      .filter((item) => item.kind === "assistant_message")
-      .map((item) => item.text);
-    expect(assistantTexts).toEqual([liveText]);
-  });
-
   it("treats a stale epoch reset as a replacement with the new epoch window", () => {
     const oldTail: StreamItem[] = [makeAssistantItem("old epoch message", "old-assistant")];
     const oldHead: StreamItem[] = [makeAssistantItem("old live head", "old-head")];
@@ -1939,14 +1901,14 @@ describe("processTimelineResponse", () => {
     expect(assistants[0]).toMatchObject({ text: "Hello", messageId: "answer-1" });
   });
 
-  it("replaces every promoted assistant block when reconciling a projected message", () => {
+  it("replaces the whole live assistant message when reconciling projected history", () => {
     const live = processAgentStreamEvents({
       events: [makeStreamReducerEvent(makeAssistantTimelineEvent("First paragraph.\n\nSec"), 2)],
       currentTail: [],
       currentHead: [],
       currentCursor: { epoch: "epoch-1", startSeq: 1, endSeq: 1 },
     });
-    expect(getAssistantTexts(live.tail)).toHaveLength(1);
+    expect(getAssistantTexts(live.tail)).toHaveLength(0);
     expect(getAssistantTexts(live.head)).toHaveLength(1);
 
     const result = processTimelineResponse({
@@ -1980,53 +1942,6 @@ describe("processTimelineResponse", () => {
 
     expect(getAssistantTexts([...result.tail, ...result.head])).toEqual([
       "First paragraph.\n\nSecond paragraph.",
-    ]);
-  });
-
-  // A thought used to split in two here, with nothing rendered between the
-  // halves, at whatever character the model happened to be mid-word on. The
-  // whitespace chunk flushed the head (a different streamable lane) and was then
-  // dropped for having no visible text, so the next reasoning delta opened a
-  // fresh block. Providers emit a blank line right after a closing think tag,
-  // and a reasoning budget that forces one mid-thought emits several per turn.
-  it("keeps one thought when a blank assistant chunk lands between reasoning deltas", () => {
-    const result = processAgentStreamEvents({
-      events: [
-        makeStreamReducerEvent(makeTimelineEvent("figure out what the", "reasoning"), 1),
-        makeStreamReducerEvent(makeAssistantTimelineEvent("\n\n"), 2),
-        makeStreamReducerEvent(makeTimelineEvent(" other agent did.", "reasoning"), 3),
-      ],
-      currentTail: [],
-      currentHead: [],
-      currentCursor: undefined,
-    });
-
-    const items = [...result.tail, ...result.head];
-    const thoughts = items.filter((item) => item.kind === "thought");
-    expect(thoughts).toHaveLength(1);
-    expect(thoughts[0]?.text).toBe("figure out what the other agent did.");
-    // The blank chunk stays invisible: it must not become an empty message row.
-    expect(items.filter((item) => item.kind === "assistant_message")).toHaveLength(0);
-  });
-
-  // The guard is only for chunks that vanish. Real prose still separates two
-  // thoughts, because that genuinely is a new lane.
-  it("still splits thoughts around assistant prose", () => {
-    const result = processAgentStreamEvents({
-      events: [
-        makeStreamReducerEvent(makeTimelineEvent("first thought", "reasoning"), 1),
-        makeStreamReducerEvent(makeAssistantTimelineEvent("Visible prose."), 2),
-        makeStreamReducerEvent(makeTimelineEvent("second thought", "reasoning"), 3),
-      ],
-      currentTail: [],
-      currentHead: [],
-      currentCursor: undefined,
-    });
-
-    expect([...result.tail, ...result.head].map((item) => item.kind)).toEqual([
-      "thought",
-      "assistant_message",
-      "thought",
     ]);
   });
 
@@ -2217,78 +2132,6 @@ describe("processTimelineResponse", () => {
     ).toEqual(["Earlier answer", "New prompt", "Live response", "Missed answer", "Remote prompt"]);
   });
 
-  it("does not duplicate a thought when several canonical rows cover it", () => {
-    // A canonical page can carry more than one row for a single thought. Only
-    // the first is a prefix of the live text; once it has been applied, the
-    // next row fails the `startsWith` guard and used to fall through to the
-    // forward path, which APPENDS it as a delta and duplicates the thought.
-    const live = processAgentStreamEvents({
-      events: [
-        makeStreamReducerEvent(makeTimelineEvent("Hello", "reasoning"), 1),
-        makeStreamReducerEvent(makeTimelineEvent(" world", "reasoning"), 2),
-      ],
-      currentTail: [],
-      currentHead: [],
-      currentCursor: undefined,
-    });
-
-    const result = processTimelineResponse({
-      ...baseTimelineInput,
-      currentTail: live.tail,
-      currentHead: live.head,
-      currentCursor: live.cursor ?? { epoch: "epoch-1", startSeq: 1, endSeq: 2 },
-      payload: {
-        ...baseTimelineInput.payload,
-        epoch: "epoch-1",
-        startCursor: { seq: 1 },
-        endCursor: { seq: 3 },
-        entries: [
-          makeTimelineEntry(1, "Hello world", "reasoning", 3),
-          makeTimelineEntry(1, "Hello world and more", "reasoning", 3),
-        ],
-      },
-    });
-
-    expect(
-      [...result.tail, ...result.head].filter((item) => item.kind === "thought").map((i) => i.text),
-    ).toEqual(["Hello world and more"]);
-  });
-
-  it("does not duplicate a thought when a later canonical row stops overlapping", () => {
-    // The same defect with a row that is not an extension at all: it must still
-    // replace the thought it belongs to, not concatenate onto it
-    // ("Hello worldworld tail").
-    const live = processAgentStreamEvents({
-      events: [
-        makeStreamReducerEvent(makeTimelineEvent("Hello", "reasoning"), 1),
-        makeStreamReducerEvent(makeTimelineEvent(" world", "reasoning"), 2),
-      ],
-      currentTail: [],
-      currentHead: [],
-      currentCursor: undefined,
-    });
-
-    const result = processTimelineResponse({
-      ...baseTimelineInput,
-      currentTail: live.tail,
-      currentHead: live.head,
-      currentCursor: live.cursor ?? { epoch: "epoch-1", startSeq: 1, endSeq: 2 },
-      payload: {
-        ...baseTimelineInput.payload,
-        epoch: "epoch-1",
-        startCursor: { seq: 1 },
-        endCursor: { seq: 3 },
-        entries: [
-          makeTimelineEntry(1, "Hello world", "reasoning", 3),
-          makeTimelineEntry(1, "world tail", "reasoning", 3),
-        ],
-      },
-    });
-
-    const thoughts = [...result.tail, ...result.head].filter((item) => item.kind === "thought");
-    expect(thoughts.map((i) => i.text)).toEqual(["world tail"]);
-  });
-
   it("does not move a prompt or its live answer around catch-up history", () => {
     const prompt = makeSubmittedUserMessage("New prompt", "new-prompt");
     const live = processAgentStreamEvents({
@@ -2330,7 +2173,7 @@ describe("processTimelineResponse", () => {
       [...result.tail, ...result.head]
         .filter((item) => item.kind === "assistant_message" || item.kind === "user_message")
         .map((item) => item.text),
-    ).toEqual(["New prompt", "First paragraph.", "Second paragraph", "Missed answer"]);
+    ).toEqual(["New prompt", "First paragraph.\n\nSecond paragraph", "Missed answer"]);
   });
 
   it("does not move a prompt or its live answer around catch-up tool history", () => {
@@ -2368,7 +2211,6 @@ describe("processTimelineResponse", () => {
 
     expect([...result.tail, ...result.head].map((item) => item.kind)).toEqual([
       "user_message",
-      "assistant_message",
       "assistant_message",
       "tool_call",
     ]);
@@ -2934,7 +2776,7 @@ describe("processTimelineResponse", () => {
     expect(result.sideEffects).not.toContainEqual(expect.objectContaining({ type: "catch_up" }));
   });
 
-  it("keeps live assistant blocks ordered when merging a disjoint prompt-jump window", () => {
+  it("keeps whole live assistant messages ordered when merging a disjoint prompt-jump window", () => {
     const live = processAgentStreamEvents({
       events: [
         makeStreamReducerEvent(
@@ -2949,8 +2791,7 @@ describe("processTimelineResponse", () => {
       currentCursor: undefined,
     });
     expect(getAssistantTexts([...live.tail, ...live.head])).toEqual([
-      "First paragraph.",
-      "Second paragraph.",
+      "First paragraph.\n\nSecond paragraph.",
     ]);
 
     const result = processTimelineResponse({
@@ -2972,8 +2813,7 @@ describe("processTimelineResponse", () => {
     });
 
     expect(getAssistantTexts([...result.tail, ...result.head])).toEqual([
-      "First paragraph.",
-      "Second paragraph.",
+      "First paragraph.\n\nSecond paragraph.",
     ]);
   });
 
@@ -3771,39 +3611,6 @@ describe("processTimelineResponse", () => {
 // ---------------------------------------------------------------------------
 
 describe("processAgentStreamEvent", () => {
-  it("keeps expandable error details from a timeline warning", () => {
-    const details = [
-      "MCP server 'semgrep' unavailable: Authentication required",
-      "MCP server 'atlassian' unavailable: Missing or invalid access token",
-    ];
-    const event: AgentStreamEventPayload = {
-      type: "timeline",
-      provider: "claude",
-      item: {
-        type: "error",
-        message: "2 MCP connections unavailable",
-        details,
-      },
-    };
-
-    const result = processAgentStreamEvent({
-      ...baseStreamInput,
-      event,
-      epoch: "timeline-1",
-      seq: 42,
-    });
-
-    expect([...result.tail, ...result.head]).toEqual([
-      expect.objectContaining({
-        kind: "notification",
-        sourceType: "error",
-        level: "error",
-        message: "2 MCP connections unavailable",
-        details,
-      }),
-    ]);
-  });
-
   it("preserves the live timeline cursor on an assistant error", () => {
     const result = processAgentStreamEvent({
       ...baseStreamInput,
@@ -4170,7 +3977,7 @@ describe("processAgentStreamEvents", () => {
     expect(getAssistantTexts(result.head)).toEqual(["Identified"]);
   });
 
-  it("keeps a promoted live image block identity when the turn completes", () => {
+  it("keeps the whole live message identity when the turn completes", () => {
     const imageMarkdown = "![Architecture](docs/architecture.png)";
     const streaming = processAgentStreamEvents({
       events: [
@@ -4182,9 +3989,11 @@ describe("processAgentStreamEvents", () => {
       currentCursor: undefined,
     });
 
-    expect([streaming.changedTail, streaming.changedHead]).toEqual([true, true]);
-    expect(getAssistantTexts(streaming.tail)).toEqual(["Introductory paragraph"]);
-    expect(getAssistantTexts(streaming.head)).toEqual([imageMarkdown]);
+    expect([streaming.changedTail, streaming.changedHead]).toEqual([false, true]);
+    expect(getAssistantTexts(streaming.tail)).toEqual([]);
+    expect(getAssistantTexts(streaming.head)).toEqual([
+      `Introductory paragraph\n\n${imageMarkdown}`,
+    ]);
     const liveImageId = streaming.head[0]?.id;
 
     const completed = processAgentStreamEvent({
@@ -4199,13 +4008,12 @@ describe("processAgentStreamEvents", () => {
         item.kind === "assistant_message",
     );
     expect(assistantBlocks.map((item) => [item.id, item.text])).toEqual([
-      [streaming.tail[0]?.id, "Introductory paragraph"],
-      [liveImageId, imageMarkdown],
+      [liveImageId, `Introductory paragraph\n\n${imageMarkdown}`],
     ]);
     expect(assistantBlocks.filter((item) => item.id === liveImageId)).toHaveLength(1);
   });
 
-  it("preserves a live block trailing newline after promoting completed markdown blocks", () => {
+  it("preserves all newlines in the accumulated live message", () => {
     const result = processAgentStreamEvents({
       events: [
         makeStreamReducerEvent(
@@ -4222,21 +4030,17 @@ describe("processAgentStreamEvents", () => {
       currentCursor: undefined,
     });
 
-    expect(result.changedTail).toBe(true);
+    expect(result.changedTail).toBe(false);
     expect(result.changedHead).toBe(true);
-    expect(result.tail).toHaveLength(1);
-    expect(result.tail[0]).toMatchObject({
-      kind: "assistant_message",
-      text: "Done. I added `[TimelineMerge] ...` logging around the suspicious merge/reconcile paths.",
-    });
+    expect(result.tail).toHaveLength(0);
     expect(result.head).toHaveLength(1);
     expect(result.head[0]).toMatchObject({
       kind: "assistant_message",
-      text: "Changed:\n- [timeline-debug.ts]",
+      text: "Done. I added `[TimelineMerge] ...` logging around the suspicious merge/reconcile paths.\n\nChanged:\n- [timeline-debug.ts]",
     });
   });
 
-  it("does not promote a markdown block that is still inside an open code fence", () => {
+  it("preserves an open code fence in the whole source message", () => {
     const result = processAgentStreamEvents({
       events: [
         makeStreamReducerEvent(makeTimelineEvent("Before fence\n\n```ts\nconst a = 1;"), 1),
@@ -4247,16 +4051,12 @@ describe("processAgentStreamEvents", () => {
       currentCursor: undefined,
     });
 
-    expect(result.changedTail).toBe(true);
-    expect(result.tail).toHaveLength(1);
-    expect(result.tail[0]).toMatchObject({
-      kind: "assistant_message",
-      text: "Before fence",
-    });
+    expect(result.changedTail).toBe(false);
+    expect(result.tail).toHaveLength(0);
     expect(result.head).toHaveLength(1);
     expect(result.head[0]).toMatchObject({
       kind: "assistant_message",
-      text: "```ts\nconst a = 1;\n\nconst b = 2;",
+      text: "Before fence\n\n```ts\nconst a = 1;\n\nconst b = 2;",
     });
   });
 
@@ -4287,7 +4087,7 @@ describe("processAgentStreamEvents", () => {
 
   it("keeps Claude image tool-result output before following assistant blocks while text streams", () => {
     const imageMarkdown =
-      "![Image](/tmp/otto-attachments/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png)";
+      "![Image](/tmp/paseo-attachments/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png)";
     const result = processAgentStreamEvents({
       events: [
         makeStreamReducerEvent(
@@ -4365,8 +4165,7 @@ describe("processAgentStreamEvents", () => {
     expect(getAssistantTexts([...result.tail, ...result.head])).toEqual([
       "ABC",
       imageMarkdown,
-      "D",
-      "E",
+      "D\n\nE",
     ]);
   });
 
@@ -4470,7 +4269,7 @@ describe("processAgentStreamEvents", () => {
         window: { minSeq: 10, maxSeq: 10, nextSeq: 11 },
         startCursor: { seq: 10 },
         endCursor: { seq: 10 },
-        entries: [makeTimelineEntry(10, "Call-site API - exactly one primitive. Not")],
+        entries: [makeTimelineEntry(10, "Call-site API — exactly one primitive. Not")],
         error: null,
         hasNewer: false,
         hasOlder: false,
@@ -4495,7 +4294,7 @@ describe("processAgentStreamEvents", () => {
 
     expect(finalAssistantItems).toHaveLength(1);
     expect(finalAssistantItems[0]?.text).toBe(
-      "Call-site API - exactly one primitive. Not gateValue, not filterEnum.",
+      "Call-site API — exactly one primitive. Not gateValue, not filterEnum.",
     );
   });
 });
@@ -4676,76 +4475,4 @@ describe("createAgentStreamReducerQueue", () => {
     expect(commits).toEqual(["agent-1:queued"]);
     expect(scheduler.size).toBe(0);
   });
-});
-
-describe("terminal stream queue ownership", () => {
-  it.each(["turn_completed", "turn_failed"] as const)(
-    "%s commits transcript without changing directory turn state or dispatching queued messages",
-    (type) => {
-      const serverId = `terminal-stream-${type}`;
-      const agentId = "agent-1";
-      const store = useSessionStore.getState();
-      store.initializeSession(serverId, null as never);
-      const now = new Date(1_000).toISOString();
-      const agent = normalizeAgentSnapshot(
-        {
-          id: agentId,
-          provider: "claude",
-          cwd: "/repo",
-          status: "running",
-          createdAt: now,
-          updatedAt: now,
-          lastUserMessageAt: now,
-          model: null,
-          currentModeId: null,
-          availableModes: [],
-          pendingPermissions: [],
-          persistence: null,
-          title: null,
-          labels: {},
-          capabilities: {
-            supportsStreaming: true,
-            supportsSessionPersistence: true,
-            supportsDynamicModes: true,
-            supportsMcpServers: true,
-            supportsReasoningStream: true,
-            supportsToolInvocations: true,
-          },
-          activeTurn: { turnId: "turn-1", startedAt: now },
-        },
-        serverId,
-      );
-      store.setAgents(serverId, new Map([[agentId, agent]]));
-      const queued = [{ id: "queued", text: "next", attachments: [] }];
-      store.setQueuedMessages(serverId, new Map([[agentId, queued]]));
-      const onCommitted = vi.fn();
-      const queue = createSessionAgentStreamReducerQueue({
-        serverId,
-        setAgentStreamState: store.setAgentStreamState,
-        setAgentTimelineCursor: store.setAgentTimelineCursor,
-        recoverTimelineGap: () => undefined,
-        onCommitted,
-      });
-      try {
-        queue.enqueue(agentId, {
-          event:
-            type === "turn_failed"
-              ? { type, provider: "claude", turnId: "turn-1", error: "provider failed" }
-              : { type, provider: "claude", turnId: "turn-1" },
-          seq: undefined,
-          epoch: undefined,
-          timestamp: new Date(2_000),
-        });
-        queue.flushAgent(agentId);
-        expect(onCommitted).toHaveBeenCalledExactlyOnceWith(agentId);
-        expect(useSessionStore.getState().sessions[serverId]?.agents.get(agentId)).toBe(agent);
-        expect(useSessionStore.getState().sessions[serverId]?.queuedMessages.get(agentId)).toEqual(
-          queued,
-        );
-      } finally {
-        queue.dispose({ flush: true });
-        store.clearSession(serverId);
-      }
-    },
-  );
 });

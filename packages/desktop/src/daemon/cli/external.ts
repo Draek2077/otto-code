@@ -1,8 +1,9 @@
-import { spawnProcess } from "@otto-code/server";
+import { spawnProcess } from "@getpaseo/server/process";
 import log from "electron-log/main";
 import type { NodeEntrypointInvocation } from "../node-entrypoint-launcher.js";
 import { createNodeEntrypointInvocation } from "../runtime-paths.js";
 import { resolveExternalCliEntrypoint } from "./entrypoints.js";
+import { runBoundedDesktopCli } from "../../otto/bounded-cli.js"; // OTTO(dev-shutdown): bound only operations which opt into a deadline.
 
 function createExternalCliInvocation(args: string[]): NodeEntrypointInvocation {
   return createNodeEntrypointInvocation({
@@ -15,7 +16,9 @@ function createExternalCliInvocation(args: string[]): NodeEntrypointInvocation {
 
 function spawnExternalCli(
   invocation: NodeEntrypointInvocation,
+  timeoutMs?: number, // OTTO(dev-shutdown)
 ): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+  if (timeoutMs !== undefined) return runBoundedDesktopCli(invocation, timeoutMs); // OTTO(dev-shutdown)
   return new Promise((resolve, reject) => {
     const child = spawnProcess(invocation.command, invocation.args, {
       envMode: "internal",
@@ -71,9 +74,13 @@ export async function runExternalCliTextCommand(args: string[]): Promise<string>
   return result.stdout.trimEnd();
 }
 
-export async function runExternalCliJsonCommand(args: string[]): Promise<unknown> {
+export async function runExternalCliJsonCommand(
+  args: string[],
+  options?: { timeoutMs: number },
+): Promise<unknown> {
+  // OTTO(dev-shutdown)
   const invocation = createExternalCliInvocation(args);
-  const result = await spawnExternalCli(invocation);
+  const result = await spawnExternalCli(invocation, options?.timeoutMs); // OTTO(dev-shutdown)
 
   if (result.exitCode !== 0) {
     const stderr = result.stderr.trim();

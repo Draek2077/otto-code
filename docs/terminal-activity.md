@@ -1,9 +1,6 @@
 # Terminal Activity Indicators
 
-Otto surfaces terminal activity on its source tab as a blue siren with a pulsing blue halo. It
-appears for both live terminal work and uncleared terminal attention, so a workspace-level status
-dot is always attributable to a specific terminal. The ordinary terminal glyph returns when the
-daemon clears that terminal's activity.
+Paseo surfaces terminal activity as a tab indicator (the same "running" dot used by agents).
 
 ## Current state
 
@@ -27,32 +24,34 @@ TerminalSession
 
 `TerminalActivityTracker` is the single stateful object per session. It holds `{ state, changedAt }`, starts at unknown (`null`), and fires `onChange` only when the state actually changes.
 
-Terminal directory snapshots (`terminalsChanged`) and workspace contribution changes are separate concerns. A title-only change produces a terminal list snapshot but never touches workspace descriptors. A transition that changes the derived workspace bucket (e.g. idle -> working, working -> idle, attention cleared) emits both a terminal list snapshot and a server-internal `TerminalWorkspaceContributionChanged` event, which Session consumes for the terminal's explicit `workspaceId` only. A same-`cwd` sibling is unaffected.
+Terminal directory snapshots (`terminalsChanged`) and workspace contribution changes are separate concerns. A title-only change produces a terminal list snapshot but never touches workspace descriptors. A transition that changes the derived workspace bucket (e.g. idle -> working, working -> idle, attention cleared) emits both a terminal list snapshot and a server-internal `TerminalWorkspaceContributionChanged` event, which Session consumes to invalidate every active workspace sharing the owning workspace's `cwd`.
 
 ### Transitions carry their own history
 
 Each `onChange` delivers both the new snapshot and the `previous` one (`{ state, changedAt }`). The transition flows unchanged up through `TerminalSession.onActivityChange` (as `{ activity, previous }`), the worker protocol's `terminalActivityChange` event, and the manager-level `subscribeTerminalActivity(listener)` stream (`{ terminalId, name, cwd, activity, previous }`).
 
-The daemon consumes these transitions, not snapshots. When a transition moves from `working` to `idle`, the tracker records finished attention, so its workspace contributes finished attention like an idle agent that needs review; the source terminal tab retains Otto's activity glyph until attention clears. The websocket layer also fires a "Terminal finished" attention notification. A terminal that exits while still working emits no turn-end notification.
+The daemon consumes these transitions, not snapshots. When a transition moves from `working` to `idle`, the tracker records finished attention, so the terminal shows the same green finished dot as an idle agent that needs review. The websocket layer also fires a "Terminal finished" attention notification. A terminal that exits while still working emits no turn-end notification.
 
-Terminal list visibility and status contribution are both `workspaceId`-scoped: a terminal belongs to the workspace that created it, same-`cwd` sibling workspaces do not see it in their terminal lists, and its activity drives the status bucket of that owning workspace only (`applyTerminalContributions` in `packages/server/src/server/workspace-directory.ts` - "a terminal contributes only to the workspace it carries; same-cwd siblings are untouched"). A live terminal with no `workspaceId` contributes to no workspace's status; there is no `cwd` fan-out and no path-prefix fallback for status.
+Terminal list visibility is `workspaceId`-scoped: a terminal belongs to the workspace that created it, and same-`cwd` sibling workspaces do not see it in their terminal lists. Terminal status routing starts from that owning workspace, uses the owning workspace's `cwd`, then fans the status bucket out to every active workspace with the same `cwd`.
+
+Path-prefix routing is only a legacy fallback for unowned terminal activity contribution. If a live terminal has no `workspaceId`, the daemon resolves the deepest active parent workspace from the terminal `cwd`, then fans status out to active same-`cwd` siblings of that owner. That fallback contributes status, but it does not make the terminal visible in workspace-scoped terminal lists.
 
 ## Hook reporting
 
 Terminals receive four environment variables when the daemon creates the shell:
 
-- `OTTO_TERMINAL_ID`
-- `OTTO_ACTIVITY_TOKEN`
-- `OTTO_TERMINAL_ACTIVITY_URL`
-- `OTTO_HOOK_CLI` - absolute path to the current `otto` CLI executable.
+- `PASEO_TERMINAL_ID`
+- `PASEO_ACTIVITY_TOKEN`
+- `PASEO_TERMINAL_ACTIVITY_URL`
+- `PASEO_HOOK_CLI` — absolute path to the current `paseo` CLI executable.
 
-The generated shell command uses `OTTO_HOOK_CLI` to run the current CLI. `otto hooks <agent> <event>` then reads the terminal id, token, and activity URL, asks the agent hook provider registry to resolve the event to a coarse activity state, and silently posts `{ terminalId, token, state }` to the activity URL. Missing env, unsupported agents/events, malformed hook input, and daemon/network failures are no-ops so agent hooks never break the user's terminal session.
+The generated shell command uses `PASEO_HOOK_CLI` to run the current CLI. `paseo hooks <agent> <event>` then reads the terminal id, token, and activity URL, asks the agent hook provider registry to resolve the event to a coarse activity state, and silently posts `{ terminalId, token, state }` to the activity URL. Missing env, unsupported agents/events, malformed hook input, and daemon/network failures are no-ops so agent hooks never break the user's terminal session.
 
 Claude hook mapping:
 
 - `UserPromptSubmit` → `running`
 - `Stop`, `StopFailure`, `SessionEnd` → `idle`
-- `Notification` with `reason` or `matcher` equal to `idle_prompt` → `needs-input`
+- `Notification` with `notification_type` equal to `idle_prompt` → `needs-input`
 
 Claude does not run `Stop` when the user interrupts a turn. A standalone Ctrl-C or Escape input
 while terminal activity is working clears the activity without finished attention. The same
@@ -77,53 +76,48 @@ OpenCode uses a server plugin instead of command hooks. Both generations discove
 | `permission.asked`                                          | Both       | needs-input |
 | `permission.replied`                                        | Both       | running     |
 
-The plugin translates both event contracts into the existing Otto hook events. OpenCode 2 disposes its event subscription when the plugin unloads.
+The plugin translates both event contracts into the existing Paseo hook events. OpenCode 2 disposes its event subscription when the plugin unloads.
 
 The daemon maps hook states onto terminal activity like an agent lifecycle plus unread attention: `running` → `state: working`, `idle` → `state: idle`, and `needs-input` → `state: idle` with `attentionReason: needs_input`. A `working` → `idle` transition records `state: idle` with `attentionReason: finished` until the user focuses that terminal; plain idle terminals still contribute no workspace status.
 
 ## Focus clearing
 
-Client heartbeats include the focused terminal id only after the user explicitly activates that terminal tab or interacts with the terminal. Restoring or entering a workspace does not acknowledge its saved active terminal. When a visible client focuses a terminal with an `attentionReason`, the daemon clears the attention and leaves the terminal idle. Plain idle terminal activity does not contribute to workspace status, so a workspace whose only attention source was that terminal rolls up from `needs_input` or `attention` back to `done`.
+Client heartbeats include the focused terminal id. When a visible client focuses a terminal with an `attentionReason`, the daemon clears the attention and leaves the terminal idle. Plain idle terminal activity does not contribute to workspace status, so a workspace whose only attention source was that terminal rolls up from `needs_input` or `attention` back to `done`.
 
 ### Agent hook installation
 
 Installing hooks edits the user's real agent config files, so it is opt-in. The daemon setting
 `enableTerminalAgentHooks` (persisted under `daemon.enableTerminalAgentHooks`, default `false`)
 gates installation. It is surfaced in the app under a host's **Terminals** settings as "Enable
-terminal agent hooks" - "Get notifications and status from terminal agents. This installs hooks in
+terminal agent hooks" — "Get notifications and status from terminal agents. This installs hooks in
 your agent config files." `applyTerminalAgentHookSetting` reconciles the installed hooks with the
 setting: at startup it installs only when enabled; toggling the setting live installs on enable and
-removes Otto's marker-matched hooks on disable. `otto hooks` keeps working regardless - the gate
+removes Paseo's marker-matched hooks on disable. `paseo hooks` keeps working regardless — the gate
 only controls whether the daemon writes hooks into agent configs, not whether the CLI can post
 activity when the env is present.
 
-When enabled, Otto installs provider hooks globally:
+When enabled, Paseo installs provider hooks globally:
 
 - Claude hooks are written to `~/.claude/settings.json` (or `CLAUDE_CONFIG_DIR/settings.json` when that override is set).
-- Codex hooks are written to `~/.codex/hooks.json` (or `CODEX_HOME/hooks.json` when that override is set). Codex supports a native `commandWindows`, so each Otto hook includes both POSIX and Windows commands. Non-managed Codex hooks are trust-gated by Codex; users may see Codex's hook review prompt before the hook runs.
-- OpenCode gets a self-contained plugin at `$XDG_CONFIG_HOME/opencode/plugins/otto-terminal-activity.js` (or `~/.config/opencode/plugins/otto-terminal-activity.js` when XDG is unset; `OPENCODE_CONFIG_DIR` still wins when set).
+- Codex hooks are written to `~/.codex/hooks.json` (or `CODEX_HOME/hooks.json` when that override is set). Codex supports a native `commandWindows`, so each Paseo hook includes both POSIX and Windows commands. Non-managed Codex hooks are trust-gated by Codex; users may see Codex's hook review prompt before the hook runs.
+- OpenCode gets a self-contained plugin at `$XDG_CONFIG_HOME/opencode/plugins/paseo-terminal-activity.js` (or `~/.config/opencode/plugins/paseo-terminal-activity.js` when XDG is unset; `OPENCODE_CONFIG_DIR` still wins when set).
 
-Installation is marker-based/idempotent for config hooks and exact-file/idempotent for the OpenCode plugin. Otto preserves user hooks, removes only its own marker-matched command hooks, and leaves hooks installed across daemon shutdown. Outside an Otto terminal they are inert because the command or plugin is gated on `OTTO_TERMINAL_ID`.
+Installation is marker-based/idempotent for config hooks and exact-file/idempotent for the OpenCode plugin. Paseo preserves user hooks, removes only its own marker-matched command hooks, and leaves hooks installed across daemon shutdown. Outside a Paseo terminal they are inert because the command or plugin is gated on `PASEO_TERMINAL_ID`.
 
 Provider variation lives in `AGENT_HOOK_PROVIDERS`: provider id, installed events, config install metadata, and runtime event-to-activity resolution. The daemon calls `installRegisteredAgentHooks()` once; the CLI calls `resolveHookActivity(provider, event, input)`. Adding a provider should add one provider entry and register it in `AGENT_HOOK_PROVIDERS`, without editing the generic CLI command or daemon bootstrap.
 
 The installed hook command keeps the config portable and resolves the CLI at runtime:
 
 ```sh
-[ -n "$OTTO_TERMINAL_ID" ] && "${OTTO_HOOK_CLI:-otto}" hooks claude <event>
+[ -n "$PASEO_TERMINAL_ID" ] && "${PASEO_HOOK_CLI:-paseo}" hooks claude <event>
 ```
 
 Codex also receives the Windows equivalent:
 
-```text
-powershell.exe -NoProfile -NonInteractive -EncodedCommand <UTF-16LE base64 script>
+```bat
+if defined PASEO_TERMINAL_ID (if defined PASEO_HOOK_CLI ("%PASEO_HOOK_CLI%" hooks codex <event>) else (paseo hooks codex <event>))
 ```
 
-The encoded script contains the same terminal-id gate and CLI invocation. Naming the inbox Windows
-PowerShell executable makes execution independent of the user's current shell and of whether
-PowerShell 7 is installed; encoding keeps the nested command and path quoting intact through both
-`cmd.exe` and PowerShell launchers.
-
-Otto injects `OTTO_HOOK_CLI` so Codex's hook shell cannot pick up a stale global `otto` before the current one. The command still falls back to bare `otto` if the env is missing, and it still no-ops outside Otto terminals because the `OTTO_TERMINAL_ID` gate remains first. Otto also prepends the CLI binary directory to each terminal `PATH` as a secondary fallback. All other behavior lives in `otto hooks`: read the env, map the event, POST activity, and no-op/fail-open when anything is missing or unavailable.
+The daemon resolves the current CLI through `PASEO_CLI` when its launcher supplies one, or through the npm package shim for standalone installs. Terminal setup exposes that resolved executable to hooks as `PASEO_HOOK_CLI`; desktop and other daemon launchers do not know about the hook-specific variable. The generated command falls back to bare `paseo` if the hook env is missing and no-ops outside Paseo terminals because the `PASEO_TERMINAL_ID` gate remains first. Paseo also prepends the resolved CLI directory to each terminal `PATH` as a secondary fallback. All other behavior lives in `paseo hooks`: read the env, map the event, POST activity, and no-op/fail-open when anything is missing or unavailable.
 
 If config installation fails, daemon startup and terminal spawn continue without terminal activity hooks.

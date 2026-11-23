@@ -1,122 +1,9 @@
-import { app, Menu, BrowserWindow, ipcMain, type WebContents } from "electron";
-import { getActiveOttoBrowserWebContentsForHostWindow } from "./browser-webviews/index.js";
+import { app, Menu, BrowserWindow, ipcMain } from "electron";
+import { getActivePaseoBrowserWebContentsForHostWindow } from "./browser-webviews/index.js";
 
 interface ShowContextMenuInput {
   kind?: "terminal";
   hasSelection?: boolean;
-}
-
-const SPELLCHECK_CONTEXT_TTL_MS = 30_000;
-
-export function resolveSpellCheckerLanguages(
-  preferredLanguages: readonly string[],
-  availableLanguages: readonly string[],
-): string[] {
-  const availableByLowercase = new Map(
-    availableLanguages.map((language) => [language.toLowerCase(), language]),
-  );
-  const resolved: string[] = [];
-
-  for (const preferredLanguage of preferredLanguages) {
-    const normalized = preferredLanguage.replace("_", "-").toLowerCase();
-    const exact = availableByLowercase.get(normalized);
-    const base = availableByLowercase.get(normalized.split("-")[0] ?? "");
-    const match = exact ?? base;
-    if (match && !resolved.includes(match)) {
-      resolved.push(match);
-    }
-  }
-
-  return resolved;
-}
-
-export interface SpellcheckContextSnapshot {
-  token: string;
-  x: number;
-  y: number;
-  suggestions: string[];
-  canAddToDictionary: boolean;
-}
-
-interface StoredSpellcheckContext extends SpellcheckContextSnapshot {
-  misspelledWord: string;
-  expiresAt: number;
-}
-
-type SpellcheckMenuAction =
-  | { token: string; kind: "replace"; suggestion: string }
-  | { token: string; kind: "add-to-dictionary" };
-
-function readSpellcheckMenuAction(input: unknown): SpellcheckMenuAction | null {
-  if (typeof input !== "object" || input === null) return null;
-  const token = Reflect.get(input, "token");
-  const kind = Reflect.get(input, "kind");
-  if (typeof token !== "string") return null;
-  if (kind === "add-to-dictionary") return { token, kind };
-  const suggestion = Reflect.get(input, "suggestion");
-  return kind === "replace" && typeof suggestion === "string" ? { token, kind, suggestion } : null;
-}
-
-/**
- * Retains only the native spellchecker operation created by the latest right
- * click in each window. The renderer sees suggestions, never the misspelled
- * word, and can only apply one of the suggestions that Electron produced.
- */
-export class SpellcheckContextRegistry {
-  private readonly contexts = new Map<number, StoredSpellcheckContext>();
-  private nextToken = 0;
-
-  capture(
-    contents: WebContents,
-    params: Electron.ContextMenuParams,
-  ): SpellcheckContextSnapshot | null {
-    // Electron 44 can report spellcheckEnabled=false while simultaneously
-    // providing a misspelledWord and dictionarySuggestions. The concrete word
-    // is the native spellcheck result; rejecting it on the contradictory flag
-    // drops every suggestion from Otto's menu.
-    if (!params.isEditable || !params.misspelledWord) {
-      this.contexts.delete(contents.id);
-      return null;
-    }
-
-    const context: StoredSpellcheckContext = {
-      token: `spellcheck-${++this.nextToken}`,
-      x: params.x,
-      y: params.y,
-      suggestions: [...params.dictionarySuggestions],
-      canAddToDictionary: true,
-      misspelledWord: params.misspelledWord,
-      expiresAt: Date.now() + SPELLCHECK_CONTEXT_TTL_MS,
-    };
-    this.contexts.set(contents.id, context);
-    const { misspelledWord: _misspelledWord, expiresAt: _expiresAt, ...snapshot } = context;
-    return snapshot;
-  }
-
-  apply(contents: WebContents, rawAction: unknown): boolean {
-    const action = readSpellcheckMenuAction(rawAction);
-    const context = this.contexts.get(contents.id);
-    if (!action || !context || context.expiresAt < Date.now() || context.token !== action.token) {
-      return false;
-    }
-    if (action.kind === "replace" && !context.suggestions.includes(action.suggestion)) {
-      return false;
-    }
-
-    // A context-menu command is single use, matching Electron's own native
-    // menu. Clearing before the edit also prevents a stale React menu from
-    // changing a newer word after another right click.
-    this.contexts.delete(contents.id);
-    if (action.kind === "add-to-dictionary") {
-      return contents.session.addWordToSpellCheckerDictionary(context.misspelledWord);
-    }
-    contents.replaceMisspelling(action.suggestion);
-    return true;
-  }
-
-  clear(contentsId: number): void {
-    this.contexts.delete(contentsId);
-  }
 }
 
 interface ApplicationMenuOptions {
@@ -261,7 +148,7 @@ function buildApplicationMenuTemplate(
           click: withBrowserWindow((win) => {
             reloadActiveBrowserOrWindow({
               win,
-              getActiveBrowserContentsForHostWindow: getActiveOttoBrowserWebContentsForHostWindow,
+              getActiveBrowserContentsForHostWindow: getActivePaseoBrowserWebContentsForHostWindow,
             });
           }),
         },
@@ -271,7 +158,7 @@ function buildApplicationMenuTemplate(
           click: withBrowserWindow((win) => {
             reloadActiveBrowserOrWindow({
               win,
-              getActiveBrowserContentsForHostWindow: getActiveOttoBrowserWebContentsForHostWindow,
+              getActiveBrowserContentsForHostWindow: getActivePaseoBrowserWebContentsForHostWindow,
               ignoreCache: true,
             });
           }),
@@ -309,7 +196,7 @@ export function setupApplicationMenu(options: ApplicationMenuOptions): void {
   applicationMenuOptions = options;
   rebuildApplicationMenu();
 
-  ipcMain.handle("otto:menu:showContextMenu", (event, input?: ShowContextMenuInput) => {
+  ipcMain.handle("paseo:menu:showContextMenu", (event, input?: ShowContextMenuInput) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) {
       return;
@@ -343,7 +230,7 @@ export function setupApplicationMenu(options: ApplicationMenuOptions): void {
 
   // Disable the zoom accelerators while capturing a shortcut so combos like
   // Cmd+- / Cmd+= reach the renderer instead of zooming the window.
-  ipcMain.handle("otto:menu:set-capturing-shortcut", (_event, capturing?: boolean) => {
+  ipcMain.handle("paseo:menu:set-capturing-shortcut", (_event, capturing?: boolean) => {
     capturingShortcut = capturing === true;
     rebuildApplicationMenu();
   });

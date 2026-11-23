@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { ActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import {
+  getNextWorkspaceDeckExpirationDelay,
   orderWorkspaceSelectionsForStableRender,
-  pruneMountedWorkspaceSelections,
+  reconcileRetainedWorkspaceSelections,
+  resolveWorkspaceDeckRetentionLimit,
   resolveWorkspaceDeckEntries,
-  resolveWorkspaceDeckExpiry,
   shouldKeepWorkspaceDeckEntryMounted,
+  WORKSPACE_DECK_INACTIVE_TTL_MS,
+  WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES,
 } from "@/screens/workspace/workspace-deck-retention";
 
 function workspace(workspaceId: string, serverId = "server"): ActiveWorkspaceSelection {
@@ -16,115 +19,132 @@ function mountedWorkspaceIds(selections: ActiveWorkspaceSelection[]): string[] {
   return selections.map((selection) => selection.workspaceId);
 }
 
-describe("pruneMountedWorkspaceSelections", () => {
-  it("retains the deck while an app-wide route temporarily clears the active workspace", () => {
-    const mountedSelections = [workspace("A"), workspace("B")];
+function retained(workspaceId: string, inactiveSince: number | null) {
+  return { selection: workspace(workspaceId), inactiveSince };
+}
+
+function retainedWorkspaceIds(
+  entries: ReturnType<typeof reconcileRetainedWorkspaceSelections>,
+): string[] {
+  return entries.map((entry) => entry.selection.workspaceId);
+}
+
+describe("reconcileRetainedWorkspaceSelections", () => {
+  it("retains only the active workspace on native", () => {
+    const entries = reconcileRetainedWorkspaceSelections({
+      currentEntries: [retained("A", null)],
+      activeSelection: workspace("B"),
+      now: 2,
+      maxMountedWorkspaces: resolveWorkspaceDeckRetentionLimit({ isNative: true }),
+    });
+
+    expect(retainedWorkspaceIds(entries)).toEqual(["B"]);
+  });
+
+  it("retains the desktop deck limit on web", () => {
+    expect(resolveWorkspaceDeckRetentionLimit({ isNative: false })).toBe(
+      WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES,
+    );
+  });
+
+  it("retains inactive workspaces for ten minutes across app-wide routes", () => {
+    const retainedEntries = [retained("A", 1_000), retained("B", 2_000)];
 
     expect(
-      pruneMountedWorkspaceSelections({
-        currentSelections: mountedSelections,
+      reconcileRetainedWorkspaceSelections({
+        currentEntries: retainedEntries,
         activeSelection: null,
-        maxMountedWorkspaces: 3,
+        now: 2_000 + WORKSPACE_DECK_INACTIVE_TTL_MS - 1,
       }),
-    ).toBe(mountedSelections);
+    ).toEqual([retained("B", 2_000)]);
   });
 
-  // The limit is pinned explicitly rather than left to the default: the default
-  // is now the user's `mountedWorkspaceLimit`, and a test that moves whenever
-  // someone retunes that default is testing the default, not the LRU.
-  it("keeps the active workspace and the most recent inactive ones, up to the limit", () => {
-    const mountedAfterA = pruneMountedWorkspaceSelections({
-      currentSelections: [],
-      activeSelection: workspace("A"),
-      maxMountedWorkspaces: 3,
+  it("keeps the active workspace and nine most recently activated inactive workspaces", () => {
+    let retainedEntries = Array.from(
+      { length: WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES },
+      (_, index) => retained(String(index + 1), index + 1),
+    ).toReversed();
+
+    retainedEntries = reconcileRetainedWorkspaceSelections({
+      currentEntries: retainedEntries,
+      activeSelection: workspace("11"),
+      now: 11,
     });
-    const mountedAfterB = pruneMountedWorkspaceSelections({
-      currentSelections: mountedAfterA,
+
+    expect(retainedWorkspaceIds(retainedEntries)).toEqual([
+      "11",
+      "10",
+      "9",
+      "8",
+      "7",
+      "6",
+      "5",
+      "4",
+      "3",
+      "2",
+    ]);
+  });
+
+  it("starts the TTL when the active workspace becomes inactive", () => {
+    const retainedEntries = reconcileRetainedWorkspaceSelections({
+      currentEntries: [retained("A", null), retained("B", 2_000)],
       activeSelection: workspace("B"),
-      maxMountedWorkspaces: 3,
-    });
-    const mountedAfterC = pruneMountedWorkspaceSelections({
-      currentSelections: mountedAfterB,
-      activeSelection: workspace("C"),
-      maxMountedWorkspaces: 3,
-    });
-    const mountedAfterD = pruneMountedWorkspaceSelections({
-      currentSelections: mountedAfterC,
-      activeSelection: workspace("D"),
-      maxMountedWorkspaces: 3,
+      now: 3_000,
     });
 
-    expect(mountedWorkspaceIds(mountedAfterD)).toEqual(["D", "C", "B"]);
+    expect(retainedEntries).toEqual([retained("B", null), retained("A", 3_000)]);
   });
 
-  // The thrashing case that motivated making the limit a setting: with four
-  // workspaces in rotation and a limit of three, returning to the oldest is
-  // always a cold mount. One higher and the whole working set stays resident.
-  it("retains a four-workspace rotation once the limit covers it", () => {
-    const rotate = (limit: number) =>
-      ["A", "B", "C", "D", "A"].reduce<ActiveWorkspaceSelection[]>(
-        (currentSelections, workspaceId) =>
-          pruneMountedWorkspaceSelections({
-            currentSelections,
-            activeSelection: workspace(workspaceId),
-            maxMountedWorkspaces: limit,
-          }),
-        [],
-      );
-
-    expect(mountedWorkspaceIds(rotate(3))).toEqual(["A", "D", "C"]);
-    expect(mountedWorkspaceIds(rotate(4))).toEqual(["A", "D", "C", "B"]);
-  });
-
-  it("releases the excess immediately when the limit is lowered", () => {
-    const mountedAtFive = ["A", "B", "C", "D", "E"].reduce<ActiveWorkspaceSelection[]>(
-      (currentSelections, workspaceId) =>
-        pruneMountedWorkspaceSelections({
-          currentSelections,
-          activeSelection: workspace(workspaceId),
-          maxMountedWorkspaces: 5,
-        }),
-      [],
-    );
-    expect(mountedAtFive).toHaveLength(5);
-
-    const mountedAfterLowering = pruneMountedWorkspaceSelections({
-      currentSelections: mountedAtFive,
-      activeSelection: workspace("E"),
-      maxMountedWorkspaces: 2,
-    });
-
-    expect(mountedWorkspaceIds(mountedAfterLowering)).toEqual(["E", "D"]);
-  });
-
-  it("retains the active workspace", () => {
-    const mountedSelections = pruneMountedWorkspaceSelections({
-      currentSelections: [workspace("A")],
+  it("never expires the active workspace", () => {
+    const retainedEntries = reconcileRetainedWorkspaceSelections({
+      currentEntries: [retained("A", 0)],
       activeSelection: workspace("A"),
-      maxMountedWorkspaces: 3,
+      now: WORKSPACE_DECK_INACTIVE_TTL_MS,
     });
 
-    expect(mountedWorkspaceIds(mountedSelections)).toEqual(["A"]);
+    expect(retainedEntries).toEqual([retained("A", null)]);
+  });
+
+  it("expires an inactive workspace at the TTL boundary", () => {
+    const retainedEntries = reconcileRetainedWorkspaceSelections({
+      currentEntries: [retained("B", null), retained("A", 0)],
+      activeSelection: workspace("B"),
+      now: WORKSPACE_DECK_INACTIVE_TTL_MS,
+    });
+
+    expect(retainedEntries).toEqual([retained("B", null)]);
   });
 
   it("deduplicates retained workspace selections", () => {
-    const mountedSelections = pruneMountedWorkspaceSelections({
-      currentSelections: [workspace("B"), workspace("A"), workspace("B")],
+    const retainedEntries = reconcileRetainedWorkspaceSelections({
+      currentEntries: [retained("B", 2), retained("A", 1), retained("B", 0)],
       activeSelection: workspace("A"),
-      maxMountedWorkspaces: 3,
+      now: 3,
     });
 
-    expect(mountedWorkspaceIds(mountedSelections)).toEqual(["A", "B"]);
+    expect(retainedWorkspaceIds(retainedEntries)).toEqual(["A", "B"]);
+  });
+});
+
+describe("getNextWorkspaceDeckExpirationDelay", () => {
+  it("returns the remaining lifetime of the oldest inactive workspace", () => {
+    expect(
+      getNextWorkspaceDeckExpirationDelay({
+        entries: [retained("C", null), retained("B", 2_000), retained("A", 1_000)],
+        activeSelection: workspace("C"),
+        now: 4_000,
+      }),
+    ).toBe(WORKSPACE_DECK_INACTIVE_TTL_MS - 3_000);
   });
 
-  it("always allows at least the active workspace", () => {
-    const mountedSelections = pruneMountedWorkspaceSelections({
-      currentSelections: [workspace("A"), workspace("B")],
-      activeSelection: workspace("C"),
-      maxMountedWorkspaces: 0,
-    });
-
-    expect(mountedWorkspaceIds(mountedSelections)).toEqual(["C"]);
+  it("does not schedule expiration for the active workspace", () => {
+    expect(
+      getNextWorkspaceDeckExpirationDelay({
+        entries: [retained("A", null)],
+        activeSelection: workspace("A"),
+        now: 4_000,
+      }),
+    ).toBeNull();
   });
 });
 
@@ -197,44 +217,5 @@ describe("shouldKeepWorkspaceDeckEntryMounted", () => {
         workspaceExists: true,
       }),
     ).toBe(true);
-  });
-});
-
-describe("resolveWorkspaceDeckExpiry", () => {
-  const ttlMs = 1_000;
-  const notPinned = () => false;
-
-  it("expires hidden workspaces past the TTL and schedules the next one", () => {
-    const result = resolveWorkspaceDeckExpiry({
-      selections: [workspace("A"), workspace("B"), workspace("C")],
-      activeSelection: workspace("A"),
-      inactiveSince: new Map([
-        ["server:A", 0],
-        ["server:B", 0],
-        ["server:C", 700],
-      ]),
-      now: 1_200,
-      ttlMs,
-      isPinned: notPinned,
-    });
-
-    expect(mountedWorkspaceIds(result.expired)).toEqual(["B"]);
-    expect(result.nextDelayMs).toBe(500);
-  });
-
-  it("never expires the active workspace or a pinned one", () => {
-    const result = resolveWorkspaceDeckExpiry({
-      selections: [workspace("A"), workspace("B")],
-      activeSelection: workspace("A"),
-      inactiveSince: new Map([
-        ["server:A", 0],
-        ["server:B", 0],
-      ]),
-      now: 5_000,
-      ttlMs,
-      isPinned: (key) => key === "server:B",
-    });
-
-    expect(result).toEqual({ expired: [], nextDelayMs: null });
   });
 });

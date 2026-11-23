@@ -2,7 +2,7 @@ import {
   normalizeWorkspaceLabelName,
   workspaceLabelKey,
   type WorkspaceLabelDefinition,
-} from "@otto-code/protocol/workspace-labels";
+} from "@getpaseo/protocol/workspace-labels";
 import { WorkspaceLabelCatalogStore } from "./catalog-store.js";
 import {
   WorkspaceLabelSequence,
@@ -53,6 +53,12 @@ export class WorkspaceLabelService {
 
   async initialize(): Promise<void> {
     await this.catalog.initialize();
+  }
+
+  async list(
+    cursor?: WorkspaceLabelCursor,
+  ): Promise<ReturnType<WorkspaceLabelSequence["synchronize"]>> {
+    return this.exclusive(async () => this.sequence.synchronize(await this.catalog.list(), cursor));
   }
 
   async subscribe(input: {

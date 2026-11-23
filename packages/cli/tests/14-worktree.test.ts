@@ -1,9 +1,10 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): invoke Otto locally without downloading a CLI.
 
 /**
  * Phase 14: Worktree Command Tests
  *
- * Tests the worktree commands for managing Otto-managed git worktrees.
+ * Tests the worktree commands for managing Paseo-managed git worktrees.
  * Since daemon may not be running, we test both:
  * - Help and argument parsing
  * - Graceful error handling when daemon not running
@@ -19,8 +20,12 @@
  */
 
 import assert from "node:assert";
-import { $ } from "./helpers/zx-shell.ts";
-import { mkdtemp, rm } from "fs/promises";
+import { getAvailablePort } from "./helpers/network.ts";
+import { $ } from "zx";
+import { mkdtemp, rm, mkdir } from "fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { runPaseoCli, startTestDaemon } from "./helpers/test-daemon.ts";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -28,15 +33,15 @@ $.verbose = false;
 
 console.log("=== Worktree Command Tests ===\n");
 
-// Get random port that's definitely not in use (never 6868)
-const port = 10000 + Math.floor(Math.random() * 50000);
-const ottoHome = await mkdtemp(join(tmpdir(), "otto-test-home-"));
+// Allocate an unused endpoint for connection-error and argument-validation checks.
+const port = await getAvailablePort();
+const paseoHome = await mkdtemp(join(tmpdir(), "paseo-test-home-"));
 
 try {
   // Test 1: worktree --help shows subcommands
   {
     console.log("Test 1: worktree --help shows subcommands");
-    const result = await $`npx otto worktree --help`.nothrow();
+    const result = await $`npx --no-install otto worktree --help`.nothrow();
     assert.strictEqual(result.exitCode, 0, "worktree --help should exit 0");
     assert(result.stdout.includes("ls"), "help should mention ls subcommand");
     assert(result.stdout.includes("archive"), "help should mention archive subcommand");
@@ -46,9 +51,10 @@ try {
   // Test 2: worktree ls --help shows options
   {
     console.log("Test 2: worktree ls --help shows options");
-    const result = await $`npx otto worktree ls --help`.nothrow();
+    const result = await $`npx --no-install otto worktree ls --help`.nothrow();
     assert.strictEqual(result.exitCode, 0, "worktree ls --help should exit 0");
     assert(result.stdout.includes("--host"), "help should mention --host option");
+    assert(result.stdout.includes("--cwd"), "help should mention --cwd option");
     console.log("✓ worktree ls --help shows options\n");
   }
 
@@ -56,7 +62,7 @@ try {
   {
     console.log("Test 3: worktree ls handles daemon not running");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto worktree ls`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} worktree ls`.nothrow();
     // Should fail because daemon not running
     assert.notStrictEqual(result.exitCode, 0, "should fail when daemon not running");
     const output = result.stdout + result.stderr;
@@ -72,7 +78,7 @@ try {
   {
     console.log("Test 4: worktree ls with --host flag is accepted");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto worktree ls --host localhost:${port}`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} worktree ls --host localhost:${port}`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept --host flag");
     assert(!output.includes("error: option"), "should not have option parsing error");
@@ -82,9 +88,10 @@ try {
   // Test 5: worktree archive --help shows options
   {
     console.log("Test 5: worktree archive --help shows options");
-    const result = await $`npx otto worktree archive --help`.nothrow();
+    const result = await $`npx --no-install otto worktree archive --help`.nothrow();
     assert.strictEqual(result.exitCode, 0, "worktree archive --help should exit 0");
     assert(result.stdout.includes("--host"), "help should mention --host option");
+    assert(result.stdout.includes("--cwd"), "help should mention --cwd option");
     assert(result.stdout.includes("<name>"), "help should mention required name argument");
     console.log("✓ worktree archive --help shows options\n");
   }
@@ -93,7 +100,7 @@ try {
   {
     console.log("Test 6: worktree archive requires name argument");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto worktree archive`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} worktree archive`.nothrow();
     assert.notStrictEqual(result.exitCode, 0, "should fail without name");
     const output = result.stdout + result.stderr;
     const hasError =
@@ -108,7 +115,7 @@ try {
   {
     console.log("Test 7: worktree archive handles daemon not running");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto worktree archive test-worktree`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} worktree archive test-worktree`.nothrow();
     // Should fail because daemon not running
     assert.notStrictEqual(result.exitCode, 0, "should fail when daemon not running");
     const output = result.stdout + result.stderr;
@@ -124,7 +131,7 @@ try {
   {
     console.log("Test 8: worktree archive with name and --host flag is accepted");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto worktree archive test-worktree --host localhost:${port}`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} worktree archive test-worktree --host localhost:${port}`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept --host flag");
     assert(!output.includes("error: option"), "should not have option parsing error");
@@ -135,7 +142,7 @@ try {
   {
     console.log("Test 9: -q (quiet) flag is accepted with worktree ls");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto -q worktree ls`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} -q worktree ls`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept -q flag");
     assert(!output.includes("error: option"), "should not have option parsing error");
@@ -146,24 +153,86 @@ try {
   {
     console.log("Test 10: --json flag is accepted with worktree ls");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto worktree ls --json`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} worktree ls --json`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept --json flag");
     assert(!output.includes("error: option"), "should not have option parsing error");
     console.log("✓ --json flag is accepted with worktree ls\n");
   }
 
-  // Test 11: otto --help keeps the compatibility command hidden
+  // Test 11: paseo --help keeps the compatibility command hidden
   {
-    console.log("Test 11: otto --help hides worktree compatibility command");
-    const result = await $`npx otto --help`.nothrow();
-    assert.strictEqual(result.exitCode, 0, "otto --help should exit 0");
+    console.log("Test 11: paseo --help hides worktree compatibility command");
+    const result = await $`npx --no-install otto --help`.nothrow();
+    assert.strictEqual(result.exitCode, 0, "paseo --help should exit 0");
     assert(!result.stdout.includes("worktree"), "help should not advertise worktree subcommand");
-    console.log("✓ otto --help hides worktree compatibility command\n");
+    console.log("✓ paseo --help hides worktree compatibility command\n");
   }
 } finally {
   // Clean up temp directory
-  await rm(ottoHome, { recursive: true, force: true });
+  await rm(paseoHome, { recursive: true, force: true });
+}
+
+// Exercise repository selection through the real CLI and daemon. An empty
+// request used to fail before Git could inspect even a valid repository.
+const daemon = await startTestDaemon();
+const git = promisify(execFile);
+try {
+  const repo = join(daemon.workDir, "repository");
+  await mkdir(repo);
+  await git("git", ["init", repo]);
+  await git("git", [
+    "-C",
+    repo,
+    "-c",
+    "user.name=Test",
+    "-c",
+    "user.email=test@example.com",
+    "commit",
+    "--allow-empty",
+    "-m",
+    "Initial commit",
+  ]);
+
+  for (const args of [
+    ["worktree", "ls", "--json"],
+    ["worktree", "ls", "--cwd", repo, "--json"],
+    ["worktree", "ls", "--cwd", "./repository", "--json"],
+    ["worktree", "ls", "--host", `127.0.0.1:${daemon.port}`, "--cwd", ".", "--json"],
+  ]) {
+    const explicit = args.includes("--cwd");
+    const result = await runPaseoCli(daemon, args, {
+      cwd: explicit ? daemon.workDir : repo,
+      env: { FORCE_COLOR: undefined },
+    });
+    assert.strictEqual(result.exitCode, 0, result.stderr);
+    assert.deepStrictEqual(JSON.parse(result.stdout), []);
+  }
+
+  for (const args of [
+    ["worktree", "archive", "missing", "--json"],
+    ["worktree", "archive", "missing", "--cwd", repo, "--json"],
+    ["worktree", "archive", "missing", "--cwd", "./repository", "--json"],
+    [
+      "worktree",
+      "archive",
+      "missing",
+      "--host",
+      `127.0.0.1:${daemon.port}`,
+      "--cwd",
+      ".",
+      "--json",
+    ],
+  ]) {
+    const result = await runPaseoCli(daemon, args, {
+      cwd: args.includes("--cwd") ? daemon.workDir : repo,
+      env: { FORCE_COLOR: undefined },
+    });
+    assert.notStrictEqual(result.exitCode, 0);
+    assert.strictEqual(JSON.parse(result.stderr).error.code, "WORKTREE_NOT_FOUND", result.stderr);
+  }
+} finally {
+  await daemon.stop();
 }
 
 console.log("=== All worktree tests passed ===");

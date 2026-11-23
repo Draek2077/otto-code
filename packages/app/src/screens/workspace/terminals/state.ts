@@ -1,4 +1,4 @@
-import type { CreateTerminalResponse, ListTerminalsResponse } from "@otto-code/protocol/messages";
+import type { CreateTerminalResponse, ListTerminalsResponse } from "@getpaseo/protocol/messages";
 import { upsertTerminalListEntry } from "@/utils/terminal-list";
 
 export const TERMINALS_QUERY_STALE_TIME = 5_000;
@@ -26,9 +26,28 @@ export function canCreateWorkspaceTerminal(input: {
   );
 }
 
+export function reconcilePendingScriptTerminals(liveTerminalIds: string[], dataUpdatedAt: number) {
+  return function update(pendingTerminalIds: Map<string, number>): Map<string, number> {
+    if (pendingTerminalIds.size === 0) {
+      return pendingTerminalIds;
+    }
+    const liveIds = new Set(liveTerminalIds);
+    let changed = false;
+    const nextTerminalIds = new Map<string, number>();
+    for (const [terminalId, listedAt] of pendingTerminalIds) {
+      if (liveIds.has(terminalId) || dataUpdatedAt > listedAt) {
+        changed = true;
+        continue;
+      }
+      nextTerminalIds.set(terminalId, listedAt);
+    }
+    return changed ? nextTerminalIds : pendingTerminalIds;
+  };
+}
+
 export function collectKnownTerminalIds(input: {
   liveTerminalIds: string[];
-  pendingScriptTerminalIds: ReadonlyMap<string, number>;
+  pendingScriptTerminalIds: Map<string, number>;
 }): string[] {
   const terminalIds = new Set(input.liveTerminalIds);
   for (const terminalId of input.pendingScriptTerminalIds.keys()) {
@@ -38,7 +57,7 @@ export function collectKnownTerminalIds(input: {
 }
 
 export function collectScriptTerminalIds(input: {
-  pendingScriptTerminalIds: ReadonlyMap<string, number>;
+  pendingScriptTerminalIds: Map<string, number>;
   scripts: Array<{ terminalId?: string | null }>;
 }): Set<string> {
   const terminalIds = new Set(input.pendingScriptTerminalIds.keys());
@@ -56,9 +75,8 @@ export function collectStandaloneTerminalIds(input: {
 }): string[] {
   return input.terminals
     .filter(
-      (terminal) =>
-        !input.scriptTerminalIds.has(terminal.id) && terminal.presentation !== "embedded",
-    )
+      (terminal) => !input.scriptTerminalIds.has(terminal.id) && !isEditorTerminal(terminal.id),
+    ) // OTTO(editor): file-owned PTYs stay in their file tab.
     .map((terminal) => terminal.id);
 }
 
@@ -92,3 +110,4 @@ export function upsertCreatedTerminalPayload(input: {
     requestId: input.current?.requestId ?? `terminal-create-${input.terminal.id}`,
   };
 }
+import { isEditorTerminal } from "@getpaseo/plugin/otto/editor"; // OTTO(editor)

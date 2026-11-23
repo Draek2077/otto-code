@@ -1,7 +1,6 @@
-import { resolveOttoProfileIdentity } from "./otto-agent-snapshot-policy";
-import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
-import type { AgentPermissionRequest } from "@otto-code/protocol/agent-types";
-import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
+import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
+import type { AgentPermissionRequest } from "@getpaseo/protocol/agent-types";
+import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import {
   TURN_LIVENESS_IDLE,
   type ActiveTurnIdentity,
@@ -58,6 +57,37 @@ export function derivePendingPermissionKey(
   return `${agentId}:${fallbackId}`;
 }
 
+export function projectAgentSnapshot(agent: Agent): AgentSnapshotPayload {
+  return {
+    id: agent.id,
+    provider: agent.provider,
+    cwd: agent.cwd,
+    ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
+    model: agent.model,
+    ...(agent.features ? { features: agent.features } : {}),
+    thinkingOptionId: agent.thinkingOptionId ?? null,
+    createdAt: agent.createdAt.toISOString(),
+    updatedAt: agent.updatedAt.toISOString(),
+    lastUserMessageAt: agent.lastUserMessageAt?.toISOString() ?? null,
+    status: agent.status,
+    ...projectActiveTurn(agent),
+    capabilities: agent.capabilities,
+    currentModeId: agent.currentModeId,
+    availableModes: agent.availableModes,
+    pendingPermissions: agent.pendingPermissions,
+    persistence: agent.persistence,
+    ...(agent.runtimeInfo ? { runtimeInfo: agent.runtimeInfo } : {}),
+    ...(agent.lastUsage ? { lastUsage: agent.lastUsage } : {}),
+    ...(agent.lastError ? { lastError: agent.lastError } : {}),
+    title: agent.title,
+    labels: agent.labels,
+    requiresAttention: agent.requiresAttention ?? false,
+    attentionReason: agent.attentionReason ?? null,
+    attentionTimestamp: agent.attentionTimestamp?.toISOString() ?? null,
+    archivedAt: agent.archivedAt?.toISOString() ?? null,
+  };
+}
+
 export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId: string) {
   const createdAt = new Date(snapshot.createdAt);
   const updatedAt = new Date(snapshot.updatedAt);
@@ -91,11 +121,6 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     persistence: snapshot.persistence ?? null,
     runtimeInfo: snapshot.runtimeInfo,
     lastUsage: snapshot.lastUsage,
-    cumulativeTokens: snapshot.cumulativeTokens,
-    cumulativeUsage: snapshot.cumulativeUsage,
-    toolUseCount: snapshot.toolUseCount,
-    currentTool: snapshot.currentTool,
-    queuedMessages: snapshot.queuedMessages,
     lastError: snapshot.lastError ?? null,
     title: snapshot.title ?? null,
     cwd: snapshot.cwd,
@@ -107,42 +132,7 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     attentionReason: snapshot.attentionReason ?? null,
     attentionTimestamp,
     archivedAt,
-    archiveBytes: snapshot.archiveBytes,
     parentAgentId,
     labels: snapshot.labels,
-    attend: snapshot.attend ?? "attended",
-    backgrounded: snapshot.backgrounded ?? false,
-    ...resolveOttoProfileIdentity(snapshot),
-  };
-}
-
-export function projectAgentSnapshot(agent: Agent): AgentSnapshotPayload {
-  return {
-    id: agent.id,
-    provider: agent.provider,
-    cwd: agent.cwd,
-    ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
-    model: agent.model,
-    ...(agent.features ? { features: agent.features } : {}),
-    thinkingOptionId: agent.thinkingOptionId ?? null,
-    createdAt: agent.createdAt.toISOString(),
-    updatedAt: agent.updatedAt.toISOString(),
-    lastUserMessageAt: agent.lastUserMessageAt?.toISOString() ?? null,
-    status: agent.status,
-    ...projectActiveTurn(agent),
-    capabilities: agent.capabilities,
-    currentModeId: agent.currentModeId,
-    availableModes: agent.availableModes,
-    pendingPermissions: agent.pendingPermissions,
-    persistence: agent.persistence,
-    ...(agent.runtimeInfo ? { runtimeInfo: agent.runtimeInfo } : {}),
-    ...(agent.lastUsage ? { lastUsage: agent.lastUsage } : {}),
-    ...(agent.lastError ? { lastError: agent.lastError } : {}),
-    title: agent.title,
-    labels: agent.labels,
-    requiresAttention: agent.requiresAttention ?? false,
-    attentionReason: agent.attentionReason ?? null,
-    attentionTimestamp: agent.attentionTimestamp?.toISOString() ?? null,
-    archivedAt: agent.archivedAt?.toISOString() ?? null,
   };
 }

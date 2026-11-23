@@ -1,8 +1,7 @@
-import { SettingsTargetLabel } from "@/screens/settings-search/target";
 import { useMemo } from "react";
 import { View, Text } from "react-native";
-import { Check } from "@/components/icons/material-icons";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { Check } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
 import { settingsStyles } from "@/styles/settings";
 import type { DesktopPermissionStatus } from "@/desktop/permissions/desktop-permissions";
@@ -43,14 +42,14 @@ export function DesktopPermissionRow({
     state !== "not-granted";
 
   const rowStyle = useMemo(
-    () => [settingsStyles.rowResponsive, showBorder && settingsStyles.rowBorder],
+    () => [settingsStyles.row, showBorder && settingsStyles.rowBorder],
     [showBorder],
   );
 
   return (
     <View style={rowStyle}>
       <View style={settingsStyles.rowContent}>
-        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
+        <Text style={settingsStyles.rowTitle}>{title}</Text>
       </View>
       <View style={styles.permissionRowActions}>
         {isGranted ? (
@@ -73,18 +72,8 @@ export function DesktopPermissionRow({
 
 const styles = StyleSheet.create((theme) => ({
   permissionRowActions: {
-    // Fills the row and centers its contents when the row stacks on the
-    // narrowest widths; hugs the right edge inline at sm+.
-    width: { xs: "100%", sm: "auto" },
-    alignItems: { xs: "center", sm: "flex-end" },
+    alignItems: "flex-end",
     gap: theme.spacing[1],
-  },
-  permissionGrantedActions: {
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    gap: theme.spacing[2],
   },
   permissionStatusPill: {
     flexDirection: "row",

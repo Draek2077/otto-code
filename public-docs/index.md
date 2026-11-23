@@ -6,6 +6,8 @@ order: 1
 category: Getting started
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Getting started
 
 Otto runs your coding agents on your machine and gives you a mobile, desktop, web, and CLI client to drive them from anywhere. Three common ways to install.

@@ -1,28 +1,23 @@
-import { PASEO_PLUGIN_API_VERSION } from "@otto-code/protocol/plugin-compatibility";
+import { resolveDaemonVersion } from "../daemon-version.js";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { createOttoClient, type OttoClient } from "@otto-code/client";
+import { createPaseoClient, type PaseoClient } from "@getpaseo/client";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestOttoDaemon, type TestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon, type TestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
-let daemon: TestOttoDaemon;
+let daemon: TestPaseoDaemon;
 let client: DaemonClient;
 let cwd: string;
-// A second directory, because a directory may back only one live workspace
-// (WorkspaceDirectoryOccupiedError). Terminals still take an explicit cwd, so
-// the shared-directory coverage below is unaffected.
-let otherCwd: string;
-let sdk: OttoClient;
+let sdk: PaseoClient;
 
 beforeEach(async () => {
   cwd = await mkdtemp(path.join(tmpdir(), "terminal-workspace-sdk-"));
-  otherCwd = await mkdtemp(path.join(tmpdir(), "terminal-workspace-sdk-other-"));
-  daemon = await createTestOttoDaemon();
+  daemon = await createTestPaseoDaemon();
   client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
   await client.connect();
-  sdk = createOttoClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
+  sdk = createPaseoClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
   await sdk.connect();
 });
 
@@ -30,13 +25,12 @@ afterEach(async () => {
   await client.close();
   await sdk.close();
   await daemon.close();
-  await rm(cwd, { recursive: true, force: true });
-  await rm(otherCwd, { recursive: true, force: true });
+  await rm(cwd, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
 });
 
 test("SDK and workspace handles preserve ownership and actual process directories", async () => {
   const first = await createWorkspace("main");
-  const second = await createWorkspace("feature-work", otherCwd);
+  const second = await createWorkspace("feature-work");
   const nested = path.join(cwd, "nested");
   await mkdir(nested);
   const a = await sdk.terminals.create({ workspaceId: first, name: "Main" });
@@ -123,7 +117,7 @@ test("plugin handlers operate terminals through their host-owned Paseo API", asy
     path.join(pluginDirectory, "paseo-plugin.json"),
     JSON.stringify({
       id: "terminal-sdk",
-      requirements: { paseo: `>=${PASEO_PLUGIN_API_VERSION}` },
+      requirements: { paseo: `>=${resolveDaemonVersion(import.meta.url)}` },
     }),
   );
   await writeFile(
@@ -178,18 +172,15 @@ export default function contribute(server) {
   }
 }, 30_000);
 
-async function createWorkspace(title: string, directory: string = cwd): Promise<string> {
-  const result = await client.createWorkspace({
-    source: { kind: "directory", path: directory },
-    title,
-  });
+async function createWorkspace(title: string): Promise<string> {
+  const result = await client.createWorkspace({ source: { kind: "directory", path: cwd }, title });
   if (!result.workspace) throw new Error(result.error ?? "Workspace creation failed");
   return result.workspace.id;
 }
 
 test("listing by workspace ID keeps terminals in a shared directory separate", async () => {
   const first = await createWorkspace("main");
-  const second = await createWorkspace("feature-work", otherCwd);
+  const second = await createWorkspace("feature-work");
   await client.createTerminal(cwd, "main terminal", undefined, { workspaceId: first });
   const created = await client.createTerminal(cwd, "feature terminal", undefined, {
     workspaceId: second,
@@ -201,3 +192,80 @@ test("listing by workspace ID keeps terminals in a shared directory separate", a
     expect.objectContaining({ id: created.terminal?.id, workspaceId: second, cwd }),
   ]);
 });
+
+test("script status started and stopped by one client reaches every subscribed client", async () => {
+  await writeFile(
+    path.join(cwd, "paseo.json"),
+    JSON.stringify({
+      scripts: { sleeper: { type: "script", command: 'node -e "setInterval(() => {}, 60000)"' } },
+    }),
+  );
+  const observer = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
+  const bystander = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
+  try {
+    await observer.connect();
+    await bystander.connect();
+    const bystanderEvents: string[] = [];
+    bystander.subscribeRawMessages((message) => bystanderEvents.push(message.type));
+    const opened = await client.openProject(cwd);
+    expect(opened.error).toBeNull();
+    const workspaceId = opened.workspace!.id;
+    const actorSeen = await observeScriptLifecycles(client, "sleeper");
+    const observerSeen = await observeScriptLifecycles(observer, "sleeper");
+
+    expect((await client.startWorkspaceScript(workspaceId, "sleeper")).error).toBeNull();
+    await expect.poll(() => actorSeen.at(-1)).toBe("running");
+    await expect.poll(() => observerSeen.at(-1)).toBe("running");
+
+    expect((await client.stopWorkspaceScript(workspaceId, "sleeper")).error).toBeNull();
+    await expect.poll(() => actorSeen.at(-1)).toBe("stopped");
+    await expect.poll(() => observerSeen.at(-1)).toBe("stopped");
+    expect(bystanderEvents).not.toContain("script_status_update");
+  } finally {
+    await observer.close();
+    await bystander.close();
+  }
+}, 60_000);
+
+async function observeScriptLifecycles(
+  daemonClient: DaemonClient,
+  scriptName: string,
+): Promise<string[]> {
+  const lifecycles: string[] = [];
+  const subscription = daemonClient.observeEvents(["script_status_update"]);
+  subscription.subscribe({
+    snapshot: () => {},
+    update: (message) => {
+      if (message.type !== "script_status_update") return;
+      const script = message.payload.scripts.find((entry) => entry.scriptName === scriptName);
+      if (script) lifecycles.push(script.lifecycle);
+    },
+  });
+  await subscription.ready;
+  return lifecycles;
+}
+
+test.runIf(process.platform !== "win32")(
+  "a missing command fails creation without leaving a terminal listed",
+  async () => {
+    const workspaceId = await createWorkspace("Missing command");
+    await expect(
+      sdk.terminals.create({
+        workspaceId,
+        name: "Missing command",
+        command: "paseo-test-absent-terminal-command",
+      }),
+    ).rejects.toThrow("paseo-test-absent-terminal-command: command not found");
+    expect((await sdk.terminals.list({ workspaceId })).entries).toEqual([]);
+    const control = await sdk.terminals.create({
+      workspaceId,
+      command: process.execPath,
+      args: ["-e", "process.stdin.resume()"],
+    });
+    expect((await sdk.terminals.list({ workspaceId })).entries.map((entry) => entry.id)).toEqual([
+      control.id,
+    ]);
+    await control.kill();
+    expect((await sdk.terminals.list({ workspaceId })).entries).toEqual([]);
+  },
+);

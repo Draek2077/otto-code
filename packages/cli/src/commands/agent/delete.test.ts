@@ -1,51 +1,101 @@
-import { describe, expect, it } from "vitest";
-import { matchesAgentDeleteScope, resolveAgentDeleteScope } from "./delete.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-describe("resolveAgentDeleteScope", () => {
-  it("defaults to active-only so bare --all keeps its old meaning", () => {
-    expect(resolveAgentDeleteScope({})).toBe("active");
-  });
+const daemonTarget = { kind: "endpoint" as const, host: "example.test:12345" };
 
-  it("returns archived-only for --archived", () => {
-    expect(resolveAgentDeleteScope({ archived: true })).toBe("archived");
-  });
+import { runDeleteCommand } from "./delete.js";
 
-  it("returns both for --include-archived", () => {
-    expect(resolveAgentDeleteScope({ includeArchived: true })).toBe("both");
-  });
-
-  it("refuses the contradictory pair instead of guessing", () => {
-    expect(() => resolveAgentDeleteScope({ archived: true, includeArchived: true })).toThrow(
-      /cannot be combined/,
-    );
-  });
+const agent = {
+  id: "11111111-1111-4111-8111-111111111111",
+  status: "running",
+  archivedAt: null as string | null,
+  cwd: "/tmp/project",
+};
+const archivedAgent = {
+  id: "22222222-2222-4222-8222-222222222222",
+  status: "closed",
+  archivedAt: "2026-10-01T00:00:00.000Z",
+  cwd: "/tmp/project/nested",
+};
+const archivedOutsideAgent = {
+  id: "33333333-3333-4333-8333-333333333333",
+  status: "closed",
+  archivedAt: "2026-10-01T00:00:00.000Z",
+  cwd: "/tmp/elsewhere",
+};
+let daemonAgents: (typeof agent)[] = [agent];
+const toEntry = (entry: typeof agent) => ({ agent: entry });
+// The fake daemon pages history two agents at a time.
+const historyPage = (cursor: string | undefined) => {
+  const start = Number(cursor ?? 0);
+  const end = start + 2;
+  return {
+    entries: daemonAgents.slice(start, end).map(toEntry),
+    pageInfo: { nextCursor: end < daemonAgents.length ? String(end) : null },
+  };
+};
+const cancelAgent = vi.fn(async () => {
+  throw new Error("active run cancellation was not acknowledged");
 });
+const fetchAgentHistory = vi.fn(async (options: { page: { cursor?: string } }) =>
+  historyPage(options.page.cursor),
+);
+const deleteAgent = vi.fn(async () => undefined);
+const close = vi.fn(async () => undefined);
 
-describe("matchesAgentDeleteScope", () => {
-  const active = { archivedAt: null };
-  const missing = {};
-  const blank = { archivedAt: "" };
-  const archived = { archivedAt: new Date("2026-01-01T00:00:00.000Z") };
-  const archivedString = { archivedAt: "2026-01-01T00:00:00.000Z" };
+vi.mock("../../utils/client.js", () => ({
+  connectToDaemon: vi.fn(async () => ({
+    fetchAgents: vi.fn(async () => historyPage(undefined)),
+    fetchAgentHistory,
+    fetchAgent: vi.fn(async () => ({ agent })),
+    cancelAgent,
+    deleteAgent,
+    close,
+  })),
+  getDaemonHost: vi.fn(() => "ws://127.0.0.1:6767"),
+}));
 
-  it("active scope keeps unarchived agents and drops archived ones", () => {
-    expect(matchesAgentDeleteScope(active, "active")).toBe(true);
-    expect(matchesAgentDeleteScope(missing, "active")).toBe(true);
-    expect(matchesAgentDeleteScope(blank, "active")).toBe(true);
-    expect(matchesAgentDeleteScope(archived, "active")).toBe(false);
-    expect(matchesAgentDeleteScope(archivedString, "active")).toBe(false);
+describe("runDeleteCommand", () => {
+  beforeEach(() => {
+    daemonAgents = [agent];
+    deleteAgent.mockClear();
+    fetchAgentHistory.mockClear();
   });
 
-  it("archived scope keeps only archived agents", () => {
-    expect(matchesAgentDeleteScope(active, "archived")).toBe(false);
-    expect(matchesAgentDeleteScope(missing, "archived")).toBe(false);
-    expect(matchesAgentDeleteScope(blank, "archived")).toBe(false);
-    expect(matchesAgentDeleteScope(archived, "archived")).toBe(true);
-    expect(matchesAgentDeleteScope(archivedString, "archived")).toBe(true);
+  it("force-deletes a running agent when graceful cancellation is refused", async () => {
+    const result = await runDeleteCommand(agent.id, { daemonTarget }, {} as never);
+
+    expect(fetchAgentHistory).not.toHaveBeenCalled();
+    expect(cancelAgent).toHaveBeenCalledWith(agent.id);
+    expect(deleteAgent).toHaveBeenCalledWith(agent.id);
+    expect(result.data).toEqual({
+      deletedCount: 1,
+      agentIds: [agent.id],
+    });
   });
 
-  it("both scope keeps everything", () => {
-    expect(matchesAgentDeleteScope(active, "both")).toBe(true);
-    expect(matchesAgentDeleteScope(archived, "both")).toBe(true);
+  it("deletes archived agents on every history page with --all", async () => {
+    daemonAgents = [agent, archivedAgent, archivedOutsideAgent];
+
+    const result = await runDeleteCommand(undefined, { daemonTarget, all: true }, {} as never);
+
+    expect(result.data).toEqual({
+      deletedCount: 3,
+      agentIds: [agent.id, archivedAgent.id, archivedOutsideAgent.id],
+    });
+  });
+
+  it("deletes archived agents inside the directory with --cwd", async () => {
+    daemonAgents = [agent, archivedAgent, archivedOutsideAgent];
+
+    const result = await runDeleteCommand(
+      undefined,
+      { daemonTarget, cwd: "/tmp/project" },
+      {} as never,
+    );
+
+    expect(result.data).toEqual({
+      deletedCount: 2,
+      agentIds: [agent.id, archivedAgent.id],
+    });
   });
 });

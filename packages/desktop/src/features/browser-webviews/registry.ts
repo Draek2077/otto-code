@@ -8,7 +8,7 @@ export interface BrowserWebContentsRegistration {
   hostWebContentsId: number;
 }
 
-export class OttoBrowserWebviewRegistry {
+export class PaseoBrowserWebviewRegistry {
   private readonly registrationsByWebContentsId = new Map<number, BrowserWebContentsRegistration>();
   private readonly webContentsIdsByHostAndBrowserId = new Map<string, number>();
   private readonly workspaceIdsByBrowserId = new Map<string, string>();

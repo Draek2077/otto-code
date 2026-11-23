@@ -1,12 +1,6 @@
 import { collectRetainedAttachmentIds } from "@/attachments/gc-retention";
-import { clearPinnedPreviewAttachmentIds } from "@/attachments/preview-pins";
 import { getAttachmentStore } from "@/attachments/store";
-import type {
-  AttachmentMetadata,
-  AttachmentStoreUsage,
-  ClearPreviewAttachmentsResult,
-  SaveAttachmentInput,
-} from "@/attachments/types";
+import type { AttachmentMetadata, SaveAttachmentInput } from "@/attachments/types";
 
 const activePersistence = new Set<Promise<AttachmentMetadata>>();
 const persistedDuringGarbageCollection = new Set<string>();
@@ -106,35 +100,28 @@ export async function encodeAttachmentsForSend(
   }
 
   const store = await getAttachmentStore();
-  const encoded = await Promise.allSettled(
+  const encoded = await Promise.all(
     attachments.map(async (attachment) => {
-      const data = await store.encodeBase64({ attachment });
-      return {
-        data,
-        mimeType: attachment.mimeType,
-      };
+      try {
+        const data = await store.encodeBase64({ attachment });
+        return {
+          data,
+          mimeType: attachment.mimeType,
+        };
+      } catch (error) {
+        console.error("[attachments] Failed to encode attachment for send", {
+          id: attachment.id,
+          error,
+        });
+        return null;
+      }
     }),
   );
 
-  const failures = encoded.filter((entry) => entry.status === "rejected");
-  if (failures.length > 0) {
-    console.error("[attachments] Failed to encode attachment for send", {
-      attachmentIds: attachments
-        .filter((_, index) => encoded[index]?.status === "rejected")
-        .map((attachment) => attachment.id),
-      errors: failures.map((failure) => failure.reason),
-    });
-    throw new Error(
-      `Could not prepare ${failures.length} attachment${failures.length === 1 ? "" : "s"} for sending. Your message was not sent.`,
-    );
-  }
-
-  return encoded.map((entry) => {
-    if (entry.status !== "fulfilled") {
-      throw new Error("Expected successful attachment encoding.");
-    }
-    return entry.value;
-  });
+  const valid = encoded.filter(
+    (entry): entry is { data: string; mimeType: string } => entry !== null,
+  );
+  return valid.length > 0 ? valid : undefined;
 }
 
 export async function resolveAttachmentPreviewUrl(attachment: AttachmentMetadata): Promise<string> {
@@ -214,22 +201,4 @@ export async function garbageCollectAttachments(input: {
       release?.();
     }
   }
-}
-
-/** Sizes the local attachment store for the Storage settings section. */
-export async function readAttachmentStoreUsage(): Promise<AttachmentStoreUsage> {
-  const store = await getAttachmentStore();
-  return await store.usage();
-}
-
-/**
- * Drops every preview attachment. The pins go with them: keeping an id pinned
- * for a file that no longer exists would only stop the GC reclaiming whatever
- * replaces it, and the next render re-mints and re-pins anyway.
- */
-export async function clearPreviewAttachments(): Promise<ClearPreviewAttachmentsResult> {
-  const store = await getAttachmentStore();
-  const result = await store.clearPreviews();
-  clearPinnedPreviewAttachmentIds();
-  return result;
 }

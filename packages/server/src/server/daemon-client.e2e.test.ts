@@ -1,6 +1,5 @@
 import { test, expect, beforeAll, afterAll } from "vitest";
-import { removeTempDir } from "../test-utils/remove-temp-dir.js";
-import { mkdirSync, mkdtempSync, writeFileSync, existsSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, rmSync, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { tmpdir, homedir } from "node:os";
 import path from "node:path";
@@ -13,7 +12,7 @@ import {
   type DaemonTestContext,
   DaemonClient,
 } from "./test-utils/index.js";
-import { createTestOttoDaemon } from "./test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { createTestAgentClients } from "./test-utils/fake-agent-client.js";
 import { getFullAccessConfig, getAskModeConfig } from "./daemon-e2e/agent-configs.js";
 import { parsePcm16MonoWav, wordSimilarity } from "./test-utils/dictation-e2e.js";
@@ -29,7 +28,7 @@ import type {
 const openaiApiKey = process.env.OPENAI_API_KEY ?? null;
 
 const localModelsDir =
-  process.env.OTTO_LOCAL_MODELS_DIR ?? path.join(homedir(), ".otto", "models", "local-speech");
+  process.env.PASEO_LOCAL_MODELS_DIR ?? path.join(homedir(), ".paseo", "models", "local-speech");
 const testFileDir = path.dirname(fileURLToPath(import.meta.url));
 const appE2eFixturesDir = path.resolve(testFileDir, "../../../app/e2e/support/fixtures");
 
@@ -68,7 +67,7 @@ function tmpCwd(): string {
 }
 
 test("DaemonClient connects to a password-protected daemon", async () => {
-  const daemon = await createTestOttoDaemon({
+  const daemon = await createTestPaseoDaemon({
     auth: { password: "$2b$12$GMhF7pN4QnMlHOQXOqjd1OitKWPSmAO3FwB0PHzKtcZR/sAMryz76" },
   });
   const client = new DaemonClient({
@@ -87,7 +86,7 @@ test("DaemonClient connects to a password-protected daemon", async () => {
 });
 
 test("DaemonClient surfaces password auth failures from WebSocket close reasons", async () => {
-  const daemon = await createTestOttoDaemon({
+  const daemon = await createTestPaseoDaemon({
     auth: { password: "$2b$12$GMhF7pN4QnMlHOQXOqjd1OitKWPSmAO3FwB0PHzKtcZR/sAMryz76" },
   });
   const missingPasswordClient = new DaemonClient({
@@ -114,7 +113,7 @@ test("DaemonClient surfaces password auth failures from WebSocket close reasons"
 });
 
 test("createAgent without an initial prompt returns an idle snapshot", async () => {
-  const daemon = await createTestOttoDaemon();
+  const daemon = await createTestPaseoDaemon();
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${daemon.port}/ws`,
     appVersion: "0.1.82",
@@ -122,7 +121,7 @@ test("createAgent without an initial prompt returns an idle snapshot", async () 
 
   try {
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "create-no-prompt" } });
+    await client.fetchAgents({ subscribe: {} });
 
     const agent = await client.createAgent({
       provider: "codex",
@@ -140,7 +139,7 @@ test("createAgent without an initial prompt returns an idle snapshot", async () 
 });
 
 test("DaemonClient uploads file bytes to daemon temp storage", async () => {
-  const daemon = await createTestOttoDaemon();
+  const daemon = await createTestPaseoDaemon();
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${daemon.port}/ws`,
     appVersion: "0.1.82",
@@ -158,15 +157,19 @@ test("DaemonClient uploads file bytes to daemon temp storage", async () => {
       chunkSize: 5,
     });
 
+    const uploadId = result.file?.id ?? "";
+    expect(uploadId).toMatch(
+      /^upload_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
     expect(result).toEqual({
       requestId: "req-upload-e2e",
       file: {
         type: "uploaded_file",
-        id: "upload_req-upload-e2e",
+        id: uploadId,
         fileName: "notes.txt",
         mimeType: "text/plain",
         size: 11,
-        path: path.join(daemon.ottoHome, "uploads", "upload_req-upload-e2e", "notes.txt"),
+        path: path.join(daemon.paseoHome, "uploads", uploadId, "notes.txt"),
       },
       error: null,
     });
@@ -178,7 +181,7 @@ test("DaemonClient uploads file bytes to daemon temp storage", async () => {
 });
 
 test("createAgent with background initialPrompt returns a running snapshot before turn completion", async () => {
-  const daemon = await createTestOttoDaemon();
+  const daemon = await createTestPaseoDaemon();
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${daemon.port}/ws`,
     appVersion: "0.1.82",
@@ -186,7 +189,7 @@ test("createAgent with background initialPrompt returns a running snapshot befor
 
   try {
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "create-background-prompt" } });
+    await client.fetchAgents({ subscribe: {} });
 
     const agent = await client.createAgent({
       provider: "codex",
@@ -406,7 +409,7 @@ test("createAgent fails when the initial turn cannot start", async () => {
     startError: "Initial turn failed to start",
   });
 
-  const daemon = await createTestOttoDaemon({
+  const daemon = await createTestPaseoDaemon({
     agentClients: { codex: testAgent },
   });
   const client = new DaemonClient({
@@ -416,7 +419,7 @@ test("createAgent fails when the initial turn cannot start", async () => {
 
   try {
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "create-start-failure" } });
+    await client.fetchAgents({ subscribe: {} });
 
     await expect(
       client.createAgent({
@@ -442,35 +445,9 @@ function createUninterruptibleClient(): AgentClient {
   });
 }
 
-// sendMessage resolves once the daemon accepts the prompt, not once the
-// foreground run is registered. The replace and stop guards below only engage
-// against an *active* run, so without this wait the next RPC can land first and
-// take the "nothing is running" path, which resolves instead of rejecting.
-async function waitForRunningAgent(client: DaemonClient, agentId: string): Promise<void> {
-  const deadline = Date.now() + 5_000;
-  while (Date.now() < deadline) {
-    const fetched = await client.fetchAgent({ agentId });
-    if (fetched?.agent.status === "running") {
-      return;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`Timed out waiting for agent ${agentId} to start running`);
-}
-
-// The AgentRunCancellationError itself is NOT observable from a client: the
-// daemon drives the replacement's iterator in a detached task (see the
-// `void (async () => ...)` in agent-prompt.ts), so sendMessage has already
-// resolved by the time the guard throws, and the catch only logs. Asserting a
-// rejection here can never pass. The error text is pinned one tier down, in
-// agent-manager.test.ts, which drives replaceAgentRun().next() directly.
-//
-// What IS observable, and what the guard exists to protect, is the invariant
-// below: a refused cancel must leave the ORIGINAL run in place rather than
-// dropping it or letting a second turn start against the same session.
-test("DaemonClient leaves the original run in place when a replacement cannot cancel it", async () => {
+test("DaemonClient rejects a replacement prompt when cancellation is not acknowledged", async () => {
   const cwd = tmpCwd();
-  const daemon = await createTestOttoDaemon({
+  const daemon = await createTestPaseoDaemon({
     agentClients: { codex: createUninterruptibleClient() },
   });
   const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
@@ -479,34 +456,20 @@ test("DaemonClient leaves the original run in place when a replacement cannot ca
     await client.connect();
     const agent = await client.createAgent({ provider: "codex", cwd });
     await client.sendMessage(agent.id, "Keep working on the first prompt.");
-    await waitForRunningAgent(client, agent.id);
 
-    // delivery: "interrupt" is what replaces the active run. A bare send against
-    // a busy agent parks the prompt on the steer queue instead, so it is
-    // accepted and never reaches the replacement guard this test is about.
-    await client.sendMessage(agent.id, "Replace it with this prompt.", {
-      delivery: "interrupt",
-    });
-
-    const fetched = await client.fetchAgent({ agentId: agent.id });
-    expect(fetched?.agent.status).toBe("running");
-
-    // "running" on its own would also be true if the replacement had quietly
-    // taken over. The stop guard still refusing is what pins it to the same
-    // uninterruptible turn that was live before the replacement was attempted.
-    await expect(client.cancelAgent(agent.id)).rejects.toThrow(
-      `Cannot stop agent ${agent.id} because its active run cancellation was not acknowledged`,
+    await expect(client.sendMessage(agent.id, "Replace it with this prompt.")).rejects.toThrow(
+      `Cannot replace agent ${agent.id} because its active run cancellation was not acknowledged`,
     );
   } finally {
     await client.close();
     await daemon.close();
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 30_000);
 
 test("DaemonClient rejects Stop when cancellation is not acknowledged", async () => {
   const cwd = tmpCwd();
-  const daemon = await createTestOttoDaemon({
+  const daemon = await createTestPaseoDaemon({
     agentClients: { codex: createUninterruptibleClient() },
   });
   const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
@@ -515,7 +478,6 @@ test("DaemonClient rejects Stop when cancellation is not acknowledged", async ()
     await client.connect();
     const agent = await client.createAgent({ provider: "codex", cwd });
     await client.sendMessage(agent.id, "Keep working until stopped.");
-    await waitForRunningAgent(client, agent.id);
 
     await expect(client.cancelAgent(agent.id)).rejects.toThrow(
       `Cannot stop agent ${agent.id} because its active run cancellation was not acknowledged`,
@@ -523,7 +485,7 @@ test("DaemonClient rejects Stop when cancellation is not acknowledged", async ()
   } finally {
     await client.close();
     await daemon.close();
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 30_000);
 
@@ -763,45 +725,23 @@ test("handles session actions", async () => {
       cwd,
     },
   });
-  expect(created.id).toBeTruthy();
+
+  await expect(ctx.client.setVoiceMode(true, created.id)).resolves.toMatchObject({
+    enabled: true,
+    agentId: created.id,
+    accepted: true,
+    error: null,
+  });
+  await expect(ctx.client.setVoiceMode(false)).resolves.toMatchObject({
+    enabled: false,
+    agentId: null,
+    accepted: true,
+    error: null,
+  });
 
   await ctx.client.deleteAgent(randomUUID());
-  removeTempDir(cwd);
+  rmSync(cwd, { recursive: true, force: true });
 }, 30000);
-
-// setVoiceMode needs the realtime turn-detection service, which only comes up
-// on a host with speech models or an OpenAI key. This used to ride along inside
-// "handles session actions", so a host without them failed a test that is
-// otherwise about plain session RPCs - while every dedicated voice test in this
-// file correctly skipped. Same gate as those.
-speechTest(
-  "toggles voice mode on and off for an agent",
-  async () => {
-    const cwd = tmpCwd();
-    const created = await ctx.client.createAgent({
-      config: {
-        ...getFullAccessConfig("codex"),
-        cwd,
-      },
-    });
-
-    await expect(ctx.client.setVoiceMode(true, created.id)).resolves.toMatchObject({
-      enabled: true,
-      agentId: created.id,
-      accepted: true,
-      error: null,
-    });
-    await expect(ctx.client.setVoiceMode(false)).resolves.toMatchObject({
-      enabled: false,
-      agentId: null,
-      accepted: true,
-      error: null,
-    });
-
-    removeTempDir(cwd);
-  },
-  30000,
-);
 
 test("archives agents and excludes them from default listings", async () => {
   const cwd = tmpCwd();
@@ -823,7 +763,7 @@ test("archives agents and excludes them from default listings", async () => {
     });
     expect(withArchived.entries.some((entry) => entry.agent.id === created.id)).toBe(true);
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 30000);
 
@@ -868,7 +808,7 @@ test("interrupts a running agent before archiving", async () => {
     });
     expect(runningAgents.entries.some((entry) => entry.agent.id === created.id)).toBe(false);
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 60000);
 
@@ -891,9 +831,32 @@ test("send_agent_message auto-unarchives archived agents", async () => {
     expect(refreshed).not.toBeNull();
     expect(refreshed?.agent.archivedAt).toBeNull();
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 180000);
+
+test("send_agent_message leaves an archived agent archived when its directory is gone", async () => {
+  const cwd = tmpCwd();
+  try {
+    const created = await ctx.client.createAgent({
+      config: {
+        ...getFullAccessConfig("codex"),
+        cwd,
+      },
+    });
+    const archived = await ctx.client.archiveAgent(created.id);
+    rmSync(cwd, { recursive: true, force: true });
+
+    await expect(ctx.client.sendMessage(created.id, "hello")).rejects.toThrow(
+      "Working directory does not exist",
+    );
+
+    const afterSend = await ctx.client.fetchAgent({ agentId: created.id });
+    expect(afterSend?.agent.archivedAt).toBe(archived.archivedAt);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
+}, 30000);
 
 test("refresh_agent auto-unarchives archived agents", async () => {
   const cwd = tmpCwd();
@@ -911,7 +874,7 @@ test("refresh_agent auto-unarchives archived agents", async () => {
     expect(refreshed).not.toBeNull();
     expect(refreshed?.agent.archivedAt).toBeNull();
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 120000);
 
@@ -943,7 +906,7 @@ test("refresh_agent rebuilds a live agent even when it has no persistence handle
     expect(client.closeCalls).toBe(1);
   } finally {
     await localCtx.cleanup();
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 });
 
@@ -973,7 +936,7 @@ test("refresh_agent rejects when persisted session resume fails", async () => {
     expect(client.resumeSessionCalls).toBe(1);
   } finally {
     await localCtx.cleanup();
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 });
 
@@ -1003,7 +966,7 @@ test("resume_agent auto-unarchives archived agents", async () => {
       await ctx.client.deleteAgent(resumed.id);
     }
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 180000);
 
@@ -1149,14 +1112,14 @@ test("update_agent persists unloaded title and labels across auto-unarchive", as
     expect(unarchived?.agent.title).toBe("Pinned Title");
     expect(unarchived?.agent.labels).toMatchObject({ lane: "phase-1a" });
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 180000);
 
 test("returns home-scoped directory suggestions", async () => {
-  const insideHomeDir = mkdtempSync(path.join(homedir(), "otto-dir-suggestion-"));
-  const rootBrowseDir = mkdtempSync(path.join(homedir(), "000-otto-root-browse-"));
-  const outsideHomeDir = mkdtempSync(path.join(tmpdir(), "otto-dir-suggestion-outside-"));
+  const insideHomeDir = mkdtempSync(path.join(homedir(), "paseo-dir-suggestion-"));
+  const rootBrowseDir = mkdtempSync(path.join(homedir(), "000-paseo-root-browse-"));
+  const outsideHomeDir = mkdtempSync(path.join(tmpdir(), "paseo-dir-suggestion-outside-"));
 
   try {
     const insideQuery = path.basename(insideHomeDir);
@@ -1186,17 +1149,14 @@ test("returns home-scoped directory suggestions", async () => {
     expect(outsideResult.error).toBeNull();
     expect(outsideResult.directories).not.toContain(outsideHomeDir);
   } finally {
-    removeTempDir(insideHomeDir);
-    removeTempDir(rootBrowseDir);
-    removeTempDir(outsideHomeDir);
+    rmSync(insideHomeDir, { recursive: true, force: true });
+    rmSync(rootBrowseDir, { recursive: true, force: true });
+    rmSync(outsideHomeDir, { recursive: true, force: true });
   }
-  // Four suggestion queries, each walking the developer's REAL home directory
-  // rather than a fixture. On a long-lived home this runs tens of seconds, so
-  // the budget is sized for a slow machine, not for the scan being fast.
-}, 120000);
+}, 30000);
 
 test("returns typed relative suggestions within a requested directory", async () => {
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-workspace-suggestion-"));
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-workspace-suggestion-"));
   const target = path.join(cwd, "src", "components", "message-renderer.tsx");
 
   try {
@@ -1215,12 +1175,12 @@ test("returns typed relative suggestions within a requested directory", async ()
     expect(result.directories).toEqual([]);
     expect(result.entries).toEqual([{ path: "src/components/message-renderer.tsx", kind: "file" }]);
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 30000);
 
 test("finds workspace files inside the OpenCode directory", async () => {
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-opencode-suggestion-"));
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-opencode-suggestion-"));
   const target = path.join(
     cwd,
     ".opencode",
@@ -1251,12 +1211,12 @@ test("finds workspace files inside the OpenCode directory", async () => {
       },
     ]);
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 30000);
 
 test("opens an exact gitignored workspace path without offering it as a suggestion", async () => {
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-gitignored-suggestion-"));
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-gitignored-suggestion-"));
   const target = path.join(cwd, "generated", "notes.md");
 
   try {
@@ -1314,7 +1274,7 @@ test("receives server_info on websocket connect", async () => {
 }, 15000);
 
 test("a Desktop-managed daemon does not advertise npm self-update", async () => {
-  const daemon = await createTestOttoDaemon({ desktopManaged: true });
+  const daemon = await createTestPaseoDaemon({ desktopManaged: true });
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${daemon.port}/ws`,
     clientId: `cid-desktop-managed-${randomUUID()}`,
@@ -1392,7 +1352,7 @@ test("creates agent and exercises lifecycle", async () => {
   const cwd = tmpCwd();
 
   await ctx.client.fetchAgents({
-    subscribe: { subscriptionId: "daemon-client-lifecycle" },
+    subscribe: {},
   });
 
   const agentUpdatePromise = waitForSignal(15000, (resolve) => {
@@ -1651,7 +1611,7 @@ test("creates agent and exercises lifecycle", async () => {
     await ctx.client.deleteAgent(resumed.id);
   }
 
-  removeTempDir(cwd);
+  rmSync(cwd, { recursive: true, force: true });
 }, 300000);
 
 test("handles permission flow", async () => {
@@ -1724,7 +1684,7 @@ test("handles permission flow", async () => {
     await permissionRequestPromise.catch(() => {});
     await permissionResolvedPromise.catch(() => {});
     await ctx.client.deleteAgent(agent.id);
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 180000);
 
@@ -1746,7 +1706,7 @@ test("exposes raw session events for reachable screens", async () => {
   expect(timeline.entries.length).toBeGreaterThan(0);
 
   await ctx.client.deleteAgent(agent.id);
-  removeTempDir(cwd);
+  rmSync(cwd, { recursive: true, force: true });
 }, 120000);
 
 speechTest(
@@ -1897,7 +1857,7 @@ speechTest(
     } finally {
       await Promise.allSettled([transcription, errorSignal]);
       await ctx.client.setVoiceMode(false);
-      removeTempDir(voiceCwd);
+      rmSync(voiceCwd, { recursive: true, force: true });
     }
   },
   90_000,
@@ -1981,18 +1941,16 @@ test("supports git and file operations", async () => {
   const cwd = tmpCwd();
 
   execSync("git init -b main", { cwd, stdio: "pipe" });
-  execSync('git config user.email "test@test.com"', {
+  execSync("git config user.email 'test@test.com'", {
     cwd,
     stdio: "pipe",
   });
-  execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
+  execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
 
   const testFile = path.join(cwd, "test.txt");
   writeFileSync(testFile, "original content\n");
   execSync("git add test.txt", { cwd, stdio: "pipe" });
-  // Double quotes, not single: execSync goes through cmd.exe on Windows, which
-  // does not treat ' as a quote character, so git read the message as a pathspec.
-  execSync('git -c commit.gpgSign=false commit -m "Initial commit"', {
+  execSync("git -c commit.gpgSign=false commit -m 'Initial commit'", {
     cwd,
     stdio: "pipe",
   });
@@ -2013,10 +1971,7 @@ test("supports git and file operations", async () => {
   const checkoutStatus = await ctx.client.getCheckoutStatus(cwd);
   expect(checkoutStatus.error).toBeNull();
   expect(checkoutStatus.isGit).toBe(true);
-  // git reports POSIX separators even on Windows, where mkdtempSync hands back
-  // backslashes. Compare on a common separator rather than the raw strings.
-  const toPosixPath = (value: string) => value.replace(/\\/g, "/");
-  expect(toPosixPath(checkoutStatus.repoRoot ?? "")).toContain(toPosixPath(cwd));
+  expect(checkoutStatus.repoRoot).toContain(cwd);
 
   const diffResult = await ctx.client.getCheckoutDiff(cwd, { mode: "uncommitted" });
   expect(diffResult.error).toBeNull();
@@ -2113,5 +2068,5 @@ test("supports git and file operations", async () => {
   expect(body).toBe(downloadContents);
 
   await ctx.client.deleteAgent(agent.id);
-  removeTempDir(cwd);
+  rmSync(cwd, { recursive: true, force: true });
 }, 120000);

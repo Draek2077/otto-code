@@ -6,6 +6,8 @@ order: 57
 category: TypeScript SDK
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # SDK recipes
 
 Examples use a connected `client` imported from the public package root.

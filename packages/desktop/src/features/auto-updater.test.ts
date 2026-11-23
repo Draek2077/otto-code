@@ -3,11 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { UUID } from "builder-util-runtime";
 import { describe, expect, it, vi } from "vitest";
-import { app, autoUpdater as electronAutoUpdater } from "electron";
-import { DebUpdater } from "electron-updater";
-import { installLinuxDeb } from "./linux-deb-installer";
 
-const { autoUpdaterMock, logMock } = vi.hoisted(() => {
+const { autoUpdaterMock } = vi.hoisted(() => {
   const handlers = new Map<string, (value: unknown) => void>();
   return {
     autoUpdaterMock: {
@@ -25,13 +22,6 @@ const { autoUpdaterMock, logMock } = vi.hoisted(() => {
       }),
       quitAndInstall: vi.fn(),
     },
-    logMock: {
-      transports: { file: { getFile: () => ({ path: "/home/test/.config/Otto/logs/main.log" }) } },
-      debug: vi.fn(),
-      error: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-    },
   };
 });
 
@@ -39,33 +29,21 @@ vi.mock("electron", () => ({
   app: {
     getPath: vi.fn(),
     isPackaged: true,
-    relaunch: vi.fn(),
-    quit: vi.fn(),
   },
-  autoUpdater: { emit: vi.fn() },
 }));
 
 vi.mock("electron-updater", () => ({
   autoUpdater: autoUpdaterMock,
-  DebUpdater: class {
-    readonly packageType = "deb";
-  },
 }));
-
-vi.mock("electron-log/main", () => ({ default: logMock }));
-vi.mock("./linux-deb-installer", () => ({ installLinuxDeb: vi.fn() }));
 
 import {
   bucketFromStagingUserId,
   checkForAppUpdate,
-  downloadAndInstallUpdate,
-  isLinuxDebUpdateInstalling,
   createAppUpdateLifecycleLogger,
   resolveStagingUserId,
   rolloutManifestSchema,
   shouldAdmitToRollout,
   shouldInstallAppUpdateOnQuit,
-  shouldStopDesktopManagedDaemonBeforeAppUpdate,
 } from "./auto-updater";
 
 describe("checkForAppUpdate", () => {
@@ -73,6 +51,7 @@ describe("checkForAppUpdate", () => {
     const error = Object.assign(new Error("Cannot find latest-mac.yml"), {
       code: "ERR_UPDATER_CHANNEL_FILE_NOT_FOUND",
     });
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     autoUpdaterMock.checkForUpdates.mockImplementationOnce(async () => {
       autoUpdaterMock.logger.error(error);
       autoUpdaterMock.handlers.get("error")?.(error);
@@ -94,14 +73,13 @@ describe("checkForAppUpdate", () => {
       date: null,
       errorMessage: null,
     });
-    expect(logMock.warn).toHaveBeenCalledWith(
-      "[auto-updater] Update channel manifest is not published yet",
-      error,
-    );
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
-  it("writes genuine updater failures to the Electron main-process log once", async () => {
+  it("keeps genuine updater failures visible", async () => {
     const error = new Error("network down");
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     autoUpdaterMock.checkForUpdates.mockImplementationOnce(async () => {
       autoUpdaterMock.logger.error(error);
       autoUpdaterMock.handlers.get("error")?.(error);
@@ -115,99 +93,8 @@ describe("checkForAppUpdate", () => {
     });
 
     expect(result.errorMessage).toBe("network down");
-    expect(logMock.error).toHaveBeenCalledTimes(1);
-    expect(logMock.error).toHaveBeenCalledWith(
-      "[auto-updater] electron-updater reported an error",
-      error,
-    );
-  });
-});
-
-describe("downloadAndInstallUpdate", () => {
-  it("awaits Debian installation before daemon shutdown and restart, and stays usable on cancellation", async () => {
-    const platform = Object.getOwnPropertyDescriptor(process, "platform")!;
-    const prototype = Object.getPrototypeOf(autoUpdaterMock);
-    Object.defineProperty(process, "platform", { value: "linux", configurable: true });
-    Object.setPrototypeOf(autoUpdaterMock, DebUpdater.prototype);
-    try {
-      const info = { version: "1.2.4", downloadedFile: "/home/test/Otto update.deb" };
-      const check = async () => {
-        autoUpdaterMock.handlers.get("update-downloaded")?.(info);
-        return { isUpdateAvailable: true, updateInfo: info };
-      };
-      autoUpdaterMock.checkForUpdates.mockImplementationOnce(check);
-      vi.mocked(installLinuxDeb).mockRejectedValueOnce(new Error("Authorization was cancelled"));
-      const beforeQuit = vi.fn(async () => undefined);
-      const input = { currentVersion: "1.2.3", releaseChannel: "stable" as const };
-      const failed = await downloadAndInstallUpdate(input, beforeQuit);
-      expect(failed.outcome).toBe("failed");
-      expect(failed.message).toContain("Authorization was cancelled");
-      expect(beforeQuit).not.toHaveBeenCalled();
-      expect(app.quit).not.toHaveBeenCalled();
-      expect(app.relaunch).not.toHaveBeenCalled();
-      expect(isLinuxDebUpdateInstalling()).toBe(false);
-
-      let finishInstall!: () => void;
-      vi.mocked(installLinuxDeb).mockImplementationOnce(
-        () =>
-          new Promise<void>((resolve) => {
-            finishInstall = resolve;
-          }),
-      );
-      autoUpdaterMock.checkForUpdates.mockImplementationOnce(check);
-      const pending = downloadAndInstallUpdate(input, beforeQuit);
-      await vi.waitFor(() => expect(isLinuxDebUpdateInstalling()).toBe(true));
-      expect(app.quit).not.toHaveBeenCalled();
-      expect(beforeQuit).not.toHaveBeenCalled();
-      finishInstall();
-      expect((await pending).outcome).toBe("installed");
-      expect(beforeQuit).toHaveBeenCalledOnce();
-      expect(app.relaunch).toHaveBeenCalledOnce();
-      expect(electronAutoUpdater.emit).toHaveBeenCalledWith("before-quit-for-update");
-      expect(app.quit).toHaveBeenCalledOnce();
-      expect(isLinuxDebUpdateInstalling()).toBe(false);
-      expect(autoUpdaterMock.quitAndInstall).not.toHaveBeenCalled();
-    } finally {
-      Object.defineProperty(process, "platform", platform);
-      Object.setPrototypeOf(autoUpdaterMock, prototype);
-    }
-  });
-
-  it.each([
-    "Error executing command as another user: Not authorized",
-    "dpkg: error: cannot access archive '/home/test/update.deb': No such file or directory",
-    "dpkg: error: unable to access dpkg database directory: Permission denied",
-  ])("returns installer stderr to the caller and permits a retry: %s", async (stderr) => {
-    const info = { version: "1.2.4" };
-    const check = async () => {
-      autoUpdaterMock.handlers.get("update-available")?.(info);
-      autoUpdaterMock.handlers.get("update-downloaded")?.(info);
-      return { isUpdateAvailable: true, updateInfo: info };
-    };
-    autoUpdaterMock.checkForUpdates.mockImplementationOnce(check);
-    autoUpdaterMock.quitAndInstall.mockImplementationOnce(() => {
-      // Real BaseUpdater returns normally after emitting an install error.
-      autoUpdaterMock.logger.error(stderr);
-      autoUpdaterMock.handlers.get("error")?.(new Error("Command pkexec exited with code 1"));
-    });
-
-    const result = await downloadAndInstallUpdate({
-      currentVersion: "1.2.3",
-      releaseChannel: "stable",
-    });
-
-    expect(result.installed).toBe(false);
-    expect(result.outcome).toBe("failed");
-    expect(result.message).toContain("Command pkexec exited with code 1");
-    expect(result.message).toContain(stderr);
-    expect(result.message).toContain("/home/test/.config/Otto/logs/main.log");
-
-    autoUpdaterMock.checkForUpdates.mockImplementationOnce(check);
-    const retry = await downloadAndInstallUpdate({
-      currentVersion: "1.2.3",
-      releaseChannel: "stable",
-    });
-    expect(retry.outcome).toBe("installed");
+    expect(consoleError).toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it("logs the update handoff with current and selected target versions", () => {
@@ -259,25 +146,8 @@ describe("shouldInstallAppUpdateOnQuit", () => {
   it("keeps Linux AppImage updates on the manual install path", () => {
     expect(shouldInstallAppUpdateOnQuit({ platform: "linux", isAppImage: true })).toBe(false);
     expect(shouldInstallAppUpdateOnQuit({ platform: "linux", isAppImage: false })).toBe(true);
-    expect(
-      shouldInstallAppUpdateOnQuit({ platform: "linux", isAppImage: false, isDeb: true }),
-    ).toBe(false);
     expect(shouldInstallAppUpdateOnQuit({ platform: "darwin", isAppImage: false })).toBe(true);
     expect(shouldInstallAppUpdateOnQuit({ platform: "win32", isAppImage: false })).toBe(true);
-  });
-});
-
-describe("shouldStopDesktopManagedDaemonBeforeAppUpdate", () => {
-  it("defers daemon shutdown until Linux package elevation succeeds", () => {
-    expect(
-      shouldStopDesktopManagedDaemonBeforeAppUpdate({ platform: "linux", isAppImage: false }),
-    ).toBe(false);
-    expect(
-      shouldStopDesktopManagedDaemonBeforeAppUpdate({ platform: "linux", isAppImage: true }),
-    ).toBe(true);
-    expect(
-      shouldStopDesktopManagedDaemonBeforeAppUpdate({ platform: "win32", isAppImage: false }),
-    ).toBe(true);
   });
 });
 
@@ -432,7 +302,7 @@ describe("shouldAdmitToRollout", () => {
   });
 
   it("creates and then reuses the on-disk staging user id", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "otto-updater-id-"));
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "paseo-updater-id-"));
     const filePath = path.join(tempDir, ".updaterId");
 
     try {

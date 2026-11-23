@@ -1,24 +1,24 @@
 import type { ClientForgeLogicModule, ForgeSpecificEnvelope } from "@/git/client-forge-module";
-import { bitbucketCloudForgeLogic } from "./bitbucket-cloud";
 import { codebergForgeLogic } from "./codeberg";
 import { forgejoForgeLogic } from "./forgejo";
 import { giteaForgeLogic } from "./gitea";
 import { githubForgeLogic } from "./github";
 import { gitlabForgeLogic } from "./gitlab";
+import { bitbucketCloudForgeLogic } from "./bitbucket-cloud"; // OTTO(bitbucket)
 
 /**
  * Pure logic registry. Import this (never the view registry) from URL builders,
- * merge-capability, and native-check derivations so those paths - and the
- * Node-based e2e harness that transitively imports them - stay free of the
+ * merge-capability, and native-check derivations so those paths — and the
+ * Node-based e2e harness that transitively imports them — stay free of the
  * client rendering stack (react-native, react-native-svg, unistyles).
  */
 export const CLIENT_FORGE_LOGIC_MODULES: readonly ClientForgeLogicModule[] = [
+  bitbucketCloudForgeLogic, // OTTO(bitbucket)
   githubForgeLogic,
   gitlabForgeLogic,
   giteaForgeLogic,
   forgejoForgeLogic,
   codebergForgeLogic,
-  bitbucketCloudForgeLogic,
 ];
 
 export function getClientForgeLogicModule(id: string): ClientForgeLogicModule | null {

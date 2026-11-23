@@ -62,40 +62,15 @@ function findEagerModuleStyleReads(filePath: string): string[] {
       }
       const line =
         sourceFile.getLineAndCharacterOfPosition(declaration.getStart(sourceFile)).line + 1;
-      // Forward slashes so the baseline below reads the same on Windows and CI.
-      const relativePath = path.relative(SOURCE_ROOT, filePath).split(path.sep).join("/");
-      return [`${relativePath}:${line}`];
+      return [`${path.relative(SOURCE_ROOT, filePath)}:${line}`];
     });
   });
 }
 
-// Files that already read a style proxy at module scope when this guard arrived
-// with the Paseo v0.2.5 merge. The rule is real and documented (docs/unistyles.md
-// - a module-level read can bake in the pre-theme value, which is how settings
-// dividers once rendered light inside a dark card), but 42 files predate the
-// guard. The baseline is a ratchet, not an exemption: it may only shrink, and a
-// file that no longer offends must leave it.
-const BASELINE: string[] = JSON.parse(
-  readFileSync(path.join(__dirname, "unistyles-module-scope.baseline.json"), "utf8"),
-) as string[];
-
 describe("Unistyles module scope", () => {
   it("does not materialize style proxies before the persisted theme loads", () => {
     const violations = listSourceFiles(SOURCE_ROOT).flatMap(findEagerModuleStyleReads);
-    const offendingFiles = new Set(violations.map((violation) => violation.split(":")[0]));
-    const baseline = new Set(BASELINE);
 
-    const introduced = [...offendingFiles].filter((file) => !baseline.has(file)).sort();
-    expect(introduced).toEqual([]);
-  });
-
-  it("keeps the baseline honest as files are cleaned up", () => {
-    const violations = listSourceFiles(SOURCE_ROOT).flatMap(findEagerModuleStyleReads);
-    const offendingFiles = new Set(violations.map((violation) => violation.split(":")[0]));
-
-    // A baseline entry that no longer offends has been fixed - drop it, so the
-    // ratchet tightens instead of quietly permitting a future regression.
-    const stale = BASELINE.filter((file) => !offendingFiles.has(file));
-    expect(stale).toEqual([]);
+    expect(violations).toEqual([]);
   });
 });

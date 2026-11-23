@@ -6,6 +6,8 @@ order: 32
 category: Orchestration
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Agent profiles
 
 Otto calls saved agent profiles **Personalities**. Open **Settings → your host → Teams**

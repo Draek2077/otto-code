@@ -1,7 +1,7 @@
-import { createOttoClient, type OttoClient } from "@otto-code/client";
+import { createPaseoClient, type PaseoClient } from "@getpaseo/client";
 
-export function createClient(url: string): OttoClient {
-  return createOttoClient({
+export function createClient(url: string): PaseoClient {
+  return createPaseoClient({
     url,
   });
 }
@@ -58,9 +58,22 @@ export async function runFollowUp(url: string, agentId: string): Promise<string 
 
   try {
     await client.connect();
-    const result = await client.agents.ref(agentId).run("Summarize your progress and next step.");
+    const result = await client.agents.ref(agentId).run("Summarize your progress and next step.", {
+      activeTurnBehavior: "interrupt",
+    });
     if (result.status !== "idle") throw new Error(result.error ?? result.status);
     return result.lastMessage;
+  } finally {
+    await client.close();
+  }
+}
+
+export async function steerAgent(url: string, agentId: string, prompt: string): Promise<void> {
+  const client = createClient(url);
+
+  try {
+    await client.connect();
+    await client.agents.ref(agentId).send(prompt, { activeTurnBehavior: "steer" });
   } finally {
     await client.close();
   }

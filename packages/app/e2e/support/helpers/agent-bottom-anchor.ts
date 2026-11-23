@@ -11,19 +11,7 @@ export interface ScrollMetrics {
 }
 
 function getVisibleChatScroll(page: Page) {
-  // Workspace tab retention can leave an inactive stream surface mounted while
-  // its active sibling receives the new timeline rows. Both surfaces are
-  // technically visible to Playwright during the handoff, so choosing the
-  // first one made the scroll assertions measure an empty transcript and
-  // report a permanent 0px scroll range. These helpers are only called after
-  // a user or assistant row has rendered; bind the measurement to that
-  // transcript rather than DOM order.
-  return page
-    .locator('[data-testid="agent-chat-scroll"]:visible')
-    .filter({
-      has: page.locator('[data-testid="assistant-message"], [data-testid="user-message"]'),
-    })
-    .first();
+  return page.locator('[data-testid="agent-chat-scroll"]:visible').first();
 }
 
 interface PositionedToolCall {
@@ -63,26 +51,11 @@ export async function readScrollMetrics(page: Page): Promise<ScrollMetrics> {
           element.getAttribute("contenteditable") === "true";
         return !isEditable && element.scrollHeight - element.clientHeight > 1;
       });
-    // Prefer the scrollable box that actually holds the transcript, identified
-    // by containing chat messages. Ranking purely by scrollable distance let a
-    // small nested scroller impersonate the chat: a ~64px task/tool card
-    // holding ~800px of content out-scores a transcript that has not overflowed
-    // yet. Worse, the winner could CHANGE mid-test once the transcript grew, so
-    // consecutive samples described different elements and "the scroll position
-    // stayed fixed" compared two unrelated boxes.
-    const holdsMessages = (element: HTMLElement): boolean =>
-      element.querySelector('[data-testid="assistant-message"], [data-testid="user-message"]') !==
-      null;
-    const byScrollableDistance = (left: HTMLElement, right: HTMLElement): number =>
-      right.scrollHeight - right.clientHeight - (left.scrollHeight - left.clientHeight);
-    // No fallback to "any scrollable box": before the first message renders,
-    // falling back would measure the impostor card and satisfy
-    // waitForScrollableChat against it, so the baseline was captured from the
-    // wrong element and every later sample silently switched. Measuring the
-    // root instead reports ~0 scrollable distance until the transcript itself
-    // overflows, which is exactly what these specs mean to wait for.
     const scrollElement =
-      candidates.filter(holdsMessages).sort(byScrollableDistance)[0] ?? (root as HTMLElement);
+      candidates.sort(
+        (left, right) =>
+          right.scrollHeight - right.clientHeight - (left.scrollHeight - left.clientHeight),
+      )[0] ?? (root as HTMLElement);
 
     const offsetY = Math.max(0, scrollElement.scrollTop);
     const contentHeight = Math.max(0, scrollElement.scrollHeight);
@@ -126,63 +99,16 @@ export async function scrollAgentChatToBottom(page: Page): Promise<void> {
     .toBeLessThanOrEqual(NEAR_BOTTOM_THRESHOLD_PX);
 }
 
-/**
- * Which box `readScrollMetrics` measured, and what it passed over. "the
- * transcript never grew" is unactionable on its own: the same symptom comes
- * from a stalled stream, from measuring the non-scrollable root fallback, and
- * from a nested scroller winning the pick. Every wait below attaches this to
- * its failure so the message says which one it was.
- */
-async function readScrollDiagnostics(page: Page): Promise<string> {
-  const diagnostics = await getVisibleChatScroll(page).evaluate((root: Element) => {
-    const describe = (element: HTMLElement, isRoot: boolean) => ({
-      tag: element.tagName.toLowerCase(),
-      id: element.id || undefined,
-      testId: element.getAttribute("data-testid") ?? undefined,
-      isRoot,
-      scrollHeight: element.scrollHeight,
-      clientHeight: element.clientHeight,
-      holdsMessages:
-        element.querySelector('[data-testid="assistant-message"], [data-testid="user-message"]') !==
-        null,
-    });
-    const all = [root, ...Array.from(root.querySelectorAll("*"))].filter(
-      (element): element is HTMLElement => element instanceof HTMLElement,
-    );
-    return {
-      root: describe(root as HTMLElement, true),
-      scrollableCandidates: all
-        .filter((element) => element.scrollHeight - element.clientHeight > 1)
-        .slice(0, 8)
-        .map((element) => describe(element, element === root)),
-      assistantMessages: root.querySelectorAll('[data-testid="assistant-message"]').length,
-      userMessages: root.querySelectorAll('[data-testid="user-message"]').length,
-    };
-  });
-  return JSON.stringify(diagnostics);
-}
-
 export async function waitForContentGrowth(
   page: Page,
   previousContentHeight: number,
-  input?: { timeout?: number },
 ): Promise<ScrollMetrics> {
-  try {
-    await expect
-      .poll(
-        async () => {
-          const metrics = await readScrollMetrics(page);
-          return metrics.contentHeight;
-        },
-        { timeout: input?.timeout },
-      )
-      .toBeGreaterThan(previousContentHeight);
-  } catch (error) {
-    throw new Error(
-      `Transcript never grew past ${previousContentHeight}px. ${await readScrollDiagnostics(page)}`,
-      { cause: error },
-    );
-  }
+  await expect
+    .poll(async () => {
+      const metrics = await readScrollMetrics(page);
+      return metrics.contentHeight;
+    })
+    .toBeGreaterThan(previousContentHeight);
   return readScrollMetrics(page);
 }
 
@@ -278,18 +204,13 @@ export async function clickToolCallBesideScrollToBottomButton(page: Page): Promi
   expect(buttonBounds, "Expected visible scroll-to-bottom button bounds").not.toBeNull();
   const visibleButtonBounds = buttonBounds!;
 
-  // Both live calls and settled action groups expose the interactive hit area.
-  const toolCalls = page.locator(
-    '[data-testid="tool-call-badge"] [role="button"], [data-testid="action-group-badge"] [role="button"]',
-  );
+  const toolCalls = page.locator('[data-testid="tool-call-badge"] [role="button"]');
   const buttonCenterY = visibleButtonBounds.y + visibleButtonBounds.height / 2;
   const initialToolCalls = await readRenderedToolCalls(toolCalls);
   const initialCandidate = closestToolCallToY(initialToolCalls, buttonCenterY);
   expect(
     initialCandidate,
     `Expected at least one rendered tool-call badge: ${JSON.stringify({
-      actionGroupCount: await page.locator('[data-testid="action-group-badge"]').count(),
-      badgeCount: await page.locator('[data-testid="tool-call-badge"]').count(),
       buttonBounds,
       scrollMetrics: await readScrollMetrics(page),
       toolCallBounds: initialToolCalls.map(({ bounds }) => bounds),

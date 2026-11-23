@@ -18,14 +18,13 @@ import {
   type ViewStyle,
 } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
-import { useRetainedPanelActive } from "@/components/retained-panel";
-import { ChatThemeScope } from "@/components/chat-theme-scope";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { StreamItem } from "@/types/stream";
 import type { Theme } from "@/styles/theme";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { useSettledKeyboardShift } from "@/hooks/keyboard-shift-context";
-import { resolveStreamKeyboardInset } from "@/hooks/keyboard-shift-policy";
+import { useNativeMessageJump } from "@/otto/history/native-message-jump"; // OTTO(chat-search)
+import { useKeyboardStreamInset } from "@/keyboard/shift";
+import { shouldAnimateNativeScrollToBottom } from "./native-scroll-animation";
 import { useRevisedHistoryRows } from "./history-row-revision";
 import { useBottomAnchorController } from "./bottom-anchor-controller";
 import { useScrollKeyboardDismiss } from "./scroll-keyboard-dismiss/use-scroll-keyboard-dismiss";
@@ -45,6 +44,7 @@ import {
   type HistoryStartPaginationInput,
   type HistoryStartPaginationTransition,
 } from "./history-start-pagination";
+import { useStreamTopOverlayInset } from "./top-overlay";
 import {
   createHistoryStartSettleScheduler,
   type HistoryStartSettleScheduler,
@@ -66,6 +66,7 @@ const historyStartSlotStyle: ViewStyle = {
   flexShrink: 0,
 };
 const HISTORY_START_SETTLE_FRAMES = 2;
+const NATIVE_STREAM_WINDOW_SIZE = 10;
 
 function keyExtractor(item: { id: string }): string {
   return item.id;
@@ -94,10 +95,6 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     strategy,
   } = props;
   const { renderHistoryMountedRow, renderLiveHeadRow, renderLiveAuxiliary } = renderers;
-  const isPaneVisible = useRetainedPanelActive();
-  const wasPaneVisibleRef = useRef(isPaneVisible);
-  const isPaneVisibleRef = useRef(isPaneVisible);
-  isPaneVisibleRef.current = isPaneVisible;
   const flatListRef = useRef<FlatList<StreamItem>>(null);
   const streamViewportMetricsRef = useRef({
     containerKey: "native-virtualized",
@@ -111,10 +108,10 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   const scrollOffsetYRef = useRef(0);
   const isUserScrollActiveRef = useRef(false);
   const scrollKeyboardDismiss = useScrollKeyboardDismiss();
-  const settledKeyboardShift = useSettledKeyboardShift();
+  const streamKeyboardInset = useKeyboardStreamInset();
   const userScrollEndFrameIdRef = useRef<number | null>(null);
   const programmaticScrollEventBudgetRef = useRef(0);
-  const [isNativeViewportSettling, setIsNativeViewportSettling] = useState(false);
+  const isNativeViewportSettlingRef = useRef(false);
   const nativeViewportSettlingFrameIdRef = useRef<number | null>(null);
   const historyStartReadyRef = useRef(false);
   const [historyStartPaginationState, setHistoryStartPaginationState] = useState(
@@ -130,13 +127,6 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     return [...segments.historyVirtualized, ...segments.historyMounted];
   }, [segments.historyMounted, segments.historyVirtualized]);
   const historyRows = useRevisedHistoryRows(historyItems, historyRowRevision);
-  const messageJumpRef = useRef<{ id: string; attempts: number } | null>(null);
-  const messageJumpTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const cancelMessageJump = useStableEvent(() => {
-    if (messageJumpTimerRef.current) clearTimeout(messageJumpTimerRef.current);
-    messageJumpTimerRef.current = null;
-    messageJumpRef.current = null;
-  });
   const getHistoryStartPaginationInput = useStableEvent((): HistoryStartPaginationInput => {
     const metrics = streamViewportMetricsRef.current;
     const hasMeasuredViewport =
@@ -223,12 +213,12 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
   const markNativeViewportSettling = useCallback(() => {
     clearNativeViewportSettling();
-    setIsNativeViewportSettling(true);
+    isNativeViewportSettlingRef.current = true;
     let remainingFrames = 4;
     const tick = () => {
       if (remainingFrames <= 0) {
         nativeViewportSettlingFrameIdRef.current = null;
-        setIsNativeViewportSettling(false);
+        isNativeViewportSettlingRef.current = false;
         return;
       }
       remainingFrames -= 1;
@@ -237,22 +227,27 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     nativeViewportSettlingFrameIdRef.current = requestAnimationFrame(tick);
   }, [clearNativeViewportSettling]);
 
-  const bottomAnchorTransportBehavior = useMemo(
+  const getBottomAnchorTransportBehavior = useCallback(
     () =>
       resolveBottomAnchorTransportBehavior({
         strategy,
-        isViewportSettling: isNativeViewportSettling,
+        isViewportSettling: isNativeViewportSettlingRef.current,
       }),
-    [isNativeViewportSettling, strategy],
+    [strategy],
   );
 
   const scrollToBottom = useCallback(
     (animated: boolean) => {
-      if (!isPaneVisibleRef.current) return;
       programmaticScrollEventBudgetRef.current = 3;
       flatListRef.current?.scrollToOffset({
         offset: 0,
-        animated,
+        animated:
+          animated &&
+          shouldAnimateNativeScrollToBottom({
+            offsetY: scrollOffsetYRef.current,
+            viewportHeight: streamViewportMetricsRef.current.viewportHeight,
+            windowSize: NATIVE_STREAM_WINDOW_SIZE,
+          }),
       });
       scrollOffsetYRef.current = 0;
       streamViewportMetricsRef.current = {
@@ -269,7 +264,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     routeRequest: routeBottomAnchorRequest,
     isAuthoritativeHistoryReady,
     renderStrategy: "inverted-stream",
-    transportBehavior: bottomAnchorTransportBehavior,
+    getTransportBehavior: getBottomAnchorTransportBehavior,
     getMeasurementState: () => streamViewportMetricsRef.current,
     isNearBottom: () => {
       const metrics = streamViewportMetricsRef.current;
@@ -283,62 +278,41 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     },
     scrollToBottom,
   });
-  const jumpToMessage = useStableEvent((itemId: string) => {
-    if (!isPaneVisibleRef.current) return;
-    bottomAnchorController.detachByUser();
-    const index = historyRows.findIndex((row) => row.id === itemId);
-    if (index >= 0) {
-      flatListRef.current?.scrollToIndex({ index, animated: false, viewPosition: 0.5 });
-    } else if (segments.liveHead.some((row) => row.id === itemId)) {
-      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
-    }
-  });
-  const handleMessageJumpFailure = useStableEvent(
-    (failure: { index: number; averageItemLength: number }) => {
-      const jump = messageJumpRef.current;
-      if (!jump || jump.attempts >= 3) {
-        cancelMessageJump();
-        return;
-      }
-      jump.attempts++;
-      flatListRef.current?.scrollToOffset({
-        offset: failure.averageItemLength * failure.index,
-        animated: false,
-      });
-      messageJumpTimerRef.current = setTimeout(() => jumpToMessage(jump.id), 100);
+  // OTTO(chat-search): the native list owns scrolling and cancels a search jump on manual drag.
+  const {
+    cancel: cancelMessageJump,
+    scrollToMessage,
+    onScrollToIndexFailed,
+  } = useNativeMessageJump({
+    agentId,
+    listRef: flatListRef,
+    history: historyRows,
+    head: segments.liveHead,
+    detach: () => {
+      bottomAnchorController.detachByUser();
+      programmaticScrollEventBudgetRef.current = 3;
     },
-  );
-  useEffect(() => cancelMessageJump, [agentId, cancelMessageJump]);
-  useEffect(() => {
-    const resumed = isPaneVisible && !wasPaneVisibleRef.current;
-    wasPaneVisibleRef.current = isPaneVisible;
-    if (resumed && bottomAnchorController.mode === "sticky-bottom") {
-      bottomAnchorController.reevaluate(false);
-    }
-    // A detached reader keeps FlatList's retained position; resuming does not
-    // write an old pixel offset into its potentially resized content.
-  }, [bottomAnchorController, isPaneVisible]);
-
+  });
   // Android's maintainVisibleContentPosition ignores the list inversion transform and
   // fights the controller's offset-zero correction while the live header grows.
   const maintainVisibleContentPosition =
     Platform.OS === "android" && bottomAnchorController.mode === "sticky-bottom"
       ? undefined
       : DEFAULT_MAINTAIN_VISIBLE_CONTENT_POSITION;
-  const streamKeyboardInset = useMemo(
-    () =>
-      resolveStreamKeyboardInset({
-        platform: Platform.OS === "ios" ? "ios" : "android",
-        settledShift: settledKeyboardShift,
-      }),
-    [settledKeyboardShift],
-  );
+  const topOverlayInset = useStreamTopOverlayInset();
+  // The list is inverted, so its content's bottom padding is the visual top.
   const listContentContainerStyle = useMemo(
     () => [
       baseListContentContainerStyle,
-      { paddingBottom: streamKeyboardInset.contentContainerPaddingBottom },
+      {
+        paddingBottom: streamKeyboardInset.contentContainerPaddingBottom + topOverlayInset,
+      },
     ],
-    [baseListContentContainerStyle, streamKeyboardInset.contentContainerPaddingBottom],
+    [
+      baseListContentContainerStyle,
+      streamKeyboardInset.contentContainerPaddingBottom,
+      topOverlayInset,
+    ],
   );
   const listInsetProps = useMemo(
     () =>
@@ -368,7 +342,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     isUserScrollActiveRef.current = false;
     clearPendingUserScrollEnd();
     clearNativeViewportSettling();
-    setIsNativeViewportSettling(false);
+    isNativeViewportSettlingRef.current = false;
     historyStartReadyRef.current = false;
     const initialHistoryStartState = createHistoryStartPaginationState();
     historyStartPaginationStateRef.current = initialHistoryStartState;
@@ -393,6 +367,12 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
   useEffect(() => {
     const handle: StreamViewportHandle = {
+      // OTTO(action-groups): FlatList keeps the visible row; the controller stops requesting offset zero.
+      holdReadingPosition: () => {
+        clearPendingUserScrollEnd();
+        bottomAnchorController.detachByUser();
+        programmaticScrollEventBudgetRef.current = 3;
+      },
       scrollToBottom: (reason = "jump-to-bottom") => {
         bottomAnchorController.requestLocalAnchor({
           agentId,
@@ -403,11 +383,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         bottomAnchorController.prepareForStickyViewportChange();
         markNativeViewportSettling();
       },
-      scrollToMessage: (itemId) => {
-        cancelMessageJump();
-        messageJumpRef.current = { id: itemId, attempts: 0 };
-        jumpToMessage(itemId);
-      },
+      scrollToMessage, // OTTO(chat-search)
     };
     viewportRef.current = handle;
     return () => {
@@ -419,10 +395,10 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     agentId,
     bottomAnchorController,
     markNativeViewportSettling,
+    scrollToMessage,
     viewportRef,
-    cancelMessageJump,
-    jumpToMessage,
-  ]);
+    clearPendingUserScrollEnd,
+  ]); // OTTO(chat-search) OTTO(action-groups)
 
   const isScrollEventNearBottom = useStableEvent(
     (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -438,7 +414,6 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   );
 
   const handleScroll = useStableEvent((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    if (!isPaneVisibleRef.current) return;
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
     const previousOffsetY = scrollOffsetYRef.current;
     scrollOffsetYRef.current = contentOffset.y;
@@ -475,7 +450,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   });
 
   const handleScrollBeginDrag = useStableEvent((event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    cancelMessageJump();
+    cancelMessageJump(); // OTTO(chat-search)
     clearPendingUserScrollEnd();
     isUserScrollActiveRef.current = true;
     scrollKeyboardDismiss.onScrollBeginDrag(event);
@@ -503,7 +478,6 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   });
 
   const handleMomentumScrollBegin = useStableEvent(() => {
-    cancelMessageJump();
     clearPendingUserScrollEnd();
   });
 
@@ -522,7 +496,6 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   );
 
   const handleListLayout = useStableEvent((event: LayoutChangeEvent) => {
-    if (!isPaneVisibleRef.current) return;
     const previousViewportWidth = streamViewportMetricsRef.current.viewportWidth;
     const previousViewportHeight = streamViewportMetricsRef.current.viewportHeight;
     const viewportWidth = Math.max(0, event.nativeEvent.layout.width);
@@ -550,7 +523,6 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   });
 
   const handleContentSizeChange = useStableEvent((_width: number, height: number) => {
-    if (!isPaneVisibleRef.current) return;
     const previousContentHeight = streamViewportMetricsRef.current.contentHeight;
     const nextContentHeight = Math.max(0, height);
     streamViewportMetricsRef.current = {
@@ -585,7 +557,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
   const renderItem = useStableEvent(
     ({ item, index }: ListRenderItemInfo<StreamItem>): ReactElement | null => {
       const rendered = renderHistoryMountedRow(item, index, historyItems);
-      return rendered ? <ChatThemeScope>{rendered}</ChatThemeScope> : null;
+      return (rendered ?? null) as ReactElement | null;
     },
   );
 
@@ -633,11 +605,6 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     );
   }, [historyStartPaginationState]);
 
-  const themedLiveHeader = useMemo(
-    () => (liveHeaderContent ? <ChatThemeScope>{liveHeaderContent}</ChatThemeScope> : undefined),
-    [liveHeaderContent],
-  );
-
   // RN's FlatList strictMode keeps its internal renderItem wrapper stable when
   // data or the live header changes, preserving the row identities above.
   return (
@@ -650,13 +617,13 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       strictMode
       testID="agent-chat-scroll"
       nativeID="agent-chat-scroll-native-virtualized"
-      ListHeaderComponent={themedLiveHeader}
+      ListHeaderComponent={liveHeaderContent ?? undefined}
       ListFooterComponent={historyFooterContent ?? undefined}
       contentContainerStyle={listContentContainerStyle}
       style={listStyle}
       onLayout={handleListLayout}
       onScroll={handleScroll}
-      onScrollToIndexFailed={handleMessageJumpFailure}
+      onScrollToIndexFailed={onScrollToIndexFailed} // OTTO(chat-search)
       onScrollBeginDrag={handleScrollBeginDrag}
       onScrollEndDrag={handleScrollEndDrag}
       onMomentumScrollBegin={handleMomentumScrollBegin}
@@ -664,8 +631,11 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
       scrollEventThrottle={16}
       onContentSizeChange={handleContentSizeChange}
       maintainVisibleContentPosition={maintainVisibleContentPosition}
-      initialNumToRender={12}
-      windowSize={10}
+      // Tall Markdown rows exhaust a shallow window during flings. Keep the initial
+      // render small, then refill a deeper window in batches large enough to keep up.
+      initialNumToRender={2}
+      maxToRenderPerBatch={10}
+      windowSize={NATIVE_STREAM_WINDOW_SIZE}
       removeClippedSubviews={false}
       scrollEnabled={scrollEnabled}
       showsVerticalScrollIndicator

@@ -242,33 +242,34 @@ describe("codex tool-call mapper", () => {
     });
   });
 
-  it.each([["started", "running"]] as const)(
-    "maps subAgentActivity %s into canonical sub-agent detail",
-    (kind, status) => {
-      const item = mapCodexToolCallFromThreadItem({
-        type: "subAgentActivity",
-        id: `activity-${kind}`,
-        kind,
-        agentThreadId: "child-thread-1",
-        agentPath: "/root/research/investigator",
-      });
+  it.each([
+    ["started", "running"],
+    ["interacted", "running"],
+    ["interrupted", "canceled"],
+  ] as const)("maps subAgentActivity %s into canonical sub-agent detail", (kind, status) => {
+    const item = mapCodexToolCallFromThreadItem({
+      type: "subAgentActivity",
+      id: `activity-${kind}`,
+      kind,
+      agentThreadId: "child-thread-1",
+      agentPath: "/root/research/investigator",
+    });
 
-      expect(item).toEqual({
-        type: "tool_call",
-        callId: `activity-${kind}`,
-        name: "Sub-agent",
-        status,
-        error: null,
-        detail: {
-          type: "sub_agent",
-          subAgentType: "Research / Investigator",
-          description: "research/investigator",
-          log: "",
-          actions: [],
-        },
-      });
-    },
-  );
+    expect(item).toEqual({
+      type: "tool_call",
+      callId: `activity-${kind}`,
+      name: "Sub-agent",
+      status,
+      error: null,
+      detail: {
+        type: "sub_agent",
+        subAgentType: "Research / Investigator",
+        description: "research/investigator",
+        log: "",
+        actions: [],
+      },
+    });
+  });
 
   it("preserves an empty subAgentActivity path as an empty description", () => {
     const item = mapCodexToolCallFromThreadItem({
@@ -397,8 +398,8 @@ describe("codex tool-call mapper", () => {
   });
 
   it.each([
-    ["shutdown", "completed"],
-    ["notFound", "completed"],
+    ["shutdown", "canceled"],
+    ["notFound", "failed"],
   ] as const)("maps terminal child state %s to %s", (childStatus, expectedStatus) => {
     const item = mapCodexToolCallFromThreadItem({
       type: "collabAgentToolCall",
@@ -415,112 +416,6 @@ describe("codex tool-call mapper", () => {
       type: "tool_call",
       callId: `call-sub-agent-${childStatus}`,
       status: expectedStatus,
-    });
-  });
-
-  it.each([
-    ["interacted", "/root", "Message agent: Parent (/root)"],
-    ["interacted", "/root/sibling", "Message agent: /root/sibling"],
-    ["interrupted", "/root/sibling", "Interrupt agent: /root/sibling"],
-  ])(
-    "labels %s targeting %s as coordination, retaining inspection data",
-    (kind, agentPath, label) => {
-      const raw = {
-        type: "subAgentActivity",
-        id: "activity",
-        kind,
-        agentThreadId: "target-thread",
-        agentPath,
-      };
-      const mapped = mapCodexToolCallFromThreadItem(raw);
-      expect(mapped).toMatchObject({
-        status: "completed",
-        detail: {
-          type: "plain_text",
-          label,
-          text: JSON.stringify(raw, null, 2),
-        },
-      });
-    },
-  );
-
-  it.each([
-    ["wait", "Wait for agents"],
-    ["sendInput", "Message agent"],
-    ["closeAgent", "Interrupt agent"],
-  ])("maps %s using its operation status, not the target's liveness", (tool, label) => {
-    const raw = {
-      type: "collabAgentToolCall",
-      id: "coordination",
-      status: "completed",
-      prompt: "Progress?",
-      tool,
-      receiverThreadIds: ["parent", "sibling"],
-      agentsStates: { parent: { status: "running" }, sibling: { status: "failed" } },
-    };
-    expect(mapCodexToolCallFromThreadItem(raw)).toEqual({
-      type: "tool_call",
-      callId: "coordination",
-      name: label,
-      status: "completed",
-      error: null,
-      detail: {
-        type: "plain_text",
-        label: `${label}: parent, sibling`,
-        text: JSON.stringify(raw, null, 2),
-      },
-    });
-    expect(mapCodexToolCallFromThreadItem({ ...raw, status: "inProgress" })).toMatchObject({
-      status: "running",
-    });
-    expect(
-      mapCodexToolCallFromThreadItem({ ...raw, error: { message: "Rejected" } }),
-    ).toMatchObject({
-      status: "failed",
-      error: { message: "Rejected" },
-    });
-  });
-
-  it("preserves PascalCase/snake_case coordination and spawn events", () => {
-    expect(
-      mapCodexToolCallFromThreadItem({
-        type: "SubAgentActivity",
-        id: "message-root",
-        kind: "interacted",
-        agent_thread_id: "parent",
-        agent_path: "/root",
-      }),
-    ).toMatchObject({
-      name: "Message agent",
-      status: "completed",
-      detail: { type: "plain_text", label: "Message agent: Parent (/root)" },
-    });
-    expect(
-      mapCodexToolCallFromThreadItem({
-        type: "CollabAgentToolCall",
-        id: "spawn-child",
-        tool: "spawnAgent",
-        status: "completed",
-        receiver_thread_ids: ["child"],
-        agents_states: { child: { status: "running" } },
-      }),
-    ).toMatchObject({
-      status: "running",
-      detail: { type: "sub_agent" },
-    });
-    expect(
-      mapCodexToolCallFromThreadItem({
-        type: "CollabAgentToolCall",
-        id: "wait-child",
-        tool: "wait",
-        status: "completed",
-        receiver_thread_ids: ["child"],
-        agents_states: { child: { status: "running" } },
-      }),
-    ).toMatchObject({
-      name: "Wait for agents",
-      status: "completed",
-      detail: { type: "plain_text", label: "Wait for agents: child" },
     });
   });
 
@@ -761,6 +656,29 @@ describe("codex tool-call mapper", () => {
     });
   });
 
+  it.each([
+    {
+      type: "commandExecution",
+      id: "codex-declined-command",
+      status: "declined",
+      command: "printf ok > /outside/permission.txt",
+      cwd: "/tmp/repo",
+      aggregatedOutput: null,
+      exitCode: null,
+    },
+    {
+      type: "fileChange",
+      id: "codex-declined-patch",
+      status: "declined",
+      changes: [],
+    },
+  ])("settles a declined $type as failed instead of running", (threadItem) => {
+    const item = expectMapped(mapCodexToolCallFromThreadItem(threadItem));
+
+    expect(item.callId).toBe(threadItem.id);
+    expect(item.status).toBe("failed");
+  });
+
   it("maps unknown tools to unknown detail with raw payloads", () => {
     const item = expectMapped(
       mapCodexToolCallEnvelope({
@@ -927,13 +845,13 @@ describe("codex tool-call mapper", () => {
     });
   });
 
-  it("normalizes codex otto speak mcp calls and extracts spoken text", () => {
+  it("normalizes codex paseo speak mcp calls and extracts spoken text", () => {
     const item = expectMapped(
       mapCodexToolCallFromThreadItem({
         type: "mcpToolCall",
         id: "codex-speak-thread-1",
         status: "completed",
-        server: "otto",
+        server: "paseo",
         tool: "speak",
         arguments: { text: "Voice response from Codex." },
         result: { ok: true },
@@ -954,7 +872,7 @@ describe("codex tool-call mapper", () => {
         type: "mcpToolCall",
         id: "codex-browser-screenshot",
         status: "completed",
-        server: "otto",
+        server: "paseo",
         tool: "browser_screenshot",
         arguments: { browserId: "11111111-1111-4111-8111-111111111111" },
         result: {
@@ -969,7 +887,7 @@ describe("codex tool-call mapper", () => {
     expect(item).toEqual({
       type: "tool_call",
       callId: "codex-browser-screenshot",
-      name: "otto.browser_screenshot",
+      name: "paseo.browser_screenshot",
       status: "completed",
       error: null,
       detail: {
@@ -986,15 +904,15 @@ describe("codex tool-call mapper", () => {
     expect(JSON.stringify(item)).not.toContain("iVBORw0KGgo=");
   });
 
-  it("normalizes codex otto_voice.speak mcp calls and extracts spoken text", () => {
+  it("normalizes codex paseo_voice.speak mcp calls and extracts spoken text", () => {
     const item = expectMapped(
       mapCodexToolCallFromThreadItem({
         type: "mcpToolCall",
         id: "codex-speak-thread-2",
         status: "completed",
-        server: "otto_voice",
+        server: "paseo_voice",
         tool: "speak",
-        arguments: { text: "Voice response from Codex via otto_voice." },
+        arguments: { text: "Voice response from Codex via paseo_voice." },
         result: { ok: true },
       }),
     );
@@ -1002,16 +920,16 @@ describe("codex tool-call mapper", () => {
     expect(item.name).toBe("speak");
     expect(item.detail).toEqual({
       type: "unknown",
-      input: "Voice response from Codex via otto_voice.",
+      input: "Voice response from Codex via paseo_voice.",
       output: null,
     });
   });
 
-  it("normalizes codex otto speak tool-call names and extracts spoken text", () => {
+  it("normalizes codex paseo speak tool-call names and extracts spoken text", () => {
     const item = expectMapped(
       mapCodexToolCallEnvelope({
         callId: "codex-speak-tool-call-1",
-        name: "otto.speak",
+        name: "paseo.speak",
         input: { text: "Tool call speech text." },
         output: { ok: true },
       }),

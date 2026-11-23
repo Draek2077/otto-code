@@ -4,7 +4,7 @@ import * as Clipboard from "expo-clipboard";
 import * as QRCode from "qrcode";
 import { SvgXml } from "react-native-svg";
 import { useMutation } from "@tanstack/react-query";
-import { Check, Copy, Network, RotateCw, ShieldCheck } from "@/components/icons/material-icons";
+import { Check, Copy, Network, RotateCw, ShieldCheck } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Alert } from "@/components/ui/alert";
@@ -20,8 +20,9 @@ import {
   EditingTextInput as TextInput,
   type EditingTextInputHandle,
 } from "@/components/ui/text-input";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
-const RELAY_DOCS_URL = "https://otto-code.me/docs/security";
+const RELAY_DOCS_URL = `${OTTO_WEBSITE_URL}/docs/security`; // OTTO(identity)
 const FLEX_ONE_STYLE = { flex: 1 } as const;
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedShieldCheck = withUnistyles(ShieldCheck);
@@ -80,7 +81,6 @@ export function PairDeviceSection({ serverId, onClose }: PairDeviceSectionProps)
         type: "svg",
         errorCorrectionLevel: "M",
         margin: 1,
-        width: 480,
       }),
     enabled: Boolean(pairingQuery.data?.url),
     dataShape: "value",
@@ -169,7 +169,7 @@ function PairDeviceBody(props: PairDeviceBodyProps) {
 function OfferLoadError({ message, onRetry }: { message: string; onRetry: () => void }) {
   const { t } = useTranslation();
   return (
-    <Alert variant="error" description={message}>
+    <Alert size="sm" variant="error" description={message}>
       <Button variant="outline" size="sm" leftIcon={RotateCw} onPress={onRetry}>
         {t("pairing.device.retry")}
       </Button>
@@ -197,9 +197,11 @@ function RelayConsent(props: PairDeviceBodyProps) {
           accessibilityLabel={t("pairing.device.relayDocsAccessibility")}
         />
       </View>
-      {props.enableError ? <Alert variant="error" description={props.enableError.message} /> : null}
+      {props.enableError ? (
+        <Alert size="sm" variant="error" description={props.enableError.message} />
+      ) : null}
       {!props.canConfigureRelay ? (
-        <Alert variant="warning" description={t("pairing.device.updateRequired")} />
+        <Alert size="sm" variant="warning" description={t("pairing.device.updateRequired")} />
       ) : null}
       <View style={styles.actions}>
         <Button variant="secondary" style={FLEX_ONE_STYLE} onPress={props.onClose}>
@@ -262,7 +264,7 @@ function PairingOffer(props: PairDeviceBodyProps & { offer: { url: string } }) {
           {props.copied ? t("pairing.device.copied") : t("pairing.device.copy")}
         </Button>
       </View>
-      <Alert variant="warning" description={t("pairing.device.securityWarning")} />
+      <Alert size="sm" variant="warning" description={t("pairing.device.securityWarning")} />
     </View>
   );
 }
@@ -273,7 +275,8 @@ function PairingQr({ svg, isError }: { svg: string | null; isError: boolean }) {
     return (
       <SvgXml
         xml={svg}
-        style={styles.qrImage}
+        width="100%"
+        height="100%"
         accessibilityRole="image"
         accessibilityLabel={t("pairing.device.qrAccessibility")}
       />
@@ -362,10 +365,6 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 1,
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.palette.white,
-  },
-  qrImage: {
-    width: "100%",
-    height: "100%",
   },
   linkRow: {
     flexDirection: "row",

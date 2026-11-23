@@ -230,150 +230,6 @@ describe("RelayDurableObject control nudge/reset behavior", () => {
   });
 });
 
-describe("RelayDurableObject pending-frame byte caps", () => {
-  function createClientSocket(connectionId: string): MockSocket {
-    return createMockSocket({
-      version: "2",
-      role: "client",
-      connectionId,
-      serverId: "srv_test",
-      createdAt: 0,
-    });
-  }
-
-  const halfMiB = "x".repeat(512 * 1024);
-  const oneMiB = "x".repeat(1024 * 1024);
-
-  it("buffers client frames up to the per-connection byte cap, then closes the sender with 1009", () => {
-    const { state } = createMockState();
-    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
-    const client = createClientSocket("clt_hoarder");
-
-    relay.webSocketMessage(client as unknown as WebSocket, halfMiB);
-    relay.webSocketMessage(client as unknown as WebSocket, halfMiB);
-    expect(client.close).not.toHaveBeenCalled();
-
-    relay.webSocketMessage(client as unknown as WebSocket, halfMiB);
-    expect(client.close).toHaveBeenCalledWith(1009, "Relay buffer full");
-  });
-
-  it("releases byte accounting when frames are flushed to a server data socket", () => {
-    const { state } = createMockState();
-    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
-    const client = createClientSocket("clt_flush");
-    const serverData = createMockSocket();
-
-    relay.webSocketMessage(client as unknown as WebSocket, oneMiB);
-    (relay as unknown as { flushFrames(id: string, ws: WebSocket): void }).flushFrames(
-      "clt_flush",
-      serverData as unknown as WebSocket,
-    );
-    expect(serverData.send).toHaveBeenCalledTimes(1);
-
-    relay.webSocketMessage(client as unknown as WebSocket, oneMiB);
-    expect(client.close).not.toHaveBeenCalled();
-  });
-
-  it("releases byte accounting when the last client socket for a connection closes", () => {
-    const { state } = createMockState();
-    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
-    const client = createClientSocket("clt_leaver");
-
-    relay.webSocketMessage(client as unknown as WebSocket, oneMiB);
-    relay.webSocketClose(client as unknown as WebSocket, 1001, "gone", true);
-
-    const reconnected = createClientSocket("clt_leaver");
-    relay.webSocketMessage(reconnected as unknown as WebSocket, oneMiB);
-    expect(reconnected.close).not.toHaveBeenCalled();
-  });
-
-  it("enforces the total byte cap across connectionIds", () => {
-    const { state } = createMockState();
-    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
-
-    for (let i = 0; i < 16; i++) {
-      const client = createClientSocket(`clt_swarm_${i}`);
-      relay.webSocketMessage(client as unknown as WebSocket, oneMiB);
-      expect(client.close).not.toHaveBeenCalled();
-    }
-
-    const overflow = createClientSocket("clt_swarm_overflow");
-    relay.webSocketMessage(overflow as unknown as WebSocket, oneMiB);
-    expect(overflow.close).toHaveBeenCalledWith(1009, "Relay buffer full");
-  });
-});
-
-describe("RelayDurableObject anonymous fairness controls", () => {
-  it("refuses an orphan server data socket before it can allocate relay state", async () => {
-    const { state } = createMockState();
-    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
-    const response = await relay.fetch(
-      new Request(
-        "https://relay.test/ws?role=server&serverId=srv_test&connectionId=clt_missing&v=2",
-        { headers: { Upgrade: "websocket" } },
-      ),
-    );
-
-    expect(response.status).toBe(409);
-    expect(state.acceptWebSocket).not.toHaveBeenCalled();
-  });
-
-  it("caps concurrent anonymous client sockets in one relay session", async () => {
-    const { state, setTagSockets } = createMockState();
-    setTagSockets(
-      "client",
-      Array.from({ length: 4 }, () => createMockSocket()),
-    );
-    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
-    const response = await relay.fetch(
-      new Request("https://relay.test/ws?role=client&serverId=srv_test&v=2", {
-        headers: { Upgrade: "websocket" },
-      }),
-    );
-
-    expect(response.status).toBe(429);
-    expect(state.acceptWebSocket).not.toHaveBeenCalled();
-  });
-
-  it("closes a control socket that exceeds its anonymous message allowance", () => {
-    const { state } = createMockState();
-    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
-    const control = createMockSocket({
-      version: "2",
-      role: "server",
-      connectionId: null,
-      serverId: "srv_test",
-      createdAt: Date.now(),
-    });
-
-    for (let i = 0; i < 6; i++) {
-      relay.webSocketMessage(control as unknown as WebSocket, "not-a-control-message");
-    }
-    expect(control.close).not.toHaveBeenCalled();
-
-    relay.webSocketMessage(control as unknown as WebSocket, "not-a-control-message");
-    expect(control.close).toHaveBeenCalledWith(1013, "Relay message rate exceeded");
-  });
-
-  it("does not treat legacy v1 relay data as a v2 control message", () => {
-    const { state } = createMockState();
-    const relay = new RelayDurableObject(state as unknown as DurableObjectStateArg);
-    const legacyClient = createMockSocket({
-      version: "1",
-      role: "client",
-      connectionId: null,
-      serverId: "srv_test",
-      createdAt: Date.now(),
-    });
-
-    for (let i = 0; i < 7; i++) {
-      relay.webSocketMessage(legacyClient as unknown as WebSocket, "legacy-relay-data");
-    }
-
-    expect(legacyClient.close).not.toHaveBeenCalled();
-  });
-});
-
 describe("relay worker endpoint routing", () => {
   it("routes missing v to legacy v1 isolated DO ids", async () => {
     const fetch = vi.fn(
@@ -383,9 +239,7 @@ describe("relay worker endpoint routing", () => {
     const idFromName = vi.fn(() => ({ toString: () => "id" }));
 
     const response = await relayWorker.fetch(
-      new Request("https://relay.test/ws?serverId=srv_test&role=server", {
-        headers: { Upgrade: "websocket" },
-      }),
+      new Request("https://relay.test/ws?serverId=srv_test&role=server"),
       { RELAY: { idFromName, get } } as unknown as RelayEnvArg,
     );
 
@@ -402,9 +256,7 @@ describe("relay worker endpoint routing", () => {
     const idFromName = vi.fn(() => ({ toString: () => "id" }));
 
     const response = await relayWorker.fetch(
-      new Request("https://relay.test/ws?serverId=srv_test&role=server&v=2", {
-        headers: { Upgrade: "websocket" },
-      }),
+      new Request("https://relay.test/ws?serverId=srv_test&role=server&v=2"),
       { RELAY: { idFromName, get } } as unknown as RelayEnvArg,
     );
 
@@ -419,47 +271,12 @@ describe("relay worker endpoint routing", () => {
     const idFromName = vi.fn(() => ({ toString: () => "id" }));
 
     const response = await relayWorker.fetch(
-      new Request("https://relay.test/ws?serverId=srv_test&role=server&v=nope", {
-        headers: { Upgrade: "websocket" },
-      }),
+      new Request("https://relay.test/ws?serverId=srv_test&role=server&v=nope"),
       { RELAY: { idFromName, get } } as unknown as RelayEnvArg,
     );
 
     expect(response.status).toBe(400);
     await expect(response.text()).resolves.toBe("Invalid v parameter (expected 1 or 2)");
-    expect(idFromName).not.toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("rejects non-WebSocket traffic before it reaches a Durable Object", async () => {
-    const fetch = vi.fn();
-    const get = vi.fn(() => ({ fetch }));
-    const idFromName = vi.fn(() => ({ toString: () => "id" }));
-
-    const response = await relayWorker.fetch(
-      new Request("https://relay.test/ws?serverId=srv_test&role=server&v=2"),
-      { RELAY: { idFromName, get } } as unknown as RelayEnvArg,
-    );
-
-    expect(response.status).toBe(426);
-    expect(idFromName).not.toHaveBeenCalled();
-    expect(fetch).not.toHaveBeenCalled();
-  });
-
-  it("rejects oversized route keys before they create a Durable Object", async () => {
-    const fetch = vi.fn();
-    const get = vi.fn(() => ({ fetch }));
-    const idFromName = vi.fn(() => ({ toString: () => "id" }));
-
-    const response = await relayWorker.fetch(
-      new Request(`https://relay.test/ws?serverId=${"x".repeat(257)}&role=server&v=2`, {
-        headers: { Upgrade: "websocket" },
-      }),
-      { RELAY: { idFromName, get } } as unknown as RelayEnvArg,
-    );
-
-    expect(response.status).toBe(400);
-    await expect(response.text()).resolves.toBe("serverId is too long");
     expect(idFromName).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });

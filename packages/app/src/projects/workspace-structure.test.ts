@@ -13,7 +13,6 @@ function project(input: {
     projectKey: input.key,
     projectDisplayName: input.name ?? "acme/app",
     projectCustomName: null,
-    projectKanban: null,
     projectRootPath: input.root,
     projectKind: "git",
   };

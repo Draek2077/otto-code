@@ -1,20 +1,22 @@
 // @vitest-environment jsdom
-// Query fixtures use the app window storage shim.
-import "@/test/window-local-storage";
 import { QueryClient } from "@tanstack/react-query";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { CheckoutStatusUpdate } from "@otto-code/protocol/messages";
+import type { CheckoutStatusUpdate } from "@getpaseo/protocol/messages";
 import {
   checkoutCommitsQueryKey,
   checkoutPrStatusQueryKey,
   checkoutStatusQueryKey,
 } from "@/git/query-keys";
-import { prPaneTimelineQueryKey } from "@/git/pull-request-panel/query-keys";
+import {
+  prPanePipelineQueryKey,
+  prPaneTimelineQueryKey,
+} from "@/git/pull-request-panel/query-keys";
 import {
   resetWorkingDiffComparisons,
   resolveWorkingDiffComparison,
   selectWorkingDiffComparison,
 } from "@/git/working-diff-comparison";
+import { draftAgentCommandsQueryKey } from "@/hooks/agent-commands-query";
 import {
   applyCheckoutStatusUpdateFromEvent,
   ensureCheckoutStatus,
@@ -22,6 +24,14 @@ import {
   type CheckoutStatusPayload,
   fetchCheckoutStatus,
 } from "./checkout-status-cache";
+
+vi.mock("@react-native-async-storage/async-storage", () => ({
+  default: {
+    getItem: vi.fn(async () => null),
+    setItem: vi.fn(async () => undefined),
+    removeItem: vi.fn(async () => undefined),
+  },
+}));
 
 const serverId = "server-1";
 const cwd = "/repo";
@@ -32,7 +42,7 @@ function checkoutStatus(overrides: Partial<CheckoutStatusPayload> = {}): Checkou
     error: null,
     requestId: "checkout-status-1",
     isGit: true,
-    isOttoOwnedWorktree: false,
+    isPaseoOwnedWorktree: false,
     repoRoot: cwd,
     currentBranch: "main",
     isDirty: false,
@@ -41,24 +51,7 @@ function checkoutStatus(overrides: Partial<CheckoutStatusPayload> = {}): Checkou
     aheadOfOrigin: 0,
     behindOfOrigin: 0,
     hasRemote: true,
-    remoteUrl: "git@github.com:otto-code-ai/otto-code.git",
-    ...overrides,
-  } as CheckoutStatusPayload;
-}
-
-function notGitStatus(overrides: Partial<CheckoutStatusPayload> = {}): CheckoutStatusPayload {
-  return {
-    ...checkoutStatus(),
-    isGit: false,
-    repoRoot: null,
-    currentBranch: null,
-    isDirty: null,
-    baseRef: null,
-    aheadBehind: null,
-    aheadOfOrigin: null,
-    behindOfOrigin: null,
-    hasRemote: false,
-    remoteUrl: null,
+    remoteUrl: "git@github.com:getpaseo/paseo.git",
     ...overrides,
   } as CheckoutStatusPayload;
 }
@@ -68,7 +61,7 @@ function prStatus(overrides: Partial<CheckoutPrStatusPayload> = {}): CheckoutPrS
     cwd,
     status: {
       forge: "github",
-      url: "https://github.com/otto-code-ai/otto-code/pull/42",
+      url: "https://github.com/getpaseo/paseo/pull/42",
       title: "My PR",
       state: "open",
       baseRefName: "main",
@@ -82,32 +75,29 @@ function prStatus(overrides: Partial<CheckoutPrStatusPayload> = {}): CheckoutPrS
     },
     githubFeaturesEnabled: true,
     authState: "authenticated",
+    forge: "github",
     error: null,
     requestId: "pr-status-1",
     ...overrides,
-  } as CheckoutPrStatusPayload;
+  };
 }
 
 function checkoutStatusUpdate(
   payload: CheckoutStatusPayload,
-  extraPrStatus?: CheckoutPrStatusPayload,
-  meta: { prStatusOnly?: boolean } = {},
+  extraPrStatus?: NonNullable<CheckoutStatusUpdate["payload"]["prStatus"]>,
 ): CheckoutStatusUpdate {
   return {
     type: "checkout_status_update",
-    payload: {
-      ...payload,
-      prStatusOnly: meta.prStatusOnly ?? false,
-      ...(extraPrStatus ? { prStatus: extraPrStatus } : {}),
-    },
-  } as CheckoutStatusUpdate;
+    payload: extraPrStatus ? { ...payload, prStatus: extraPrStatus } : payload,
+  };
 }
 
-function selectBaseComparison(): void {
+function selectBaseComparison(isDirtyAtSelection: boolean): void {
   selectWorkingDiffComparison({
     serverId,
     cwd,
     comparison: "base",
+    isDirty: isDirtyAtSelection,
   });
 }
 
@@ -130,40 +120,14 @@ describe("fetchCheckoutStatus", () => {
     expect(client.getCheckoutStatus).toHaveBeenCalledExactlyOnceWith(cwd);
   });
 
-  it("preserves a manual working-diff comparison when the fetched dirty state flipped", async () => {
-    selectBaseComparison();
+  it("expires a manual working-diff comparison when the fetched dirty state flipped", async () => {
+    selectBaseComparison(true);
     const client = { getCheckoutStatus: vi.fn(async () => checkoutStatus({ isDirty: false })) };
 
     await fetchCheckoutStatus({ client, serverId, cwd });
 
     expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: false })).toBe("base");
-    expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: true })).toBe("base");
-  });
-
-  it("rejects a failed measurement instead of caching it as a non-git checkout", async () => {
-    const client = {
-      getCheckoutStatus: vi.fn(async () =>
-        notGitStatus({ error: { code: "UNKNOWN", message: "Git command timed out" } }),
-      ),
-    };
-
-    await expect(fetchCheckoutStatus({ client, serverId, cwd })).rejects.toThrow(
-      "Git command timed out",
-    );
-  });
-
-  it("rejects a not-git error until repository discovery returns an error-free snapshot", async () => {
-    const answered = notGitStatus({ error: { code: "NOT_GIT_REPO", message: "not a repo" } });
-    const client = { getCheckoutStatus: vi.fn(async () => answered) };
-
-    await expect(fetchCheckoutStatus({ client, serverId, cwd })).rejects.toThrow("not a repo");
-  });
-
-  it("returns an error-free non-git snapshot as the conclusive answer", async () => {
-    const answered = notGitStatus();
-    const client = { getCheckoutStatus: vi.fn(async () => answered) };
-
-    await expect(fetchCheckoutStatus({ client, serverId, cwd })).resolves.toEqual(answered);
+    expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: true })).toBe("uncommitted");
   });
 });
 
@@ -202,22 +166,6 @@ describe("ensureCheckoutStatus", () => {
 });
 
 describe("applyCheckoutStatusUpdateFromEvent", () => {
-  it("keeps the cached status when a push carries a failed measurement", () => {
-    const queryClient = createQueryClient();
-    const good = checkoutStatus({ requestId: "push-good", isDirty: true });
-    queryClient.setQueryData(checkoutStatusQueryKey(serverId, cwd), good);
-
-    applyCheckoutStatusUpdateFromEvent({
-      queryClient,
-      serverId,
-      message: checkoutStatusUpdate(
-        notGitStatus({ error: { code: "UNKNOWN", message: "Git command timed out" } }),
-      ),
-    });
-
-    expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(good);
-  });
-
   it("writes the checkout status to the cache using the cwd from the payload", () => {
     const queryClient = createQueryClient();
     const pushed = checkoutStatus({ requestId: "push-1", isDirty: true });
@@ -228,27 +176,71 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
       message: checkoutStatusUpdate(pushed),
     });
 
-    expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(
-      expect.objectContaining(pushed),
-    );
+    expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(pushed);
   });
 
-  it("invalidates the commit query for Git publications, not PR-only notifications", () => {
+  it("invalidates recent commits when checkout status is pushed", () => {
     const queryClient = createQueryClient();
-    const key = checkoutCommitsQueryKey(serverId, cwd);
-    queryClient.setQueryData(key, { entries: [] });
+    queryClient.setQueryData(checkoutCommitsQueryKey(serverId, cwd), { commits: [] });
+    queryClient.setQueryData(checkoutCommitsQueryKey(serverId, "/repo2"), { commits: [] });
+
     applyCheckoutStatusUpdateFromEvent({
       queryClient,
       serverId,
-      message: checkoutStatusUpdate(checkoutStatus(), prStatus(), { prStatusOnly: true }),
+      message: checkoutStatusUpdate(checkoutStatus()),
     });
-    expect(queryClient.getQueryState(key)?.isInvalidated).toBe(false);
+
+    expect(queryClient.getQueryState(checkoutCommitsQueryKey(serverId, cwd))?.isInvalidated).toBe(
+      true,
+    );
+    expect(
+      queryClient.getQueryState(checkoutCommitsQueryKey(serverId, "/repo2"))?.isInvalidated,
+    ).toBe(false);
+  });
+
+  it("drops the checkout's cached draft slash commands when its branch changes", () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(
+      checkoutStatusQueryKey(serverId, cwd),
+      checkoutStatus({ currentBranch: "chore/build-paseo" }),
+    );
+    const thisCheckout = draftAgentCommandsQueryKey({
+      serverId,
+      draftConfig: { provider: "claude", cwd, model: "haiku" },
+    });
+    const otherCheckout = draftAgentCommandsQueryKey({
+      serverId,
+      draftConfig: { provider: "claude", cwd: "/repo2", model: "haiku" },
+    });
+    queryClient.setQueryData(thisCheckout, [{ name: "build-paseo" }]);
+    queryClient.setQueryData(otherCheckout, [{ name: "build-paseo" }]);
+
     applyCheckoutStatusUpdateFromEvent({
       queryClient,
       serverId,
-      message: checkoutStatusUpdate(checkoutStatus({ aheadOfOrigin: 1 })),
+      message: checkoutStatusUpdate(checkoutStatus({ currentBranch: "main" })),
     });
-    expect(queryClient.getQueryState(key)?.isInvalidated).toBe(true);
+
+    expect(queryClient.getQueryData(thisCheckout)).toBeUndefined();
+    expect(queryClient.getQueryData(otherCheckout)).toEqual([{ name: "build-paseo" }]);
+  });
+
+  it("keeps the checkout's draft slash commands when a push leaves its branch unchanged", () => {
+    const queryClient = createQueryClient();
+    queryClient.setQueryData(checkoutStatusQueryKey(serverId, cwd), checkoutStatus());
+    const thisCheckout = draftAgentCommandsQueryKey({
+      serverId,
+      draftConfig: { provider: "claude", cwd, model: "haiku" },
+    });
+    queryClient.setQueryData(thisCheckout, [{ name: "build-paseo" }]);
+
+    applyCheckoutStatusUpdateFromEvent({
+      queryClient,
+      serverId,
+      message: checkoutStatusUpdate(checkoutStatus({ isDirty: true })),
+    });
+
+    expect(queryClient.getQueryData(thisCheckout)).toEqual([{ name: "build-paseo" }]);
   });
 
   it("writes the PR status cache when prStatus is present, and skips it otherwise", () => {
@@ -271,50 +263,32 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
     expect(queryClient.getQueryData(checkoutPrStatusQueryKey(serverId, otherCwd))).toBeUndefined();
   });
 
-  // Regression: a branch switch keeps the same cwd, so every PR-dependent
-  // surface must replace the provider facts from this subscription-fed cache.
-  it("replaces cached provider facts when switching between GitHub and Bitbucket", () => {
+  it("normalizes legacy PR auth state at the pushed-cache boundary", () => {
     const queryClient = createQueryClient();
-    const github = prStatus({
-      hosting: { provider: "github", featuresEnabled: true },
-      forge: "github",
-    });
-    const bitbucket = prStatus({
-      hosting: { provider: "bitbucket-cloud", featuresEnabled: true },
-      forge: "bitbucket-cloud",
-      status: { ...prStatus().status!, forge: "bitbucket-cloud" },
+    const { authState: _authState, ...legacyPrStatus } = prStatus({
+      githubFeaturesEnabled: false,
     });
 
     applyCheckoutStatusUpdateFromEvent({
       queryClient,
       serverId,
-      message: checkoutStatusUpdate(checkoutStatus(), github),
+      message: checkoutStatusUpdate(checkoutStatus(), legacyPrStatus),
     });
-    applyCheckoutStatusUpdateFromEvent({
-      queryClient,
-      serverId,
-      message: checkoutStatusUpdate(
-        checkoutStatus({ currentBranch: "bitbucket-branch" }),
-        bitbucket,
-      ),
-    });
-    expect(
-      queryClient.getQueryData<CheckoutPrStatusPayload>(checkoutPrStatusQueryKey(serverId, cwd)),
-    ).toMatchObject({ hosting: { provider: "bitbucket-cloud" }, forge: "bitbucket-cloud" });
 
-    applyCheckoutStatusUpdateFromEvent({
-      queryClient,
-      serverId,
-      message: checkoutStatusUpdate(checkoutStatus({ currentBranch: "github-return" }), github),
-    });
     expect(
-      queryClient.getQueryData<CheckoutPrStatusPayload>(checkoutPrStatusQueryKey(serverId, cwd)),
-    ).toMatchObject({ hosting: { provider: "github" }, forge: "github" });
+      queryClient.getQueryData<CheckoutPrStatusPayload>(checkoutPrStatusQueryKey(serverId, cwd))
+        ?.authState,
+    ).toBe("unauthenticated");
+    expect(
+      queryClient.getQueryData<CheckoutStatusUpdate["payload"]>(
+        checkoutStatusQueryKey(serverId, cwd),
+      )?.prStatus?.authState,
+    ).toBe("unauthenticated");
   });
 
-  it("preserves a manual working-diff comparison when the pushed dirty state flipped", () => {
+  it("expires a manual working-diff comparison when the pushed dirty state flipped", () => {
     const queryClient = createQueryClient();
-    selectBaseComparison();
+    selectBaseComparison(false);
 
     applyCheckoutStatusUpdateFromEvent({
       queryClient,
@@ -322,12 +296,12 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
       message: checkoutStatusUpdate(checkoutStatus({ isDirty: true })),
     });
 
-    expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: true })).toBe("base");
+    expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: true })).toBe("uncommitted");
   });
 
   it("keeps a manual working-diff comparison while the pushed dirty state still matches", () => {
     const queryClient = createQueryClient();
-    selectBaseComparison();
+    selectBaseComparison(true);
 
     applyCheckoutStatusUpdateFromEvent({
       queryClient,
@@ -338,14 +312,21 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
     expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: true })).toBe("base");
   });
 
-  it("invalidates the PR timeline when the prStatus changes, ignoring the volatile requestId", () => {
+  it("invalidates PR detail queries when the prStatus changes, ignoring the volatile requestId", () => {
     const queryClient = createQueryClient();
     queryClient.setQueryData(
       checkoutPrStatusQueryKey(serverId, cwd),
       prStatus({ requestId: "pr-v1" }),
     );
     const timelineKey = prPaneTimelineQueryKey({ serverId, cwd, prNumber: 42 });
+    const pipelineKey = prPanePipelineQueryKey({
+      serverId,
+      cwd,
+      pipelineId: 9001,
+      changeRequestNumber: 1,
+    });
     queryClient.setQueryData(timelineKey, { items: [] });
+    queryClient.setQueryData(pipelineKey, { stages: [] });
 
     applyCheckoutStatusUpdateFromEvent({
       queryClient,
@@ -353,6 +334,7 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
       message: checkoutStatusUpdate(checkoutStatus(), prStatus({ requestId: "pr-v2" })),
     });
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(false);
+    expect(queryClient.getQueryState(pipelineKey)?.isInvalidated).toBe(false);
 
     applyCheckoutStatusUpdateFromEvent({
       queryClient,
@@ -366,79 +348,29 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
       ),
     });
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(pipelineKey)?.isInvalidated).toBe(true);
   });
 
-  // Regression: after a commit, GitHub's PR-status poll re-broadcast a whole status
-  // payload rebuilt from a pre-commit git snapshot. It landed on top of the fresh
-  // aheadOfOrigin, so the Push button went back to "nothing to push".
-  it("keeps freshly committed git state when a PR-status-only push echoes the old snapshot", () => {
-    const queryClient = createQueryClient();
-    const committed = checkoutStatus({ aheadOfOrigin: 1, isDirty: false, gitStateAt: 200 });
-    queryClient.setQueryData(checkoutStatusQueryKey(serverId, cwd), committed);
-
-    applyCheckoutStatusUpdateFromEvent({
-      queryClient,
-      serverId,
-      message: checkoutStatusUpdate(
-        checkoutStatus({ aheadOfOrigin: 0, isDirty: true, gitStateAt: 100 }),
-        prStatus({ requestId: "pr-poll" }),
-        { prStatusOnly: true },
-      ),
-    });
-
-    expect(queryClient.getQueryData(checkoutStatusQueryKey(serverId, cwd))).toEqual(committed);
-    // The PR half of the same push is still applied - that is the only thing it refreshed.
-    expect(queryClient.getQueryData(checkoutPrStatusQueryKey(serverId, cwd))).toEqual(
-      prStatus({ requestId: "pr-poll" }),
-    );
-  });
-
-  it("applies a full push whose git state is at least as new as the cached one", () => {
-    const queryClient = createQueryClient();
-    queryClient.setQueryData(
-      checkoutStatusQueryKey(serverId, cwd),
-      checkoutStatus({ aheadOfOrigin: 1, gitStateAt: 200 }),
-    );
-
-    applyCheckoutStatusUpdateFromEvent({
-      queryClient,
-      serverId,
-      message: checkoutStatusUpdate(checkoutStatus({ aheadOfOrigin: 0, gitStateAt: 300 })),
-    });
-
-    expect(
-      queryClient.getQueryData<CheckoutStatusPayload>(checkoutStatusQueryKey(serverId, cwd))
-        ?.aheadOfOrigin,
-    ).toBe(0);
-  });
-
-  // Old daemons send neither signal; the only correct reading of such a payload is
-  // the pre-existing apply-everything behavior.
-  it("applies an unstamped push from a daemon that predates the freshness fields", () => {
-    const queryClient = createQueryClient();
-    queryClient.setQueryData(
-      checkoutStatusQueryKey(serverId, cwd),
-      checkoutStatus({ aheadOfOrigin: 1, gitStateAt: 200 }),
-    );
-
-    applyCheckoutStatusUpdateFromEvent({
-      queryClient,
-      serverId,
-      message: checkoutStatusUpdate(checkoutStatus({ aheadOfOrigin: 0 })),
-    });
-
-    expect(
-      queryClient.getQueryData<CheckoutStatusPayload>(checkoutStatusQueryKey(serverId, cwd))
-        ?.aheadOfOrigin,
-    ).toBe(0);
-  });
-
-  it("invalidates the PR timeline on the first prStatus emission, scoped to its cwd", () => {
+  it("invalidates PR detail queries on the first prStatus emission, scoped to its cwd", () => {
     const queryClient = createQueryClient();
     const timelineKey = prPaneTimelineQueryKey({ serverId, cwd, prNumber: 42 });
     const otherTimelineKey = prPaneTimelineQueryKey({ serverId, cwd: "/repo2", prNumber: 42 });
+    const pipelineKey = prPanePipelineQueryKey({
+      serverId,
+      cwd,
+      pipelineId: 9001,
+      changeRequestNumber: 1,
+    });
+    const otherPipelineKey = prPanePipelineQueryKey({
+      serverId,
+      cwd: "/repo2",
+      pipelineId: 9001,
+      changeRequestNumber: 1,
+    });
     queryClient.setQueryData(timelineKey, { items: [] });
     queryClient.setQueryData(otherTimelineKey, { items: [] });
+    queryClient.setQueryData(pipelineKey, { stages: [] });
+    queryClient.setQueryData(otherPipelineKey, { stages: [] });
 
     applyCheckoutStatusUpdateFromEvent({
       queryClient,
@@ -448,5 +380,7 @@ describe("applyCheckoutStatusUpdateFromEvent", () => {
 
     expect(queryClient.getQueryState(timelineKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(otherTimelineKey)?.isInvalidated).toBe(false);
+    expect(queryClient.getQueryState(pipelineKey)?.isInvalidated).toBe(true);
+    expect(queryClient.getQueryState(otherPipelineKey)?.isInvalidated).toBe(false);
   });
 });

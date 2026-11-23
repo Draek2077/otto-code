@@ -1,3 +1,4 @@
+# OTTO(website): retain Otto deployment and site configuration.
 name = "otto-website"
 account_id = "3910072adb29ec7ee1bdcc37d532765d"
 compatibility_date = "2024-12-01"

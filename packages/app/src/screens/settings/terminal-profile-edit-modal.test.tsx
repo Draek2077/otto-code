@@ -4,35 +4,37 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { TerminalProfileEditModal, type ProfileDraft } from "./terminal-profile-edit-modal";
 
-// `react-native-unistyles` is aliased to a stub for every test
-// (test-stubs/react-native-unistyles.ts), and that stub answers any scale key.
-// A local re-mock with a hand-written theme only breaks the day a shared
-// control this modal pulls in reads one more token.
+const { theme } = vi.hoisted(() => ({
+  theme: {
+    spacing: { 2: 8, 3: 12, 4: 16, 6: 24 },
+    fontSize: { sm: 13, base: 15, xs: 11 },
+    fontWeight: { medium: 500 },
+    borderRadius: { md: 6, lg: 8, xl: 12 },
+    borderWidth: { 1: 1 },
+    opacity: { 50: 0.5 },
+    colors: {
+      surface2: "#222",
+      foreground: "#fff",
+      foregroundMuted: "#aaa",
+      border: "#555",
+      accent: "#0a84ff",
+      borderAccent: "#555",
+      palette: { red: { 300: "#f87171" } },
+    },
+  },
+}));
+
+vi.mock("react-native-unistyles", () => ({
+  StyleSheet: {
+    create: (factory: unknown) => (typeof factory === "function" ? factory(theme) : factory),
+  },
+  useUnistyles: () => ({ theme }),
+}));
+
 vi.mock("@/constants/platform", () => ({
   isWeb: true,
   isNative: false,
 }));
-
-vi.mock("@/components/ui/text-field-picker", async () => {
-  const ReactModule = await import("react");
-  const TextFieldPicker = (props: {
-    value: string;
-    onChange: (value: string) => void;
-    placeholder: string;
-    testID?: string;
-  }) => {
-    if (props.testID) {
-      inputPropsByTestID.map.set(props.testID, { onChangeText: props.onChange });
-    }
-    return ReactModule.createElement("input", {
-      defaultValue: props.value ?? "",
-      placeholder: props.placeholder,
-      "data-testid": props.testID,
-      onChange: (e: { target: { value: string } }) => props.onChange?.(e.target.value),
-    });
-  };
-  return { TextFieldPicker };
-});
 
 vi.mock("react-i18next", () => ({
   useTranslation: () => ({
@@ -44,26 +46,18 @@ const inputPropsByTestID = vi.hoisted(() => ({
   map: new Map<string, { onChangeText?: (next: string) => void; onSubmitEditing?: () => void }>(),
 }));
 
-// Spread the real module: the sheet also exports layout constants that shared
-// controls below it read, and naming only the two components here means any
-// such addition fails this suite at collection.
-vi.mock("@/components/adaptive-modal-sheet", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/components/adaptive-modal-sheet")>();
+vi.mock("@/components/adaptive-modal-sheet", async () => {
   const ReactModule = await import("react");
   const AdaptiveModalSheet = ({
     visible,
     title,
     children,
-    footer,
     onClose,
     testID,
   }: {
     visible: boolean;
     title: string;
     children: React.ReactNode;
-    // Action buttons are pinned below the scroll region, not part of the body,
-    // so the mock has to render the slot or every button assertion sees null.
-    footer?: React.ReactNode;
     onClose: () => void;
     testID?: string;
   }) => {
@@ -81,7 +75,6 @@ vi.mock("@/components/adaptive-modal-sheet", async (importOriginal) => {
         "Close",
       ),
       children,
-      footer,
     );
   };
   const AdaptiveTextInput = ReactModule.forwardRef<HTMLInputElement, Record<string, unknown>>(
@@ -115,7 +108,7 @@ vi.mock("@/components/adaptive-modal-sheet", async (importOriginal) => {
       });
     },
   );
-  return { ...actual, AdaptiveModalSheet, AdaptiveTextInput };
+  return { AdaptiveModalSheet, AdaptiveTextInput };
 });
 
 vi.mock("@/components/ui/button", async () => {

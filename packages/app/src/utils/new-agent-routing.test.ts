@@ -13,23 +13,25 @@ describe("resolveNewAgentWorkingDir", () => {
   });
 
   it("falls back to repo root when checkout metadata is unavailable", () => {
-    expect(resolveNewAgentWorkingDir("/repo/.otto/worktrees/feature", null)).toBe("/repo");
+    expect(resolveNewAgentWorkingDir("/repo/.paseo/worktrees/feature", null)).toBe("/repo");
   });
 
-  it("supports windows-style otto worktree paths without checkout metadata", () => {
-    expect(resolveNewAgentWorkingDir("C:\\Users\\me\\repo\\.otto\\worktrees\\feature", null)).toBe(
+  it("supports windows-style paseo worktree paths without checkout metadata", () => {
+    expect(resolveNewAgentWorkingDir("C:\\Users\\me\\repo\\.paseo\\worktrees\\feature", null)).toBe(
       "C:\\Users\\me\\repo",
     );
   });
 
-  it("returns the main repo root for otto-owned worktrees", () => {
+  it("returns the main repo root for paseo-owned worktrees", () => {
     const checkout = {
-      isOttoOwnedWorktree: true,
-      worktreeRoot: "/repo/.otto/worktrees/feature",
+      isPaseoOwnedWorktree: true,
+      worktreeRoot: "/repo/.paseo/worktrees/feature",
       mainRepoRoot: "/repo/main",
     } as unknown as CheckoutStatusPayload;
 
-    expect(resolveNewAgentWorkingDir("/repo/.otto/worktrees/feature", checkout)).toBe("/repo/main");
+    expect(resolveNewAgentWorkingDir("/repo/.paseo/worktrees/feature", checkout)).toBe(
+      "/repo/main",
+    );
   });
 });
 
@@ -42,8 +44,8 @@ describe("parseAgentKey", () => {
   });
 
   it("uses the last separator to preserve server ids with colons", () => {
-    expect(parseAgentKey("localhost:6868:agent-9")).toEqual({
-      serverId: "localhost:6868",
+    expect(parseAgentKey("localhost:6767:agent-9")).toEqual({
+      serverId: "localhost:6767",
       agentId: "agent-9",
     });
   });

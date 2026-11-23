@@ -1,30 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
   darkPureBlackTheme,
-  daylightTheme,
-  getNextThemePreference,
-  SPACING,
-  THEME_OPTIONS,
   darkTheme,
   FONT_SIZE,
+  getNextThemePreference,
   lightTheme,
+  THEME_OPTIONS,
 } from "./theme";
 
 describe("Typography scale", () => {
-  // Otto's scale, which is a tier larger than upstream's throughout and adds an
-  // `xs` step. Locked here so a token edit is a deliberate one.
-  it("names 16px as the default interface tier", () => {
+  it("names 14px as the default interface tier", () => {
     expect(FONT_SIZE).toEqual({
-      xs: 12,
       code: 12,
-      sm: 14,
-      base: 16,
-      content: 17,
-      lg: 18,
-      xl: 20,
-      "2xl": 22,
-      "3xl": 26,
-      "4xl": 34,
+      content: 15,
+      sm: 12,
+      base: 14,
+      lg: 16,
+      xl: 18,
+      "2xl": 20,
+      "3xl": 22,
+      "4xl": 26,
     });
   });
 });
@@ -53,25 +48,16 @@ describe("Pure black theme", () => {
     expect(darkPureBlackTheme.colors.terminal.background).toBe("#000000");
   });
 
-  it("uses Otto's muted green accent", () => {
+  it("uses Paseo's muted green accent", () => {
     expect(darkPureBlackTheme.colors.accent).toBe("#20744A");
     expect(darkPureBlackTheme.colors.accentBright).toBe("#7ccba0");
   });
 
-  it("keeps selected sidebar rows distinct from the black sidebar", () => {
+  it("derives sidebar interaction surfaces from the surface scale", () => {
     expect(darkPureBlackTheme.colors.surfaceSidebar).toBe("#000000");
-    // Sidebar interaction rides the one theme-accent ladder rather than a hex
-    // frozen into this file, so assert the property that matters on a zero
-    // luminance sidebar: the row reads as a row, and it reads as this theme's
-    // accent rather than a neutral grey step.
-    expect(darkPureBlackTheme.colors.surfaceSidebarHover).not.toBe(
-      darkPureBlackTheme.colors.surfaceSidebar,
-    );
-    expect(darkPureBlackTheme.colors.surfaceSidebarHover).toBe(
-      darkPureBlackTheme.colors.surfaceInteractiveHover,
-    );
-    expect(darkPureBlackTheme.colors.surfaceSidebarSelected).not.toBe(
-      darkPureBlackTheme.colors.surfaceSidebarHover,
+    expect(darkPureBlackTheme.colors.surfaceSidebarHover).toBe(darkPureBlackTheme.colors.surface1);
+    expect(darkPureBlackTheme.colors.surfaceSidebarSelected).toBe(
+      darkPureBlackTheme.colors.surface2,
     );
   });
 
@@ -81,36 +67,29 @@ describe("Pure black theme", () => {
   });
 });
 
-describe("Theme semantic contracts", () => {
-  it("provides extra-muted ink, semantic status colors, and half spacing", () => {
-    expect(SPACING[0.5]).toBe(2);
-    expect(daylightTheme.colors.foregroundExtraMuted).toMatch(/^#/);
-    expect(daylightTheme.colors.statusSuccess).toBe("#15803d");
-    expect(darkPureBlackTheme.colors.statusInfo).toBe("#38bdf8");
-  });
-});
-
 describe("Sidebar interaction surfaces", () => {
-  // Otto derives these from the one theme-accent ladder, not the neutral
-  // surface scale, so a hovered row reads as this theme rather than as grey.
-  it.each([lightTheme, darkTheme])("derive from the theme-accent ladder", (theme) => {
-    expect(theme.colors.surfaceSidebarHover).toBe(theme.colors.surfaceInteractiveHover);
-    expect(theme.colors.surfaceSidebarSelected).not.toBe(theme.colors.surfaceSidebarHover);
-    expect(theme.colors.surfaceSidebarHover).not.toBe(theme.colors.surfaceSidebar);
+  it("keeps Light hover and selection darker than the sidebar surface", () => {
+    expect(lightTheme.colors.surfaceSidebarHover).toBe(lightTheme.colors.surface3);
+    expect(lightTheme.colors.surfaceSidebarSelected).toBe(lightTheme.colors.surface4);
+    expect(lightTheme.colors.surfaceSidebarSelected).not.toBe(lightTheme.colors.surfaceSidebar);
+  });
+
+  it("derives Dark hover and selection from the first two raised surfaces", () => {
+    expect(darkTheme.colors.surfaceSidebarHover).toBe(darkTheme.colors.surface1);
+    expect(darkTheme.colors.surfaceSidebarSelected).toBe(darkTheme.colors.surface2);
   });
 });
 
 describe("Built-in light theme", () => {
   it("preserves its authored aliases and terminal contrast through the semantic builder", () => {
-    // Otto's light theme is warm-tinted rather than upstream's neutral zinc,
-    // so its ink and terminal blacks carry the same warmth as its surfaces.
     expect(lightTheme.colors).toMatchObject({
-      primary: "#26262b",
-      primaryForeground: "#faf8f4",
+      primary: "#18181b",
+      primaryForeground: "#fafafa",
       destructiveForeground: "#ffffff",
       successForeground: "#ffffff",
       terminal: {
-        black: "#26262b",
+        black: "#1a1a1e",
+        brightBlack: "#3f3f46",
       },
     });
   });

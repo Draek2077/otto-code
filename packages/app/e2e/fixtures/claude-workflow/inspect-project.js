@@ -1,7 +1,7 @@
 export const meta = {
-  name: "otto-project-inspection",
-  description: "Inspect Otto and explain what the project does",
-  whenToUse: "Otto real-provider workflow detail QA",
+  name: "paseo-project-inspection",
+  description: "Inspect Paseo and explain what the project does",
+  whenToUse: "Paseo real-provider workflow detail QA",
   phases: [{ title: "Inspect", detail: "Read the product and architecture sources" }],
 };
 
@@ -13,11 +13,11 @@ if (typeof repoPath !== "string" || repoPath.length === 0) {
   throw new Error("repoPath is required");
 }
 const report = await agent(
-  `Inspect the Otto repository at ${JSON.stringify(repoPath)}.
+  `Inspect the Paseo repository at ${JSON.stringify(repoPath)}.
 
 Read README.md, docs/product.md, docs/architecture.md, and package.json. Do not edit anything. Return a concise plain-text report with exactly these headings:
 
-What Otto is
+What Paseo is
 Who it is for
 How it works
 Repository structure

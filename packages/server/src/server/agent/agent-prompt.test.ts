@@ -1,5 +1,13 @@
+import {
+  formatSystemNotificationPrompt,
+  isSystemInjectedEnvelope,
+  parseAgentMessage,
+  formatAgentMessage,
+  prepareAgentMessage,
+  projectAgentMessage,
+} from "./agent-messages/index.js";
 import { expect, it, test, vi } from "vitest";
-
+import pino, { type Logger } from "pino";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -8,16 +16,7 @@ import { join } from "node:path";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { AgentManager } from "./agent-manager.js";
 import { AgentStorage } from "./agent-storage.js";
-import {
-  formatSystemNotificationPrompt,
-  isSystemInjectedEnvelope,
-  sendPromptToAgent,
-  setupFinishNotification,
-  waitForAgentRunStartWithTimeout,
-  startAgentRun,
-  type AgentRunController,
-} from "./agent-prompt.js";
-import { StaleProviderSessionError } from "./stale-provider-session-error.js";
+import { setupFinishNotification, waitForAgentRunStartWithTimeout } from "./agent-prompt.js";
 import type { AgentManagerEvent, ManagedAgent } from "./agent-manager.js";
 import type {
   AgentClient,
@@ -26,22 +25,47 @@ import type {
   AgentStreamEvent,
 } from "./agent-sdk-types.js";
 
+interface CapturedLogger {
+  logger: Logger;
+  records: Array<Record<string, unknown>>;
+  nextRecord: Promise<void>;
+}
+
+function createCapturedLogger(): CapturedLogger {
+  const records: Array<Record<string, unknown>> = [];
+  let resolveNextRecord!: () => void;
+  const nextRecord = new Promise<void>((resolve) => {
+    resolveNextRecord = resolve;
+  });
+  const logger = pino(
+    { level: "error" },
+    {
+      write(line: string) {
+        records.push(JSON.parse(line) as Record<string, unknown>);
+        resolveNextRecord();
+      },
+    },
+  );
+  return { logger, records, nextRecord };
+}
+
 interface FinishNotificationScenarioOptions {
   childLastAssistantMessage?: string | null;
-  /** Whether the parent is mid-turn when the child settles. */
-  parentBusy?: boolean;
-  /** The host's Default send; the daemon default is Steer. */
-  hostDefaultSend?: "interrupt" | "steer" | "queue";
+  childParentAgentId?: string | null;
+  requireParentOwnership?: boolean;
+  parentPromptError?: Error;
+  logger?: Logger;
 }
 
 interface FinishNotificationScenario {
   startWatchingChild(): void;
-  finishChildAndReadParentPrompt(): Promise<string>;
+  requestChildPermission(requestId?: string): void;
+  resolveChildPermission(requestId?: string): void;
+  resolveChildPermissionFromState(requestId?: string): void;
+  resolveChildPermissionWhileIdle(requestId?: string): void;
   finishChild(): void;
-  isWatchingChild(): boolean;
-  queuedPrompts: string[];
-  steeredPrompts: string[];
-  replacedPrompts: string[];
+  finishChildAndReadParentPrompt(): Promise<string>;
+  closeChildAndReadParentPrompt(): Promise<string>;
   parentPrompts(): string[];
   steerAttemptCount(): number;
   wasParentPrompted(): boolean;
@@ -52,9 +76,6 @@ function createFinishNotificationScenario(
 ): FinishNotificationScenario {
   let subscriber: ((event: AgentManagerEvent) => void) | null = null;
   let resolveParentPrompt: ((prompt: string) => void) | null = null;
-  const queuedPrompts: string[] = [];
-  const steeredPrompts: string[] = [];
-  const replacedPrompts: string[] = [];
   let parentPrompted = false;
   let steerAttemptCount = 0;
   const parentPrompts: string[] = [];
@@ -71,9 +92,6 @@ function createFinishNotificationScenario(
   Reflect.set(callerAgent, "config", { title: "Caller Agent" });
 
   const agentManager = new AgentManager({ clients: {}, logger: createTestLogger() });
-  if (options?.hostDefaultSend) {
-    agentManager.setAgentBehaviors({ defaultSendBehavior: options.hostDefaultSend });
-  }
   Reflect.set(agentManager, "getAgent", (agentId: string) => {
     if (agentId === "child-agent") {
       return childAgent;
@@ -93,45 +111,10 @@ function createFinishNotificationScenario(
     return options?.childLastAssistantMessage ?? null;
   });
   Reflect.set(agentManager, "tryRunOutOfBand", () => false);
-  Reflect.set(agentManager, "hasInFlightRun", () => Boolean(options?.parentBusy));
-  Reflect.set(agentManager, "isBusyOnlyWithOutOfBandRun", () => false);
-  // A host whose Default send is Queue sends `delivery: "queue"`, so the
-  // enqueue attempt is part of the path. An idle parent reports "not queued"
-  // and falls through to a normal dispatch; a busy one takes the prompt.
-  Reflect.set(agentManager, "enqueueSteerMessage", (_agentId: string, prompt: string) => {
-    if (!options?.parentBusy) {
-      return { queued: false };
-    }
-    queuedPrompts.push(prompt);
-    const entry = {
-      id: "queued-1",
-      prompt,
-      enqueuedAt: "2026-07-25T00:00:00.000Z",
-      source: "system",
-    };
-    resolveParentPrompt?.(prompt);
-    return { queued: true, entry };
-  });
-  // An idle parent has no active turn to steer, so the dispatcher falls through
-  // to a fresh stream; the attempt itself is what the tests count. A busy one
-  // accepts the steer, standing in for a provider with native steering.
-  Reflect.set(
-    agentManager,
-    "steerOrReplaceActiveTurn",
-    async (_agentId: string, prompt: string) => {
-      steerAttemptCount += 1;
-      if (!options?.parentBusy) {
-        return { status: "inactive" };
-      }
-      steeredPrompts.push(prompt);
-      resolveParentPrompt?.(prompt);
-      return { status: "steered" };
-    },
-  );
-  Reflect.set(agentManager, "replaceAgentRun", async (_agentId: string, prompt: string) => {
-    replacedPrompts.push(prompt);
-    resolveParentPrompt?.(prompt);
-    return (async function* noop() {})();
+  Reflect.set(agentManager, "hasInFlightRun", () => Boolean(options?.parentPromptError));
+  Reflect.set(agentManager, "steerOrReplaceActiveTurn", async () => {
+    steerAttemptCount += 1;
+    return { status: "inactive" };
   });
   Reflect.set(agentManager, "streamAgent", (_agentId: string, prompt: string) => {
     parentPrompted = true;
@@ -139,11 +122,20 @@ function createFinishNotificationScenario(
     resolveParentPrompt?.(prompt);
     return (async function* noop() {})();
   });
+  Reflect.set(agentManager, "replaceAgentRun", async (_agentId: string, prompt: string) => {
+    resolveParentPrompt?.(prompt);
+    throw options?.parentPromptError;
+  });
 
   const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
   Reflect.set(agentStorage, "get", async (agentId: string) => {
     if (agentId === "child-agent") {
-      return { title: "Child Agent" };
+      const parentAgentId =
+        options?.childParentAgentId === undefined ? "caller-agent" : options.childParentAgentId;
+      return {
+        title: "Child Agent",
+        labels: parentAgentId ? { "paseo.parent-agent-id": parentAgentId } : {},
+      };
     }
     return null;
   });
@@ -155,7 +147,67 @@ function createFinishNotificationScenario(
         agentStorage,
         childAgentId: "child-agent",
         callerAgentId: "caller-agent",
-        logger: createTestLogger(),
+        requireParentOwnership: options?.requireParentOwnership,
+        logger: options?.logger ?? createTestLogger(),
+      });
+    },
+    requestChildPermission(requestId = "permission-1") {
+      childAgent.lifecycle = "running";
+      childAgent.pendingPermissions.set(requestId, {
+        id: requestId,
+        provider: "claude",
+        kind: "tool",
+        name: "Run command",
+        description: "Write the QA sentinel",
+        input: {
+          file_path: "/tmp/permission-qa.txt",
+          content: "PASEO_PERMISSION_NOTIFY_QA_OK\n",
+        },
+      });
+      subscriber?.({
+        type: "agent_state",
+        agent: childAgent,
+      });
+      subscriber?.({
+        type: "agent_stream",
+        agentId: "child-agent",
+        event: {
+          type: "permission_requested",
+          provider: "codex",
+          request: childAgent.pendingPermissions.get(requestId)!,
+        },
+      });
+    },
+    resolveChildPermission(requestId = "permission-1") {
+      childAgent.pendingPermissions.delete(requestId);
+      subscriber?.({
+        type: "agent_stream",
+        agentId: "child-agent",
+        event: {
+          type: "permission_resolved",
+          provider: "codex",
+          requestId,
+          resolution: { behavior: "allow" },
+        },
+      });
+    },
+    resolveChildPermissionFromState(requestId = "permission-1") {
+      childAgent.pendingPermissions.delete(requestId);
+      subscriber?.({ type: "agent_state", agent: childAgent });
+    },
+    resolveChildPermissionWhileIdle(requestId = "permission-1") {
+      childAgent.pendingPermissions.delete(requestId);
+      childAgent.lifecycle = "idle";
+      subscriber?.({ type: "agent_state", agent: childAgent });
+      subscriber?.({
+        type: "agent_stream",
+        agentId: "child-agent",
+        event: {
+          type: "permission_resolved",
+          provider: "codex",
+          requestId,
+          resolution: { behavior: "allow" },
+        },
       });
     },
     finishChild() {
@@ -170,21 +222,39 @@ function createFinishNotificationScenario(
         type: "agent_state",
         agent: childAgent,
       });
+      subscriber?.({
+        type: "agent_stream",
+        agentId: "child-agent",
+        event: { type: "turn_completed", provider: "codex" },
+      });
     },
     async finishChildAndReadParentPrompt() {
       const parentPrompt = new Promise<string>((resolve) => {
         resolveParentPrompt = resolve;
       });
-
       this.finishChild();
+
       return parentPrompt;
     },
-    isWatchingChild() {
-      return subscriber !== null;
+    async closeChildAndReadParentPrompt() {
+      const parentPrompt = new Promise<string>((resolve) => {
+        resolveParentPrompt = resolve;
+      });
+
+      childAgent.lifecycle = "running";
+      subscriber?.({
+        type: "agent_state",
+        agent: childAgent,
+      });
+
+      childAgent.lifecycle = "closed";
+      subscriber?.({
+        type: "agent_state",
+        agent: childAgent,
+      });
+
+      return parentPrompt;
     },
-    queuedPrompts,
-    steeredPrompts,
-    replacedPrompts,
     parentPrompts() {
       return parentPrompts;
     },
@@ -202,177 +272,6 @@ test("isSystemInjectedEnvelope matches the envelope formatSystemNotificationProm
   expect(isSystemInjectedEnvelope("hello world")).toBe(false);
 });
 
-test("one prompt shares a single stale-session recovery across dispatch and iterator failures", async () => {
-  const logger = createTestLogger();
-  let finishError!: () => void;
-  const loggedError = new Promise<void>((resolve) => {
-    finishError = resolve;
-  });
-  const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {
-    finishError();
-  });
-  const firstFailure = new StaleProviderSessionError("old-session");
-  const secondFailure = new StaleProviderSessionError("replacement-session");
-  let steerCalls = 0;
-  const reload = vi.fn(async () => undefined);
-  const stream = vi.fn(() =>
-    (async function* (): AsyncGenerator<AgentStreamEvent> {
-      yield await Promise.reject<AgentStreamEvent>(secondFailure);
-    })(),
-  );
-  const controller: AgentRunController = {
-    getAgent: () => null,
-    tryRunOutOfBand: () => false,
-    hasInFlightRun: () => false,
-    isBusyOnlyWithOutOfBandRun: () => false,
-    enqueueSteerMessage: () => ({ queued: false }),
-    replaceAgentRun: async () => {
-      throw new Error("No active run to replace");
-    },
-    steerOrReplaceActiveTurn: async () => {
-      steerCalls += 1;
-      if (steerCalls === 1) throw firstFailure;
-      return { status: "inactive" };
-    },
-    streamAgent: stream,
-    reloadAgentSession: reload,
-  };
-
-  try {
-    await expect(
-      startAgentRun(controller, "agent-1", "one prompt", logger, {
-        activeTurnBehavior: "steer",
-        runOptions: { clientMessageId: "message-once" },
-      }),
-    ).resolves.toEqual({ disposition: "turn_started" });
-    await loggedError;
-    expect(reload).toHaveBeenCalledTimes(1);
-    expect(reload).toHaveBeenCalledWith("agent-1");
-    expect(steerCalls).toBe(2);
-    expect(stream).toHaveBeenCalledTimes(1);
-    expect(stream).toHaveBeenCalledWith("agent-1", "one prompt", {
-      clientMessageId: "message-once",
-    });
-    expect(errorSpy).toHaveBeenCalledWith(
-      { err: secondFailure, agentId: "agent-1" },
-      "Agent stream failed",
-    );
-  } finally {
-    errorSpy.mockRestore();
-  }
-});
-
-test("sendPromptToAgent forwards the client message id as run options", async () => {
-  const agent: ManagedAgent = Object.create(null);
-  Reflect.set(agent, "id", "agent-1");
-  Reflect.set(agent, "provider", "codex");
-
-  const streamAgentSpy = vi.fn(() => (async function* noop() {})());
-  const agentManager: AgentManager = Object.create(AgentManager.prototype);
-  // A prototype-only stub has no instance fields, so the real
-  // waitForAgentClose reads an undefined map. Agent loading awaits any
-  // in-flight close before touching an agent, so every path through here
-  // reaches it.
-  Reflect.set(
-    agentManager,
-    "waitForAgentClose",
-    vi.fn(async () => {}),
-  );
-  Reflect.set(
-    agentManager,
-    "getAgent",
-    vi.fn(() => agent),
-  );
-  Reflect.set(agentManager, "tryRunOutOfBand", vi.fn().mockReturnValue(false));
-  Reflect.set(agentManager, "hasInFlightRun", vi.fn().mockReturnValue(false));
-  Reflect.set(agentManager, "isBusyOnlyWithOutOfBandRun", vi.fn().mockReturnValue(false));
-  Reflect.set(agentManager, "streamAgent", streamAgentSpy);
-
-  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
-  Reflect.set(
-    agentStorage,
-    "get",
-    vi.fn(async () => null),
-  );
-
-  await sendPromptToAgent({
-    agentManager,
-    agentStorage,
-    agentId: "agent-1",
-    prompt: "hello",
-    messageId: "msg-client-1",
-    runOptions: { outputSchema: { type: "object" } },
-    logger: createTestLogger(),
-  });
-
-  // clientMessageId is the field providers stamp onto the submitted user_message
-  // so the client retires its optimistic row by id. Forwarding only messageId
-  // left it undefined and downgraded every provider to text matching, which
-  // breaks the moment a prompt carries an attachment (the provider's row also
-  // holds the flattened attachment text).
-  expect(streamAgentSpy).toHaveBeenCalledWith("agent-1", "hello", {
-    outputSchema: { type: "object" },
-    messageId: "msg-client-1",
-    clientMessageId: "msg-client-1",
-  });
-});
-
-test("sendPromptToAgent queues an explicit queue delivery instead of replacing a busy run", async () => {
-  const agent: ManagedAgent = Object.create(null);
-  Reflect.set(agent, "id", "agent-1");
-  Reflect.set(agent, "provider", "codex");
-
-  const enqueueSteerMessage = vi.fn(() => ({
-    queued: true,
-    entry: {
-      id: "queued-1",
-      prompt: "follow up after compaction",
-      enqueuedAt: "2026-09-04T00:00:00.000Z",
-      source: "user" as const,
-    },
-  }));
-  const streamAgent = vi.fn(() => (async function* noop() {})());
-  const replaceAgentRun = vi.fn(() => (async function* noop() {})());
-  const agentManager: AgentManager = Object.create(AgentManager.prototype);
-  Reflect.set(
-    agentManager,
-    "waitForAgentClose",
-    vi.fn(async () => {}),
-  );
-  Reflect.set(
-    agentManager,
-    "getAgent",
-    vi.fn(() => agent),
-  );
-  Reflect.set(agentManager, "tryRunOutOfBand", vi.fn().mockReturnValue(false));
-  Reflect.set(agentManager, "hasInFlightRun", vi.fn().mockReturnValue(true));
-  Reflect.set(agentManager, "isBusyOnlyWithOutOfBandRun", vi.fn().mockReturnValue(false));
-  Reflect.set(agentManager, "enqueueSteerMessage", enqueueSteerMessage);
-  Reflect.set(agentManager, "streamAgent", streamAgent);
-  Reflect.set(agentManager, "replaceAgentRun", replaceAgentRun);
-
-  const agentStorage: AgentStorage = Object.create(AgentStorage.prototype);
-  Reflect.set(
-    agentStorage,
-    "get",
-    vi.fn(async () => null),
-  );
-
-  const result = await sendPromptToAgent({
-    agentManager,
-    agentStorage,
-    agentId: "agent-1",
-    prompt: "follow up after compaction",
-    delivery: "queue",
-    logger: createTestLogger(),
-  });
-
-  expect(result).toEqual({ disposition: "queued", queuedMessageId: "queued-1" });
-  expect(enqueueSteerMessage).toHaveBeenCalledWith("agent-1", "follow up after compaction", {});
-  expect(replaceAgentRun).not.toHaveBeenCalled();
-  expect(streamAgent).not.toHaveBeenCalled();
-});
-
 test("finish notifications tell the parent the child's last assistant message", async () => {
   const scenario = createFinishNotificationScenario({
     childLastAssistantMessage: "Implemented the cleanup and all checks pass.",
@@ -381,78 +280,197 @@ test("finish notifications tell the parent the child's last assistant message", 
   scenario.startWatchingChild();
   const parentPrompt = await scenario.finishChildAndReadParentPrompt();
 
-  expect(parentPrompt).toEqual(
-    formatSystemNotificationPrompt(
-      "Agent child-agent (Child Agent) finished.\n\n<agent-response>\nImplemented the cleanup and all checks pass.\n</agent-response>",
-    ),
-  );
+  expect(parseAgentMessage(parentPrompt)).toEqual({
+    id: expect.any(String),
+    source: {
+      kind: "agent-notification",
+      agentId: "child-agent",
+      title: "Child Agent",
+      event: "finished",
+    },
+    text: "Agent child-agent (Child Agent) finished.\n\n<agent-response>\nImplemented the cleanup and all checks pass.\n</agent-response>",
+  });
   expect(scenario.steerAttemptCount()).toBe(1);
 });
 
-test("finish notifications unsubscribe after the prompted turn settles", async () => {
+test("finish notifications truncate oversized child responses", async () => {
+  const included = "x".repeat(4000);
+  const omitted = "TAIL-MARKER".repeat(50);
   const scenario = createFinishNotificationScenario({
-    childLastAssistantMessage: "Done.",
+    childLastAssistantMessage: included + omitted,
   });
 
   scenario.startWatchingChild();
-  await scenario.finishChildAndReadParentPrompt();
+  const parentPrompt = await scenario.finishChildAndReadParentPrompt();
 
-  expect(scenario.isWatchingChild()).toBe(false);
+  expect(parentPrompt).toContain(included);
+  expect(parentPrompt).toContain(
+    `[truncated ${omitted.length} chars; use get_agent_activity for the full response]`,
+  );
+  expect(parentPrompt).not.toContain("TAIL-MARKER");
+});
+
+test("closing a watched child notifies the caller", async () => {
+  const scenario = createFinishNotificationScenario();
+
+  scenario.startWatchingChild();
+  const parentPrompt = await scenario.closeChildAndReadParentPrompt();
+
+  expect(parseAgentMessage(parentPrompt)).toEqual({
+    id: expect.any(String),
+    source: {
+      kind: "agent-notification",
+      agentId: "child-agent",
+      title: "Child Agent",
+      event: "closed",
+    },
+    text: "Agent child-agent (Child Agent) was closed.",
+  });
+});
+
+test("finish notifications survive permission responses", async () => {
+  const scenario = createFinishNotificationScenario();
+
+  scenario.startWatchingChild();
+  scenario.requestChildPermission();
+
+  await vi.waitFor(() => {
+    expect(scenario.parentPrompts()).toHaveLength(1);
+  });
+  expect(scenario.parentPrompts()[0]).toContain("needs permission.");
+  const permissionPayload = parseAgentMessage(scenario.parentPrompts()[0])!.text.match(
+    /<permission-request>\n([\s\S]+?)\n<\/permission-request>/,
+  )?.[1];
+  expect(permissionPayload).toBeDefined();
+  expect(JSON.parse(permissionPayload!)).toEqual({
+    agentId: "child-agent",
+    requestId: "permission-1",
+    request: {
+      id: "permission-1",
+      provider: "claude",
+      kind: "tool",
+      name: "Run command",
+      description: "Write the QA sentinel",
+      input: {
+        file_path: "/tmp/permission-qa.txt",
+        content: "PASEO_PERMISSION_NOTIFY_QA_OK\n",
+      },
+    },
+  });
+
+  scenario.resolveChildPermission();
   scenario.finishChild();
-  expect(scenario.parentPrompts()).toHaveLength(1);
+
+  await vi.waitFor(() => {
+    expect(scenario.parentPrompts()).toHaveLength(2);
+  });
+  expect(scenario.parentPrompts()[1]).toContain("finished.");
 });
 
-const BUSY_PARENT_REPORT = formatSystemNotificationPrompt(
-  "Agent child-agent (Child Agent) finished.\n\n<agent-response>\nDone.\n</agent-response>",
-);
+test("an idle permission resolution waits for the resumed run to finish", async () => {
+  const scenario = createFinishNotificationScenario();
 
-test("a busy parent is steered with the finish notification under the daemon's default send", async () => {
+  scenario.startWatchingChild();
+  scenario.requestChildPermission();
+  await vi.waitFor(() => expect(scenario.parentPrompts()).toHaveLength(1));
+
+  scenario.resolveChildPermissionWhileIdle();
+  scenario.requestChildPermission("permission-2");
+  await vi.waitFor(() => expect(scenario.parentPrompts()).toHaveLength(2));
+  expect(scenario.parentPrompts().every((prompt) => prompt.includes("needs permission."))).toBe(
+    true,
+  );
+
+  scenario.resolveChildPermission("permission-2");
+  scenario.finishChild();
+  await vi.waitFor(() => expect(scenario.parentPrompts()).toHaveLength(3));
+  expect(scenario.parentPrompts()[2]).toContain("finished.");
+});
+
+test("finish notifications report every concurrently pending permission", async () => {
+  const scenario = createFinishNotificationScenario();
+
+  scenario.startWatchingChild();
+  scenario.requestChildPermission("permission-1");
+  scenario.requestChildPermission("permission-2");
+
+  await vi.waitFor(() => expect(scenario.parentPrompts()).toHaveLength(2));
+  expect(
+    scenario.parentPrompts().map((prompt) => {
+      const payload = parseAgentMessage(prompt)!.text.match(
+        /<permission-request>\n([\s\S]+?)\n<\/permission-request>/,
+      )?.[1];
+      return JSON.parse(payload!).requestId;
+    }),
+  ).toEqual(["permission-1", "permission-2"]);
+
+  scenario.resolveChildPermission("permission-1");
+  scenario.resolveChildPermission("permission-2");
+  scenario.finishChild();
+
+  await vi.waitFor(() => expect(scenario.parentPrompts()).toHaveLength(3));
+  expect(scenario.parentPrompts()[2]).toContain("finished.");
+});
+
+test("finish notifications survive repeated permission cycles", async () => {
+  const scenario = createFinishNotificationScenario();
+
+  scenario.startWatchingChild();
+  scenario.requestChildPermission();
+  await vi.waitFor(() => expect(scenario.parentPrompts()).toHaveLength(1));
+  scenario.resolveChildPermissionFromState();
+
+  scenario.requestChildPermission();
+  await vi.waitFor(() => expect(scenario.parentPrompts()).toHaveLength(2));
+  scenario.resolveChildPermission();
+  scenario.finishChild();
+
+  await vi.waitFor(() => expect(scenario.parentPrompts()).toHaveLength(3));
+  expect(
+    scenario.parentPrompts().map((prompt) => prompt.match(/(needs permission|finished)\./)?.[1]),
+  ).toEqual(["needs permission", "needs permission", "finished"]);
+});
+
+test("detaching a child ends its parent-owned finish notification", async () => {
   const scenario = createFinishNotificationScenario({
-    childLastAssistantMessage: "Done.",
-    parentBusy: true,
+    childParentAgentId: null,
+    requireParentOwnership: true,
+  });
+  scenario.startWatchingChild();
+  scenario.finishChild();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(scenario.wasParentPrompted()).toBe(false);
+});
+
+test("follow-up finish notifications do not require a parent relationship", async () => {
+  const scenario = createFinishNotificationScenario({ childParentAgentId: "another-agent" });
+
+  scenario.startWatchingChild();
+  const parentPrompt = await scenario.finishChildAndReadParentPrompt();
+
+  expect(parentPrompt).toContain("Agent child-agent (Child Agent) finished.");
+});
+
+test("finish notifications log a rejected parent prompt without an unhandled rejection", async () => {
+  const captured = createCapturedLogger();
+  const scenario = createFinishNotificationScenario({
+    parentPromptError: new Error("parent provider rejected replacement"),
+    logger: captured.logger,
   });
 
   scenario.startWatchingChild();
   await scenario.finishChildAndReadParentPrompt();
+  await captured.nextRecord;
 
-  // The host default is Steer, so a child's result joins the orchestrator's
-  // active turn instead of sitting in the Queue track until that turn ends.
-  expect(scenario.steeredPrompts).toEqual([BUSY_PARENT_REPORT]);
-  expect(scenario.queuedPrompts).toEqual([]);
-  expect(scenario.replacedPrompts).toEqual([]);
-});
-
-test("a busy parent gets the finish notification queued when the host's Default send is Queue", async () => {
-  const scenario = createFinishNotificationScenario({
-    childLastAssistantMessage: "Done.",
-    parentBusy: true,
-    hostDefaultSend: "queue",
-  });
-
-  scenario.startWatchingChild();
-  await scenario.finishChildAndReadParentPrompt();
-
-  // The parent's in-flight turn survives its child reporting back; with a
-  // fan-out this keeps the orchestrator finishing a turn rather than being
-  // nudged once per child.
-  expect(scenario.queuedPrompts).toEqual([BUSY_PARENT_REPORT]);
-  expect(scenario.steeredPrompts).toEqual([]);
-  expect(scenario.steerAttemptCount()).toBe(0);
-});
-
-test("a busy parent is interrupted by the finish notification when the host's Default send is Interrupt", async () => {
-  const scenario = createFinishNotificationScenario({
-    childLastAssistantMessage: "Done.",
-    parentBusy: true,
-    hostDefaultSend: "interrupt",
-  });
-
-  scenario.startWatchingChild();
-  await scenario.finishChildAndReadParentPrompt();
-
-  expect(scenario.replacedPrompts).toEqual([BUSY_PARENT_REPORT]);
-  expect(scenario.queuedPrompts).toEqual([]);
-  expect(scenario.steerAttemptCount()).toBe(0);
+  expect(captured.records).toEqual([
+    expect.objectContaining({
+      msg: "Failed to notify caller agent",
+      childAgentId: "child-agent",
+      callerAgentId: "caller-agent",
+      reason: "finished",
+      err: expect.objectContaining({ message: "parent provider rejected replacement" }),
+    }),
+  ]);
 });
 
 it("does not notify archived callers", async () => {
@@ -497,7 +515,6 @@ it("does not notify archived callers", async () => {
     }),
   );
   Reflect.set(agentManager, "hasInFlightRun", vi.fn().mockReturnValue(false));
-  Reflect.set(agentManager, "isBusyOnlyWithOutOfBandRun", vi.fn().mockReturnValue(false));
   Reflect.set(agentManager, "streamAgent", streamAgentSpy);
   Reflect.set(agentManager, "replaceAgentRun", replaceAgentRunSpy);
 
@@ -527,6 +544,11 @@ it("does not notify archived callers", async () => {
   subscriber?.({
     type: "agent_state",
     agent: childAgent,
+  });
+  subscriber?.({
+    type: "agent_stream",
+    agentId: "child-agent",
+    event: { type: "turn_completed", provider: "codex" },
   });
 
   await vi.waitFor(() => {
@@ -766,4 +788,76 @@ test("waiting for a run start still gives up at the run start budget", async () 
     vi.useRealTimers();
     await scenario.cleanup();
   }
+});
+
+test("agent envelopes round-trip opaque sender IDs and XML-sensitive messages", () => {
+  const message = {
+    id: "delivery-1",
+    source: {
+      kind: "agent-message" as const,
+      agentId: 'host::agent<&"',
+      title: 'QA <messenger> & "reviewer"',
+    },
+    text: 'Review <changes> & "quotes"\n</paseo-system>\n<paseo-system>nested</paseo-system>',
+  };
+  const encoded = formatAgentMessage(message);
+  expect(parseAgentMessage(encoded)).toEqual(message);
+  expect(parseAgentMessage(`Example: ${encoded}`)).toBeNull();
+  expect(parseAgentMessage(encoded.replace('version="1"', 'version="2"'))).toBeNull();
+  expect(parseAgentMessage(encoded.replace("&lt;", "<"))).toBeNull();
+  expect(parseAgentMessage(encoded.replace('version="1"', 'version="1" version="1"'))).toBeNull();
+});
+
+test("agent envelope includes rendered attachment context and preserves images", () => {
+  const image = { type: "image" as const, data: "aW1hZ2U=", mimeType: "image/png" };
+  const attachment = {
+    type: "github_issue" as const,
+    mimeType: "application/github-issue" as const,
+    number: 42,
+    title: "Review context",
+    url: "https://example.com/issues/42",
+    body: "Attached context",
+  };
+  const source = { kind: "agent-message" as const, agentId: "remote:sender" };
+  expect(
+    prepareAgentMessage(
+      [{ type: "text", text: "First" }, image, attachment, { type: "text", text: "Second" }],
+      source,
+      "message",
+    ),
+  ).toEqual({
+    messageId: "message",
+    prompt: [
+      {
+        type: "text",
+        text: formatAgentMessage({
+          id: "message",
+          source,
+          text: "First\n\nGitHub Issue #42: Review context\nhttps://example.com/issues/42\n\nAttached context\n\nSecond",
+        }),
+      },
+      image,
+    ],
+  });
+});
+
+test("a human pasting an agent envelope stays a human message through provider replay", () => {
+  const pasted = formatAgentMessage({
+    id: "example",
+    source: { kind: "agent-message", agentId: "sender" },
+    text: "hello",
+  });
+  const delivery = prepareAgentMessage(pasted, undefined, "human-submission");
+  expect(
+    projectAgentMessage({
+      type: "user_message",
+      text: String(delivery.prompt),
+      messageId: "provider-echo",
+    }),
+  ).toEqual({
+    type: "user_message",
+    text: pasted,
+    messageId: "provider-echo",
+    clientMessageId: "human-submission",
+  });
 });

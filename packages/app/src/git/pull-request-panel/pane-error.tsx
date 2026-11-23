@@ -1,6 +1,6 @@
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { RotateCw } from "@/components/icons/material-icons";
+import { RotateCw } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 
@@ -29,7 +29,7 @@ const styles = StyleSheet.create((theme) => ({
     justifyContent: "center",
     gap: theme.spacing[3],
     paddingHorizontal: theme.spacing[4],
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.surfaceSidebar,
   },
   message: {
     fontSize: theme.fontSize.sm,

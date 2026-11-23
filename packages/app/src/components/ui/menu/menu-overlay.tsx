@@ -5,8 +5,6 @@ import {
   useMemo,
   useState,
   type ReactElement,
-  type ReactNode,
-  type Ref,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
@@ -18,18 +16,15 @@ import {
   Pressable,
   StatusBar,
   View,
-  type ScrollView,
-  type ScrollViewProps,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
 import { Keyframe, runOnJS } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { FloatingScrollView, FloatingSurface } from "@/components/ui/floating";
+import { menuSurfaceEntering } from "@/otto/ui/menu-surface-animation"; // OTTO(menu-geometry): data-driven reflows retain ownership of their current frame.
 import { isWeb } from "@/constants/platform";
 import type { KeyboardFocusScope } from "@/keyboard/actions";
-import { resolveKeyboardFocusScope } from "@/keyboard/focus-scope";
-import { useMenuWebEnteringAnimation } from "./use-menu-web-entering-animation";
 import {
   getOverlayRoot,
   OverlayLayerProvider,
@@ -44,18 +39,9 @@ import {
   type Placement,
   type Rect,
   type Size,
-} from "./menu-anchor";
+} from "../anchor";
 
 const SCROLL_CONTENT_STYLE = { flexGrow: 1 } as const;
-const CONTENT_ENTERING_DURATION_MS = 150;
-
-const contentEntering = isWeb
-  ? undefined
-  : new Keyframe({
-      0: { opacity: 0, transform: [{ scale: 0.97 }] },
-      100: { opacity: 1, transform: [{ scale: 1 }] },
-    }).duration(CONTENT_ENTERING_DURATION_MS);
-
 const contentExiting = new Keyframe({
   0: { opacity: 1, transform: [{ scale: 1 }] },
   100: { opacity: 0, transform: [{ scale: 0.97 }] },
@@ -75,7 +61,6 @@ export function useAnchoredPosition({
   offset,
   scrollable,
   maxHeight,
-  headerSize,
 }: {
   open: boolean;
   anchorRect: Rect | null;
@@ -85,7 +70,6 @@ export function useAnchoredPosition({
   offset: number;
   scrollable: boolean;
   maxHeight?: number;
-  headerSize?: Size | null;
 }) {
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
   const [contentSize, setContentSize] = useState<Size | null>(null);
@@ -94,23 +78,18 @@ export function useAnchoredPosition({
 
   const visibleContentSize = useMemo(() => {
     if (!contentSize) return null;
-    const headerHeight = headerSize?.height ?? 0;
-    const surfaceWidth = Math.max(contentSize.width, headerSize?.width ?? 0);
-    if (!scrollable) {
-      return { width: surfaceWidth, height: contentSize.height + headerHeight };
-    }
+    if (!scrollable) return contentSize;
 
     const { height: screenHeight } = Dimensions.get("window");
     const viewportMaxHeight = Math.max(screenHeight - 16, 0);
     const resolvedMaxHeight =
       typeof maxHeight === "number" ? Math.min(maxHeight, viewportMaxHeight) : viewportMaxHeight;
-    const scrollMaxHeight = Math.max(resolvedMaxHeight - headerHeight, 0);
 
     return {
-      width: surfaceWidth,
-      height: Math.min(contentSize.height, scrollMaxHeight) + headerHeight,
+      width: contentSize.width,
+      height: Math.min(contentSize.height, resolvedMaxHeight),
     };
-  }, [contentSize, headerSize?.height, headerSize?.width, scrollable, maxHeight]);
+  }, [contentSize, scrollable, maxHeight]);
 
   useEffect(() => {
     if (!open) {
@@ -196,10 +175,6 @@ export interface AnchoredSurfaceProps {
   fullWidth?: boolean;
   horizontalPadding?: number;
   scrollable?: boolean;
-  stickyHeader?: ReactNode;
-  scrollViewRef?: Ref<ScrollView>;
-  onScroll?: ScrollViewProps["onScroll"];
-  onContentSizeChange?: ScrollViewProps["onContentSizeChange"];
   /** A submenu sits inside its parent's overlay and must not paint a second backdrop. */
   backdrop?: boolean;
   /**
@@ -233,10 +208,6 @@ export function AnchoredSurface({
   fullWidth = false,
   horizontalPadding = 16,
   scrollable = false,
-  stickyHeader,
-  scrollViewRef,
-  onScroll,
-  onContentSizeChange,
   backdrop = true,
   onPointerEnter,
   onPointerLeave,
@@ -246,46 +217,31 @@ export function AnchoredSurface({
 }: AnchoredSurfaceProps): ReactElement | null {
   const { t } = useTranslation();
   const surfaceNativeID = useId();
-  const [headerSize, setHeaderSize] = useState<Size | null>(null);
-  const { position, actualPlacement, contentSize, visibleContentSize, onContentLayout } =
-    useAnchoredPosition({
-      open,
-      anchorRect,
-      anchorRef,
-      side,
-      align,
-      offset,
-      scrollable,
-      maxHeight,
-      headerSize,
-    });
+  const { position, actualPlacement, visibleContentSize, onContentLayout } = useAnchoredPosition({
+    open,
+    anchorRect,
+    anchorRef,
+    side,
+    align,
+    offset,
+    scrollable,
+    maxHeight,
+  });
 
-  const onHeaderLayout = useCallback(
-    (event: { nativeEvent: { layout: { width: number; height: number } } }) => {
-      const { width: nextWidth, height: nextHeight } = event.nativeEvent.layout;
-      setHeaderSize((current) => {
-        if (current?.width === nextWidth && current.height === nextHeight) return current;
-        return { width: nextWidth, height: nextHeight };
-      });
-    },
-    [],
-  );
+  // Measure before entering so the surface starts its animation at its anchored position.
+  // OTTO(menu-geometry): web entry animates opacity only; subsequent content reflows own the frame.
+  const placed = position !== null;
 
-  const isPositioned = position !== null;
-  useMenuWebEnteringAnimation(surfaceNativeID, open && isPositioned);
   useEffect(() => {
-    if (!isWeb || !open || !contentSize || !isPositioned || typeof document === "undefined")
-      return undefined;
+    if (!isWeb || !open || !placed || typeof document === "undefined") return undefined;
     const frame = requestAnimationFrame(() => {
-      const surface = document.getElementById(surfaceNativeID);
-      // Filtering changes the content measurement; it must not take focus from the search field.
-      if (surface?.contains(document.activeElement)) return;
-      surface
+      document
+        .getElementById(surfaceNativeID)
         ?.querySelector<HTMLElement>('[data-menu-item="true"]:not([data-menu-disabled="true"])')
-        ?.focus({ preventScroll: true });
+        ?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [contentSize, isPositioned, open, surfaceNativeID]);
+  }, [open, placed, surfaceNativeID]);
 
   const frameStyle = useMemo<StyleProp<ViewStyle>>(() => {
     const { width: screenWidth } = Dimensions.get("window");
@@ -318,12 +274,8 @@ export function AnchoredSurface({
   ]);
 
   const scrollViewportStyle = useMemo(
-    () => [
-      visibleContentSize
-        ? { height: Math.max(visibleContentSize.height - (headerSize?.height ?? 0), 0) }
-        : null,
-    ],
-    [headerSize?.height, visibleContentSize],
+    () => [visibleContentSize ? { height: visibleContentSize.height } : null],
+    [visibleContentSize],
   );
   const surfaceDataSet = useMemo(
     () => ({
@@ -359,6 +311,7 @@ export function AnchoredSurface({
         />
       ) : null}
       <FloatingSurface
+        key={placed ? "placed" : "measuring"}
         collapsable={false}
         tabIndex={-1}
         nativeID={surfaceNativeID}
@@ -366,9 +319,9 @@ export function AnchoredSurface({
         dataSet={surfaceDataSet}
         style={styles.content}
         frameStyle={frameStyle}
-        entering={contentEntering}
+        entering={placed ? menuSurfaceEntering : undefined}
         exiting={
-          isWeb || !onExited
+          !placed || isWeb || !onExited
             ? undefined
             : contentExiting.withCallback((finished) => {
                 "worklet";
@@ -378,20 +331,12 @@ export function AnchoredSurface({
               })
         }
       >
-        {stickyHeader ? (
-          <View collapsable={false} onLayout={onHeaderLayout}>
-            {stickyHeader}
-          </View>
-        ) : null}
         {scrollable ? (
           <FloatingScrollView
-            ref={scrollViewRef}
             bounces={false}
             showsVerticalScrollIndicator
             style={scrollViewportStyle}
             contentContainerStyle={SCROLL_CONTENT_STYLE}
-            onScroll={onScroll}
-            onContentSizeChange={onContentSizeChange}
           >
             {measured}
           </FloatingScrollView>
@@ -433,8 +378,6 @@ export function MenuOverlay({
       const target = event.target instanceof Element ? event.target : null;
       const surface = target?.closest<HTMLElement>('[data-menu-surface="true"]');
       if (!surface) return false;
-      if (resolveKeyboardFocusScope({ target, commandCenterOpen: false }) === "editable")
-        return false;
       const items = Array.from(
         surface.querySelectorAll<HTMLElement>(
           '[data-menu-item="true"]:not([data-menu-disabled="true"])',

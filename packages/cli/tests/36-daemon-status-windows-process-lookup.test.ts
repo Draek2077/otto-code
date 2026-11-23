@@ -1,42 +1,11 @@
 #!/usr/bin/env npx tsx
 
 import assert from "node:assert";
-import { spawn } from "node:child_process";
+import { runLocalPaseo } from "./helpers/local-cli.ts";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { getAvailablePort } from "./helpers/network.ts";
-
-const CLI_ENTRY = join(import.meta.dirname, "..", "dist", "index.js");
-
-interface CommandResult {
-  exitCode: number | null;
-  stdout: string;
-  stderr: string;
-}
-
-function runLocalOtto(args: string[], env: NodeJS.ProcessEnv): Promise<CommandResult> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [CLI_ENTRY, ...args], {
-      env: { ...process.env, ...env },
-      stdio: ["ignore", "pipe", "pipe"],
-      windowsHide: true,
-    });
-
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk: Buffer) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
-    });
-    child.on("error", reject);
-    child.on("close", (exitCode) => {
-      resolve({ exitCode, stdout, stderr });
-    });
-  });
-}
 
 if (process.platform !== "win32") {
   console.log("Skipping Windows daemon status process lookup regression on non-Windows.");
@@ -45,24 +14,36 @@ if (process.platform !== "win32") {
 
 console.log("=== Windows Daemon Status Process Lookup ===\n");
 
-const ottoHome = await mkdtemp(join(tmpdir(), "otto-windows-status-home-"));
+const paseoHome = await mkdtemp(join(tmpdir(), "paseo-windows-status-home-"));
 const port = await getAvailablePort();
 const env = {
-  OTTO_HOME: ottoHome,
-  OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0",
-  OTTO_DICTATION_ENABLED: "0",
-  OTTO_VOICE_MODE_ENABLED: "0",
+  PASEO_HOME: paseoHome,
+  PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0",
+  PASEO_DICTATION_ENABLED: "0",
+  PASEO_VOICE_MODE_ENABLED: "0",
 };
 
 try {
-  const start = await runLocalOtto(["daemon", "restart", "--port", String(port)], env);
+  for (const [field, value] of [
+    ["daemon.listen", `127.0.0.1:${port}`],
+    ["daemon.relay.enabled", "false"],
+    ["features.dictation.enabled", "false"],
+    ["features.voiceMode.enabled", "false"],
+  ]) {
+    const saved = await runLocalPaseo(["daemon", "config", "set", field!, value!], env);
+    assert.equal(saved.exitCode, 0, saved.stderr);
+  }
+  const start = await runLocalPaseo(["daemon", "start"], env);
   assert.strictEqual(
     start.exitCode,
     0,
     `daemon restart should succeed:\nstdout:\n${start.stdout}\nstderr:\n${start.stderr}`,
   );
 
-  const statusResult = await runLocalOtto(["daemon", "status", "--home", ottoHome, "--json"], env);
+  const statusResult = await runLocalPaseo(
+    ["daemon", "status", "--home", paseoHome, "--json"],
+    env,
+  );
   assert.strictEqual(
     statusResult.exitCode,
     0,
@@ -87,8 +68,8 @@ try {
   );
   console.log("✓ daemon status resolves daemonNode on Windows\n");
 } finally {
-  await runLocalOtto(["daemon", "stop", "--home", ottoHome, "--force"], env);
-  await rm(ottoHome, { recursive: true, force: true });
+  await runLocalPaseo(["daemon", "stop", "--home", paseoHome, "--force"], env);
+  await rm(paseoHome, { recursive: true, force: true });
 }
 
 console.log("=== Windows daemon status process lookup passed ===");

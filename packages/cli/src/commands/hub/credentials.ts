@@ -1,3 +1,4 @@
+import { OTTO_DEFAULT_HOME } from "@getpaseo/protocol/otto/identity";
 import { randomUUID } from "node:crypto";
 import { chmodSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -59,7 +60,7 @@ export class PrivateHubCredentialStore implements HubCredentialStore {
   private readonly filePath: string;
 
   constructor(env: Readonly<Record<string, string | undefined>> = process.env) {
-    this.filePath = path.join(resolveOttoHome(env), "hub-credentials.json");
+    this.filePath = path.join(resolvePaseoHome(env), "hub-credentials.json");
   }
 
   active(): StoredHubCredential | null {
@@ -136,8 +137,8 @@ export class PrivateHubCredentialStore implements HubCredentialStore {
   }
 }
 
-function resolveOttoHome(env: Readonly<Record<string, string | undefined>>): string {
-  const configured = env.OTTO_HOME ?? "~/.otto";
+function resolvePaseoHome(env: Readonly<Record<string, string | undefined>>): string {
+  const configured = env.PASEO_HOME ?? OTTO_DEFAULT_HOME; // OTTO(identity)
   const expanded = configured === "~" ? homedir() : configured.replace(/^~\//u, `${homedir()}/`);
   return path.resolve(expanded);
 }
@@ -158,6 +159,7 @@ function isMissingFile(error: unknown): boolean {
 function invalidCredentialFile(): HubCommandError {
   return new HubCommandError(
     "HUB_CREDENTIALS_INVALID",
+    // OTTO(identity)
     "Stored Hub login is invalid. Run `otto hub login <origin>` to replace it.",
   );
 }
@@ -165,6 +167,6 @@ function invalidCredentialFile(): HubCommandError {
 function credentialStorageError(): HubCommandError {
   return new HubCommandError(
     "HUB_CREDENTIALS_UNAVAILABLE",
-    "Could not access the private Hub credential store under OTTO_HOME.",
+    "Could not access the private Hub credential store under PASEO_HOME.",
   );
 }

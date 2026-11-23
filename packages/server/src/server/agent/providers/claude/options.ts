@@ -1,4 +1,4 @@
-import type { ProviderOptions, ToolPolicy } from "@otto-code/protocol/agent-types";
+import type { ProviderOptions, ToolPolicy } from "@getpaseo/protocol/agent-types";
 import { z } from "zod";
 
 const PermissionRulesSchema = z
@@ -48,6 +48,8 @@ export const ClaudeProviderOptionsSchema = z
     allowedTools: z.array(z.string()).optional(),
     disallowedTools: z.array(z.string()).optional(),
     additionalDirectories: z.array(z.string()).optional(),
+    extraArgs: z.record(z.string(), z.string().nullable()).optional(),
+    promptSuggestions: z.boolean().optional(), // OTTO(prompt-suggestions)
     sandbox: z
       .object({
         enabled: z.boolean().optional(),

@@ -5,7 +5,7 @@ import {
 } from "./desktop-daemon-transport";
 import { createFakeLocalDaemonTransportRpc } from "./test-local-daemon-transport-rpc";
 
-const LOCAL_URL = "otto+desktop://socket?path=%2Ftmp%2Fotto.sock";
+const LOCAL_URL = "paseo+desktop://socket?path=%2Ftmp%2Fpaseo.sock";
 
 describe("desktop-daemon-transport", () => {
   it("uses the main-process event as readiness when it races registration", async () => {
@@ -107,53 +107,5 @@ describe("desktop-daemon-transport", () => {
     });
 
     expect(() => transportFactory!({ url })).toThrow("Invalid SSH transport target");
-  });
-});
-
-describe("Otto local transport preservation", () => {
-  it("keeps old local socket targets readable without allowing SSH through the old scheme", async () => {
-    const rpc = createFakeLocalDaemonTransportRpc();
-    const factory = createDesktopDaemonTransportFactory(rpc)!;
-    factory({ url: "otto+local://socket?path=%2Ftmp%2Fotto.sock" });
-    rpc.resolveListen(vi.fn());
-    await Promise.resolve();
-    expect(rpc.openCalls[0]?.target).toEqual({
-      transportType: "socket",
-      transportPath: "/tmp/otto.sock",
-    });
-    expect(() => factory({ url: "otto+local://ssh?host=remote" })).toThrow(
-      "Unsupported desktop transport URL",
-    );
-  });
-
-  it("sends text and binary only while this exact bridge session is open", async () => {
-    const rpc = createFakeLocalDaemonTransportRpc();
-    const transport = createDesktopDaemonTransportFactory(rpc)!({ url: LOCAL_URL });
-    const received = vi.fn();
-    transport.onMessage(received);
-    transport.send("before");
-    expect(rpc.recordedSends).toEqual([]);
-    rpc.resolveListen(vi.fn());
-    await Promise.resolve();
-    const sessionId = rpc.openCalls[0]!.sessionId;
-    rpc.emitEvent({ sessionId: "other", kind: "open" });
-    transport.send("still-before");
-    expect(rpc.recordedSends).toEqual([]);
-    rpc.emitEvent({ sessionId, kind: "open" });
-    transport.send("hello");
-    transport.send(new Uint8Array([1, 2, 3]));
-    expect(rpc.recordedSends).toEqual([
-      { sessionId, text: "hello" },
-      { sessionId, binaryBase64: "AQID" },
-    ]);
-    rpc.emitEvent({ sessionId: "other", kind: "message", text: "wrong host" });
-    rpc.emitEvent({ sessionId, kind: "message", binaryBase64: "AQID" });
-    expect(received).toHaveBeenCalledTimes(1);
-    expect(received).toHaveBeenCalledWith(new Uint8Array([1, 2, 3]), true);
-    transport.close();
-    transport.close();
-    transport.send("after");
-    expect(rpc.recordedSends).toHaveLength(2);
-    expect(rpc.closedSessions).toEqual([sessionId]);
   });
 });

@@ -1,13 +1,13 @@
-import type { DaemonClientTrace } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClientTrace } from "@getpaseo/client/internal/daemon-client";
 import { requireOptionalNativeModule } from "expo-modules-core";
 import { isProfileBuild } from "@/constants/build-profile";
 
-interface OttoNativeTraceModule {
+interface PaseoNativeTraceModule {
   beginSection(name: string): void;
   endSection(): void;
 }
 
-const traceModule = requireOptionalNativeModule<OttoNativeTraceModule>("OttoNativeTrace");
+const traceModule = requireOptionalNativeModule<PaseoNativeTraceModule>("PaseoNativeTrace");
 
 export const nativePerformanceTrace: DaemonClientTrace = {
   isEnabled() {

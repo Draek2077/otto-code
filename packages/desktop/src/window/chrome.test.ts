@@ -42,7 +42,7 @@ describe("desktop window chrome", () => {
 
   it("serializes the validated mode for preload", () => {
     expect(windowChromeModeArgument("custom-windows")).toBe(
-      "--otto-window-chrome-mode=custom-windows",
+      "--paseo-window-chrome-mode=custom-windows",
     );
   });
 });

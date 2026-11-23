@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import type { FileVersion, FsFileWriteResult } from "@otto-code/protocol/messages";
+import type { FileVersion, FileWriteResult } from "@getpaseo/protocol/messages";
 import {
   FileEditorModel,
   getFileConflictCallout,
@@ -32,9 +32,9 @@ class TestClock implements FileEditorClock {
 class FileSession implements FileEditorSession {
   file: FileEditorFile;
   writes: Array<{ content: string; expectedModifiedAt: string; expectedRevision?: string }> = [];
-  nextWrite: FsFileWriteResult | Error | null = null;
-  private pendingWrite: Promise<FsFileWriteResult> | null = null;
-  private resolvePendingWrite: ((result: FsFileWriteResult) => void) | null = null;
+  nextWrite: FileWriteResult | Error | null = null;
+  private pendingWrite: Promise<FileWriteResult> | null = null;
+  private resolvePendingWrite: ((result: FileWriteResult) => void) | null = null;
 
   constructor(file: FileEditorFile) {
     this.file = file;
@@ -44,7 +44,7 @@ class FileSession implements FileEditorSession {
     content: string;
     expectedModifiedAt: string;
     expectedRevision?: string;
-  }): Promise<FsFileWriteResult> {
+  }): Promise<FileWriteResult> {
     this.writes.push(input);
     if (this.pendingWrite) return this.pendingWrite;
     if (this.nextWrite instanceof Error) throw this.nextWrite;
@@ -62,7 +62,7 @@ class FileSession implements FileEditorSession {
     });
   }
 
-  finishHeldWrite(result: FsFileWriteResult): void {
+  finishHeldWrite(result: FileWriteResult): void {
     this.resolvePendingWrite?.(result);
     this.pendingWrite = null;
     this.resolvePendingWrite = null;

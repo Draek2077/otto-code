@@ -15,22 +15,8 @@ export interface AppUpdateCheckResult {
   errorMessage: string | null;
 }
 
-/**
- * Why an install attempt ended. `installed` alone cannot carry this: "we could
- * not install" and "there was nothing to install" look identical to a caller,
- * so the UI used to render a failed download as "you are up to date".
- *
- *  - "installed": the app is quitting into the installer.
- *  - "deferred":  nothing was installed and nothing is wrong - superseded by a
- *                 newer release, still validating, or handed off to a manual
- *                 download (unsigned macOS).
- *  - "failed":    the download or install errored. `message` says how.
- */
-export type AppUpdateInstallOutcome = "installed" | "deferred" | "failed";
-
 export interface AppUpdateInstallResult {
   installed: boolean;
-  outcome: AppUpdateInstallOutcome;
   version: string | null;
   message: string;
 }
@@ -56,8 +42,6 @@ export interface AppUpdateRuntimeConfiguration {
 }
 
 export interface AppUpdateInstallRequest {
-  /** Runtime invokes this only once its platform-specific install is safe to quit. */
-  onBeforeQuit?: () => Promise<void>;
   targetVersion: string;
   isSilent: boolean;
   isForceRunAfter: boolean;
@@ -67,7 +51,7 @@ export interface AppUpdateRuntime {
   configure(input: AppUpdateRuntimeConfiguration): void;
   checkForUpdates(): Promise<RuntimeUpdateCheckResult | null>;
   downloadUpdate(targetVersion: string): Promise<unknown>;
-  quitAndInstall(input: AppUpdateInstallRequest): void | Promise<void>;
+  quitAndInstall(input: AppUpdateInstallRequest): void;
 }
 
 export interface AppUpdateService {
@@ -132,18 +116,11 @@ async function performQuitAndInstall(
     restart: boolean;
   },
 ): Promise<void> {
-  // Always silent, including the restart path. Otto ships an assisted NSIS
-  // installer, and electron-builder's assisted template only relaunches the app
-  // after a *silent* install: run it with its wizard UI and the --force-run flag
-  // electron-updater passes is ignored outright, leaving the "Run Otto" checkbox
-  // on the finish page as the only way back in. Otto has already told the user
-  // it will restart itself and quit by then, so nobody is there to click Finish
-  // and the update lands with the app dead. See docs/fork-release-guide.md.
-  await runtime.quitAndInstall({
+  if (onBeforeQuit) await onBeforeQuit();
+  runtime.quitAndInstall({
     targetVersion,
-    isSilent: true,
+    isSilent: !restart,
     isForceRunAfter: restart,
-    onBeforeQuit,
   });
 }
 
@@ -157,7 +134,6 @@ function getErrorMessage(error: unknown): string {
 function buildDeferredInstallResult(currentVersion: string): AppUpdateInstallResult {
   return {
     installed: false,
-    outcome: "deferred",
     version: currentVersion,
     message: "Update validation timed out. The update will be installed later.",
   };
@@ -170,6 +146,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
   let preparationError: { version: string; message: string } | null = null;
   let preparingUpdateVersion: string | null = null;
   let checkQueue: Promise<void> = Promise.resolve();
+
   function isReadyToInstallVersion(version: string): boolean {
     return downloadedUpdateVersion === version;
   }
@@ -209,7 +186,7 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       releaseChannel,
       shouldAdmitUpdate: async (info) => {
         const parsed = rolloutManifestSchema.parse(info);
-        const admitted = shouldAdmitAppUpdate({
+        return shouldAdmitAppUpdate({
           channel: releaseChannel,
           intent,
           rolloutHours: parsed.rolloutHours,
@@ -217,7 +194,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
           now: deps.now(),
           bucket: await deps.bucket(),
         });
-        return admitted;
       },
       onUpdateAvailable(info) {
         const alreadyReady = downloadedUpdateVersion === info.version;
@@ -360,7 +336,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
     if (!deps.isPackaged()) {
       return {
         installed: false,
-        outcome: "deferred",
         version: currentVersion,
         message: "Auto-update is not available in development mode.",
       };
@@ -374,7 +349,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
     if (!check.hasUpdate) {
       return {
         installed: false,
-        outcome: check.errorMessage ? "failed" : "deferred",
         version: currentVersion,
         message: check.errorMessage ?? "No update available.",
       };
@@ -433,7 +407,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
     if (!cachedUpdateInfo) {
       return {
         installed: false,
-        outcome: "deferred",
         version: currentVersion,
         message: "No update available. Check for updates first.",
       };
@@ -444,6 +417,19 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       return buildDeferredInstallResult(currentVersion);
     }
 
+    if (isReadyToInstallVersion(readyVersion)) {
+      await performQuitAndInstall(deps.runtime, {
+        targetVersion: readyVersion,
+        onBeforeQuit,
+        restart,
+      });
+      return {
+        installed: true,
+        version: readyVersion,
+        message: "Update downloaded. The app will restart shortly.",
+      };
+    }
+
     try {
       const preparation = await ensureUpdateDownloaded(readyVersion, signal);
       if (preparation === "aborted") {
@@ -452,7 +438,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       if (preparation === "superseded") {
         return {
           installed: false,
-          outcome: "deferred",
           version: currentVersion,
           message: "A newer update was found and will be installed later.",
         };
@@ -465,7 +450,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
 
       return {
         installed: true,
-        outcome: "installed",
         version: readyVersion,
         message: "Update downloaded. The app will restart shortly.",
       };
@@ -474,7 +458,6 @@ export function createAppUpdateService(deps: AppUpdateServiceDeps): AppUpdateSer
       deps.reportInstallError?.(message);
       return {
         installed: false,
-        outcome: "failed",
         version: currentVersion,
         message: `Update failed: ${message}`,
       };

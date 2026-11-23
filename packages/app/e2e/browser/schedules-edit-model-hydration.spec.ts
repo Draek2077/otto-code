@@ -1,12 +1,11 @@
-import { expect, test } from "../support/fixtures";
+import { expect, test } from "../support/helpers/native-schedules"; // OTTO(schedules): original native host capability floor.
 import { gotoAppShell } from "../support/helpers/app";
+import { addRetainedFixtureHostAndReload } from "../support/helpers/hosts";
 import {
-  addFakeScheduleHostAndReload,
-  buildFakeScheduleHostWorkspace,
-  FAKE_HOST_MODEL_ID,
-  FAKE_HOST_MODEL_LABEL,
-  installFakeScheduleHost,
-} from "../support/helpers/schedule-fake-host";
+  createScheduleHost,
+  SECONDARY_MODEL_ID,
+  SECONDARY_MODEL_LABEL,
+} from "../support/helpers/schedule-host";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
 import { expectSettled, expectStableHeight } from "../support/helpers/settled";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
@@ -32,7 +31,11 @@ interface ScheduleSeedClient {
   scheduleDelete(input: { id: string }): Promise<{ error: string | null }>;
 }
 
-async function seedMockSchedule(workspace: SeededWorkspace, name: string): Promise<string> {
+async function seedMockSchedule(
+  workspace: SeededWorkspace,
+  name: string,
+  model = "ten-second-stream",
+): Promise<string> {
   const client = workspace.client as unknown as ScheduleSeedClient;
   const result = await client.scheduleCreate({
     prompt: "Say hello from the scheduled agent.",
@@ -43,7 +46,7 @@ async function seedMockSchedule(workspace: SeededWorkspace, name: string): Promi
       config: {
         provider: "mock",
         cwd: workspace.repoPath,
-        model: "ten-second-stream",
+        model,
         modeId: "load-test",
         title: name,
       },
@@ -66,42 +69,6 @@ async function deleteSeededSchedule(workspace: SeededWorkspace, id: string): Pro
     .catch(ignoreScheduleDeleteError);
 }
 
-type FakeScheduleHostSchedule = NonNullable<
-  Parameters<typeof installFakeScheduleHost>[0]["schedules"]
->[number];
-
-function buildFakeHostSchedule(input: {
-  id: string;
-  name: string;
-  cwd: string;
-}): FakeScheduleHostSchedule {
-  const now = "2026-07-01T00:00:00.000Z";
-  return {
-    id: input.id,
-    name: input.name,
-    prompt: "Run on the secondary host.",
-    cadence: { type: "cron", expression: "0 9 * * *" },
-    target: {
-      type: "new-agent",
-      config: {
-        provider: "mock",
-        cwd: input.cwd,
-        model: FAKE_HOST_MODEL_ID,
-        modeId: "load-test",
-        title: input.name,
-      },
-    },
-    status: "active",
-    createdAt: now,
-    updatedAt: now,
-    nextRunAt: now,
-    lastRunAt: null,
-    pausedAt: null,
-    expiresAt: null,
-    maxRuns: null,
-  };
-}
-
 test.describe("Schedules", () => {
   const cleanupTasks: Array<() => Promise<void>> = [];
 
@@ -120,7 +87,7 @@ test.describe("Schedules", () => {
     cleanupTasks.push(() => deleteSeededSchedule(workspace, scheduleId));
 
     await page.goto(buildSchedulesRoute());
-    const row = page.getByTestId(`schedule-card-${scheduleId}`);
+    const row = page.getByTestId(`schedule-row-${scheduleId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });
     await expect(row).toContainText(workspace.projectDisplayName, { timeout: 30_000 });
 
@@ -132,6 +99,7 @@ test.describe("Schedules", () => {
     const projectTrigger = page.getByTestId("schedule-project-trigger");
     const modelTrigger = page.getByTestId("schedule-model-trigger");
     const thinkingTrigger = page.getByTestId("schedule-thinking-trigger");
+    const modeTrigger = page.getByTestId("schedule-mode-trigger");
     await expect(hostTrigger).toBeVisible({ timeout: 30_000 });
     await expect(hostTrigger).toBeDisabled();
     await expectSettled(hostTrigger);
@@ -139,12 +107,10 @@ test.describe("Schedules", () => {
     await expectSettled(projectTrigger);
     await expect(modelTrigger).toContainText("Ten second stream", { timeout: 30_000 });
     await expectSettled(modelTrigger);
-    // "Ten second stream" declares thinking options (low/medium/high, default
-    // low), so the effort picker hydrates instead of staying hidden.
-    await expect(thinkingTrigger).toContainText("Low", { timeout: 30_000 });
-    // No mode field: schedule runs are always unattended, so the form never
-    // offers a mode picker.
-    await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
+    await expect(thinkingTrigger).toContainText("Low");
+    await expectSettled(thinkingTrigger);
+    await expect(modeTrigger).toBeVisible({ timeout: 30_000 });
+    await expectSettled(modeTrigger);
     await expect(page.getByTestId("cadence-mode")).toHaveCount(0);
     await expect(page.getByTestId("cadence-interval-value")).toHaveCount(0);
     await expect(page.getByTestId("schedule-cadence-preset-trigger")).toContainText("Daily 9:00");
@@ -155,38 +121,27 @@ test.describe("Schedules", () => {
   test("edit form hydrates a non-default host schedule after reload", async ({ page }) => {
     const workspace = await seedWorkspace({ repoPrefix: "schedule-host-b-hydration-" });
     cleanupTasks.push(() => workspace.cleanup());
-    const fakeHost = await buildFakeScheduleHostWorkspace(workspace);
-    const fakePort = String(59_000 + Math.floor(Math.random() * 900));
-    const scheduleId = "fake-host-schedule";
-    const scheduleName = "Secondary host schedule";
-
-    await installFakeScheduleHost({
-      page,
-      port: fakePort,
-      serverId: fakeHost.serverId,
-      workspace: fakeHost.workspace,
-      project: fakeHost,
-      schedules: [
-        buildFakeHostSchedule({
-          id: scheduleId,
-          name: scheduleName,
-          cwd: String(fakeHost.workspace.workspaceDirectory),
-        }),
-      ],
-    });
+    const secondary = await createScheduleHost();
+    cleanupTasks.push(() => secondary.cleanup());
+    const scheduleId = await seedMockSchedule(
+      secondary,
+      "Secondary host schedule",
+      SECONDARY_MODEL_ID,
+    );
+    cleanupTasks.push(() => deleteSeededSchedule(secondary, scheduleId));
 
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
     await page.goto(buildSchedulesRoute());
-    await addFakeScheduleHostAndReload({
+    await addRetainedFixtureHostAndReload({
       page,
-      serverId: fakeHost.serverId,
-      label: "Fake host",
-      port: fakePort,
+      serverId: secondary.serverId,
+      label: secondary.label,
+      port: secondary.port,
     });
     await page.reload();
 
-    const row = page.getByTestId(`schedule-card-${scheduleId}`);
+    const row = page.getByTestId(`schedule-row-${scheduleId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });
     await row.click();
 
@@ -196,15 +151,17 @@ test.describe("Schedules", () => {
     const hostTrigger = page.getByTestId("schedule-host-trigger");
     const projectTrigger = page.getByTestId("schedule-project-trigger");
     const modelTrigger = page.getByTestId("schedule-model-trigger");
+    const modeTrigger = page.getByTestId("schedule-mode-trigger");
 
-    await expect(hostTrigger).toContainText("Fake host", { timeout: 30_000 });
+    await expect(hostTrigger).toContainText(secondary.label, { timeout: 30_000 });
     await expect(hostTrigger).toBeDisabled();
     await expectSettled(hostTrigger);
-    await expect(projectTrigger).toContainText(fakeHost.projectDisplayName, { timeout: 30_000 });
+    await expect(projectTrigger).toContainText(secondary.projectDisplayName, { timeout: 30_000 });
     await expectSettled(projectTrigger);
-    await expect(modelTrigger).toContainText(FAKE_HOST_MODEL_LABEL, { timeout: 30_000 });
+    await expect(modelTrigger).toContainText(SECONDARY_MODEL_LABEL, { timeout: 30_000 });
     await expectSettled(modelTrigger);
-    await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
+    await expect(modeTrigger).toContainText("Load Test", { timeout: 30_000 });
+    await expectSettled(modeTrigger);
     await expect(page.getByTestId("cadence-mode")).toHaveCount(0);
     await expect(page.getByTestId("schedule-cadence-preset-trigger")).toContainText("Daily 9:00");
   });
@@ -217,7 +174,7 @@ test.describe("Schedules", () => {
     cleanupTasks.push(() => deleteSeededSchedule(workspace, scheduleId));
 
     await page.goto(buildSchedulesRoute());
-    const row = page.getByTestId(`schedule-card-${scheduleId}`);
+    const row = page.getByTestId(`schedule-row-${scheduleId}`);
     await expect(row).toBeVisible({ timeout: 30_000 });
     await row.click();
     const formSheet = page.getByTestId("schedule-form-sheet");
@@ -231,16 +188,8 @@ test.describe("Schedules", () => {
     const projectTrigger = page.getByTestId("schedule-project-trigger");
     await expect(projectTrigger).toContainText(/select project/i);
     await expectSettled(projectTrigger);
-    // The model field shows immediately (no stepped disclosure) and preselects
-    // the last-used model from device form preferences.
-    await expect(page.getByTestId("schedule-model-trigger")).toContainText("Ten second stream", {
-      timeout: 30_000,
-    });
-    // "Ten second stream" declares thinking options (low/medium/high, default
-    // low), so the pristine form hydrates the effort picker to that default.
-    await expect(page.getByTestId("schedule-thinking-trigger")).toContainText("Low", {
-      timeout: 30_000,
-    });
+    await expect(page.getByTestId("schedule-model-trigger")).toHaveCount(0);
+    await expect(page.getByTestId("schedule-thinking-trigger")).toHaveCount(0);
     await expect(page.getByTestId("schedule-mode-trigger")).toHaveCount(0);
     await expect(page.getByTestId("cadence-interval-value")).toHaveCount(0);
   });

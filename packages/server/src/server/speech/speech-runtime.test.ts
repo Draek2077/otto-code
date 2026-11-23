@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import pino from "pino";
 
-import type { OttoSpeechConfig } from "../bootstrap.js";
+import type { PaseoSpeechConfig } from "../bootstrap.js";
 import type { InitializedLocalSpeech } from "./providers/local/runtime.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech-provider.js";
 import type { TurnDetectionProvider } from "./turn-detection-provider.js";
@@ -36,8 +36,7 @@ vi.mock("./providers/openai/runtime.js", () => ({
 
 vi.mock("./providers/local/models.js", () => ({
   ensureLocalSpeechModels: ensureLocalSpeechModelsMock,
-  getLocalSpeechModelDir: vi.fn(() => ""),
-  listLocalSpeechModels: vi.fn(() => []),
+  listMissingLocalSpeechModels: vi.fn(async ({ modelIds }: { modelIds: string[] }) => modelIds),
 }));
 
 function createStubStt(id: string): SpeechToTextProvider {
@@ -73,7 +72,7 @@ function rejectWhenAborted(signal?: AbortSignal): Promise<never> {
   });
 }
 
-function createSpeechConfig(providers: OttoSpeechConfig["providers"]): OttoSpeechConfig {
+function createSpeechConfig(providers: PaseoSpeechConfig["providers"]): PaseoSpeechConfig {
   return {
     providers,
     sttLanguages: {

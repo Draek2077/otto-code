@@ -1,4 +1,4 @@
-import type { CheckoutCheckDetails } from "@otto-code/protocol/messages";
+import type { CheckoutCheckDetails } from "@getpaseo/protocol/messages";
 import type { PullRequestContextAttachment } from "@/attachments/types";
 import { type Forge, getForgePresentation } from "@/git/forge";
 import {
@@ -182,7 +182,7 @@ function formatCheckContextText({
     lines.push(`Details URL: ${detailsUrl}`);
   }
   appendGitHubCheckOutput(lines, githubDetails);
-  appendCheckAnnotations(lines, githubDetails);
+  appendGitHubCheckAnnotations(lines, githubDetails);
   appendGitHubFailedJobs(lines, githubDetails);
   if (githubDetails?.truncated) {
     lines.push("", `Note: Check details were truncated by ${provider.label}/API or local caps.`);
@@ -206,7 +206,10 @@ function appendGitHubCheckOutput(
   }
 }
 
-function appendCheckAnnotations(lines: string[], details: CheckoutCheckDetails | null | undefined) {
+function appendGitHubCheckAnnotations(
+  lines: string[],
+  details: CheckoutCheckDetails | null | undefined,
+) {
   if (!details?.annotations?.length) {
     return;
   }

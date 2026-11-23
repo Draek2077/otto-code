@@ -33,12 +33,17 @@ export interface UseSchedulesResult {
   isRefetching: boolean;
 }
 
-export function useSchedules(): UseSchedulesResult {
+// OTTO(schedules): the target-aware screen keeps old-host native reads on this
+// original path; capable hosts use the owned API without duplicate inventory reads.
+export function useSchedules(options?: { serverIds: readonly string[] }): UseSchedulesResult {
   const hosts = useHosts();
   const runtime = getHostRuntimeStore();
   const hostInputs = useMemo<ScheduleHostInput[]>(
-    () => hosts.map((host) => ({ serverId: host.serverId, serverName: host.label })),
-    [hosts],
+    () =>
+      hosts
+        .filter((host) => !options || options.serverIds.includes(host.serverId))
+        .map((host) => ({ serverId: host.serverId, serverName: host.label })),
+    [hosts, options],
   );
   const serverIds = useMemo(() => hostInputs.map((host) => host.serverId), [hostInputs]);
   const connectionStatuses = useHostRuntimeConnectionStatuses(serverIds);

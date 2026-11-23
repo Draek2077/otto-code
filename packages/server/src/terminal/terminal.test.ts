@@ -2,6 +2,7 @@ import { describe, it, expect, afterEach, vi } from "vitest";
 import { isPlatform } from "../test-utils/platform.js";
 import {
   buildTerminalEnvironment,
+  assertTerminalCommandCanStart,
   createTerminal,
   ensureNodePtySpawnHelperExecutableForCurrentPlatform,
   resolveDefaultTerminalShell,
@@ -17,7 +18,6 @@ import {
   existsSync,
   mkdtempSync,
   mkdirSync,
-  readFileSync,
   realpathSync,
   rmSync,
   statSync,
@@ -25,7 +25,9 @@ import {
 } from "node:fs";
 import { spawnSync } from "node:child_process";
 import * as pty from "node-pty";
-import { join } from "node:path";
+import xterm from "@xterm/headless";
+import { renderTerminalSnapshotToAnsi } from "@getpaseo/protocol/terminal-snapshot";
+import { delimiter, join } from "node:path";
 import { tmpdir } from "node:os";
 import { setImmediate as waitForImmediate, setTimeout as delay } from "node:timers/promises";
 import { stripVTControlCharacters } from "node:util";
@@ -49,6 +51,10 @@ function getRowText(state: ReturnType<TerminalSession["getState"]>, rowIndex: nu
 // Extract all visible lines as array (trimmed, empty lines included)
 function getLines(state: ReturnType<TerminalSession["getState"]>): string[] {
   return state.grid.map(rowToText);
+}
+
+function rowHasChar(row: TerminalRow, char: string): boolean {
+  return row.some((cell) => cell.char === char);
 }
 
 // Wait for terminal state to match expected lines
@@ -524,6 +530,44 @@ describe("createTerminal", () => {
     expect(withoutFlags.scrollbackWrapped).toBeUndefined();
   });
 
+  it("restores CJK text without injected spaces when a snapshot round-trips through the client", async () => {
+    // Each Hangul syllable is a wide char: xterm stores it as a 2-cell pair
+    // whose second cell has no chars. Capturing that continuation as " " made
+    // every restored syllable three columns wide (paseo#3434).
+    const text = "통합 구현은 전체 테스트를 통과했습니다";
+    const session = trackSession(
+      await createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(tmpdir()),
+        cols: 80,
+        rows: 10,
+        command: process.execPath,
+        args: [
+          "-e",
+          `process.stdout.write(${JSON.stringify(text)}); setInterval(() => {}, 100000);`,
+        ],
+      }),
+    );
+
+    const state = await waitForState(session, (current) => rowHasChar(current.grid[0], "다"));
+
+    // Replay the snapshot the way the client does on tab switch and read the
+    // row back the way a selection copy would.
+    const restored = new xterm.Terminal({ cols: 80, rows: 10, allowProposedApi: true });
+    try {
+      await new Promise<void>((resolve) =>
+        restored.write(renderTerminalSnapshotToAnsi(state), resolve),
+      );
+      expect(restored.buffer.active.getLine(0)?.translateToString(true)).toBe(text);
+    } finally {
+      restored.dispose();
+    }
+
+    // The continuation cell must stay empty so the restore path can skip it.
+    expect(state.grid[0][0].char).toBe("통");
+    expect(state.grid[0][1].char).toBe("");
+  });
+
   it("captures exit diagnostics from the terminal buffer", async () => {
     const session = trackSession(
       await createTerminal({
@@ -555,7 +599,7 @@ describe("createTerminal", () => {
     // recent-output cap, so the chunk-trimming path runs repeatedly. The final
     // distinctive lines must survive in the exit summary. The process is kept
     // alive (no self-exit) so we can wait until the last chunk has actually been
-    // parsed by the headless terminal before killing - otherwise the exit
+    // parsed by the headless terminal before killing — otherwise the exit
     // summary races the async xterm parse and reads a stale buffer.
     const session = trackSession(
       await createTerminal({
@@ -595,34 +639,150 @@ describe("createTerminal", () => {
     expect(exitInfo.lastOutputLines[exitInfo.lastOutputLines.length - 1]).toBe("line-2999");
   });
 
-  // Runs on every platform on purpose: CRLF sources are authored on Windows but only
-  // break zsh on POSIX, so the check has to fire on the machine that creates them.
-  it("strips CRLF endings from zsh shell integration sources", () => {
-    const integrationSourceDir = mkdtempSync(join(tmpdir(), "otto-zsh-crlf-source-"));
-    const homeDir = mkdtempSync(join(tmpdir(), "otto-zsh-crlf-home-"));
-    temporaryDirs.push(integrationSourceDir, homeDir);
-    cpSync(resolveZshShellIntegrationDir(), integrationSourceDir, { recursive: true });
-    const scriptNames = [".zshenv", "otto-integration.zsh"];
-    for (const name of scriptNames) {
-      const sourcePath = join(integrationSourceDir, name);
-      writeFileSync(sourcePath, readFileSync(sourcePath, "utf8").replace(/\n/g, "\r\n"));
-    }
+  it.runIf(isPlatform("linux", "darwin"))(
+    "rejects a profile command that is not installed instead of opening a terminal",
+    async () => {
+      await expect(
+        createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(tmpdir()),
+          name: "Codex",
+          command: "paseo-qa-absent-codex",
+          args: [],
+        }),
+      ).rejects.toThrow("paseo-qa-absent-codex: command not found");
+    },
+  );
 
-    const env = buildTerminalEnvironment({
-      shell: "/bin/zsh",
-      env: { HOME: homeDir },
-      zshShellIntegrationDir: integrationSourceDir,
-    });
+  it.runIf(isPlatform("linux", "darwin"))(
+    "opens a command found only on the PATH carried by the env option",
+    async () => {
+      // execve resolves the command against the child's PATH, which carries the
+      // per-cwd registered environment. A version-manager shim lives there and
+      // not necessarily on the daemon's own PATH.
+      const binDir = mkdtempSync(join(tmpdir(), "terminal-envpath-bin-"));
+      temporaryDirs.push(binDir);
+      const toolPath = join(binDir, "paseo-qa-envpath-tool");
+      writeFileSync(toolPath, "#!/usr/bin/env bash\nprintf 'paseo-launch-ok\\n'\nsleep 30\n");
+      chmodSync(toolPath, 0o755);
 
-    for (const name of scriptNames) {
-      const runtimePath = join(env.ZDOTDIR, name);
-      // A stray \r makes zsh run `^M` as a command and never close its `if` blocks.
-      expect(readFileSync(runtimePath, "utf8")).not.toContain("\r");
-      if (hasZsh) {
-        expect(spawnSync("/bin/zsh", ["-n", runtimePath]).status).toBe(0);
-      }
-    }
+      const session = trackSession(
+        await createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(tmpdir()),
+          name: "Shim",
+          command: "paseo-qa-envpath-tool",
+          args: [],
+          env: { PATH: `${binDir}${delimiter}${process.env.PATH ?? ""}` },
+        }),
+      );
+
+      await waitForLines(session, ["paseo-launch-ok"]);
+      expect(getLines(session.getState())[0]).toBe("paseo-launch-ok");
+    },
+  );
+
+  it.runIf(isPlatform("linux", "darwin"))(
+    "reports command not found when the command is on neither PATH",
+    async () => {
+      await expect(
+        createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(tmpdir()),
+          name: "Codex",
+          command: "paseo-qa-absent-codex",
+          args: [],
+          env: { PATH: `/paseo-qa-empty${delimiter}${process.env.PATH ?? ""}` },
+        }),
+      ).rejects.toThrow("paseo-qa-absent-codex: command not found");
+    },
+  );
+
+  it.runIf(isPlatform("linux", "darwin"))(
+    "opens a relative command path resolved against the terminal cwd",
+    async () => {
+      // execve resolves a path-ish command against the child's cwd, never the
+      // daemon's own working directory.
+      const projectDir = mkdtempSync(join(tmpdir(), "terminal-relative-cmd-"));
+      temporaryDirs.push(projectDir);
+      mkdirSync(join(projectDir, "scripts"));
+      const scriptPath = join(projectDir, "scripts", "dev.sh");
+      writeFileSync(scriptPath, "#!/usr/bin/env bash\nprintf 'paseo-launch-ok\\n'\nsleep 30\n");
+      chmodSync(scriptPath, 0o755);
+
+      const session = trackSession(
+        await createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(projectDir),
+          name: "Dev script",
+          command: "./scripts/dev.sh",
+          args: [],
+        }),
+      );
+
+      await waitForLines(session, ["paseo-launch-ok"]);
+      expect(getLines(session.getState())[0]).toBe("paseo-launch-ok");
+    },
+  );
+
+  it.runIf(isPlatform("linux", "darwin"))("opens an absolute command path", async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "terminal-absolute-cmd-"));
+    temporaryDirs.push(projectDir);
+    const scriptPath = join(projectDir, "run.sh");
+    writeFileSync(scriptPath, "#!/usr/bin/env bash\nprintf 'paseo-launch-ok\\n'\nsleep 30\n");
+    chmodSync(scriptPath, 0o755);
+
+    const session = trackSession(
+      await createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(tmpdir()),
+        name: "Absolute",
+        command: scriptPath,
+        args: [],
+      }),
+    );
+
+    await waitForLines(session, ["paseo-launch-ok"]);
+    expect(getLines(session.getState())[0]).toBe("paseo-launch-ok");
   });
+
+  it("leaves the command check to the terminal itself on Windows", async () => {
+    // Windows resolves inside resolveTerminalSpawnCommand, which has its own
+    // shim handling and its own fallback for an unresolved command.
+    await expect(
+      assertTerminalCommandCanStart({
+        command: "paseo-qa-absent-codex",
+        cwd: realpathSync(tmpdir()),
+        env: { PATH: "/paseo-qa-empty" },
+        platform: "win32",
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it.runIf(isPlatform("linux", "darwin"))(
+    "still opens a terminal for an installed command that exits non-zero",
+    async () => {
+      // A profile running a failing test suite must keep opening a tab with its
+      // output. Only a command that cannot start at all is reported as an error,
+      // and "exited non-zero" does not distinguish the two: a missing binary and
+      // `false` both surface as exit code 1 from node-pty.
+      const session = trackSession(
+        await createTerminal({
+          workspaceId: "ws-test",
+          cwd: realpathSync(tmpdir()),
+          name: "Failing suite",
+          command: "false",
+          args: [],
+        }),
+      );
+
+      const exitInfo = await new Promise<{ exitCode: number | null }>((resolve) => {
+        session.onExit((info) => resolve({ exitCode: info.exitCode }));
+      });
+
+      expect(exitInfo).toEqual({ exitCode: 1 });
+    },
+  );
 });
 
 describe.skipIf(isPlatform("win32"))("send input", () => {
@@ -682,14 +842,14 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
     temporaryDirs.push(homeDir);
     const realZdotdir = join(homeDir, ".config", "zsh");
     mkdirSync(realZdotdir, { recursive: true });
-    writeFileSync(join(realZdotdir, ".zshenv"), "export OTTO_TEST_REAL_ZDOTDIR=1\n");
+    writeFileSync(join(realZdotdir, ".zshenv"), "export PASEO_TEST_REAL_ZDOTDIR=1\n");
 
     const session = trackSession(
       await createTerminal({
         workspaceId: "ws-test",
         cwd: homeDir,
         command: "/bin/zsh",
-        args: ["-c", 'printf \'%s\\n%s\\n\' "${ZDOTDIR-}" "${OTTO_TEST_REAL_ZDOTDIR-}"'],
+        args: ["-c", 'printf \'%s\\n%s\\n\' "${ZDOTDIR-}" "${PASEO_TEST_REAL_ZDOTDIR-}"'],
         env: {
           HOME: homeDir,
           ZDOTDIR: realZdotdir,
@@ -914,14 +1074,14 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
   it.skipIf(!hasZsh)("loads the user's zsh prompt when the integration dir is packaged", () => {
     const homeDir = mkdtempSync(join(tmpdir(), "terminal-zsh-packaged-home-"));
     temporaryDirs.push(homeDir);
-    writeFileSync(join(homeDir, ".zshrc"), "PS1='OTTO_CUSTOM_PROMPT> '\n");
+    writeFileSync(join(homeDir, ".zshrc"), "PS1='PASEO_CUSTOM_PROMPT> '\n");
 
-    const fakeAppRoot = join(homeDir, "Otto.app", "Contents", "Resources");
+    const fakeAppRoot = join(homeDir, "Paseo.app", "Contents", "Resources");
     const inaccessiblePackagedIntegrationDir = join(
       fakeAppRoot,
       "app.asar",
       "node_modules",
-      "@otto-code",
+      "@getpaseo",
       "server",
       "dist",
       "server",
@@ -933,7 +1093,7 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
       fakeAppRoot,
       "app.asar.unpacked",
       "node_modules",
-      "@otto-code",
+      "@getpaseo",
       "server",
       "dist",
       "server",
@@ -960,7 +1120,7 @@ describe.skipIf(isPlatform("win32"))("terminal title", () => {
     });
 
     expect(result.status).toBe(0);
-    expect(result.stdout.split(/\r?\n/)).toContain("OTTO_CUSTOM_PROMPT> ");
+    expect(result.stdout.split(/\r?\n/)).toContain("PASEO_CUSTOM_PROMPT> ");
   });
 
   it.skipIf(!hasZsh)("emits zsh shell integration command completion", async () => {
@@ -1295,10 +1455,10 @@ describe("terminal activity interruption", () => {
 // the prompt instead of executing part of it, which is the failure the
 // escaping exists to prevent (the CVE-2024-27980 class).
 describe.runIf(isPlatform("win32"))(".cmd shim argv round-trip on Windows", () => {
-  const argvMarker = "__OTTO_ARGV__";
+  const argvMarker = "__PASEO_ARGV__";
 
   function writeArgvEchoShim(): { dir: string; cmdPath: string } {
-    const dir = mkdtempSync(join(tmpdir(), "otto-cmd-shim-"));
+    const dir = mkdtempSync(join(tmpdir(), "paseo-cmd-shim-"));
     temporaryDirs.push(dir);
     const cmdPath = join(dir, "echoargv.cmd");
     const scriptPath = join(dir, "echoargv.js");
@@ -1374,3 +1534,43 @@ describe.runIf(isPlatform("win32"))(".cmd shim argv round-trip on Windows", () =
     expect(await roundTrip("first\nsecond")).toEqual(["first second"]);
   });
 });
+
+it.runIf(isPlatform("linux", "darwin"))(
+  "opens a profile command from a PATH entry relative to the terminal cwd",
+  async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), "terminal-relative-path-"));
+    mkdirSync(join(projectDir, "bin"));
+    const script = join(projectDir, "bin", "paseo-relative-path-tool");
+    writeFileSync(script, "#!/bin/sh\nprintf 'paseo-launch-ok\\n'\nexec /bin/sleep 30\n");
+    chmodSync(script, 0o755);
+    let session: TerminalSession | undefined;
+    try {
+      session = await createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(projectDir),
+        command: "paseo-relative-path-tool",
+        env: { PATH: "bin" },
+      });
+      await waitForLines(session, ["paseo-launch-ok"]);
+      expect(getLines(session.getState())[0]).toBe("paseo-launch-ok");
+      expect(session.cwd).toBe(realpathSync(projectDir));
+      expect(session.getExitInfo()).toBeNull();
+    } finally {
+      await session?.killAndWait({ gracefulTimeoutMs: 1000, forceTimeoutMs: 500 });
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  },
+);
+
+it.runIf(isPlatform("linux", "darwin"))(
+  "checks the exact command rather than accepting a trimmed executable name",
+  async () => {
+    await expect(
+      createTerminal({
+        workspaceId: "ws-test",
+        cwd: realpathSync(tmpdir()),
+        command: " node ",
+      }),
+    ).rejects.toThrow(" node : command not found");
+  },
+);

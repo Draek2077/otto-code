@@ -1,11 +1,11 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { BrowserAutomationBrowserIdSchema } from "@otto-code/protocol/browser-automation/rpc-schemas";
-import { useEffect, useState } from "react";
+import { BrowserAutomationBrowserIdSchema } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { createBrowserPersistStorage } from "./storage";
+import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 import {
   applyBrowserPatch,
+  BrowserIndexStateSchema,
   type BrowserIndexState,
   type BrowserRecord,
   type BrowserRecordPatch,
@@ -13,8 +13,6 @@ import {
   createBrowserRecord,
   normalizeBrowserIndexState,
   normalizeBrowserUrl,
-  type PreviewStatus,
-  rehydrateBrowserRecord,
   removeBrowserFromIndex,
   sanitizeBrowsersForPersist,
   trimNonEmpty,
@@ -28,16 +26,7 @@ export {
 } from "./state";
 
 interface BrowserStoreState extends BrowserIndexState {
-  ensureBrowser: (browserId: string) => void;
-  createBrowser: (input?: {
-    initialUrl?: string;
-    renderMode?: "native" | "hosted";
-    isPreview?: boolean;
-    previewServerId?: string | null;
-    previewServerName?: string | null;
-    previewCwd?: string | null;
-    previewStatus?: PreviewStatus;
-  }) => string;
+  createBrowser: (input?: { initialUrl?: string }) => string;
   updateBrowser: (browserId: string, patch: BrowserRecordPatch) => void;
   setBrowserViewport: (browserId: string, viewport: BrowserViewport) => void;
   removeBrowser: (browserId: string) => void;
@@ -58,32 +47,12 @@ export const useBrowserStore = create<BrowserStoreState>()(
   persist(
     (set) => ({
       browsersById: {},
-      ensureBrowser: (browserId) => {
-        const id = BrowserAutomationBrowserIdSchema.parse(browserId);
-        set((state) => {
-          if (state.browsersById[id]) return state;
-          // Layouts retain tab IDs even when an older save lost the record.
-          // Recreate it on pane restore so future navigation can be persisted.
-          return {
-            browsersById: {
-              ...state.browsersById,
-              [id]: createBrowserRecord({ browserId: id, initialUrl: undefined, now: Date.now() }),
-            },
-          };
-        });
-      },
       createBrowser: (input) => {
         const browserId = createBrowserId();
         const record = createBrowserRecord({
           browserId,
           initialUrl: input?.initialUrl,
-          renderMode: input?.renderMode,
           now: Date.now(),
-          isPreview: input?.isPreview,
-          previewServerId: input?.previewServerId,
-          previewServerName: input?.previewServerName,
-          previewCwd: input?.previewCwd,
-          previewStatus: input?.previewStatus,
         });
 
         set((state) => ({
@@ -107,45 +76,15 @@ export const useBrowserStore = create<BrowserStoreState>()(
     }),
     {
       name: "workspace-browser-store",
-      storage: createBrowserPersistStorage(AsyncStorage),
+      storage: createValidatedPersistStorage(AsyncStorage, BrowserIndexStateSchema),
       partialize: (state) => sanitizeBrowsersForPersist(state),
-      merge: (persistedState, currentState) => {
-        const persistedBrowsersById = normalizeBrowserIndexState(persistedState).browsersById;
-        return {
-          ...currentState,
-          browsersById: Object.fromEntries(
-            Object.entries(persistedBrowsersById).map(([browserId, raw]) => [
-              browserId,
-              rehydrateBrowserRecord(browserId, raw),
-            ]),
-          ),
-        };
-      },
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...normalizeBrowserIndexState(persistedState),
+      }),
     },
   ),
 );
-
-/**
- * Browser panes create webviews as a mount side effect. Wait for the persisted
- * browser records before mounting one, otherwise its fallback URL can win the
- * race against hydration and overwrite the URL we meant to restore.
- */
-export function useBrowserStoreHydrated(): boolean {
-  const [hasHydrated, setHasHydrated] = useState(() => useBrowserStore.persist.hasHydrated());
-
-  useEffect(() => {
-    if (useBrowserStore.persist.hasHydrated()) {
-      setHasHydrated(true);
-      return;
-    }
-
-    return useBrowserStore.persist.onFinishHydration(() => {
-      setHasHydrated(true);
-    });
-  }, []);
-
-  return hasHydrated;
-}
 
 export function getBrowserRecord(browserId: string): BrowserRecord | null {
   const normalizedBrowserId = trimNonEmpty(browserId);
@@ -155,15 +94,7 @@ export function getBrowserRecord(browserId: string): BrowserRecord | null {
   return useBrowserStore.getState().browsersById[normalizedBrowserId] ?? null;
 }
 
-export function createWorkspaceBrowser(input?: {
-  initialUrl?: string;
-  renderMode?: "native" | "hosted";
-  isPreview?: boolean;
-  previewServerId?: string | null;
-  previewServerName?: string | null;
-  previewCwd?: string | null;
-  previewStatus?: PreviewStatus;
-}): {
+export function createWorkspaceBrowser(input?: { initialUrl?: string }): {
   browserId: string;
   url: string;
 } {

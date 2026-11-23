@@ -32,8 +32,7 @@ function parsePullRequestNumber(url: string): number | null {
     const pathname = new URL(url).pathname;
     // GitHub uses /pull/N, Gitea/Forgejo /pulls/N, GitLab /-/merge_requests/N.
     // Match any so a non-GitHub change-request summary yields a hint (and brand mark).
-    // ...and Bitbucket Cloud /pull-requests/N, which Otto supports.
-    const match = pathname.match(/\/(?:pull|pulls|pull-requests|merge_requests)\/(\d+)(?:\/|$)/);
+    const match = pathname.match(/\/(?:pull|pulls|merge_requests)\/(\d+)(?:\/|$)/);
     if (!match) {
       return null;
     }
@@ -58,12 +57,9 @@ export function selectPrHintFromStatus(
     return null;
   }
 
-  // COMPAT(bitbucketPrStateCase): daemons <= 0.6.1 sent Bitbucket PR states
-  // uppercase ("OPEN"). Drop the lowercasing once the daemon floor >= 0.6.2.
-  const rawState = status.state.toLowerCase();
   let state: "merged" | "open" | "closed";
-  if (status.isMerged || rawState === "merged") state = "merged";
-  else if (rawState === "open") state = "open";
+  if (status.isMerged || status.state === "merged") state = "merged";
+  else if (status.state === "open") state = "open";
   else state = "closed";
 
   return {

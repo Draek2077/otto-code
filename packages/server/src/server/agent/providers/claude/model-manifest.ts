@@ -2,18 +2,6 @@ import type { AgentModelDefinition, AgentSelectOption } from "../../agent-sdk-ty
 
 type ClaudeEffortLevel = "low" | "medium" | "high" | "xhigh" | "max";
 
-/**
- * Which auth paths support the Auto permission mode (model-classifier
- * approvals) for a model, per the Claude Code support matrix:
- * - "all" - supported on the Anthropic API, Bedrock/Vertex, and claude.ai
- *   sign-in (Sonnet 5+, Opus 4.7+, Haiku 5.5).
- * - "anthropic-api" - Anthropic API only (Opus 4.6 / Sonnet 4.6); not
- *   available via Bedrock/Vertex or claude.ai subscription sign-in.
- * - "none" - the classifier cannot run on this model anywhere (Haiku 4.5,
- *   Sonnet <=4.5, Opus <=4.5, claude-3). The CLI errors if Auto is set.
- */
-export type ClaudeAutoModeSupport = "all" | "anthropic-api" | "none";
-
 interface ClaudeModelManifestEntry {
   id: string;
   aliases?: readonly string[];
@@ -21,17 +9,12 @@ interface ClaudeModelManifestEntry {
   description: string;
   defaultPriority?: number;
   minimumClaudeCodeVersion?: string;
+  requiresDiscovery?: boolean;
   contextWindowMaxTokens?: number;
   effortLevels?: readonly ClaudeEffortLevel[];
-  defaultEffortLevel?: ClaudeEffortLevel;
+  defaultThinkingOptionId?: ClaudeEffortLevel;
+  supportsThinkingDisabled?: boolean;
   supportsFastMode?: boolean;
-  // Whether the model accepts `thinking: {type: "disabled"}`. Defaults to true
-  // for any model that exposes effort levels; set false only where the API
-  // rejects it outright. Off clears `effort` entirely, so Opus 5's
-  // "disabled only at effort <= high" rule is satisfied by construction;
-  // Opus 5.5 uses always-on adaptive thinking and therefore sets this false.
-  supportsThinkingOff?: boolean;
-  autoModeSupport?: ClaudeAutoModeSupport;
 }
 
 const CLAUDE_EFFORT_LEVELS = {
@@ -47,34 +30,11 @@ const CLAUDE_EFFORT_LABELS = {
   max: "Max",
 } as const satisfies Record<ClaudeEffortLevel, string>;
 
-export const CLAUDE_ULTRACODE_THINKING_OPTION_ID = "ultracode";
-export const CLAUDE_THINKING_OFF_OPTION_ID = "off";
 export const CLAUDE_DEFAULT_THINKING_OPTION_ID = "high";
 
-/**
- * The Claude models Otto offers, mirroring the Claude Code CLI's own catalog.
- * Every field here is checked against that catalog (`context`, `capabilities`,
- * `max_output_tokens`) rather than guessed from the model name:
- *
- * - A `[1m]` entry exists ONLY for models the CLI reports as `window:200000`
- *   AND `supports_1m_beta`. Opus 4.7 / 4.8 / 5 / 5.5, Sonnet 5 / 5.5, Haiku 5.5,
- *   and Fable 5 / 5.1 are
- *   `native_1m` - the plain id already resolves to a 1M window, so a second
- *   "1M" row would be a duplicate of the same model. Opus 4.5 is 200K with no
- *   `supports_1m_beta`, so it gets no 1M row either. Ignore `supports_1m_suffix`
- *   as a signal: nearly every model carries it, including Haiku 3.5.
- * - `effortLevels` requires `effort` in the model's capabilities, and the
- *   `xhigh` ladder additionally requires `xhigh_effort`. Opus 4.6 and Sonnet 4.6
- *   carry `effort`/`max_effort` only; Opus 4.5, Sonnet 4.5 and Haiku 4.5 carry
- *   neither, so they expose no thinking options at all.
- * - `supportsFastMode` is Opus 4.8, Opus 5, and Opus 5.5 only. Opus 4.7's fast
- *   mode was withdrawn (`speed: "fast"` now errors) and Opus 4.6 never had it.
- *
- * Deliberately NOT listed: retired ids (Sonnet 3.7, Haiku 3.5, Sonnet 3.5,
- * Opus 3, Haiku 3); Opus 4.1, Opus 4 and Sonnet 4, which Anthropic has
- * deprecated with retirement pending; and Mythos 5, which is invitation-only
- * via Project Glasswing.
- */
+export const CLAUDE_DISABLED_THINKING_OPTION_ID = "off";
+export const CLAUDE_ULTRACODE_THINKING_OPTION_ID = "ultracode";
+
 export const CLAUDE_MODEL_MANIFEST = [
   {
     id: "claude-opus-5-5",
@@ -82,14 +42,29 @@ export const CLAUDE_MODEL_MANIFEST = [
     description: "Opus 5.5 · Latest release",
     defaultPriority: 3,
     minimumClaudeCodeVersion: "2.1.280",
+    defaultThinkingOptionId: "medium",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
-    defaultEffortLevel: "medium",
     supportsFastMode: true,
-    // Opus 5.5 uses adaptive thinking on every request; unlike Opus 5, the API
-    // rejects an explicit disabled-thinking setting at every effort level.
-    supportsThinkingOff: false,
-    autoModeSupport: "all",
+  },
+  {
+    id: "claude-opus-5",
+    label: "Opus 5",
+    description: "Opus 5 · Previous release",
+    defaultPriority: 2,
+    minimumClaudeCodeVersion: "2.1.219",
+    contextWindowMaxTokens: 1_000_000,
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    supportsThinkingDisabled: true,
+    supportsFastMode: true,
+  },
+  {
+    id: "claude-mythos-5-1",
+    label: "Mythos 5.1",
+    requiresDiscovery: true,
+    description: "Mythos 5.1 · Requires verified access",
+    contextWindowMaxTokens: 1_000_000,
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
   },
   {
     id: "claude-fable-5-1",
@@ -97,10 +72,6 @@ export const CLAUDE_MODEL_MANIFEST = [
     description: "Fable 5.1 · Most powerful model",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
-    // Fable 5.1 uses adaptive thinking on every request, so the API rejects
-    // an explicit disabled-thinking setting.
-    supportsThinkingOff: false,
-    autoModeSupport: "all",
   },
   {
     id: "claude-fable-5",
@@ -111,73 +82,68 @@ export const CLAUDE_MODEL_MANIFEST = [
     minimumClaudeCodeVersion: "2.1.169",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
-    // Thinking is always on for Fable 5: an explicit `{type: "disabled"}` is a
-    // 400 at any effort, so Off is withheld rather than offered and rejected.
-    supportsThinkingOff: false,
-    autoModeSupport: "all",
   },
   {
-    id: "claude-sonnet-5-5",
-    label: "Sonnet 5.5",
-    description: "Sonnet 5.5 · Most efficient for simpler tasks",
-    minimumClaudeCodeVersion: "2.1.251",
+    id: "claude-opus-4-8[1m]",
+    label: "Opus 4.8 1M",
+    description: "Opus 4.8 with 1M context window",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
-    defaultEffortLevel: "medium",
-    // The CLI catalog flags Sonnet 5.5 `rejects_disabled_thinking`.
-    supportsThinkingOff: false,
-    autoModeSupport: "all",
-  },
-  {
-    id: "claude-haiku-5-5",
-    label: "Haiku 5.5",
-    description: "Haiku 5.5 · Fastest for quick answers",
-    // Added in Claude Code 2.1.293 per its changelog; the catalog row carries no minimum.
-    minimumClaudeCodeVersion: "2.1.293",
-    contextWindowMaxTokens: 1_000_000,
-    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
-    defaultEffortLevel: "medium",
-    // The CLI catalog flags Haiku 5.5 `rejects_disabled_thinking`.
-    supportsThinkingOff: false,
-    // Unlike every earlier Haiku, the CLI's auto-mode gate exempts Haiku 5.5.
-    autoModeSupport: "all",
-  },
-  {
-    id: "claude-opus-5",
-    label: "Opus 5",
-    description: "Opus 5 · Previous release",
-    defaultPriority: 2,
-    minimumClaudeCodeVersion: "2.1.219",
-    contextWindowMaxTokens: 1_000_000,
-    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    supportsThinkingDisabled: true,
     supportsFastMode: true,
-    autoModeSupport: "all",
   },
   {
     id: "claude-opus-4-8",
     label: "Opus 4.8",
     description: "Opus 4.8 · Previous release",
     defaultPriority: 1,
+    contextWindowMaxTokens: 200_000,
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    supportsThinkingDisabled: true,
+    supportsFastMode: true,
+  },
+  {
+    id: "claude-sonnet-5-5",
+    label: "Sonnet 5.5",
+    description: "Sonnet 5.5 · Best for everyday tasks",
+    minimumClaudeCodeVersion: "2.1.284",
+    defaultThinkingOptionId: "medium",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
-    supportsFastMode: true,
-    autoModeSupport: "all",
   },
   {
     id: "claude-sonnet-5",
     label: "Sonnet 5",
     description: "Sonnet 5 · Previous release",
+    contextWindowMaxTokens: 200_000,
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    supportsThinkingDisabled: true,
+  },
+  {
+    id: "claude-sonnet-5[1m]",
+    label: "Sonnet 5 1M",
+    description: "Sonnet 5 with 1M context window",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
-    autoModeSupport: "all",
+    supportsThinkingDisabled: true,
+  },
+  {
+    id: "claude-opus-4-7[1m]",
+    label: "Opus 4.7 1M",
+    description: "Opus 4.7 with 1M context window",
+    contextWindowMaxTokens: 1_000_000,
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    supportsThinkingDisabled: true,
+    supportsFastMode: true,
   },
   {
     id: "claude-opus-4-7",
     label: "Opus 4.7",
-    description: "Opus 4.7 · Earlier release",
-    contextWindowMaxTokens: 1_000_000,
+    description: "Opus 4.7 · Previous release",
+    contextWindowMaxTokens: 200_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
-    autoModeSupport: "all",
+    supportsThinkingDisabled: true,
+    supportsFastMode: true,
   },
   {
     id: "claude-opus-4-6[1m]",
@@ -185,15 +151,17 @@ export const CLAUDE_MODEL_MANIFEST = [
     description: "Opus 4.6 with 1M context window",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.standard,
-    autoModeSupport: "anthropic-api",
+    supportsThinkingDisabled: true,
+    supportsFastMode: true,
   },
   {
     id: "claude-opus-4-6",
     label: "Opus 4.6",
-    description: "Opus 4.6 · Legacy release",
+    description: "Opus 4.6 · Most capable for complex work",
     contextWindowMaxTokens: 200_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.standard,
-    autoModeSupport: "anthropic-api",
+    supportsThinkingDisabled: true,
+    supportsFastMode: true,
   },
   {
     id: "claude-sonnet-4-6[1m]",
@@ -201,7 +169,7 @@ export const CLAUDE_MODEL_MANIFEST = [
     description: "Sonnet 4.6 with 1M context window",
     contextWindowMaxTokens: 1_000_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.standard,
-    autoModeSupport: "anthropic-api",
+    supportsThinkingDisabled: true,
   },
   {
     id: "claude-sonnet-4-6",
@@ -209,62 +177,47 @@ export const CLAUDE_MODEL_MANIFEST = [
     description: "Sonnet 4.6 · Best for everyday tasks",
     contextWindowMaxTokens: 200_000,
     effortLevels: CLAUDE_EFFORT_LEVELS.standard,
-    autoModeSupport: "anthropic-api",
+    supportsThinkingDisabled: true,
   },
   {
-    id: "claude-opus-4-5",
-    label: "Opus 4.5",
-    description: "Opus 4.5 · Legacy release",
-    contextWindowMaxTokens: 200_000,
-    autoModeSupport: "none",
-  },
-  {
-    id: "claude-sonnet-4-5[1m]",
-    label: "Sonnet 4.5 1M",
-    description: "Sonnet 4.5 with 1M context window",
+    id: "claude-haiku-5-5",
+    label: "Haiku 5.5",
+    description: "Haiku 5.5 · Fastest for quick answers",
+    minimumClaudeCodeVersion: "2.1.293",
+    defaultThinkingOptionId: "medium",
     contextWindowMaxTokens: 1_000_000,
-    autoModeSupport: "none",
-  },
-  {
-    id: "claude-sonnet-4-5",
-    label: "Sonnet 4.5",
-    description: "Sonnet 4.5 · Legacy release",
-    contextWindowMaxTokens: 200_000,
-    autoModeSupport: "none",
+    effortLevels: CLAUDE_EFFORT_LEVELS.xhigh,
+    supportsThinkingDisabled: true,
   },
   {
     id: "claude-haiku-4-5",
     label: "Haiku 4.5",
     description: "Haiku 4.5 · Previous release",
     contextWindowMaxTokens: 200_000,
-    autoModeSupport: "none",
   },
 ] as const satisfies readonly ClaudeModelManifestEntry[];
 
+function getDefaultThinkingOptionId(model: ClaudeModelManifestEntry): ClaudeEffortLevel {
+  return model.defaultThinkingOptionId ?? CLAUDE_DEFAULT_THINKING_OPTION_ID;
+}
+
 function buildThinkingOptions(
   effortLevels: readonly ClaudeEffortLevel[] | undefined,
-  supportsThinkingOff: boolean,
-  defaultEffortLevel: ClaudeEffortLevel = CLAUDE_DEFAULT_THINKING_OPTION_ID,
+  supportsThinkingDisabled: boolean,
+  defaultThinkingOptionId: ClaudeEffortLevel,
 ): AgentSelectOption[] | undefined {
   if (!effortLevels) {
     return undefined;
   }
 
-  const options: AgentSelectOption[] = [];
-
-  // Off leads the list: it reads as the floor below the effort ladder rather
-  // than a peer of it.
-  if (supportsThinkingOff) {
-    options.push({ id: CLAUDE_THINKING_OFF_OPTION_ID, label: "Off" });
-  }
-
-  options.push(
+  const options: AgentSelectOption[] = [
+    ...(supportsThinkingDisabled ? [{ id: CLAUDE_DISABLED_THINKING_OPTION_ID, label: "Off" }] : []),
     ...effortLevels.map((id) => ({
       id,
       label: CLAUDE_EFFORT_LABELS[id],
-      ...(id === defaultEffortLevel ? { isDefault: true } : {}),
+      ...(id === defaultThinkingOptionId ? { isDefault: true } : {}),
     })),
-  );
+  ];
 
   if (effortLevels.includes("xhigh")) {
     options.push({ id: CLAUDE_ULTRACODE_THINKING_OPTION_ID, label: "Ultra Code" });
@@ -273,21 +226,29 @@ function buildThinkingOptions(
   return options;
 }
 
-export function getClaudeManifestModels(claudeCodeVersion?: string): AgentModelDefinition[] {
-  const availableModels = (CLAUDE_MODEL_MANIFEST as readonly ClaudeModelManifestEntry[]).filter(
-    (model) => isModelAvailableInClaudeCode(model, claudeCodeVersion),
+export function getClaudeManifestModels(
+  claudeCodeVersion?: string,
+  discoveredModelIds?: ReadonlySet<string>,
+): AgentModelDefinition[] {
+  const availableModels: readonly ClaudeModelManifestEntry[] = CLAUDE_MODEL_MANIFEST.filter(
+    (model) =>
+      isModelAvailableInClaudeCode(model, claudeCodeVersion) &&
+      (discoveredModelIds === undefined ||
+        !("requiresDiscovery" in model && model.requiresDiscovery) ||
+        discoveredModelIds.has(model.id)),
   );
   const defaultModel = availableModels.reduce<ClaudeModelManifestEntry | undefined>(
     (selected, candidate) =>
       (candidate.defaultPriority ?? 0) > (selected?.defaultPriority ?? 0) ? candidate : selected,
     undefined,
   );
+
   const definitions: AgentModelDefinition[] = [];
   for (const model of availableModels) {
     const thinkingOptions = buildThinkingOptions(
       model.effortLevels,
-      model.supportsThinkingOff !== false,
-      model.defaultEffortLevel,
+      model.supportsThinkingDisabled === true,
+      getDefaultThinkingOptionId(model),
     );
     const definition: AgentModelDefinition = {
       provider: "claude",
@@ -295,15 +256,33 @@ export function getClaudeManifestModels(claudeCodeVersion?: string): AgentModelD
       label: model.label,
       description: model.description,
     };
-    if (model === defaultModel) definition.isDefault = true;
+    if ("aliases" in model && model.aliases) {
+      definition.aliases = [...model.aliases];
+    }
+    if (model === defaultModel) {
+      definition.isDefault = true;
+    }
     if (model.contextWindowMaxTokens !== undefined) {
       definition.contextWindowMaxTokens = model.contextWindowMaxTokens;
     }
-    if (thinkingOptions) definition.thinkingOptions = thinkingOptions;
-    // Only model-intrinsic impossibility goes on the wire. Auth-dependent
-    // Auto support remains the existing session-level policy.
-    if (model.autoModeSupport === "none") definition.supportsAutoMode = false;
+    if (thinkingOptions) {
+      definition.thinkingOptions = thinkingOptions;
+      definition.defaultThinkingOptionId = getDefaultThinkingOptionId(model);
+    }
     definitions.push(definition);
+    if (!("aliases" in model) || !model.aliases) {
+      continue;
+    }
+    // COMPAT(claudeFable5LegacyCatalogEntry): added in v0.3.0, remove after 2027-02-06 once pre-v0.3.0 apps are outside support.
+    for (const alias of model.aliases) {
+      definitions.push({
+        ...definition,
+        id: alias,
+        aliases: undefined,
+        isDefault: undefined,
+        isSelectable: false,
+      });
+    }
   }
   return definitions;
 }
@@ -340,47 +319,32 @@ export function parseClaudeCodeVersion(value: string): [number, number, number] 
   return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : null;
 }
 
+export interface ClaudeDisabledThinkingResolution {
+  supported: boolean;
+  fallbackThinkingOptionId: string | undefined;
+}
+
+/**
+ * Resolve the disabled-thinking capability from the curated manifest only. Runtime/provider
+ * model aliases intentionally do not inherit this capability.
+ */
+export function resolveClaudeDisabledThinkingForModel(
+  modelId: string | null | undefined,
+): ClaudeDisabledThinkingResolution {
+  const normalizedModelId = normalizeClaudeManifestModelId(modelId);
+  const model = normalizedModelId
+    ? CLAUDE_MODEL_MANIFEST.find((candidate) => candidate.id === normalizedModelId)
+    : undefined;
+  return {
+    supported:
+      !!model && "supportsThinkingDisabled" in model && model.supportsThinkingDisabled === true,
+    fallbackThinkingOptionId:
+      model && "effortLevels" in model ? getDefaultThinkingOptionId(model) : undefined,
+  };
+}
+
 export function isClaudeManifestModelId(modelId: string): boolean {
   return CLAUDE_MODEL_MANIFEST.some((model) => model.id === modelId);
-}
-
-/**
- * Auto-mode support tier for a model, or undefined when the model is not in
- * the manifest (custom settings.json ids, future models). Callers should fail
- * open on undefined: wrongly hiding Auto loses a feature, wrongly showing it
- * just reproduces the CLI's own "unavailable for this model" error.
- */
-export function claudeManifestModelAutoModeSupport(
-  modelId: string | null | undefined,
-): ClaudeAutoModeSupport | undefined {
-  const normalizedModelId = normalizeClaudeManifestModelId(modelId);
-  if (!normalizedModelId) {
-    return undefined;
-  }
-  const entry = CLAUDE_MODEL_MANIFEST.find((model) => model.id === normalizedModelId);
-  if (!entry || !("autoModeSupport" in entry)) {
-    return undefined;
-  }
-  return entry.autoModeSupport;
-}
-
-/**
- * Whether a model accepts `thinking: {type: "disabled"}`. Only manifest models
- * that expose effort levels can turn thinking off; a custom or unknown id
- * returns false so Off is never staged against a model we cannot vouch for.
- */
-export function claudeManifestModelSupportsThinkingOff(
-  modelId: string | null | undefined,
-): boolean {
-  const normalizedModelId = normalizeClaudeManifestModelId(modelId);
-  if (!normalizedModelId) {
-    return false;
-  }
-  const entry = CLAUDE_MODEL_MANIFEST.find((model) => model.id === normalizedModelId);
-  if (!entry || !("effortLevels" in entry)) {
-    return false;
-  }
-  return !("supportsThinkingOff" in entry) || entry.supportsThinkingOff !== false;
 }
 
 export function claudeManifestModelSupportsFastMode(modelId: string | null | undefined): boolean {
@@ -411,7 +375,7 @@ export function normalizeClaudeManifestModelId(value: string | null | undefined)
   }
 
   const singleSegmentMatch = trimmed.match(
-    /^(?:claude[-_ ])?(fable|opus|sonnet|haiku)[-_ ]+(\d+)(?:\[1m\])?(?:[-_ ]+\d{8})?(?:\[1m\])?$/i,
+    /^(?:claude[-_ ])?(mythos|fable|opus|sonnet|haiku)[-_ ]+(\d+)(?:\[1m\])?(?:[-_ ]+\d{8})?(?:\[1m\])?$/i,
   );
   if (singleSegmentMatch) {
     return normalizeSingleSegmentClaudeModelId(
@@ -422,7 +386,7 @@ export function normalizeClaudeManifestModelId(value: string | null | undefined)
   }
 
   const runtimeMatch = trimmed.match(
-    /^(?:claude[-_ ])?(fable|opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(?:\[1m\])?(?:[-_ ]+\d{8})?(?:\[1m\])?$/i,
+    /^(?:claude[-_ ])?(mythos|fable|opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(?:\[1m\])?(?:[-_ ]+\d{8})?(?:\[1m\])?$/i,
   );
   if (!runtimeMatch) {
     return null;
@@ -439,7 +403,9 @@ export function normalizeClaudeManifestModelId(value: string | null | undefined)
 /**
  * Normalize a Claude Code runtime/config model string to a known manifest ID.
  * Runtime metadata may include provider prefixes such as Bedrock model IDs; feature
- * gates should use normalizeClaudeManifestModelId instead.
+ * gates should use normalizeClaudeManifestModelId instead. The prefixed matches are
+ * unanchored, so major-minor runs first: "claude-opus-5-5" would otherwise stop at the
+ * "claude-opus-5" entry.
  */
 export function normalizeClaudeRuntimeModelId(value: string | null | undefined): string | null {
   const normalizedManifestModelId = normalizeClaudeManifestModelId(value);
@@ -452,22 +418,23 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
     return null;
   }
 
-  // Match major-minor ids before single-segment ids. Otherwise a provider form
-  // such as `anthropic.claude-opus-5-5` is greedily truncated to Opus 5.
   const runtimeMatch = trimmed.match(
-    /claude[-_ ](fable|opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?/i,
+    /claude[-_ ](mythos|fable|opus|sonnet|haiku)[-_ ]+(\d+)[-.](\d+)(\[1m\])?/i,
   );
   if (runtimeMatch) {
-    return normalizeMajorMinorClaudeModelId(
+    const normalizedModelId = normalizeMajorMinorClaudeModelId(
       runtimeMatch[1],
       runtimeMatch[2],
       runtimeMatch[3],
       trimmed.toLowerCase().includes("[1m]"),
     );
+    if (normalizedModelId) {
+      return normalizedModelId;
+    }
   }
 
   const singleSegmentMatch = trimmed.match(
-    /claude[-_ ](fable|opus|sonnet|haiku)[-_ ]+(\d+)(\[1m\])?/i,
+    /claude[-_ ](mythos|fable|opus|sonnet|haiku)[-_ ]+(\d+)(\[1m\])?/i,
   );
   if (!singleSegmentMatch) {
     return null;
@@ -476,7 +443,7 @@ export function normalizeClaudeRuntimeModelId(value: string | null | undefined):
   return normalizeSingleSegmentClaudeModelId(
     singleSegmentMatch[1],
     singleSegmentMatch[2],
-    Boolean(singleSegmentMatch[3]),
+    trimmed.toLowerCase().includes("[1m]"),
   );
 }
 
@@ -512,12 +479,6 @@ function normalizeMajorMinorClaudeModelId(
 ): string | null {
   const family = familyValue.toLowerCase();
   const suffix = hasOneMillionContext ? "[1m]" : "";
-  // Fall back to the undecorated id when the manifest has no `[1m]` row, the
-  // same way normalizeSingleSegmentClaudeModelId does. Natively-1M models (Opus
-  // 4.7/4.8/5/5.5) ship one entry, but the CLI still accepts the decorated id and a
-  // persisted agent, personality, or team binding may carry it - without this
-  // fallback those resolve to null and silently lose their feature gates. The
-  // same applies to the native-1M Fable 5.1 model.
   const candidates = [
     `claude-${family}-${major}-${minor}${suffix}`,
     `claude-${family}-${major}-${minor}`,

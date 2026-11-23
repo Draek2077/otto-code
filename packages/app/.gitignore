@@ -18,17 +18,6 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
-# Google Play service-account key (materialized from a CI secret at submit time;
-# must never be committed). See .github/workflows/android-play-release.yml.
-google-service-account.json
-
-# Written by `eas credentials -p android` -> "Download credentials from EAS to
-# credentials.json" when signing a release APK locally. credentials.json carries
-# the keystore passwords in plaintext, so both it and the keystore it points at
-# stay out of the repo. See docs/android.md.
-credentials.json
-credentials/
-
 # Metro
 .metro-health-check*
 
@@ -50,6 +39,7 @@ yarn-error.*
 
 # vitest browser failure screenshots
 .vitest-screenshots/
+# OTTO(testing): browser assertion attachments stay local alongside failure screenshots.
 .vitest-attachments/
 
 app-example

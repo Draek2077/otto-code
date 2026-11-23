@@ -1,89 +1,31 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useBrowserStore } from "./store";
-import { RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS } from "./resident-activity";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyInactiveBrowserWebviewViewport,
   type BrowserWebviewProfileHost,
   clearResidentBrowserWebviewsForTests,
   ensureResidentBrowserWebview,
   getResidentBrowserWebview,
-  isResidentBrowserBackgrounded,
-  isResidentBrowserWebviewReady,
-  markResidentBrowserWebviewReady,
   prepareBrowserWebview,
   presentBrowserWebview,
-  readResidentBrowserPresentation,
   rememberBrowserWebviewSize,
   releaseResidentBrowserWebview,
   removeResidentBrowserWebview,
   resizeResidentBrowserWebview,
-  setResidentBrowserSurfaceInputEnabled,
   takeResidentBrowserWebview,
-  withResidentBrowserAwake,
 } from "./resident-webviews";
 import {
   setCommandCenterFocusRestoreElement,
   takeCommandCenterFocusRestoreElement,
 } from "../../utils/command-center-focus-restore";
-import { subscribeSidebarEdgePointer } from "@/components/sidebar-edge-peek/sidebar-edge-pointer";
 
-const RESIDENT_HOST_ID = "otto-browser-resident-webviews";
-
-describe("resident browser loading lifecycle", () => {
-  afterEach(() => {
-    clearResidentBrowserWebviewsForTests();
-    useBrowserStore.setState({ browsersById: {} });
-  });
-
-  it("tracks page loads and readiness before a pane mounts and while parked", () => {
-    const browserId = useBrowserStore
-      .getState()
-      .createBrowser({ initialUrl: "https://example.com" });
-    const webview = ensureTestBrowser({
-      browserId,
-      workspaceId: "workspace",
-      url: "https://example.com",
-    })!;
-    webview.dispatchEvent(new Event("did-start-loading"));
-    expect(useBrowserStore.getState().browsersById[browserId].isLoading).toBe(true);
-    webview.dispatchEvent(new Event("dom-ready"));
-    expect(isResidentBrowserWebviewReady(webview)).toBe(true);
-    // DOM ready is not the end of resource loading.
-    expect(useBrowserStore.getState().browsersById[browserId].isLoading).toBe(true);
-    webview.dispatchEvent(new Event("did-stop-loading"));
-    expect(useBrowserStore.getState().browsersById[browserId].isLoading).toBe(false);
-    releaseResidentBrowserWebview(browserId, webview);
-    webview.dispatchEvent(new Event("did-start-loading"));
-    expect(isResidentBrowserWebviewReady(webview)).toBe(true);
-    expect(useBrowserStore.getState().browsersById[browserId].isLoading).toBe(true);
-    webview.dispatchEvent(new Event("did-stop-loading"));
-    expect(useBrowserStore.getState().browsersById[browserId].isLoading).toBe(false);
-    expect(takeResidentBrowserWebview(browserId)).toBe(webview);
-  });
-
-  it("requires fresh readiness when the element attaches a replacement guest", () => {
-    const browserId = useBrowserStore.getState().createBrowser();
-    const webview = ensureTestBrowser({
-      browserId,
-      workspaceId: "workspace",
-      url: "https://example.com",
-    })!;
-    Object.assign(webview, { getWebContentsId: () => 42 });
-    webview.dispatchEvent(new Event("dom-ready"));
-    expect(isResidentBrowserWebviewReady(webview)).toBe(true);
-    webview.dispatchEvent(new Event("did-attach"));
-    expect(isResidentBrowserWebviewReady(webview)).toBe(false);
-    webview.dispatchEvent(new Event("dom-ready"));
-    expect(isResidentBrowserWebviewReady(webview)).toBe(true);
-  });
-});
+const RESIDENT_HOST_ID = "paseo-browser-resident-webviews";
 const attachedBrowsers: Array<{
   browserId: string;
   workspaceId: string;
   webContentsId: number;
 }> = [];
 const profileHost: BrowserWebviewProfileHost = {
-  profilePartition: "persist:otto-browser",
+  profilePartition: "persist:paseo-browser",
   registerAttachedBrowser: async (input) => {
     attachedBrowsers.push(input);
   },
@@ -122,13 +64,10 @@ function expectPermanentHostParking(host: HTMLElement): void {
   expect(host.style.opacity).toBe("1");
   expect(host.style.pointerEvents).toBe("none");
   expect(host.style.display).toBe("block");
-  expect(host.style.zIndex).toBe("");
+  expect(host.style.zIndex).toBe("0");
 }
 
-function expectParkedSurface(
-  surface: HTMLElement,
-  visibility: "visible" | "hidden" = "visible",
-): void {
+function expectParkedSurface(surface: HTMLElement): void {
   expect(surface.getAttribute("aria-hidden")).toBe("true");
   expect(surface.style.position).toBe("fixed");
   expect(surface.style.left).toBe("0px");
@@ -139,9 +78,7 @@ function expectParkedSurface(
   expect(surface.style.opacity).toBe("1");
   expect(surface.style.pointerEvents).toBe("none");
   expect(surface.style.display).toBe("block");
-  expect(surface.style.zIndex).toBe("-1");
-  expect(surface.style.clipPath).toBe("");
-  expect(surface.style.visibility).toBe(visibility);
+  expect(surface.style.visibility).toBe("visible");
   expect(surface.style.transform).toBe("");
 }
 
@@ -211,8 +148,6 @@ describe("resident browser webviews", () => {
     expect(permanentParent.style.width).toBe("640px");
     expect(permanentParent.style.height).toBe("480px");
     expect(permanentParent.style.pointerEvents).toBe("auto");
-    expect(permanentParent.style.zIndex).toBe("0");
-    expect(permanentParent.style.clipPath).toBe("");
     expect(permanentParent.getAttribute("aria-hidden")).toBe("false");
     expect(webview.style.flex).toBe("0 0 auto");
     expect(webview.style.width).toBe("640px");
@@ -226,217 +161,6 @@ describe("resident browser webviews", () => {
       mode: "responsive",
     });
     expect(webview.parentElement).toBe(permanentParent);
-  });
-
-  it.each([0, 0.125, 0.5, 0.875])(
-    "paints every responsive pane edge-to-edge at fractional offset %s",
-    (fraction) => {
-      const browserId = `browser-fractional-${fraction}`;
-      const webview = ensureTestBrowser({
-        browserId,
-        workspaceId: "workspace-fractional",
-        url: "https://example.com",
-      })!;
-      const anchor = document.createElement("div");
-      Object.assign(anchor.style, {
-        position: "fixed",
-        left: `${40 + fraction}px`,
-        top: `${60 + fraction}px`,
-        width: "640.25px",
-        height: "480.25px",
-      });
-      document.body.appendChild(anchor);
-      try {
-        presentBrowserWebview(browserId, webview, anchor, anchor, { mode: "responsive" });
-        const pane = anchor.getBoundingClientRect();
-        const surface = webview.parentElement!.getBoundingClientRect();
-        const guest = webview.getBoundingClientRect();
-        expect(surface.left).toBe(pane.left);
-        expect(surface.top).toBe(pane.top);
-        expect(surface.right).toBe(pane.right);
-        expect(surface.bottom).toBe(pane.bottom);
-        expect(guest.left).toBe(pane.left);
-        expect(guest.top).toBe(pane.top);
-        expect(readResidentBrowserPresentation(browserId)).toMatchObject({
-          viewportWidth: guest.width,
-          viewportHeight: guest.height,
-        });
-      } finally {
-        anchor.remove();
-      }
-    },
-  );
-
-  it("paints a full-width browser guest to both outer window edges", () => {
-    const browserId = "browser-window-edges";
-    const webview = ensureTestBrowser({
-      browserId,
-      workspaceId: "workspace-window-edges",
-      url: "https://example.com",
-    })!;
-    const anchor = document.createElement("div");
-    Object.defineProperty(anchor, "getBoundingClientRect", {
-      value: () => ({ left: 0, top: 48, width: window.innerWidth, height: 600 }),
-    });
-
-    presentBrowserWebview(browserId, webview, anchor, anchor, { mode: "responsive" });
-
-    const surface = webview.parentElement!.getBoundingClientRect();
-    expect(surface.left).toBe(0);
-    expect(surface.right).toBe(window.innerWidth);
-  });
-
-  it("forwards a guest edge pointer and yields input until it leaves the edge", () => {
-    const browserId = "browser-edge-pointer";
-    const webview = ensureTestBrowser({
-      browserId,
-      workspaceId: "workspace-edge-pointer",
-      url: "https://example.com",
-    })!;
-    const anchor = document.createElement("div");
-    Object.defineProperty(anchor, "getBoundingClientRect", {
-      value: () => ({ left: 40, top: 60, width: 640, height: 480 }),
-    });
-    presentBrowserWebview(browserId, webview, anchor, anchor, { mode: "responsive" });
-    const surface = webview.parentElement!;
-    const received: Array<{ x: number; y: number; buttons: number }> = [];
-    const unsubscribe = subscribeSidebarEdgePointer((input) => received.push(input));
-
-    try {
-      webview.dispatchEvent(
-        Object.assign(new Event("ipc-message"), {
-          channel: "otto-browser-edge-pointer",
-          args: [{ x: 0, y: 20, buttons: 0 }],
-        }),
-      );
-
-      expect(received).toEqual([{ x: 40, y: 80, buttons: 0 }]);
-      expect(surface.style.pointerEvents).toBe("none");
-
-      document.dispatchEvent(
-        new MouseEvent("mousemove", { clientX: 100, clientY: 100, buttons: 0 }),
-      );
-      expect(surface.style.pointerEvents).toBe("auto");
-    } finally {
-      unsubscribe();
-    }
-  });
-
-  it.each([
-    { width: 0, height: 480.25 },
-    { width: 640.25, height: 0 },
-  ])("keeps a collapsed fractional pane invisible: %o", (size) => {
-    const browserId = "browser-collapsed";
-    const webview = ensureTestBrowser({
-      browserId,
-      workspaceId: "workspace-collapsed",
-      url: "https://example.com",
-    })!;
-    const anchor = document.createElement("div");
-    Object.defineProperty(anchor, "getBoundingClientRect", {
-      value: () => ({ left: 40.25, top: 60.25, ...size }),
-    });
-    presentBrowserWebview(browserId, webview, anchor, anchor, { mode: "responsive" });
-    const surface = webview.parentElement!;
-    expect(surface.getBoundingClientRect().width).toBe(0);
-    expect(surface.getBoundingClientRect().height).toBe(0);
-    expect(surface.style.pointerEvents).toBe("none");
-  });
-
-  it("records viewport and pane geometry for a presented tab, and drops it when parked", () => {
-    const browserId = "browser-presented-geometry";
-    const webview = ensureTestBrowser({
-      browserId,
-      workspaceId: "workspace-presented-geometry",
-      url: "https://example.com",
-    });
-    const anchor = document.createElement("div");
-    const clip = document.createElement("div");
-    Object.defineProperty(anchor, "getBoundingClientRect", {
-      value: () => ({ left: 0, top: 0, width: 960, height: 700 }),
-    });
-    Object.defineProperty(clip, "getBoundingClientRect", {
-      value: () => ({ left: 0, top: 0, width: 960, height: 700 }),
-    });
-    if (!webview) {
-      throw new Error("Expected resident browser webview");
-    }
-
-    presentBrowserWebview(browserId, webview, anchor, clip, { mode: "responsive" });
-    expect(readResidentBrowserPresentation(browserId)).toEqual({
-      mode: "responsive",
-      viewportWidth: 960,
-      viewportHeight: 700,
-      paneWidth: 960,
-      paneHeight: 700,
-    });
-
-    // A fixed viewport wider than its pane is cropped, never scaled: both
-    // numbers have to survive so callers can tell the user sees a slice.
-    presentBrowserWebview(browserId, webview, anchor, clip, {
-      mode: "fixed",
-      width: 1920,
-      height: 1080,
-    });
-    expect(readResidentBrowserPresentation(browserId)).toEqual({
-      mode: "fixed",
-      viewportWidth: 1920,
-      viewportHeight: 1080,
-      paneWidth: 960,
-      paneHeight: 700,
-    });
-
-    releaseResidentBrowserWebview(browserId, webview);
-    expect(readResidentBrowserPresentation(browserId)).toBeNull();
-  });
-
-  it("retains guest readiness while a browser pane is parked and presented again", () => {
-    const webview = ensureTestBrowser({
-      browserId: "browser-ready-after-remount",
-      workspaceId: "workspace-ready-after-remount",
-      url: "https://example.com",
-    });
-    if (!webview) {
-      throw new Error("Expected resident browser webview");
-    }
-
-    expect(isResidentBrowserWebviewReady(webview)).toBe(false);
-    markResidentBrowserWebviewReady(webview);
-    releaseResidentBrowserWebview("browser-ready-after-remount", webview);
-
-    expect(isResidentBrowserWebviewReady(webview)).toBe(true);
-    expect(takeResidentBrowserWebview("browser-ready-after-remount")).toBe(webview);
-  });
-
-  it("yields a visible browser surface to workspace tab drags without unmounting it", () => {
-    const webview = ensureTestBrowser({
-      browserId: "browser-drag-target",
-      workspaceId: "workspace-drag-target",
-      url: "https://example.com",
-    });
-    const anchor = document.createElement("div");
-    const clip = document.createElement("div");
-    Object.defineProperty(anchor, "getBoundingClientRect", {
-      value: () => ({ left: 40, top: 60, width: 640, height: 480 }),
-    });
-    Object.defineProperty(clip, "getBoundingClientRect", {
-      value: () => ({ left: 40, top: 60, width: 640, height: 480 }),
-    });
-    if (!webview?.parentElement) {
-      throw new Error("Expected resident browser surface");
-    }
-    const surface = webview.parentElement;
-
-    presentBrowserWebview("browser-drag-target", webview, anchor, clip, { mode: "responsive" });
-    setResidentBrowserSurfaceInputEnabled(false);
-
-    expect(surface.style.pointerEvents).toBe("none");
-    expect(webview.isConnected).toBe(true);
-
-    setResidentBrowserSurfaceInputEnabled(true);
-
-    expect(surface.style.pointerEvents).toBe("auto");
-    expect(webview.isConnected).toBe(true);
   });
 
   it("clips an oversized fixed viewport to its pane without resizing the webview", () => {
@@ -489,8 +213,8 @@ describe("resident browser webviews", () => {
 
     expect(webview).not.toBeNull();
     expect(webview?.isConnected).toBe(true);
-    expect(webview?.getAttribute("data-otto-browser-id")).toBe("browser-agent");
-    expect(webview?.getAttribute("partition")).toBe("persist:otto-browser");
+    expect(webview?.getAttribute("data-paseo-browser-id")).toBe("browser-agent");
+    expect(webview?.getAttribute("partition")).toBe("persist:paseo-browser");
     expect((webview as HTMLUnknownElement & { src?: string })?.src).toContain(
       "https://example.com",
     );
@@ -518,8 +242,8 @@ describe("resident browser webviews", () => {
     firstWebview.dispatchEvent(new Event("did-attach"));
     secondWebview.dispatchEvent(new Event("did-attach"));
 
-    expect(firstWebview.getAttribute("partition")).toBe("persist:otto-browser");
-    expect(secondWebview.getAttribute("partition")).toBe("persist:otto-browser");
+    expect(firstWebview.getAttribute("partition")).toBe("persist:paseo-browser");
+    expect(secondWebview.getAttribute("partition")).toBe("persist:paseo-browser");
     expect(attachedBrowsers).toEqual([
       { browserId: "browser-first", workspaceId: "workspace-a", webContentsId: 101 },
       { browserId: "browser-second", workspaceId: "workspace-b", webContentsId: 202 },
@@ -724,120 +448,5 @@ describe("resident browser webviews", () => {
 
     expect(webview?.isConnected).toBe(false);
     expect(takeResidentBrowserWebview("browser-closed")).toBeNull();
-  });
-});
-
-describe("resident browser backgrounding", () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
-
-  afterEach(() => {
-    clearResidentBrowserWebviewsForTests();
-    vi.useRealTimers();
-  });
-
-  function parkedTestBrowser(browserId: string): { webview: HTMLElement; surface: HTMLElement } {
-    const webview = ensureTestBrowser({
-      browserId,
-      workspaceId: "workspace",
-      url: "https://a.test",
-    })!;
-    return { webview, surface: webview.parentElement! };
-  }
-
-  function presentTestBrowser(browserId: string, webview: HTMLElement): void {
-    const pane = document.createElement("div");
-    Object.defineProperty(pane, "getBoundingClientRect", {
-      value: () => ({ left: 10, top: 20, width: 300, height: 200 }),
-    });
-    presentBrowserWebview(browserId, webview, pane, pane, { mode: "responsive" });
-  }
-
-  it("backgrounds an idle parked guest without moving, resizing, or detaching it", () => {
-    const { webview, surface } = parkedTestBrowser("browser-idle");
-    expectParkedSurface(surface, "visible");
-
-    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS - 1);
-    expectParkedSurface(surface, "visible");
-    vi.advanceTimersByTime(1);
-
-    expect(isResidentBrowserBackgrounded("browser-idle")).toBe(true);
-    expectParkedSurface(surface, "hidden");
-    expect(webview.parentElement).toBe(surface);
-    expectResidentWebviewParking(webview);
-    // Visibility is inherited: the guest frame itself stops rendering.
-    expect(getComputedStyle(webview).visibility).toBe("hidden");
-  });
-
-  it("paints a backgrounded tab again when a pane presents it", () => {
-    const { webview, surface } = parkedTestBrowser("browser-presented");
-    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS);
-    expect(surface.style.visibility).toBe("hidden");
-
-    presentTestBrowser("browser-presented", webview);
-    expect(isResidentBrowserBackgrounded("browser-presented")).toBe(false);
-    expect(surface.style.visibility).toBe("visible");
-    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS * 3);
-    expect(surface.style.visibility).toBe("visible");
-
-    // Leaving the pane restores the paintable parking geometry first.
-    releaseResidentBrowserWebview("browser-presented", webview);
-    expectParkedSurface(surface, "visible");
-    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS);
-    expectParkedSurface(surface, "hidden");
-  });
-
-  it("keeps a backgrounded tab backgrounded when it is parked again", () => {
-    const { webview, surface } = parkedTestBrowser("browser-reparked");
-    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS);
-    releaseResidentBrowserWebview("browser-reparked", webview);
-    expectParkedSurface(surface, "hidden");
-    expect(
-      ensureTestBrowser({ browserId: "browser-reparked", workspaceId: "w", url: "https://a.test" }),
-    ).toBe(webview);
-    expectParkedSurface(surface, "hidden");
-  });
-
-  it("wakes a backgrounded tab before an AI operation and re-backgrounds it after the grace", async () => {
-    const { surface } = parkedTestBrowser("browser-ai");
-    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS);
-    expect(surface.style.visibility).toBe("hidden");
-
-    let visibilityDuringOperation = "";
-    let finishOperation!: () => void;
-    const operation = withResidentBrowserAwake("browser-ai", () => {
-      visibilityDuringOperation = surface.style.visibility;
-      return new Promise<void>((resolve) => {
-        finishOperation = resolve;
-      });
-    });
-    expect(visibilityDuringOperation).toBe("visible");
-    expectParkedSurface(surface, "visible");
-
-    // A long operation (for example browser_wait) keeps the tab awake.
-    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS * 2);
-    expect(surface.style.visibility).toBe("visible");
-    finishOperation();
-    await operation;
-
-    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS - 1);
-    expect(surface.style.visibility).toBe("visible");
-    vi.advanceTimersByTime(1);
-    expect(surface.style.visibility).toBe("hidden");
-  });
-
-  it("runs operations for tabs without a resident guest unchanged", async () => {
-    await expect(withResidentBrowserAwake("hosted-browser", async () => "ok")).resolves.toBe("ok");
-    expect(isResidentBrowserBackgrounded("hosted-browser")).toBe(false);
-    expect(document.getElementById(RESIDENT_HOST_ID)).toBeNull();
-  });
-
-  it("stops tracking a closed tab", () => {
-    const { surface } = parkedTestBrowser("browser-closed");
-    removeResidentBrowserWebview("browser-closed");
-    vi.advanceTimersByTime(RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS);
-    expect(isResidentBrowserBackgrounded("browser-closed")).toBe(false);
-    expect(surface.isConnected).toBe(false);
   });
 });

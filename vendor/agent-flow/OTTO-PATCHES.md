@@ -4,8 +4,36 @@ Apache 2.0 requires stating significant changes made to the licensed work.
 This file is that notice. `vendor/**` is otherwise pristine upstream — see
 `docs/visualizer.md` for the no-edits rule and why patches
 here (rather than a fork-wide diff) are the exception, logged one entry per
-patch, oldest first. Each entry should be small enough to re-apply by hand
+patch. Historical paths below describe the original implementation. Each entry should be small enough to re-apply by hand
 after a `git subtree pull` if the upstream diff conflicts with it.
+
+## 2026-11-10: Paseo 0.12 render-only restoration
+
+- `web/lib/vscode-bridge.ts`: raw window messages no longer enter the vendor
+  renderer directly. The Otto-owned entry validates the version, current guest
+  channel, bounded command shape and source before calling `receiveHostMessage`.
+- `web/hooks/simulation/handle-misc-events.ts`: canonical assistant revisions
+  replace conversation rows with the same message id. Explicit idle/working/error
+  state comes from Paseo rather than an invented text event.
+- `web/lib/agent-types.ts` and context/detail drawing: absent provider context
+  remains unknown and displays `Not reported`; no estimated token or price table
+  is introduced. Existing demo values retain their renderer behavior.
+- `web/hooks/simulation/animate.ts`: remove the duplicate retired-cost member.
+  `file-attention` callbacks accept the absent file-open action.
+- `web/app/globals.css`: Tailwind scans only the pinned `web/` tree. Builds do
+  not scan Otto app files, local scratch output or unrelated workspaces.
+- `web/hooks/simulation/handle-tool-events.ts`: file attention follows canonical
+  read/write semantics while keeping the provider's original tool name. The HUD
+  and file summary display unreported token usage explicitly instead of a zero.
+- `web/lib/reported-cost.ts` and cost surfaces preserve reported zeroes, retain
+  unknown-usage rows, mark mixed-provider subtotals and never infer missing
+  prices or tool-token counts from activity or serialized text.
+
+The application projection, demand leases, singleton, PIP, background, guest
+policy and preference compatibility live under `packages/app/src/otto/visualizer`.
+The packaged entry/build lives in `packages/otto-visualizer`. No vendor collector,
+relay, server, CLI or provider log ingestion is restored. See
+`docs/otto-visualizer.md` for the current boundary.
 
 ## 2026-09-26 — replay safety, persistent failures, and file-overlap visibility
 

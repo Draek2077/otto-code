@@ -1,213 +1,89 @@
 import { describe, expect, it } from "vitest";
-import { DESKTOP_WINDOW_CONTROLS_HEIGHT } from "@/constants/layout";
 import {
-  isTransitionResize,
-  resolveOverlayInsets,
-  resolveRawWindowControlsPadding,
-  resolveWindowControlsPadding,
+  intersectWindowChromeCorners,
+  resolveHasOwnedWindowChromeObstruction,
+  resolveWindowChromeObstruction,
+  resolveWindowChromeSafeArea,
 } from "@/utils/desktop-window";
 
-const rawPadding = {
-  left: 80,
-  right: 48,
-  top: 28,
-};
-
-describe("resolveWindowControlsPadding", () => {
-  it("keeps mac traffic-light padding available when the app window is not fullscreen", () => {
-    expect(
-      resolveRawWindowControlsPadding({ isElectron: true, isMac: true, isFullscreen: false }),
-    ).toEqual({
-      left: 78,
-      right: 0,
-      top: 45,
+describe("window chrome", () => {
+  it("has no corner obstruction outside Electron or in fullscreen", () => {
+    expect(resolveWindowChromeObstruction({ mode: null, isFullscreen: false })).toEqual({
+      topLeft: null,
+      topRight: null,
+    });
+    expect(resolveWindowChromeObstruction({ mode: "native-mac", isFullscreen: true })).toEqual({
+      topLeft: null,
+      topRight: null,
     });
   });
 
-  it("keeps Windows and Linux window-control padding available when the app window is not fullscreen", () => {
-    expect(
-      resolveRawWindowControlsPadding({ isElectron: true, isMac: false, isFullscreen: false }),
-    ).toEqual({
-      left: 0,
-      right: 140,
-      top: DESKTOP_WINDOW_CONTROLS_HEIGHT,
+  it("places native controls in their physical top corner", () => {
+    expect(resolveWindowChromeObstruction({ mode: "native-mac", isFullscreen: false })).toEqual({
+      topLeft: { width: 78, height: 45 },
+      topRight: null,
+    });
+    expect(resolveWindowChromeObstruction({ mode: "custom-windows", isFullscreen: false })).toEqual(
+      { topLeft: null, topRight: { width: 138, height: 36 } },
+    );
+    expect(resolveWindowChromeObstruction({ mode: "custom-linux", isFullscreen: false })).toEqual({
+      topLeft: null,
+      topRight: { width: 108, height: 36 },
     });
   });
 
-  it("does not reserve window-control padding when the app window is fullscreen", () => {
+  it("insets and reserves only claimed corners", () => {
+    const obstruction = { topLeft: { width: 80, height: 28 }, topRight: { width: 48, height: 32 } };
     expect(
-      resolveRawWindowControlsPadding({ isElectron: true, isMac: true, isFullscreen: true }),
-    ).toEqual({
-      left: 0,
-      right: 0,
-      top: 0,
-    });
+      resolveWindowChromeSafeArea({ obstruction, corners: "top-left", placement: "inline" }),
+    ).toEqual({ paddingLeft: 80, paddingRight: 0 });
+    expect(
+      resolveWindowChromeSafeArea({ obstruction, corners: "top-right", placement: "below" }),
+    ).toEqual({ height: 32 });
+    expect(
+      resolveWindowChromeSafeArea({ obstruction, corners: "both", placement: "below" }),
+    ).toEqual({ height: 32 });
+    expect(
+      resolveWindowChromeSafeArea({ obstruction, corners: "top-right", placement: "inline" }),
+    ).toEqual({ paddingLeft: 0, paddingRight: 48 });
   });
 
-  it("uses the measured overlay right inset instead of the constant on Windows and Linux", () => {
+  it("intersects identical and empty corner claims", () => {
+    expect(intersectWindowChromeCorners("both", "both")).toBe("both");
+    expect(intersectWindowChromeCorners("top-left", "top-left")).toBe("top-left");
+    expect(intersectWindowChromeCorners("none", "both")).toBe("none");
+    expect(intersectWindowChromeCorners("both", "none")).toBe("none");
+    expect(intersectWindowChromeCorners("both", "top-left")).toBe("top-left");
+    expect(intersectWindowChromeCorners("top-right", "both")).toBe("top-right");
+    expect(intersectWindowChromeCorners("top-left", "top-right")).toBe("none");
+  });
+
+  it("reports an obstruction only when the surface owns its corner", () => {
+    const obstruction = {
+      topLeft: { width: 78, height: 45 },
+      topRight: { width: 140, height: 48 },
+    };
+
     expect(
-      resolveRawWindowControlsPadding({
-        isElectron: true,
-        isMac: false,
-        isFullscreen: false,
-        overlayInsets: { left: 0, right: 138 },
+      resolveHasOwnedWindowChromeObstruction({
+        obstruction,
+        corners: "top-left",
+        corner: "top-left",
       }),
-    ).toEqual({
-      left: 0,
-      right: 138,
-      top: DESKTOP_WINDOW_CONTROLS_HEIGHT,
-    });
-  });
-
-  it("ignores overlay insets on mac where the traffic-light constants are already exact", () => {
+    ).toBe(true);
     expect(
-      resolveRawWindowControlsPadding({
-        isElectron: true,
-        isMac: true,
-        isFullscreen: false,
-        overlayInsets: { left: 72, right: 0 },
+      resolveHasOwnedWindowChromeObstruction({
+        obstruction,
+        corners: "top-left",
+        corner: "top-right",
       }),
-    ).toEqual({
-      left: 78,
-      right: 0,
-      top: 45,
-    });
-  });
-
-  it("ignores overlay insets in fullscreen", () => {
+    ).toBe(false);
     expect(
-      resolveRawWindowControlsPadding({
-        isElectron: true,
-        isMac: false,
-        isFullscreen: true,
-        overlayInsets: { left: 0, right: 138 },
+      resolveHasOwnedWindowChromeObstruction({
+        obstruction: { topLeft: null, topRight: null },
+        corners: "both",
+        corner: "top-right",
       }),
-    ).toEqual({
-      left: 0,
-      right: 0,
-      top: 0,
-    });
-  });
-});
-
-describe("resolveOverlayInsets", () => {
-  it("computes the right inset from the titlebar area rect and window width", () => {
-    expect(
-      resolveOverlayInsets({ visible: true, rect: { x: 0, width: 1062 }, innerWidth: 1200 }),
-    ).toEqual({
-      left: 0,
-      right: 138,
-    });
-  });
-
-  it("computes a left inset when the controls sit on the left", () => {
-    expect(
-      resolveOverlayInsets({ visible: true, rect: { x: 72, width: 1128 }, innerWidth: 1200 }),
-    ).toEqual({
-      left: 72,
-      right: 0,
-    });
-  });
-
-  it("returns null when the overlay is not visible", () => {
-    expect(
-      resolveOverlayInsets({ visible: false, rect: { x: 0, width: 1062 }, innerWidth: 1200 }),
-    ).toBeNull();
-  });
-
-  it("returns null when the rect could not be read", () => {
-    expect(resolveOverlayInsets({ visible: true, rect: null, innerWidth: 1200 })).toBeNull();
-  });
-
-  it("returns null when the rect spans the full window (no drawn controls)", () => {
-    expect(
-      resolveOverlayInsets({ visible: true, rect: { x: 0, width: 1200 }, innerWidth: 1200 }),
-    ).toBeNull();
-  });
-
-  it("pads the main header for window controls when the app sidebar is closed", () => {
-    expect(
-      resolveWindowControlsPadding({
-        role: "header",
-        rawPadding,
-        sidebarClosed: true,
-        explorerOpen: false,
-        focusModeEnabled: false,
-      }),
-    ).toEqual({
-      left: 80,
-      right: 48,
-      top: 0,
-    });
-  });
-
-  it("does not add left padding to detail headers with their own sidebar", () => {
-    expect(
-      resolveWindowControlsPadding({
-        role: "detailHeader",
-        rawPadding,
-        sidebarClosed: true,
-        explorerOpen: false,
-        focusModeEnabled: false,
-      }),
-    ).toEqual({
-      left: 0,
-      right: 48,
-      top: 0,
-    });
-  });
-
-  it("pads a focus-mode tab row away from mac traffic lights even when the sidebar is logically open", () => {
-    expect(
-      resolveWindowControlsPadding({
-        role: "tabRow",
-        rawPadding,
-        sidebarClosed: false,
-        explorerOpen: false,
-        focusModeEnabled: true,
-      }),
-    ).toEqual({
-      left: 80,
-      right: 48,
-      top: 0,
-    });
-  });
-
-  it("pads a focus-mode tab row away from right-side window controls even when the explorer is logically open", () => {
-    expect(
-      resolveWindowControlsPadding({
-        role: "tabRow",
-        rawPadding: { left: 0, right: 140, top: 48 },
-        sidebarClosed: true,
-        explorerOpen: true,
-        focusModeEnabled: true,
-      }),
-    ).toEqual({
-      left: 0,
-      right: 140,
-      top: 0,
-    });
-  });
-});
-
-describe("isTransitionResize", () => {
-  it("treats a continuous drag as work the renderer must not repeat", () => {
-    // A drag already delivers a real resize to every web layout consumer. The
-    // synthetic reflow and the isFullscreen round-trip both hang off this, and
-    // at one per frame they stuttered the window with nothing on screen.
-    expect(isTransitionResize({ reason: "resize" })).toBe(false);
-  });
-
-  it("still reflows for maximize, unmaximize and fullscreen", () => {
-    // These do not deliver a settled resize, which is why the reflow exists.
-    expect(isTransitionResize({ reason: "transition" })).toBe(true);
-  });
-
-  it("reflows when the payload carries no reason", () => {
-    // An older main process sends `{}`; preserving the reflow keeps it correct
-    // rather than fast.
-    expect(isTransitionResize({})).toBe(true);
-    expect(isTransitionResize(undefined)).toBe(true);
-    expect(isTransitionResize(null)).toBe(true);
+    ).toBe(false);
   });
 });

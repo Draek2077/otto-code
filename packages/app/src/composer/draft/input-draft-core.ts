@@ -22,10 +22,12 @@ export function buildDraftAgentControls(input: {
   formState: UseAgentFormStateResult;
   features?: DraftAgentControlsProps["features"];
   onSetFeature?: DraftAgentControlsProps["onSetFeature"];
+  onApplyAgentProfile: DraftAgentControlsProps["onApplyAgentProfile"];
   onDropdownClose?: DraftAgentControlsProps["onDropdownClose"];
 }): DraftAgentControlsProps {
-  const { formState, features, onSetFeature, onDropdownClose } = input;
+  const { formState, features, onSetFeature, onApplyAgentProfile, onDropdownClose } = input;
   return {
+    selectedProfileName: formState.chatProfile?.name, // OTTO(agent-teams)
     providerDefinitions: formState.providerDefinitions,
     selectedProvider: formState.selectedProvider,
     modeOptions: formState.modeOptions,
@@ -41,6 +43,7 @@ export function buildDraftAgentControls(input: {
     thinkingOptions: formState.availableThinkingOptions,
     selectedThinkingOptionId: formState.selectedThinkingOptionId,
     onSelectThinkingOption: formState.setThinkingOptionFromUser,
+    onApplyAgentProfile,
     features,
     onSetFeature,
     onDropdownClose,

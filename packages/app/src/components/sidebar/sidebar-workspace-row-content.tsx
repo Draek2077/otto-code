@@ -15,14 +15,17 @@ import {
   type SidebarWorkspaceTrailing,
 } from "@/components/sidebar/workspace-trailing";
 import { useAppSettings } from "@/hooks/use-settings";
-import type { WorkspaceChangeIndicator } from "@/hooks/use-settings/otto-settings";
-import { compactUp } from "@/styles/theme";
+import { densityIconBox } from "@/styles/density";
 import { getStatusDotColor } from "@/utils/status-dot-color";
-import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
-import { StatusRing } from "@/components/status-ring";
+import {
+  STATUS_INDICATOR_DOT_SIZE,
+  STATUS_INDICATOR_FILLED_DOT_SIZE,
+} from "@/utils/status-indicator-geometry";
+import { WorkspaceActivityIndicator } from "@/otto/chat/identity/workspace-indicator"; // OTTO(chat-identity)
 import { resolveSidebarWorkspacePrimaryLabel } from "@/components/sidebar/sidebar-workspace-title";
-import { useWorkspaceLabelDefinitions } from "@/workspace-labels";
+
 import { TrailingActionScrim } from "@/components/ui/trailing-action-scrim";
+import { useWorkspaceLabelDefinitions } from "@/workspace-labels";
 
 export function SidebarWorkspaceRowFrame({
   workspace,
@@ -78,7 +81,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   serviceSummary = null,
   backdrop,
   isHovered,
-  isSelected = false,
+  isLoading,
   isCreating = false,
   shortcutNumber = null,
   showShortcutBadge = false,
@@ -94,8 +97,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   /** The row's current background, so the project status badge can knock out of it. */
   backdrop: SidebarSurfaceBackdrop;
   isHovered: boolean;
-  /** The row is the active workspace, so its title takes the accent the selected explorer tab uses. */
-  isSelected?: boolean;
+  isLoading: boolean;
   isCreating?: boolean;
   shortcutNumber?: number | null;
   showShortcutBadge?: boolean;
@@ -115,9 +117,8 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
       styles.workspaceBranchText,
       isHovered && styles.workspaceBranchTextHovered,
       isCreating && styles.workspaceBranchTextCreating,
-      isSelected && styles.workspaceBranchTextSelected,
     ],
-    [isHovered, isCreating, isSelected],
+    [isHovered, isCreating],
   );
 
   return (
@@ -129,14 +130,17 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
             displayName={leadingProjectName}
             projectViewKey={workspace.projectViewKey}
             statusBucket={workspace.statusBucket}
-            backdrop={backdrop}
             hasActiveChat={workspace.hasActiveChat}
+            backdrop={backdrop}
+            loading={isLoading}
             testID={`sidebar-row-project-icon-${workspace.workspaceKey}`}
           />
         ) : (
           <WorkspaceStatusIndicator
             bucket={workspace.statusBucket}
             hasActiveChat={workspace.hasActiveChat}
+            workspaceKind={workspace.workspaceKind}
+            loading={isLoading}
             reserveIdleSpace={reserveIdleStatusIndicatorSpace}
           />
         )}
@@ -145,6 +149,7 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
             <Text style={workspaceBranchTextStyle} numberOfLines={1}>
               {workspaceLabel}
             </Text>
+            <View style={sidebarWorkspaceRowStyles.rowRight}>{children}</View>
           </View>
           <WorkspaceMetaRow
             currentBranch={workspace.currentBranch}
@@ -155,7 +160,6 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
             labels={labels}
           />
         </View>
-        <View style={sidebarWorkspaceRowStyles.rowRight}>{children}</View>
       </View>
       {showShortcutBadge && shortcutNumber !== null ? (
         <View style={styles.shortcutBadgeOverlay} pointerEvents="none">
@@ -166,87 +170,28 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
   );
 });
 
+// OTTO(chat-identity): workspace activity surrounds, and never replaces, the semantic center dot.
 function WorkspaceStatusIndicator({
   bucket,
+  loading = false,
   hasActiveChat = false,
   reserveIdleSpace = true,
 }: {
   bucket: SidebarWorkspaceEntry["statusBucket"];
+  workspaceKind: SidebarWorkspaceEntry["workspaceKind"];
+  loading?: boolean;
   hasActiveChat?: boolean;
   reserveIdleSpace?: boolean;
 }) {
-  // A running root chat adds motion around the semantic status dot rather than replacing it.
-  if (hasActiveChat) {
-    return (
-      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-running">
-        <StatusRing centerStyle={getWorkspaceStatusDotColor(bucket)} />
-      </View>
-    );
-  }
-
-  if (bucket === "done") {
-    // An idle row still gets a dot rather than an empty slot. Nested rows are marked as
-    // workspaces by indentation alone, and with nothing in the leading slot the rail has no
-    // edge to read against — a workspace carrying its own glyph starts looking like a project
-    // header. The dot is muted to half opacity so it holds the rail without reporting status.
-    return reserveIdleSpace ? (
-      <View style={styles.workspaceStatusDot} testID="workspace-status-indicator-done">
-        <WorkspaceStatusDot bucket={bucket} />
-      </View>
-    ) : null;
-  }
-
   return (
-    <View style={styles.workspaceStatusDot} testID={`workspace-status-indicator-${bucket}`}>
-      <WorkspaceStatusDot bucket={bucket} />
-    </View>
+    <WorkspaceActivityIndicator
+      bucket={bucket}
+      loading={loading}
+      hasActiveChat={hasActiveChat}
+      reserveIdleSpace={reserveIdleSpace}
+    />
   );
 }
-
-function WorkspaceStatusDot({ bucket }: { bucket: SidebarWorkspaceEntry["statusBucket"] }) {
-  return <View style={[styles.statusDot, getWorkspaceStatusDotColor(bucket)]} />;
-}
-
-function getWorkspaceStatusDotColor(bucket: SidebarWorkspaceEntry["statusBucket"]) {
-  switch (bucket) {
-    case "needs_input":
-      return styles.statusDotNeedsInput;
-    case "failed":
-      return styles.statusDotFailed;
-    case "running":
-      return styles.statusDotRunning;
-    case "attention":
-      return styles.statusDotAttention;
-    case "done":
-      return styles.statusDotDone;
-  }
-}
-
-/**
- * The kebab's touch target. Shared with the trigger box in `sidebar-workspace-menu.tsx` so the
- * slot that has to hold the control cannot drift from the control itself. `compactUp` doubles it
- * on compact form factors, which is the whole reason the slot has to reserve room for it.
- */
-export const SIDEBAR_ROW_ACTION_SIZE = 24;
-
-// What the trailing slot reserves for the action. Desktop keeps the 20px title-line box: a 24px
-// control overhangs it by 2px per side and still lands inside the row's padding. Compact doubles
-// the control to a 48px touch target, which cannot overhang anything without painting outside the
-// row entirely - on a single-line row it used to spill onto the row below - so there the slot
-// reserves the target's full size and the row grows to hold it.
-const trailingActionSlotMinHeight = {
-  ...compactUp(SIDEBAR_ROW_ACTION_SIZE),
-  md: 20,
-  lg: 20,
-  xl: 20,
-};
-// The width the slot holds while the action is painted. The kebab is drawn as an overlay so it
-// cannot push the title itself, and a slot narrower than the control lets it paint over the
-// title's truncation ellipsis. Held only while the action is actually visible: with the action
-// away the title is free to use the whole row, and reserving a rail for something that is not
-// there reads as a ragged right edge.
-const trailingActionSlotMinWidth = compactUp(SIDEBAR_ROW_ACTION_SIZE);
-
 export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   // How far a workspace row sits inside the group header above it — a project row or a
   // status group header. Both groupings share this one indent, so every grouped workspace row
@@ -261,7 +206,7 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   },
   rowRight: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: theme.spacing[2],
     flexShrink: 0,
   },
@@ -284,23 +229,19 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
     lineHeight: 14,
   },
   hidden: { opacity: 0 },
-  // Stays position:relative so the absolutely-positioned kebab anchors to the same right edge
-  // whether or not the slot currently holds trailing content. Height is held unconditionally -
-  // it is what centres the action on the row - but width is not, so an idle row spends none of
-  // it on an action that is not painted.
+  // Stays position:relative at zero width so the absolutely-positioned kebab keeps
+  // anchoring to the same right edge whether or not the slot holds anything.
   trailingActionSlot: {
     position: "relative",
-    minHeight: trailingActionSlotMinHeight,
+    minHeight: 20,
     flexShrink: 0,
     alignItems: "flex-end",
     justifyContent: "flex-start",
   },
-  // While the action is painted the slot holds its full box, so the title truncates beside the
-  // control rather than underneath it.
   trailingActionSlotReserved: {
     position: "relative",
-    minWidth: trailingActionSlotMinWidth,
-    minHeight: trailingActionSlotMinHeight,
+    minWidth: 18,
+    minHeight: 20,
     flexShrink: 0,
     alignItems: "flex-end",
     justifyContent: "flex-start",
@@ -308,14 +249,7 @@ export const sidebarWorkspaceRowStyles = StyleSheet.create((theme) => ({
   trailingActionOverlay: {
     position: "absolute",
     top: 0,
-    bottom: 0,
     right: 0,
-    // The action target is taller than the title glyph, so it centers on the slot rather than
-    // hanging off its top edge - stretching to both edges and centering keeps a 24px control
-    // optically on the desktop title line and keeps the 48px compact target inside the row.
-    // The trailing diff or timestamp stays on the title line and must not ride along with it.
-    justifyContent: "center",
-    zIndex: 1,
   },
 }));
 
@@ -327,51 +261,59 @@ export function SidebarWorkspaceShortcutBadge({ number }: { number: number }) {
   );
 }
 
+export type SidebarWorkspaceTrailingPresentation = "visible" | "hidden" | "absent";
+
 /**
  * What the trailing slot shows for a row. Derived in one place because three row renderers
  * share it: the two project-mode rows and the status-mode row. The rule used to be copied
  * into each of them and immediately drifted — one call site kept hiding the diff after the
  * others stopped.
  *
- * Hover actions own the trailing slot. When the kebab appears, the diff or timestamp disappears
- * so the action remains readable and never competes with the row metadata.
+ * The trailing content survives the kebab on hover and fades under the scrim instead of
+ * blinking out. Touch has no hover, so its permanent kebab still hides the content outright
+ * rather than scrimming an unhovered row whose background doesn't match the gradient.
  */
 export function resolveTrailingActionVisibility({
   workspace,
   trailing,
-  indicator,
   hasArchiveAction,
   isHovered,
   isTouchPlatform,
-  isCompact,
   showShortcut,
 }: {
   workspace: SidebarWorkspaceEntry;
   trailing: SidebarWorkspaceTrailing;
-  indicator: WorkspaceChangeIndicator;
   hasArchiveAction: boolean;
   isHovered: boolean;
   isTouchPlatform: boolean;
-  /**
-   * Compact layouts show the action outright. Hover is the desktop reveal, and it either never
-   * fires (touch) or is a pointer the layout is not designed around, so gating on it there
-   * leaves the row with no visible way into its own menu.
-   */
-  isCompact: boolean;
   showShortcut: boolean;
 }): {
-  showTrailing: boolean;
+  trailingPresentation: SidebarWorkspaceTrailingPresentation;
   showKebab: boolean;
+  showScrim: boolean;
   renderSlot: boolean;
+  reserveSlotWidth: boolean;
 } {
-  const hasTrailing = hasSidebarWorkspaceTrailing({ workspace, trailing, indicator });
-  const showKebab =
-    Boolean(hasArchiveAction && (isHovered || isTouchPlatform || isCompact)) && !showShortcut;
-  const showTrailing = hasTrailing && !showShortcut && !showKebab;
+  const hasTrailing = hasSidebarWorkspaceTrailing({ workspace, trailing });
+  const showKebab = Boolean(hasArchiveAction && (isHovered || isTouchPlatform)) && !showShortcut;
+  // Touch permanently replaces the stats with the menu. Only temporary shortcut hints
+  // conceal content while retaining its width, so desktop rows do not shift.
+  const hasContent = hasTrailing && !(hasArchiveAction && isTouchPlatform);
+  let trailingPresentation: SidebarWorkspaceTrailingPresentation = "absent";
+  if (hasContent) trailingPresentation = showShortcut ? "hidden" : "visible";
   return {
-    showTrailing,
+    trailingPresentation,
     showKebab,
+    // The scrim paints the row's own hover background, so it can only be drawn on a hovered
+    // row — over an unhovered one the gradient fades to the wrong color. That is also why
+    // touch, which shows the kebab without ever hovering, never gets one.
+    showScrim: showKebab && isHovered,
     renderSlot: hasArchiveAction || hasTrailing,
+    // The slot only holds width for something that permanently sits in it. Trailing content
+    // does; the kebab only does on touch, where there is no hover for it to appear on and so
+    // no scrim to let it overlay the title. Everywhere else the width goes back to the title
+    // and the kebab fades in over its tail.
+    reserveSlotWidth: hasContent || (hasArchiveAction && isTouchPlatform),
   };
 }
 
@@ -379,10 +321,6 @@ export function SidebarWorkspaceTrailingActionSlot({
   reserveWidth,
   children,
 }: {
-  /**
-   * Whether the action is on screen right now - pass the painted state, not whether the row
-   * *has* an action. The title gets the width back whenever the action is away.
-   */
   reserveWidth: boolean;
   children: ReactNode;
 }) {
@@ -400,14 +338,18 @@ export function SidebarWorkspaceTrailingActionSlot({
 }
 
 export function SidebarWorkspaceTrailingActionBase({
-  visible,
+  presentation,
   children,
 }: {
-  visible: boolean;
+  presentation: SidebarWorkspaceTrailingPresentation;
   children: ReactNode;
 }) {
-  if (!children) return null;
-  return <View style={visible ? undefined : sidebarWorkspaceRowStyles.hidden}>{children}</View>;
+  if (presentation === "absent") return null;
+  return (
+    <View style={presentation === "hidden" ? sidebarWorkspaceRowStyles.hidden : undefined}>
+      {children}
+    </View>
+  );
 }
 
 export function SidebarWorkspaceTrailingActionOverlay({
@@ -431,13 +373,16 @@ export function SidebarWorkspaceTrailingActionOverlay({
   );
 }
 
+// The status dot centres on the title's first line, so both share its line height.
+const TITLE_LINE_HEIGHT = 20;
+
 const styles = StyleSheet.create((theme) => ({
   workspaceRowContent: {
     position: "relative",
   },
   workspaceRowMain: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     gap: theme.spacing[2],
     width: "100%",
   },
@@ -447,7 +392,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspaceTitleRow: {
     flexDirection: "row",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
     gap: theme.spacing[2],
   },
@@ -458,36 +403,32 @@ const styles = StyleSheet.create((theme) => ({
   },
   workspaceStatusDot: {
     position: "relative",
-    width: theme.iconSize.md,
-    // Tall enough for the doubled running ring on compact; the desktop value is
-    // the title's line box, which is what centres the dot on the workspace name.
-    height: { xs: 28, md: 20 },
+    width: densityIconBox("md"),
+    height: TITLE_LINE_HEIGHT,
     borderRadius: theme.borderRadius.full,
     flexShrink: 0,
     alignItems: "center",
     justifyContent: "center",
   },
-  // Doubled on compact with everything else in the leading column. A 6pt dot is
-  // a legible mark beside a pointer and barely a mark at all on a phone.
-  statusDot: {
-    width: compactUp(STATUS_INDICATOR_FILLED_DOT_SIZE),
-    height: compactUp(STATUS_INDICATOR_FILLED_DOT_SIZE),
+  statusDotOverlay: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: STATUS_INDICATOR_DOT_SIZE,
+    height: STATUS_INDICATOR_DOT_SIZE,
     borderRadius: theme.borderRadius.full,
+    borderWidth: 1,
   },
-  statusDotAttention: {
+  standaloneStatusDot: {
+    width: STATUS_INDICATOR_FILLED_DOT_SIZE,
+    height: STATUS_INDICATOR_FILLED_DOT_SIZE,
+    borderRadius: theme.borderRadius.full,
     backgroundColor: getStatusDotColor({ theme, bucket: "attention" }) ?? undefined,
   },
-  statusDotFailed: {
-    backgroundColor: getStatusDotColor({ theme, bucket: "failed" }) ?? undefined,
-  },
-  statusDotNeedsInput: {
-    backgroundColor: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
-    transform: [{ translateX: 0.5 }],
-  },
-  statusDotRunning: {
-    backgroundColor: getStatusDotColor({ theme, bucket: "running" }) ?? undefined,
-  },
-  statusDotDone: {
+  idleStatusDot: {
+    width: STATUS_INDICATOR_FILLED_DOT_SIZE,
+    height: STATUS_INDICATOR_FILLED_DOT_SIZE,
+    borderRadius: theme.borderRadius.full,
     backgroundColor: theme.colors.foregroundExtraMuted,
     opacity: 0.3,
   },
@@ -497,7 +438,7 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     fontSize: theme.fontSize.base,
     fontWeight: "400",
-    lineHeight: 20,
+    lineHeight: TITLE_LINE_HEIGHT,
     opacity: 0.76,
     flex: 1,
     minWidth: 0,
@@ -508,10 +449,20 @@ const styles = StyleSheet.create((theme) => ({
   workspaceBranchTextHovered: {
     opacity: 1,
   },
-  // The active workspace names itself in the accent, matching the selected
-  // explorer tab. The leading status visual keeps its own semantic color.
-  workspaceBranchTextSelected: {
-    color: theme.colors.accent,
-    opacity: 1,
+  statusDotNeedsInput: {
+    backgroundColor: getStatusDotColor({ theme, bucket: "needs_input" }) ?? undefined,
+    borderColor: theme.colors.surface0,
+  },
+  statusDotFailed: {
+    backgroundColor: getStatusDotColor({ theme, bucket: "failed" }) ?? undefined,
+    borderColor: theme.colors.surface0,
+  },
+  statusDotRunning: {
+    backgroundColor: getStatusDotColor({ theme, bucket: "running" }) ?? undefined,
+    borderColor: theme.colors.surface0,
+  },
+  statusDotAttention: {
+    backgroundColor: getStatusDotColor({ theme, bucket: "attention" }) ?? undefined,
+    borderColor: theme.colors.surface0,
   },
 }));

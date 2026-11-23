@@ -18,7 +18,7 @@ const desktopTargets = [
 
 const checkoutStatus = {
   isGit: true,
-  remoteUrl: "git@github.com:otto-code-ai/otto-code.git",
+  remoteUrl: "git@github.com:getpaseo/paseo.git",
   currentBranch: "main",
 };
 
@@ -170,7 +170,7 @@ describe("planWorkspaceOpenTargets", () => {
         forge: "github",
         id: "github",
         label: "GitHub",
-        url: "https://github.com/otto-code-ai/otto-code/blob/main/src/app.ts#L3-L5",
+        url: "https://github.com/getpaseo/paseo/blob/main/src/app.ts#L3-L5",
       },
     ]);
     expect(treeTargets).toEqual([
@@ -179,7 +179,7 @@ describe("planWorkspaceOpenTargets", () => {
         forge: "github",
         id: "github",
         label: "GitHub",
-        url: "https://github.com/otto-code-ai/otto-code/tree/main",
+        url: "https://github.com/getpaseo/paseo/tree/main",
       },
     ]);
   });

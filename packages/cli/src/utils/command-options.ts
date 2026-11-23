@@ -1,8 +1,18 @@
 import type { Command } from "commander";
+import { selectDaemonTarget } from "./daemon-target.js";
+import { OTTO_DEFAULT_HOME } from "@getpaseo/protocol/otto/identity";
 
 const JSON_OPTION_DESCRIPTION = "Output in JSON format";
 const DAEMON_HOST_OPTION_DESCRIPTION =
-  "Daemon host target: host:port, tcp://host:port, or ssh://user@host (default: local socket/pipe, then localhost:6868)";
+  "Explicit daemon endpoint: host:port, TCP, socket, SSH, or pairing URL (default: local home)";
+
+const localCommands = new WeakSet<Command>();
+
+export function addLocalDaemonOptions<T extends Command>(command: T): T {
+  localCommands.add(command);
+  command.option("--home <path>", `Local daemon home (default: ${OTTO_DEFAULT_HOME})`); // OTTO(identity)
+  return command;
+}
 
 export function collectMultiple(value: string, previous: string[]): string[] {
   return previous.concat([value]);
@@ -15,6 +25,9 @@ export function addJsonOption<T extends Command>(command: T): T {
 
 export function addDaemonHostOption<T extends Command>(command: T): T {
   command.option("--host <host>", DAEMON_HOST_OPTION_DESCRIPTION);
+  if (!command.options.some((option) => option.long === "--home"))
+    // OTTO(identity)
+    command.option("--home <path>", `Select a local daemon home (default: ${OTTO_DEFAULT_HOME})`);
   return command;
 }
 
@@ -28,7 +41,21 @@ export function withGlobalOptions<Args extends unknown[], Result>(
   return (...args) => {
     const command = args.at(-1) as Command;
     const mergedArgs = [...args];
-    mergedArgs[mergedArgs.length - 2] = command.optsWithGlobals();
+    const options = command.optsWithGlobals();
+    const selectors = { home: new Set<string>(), host: new Set<string>() };
+    for (let current: Command | null = command; current; current = current.parent) {
+      for (const key of ["home", "host"] as const) {
+        const value = current.opts()[key];
+        if (typeof value === "string") selectors[key].add(value);
+      }
+    }
+    for (const key of ["home", "host"] as const) {
+      if (selectors[key].size > 1)
+        throw { code: "TARGET_AMBIGUOUS", message: `Conflicting duplicate --${key} selectors.` };
+    }
+    const localOnly = localCommands.has(command);
+    options.daemonTarget = selectDaemonTarget(options, process.env, localOnly);
+    mergedArgs[mergedArgs.length - 2] = options;
     return handler(...(mergedArgs as Args));
   };
 }

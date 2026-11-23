@@ -1,5 +1,5 @@
 import { Buffer } from "buffer";
-import { buildAgentDeepLinkRoute } from "@otto-code/protocol/agent-deep-link";
+import { buildAgentDeepLinkRoute } from "@getpaseo/protocol/agent-deep-link";
 
 type NullableString = string | null | undefined;
 const BASE64_WORKSPACE_ID_PREFIX = "b64_";
@@ -428,32 +428,8 @@ export function buildSchedulesRoute() {
   return "/schedules" as const;
 }
 
-export function buildArtifactsRoute() {
-  return "/artifacts" as const;
-}
-
-export function buildRunsRoute() {
-  return "/runs" as const;
-}
-
-export function buildKanbanRoute() {
-  return "/kanban" as const;
-}
-
-export function buildStatsRoute() {
-  return "/stats" as const;
-}
-
-export function buildBrainRoute() {
-  return "/brain" as const;
-}
-
 export function buildOpenProjectRoute() {
   return "/open-project" as const;
-}
-
-export function buildSetupRoute() {
-  return "/setup" as const;
 }
 
 interface NewWorkspaceRouteOptions {
@@ -515,10 +491,11 @@ export function resolveKnownHostRoute(input: {
 
 export const SETTINGS_SECTION_SLUGS = [
   "general",
-  "chat",
   "appearance",
-  "layout",
-  "visualizer",
+  "sidebar",
+  "chat",
+  "terminal",
+  "browser",
   "editor",
   "shortcuts",
   "integrations",
@@ -539,17 +516,12 @@ export const HOST_SECTION_SLUGS = [
   "connections",
   "pair-device",
   "agents",
-  "teams",
-  "tools",
-  "connectors",
-  "code",
-  "brain",
   "metadata",
   "workspaces",
   "providers",
   "usage",
-  "storage",
   "terminals",
+  "code", // OTTO(editor): canonical host-scoped language-server settings.
   "plugins",
   "host",
 ] as const;
@@ -559,8 +531,6 @@ export type HostSectionSlug = (typeof HOST_SECTION_SLUGS)[number];
 const LEGACY_HOST_SECTION_SLUGS: Record<string, HostSectionSlug> = {
   orchestration: "agents",
   daemon: "host",
-  // Git providers merged into the workspaces-backed "Git" section.
-  "git-providers": "workspaces",
 };
 
 export function isHostSectionSlug(value: string): value is HostSectionSlug {
@@ -578,14 +548,7 @@ export function buildSettingsRoute() {
   return "/settings" as const;
 }
 
-export function buildSettingsSectionRoute(
-  section: SettingsSectionSlug,
-  preferredHostServerId?: string,
-) {
-  const preferredHost = trimNonEmpty(preferredHostServerId ?? "");
-  if (preferredHost) {
-    return `/settings/${section}?host=${encodeURIComponent(preferredHost)}` as const;
-  }
+export function buildSettingsSectionRoute(section: SettingsSectionSlug) {
   return `/settings/${section}` as const;
 }
 

@@ -12,9 +12,7 @@ export async function recordFileCallouts(page: Page): Promise<void> {
       for (const mutation of records) {
         if (
           !(mutation.target instanceof Element) ||
-          !mutation.target.closest(
-            '[data-testid="workspace-file-pane"], [data-testid="workspace-file-tab-pane"]',
-          )
+          !mutation.target.closest('[data-testid="workspace-file-pane"]')
         ) {
           continue;
         }
@@ -27,7 +25,7 @@ export async function recordFileCallouts(page: Page): Promise<void> {
     };
     const observer = new MutationObserver(record);
     observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-    Object.assign(globalThis, { __OTTO_RECORDED_FILE_CALLOUTS__: callouts });
+    Object.assign(globalThis, { __PASEO_RECORDED_FILE_CALLOUTS__: callouts });
   });
 }
 
@@ -44,7 +42,7 @@ export async function expectNoFileCalloutWasRendered(page: Page): Promise<void> 
 function recordedFileCallouts(page: Page): Promise<string[]> {
   return page.evaluate(
     () =>
-      (globalThis as typeof globalThis & { __OTTO_RECORDED_FILE_CALLOUTS__?: string[] })
-        .__OTTO_RECORDED_FILE_CALLOUTS__ ?? [],
+      (globalThis as typeof globalThis & { __PASEO_RECORDED_FILE_CALLOUTS__?: string[] })
+        .__PASEO_RECORDED_FILE_CALLOUTS__ ?? [],
   );
 }

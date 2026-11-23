@@ -6,6 +6,8 @@ order: 36
 category: Browser
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # When to use
 
 Otto gives agents a [real browser inside Otto](/docs/browser). Standalone tools like Playwright or agent-browser give an agent its own browser in a separate process. They overlap, so which one?

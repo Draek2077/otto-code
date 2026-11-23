@@ -17,6 +17,9 @@ export function createInMemoryKeyValueStorage(
     async setItem(key, value) {
       entries.set(key, value);
     },
+    async removeItem(key) {
+      entries.delete(key);
+    },
   };
 }
 
@@ -35,15 +38,6 @@ const DEFAULT_DESKTOP: DesktopSettings = {
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: false,
-  },
-  tray: {
-    showIcon: true,
-    minimizeOnClose: true,
-    startMinimized: false,
-  },
-  quit: {
-    warnBeforeQuit: false,
-    onlyWarnForActiveAgents: false,
   },
 };
 

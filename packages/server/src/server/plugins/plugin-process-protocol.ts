@@ -1,26 +1,49 @@
+import { UsageScopeSchema, type UsageScope } from "@getpaseo/plugin/server/usage";
 import type {
   ProviderConnectRequest,
   ProviderCatalogOptions,
   ProviderEvent,
   ProviderInput,
-} from "@otto-code/plugin/server/provider";
-import { ProviderEventSchema, ProviderInputSchema } from "@otto-code/plugin/server/provider";
+  ProviderStatusRequest,
+} from "@getpaseo/plugin/server/provider";
+import {
+  ProviderEventSchema,
+  ProviderInputSchema,
+  ProviderLaunchSchema,
+} from "@getpaseo/plugin/server/provider";
 import { z } from "zod";
 
 export interface PluginProviderMetadata {
+  ottoWorkflowReadMode?: "plan"; // OTTO(workflows): matches the additive runtime schema below.
+  requiresConfiguration?: boolean;
   hasCatalogCacheKey?: boolean;
+  hasStatus?: boolean;
+  command?: readonly [string, ...string[]];
   id: string;
   label: string;
   description?: string;
   iconPath?: string;
 }
 
+export interface PluginUsageSourceMetadata {
+  id: string;
+  label: string;
+  icon?: string;
+}
+
 export type PluginProcessRequest =
+  | {
+      type: "provider.status";
+      requestId: string;
+      providerId: string;
+      request: ProviderStatusRequest;
+    }
   | {
       type: "initialize";
       pluginId: string;
       bundle: string;
       appVersion: string;
+      pluginDirectory: string;
       settingsDirectory?: string;
     }
   | {
@@ -31,6 +54,8 @@ export type PluginProcessRequest =
     }
   | { type: "hook"; requestId: string; kind: "event" | "before"; name: string; input: unknown }
   | { type: "hook.cancel"; requestId: string }
+  | { type: "usage.fetch"; requestId: string; sourceId: string; input: unknown }
+  | { type: "usage.discover"; requestId: string; sourceId: string; scope: UsageScope }
   | { type: "invoke"; requestId: string; method: string; input: unknown }
   | {
       type: "provider.connect";
@@ -46,8 +71,8 @@ export type PluginProcessRequest =
     }
   | { type: "provider.close"; connectionId: string }
   | { type: "shutdown" }
-  | { type: "otto_frame"; data: string | Uint8Array; isBinary: boolean }
-  | { type: "otto_close" };
+  | { type: "paseo_frame"; data: string | Uint8Array; isBinary: boolean }
+  | { type: "paseo_close" };
 
 export type PluginProcessMessage =
   | { type: "settings.changed"; settingsId: string }
@@ -56,6 +81,7 @@ export type PluginProcessMessage =
       type: "ready";
       methods: string[];
       providers: PluginProviderMetadata[];
+      usageSources?: PluginUsageSourceMetadata[];
       hooks?: { events: string[]; before: string[] };
     }
   | { type: "result"; requestId: string; output: unknown }
@@ -77,8 +103,8 @@ export type PluginProcessMessage =
     }
   | { type: "provider.event"; connectionId: string; event: ProviderEvent }
   | { type: "provider.closed"; connectionId: string; error?: string }
-  | { type: "otto_frame"; data: string | Uint8Array; isBinary: boolean }
-  | { type: "otto_close" };
+  | { type: "paseo_frame"; data: string | Uint8Array; isBinary: boolean }
+  | { type: "paseo_close" };
 
 const hooksSchema = z.object({ events: z.array(z.string()), before: z.array(z.string()) }).strict();
 
@@ -88,11 +114,23 @@ const providerMetadataSchema = z
     label: z.string().min(1),
     description: z.string().optional(),
     iconPath: z.string().optional(),
+    requiresConfiguration: z.boolean().optional(),
+    ottoWorkflowReadMode: z.literal("plan").optional(), // OTTO(workflows): additive trusted-provider metadata.
     hasCatalogCacheKey: z.boolean().optional(),
+    hasStatus: z.boolean().optional(),
+    command: z.tuple([z.string().min(1)], z.string()).optional(),
+  })
+  .strict();
+const usageSourceMetadataSchema = z
+  .object({
+    id: z.string().min(1),
+    label: z.string().min(1),
+    icon: z.string().optional(),
   })
   .strict();
 const providerConnectRequestSchema = z
   .object({
+    launch: ProviderLaunchSchema.optional(),
     versions: z.array(z.number().int().positive()),
     capabilities: z.array(z.string()),
   })
@@ -107,10 +145,19 @@ export const PluginProcessRequestSchema: z.ZodType<PluginProcessRequest> = z.dis
   [
     z
       .object({
+        type: z.literal("provider.status"),
+        requestId: z.string().min(1),
+        providerId: z.string().min(1),
+        request: z.object({ launch: ProviderLaunchSchema.optional() }).strict(),
+      })
+      .strict(),
+    z
+      .object({
         type: z.literal("initialize"),
         pluginId: z.string().min(1),
         bundle: z.string(),
         appVersion: z.string(),
+        pluginDirectory: z.string(),
         settingsDirectory: z.string().optional(),
       })
       .strict(),
@@ -120,12 +167,19 @@ export const PluginProcessRequestSchema: z.ZodType<PluginProcessRequest> = z.dis
         requestId: z.string().min(1),
         providerId: z.string().min(1),
         options: z.discriminatedUnion("scope", [
-          z.object({ scope: z.literal("global"), force: z.boolean().optional() }).strict(),
+          z
+            .object({
+              scope: z.literal("global"),
+              force: z.boolean().optional(),
+              launch: ProviderLaunchSchema.optional(),
+            })
+            .strict(),
           z
             .object({
               scope: z.literal("workspace"),
               cwd: z.string(),
               force: z.boolean().optional(),
+              launch: ProviderLaunchSchema.optional(),
             })
             .strict(),
         ]),
@@ -141,6 +195,22 @@ export const PluginProcessRequestSchema: z.ZodType<PluginProcessRequest> = z.dis
       })
       .strict(),
     z.object({ type: z.literal("hook.cancel"), requestId: z.string() }).strict(),
+    z
+      .object({
+        type: z.literal("usage.fetch"),
+        requestId: z.string(),
+        sourceId: z.string(),
+        input: z.unknown(),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("usage.discover"),
+        requestId: z.string(),
+        sourceId: z.string(),
+        scope: UsageScopeSchema,
+      })
+      .strict(),
     z
       .object({
         type: z.literal("invoke"),
@@ -167,8 +237,8 @@ export const PluginProcessRequestSchema: z.ZodType<PluginProcessRequest> = z.dis
       .strict(),
     z.object({ type: z.literal("provider.close"), connectionId: z.string().min(1) }).strict(),
     z.object({ type: z.literal("shutdown") }).strict(),
-    z.object({ type: z.literal("otto_frame"), ...frameFields }).strict(),
-    z.object({ type: z.literal("otto_close") }).strict(),
+    z.object({ type: z.literal("paseo_frame"), ...frameFields }).strict(),
+    z.object({ type: z.literal("paseo_close") }).strict(),
   ],
 );
 
@@ -182,6 +252,7 @@ export const PluginProcessMessageSchema: z.ZodType<PluginProcessMessage> = z.dis
         type: z.literal("ready"),
         methods: z.array(z.string()),
         providers: z.array(providerMetadataSchema),
+        usageSources: z.array(usageSourceMetadataSchema).optional(),
         hooks: hooksSchema.optional(),
       })
       .strict(),
@@ -236,7 +307,7 @@ export const PluginProcessMessageSchema: z.ZodType<PluginProcessMessage> = z.dis
         error: z.string().optional(),
       })
       .strict(),
-    z.object({ type: z.literal("otto_frame"), ...frameFields }).strict(),
-    z.object({ type: z.literal("otto_close") }).strict(),
+    z.object({ type: z.literal("paseo_frame"), ...frameFields }).strict(),
+    z.object({ type: z.literal("paseo_close") }).strict(),
   ],
 );

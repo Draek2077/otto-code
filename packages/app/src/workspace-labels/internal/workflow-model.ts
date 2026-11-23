@@ -2,7 +2,7 @@ import {
   normalizeWorkspaceLabelName,
   workspaceLabelKey,
   type WorkspaceLabelDefinition,
-} from "@otto-code/protocol/workspace-labels";
+} from "@getpaseo/protocol/workspace-labels";
 import { buildWorkspaceLabelPickerRows, type WorkspaceLabelPickerRow } from "./picker-model";
 import { i18n } from "@/i18n/i18next";
 

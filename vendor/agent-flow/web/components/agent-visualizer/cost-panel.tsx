@@ -26,28 +26,27 @@ const agentTokens = (a: Agent) => a.cumulativeTokens ?? a.tokensUsed
 export function CostPanel({ visible, agents, toolCalls }: CostPanelProps) {
   if (!visible) return null
 
-  const agentList = Array.from(agents.values()).filter(a => agentTokens(a) > 0)
+  const agentList = Array.from(agents.values())
 
   // OTTO PATCH (OTTO-PATCHES.md): `cost` is the host's REAL reported figure or
   // null — never tokens × a rate. Rows sort by tokens rather than cost so an
   // unpriced agent (local model) still ranks by the work it actually did
   // instead of sinking to the bottom as a phantom $0.
   const agentBreakdown = agentList
-    .map(a => ({ name: a.name, isMain: a.isMain, tokens: agentTokens(a), cost: agentCost(a) }))
-    .sort((a, b) => b.tokens - a.tokens)
+    .map(a => ({ name: a.name, isMain: a.isMain, tokens: a.contextKnown === false ? null : agentTokens(a), cost: agentCost(a) }))
+    .sort((a, b) => (b.tokens ?? -1) - (a.tokens ?? -1))
 
-  const totalTokens = agentBreakdown.reduce((s, a) => s + a.tokens, 0)
+  const totalTokens = agentBreakdown.reduce((s, a) => s + (a.tokens ?? 0), 0)
+  const tokenRows = agentBreakdown.filter(a => a.tokens !== null).length
   const pricedRows = agentBreakdown.filter(a => a.cost !== null)
   const totalCost = pricedRows.reduce((s, a) => s + (a.cost ?? 0), 0)
   // A floor, not a total, when some of the graph could not be priced — say so
   // rather than presenting a partial sum as the whole bill.
   const costIsPartial = pricedRows.length > 0 && pricedRows.length < agentBreakdown.length
-  const maxTokens = Math.max(...agentBreakdown.map(a => a.tokens), Number.EPSILON)
+  const maxTokens = Math.max(...agentBreakdown.map(a => a.tokens ?? 0), Number.EPSILON)
 
-  // Per-tool-type breakdown. TOKENS ONLY: `tc.tokenCost` is a ~4-chars/token
-  // ESTIMATE over the serialized tool payload (estimateToolCallTokenCost), and
-  // no provider bills per tool call — so pricing it would be a guess on top of
-  // a guess. The token share is still a real signal about where work went.
+  // OTTO PATCH: only an explicitly reported per-tool count enters this map.
+  // The canonical adapter never estimates counts or prices from payload length.
   const toolMap = new Map<string, number>()
   for (const tc of toolCalls.values()) {
     if (!tc.tokenCost) continue
@@ -65,10 +64,10 @@ export function CostPanel({ visible, agents, toolCalls }: CostPanelProps) {
       zIndex={Z.sidePanel}
       width={260}
     >
-      <div className="glass-card relative">
+      <div className="glass-card relative" data-testid="visualizer-reported-cost">
         <PanelHeader>
           <span className="text-[10px] font-mono tracking-wider" style={{ color: COLORS.textPrimary }}>
-            Token Cost
+            Reported cost
           </span>
         </PanelHeader>
 
@@ -81,7 +80,7 @@ export function CostPanel({ visible, agents, toolCalls }: CostPanelProps) {
           )}
 
           {agentBreakdown.map((a) => {
-            const ratio = a.tokens / maxTokens
+            const ratio = (a.tokens ?? 0) / maxTokens
             const barColor = a.isMain || agentBreakdown.length === 1 ? COLORS.barFillMain : COLORS.barFillSub
             return (
               <div
@@ -112,19 +111,18 @@ export function CostPanel({ visible, agents, toolCalls }: CostPanelProps) {
 
                 <div className="flex items-center gap-2 mt-1">
                   <span className="text-[9px] font-mono" style={{ color: COLORS.textMuted }}>
-                    {formatTokens(a.tokens)} tokens
+                    {a.tokens === null ? 'Token usage not reported' : `${formatTokens(a.tokens)} tokens`}
                   </span>
                 </div>
               </div>
             )
           })}
 
-          {/* By-tool breakdown — estimated TOKENS, no dollars. See the toolMap
-              comment above for why pricing these would be a guess on a guess. */}
+          {/* By-tool breakdown is available only when the source reports it. */}
           {toolList.length > 0 && (
             <>
               <div className="text-[9px] font-mono tracking-wider pt-2 pb-0.5 px-1" style={{ color: COLORS.textMuted }}>
-                By Tool (est. tokens)
+                By Tool (reported tokens)
               </div>
               {toolList.map((t) => {
                 const heatColor = toolTypeColor(t.name)
@@ -142,7 +140,7 @@ export function CostPanel({ visible, agents, toolCalls }: CostPanelProps) {
                         {t.name}
                       </span>
                       <span className="text-[9px] font-mono" style={{ color: COLORS.textMuted }}>
-                        ~{formatTokens(t.tokens)}
+                        {formatTokens(t.tokens)}
                       </span>
                     </div>
                     <div className="mt-1">
@@ -169,7 +167,7 @@ export function CostPanel({ visible, agents, toolCalls }: CostPanelProps) {
                 ? ''
                 : `${costIsPartial ? '≥ ' : ''}${formatCost(totalCost)}`}
             </span>
-            <span>{formatTokens(totalTokens)} tokens</span>
+            <span>{tokenRows === 0 ? 'Token usage not reported' : `${tokenRows < agentBreakdown.length ? '≥ ' : ''}${formatTokens(totalTokens)} tokens reported`}</span>
           </div>
         )}
       </div>

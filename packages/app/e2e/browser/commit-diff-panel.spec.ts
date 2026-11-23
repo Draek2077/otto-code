@@ -7,14 +7,7 @@ import { openChangesTreePanel } from "../support/helpers/workspace-tabs";
 
 const COMMIT_SUBJECT = "Show commit timestamps";
 
-// DEFERRED(ottoDiffTab): both specs arrived with the Otto v0.2.5 merge and
-// exercise a commits explorer Otto does not mount. `src/git/commits-section/`
-// has zero importers, `commits-section-no-workspace-commits` exists only there,
-// and there is no registered commit-diff panel - see the DEFERRED note in
-// panels/register-panels.ts for the @/git/diff-pane restructure that gates it.
-// Left active these fail deterministically and burn three attempts each under
-// the CI retry policy. Un-skip in the same change that registers the panel.
-test.skip("commit history explains when the workspace has no commits ahead of its base", async ({
+test("commit history explains when the workspace has no commits ahead of its base", async ({
   page,
   withWorkspace,
 }) => {
@@ -33,8 +26,8 @@ test.skip("commit history explains when the workspace has no commits ahead of it
   );
 });
 
-// DEFERRED(ottoDiffTab): see the note above.
-test.skip("commit history shows dates and shares diff layout preferences", async ({
+// OTTO(structural-diff): a local presentation switch must preserve commit review.
+test("commit history shows dates and shares diff layout preferences", async ({
   page,
   withWorkspace,
 }) => {
@@ -75,6 +68,14 @@ test.skip("commit history shows dates and shares diff layout preferences", async
   await expect(layoutToggle).toHaveAccessibleName("Switch to side-by-side diff");
   await expect(panel.getByTestId("git-diff-canvas")).toBeVisible({ timeout: 30_000 });
   await expectCommitDiffHeaderGeometry(panel);
+  const presentation = panel.getByTestId("otto-diff-presentation");
+  await presentation.click();
+  await page.getByText("Structural", { exact: true }).last().click();
+  await expect(presentation).toContainText("Structural");
+  await expect(panel.getByTestId("git-diff-canvas")).toBeVisible();
+  await presentation.click();
+  await page.getByText("Line", { exact: true }).last().click();
+  await expect(presentation).toContainText("Line");
 
   await layoutToggle.click();
   await expect(layoutToggle).toHaveAccessibleName("Switch to unified diff");
@@ -91,11 +92,31 @@ test.skip("commit history shows dates and shares diff layout preferences", async
   );
 
   await page.setViewportSize({ width: 480, height: 900 });
-  await expect(panel.getByTestId("commit-diff-toolbar")).toHaveCount(0);
+  // OTTO(structural-diff): compact review still offers Line/Structural.
+  await expect(panel.getByTestId("commit-diff-toggle-layout")).toHaveCount(0);
+  await expect(presentation).toBeVisible();
   await expect(panel.getByTestId("git-diff-canvas")).toBeVisible();
 });
 
-async function createFeatureCommit(repoPath: string): Promise<void> {
+test("a fresh commit says just now and its age advances", async ({ page, withWorkspace }) => {
+  const workspace = await withWorkspace({ prefix: "commit-relative-time-" });
+  const committedAt = new Date();
+  await createFeatureCommit(workspace.repoPath, committedAt.toISOString());
+  await page.clock.install({ time: committedAt });
+  await workspace.navigateTo();
+
+  await openChangesTreePanel(page);
+  await page.getByRole("button", { name: /Commits/i }).click();
+  const row = page.locator('[data-testid^="commit-row-"]').filter({ hasText: COMMIT_SUBJECT });
+  await expect(row).toContainText("just now", { timeout: 30_000 });
+  await page.clock.fastForward("03:00");
+  await expect(row).toContainText("3m ago");
+});
+
+async function createFeatureCommit(
+  repoPath: string,
+  authorDate = "2020-01-15T12:00:00Z",
+): Promise<void> {
   execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoPath, stdio: "ignore" });
   await writeFile(path.join(repoPath, "feature.txt"), "before\nafter\n");
   execFileSync("git", ["add", "feature.txt"], { cwd: repoPath, stdio: "ignore" });
@@ -104,8 +125,8 @@ async function createFeatureCommit(repoPath: string): Promise<void> {
     stdio: "ignore",
     env: {
       ...process.env,
-      GIT_AUTHOR_DATE: "2020-01-15T12:00:00Z",
-      GIT_COMMITTER_DATE: "2020-01-15T12:00:00Z",
+      GIT_AUTHOR_DATE: authorDate,
+      GIT_COMMITTER_DATE: authorDate,
     },
   });
 }

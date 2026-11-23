@@ -5,10 +5,12 @@ function parseJson(output) {
   return JSON.parse(output);
 }
 
-export function isNotFoundError(error) {
+function isNotFoundError(error) {
   return String(error?.stderr ?? "").includes("HTTP 404");
 }
 
+// OTTO(release): Otto names its releases "Otto <tag>"; drafts from before the
+// rename, or created under the tag name, still match so a retry finds them.
 function draftMatch(tag) {
   return `.draft == true and (.tag_name == ${JSON.stringify(tag)} or .name == ${JSON.stringify(`Otto ${tag}`)} or .name == ${JSON.stringify(`Paseo ${tag}`)})`;
 }
@@ -31,7 +33,7 @@ export function getGitHubRelease(repo, tag, execFileSync = nodeExecFileSync) {
         "api",
         `repos/${repo}/releases?per_page=100`,
         "--jq",
-        `[.[] | select(${draftMatch(tag)})] | sort_by(.id)`,
+        `[.[] | select(${draftMatch(tag)})] | sort_by(.id)`, // OTTO(release)
       ],
       {
         encoding: "utf8",
@@ -90,7 +92,7 @@ if (isMainModule(import.meta.url)) {
           "api",
           `repos/${repo}/releases?per_page=100`,
           "--jq",
-          `.[] | select((${draftMatch(tag)}) and .id != ${release.id}) | .id`,
+          `.[] | select((${draftMatch(tag)}) and .id != ${release.id}) | .id`, // OTTO(release)
         ],
         { encoding: "utf8" },
       )

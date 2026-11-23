@@ -1,13 +1,13 @@
+// OTTO(identity): expect Otto-facing product text.
 import { describe, expect, test } from "vitest";
 import { z } from "zod";
 import type { BrowserToolsBroker, BrowserToolsExecuteInput } from "./broker.js";
 import type { BrowserToolsResponsePayload } from "./errors.js";
 import { registerBrowserTools, type RegisterBrowserToolsOptions } from "./tools.js";
-import type { PreviewServerSummary } from "../preview/dev-server-manager.js";
 import type {
-  OttoToolConfig,
-  OttoToolExecutionContext,
-  OttoToolResult,
+  PaseoToolConfig,
+  PaseoToolExecutionContext,
+  PaseoToolResult,
 } from "../agent/tools/types.js";
 
 const BROWSER_ID = "11111111-1111-4111-8111-111111111111";
@@ -16,16 +16,15 @@ const BROWSER_ID_MESSAGE =
 const WAIT_CONDITION_MESSAGE = "browser_wait requires exactly one of text or url";
 const HTTP_URL_MESSAGE = "URL must use http/https only";
 const WORKSPACE_CONTEXT_MESSAGE =
-  "This browser tool needs a workspace. Start the agent from a Otto workspace before calling browser_new_tab or browser_list_tabs.";
+  "This browser tool needs a workspace. Start the agent from an Otto workspace before calling browser_new_tab or browser_list_tabs.";
 
 interface RegisteredTool {
-  config: OttoToolConfig;
-  handler: (args: unknown, context: OttoToolExecutionContext) => Promise<OttoToolResult>;
+  config: PaseoToolConfig;
+  handler: (args: unknown, context: PaseoToolExecutionContext) => Promise<PaseoToolResult>;
 }
 
 class FakeBrowserBroker {
   public readonly calls: BrowserToolsExecuteInput[] = [];
-  private readonly queued: BrowserToolsResponsePayload[] = [];
 
   public constructor(private response: BrowserToolsResponsePayload = listTabsPayload()) {}
 
@@ -33,19 +32,14 @@ class FakeBrowserBroker {
     this.response = response;
   }
 
-  /** Responses consumed in order before falling back to the setResponse value. */
-  public queueResponses(...responses: BrowserToolsResponsePayload[]): void {
-    this.queued.push(...responses);
-  }
-
   public async execute(input: BrowserToolsExecuteInput): Promise<BrowserToolsResponsePayload> {
     this.calls.push(input);
-    return this.queued.shift() ?? this.response;
+    return this.response;
   }
 }
 
 class BrowserToolHarness {
-  public readonly broker: FakeBrowserBroker;
+  public readonly broker = new FakeBrowserBroker();
   private readonly tools = new Map<string, RegisteredTool>();
 
   public constructor(
@@ -55,10 +49,7 @@ class BrowserToolHarness {
       workspaceId: "wks_workspace_a",
     },
     private readonly callerAgentId: string | null = "agent-1",
-    previewServers: PreviewServerSummary[] | null = null,
-    broker = new FakeBrowserBroker(),
   ) {
-    this.broker = broker;
     registerBrowserTools({
       registerTool: (name, config, handler) => {
         this.tools.set(name, { config, handler });
@@ -66,21 +57,6 @@ class BrowserToolHarness {
       broker: this.broker as Pick<BrowserToolsBroker, "execute">,
       ...(this.callerAgentId ? { callerAgentId: this.callerAgentId } : {}),
       resolveCallerAgent: () => this.callerAgent,
-      previewServers: previewServers
-        ? { list: (cwd?: string) => previewServers.filter((s) => !cwd || s.cwd === cwd) }
-        : null,
-      // Deterministic resolver for the SSRF screen - tests must never do real DNS.
-      lookupHost: async (host) => {
-        const table: Record<string, string> = {
-          "example.com": "93.184.216.34",
-          "rebind.example": "169.254.169.254",
-        };
-        const address = table[host];
-        if (!address) {
-          throw new Error(`unexpected DNS lookup in test: ${host}`);
-        }
-        return [{ address, family: 4 }];
-      },
     });
   }
 
@@ -88,7 +64,7 @@ class BrowserToolHarness {
     return schemaFor(this.get(name).config.inputSchema).safeParse(input);
   }
 
-  public async execute(name: string, input: unknown): Promise<OttoToolResult> {
+  public async execute(name: string, input: unknown): Promise<PaseoToolResult> {
     const parsed = schemaFor(this.get(name).config.inputSchema).parse(input);
     return this.get(name).handler(parsed, {});
   }
@@ -106,7 +82,7 @@ class BrowserToolHarness {
   }
 }
 
-function schemaFor(inputSchema: OttoToolConfig["inputSchema"]): z.ZodType {
+function schemaFor(inputSchema: PaseoToolConfig["inputSchema"]): z.ZodType {
   if (!inputSchema) {
     return z.object({}).passthrough();
   }
@@ -116,10 +92,7 @@ function schemaFor(inputSchema: OttoToolConfig["inputSchema"]): z.ZodType {
   return z.object(inputSchema as z.ZodRawShape).passthrough();
 }
 
-function listTabsPayload(geometry?: {
-  viewportWidth: number;
-  viewportHeight: number;
-}): Extract<BrowserToolsResponsePayload, { ok: true }> {
+function listTabsPayload(): Extract<BrowserToolsResponsePayload, { ok: true }> {
   return {
     requestId: "req-list-tabs",
     ok: true,
@@ -132,15 +105,6 @@ function listTabsPayload(geometry?: {
           title: "Example",
           isActive: true,
           isLoading: false,
-          ...(geometry
-            ? {
-                viewportMode: "fixed" as const,
-                viewportWidth: geometry.viewportWidth,
-                viewportHeight: geometry.viewportHeight,
-                paneWidth: 1280,
-                paneHeight: 800,
-              }
-            : {}),
         },
       ],
     },
@@ -439,11 +403,6 @@ const routedToolCases = [
       },
     },
     content: [{ type: "text", text: 'Browser evaluate returned:\n"Save"' }],
-    structuredResult: {
-      command: "evaluate",
-      browserId: BROWSER_ID,
-      truncated: false,
-    },
   },
   {
     name: "scroll",
@@ -504,69 +463,13 @@ const routedToolCases = [
     },
     content: [{ type: "text", text: `Closed browser tab ${BROWSER_ID}.` }],
   },
-  {
-    name: "focus_tab",
-    toolName: "browser_focus_tab",
-    input: { browserId: BROWSER_ID },
-    command: {
-      command: "focus_tab",
-      args: { browserId: BROWSER_ID },
-    },
-    payload: {
-      requestId: "req-focus-tab",
-      ok: true,
-      result: {
-        command: "focus_tab",
-        browserId: BROWSER_ID,
-      },
-    },
-    content: [
-      { type: "text", text: `Focused browser tab ${BROWSER_ID} - it is now visible to the user.` },
-    ],
-  },
-  {
-    name: "page_text",
-    toolName: "browser_page_text",
-    input: { browserId: BROWSER_ID },
-    command: {
-      command: "page_text",
-      args: { browserId: BROWSER_ID, maxChars: 20_000 },
-    },
-    payload: {
-      requestId: "req-page-text",
-      ok: true,
-      result: {
-        command: "page_text",
-        browserId: BROWSER_ID,
-        url: "https://example.com/docs",
-        title: "Docs",
-        source: "article",
-        text: "Hello world",
-        truncated: false,
-      },
-    },
-    content: [
-      {
-        type: "text",
-        text: "Extracted 11 characters of page text from <article>.\nTitle: Docs\nURL: https://example.com/docs\n\nHello world",
-      },
-    ],
-    structuredResult: {
-      command: "page_text",
-      browserId: BROWSER_ID,
-      url: "https://example.com/docs",
-      title: "Docs",
-      source: "article",
-      truncated: false,
-    },
-  },
 ] satisfies Array<{
   name: string;
   toolName: string;
   input: Record<string, unknown>;
   command: BrowserToolsExecuteInput["command"];
   payload: Extract<BrowserToolsResponsePayload, { ok: true }>;
-  content: OttoToolResult["content"];
+  content: PaseoToolResult["content"];
 }>;
 
 const brokerErrorCases = [
@@ -627,7 +530,7 @@ const brokerErrorCases = [
   toolName: string;
   input: Record<string, unknown>;
   payload: Extract<BrowserToolsResponsePayload, { ok: false }>;
-  content: OttoToolResult["content"];
+  content: PaseoToolResult["content"];
   context: Record<string, unknown>;
 }>;
 
@@ -654,13 +557,9 @@ describe("registerBrowserTools", () => {
       "browser_select",
       "browser_drag",
       "browser_logs",
-      "browser_inspect",
-      "browser_network",
       "browser_evaluate",
       "browser_scroll",
       "browser_resize",
-      "browser_focus_tab",
-      "browser_page_text",
       "browser_close_tab",
     ]);
   });
@@ -686,38 +585,6 @@ describe("registerBrowserTools", () => {
     ]);
   });
 
-  test("list tabs forwards a browser location filter", async () => {
-    const harness = new BrowserToolHarness();
-
-    await harness.execute("browser_list_tabs", { host: "app" });
-
-    expect(harness.broker.calls[0]).toMatchObject({
-      tabHost: "app",
-      command: { command: "list_tabs" },
-    });
-  });
-
-  test("list tabs reports viewport and pane geometry when the host presents it", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(listTabsPayload({ viewportWidth: 1280, viewportHeight: 800 }));
-
-    const response = await harness.execute("browser_list_tabs", {});
-
-    expect(response.content[0]?.text).toContain("viewport=1280x800 fixed pane=1280x800");
-    expect(response.content[0]?.text).not.toContain("cropped");
-  });
-
-  test("list tabs warns when a fixed viewport is cropped by the pane", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(listTabsPayload({ viewportWidth: 1920, viewportHeight: 1080 }));
-
-    const response = await harness.execute("browser_list_tabs", {});
-
-    expect(response.content[0]?.text).toContain(
-      "viewport=1920x1080 fixed pane=1280x800 (cropped to the pane - the user sees part of this page)",
-    );
-  });
-
   test("new tab sends workspace in the request envelope", async () => {
     const harness = new BrowserToolHarness();
     harness.broker.setResponse(newTabPayload());
@@ -737,168 +604,6 @@ describe("registerBrowserTools", () => {
         type: "text",
         text: `Created browser tab browserId=${BROWSER_ID} url=https://example.com. Use this browserId for tab-scoped browser tools.`,
       },
-    ]);
-  });
-
-  test("new tab forwards an explicit browser host choice", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(newTabPayload());
-
-    await harness.execute("browser_new_tab", { url: "https://example.com", host: "host" });
-
-    expect(harness.broker.calls[0]).toMatchObject({
-      tabHost: "host",
-      command: { command: "new_tab", args: { url: "https://example.com" } },
-    });
-  });
-
-  test("reuses the chat's tab across catalog rebuilds and implicit/explicit host choices", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(newTabPayload());
-    await harness.execute("browser_new_tab", { url: "https://example.com" });
-    const resumed = new BrowserToolHarness(undefined, undefined, null, harness.broker);
-    harness.broker.queueResponses(listTabsPayload(), {
-      requestId: "navigate",
-      ok: true,
-      result: { command: "navigate", browserId: BROWSER_ID, url: "https://example.com/next" },
-    });
-    const response = await resumed.execute("browser_new_tab", {
-      url: "https://example.com/next",
-      host: "app",
-    });
-    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
-      "new_tab",
-      "list_tabs",
-      "navigate",
-    ]);
-    expect(response.content[0]?.text).toContain(`Reused this chat's browserId=${BROWSER_ID}`);
-  });
-
-  test.each(["starting", "detached"] as const)(
-    "keeps the chat tab with status %s",
-    async (status) => {
-      const harness = new BrowserToolHarness();
-      harness.broker.setResponse(newTabPayload());
-      await harness.execute("browser_new_tab", {});
-      const listed = listTabsPayload();
-      if (listed.result.command !== "list_tabs") throw new Error("Expected list_tabs response");
-      listed.result.tabs[0]!.status = status;
-      harness.broker.setResponse(listed);
-      const response = await harness.execute("browser_new_tab", {
-        url: "https://example.com/next",
-      });
-      expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
-        "new_tab",
-        "list_tabs",
-      ]);
-      expect(response.content[0]?.text).toContain(`status=${status}`);
-      expect(response.content[0]?.text).toContain("do not open a replacement");
-    },
-  );
-
-  test("lookup and navigation errors never create replacement tabs", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(newTabPayload());
-    await harness.execute("browser_new_tab", {});
-    const failure: BrowserToolsResponsePayload = {
-      requestId: "timeout",
-      ok: false,
-      error: { code: "browser_timeout", message: "Host timed out", retryable: true },
-    };
-    harness.broker.setResponse(failure);
-    await harness.execute("browser_new_tab", { url: "https://example.com/next" });
-    harness.broker.queueResponses(listTabsPayload(), failure);
-    const response = await harness.execute("browser_new_tab", { url: "https://example.com/next" });
-    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
-      "new_tab",
-      "list_tabs",
-      "list_tabs",
-      "navigate",
-    ]);
-    expect(response.structuredContent).toMatchObject({
-      ok: false,
-      error: { code: "browser_timeout" },
-    });
-    expect(response.content[0]?.text).toContain(BROWSER_ID);
-  });
-
-  test("opens an additional tab only with a reason or confirmed absence", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(newTabPayload());
-    await harness.execute("browser_new_tab", {});
-    await harness.execute("browser_new_tab", {
-      additionalTabReason: "User requested side-by-side comparison",
-    });
-    harness.broker.queueResponses(
-      { requestId: "list", ok: true, result: { command: "list_tabs", tabs: [] } },
-      newTabPayload(),
-    );
-    await harness.execute("browser_new_tab", {});
-    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
-      "new_tab",
-      "new_tab",
-      "list_tabs",
-      "new_tab",
-    ]);
-  });
-
-  test("does not take over another chat's or the user's tab", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(newTabPayload());
-    await harness.execute("browser_new_tab", {});
-    const other = new BrowserToolHarness(
-      { id: "agent-2", cwd: "/repo", workspaceId: "wks_workspace_a" },
-      "agent-2",
-      null,
-      harness.broker,
-    );
-    await other.execute("browser_new_tab", {});
-    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
-      "new_tab",
-      "new_tab",
-    ]);
-  });
-
-  test("tab discovery identifies this chat's general-browsing tab", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse(newTabPayload());
-    await harness.execute("browser_new_tab", {});
-    harness.broker.setResponse(listTabsPayload());
-    const response = await harness.execute("browser_list_tabs", {});
-    expect(response.content[0]?.text).toContain(`This chat's general-browsing tabs: ${BROWSER_ID}`);
-  });
-
-  test("discovery restores general tab reuse after a daemon restart", async () => {
-    const harness = new BrowserToolHarness();
-    const listed = listTabsPayload();
-    if (listed.result.command !== "list_tabs") throw new Error("Expected list_tabs response");
-    listed.result.tabs[0]!.openedByAgentId = "agent-1";
-    listed.result.tabs[0]!.isPreview = false;
-    harness.broker.setResponse(listed);
-    await harness.execute("browser_list_tabs", {});
-    harness.broker.queueResponses(listed, {
-      requestId: "navigate",
-      ok: true,
-      result: { command: "navigate", browserId: BROWSER_ID, url: "https://example.com/next" },
-    });
-    await harness.execute("browser_new_tab", { url: "https://example.com/next" });
-    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
-      "list_tabs",
-      "list_tabs",
-      "navigate",
-    ]);
-  });
-
-  test("parallel opens from one chat create only one tab", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.queueResponses(newTabPayload(), listTabsPayload());
-    await Promise.all([
-      harness.execute("browser_new_tab", {}),
-      harness.execute("browser_new_tab", {}),
-    ]);
-    expect(harness.broker.calls.map((call) => call.command.command)).toEqual([
-      "new_tab",
-      "list_tabs",
     ]);
   });
 
@@ -1066,6 +771,7 @@ describe("registerBrowserTools", () => {
         url: "https://example.com",
         title: "Example",
         format: "aria-yaml",
+        snapshot: '- document "Example"\n  - button "Save" [ref=@e1]',
         truncated: false,
         stats: { nodeCount: 2, refCount: 1, textLength: 50 },
       },
@@ -1077,68 +783,6 @@ describe("registerBrowserTools", () => {
       },
     });
   });
-
-  test.each([
-    {
-      name: "snapshot",
-      toolName: "browser_snapshot",
-      input: { browserId: BROWSER_ID },
-      payload: snapshotPayload(),
-      field: "snapshot",
-      spentText: '- document "Example"\n  - button "Save" [ref=@e1]',
-    },
-    {
-      name: "page text",
-      toolName: "browser_page_text",
-      input: { browserId: BROWSER_ID },
-      payload: {
-        requestId: "req-page-text",
-        ok: true,
-        result: {
-          command: "page_text",
-          browserId: BROWSER_ID,
-          url: "https://example.com/docs",
-          title: "Docs",
-          source: "article",
-          text: "Hello world",
-          truncated: false,
-        },
-      } satisfies Extract<BrowserToolsResponsePayload, { ok: true }>,
-      field: "text",
-      spentText: "Hello world",
-    },
-    {
-      name: "evaluate",
-      toolName: "browser_evaluate",
-      input: { browserId: BROWSER_ID, function: "() => 'Save'" },
-      payload: {
-        requestId: "req-evaluate",
-        ok: true,
-        result: {
-          command: "evaluate",
-          browserId: BROWSER_ID,
-          resultJson: '"Save"',
-          truncated: false,
-        },
-      } satisfies Extract<BrowserToolsResponsePayload, { ok: true }>,
-      field: "resultJson",
-      spentText: '"Save"',
-    },
-  ])(
-    "$name spends its payload in the model-visible text only, never twice",
-    async ({ toolName, input, payload, field, spentText }) => {
-      const harness = new BrowserToolHarness();
-      harness.broker.setResponse(payload);
-
-      const response = await harness.execute(toolName, input);
-
-      expect(response.content[0]).toMatchObject({ type: "text" });
-      expect((response.content[0] as { text: string }).text).toContain(spentText);
-      expect(
-        (response.structuredContent as { result: Record<string, unknown> }).result,
-      ).not.toHaveProperty(field);
-    },
-  );
 
   test.each(routedToolCases)(
     "$name routes browser id in command args and workspace id in the envelope",
@@ -1169,255 +813,6 @@ describe("registerBrowserTools", () => {
       });
     },
   );
-
-  test("screenshot with ref captures the element through screenshot_element", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse({
-      requestId: "req-screenshot-element",
-      ok: true,
-      result: {
-        command: "screenshot_element",
-        browserId: BROWSER_ID,
-        ref: "@e2",
-        mimeType: "image/png",
-        dataBase64: "iVBORw0KGgo=",
-        width: 648,
-        height: 348,
-        scale: 3,
-      },
-    });
-
-    const response = await harness.execute("browser_screenshot", {
-      browserId: BROWSER_ID,
-      ref: "@e2",
-    });
-
-    expect(harness.broker.calls.map((call) => call.command)).toEqual([
-      { command: "screenshot_element", args: { browserId: BROWSER_ID, ref: "@e2" } },
-    ]);
-    expect(response.content).toEqual([
-      { type: "text", text: "Captured element @e2 (648x348) at 3x zoom." },
-      { type: "image", data: "iVBORw0KGgo=", mimeType: "image/png" },
-    ]);
-    expect(response.structuredContent).toMatchObject({
-      ok: true,
-      result: {
-        command: "screenshot_element",
-        ref: "@e2",
-        width: 648,
-        height: 348,
-        scale: 3,
-      },
-    });
-    expect(
-      (response.structuredContent as { result: Record<string, unknown> }).result.dataBase64,
-    ).toBeUndefined();
-  });
-
-  test("screenshot rejects ref combined with fullPage", async () => {
-    const harness = new BrowserToolHarness();
-
-    const response = await harness.execute("browser_screenshot", {
-      browserId: BROWSER_ID,
-      ref: "@e2",
-      fullPage: true,
-    });
-
-    expect(harness.broker.calls).toEqual([]);
-    expect(response.structuredContent).toMatchObject({
-      ok: false,
-      error: {
-        message:
-          "browser_screenshot captures either an element (ref) or the page (fullPage) - not both.",
-      },
-    });
-  });
-
-  test("screenshot warns when a page was captured below legible scale", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse({
-      requestId: "req-screenshot",
-      ok: true,
-      result: {
-        command: "screenshot",
-        browserId: BROWSER_ID,
-        mimeType: "image/png",
-        dataBase64: "iVBORw0KGgo=",
-        width: 157,
-        height: 1568,
-        scale: 0.196,
-      },
-    });
-
-    const response = await harness.execute("browser_screenshot", {
-      browserId: BROWSER_ID,
-      fullPage: true,
-    });
-
-    expect(response.content[0]).toEqual({
-      type: "text",
-      text:
-        "Captured browser screenshot (157x1568). The page was captured at 20% scale to fit - small text may be unreadable. " +
-        "For readable detail, take viewport screenshots with browser_scroll between them, or pass ref to zoom into one element.",
-    });
-  });
-
-  test("resize expands presets to their viewport dimensions", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse({
-      requestId: "req-resize",
-      ok: true,
-      result: { command: "resize", browserId: BROWSER_ID, width: 375, height: 812 },
-    });
-
-    const response = await harness.execute("browser_resize", {
-      browserId: BROWSER_ID,
-      preset: "mobile",
-    });
-
-    expect(harness.broker.calls).toEqual([
-      {
-        agentId: "agent-1",
-        cwd: "/repo",
-        workspaceId: "wks_workspace_a",
-        command: {
-          command: "resize",
-          args: { browserId: BROWSER_ID, width: 375, height: 812 },
-        },
-      },
-    ]);
-    expect(response.content).toEqual([
-      { type: "text", text: "Resized browser viewport to 375x812." },
-    ]);
-  });
-
-  test("resize with colorScheme only emulates without resizing", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.setResponse({
-      requestId: "req-color-scheme",
-      ok: true,
-      result: { command: "set_color_scheme", browserId: BROWSER_ID, colorScheme: "dark" },
-    });
-
-    const response = await harness.execute("browser_resize", {
-      browserId: BROWSER_ID,
-      colorScheme: "dark",
-    });
-
-    expect(harness.broker.calls).toEqual([
-      {
-        agentId: "agent-1",
-        cwd: "/repo",
-        workspaceId: "wks_workspace_a",
-        command: {
-          command: "set_color_scheme",
-          args: { browserId: BROWSER_ID, colorScheme: "dark" },
-        },
-      },
-    ]);
-    expect(response.content).toEqual([
-      { type: "text", text: "Emulated prefers-color-scheme: dark." },
-    ]);
-  });
-
-  test("resize with preset and colorScheme issues both commands and notes the scheme", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.queueResponses(
-      {
-        requestId: "req-resize",
-        ok: true,
-        result: { command: "resize", browserId: BROWSER_ID, width: 768, height: 1024 },
-      },
-      {
-        requestId: "req-color-scheme",
-        ok: true,
-        result: { command: "set_color_scheme", browserId: BROWSER_ID, colorScheme: "dark" },
-      },
-    );
-
-    const response = await harness.execute("browser_resize", {
-      browserId: BROWSER_ID,
-      preset: "tablet",
-      colorScheme: "dark",
-    });
-
-    expect(harness.broker.calls.map((call) => call.command)).toEqual([
-      { command: "resize", args: { browserId: BROWSER_ID, width: 768, height: 1024 } },
-      { command: "set_color_scheme", args: { browserId: BROWSER_ID, colorScheme: "dark" } },
-    ]);
-    expect(response.content).toEqual([
-      {
-        type: "text",
-        text: "Resized browser viewport to 768x1024.\nEmulated prefers-color-scheme: dark.",
-      },
-    ]);
-  });
-
-  test("resize reports the partial state when color-scheme emulation fails after resizing", async () => {
-    const harness = new BrowserToolHarness();
-    harness.broker.queueResponses(
-      {
-        requestId: "req-resize",
-        ok: true,
-        result: { command: "resize", browserId: BROWSER_ID, width: 375, height: 812 },
-      },
-      {
-        requestId: "req-color-scheme",
-        ok: false,
-        error: {
-          code: "browser_unsupported",
-          message:
-            'Browser automation command "set_color_scheme" is not supported by the desktop app.',
-          retryable: false,
-        },
-      },
-    );
-
-    const response = await harness.execute("browser_resize", {
-      browserId: BROWSER_ID,
-      preset: "mobile",
-      colorScheme: "dark",
-    });
-
-    expect(response.structuredContent).toMatchObject({
-      ok: false,
-      error: {
-        code: "browser_unsupported",
-        message:
-          'Viewport resized to 375x812, but color-scheme emulation failed: Browser automation command "set_color_scheme" is not supported by the desktop app.',
-      },
-    });
-  });
-
-  test("resize rejects width without height", async () => {
-    const harness = new BrowserToolHarness();
-
-    const response = await harness.execute("browser_resize", {
-      browserId: BROWSER_ID,
-      width: 1024,
-    });
-
-    expect(harness.broker.calls).toEqual([]);
-    expect(response.structuredContent).toMatchObject({
-      ok: false,
-      error: { message: "browser_resize needs width and height together - or use a preset." },
-    });
-  });
-
-  test("resize rejects calls with no dimensions and no color scheme", async () => {
-    const harness = new BrowserToolHarness();
-
-    const response = await harness.execute("browser_resize", { browserId: BROWSER_ID });
-
-    expect(harness.broker.calls).toEqual([]);
-    expect(response.structuredContent).toMatchObject({
-      ok: false,
-      error: {
-        message:
-          "browser_resize requires a preset, an explicit width and height, or a colorScheme.",
-      },
-    });
-  });
 
   test.each(brokerErrorCases)(
     "$name keep broker error summaries model-actionable",
@@ -1585,251 +980,6 @@ describe("registerBrowserTools", () => {
     expect(response.content).toEqual([{ type: "text", text: "Browser wait matched text." }]);
   });
 
-  describe("preview server tab enforcement", () => {
-    const PREVIEW_TAB_ID = "22222222-2222-4222-8222-222222222222";
-
-    function previewServer(overrides: Partial<PreviewServerSummary> = {}): PreviewServerSummary {
-      return {
-        serverId: "srv-1",
-        name: "forge-preview",
-        cwd: "/repo",
-        port: 8202,
-        url: "http://127.0.0.1:8202/",
-        status: "running",
-        pid: 4321,
-        exitCode: null,
-        boundBrowserId: PREVIEW_TAB_ID,
-        ...overrides,
-      };
-    }
-
-    function harnessWith(servers: PreviewServerSummary[]): BrowserToolHarness {
-      return new BrowserToolHarness(
-        { id: "agent-1", cwd: "/repo", workspaceId: "wks_workspace_a" },
-        "agent-1",
-        servers,
-      );
-    }
-
-    test("new tab to a preview server URL is redirected to the bound tab", async () => {
-      const harness = harnessWith([previewServer()]);
-
-      const response = await harness.execute("browser_new_tab", { url: "http://127.0.0.1:8202/" });
-
-      expect(harness.broker.calls).toEqual([]);
-      expect(response.structuredContent).toMatchObject({
-        ok: false,
-        error: {
-          code: "browser_denied",
-          message: expect.stringContaining(`browserId=${PREVIEW_TAB_ID}`),
-          retryable: false,
-        },
-      });
-    });
-
-    test("new tab matches localhost spelling against a 127.0.0.1 server", async () => {
-      const harness = harnessWith([previewServer()]);
-
-      const response = await harness.execute("browser_new_tab", { url: "localhost:8202" });
-
-      expect(harness.broker.calls).toEqual([]);
-      expect(response.structuredContent).toMatchObject({
-        ok: false,
-        error: { code: "browser_denied" },
-      });
-    });
-
-    test.each(["browser_new_tab", "browser_navigate"])(
-      "%s enforces the configured proxy origin independently of the process port",
-      async (tool) => {
-        const harness = harnessWith([previewServer({ url: "https://preview.example.test/app" })]);
-        const response = await harness.execute(tool, {
-          browserId: BROWSER_ID,
-          url: "https://preview.example.test/another-page",
-        });
-        expect(harness.broker.calls).toEqual([]);
-        expect(response.structuredContent).toMatchObject({
-          ok: false,
-          error: {
-            code: "browser_denied",
-            message: expect.stringContaining(`browserId=${PREVIEW_TAB_ID}`),
-          },
-        });
-      },
-    );
-
-    test("a custom destination still protects the local process port", async () => {
-      const harness = harnessWith([previewServer({ url: "https://preview.example.test/app" })]);
-      const response = await harness.execute("browser_new_tab", { url: "http://localhost:8202/" });
-      expect(harness.broker.calls).toEqual([]);
-      expect(response.structuredContent).toMatchObject({
-        ok: false,
-        error: { code: "browser_denied" },
-      });
-    });
-
-    test("another host on the configured URL's port opens normally", async () => {
-      const harness = harnessWith([previewServer({ url: "https://preview.example.test/app" })]);
-      harness.broker.setResponse(newTabPayload());
-      const response = await harness.execute("browser_new_tab", { url: "https://example.com/" });
-      expect(harness.broker.calls).toHaveLength(1);
-      expect(response.structuredContent).toMatchObject({ ok: true });
-    });
-
-    test("new tab to a preview server without a bound tab points at preview_start", async () => {
-      const harness = harnessWith([previewServer({ boundBrowserId: null })]);
-
-      const response = await harness.execute("browser_new_tab", { url: "http://127.0.0.1:8202/" });
-
-      expect(harness.broker.calls).toEqual([]);
-      expect(response.structuredContent).toMatchObject({
-        ok: false,
-        error: {
-          code: "browser_denied",
-          message: expect.stringContaining('preview_start with name "forge-preview"'),
-        },
-      });
-    });
-
-    test("navigating another tab to a preview server URL is redirected", async () => {
-      const harness = harnessWith([previewServer()]);
-
-      const response = await harness.execute("browser_navigate", {
-        browserId: BROWSER_ID,
-        url: "http://localhost:8202/page",
-      });
-
-      expect(harness.broker.calls).toEqual([]);
-      expect(response.structuredContent).toMatchObject({
-        ok: false,
-        error: {
-          code: "browser_denied",
-          message: expect.stringContaining(`browserId=${PREVIEW_TAB_ID}`),
-        },
-      });
-    });
-
-    test("navigating the bound preview tab to its server is allowed", async () => {
-      const harness = harnessWith([previewServer()]);
-      harness.broker.setResponse({
-        requestId: "req-navigate",
-        ok: true,
-        result: { command: "navigate", browserId: PREVIEW_TAB_ID, url: "http://127.0.0.1:8202/" },
-      });
-
-      const response = await harness.execute("browser_navigate", {
-        browserId: PREVIEW_TAB_ID,
-        url: "http://127.0.0.1:8202/",
-      });
-
-      expect(harness.broker.calls).toHaveLength(1);
-      expect(response.structuredContent).toMatchObject({ ok: true });
-    });
-
-    test("exited preview servers do not block their old URL", async () => {
-      const harness = harnessWith([previewServer({ status: "exited" })]);
-      harness.broker.setResponse(newTabPayload());
-
-      const response = await harness.execute("browser_new_tab", { url: "http://127.0.0.1:8202/" });
-
-      expect(harness.broker.calls).toHaveLength(1);
-      expect(response.structuredContent).toMatchObject({ ok: true });
-    });
-
-    test("non-preview URLs open new tabs normally", async () => {
-      const harness = harnessWith([previewServer()]);
-      harness.broker.setResponse(newTabPayload());
-
-      const response = await harness.execute("browser_new_tab", { url: "https://example.com" });
-
-      expect(harness.broker.calls).toHaveLength(1);
-      expect(response.structuredContent).toMatchObject({ ok: true });
-    });
-
-    test("preview servers in another cwd do not block the URL", async () => {
-      const harness = harnessWith([previewServer({ cwd: "/other-repo" })]);
-      harness.broker.setResponse(newTabPayload());
-
-      const response = await harness.execute("browser_new_tab", { url: "http://127.0.0.1:8202/" });
-
-      expect(harness.broker.calls).toHaveLength(1);
-      expect(response.structuredContent).toMatchObject({ ok: true });
-    });
-  });
-
-  describe("navigation SSRF screen", () => {
-    test("navigate to the cloud metadata endpoint is blocked before the broker", async () => {
-      const harness = new BrowserToolHarness();
-
-      const response = await harness.execute("browser_navigate", {
-        browserId: BROWSER_ID,
-        url: "http://169.254.169.254/latest/meta-data/",
-      });
-
-      expect(harness.broker.calls).toEqual([]);
-      expect(response.structuredContent).toMatchObject({
-        ok: false,
-        error: {
-          code: "browser_denied",
-          message: expect.stringContaining("restricted network range"),
-          retryable: false,
-        },
-      });
-    });
-
-    test("new tab to a link-local URL is blocked before the broker", async () => {
-      const harness = new BrowserToolHarness();
-
-      const response = await harness.execute("browser_new_tab", {
-        url: "http://169.254.169.254/",
-      });
-
-      expect(harness.broker.calls).toEqual([]);
-      expect(response.structuredContent).toMatchObject({
-        ok: false,
-        error: { code: "browser_denied" },
-      });
-    });
-
-    test("navigate to a hostname resolving to a blocked address is blocked", async () => {
-      const harness = new BrowserToolHarness();
-
-      const response = await harness.execute("browser_navigate", {
-        browserId: BROWSER_ID,
-        url: "http://rebind.example/creds",
-      });
-
-      expect(harness.broker.calls).toEqual([]);
-      expect(response.structuredContent).toMatchObject({
-        ok: false,
-        error: {
-          code: "browser_denied",
-          message: expect.stringContaining("resolved to 169.254.169.254"),
-        },
-      });
-    });
-
-    test("loopback and private-LAN destinations still navigate", async () => {
-      const harness = new BrowserToolHarness();
-      harness.broker.setResponse({
-        requestId: "req-navigate",
-        ok: true,
-        result: { command: "navigate", browserId: BROWSER_ID, url: "http://127.0.0.1:4321/" },
-      });
-
-      await harness.execute("browser_navigate", {
-        browserId: BROWSER_ID,
-        url: "http://127.0.0.1:4321/",
-      });
-      await harness.execute("browser_navigate", {
-        browserId: BROWSER_ID,
-        url: "http://192.168.1.50:8080/",
-      });
-
-      expect(harness.broker.calls).toHaveLength(2);
-    });
-  });
-
   test("tab tools keep empty context when there is no caller agent", async () => {
     const harness = new BrowserToolHarness(null, null);
     harness.broker.setResponse(snapshotPayload());
@@ -1839,13 +989,9 @@ describe("registerBrowserTools", () => {
     expect(harness.broker.calls).toEqual([
       { command: { command: "snapshot", args: { browserId: BROWSER_ID } } },
     ]);
-    const { snapshot: _snapshot, ...structuredResult } = snapshotPayload().result as Extract<
-      Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
-      { command: "snapshot" }
-    >;
     expect(response.structuredContent).toEqual({
       ok: true,
-      result: structuredResult,
+      result: snapshotPayload().result,
       context: { browserId: BROWSER_ID },
     });
   });

@@ -4,12 +4,13 @@ import net from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { withDisabledE2ESpeechEnv } from "./speech-env";
-import { killProcessTree as stopProcess, spawnTsx } from "./spawn-node";
+import { stopFixtureDaemon } from "./otto-stop-fixture"; // OTTO(dev-shutdown)
+import { killProcessTree, spawnTsx } from "./spawn-node";
 
 export interface IsolatedHostDaemon {
   serverId: string;
   port: number;
-  ottoHome: string;
+  paseoHome: string;
   getPid(): number | undefined;
   restart(): Promise<void>;
   close(): Promise<void>;
@@ -21,7 +22,7 @@ export interface IsolatedHostDaemonOptions {
     enabled: boolean;
     endpoint?: string;
   };
-  ottoHome?: string;
+  paseoHome?: string;
   preserveHome?: boolean;
   publishedVersion?: string;
 }
@@ -41,13 +42,22 @@ async function getAvailablePort(): Promise<number> {
   });
 }
 
+export async function getAvailableHostDaemonPort(): Promise<number> {
+  const primaryPort = Number(process.env.E2E_DAEMON_PORT ?? 0);
+  let port = await getAvailablePort();
+  while (port === 6767 || port === 6768 || port === primaryPort) port = await getAvailablePort();
+  return port;
+}
+
 async function waitForServer(port: number, child: ChildProcess): Promise<void> {
-  const deadline = Date.now() + 20_000;
+  const deadline = Date.now() + 90_000;
   let lastError: unknown = null;
 
   while (Date.now() < deadline) {
-    if (child.exitCode !== null) {
-      throw new Error(`Isolated host daemon exited before listening (exit ${child.exitCode})`);
+    if (child.exitCode !== null || child.signalCode !== null) {
+      throw new Error(
+        `Isolated host daemon exited before listening (code ${String(child.exitCode)}, signal ${String(child.signalCode)})`,
+      );
     }
     try {
       await new Promise<void>((resolve, reject) => {
@@ -79,36 +89,43 @@ export async function startIsolatedHostDaemon(
   serverId: string,
   options: IsolatedHostDaemonOptions = {},
 ): Promise<IsolatedHostDaemon> {
-  const primaryPort = Number(process.env.E2E_DAEMON_PORT ?? 0);
-  let port = await getAvailablePort();
-  while (port === 6868 || port === primaryPort) port = await getAvailablePort();
+  const port = await getAvailableHostDaemonPort();
 
   const metroPort = process.env.E2E_METRO_PORT;
   if (!metroPort) throw new Error("E2E_METRO_PORT is required to start an isolated host daemon");
 
-  const ottoHome =
-    options.ottoHome ?? (await mkdtemp(path.join(tmpdir(), "otto-e2e-secondary-host-")));
+  const paseoHome =
+    options.paseoHome ?? (await mkdtemp(path.join(tmpdir(), "paseo-e2e-secondary-host-")));
   let publishedPackageRoot: string | null = null;
   if (options.publishedVersion) {
-    publishedPackageRoot = await mkdtemp(path.join(tmpdir(), "otto-e2e-published-server-"));
+    publishedPackageRoot = await mkdtemp(path.join(tmpdir(), "paseo-e2e-published-server-"));
     await writeFile(
       path.join(publishedPackageRoot, "package.json"),
       `${JSON.stringify({ private: true })}\n`,
     );
-    const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
     try {
+      const npmCli = process.env.npm_execpath;
+      if (!npmCli || path.basename(npmCli).toLowerCase() !== "npm-cli.js") {
+        throw new Error(
+          "Published-version E2E requires npm_execpath from npm. Start it through `npm run test:e2e`.",
+        );
+      }
       execFileSync(
-        npmCommand,
+        process.execPath,
         [
+          npmCli,
           "install",
           "--no-audit",
           "--no-fund",
           "--no-package-lock",
-          `@otto-code/server@${options.publishedVersion}`,
+          `@getpaseo/server@${options.publishedVersion}`,
         ],
-        { cwd: publishedPackageRoot, stdio: "pipe" },
+        { cwd: publishedPackageRoot, stdio: "ignore" },
       );
     } catch (error) {
+      if (!options.preserveHome) {
+        await rm(paseoHome, { recursive: true, force: true });
+      }
       await rm(publishedPackageRoot, { recursive: true, force: true });
       throw error;
     }
@@ -118,7 +135,7 @@ export async function startIsolatedHostDaemon(
       options.mutableRelay.endpoint ??
       (process.env.E2E_RELAY_PORT ? `127.0.0.1:${process.env.E2E_RELAY_PORT}` : "127.0.0.1:9");
     await writeFile(
-      path.join(ottoHome, "config.json"),
+      path.join(paseoHome, "config.json"),
       `${JSON.stringify({
         version: 1,
         daemon: {
@@ -134,7 +151,7 @@ export async function startIsolatedHostDaemon(
     );
   }
   const serverDir = publishedPackageRoot
-    ? path.join(publishedPackageRoot, "node_modules", "@otto-code", "server")
+    ? path.join(publishedPackageRoot, "node_modules", "@getpaseo", "server")
     : path.resolve(__dirname, "../../../../server");
   const spawnDaemon = async (): Promise<ChildProcess> => {
     const spawnOptions: SpawnOptions = {
@@ -142,17 +159,12 @@ export async function startIsolatedHostDaemon(
       env: withDisabledE2ESpeechEnv({
         ...process.env,
         ...options.environment,
-        OTTO_HOME: ottoHome,
-        // The dev supervisor spawns the server worker with --inspect by default; a
-        // second worker on the same runner then logs "inspector on 127.0.0.1:9229
-        // failed: address already in use". Harmless, but disable it so E2E daemon
-        // logs stay clean and no debugger port is opened in CI.
-        OTTO_NODE_INSPECT: "0",
-        OTTO_SERVER_ID: serverId,
-        OTTO_LISTEN: `127.0.0.1:${port}`,
-        OTTO_CORS_ORIGINS: `http://localhost:${metroPort}`,
-        OTTO_RELAY_ENABLED: options.mutableRelay ? undefined : "0",
-        OTTO_NODE_ENV: "development",
+        PASEO_HOME: paseoHome,
+        PASEO_SERVER_ID: serverId,
+        PASEO_LISTEN: `127.0.0.1:${port}`,
+        PASEO_CORS_ORIGINS: `http://localhost:${metroPort}`,
+        PASEO_RELAY_ENABLED: options.mutableRelay ? undefined : "0",
+        PASEO_NODE_ENV: "development",
         NODE_ENV: "development",
       }),
       stdio: ["ignore", "ignore", "pipe"],
@@ -172,7 +184,7 @@ export async function startIsolatedHostDaemon(
       await waitForServer(port, child);
       return child;
     } catch (error) {
-      await stopProcess(child);
+      await killProcessTree(child);
       throw new Error(
         `${error instanceof Error ? error.message : String(error)}\nDaemon stderr:\n${stderr}`,
         { cause: error },
@@ -185,7 +197,7 @@ export async function startIsolatedHostDaemon(
     child = await spawnDaemon();
   } catch (error) {
     if (!options.preserveHome) {
-      await rm(ottoHome, { recursive: true, force: true });
+      await rm(paseoHome, { recursive: true, force: true });
     }
     if (publishedPackageRoot) {
       await rm(publishedPackageRoot, { recursive: true, force: true });
@@ -197,19 +209,19 @@ export async function startIsolatedHostDaemon(
   return {
     serverId,
     port,
-    ottoHome,
+    paseoHome,
     getPid: () => child.pid,
     restart: async () => {
       if (closed) throw new Error(`Cannot restart closed isolated daemon ${serverId}`);
-      await stopProcess(child);
+      await killProcessTree(child);
       child = await spawnDaemon();
     },
     close: async () => {
       if (closed) return;
       closed = true;
-      await stopProcess(child);
+      await stopFixtureDaemon(child, serverId, port); // OTTO(dev-shutdown): only the owned test home.
       if (!options.preserveHome) {
-        await rm(ottoHome, { recursive: true, force: true, maxRetries: 5 });
+        await rm(paseoHome, { recursive: true, force: true });
       }
       if (publishedPackageRoot) {
         await rm(publishedPackageRoot, { recursive: true, force: true });

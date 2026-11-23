@@ -1,5 +1,5 @@
 {
-  "name": "@otto-code/expo-two-way-audio",
+  "name": "@getpaseo/expo-two-way-audio",
   "version": "0.9.35",
   "description": "Native module for two way audio streaming",
   "keywords": [
@@ -8,17 +8,13 @@
     "expo-two-way-audio",
     "react-native"
   ],
-  "homepage": "https://github.com/Draek2077/otto-code/tree/main/packages/expo-two-way-audio",
+  "homepage": "https://github.com/boudra/expo-two-way-audio",
   "bugs": {
-    "url": "https://github.com/Draek2077/otto-code/issues"
+    "url": "https://github.com/speechmatics/expo-two-way-audio/issues"
   },
   "license": "MIT",
   "author": "Speechmatics <devrel@speechmatics.com> (https://github.com/speechmatics)",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Draek2077/otto-code.git",
-    "directory": "packages/expo-two-way-audio"
-  },
+  "repository": "https://github.com/boudra/expo-two-way-audio",
   "main": "build/index.js",
   "types": "build/index.d.ts",
   "scripts": {
@@ -26,7 +22,7 @@
     "clean": "expo-module clean",
     "dev": "expo-module build",
     "lint": "expo-module lint",
-    "test": "node -e \"process.exit(0)\" && echo \"no tests\"",
+    "test": "expo-module test",
     "format": "oxfmt --check .",
     "format:fix": "oxfmt .",
     "typecheck": "tsgo --noEmit",

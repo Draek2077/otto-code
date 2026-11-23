@@ -15,7 +15,7 @@ import {
   WORKSPACE_LABEL_COLORS,
   type WorkspaceLabelColor,
   type WorkspaceLabelDefinition,
-} from "@otto-code/protocol/workspace-labels";
+} from "@getpaseo/protocol/workspace-labels";
 import {
   MenuHint,
   MenuItem,
@@ -131,6 +131,7 @@ function WorkspaceLabelPickerPage({
   }, [assignedLabels, host?.status, labels, model]);
   const snapshot = useSyncExternalStore(model.subscribe, model.snapshot, model.snapshot);
   const offline = !snapshot.online;
+  const error = snapshot.error ?? (host?.error ? t("workspaceLabels.errors.load") : null);
   const pending = useMemo(() => new Set(snapshot.pendingNames), [snapshot.pendingNames]);
   const toggle = useCallback(
     (label: WorkspaceLabelDefinition, assigned: boolean) => {
@@ -159,9 +160,7 @@ function WorkspaceLabelPickerPage({
       >
         {t("workspaceLabels.create")}
       </MenuSubTrigger>
-      {snapshot.error ? (
-        <MenuHint testID="workspace-label-picker-error">{snapshot.error}</MenuHint>
-      ) : null}
+      {error ? <MenuHint testID="workspace-label-picker-error">{error}</MenuHint> : null}
       {host?.status === "unsupported" ? (
         <MenuHint>{t("workspaceLabels.updateHostUse")}</MenuHint>
       ) : null}

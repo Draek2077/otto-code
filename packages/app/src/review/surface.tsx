@@ -1,13 +1,18 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Pencil, Plus, Trash2 } from "@/components/icons/material-icons";
+import { Pencil, Plus, Trash2 } from "lucide-react-native";
 import {
   Pressable,
-  type GestureResponderEvent,
   type PressableStateCallbackType,
   Text,
-  TextInput,
   type TextStyle,
   View,
   type StyleProp,
@@ -15,28 +20,32 @@ import {
 } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
-import { Shortcut } from "@/components/ui/shortcut";
+import {
+  EditingTextInput as TextInput,
+  type EditingTextInputHandle,
+} from "@/components/ui/text-input";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { createReviewEditorScope } from "./editor";
 import { isWeb } from "@/constants/platform";
-import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import type { Theme } from "@/styles/theme";
-import type { ShortcutKey } from "@/utils/format-shortcut";
-import { useWorkspaceFocusRestoration } from "@/workspace/focus";
-import { useReviewDraftComments, useReviewDraftStore, type ReviewDraftComment } from "./store";
+import {
+  useReviewDraftComments,
+  useReviewDraftStore,
+  saveReviewDraftComment,
+  type ReviewDraftComment,
+} from "./store";
 import { buildReviewableDiffTargetKey, type ReviewableDiffTarget } from "@/utils/diff-layout";
 import {
   INLINE_REVIEW_EDITOR_HEIGHT,
+  INLINE_REVIEW_GAP,
+  INLINE_REVIEW_VERTICAL_PADDING,
   isInlineReviewEditorForTarget,
   type InlineReviewActions,
   type InlineReviewEditorState,
 } from "./geometry";
 
 type PressableState = PressableStateCallbackType & { hovered?: boolean };
-type WebTextInputRef = TextInput & {
-  getNativeElement?: () => unknown;
-  getNativeRef?: () => unknown;
-};
-
 function iconButtonStyle({ hovered, pressed }: PressableState): StyleProp<ViewStyle> {
   return [styles.iconButton, (hovered || pressed) && styles.iconButtonHovered];
 }
@@ -45,21 +54,15 @@ function iconButtonDestructiveStyle({ hovered, pressed }: PressableState): Style
   return [styles.iconButton, (hovered || pressed) && styles.iconButtonDestructiveHovered];
 }
 
-function getWebTextInputElement(input: TextInput | null): HTMLElement | null {
+function getWebTextInputElement(input: EditingTextInputHandle | null): HTMLElement | null {
   if (!isWeb || typeof HTMLElement === "undefined" || !input) {
     return null;
   }
-  const webInput = input as WebTextInputRef;
-  const element = webInput.getNativeElement?.() ?? webInput.getNativeRef?.() ?? input;
+  const element = input.getNativeRef();
   return element instanceof HTMLElement ? element : null;
 }
 
-const INLINE_REVIEW_GAP = 6;
 export const SMALL_ACTION_HIT_SLOP = 8;
-const GUTTER_ACTION_ICON_SIZE = 22;
-const GUTTER_ACTION_GLYPH_SIZE = 16;
-const REVIEW_CANCEL_SHORTCUT_KEYS: ShortcutKey[] = ["Esc"];
-const REVIEW_SAVE_SHORTCUT_KEYS: ShortcutKey[] = ["mod", "Enter"];
 const foregroundMutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const destructiveIconColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 const accentForegroundIconColorMapping = (theme: Theme) => ({
@@ -68,6 +71,35 @@ const accentForegroundIconColorMapping = (theme: Theme) => ({
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedTrash2 = withUnistyles(Trash2);
+
+function InlineReviewAddIcon({ style, testID }: { style?: StyleProp<ViewStyle>; testID?: string }) {
+  return (
+    <View style={[styles.gutterActionVisual, style]} testID={testID}>
+      <ThemedPlus size={16} strokeWidth={2.4} uniProps={accentForegroundIconColorMapping} />
+    </View>
+  );
+}
+
+export function InlineReviewAddButton({
+  onPress,
+  style,
+}: {
+  onPress: () => void;
+  style?: StyleProp<ViewStyle>;
+}) {
+  const { t } = useTranslation();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={t("review.comment.add")}
+      hitSlop={SMALL_ACTION_HIT_SLOP}
+      onPress={onPress}
+      style={[styles.gutterActionVisual, style]}
+    >
+      <ThemedPlus size={16} strokeWidth={2.4} uniProps={accentForegroundIconColorMapping} />
+    </Pressable>
+  );
+}
 
 export function groupInlineReviewCommentsByTarget(
   comments: readonly ReviewDraftComment[],
@@ -80,100 +112,43 @@ export function groupInlineReviewCommentsByTarget(
   return grouped;
 }
 
-export function useInlineReviewController(input: { reviewDraftKey: string }): InlineReviewActions {
+const reviewEditors = createReviewEditorScope({
+  saveComment: saveReviewDraftComment,
+  deleteComment: (input) => useReviewDraftStore.getState().deleteComment(input),
+});
+
+export function useInlineReviewController(input: {
+  reviewDraftKey: string;
+  presentation?: string;
+}): InlineReviewActions & {
+  sheetEditor: InlineReviewEditorState | null;
+  onChangeEditorBody: (body: string) => void;
+} {
+  const isCompact = useIsCompactFormFactor();
   const reviewComments = useReviewDraftComments(input.reviewDraftKey);
   const commentsByTarget = useMemo(
     () => groupInlineReviewCommentsByTarget(reviewComments),
     [reviewComments],
   );
-  const [editor, setEditor] = useState<InlineReviewEditorState | null>(null);
-  const addComment = useReviewDraftStore((state) => state.addComment);
-  const updateComment = useReviewDraftStore((state) => state.updateComment);
-  const deleteComment = useReviewDraftStore((state) => state.deleteComment);
-
-  useEffect(() => {
-    setEditor(null);
-  }, [input.reviewDraftKey]);
-
-  const handleStartComment = useCallback((target: ReviewableDiffTarget) => {
-    setEditor({ target, commentId: null, body: "" });
-  }, []);
-
-  const handleEditComment = useCallback(
-    (target: ReviewableDiffTarget, comment: ReviewDraftComment) => {
-      setEditor({ target, commentId: comment.id, body: comment.body });
-    },
-    [],
+  const model = useMemo(
+    () => reviewEditors.forDraft(input.reviewDraftKey, input.presentation ?? "diff"),
+    [input.reviewDraftKey, input.presentation],
   );
-
-  const handleCancelEditor = useCallback(() => {
-    setEditor(null);
-  }, []);
-
-  const handleSaveEditor = useCallback(
-    (body: string) => {
-      const trimmedBody = body.trim();
-      if (!editor || trimmedBody.length === 0) {
-        return;
-      }
-
-      if (editor.commentId) {
-        updateComment({
-          key: input.reviewDraftKey,
-          id: editor.commentId,
-          updates: { body: trimmedBody },
-        });
-      } else {
-        addComment({
-          key: input.reviewDraftKey,
-          comment: {
-            filePath: editor.target.filePath,
-            side: editor.target.side,
-            lineNumber: editor.target.lineNumber,
-            body: trimmedBody,
-          },
-        });
-      }
-      setEditor(null);
-    },
-    [addComment, editor, input.reviewDraftKey, updateComment],
-  );
-
-  const handleDeleteComment = useCallback(
-    (id: string) => {
-      deleteComment({ key: input.reviewDraftKey, id });
-      setEditor((current) => (current?.commentId === id ? null : current));
-    },
-    [deleteComment, input.reviewDraftKey],
-  );
-
-  return useMemo<InlineReviewActions>(
+  const editor = useSyncExternalStore(model.subscribe, model.getState, model.getState);
+  return useMemo(
     () => ({
       commentsByTarget,
-      editor,
-      onStartComment: handleStartComment,
-      onEditComment: handleEditComment,
-      onCancelEditor: handleCancelEditor,
-      onSaveEditor: handleSaveEditor,
-      onDeleteComment: handleDeleteComment,
+      editor: isCompact ? null : editor,
+      sheetEditor: isCompact ? editor : null,
+      onChangeEditorBody: model.setBody,
+      onStartComment: model.start,
+      onEditComment: model.edit,
+      onCancelEditor: model.cancel,
+      onSaveEditor: model.save,
+      onDeleteComment: model.delete,
     }),
-    [
-      commentsByTarget,
-      editor,
-      handleCancelEditor,
-      handleDeleteComment,
-      handleEditComment,
-      handleSaveEditor,
-      handleStartComment,
-    ],
+    [commentsByTarget, editor, isCompact, model],
   );
-}
-
-export function getInlineReviewThreadHeight(
-  reservedHeight: number,
-  measuredContentHeight: number,
-): number {
-  return Math.max(reservedHeight, measuredContentHeight);
 }
 
 export function InlineReviewGutterCell({
@@ -251,26 +226,12 @@ export function InlineReviewGutterCell({
     () => [styles.gutterInner, lineHeightStyle],
     [lineHeightStyle],
   );
-  // Clamp to the row's own height so the button never overflows into a
-  // neighboring row - react-native-web gives every row its own stacking
-  // context, so an overflowing button can end up painted over by whichever
-  // adjacent row happens to come later in paint order.
-  const actionIconSize =
-    lineHeight !== undefined
-      ? Math.min(GUTTER_ACTION_ICON_SIZE, lineHeight)
-      : GUTTER_ACTION_ICON_SIZE;
-  const actionIconGlyphSize = Math.min(GUTTER_ACTION_GLYPH_SIZE, Math.max(actionIconSize - 6, 10));
   const actionIconStyle = useMemo<StyleProp<ViewStyle>>(
     () => [
       styles.gutterActionIcon,
-      lineHeight !== undefined &&
-        inlineUnistylesStyle({
-          width: actionIconSize,
-          height: actionIconSize,
-          top: Math.floor((lineHeight - actionIconSize) / 2),
-        }),
+      lineHeight !== undefined && inlineUnistylesStyle({ top: Math.floor((lineHeight - 22) / 2) }),
     ],
-    [actionIconSize, lineHeight],
+    [lineHeight],
   );
 
   return (
@@ -290,9 +251,7 @@ export function InlineReviewGutterCell({
         <View style={labelStyle}>
           {children}
           {showAction ? (
-            <View style={actionIconStyle} testID={actionTestID}>
-              <ThemedPlus size={actionIconGlyphSize} uniProps={accentForegroundIconColorMapping} />
-            </View>
+            <InlineReviewAddIcon style={actionIconStyle} testID={actionTestID} />
           ) : null}
         </View>
       </View>
@@ -304,18 +263,14 @@ export function InlineReviewThread({
   reviewTarget,
   reviewActions,
   height,
-  onHeightChange,
   viewportWidth,
-  viewportLeft,
   pinToViewport = false,
   testID,
 }: {
   reviewTarget: ReviewableDiffTarget;
   reviewActions: InlineReviewActions;
   height: number;
-  onHeightChange?: (height: number) => void;
   viewportWidth?: number;
-  viewportLeft?: number;
   pinToViewport?: boolean;
   testID?: string;
 }) {
@@ -326,22 +281,12 @@ export function InlineReviewThread({
   const editingCommentId = editor?.commentId ?? null;
   const editingExisting =
     editingCommentId !== null && comments.some((comment) => comment.id === editingCommentId);
-  const [measuredContentHeight, setMeasuredContentHeight] = useState(0);
-  const effectiveHeight = getInlineReviewThreadHeight(height, measuredContentHeight);
-  const handleContentLayout = useCallback(
-    (event: { nativeEvent: { layout: { height: number } } }) =>
-      setMeasuredContentHeight(event.nativeEvent.layout.height),
-    [],
-  );
-
-  useEffect(() => {
-    onHeightChange?.(effectiveHeight);
-  }, [effectiveHeight, onHeightChange]);
 
   const editorElement = editor ? (
     <InlineReviewEditor
       key={editingCommentId ?? "new"}
-      initialBody={editor.body}
+      body={editor.body}
+      onChangeBody={reviewActions.onChangeEditorBody}
       onCancel={reviewActions.onCancelEditor}
       onSave={reviewActions.onSaveEditor}
       testID="inline-review-editor"
@@ -351,31 +296,29 @@ export function InlineReviewThread({
   const containerStyle = useMemo<StyleProp<ViewStyle>>(
     () => [
       styles.threadContainer,
-      getInlineReviewThreadViewportStyle({ viewportWidth, viewportLeft, pinToViewport }),
-      inlineUnistylesStyle({ minHeight: effectiveHeight }),
+      getInlineReviewThreadViewportStyle({ viewportWidth, pinToViewport }),
+      inlineUnistylesStyle({ minHeight: height }),
     ],
-    [viewportWidth, viewportLeft, pinToViewport, effectiveHeight],
+    [viewportWidth, pinToViewport, height],
   );
 
   return (
     <View style={containerStyle} testID={testID}>
-      <View style={styles.threadContent} onLayout={handleContentLayout}>
-        {comments.map((comment) => {
-          if (comment.id === editingCommentId) {
-            return <React.Fragment key={comment.id}>{editorElement}</React.Fragment>;
-          }
-          return (
-            <CommentRow
-              key={comment.id}
-              comment={comment}
-              reviewTarget={reviewTarget}
-              onEditComment={reviewActions.onEditComment}
-              onDeleteComment={reviewActions.onDeleteComment}
-            />
-          );
-        })}
-        {editor && !editingExisting ? editorElement : null}
-      </View>
+      {comments.map((comment) => {
+        if (comment.id === editingCommentId) {
+          return <React.Fragment key={comment.id}>{editorElement}</React.Fragment>;
+        }
+        return (
+          <CommentRow
+            key={comment.id}
+            comment={comment}
+            reviewTarget={reviewTarget}
+            onEditComment={reviewActions.onEditComment}
+            onDeleteComment={reviewActions.onDeleteComment}
+          />
+        );
+      })}
+      {editor && !editingExisting ? editorElement : null}
     </View>
   );
 }
@@ -416,7 +359,7 @@ function CommentRow({
           onPress={handleEdit}
           style={iconButtonStyle}
         >
-          <ThemedPencil size="sm" uniProps={foregroundMutedIconColorMapping} />
+          <ThemedPencil size={14} uniProps={foregroundMutedIconColorMapping} />
         </Pressable>
         <Pressable
           accessibilityRole="button"
@@ -426,7 +369,7 @@ function CommentRow({
           onPress={handleDelete}
           style={iconButtonDestructiveStyle}
         >
-          <ThemedTrash2 size="sm" uniProps={destructiveIconColorMapping} />
+          <ThemedTrash2 size={14} uniProps={destructiveIconColorMapping} />
         </Pressable>
       </View>
     </View>
@@ -436,89 +379,49 @@ function CommentRow({
 export function getInlineReviewThreadViewportStyle({
   viewportWidth,
   pinToViewport,
-  viewportLeft = 0,
 }: {
   viewportWidth?: number;
   pinToViewport: boolean;
-  viewportLeft?: number;
 }): StyleProp<ViewStyle> {
   const widthStyle =
     viewportWidth && viewportWidth > 0 ? inlineUnistylesStyle({ width: viewportWidth }) : null;
   if (!pinToViewport || !isWeb) {
     return widthStyle;
   }
-  // The thread container is normally `flex: 1`, which stretches it to the full
-  // width of the code content. A sticky element only pins within the slack left
-  // by its own sizing, so once the container is as wide as the widest row there
-  // is no slack and the card slides off with the code. Hold the pinned container
-  // to its explicit viewport width so `left` actually has room to pin.
-  const stickyStyle = {
-    position: "sticky",
-    left: viewportLeft,
-    flexGrow: 0,
-    flexShrink: 0,
-    flexBasis: "auto",
-  } as unknown as ViewStyle;
+  const stickyStyle = { position: "sticky", left: 0 } as unknown as ViewStyle;
   return [stickyStyle, widthStyle];
 }
 
 export function InlineReviewEditor({
-  initialBody,
+  body,
+  onChangeBody,
   onCancel,
-  onDelete,
   onSave,
   testID,
 }: {
-  initialBody: string;
+  body: string;
+  onChangeBody: (body: string) => void;
   onCancel: () => void;
-  /** Optional because only some editor hosts own an already-saved comment. */
-  onDelete?: () => void;
   onSave: (body: string) => void;
   testID?: string;
 }) {
   const { t } = useTranslation();
-  const inputRef = useRef<TextInput | null>(null);
-  const focus = useWorkspaceFocusRestoration();
-  const canShowKeyboardHints = useHasFinePointer();
-  const [body, setBody] = useState(initialBody);
+  const inputRef = useRef<EditingTextInputHandle | null>(null);
   const [isFocused, setIsFocused] = useState(false);
   const trimmedBody = body.trim();
   const canSave = trimmedBody.length > 0;
-  const showKeyboardHints = isFocused && canShowKeyboardHints;
 
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
   const handleFocus = useCallback(() => {
-    focus.unfocus();
     setIsFocused(true);
-  }, [focus]);
+  }, []);
   const handleBlur = useCallback(() => {
     setIsFocused(false);
-    focus.restore();
-  }, [focus]);
+  }, []);
   const handleSave = useCallback(() => onSave(trimmedBody), [onSave, trimmedBody]);
-  const handleEditorActionPressIn = useCallback(
-    (event: GestureResponderEvent) => {
-      // A web action takes focus on pointer-down, before its click handler runs. That
-      // blurs the editor and restores the workspace pane, which can consume the first
-      // action click. The action does not need focus, so retain the editor focus until
-      // it finishes saving or deleting the comment.
-      if (isWeb && isFocused) {
-        event.preventDefault();
-      }
-    },
-    [isFocused],
-  );
-  const cancelShortcut = useMemo(
-    () => (showKeyboardHints ? <Shortcut keys={REVIEW_CANCEL_SHORTCUT_KEYS} /> : null),
-    [showKeyboardHints],
-  );
-  const saveShortcut = useMemo(
-    () => (showKeyboardHints ? <Shortcut keys={REVIEW_SAVE_SHORTCUT_KEYS} /> : null),
-    [showKeyboardHints],
-  );
 
   useEffect(() => {
     const element = getWebTextInputElement(inputRef.current);
@@ -568,26 +471,13 @@ export function InlineReviewEditor({
         placeholder={t("review.comment.placeholder")}
         placeholderTextColor={styles.placeholderColor.color}
         multiline
-        value={body}
-        onChangeText={setBody}
+        initialValue={body}
+        onChangeText={onChangeBody}
         onFocus={handleFocus}
         onBlur={handleBlur}
         style={inputStyle}
       />
       <View style={styles.editorActions}>
-        {onDelete ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t("review.comment.delete")}
-            testID={testID ? `${testID}-delete` : undefined}
-            hitSlop={SMALL_ACTION_HIT_SLOP}
-            onPressIn={handleEditorActionPressIn}
-            onPress={onDelete}
-            style={iconButtonDestructiveStyle}
-          >
-            <ThemedTrash2 size="sm" uniProps={destructiveIconColorMapping} />
-          </Pressable>
-        ) : null}
         <Button
           accessibilityLabel={t("review.comment.cancelAccessibility")}
           testID={testID ? `${testID}-cancel` : undefined}
@@ -595,7 +485,6 @@ export function InlineReviewEditor({
           onPress={onCancel}
           variant="ghost"
           size="xs"
-          trailing={cancelShortcut}
         >
           {t("review.comment.cancel")}
         </Button>
@@ -604,11 +493,9 @@ export function InlineReviewEditor({
           testID={testID ? `${testID}-save` : undefined}
           hitSlop={SMALL_ACTION_HIT_SLOP}
           disabled={!canSave}
-          onPressIn={handleEditorActionPressIn}
           onPress={handleSave}
           variant="default"
           size="xs"
-          trailing={saveShortcut}
         >
           {t("review.comment.save")}
         </Button>
@@ -639,18 +526,8 @@ const styles = StyleSheet.create((theme) => ({
   gutterActionIcon: {
     position: "absolute",
     right: -10,
-    top: Math.floor((theme.lineHeight.diff - GUTTER_ACTION_ICON_SIZE) / 2),
-    width: GUTTER_ACTION_ICON_SIZE,
-    height: GUTTER_ACTION_ICON_SIZE,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: theme.colors.accent,
-    zIndex: 10,
-    elevation: 10,
+    top: Math.floor((theme.lineHeight.diff - 22) / 2),
   },
-  // The gutter's add-comment affordance: a filled square that sits above the
-  // diff row it belongs to.
   gutterActionVisual: {
     width: 22,
     height: 22,
@@ -667,10 +544,8 @@ const styles = StyleSheet.create((theme) => ({
   threadContainer: {
     flex: 1,
     minWidth: 0,
-  },
-  threadContent: {
     gap: INLINE_REVIEW_GAP,
-    paddingVertical: theme.spacing[2],
+    paddingVertical: INLINE_REVIEW_VERTICAL_PADDING,
     paddingHorizontal: theme.spacing[3],
   },
   commentBlock: {
@@ -688,8 +563,8 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.4,
+    fontSize: theme.fontSize.content,
+    lineHeight: theme.fontSize.content * 1.4,
   },
   commentActions: {
     flexDirection: "row",
@@ -712,10 +587,10 @@ const styles = StyleSheet.create((theme) => ({
       : {}),
   },
   iconButtonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surface3,
   },
   iconButtonDestructiveHovered: {
-    backgroundColor: theme.colors.surfaceHover,
+    backgroundColor: theme.colors.surface3,
   },
   editorBlock: {
     minHeight: INLINE_REVIEW_EDITOR_HEIGHT,
@@ -737,8 +612,8 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     paddingHorizontal: theme.spacing[3],
     paddingVertical: theme.spacing[2],
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.4,
+    fontSize: theme.fontSize.content,
+    lineHeight: theme.fontSize.content * 1.4,
     textAlignVertical: "top",
     ...(isWeb
       ? {
@@ -757,24 +632,3 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
 }));
-
-export function InlineReviewAddButton({
-  onPress,
-  style,
-}: {
-  onPress: () => void;
-  style?: StyleProp<ViewStyle>;
-}) {
-  const { t } = useTranslation();
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={t("review.comment.add")}
-      hitSlop={SMALL_ACTION_HIT_SLOP}
-      onPress={onPress}
-      style={[styles.gutterActionVisual, style]}
-    >
-      <ThemedPlus size={16} uniProps={accentForegroundIconColorMapping} />
-    </Pressable>
-  );
-}

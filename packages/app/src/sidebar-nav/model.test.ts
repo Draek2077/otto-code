@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PluginSidebarGroup } from "@/plugins/sidebar-groups";
 import {
-  groupSidebarNavigationRows,
-  OTTO_SIDEBAR_NAV_BUILTINS,
-  sidebarNavPlacement,
-} from "./otto-sidebar-nav";
-import {
   builtinSidebarNavShortcutAction,
   moveSidebarNavItem,
   pluginSidebarNavKey,
@@ -17,11 +12,11 @@ import {
 
 function group(pluginId: string, contributionId: string): PluginSidebarGroup {
   return {
+    kind: "item",
     key: `${pluginId}/sidebar/${contributionId}`,
     pluginId,
     contributionId,
     title: contributionId,
-    icon: "puzzle",
     targets: [],
   };
 }
@@ -37,7 +32,11 @@ function summarize(items: readonly SidebarNavItem[]): SidebarNavPreference[] {
 
 describe("resolveSidebarNavItems", () => {
   it("yields builtins then plugins, all visible, when nothing is stored", () => {
-    const items = resolveSidebarNavItems({ pluginGroups: [kanban, notes], preferences: [] });
+    const items = resolveSidebarNavItems({
+      section: "header",
+      pluginGroups: [kanban, notes],
+      preferences: [],
+    });
 
     expect(summarize(items)).toEqual([
       { key: "new-workspace", visible: true },
@@ -58,6 +57,7 @@ describe("resolveSidebarNavItems", () => {
 
   it("keeps the stored order and appends newly available items as visible", () => {
     const items = resolveSidebarNavItems({
+      section: "header",
       pluginGroups: [notes, kanban],
       preferences: [
         { key: kanbanKey, visible: false },
@@ -78,6 +78,7 @@ describe("resolveSidebarNavItems", () => {
 
   it("skips keys that are unknown or not currently available", () => {
     const items = resolveSidebarNavItems({
+      section: "header",
       pluginGroups: [],
       preferences: [
         { key: notesKey, visible: false },
@@ -96,6 +97,7 @@ describe("resolveSidebarNavItems", () => {
 
   it("lets the first of duplicate keys win", () => {
     const items = resolveSidebarNavItems({
+      section: "header",
       pluginGroups: [],
       preferences: [
         { key: "history", visible: false },
@@ -112,9 +114,23 @@ describe("resolveSidebarNavItems", () => {
   });
 });
 
+describe("resolveSidebarNavItems for the Usage item", () => {
+  it("hides the Usage item until it is turned on", () => {
+    const resolve = (preferences: SidebarNavPreference[]) =>
+      summarize(resolveSidebarNavItems({ section: "footer", pluginGroups: [], preferences }));
+
+    expect(resolve([])).toEqual([{ key: "usage", visible: false }]);
+    expect(resolve([{ key: "usage", visible: true }])).toEqual([{ key: "usage", visible: true }]);
+  });
+});
+
 describe("setSidebarNavItemVisible", () => {
   it("toggles one item and writes the full resolved order", () => {
-    const items = resolveSidebarNavItems({ pluginGroups: [kanban], preferences: [] });
+    const items = resolveSidebarNavItems({
+      section: "header",
+      pluginGroups: [kanban],
+      preferences: [],
+    });
 
     const next = setSidebarNavItemVisible({ items, key: "search", visible: false, previous: [] });
 
@@ -132,7 +148,11 @@ describe("setSidebarNavItemVisible", () => {
       { key: notesKey, visible: false },
       { key: "history", visible: true },
     ];
-    const items = resolveSidebarNavItems({ pluginGroups: [], preferences: previous });
+    const items = resolveSidebarNavItems({
+      section: "header",
+      pluginGroups: [],
+      preferences: previous,
+    });
 
     const next = setSidebarNavItemVisible({ items, key: "history", visible: false, previous });
 
@@ -153,7 +173,11 @@ describe("setSidebarNavItemVisible", () => {
       { key: "search", visible: true },
       { key: "schedules", visible: true },
     ];
-    const items = resolveSidebarNavItems({ pluginGroups: [], preferences: previous });
+    const items = resolveSidebarNavItems({
+      section: "header",
+      pluginGroups: [],
+      preferences: previous,
+    });
 
     const next = setSidebarNavItemVisible({ items, key: "history", visible: false, previous });
 
@@ -164,13 +188,23 @@ describe("setSidebarNavItemVisible", () => {
       { key: "search", visible: true },
       { key: "schedules", visible: true },
     ]);
-    expect(summarize(resolveSidebarNavItems({ pluginGroups: [notes], preferences: next }))).toEqual(
-      next,
-    );
+    expect(
+      summarize(
+        resolveSidebarNavItems({
+          section: "header",
+          pluginGroups: [notes],
+          preferences: next,
+        }),
+      ),
+    ).toEqual(next);
   });
 
   it("returns the normalized list unchanged for an unknown key", () => {
-    const items = resolveSidebarNavItems({ pluginGroups: [], preferences: [] });
+    const items = resolveSidebarNavItems({
+      section: "header",
+      pluginGroups: [],
+      preferences: [],
+    });
 
     const next = setSidebarNavItemVisible({ items, key: "bogus", visible: false, previous: [] });
 
@@ -179,7 +213,11 @@ describe("setSidebarNavItemVisible", () => {
 });
 
 describe("moveSidebarNavItem", () => {
-  const items = resolveSidebarNavItems({ pluginGroups: [kanban], preferences: [] });
+  const items = resolveSidebarNavItems({
+    section: "header",
+    pluginGroups: [kanban],
+    preferences: [],
+  });
 
   it("moves an item up", () => {
     const next = moveSidebarNavItem({ items, key: "search", direction: "up", previous: [] });
@@ -247,109 +285,78 @@ describe("builtinSidebarNavShortcutAction", () => {
   });
 });
 
-function sidebarRowKeys(row: readonly SidebarNavItem[]) {
-  return row.map((item) => item.key);
-}
+describe("footer section", () => {
+  const sync = group("sync", "status");
+  const syncKey = pluginSidebarNavKey(sync);
 
-describe("Otto sidebar preservation", () => {
-  const resolve = (preferences: readonly SidebarNavPreference[] = [], pluginGroups = [notes]) =>
-    resolveSidebarNavItems({ preferences, pluginGroups, builtinItems: OTTO_SIDEBAR_NAV_BUILTINS });
-  const navigation = (items: readonly SidebarNavItem[]) =>
-    items.filter((item) => item.visible && sidebarNavPlacement(item) === "navigation");
-  const header = (items: readonly SidebarNavItem[]) =>
-    items.filter((item) => item.visible && sidebarNavPlacement(item) === "workspace-header");
-
-  it("keeps the frozen grid, full plugin row and compact header actions by default", () => {
-    const items = resolve();
-    expect(groupSidebarNavigationRows(navigation(items)).map(sidebarRowKeys)).toEqual([
-      ["artifacts", "kanban"],
-      ["schedules", "runs"],
-      [notesKey],
-    ]);
-    expect(header(items).map((item) => item.key)).toEqual(["history", "search"]);
-    expect(items.find((item) => item.key === "new-workspace")?.visible).toBe(false);
-  });
-
-  it("hides only the selected surface and keeps the other Otto destinations", () => {
-    const previous = setSidebarNavItemVisible({
-      items: resolve(),
-      key: "kanban",
-      visible: false,
-      previous: [],
+  it("resolves the Usage item first, then plugin rows", () => {
+    const items = resolveSidebarNavItems({
+      section: "footer",
+      pluginGroups: [sync],
+      preferences: [],
     });
-    expect(navigation(resolve(previous)).map((item) => item.key)).toEqual([
-      "artifacts",
-      "schedules",
-      "runs",
-      notesKey,
+
+    expect(summarize(items)).toEqual([
+      { key: "usage", visible: false },
+      { key: syncKey, visible: true },
     ]);
-    expect(header(resolve(previous)).map((item) => item.key)).toEqual(["history", "search"]);
   });
 
-  it("reorders compact actions without migrating them into navigation rows", () => {
-    const items = resolve();
-    const previous = moveSidebarNavItem({
-      items: header(items),
-      key: "search",
-      direction: "up",
-      previous: [],
+  it("ignores header built-ins stored in footer preferences", () => {
+    const items = resolveSidebarNavItems({
+      section: "footer",
+      pluginGroups: [],
+      preferences: [{ key: "history", visible: false }],
     });
-    expect(header(resolve(previous)).map((item) => item.key)).toEqual(["search", "history"]);
-    expect(navigation(resolve(previous)).map((item) => item.key)).toEqual([
-      "artifacts",
-      "kanban",
-      "schedules",
-      "runs",
-      notesKey,
-    ]);
+
+    expect(summarize(items)).toEqual([{ key: "usage", visible: false }]);
   });
 
-  it("preserves hidden disconnected plugin preferences through edits in either placement", () => {
-    const preferences = [
-      { key: notesKey, visible: false },
-      { key: "history", visible: false },
-    ];
-    const available = resolve(preferences, []);
-    const changed = setSidebarNavItemVisible({
-      items: available,
-      key: "runs",
-      visible: false,
-      previous: preferences,
+  it("ignores the footer icon buttons, which are fixed and not items", () => {
+    const items = resolveSidebarNavItems({
+      section: "footer",
+      pluginGroups: [sync],
+      preferences: [
+        { key: "add-project", visible: false },
+        { key: "hosts", visible: false },
+        { key: "import", visible: false },
+        { key: "help", visible: false },
+        { key: syncKey, visible: true },
+        { key: "usage", visible: false },
+      ],
     });
-    const restored = resolve(changed);
-    expect(restored.find((item) => item.key === notesKey)?.visible).toBe(false);
-    expect(restored.find((item) => item.key === "history")?.visible).toBe(false);
-    expect(restored.find((item) => item.key === "runs")?.visible).toBe(false);
-    expect(restored.find((item) => item.key === "artifacts")?.visible).toBe(true);
-  });
 
-  it("keeps plugin rows full width when moved between two builtin shortcuts", () => {
-    const items = resolve([
-      { key: "artifacts", visible: true },
-      { key: notesKey, visible: true },
-      { key: "kanban", visible: true },
-    ]);
-    expect(groupSidebarNavigationRows(navigation(items)).slice(0, 3).map(sidebarRowKeys)).toEqual([
-      ["artifacts"],
-      [notesKey],
-      ["kanban", "schedules"],
+    expect(summarize(items)).toEqual([
+      { key: syncKey, visible: true },
+      { key: "usage", visible: false },
     ]);
   });
 
-  it("makes the optional global workspace shortcut available without replacing project actions", () => {
-    const preferences = setSidebarNavItemVisible({
-      items: resolve(),
-      key: "new-workspace",
+  it("moves and shows footer rows while keeping an unavailable plugin's entry", () => {
+    const notesPreference = { key: notesKey, visible: false };
+    const previous: SidebarNavPreference[] = [notesPreference];
+    const items = resolveSidebarNavItems({
+      section: "footer",
+      pluginGroups: [sync],
+      preferences: previous,
+    });
+
+    const moved = moveSidebarNavItem({ items, key: syncKey, direction: "up", previous });
+    const shown = setSidebarNavItemVisible({
+      items: resolveSidebarNavItems({
+        section: "footer",
+        pluginGroups: [sync],
+        preferences: moved,
+      }),
+      key: "usage",
       visible: true,
-      previous: [],
+      previous: moved,
     });
-    expect(navigation(resolve(preferences)).map((item) => item.key)).toEqual([
-      "artifacts",
-      "kanban",
-      "schedules",
-      "runs",
-      "new-workspace",
-      notesKey,
+
+    expect(shown).toEqual([
+      notesPreference,
+      { key: syncKey, visible: true },
+      { key: "usage", visible: true },
     ]);
   });
 });

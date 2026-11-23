@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { AgentModelDefinition, ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
+import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
+import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
 import { i18n } from "@/i18n/i18next";
 import {
   buildProviderQualifiedDescription,
@@ -9,12 +9,27 @@ import {
   buildSelectedTriggerLabel,
   filterAndRankModelRows,
   matchesModelSearch,
-  presentProviderModelSelectionError,
+  resolveEffectiveComposerModeId,
   resolveSelectedModelLabel,
   resolveSubmissionReadiness,
 } from "./provider-selection";
 
 describe("combined model selector data", () => {
+  it("shows a disconnected error for unfinished catalogs while keeping known models", () => {
+    const providers = buildSelectableProviderSelectorProviders(
+      [
+        snapshotEntry({ provider: "waiting", status: "loading", models: [] }),
+        snapshotEntry({ provider: "codex", status: "ready", models: [codexModel] }),
+      ],
+      false,
+    );
+    expect(providers[0].modelSelection).toEqual({
+      kind: "error",
+      message: "Host is not connected",
+    });
+    expect(providers[1].modelSelection.kind).toBe("models");
+  });
+
   const codexModel: AgentModelDefinition = {
     provider: "codex",
     id: "gpt-5.4",
@@ -36,22 +51,6 @@ describe("combined model selector data", () => {
       models: overrides.models ?? [codexModel],
     };
   }
-
-  it("keeps Brain connection errors actionable without showing its endpoint", () => {
-    expect(
-      presentProviderModelSelectionError({
-        providerLabel: "Otto Brain",
-        message:
-          "Cannot reach Otto Brain at https://greyskull.tail279562.ts.net:1234/v1 (fetch failed). Make sure the server is running and the URL is correct.",
-      }),
-    ).toBe("Cannot reach Otto Brain. Make sure the server is running and the URL is correct.");
-  });
-
-  it("preserves provider errors that do not expose a connection endpoint", () => {
-    expect(
-      presentProviderModelSelectionError({ providerLabel: "Otto Brain", message: "Token expired" }),
-    ).toBe("Token expired");
-  });
 
   it("builds selector providers from ready enabled snapshot entries", () => {
     expect(
@@ -383,7 +382,7 @@ describe("combined model selector data", () => {
         },
         autoSubmitConfig: null,
         workspaceDirectory: "/repo",
-        hasClient: true,
+        isConnected: true,
       }),
     ).toEqual({
       ok: false,
@@ -403,7 +402,7 @@ describe("combined model selector data", () => {
         },
         autoSubmitConfig: null,
         workspaceDirectory: "/repo",
-        hasClient: true,
+        isConnected: true,
       }),
     ).toEqual({ ok: true });
   });
@@ -442,7 +441,7 @@ describe("combined model selector data", () => {
           },
           autoSubmitConfig: null,
           workspaceDirectory: "/repo",
-          hasClient: true,
+          isConnected: true,
         }),
       ).toEqual({ ok: false, reason: "初始 prompt 必填" });
     } finally {
@@ -458,3 +457,56 @@ function getAllModelLabels(providers: ReturnType<typeof buildSelectableProviderS
       : [],
   );
 }
+
+describe("resolveEffectiveComposerModeId", () => {
+  const selection = {
+    provider: "pi",
+    modelId: "",
+    thinkingOptionId: "",
+    availableModels: [],
+  };
+
+  it("drops a remembered mode when the provider offers no modes", () => {
+    expect(
+      resolveEffectiveComposerModeId({ ...selection, modeId: "build", modeOptions: [] }, false),
+    ).toBe("");
+  });
+
+  it("submits the mode the picker shows when the remembered mode is not offered", () => {
+    expect(
+      resolveEffectiveComposerModeId(
+        {
+          ...selection,
+          modeId: "plan",
+          modeOptions: [
+            { id: "build", label: "Build" },
+            { id: "ask", label: "Ask" },
+          ],
+        },
+        false,
+      ),
+    ).toBe("build");
+  });
+
+  it("keeps a selected mode the provider offers", () => {
+    expect(
+      resolveEffectiveComposerModeId(
+        {
+          ...selection,
+          modeId: "ask",
+          modeOptions: [
+            { id: "build", label: "Build" },
+            { id: "ask", label: "Ask" },
+          ],
+        },
+        false,
+      ),
+    ).toBe("ask");
+  });
+
+  it("keeps the selected mode while the provider's modes are still loading", () => {
+    expect(
+      resolveEffectiveComposerModeId({ ...selection, modeId: "build", modeOptions: [] }, true),
+    ).toBe("build");
+  });
+});

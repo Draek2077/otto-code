@@ -1,13 +1,14 @@
 import { Command } from "commander";
-import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
-import type { CommandOptions } from "../../output/index.js";
+import { connectToDaemon } from "../../utils/client.js";
+import { waitForStop } from "../../utils/wait-for-stop.js";
+import type { CommandError, CommandOptions } from "../../output/index.js";
 import {
   fetchProjectedTimelineItems,
   LIVE_HISTORY_FETCH_TIMEOUT_MS,
 } from "../../utils/timeline.js";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
-import type { AgentTimelineItem } from "@otto-code/protocol/agent-types";
-import { curateAgentActivity } from "@otto-code/server";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
+import { curateAgentActivity } from "@getpaseo/server/agent-activity";
 
 export function addLogsOptions(cmd: Command): Command {
   return cmd
@@ -31,12 +32,29 @@ export type AgentLogsResult = void;
 
 export const NO_ACTIVITY_MESSAGE = "No activity to display.";
 
+interface FetchAgentTimelineItemsOptions {
+  timeoutMs?: number;
+  sinceTimestampMs?: number;
+}
+
+interface FollowModeInput {
+  client: DaemonClient;
+  agentId: string;
+  options: AgentLogsOptions;
+  sinceTimestampMs: number | undefined;
+}
+
 export async function fetchAgentTimelineItems(
   client: DaemonClient,
   agentId: string,
-  options?: { timeoutMs?: number },
+  options?: FetchAgentTimelineItemsOptions,
 ): Promise<AgentTimelineItem[]> {
-  return fetchProjectedTimelineItems({ client, agentId, timeoutMs: options?.timeoutMs });
+  return fetchProjectedTimelineItems({
+    client,
+    agentId,
+    timeoutMs: options?.timeoutMs,
+    sinceTimestampMs: options?.sinceTimestampMs,
+  });
 }
 
 export function formatAgentActivityTranscript(
@@ -52,6 +70,134 @@ export function formatAgentActivityTranscript(
   );
 }
 
+type StreamingTextType = "assistant_message" | "reasoning";
+
+const THOUGHT_PREFIX = "[Thought] ";
+
+interface PendingStreamingText {
+  type: StreamingTextType;
+  turnId: string | undefined;
+  messageId: string | undefined;
+  buffer: string;
+  emitted: boolean;
+}
+
+export interface FollowTranscriptWriter {
+  push(item: AgentTimelineItem, turnId?: string): void;
+  end(): void;
+}
+
+function lastNonWhitespaceIndex(text: string): number {
+  for (let index = text.length - 1; index >= 0; index -= 1) {
+    if (!/\s/.test(text[index])) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Follow mode receives one streaming fragment per event, while the one-shot
+ * transcript sees the whole timeline and merges consecutive assistant and
+ * reasoning fragments with exact concatenation (`projectTimelineRows`). Printing
+ * each fragment on its own line splits words at fragment boundaries and
+ * reprints the reasoning prefix, so a chain of fragments is written as one
+ * stream instead: text goes out as it arrives, and only the trailing whitespace
+ * is held back so the message ends trimmed the way the transcript does.
+ */
+export function createFollowTranscriptWriter(
+  write: (chunk: string) => void = (chunk) => void process.stdout.write(chunk),
+  filter?: string,
+): FollowTranscriptWriter {
+  let pending: PendingStreamingText | null = null;
+
+  const emit = (chain: PendingStreamingText, text: string): void => {
+    if (!chain.emitted) {
+      chain.emitted = true;
+      if (chain.type === "reasoning") {
+        write(THOUGHT_PREFIX);
+      }
+    }
+    write(text);
+  };
+
+  const flushContent = (chain: PendingStreamingText): void => {
+    if (!chain.emitted) {
+      chain.buffer = chain.buffer.replace(/^\s+/, "");
+    }
+    const lastContent = lastNonWhitespaceIndex(chain.buffer);
+    if (lastContent < 0) {
+      return;
+    }
+    emit(chain, chain.buffer.slice(0, lastContent + 1));
+    chain.buffer = chain.buffer.slice(lastContent + 1);
+  };
+
+  const closePending = (): void => {
+    const chain = pending;
+    pending = null;
+    if (!chain) {
+      return;
+    }
+    const tail = chain.emitted ? chain.buffer.trimEnd() : chain.buffer.trim();
+    if (tail) {
+      emit(chain, tail);
+    }
+    if (chain.emitted) {
+      write("\n");
+    }
+  };
+
+  const continuesChain = (item: AgentTimelineItem, turnId: string | undefined): boolean => {
+    if (!pending || pending.type !== item.type || pending.turnId !== turnId) {
+      return false;
+    }
+    if (item.type !== "assistant_message") {
+      return true;
+    }
+    return item.messageId === undefined || item.messageId === pending.messageId;
+  };
+
+  const startChain = (
+    item: Extract<AgentTimelineItem, { type: StreamingTextType }>,
+    turnId: string | undefined,
+  ): PendingStreamingText => {
+    closePending();
+    const chain: PendingStreamingText = {
+      type: item.type,
+      turnId,
+      messageId: item.type === "assistant_message" ? item.messageId : undefined,
+      buffer: "",
+      emitted: false,
+    };
+    pending = chain;
+    return chain;
+  };
+
+  return {
+    push(item, turnId) {
+      if (!matchesFilter(item, filter)) {
+        closePending();
+        return;
+      }
+      if (item.type === "assistant_message" || item.type === "reasoning") {
+        const chain = continuesChain(item, turnId) && pending ? pending : startChain(item, turnId);
+        chain.buffer += item.text;
+        flushContent(chain);
+        return;
+      }
+      closePending();
+      const transcript = formatAgentActivityTranscript([item]);
+      if (transcript && transcript !== NO_ACTIVITY_MESSAGE) {
+        write(`${transcript}\n`);
+      }
+    },
+    end() {
+      closePending();
+    },
+  };
+}
+
 function parseTailCount(raw: string | undefined): number | undefined {
   if (raw === undefined) return undefined;
   const parsed = Number.parseInt(raw, 10);
@@ -59,6 +205,19 @@ function parseTailCount(raw: string | undefined): number | undefined {
     return undefined;
   }
   return parsed;
+}
+
+function parseSinceTimestamp(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const timestampMs = Date.parse(raw);
+  if (Number.isNaN(timestampMs)) {
+    throw {
+      code: "INVALID_TIMESTAMP",
+      message: `Invalid --since value: ${raw}`,
+      details: "Use a timestamp such as 2026-01-01T00:00:00Z.",
+    } satisfies CommandError;
+  }
+  return timestampMs;
 }
 
 /**
@@ -91,28 +250,21 @@ export async function runLogsCommand(
   options: AgentLogsOptions,
   _command: Command,
 ): Promise<AgentLogsResult> {
-  const host = getDaemonHost({ host: options.host });
-
   if (!id) {
     console.error("Error: Agent ID required");
+    // OTTO(identity)
     console.error("Usage: otto agent logs <id>");
     process.exit(1);
   }
 
-  let client: DaemonClient;
-  try {
-    client = await connectToDaemon({ host: options.host });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error(`Error: Cannot connect to daemon at ${host}: ${message}`);
-    console.error("Start the daemon with: otto daemon start");
-    process.exit(1);
-  }
+  const sinceTimestampMs = parseSinceTimestamp(options.since);
+  const client = await connectToDaemon({ target: options.daemonTarget });
 
   try {
     const fetchResult = await client.fetchAgent({ agentId: id });
     if (!fetchResult) {
       console.error(`Error: No agent found matching: ${id}`);
+      // OTTO(identity)
       console.error("Use `otto ls` to list available agents");
       await client.close();
       process.exit(1);
@@ -127,12 +279,19 @@ export async function runLogsCommand(
         await client.close().catch(() => {});
         process.exit(1);
       }
-      await runFollowMode(client, resolvedId, options);
+      await runFollowMode({
+        client,
+        agentId: resolvedId,
+        options,
+        sinceTimestampMs,
+      });
       return;
     }
 
     // Fetch timeline directly via cursor RPC.
-    let timelineItems = await fetchAgentTimelineItems(client, resolvedId);
+    let timelineItems = await fetchAgentTimelineItems(client, resolvedId, {
+      sinceTimestampMs,
+    });
 
     // Apply filter
     if (options.filter) {
@@ -157,6 +316,7 @@ export async function runLogsCommand(
     const transcript = formatAgentActivityTranscript(timelineItems, tailCount);
     console.log(transcript);
   } catch (err) {
+    if (err && typeof err === "object" && "code" in err) throw err;
     const message = err instanceof Error ? err.message : String(err);
     console.error(`Error: Failed to get logs: ${message}`);
     await client.close().catch(() => {});
@@ -167,11 +327,12 @@ export async function runLogsCommand(
 /**
  * Follow mode: stream logs in real-time until interrupted
  */
-async function runFollowMode(
-  client: DaemonClient,
-  agentId: string,
-  options: AgentLogsOptions,
-): Promise<void> {
+async function runFollowMode({
+  client,
+  agentId,
+  options,
+  sinceTimestampMs,
+}: FollowModeInput): Promise<void> {
   const DEFAULT_FOLLOW_TAIL = 10;
   const tailCount = parseTailCount(options.tail) ?? DEFAULT_FOLLOW_TAIL;
 
@@ -180,6 +341,7 @@ async function runFollowMode(
   try {
     existingItems = await fetchAgentTimelineItems(client, agentId, {
       timeoutMs: LIVE_HISTORY_FETCH_TIMEOUT_MS,
+      sinceTimestampMs,
     });
   } catch (error) {
     console.warn("Warning: failed to fetch existing timeline", error);
@@ -202,39 +364,47 @@ async function runFollowMode(
   const tailLabel =
     tailCount === 0 ? "no history" : `last ${tailCount} entr${tailCount === 1 ? "y" : "ies"}`;
 
+  const writer = createFollowTranscriptWriter(undefined, options.filter);
+
   const unsubscribe = client.subscribeAgentTimeline(agentId, (message) => {
     if (message.type === "agent.timeline.replacement") {
+      writer.end();
       console.log("\n[Timeline replaced; earlier output is no longer current]");
       return;
     }
 
+    if (message.type === "agent.timeline.error") {
+      writer.end();
+      console.error(`Timeline observation stopped: ${message.payload.error}`);
+      return;
+    }
+    if (message.type === "agent.timeline.subscription_restored") {
+      writer.end();
+      console.log("\n[Reconnected; live output resumed. Events may have been missed.]");
+      return;
+    }
     if (message.payload.event.type === "timeline") {
-      const item = message.payload.event.item;
-      // Apply filter
-      if (options.filter && !matchesFilter(item, options.filter)) {
+      const matchesSince =
+        sinceTimestampMs === undefined || Date.parse(message.payload.timestamp) >= sinceTimestampMs;
+      if (!matchesSince) {
         return;
       }
-      // Print each timeline item as it arrives using the curator format
-      const transcript = formatAgentActivityTranscript([item]);
-      if (transcript !== NO_ACTIVITY_MESSAGE) {
-        console.log(transcript);
-      }
+      const item = message.payload.event.item;
+      writer.push(item, message.payload.event.turnId);
+    } else if (
+      message.payload.event.type === "turn_completed" ||
+      message.payload.event.type === "turn_failed" ||
+      message.payload.event.type === "turn_canceled"
+    ) {
+      writer.end();
     }
   });
 
   await unsubscribe.ready;
   console.log(`\n--- Following logs (${tailLabel}; Ctrl+C to stop) ---\n`);
 
-  // Wait for interrupt
-  await new Promise<void>((resolve) => {
-    const cleanup = () => {
-      unsubscribe();
-      resolve();
-    };
-
-    process.on("SIGINT", cleanup);
-    process.on("SIGTERM", cleanup);
-  });
-
+  await waitForStop();
+  writer.end();
+  unsubscribe();
   await client.close();
 }

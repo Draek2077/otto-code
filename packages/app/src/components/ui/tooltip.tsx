@@ -11,7 +11,6 @@ import {
   useState,
   type PropsWithChildren,
   type ReactElement,
-  type Ref,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -29,8 +28,7 @@ import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { FloatingSurface } from "@/components/ui/floating";
-import { isWeb } from "@/constants/platform";
-import { mergeRefs } from "@/utils/merge-refs";
+import { isNative, isWeb } from "@/constants/platform";
 import { getOverlayRoot, OVERLAY_Z } from "@/lib/overlay-root";
 
 type Side = "top" | "bottom" | "left" | "right";
@@ -43,10 +41,12 @@ interface Rect {
   height: number;
 }
 
+type TooltipTriggerElement = View | HTMLElement;
+
 interface TooltipContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
-  triggerRef: React.RefObject<View | null>;
+  triggerRef: React.RefObject<TooltipTriggerElement | null>;
   enabled: boolean;
   openOnPress: boolean;
   delayDuration: number;
@@ -122,12 +122,19 @@ function useControllableOpenState({
   return [value, setValue];
 }
 
-function measureElement(element: View): Promise<Rect> {
-  return new Promise((resolve) => {
-    element.measureInWindow((x, y, width, height) => {
-      resolve({ x, y, width, height });
+function measureElement(element: TooltipTriggerElement): Promise<Rect> {
+  if (isWeb && element instanceof HTMLElement) {
+    const { x, y, width, height } = element.getBoundingClientRect();
+    return Promise.resolve({ x, y, width, height });
+  }
+  if ("measureInWindow" in element) {
+    return new Promise((resolve) => {
+      element.measureInWindow((x, y, width, height) => {
+        resolve({ x, y, width, height });
+      });
     });
-  });
+  }
+  throw new Error("A DOM tooltip trigger requires the web platform");
 }
 
 function resolveActualSide(args: {
@@ -242,7 +249,7 @@ export function Tooltip({
   enabledOnDesktop?: boolean;
   enabledOnMobile?: boolean;
 }>): ReactElement {
-  const triggerRef = useRef<View>(null);
+  const triggerRef = useRef<TooltipTriggerElement>(null);
   const [isOpen, setIsOpen] = useControllableOpenState({
     open,
     defaultOpen,
@@ -250,7 +257,8 @@ export function Tooltip({
   });
 
   const isCompact = useIsCompactFormFactor();
-  const enabled = isCompact ? enabledOnMobile : enabledOnDesktop;
+  const opensOnPress = isNative || isCompact;
+  const enabled = opensOnPress ? enabledOnMobile : enabledOnDesktop;
 
   const value = useMemo<TooltipContextValue>(
     () => ({
@@ -258,10 +266,10 @@ export function Tooltip({
       setOpen: setIsOpen,
       triggerRef,
       enabled,
-      openOnPress: isCompact,
+      openOnPress: opensOnPress,
       delayDuration,
     }),
-    [isOpen, setIsOpen, enabled, isCompact, delayDuration],
+    [isOpen, setIsOpen, enabled, opensOnPress, delayDuration],
   );
 
   return <TooltipContext.Provider value={value}>{children}</TooltipContext.Provider>;
@@ -277,17 +285,18 @@ export function TooltipTrigger({
   onPress,
   asChild = false,
   triggerRefProp = "ref",
-  anchorRef,
   ...props
 }: PressableProps & {
   asChild?: boolean;
   triggerRefProp?: string;
-  // Extra ref composed with the tooltip's own trigger ref on the non-asChild
-  // Pressable (e.g. the tutorial anchor registry). asChild callers compose their
-  // ref through the child's `triggerRefProp` instead.
-  anchorRef?: Ref<View>;
 }): ReactElement {
   const ctx = useTooltipContext("TooltipTrigger");
+  const setTriggerRef = useCallback(
+    (node: View | null) => {
+      ctx.triggerRef.current = node;
+    },
+    [ctx.triggerRef],
+  );
   const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearOpenTimer = useCallback(() => {
@@ -417,7 +426,7 @@ export function TooltipTrigger({
     };
 
     const existingRefProp = Reflect.get(rawProps, triggerRefProp);
-    mergedProps[triggerRefProp] = (node: View) => {
+    mergedProps[triggerRefProp] = (node: TooltipTriggerElement) => {
       if (isCallable(existingRefProp)) {
         existingRefProp(node);
       } else if (existingRefProp && typeof existingRefProp === "object") {
@@ -430,11 +439,7 @@ export function TooltipTrigger({
   }
 
   return (
-    <Pressable
-      {...triggerProps}
-      ref={anchorRef ? mergeRefs(ctx.triggerRef, anchorRef) : ctx.triggerRef}
-      collapsable={false}
-    >
+    <Pressable {...triggerProps} ref={setTriggerRef} collapsable={false}>
       {children}
     </Pressable>
   );
@@ -533,6 +538,7 @@ export function TooltipContent({
           entering={FadeIn.duration(80)}
           exiting={FadeOut.duration(80)}
           collapsable={false}
+          role="tooltip"
           testID={testID}
           onLayout={handleLayout}
           style={contentStyle}
@@ -553,12 +559,13 @@ export function TooltipContent({
       statusBarTranslucent={Platform.OS === "android"}
       onRequestClose={handleDismiss}
     >
-      <Pressable style={styles.overlay} onPress={handleDismiss}>
+      <Pressable testID="tooltip-dismiss" style={styles.overlay} onPress={handleDismiss}>
         <FloatingSurface
           pointerEvents="none"
           entering={FadeIn.duration(80)}
           exiting={FadeOut.duration(80)}
           collapsable={false}
+          role="tooltip"
           testID={testID}
           onLayout={handleLayout}
           style={contentStyle}

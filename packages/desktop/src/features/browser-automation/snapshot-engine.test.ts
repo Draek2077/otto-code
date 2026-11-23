@@ -38,9 +38,9 @@ class SnapshotFixture implements SnapshotPage {
   }
 
   public async executeJavaScript(code: string): Promise<unknown> {
-    if (code.includes("__OTTO_ARIA_SNAPSHOT__")) {
+    if (code.includes("__PASEO_ARIA_SNAPSHOT__")) {
       return JSON.stringify({
-        marker: "__OTTO_ARIA_SNAPSHOT__",
+        marker: "__PASEO_ARIA_SNAPSHOT__",
         root: {
           kind: "role",
           role: "document",
@@ -115,7 +115,7 @@ describe("BrowserSnapshotEngine", () => {
     page.snapshotNodes = [
       {
         kind: "text",
-        text: "A".repeat(31_000),
+        text: "A".repeat(81_000),
       },
     ];
     const engine = new BrowserSnapshotEngine();
@@ -124,7 +124,7 @@ describe("BrowserSnapshotEngine", () => {
 
     expect(snapshot.truncated).toBe(true);
     expect(snapshot.snapshot.endsWith('- text: "Snapshot truncated."')).toBe(true);
-    expect(snapshot.stats.textLength).toBeLessThanOrEqual(30_000);
+    expect(snapshot.stats.textLength).toBeLessThanOrEqual(80_000);
   });
 
   it("keeps the last rendered node when a short snapshot was capped by node count", async () => {

@@ -1,4 +1,3 @@
-import type { IconSizeProp } from "@/components/icons/icon-size";
 import type { ComponentType } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
@@ -9,16 +8,8 @@ import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 
 export interface PanelIconProps {
-  // Otto's icons take a size token as well as a raw number (see
-  // components/icons/icon-size). Narrowing this to `number` makes every
-  // token-taking icon - the provider glyphs on agent tabs among them -
-  // unassignable to a panel icon slot.
-  // Optional, matching Otto's icon convention: an icon given no size or colour
-  // draws at its own default rather than refusing to render. Required here, the
-  // React.ComponentClass branch makes props invariant and every Otto icon
-  // becomes unassignable.
-  size?: IconSizeProp;
-  color?: string;
+  size: number;
+  color: string;
   strokeWidth?: number;
 }
 
@@ -29,25 +20,6 @@ export interface PanelDescriptor {
   titleState: "ready" | "loading";
   icon: ComponentType<PanelIconProps>;
   statusBucket: SidebarStateBucket | null;
-  /**
-   * Personality spinner colors for this tab's busy loader, when the agent was
-   * spawned from a personality. Absent/null ⇒ the tab uses the theme spinner.
-   * Only the agent panel sets this; other panels leave it undefined.
-   */
-  personalitySpinner?: { glowA: string; glowB: string } | null;
-  /**
-   * Provider id for the tab glyph. Lets the non-loading agent tab fill its
-   * provider icon with the personality gradient (paired with personalitySpinner).
-   * Only the agent panel sets this.
-   */
-  provider?: string;
-  /**
-   * Which busy glyph the tab shows while `statusBucket` is "running". The blob
-   * loader reads as "a model is thinking", so it is reserved for AI work;
-   * panels whose work is plain I/O (a page load, a fetch) pass "spinner" for
-   * the theme's circular indicator. Absent ⇒ "blob".
-   */
-  busyLoader?: "blob" | "spinner";
 }
 
 export interface PanelDescriptorContext {
@@ -72,19 +44,9 @@ export interface PanelRegistration<
     target: Extract<WorkspaceTabTarget, { kind: K }>,
     context: PanelDescriptorContext,
   ): PanelDescriptor;
-  /**
-   * Job tabs (rename, refine, artifact) hold work that closing would discard.
-   * Resolve false to keep the tab open. Panels without unsaved state omit this.
-   */
-  confirmClose?(
-    target: Extract<WorkspaceTabTarget, { kind: K }>,
-    context: PanelDescriptorContext,
-  ): Promise<boolean>;
 }
 
-type PanelImplementation<K extends WorkspaceTabTarget["kind"]> = {
-  confirmClose?: PanelRegistration<K>["confirmClose"];
-} & (
+type PanelImplementation<K extends WorkspaceTabTarget["kind"]> =
   | {
       component: ComponentType;
       presentation: PanelPresentation;
@@ -94,8 +56,7 @@ type PanelImplementation<K extends WorkspaceTabTarget["kind"]> = {
       component: ComponentType;
       presentation?: never;
       useDescriptor: PanelRegistration<K>["useDescriptor"];
-    }
-);
+    };
 
 function createStaticDescriptorHook(presentation: PanelPresentation) {
   return function useStaticPanelDescriptor(): PanelDescriptor {
@@ -125,7 +86,6 @@ export function definePanel<K extends WorkspaceTabTarget["kind"]>(
     component: implementation.component,
     presentation: implementation.presentation,
     useDescriptor,
-    ...(implementation.confirmClose ? { confirmClose: implementation.confirmClose } : {}),
   };
 }
 

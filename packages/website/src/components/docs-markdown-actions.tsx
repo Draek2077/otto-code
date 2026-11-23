@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { CheckIcon, CopyIcon, FileTextIcon } from "~/components/material-icons";
 import { useCallback, useEffect, useState } from "react";
 

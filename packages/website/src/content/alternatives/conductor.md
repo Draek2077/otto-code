@@ -5,6 +5,8 @@ nav: Conductor
 order: 50
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Otto vs Conductor
 
 Conductor is a macOS app for running Claude Code and Codex in parallel git worktrees. Closed source.

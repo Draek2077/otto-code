@@ -1,85 +1,24 @@
-import { observeBrowserHistory } from "./history";
 import {
   getDesktopHost,
   type DesktopAttachedBrowserRegistration,
   type DesktopBrowserBridge,
 } from "@/desktop/host";
-import { useBrowserStore, type BrowserViewport } from "@/desktop/browser/store";
+import type { BrowserViewport } from "@/desktop/browser/store";
 import { WEB_SURFACE_PLANE } from "@/lib/overlay-root";
-import { publishSidebarEdgePointer } from "@/components/sidebar-edge-peek/sidebar-edge-pointer";
-import { createResidentBrowserActivity } from "./resident-activity";
 
-const RESIDENT_BROWSER_HOST_ID = "otto-browser-resident-webviews";
-const BROWSER_ID_ATTRIBUTE = "data-otto-browser-id";
-const BROWSER_SURFACE_ATTRIBUTE = "data-otto-browser-surface";
-const BROWSER_EDGE_POINTER_CHANNEL = "otto-browser-edge-pointer";
-const BROWSER_EDGE_INPUT_YIELD_PX = 6;
+const RESIDENT_BROWSER_HOST_ID = "paseo-browser-resident-webviews";
+const BROWSER_ID_ATTRIBUTE = "data-paseo-browser-id";
+const BROWSER_SURFACE_ATTRIBUTE = "data-paseo-browser-surface";
 const RESIDENT_VIEWPORT_WIDTH = 1280;
 const RESIDENT_VIEWPORT_HEIGHT = 800;
 
 const residentWebviewsByBrowserId = new Map<string, HTMLElement>();
 const residentSurfacesByBrowserId = new Map<string, HTMLElement>();
 const residentWebviewSizesByBrowserId = new Map<string, { width: number; height: number }>();
-const residentPresentationsByBrowserId = new Map<string, ResidentBrowserPresentation>();
-const residentBrowserEdgeInputYields = new Set<string>();
-const documentsWithBrowserInputRecovery = new WeakSet<Document>();
-// Electron webviews live in a permanent top-level surface so their guest
-// contents survive pane changes. While a workspace tab is being dragged that
-// surface must yield hit-testing to the split canvas beneath it: otherwise a
-// browser pane eats the drag and its drop zones can never create a split.
-let residentBrowserSurfaceInputEnabled = true;
-const residentBrowserInputSuspensions = new Set<symbol>();
-// A parked surface keeps the proven paintable 1x1 geometry, which Chromium
-// treats as a rendered frame: the guest would run rAF, CSS animations, and
-// timers at full rate and keep submitting compositor frames forever. After an
-// idle grace the surface turns `visibility: hidden`, which Chromium treats as a
-// frame that is not rendered: no animation frames, timers clamped to about
-// 1 Hz, near-zero CPU. The geometry, the guest, its size, and its CDP session
-// stay put, so waking is a single style write. Measured in real Electron 44,
-// see docs/browser-capture-harness.md.
-const residentBrowserActivity = createResidentBrowserActivity({
-  setBackgrounded: applyResidentBrowserBackgrounded,
-});
-
-function isResidentBrowserInputEnabled(browserId?: string): boolean {
-  return (
-    residentBrowserSurfaceInputEnabled &&
-    residentBrowserInputSuspensions.size === 0 &&
-    (!browserId || !residentBrowserEdgeInputYields.has(browserId))
-  );
-}
-
-export function suspendResidentBrowserSurfaceInput(): () => void {
-  const token = Symbol();
-  residentBrowserInputSuspensions.add(token);
-  setResidentBrowserSurfaceInputEnabled(residentBrowserSurfaceInputEnabled);
-  return () => {
-    if (!residentBrowserInputSuspensions.delete(token)) return;
-    setResidentBrowserSurfaceInputEnabled(residentBrowserSurfaceInputEnabled);
-  };
-}
 
 interface BrowserWebviewElement extends HTMLElement {
   src: string;
   getWebContentsId(): number;
-  getTitle?: () => string;
-}
-
-interface BrowserWebviewIpcMessageEvent extends Event {
-  channel?: unknown;
-  args?: unknown[];
-}
-
-function syncBrowserWebviewTitle(browserId: string, webview: HTMLElement): void {
-  if (!isResidentBrowserWebviewReady(webview)) return;
-  try {
-    const title = (webview as BrowserWebviewElement).getTitle?.();
-    if (typeof title === "string") {
-      useBrowserStore.getState().updateBrowser(browserId, { title });
-    }
-  } catch {
-    // The guest can detach between its readiness check and the method call.
-  }
 }
 
 interface BrowserWebviewIdentity {
@@ -122,7 +61,6 @@ function registerBrowserWhenAttached(
   // Reparenting a webview can replace its guest WebContents without replacing
   // this DOM element, so every attachment needs a fresh main-process registration.
   webview.addEventListener("did-attach", () => {
-    readyResidentWebviews.delete(webview);
     const webContentsId = webview.getWebContentsId();
     void browser
       .registerAttachedBrowser({
@@ -161,24 +99,13 @@ function applyResidentHostParkingStyle(host: HTMLElement): void {
   host.style.opacity = "1";
   host.style.pointerEvents = "none";
   host.style.display = "block";
-  // Individual surfaces own their stacking so parked guests can sit behind
-  // the app canvas while presented guests remain on the browser paint plane.
-  host.style.zIndex = "";
+  host.style.zIndex = String(WEB_SURFACE_PLANE.browser);
   host.style.clipPath = "";
   host.style.visibility = "visible";
   host.style.transform = "";
 }
 
-function applyResidentBrowserBackgrounded(browserId: string, backgrounded: boolean): void {
-  const surface = residentSurfacesByBrowserId.get(browserId);
-  // A presented surface always paints; presentation wakes the tab first anyway.
-  if (!surface || surface.getAttribute("aria-hidden") === "false") {
-    return;
-  }
-  surface.style.visibility = backgrounded ? "hidden" : "visible";
-}
-
-function applyParkedBrowserSurfaceStyle(surface: HTMLElement, browserId: string): void {
+function applyParkedBrowserSurfaceStyle(surface: HTMLElement): void {
   surface.setAttribute("aria-hidden", "true");
   surface.style.position = "fixed";
   surface.style.left = "0";
@@ -189,118 +116,8 @@ function applyParkedBrowserSurfaceStyle(surface: HTMLElement, browserId: string)
   surface.style.opacity = "1";
   surface.style.pointerEvents = "none";
   surface.style.display = "block";
-  // Keep the proven visible 1x1 compositor geometry, but paint it behind the
-  // opaque app canvas so the browser-white backing cannot leak at (0, 0).
-  surface.style.zIndex = "-1";
-  surface.style.clipPath = "";
-  surface.style.visibility = residentBrowserActivity.isBackgrounded(browserId)
-    ? "hidden"
-    : "visible";
+  surface.style.visibility = "visible";
   surface.style.transform = "";
-}
-
-/**
- * Runs a browser automation operation with its tab awake. A backgrounded
- * parked guest is made paintable again before the operation starts, stays
- * awake while operations keep arriving, and backgrounds again after
- * RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS without one. Tabs without a
- * resident guest run the operation unchanged.
- */
-export function withResidentBrowserAwake<T>(
-  browserId: string,
-  operation: () => Promise<T>,
-): Promise<T> {
-  const normalizedBrowserId = trimNonEmpty(browserId);
-  if (!normalizedBrowserId) {
-    return operation();
-  }
-  return residentBrowserActivity.runAwake(normalizedBrowserId, operation);
-}
-
-export function isResidentBrowserBackgrounded(browserId: string): boolean {
-  const normalizedBrowserId = trimNonEmpty(browserId);
-  return normalizedBrowserId ? residentBrowserActivity.isBackgrounded(normalizedBrowserId) : false;
-}
-
-/**
- * Lets the split canvas temporarily receive a workspace-tab drag over a
- * browser pane. This changes pointer targeting only; the resident webview
- * remains mounted and paintable, which keeps its browser automation binding
- * intact.
- */
-export function setResidentBrowserSurfaceInputEnabled(enabled: boolean): void {
-  residentBrowserSurfaceInputEnabled = enabled;
-  for (const [browserId, surface] of residentSurfacesByBrowserId) {
-    if (surface.getAttribute("aria-hidden") !== "false") {
-      continue;
-    }
-    surface.style.pointerEvents = isResidentBrowserInputEnabled(browserId) ? "auto" : "none";
-  }
-}
-
-function recoverResidentBrowserEdgeInput(event: MouseEvent): void {
-  if (event.buttons !== 0) {
-    return;
-  }
-  for (const browserId of residentBrowserEdgeInputYields) {
-    const surface = residentSurfacesByBrowserId.get(browserId);
-    if (!surface || surface.getAttribute("aria-hidden") !== "false") {
-      residentBrowserEdgeInputYields.delete(browserId);
-      continue;
-    }
-    const bounds = surface.getBoundingClientRect();
-    const stillOnHorizontalEdge =
-      event.clientX <= bounds.left + BROWSER_EDGE_INPUT_YIELD_PX ||
-      event.clientX >= bounds.right - 1 - BROWSER_EDGE_INPUT_YIELD_PX;
-    if (stillOnHorizontalEdge) {
-      continue;
-    }
-    residentBrowserEdgeInputYields.delete(browserId);
-    surface.style.pointerEvents = isResidentBrowserInputEnabled(browserId) ? "auto" : "none";
-  }
-}
-
-function ensureResidentBrowserInputRecovery(ownerDocument: Document): void {
-  if (documentsWithBrowserInputRecovery.has(ownerDocument)) {
-    return;
-  }
-  documentsWithBrowserInputRecovery.add(ownerDocument);
-  ownerDocument.addEventListener("mousemove", recoverResidentBrowserEdgeInput, { passive: true });
-  ownerDocument.addEventListener("mouseup", recoverResidentBrowserEdgeInput, { passive: true });
-}
-
-function handleBrowserEdgePointer(
-  browserId: string,
-  webview: HTMLElement,
-  event: BrowserWebviewIpcMessageEvent,
-): void {
-  if (event.channel !== BROWSER_EDGE_POINTER_CHANNEL) {
-    return;
-  }
-  const payload = event.args?.[0];
-  if (!payload || typeof payload !== "object") {
-    return;
-  }
-  const { x, y, buttons } = payload as { x?: unknown; y?: unknown; buttons?: unknown };
-  if (
-    typeof x !== "number" ||
-    !Number.isFinite(x) ||
-    typeof y !== "number" ||
-    !Number.isFinite(y) ||
-    typeof buttons !== "number" ||
-    !Number.isInteger(buttons)
-  ) {
-    return;
-  }
-  const bounds = webview.getBoundingClientRect();
-  publishSidebarEdgePointer({ x: bounds.left + x, y: bounds.top + y, buttons });
-
-  const surface = residentSurfacesByBrowserId.get(browserId);
-  if (!surface || surface.getAttribute("aria-hidden") !== "false") {
-    return;
-  }
-  residentBrowserEdgeInputYields.add(browserId);
-  surface.style.pointerEvents = "none";
 }
 
 function getBrowserSurface(browserId: string, ownerDocument: Document): HTMLElement {
@@ -310,9 +127,8 @@ function getBrowserSurface(browserId: string, ownerDocument: Document): HTMLElem
   }
   const surface = ownerDocument.createElement("div");
   surface.setAttribute(BROWSER_SURFACE_ATTRIBUTE, browserId);
-  applyParkedBrowserSurfaceStyle(surface, browserId);
+  applyParkedBrowserSurfaceStyle(surface);
   getResidentBrowserHost(ownerDocument).appendChild(surface);
-  ensureResidentBrowserInputRecovery(ownerDocument);
   residentSurfacesByBrowserId.set(browserId, surface);
   return surface;
 }
@@ -362,8 +178,7 @@ function applyResidentWebviewStyle(webview: HTMLElement, browserId: string | nul
   webview.style.width = `${dimensions.width}px`;
   webview.style.height = `${dimensions.height}px`;
   webview.style.border = "0";
-  // Pages with transparent canvases need a browser-white backing in every app theme.
-  webview.style.background = "#ffffff";
+  webview.style.background = "transparent";
   webview.style.position = "absolute";
   webview.style.left = "0";
   webview.style.top = "0";
@@ -396,54 +211,13 @@ export function rememberBrowserWebviewSize(input: {
   return dimensions;
 }
 
-/**
- * Geometry of a tab as it is currently presented, in CSS pixels. `viewport` is
- * what the page lays out and screenshots at; `pane` is the region the user's
- * browser pane gives it. A fixed device size is cropped to the pane rather than
- * scaled to fit, so these two diverging is the difference between what an agent
- * captures and what the user can see. Only the pane knows both numbers, which
- * is why they are recorded here and reported through browser_list_tabs.
- */
-export interface ResidentBrowserPresentation {
-  mode: BrowserViewport["mode"];
-  viewportWidth: number;
-  viewportHeight: number;
-  paneWidth: number;
-  paneHeight: number;
-}
-
-export function readResidentBrowserPresentation(
-  browserId: string,
-): ResidentBrowserPresentation | null {
-  const normalizedBrowserId = trimNonEmpty(browserId);
-  if (!normalizedBrowserId) {
-    return null;
-  }
-  return residentPresentationsByBrowserId.get(normalizedBrowserId) ?? null;
-}
-
-function rememberResidentBrowserPresentation(
-  browserId: string,
-  presentation: ResidentBrowserPresentation,
-): void {
-  if (
-    presentation.viewportWidth <= 0 ||
-    presentation.viewportHeight <= 0 ||
-    presentation.paneWidth <= 0 ||
-    presentation.paneHeight <= 0
-  ) {
-    return;
-  }
-  residentPresentationsByBrowserId.set(browserId, presentation);
-}
-
 function applyBrowserWebviewDimensions(
   webview: HTMLElement,
   dimensions: { width: number; height: number },
 ): void {
   webview.style.display = "flex";
   webview.style.border = "0";
-  webview.style.background = "#ffffff";
+  webview.style.background = "transparent";
   webview.style.flex = "0 0 auto";
   webview.style.width = `${Math.max(1, Math.round(dimensions.width))}px`;
   webview.style.height = `${Math.max(1, Math.round(dimensions.height))}px`;
@@ -479,7 +253,6 @@ export function presentBrowserWebview(
   if (webview.parentElement !== surface) {
     surface.appendChild(webview);
   }
-  residentBrowserActivity.present(normalizedBrowserId);
   const anchorBounds = anchor.getBoundingClientRect();
   const clipBounds = clip.getBoundingClientRect();
   const left = Math.max(anchorBounds.left, clipBounds.left);
@@ -492,46 +265,32 @@ export function presentBrowserWebview(
     anchorBounds.top + anchorBounds.height,
     clipBounds.top + clipBounds.height,
   );
-  // Responsive guests paint edge-to-edge. The trusted guest preload forwards
-  // near-edge pointer movement so browser input can yield briefly to the same
-  // sidebar and splitter interactions used by ordinary panes.
-  const surfaceLeft = left;
-  const surfaceTop = top;
-  const surfaceRight = right;
-  const surfaceBottom = bottom;
+  const surfaceLeft = Math.ceil(left);
+  const surfaceTop = Math.ceil(top);
+  const surfaceRight = Math.floor(right);
+  const surfaceBottom = Math.floor(bottom);
   const hasVisibleArea = surfaceRight > surfaceLeft && surfaceBottom > surfaceTop;
   surface.setAttribute("aria-hidden", "false");
   surface.style.position = "fixed";
   surface.style.left = `${surfaceLeft}px`;
   surface.style.top = `${surfaceTop}px`;
-  surface.style.width = `${hasVisibleArea ? surfaceRight - surfaceLeft : 0}px`;
-  surface.style.height = `${hasVisibleArea ? surfaceBottom - surfaceTop : 0}px`;
+  surface.style.width = `${Math.max(0, surfaceRight - surfaceLeft)}px`;
+  surface.style.height = `${Math.max(0, surfaceBottom - surfaceTop)}px`;
   surface.style.overflow = "hidden";
   surface.style.opacity = "1";
-  surface.style.pointerEvents =
-    hasVisibleArea && isResidentBrowserInputEnabled(normalizedBrowserId) ? "auto" : "none";
+  surface.style.pointerEvents = hasVisibleArea ? "auto" : "none";
   surface.style.display = "flex";
-  surface.style.zIndex = String(WEB_SURFACE_PLANE.browser);
   surface.style.visibility = "visible";
   clearResidentWebviewParkingStyle(webview);
-  const webviewDimensions =
+  applyBrowserWebviewDimensions(
+    webview,
     viewport.mode === "responsive"
-      ? {
-          width: Math.ceil(anchorBounds.left + anchorBounds.width) - Math.floor(anchorBounds.left),
-          height: Math.ceil(anchorBounds.top + anchorBounds.height) - Math.floor(anchorBounds.top),
-        }
-      : { width: viewport.width, height: viewport.height };
-  applyBrowserWebviewDimensions(webview, webviewDimensions);
-  rememberResidentBrowserPresentation(normalizedBrowserId, {
-    mode: viewport.mode,
-    viewportWidth: Math.round(webviewDimensions.width),
-    viewportHeight: Math.round(webviewDimensions.height),
-    paneWidth: Math.round(clipBounds.width),
-    paneHeight: Math.round(clipBounds.height),
-  });
+      ? { width: anchorBounds.width, height: anchorBounds.height }
+      : viewport,
+  );
   webview.style.position = "absolute";
-  webview.style.left = `${anchorBounds.left - surfaceLeft}px`;
-  webview.style.top = `${anchorBounds.top - surfaceTop}px`;
+  webview.style.left = `${Math.round(anchorBounds.left - surfaceLeft)}px`;
+  webview.style.top = `${Math.round(anchorBounds.top - surfaceTop)}px`;
 }
 
 export function prepareBrowserWebview(
@@ -541,30 +300,9 @@ export function prepareBrowserWebview(
     workspaceId: string;
     initialUrl?: string | null;
     profileHost?: BrowserWebviewProfileHost;
-    serverId?: string | null;
   },
 ): void {
   const browser = getBrowserBridge(input.profileHost);
-  observeBrowserHistory(webview, input);
-  // These events belong to the guest, not the pane: automation can create a
-  // background tab before any pane mounts, and loads can finish while parked.
-  webview.addEventListener("dom-ready", () => {
-    markResidentBrowserWebviewReady(webview);
-    syncBrowserWebviewTitle(input.browserId, webview);
-  });
-  webview.addEventListener("page-title-updated", (event) => {
-    const title = (event as Event & { title?: unknown }).title;
-    if (typeof title === "string") {
-      useBrowserStore.getState().updateBrowser(input.browserId, { title });
-    }
-  });
-  webview.addEventListener("did-start-loading", () => {
-    useBrowserStore.getState().updateBrowser(input.browserId, { isLoading: true, lastError: null });
-  });
-  webview.addEventListener("did-stop-loading", () => {
-    useBrowserStore.getState().updateBrowser(input.browserId, { isLoading: false });
-    syncBrowserWebviewTitle(input.browserId, webview);
-  });
   webview.setAttribute(BROWSER_ID_ATTRIBUTE, input.browserId);
   webview.setAttribute("partition", browser.profilePartition);
   webview.setAttribute("allowpopups", "true");
@@ -574,16 +312,12 @@ export function prepareBrowserWebview(
     (webview as BrowserWebviewElement).src = input.initialUrl;
   }
   registerBrowserWhenAttached(webview as BrowserWebviewElement, input, browser);
-  webview.addEventListener("ipc-message", (event) => {
-    handleBrowserEdgePointer(input.browserId, webview, event as BrowserWebviewIpcMessageEvent);
-  });
 }
 
 export function ensureResidentBrowserWebview(input: {
   browserId: string;
   workspaceId: string;
   url: string;
-  serverId?: string | null;
   profileHost?: BrowserWebviewProfileHost;
 }): HTMLElement | null {
   const browserId = trimNonEmpty(input.browserId);
@@ -613,7 +347,6 @@ export function ensureResidentBrowserWebview(input: {
   prepareBrowserWebview(webview, {
     browserId,
     workspaceId: input.workspaceId,
-    serverId: input.serverId,
     initialUrl: input.url,
     profileHost: input.profileHost,
   });
@@ -645,7 +378,6 @@ export function takeResidentBrowserWebview(browserId: string): HTMLElement | nul
     return null;
   }
 
-  syncBrowserWebviewTitle(normalizedBrowserId, webview);
   return webview;
 }
 
@@ -661,13 +393,9 @@ export function releaseResidentBrowserWebview(browserId: string, webview: HTMLEl
   }
 
   residentWebviewsByBrowserId.set(normalizedBrowserId, webview);
-  // A parked tab has no pane, and a stale pane size would read as a live one.
-  residentPresentationsByBrowserId.delete(normalizedBrowserId);
-  residentBrowserEdgeInputYields.delete(normalizedBrowserId);
   applyResidentWebviewStyle(webview, normalizedBrowserId);
-  residentBrowserActivity.park(normalizedBrowserId);
   const surface = getBrowserSurface(normalizedBrowserId, ownerDocument);
-  applyParkedBrowserSurfaceStyle(surface, normalizedBrowserId);
+  applyParkedBrowserSurfaceStyle(surface);
   if (webview.parentElement !== surface) {
     surface.appendChild(webview);
   }
@@ -707,43 +435,16 @@ export function removeResidentBrowserWebview(browserId: string): void {
   residentWebviewsByBrowserId.delete(normalizedBrowserId);
   residentSurfacesByBrowserId.delete(normalizedBrowserId);
   residentWebviewSizesByBrowserId.delete(normalizedBrowserId);
-  residentPresentationsByBrowserId.delete(normalizedBrowserId);
-  residentBrowserEdgeInputYields.delete(normalizedBrowserId);
-  residentBrowserActivity.forget(normalizedBrowserId);
-  if (resident) {
-    readyResidentWebviews.delete(resident);
-  }
   resident?.remove();
   surface?.remove();
 }
 
 export function clearResidentBrowserWebviewsForTests(): void {
   for (const webview of residentWebviewsByBrowserId.values()) {
-    readyResidentWebviews.delete(webview);
     webview.remove();
   }
   residentWebviewsByBrowserId.clear();
   residentSurfacesByBrowserId.clear();
   residentWebviewSizesByBrowserId.clear();
-  residentPresentationsByBrowserId.clear();
-  residentBrowserEdgeInputYields.clear();
-  residentBrowserSurfaceInputEnabled = true;
-  residentBrowserInputSuspensions.clear();
-  residentBrowserActivity.reset();
   readDocument()?.getElementById(RESIDENT_BROWSER_HOST_ID)?.remove();
-}
-
-export function isResidentBrowserWebviewReady(webview: HTMLElement): boolean {
-  return readyResidentWebviews.has(webview);
-}
-
-const readyResidentWebviews = new WeakSet<HTMLElement>();
-
-/**
- * Guest methods become usable after the first `dom-ready`. Subsequent page
- * loads must not revoke that capability: Stop or another navigation must still
- * work if the next page hangs before reaching `dom-ready`.
- */
-export function markResidentBrowserWebviewReady(webview: HTMLElement): void {
-  readyResidentWebviews.add(webview);
 }

@@ -3,7 +3,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { OpenFileDisposition } from "@/workspace/file-open";
-import { openLink } from "@/utils/open-link";
+import { openExternalUrl } from "@/utils/open-external-url";
+import { formatFileLinkTooltipPath } from "./tooltip-path";
 import type { InlinePathTarget } from "./parse";
 import {
   useAssistantFileLinkResolverContext,
@@ -16,26 +17,11 @@ import {
   type AssistantFileLinkSource,
 } from "./resolver";
 
-/**
- * What a click on the link will actually do, for the hover tooltip. A link is
- * underlined before anything proves it can open, so the tooltip is where the
- * user learns the real target - or that there is none.
- */
-export type FileLinkHoverState =
-  | { kind: "external"; url: string }
-  | { kind: "file"; target: InlinePathTarget }
-  | { kind: "resolving"; token: string }
-  | { kind: "unresolved"; token: string }
-  | { kind: "unopenable"; href: string };
-
 export interface UseFileLinkResult {
   target: InlinePathTarget | null;
-  hoverState: FileLinkHoverState;
-  resolve: () => Promise<InlinePathTarget | null>;
+  tooltipPath: string | null;
   onHoverIn: () => void;
   onPress: () => void;
-  /** Middle-click / auxiliary click: opens the link to the side. */
-  onAuxPress: () => void;
   open: (source: AssistantFileLinkSource, disposition: OpenFileDisposition) => void;
 }
 
@@ -45,14 +31,21 @@ export interface AssistantFileLinkActions {
   canResolveFile(source: AssistantFileLinkSource): boolean;
 }
 
+interface AssistantFileLinkLookupKey {
+  query: string;
+  path: string;
+  lineStart: number | null;
+  lineEnd: number | null;
+}
+
 type AssistantFileLinkQueryKey = readonly [
   "assistantFileLink",
   string | null,
   string | null,
-  string,
+  AssistantFileLinkLookupKey | null,
 ];
 
-const DISABLED_QUERY_KEY = ["assistantFileLink", null, null, ""] as const;
+const DISABLED_QUERY_KEY = ["assistantFileLink", null, null, null] as const;
 
 export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult {
   const { t } = useTranslation();
@@ -75,7 +68,7 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
         ? assistantFileLinkQueryKey({
             serverId,
             workspaceRoot,
-            ambiguousQuery: resolution.ambiguousQuery,
+            resolution,
           })
         : DISABLED_QUERY_KEY,
     [resolution, serverId, workspaceRoot],
@@ -132,39 +125,7 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
     });
   });
 
-  const resolve = useStableEvent(async (): Promise<InlinePathTarget | null> => {
-    if (resolution.kind === "resolved") {
-      return resolution.value.kind === "file" ? resolution.value.target : null;
-    }
-
-    try {
-      return await queryClient.fetchQuery({
-        queryKey,
-        queryFn: () =>
-          fetchDaemonResolution({
-            ambiguousQuery: resolution.ambiguousQuery,
-            token: resolution.token,
-            target: resolution.target,
-            workspaceRoot,
-            getDirectorySuggestions: context.getDirectorySuggestions,
-          }),
-        retry: 0,
-        staleTime: Infinity,
-      });
-    } catch {
-      return null;
-    }
-  });
-
-  // A file opened from chat should never take over the chat's own pane - only
-  // another chat tab does that. A plain click opens the document to the side (a
-  // pane to the right of the chat, splitting one if needed); a modified click is
-  // the escape hatch to open it in place instead.
   const onPress = useStableEvent(() => {
-    open(stableSource, "side");
-  });
-  const onAuxPress = useStableEvent(() => {
-    open(stableSource, "main");
     open(stableSource, "preferred");
   });
 
@@ -175,46 +136,11 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
     return query.data ?? null;
   }, [query.data, resolution]);
 
-  const hoverState = useMemo<FileLinkHoverState>(() => {
-    if (target) {
-      return { kind: "file", target };
-    }
-    if (resolution.kind === "needsLookup") {
-      return query.status === "error"
-        ? { kind: "unresolved", token: resolution.token }
-        : { kind: "resolving", token: resolution.token };
-    }
-    const { value } = resolution;
-    if (value.kind === "external" && isOpenableExternalUrl(value.url)) {
-      return { kind: "external", url: value.url };
-    }
-    return { kind: "unopenable", href: safeDecodeUri(stableSource.href) };
-  }, [target, resolution, query.status, stableSource.href]);
-
+  const tooltipPath = target ? formatFileLinkTooltipPath({ target, workspaceRoot }) : null;
   return useMemo(
-    () => ({ target, hoverState, resolve, onHoverIn, onPress, onAuxPress, open }),
-    [target, hoverState, resolve, onHoverIn, onPress, onAuxPress, open],
+    () => ({ target, tooltipPath, onHoverIn, onPress, open }),
+    [target, tooltipPath, onHoverIn, onPress, open],
   );
-}
-
-// openLink only ever succeeds for http(s): the desktop opener and the web
-// fallback both refuse every other scheme, so a mailto: or vscode:// link, or a
-// Windows path that markdown-it percent-encoded into `C:%5C...`, is dead.
-function isOpenableExternalUrl(url: string): boolean {
-  try {
-    const { protocol } = new URL(url);
-    return protocol === "http:" || protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
-function safeDecodeUri(value: string): string {
-  try {
-    return decodeURI(value);
-  } catch {
-    return value;
-  }
 }
 
 export function useAssistantFileLinkActions(): AssistantFileLinkActions {
@@ -266,7 +192,7 @@ function openAssistantFileLink(input: {
   const capturedQueryKey = assistantFileLinkQueryKey({
     serverId: capturedConfig.serverId,
     workspaceRoot: capturedConfig.workspaceRoot,
-    ambiguousQuery: capturedResolution.ambiguousQuery,
+    resolution: capturedResolution,
   });
 
   const run = async () => {
@@ -332,13 +258,18 @@ function useStableSource(source: AssistantFileLinkSource): AssistantFileLinkSour
 function assistantFileLinkQueryKey(input: {
   serverId?: string;
   workspaceRoot?: string;
-  ambiguousQuery: string;
+  resolution: Extract<AssistantFileLinkResolution, { kind: "needsLookup" }>;
 }): AssistantFileLinkQueryKey {
   return [
     "assistantFileLink",
     input.serverId ?? null,
     input.workspaceRoot ?? null,
-    input.ambiguousQuery,
+    {
+      query: input.resolution.ambiguousQuery,
+      path: input.resolution.target.path,
+      lineStart: input.resolution.target.lineStart ?? null,
+      lineEnd: input.resolution.target.lineEnd ?? null,
+    },
   ];
 }
 
@@ -400,7 +331,7 @@ async function dispatchExternalUrl(input: {
   ) {
     return;
   }
-  await openLink(input.url);
+  await openExternalUrl(input.url);
 }
 
 async function dispatchUnresolvedError(input: {

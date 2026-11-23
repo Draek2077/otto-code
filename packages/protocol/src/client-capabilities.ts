@@ -1,4 +1,7 @@
 export const CLIENT_CAPS = {
+  helloRejection: "hello_rejection",
+  // COMPAT(ownedSubscriptions): added in v0.8.0, remove legacy ownership after 2027-03-09.
+  ownedSubscriptions: "owned_subscriptions",
   // Clients outside the Paseo app version series can explicitly accept provider IDs.
   // COMPAT(explicitEventSubscriptions): added in v0.8.0, remove legacy broadcasts after 2027-03-08.
   explicitEventSubscriptions: "explicit_event_subscriptions",
@@ -22,18 +25,10 @@ export const CLIENT_CAPS = {
   // COMPAT(providerSubagents): added in v0.1.107. The daemon emits provider-owned
   // child descriptors and timelines only to clients that understand the new messages.
   providerSubagents: "provider_subagents",
+  // COMPAT(projectedSubagentTimeline): added after v0.8.0, remove gates after 2027-03-14; retain wire capability.
+  projectedSubagentTimeline: "projected_subagent_timeline",
   // COMPAT(projectUpdates): added in v0.1.109, remove gate after 2027-01-15.
   projectUpdates: "project_updates",
-  // COMPAT(communicationsPresenceUpdates): added in v0.8.11, remove gate after
-  // 2027-02-14. Older clients do not know the presence-change notification, so
-  // the daemon sends it only after this capability is advertised.
-  communicationsPresenceUpdates: "communications_presence_updates",
-  // COMPAT(brainLogWatch): added in v0.8.11, remove gate after 2027-02-17.
-  // Brain log lines are pushed only to sockets that asked for them. A client
-  // advertising this defaults to NOT watching and turns the feed on when the
-  // Logs tab opens; a client without it keeps the old unconditional feed,
-  // because it has no way to ask and would otherwise lose live logs entirely.
-  brainLogWatch: "brain_log_watch",
   // COMPAT(compactProviderSnapshots): added in v0.2.X. Capable clients receive
   // provider catalogs with shared thinking sets and may revalidate by content hash.
   // Remove the legacy snapshot encoding after 2027-02-04.
@@ -50,6 +45,8 @@ export const CLIENT_CAPS = {
   pluginTimelineItems: "plugin_timeline_items",
   // COMPAT(workspaceSetupBlocked): added in v0.8.0, remove after 2027-03-07 once client floor >= v0.8.0.
   workspaceSetupBlocked: "workspace_setup_blocked",
+  // OTTO(prompt-suggestions) COMPAT(promptSuggestions): added in Otto 0.10, remove after 2027-05-21.
+  promptSuggestions: "otto_prompt_suggestions",
   browserHost: "browser_host",
 } as const;
 

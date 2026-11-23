@@ -1,6 +1,6 @@
 import { PackageVersionResolutionError, resolvePackageVersion } from "./package-version.js";
 
-const SERVER_PACKAGE_NAME = "@otto-code/server";
+const SERVER_PACKAGE_NAME = "@getpaseo/server";
 
 export class DaemonVersionResolutionError extends PackageVersionResolutionError {}
 

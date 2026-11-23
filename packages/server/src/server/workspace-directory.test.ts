@@ -1,10 +1,10 @@
 import { describe, expect, test } from "vitest";
-import { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
+import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import { createTestLogger } from "../test-utils/test-logger.js";
 import type { AgentSnapshotPayload, WorkspaceDescriptorPayload } from "./messages.js";
 import { WorkspaceDirectory } from "./workspace-directory.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "./workspace-registry.js";
-import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
+import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import type { ProviderSubagentWorkspaceActivity } from "./workspace-directory.js";
 
 const NOW = "2026-03-01T12:00:00.000Z";
@@ -35,7 +35,7 @@ class WorkspaceStatus {
   private readonly worktreeWorkspace: PersistedWorkspaceRecord = {
     workspaceId: "workspace-worktree",
     projectId: this.project.projectId,
-    cwd: "/workspace/project/.otto/worktrees/feature",
+    cwd: "/workspace/project/.paseo/worktrees/feature",
     kind: "worktree",
     displayName: "feature",
     createdAt: NOW,
@@ -82,6 +82,7 @@ class WorkspaceStatus {
       workspaceDirectory: workspace.cwd,
       projectKind: "git",
       workspaceKind: workspace.kind,
+      background: workspace.background,
       name: workspace.displayName,
       archivingAt: null,
       status: "done",
@@ -571,7 +572,9 @@ describe("WorkspaceDirectory empty projects", () => {
         workspaceDirectory: workspace.cwd,
         projectKind: "non_git",
         workspaceKind: workspace.kind,
+        background: workspace.background,
         name: workspace.displayName,
+        ...(workspace.internal ? { background: true } : {}),
         archivingAt: null,
         status: "done",
         activityAt: null,
@@ -614,8 +617,6 @@ describe("WorkspaceDirectory empty projects", () => {
         projectDisplayName: "Renamed",
         projectCustomName: "Renamed",
         projectCustomIconRevision: null,
-        // The fixture root does not exist on disk, so the project reads Offline.
-        projectOffline: true,
         projectRootPath: "/workspace/empty",
         projectKind: "non_git",
       },
@@ -646,369 +647,88 @@ describe("WorkspaceDirectory empty projects", () => {
 
     expect(result.emptyProjects.map((p) => p.projectId)).toEqual(["empty"]);
   });
-});
 
-describe("WorkspaceDirectory hidden workspaces", () => {
-  function workspaceRecord(
-    input: Partial<PersistedWorkspaceRecord> & { workspaceId: string; projectId: string },
-  ): PersistedWorkspaceRecord {
-    return {
-      cwd: `/workspace/${input.projectId}`,
-      kind: "directory",
-      displayName: "main",
-      createdAt: NOW,
-      updatedAt: NOW,
-      archivedAt: null,
-      ...input,
-    } satisfies PersistedWorkspaceRecord;
-  }
-
-  function projectRecord(projectId: string): PersistedProjectRecord {
-    return {
-      projectId,
-      rootPath: `/workspace/${projectId}`,
-      kind: "non_git",
-      displayName: projectId,
-      customName: null,
-      createdAt: NOW,
-      updatedAt: NOW,
-      archivedAt: null,
-    };
-  }
-
-  // Mutable backing array so a test can flip `hidden` in place, exactly like the
-  // registry-backed reveal path does.
-  function makeMutableDirectory(input: {
-    projects: PersistedProjectRecord[];
-    workspaces: PersistedWorkspaceRecord[];
-  }): { directory: WorkspaceDirectory; workspaces: PersistedWorkspaceRecord[] } {
-    const workspaces = input.workspaces;
-    const directory = new WorkspaceDirectory({
-      logger: createTestLogger(),
-      projectRegistry: { list: async () => input.projects },
-      workspaceRegistry: { list: async () => workspaces },
-      listAgentPayloads: async () => [],
-      listProviderSubagentActivity: async () => [],
-      listTerminalActivityContributions: async () => [],
-      isProviderVisibleToClient: () => true,
-      buildWorkspaceDescriptor: async ({ workspace }) => ({
-        id: workspace.workspaceId,
-        projectId: workspace.projectId,
-        projectDisplayName: "project",
-        projectCustomName: null,
-        projectRootPath: "/workspace/project",
-        workspaceDirectory: workspace.cwd,
-        projectKind: "non_git",
-        workspaceKind: workspace.kind,
-        name: workspace.displayName,
-        archivingAt: null,
-        status: "done",
-        activityAt: null,
-        diffStat: null,
-        gitRuntime: null,
-        githubRuntime: null,
-      }),
-    });
-    return { directory, workspaces };
-  }
-
-  test("hidden workspaces are withheld from listings and descriptor maps", async () => {
-    const { directory } = makeMutableDirectory({
-      projects: [projectRecord("proj")],
+  test("hides background workspaces and counts their project as empty unless includeBackground", async () => {
+    const directory = makeDirectory({
+      projects: [project({ projectId: "hidden-only" })],
       workspaces: [
-        workspaceRecord({ workspaceId: "ws-visible", projectId: "proj" }),
-        workspaceRecord({ workspaceId: "ws-hidden", projectId: "proj", hidden: true }),
+        {
+          workspaceId: "ws-internal",
+          projectId: "hidden-only",
+          cwd: "/workspace/hidden-only",
+          kind: "directory",
+          displayName: "helper",
+          createdAt: NOW,
+          updatedAt: NOW,
+          archivedAt: null,
+          background: true,
+        },
       ],
     });
 
-    const result = await directory.listFetchEntries({
+    const hidden = await directory.listFetchEntries({
       type: "fetch_workspaces_request",
       requestId: "r1",
+      filter: { query: "helper" },
     });
-    expect(result.entries.map((entry) => entry.id)).toEqual(["ws-visible"]);
+    expect(hidden.entries).toEqual([]);
+    expect(hidden.emptyProjects.map((p) => p.projectId)).toEqual(["hidden-only"]);
 
-    // The per-id descriptor map (the live-emission path) also withholds it: the
-    // emission chokepoint resolves no descriptor and emits a REMOVE.
-    const descriptors = await directory.buildDescriptorMap({
-      includeGitData: false,
-      workspaceIds: ["ws-visible", "ws-hidden"],
-    });
-    expect(descriptors.has("ws-visible")).toBe(true);
-    expect(descriptors.has("ws-hidden")).toBe(false);
-  });
-
-  test("a revealed workspace appears in listings and descriptor maps", async () => {
-    const { directory, workspaces } = makeMutableDirectory({
-      projects: [projectRecord("proj")],
-      workspaces: [workspaceRecord({ workspaceId: "ws-run", projectId: "proj", hidden: true })],
-    });
-
-    const before = await directory.listFetchEntries({
-      type: "fetch_workspaces_request",
-      requestId: "r1",
-    });
-    expect(before.entries).toEqual([]);
-
-    // Reveal = flip the flag on the persisted record; the next build resolves a
-    // descriptor and the emission path upserts it.
-    workspaces[0] = { ...workspaces[0], hidden: false };
-
-    const after = await directory.listFetchEntries({
+    const shown = await directory.listFetchEntries({
       type: "fetch_workspaces_request",
       requestId: "r2",
+      filter: { includeBackground: true },
     });
-    expect(after.entries.map((entry) => entry.id)).toEqual(["ws-run"]);
-    const descriptors = await directory.buildDescriptorMap({
-      includeGitData: false,
-      workspaceIds: ["ws-run"],
-    });
-    expect(descriptors.has("ws-run")).toBe(true);
-  });
-
-  test("a project whose only workspace is hidden renders nowhere: no entries, no empty-project ghost", async () => {
-    const { directory } = makeMutableDirectory({
-      projects: [projectRecord("proj")],
-      workspaces: [workspaceRecord({ workspaceId: "ws-hidden", projectId: "proj", hidden: true })],
-    });
-
-    const result = await directory.listFetchEntries({
-      type: "fetch_workspaces_request",
-      requestId: "r1",
-    });
-    // The hidden workspace still counts as occupying its project, so the project
-    // must not appear as an empty-project ghost row while the run is invisible.
-    expect(result.entries).toEqual([]);
-    expect(result.emptyProjects).toEqual([]);
+    expect(shown.entries.map((entry) => entry.id)).toEqual(["ws-internal"]);
+    expect(shown.emptyProjects).toEqual([]);
   });
 });
 
-// A rebuild for named workspaceIds must fetch only those workspaces' agents
-// instead of projecting every live and persisted agent in the home - while
-// producing byte-identical descriptors. The subtle half is parent resolution: a
-// subagent counts as its workspace's root only when its parent RESOLVES to a
-// different workspace, so a scoped fetch that simply dropped out-of-scope
-// parents would silently downgrade the workspace's status.
-describe("WorkspaceDirectory scoped descriptor rebuild", () => {
-  const SCOPED_PROJECT: PersistedProjectRecord = {
-    projectId: "project-1",
-    rootPath: "/workspace/project",
+test("Git observation targets exclude archived records without hydrating app descriptors", async () => {
+  const workspace = (
+    id: string,
+    projectId: string,
+    archivedAt: string | null = null,
+  ): PersistedWorkspaceRecord => ({
+    workspaceId: id,
+    projectId,
+    cwd: `/workspace/${id}`,
+    kind: "local_checkout",
+    displayName: id,
+    createdAt: NOW,
+    updatedAt: NOW,
+    archivedAt,
+  });
+  const project = (id: string, archivedAt: string | null = null): PersistedProjectRecord => ({
+    projectId: id,
+    rootPath: `/workspace/${id}`,
     kind: "git",
-    displayName: "project",
+    displayName: id,
     customName: null,
     createdAt: NOW,
     updatedAt: NOW,
-    archivedAt: null,
+    archivedAt,
+  });
+  const unexpectedHydration = async (): Promise<never> => {
+    throw new Error("Watcher reconciliation hydrated app data");
   };
-
-  const SCOPED_WORKSPACES: PersistedWorkspaceRecord[] = [
-    {
-      workspaceId: "ws-a",
-      projectId: SCOPED_PROJECT.projectId,
-      cwd: "/workspace/project",
-      kind: "local_checkout",
-      displayName: "main",
-      createdAt: NOW,
-      updatedAt: NOW,
-      archivedAt: null,
+  const directory = new WorkspaceDirectory({
+    logger: createTestLogger(),
+    projectRegistry: { list: async () => [project("active"), project("archived", NOW)] },
+    workspaceRegistry: {
+      list: async () => [
+        workspace("observed", "active"),
+        workspace("hidden", "active", NOW),
+        workspace("hidden-project", "archived"),
+      ],
     },
-    {
-      workspaceId: "ws-b",
-      projectId: SCOPED_PROJECT.projectId,
-      cwd: "/workspace/project/.otto/worktrees/feature",
-      kind: "worktree",
-      displayName: "feature",
-      createdAt: NOW,
-      updatedAt: NOW,
-      archivedAt: null,
-    },
-  ];
-
-  interface ScopeCall {
-    workspaceIds: string[];
-    agentIds: string[];
-  }
-
-  // The fake resolves a scope the same way session.listAgentPayloads does: an
-  // agent is reachable by its owning workspaceId, or by its own id.
-  function makeScopedDirectory(agents: AgentSnapshotPayload[]): {
-    directory: WorkspaceDirectory;
-    scopeCalls: Array<ScopeCall | null>;
-  } {
-    const scopeCalls: Array<ScopeCall | null> = [];
-    const directory = new WorkspaceDirectory({
-      logger: createTestLogger(),
-      // Scoped and unscoped are two separate builds. A real clock lets them
-      // straddle a millisecond boundary and disagree on `statusEnteredAt`.
-      now: () => new Date(NOW),
-      projectRegistry: { list: async () => [SCOPED_PROJECT] },
-      workspaceRegistry: { list: async () => SCOPED_WORKSPACES },
-      listAgentPayloads: async (scope) => {
-        scopeCalls.push(
-          scope
-            ? {
-                workspaceIds: [...(scope.workspaceIds ?? [])],
-                agentIds: [...(scope.agentIds ?? [])],
-              }
-            : null,
-        );
-        if (!scope) {
-          return agents;
-        }
-        return agents.filter(
-          (agent) =>
-            (agent.workspaceId !== undefined && scope.workspaceIds?.has(agent.workspaceId)) ||
-            scope.agentIds?.has(agent.id),
-        );
-      },
-      listProviderSubagentActivity: async () => [],
-      listTerminalActivityContributions: async () => [],
-      isProviderVisibleToClient: () => true,
-      buildWorkspaceDescriptor: async ({ workspace }) => ({
-        id: workspace.workspaceId,
-        projectId: workspace.projectId,
-        projectDisplayName: "project",
-        projectCustomName: null,
-        projectRootPath: SCOPED_PROJECT.rootPath,
-        workspaceDirectory: workspace.cwd,
-        projectKind: "git",
-        workspaceKind: workspace.kind,
-        name: workspace.displayName,
-        archivingAt: null,
-        status: "done",
-        activityAt: null,
-        diffStat: null,
-        scripts: [],
-        gitRuntime: null,
-        githubRuntime: null,
-      }),
-    });
-    return { directory, scopeCalls };
-  }
-
-  // Fresh instances per build so neither result can inherit the other's
-  // per-workspace bucket history.
-  async function buildScopedAndUnscoped(
-    agents: AgentSnapshotPayload[],
-    workspaceId: string,
-  ): Promise<{
-    scoped: WorkspaceDescriptorPayload | undefined;
-    unscoped: WorkspaceDescriptorPayload | undefined;
-    scopeCalls: Array<ScopeCall | null>;
-  }> {
-    const scopedRun = makeScopedDirectory(agents);
-    const scopedMap = await scopedRun.directory.buildDescriptorMap({
-      includeGitData: false,
-      workspaceIds: [workspaceId],
-    });
-    const unscopedMap = await makeScopedDirectory(agents).directory.buildDescriptorMap({
-      includeGitData: false,
-    });
-    return {
-      scoped: scopedMap.get(workspaceId),
-      unscoped: unscopedMap.get(workspaceId),
-      scopeCalls: scopedRun.scopeCalls,
-    };
-  }
-
-  test("fetches only the target workspace, and builds only its descriptor", async () => {
-    const agents = [
-      createAgent({ id: "a-1", status: "running", cwd: "/workspace/project", workspaceId: "ws-a" }),
-      createAgent({
-        id: "b-1",
-        status: "idle",
-        cwd: "/workspace/project/.otto/worktrees/feature",
-        workspaceId: "ws-b",
-      }),
-    ];
-    const { directory, scopeCalls } = makeScopedDirectory(agents);
-
-    const descriptors = await directory.buildDescriptorMap({
-      includeGitData: false,
-      workspaceIds: ["ws-b"],
-    });
-
-    expect([...descriptors.keys()]).toEqual(["ws-b"]);
-    expect(scopeCalls).toEqual([{ workspaceIds: ["ws-b"], agentIds: [] }]);
+    listAgentPayloads: unexpectedHydration,
+    listProviderSubagentActivity: unexpectedHydration,
+    listTerminalActivityContributions: unexpectedHydration,
+    buildWorkspaceDescriptor: unexpectedHydration,
+    isProviderVisibleToClient: () => true,
   });
-
-  test("a same-workspace-only rebuild needs no parent backfill round trip", async () => {
-    const agents = [
-      createAgent({
-        id: "b-child",
-        status: "running",
-        cwd: "/workspace/project/.otto/worktrees/feature",
-        workspaceId: "ws-b",
-        labels: { [PARENT_AGENT_ID_LABEL]: "b-parent" },
-      }),
-      createAgent({
-        id: "b-parent",
-        status: "idle",
-        cwd: "/workspace/project/.otto/worktrees/feature",
-        workspaceId: "ws-b",
-      }),
-    ];
-    const { scoped, unscoped, scopeCalls } = await buildScopedAndUnscoped(agents, "ws-b");
-
-    expect(scopeCalls).toHaveLength(1);
-    expect(scoped).toEqual(unscoped);
-    // The descendant contributes running activity to its in-workspace ancestor.
-    expect(scoped?.status).toBe("running");
-  });
-
-  test("a subagent whose parent lives in another workspace still roots its own", async () => {
-    const agents = [
-      createAgent({ id: "a-1", status: "idle", cwd: "/workspace/project", workspaceId: "ws-a" }),
-      createAgent({
-        id: "b-child",
-        status: "running",
-        cwd: "/workspace/project/.otto/worktrees/feature",
-        workspaceId: "ws-b",
-        labels: { [PARENT_AGENT_ID_LABEL]: "a-1" },
-      }),
-    ];
-    const { scoped, unscoped, scopeCalls } = await buildScopedAndUnscoped(agents, "ws-b");
-
-    // The out-of-scope parent is backfilled by id, not by re-listing everything.
-    expect(scopeCalls).toEqual([
-      { workspaceIds: ["ws-b"], agentIds: [] },
-      { workspaceIds: [], agentIds: ["a-1"] },
-    ]);
-    expect(scoped).toEqual(unscoped);
-    expect(scoped?.status).toBe("running");
-  });
-
-  test("a subagent whose parent no longer resolves contributes nothing, scoped or not", async () => {
-    const agents = [
-      createAgent({
-        id: "b-child",
-        status: "running",
-        cwd: "/workspace/project/.otto/worktrees/feature",
-        workspaceId: "ws-b",
-        labels: { [PARENT_AGENT_ID_LABEL]: "gone" },
-      }),
-    ];
-    const { scoped, unscoped } = await buildScopedAndUnscoped(agents, "ws-b");
-
-    expect(scoped).toEqual(unscoped);
-    expect(scoped?.status).toBe("done");
-  });
-
-  test("scoped and unscoped agree on an attention-masked workspace", async () => {
-    const agents = [
-      createAgent({ id: "a-1", status: "running", cwd: "/workspace/project", workspaceId: "ws-a" }),
-      createAgent({
-        id: "b-1",
-        status: "idle",
-        cwd: "/workspace/project/.otto/worktrees/feature",
-        workspaceId: "ws-b",
-        requiresAttention: true,
-        attentionReason: "permission",
-        pendingPermissionCount: 1,
-      }),
-    ];
-    const { scoped, unscoped } = await buildScopedAndUnscoped(agents, "ws-b");
-
-    expect(scoped).toEqual(unscoped);
-    expect(scoped?.status).not.toBe("done");
-  });
+  expect(await directory.listObservationTargets()).toEqual([
+    { id: "observed", workspaceDirectory: "/workspace/observed", workspaceKind: "local_checkout" },
+  ]);
 });

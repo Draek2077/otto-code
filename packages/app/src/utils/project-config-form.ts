@@ -1,9 +1,9 @@
 import type {
-  OttoConfigRaw,
-  OttoMetadataGeneration,
-  OttoMetadataGenerationEntry,
-  OttoScriptEntryRaw,
-} from "@otto-code/protocol/messages";
+  PaseoConfigRaw,
+  PaseoMetadataGeneration,
+  PaseoMetadataGenerationEntry,
+  PaseoScriptEntryRaw,
+} from "@getpaseo/protocol/messages";
 
 export type LifecycleOriginalKind = "string" | "array" | "missing";
 
@@ -17,7 +17,7 @@ export interface ProjectScriptDraft {
   commandOriginalKind: LifecycleOriginalKind;
   type: string;
   portText: string;
-  rawEntry: OttoScriptEntryRaw;
+  rawEntry: PaseoScriptEntryRaw;
 }
 
 export interface ProjectConfigDraft {
@@ -27,7 +27,7 @@ export interface ProjectConfigDraft {
   teardownOriginalKind: LifecycleOriginalKind;
   scripts: ProjectScriptDraft[];
   metadataPrompts: Record<MetadataPromptKey, string>;
-  metadataGenerationBase: OttoMetadataGeneration | undefined;
+  metadataGenerationBase: PaseoMetadataGeneration | undefined;
 }
 
 interface LifecycleProjection {
@@ -106,7 +106,7 @@ function emptyMetadataPrompts(): Record<MetadataPromptKey, string> {
   };
 }
 
-export function configToDraft(config: OttoConfigRaw | null | undefined): ProjectConfigDraft {
+export function configToDraft(config: PaseoConfigRaw | null | undefined): ProjectConfigDraft {
   const worktree = config?.worktree ?? {};
   const setup = projectLifecycle(worktree.setup);
   const teardown = projectLifecycle(worktree.teardown);
@@ -148,10 +148,10 @@ export function configToDraft(config: OttoConfigRaw | null | undefined): Project
 
 interface ApplyDraftInput {
   draft: ProjectConfigDraft;
-  base: OttoConfigRaw | null | undefined;
+  base: PaseoConfigRaw | null | undefined;
 }
 
-export function applyDraftToConfig(input: ApplyDraftInput): OttoConfigRaw {
+export function applyDraftToConfig(input: ApplyDraftInput): PaseoConfigRaw {
   const baseConfig = input.base ?? {};
   const baseWorktree = baseConfig.worktree ?? {};
 
@@ -172,7 +172,7 @@ export function applyDraftToConfig(input: ApplyDraftInput): OttoConfigRaw {
     nextWorktree.teardown = nextTeardown;
   }
 
-  const nextScripts: Record<string, OttoScriptEntryRaw> = {};
+  const nextScripts: Record<string, PaseoScriptEntryRaw> = {};
   for (const row of input.draft.scripts) {
     const trimmedName = row.name.trim();
     if (trimmedName.length === 0) {
@@ -198,7 +198,7 @@ export function applyDraftToConfig(input: ApplyDraftInput): OttoConfigRaw {
     } else {
       nextEntry.port = nextPort;
     }
-    nextScripts[trimmedName] = nextEntry as OttoScriptEntryRaw;
+    nextScripts[trimmedName] = nextEntry as PaseoScriptEntryRaw;
   }
 
   const nextMetadataGeneration: Record<string, unknown> = {
@@ -207,7 +207,7 @@ export function applyDraftToConfig(input: ApplyDraftInput): OttoConfigRaw {
   for (const key of METADATA_PROMPT_KEYS) {
     const text = input.draft.metadataPrompts[key];
     const baseEntry = input.draft.metadataGenerationBase?.[key] as
-      | OttoMetadataGenerationEntry
+      | PaseoMetadataGenerationEntry
       | undefined;
     if (text.trim().length === 0) {
       if (baseEntry) {
@@ -242,5 +242,5 @@ export function applyDraftToConfig(input: ApplyDraftInput): OttoConfigRaw {
   } else {
     result.metadataGeneration = nextMetadataGeneration;
   }
-  return result as OttoConfigRaw;
+  return result as PaseoConfigRaw;
 }

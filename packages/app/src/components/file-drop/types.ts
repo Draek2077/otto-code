@@ -17,8 +17,7 @@ export type DroppedItem = DroppedFileItem | DroppedPathItem;
  * everything else arrives raw via `onGenericFiles`.
  */
 export interface FileDropSink {
-  /** Non-composer targets can handle raw host files without persisting images. */
-  onFiles?: (images: ImageAttachment[]) => void;
+  onFiles: (images: ImageAttachment[]) => void;
   onGenericFiles?: (items: DroppedItem[]) => void;
   onWorkspaceFile?: (payload: WorkspaceFileDragPayload) => void;
 }

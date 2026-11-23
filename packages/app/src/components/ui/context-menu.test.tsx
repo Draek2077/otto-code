@@ -1,12 +1,10 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ContextMenuTrigger, contextMenuAnchorFromEvent } from "./context-menu";
+import { ContextMenuTrigger } from "./context-menu";
 
 const captured = vi.hoisted(() => ({
   style: undefined as unknown,
-  onContextMenu: undefined as ((event: unknown) => void) | undefined,
-  setOpen: vi.fn(),
 }));
 
 vi.mock("react-native", () => ({
@@ -29,40 +27,19 @@ vi.mock("@/components/ui/menu", () => ({
   useMenuContext: () => ({
     open: false,
     setAnchorRect: vi.fn(),
-    setOpen: captured.setOpen,
+    setOpen: vi.fn(),
     triggerRef: undefined,
   }),
 }));
 
 vi.mock("@/components/ui/press-highlight", () => ({
-  PressHighlight: (props: { style?: unknown; onContextMenu?: (event: unknown) => void }) => {
+  PressHighlight: (props: { style?: unknown }) => {
     captured.style = props.style;
-    captured.onContextMenu = props.onContextMenu;
     return null;
   },
 }));
 
 afterEach(() => vi.unstubAllGlobals());
-
-describe("contextMenuAnchorFromEvent", () => {
-  it.each([false, true])(
-    "claims the event with preserveNativeDefault=%s",
-    (preserveNativeDefault) => {
-      const event = {
-        pageX: 42,
-        pageY: 84,
-        preventDefault: vi.fn(),
-        stopPropagation: vi.fn(),
-      };
-      expect(contextMenuAnchorFromEvent(event, { preserveNativeDefault })).toEqual({
-        x: 42,
-        y: 84,
-      });
-      expect(event.preventDefault).toHaveBeenCalledTimes(preserveNativeDefault ? 0 : 1);
-      expect(event.stopPropagation).toHaveBeenCalledOnce();
-    },
-  );
-});
 
 describe("ContextMenuTrigger", () => {
   it("preserves a static trigger style so the native press highlight can inherit its corners", () => {
@@ -72,16 +49,5 @@ describe("ContextMenuTrigger", () => {
     renderToStaticMarkup(<ContextMenuTrigger style={rowStyle} />);
 
     expect(captured.style).toBe(rowStyle);
-  });
-
-  it("does not intercept a right click when the context menu is disabled", () => {
-    vi.stubGlobal("React", React);
-    const preventDefault = vi.fn();
-
-    renderToStaticMarkup(<ContextMenuTrigger enabled={false} />);
-    captured.onContextMenu?.({ preventDefault });
-
-    expect(preventDefault).not.toHaveBeenCalled();
-    expect(captured.setOpen).not.toHaveBeenCalled();
   });
 });

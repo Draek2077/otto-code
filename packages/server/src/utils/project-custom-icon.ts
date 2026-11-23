@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { ProjectIconSource } from "@otto-code/protocol/messages";
+import type { ProjectIconSource } from "@getpaseo/protocol/messages";
 
 import { writeFileAtomic } from "../server/atomic-file.js";
 import type { PersistedProjectRecord, ProjectRegistry } from "../server/workspace-registry.js";
@@ -20,7 +20,7 @@ const inFlightSaves = new Map<string, Promise<unknown>>();
  * this boundary accepts bytes, validates them, and replaces whatever was stored.
  */
 export async function setProjectCustomIcon(input: {
-  ottoHome: string;
+  paseoHome: string;
   projectId: string;
   source: ProjectIconSource;
   projects: ProjectRegistry;
@@ -34,7 +34,7 @@ export async function setProjectCustomIcon(input: {
     } else {
       const bytes = Buffer.from(input.source.data, "base64");
       validateIcon(bytes);
-      await writeFileAtomic(cachePath(input.ottoHome, input.projectId), bytes);
+      await writeFileAtomic(cachePath(input.paseoHome, input.projectId), bytes);
       customIconRevision = randomUUID();
     }
 
@@ -54,7 +54,7 @@ export async function setProjectCustomIcon(input: {
 
 /** Resolves the icon a project renders with, whichever mode it is in. */
 export async function readProjectIcon(input: {
-  ottoHome: string;
+  paseoHome: string;
   project: PersistedProjectRecord;
 }): Promise<ProjectIcon | null> {
   return (await readProjectIconSnapshot(input)).icon;
@@ -69,10 +69,10 @@ export interface ProjectIconSnapshot {
 export class ProjectIconReader {
   private readonly snapshots = new Map<string, ProjectIconSnapshot>();
 
-  constructor(private readonly ottoHome: string) {}
+  constructor(private readonly paseoHome: string) {}
 
   async snapshot(project: PersistedProjectRecord): Promise<ProjectIconSnapshot> {
-    const snapshot = await readProjectIconSnapshot({ ottoHome: this.ottoHome, project });
+    const snapshot = await readProjectIconSnapshot({ paseoHome: this.paseoHome, project });
     this.snapshots.set(project.projectId, snapshot);
     return snapshot;
   }
@@ -84,13 +84,13 @@ export class ProjectIconReader {
 
 /** Reads the effective icon and gives that exact result a stable identity. */
 export async function readProjectIconSnapshot(input: {
-  ottoHome: string;
+  paseoHome: string;
   project: PersistedProjectRecord;
 }): Promise<ProjectIconSnapshot> {
   if (input.project.customIconRevision) {
     let icon: ProjectIcon | null = null;
     try {
-      icon = validateIcon(await readFile(cachePath(input.ottoHome, input.project.projectId)));
+      icon = validateIcon(await readFile(cachePath(input.paseoHome, input.project.projectId)));
     } catch {
       // A missing/corrupt custom icon is itself a cacheable result until the
       // registry revision changes.
@@ -117,10 +117,10 @@ function iconRevision(source: "automatic" | "custom", icon: ProjectIcon): string
 }
 
 export async function removeProjectCustomIcon(input: {
-  ottoHome: string;
+  paseoHome: string;
   projectId: string;
 }): Promise<void> {
-  await rm(cachePath(input.ottoHome, input.projectId), { force: true });
+  await rm(cachePath(input.paseoHome, input.projectId), { force: true });
 }
 
 async function serialize<T>(projectId: string, save: () => Promise<T>): Promise<T> {
@@ -134,9 +134,9 @@ async function serialize<T>(projectId: string, save: () => Promise<T>): Promise<
   }
 }
 
-function cachePath(ottoHome: string, projectId: string): string {
+function cachePath(paseoHome: string, projectId: string): string {
   const key = createHash("sha256").update(projectId).digest("hex");
-  return join(ottoHome, "projects", "icons", `${key}.bin`);
+  return join(paseoHome, "projects", "icons", `${key}.bin`);
 }
 
 function detectMimeType(buffer: Buffer): string | null {

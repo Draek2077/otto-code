@@ -20,23 +20,12 @@ export interface DesktopSettings {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
   };
-  tray: {
-    showIcon: boolean;
-    minimizeOnClose: boolean;
-    startMinimized: boolean;
-  };
-  quit: {
-    warnBeforeQuit: boolean;
-    onlyWarnForActiveAgents: boolean;
-  };
 }
 
 export interface DesktopSettingsPatch {
   releaseChannel?: ReleaseChannel;
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
-  tray?: Partial<DesktopSettings["tray"]>;
-  quit?: Partial<DesktopSettings["quit"]>;
 }
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
@@ -47,15 +36,6 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   daemon: {
     manageBuiltInDaemon: true,
     keepRunningAfterQuit: false,
-  },
-  tray: {
-    showIcon: true,
-    minimizeOnClose: true,
-    startMinimized: false,
-  },
-  quit: {
-    warnBeforeQuit: false,
-    onlyWarnForActiveAgents: false,
   },
 };
 
@@ -173,8 +153,6 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
   const record = isRecord(raw) ? raw : {};
   const notifications = isRecord(record.notifications) ? record.notifications : {};
   const daemon = isRecord(record.daemon) ? record.daemon : {};
-  const tray = isRecord(record.tray) ? record.tray : {};
-  const quit = isRecord(record.quit) ? record.quit : {};
 
   return {
     releaseChannel: record.releaseChannel === "beta" ? "beta" : "stable",
@@ -194,28 +172,6 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
           ? daemon.keepRunningAfterQuit
           : DEFAULT_DESKTOP_SETTINGS.daemon.keepRunningAfterQuit,
     },
-    tray: {
-      showIcon:
-        typeof tray.showIcon === "boolean" ? tray.showIcon : DEFAULT_DESKTOP_SETTINGS.tray.showIcon,
-      minimizeOnClose:
-        typeof tray.minimizeOnClose === "boolean"
-          ? tray.minimizeOnClose
-          : DEFAULT_DESKTOP_SETTINGS.tray.minimizeOnClose,
-      startMinimized:
-        typeof tray.startMinimized === "boolean"
-          ? tray.startMinimized
-          : DEFAULT_DESKTOP_SETTINGS.tray.startMinimized,
-    },
-    quit: {
-      warnBeforeQuit:
-        typeof quit.warnBeforeQuit === "boolean"
-          ? quit.warnBeforeQuit
-          : DEFAULT_DESKTOP_SETTINGS.quit.warnBeforeQuit,
-      onlyWarnForActiveAgents:
-        typeof quit.onlyWarnForActiveAgents === "boolean"
-          ? quit.onlyWarnForActiveAgents
-          : DEFAULT_DESKTOP_SETTINGS.quit.onlyWarnForActiveAgents,
-    },
   };
 }
 
@@ -233,14 +189,6 @@ function mergeDesktopSettings(
       ...current.daemon,
       ...updates.daemon,
     },
-    tray: {
-      ...current.tray,
-      ...updates.tray,
-    },
-    quit: {
-      ...current.quit,
-      ...updates.quit,
-    },
   };
 }
 
@@ -249,8 +197,6 @@ function normalizePatch(updates: DesktopSettingsPatch): Record<string, unknown> 
     ...(updates.releaseChannel ? { releaseChannel: updates.releaseChannel } : {}),
     ...(updates.notifications ? { notifications: updates.notifications } : {}),
     ...(updates.daemon ? { daemon: updates.daemon } : {}),
-    ...(updates.tray ? { tray: updates.tray } : {}),
-    ...(updates.quit ? { quit: updates.quit } : {}),
   };
 }
 

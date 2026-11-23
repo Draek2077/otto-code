@@ -13,12 +13,11 @@ import {
   PanelLeft,
   Plus,
   Settings,
-} from "@/components/icons/material-icons";
+} from "lucide-react-native";
 import { withUnistyles } from "react-native-unistyles";
 import { getIsElectronRuntime, useIsCompactFormFactor } from "@/constants/layout";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
-import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
-
+import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import { useImportSession } from "@/hooks/use-import-session";
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
@@ -65,47 +64,47 @@ const ThemedPanelLeft = withUnistyles(PanelLeft, (theme) => ({
 }));
 
 function PlusIcon({ size }: CommandCenterIconProps) {
-  return <ThemedPlus size={size} />;
+  return <ThemedPlus size={size} strokeWidth={2.4} />;
 }
 
 function AddProjectIcon({ size }: CommandCenterIconProps) {
-  return <ThemedFolderPlus size={size} />;
+  return <ThemedFolderPlus size={size} strokeWidth={2.2} />;
 }
 
 function SettingsIcon({ size }: CommandCenterIconProps) {
-  return <ThemedSettings size={size} />;
+  return <ThemedSettings size={size} strokeWidth={2.2} />;
 }
 
 function HistoryIcon({ size }: CommandCenterIconProps) {
-  return <ThemedHistory size={size} />;
+  return <ThemedHistory size={size} strokeWidth={2.2} />;
 }
 
 function SchedulesIcon({ size }: CommandCenterIconProps) {
-  return <ThemedCalendarClock size={size} />;
+  return <ThemedCalendarClock size={size} strokeWidth={2.2} />;
 }
 
 function KeyboardIcon({ size }: CommandCenterIconProps) {
-  return <ThemedKeyboard size={size} />;
+  return <ThemedKeyboard size={size} strokeWidth={2.2} />;
 }
 
 function HomeIcon({ size }: CommandCenterIconProps) {
-  return <ThemedHome size={size} />;
+  return <ThemedHome size={size} strokeWidth={2.2} />;
 }
 
 function ImportIcon({ size }: CommandCenterIconProps) {
-  return <ThemedImport size={size} />;
+  return <ThemedImport size={size} strokeWidth={2.2} />;
 }
 
 function FolderIcon({ size }: CommandCenterIconProps) {
-  return <ThemedFolder size={size} />;
+  return <ThemedFolder size={size} strokeWidth={2.2} />;
 }
 
 function CircleDashedIcon({ size }: CommandCenterIconProps) {
-  return <ThemedCircleDashed size={size} />;
+  return <ThemedCircleDashed size={size} strokeWidth={2.2} />;
 }
 
 function PanelLeftIcon({ size }: CommandCenterIconProps) {
-  return <ThemedPanelLeft size={size} />;
+  return <ThemedPanelLeft size={size} strokeWidth={2.2} />;
 }
 
 export function CommandCenterRootActions() {
@@ -113,7 +112,7 @@ export function CommandCenterRootActions() {
   const { t } = useTranslation();
   const { overrides } = useKeyboardShortcutOverrides();
   const shortcutsAvailable = useKeyboardShortcutsAvailable();
-  const openProjectPicker = useOpenProjectPicker();
+  const openAddProject = useOpenAddProject();
   const { open: openImportSession, sheet: importSessionSheet } = useImportSession();
   const settingsRoute = useMemo<Href>(() => buildSettingsRoute(), []);
   const homeRoute = useMemo<Href>(() => buildOpenProjectRoute(), []);
@@ -143,7 +142,7 @@ export function CommandCenterRootActions() {
         visibility: "query",
         run: () => {
           clearCommandCenterFocusRestoreElement();
-          openProjectPicker();
+          openAddProject();
         },
         presentation: {
           kind: "action",
@@ -334,8 +333,8 @@ export function CommandCenterRootActions() {
   }, [
     groupMode,
     homeRoute,
-    openProjectPicker,
     keyboardActionDispatcher,
+    openAddProject,
     openImportSession,
     overrides,
     schedulesRoute,

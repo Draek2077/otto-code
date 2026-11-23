@@ -1,6 +1,7 @@
-import type { ServerInfoStatusPayload } from "@otto-code/protocol/messages";
+import type { ServerInfoStatusPayload } from "@getpaseo/protocol/messages";
 import type { HostRuntimeSnapshot } from "@/runtime/host-runtime";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
+import { OTTO_PRODUCT_NAME } from "@getpaseo/protocol/otto/identity";
 
 interface DiagnosticEntry {
   label: string;
@@ -22,7 +23,8 @@ export function formatAppDiagnosticHeader(input: {
   isDesktopApp: boolean;
   hostCount: number;
 }): string {
-  return formatDiagnosticSection("Otto app diagnostics", [
+  // OTTO(identity)
+  return formatDiagnosticSection(`${OTTO_PRODUCT_NAME} app diagnostics`, [
     { label: "Collected at", value: new Date().toISOString() },
     { label: "App version", value: input.appVersion ?? "unknown" },
     { label: "Platform", value: input.platform },
@@ -111,7 +113,7 @@ export function redactAppDiagnosticReport(report: string, hosts: HostProfile[]):
     redacted = redacted.split(value).join("[redacted]");
   }
   return redacted
-    .replace(/otto:\/\/\S+/gi, "otto://[redacted]")
+    .replace(/(?:otto|paseo):\/\/\S+/gi, "otto://[redacted]") // OTTO(identity)
     .replace(
       /([?&](?:password|token|secret|key|publicKey|daemonPublicKeyB64)=)[^&\s"']+/gi,
       "$1[redacted]",
@@ -125,11 +127,11 @@ export function redactAppDiagnosticReport(report: string, hosts: HostProfile[]):
 function collectSensitiveHostValues(hosts: HostProfile[]): string[] {
   const values = new Set<string>();
   for (const host of hosts) {
+    if (host.password) values.add(host.password);
     for (const connection of host.connections) {
       values.add(connection.id);
       if (connection.type === "directTcp") {
         values.add(connection.endpoint);
-        if (connection.password) values.add(connection.password);
       } else if (connection.type === "relay") {
         values.add(connection.relayEndpoint);
         values.add(connection.daemonPublicKeyB64);

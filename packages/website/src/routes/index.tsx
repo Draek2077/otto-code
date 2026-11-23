@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { createFileRoute } from "@tanstack/react-router";
 import { LandingPage } from "~/components/landing-page";
 import { pageMeta } from "~/meta";

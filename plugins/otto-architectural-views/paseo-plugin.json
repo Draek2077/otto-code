@@ -1,0 +1,5 @@
+{
+  "id": "otto-architectural-views",
+  "name": "Otto Architectural Views",
+  "requirements": { "paseo": ">=0.12.0" }
+}

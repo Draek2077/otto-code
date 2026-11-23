@@ -97,6 +97,10 @@ export function appendConversation(
 ): void {
   const msg: ConversationMessage = { id: message.id ?? nextMsgId(), ...message }
   const msgs = conversations.get(agentName) || []
+  if (message.id && msgs.some(existing => existing.id === message.id)) {
+    conversations.set(agentName, msgs.map(existing => existing.id === message.id ? msg : existing))
+    return
+  }
   const updated = [...msgs, msg]
   conversations.set(agentName, updated.length > MAX_CONVERSATION_MESSAGES ? updated.slice(-MAX_CONVERSATION_MESSAGES) : updated)
 }

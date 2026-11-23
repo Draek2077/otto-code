@@ -23,17 +23,9 @@ describe("isLanguageSupported", () => {
     expect(isLanguageSupported("test.cs")).toBe(true);
     expect(isLanguageSupported("test.nix")).toBe(true);
     expect(isLanguageSupported("test.ex")).toBe(true);
-    expect(isLanguageSupported("test.sh")).toBe(true);
-    expect(isLanguageSupported("test.sql")).toBe(true);
     expect(isLanguageSupported("Counter.svelte")).toBe(true);
     expect(isLanguageSupported("Page.astro")).toBe(true);
-  });
-
-  it("resolves shell fence aliases to the shell grammar", () => {
-    expect(getParserForFile("x.sh")).not.toBeNull();
-    expect(getParserForFile("x.bash")).not.toBeNull();
-    expect(getParserForFile("x.zsh")).not.toBeNull();
-    expect(getParserForFile("x.shell")).not.toBeNull();
+    expect(isLanguageSupported("App.vue")).toBe(true);
   });
 
   it("returns false for unsupported file extensions", () => {
@@ -76,6 +68,7 @@ describe("getSupportedExtensions", () => {
     expect(extensions).toContain("json");
     expect(extensions).toContain("svelte");
     expect(extensions).toContain("astro");
+    expect(extensions).toContain("vue");
   });
 });
 

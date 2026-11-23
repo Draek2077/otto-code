@@ -1,35 +1,27 @@
-import { isSessionRpcAllowed } from "./session/otto-rpc-scopes.js";
-export { isSessionRpcAllowed } from "./session/otto-rpc-scopes.js";
-import { isProjectOffline } from "./project-availability.js";
-import { assertOnlineProjectRequest } from "./project-offline-request.js";
-import { ProjectRelocationService } from "./project-relocation-service.js";
-import type { GoogleConnectorService } from "./connectors/google-connector-service.js";
-import {
-  LEGACY_PROVIDER_IDS,
-  errorToFriendlyMessage,
-  coalesceToNull,
-  readPersonalityMemoryScope,
-  resolveSubscriptionId,
-  clientSupportsAllProviders,
-  clientUsesLegacyWorkspaceRestore,
-  beginAgentDeleteIfSupported,
-  resolveWaitForFinishError,
-} from "./session/session-values.js";
-export { resolveWaitForFinishError } from "./session/session-values.js";
-import { resolveSessionArtifactService } from "./session/artifact/session-artifact-service.js";
-import type { SessionEventSubscription } from "@otto-code/protocol/messages";
-import type { AgentRequests } from "./agent/requests/index.js";
+import { authorProfile, metadataRoster } from "./otto/agent-profiles/author.js"; // OTTO(profile-authoring)
+import { AgentDirectory } from "./agent/directory.js";
+import { searchTimeline } from "./agent/chat-search/index.js";
+import type { BrowserToolsBroker } from "./browser-tools/broker.js";
+import { hostBrowserRequestSource } from "./otto/browser/host/source.js"; // OTTO(browser-frames): authenticate frame ownership in the existing session.
+import { BrowserAutomationHostCapabilitySchema } from "@getpaseo/protocol/browser-automation/capabilities";
+import type {
+  SessionEventSubscription,
+  UsageReportEntry,
+  ProviderUsage,
+} from "@getpaseo/protocol/messages";
+import { relative } from "node:path";
+import { isAbsolute } from "node:path";
+import { CreationService, type CreatedAgent } from "./creation/index.js";
+import type { CreationSnapshot, AgentCreateRequest } from "@getpaseo/protocol/messages";
+import type { MessageReceipts } from "./message-receipts/index.js";
 import equal from "fast-deep-equal";
+import { SessionDelivery, type OwnedSubscription } from "./session/owned-subscriptions/index.js";
 import { v4 as uuidv4 } from "uuid";
-import { lstat, mkdir, mkdtemp, readdir, readFile, rename, rm, stat } from "node:fs/promises";
-import { basename, join, normalize, resolve, sep } from "path";
+import { lstat, mkdir, mkdtemp, rename, rm, stat } from "node:fs/promises";
+import { basename, join, resolve, sep } from "path";
 import { homedir } from "node:os";
-import { CLIENT_CAPS, type ClientCapability } from "@otto-code/protocol/client-capabilities";
-import {
-  hasBrowserHostCapability,
-  parseClientCapabilities,
-} from "./session/client-capabilities.js";
-import { formatPluginSourceReference } from "@otto-code/protocol/plugin-source-reference";
+import { CLIENT_CAPS, type ClientCapability } from "@getpaseo/protocol/client-capabilities";
+import { formatPluginSourceReference } from "@getpaseo/protocol/plugin-source-reference";
 import {
   serializeAgentStreamEvent,
   type AgentSnapshotPayload,
@@ -37,8 +29,7 @@ import {
   type FirstAgentContext,
   type SessionInboundMessage,
   type SessionOutboundMessage,
-  type FileRefineRequest,
-  type FileRefineResult,
+  type ScriptStatusUpdateMessage,
   type GitSetupOptions,
   type StartWorkspaceScriptRequest,
   type WorkspaceScriptListRequest,
@@ -55,32 +46,25 @@ import type {
   TerminalWorkspaceContributionChangedEvent,
 } from "../terminal/terminal-manager.js";
 import { TerminalSessionController } from "../terminal/terminal-session-controller.js";
-import { detectWindowsTerminalShells } from "../terminal/windows-terminal-shells.js";
-import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
-import type { BinaryFrame } from "@otto-code/protocol/binary-frames/index";
+import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
+import type { BinaryFrame } from "@getpaseo/protocol/binary-frames/index";
 import { CursorError } from "./pagination/cursor.js";
 import { SortablePager, type SortSpec } from "./pagination/sortable-pager.js";
-import { describeAgentHistoryMatches, rankAgentHistoryCandidates } from "./agent-history-search.js";
+import { matchesAgentHistoryQuery } from "./agent-history-search.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
-import {
-  EMPTY_SPEECH_SETTINGS_OPTIONS,
-  type SpeechSettingsOptions,
-} from "./speech/speech-settings-options.js";
 import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js";
 import {
   buildConfigOverrides,
   isStoredAgentProviderAvailable,
+  resolveStoredAgentUpdatedAt,
   toAgentPersistenceHandle,
 } from "./persistence-hooks.js";
 import { ensureAgentLoaded, ensureUnarchivedAgentLoaded } from "./agent/agent-loading.js";
-import { handleChatSearch } from "./session/search/chat-search-session.js";
 import {
   sendPromptToAgent,
   waitForAgentRunStartWithTimeout,
   unarchiveAgentState,
-  type PromptDispatchResult,
 } from "./agent/agent-prompt.js";
-import { steerQueuePromptText } from "./agent/steer-queue-state.js";
 import {
   resolveCreateAgentTitles,
   resolveFirstAgentPromptTitle,
@@ -94,45 +78,13 @@ import {
   createWorkspaceScriptsService,
   type WorkspaceScriptsService,
 } from "./session/workspace-scripts/workspace-scripts-service.js";
-import { redactDaemonConfigForClient } from "./daemon-config-store.js";
 import type { DaemonConfigStore } from "./daemon-config-store.js";
-import { listConnectorTools } from "./connectors/connector-tools.js";
-import type { ConnectorOAuthBroker } from "./connectors/connector-oauth.js";
-import { CommunicationsService } from "./communications/communications-service.js";
-import {
-  ZoomTeamChatAuthorizationUnavailableError,
-  ZoomTeamChatManagedAuthorizationBroker,
-} from "./communications/zoom-team-chat-managed-authorization.js";
-import { IntegrationAuthorizationCatalog } from "./integration-authorization/integration-authorization-catalog.js";
-import { IntegrationBrowserAuthorizationService } from "./integration-authorization/browser-authorization-service.js";
-import { IntegrationAuthorizationService } from "./integration-authorization/integration-authorization-service.js";
-import { MeetingTranscriptStore } from "./meetings/transcript-store.js";
-import type { ConnectorsOauthAuthorizeResponse } from "@otto-code/protocol/messages";
-import { getErrorMessage, getErrorMessageOr } from "@otto-code/protocol/error-utils";
-import { getAgentStatusPriority } from "@otto-code/protocol/agent-state-bucket";
-import {
-  ARCHITECTURAL_VIEW_AUTHORING_LABEL,
-  ARCHITECTURAL_VIEW_DRAFT_ID_LABEL,
-  ARCHITECTURAL_VIEW_ID_LABEL,
-  getArchitecturalViewAuthoringLabels,
-  getParentAgentIdFromLabels,
-} from "@otto-code/protocol/agent-labels";
-import {
-  normalizeGitHostingProviderId,
-  ActivityCountersSchema,
-} from "@otto-code/protocol/messages";
 import { loadPersistedConfig } from "./persisted-config.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
+import { getErrorMessage, getErrorMessageOr } from "@getpaseo/protocol/error-utils";
+import { getAgentStatusPriority } from "@getpaseo/protocol/agent-state-bucket";
+import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
-import type { GitHostingService } from "../services/git-hosting/types.js";
-import type { HostingOwnerSummary, HostingRepositorySummary } from "../services/github-service.js";
-import {
-  createProjectScaffoldService,
-  getScaffoldOutcome,
-  ProjectScaffoldError,
-  type ProjectScaffoldErrorCode,
-  type ProjectScaffoldOutcome,
-} from "./project-scaffold/project-scaffold-service.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import {
   CLIENT_SHUTDOWN_RPC_REASON,
@@ -151,24 +103,8 @@ import {
 } from "./workspace-labels/index.js";
 
 import { AgentManager, AgentRunCancellationError } from "./agent/agent-manager.js";
-import {
-  ContextManagementService,
-  contextReportStoreFor,
-  resolveProjectRootForCwd,
-} from "./agent/context-management/context-management-service.js";
-import { convertEdge } from "./agent/context-management/edge-convert.js";
-import { fixFindings } from "./agent/context-management/finding-fix.js";
-import type { ProfileMemoryService } from "./agent/profile-memory/profile-memory-service.js";
-import type { ProjectKnowledgeService } from "./agent/project-knowledge/project-knowledge-service.js";
-import { composeSystemPromptParts } from "./agent/system-prompt.js";
 import { buildTimelinePromptIndex } from "./agent/timeline-prompt-index.js";
 import { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
-import { resolveCarriedOverEffort } from "./agent/carry-over-effort.js";
-import type {
-  ActivityIncrementFn,
-  ActivityRollups,
-} from "./activity-stats/activity-stats-store.js";
-import type { UsageLogPage, UsageLogPageQuery } from "./activity-stats/usage-log-store.js";
 import type {
   AgentManagerEvent,
   AgentTimelineCursor,
@@ -176,7 +112,7 @@ import type {
   AgentTimelineFetchResult,
   ManagedAgent,
 } from "./agent/agent-manager.js";
-import { createAgentCommand, formatProviderModel } from "./agent/create-agent/create.js";
+import { createAgentCommand } from "./agent/create-agent/create.js";
 import { resolveCreateAgentIntent, type CreateAgentIntent } from "./agent/create-agent/intent.js";
 import {
   archiveAgentCommand,
@@ -186,27 +122,13 @@ import {
   setAgentModeCommand,
   updateAgentCommand,
 } from "./agent/lifecycle-command.js";
-import {
-  clearedArchitecturalViewAuthoringLabels,
-  moveChatToWorkspace,
-} from "./agent/agent-workspace-transfer.js";
-import {
-  buildStoredAgentPayload,
-  resolveStoredAgentPayloadUpdatedAt,
-  toAgentPayload,
-} from "./agent/agent-projections.js";
+import { buildStoredAgentPayload, toAgentPayload } from "./agent/agent-projections.js";
 import {
   appendTimelineItemIfAgentKnown,
   emitLiveTimelineItemIfAgentKnown,
 } from "./agent/timeline-append.js";
 import { assertPluginTimelineDataSize } from "./agent/agent-timeline-content.js";
 import { parsePluginClientId } from "./plugins/plugin-session-identity.js";
-import {
-  projectTimelineRows,
-  selectProjectedTimelinePage,
-  type TimelineProjectionEntry,
-  type TimelineProjectionMode,
-} from "./agent/timeline-projection.js";
 import { buildAgentForkContextAttachment } from "./agent/activity-curator.js";
 import { buildAgentPrompt } from "./agent/prompt-attachments.js";
 import type { StructuredGenerationDaemonConfig } from "./agent/structured-generation-providers.js";
@@ -217,22 +139,19 @@ import {
   type AgentRunOptions,
   type AgentSessionConfig,
 } from "./agent/agent-sdk-types.js";
-import { resolveProfile, type ResolvedProfileSnapshot } from "./agent/agent-profiles.js";
+import type { StoredAgentRecord } from "./agent/agent-storage.js";
+import type { AgentStorage } from "./agent/agent-storage.js";
+import { ArchiveHost, isArchiveHistoryRequest } from "./otto/history/archive-host.js"; // OTTO(history)
+import { filterHistoryCandidates } from "./otto/history/filter.js"; // OTTO(history)
 import {
-  composeTeamAndPersonalityPrompt,
-  resolveTeamSnapshotForPersonality,
-} from "./agent/agent-teams.js";
-import type { StoredAgentRecord, AgentStorage } from "./agent/agent-storage.js";
-import { selectArchivedForDeletion } from "./agent/history-retention.js";
-import {
-  clearMaterializedProviderImages,
-  readMaterializedImageStats,
-} from "./agent/providers/provider-image-output.js";
+  dispatchChatSearch,
+  isChatSearchRequest,
+  isSearchableRecord,
+} from "./otto/history/search/host.js"; // OTTO(chat-search)
 import {
   ImportSessionsRequestError,
   importProviderSession,
   listImportableProviderSessions,
-  collectImportedProviderSessions,
   normalizeImportAgentRequest,
 } from "./agent/import-sessions.js";
 import {
@@ -259,11 +178,8 @@ import {
   removeProjectCustomIcon,
   setProjectCustomIcon,
 } from "../utils/project-custom-icon.js";
-import { VoiceSession } from "./session/voice/voice-session.js";
-import { CheckoutSession, type BusyWorkspaceAgent } from "./session/checkout/checkout-session.js";
-import { KanbanSession, type KanbanProjectTarget } from "./kanban/kanban-session.js";
-import { normalizeKanbanProjectTarget } from "./kanban/project-target.js";
-import { gitOperationLog } from "./git-operation-log.js";
+import { VoiceSessions } from "./session/voice/index.js";
+import { CheckoutSession } from "./session/checkout/checkout-session.js";
 import {
   createWorkspaceGitObserverService,
   type WorkspaceGitObserverService,
@@ -272,72 +188,31 @@ import {
   createAgentStructuredTextGeneration,
   createGitMetadataGenerator,
 } from "./session/checkout/git-metadata-generator.js";
-import {
-  createVoiceCueGenerator,
-  type CueMoment,
-  type VoiceCueGenerator,
-} from "./agent/voice-cue-generator.js";
-import {
-  createPersonalityProfileGenerator,
-  type PersonalityProfileGenerator,
-} from "./agent/profile-prompt-generator.js";
-import {
-  RefineError,
-  createRefineGenerator,
-  type RefineGenerator,
-} from "./session/files/refine-generator.js";
-import {
-  createKnowledgeRefinementGenerator,
-  type KnowledgeRefinementGenerator,
-} from "./session/project-knowledge/knowledge-refinement-generator.js";
 import { ScheduleSession } from "./session/schedule/schedule-session.js";
 import { ProviderCatalogSession } from "./session/provider/provider-catalog-session.js";
+import { UsageSession } from "./session/usage/usage-session.js";
 import { WorkspaceFilesSession } from "./session/files/workspace-files-session.js";
 import { AgentConfigSession } from "./session/agent-config/agent-config-session.js";
-import { ArtifactSession } from "./session/artifact/artifact-session.js";
-import { ArchitecturalViewsSession } from "./session/architectural-views/architectural-views-session.js";
-import { ArtifactService } from "./artifact/artifact-service.js";
-import { BrowserHistoryStore } from "./browser-history/store.js";
 import { ProjectConfigSession } from "./session/project-config/project-config-session.js";
 import { DaemonSession, type DaemonRuntimeConfig } from "./session/daemon/daemon-session.js";
 import type { DaemonWebSocketRuntimeDiagnosticSnapshot } from "./session/daemon/diagnostics.js";
 import type { HubRelationshipManagement } from "./hub/relationship-controller.js";
-// DISABLED(hub): the only value import of the three; the two type imports
-// around it are erased at compile time and cost nothing. See hub-disabled.ts.
-import { HubExecutionController } from "./hub-disabled.js";
+import { HubExecutionController } from "./hub/execution-controller.js";
 import type { HubExecutionAgents } from "./hub/daemon-executions.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
-import type { DevServerManager } from "./preview/dev-server-manager.js";
-import { BrainSession } from "./session/brain/brain-session.js";
-import { CommunicationsSession } from "./session/communications/communications-session.js";
-import { RunsSession } from "./session/runs/runs-session.js";
-import { ProjectKnowledgeSession } from "./session/project-knowledge/project-knowledge-session.js";
-import type { ProjectKnowledgeStoreResolver } from "./agent/project-knowledge/project-knowledge-store-resolver.js";
-import { CodeIntelligenceSession } from "./session/code-intelligence/code-intelligence-session.js";
-import type { BrainManager } from "./brain/brain-manager.js";
-import type { BrainOpsManager } from "./brain/brain-ops-manager.js";
-import { readLaunchConfig, LaunchConfigError } from "./preview/launch-config.js";
 import type { PushNotifications } from "./push/index.js";
 import {
   archivePersistedWorkspaceRecord,
   archiveWorkspaceContents,
-  dropGitOperationLogs,
-  stopLanguageServersForArchivedDirectories,
-  archiveByScope,
-  type ActiveWorkspaceRef,
 } from "./workspace-archive-service.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
-import {
-  renameCurrentBranch as renameCurrentBranchDefault,
-  setCheckoutBaseRef,
-} from "../utils/checkout-git.js";
+import { renameCurrentBranch as renameCurrentBranchDefault } from "../utils/checkout-git.js";
 import {
   createGitMutationService,
   type GitMutationService,
 } from "./session/git-mutation/git-mutation-service.js";
 import {
   createWorkspaceProvisioningService,
-  WorkspaceProvisioningError,
   type WorkspaceProvisioningService,
 } from "./session/workspace-provisioning/workspace-provisioning-service.js";
 import {
@@ -349,7 +224,7 @@ import {
   matchesAgentUpdatesFilter,
   type AgentUpdatesService,
 } from "./session/agent-updates/agent-updates-service.js";
-import { areEquivalentPaths, expandTilde } from "../utils/path.js";
+import { expandTilde } from "../utils/path.js";
 import {
   searchDirectoryEntries,
   WORKSPACE_SEARCH_HIDDEN_DIRECTORIES,
@@ -358,16 +233,7 @@ import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
 import type pino from "pino";
-import type { LspService } from "./lsp/service.js";
-import { SolutionService } from "./solution-model/service.js";
 import { ScheduleService } from "./schedule/service.js";
-import type { WorkflowService } from "./workflow/workflow-service.js";
-import type { GraphStore } from "./workflow/graph-store.js";
-import type { GraphSharingService } from "./workflow/graph-sharing-service.js";
-import type { NodeOutputStore } from "./workflow/node-output.js";
-import type { PromptTemplateStore } from "./workflow/prompt-template-store.js";
-
-import type { GitHostingResolver } from "../services/git-hosting/resolver.js";
 import {
   createGitHubService,
   GitHubAuthenticationError,
@@ -376,7 +242,6 @@ import {
   type GitHubService,
 } from "../services/github-service.js";
 import type { ForgeService } from "../services/forge-service.js";
-import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
 import {
   resolveWorkspaceRootAgent,
   summarizeFetchWorkspacesEntries,
@@ -386,46 +251,34 @@ import {
 } from "./workspace-directory.js";
 import { shouldEmitPendingBootstrapUpdate } from "./workspace-bootstrap-dedupe.js";
 import {
-  createOttoWorktree,
-  WorkspaceDirectoryOccupiedError,
-  type CreateOttoWorktreeInput,
-  type CreateOttoWorktreeResult,
-} from "./otto-worktree-service.js";
+  createPaseoWorktree,
+  type CreatePaseoWorktreeInput,
+  type CreatePaseoWorktreeResult,
+} from "./paseo-worktree-service.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
-import { AgentAutoTitle } from "./agent/agent-auto-title.js";
 import {
   buildAgentSessionConfig as buildWorktreeAgentSessionConfig,
-  createOttoWorktreeWorkflow as createWorktreeWorkflow,
-  type CreateOttoWorktreeSetupContinuationInput,
-  type CreateOttoWorktreeWorkflowResult,
-  handleCreateOttoWorktreeRequest as handleCreateWorktreeRequest,
-  handleOttoWorktreeArchiveRequest as handleWorktreeArchiveRequest,
-  handleOttoWorktreeListRequest as handleWorktreeListRequest,
+  normalizeAgentCreationGitOptions,
+  createPaseoWorktreeWorkflow as createWorktreeWorkflow,
+  type CreatePaseoWorktreeSetupContinuationInput,
+  type CreatePaseoWorktreeWorkflowResult,
+  handleCreatePaseoWorktreeRequest as handleCreateWorktreeRequest,
+  handlePaseoWorktreeArchiveRequest as handleWorktreeArchiveRequest,
+  handlePaseoWorktreeListRequest as handleWorktreeListRequest,
   handleWorkspaceSetupStatusRequest as handleWorkspaceSetupStatusRequestMessage,
   handleWorkspaceSetupRunRequest as handleWorkspaceSetupRunRequestMessage,
 } from "./worktree-session.js";
-import { detectWorktreeArchiveBranch } from "./workspace-archive-branch.js";
-import { buildReattachCandidates } from "./worktree-reattach.js";
-import { readKanbanProjectGitHubRemote } from "./kanban/project-remote.js";
-import { normalizeCloneRepository } from "./session/project-config/clone-repository-input.js";
-import {
-  WorktreeRequestError,
-  toWorktreeRequestError,
-  toWorktreeWireError,
-} from "./worktree-errors.js";
-import { type WorktreeConfig, createWorktree, isOttoOwnedWorktreeCwd } from "../utils/worktree.js";
+import { archiveByScope, type ActiveWorkspaceRef } from "./workspace-archive-service.js";
 import { WorkspaceSetupRuntime } from "./workspace-setup-runtime.js";
-import {
-  SessionAuthorization,
-  OWNER_PERMISSIONS,
-  type DaemonPermission,
-} from "./authorization/index.js";
+import { SessionAuthorization, type DaemonPermission } from "./authorization/index.js";
 
 function resolveWorkspaceSetupRuntime(
   runtime: WorkspaceSetupRuntime | undefined,
 ): WorkspaceSetupRuntime {
   return runtime ?? new WorkspaceSetupRuntime();
 }
+import { WorktreeRequestError, toWorktreeWireError } from "./worktree-errors.js";
+import { parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import {
   createProjectDirectory,
   ProjectDirectoryRequestError,
@@ -433,19 +286,71 @@ import {
 import { runGitCommand } from "../utils/run-git-command.js";
 import { CreateAgentLifecycleDispatch } from "./agent/create-agent-lifecycle-dispatch.js";
 import { resolveWorktreeSourceCwd } from "./workspace-source.js";
-import {
-  isAliasableResponseType,
-  readRpcRequestId,
-  resolveAliasedRequestType,
-  resolveAliasedResponseType,
-} from "./profile-rpc-alias.js";
 
 type ProviderSubagentManagerEvent = Extract<
   AgentManagerEvent,
   { type: "provider_subagent" }
 >["event"];
 
+// TODO: Remove once all app store clients are on >=0.1.45 and understand arbitrary provider strings.
+// Clients before 0.1.45 validate providers with z.enum(["claude", "codex", "opencode"]) and reject
+// the entire session message if they encounter an unknown provider.
+const LEGACY_PROVIDER_IDS = new Set(["claude", "codex", "opencode"]);
+const MIN_VERSION_ALL_PROVIDERS = "0.1.45";
+const MIN_VERSION_EXPLICIT_WORKSPACE_RECOVERY = "0.1.105";
+function errorToFriendlyMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (typeof error === "string") return error;
+  return "Unknown error";
+}
+
+function isAppVersionAtLeast(appVersion: string | null, minVersion: string): boolean {
+  if (!appVersion) return false;
+  // Strip prerelease suffix: "0.1.45-beta.4" -> "0.1.45"
+  const base = appVersion.replace(/-.*$/, "");
+  const parts = base.split(".").map(Number);
+  const minParts = minVersion.split(".").map(Number);
+  for (let i = 0; i < minParts.length; i++) {
+    const a = parts[i] ?? 0;
+    const b = minParts[i] ?? 0;
+    if (a > b) return true;
+    if (a < b) return false;
+  }
+  return true;
+}
+
+function clientSupportsAllProviders(appVersion: string | null): boolean {
+  return isAppVersionAtLeast(appVersion, MIN_VERSION_ALL_PROVIDERS);
+}
+
+function clientUsesLegacyWorkspaceRestore(appVersion: string | null): boolean {
+  return (
+    appVersion !== null && !isAppVersionAtLeast(appVersion, MIN_VERSION_EXPLICIT_WORKSPACE_RECOVERY)
+  );
+}
+
+type DeleteFencedAgentStorage = AgentStorage & {
+  beginDelete(agentId: string): void;
+};
+
+function beginAgentDeleteIfSupported(agentStorage: AgentStorage, agentId: string): void {
+  if ("beginDelete" in agentStorage && typeof agentStorage.beginDelete === "function") {
+    (agentStorage as DeleteFencedAgentStorage).beginDelete(agentId);
+  }
+}
+
 const FETCH_AGENTS_SORT_KEYS = ["status_priority", "created_at", "updated_at", "title"] as const;
+
+export function resolveWaitForFinishError(options: {
+  status: "permission" | "error" | "idle";
+  final: AgentSnapshotPayload | null;
+}): string | null {
+  if (options.status !== "error") {
+    return null;
+  }
+  const message = options.final?.lastError;
+  return typeof message === "string" && message.trim().length > 0 ? message : "Agent failed";
+}
 
 export interface SessionRuntimeMetrics {
   terminalDirectorySubscriptionCount: number;
@@ -511,6 +416,7 @@ type WorkspaceUpdatePayload = Extract<
 >["payload"];
 interface WorkspaceUpdatesSubscriptionState {
   subscriptionId: string;
+  owner: OwnedSubscription;
   syncEnabled?: boolean;
   filter?: WorkspaceUpdatesFilter;
   isBootstrapping: boolean;
@@ -543,129 +449,93 @@ const nodeSessionFileSystem: SessionFileSystem = {
 // Stub types for features under development (modules not yet available)
 type AgentMcpTransportFactory = () => Promise<unknown>;
 
-/**
- * Same reason as above. A service with the feature off is the correct fallback for a harness that
- * constructs none: it reports no solutions, which is exactly what a daemon with the switch off
- * does, so nothing downstream has to distinguish the two.
- */
-function resolveSolutionService(
-  service: SolutionService | undefined,
-  logger: pino.Logger,
-): SolutionService {
-  return service ?? new SolutionService({ logger });
-}
-
 export interface SessionOptions {
+  browserToolsBroker?: BrowserToolsBroker | null;
   clientId: string;
-  onAgentBrowserOrigin?: (agentId: string, host: "app" | "host", clientId: string) => void;
-  // Otto RPC ceilings and semantic permissions apply together.
-  scopes?: readonly string[];
-  permissions?: readonly DaemonPermission[];
+  permissions: readonly DaemonPermission[];
   appVersion?: string | null;
   clientCapabilities?: Record<string, unknown> | null;
   onMessage: (msg: SessionOutboundMessage) => void;
-  // Fans one message out to every connected session, this one included. Used for
-  // daemon-global state (project metadata) whose change must reach every client,
-  // not just the one that asked for it. Optional so the test harnesses need not
-  // wire a server; falls back to emitting on this session only.
-  broadcastToAllSessions?: (msg: SessionOutboundMessage) => void;
   onMessageToSource?: (source: object, msg: SessionOutboundMessage) => void;
   onBinaryMessage?: (frame: Uint8Array) => void;
   onBinaryMessageToSource?: (source: object, frame: Uint8Array) => Promise<void>;
-  getTransportBufferedAmount?: () => number | null;
+  getTransportBufferedAmount?: (source?: object) => number | null;
   onLifecycleIntent?: (intent: SessionLifecycleIntent) => void;
   onWorkspaceRecovered?: (workspace: PersistedWorkspaceRecord) => Promise<void>;
+  publishScriptStatusUpdate?: (message: ScriptStatusUpdateMessage) => void;
   logger: pino.Logger;
   downloadTokenStore: DownloadTokenStore;
-  /** Daemon-scoped: one language-server pool shared by every client session. */
-  lspService: LspService;
-  /**
-   * Daemon-scoped: one solution-sidecar pool and model cache shared by every client session.
-   * Optional so the many test harnesses need not construct one; production always supplies it and
-   * the fallback is a service with the feature off, which is the correct default anyway.
-   */
-  solutionService?: SolutionService;
   pushNotifications: PushNotifications;
-  ottoHome: string;
+  paseoHome: string;
   worktreesRoot?: string;
   agentManager: AgentManager;
   agentStorage: AgentStorage;
-  agentRequests: Pick<AgentRequests, "create" | "send">;
+  messageReceipts: Pick<MessageReceipts, "send">;
+  creationService: Pick<CreationService, "create" | "subscribe">;
   projectRegistry: ProjectRegistry;
   workspaceRegistry: WorkspaceRegistry;
   directorySync?: DirectorySyncService;
   workspaceLabelService?: WorkspaceLabelService;
   filesystem?: SessionFileSystem;
   scheduleService: ScheduleService;
-  runService?: WorkflowService | null;
-  // Orchestration graph templates (projects/orchestration-graphs). Optional for
-  // the same test-harness reason as runService; features.orchestrationGraphs
-  // rides on both being present.
-  graphStore?: GraphStore | null;
-  graphSharingService?: GraphSharingService | null;
-  // Where graph nodes' submit_output calls land before the engine harvests
-  // them (orchestration/node-output.ts). Optional for the same reason.
-  nodeOutputStore?: NodeOutputStore | null;
-  // Host-level reusable prompts and snippets. Optional for the same reason.
-  promptTemplateStore?: PromptTemplateStore | null;
   checkoutDiffManager: CheckoutDiffManager;
   github?: ForgeService;
-  gitHostingResolver?: GitHostingResolver;
   createAgentMcpTransport?: AgentMcpTransportFactory;
   // Injected so tests can substitute the git branch rename without module mocks;
   // defaults to the real checkout-git implementation.
   renameCurrentBranch?: typeof renameCurrentBranchDefault;
   workspaceGitService: WorkspaceGitService;
   workspaceAutoName: WorkspaceAutoName;
-  // The daemon-wide AgentAutoTitle instance (bootstrap-owned). Optional so the
-  // many test harnesses need not construct one; production (websocket-server)
-  // always supplies the shared instance so per-instance state (dedupe, rate
-  // limiting) is never split across sessions. Falls back to a local instance.
-  agentAutoTitle?: AgentAutoTitle;
   daemonConfigStore: DaemonConfigStore;
-  // Optional so the many test harnesses need not build one; when absent the
-  // connector OAuth RPCs answer with a clear "not available on this host".
-  connectorOAuthBroker?: ConnectorOAuthBroker | null;
-  googleConnectors?: GoogleConnectorService;
-  /** Daemon-global provider registry, shared by every connected frontend. */
-  communicationsService?: CommunicationsService;
-  /** Daemon-owned connection metadata and secure credential-vault boundary. */
-  integrationAuthorization?: IntegrationAuthorizationService | null;
-  /** Daemon-owned, nonsecret authorization methods available to settings. */
-  integrationAuthorizationCatalog?: IntegrationAuthorizationCatalog;
-  /** Daemon-owned provider-neutral browser sign-in drivers. */
-  integrationBrowserAuthorization?: IntegrationBrowserAuthorizationService | null;
-  /** Managed Zoom PKCE flow, configured only on daemon hosts with HTTPS callback support. */
-  zoomTeamChatAuthorization?: ZoomTeamChatManagedAuthorizationBroker | null;
   pluginRuntime?: {
     before: import("./plugins/lifecycle/index.js").PluginLifecycle["before"];
     emit: import("./plugins/lifecycle/index.js").PluginLifecycle["emit"];
-    listPlugins(): import("@otto-code/protocol/messages").PluginListItem[];
-    getLogs(pluginId: string): import("@otto-code/protocol/messages").PluginLogEntry[];
+    listPlugins(): Promise<import("@getpaseo/protocol/messages").PluginListItem[]>;
+    getLogs(pluginId: string): import("@getpaseo/protocol/messages").PluginLogEntry[];
     installDirectory(input: {
       path: string;
       id?: string;
-    }): Promise<import("@otto-code/protocol/messages").PluginListItem>;
+    }): Promise<import("@getpaseo/protocol/messages").PluginListItem>;
     inspectDirectory(path: string): Promise<{ id: string }>;
     installSource(input: {
       source: string;
       id?: string;
       ref?: string;
-    }): Promise<import("@otto-code/protocol/messages").PluginListItem>;
+    }): Promise<import("@getpaseo/protocol/messages").PluginListItem>;
     statusSources(
       pluginId?: string,
-    ): Promise<import("@otto-code/protocol/messages").PluginSourceStatusItem[]>;
+    ): Promise<import("@getpaseo/protocol/messages").PluginSourceStatusItem[]>;
+    previewUpdates(input: {
+      pluginId?: string;
+      target?: import("@getpaseo/protocol/messages").PluginUpdateSelection;
+    }): Promise<import("@getpaseo/protocol/messages").PluginUpdatePreview[]>;
+    applyUpdates(
+      proposals: import("@getpaseo/protocol/messages").PluginUpdateProposal[],
+    ): Promise<import("@getpaseo/protocol/messages").PluginUpdateResult[]>;
     updateSources(
       pluginId?: string,
-    ): Promise<import("@otto-code/protocol/messages").PluginSourceUpdateItem[]>;
-    reloadPlugin(pluginId: string): Promise<import("@otto-code/protocol/messages").PluginListItem>;
-    enablePlugin(pluginId: string): Promise<import("@otto-code/protocol/messages").PluginListItem>;
-    disablePlugin(pluginId: string): Promise<import("@otto-code/protocol/messages").PluginListItem>;
+    ): Promise<import("@getpaseo/protocol/messages").PluginSourceUpdateItem[]>;
+    reloadPlugin(pluginId: string): Promise<import("@getpaseo/protocol/messages").PluginListItem>;
+    enablePlugin(pluginId: string): Promise<import("@getpaseo/protocol/messages").PluginListItem>;
+    disablePlugin(pluginId: string): Promise<import("@getpaseo/protocol/messages").PluginListItem>;
     removePlugin(pluginId: string): Promise<void>;
     subscribe(listener: (pluginId: string) => void): () => void;
     subscribeSettings?(listener: (pluginId: string, settingsId: string) => void): () => void;
     catalog(): Array<{ id: string; clientBundle: string }>;
-    invokePluginRpc(pluginId: string, method: string, input: unknown): Promise<unknown>;
+    invokePluginRpc(
+      pluginId: string,
+      method: string,
+      input: unknown,
+      clientId?: string,
+      source?: import("./otto/browser/host/views.js").HostBrowserSource, // OTTO(browser-frames)
+    ): Promise<unknown>; // OTTO(feature-host)
+    releaseClient?(clientId: string): void; // OTTO(feature-host): authenticated subscription ownership.
+    supportsBuiltinRpc?(pluginId: string): boolean; // OTTO(feature-host): concrete built-in capability.
+    listUsageReports(options?: {
+      forceRefresh?: boolean;
+      reportIds?: string[];
+    }): Promise<UsageReportEntry[]>;
+    listLegacyUsage(): Promise<{ fetchedAt: string; providers: ProviderUsage[] }>;
   };
   orchestrationSkills?: import("./orchestration-skills/index.js").OrchestrationSkills;
   mcpBaseUrl?: string | null;
@@ -673,18 +543,7 @@ export interface SessionOptions {
   sttLanguage?: string;
   tts: Resolvable<TextToSpeechProvider | null>;
   terminalManager: TerminalManager | null;
-  previewDevServers?: DevServerManager | null;
-  // Daemon-managed local AI host (otto-brain). Optional so the many test
-  // harnesses need not construct one; production (websocket-server) supplies the
-  // shared instance. Absent = the brain.* RPCs report "disabled on this daemon".
-  brainManager?: BrainManager | null;
-  brainOpsManager?: BrainOpsManager | null;
   providerSnapshotManager: ProviderSnapshotManager;
-  providerUsageService: ProviderUsageService;
-  onActivity?: ActivityIncrementFn;
-  getActivityRollups?: () => Promise<ActivityRollups>;
-  getUsageLogPage?: (query: UsageLogPageQuery) => Promise<UsageLogPage>;
-  resetActivityStats?: () => Promise<void>;
   hubExecutionAgents?: HubExecutionAgents;
   hubRelationships?: HubRelationshipManagement;
   serviceProxy?: ServiceProxySubsystem;
@@ -715,29 +574,6 @@ export interface SessionOptions {
     sttLanguage?: string;
     getSpeechReadiness?: () => SpeechReadinessSnapshot;
   };
-  getSpeechSettingsOptions?: () => SpeechSettingsOptions;
-  previewTts?: (params: {
-    text: string;
-    voice?: { name: string; model?: string };
-  }) => Promise<{ audio: string; format: string } | null>;
-  getPersonalityStats?: () => Record<string, number> | Promise<Record<string, number>>;
-  /**
-   * Per-personality accrued lessons. Absent on hosts that don't wire it, in
-   * which case the daemon doesn't advertise `features.personalityMemory` and the
-   * memory RPCs answer with a plain "not available on this host".
-   */
-  personalityMemory?: ProfileMemoryService | null;
-  /** Repo-owned knowledge, used to make its recurring prompt cost inspectable. */
-  projectKnowledge?: ProjectKnowledgeService | null;
-  /** Resolves which store a project's knowledge lives in. */
-  projectKnowledgeStores?: ProjectKnowledgeStoreResolver | null;
-  /**
-   * The daemon-wide artifact service. It owns the ready-file watchers and the
-   * in-flight generation state for every artifact, so client RPCs must go
-   * through it rather than a per-session copy: two services over the same
-   * store see each other's renames as external edits.
-   */
-  artifactService?: ArtifactService | null;
   serverId?: string;
   daemonVersion?: string;
   daemonRuntimeConfig?: DaemonRuntimeConfig;
@@ -758,6 +594,22 @@ export type SessionLifecycleIntent =
       reason: string;
     };
 
+function parseClientCapabilities(
+  capabilities: Record<string, unknown> | null | undefined,
+): ReadonlySet<ClientCapability> {
+  if (!capabilities) {
+    return new Set();
+  }
+  const known = new Set<ClientCapability>(Object.values(CLIENT_CAPS));
+  const result: ClientCapability[] = [];
+  for (const [key, value] of Object.entries(capabilities)) {
+    if (value === true && known.has(key as ClientCapability)) {
+      result.push(key as ClientCapability);
+    }
+  }
+  return new Set(result);
+}
+
 function sessionRequestId(message: SessionInboundMessage): string | null {
   if ("requestId" in message && typeof message.requestId === "string") {
     return message.requestId;
@@ -774,15 +626,6 @@ function sessionRequestId(message: SessionInboundMessage): string | null {
   return null;
 }
 
-interface AgentTimelineProjectionSelection {
-  timeline: AgentTimelineFetchResult;
-  entries: TimelineProjectionEntry[];
-  startSeq: number | null;
-  endSeq: number | null;
-  hasOlder: boolean;
-  hasNewer: boolean;
-}
-
 type RegistryTransition = "created" | "unarchived" | "existing";
 
 interface ArchivedRecordSnapshot {
@@ -790,7 +633,6 @@ interface ArchivedRecordSnapshot {
 }
 
 interface WorkspaceUpdateOptions {
-  dedupeGitState?: boolean;
   removedProjectId?: string;
   optimisticStatus?: WorkspaceDescriptorPayload["status"];
 }
@@ -811,30 +653,20 @@ function describeRegistryTransition(record: ArchivedRecordSnapshot | null): Regi
  * It owns all state management, orchestration logic, and message processing.
  * Session has no knowledge of WebSockets - it only emits and receives messages.
  */
-/**
- * Fills in the optional transport/reporting callbacks a Session may be built
- * without. Kept out of the constructor so the constructor is assignment only -
- * the fields are readonly, so the assignments themselves cannot move.
- */
-function resolveSessionOptionDefaults(options: SessionOptions) {
-  return {
-    communicationsService: options.communicationsService ?? new CommunicationsService(),
-    appVersion: options.appVersion ?? null,
-    getSpeechSettingsOptions: options.getSpeechSettingsOptions ?? null,
-    getPersonalityStats: options.getPersonalityStats ?? null,
-    onMessageToSource: options.onMessageToSource ?? null,
-    onBinaryMessage: options.onBinaryMessage ?? null,
-    onBinaryMessageToSource: options.onBinaryMessageToSource ?? null,
-    getTransportBufferedAmount: options.getTransportBufferedAmount ?? (() => 0),
-    onLifecycleIntent: options.onLifecycleIntent ?? null,
-    onWorkspaceRecovered: options.onWorkspaceRecovered ?? null,
-  };
-}
-
 function resolveWorkspaceLabelService(
   service: WorkspaceLabelService | undefined,
 ): WorkspaceLabelService | null {
   return service ?? null;
+}
+
+function hasInitialCreationPrompt(
+  request?: Pick<AgentCreateRequest, "initialPrompt" | "images" | "attachments">,
+): boolean {
+  return Boolean(
+    request &&
+    buildAgentPrompt(request.initialPrompt?.trim() ?? "", request.images, request.attachments)
+      .length,
+  );
 }
 
 function workspaceLabelErrorCode(error: unknown): string {
@@ -848,17 +680,47 @@ function workspaceLabelErrorCode(error: unknown): string {
   return "workspace_label_failed";
 }
 
+interface ClientActivity {
+  deviceType: "web" | "mobile";
+  focusedAgentId: string | null;
+  focusedTerminalId: string | null;
+  lastActivityAt: Date;
+  appVisible: boolean;
+  appVisibilityChangedAt: Date;
+}
+
 export class Session {
+  readonly delivery = new SessionDelivery(
+    (source, message) => {
+      if (!this.authorization.allowsOutbound(message)) return;
+      if (this.onMessageToSource) this.onMessageToSource(source, message);
+      else this.onMessage(message);
+    },
+    (source, frame) => {
+      if (this.onBinaryMessageToSource) {
+        void this.onBinaryMessageToSource(source, frame).catch((error) =>
+          this.sessionLogger.warn({ err: error }, "Failed to emit binary frame"),
+        );
+      } else this.emitBinary(frame);
+    },
+    (source, message) => this.workspaceSetupMessageForClient(message, source),
+    (request, message) =>
+      this.sessionLogger.warn(
+        {
+          requestType: request.type,
+          messageType: message.type,
+          status: message.type === "status" ? message.payload.status : undefined,
+        },
+        "Unrecognized reply contract; application delivery denied",
+      ),
+  );
+  private readonly browserToolsBroker: SessionOptions["browserToolsBroker"];
   private readonly clientId: string;
-  private readonly onAgentBrowserOrigin: SessionOptions["onAgentBrowserOrigin"];
-  private hasAppBrowserHost = false;
   private readonly authorization: SessionAuthorization;
-  private scopes: readonly string[];
   private appVersion: string | null;
   private clientCapabilities: ReadonlySet<ClientCapability>;
   private readonly sessionId: string;
   private readonly onMessage: (msg: SessionOutboundMessage) => void;
-  private readonly onBroadcastMessage: ((msg: SessionOutboundMessage) => void) | undefined;
   private readonly onMessageToSource:
     | ((source: object, msg: SessionOutboundMessage) => void)
     | null;
@@ -866,138 +728,70 @@ export class Session {
   private readonly onBinaryMessageToSource:
     | ((source: object, frame: Uint8Array) => Promise<void>)
     | null;
-  private readonly getTransportBufferedAmount: () => number | null;
+  private readonly getTransportBufferedAmount: (source?: object) => number | null;
   private readonly onLifecycleIntent: ((intent: SessionLifecycleIntent) => void) | null;
   private readonly onWorkspaceRecovered:
     | ((workspace: PersistedWorkspaceRecord) => Promise<void>)
     | null;
   private readonly sessionLogger: pino.Logger;
-  private readonly ottoHome: string;
+  private readonly paseoHome: string;
   private readonly projectIcons: ProjectIconReader;
   private readonly worktreesRoot: string | undefined;
-  /** Daemon-scoped, shared with every other session. Held here for archive teardown. */
-  private readonly lspService: LspService;
-  /** Same, for the solution sidecars - a directory nobody points at any more must not keep one. */
-  private readonly solutionService: SolutionService;
   private readonly rewindInitiators = new Map<string, object | undefined>();
 
   private agentManager: AgentManager;
   private readonly agentStorage: AgentStorage;
+  private ottoArchiveHost?: ArchiveHost; // OTTO(history): lazy and bound to this session's sources.
   private readonly projectRegistry: ProjectRegistry;
   private readonly workspaceRegistry: WorkspaceRegistry;
-  private readonly contextManagement: ContextManagementService;
+  private readonly agentDirectory: AgentDirectory;
   private readonly directorySync: DirectorySyncService;
   private readonly filesystem: SessionFileSystem;
   private readonly github: ForgeService;
-  private readonly gitHostingResolver: GitHostingResolver | null;
-  // COMPAT(fsFileWatch): landed with the Otto v0.2.5 merge on 2026-08-01;
-  // remove after 2027-02-02. subscriptionId -> {cwd, path} for Otto's
-  // namespaced watch RPCs, which unsubscribe by id where Otto's handler wants
-  // the pair. The cleanup is to key Otto's own watch handler by subscription id
-  // and delete this map, not to keep translating between the two shapes.
-  private readonly fsFileWatchTargets = new Map<string, { cwd: string; path: string }>();
   private readonly renameCurrentBranch: typeof renameCurrentBranchDefault;
   private readonly workspaceGitService: WorkspaceGitService;
   private readonly workspaceAutoName: WorkspaceAutoName;
-  private readonly agentAutoTitle: AgentAutoTitle;
   private readonly gitMutation: GitMutationService;
   private readonly workspaceProvisioning: WorkspaceProvisioningService;
   private readonly workspaceRecovery: WorkspaceRecoveryService;
   private readonly daemonConfigStore: DaemonConfigStore;
-  private readonly connectorOAuthBroker: ConnectorOAuthBroker | null;
-  private readonly googleConnectors?: GoogleConnectorService;
-  private readonly communicationsService: CommunicationsService;
-  private readonly integrationAuthorization: IntegrationAuthorizationService | null;
-  private readonly integrationAuthorizationCatalog: IntegrationAuthorizationCatalog;
-  private readonly integrationBrowserAuthorization: IntegrationBrowserAuthorizationService | null;
-  private readonly zoomTeamChatAuthorization: ZoomTeamChatManagedAuthorizationBroker | null;
-  private readonly meetingTranscripts: MeetingTranscriptStore;
-  private readonly getSpeechSettingsOptions: (() => SpeechSettingsOptions) | null;
-  private readonly previewTts:
-    | ((params: {
-        text: string;
-        voice?: { name: string; model?: string };
-      }) => Promise<{ audio: string; format: string } | null>)
-    | undefined;
-  private readonly getPersonalityStats:
-    | (() => Record<string, number> | Promise<Record<string, number>>)
-    | null;
-  // Left as the option's own `| null | undefined` rather than coalesced to null:
-  // every read is a truthiness check, and normalizing would add a branch to a
-  // constructor already at the complexity ceiling.
-  private readonly personalityMemory: ProfileMemoryService | null | undefined;
-  private readonly projectKnowledge: ProjectKnowledgeService | null | undefined;
-  private readonly projectKnowledgeStores: ProjectKnowledgeStoreResolver | null | undefined;
-  // Generates the Visualizer's short spoken cue lines for a personality (join /
-  // thinking / done), via the Writer mini-task chain. Cached per personality.
-  private readonly voiceCueGenerator: VoiceCueGenerator;
-  private readonly personalityProfileGenerator: PersonalityProfileGenerator;
-  // Refine's one-shot document rewriter. It lives on the session rather than on
-  // WorkspaceFilesSession because that class is deliberately file I/O only -
-  // it reaches no agent, and this is a model call that touches no file.
-  private readonly refineGenerator: RefineGenerator;
-  private readonly knowledgeRefinementGenerator: KnowledgeRefinementGenerator;
   private readonly pushNotifications: PushNotifications;
   private readonly pluginRuntime: SessionOptions["pluginRuntime"];
   private readonly orchestrationSkills: SessionOptions["orchestrationSkills"];
   private unsubscribeAgentEvents: (() => void) | null = null;
-  private unsubscribeCommunicationsPresenceChanges: (() => void) | null = null;
   private unsubscribeProjectMutations: (() => void) | null = null;
   private unsubscribePluginChanges: (() => void) | null = null;
   private unsubscribeWorkspaceMutations: (() => void) | null = null;
   private registryMutationQueue: Promise<void> = Promise.resolve();
   private projectUpdateQueue: Promise<void> = Promise.resolve();
   private isCleanedUp = false;
-  private viewedTimelineAgentIds = new Set<string>();
-  private readonly viewedTimelineAgentIdsBySource = new Map<object, Set<string>>();
-  private readonly clientCapabilitiesBySource = new Map<object, ReadonlySet<ClientCapability>>();
-  private readonly defaultTimelineSubscriptionSource = {};
-  /**
-   * Sockets that asked for live Brain log lines, by source.
-   *
-   * Empty is the resting state, and it means "send nothing" only for clients
-   * that advertise `brainLogWatch` - see `emitBrainLogLine`, where a client
-   * without the capability still gets the legacy unconditional feed.
-   */
-  private readonly brainLogWatcherSources = new Set<object>();
+  private readonly timelineSubscriptions = new Map<
+    string,
+    { owner: OwnedSubscription; agentIds: Set<string> }
+  >();
+  private readonly clientSources = new Map<
+    object,
+    {
+      capabilities: ReadonlySet<ClientCapability>;
+      appVersion: string | null;
+      activity: ClientActivity | null;
+      pushToken: string | null;
+    }
+  >();
   private unsubscribeTerminalWorkspaceContributionEvents: (() => void) | null = null;
-  private unsubscribeGitOperationLog: (() => void) | null = null;
   private readonly agentUpdates: AgentUpdatesService;
-  private workspaceUpdatesSubscription: WorkspaceUpdatesSubscriptionState | null = null;
+  private readonly workspaceUpdatesSubscriptions = new Map<
+    string,
+    WorkspaceUpdatesSubscriptionState
+  >();
   private readonly workspaceLabelService: WorkspaceLabelService | null;
-  private workspaceLabelSubscription: {
-    owner: object;
-    id: string;
-    unsubscribe: () => void;
-  } | null = null;
-  private projectSyncEnabled = false;
-  private readonly defaultEventSubscriptionSource = {};
-  private readonly eventSubscriptions = new Map<object, Set<SessionEventSubscription>>();
+  private readonly eventSubscriptions = new Map<
+    string,
+    { owner: OwnedSubscription; events: Set<SessionEventSubscription>; notifications: boolean }
+  >();
   private readonly workspaceUpdateTails = new Map<string, Promise<void>>();
-  private clientActivity: {
-    deviceType: "web" | "mobile";
-    focusedAgentId: string | null;
-    focusedTerminalId: string | null;
-    lastActivityAt: Date;
-    appVisible: boolean;
-    appVisibilityChangedAt: Date;
-  } | null = null;
-  private registeredPushToken: string | null = null;
   private readonly terminalManager: TerminalManager | null;
-  private readonly previewDevServers: DevServerManager | null;
-  private readonly brainSession: BrainSession;
-  private readonly communicationsSession: CommunicationsSession;
-  private readonly runsSession: RunsSession;
-  private readonly projectKnowledgeSession: ProjectKnowledgeSession;
-  private readonly codeIntelligenceSession: CodeIntelligenceSession;
-  private readonly brainManager: BrainManager | null;
-  private readonly brainOpsManager: BrainOpsManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
-  private readonly getActivityRollups: (() => Promise<ActivityRollups>) | undefined;
-  private readonly getUsageLogPage:
-    | ((query: UsageLogPageQuery) => Promise<UsageLogPage>)
-    | undefined;
-  private readonly resetActivityStats: (() => Promise<void>) | undefined;
   private readonly serviceProxy: ServiceProxySubsystem | null;
   private readonly scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
   private readonly getDaemonTcpPort: (() => number | null) | null;
@@ -1006,47 +800,45 @@ export class Session {
   private readonly resolveScriptHealth: ((hostname: string) => ScriptHealthState | null) | null;
   private readonly terminalController: TerminalSessionController;
   private inflightRequests = 0;
-  // COMPAT(agentProfileRpcs): added in v0.8.13, remove after 2027-02-22.
-  // Request ids that arrived under a profile-named alias and are still awaiting
-  // a response. Entries are removed as their response goes out, so this only
-  // ever holds in-flight requests and stays empty for legacy-name clients.
-  private readonly aliasedProfileRpcRequestIds = new Set<string>();
   private peakInflightRequests = 0;
   private readonly workspaceSetupSnapshots: Map<string, WorkspaceSetupSnapshot>;
   private readonly workspaceSetupRuntime: WorkspaceSetupRuntime;
   private readonly workspaceGitObserver: WorkspaceGitObserverService;
   private readonly workspaceDirectory: WorkspaceDirectory;
-  private readonly voiceSession: VoiceSession;
+  private readonly voiceSessions: VoiceSessions;
   private readonly checkoutSession: CheckoutSession;
-  private readonly kanbanSession: KanbanSession;
   private readonly scheduleSession: ScheduleSession;
   private readonly providerCatalogSession: ProviderCatalogSession;
+  private readonly usageSession: UsageSession;
   private readonly workspaceFilesSession: WorkspaceFilesSession;
+  private readonly profileGeneration: ReturnType<typeof createAgentStructuredTextGeneration>; // OTTO(profile-authoring)
   private readonly agentConfigSession: AgentConfigSession;
   private readonly projectConfigSession: ProjectConfigSession;
   private readonly daemonSession: DaemonSession;
-  private readonly artifactSession: ArtifactSession;
-  private readonly architecturalViewsSession: ArchitecturalViewsSession;
   private readonly hubExecutionController: HubExecutionController | null;
   private readonly workspaceScripts: WorkspaceScriptsService;
-  private readonly agentRequests: Pick<AgentRequests, "create" | "send">;
+  private readonly messageReceipts: Pick<MessageReceipts, "send">;
   private readonly createAgentLifecycleDispatch: CreateAgentLifecycleDispatch;
+  private readonly creationService: Pick<CreationService, "create" | "subscribe">;
 
   constructor(options: SessionOptions) {
-    const defaults = resolveSessionOptionDefaults(options);
     const {
       clientId,
-      scopes = ["*"],
-      permissions = OWNER_PERMISSIONS,
+      permissions,
+      appVersion,
       clientCapabilities,
       onMessage,
-      broadcastToAllSessions,
+      onMessageToSource,
+      onBinaryMessage,
+      onBinaryMessageToSource,
+      getTransportBufferedAmount,
+      onLifecycleIntent,
+      onWorkspaceRecovered,
+      publishScriptStatusUpdate,
       logger,
       downloadTokenStore,
-      lspService,
-      solutionService,
       pushNotifications,
-      ottoHome,
+      paseoHome,
       worktreesRoot,
       agentManager,
       agentStorage,
@@ -1056,40 +848,19 @@ export class Session {
       workspaceLabelService,
       filesystem,
       scheduleService,
-      runService,
-      graphStore,
-      graphSharingService,
-      nodeOutputStore,
-      promptTemplateStore,
       checkoutDiffManager,
       github,
-      gitHostingResolver,
       renameCurrentBranch,
       workspaceGitService,
       workspaceAutoName,
-      agentAutoTitle,
       daemonConfigStore,
-      connectorOAuthBroker,
-      googleConnectors,
-      integrationAuthorization,
-      integrationAuthorizationCatalog,
-      integrationBrowserAuthorization,
-      zoomTeamChatAuthorization,
       pluginRuntime,
       orchestrationSkills,
       stt,
       sttLanguage,
       tts,
       terminalManager,
-      previewDevServers,
-      brainManager,
-      brainOpsManager,
       providerSnapshotManager,
-      providerUsageService,
-      onActivity,
-      getActivityRollups,
-      getUsageLogPage,
-      resetActivityStats,
       serviceProxy,
       scriptRuntimeStore,
       workspaceSetupSnapshots,
@@ -1102,75 +873,37 @@ export class Session {
       voice,
       voiceBridge,
       dictation,
-      previewTts,
-      personalityMemory,
-      projectKnowledge,
-      projectKnowledgeStores,
-      artifactService: sharedArtifactService,
       serverId,
       daemonVersion,
       daemonRuntimeConfig,
       getWebSocketRuntimeMetrics,
     } = options;
+    this.browserToolsBroker = options.browserToolsBroker;
     this.clientId = clientId;
-    this.onAgentBrowserOrigin = options.onAgentBrowserOrigin;
-    this.getSpeechSettingsOptions = defaults.getSpeechSettingsOptions;
-    this.previewTts = previewTts;
-    this.getPersonalityStats = defaults.getPersonalityStats;
-    this.personalityMemory = personalityMemory;
-    this.projectKnowledge = projectKnowledge;
-    this.projectKnowledgeStores = projectKnowledgeStores;
-    this.communicationsService = defaults.communicationsService;
-    this.communicationsSession = new CommunicationsSession({
-      host: { emit: (msg) => this.emit(msg) },
-      communicationsService: this.communicationsService,
-    });
-    this.googleConnectors = googleConnectors;
-    this.integrationAuthorization = coalesceToNull(integrationAuthorization);
-    this.integrationAuthorizationCatalog =
-      integrationAuthorizationCatalog ?? new IntegrationAuthorizationCatalog();
-    this.integrationBrowserAuthorization = coalesceToNull(integrationBrowserAuthorization);
-    this.zoomTeamChatAuthorization = coalesceToNull(zoomTeamChatAuthorization);
-    this.meetingTranscripts = new MeetingTranscriptStore(ottoHome);
-    this.scopes = [...scopes];
-    this.appVersion = defaults.appVersion;
     this.authorization = new SessionAuthorization(permissions);
+    this.appVersion = appVersion ?? null;
     this.clientCapabilities = parseClientCapabilities(clientCapabilities);
-    this.hasAppBrowserHost = hasBrowserHostCapability(clientCapabilities);
     this.sessionId = uuidv4();
     this.onMessage = onMessage;
-    this.onBroadcastMessage = broadcastToAllSessions;
-    this.onMessageToSource = defaults.onMessageToSource;
-    this.onBinaryMessage = defaults.onBinaryMessage;
-    this.onBinaryMessageToSource = defaults.onBinaryMessageToSource;
-    this.unsubscribeCommunicationsPresenceChanges =
-      this.communicationsService.subscribePresenceChanges((presence) => {
-        if (this.isCleanedUp || !this.supports(CLIENT_CAPS.communicationsPresenceUpdates)) {
-          return;
-        }
-        this.emit({
-          type: "communications.inbox.presence.changed.notification",
-          payload: { presence },
-        });
-      });
-    this.getTransportBufferedAmount = defaults.getTransportBufferedAmount;
-    this.onLifecycleIntent = defaults.onLifecycleIntent;
-    this.onWorkspaceRecovered = defaults.onWorkspaceRecovered;
+    this.onMessageToSource = onMessageToSource ?? null;
+    this.onBinaryMessage = onBinaryMessage ?? null;
+    this.onBinaryMessageToSource = onBinaryMessageToSource ?? null;
+    this.getTransportBufferedAmount = getTransportBufferedAmount ?? (() => 0);
+    this.onLifecycleIntent = onLifecycleIntent ?? null;
+    this.onWorkspaceRecovered = onWorkspaceRecovered ?? null;
     this.pushNotifications = pushNotifications;
-    this.ottoHome = ottoHome;
-    this.agentRequests = options.agentRequests;
-    this.projectIcons = new ProjectIconReader(ottoHome);
+    this.paseoHome = paseoHome;
+    this.messageReceipts = options.messageReceipts;
+    this.creationService = options.creationService;
+    this.projectIcons = new ProjectIconReader(paseoHome);
     this.worktreesRoot = worktreesRoot;
-    this.lspService = lspService;
     this.pluginRuntime = pluginRuntime;
     this.orchestrationSkills = orchestrationSkills;
-    this.unsubscribePluginChanges = this.subscribeToPluginChanges(pluginRuntime);
     this.sessionLogger = logger.child({
       module: "session",
       clientId: this.clientId,
       sessionId: this.sessionId,
     });
-    this.solutionService = resolveSolutionService(solutionService, this.sessionLogger);
     this.workspaceFilesSession = new WorkspaceFilesSession({
       host: {
         emit: (msg, source) => this.emitForSource(msg, source),
@@ -1178,36 +911,7 @@ export class Session {
         hasBinaryChannel: () => this.onBinaryMessage !== null,
       },
       downloadTokenStore,
-      // For the watcher's solution-cache invalidation only; the Solution RPCs live
-      // in the CodeIntelligenceSession below.
-      solutionService: this.solutionService,
-      ottoHome,
-      logger: this.sessionLogger,
-      // Cross-workspace file access is bounded to the distinct paths of every
-      // known Otto workspace (and its project root) - the client may open files
-      // from any of them, not just the active one, but nothing outside them.
-      resolveAllowedRoots: async () => {
-        const [workspaces, projects] = await Promise.all([
-          workspaceRegistry.list(),
-          projectRegistry.list(),
-        ]);
-        return [
-          ...workspaces.map((workspace) => workspace.cwd),
-          ...projects.map((project) => project.rootPath),
-        ];
-      },
-    });
-    this.codeIntelligenceSession = new CodeIntelligenceSession({
-      host: { emit: (msg) => this.emit(msg) },
-      lspService,
-      // A service with the feature off is the correct fallback: a harness that constructs no
-      // solution service gets a Solution view that reports no solutions, which is exactly what a
-      // daemon with the switch off does.
-      solutionService: this.solutionService,
-      symbolIndex: this.workspaceFilesSession.symbolIndex,
-      // The files session owns the workspace boundary; both domains refuse identically.
-      assertCwdWithinKnownWorkspace: (cwd) =>
-        this.workspaceFilesSession.assertCwdWithinKnownWorkspace(cwd),
+      paseoHome,
       logger: this.sessionLogger,
     });
     this.agentManager = agentManager;
@@ -1218,7 +922,6 @@ export class Session {
     this.workspaceLabelService = resolveWorkspaceLabelService(workspaceLabelService);
     this.filesystem = filesystem ?? nodeSessionFileSystem;
     this.github = github ?? createGitHubService();
-    this.gitHostingResolver = gitHostingResolver ?? null;
     this.renameCurrentBranch = renameCurrentBranch ?? renameCurrentBranchDefault;
     this.workspaceGitService = workspaceGitService;
     this.gitMutation = createGitMutationService({
@@ -1232,10 +935,11 @@ export class Session {
       workspaceRegistry: this.workspaceRegistry,
       projectRegistry: this.projectRegistry,
       workspaceGitService: this.workspaceGitService,
+      isDirectory: (path) => this.filesystem.isDirectory(path),
       logger: this.sessionLogger,
     });
     this.workspaceRecovery = createWorkspaceRecoveryService({
-      ottoHome: this.ottoHome,
+      paseoHome: this.paseoHome,
       worktreesRoot: this.worktreesRoot,
       getWorkspace: (workspaceId) => this.workspaceRegistry.get(workspaceId),
       getProject: (projectId) => this.projectRegistry.get(projectId),
@@ -1244,6 +948,12 @@ export class Session {
         await this.workspaceProvisioning.ensureWorkspaceRecordUnarchived(workspace);
       },
     });
+    this.profileGeneration = createAgentStructuredTextGeneration({
+      agentManager: this.agentManager,
+      providerSnapshotManager,
+      readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
+      getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
+    }); // OTTO(profile-authoring): reuse the host metadata provider chain.
     this.checkoutSession = new CheckoutSession({
       host: {
         emit: (msg) => this.emit(msg),
@@ -1253,71 +963,21 @@ export class Session {
         renameCurrentBranch: (cwd, branch) => this.renameCurrentBranch(cwd, branch),
       },
       gitMutation: this.gitMutation,
-      listBusyAgentsForCwd: (cwd) => this.listBusyAgentsForCwd(cwd),
-      gitOperationLog,
       workspaceGitService: this.workspaceGitService,
       github: this.github,
-      ...(this.gitHostingResolver ? { gitHostingResolver: this.gitHostingResolver } : {}),
       checkoutDiffManager,
       gitMetadataGenerator: createGitMetadataGenerator({
         workspaceGitService: this.workspaceGitService,
-        generation: createAgentStructuredTextGeneration({
-          agentManager: this.agentManager,
-          providerSnapshotManager,
-          readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
-          getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
-        }),
+        generation: this.profileGeneration,
       }),
-      ottoHome: this.ottoHome,
+      paseoHome: this.paseoHome,
       worktreesRoot: this.worktreesRoot,
       logger: this.sessionLogger,
     });
-    this.kanbanSession = this.createKanbanSession();
-    this.voiceCueGenerator = createVoiceCueGenerator({
-      generation: createAgentStructuredTextGeneration({
-        agentManager: this.agentManager,
-        providerSnapshotManager,
-        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
-        getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
-      }),
-      // Provider resolution needs a cwd; the editor passes none, so a live
-      // agent's cwd is a sane fallback (global providers resolve regardless).
-      fallbackCwd: () => this.agentManager.listAgents()[0]?.cwd ?? process.cwd(),
-    });
-    this.personalityProfileGenerator = createPersonalityProfileGenerator({
-      generation: createAgentStructuredTextGeneration({
-        agentManager: this.agentManager,
-        providerSnapshotManager,
-        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
-        getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
-      }),
-      fallbackCwd: () => this.agentManager.listAgents()[0]?.cwd ?? process.cwd(),
-    });
-    this.refineGenerator = createRefineGenerator({
-      generation: createAgentStructuredTextGeneration({
-        agentManager: this.agentManager,
-        providerSnapshotManager,
-        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
-        getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
-      }),
-    });
-    this.knowledgeRefinementGenerator = createKnowledgeRefinementGenerator({
-      generation: createAgentStructuredTextGeneration({
-        agentManager: this.agentManager,
-        providerSnapshotManager,
-        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
-        getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
-      }),
-    });
     this.workspaceGitObserver = createWorkspaceGitObserverService({
       workspaceGitService: this.workspaceGitService,
-      describeWorkspaceRecordWithGitData: (workspace) =>
-        this.describeWorkspaceRecordWithGitData(workspace),
       emitWorkspaceUpdateForCwd: (cwd) => this.emitWorkspaceUpdateForCwd(cwd),
-      emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>
-        this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
-      emitStatusUpdate: (cwd, snapshot, meta) =>
-        this.checkoutSession.emitStatusUpdate(cwd, snapshot, meta),
+      emitStatusUpdate: (cwd, snapshot) => this.checkoutSession.emitStatusUpdate(cwd, snapshot),
       onBranchChanged,
       logger: this.sessionLogger,
     });
@@ -1332,25 +992,37 @@ export class Session {
         isProviderVisibleToClient: (provider) => this.isProviderVisibleToClient(provider),
         supportsCustomModeIcons: () => this.supports(CLIENT_CAPS.customModeIcons),
         supportsCompactProviderSnapshots: () => this.supports(CLIENT_CAPS.compactProviderSnapshots),
-        wantsSnapshotChanges: () => this.wantsEvent("providers_snapshot_update"),
+        publishSnapshot: (project) => {
+          const delivered = new Set<object>();
+          for (const subscription of this.eventSubscriptions.values()) {
+            if (!subscription.events.has("providers_snapshot_update")) continue;
+            const message = this.delivery.forSource(subscription.owner.source, project);
+            if (message) subscription.owner.emit(message);
+            delivered.add(subscription.owner.source);
+          }
+          // COMPAT(ownedSubscriptions): added in v0.8.0, remove implicit provider delivery after 2027-03-09.
+          for (const source of this.clientSources.keys()) {
+            if (
+              delivered.has(source) ||
+              this.delivery.isModern(source) ||
+              !this.wantsEvent("providers_snapshot_update", source)
+            )
+              continue;
+            const message = this.delivery.forSource(source, project);
+            if (message) this.onMessageToSource?.(source, message);
+          }
+        },
         supportsProviderSnapshotReferences: () =>
           this.supports(CLIENT_CAPS.providerSnapshotReferences),
         listProviderAvailability: () => this.agentManager.listProviderAvailability(),
         listDraftFeatures: (config) => this.agentManager.listDraftFeatures(config),
-        readDiscoveryImports: async (provider) => {
-          const imported = await collectImportedProviderSessions(
-            agentManager,
-            agentStorage,
-            new Set([provider]),
-          );
-          return {
-            knownImportedSessionCount: imported.count,
-            isImported: (id) => imported.handles.has(`${provider}\0${id}`),
-          };
-        },
       },
       providerSnapshotManager,
-      providerUsageService,
+      logger: this.sessionLogger,
+    });
+    this.usageSession = new UsageSession({
+      emit: (msg) => this.emit(msg),
+      runtime: pluginRuntime,
       logger: this.sessionLogger,
     });
     this.agentConfigSession = new AgentConfigSession({
@@ -1367,18 +1039,14 @@ export class Session {
         },
         setMode: async (agentId, modeId) =>
           (await setAgentModeCommand({ agentManager }, { agentId, modeId })).notice,
-        setModel: (agentId, modelId) => agentManager.setAgentModel(agentId, modelId),
+        selectProfile: (agentId, id) => agentManager.selectChatProfile(agentId, id), // OTTO(agent-teams)
+        setModel: async (agentId, modelId) => {
+          await agentManager.selectChatProfile(agentId, null, modelId);
+        },
         setFeature: (agentId, featureId, value) =>
           agentManager.setAgentFeature(agentId, featureId, value),
         setThinking: (agentId, thinkingOptionId) =>
           agentManager.setAgentThinkingOption(agentId, thinkingOptionId),
-        setPersonality: async (agentId, personalityId) => {
-          const snapshot =
-            personalityId === null
-              ? null
-              : await this.resolvePersonalitySnapshotForAgent(agentId, personalityId);
-          return agentManager.setAgentPersonality(agentId, snapshot);
-        },
       },
       logger: this.sessionLogger,
     });
@@ -1395,11 +1063,27 @@ export class Session {
         emitLifecycleIntent: (intent) => this.emitLifecycleIntent(intent),
       },
       clientId: this.clientId,
-      ottoHome: this.ottoHome,
+      paseoHome: this.paseoHome,
       serverId,
       daemonVersion,
       daemonRuntimeConfig,
       getWebSocketRuntimeMetrics,
+      getObservationMetrics: () => ({
+        Registrations: this.delivery.registrationCount,
+        "Source registrations": this.delivery.sourceRegistrationCount(),
+        "Producer listeners": [
+          this.unsubscribeAgentEvents,
+          this.unsubscribeProjectMutations,
+          this.unsubscribeWorkspaceMutations,
+          this.unsubscribePluginChanges,
+          this.unsubscribeTerminalWorkspaceContributionEvents,
+          this.providerCatalogSession.isObserving,
+          this.hubExecutionController?.isObserving,
+        ].filter(Boolean).length,
+        "Git observations": this.workspaceGitObserver.getMetrics().subscriptionCount,
+        "Terminal directories": this.terminalController.getMetrics().directorySubscriptionCount,
+        "Terminal output": this.terminalController.getMetrics().streamSubscriptionCount,
+      }),
       listProviderAvailability: () => this.agentManager.listProviderAvailability(),
       listAgents: () => this.agentManager.listAgents(),
       listProjects: () => this.projectRegistry.list(),
@@ -1407,38 +1091,6 @@ export class Session {
       logger: this.sessionLogger,
       hubRelationships: options.hubRelationships,
       reloadConfig: () => daemonConfigStore.reload(),
-    });
-    // The daemon hands every session its single ArtifactService (bootstrap
-    // builds it and watches all ready artifacts from it). A session-local
-    // service exists only for hosts that construct a Session without one,
-    // such as unit tests; it is stopped with the session.
-    const artifactService = resolveSessionArtifactService(sharedArtifactService, {
-      ottoHome: this.ottoHome,
-      projectRegistry: this.projectRegistry,
-      workspaceGitService: this.workspaceGitService,
-      daemonConfigStore,
-      agentManager: this.agentManager,
-      providerSnapshotManager,
-      onActivity,
-      logger: this.sessionLogger,
-      emit: (msg) => this.emit(msg),
-    });
-    this.artifactSession = new ArtifactSession({
-      host: {
-        emit: (msg) => this.emit(msg),
-        broadcast: (msg) => this.broadcastToAllSessions(msg),
-      },
-      workspaceRegistry: this.workspaceRegistry,
-      projectRegistry: this.projectRegistry,
-      artifactService,
-      ownsArtifactService: !sharedArtifactService,
-      logger: this.sessionLogger,
-    });
-    this.architecturalViewsSession = new ArchitecturalViewsSession({
-      host: { emit: (msg) => this.emit(msg) },
-      workspaceRegistry,
-      projectKnowledgeStores,
-      logger: this.sessionLogger,
     });
     this.hubExecutionController = options.hubExecutionAgents
       ? new HubExecutionController({
@@ -1449,65 +1101,34 @@ export class Session {
         })
       : null;
     this.daemonConfigStore = daemonConfigStore;
-    this.connectorOAuthBroker = connectorOAuthBroker ?? null;
     this.terminalManager = terminalManager;
-    this.previewDevServers = previewDevServers ?? null;
-    // Coalesced via a helper so this already-at-limit constructor gains no
-    // cyclomatic-complexity branch for the optional dependency.
-    this.brainManager = coalesceToNull(brainManager);
-    this.brainOpsManager = coalesceToNull(brainOpsManager);
-    this.brainSession = new BrainSession({
-      host: { emit: (msg) => this.emit(msg) },
-      brainManager: this.brainManager,
-      brainOpsManager: this.brainOpsManager,
-      providerSnapshotManager,
-      logger,
-    });
     this.terminalController = new TerminalSessionController({
       terminalManager,
       emit: (msg) => this.emit(msg),
-      emitBinary: (frame) => this.emitBinary(frame),
       hasBinaryChannel: () => this.onBinaryMessage !== null,
       isPathWithinRoot: (rootPath, candidatePath) => this.isPathWithinRoot(rootPath, candidatePath),
       sessionLogger: this.sessionLogger,
       listTerminalWorkspaceRefs: () => this.listActiveWorkspaceRefs(),
-      clientSupportsWrapReflow: () =>
-        this.clientCapabilities.has(CLIENT_CAPS.terminalReflowableSnapshot),
-      getClientBufferedAmount: () => this.getTransportBufferedAmount(),
-      getDefaultTerminalCommand: () => {
-        if (process.platform !== "win32") {
-          return undefined;
-        }
-        const selectedShell = this.daemonConfigStore.get().defaultTerminalShell;
-        if (
-          !selectedShell ||
-          !detectWindowsTerminalShells().some((shell) => shell.id === selectedShell)
-        ) {
-          return undefined;
-        }
-        switch (selectedShell) {
-          case "command-prompt":
-            return {
-              command:
-                process.env.ComSpec || process.env.COMSPEC || "C:\\Windows\\System32\\cmd.exe",
-            };
-          case "windows-powershell":
-            return { command: "powershell.exe" };
-          case "powershell-7":
-            return { command: "pwsh.exe" };
-          default:
-            return undefined;
-        }
-      },
-      getTerminalTitleSettings: () => {
-        const config = this.daemonConfigStore.get();
-        return {
-          mode: config.terminalTitleMode ?? "auto",
-          includePaths: config.terminalTitleIncludePaths ?? false,
-        };
-      },
+      clientSupportsWrapReflow: (source) =>
+        this.supportsForSource(CLIENT_CAPS.terminalReflowableSnapshot, source),
+      getClientBufferedAmount: (source) => this.getTransportBufferedAmount(source),
+    });
+    this.agentDirectory = new AgentDirectory({
+      manager: this.agentManager,
+      storage: this.agentStorage,
+      workspaces: this.workspaceRegistry,
+      projectLive: (agent) => this.buildAgentPayload(agent),
+      projectStored: (record) => this.buildStoredAgentPayload(record),
+      isProviderVisible: (provider) => this.isProviderVisibleToClient(provider),
+      isStoredProviderAvailable: (record) =>
+        isStoredAgentProviderAvailable(
+          record,
+          new Set(this.providerSnapshotManager.listRegisteredProviderIds()),
+        ),
     });
     this.agentUpdates = createAgentUpdatesService({
+      includesWorkspace: (agent, includeBackground) =>
+        this.agentDirectory.includes(agent, includeBackground),
       emit: (message) => this.emit(message),
       enrichAgentPayload: (payload) => this.enrichAgentPayload(payload),
       buildStoredAgentPayload: (record) => this.buildStoredAgentPayload(record),
@@ -1516,24 +1137,25 @@ export class Session {
         this.buildProjectPlacementForWorkspaceId(workspaceId),
       emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>
         this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
-      sequenceAgentUpdate: (payload, agent, project, agentId, includeSequence) =>
+      sequenceAgentUpdate: (payload, agent, project, agentId, includeSequence, includeBackground) =>
         this.directorySync.sequenceAgentUpdate(
           payload,
           agent && project ? { agent, project } : null,
           agentId,
           includeSequence,
+          includeBackground,
         ),
       logger: this.sessionLogger,
     });
     this.createAgentLifecycleDispatch = new CreateAgentLifecycleDispatch({
-      ottoHome: this.ottoHome,
+      paseoHome: this.paseoHome,
       worktreesRoot: this.worktreesRoot,
       agentManager: this.agentManager,
       agentStorage: this.agentStorage,
       github: this.github,
       workspaceGitService: this.workspaceGitService,
-      createOttoWorktreeWorkflow: (input, workflowOptions) =>
-        this.createOttoWorktreeWorkflow(input, workflowOptions),
+      createPaseoWorktreeWorkflow: (input, workflowOptions) =>
+        this.createPaseoWorktreeWorkflow(input, workflowOptions),
       archiveAgentForClose: (agentId) => this.archiveAgentForClose(agentId),
       findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
       listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
@@ -1550,36 +1172,6 @@ export class Session {
       logger: this.sessionLogger,
     });
     this.providerSnapshotManager = providerSnapshotManager;
-    this.agentAutoTitle = this.resolveAgentAutoTitle(agentAutoTitle);
-    this.runsSession = new RunsSession({
-      host: {
-        emit: (msg) => this.emit(msg),
-        createOttoWorktree: (input, worktreeOptions) =>
-          this.createOttoWorktreeWorkflow(input, worktreeOptions),
-        scheduleAutoTitle: (request) =>
-          this.agentAutoTitle.schedule({
-            ...request,
-            currentSelection: this.getFocusedAgentSelectionForCwd(request.cwd),
-          }),
-      },
-      runService,
-      graphStore,
-      graphSharingService,
-      nodeOutputStore,
-      promptTemplateStore,
-      agentManager: this.agentManager,
-      agentStorage: this.agentStorage,
-      terminalManager: this.terminalManager,
-      providerSnapshotManager: this.providerSnapshotManager,
-      daemonConfigStore: this.daemonConfigStore,
-      agentUpdates: this.agentUpdates,
-      ottoHome: this.ottoHome,
-      worktreesRoot: this.worktreesRoot,
-      logger: this.sessionLogger,
-    });
-    this.getActivityRollups = getActivityRollups;
-    this.getUsageLogPage = getUsageLogPage;
-    this.resetActivityStats = resetActivityStats;
     this.serviceProxy = serviceProxy ?? null;
     this.scriptRuntimeStore = scriptRuntimeStore ?? null;
     this.workspaceSetupSnapshots = workspaceSetupSnapshots ?? new Map();
@@ -1601,221 +1193,66 @@ export class Session {
       resolveScriptHealth: this.resolveScriptHealth,
       logger: this.sessionLogger,
       emit: (message) => this.emit(message),
+      publishStatusUpdate: (message) => {
+        if (publishScriptStatusUpdate) publishScriptStatusUpdate(message);
+        else this.emit(message);
+      },
       spawnWorkspaceScript,
       assertAutomationAllowed: (workspaceId) =>
         assertWorkspaceAutomationAllowedForWorkspace(this.workspaceRegistry, workspaceId),
-      globalServicePorts: loadPersistedConfig(this.ottoHome).worktrees?.servicePorts,
+      globalServicePorts: loadPersistedConfig(this.paseoHome).worktrees?.servicePorts,
     });
-    this.subscribeToOptionalManagers();
     this.workspaceDirectory = new WorkspaceDirectory({
       logger: this.sessionLogger,
       projectRegistry: this.projectRegistry,
       workspaceRegistry: this.workspaceRegistry,
-      listAgentPayloads: (scope) => this.listAgentPayloads(scope),
+      listAgentPayloads: () => this.listAgentPayloads({ includeBackground: true }),
       listProviderSubagentActivity: async () => this.agentManager.listProviderSubagentActivity(),
       listTerminalActivityContributions: () => this.listTerminalActivityContributions(),
       isProviderVisibleToClient: (provider) => this.isProviderVisibleToClient(provider),
       buildWorkspaceDescriptor: (input) => this.buildWorkspaceDescriptor(input),
     });
 
-    // Context Management: what the active provider sends before the user types.
-    // Roots come from the workspace/project registries; the provider and the
-    // prompt Otto composes itself come from the workspace's newest agent, since
-    // the same workspace can host agents on different providers.
-    this.contextManagement = new ContextManagementService({
-      logger: this.sessionLogger,
-      // Reports are workspace-scoped, not session-scoped: key the cache on the
-      // daemon's shared registry so reconnects reuse it and invalidations reach
-      // every session.
-      store: contextReportStoreFor(this.workspaceRegistry),
-      // A personality's injected lessons are fixed weight like any other prompt
-      // text, so the report has to count them or its percentages understate what
-      // a personality-backed chat actually carries.
-      resolvePersonalityMemoryBrief: async ({ personalityId, projectRoot }) => {
-        if (!this.personalityMemory) return { text: "", estTokens: 0 };
-        const view = await this.personalityMemory.view({ personalityId, projectRoot });
-        return { text: view.brief.text, estTokens: view.brief.estTokens };
-      },
-      resolveProjectKnowledgeBrief: async ({ projectRoot }) => {
-        if (!this.projectKnowledge) return { text: "", estTokens: 0 };
-        const brief = await this.projectKnowledge.briefForCwd(projectRoot);
-        return { text: brief.text, estTokens: brief.estTokens };
-      },
-      resolveLocation: async (workspaceId) => {
-        const workspace = await this.workspaceRegistry.get(workspaceId);
-        if (!workspace) return null;
-        const project = await this.projectRegistry.get(workspace.projectId);
-        const projectRoot =
-          project?.rootPath ??
-          (await resolveProjectRootForCwd(workspace.cwd, (cwd) =>
-            this.workspaceGitService.resolveRepoRoot(cwd),
-          ));
-        return { cwd: workspace.cwd, projectRoot };
-      },
-      resolveRuntime: async (workspaceId) => {
-        const agent = this.agentManager
-          .listAgents()
-          .filter((candidate) => candidate.workspaceId === workspaceId)
-          .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())[0];
-        if (agent) {
-          const injectedPromptText = composeSystemPromptParts(
-            agent.config.systemPrompt,
-            agent.config.daemonAppendSystemPrompt,
-          );
-          // Only meaningful where Otto builds the request: a CLI-backed
-          // provider composes its preset in its own process and never hands it
-          // back, which is exactly what the `not_visible` rows disclose.
-          const ownsContextPayload = agent.capabilities.ownsContextPayload === true;
-          // The live session's real preset and tool schemas. Read per report
-          // rather than cached: the tool payload narrows with the session's
-          // mode and workspace-access ceiling, so a snapshot taken at spawn
-          // would misreport a chat that has since switched to plan mode.
-          const payload = ownsContextPayload
-            ? this.agentManager.describeAgentContextPayload(agent.id)
-            : null;
-          return {
-            provider: agent.provider,
-            ownsContextPayload,
-            ...(injectedPromptText ? { injectedPromptText } : {}),
-            ...(payload?.systemPromptText ? { systemPromptText: payload.systemPromptText } : {}),
-            ...(payload?.mcpToolsText ? { mcpToolsText: payload.mcpToolsText } : {}),
-          };
-        }
-
-        // `listAgents()` only sees agents loaded into memory, so a freshly
-        // restarted daemon has none until a chat is opened - and without a
-        // provider the whole report is null and the tab reads as broken. The
-        // workspace's persisted agents answer the same question from disk.
-        // Only `systemPrompt` survives there (the daemon append is composed at
-        // run time), so the injected figure is a floor, never an overstatement.
-        const persisted = (await this.agentStorage.list()).filter(
-          (candidate) => !candidate.internal,
-        );
-        const byRecency = (a: { updatedAt: string }, b: { updatedAt: string }): number =>
-          b.updatedAt.localeCompare(a.updatedAt);
-        const inWorkspace = persisted.filter((candidate) => candidate.workspaceId === workspaceId);
-        const stored =
-          inWorkspace.filter((candidate) => !candidate.archivedAt).sort(byRecency)[0] ??
-          // An archived chat still names the provider this workspace uses, and
-          // that is all the scan needs to know which filenames to look for.
-          inWorkspace.sort(byRecency)[0];
-        if (stored) {
-          const injectedPromptText = composeSystemPromptParts(stored.config?.systemPrompt);
-          return {
-            provider: stored.provider,
-            ownsContextPayload:
-              this.agentManager.getProviderCapabilities(stored.provider)?.ownsContextPayload ===
-              true,
-            ...(injectedPromptText ? { injectedPromptText } : {}),
-          };
-        }
-
-        // A workspace nobody has chatted in yet is the common case for this tab
-        // - you open it precisely to see what a *first* chat would carry. The
-        // provider only selects which filenames the scan looks for, so refusing
-        // to answer without an agent meant a project full of context files
-        // reported nothing at all, instantly and with no way to recover.
-        // The daemon's most recent chat anywhere is the best available answer to
-        // "which agent does this user run"; no prompt text is claimed, because
-        // none of it belongs to this workspace.
-        const anywhere = persisted.sort(byRecency)[0];
-        if (anywhere) {
-          return {
-            provider: anywhere.provider,
-            ownsContextPayload:
-              this.agentManager.getProviderCapabilities(anywhere.provider)?.ownsContextPayload ===
-              true,
-          };
-        }
-        return null;
-      },
-    });
-    this.projectKnowledgeSession = new ProjectKnowledgeSession({
-      host: {
-        emit: (msg) => this.emit(msg),
-        pushContextReport: (workspaceId) => this.pushContextReport(workspaceId),
-        notifyWorkspaceFilesChanged: (cwd) => this.checkoutSession.notifyWorkingTreeChanged(cwd),
-        announceProjectUpdate: (projectId) => this.announceProjectUpdate(projectId),
-      },
-      projectKnowledge: this.projectKnowledge,
-      projectKnowledgeStores: this.projectKnowledgeStores,
-      contextManagement: this.contextManagement,
-      workspaceRegistry: this.workspaceRegistry,
-      projectRegistry: this.projectRegistry,
-      workspaceGitService: this.workspaceGitService,
-      knowledgeRefinementGenerator: this.knowledgeRefinementGenerator,
-    });
-
-    this.voiceSession = new VoiceSession({
-      host: {
-        emit: (msg) => this.emit(msg),
-        loadAgent: (agentId) =>
-          ensureAgentLoaded(agentId, {
-            agentManager: this.agentManager,
-            agentStorage: this.agentStorage,
-            logger: this.sessionLogger,
-          }),
-        reloadAgentSession: (agentId, overrides) =>
-          this.agentManager.reloadAgentSession(agentId, overrides),
-        sendSpokenInput: async (agentId, text) => {
-          await this.handleSendAgentMessage(
-            agentId,
-            text,
-            undefined,
-            undefined,
-            undefined,
-            undefined,
-            { spokenInput: true },
-          );
+    this.voiceSessions = new VoiceSessions(
+      {
+        host: {
+          emit: (msg) => this.emit(msg),
+          loadAgent: (agentId) =>
+            ensureAgentLoaded(agentId, {
+              agentManager: this.agentManager,
+              agentStorage: this.agentStorage,
+              logger: this.sessionLogger,
+            }),
+          reloadAgentSession: (agentId, overrides) =>
+            this.agentManager.reloadAgentSession(agentId, overrides),
+          sendSpokenInput: async (agentId, text) => {
+            await this.handleSendAgentMessage(
+              agentId,
+              text,
+              undefined,
+              undefined,
+              undefined,
+              undefined,
+              { spokenInput: true },
+            );
+          },
+          interruptAgentIfRunning: (agentId) => this.interruptAgentIfRunning(agentId),
+          hasActiveAgentRun: (agentId) => this.hasActiveAgentRun(agentId),
         },
-        interruptAgentIfRunning: (agentId) => this.interruptAgentIfRunning(agentId),
-        hasActiveAgentRun: (agentId) => this.hasActiveAgentRun(agentId),
+        logger: this.sessionLogger,
+        sessionId: this.sessionId,
+        sttLanguage,
+        tts,
+        stt,
+        voice,
+        voiceBridge,
+        dictation,
       },
-      logger: this.sessionLogger,
-      sessionId: this.sessionId,
-      sttLanguage,
-      tts,
-      stt,
-      voice,
-      voiceBridge,
-      dictation,
-    });
-
-    this.subscribeToAgentEvents();
-    this.subscribeToRegistryMutations();
+      this.delivery,
+      () => this.refreshObservationProducers(),
+    );
 
     this.sessionLogger.trace({}, "agent.session.lifecycle.created");
-  }
-
-  private createKanbanSession(): KanbanSession {
-    return new KanbanSession({
-      emit: (msg) => this.emit(msg),
-      readConfig: () => this.daemonConfigStore.get(),
-      connections: this.gitHostingResolver?.connections,
-      resolveProjectTarget: (input) => this.resolveKanbanProjectTarget(input),
-      log: {
-        info: (message) => this.sessionLogger.info(message),
-        error: (message, error) => this.sessionLogger.error({ err: error }, message),
-      },
-    });
-  }
-
-  /**
-   * Prefer the daemon-wide shared instance (see SessionOptions.agentAutoTitle);
-   * the local construction exists only for test harnesses that omit it.
-   */
-  private resolveAgentAutoTitle(shared: AgentAutoTitle | undefined): AgentAutoTitle {
-    return (
-      shared ??
-      new AgentAutoTitle({
-        agentManager: this.agentManager,
-        agentStorage: this.agentStorage,
-        providerSnapshotManager: this.providerSnapshotManager,
-        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
-        workspaceGitService: this.workspaceGitService,
-        logger: this.sessionLogger,
-      })
-    );
   }
 
   updateAppVersion(appVersion: string | null): void {
@@ -1824,84 +1261,60 @@ export class Session {
     }
   }
 
-  updateClientCapabilities(capabilities: Record<string, unknown> | null, source?: object): void {
+  updateClientCapabilities(
+    capabilities: Record<string, unknown> | null,
+    source?: object,
+    appVersion = this.appVersion,
+  ): void {
     this.clientCapabilities = parseClientCapabilities(capabilities);
-    this.hasAppBrowserHost = hasBrowserHostCapability(capabilities);
     if (source) {
-      this.eventSubscriptions.delete(source);
-      this.clientCapabilitiesBySource.set(source, this.clientCapabilities);
-    }
-    if (!source && !this.supports(CLIENT_CAPS.selectiveAgentTimeline)) {
-      this.viewedTimelineAgentIdsBySource.clear();
-      this.viewedTimelineAgentIds.clear();
+      this.delivery.attach(source, capabilities?.[CLIENT_CAPS.ownedSubscriptions] === true);
+      this.clientSources.set(source, {
+        capabilities: this.clientCapabilities,
+        appVersion,
+        activity: this.clientSources.get(source)?.activity ?? null,
+        pushToken: this.clientSources.get(source)?.pushToken ?? null,
+      });
+      this.refreshObservationProducers();
+      // COMPAT(ownedSubscriptions): added in v0.8.0, remove capability-driven legacy host registration after 2027-03-09.
+      if (
+        !this.delivery.isModern(source) &&
+        this.authorization.allowsPermission("workspace.write")
+      ) {
+        const host = BrowserAutomationHostCapabilitySchema.safeParse(capabilities?.browser_host);
+        if (host.success && this.browserToolsBroker) {
+          const request = {
+            type: "browser.host.register.request" as const,
+            requestId: uuidv4(),
+            hostKind: host.data.hostKind,
+            supportedCommands: host.data.supportedCommands,
+          };
+          void this.delivery
+            .request(source, request, () => this.registerBrowserHost(request, false))
+            .catch((error) =>
+              this.sessionLogger.warn({ err: error }, "Failed to register legacy browser host"),
+            );
+        }
+      }
     }
   }
 
   clearAgentTimelineSubscription(source: object): void {
-    this.clientCapabilitiesBySource.delete(source);
-    this.brainLogWatcherSources.delete(source);
-    this.eventSubscriptions.delete(source);
-    if (this.viewedTimelineAgentIdsBySource.delete(source)) {
-      this.rebuildViewedTimelineAgentIds();
-    }
+    void this.delivery
+      .detach(source)
+      .catch((err) => this.sessionLogger.error({ err }, "Failed to release source subscriptions"));
+    this.clientSources.delete(source);
+    this.refreshObservationProducers();
   }
 
-  /**
-   * Deliver one Brain log line to the sockets that asked for it.
-   *
-   * Mirrors `forwardAgentStream`: per-source when the connection has per-source
-   * routing, whole-session otherwise. A source that has not advertised
-   * `brainLogWatch` cannot ask for the feed and cannot be expected to live
-   * without it, so it keeps receiving every line.
-   */
-  emitBrainLogLine(line: string): void {
-    const message: SessionOutboundMessage = {
-      type: "status",
-      payload: { status: "brain_log_line_added", line },
-    };
-    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
-      if (!this.supports(CLIENT_CAPS.brainLogWatch) || this.brainLogWatcherSources.size > 0) {
-        this.emit(message);
-      }
-      return;
-    }
-    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
-      if (capabilities.has(CLIENT_CAPS.brainLogWatch) && !this.brainLogWatcherSources.has(source)) {
-        continue;
-      }
-      this.onMessageToSource(source, message);
-    }
-  }
-
-  private setBrainLogWatching(source: object | undefined, watching: boolean): void {
-    const watchSource = source ?? this.defaultTimelineSubscriptionSource;
-    if (watching) this.brainLogWatcherSources.add(watchSource);
-    else this.brainLogWatcherSources.delete(watchSource);
-  }
-
-  private replaceAgentTimelineSubscription(source: object | undefined, agentIds: string[]): void {
-    const subscriptionSource = source ?? this.defaultTimelineSubscriptionSource;
-    if (agentIds.length === 0) this.viewedTimelineAgentIdsBySource.delete(subscriptionSource);
-    else this.viewedTimelineAgentIdsBySource.set(subscriptionSource, new Set(agentIds));
-    this.rebuildViewedTimelineAgentIds();
-  }
-
-  private rebuildViewedTimelineAgentIds(): void {
-    const viewedAgentIds = new Set<string>();
-    for (const agentIds of this.viewedTimelineAgentIdsBySource.values()) {
-      for (const agentId of agentIds) viewedAgentIds.add(agentId);
-    }
-    this.viewedTimelineAgentIds = viewedAgentIds;
-  }
-
-  private usesSelectiveTimelineDelivery(): boolean {
-    if (this.clientCapabilitiesBySource.size === 0) {
-      return this.supports(CLIENT_CAPS.selectiveAgentTimeline);
-    }
-    for (const capabilities of this.clientCapabilitiesBySource.values()) {
-      if (!capabilities.has(CLIENT_CAPS.selectiveAgentTimeline)) return false;
-    }
-    return true;
+  private subscribeAgentTimelines(agentIds: string[]): OwnedSubscription {
+    const owner = this.delivery.begin("timelines", undefined, (id) => {
+      this.timelineSubscriptions.delete(id);
+      this.refreshObservationProducers();
+    });
+    this.timelineSubscriptions.set(owner.id, { owner, agentIds: new Set(agentIds) });
+    this.refreshObservationProducers();
+    return owner;
   }
 
   // COMPAT(timelineItemCapabilities): plugin items added in v0.8.0, notifications in v0.7.2.
@@ -1914,81 +1327,87 @@ export class Session {
     return source ? this.supportsForSource(capability, source) : this.supports(capability);
   }
 
+  // OTTO(prompt-suggestions): transient predictions require explicit client support.
+  private supportsAgentStreamEvent(
+    event: Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"]["event"],
+    source: object,
+  ): boolean {
+    if (event.type === "prompt_suggestion") {
+      return this.supportsForSource(CLIENT_CAPS.promptSuggestions, source);
+    }
+    if (event.type === "timeline") return this.supportsTimelineItem(event.item, source);
+    return true;
+  }
+
   private forwardAgentStream(
     event: Extract<AgentManagerEvent, { type: "agent_stream" }>,
     serializedEvent: Extract<SessionOutboundMessage, { type: "agent_stream" }>["payload"]["event"],
   ): void {
-    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
-      if (serializedEvent.type === "timeline" && !this.supportsTimelineItem(serializedEvent.item))
-        return;
-      if (this.usesSelectiveTimelineDelivery() && serializedEvent.type === "attention_required") {
-        this.emit({
-          type: "agent_attention_required",
-          payload: {
-            agentId: event.agentId,
-            reason: serializedEvent.reason,
-            timestamp: serializedEvent.timestamp,
-            shouldNotify: serializedEvent.shouldNotify,
-            ...(serializedEvent.notification ? { notification: serializedEvent.notification } : {}),
-          },
-        });
-      } else if (
-        !this.usesSelectiveTimelineDelivery() ||
-        this.viewedTimelineAgentIds.has(event.agentId)
-      ) {
-        this.emit({
-          type: "agent_stream",
-          payload: this.buildAgentStreamPayload(event, serializedEvent),
-        });
-      }
-      return;
-    }
-
-    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
-      if (
-        serializedEvent.type === "timeline" &&
-        !this.supportsTimelineItem(serializedEvent.item, source)
-      )
-        continue;
-      const supportsSelectiveDelivery = capabilities.has(CLIENT_CAPS.selectiveAgentTimeline);
-      if (supportsSelectiveDelivery && serializedEvent.type === "attention_required") {
-        if (!this.wantsEvent("agent_attention_required", source)) continue;
-        this.onMessageToSource(source, {
-          type: "agent_attention_required",
-          payload: {
-            agentId: event.agentId,
-            reason: serializedEvent.reason,
-            timestamp: serializedEvent.timestamp,
-            shouldNotify: serializedEvent.shouldNotify,
-            ...(serializedEvent.notification ? { notification: serializedEvent.notification } : {}),
-          },
-        });
-        continue;
-      }
-      if (
-        supportsSelectiveDelivery &&
-        !this.viewedTimelineAgentIdsBySource.get(source)?.has(event.agentId)
-      ) {
-        continue;
-      }
-      this.onMessageToSource(source, {
-        type: "agent_stream",
-        payload: this.buildAgentStreamPayload(event, serializedEvent),
+    const attention = serializedEvent.type === "attention_required";
+    if (attention) {
+      this.emit({
+        type: "agent_attention_required",
+        payload: {
+          agentId: event.agentId,
+          reason: serializedEvent.reason,
+          timestamp: serializedEvent.timestamp,
+          shouldNotify: serializedEvent.shouldNotify,
+          ...(serializedEvent.notification ? { notification: serializedEvent.notification } : {}),
+        },
       });
     }
+    const message: SessionOutboundMessage = {
+      type: "agent_stream",
+      payload: this.buildAgentStreamPayload(event, serializedEvent),
+    };
+    for (const subscription of this.timelineSubscriptions.values()) {
+      const source = subscription.owner.source;
+      if (!subscription.agentIds.has(event.agentId)) continue;
+      if (
+        attention &&
+        (this.delivery.isModern(source) ||
+          this.supportsForSource(CLIENT_CAPS.selectiveAgentTimeline, source))
+      )
+        continue;
+      if (!this.supportsAgentStreamEvent(serializedEvent, source)) continue;
+      subscription.owner.emit(message);
+    }
+    if (serializedEvent.type === "prompt_suggestion") return; // OTTO(prompt-suggestions): never broadcast a prediction.
+    // COMPAT(ownedSubscriptions): added in v0.8.0, remove implicit timeline delivery after 2027-03-09.
+    for (const [source, { capabilities }] of this.clientSources) {
+      if (this.delivery.isModern(source) || capabilities.has(CLIENT_CAPS.selectiveAgentTimeline))
+        continue;
+      if (!this.supportsAgentStreamEvent(serializedEvent, source)) continue;
+      const alreadyDelivered = [...this.timelineSubscriptions.values()].some(
+        (subscription) =>
+          subscription.owner.source === source && subscription.agentIds.has(event.agentId),
+      );
+      if (!alreadyDelivered) this.onMessageToSource?.(source, message);
+    }
+    if (
+      this.clientSources.size === 0 &&
+      !this.supports(CLIENT_CAPS.selectiveAgentTimeline) &&
+      this.timelineSubscriptions.size === 0
+    )
+      this.emit(message);
   }
 
   supports(capability: ClientCapability): boolean {
-    return this.clientCapabilities.has(capability);
+    const source = this.delivery.currentSource;
+    return source
+      ? this.supportsForSource(capability, source)
+      : this.clientCapabilities.has(capability);
   }
 
   supportsForSource(capability: ClientCapability, source: object): boolean {
     return (
-      this.clientCapabilitiesBySource.get(source)?.has(capability) ?? this.supports(capability)
+      this.clientSources.get(source)?.capabilities.has(capability) ??
+      this.clientCapabilities.has(capability)
     );
   }
 
   emitProjectUpdate(update: ProjectUpdate): Promise<void> {
+    if (!this.wantsEvent("project.update")) return Promise.resolve();
     const queued = this.projectUpdateQueue
       .catch(() => undefined)
       .then(() => this.publishProjectUpdate(update));
@@ -2002,15 +1421,23 @@ export class Session {
       update.kind === "upsert"
         ? { kind: "upsert" as const, project: await this.buildProjectDescriptor(update.project) }
         : update;
+    if (!this.wantsEvent("project.update")) return;
     const message: SessionOutboundMessage = {
       type: "project.update",
-      payload: this.directorySync.sequenceProjectUpdate(projectedPayload, this.projectSyncEnabled),
+      payload: this.directorySync.sequenceProjectUpdate(projectedPayload, true),
     };
     this.emit(message);
   }
 
   async syncWorkspaceGitObserverForWorkspace(workspace: PersistedWorkspaceRecord): Promise<void> {
-    await this.workspaceGitObserver.syncObserverForWorkspace(workspace);
+    if (this.workspaceUpdatesSubscriptions.size === 0 && !this.wantsEvent("checkout_status_update"))
+      return;
+    const descriptor = await this.describeWorkspaceRecord(workspace);
+    const demanded = [...this.workspaceUpdatesSubscriptions.values()].some((subscription) =>
+      this.matchesWorkspaceFilter({ workspace: descriptor, filter: subscription.filter }),
+    );
+    if (demanded || this.wantsEvent("checkout_status_update"))
+      this.workspaceGitObserver.syncObservers([descriptor]);
   }
 
   async emitWorkspaceUpdateForWorkspaceId(workspaceId: string): Promise<void> {
@@ -2021,7 +1448,7 @@ export class Session {
     workspace: WorkspaceDescriptorPayload,
     optimisticStatus?: WorkspaceDescriptorPayload["status"],
   ): Promise<void> {
-    if (this.workspaceUpdatesSubscription) {
+    if (this.workspaceUpdatesSubscriptions.size > 0) {
       await this.emitWorkspaceUpdatesForWorkspaceIds(
         [workspace.id],
         optimisticStatus ? { optimisticStatus } : undefined,
@@ -2030,6 +1457,7 @@ export class Session {
     }
     // COMPAT(workspaceCreateCausalUpdate): added in v0.1.106, remove after 2027-01-12.
     // Older clients create before subscribing and require the causal update beside the response.
+    if (workspace.background) return;
     this.emit({
       type: "workspace_update",
       payload: {
@@ -2054,32 +1482,32 @@ export class Session {
     await this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds);
   }
 
-  async emitStoredAgentRecordForExternalMutation(record: StoredAgentRecord): Promise<void> {
-    await this.agentUpdates.emitStoredRecord(record);
-  }
-
   async syncWorkspaceGitObserversForExternalWorkspaceIds(
     workspaceIds: Iterable<string>,
   ): Promise<void> {
+    if (!this.delivery.hasDemand("workspaces") && !this.wantsEvent("checkout_status_update"))
+      return;
     await Promise.all(
       Array.from(new Set(workspaceIds)).map(async (workspaceId) => {
         const workspace = await this.workspaceRegistry.get(workspaceId);
         if (workspace && !workspace.archivedAt) {
-          await this.workspaceGitObserver.syncObserverForWorkspace(workspace);
+          await this.syncWorkspaceGitObserverForWorkspace(workspace);
         }
       }),
     );
   }
 
   async warmWorkspaceGitDataForWorkspace(workspace: PersistedWorkspaceRecord): Promise<void> {
-    await this.workspaceGitObserver.warmGitData(workspace);
+    await this.syncWorkspaceGitObserverForWorkspace(workspace);
+    await this.emitWorkspaceUpdateForWorkspaceId(workspace.workspaceId);
   }
 
   async refreshRecoveredWorkspaceForExternalMutation(
     workspace: PersistedWorkspaceRecord,
   ): Promise<void> {
     try {
-      await this.workspaceGitObserver.warmGitData(workspace);
+      await this.syncWorkspaceGitObserverForWorkspace(workspace);
+      await this.emitWorkspaceUpdateForWorkspaceId(workspace.workspaceId);
     } catch (error) {
       this.sessionLogger.warn(
         { err: error, workspaceId: workspace.workspaceId },
@@ -2099,15 +1527,25 @@ export class Session {
   /**
    * Get the client's current activity state
    */
-  public getClientActivity(): {
-    deviceType: "web" | "mobile";
-    focusedAgentId: string | null;
-    focusedTerminalId: string | null;
-    lastActivityAt: Date;
-    appVisible: boolean;
-    appVisibilityChangedAt: Date;
-  } | null {
-    return this.clientActivity;
+  private currentClientMetadata() {
+    const source = this.delivery.currentSource;
+    if (!source) throw new Error("Client control has no source");
+    let metadata = this.clientSources.get(source);
+    if (!metadata) {
+      // COMPAT(ownedSubscriptions): added in v0.8.0, remove socketless legacy session adapter after 2027-03-09.
+      metadata = {
+        capabilities: this.clientCapabilities,
+        appVersion: this.appVersion,
+        activity: null,
+        pushToken: null,
+      };
+      this.clientSources.set(source, metadata);
+    }
+    return metadata;
+  }
+
+  public getClientActivity(source = this.delivery.currentSource): ClientActivity | null {
+    return source ? (this.clientSources.get(source)?.activity ?? null) : null;
   }
 
   private getFocusedAgentSelectionForCwd(cwd: string):
@@ -2117,7 +1555,7 @@ export class Session {
         thinkingOptionId?: string | null;
       }
     | undefined {
-    const focusedAgentId = this.clientActivity?.focusedAgentId;
+    const focusedAgentId = this.getClientActivity()?.focusedAgentId;
     if (!focusedAgentId) {
       return undefined;
     }
@@ -2136,12 +1574,7 @@ export class Session {
   }
 
   private readStructuredGenerationDaemonConfig(): StructuredGenerationDaemonConfig {
-    const config = this.daemonConfigStore.get();
-    return {
-      metadataGeneration: config.metadataGeneration,
-      agentProfiles: config.agentProfiles,
-      agentTeams: config.agentTeams,
-    };
+    return metadataRoster(this.daemonConfigStore.get()); // OTTO(agent-teams)
   }
 
   public getRuntimeMetrics(): SessionRuntimeMetrics {
@@ -2159,14 +1592,6 @@ export class Session {
   }
 
   public emitServerMessage(message: SessionOutboundMessage): void {
-    this.emit(message);
-  }
-
-  private broadcastToAllSessions(message: SessionOutboundMessage): void {
-    if (this.onBroadcastMessage) {
-      this.onBroadcastMessage(message);
-      return;
-    }
     this.emit(message);
   }
 
@@ -2246,38 +1671,75 @@ export class Session {
   /**
    * Subscribe to AgentManager events and forward them to the client
    */
-  private subscribeToOptionalManagers(): void {
-    this.terminalController.start();
-    // Git operations are low-volume and user-initiated, so every session gets
-    // the append stream; clients ignore cwds they aren't watching.
-    this.unsubscribeGitOperationLog = gitOperationLog.subscribe((append) => {
-      this.emit({ type: "checkout.git.log_appended.notification", payload: append });
-    });
-    if (this.terminalManager) {
-      this.unsubscribeTerminalWorkspaceContributionEvents =
-        this.terminalManager.subscribeTerminalWorkspaceContributionChanged((event) => {
-          void this.emitWorkspaceUpdateForTerminalContribution(event).catch((error) => {
-            this.sessionLogger.warn(
-              { err: error, terminalId: event.terminalId },
-              "Failed to emit workspace update after terminal contribution changed",
-            );
-          });
-        });
+  private refreshObservationProducers(): void {
+    const legacy = this.delivery.hasLegacySources();
+    const workspaces =
+      legacy || this.delivery.hasDemand("workspaces") || this.wantsEvent("checkout_status_update");
+    const agents =
+      workspaces ||
+      this.delivery.hasDemand("agents") ||
+      this.delivery.hasDemand("timelines") ||
+      this.voiceSessions.hasDemand ||
+      this.wantsEvent("agent_attention_required") ||
+      this.wantsEvent("agent_permission_request") ||
+      this.wantsEvent("agent_permission_resolved") ||
+      this.wantsEvent("agent.provider_subagents.update");
+    if (agents && !this.unsubscribeAgentEvents) this.subscribeToAgentEvents();
+    if (!agents) {
+      this.unsubscribeAgentEvents?.();
+      this.unsubscribeAgentEvents = null;
     }
-    this.providerCatalogSession.start();
+    this.refreshWorkspaceProducers(workspaces);
+    this.refreshCatalogProducers(legacy);
   }
 
-  private subscribeToRegistryMutations(): void {
-    this.unsubscribeProjectMutations?.();
-    this.unsubscribeProjectMutations =
-      this.projectRegistry.subscribeToMutations?.((mutation) =>
-        this.enqueueRegistryMutation(() => this.handleProjectMutation(mutation)),
-      ) ?? null;
-    this.unsubscribeWorkspaceMutations?.();
-    this.unsubscribeWorkspaceMutations =
-      this.workspaceRegistry.subscribeToMutations?.((mutation) =>
-        this.enqueueRegistryMutation(() => this.handleWorkspaceMutation(mutation)),
-      ) ?? null;
+  private refreshWorkspaceProducers(observing: boolean): void {
+    if (observing) {
+      this.unsubscribeProjectMutations ??=
+        this.projectRegistry.subscribeToMutations?.((mutation) =>
+          this.enqueueRegistryMutation(() => this.handleProjectMutation(mutation)),
+        ) ?? null;
+      this.unsubscribeWorkspaceMutations ??=
+        this.workspaceRegistry.subscribeToMutations?.((mutation) =>
+          this.enqueueRegistryMutation(() => this.handleWorkspaceMutation(mutation)),
+        ) ?? null;
+      this.unsubscribeTerminalWorkspaceContributionEvents ??=
+        this.terminalManager?.subscribeTerminalWorkspaceContributionChanged((event) => {
+          void this.emitWorkspaceUpdateForTerminalContribution(event).catch((error) =>
+            this.sessionLogger.warn(
+              { err: error, terminalId: event.terminalId },
+              "Failed to emit workspace terminal contribution",
+            ),
+          );
+        }) ?? null;
+    } else {
+      this.unsubscribeProjectMutations?.();
+      this.unsubscribeProjectMutations = null;
+      this.unsubscribeWorkspaceMutations?.();
+      this.unsubscribeWorkspaceMutations = null;
+      this.unsubscribeTerminalWorkspaceContributionEvents?.();
+      this.unsubscribeTerminalWorkspaceContributionEvents = null;
+    }
+  }
+
+  private refreshCatalogProducers(legacy: boolean): void {
+    this.hubExecutionController?.setObserving(
+      legacy ||
+        this.wantsEvent("hub.execution.agent.update") ||
+        this.wantsEvent("hub.execution.agent.stream"),
+    );
+    if (this.wantsEvent("providers_snapshot_update")) this.providerCatalogSession.start();
+    else this.providerCatalogSession.dispose();
+    if (
+      legacy ||
+      this.wantsEvent("status.plugin_catalog_changed") ||
+      this.wantsEvent("status.plugin_settings_changed")
+    )
+      this.unsubscribePluginChanges ??= this.subscribeToPluginChanges(this.pluginRuntime);
+    else {
+      this.unsubscribePluginChanges?.();
+      this.unsubscribePluginChanges = null;
+    }
   }
 
   private enqueueRegistryMutation(handleMutation: () => Promise<void>): Promise<void> {
@@ -2316,10 +1778,11 @@ export class Session {
   }
 
   private async syncWorkspaceMutationObserver(mutation: WorkspaceMutation): Promise<void> {
-    const subscription = this.workspaceUpdatesSubscription;
-    if (!mutation.workspace || !subscription) {
+    if (
+      !mutation.workspace ||
+      (this.workspaceUpdatesSubscriptions.size === 0 && !this.wantsEvent("checkout_status_update"))
+    )
       return;
-    }
     const descriptorsByWorkspaceId = await this.buildWorkspaceDescriptorMap({
       workspaceIds: [mutation.workspaceId],
       includeGitData: false,
@@ -2327,7 +1790,10 @@ export class Session {
     const descriptor = descriptorsByWorkspaceId.get(mutation.workspaceId);
     if (
       !descriptor ||
-      !this.matchesWorkspaceFilter({ workspace: descriptor, filter: subscription.filter })
+      (!this.wantsEvent("checkout_status_update") &&
+        ![...this.workspaceUpdatesSubscriptions.values()].some((subscription) =>
+          this.matchesWorkspaceFilter({ workspace: descriptor, filter: subscription.filter }),
+        ))
     ) {
       this.workspaceGitObserver.removeForWorkspaceId(mutation.workspaceId);
       return;
@@ -2337,16 +1803,24 @@ export class Session {
       this.workspaceGitObserver.removeForWorkspaceId(mutation.workspaceId);
       return;
     }
-    await this.workspaceGitObserver.syncObserverForWorkspace(currentWorkspace);
+    await this.syncWorkspaceGitObserverForWorkspace(currentWorkspace);
     if (this.isCleanedUp) {
       this.workspaceGitObserver.removeForWorkspaceId(mutation.workspaceId);
     }
   }
 
   private async handleProjectMutation(mutation: ProjectMutation): Promise<void> {
+    for (const subscription of this.workspaceUpdatesSubscriptions.values()) {
+      await this.handleProjectMutationForSubscription(mutation, subscription);
+    }
+  }
+
+  private async handleProjectMutationForSubscription(
+    mutation: ProjectMutation,
+    subscription: WorkspaceUpdatesSubscriptionState,
+  ): Promise<void> {
     try {
-      const subscription = this.workspaceUpdatesSubscription;
-      if (this.isCleanedUp || !subscription) {
+      if (this.isCleanedUp) {
         return;
       }
       const projectWorkspaceIds = (await this.workspaceRegistry.list())
@@ -2375,28 +1849,35 @@ export class Session {
         for (const workspaceId of projectWorkspaceIds) {
           this.workspaceGitObserver.removeForWorkspaceId(workspaceId);
         }
-        await this.emitWorkspaceUpdatesForWorkspaceIds(updateIds, {
+        await this.enqueueWorkspaceUpdates(new Set(updateIds), subscription, {
           removedProjectId: mutation.projectId,
         });
         return;
       }
 
-      if (
-        mutation.kind === "archive" ||
-        mutation.project?.archivedAt ||
-        (mutation.project && isProjectOffline(mutation.project))
-      ) {
+      if (mutation.kind === "archive" || mutation.project?.archivedAt) {
         for (const workspaceId of projectWorkspaceIds) {
           this.workspaceGitObserver.removeForWorkspaceId(workspaceId);
         }
       }
-      await this.emitWorkspaceUpdatesForWorkspaceIds(projectWorkspaceIds);
+      await this.enqueueWorkspaceUpdates(new Set(projectWorkspaceIds), subscription, undefined);
     } catch (error) {
       this.sessionLogger.warn(
         { err: error, projectId: mutation.projectId, mutationKind: mutation.kind },
         "Failed to apply project mutation to session",
       );
     }
+  }
+
+  private supportsSubagentTimelineItem(
+    item: AgentTimelineFetchResult["rows"][number]["item"],
+    source?: object,
+  ): boolean {
+    // COMPAT(projectedSubagentTimeline): added after v0.8.0, remove gate after 2027-03-14.
+    const supportsProjection = source
+      ? this.supportsForSource(CLIENT_CAPS.projectedSubagentTimeline, source)
+      : this.supports(CLIENT_CAPS.projectedSubagentTimeline);
+    return supportsProjection && this.supportsTimelineItem(item, source);
   }
 
   private forwardProviderSubagentUpdate(
@@ -2433,18 +1914,34 @@ export class Session {
       };
     }
 
-    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+    const delivered = new Set<object>();
+    for (const subscription of this.eventSubscriptions.values()) {
+      if (!subscription.events.has("agent.provider_subagents.update")) continue;
+      if (
+        update.type === "timeline" &&
+        !this.supportsSubagentTimelineItem(update.row.item, subscription.owner.source)
+      )
+        continue;
+      subscription.owner.emit(message);
+      delivered.add(subscription.owner.source);
+    }
+    if (this.clientSources.size === 0 || !this.onMessageToSource) {
       if (
         this.supports(CLIENT_CAPS.providerSubagents) &&
-        (update.type !== "timeline" || this.supportsTimelineItem(update.row.item))
+        (update.type !== "timeline" || this.supportsSubagentTimelineItem(update.row.item))
       ) {
         this.emit(message);
       }
       return;
     }
-    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
-      if (!capabilities.has(CLIENT_CAPS.providerSubagents)) continue;
-      if (update.type === "timeline" && !this.supportsTimelineItem(update.row.item, source))
+    for (const [source, { capabilities }] of this.clientSources) {
+      if (
+        delivered.has(source) ||
+        this.delivery.isModern(source) ||
+        !capabilities.has(CLIENT_CAPS.providerSubagents)
+      )
+        continue;
+      if (update.type === "timeline" && !this.supportsSubagentTimelineItem(update.row.item, source))
         continue;
       this.onMessageToSource(source, message);
     }
@@ -2477,43 +1974,20 @@ export class Session {
           return;
         }
 
-        if (event.type === "observed_agent_state") {
-          // Synthetic snapshot for an observed subagent (no ManagedAgent
-          // runtime). Forward through the same filter/placement path as live
-          // agents. See projects/observed-subagents/observed-subagents.md.
-          void this.agentUpdates.forwardLiveAgentPayload(event.payload);
-          return;
-        }
-
-        if (event.type === "background_shell_task_state") {
-          // Not Agent-shaped (no ManagedAgent, no tab/pane) - push the full
-          // current list for this parent directly instead of routing through
-          // the live-agent forwarding path.
-          this.emit({
-            type: "background_shell_tasks_changed",
-            payload: { parentAgentId: event.parentAgentId, tasks: event.tasks },
-          });
-          return;
-        }
-
-        if (event.type === "suggested_task_state") {
-          // Suggested-task chips (suggest_task) - push the full current pending
-          // list for this parent, same direct path as background shell tasks.
-          this.emit({
-            type: "suggested_tasks_changed",
-            payload: { parentAgentId: event.parentAgentId, tasks: event.tasks },
-          });
-          return;
-        }
-
         if (event.type === "provider_subagent") {
+          // The subagents track of an internal parent stays hidden.
+          const parentAgentId =
+            event.event.type === "upsert"
+              ? event.event.subagent.parentAgentId
+              : event.event.parentAgentId;
+          if (this.agentManager.getAgent(parentAgentId)?.internal) return;
           this.emitProviderSubagentWorkspaceUpdate(event.event);
           this.forwardProviderSubagentUpdate(event.event);
           return;
         }
 
         if (
-          this.voiceSession.isActiveForAgent(event.agentId) &&
+          this.voiceSessions.isActiveForAgent(event.agentId) &&
           event.event.type === "permission_requested" &&
           isVoicePermissionAllowed(event.event.request)
         ) {
@@ -2552,7 +2026,10 @@ export class Session {
 
         this.forwardAgentStream(event, serializedEvent);
 
-        if (event.event.type === "permission_requested") {
+        // An internal agent streams only to clients subscribed to it by id;
+        // session-wide prompts would surface it everywhere.
+        const internal = this.agentManager.getAgent(event.agentId)?.internal === true;
+        if (event.event.type === "permission_requested" && !internal) {
           this.emit({
             type: "agent_permission_request",
             payload: {
@@ -2561,7 +2038,8 @@ export class Session {
             },
           });
         } else if (event.event.type === "permission_resolved") {
-          this.emit({
+          // A provider event is not the outcome of whichever request is currently running.
+          this.emitSubscribedEvent({
             type: "agent_permission_resolved",
             payload: {
               agentId: event.agentId,
@@ -2573,7 +2051,9 @@ export class Session {
 
         // Title updates may be applied asynchronously after agent creation.
       },
-      { replayState: false },
+      // Internal agents flow through so exact-id subscribers and opted-in
+      // listings see them; everything else above filters them out.
+      { replayState: false, includeInternal: true },
     );
   }
 
@@ -2610,14 +2090,9 @@ export class Session {
 
   private async enrichAgentPayload(payload: AgentSnapshotPayload): Promise<AgentSnapshotPayload> {
     const storedRecord = await this.agentStorage.get(payload.id);
-    // Observed subagents have no stored record. Their projection owns the title
-    // and archive state; enriching a push must not erase either in the registry.
-    return {
-      ...payload,
-      ...(storedRecord
-        ? { title: storedRecord.title ?? null, archivedAt: storedRecord.archivedAt ?? null }
-        : {}),
-    };
+    payload.title = storedRecord?.title ?? null;
+    payload.archivedAt = storedRecord?.archivedAt ?? null;
+    return payload;
   }
 
   private buildAgentPayload(agent: ManagedAgent): Promise<AgentSnapshotPayload> {
@@ -2632,7 +2107,14 @@ export class Session {
   }
 
   private isProviderVisibleToClient(provider: string): boolean {
-    if (this.supports(CLIENT_CAPS.allProviders) || clientSupportsAllProviders(this.appVersion)) {
+    if (
+      this.supports(CLIENT_CAPS.allProviders) ||
+      clientSupportsAllProviders(
+        this.delivery.currentSource
+          ? (this.clientSources.get(this.delivery.currentSource)?.appVersion ?? null)
+          : this.appVersion,
+      )
+    ) {
       return true;
     }
     return LEGACY_PROVIDER_IDS.has(provider);
@@ -2677,29 +2159,24 @@ export class Session {
   /**
    * Main entry point for processing session messages
    */
-  public async handleMessage(rawMsg: SessionInboundMessage, source?: object): Promise<void> {
-    // COMPAT(agentProfileRpcs): added in v0.8.13, remove after 2027-02-22.
-    // A profile-named request is handled by its legacy twin's handler; emit()
-    // rewrites the response back. See profile-rpc-alias.ts.
-    const msg = this.adoptProfileRpcAlias(rawMsg);
+  public async handleMessage(msg: SessionInboundMessage, source?: object): Promise<void> {
+    return this.delivery.request(source, msg, () => this.handleRequest(msg, source));
+  }
+
+  private async handleRequest(msg: SessionInboundMessage, source?: object): Promise<void> {
     this.inflightRequests++;
     if (this.inflightRequests > this.peakInflightRequests) {
       this.peakInflightRequests = this.inflightRequests;
     }
     try {
-      // Guarded like emit(): JSON.stringify(msg) would otherwise run for every
-      // inbound message (a 2 MB file save stringifies 2 MB) with trace disabled.
-      // Optional-chained because test logger stubs don't implement isLevelEnabled.
-      if (this.sessionLogger.isLevelEnabled?.("trace")) {
-        this.sessionLogger.trace(
-          {
-            messageType: msg.type,
-            payloadBytes: JSON.stringify(msg).length,
-          },
-          "agent.session.inbound",
-        );
-      }
-      if (!isSessionRpcAllowed(this.scopes, msg.type) || !this.authorization.allowsInbound(msg)) {
+      this.sessionLogger.trace(
+        {
+          messageType: msg.type,
+          payloadBytes: JSON.stringify(msg).length,
+        },
+        "agent.session.inbound",
+      );
+      if (!this.authorization.allowsInbound(msg)) {
         const requestId = sessionRequestId(msg);
         if (requestId) {
           this.emit({
@@ -2715,12 +2192,6 @@ export class Session {
         return;
       }
       try {
-        await assertOnlineProjectRequest(
-          msg,
-          this.projectRegistry,
-          this.workspaceRegistry,
-          this.agentStorage,
-        );
         await this.dispatchInboundMessage(msg, source);
       } catch (error) {
         const err = error instanceof Error ? error : new Error(String(error));
@@ -2761,10 +2232,13 @@ export class Session {
 
   public setPermissions(permissions: readonly DaemonPermission[]): void {
     this.authorization.replacePermissions(permissions);
-  }
-
-  public setRpcScopes(scopes: readonly string[]): void {
-    this.scopes = [...scopes];
+    if (!this.authorization.allowsPermission("workspace.write")) {
+      void this.delivery
+        .releaseFamily("browser-host")
+        .catch((error) =>
+          this.sessionLogger.error({ err: error }, "Failed to release revoked browser hosting"),
+        );
+    }
   }
 
   public getPermissions(): DaemonPermission[] {
@@ -2772,78 +2246,117 @@ export class Session {
   }
 
   public allowsInbound(message: SessionInboundMessage): boolean {
-    return (
-      isSessionRpcAllowed(this.scopes, message.type) && this.authorization.allowsInbound(message)
-    );
+    return this.authorization.allowsInbound(message);
   }
 
   public allowsPermission(permission: DaemonPermission): boolean {
     return this.authorization.allowsPermission(permission);
   }
 
-  public subscribesToAgent(agent: ManagedAgent): Promise<boolean> {
-    return this.agentUpdates.includesLiveAgent(agent);
+  public subscribesToAgent(agent: ManagedAgent, source: object): Promise<boolean> {
+    return this.agentUpdates.includesLiveAgent(
+      agent,
+      new Set(this.delivery.subscriptionIds(source, "agents")),
+    );
   }
 
-  public subscribesToTerminalDirectory(input: {
-    cwd: string;
-    workspaceId?: string;
-  }): Promise<boolean> {
-    return this.terminalController.hasDirectorySubscription(input);
+  public subscribesToTerminalDirectory(
+    input: {
+      cwd: string;
+      workspaceId?: string;
+    },
+    source: object,
+  ): Promise<boolean> {
+    return this.terminalController.hasDirectorySubscription(input, source);
+  }
+
+  public publishToSource(source: object, message: SessionOutboundMessage): void {
+    if (!this.authorization.allowsOutbound(message)) return;
+    this.emitSubscribedEvent(message, source);
+  }
+
+  public wantsSourceEvent(source: object, event: SessionEventSubscription): boolean {
+    return this.wantsEvent(event, source);
+  }
+
+  public wantsSourceNotification(source: object, event: SessionEventSubscription): boolean {
+    // COMPAT(ownedSubscriptions): added in v0.8.0, remove legacy notification selection after 2027-03-09.
+    if (!this.delivery.isModern(source)) return true;
+    return [...this.eventSubscriptions.values()].some(
+      (subscription) =>
+        subscription.owner.source === source &&
+        subscription.notifications &&
+        subscription.events.has(event),
+    );
   }
 
   public publish(message: SessionOutboundMessage): void {
     this.emit(message);
   }
 
-  private dispatchAgentDomainMessage(
-    msg: SessionInboundMessage,
-    source?: object,
-  ): Promise<void> | undefined {
-    return (
-      this.dispatchVoiceAndControlMessage(msg) ??
-      this.dispatchAgentRewindMessage(msg, source) ??
-      this.dispatchAgentPersonalityMessage(msg) ??
-      this.dispatchAgentRelationshipMessage(msg) ??
-      this.dispatchAgentTimelineMessage(msg, source) ??
-      this.dispatchHubExecutionMessage(msg) ??
-      this.dispatchAgentLifecycleMessage(msg) ??
-      this.dispatchAgentConfigMessage(msg) ??
-      this.dispatchMeetingsMessage(msg) ??
-      this.communicationsSession.dispatch(msg) ??
-      this.dispatchIntegrationAuthorizationMessage(msg) ??
-      this.dispatchSpeechMessage(msg) ??
-      this.dispatchVisualizerMessage(msg)
-    );
-  }
-
-  private dispatchWorkspaceLabelMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "workspace.label.list.request":
-        return this.handleWorkspaceLabelList(msg);
-      case "workspace.label.assignment.set.request":
-        return this.handleWorkspaceLabelAssignment(msg);
-      case "workspace.label.update.request":
-        return this.handleWorkspaceLabelUpdate(msg);
-      case "workspace.label.delete.request":
-        return this.handleWorkspaceLabelDelete(msg);
-      case "workspace.label.delete.inspect.request":
-        return this.handleWorkspaceLabelDeleteInspection(msg);
-      default:
-        return undefined;
+  private async registerBrowserHost(
+    request: Extract<SessionInboundMessage, { type: "browser.host.register.request" }>,
+    respond = true,
+  ): Promise<void> {
+    if (!this.browserToolsBroker) throw new Error("Browser hosting is unavailable");
+    let unregister: (() => void) | undefined;
+    const owner = this.delivery.begin("browser-host", undefined, () => unregister?.());
+    try {
+      unregister = this.browserToolsBroker.registerClient({
+        id: owner.id,
+        hostKind: request.hostKind,
+        supportedCommands: request.supportedCommands,
+        sendBrowserAutomationRequest: (message) => owner.emit(message),
+      });
+      if (respond)
+        this.emit({
+          type: "browser.host.register.response",
+          payload: { requestId: request.requestId, subscriptionId: owner.responseId },
+        });
+    } catch (error) {
+      await owner.release();
+      throw error;
     }
   }
 
-  private dispatchHostDomainMessage(
+  private dispatchSubscriptionMessage(
     msg: SessionInboundMessage,
     source?: object,
   ): Promise<void> | undefined {
-    return (
+    if (msg.type === "browser.host.register.request") return this.registerBrowserHost(msg);
+    if (msg.type === "browser.automation.execute.response") {
+      if (source)
+        this.browserToolsBroker?.receiveResponse(
+          msg,
+          this.delivery.subscriptionIds(source, "browser-host"),
+        );
+      return Promise.resolve();
+    }
+    if (msg.type === "subscription.release.request") {
+      return this.delivery.release(msg.subscriptionId).then(() => {
+        this.emit({
+          type: "subscription.release.response",
+          payload: { requestId: msg.requestId, subscriptionId: msg.subscriptionId },
+        });
+        return undefined;
+      });
+    }
+    return undefined;
+  }
+
+  private async dispatchInboundMessage(msg: SessionInboundMessage, source?: object): Promise<void> {
+    const promise =
+      this.dispatchSubscriptionMessage(msg, source) ??
+      this.dispatchVoiceAndControlMessage(msg) ??
+      this.dispatchAgentRewindMessage(msg, source) ??
+      this.dispatchAgentRelationshipMessage(msg) ??
+      this.dispatchAgentTimelineMessage(msg, source) ??
+      this.dispatchHubExecutionMessage(msg) ??
+      this.dispatchCreationMessage(msg, source) ??
+      this.dispatchAgentLifecycleMessage(msg, source) ?? // OTTO(history): bind the review to the connection.
+      this.dispatchAgentConfigMessage(msg) ??
       this.dispatchCheckoutMessage(msg) ??
-      this.dispatchPreviewMessage(msg) ??
       this.dispatchWorkspaceLifecycleMessage(msg) ??
-      this.dispatchWorktreeReattachMessage(msg) ??
-      this.dispatchWorkspaceFilesMessage(msg) ??
       this.dispatchWorkspaceFileMessage(msg, source) ??
       this.dispatchProviderMessage(msg) ??
       this.dispatchOrchestrationSkillsMessage(msg) ??
@@ -2851,16 +2364,7 @@ export class Session {
       this.dispatchPluginMessage(msg) ??
       this.dispatchTerminalMessage(msg) ??
       this.dispatchScheduleMessage(msg) ??
-      this.dispatchArtifactMessage(msg) ??
-      this.dispatchArchitecturalViewsMessage(msg) ??
-      this.runsSession.dispatch(msg) ??
-      this.dispatchMiscMessage(msg)
-    );
-  }
-
-  private async dispatchInboundMessage(msg: SessionInboundMessage, source?: object): Promise<void> {
-    const promise =
-      this.dispatchAgentDomainMessage(msg, source) ?? this.dispatchHostDomainMessage(msg, source);
+      this.dispatchMiscMessage(msg);
     if (promise) await promise;
   }
 
@@ -2935,11 +2439,13 @@ export class Session {
 
   private dispatchPluginMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     if (msg.type === "plugin.list.request") {
-      this.emit({
-        type: "plugin.list.response",
-        payload: { requestId: msg.requestId, plugins: this.pluginRuntime?.listPlugins() ?? [] },
+      return (this.pluginRuntime?.listPlugins() ?? Promise.resolve([])).then((plugins) => {
+        this.emit({
+          type: "plugin.list.response",
+          payload: { requestId: msg.requestId, plugins },
+        });
+        return undefined;
       });
-      return undefined;
     }
     if (msg.type === "plugin.logs.get.request") {
       if (!this.pluginRuntime) throw new Error("Plugin service is unavailable");
@@ -3003,7 +2509,13 @@ export class Session {
     if (msg.type === "plugin.rpc.invoke.request") {
       if (!this.pluginRuntime) throw new Error("Plugin service is unavailable");
       return this.pluginRuntime
-        .invokePluginRpc(msg.pluginId, msg.method, msg.input)
+        .invokePluginRpc(
+          msg.pluginId,
+          msg.method,
+          msg.input,
+          this.sessionId,
+          msg.pluginId === "otto-browser" ? hostBrowserRequestSource(this.delivery) : undefined,
+        ) // OTTO(browser-frames): no socket capability reaches third-party plugin code. // OTTO(feature-host)
         .then((output) => {
           this.emit({
             type: "plugin.rpc.invoke.response",
@@ -3038,6 +2550,28 @@ export class Session {
       return this.pluginRuntime.statusSources(msg.pluginId).then((plugins) => {
         this.emit({
           type: "plugin.source.status.response",
+          payload: { requestId: msg.requestId, plugins },
+        });
+        return undefined;
+      });
+    }
+    if (msg.type === "plugin.source.update.preview.request") {
+      if (!this.pluginRuntime) throw new Error("Plugin service is unavailable");
+      return this.pluginRuntime
+        .previewUpdates({ pluginId: msg.pluginId, target: msg.target })
+        .then((plugins) => {
+          this.emit({
+            type: "plugin.source.update.preview.response",
+            payload: { requestId: msg.requestId, plugins },
+          });
+          return undefined;
+        });
+    }
+    if (msg.type === "plugin.source.update.apply.request") {
+      if (!this.pluginRuntime) throw new Error("Plugin service is unavailable");
+      return this.pluginRuntime.applyUpdates(msg.proposals).then((plugins) => {
+        this.emit({
+          type: "plugin.source.update.apply.response",
           payload: { requestId: msg.requestId, plugins },
         });
         return undefined;
@@ -3098,28 +2632,14 @@ export class Session {
   private dispatchVoiceAndControlMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "voice_audio_chunk":
-        return this.voiceSession.handleAudioChunk(msg);
       case "abort_request":
-        return this.voiceSession.handleAbort();
       case "audio_played":
-        this.voiceSession.handleAudioPlayed(msg.id);
-        return undefined;
       case "set_voice_mode":
-        return this.voiceSession.handleSetVoiceMode(msg.enabled, msg.agentId, msg.requestId);
       case "dictation_stream_start":
-        return this.voiceSession.handleDictationStreamStart(msg);
       case "dictation_stream_chunk":
-        return this.voiceSession.handleDictationChunk({
-          dictationId: msg.dictationId,
-          seq: msg.seq,
-          audioBase64: msg.audio,
-          format: msg.format,
-        });
       case "dictation_stream_finish":
-        return this.voiceSession.handleDictationFinish(msg.dictationId, msg.finalSeq);
       case "dictation_stream_cancel":
-        this.voiceSession.handleDictationCancel(msg.dictationId);
-        return undefined;
+        return this.voiceSessions.handleMessage(msg);
       case "restart_server_request":
         return this.handleRestartServerRequest(msg.requestId, msg.reason);
       case "shutdown_server_request":
@@ -3157,363 +2677,13 @@ export class Session {
     }
   }
 
-  // Kept out of dispatchAgentConfigMessage only because that switch sits at the
-  // complexity ceiling; the handler itself lives with its config siblings.
-  private dispatchAgentPersonalityMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "agent.personality.set.request":
-        return this.agentConfigSession.handleAgentPersonalitySetRequest(msg);
-      default:
-        return undefined;
-    }
-  }
-
   private dispatchAgentRelationshipMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "agent.detach.request":
         return this.handleDetachAgentRequest(msg.agentId, msg.requestId);
-      case "agent.workspace.transfer.request":
-        return this.handleAgentWorkspaceTransferRequest(
-          msg.agentId,
-          msg.workspaceId,
-          msg.requestId,
-        );
-      case "agent.subagent.stop.request":
-        return this.handleStopObservedSubagentRequest(msg.agentId, msg.requestId);
-      case "agent.background_task.stop.request":
-        return this.handleStopBackgroundShellTaskRequest(
-          msg.parentAgentId,
-          msg.taskId,
-          msg.requestId,
-        );
-      case "agent.background_task.clear.request":
-        return this.handleClearBackgroundShellTasksRequest(
-          msg.parentAgentId,
-          msg.taskIds,
-          msg.requestId,
-        );
-      case "tasks.suggested.start.request":
-        return this.handleStartSuggestedTaskRequest(msg);
-      case "tasks.suggested.dismiss.request":
-        return this.handleDismissSuggestedTaskRequest(msg);
       default:
         return undefined;
     }
-  }
-
-  private async handleStopObservedSubagentRequest(
-    agentId: string,
-    requestId: string,
-  ): Promise<void> {
-    try {
-      await this.agentManager.stopObservedSubagent(agentId);
-      this.emit({
-        type: "agent.subagent.stop.response",
-        payload: {
-          requestId,
-          agentId,
-          accepted: true,
-          error: null,
-        },
-      });
-    } catch (error) {
-      const message = getErrorMessageOr(error, "Failed to stop observed subagent");
-      this.sessionLogger.error(
-        { err: error, agentId, requestId },
-        "Failed to stop observed subagent",
-      );
-      this.emit({
-        type: "agent.subagent.stop.response",
-        payload: {
-          requestId,
-          agentId,
-          accepted: false,
-          error: message,
-        },
-      });
-    }
-  }
-
-  private async handleStopBackgroundShellTaskRequest(
-    parentAgentId: string,
-    taskId: string,
-    requestId: string,
-  ): Promise<void> {
-    try {
-      await this.agentManager.stopBackgroundShellTask(taskId);
-      this.emit({
-        type: "agent.background_task.stop.response",
-        payload: { requestId, agentId: taskId, accepted: true, error: null },
-      });
-    } catch (error) {
-      const message = getErrorMessageOr(error, "Failed to stop background shell task");
-      this.sessionLogger.error(
-        { err: error, parentAgentId, taskId, requestId },
-        "Failed to stop background shell task",
-      );
-      this.emit({
-        type: "agent.background_task.stop.response",
-        payload: { requestId, agentId: taskId, accepted: false, error: message },
-      });
-    }
-  }
-
-  private async handleClearBackgroundShellTasksRequest(
-    parentAgentId: string,
-    taskIds: readonly string[],
-    requestId: string,
-  ): Promise<void> {
-    try {
-      await this.agentManager.clearBackgroundShellTasks(taskIds);
-      this.emit({
-        type: "agent.background_task.clear.response",
-        payload: { requestId, agentId: parentAgentId, accepted: true, error: null },
-      });
-    } catch (error) {
-      const message = getErrorMessageOr(error, "Failed to clear background shell tasks");
-      this.sessionLogger.error(
-        { err: error, parentAgentId, taskIds, requestId },
-        "Failed to clear background shell tasks",
-      );
-      this.emit({
-        type: "agent.background_task.clear.response",
-        payload: { requestId, agentId: parentAgentId, accepted: false, error: message },
-      });
-    }
-  }
-
-  private async handleStartSuggestedTaskRequest(
-    msg: Extract<SessionInboundMessage, { type: "tasks.suggested.start.request" }>,
-  ): Promise<void> {
-    const { parentAgentId, taskIds, mode, requestId } = msg;
-    const parent = this.agentManager.getAgent(parentAgentId);
-    if (!parent) {
-      this.emit({
-        type: "tasks.suggested.start.response",
-        payload: {
-          requestId,
-          parentAgentId,
-          accepted: false,
-          succeeded: 0,
-          failed: taskIds.length,
-          error: "Parent agent not found",
-        },
-      });
-      return;
-    }
-
-    // Apply the same mode to each task independently - one agent/chat each, no
-    // combining. Failures are collected so a partial success still starts the
-    // rest; each failed task's chip stays pending.
-    let succeeded = 0;
-    const errors: string[] = [];
-    for (const taskId of taskIds) {
-      const task = this.agentManager.getSuggestedTaskEntry(taskId);
-      // Never act on a task that belongs to a different parent - treat a
-      // mismatched (or missing) id as not found rather than starting it.
-      if (!task || task.parentAgentId !== parentAgentId) {
-        errors.push(`${taskId}: suggested task not found`);
-        continue;
-      }
-      // Atomically claim the start. A second concurrent request for the same id
-      // (double-click during slow worktree provisioning) fails this gate
-      // immediately instead of also passing the pending check and double-spawning.
-      if (!this.agentManager.beginSuggestedTaskStart(taskId)) {
-        errors.push(`${task.title}: already ${task.state}`);
-        continue;
-      }
-      try {
-        let startedAgentId: string | undefined;
-        if (mode === "in_session") {
-          // Starting a suggested task in the current chat is never permission to
-          // interrupt what that chat is doing. In particular, a compaction
-          // rewrites provider context and must finish before the task prompt can
-          // enter the session. Queue unconditionally so the ordinary busy-turn
-          // behavior and the compaction boundary use the same safe path.
-          await sendPromptToAgent({
-            agentManager: this.agentManager,
-            agentStorage: this.agentStorage,
-            agentId: parentAgentId,
-            prompt: buildAgentPrompt(task.prompt),
-            delivery: "queue",
-            logger: this.sessionLogger,
-          });
-        } else {
-          startedAgentId = await this.createAgentForSuggestedTask({
-            parent,
-            mode,
-            launch: msg.launch,
-            title: task.title,
-            prompt: task.prompt,
-            ...(task.cwd ? { cwd: task.cwd } : {}),
-          });
-        }
-        this.agentManager.markSuggestedTaskStarted({
-          taskId,
-          mode,
-          ...(startedAgentId ? { startedAgentId } : {}),
-        });
-        succeeded += 1;
-      } catch (error) {
-        const message = getErrorMessageOr(error, "failed to start");
-        this.sessionLogger.error(
-          { err: error, parentAgentId, taskId, mode },
-          "Failed to start suggested task",
-        );
-        errors.push(`${task.title}: ${message}`);
-      } finally {
-        this.agentManager.endSuggestedTaskStart(taskId);
-      }
-    }
-
-    this.emit({
-      type: "tasks.suggested.start.response",
-      payload: {
-        requestId,
-        parentAgentId,
-        accepted: succeeded > 0 || taskIds.length === 0,
-        succeeded,
-        failed: errors.length,
-        error: errors.length > 0 ? errors.join("; ") : null,
-      },
-    });
-  }
-
-  /**
-   * Create a new agent for a started suggested task, reusing the MCP branch of
-   * createAgentCommand (worktree provisioning + workspace resolution baked in).
-   * Source configuration supplies defaults; the task panel can override the
-   * provider/model without carrying incompatible adapter settings across.
-   *
-   * Only `subagent` links the new agent to the parent (bound child in the
-   * Subagents track, archive-cascades). `new_chat` and `worktree` are `detached`
-   * - independent top-level agents that outlive the parent's cancel/archive. We
-   * keep `callerAgentId` set even when detached so the new agent still inherits
-   * the parent's cwd/workspace/config; only the parent-id label is dropped.
-   */
-  private async createAgentForSuggestedTask(params: {
-    parent: ManagedAgent;
-    mode: "worktree" | "subagent" | "new_chat";
-    title: string;
-    prompt: string;
-    cwd?: string;
-    launch?: { provider: string; model: string };
-  }): Promise<string> {
-    const { parent, mode } = params;
-    const detached = mode !== "subagent";
-    const passthroughConfig: Partial<AgentSessionConfig> = { ...parent.config };
-    // The parent's title would win over the task title in buildMcpSessionConfig.
-    delete passthroughConfig.title;
-    const provider = params.launch?.provider ?? parent.provider;
-    const model = params.launch?.model ?? parent.config.model;
-    if (provider !== parent.provider || model !== parent.config.model) {
-      delete passthroughConfig.model;
-      delete passthroughConfig.thinkingOptionId;
-      // A profile snapshot binds identity and behavior to its provider/model.
-      // Once the user chooses a different model in the suggested-task picker,
-      // the new chat is a plain model chat and must not retain that profile.
-      delete passthroughConfig.profileSnapshot;
-      // Never let the provider pick the effort: carry the parent's onto the
-      // chosen model instead of silently falling to a low provider default.
-      const carriedEffort = model
-        ? resolveCarriedOverEffort({
-            parentThinkingOptionId:
-              parent.config.thinkingOptionId ?? parent.runtimeInfo?.thinkingOptionId,
-            models: await this.providerSnapshotManager.listModels({
-              provider,
-              cwd: params.cwd ?? parent.cwd,
-              wait: true,
-            }),
-            model,
-          })
-        : undefined;
-      if (carriedEffort) {
-        passthroughConfig.thinkingOptionId = carriedEffort;
-      }
-    }
-    if (provider !== parent.provider) {
-      // Mode ids and adapter options belong to the source provider. Resolve
-      // the destination's defaults through the normal create-chat pipeline.
-      delete passthroughConfig.modeId;
-      delete passthroughConfig.featureValues;
-      delete passthroughConfig.providerOptions;
-      delete passthroughConfig.extra;
-      delete passthroughConfig.approvalPolicy;
-      delete passthroughConfig.sandboxMode;
-    }
-    const result = await createAgentCommand(
-      {
-        agentManager: this.agentManager,
-        agentStorage: this.agentStorage,
-        logger: this.sessionLogger,
-        ottoHome: this.ottoHome,
-        worktreesRoot: this.worktreesRoot,
-        terminalManager: this.terminalManager,
-        providerSnapshotManager: this.providerSnapshotManager,
-        createOttoWorktree: (input, worktreeOptions) =>
-          this.createOttoWorktreeWorkflow(input, worktreeOptions),
-        // No-op today: the explicit `title` below makes createAgentCommand skip
-        // auto-titling (explicitTitle guard). Wired so a future caller that
-        // omits the title still gets an AI-written chat name.
-        scheduleAutoTitle: (request) =>
-          this.agentAutoTitle.schedule({
-            ...request,
-            currentSelection: this.getFocusedAgentSelectionForCwd(request.cwd),
-          }),
-      },
-      {
-        kind: "mcp",
-        provider: formatProviderModel(provider, model),
-        config: passthroughConfig,
-        title: params.title,
-        initialPrompt: params.prompt,
-        cwd: params.cwd ?? parent.cwd,
-        callerAgentId: parent.id,
-        // Bound subagent → child row in the parent's track. Detached → its own
-        // top-level tab, no parent link (mergeLabels strips the parent-id label).
-        detached,
-        background: true,
-        // A detached chat isn't watchable via the parent's Subagents track, so
-        // notify on finish; a bound subagent surfaces there already.
-        notifyOnFinish: detached,
-        ...(mode === "worktree" ? { worktree: { action: "branch-off" as const } } : {}),
-      },
-    );
-    await this.agentUpdates.forwardLiveAgent(result.snapshot);
-    return result.snapshot.id;
-  }
-
-  private async handleDismissSuggestedTaskRequest(
-    msg: Extract<SessionInboundMessage, { type: "tasks.suggested.dismiss.request" }>,
-  ): Promise<void> {
-    const { parentAgentId, taskIds, requestId } = msg;
-    // Idempotent for the user: chips already gone are a no-op. Individual and
-    // "Dismiss all" both flow through here - one id or the whole queue.
-    let succeeded = 0;
-    for (const taskId of taskIds) {
-      // Only dismiss tasks that belong to this parent. A mismatched (or unknown)
-      // id is a silent no-op counted as not-succeeded, matching the idempotent
-      // "chip already gone" behaviour.
-      const entry = this.agentManager.getSuggestedTaskEntry(taskId);
-      if (!entry || entry.parentAgentId !== parentAgentId) {
-        continue;
-      }
-      const result = this.agentManager.dismissSuggestedTask(taskId);
-      if (result.dismissed) {
-        succeeded += 1;
-      }
-    }
-    this.emit({
-      type: "tasks.suggested.dismiss.response",
-      payload: {
-        requestId,
-        parentAgentId,
-        accepted: true,
-        succeeded,
-        failed: taskIds.length - succeeded,
-        error: null,
-      },
-    });
   }
 
   private dispatchAgentTimelineMessage(
@@ -3525,73 +2695,57 @@ export class Session {
         return this.handleFetchAgentTimelineRequest(msg, source);
       case "agent.timeline.append.request":
         return this.handleAgentTimelineAppendRequest(msg);
+      case "agent.timeline.search.request":
+        return this.handleAgentTimelineSearchRequest(msg, source);
       case "agent.timeline.list_prompts.request":
         return this.handleAgentTimelineListPromptsRequest(msg, source);
       case "agent.provider_subagents.list.request":
         return this.handleProviderSubagentListRequest(msg);
-      case "agent.provider_subagents.control.request":
-        return this.handleProviderSubagentControlRequest(msg);
       case "agent.provider_subagents.timeline.get.request":
         return this.handleProviderSubagentTimelineRequest(msg, source);
       case "session.events.set_subscription.request": {
-        this.eventSubscriptions.set(
-          source ?? this.defaultEventSubscriptionSource,
-          new Set(msg.events),
-        );
+        const owner = this.delivery.begin("events", undefined, async (id) => {
+          this.eventSubscriptions.delete(id);
+          this.refreshObservationProducers();
+          if (msg.events.includes("checkout_status_update"))
+            await this.reconcileWorkspaceGitObservers();
+        });
+        this.eventSubscriptions.set(owner.id, {
+          owner,
+          events: new Set(msg.events),
+          notifications: msg.notifications === true,
+        });
         this.emitForSource(
           {
             type: "session.events.set_subscription.response",
-            payload: { requestId: msg.requestId },
+            payload: { requestId: msg.requestId, subscriptionId: owner.responseId },
+          },
+          source,
+        );
+        this.refreshObservationProducers();
+        if (!msg.events.includes("checkout_status_update")) return undefined;
+        return this.reconcileWorkspaceGitObservers().catch(async (error) => {
+          await owner.release();
+          throw error;
+        });
+      }
+      case "agent.timeline.set_subscription.request": {
+        const agentIds = [...new Set(msg.agentIds)].sort();
+        const owner = this.subscribeAgentTimelines(agentIds);
+        this.emitForSource(
+          {
+            type: "agent.timeline.set_subscription.response",
+            payload: { agentIds, requestId: msg.requestId, subscriptionId: owner.responseId },
           },
           source,
         );
         return undefined;
       }
-      case "agent.timeline.set_subscription.request": {
-        const agentIds = [...new Set(msg.agentIds)].sort();
-        if (
-          source
-            ? this.supportsForSource(CLIENT_CAPS.selectiveAgentTimeline, source)
-            : this.supports(CLIENT_CAPS.selectiveAgentTimeline)
-        ) {
-          this.replaceAgentTimelineSubscription(source, agentIds);
-        }
-        const response: SessionOutboundMessage = {
-          type: "agent.timeline.set_subscription.response",
-          payload: { agentIds, requestId: msg.requestId },
-        };
-        if (source && this.onMessageToSource) this.onMessageToSource(source, response);
-        else this.emit(response);
-        return undefined;
-      }
-      case "brain.logs.watch.request": {
-        this.handleBrainLogWatchRequest(msg, source);
-        return undefined;
-      }
       case "agent.fork_context.request":
         return this.handleAgentForkContextRequest(msg);
-      case "agent.queue.remove.request":
-        return this.handleAgentQueueRemoveRequest(msg);
-      case "agent.queue.reorder.request":
-        return this.handleAgentQueueReorderRequest(msg);
-      case "agent.queue.clear.request":
-        return this.handleAgentQueueClearRequest(msg);
       default:
         return undefined;
     }
-  }
-
-  private handleBrainLogWatchRequest(
-    msg: Extract<SessionInboundMessage, { type: "brain.logs.watch.request" }>,
-    source?: object,
-  ): void {
-    this.setBrainLogWatching(source, msg.watching);
-    const response: SessionOutboundMessage = {
-      type: "brain.logs.watch.response",
-      payload: { watching: msg.watching, requestId: msg.requestId },
-    };
-    if (source && this.onMessageToSource) this.onMessageToSource(source, response);
-    else this.emit(response);
   }
 
   private dispatchHubExecutionMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -3607,20 +2761,29 @@ export class Session {
     return undefined;
   }
 
-  // This switch is the single routing table for the agent lifecycle message family.
-  // eslint-disable-next-line complexity
-  private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+  private dispatchCreationMessage(
+    msg: SessionInboundMessage,
+    source?: object,
+  ): Promise<void> | undefined {
+    switch (msg.type) {
+      case "agent.create.request":
+        return this.handleAgentCreation(msg, source);
+      case "creation.subscribe.request":
+        return this.handleCreationSubscription(msg, source);
+      case "workspace.create.request":
+        return this.handleWorkspaceCreation(msg, source);
+      default:
+        return undefined;
+    }
+  }
+
+  private dispatchAgentLifecycleMessage(
+    msg: SessionInboundMessage,
+    source?: object, // OTTO(history)
+  ): Promise<void> | undefined {
     switch (msg.type) {
       case "fetch_agents_request":
         return this.handleFetchAgents(msg);
-      case "search.chats.query.request":
-      case "search.chats.resolve.request":
-        return handleChatSearch(msg, {
-          agentManager: this.agentManager,
-          agentStorage: this.agentStorage,
-          logger: this.sessionLogger,
-          emit: (message) => this.emit(message),
-        });
       case "fetch_agent_history_request":
         return this.handleFetchAgentHistory(msg);
       case "fetch_recent_provider_sessions_request":
@@ -3633,12 +2796,8 @@ export class Session {
         return this.handleArchiveAgentRequest(msg.agentId, msg.requestId);
       case "close_items_request":
         return this.handleCloseItemsRequest(msg);
-      case "history.agents.clear_archived.request":
-        return this.handleHistoryAgentsClearArchivedRequest(msg);
       case "update_agent_request":
         return this.handleUpdateAgentRequest(msg.agentId, msg.name, msg.labels, msg.requestId);
-      case "project.root.relocate.request":
-        return this.handleProjectRelocateRequest(msg);
       case "project.rename.request":
         return this.handleProjectRenameRequest(msg.projectId, msg.customName, msg.requestId);
       case "project.icon.set.request":
@@ -3662,19 +2821,73 @@ export class Session {
       case "clear_agent_attention":
         return this.handleClearAgentAttention(msg.agentId, msg.requestId);
       default:
+        return this.dispatchOttoHistory(msg, source); // OTTO(history, chat-search)
+    }
+  }
+
+  private dispatchProfileMemory(
+    msg: Extract<SessionInboundMessage, { type: "agent.profile.memory.request" }>,
+  ) {
+    const operation =
+      this.agentManager.profileMemory?.manage(msg.input, async (id) => {
+        const workspace = await this.workspaceRegistry.get(id);
+        if (!workspace) throw new Error("Select a workspace on this host.");
+        const project = await this.projectRegistry.get(workspace.projectId);
+        if (!project) throw new Error("Workspace project unavailable.");
+        return project.rootPath;
+      }) ?? Promise.reject(new Error("Profile memory unavailable."));
+    return operation
+      .catch((error: unknown) => {
+        this.sessionLogger.warn({ err: error }, "Profile memory operation failed");
+        return {
+          kind: "error" as const,
+          message:
+            "Profile memory could not be updated or read. Check the Profile, workspace and host log.",
+        };
+      })
+      .then((result) =>
+        this.emit({
+          type: "agent.profile.memory.response",
+          payload: { requestId: msg.requestId, result },
+        }),
+      );
+  }
+
+  // OTTO(agent-profiles): keep Profile operations outside Paseo's configuration dispatch.
+  private dispatchOttoProfileMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      // OTTO(profile-authoring)
+      case "agent.profile.memory.request":
+        return this.dispatchProfileMemory(msg); // OTTO(profile-memory)
+      case "agent.profile.author.request": {
+        return authorProfile(this.profileGeneration, msg.input).then((result) =>
+          this.emit({
+            type: "agent.profile.author.response",
+            payload: { requestId: msg.requestId, result },
+          }),
+        );
+      }
+      default:
         return undefined;
     }
   }
 
-  private dispatchDaemonConfigMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+  private dispatchAgentConfigMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
+      case "set_agent_mode_request":
+        return this.agentConfigSession.handleSetAgentModeRequest(msg);
+      case "set_agent_model_request":
+        return this.agentConfigSession.handleSetAgentModelRequest(msg);
+      case "set_agent_feature_request":
+        return this.agentConfigSession.handleSetAgentFeatureRequest(msg);
+      case "set_agent_thinking_request":
+        return this.agentConfigSession.handleSetAgentThinkingRequest(msg);
+      case "agent.config.apply.request":
+        return this.agentConfigSession.handleAgentConfigApplyRequest(msg);
       case "get_daemon_config_request":
         this.emit({
           type: "get_daemon_config_response",
-          payload: {
-            requestId: msg.requestId,
-            config: redactDaemonConfigForClient(this.daemonConfigStore.get()),
-          },
+          payload: { requestId: msg.requestId, config: this.daemonConfigStore.get() },
         });
         return undefined;
       case "daemon.get_status.request":
@@ -3698,584 +2911,17 @@ export class Session {
           type: "set_daemon_config_response",
           payload: {
             requestId: msg.requestId,
-            config: redactDaemonConfigForClient(this.daemonConfigStore.patch(msg.config)),
+            config: this.daemonConfigStore.patch(msg.config),
           },
         });
         return undefined;
-      default:
-        return undefined;
-    }
-  }
-
-  /**
-   * Start a connector's OAuth login and answer with the URL to open.
-   *
-   * Two timescales, which is why this is not a plain request/response: the
-   * response says "here is where to sign in", and the outcome lands minutes
-   * later on the pushed status channel once the user is back from the browser.
-   */
-  private handleConnectorOauthAuthorize(
-    requestId: string,
-    connectorId: string,
-    scope: string | undefined,
-    oauthClient?: { clientId: string; clientSecret: string },
-  ): void {
-    const respond = (
-      payload: Omit<ConnectorsOauthAuthorizeResponse["payload"], "connectorId" | "requestId">,
-    ): void => {
-      this.emit({
-        type: "connectors.oauth.authorize.response",
-        payload: { connectorId, requestId, ...payload },
-      });
-    };
-    const broker = this.connectorOAuthBroker;
-    if (!broker) {
-      respond({
-        authorizationUrl: null,
-        status: "error",
-        error: "This host cannot sign connectors in. Update the host to use this.",
-      });
-      return;
-    }
-    const connector = (this.daemonConfigStore.get().connectors ?? []).find(
-      (entry) => entry.id === connectorId,
-    );
-    if (!connector) {
-      respond({
-        authorizationUrl: null,
-        status: "error",
-        error: `No connector with id '${connectorId}'.`,
-      });
-      return;
-    }
-    const watchCompletion = (): void => {
-      void broker
-        .waitForCompletion(connectorId)
-        .then(() => this.emitConnectorOauthStatus(connectorId, { ok: true }))
-        .catch((err: unknown) => {
-          this.emitConnectorOauthStatus(connectorId, { ok: false, error: getErrorMessage(err) });
-        });
-    };
-    void broker
-      .beginAuthorization({
-        connector,
-        ...(scope ? { scope } : {}),
-        ...(oauthClient ? { oauthClient } : {}),
-      })
-      .then((result) => {
-        if (result.status === "authorized") {
-          respond({ authorizationUrl: null, status: "authorized", error: null });
-          this.emitConnectorOauthStatus(connectorId, { ok: true });
-          return undefined;
-        }
-        respond({ authorizationUrl: result.authorizationUrl, status: "redirect", error: null });
-        watchCompletion();
-        return undefined;
-      })
-      .catch((err: unknown) => {
-        respond({ authorizationUrl: null, status: "error", error: getErrorMessage(err) });
-      });
-  }
-
-  /**
-   * Push the settled outcome of a connector login. Reads the account label back
-   * from config rather than taking it from the flow: the broker writes it there,
-   * and config is the copy every client will reconcile against anyway.
-   */
-  private emitConnectorOauthStatus(
-    connectorId: string,
-    result: { ok: true } | { ok: false; error: string },
-  ): void {
-    const connector = (this.daemonConfigStore.get().connectors ?? []).find(
-      (entry) => entry.id === connectorId,
-    );
-    this.emit({
-      type: "connectors.oauth.status",
-      payload: {
-        connectorId,
-        status: result.ok ? "connected" : "failed",
-        account: connector?.auth?.account ?? null,
-        error: result.ok ? null : result.error,
-      },
-    });
-  }
-
-  private async disconnectConnector(connectorId: string, requestId: string): Promise<void> {
-    const connector = this.daemonConfigStore
-      .get()
-      .connectors?.find((entry) => entry.id === connectorId);
-    if (connector?.builtin) {
-      if (!this.googleConnectors) throw new Error("Update the host to manage this connector.");
-      await this.googleConnectors.disconnect(connectorId);
-    } else {
-      await this.connectorOAuthBroker?.disconnect(connectorId);
-    }
-    this.emit({
-      type: "connectors.oauth.disconnect.response",
-      payload: { connectorId, requestId },
-    });
-  }
-
-  private dispatchAgentConfigMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "set_agent_mode_request":
-        return this.agentConfigSession.handleSetAgentModeRequest(msg);
-      case "set_agent_model_request":
-        return this.agentConfigSession.handleSetAgentModelRequest(msg);
-      case "set_agent_feature_request":
-        return this.agentConfigSession.handleSetAgentFeatureRequest(msg);
-      case "set_agent_thinking_request":
-        return this.agentConfigSession.handleSetAgentThinkingRequest(msg);
-      case "agent.config.apply.request":
-        return this.agentConfigSession.handleAgentConfigApplyRequest(msg);
-      case "connectors.list_tools.request": {
-        const listRequestId = msg.requestId;
-        const connectorId = msg.connectorId;
-        const connector = (this.daemonConfigStore.get().connectors ?? []).find(
-          (entry) => entry.id === connectorId,
-        );
-        if (!connector) {
-          this.emit({
-            type: "connectors.list_tools.response",
-            payload: {
-              connectorId,
-              tools: [],
-              error: `No connector with id '${connectorId}'.`,
-              requestId: listRequestId,
-            },
-          });
-          return undefined;
-        }
-        void listConnectorTools(connector, {
-          googleConnectors: this.googleConnectors,
-          cwd: process.cwd(),
-          logger: this.sessionLogger,
-        })
-          .then((result) => {
-            this.emit({
-              type: "connectors.list_tools.response",
-              payload: {
-                connectorId,
-                tools: result.tools,
-                error: result.error,
-                requestId: listRequestId,
-              },
-            });
-            return undefined;
-          })
-          .catch((err: unknown) => {
-            // listConnectorTools guards internally, but its finally awaits
-            // manager.close(); a close rejection must still emit a response so the
-            // client's correlated request never hangs.
-            this.emit({
-              type: "connectors.list_tools.response",
-              payload: {
-                connectorId,
-                tools: [],
-                error: getErrorMessage(err),
-                requestId: listRequestId,
-              },
-            });
-          });
-        return undefined;
-      }
-      case "connectors.oauth.authorize.request":
-        this.handleConnectorOauthAuthorize(
-          msg.requestId,
-          msg.connectorId,
-          msg.scope,
-          msg.oauthClient,
-        );
-        return undefined;
-      case "connectors.oauth.disconnect.request":
-        return this.disconnectConnector(msg.connectorId, msg.requestId);
-      case "agentPersonalities.get_stats.request": {
-        const statsRequestId = msg.requestId;
-        // The stats store is async (file-backed); resolve then emit.
-        void Promise.resolve(this.getPersonalityStats?.() ?? {}).then((stats) => {
-          this.emit({
-            type: "agentPersonalities.get_stats.response",
-            payload: { requestId: statsRequestId, stats },
-          });
-          return undefined;
-        });
-        return undefined;
-      }
-      case "agentPersonalities.generate_profile.request": {
-        this.handlePersonalityProfileRequest(msg);
-        return undefined;
-      }
       case "read_project_config_request":
         return this.projectConfigSession.handleReadProjectConfigRequest(msg);
       case "write_project_config_request":
         return this.projectConfigSession.handleWriteProjectConfigRequest(msg);
       default:
-        return this.dispatchDaemonConfigMessage(msg);
+        return this.dispatchOttoProfileMessage(msg);
     }
-  }
-
-  private dispatchMeetingsMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "meetings.transcripts.list.request":
-        return this.handleMeetingsTranscriptsList(msg.requestId);
-      case "meetings.transcripts.create.request":
-        return this.handleMeetingsTranscriptsCreate(msg);
-      case "meetings.transcripts.update.request":
-        return this.handleMeetingsTranscriptsUpdate(msg);
-      case "meetings.transcripts.delete.request":
-        return this.handleMeetingsTranscriptsDelete(msg.requestId, msg.id);
-      default:
-        return undefined;
-    }
-  }
-
-  private async handleMeetingsTranscriptsList(requestId: string): Promise<void> {
-    this.emit({
-      type: "meetings.transcripts.list.response",
-      payload: { requestId, records: await this.meetingTranscripts.list() },
-    });
-  }
-
-  private async handleMeetingsTranscriptsCreate(
-    msg: Extract<SessionInboundMessage, { type: "meetings.transcripts.create.request" }>,
-  ): Promise<void> {
-    const record = await this.meetingTranscripts.create(msg);
-    this.emit({
-      type: "meetings.transcripts.create.response",
-      payload: { requestId: msg.requestId, record },
-    });
-  }
-
-  private async handleMeetingsTranscriptsUpdate(
-    msg: Extract<SessionInboundMessage, { type: "meetings.transcripts.update.request" }>,
-  ): Promise<void> {
-    const record = await this.meetingTranscripts.update(msg.id, {
-      ...(msg.title === undefined ? {} : { title: msg.title }),
-      ...(msg.content === undefined ? {} : { content: msg.content }),
-    });
-    this.emit({
-      type: "meetings.transcripts.update.response",
-      payload: { requestId: msg.requestId, record },
-    });
-  }
-
-  private async handleMeetingsTranscriptsDelete(requestId: string, id: string): Promise<void> {
-    this.emit({
-      type: "meetings.transcripts.delete.response",
-      payload: { requestId, deleted: await this.meetingTranscripts.delete(id) },
-    });
-  }
-
-  private dispatchIntegrationAuthorizationMessage(
-    msg: SessionInboundMessage,
-  ): Promise<void> | undefined {
-    switch (msg.type) {
-      case "integrations.authorization.get_overview.request":
-        return this.handleIntegrationAuthorizationGetOverviewRequest(msg.requestId);
-      case "integrations.authorization.get_methods.request":
-        return this.handleIntegrationAuthorizationGetMethodsRequest(
-          msg.requestId,
-          msg.integrationId,
-        );
-      case "integrations.authorization.start_browser.request":
-        return this.handleIntegrationAuthorizationStartBrowserRequest(
-          msg.requestId,
-          msg.integrationId,
-          msg.connectionId,
-        );
-      case "integrations.zoom.start_authorization.request":
-        return this.handleZoomTeamChatStartAuthorizationRequest(msg.requestId);
-      default:
-        return undefined;
-    }
-  }
-
-  private async handleIntegrationAuthorizationGetOverviewRequest(requestId: string): Promise<void> {
-    if (!this.integrationAuthorization) return;
-    const overview = await this.integrationAuthorization.getOverview();
-    this.emit({
-      type: "integrations.authorization.get_overview.response",
-      payload: { overview, requestId },
-    });
-  }
-
-  private async handleIntegrationAuthorizationGetMethodsRequest(
-    requestId: string,
-    integrationId?: string,
-  ): Promise<void> {
-    if (!this.integrationAuthorization) return;
-    this.emit({
-      type: "integrations.authorization.get_methods.response",
-      payload: {
-        methods: this.integrationAuthorizationCatalog.listMethods(integrationId),
-        requestId,
-      },
-    });
-  }
-
-  private async handleIntegrationAuthorizationStartBrowserRequest(
-    requestId: string,
-    integrationId: string,
-    connectionId: string,
-  ): Promise<void> {
-    if (!this.integrationBrowserAuthorization) {
-      this.emit({
-        type: "integrations.authorization.start_browser.response",
-        payload: {
-          authorizationUrl: null,
-          error: "Browser sign-in is not configured on this host.",
-          requestId,
-        },
-      });
-      return;
-    }
-    try {
-      const { authorizationUrl } = await this.integrationBrowserAuthorization.start({
-        integrationId,
-        connectionId,
-      });
-      this.emit({
-        type: "integrations.authorization.start_browser.response",
-        payload: { authorizationUrl, error: null, requestId },
-      });
-    } catch (error) {
-      this.emit({
-        type: "integrations.authorization.start_browser.response",
-        payload: {
-          authorizationUrl: null,
-          error: error instanceof Error ? error.message : "Unable to start browser sign-in.",
-          requestId,
-        },
-      });
-    }
-  }
-
-  private async handleZoomTeamChatStartAuthorizationRequest(requestId: string): Promise<void> {
-    if (!this.zoomTeamChatAuthorization) {
-      this.emit({
-        type: "integrations.zoom.start_authorization.response",
-        payload: {
-          authorizationUrl: null,
-          error: "Zoom Team Chat sign-in is not configured on this host.",
-          requestId,
-        },
-      });
-      return;
-    }
-    try {
-      const { authorizationUrl } = await this.zoomTeamChatAuthorization.start();
-      this.emit({
-        type: "integrations.zoom.start_authorization.response",
-        payload: { authorizationUrl, error: null, requestId },
-      });
-    } catch (error) {
-      this.emit({
-        type: "integrations.zoom.start_authorization.response",
-        payload: {
-          authorizationUrl: null,
-          error:
-            error instanceof ZoomTeamChatAuthorizationUnavailableError
-              ? error.message
-              : "Unable to start Zoom Team Chat sign-in.",
-          requestId,
-        },
-      });
-    }
-  }
-
-  private dispatchSpeechMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "speech.settings.get_options.request":
-        this.emit({
-          type: "speech.settings.get_options.response",
-          payload: {
-            requestId: msg.requestId,
-            options: this.getSpeechSettingsOptions?.() ?? EMPTY_SPEECH_SETTINGS_OPTIONS,
-          },
-        });
-        return undefined;
-      case "speech.tts.preview.request":
-        this.handleTtsPreviewRequest(msg.requestId, msg.text, msg.voice);
-        return undefined;
-      case "speech.tts.speak.request":
-        this.handleTtsSpeakRequest(msg.requestId, msg.text, msg.voice);
-        return undefined;
-      case "speech.tts.speak.cancel.request":
-        this.voiceSession.cancelMessagePlayback();
-        this.emit({
-          type: "speech.tts.speak.cancel.response",
-          payload: { requestId: msg.requestId },
-        });
-        return undefined;
-      default:
-        return undefined;
-    }
-  }
-
-  // Synthesize a short preview sample and reply once (or with an error). Async
-  // work is fire-and-forget: the correlated response is emitted from the
-  // promise, mirroring how the get_stats request replies.
-  private handleTtsPreviewRequest(
-    requestId: string,
-    text: string,
-    voice: { name: string; model?: string } | undefined,
-  ): void {
-    const preview = this.previewTts;
-    if (!preview) {
-      this.emit({
-        type: "speech.tts.preview.response",
-        payload: { requestId, error: "TTS is not configured on this host." },
-      });
-      return;
-    }
-    void preview({ text, voice })
-      .then((result) => {
-        this.emit({
-          type: "speech.tts.preview.response",
-          payload: result
-            ? { requestId, audio: result.audio, format: result.format }
-            : { requestId, error: "No audio was produced for this voice." },
-        });
-        return undefined;
-      })
-      .catch((error: unknown) => {
-        this.emit({
-          type: "speech.tts.preview.response",
-          payload: {
-            requestId,
-            error: error instanceof Error ? error.message : "Voice preview failed.",
-          },
-        });
-      });
-  }
-
-  // Stream a full message aloud on demand (per-message playback button). Async
-  // work is fire-and-forget; the correlated response is emitted from the promise
-  // once playback finishes, is canceled, or errors - mirroring the preview path.
-  private handleTtsSpeakRequest(
-    requestId: string,
-    text: string,
-    voice?: { name: string; model?: string },
-  ): void {
-    void this.voiceSession
-      .speakMessage(text, voice)
-      .then((result) => {
-        this.emit({
-          type: "speech.tts.speak.response",
-          payload: { requestId, ok: !result.canceled, canceled: result.canceled },
-        });
-        return undefined;
-      })
-      .catch((error: unknown) => {
-        this.emit({
-          type: "speech.tts.speak.response",
-          payload: {
-            requestId,
-            error: error instanceof Error ? error.message : "Message playback failed.",
-          },
-        });
-      });
-  }
-
-  private dispatchVisualizerMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    if (msg.type === "visualizer.voiceCues.generate.request") {
-      this.handleVisualizerVoiceCuesRequest(
-        msg.requestId,
-        msg.name,
-        msg.prompt,
-        msg.cwd,
-        msg.roles,
-        msg.moment,
-      );
-    }
-    return undefined;
-  }
-
-  private handleVisualizerVoiceCuesRequest(
-    requestId: string,
-    name: string,
-    prompt: string | undefined,
-    cwd: string | undefined,
-    roles: string[] | undefined,
-    moment: CueMoment | undefined,
-  ): void {
-    void this.voiceCueGenerator
-      .generate({
-        name,
-        ...(prompt ? { prompt } : {}),
-        ...(cwd ? { cwd } : {}),
-        ...(roles && roles.length > 0 ? { roles } : {}),
-        ...(moment ? { moment } : {}),
-      })
-      .then((cues) => {
-        this.emit({
-          type: "visualizer.voiceCues.generate.response",
-          payload: cues
-            ? { requestId, cues }
-            : { requestId, error: "No voice cues could be generated for this personality." },
-        });
-        return undefined;
-      })
-      .catch((error: unknown) => {
-        this.emit({
-          type: "visualizer.voiceCues.generate.response",
-          payload: {
-            requestId,
-            error: error instanceof Error ? error.message : "Voice cue generation failed.",
-          },
-        });
-      });
-  }
-
-  private handlePersonalityProfileRequest(msg: {
-    requestId: string;
-    name: string;
-    roles?: string[];
-    glowA?: string;
-    glowB?: string;
-    cwd?: string;
-  }): void {
-    const { requestId } = msg;
-    void this.personalityProfileGenerator
-      .generate({
-        name: msg.name,
-        ...(msg.roles && msg.roles.length > 0 ? { roles: msg.roles } : {}),
-        ...(msg.glowA ? { glowA: msg.glowA } : {}),
-        ...(msg.glowB ? { glowB: msg.glowB } : {}),
-        ...(msg.cwd ? { cwd: msg.cwd } : {}),
-      })
-      .then((profile) => {
-        this.emit({
-          type: "agentPersonalities.generate_profile.response",
-          payload: profile
-            ? { requestId, profile }
-            : { requestId, error: "No personality profile could be generated on this host." },
-        });
-        return undefined;
-      })
-      .catch((error: unknown) => {
-        this.emit({
-          type: "agentPersonalities.generate_profile.response",
-          payload: {
-            requestId,
-            error: error instanceof Error ? error.message : "Personality generation failed.",
-          },
-        });
-      });
-  }
-
-  // Agents actively producing work in this cwd. Matching is by cwd, not
-  // workspaceId, because a commit sweeps whatever those agents have written to
-  // the shared working tree regardless of which workspace owns them.
-  private listBusyAgentsForCwd(cwd: string): BusyWorkspaceAgent[] {
-    return this.agentManager
-      .listAgents()
-      .filter(
-        (agent) =>
-          (agent.lifecycle === "running" || agent.lifecycle === "initializing") &&
-          areEquivalentPaths(agent.cwd, cwd),
-      )
-      .map((agent) => ({ id: agent.id, title: agent.config.title ?? null }));
   }
 
   // eslint-disable-next-line complexity
@@ -4293,51 +2939,18 @@ export class Session {
         return this.checkoutSession.handleBranchSuggestionsRequest(msg);
       case "directory_suggestions_request":
         return this.handleDirectorySuggestionsRequest(msg);
+      case "checkout.diff.get.request":
+        return this.checkoutSession.handleReadDiffRequest(msg);
       case "subscribe_checkout_diff_request":
-        return this.checkoutSession.handleSubscribeDiffRequest(msg);
+        return this.checkoutSession.handleSubscribeDiffRequest(msg, this.delivery);
       case "unsubscribe_checkout_diff_request":
-        this.checkoutSession.handleUnsubscribeDiffRequest(msg);
-        return undefined;
+        return this.checkoutSession.handleUnsubscribeDiffRequest(msg, this.delivery);
       case "checkout_switch_branch_request":
         return this.checkoutSession.handleCheckoutSwitchBranchRequest(msg);
       case "checkout.rename_branch.request":
         return this.checkoutSession.handleCheckoutRenameBranchRequest(msg);
-      case "checkout.discard_changes.request":
-        return this.checkoutSession.handleCheckoutDiscardChangesRequest(msg);
       case "checkout_commit_request":
         return this.checkoutSession.handleCheckoutCommitRequest(msg);
-      case "checkout.git.commit.request":
-        return this.checkoutSession.handleCheckoutGitCommitRequest(msg);
-      case "checkout.git.commit_agent.request":
-        return this.checkoutSession.handleCheckoutGitCommitAgentRequest(msg);
-      case "checkout.git.rollback.request":
-        return this.checkoutSession.handleCheckoutGitRollbackRequest(msg);
-      case "checkout.git.get_operation_log.request":
-        return this.checkoutSession.handleCheckoutGitGetOperationLogRequest(msg);
-      case "checkout.git.get_file_history.request":
-        return this.checkoutSession.handleCheckoutGitFileHistoryRequest(msg);
-      case "checkout.git.get_file_commit_diff.request":
-        return this.checkoutSession.handleCheckoutGitFileCommitDiffRequest(msg);
-      case "checkout.git.get_file_blame.request":
-        return this.checkoutSession.handleCheckoutGitFileBlameRequest(msg);
-      case "checkout.git.get_file_origin.request":
-        return this.checkoutSession.handleCheckoutGitFileOriginRequest(msg);
-      case "kanban.boards.list.request":
-        return this.kanbanSession.handleBoardsListRequest(msg);
-      case "kanban.board.get.request":
-        return this.kanbanSession.handleBoardGetRequest(msg);
-      case "kanban.card.move.request":
-        return this.kanbanSession.handleCardMoveRequest(msg);
-      case "kanban.card.create.request":
-        return this.kanbanSession.handleCardCreateRequest(msg);
-      case "kanban.task.link.request":
-        return this.kanbanSession.handleTaskLinkRequest(msg);
-      case "kanban.card.update.request":
-        return this.kanbanSession.handleCardUpdateRequest(msg);
-      case "kanban.card.delete.request":
-        return this.kanbanSession.handleCardDeleteRequest(msg);
-      case "kanban.board.watch.request":
-        return this.kanbanSession.handleBoardWatchRequest(msg);
       case "checkout_merge_request":
         return this.checkoutSession.handleCheckoutMergeRequest(msg);
       case "checkout_merge_from_base_request":
@@ -4348,8 +2961,8 @@ export class Session {
         return this.checkoutSession.handleCheckoutPushRequest(msg);
       case "checkout.refresh.request":
         return this.checkoutSession.handleRefreshRequest(msg);
-      case "checkout.git.fetch.request":
-        return this.checkoutSession.handleFetchRequest(msg);
+      case "checkout.discard_changes.request":
+        return this.checkoutSession.handleCheckoutDiscardChangesRequest(msg);
       case "checkout_pr_create_request":
         return this.checkoutSession.handleCheckoutPrCreateRequest(msg);
       case "checkout_pr_merge_request":
@@ -4364,10 +2977,6 @@ export class Session {
         return this.checkoutSession.handleCheckoutPrStatusRequest(msg);
       case "pull_request_timeline_request":
         return this.checkoutSession.handlePullRequestTimelineRequest(msg);
-      case "hosting.pull_request_thread.set_resolved.request":
-        return this.checkoutSession.handleHostingPullRequestThreadSetResolvedRequest(msg);
-      case "hosting.pull_request_comment.set_reaction.request":
-        return this.checkoutSession.handleHostingPullRequestCommentSetReactionRequest(msg);
       case "forge.search.request":
       case "github_search_request":
         return this.checkoutSession.handleForgeSearchRequest(msg);
@@ -4382,337 +2991,20 @@ export class Session {
     }
   }
 
-  // Connection check for the host Git providers settings section: resolves a
-  // provider's host-level credentials and performs a single forced auth probe.
-  // User-initiated only - never called from polling or reconciliation paths.
-  private async handleHostingAuthStatusRequest(
-    msg: Extract<SessionInboundMessage, { type: "hosting.auth_status.request" }>,
-  ): Promise<void> {
-    const { provider, requestId } = msg;
-    const emitResult = (payload: { authenticated: boolean; error: string | null }) => {
-      this.emit({
-        type: "hosting.auth_status.response",
-        payload: { provider, requestId, ...payload },
-      });
-    };
-
-    if (!this.gitHostingResolver) {
-      emitResult({ authenticated: false, error: "Hosting is unavailable" });
-      return;
-    }
-
-    // The wire provider id is an open string; a request naming a provider this
-    // build doesn't support resolves to no service rather than throwing.
-    const providerId = normalizeGitHostingProviderId(provider);
-    if (!providerId) {
-      emitResult({ authenticated: false, error: null });
-      return;
-    }
-
-    try {
-      const resolved = this.gitHostingResolver.resolveForProvider(providerId);
-      if (!resolved.service) {
-        emitResult({ authenticated: false, error: null });
-        return;
-      }
-      // gh reads global config; Bitbucket ignores cwd. ottoHome is a stable
-      // directory for a provider-level (non-workspace) auth check.
-      const authenticated = await resolved.service.isAuthenticated({
-        cwd: this.ottoHome,
-        force: true,
-        reason: "hosting-auth-status",
-      });
-      emitResult({ authenticated, error: null });
-    } catch (error) {
-      emitResult({
-        authenticated: false,
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  // Host-level provider lookup shared by the repository/owner listing RPCs and
-  // the scaffold service. Returns null for "not configured on this daemon" and
-  // for a provider id this build doesn't know, which callers report as an empty
-  // list rather than an error.
-  private resolveHostingProviderService(provider: string): GitHostingService | null {
-    if (!this.gitHostingResolver) {
-      return null;
-    }
-    const providerId = normalizeGitHostingProviderId(provider);
-    if (!providerId) {
-      return null;
-    }
-    return this.gitHostingResolver.resolveForProvider(providerId).service ?? null;
-  }
-
-  private async handleHostingListRepositoriesRequest(
-    msg: Extract<SessionInboundMessage, { type: "hosting.list_repositories.request" }>,
-  ): Promise<void> {
-    const { provider, requestId } = msg;
-    const emitResult = (payload: {
-      repositories: HostingRepositorySummary[];
-      error: string | null;
-    }) => {
-      this.emit({
-        type: "hosting.list_repositories.response",
-        payload: { provider, requestId, ...payload },
-      });
-    };
-
-    const service = this.resolveHostingProviderService(provider);
-    if (!service?.listRepositories) {
-      emitResult({ repositories: [], error: null });
-      return;
-    }
-
-    try {
-      const repositories = await service.listRepositories({
-        query: msg.query,
-        limit: msg.limit,
-      });
-      emitResult({ repositories, error: null });
-    } catch (error) {
-      this.sessionLogger.info({ err: error, provider }, "Hosting repository listing failed");
-      emitResult({
-        repositories: [],
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-  }
-
-  private async handleHostingListOwnersRequest(
-    msg: Extract<SessionInboundMessage, { type: "hosting.list_owners.request" }>,
-  ): Promise<void> {
-    const { provider, requestId } = msg;
-    const emitResult = (payload: { owners: HostingOwnerSummary[]; error: string | null }) => {
-      this.emit({
-        type: "hosting.list_owners.response",
-        payload: { provider, requestId, ...payload },
-      });
-    };
-
-    const service = this.resolveHostingProviderService(provider);
-    if (!service?.listOwners) {
-      emitResult({ owners: [], error: null });
-      return;
-    }
-
-    try {
-      emitResult({ owners: await service.listOwners(), error: null });
-    } catch (error) {
-      this.sessionLogger.info({ err: error, provider }, "Hosting owner listing failed");
-      emitResult({ owners: [], error: error instanceof Error ? error.message : String(error) });
-    }
-  }
-
-  private async handleProjectScaffoldRequest(
-    request: Extract<SessionInboundMessage, { type: "project.scaffold.request" }>,
-  ): Promise<void> {
-    const { requestId } = request;
-    const emitFailure = (input: {
-      error: string;
-      errorCode: ProjectScaffoldErrorCode | null;
-      outcome: ProjectScaffoldOutcome | null;
-    }) => {
-      this.emit({
-        type: "project.scaffold.response",
-        payload: {
-          requestId,
-          project: null,
-          path: input.outcome?.path ?? null,
-          remoteUrl: input.outcome?.remoteUrl ?? null,
-          error: input.error,
-          errorCode: input.errorCode,
-          steps: input.outcome?.steps ?? [],
-        },
-      });
-    };
-
-    const scaffold = createProjectScaffoldService({
-      logger: this.sessionLogger,
-      resolveHostingProvider: async (providerId) => this.resolveHostingProviderService(providerId),
-      onProgress: (step) => {
-        this.emit({
-          type: "project.scaffold.progress",
-          payload: {
-            requestId,
-            step: step.id,
-            status: step.status,
-            detail: step.detail,
-          },
-        });
-      },
-    });
-
-    let outcome: ProjectScaffoldOutcome;
-    try {
-      outcome = await scaffold.scaffold({
-        parentDirectory: expandTilde(request.parentDirectory),
-        folderName: request.folderName,
-        git: request.git,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to create project";
-      this.sessionLogger.error(
-        { err: error, parentDirectory: request.parentDirectory, gitKind: request.git.kind },
-        "Project scaffold failed",
-      );
-      emitFailure({
-        error: message,
-        errorCode: error instanceof ProjectScaffoldError ? error.code : null,
-        outcome: getScaffoldOutcome(error),
-      });
-      return;
-    }
-
-    // The directory exists and is what the user asked for; registering it is
-    // the same find-or-create path `project.add` uses.
-    const createdPath = outcome.path;
-    if (!createdPath) {
-      emitFailure({
-        error: "Project directory was not created",
-        errorCode: "register_failed",
-        outcome,
-      });
-      return;
-    }
-
-    try {
-      const project = await this.workspaceProvisioning.findOrCreateProjectForDirectory(createdPath);
-      this.sessionLogger.info(
-        { path: createdPath, projectId: project.projectId, gitKind: request.git.kind },
-        "Project scaffolded",
-      );
-      this.emit({
-        type: "project.scaffold.response",
-        payload: {
-          requestId,
-          project: await this.buildProjectDescriptor(project),
-          path: createdPath,
-          remoteUrl: outcome.remoteUrl,
-          error: null,
-          errorCode: null,
-          // The service can't run this step (it owns no registry), so its
-          // snapshot carries register_project as "skipped". Replace it rather
-          // than appending, or the client sees the id twice.
-          steps: [
-            ...outcome.steps.filter((step) => step.id !== "register_project"),
-            { id: "register_project", status: "done", detail: null },
-          ],
-        },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to register project";
-      this.sessionLogger.error({ err: error, path: createdPath }, "Project registration failed");
-      emitFailure({ error: message, errorCode: "register_failed", outcome });
-    }
-  }
-
-  private dispatchPreviewMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "preview.list_config.request":
-        return this.handlePreviewListConfigRequest(msg.cwd, msg.requestId);
-      case "preview.start.request":
-        return this.handlePreviewStartRequest(msg.cwd, msg.name, msg.requestId);
-      case "preview.bind_tab.request":
-        return this.handlePreviewBindTabRequest(msg.serverId, msg.browserId, msg.requestId);
-      case "preview.stop.request":
-        return this.handlePreviewStopRequest(msg.serverId, msg.requestId);
-      default:
-        return undefined;
-    }
-  }
-
-  private dispatchWorktreeReattachMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "worktree.reattach.list.request":
-        return this.handleWorktreeReattachListRequest(msg);
-      case "worktree.reattach.request":
-        return this.handleWorktreeReattachRequest(msg);
-      default:
-        return undefined;
-    }
-  }
-
-  // Creating a project from nothing: the scaffold itself plus the host-level
-  // hosting reads it needs (which owners you can create under, what you could
-  // clone). Separate from dispatchWorkspaceAndProjectMessage, which handles
-  // projects and workspaces that already exist on disk.
-  private dispatchProjectRecordMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "project.add.request":
-        return this.handleProjectAddRequest(msg);
-      case "project.resolveWorkspaceForPath.request":
-        return this.handleProjectResolveWorkspaceForPathRequest(msg);
-      case "project.create_directory.request":
-        return this.handleProjectCreateDirectoryRequest(msg);
-      case "project.remove.request":
-        return this.handleProjectRemoveRequest(msg);
-      case "kanban.project.target.set.request":
-        return this.handleKanbanProjectTargetSetRequest(msg);
-      default:
-        return this.dispatchProjectScaffoldMessage(msg);
-    }
-  }
-
-  private async handleForgeConnectionsRequest(
-    msg: Extract<SessionInboundMessage, { type: "forge.connections.manage.request" }>,
-  ): Promise<void> {
-    try {
-      const connections = this.gitHostingResolver?.connections;
-      if (!connections) throw new Error("Update this host to manage Git connections.");
-      const overview = await connections.manage(msg.action);
-      this.emit({
-        type: "forge.connections.manage.response",
-        payload: { requestId: msg.requestId, overview, error: null },
-      });
-    } catch (error) {
-      // Never log this request: credential entry is write-only and goes straight to the vault.
-      this.emit({
-        type: "forge.connections.manage.response",
-        payload: {
-          requestId: msg.requestId,
-          overview: null,
-          error: error instanceof Error ? error.message : "Could not update the Git connection.",
-        },
-      });
-    }
-  }
-
-  private dispatchProjectScaffoldMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "forge.connections.manage.request":
-        return this.handleForgeConnectionsRequest(msg);
-      case "project.scaffold.request":
-        return this.handleProjectScaffoldRequest(msg);
-      case "hosting.list_repositories.request":
-        return this.handleHostingListRepositoriesRequest(msg);
-      case "hosting.list_owners.request":
-        return this.handleHostingListOwnersRequest(msg);
-      case "hosting.auth_status.request":
-        return this.handleHostingAuthStatusRequest(msg);
-      default:
-        return undefined;
-    }
-  }
-
   private dispatchWorkspaceAndProjectMessage(
     msg: SessionInboundMessage,
   ): Promise<void> | undefined {
     switch (msg.type) {
       case "fetch_workspaces_request":
         return this.handleFetchWorkspacesRequest(msg);
-      case "otto_worktree_list_request":
-        return this.handleOttoWorktreeListRequest(msg);
-      case "otto_worktree_archive_request":
-        return this.handleOttoWorktreeArchiveRequest(msg);
-      case "create_otto_worktree_request":
-        return this.handleCreateOttoWorktreeRequest(msg);
       case "project.list.request":
         return this.handleProjectListRequest(msg);
-      case "workspace_setup_status_request":
-        return this.handleWorkspaceSetupStatusRequest(msg);
+      case "paseo_worktree_list_request":
+        return this.handlePaseoWorktreeListRequest(msg);
+      case "paseo_worktree_archive_request":
+        return this.handlePaseoWorktreeArchiveRequest(msg);
+      case "create_paseo_worktree_request":
+        return this.handleCreatePaseoWorktreeRequest(msg);
       // COMPAT(desktopEditorBridge): added in v0.1.88, remove after 2026-12-03 once old clients no longer call daemon editor RPCs.
       case "list_available_editors_request":
         return this.handleLegacyListAvailableEditorsRequest(msg);
@@ -4720,32 +3012,20 @@ export class Session {
         return this.handleLegacyOpenInEditorRequest(msg);
       case "open_project_request":
         return this.handleOpenProjectRequest(msg);
+      case "project.add.request":
+        return this.handleProjectAddRequest(msg);
+      case "project.create_directory.request":
+        return this.handleProjectCreateDirectoryRequest(msg);
       case "workspace.github.search_repositories.request":
         return this.handleWorkspaceGithubSearchRepositoriesRequest(msg);
       case "project.github.clone.request":
         return this.handleProjectGithubCloneRequest(msg);
       case "archive_workspace_request":
         return this.handleArchiveWorkspaceRequest(msg);
-      case "workspace.archive.preflight.request":
-        return this.handleWorkspaceArchivePreflightRequest(msg);
-      case "worktree.baseRef.set.request":
-        return this.handleWorktreeBaseRefSetRequest(msg);
-      case "workspace.create.request":
-        return this.handleWorkspaceCreateRequest(msg);
-      case "workspace.clear_attention.request":
-        return this.handleWorkspaceClearAttentionRequest(msg);
+      case "project.remove.request":
+        return this.handleProjectRemoveRequest(msg);
       case "workspace.title.set.request":
         return this.handleWorkspaceTitleSetRequest(msg.workspaceId, msg.title, msg.requestId);
-      default:
-        // Chained here rather than in dispatchInboundMessage: scaffolding and
-        // project-record RPCs are the same domain, and the top-level chain is
-        // already at its complexity ceiling.
-        return this.dispatchProjectRecordMessage(msg);
-    }
-  }
-
-  private dispatchWorkspaceFilesMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
       case "workspace.pin.set.request":
         return this.handleWorkspacePinSetRequest(msg.workspaceId, msg.pinned, msg.requestId);
       default:
@@ -4753,84 +3033,46 @@ export class Session {
     }
   }
 
-  // This switch is the single routing table for legacy and namespaced file RPCs.
-  // eslint-disable-next-line complexity
+  private dispatchWorkspaceSetupMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    if (msg.type === "workspace_setup_status_request") {
+      return this.handleWorkspaceSetupStatusRequest(msg);
+    }
+    if (msg.type === "workspace.setup.run.request") {
+      return this.handleWorkspaceSetupRunRequest(msg);
+    }
+    return undefined;
+  }
+
+  private dispatchWorkspaceLabelMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    switch (msg.type) {
+      case "workspace.label.list.request":
+        return this.handleWorkspaceLabelList(msg);
+      case "workspace.label.assignment.set.request":
+        return this.handleWorkspaceLabelAssignment(msg);
+      case "workspace.label.update.request":
+        return this.handleWorkspaceLabelUpdate(msg);
+      case "workspace.label.delete.request":
+        return this.handleWorkspaceLabelDelete(msg);
+      case "workspace.label.delete.inspect.request":
+        return this.handleWorkspaceLabelDeleteInspection(msg);
+      default:
+        return undefined;
+    }
+  }
+
   private dispatchWorkspaceFileMessage(
     msg: SessionInboundMessage,
     source?: object,
   ): Promise<void> | undefined {
     switch (msg.type) {
       case "file_explorer_request":
-        // `source` is load-bearing: file_explorer_request answers with binary
-        // file-transfer frames, and those must reach only the socket that asked.
-        // Two sockets can share one clientId, so broadcasting leaks another
-        // tab's file bytes onto this one.
         return this.workspaceFilesSession.handleFileExplorerRequest(msg, source);
-      // COMPAT(fsFileWatch): Otto's namespaced watch RPCs map onto Otto's
-      // file.watch.* handlers; same subscription, different wire name.
       case "fs.file.subscribe.request":
-        this.fsFileWatchTargets.set(msg.subscriptionId, { cwd: msg.cwd, path: msg.path });
-        return this.workspaceFilesSession.handleFileWatchSubscribeRequest({
-          type: "file.watch.subscribe.request",
-          cwd: msg.cwd,
-          path: msg.path,
-          requestId: msg.requestId,
-        });
-      case "fs.file.unsubscribe.request": {
-        const target = this.fsFileWatchTargets.get(msg.subscriptionId);
-        if (target) {
-          this.fsFileWatchTargets.delete(msg.subscriptionId);
-          this.workspaceFilesSession.handleFileWatchUnsubscribeRequest({
-            type: "file.watch.unsubscribe.request",
-            cwd: target.cwd,
-            path: target.path,
-            requestId: msg.requestId,
-          });
-        }
-        return undefined;
-      }
-      // COMPAT(fsFileWrite): Otto's namespaced write RPC carries `expectedRevision`
-      // where Otto's `file.write.request` carries `expectedHash`; they name the same
-      // optimistic-concurrency token, so map it onto the one handler rather than
-      // forking the write path. Drop when the client floor no longer sends either.
+        return this.workspaceFilesSession.handleFileSubscribeRequest(msg, this.delivery);
+      case "fs.file.unsubscribe.request":
+        return this.workspaceFilesSession.handleFileUnsubscribeRequest(msg, this.delivery);
       case "fs.file.write.request":
-        return this.workspaceFilesSession.handleFileWriteRequest({
-          type: "file.write.request",
-          cwd: msg.cwd,
-          path: msg.path,
-          content: msg.content,
-          expectedModifiedAt: msg.expectedModifiedAt,
-          requestId: msg.requestId,
-          ...(msg.expectedRevision ? { expectedHash: msg.expectedRevision } : {}),
-        });
-      case "project_icon_request":
-        return this.workspaceFilesSession.handleProjectIconRequest(msg);
-      case "file_download_token_request":
-        return this.workspaceFilesSession.handleFileDownloadTokenRequest(msg);
-      case "file.upload.request":
-        this.workspaceFilesSession.handleFileUploadRequest(msg);
-        return undefined;
-      case "file.write.request":
         return this.workspaceFilesSession.handleFileWriteRequest(msg);
-      case "fs.file.write_binary.request":
-        return this.workspaceFilesSession.handleFsFileWriteBinaryRequest(msg);
-      case "file.create.request":
-        return this.workspaceFilesSession.handleFileCreateRequest(msg);
-      case "file.delete.request":
-        return this.workspaceFilesSession.handleFileDeleteRequest(msg);
-      case "file.rename.request":
-        return this.workspaceFilesSession.handleFileRenameRequest(msg);
-      case "file.refine.request":
-        return this.handleFileRefineRequest(msg);
-      case "file.watch.subscribe.request":
-        return this.workspaceFilesSession.handleFileWatchSubscribeRequest(msg);
-      case "file.watch.unsubscribe.request":
-        this.workspaceFilesSession.handleFileWatchUnsubscribeRequest(msg);
-        return undefined;
-      case "file.search.request":
-        return this.workspaceFilesSession.handleFileSearchRequest(msg);
-      case "file.replace.request":
-        return this.workspaceFilesSession.handleFileReplaceRequest(msg);
       case "fs.entry.create.request":
         return this.workspaceFilesSession.handleFileEntryCreateRequest(msg);
       case "fs.entry.rename.request":
@@ -4839,14 +3081,17 @@ export class Session {
         return this.workspaceFilesSession.handleFileEntryDuplicateRequest(msg);
       case "fs.entry.delete.request":
         return this.workspaceFilesSession.handleFileEntryDeleteRequest(msg);
-      case "browser.history.search.request":
-      case "browser.history.record.request":
-      case "browser.history.clear.request":
-        return this.handleBrowserHistoryRequest(msg);
+      case "project_icon_request":
+        return this.workspaceFilesSession.handleProjectIconRequest(msg);
       case "project.icon.get.request":
         return this.handleProjectIconGetRequest(msg.projectId, msg.requestId);
+      case "file_download_token_request":
+        return this.workspaceFilesSession.handleFileDownloadTokenRequest(msg);
+      case "file.upload.request":
+        this.workspaceFilesSession.handleFileUploadRequest(msg, this.delivery);
+        return undefined;
       default:
-        return this.codeIntelligenceSession.dispatch(msg);
+        return undefined;
     }
   }
 
@@ -4866,497 +3111,27 @@ export class Session {
   }
 
   private dispatchProviderMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    const projectKnowledgeMessage = this.projectKnowledgeSession.dispatch(msg);
-    if (projectKnowledgeMessage) return projectKnowledgeMessage;
-    const personalityMemoryMessage = this.dispatchPersonalityMemoryMessage(msg);
-    if (personalityMemoryMessage) return personalityMemoryMessage;
-    const catalogMessage = this.providerCatalogSession.dispatch(msg);
-    if (catalogMessage) return catalogMessage;
     switch (msg.type) {
-      case "stats.activity.get.request":
-        return this.handleStatsActivityGetRequest(msg);
-      case "stats.activity.reset.request":
-        return this.handleStatsActivityResetRequest(msg);
-      case "usage.log.get.request":
-        return this.handleUsageLogGetRequest(msg);
-      case "context.report.get.request":
-        return this.handleContextReportGetRequest(msg);
-      case "context.prompt.preview.get.request":
-        return this.handleContextPromptPreviewGetRequest(msg);
-      case "context.edge.convert.request":
-        return this.handleContextEdgeConvertRequest(msg);
-      case "context.findings.fix.request":
-        return this.handleContextFindingsFixRequest(msg);
+      case "list_provider_models_request":
+        return this.providerCatalogSession.handleListProviderModelsRequest(msg);
+      case "list_provider_modes_request":
+        return this.providerCatalogSession.handleListProviderModesRequest(msg);
+      case "list_provider_features_request":
+        return this.providerCatalogSession.handleListProviderFeaturesRequest(msg);
+      case "list_available_providers_request":
+        return this.providerCatalogSession.handleListAvailableProvidersRequest(msg);
+      case "get_providers_snapshot_request":
+        return this.providerCatalogSession.handleGetProvidersSnapshotRequest(msg);
+      case "refresh_providers_snapshot_request":
+        return this.providerCatalogSession.handleRefreshProvidersSnapshotRequest(msg);
+      case "provider_diagnostic_request":
+        return this.providerCatalogSession.handleProviderDiagnosticRequest(msg);
+      case "provider.usage.list.request":
+        return this.usageSession.handleLegacyList(msg);
+      case "usage.list_reports.request":
+        return this.usageSession.handleListReports(msg);
       default:
         return undefined;
-    }
-  }
-
-  private dispatchPersonalityMemoryMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "personality.memory.list.request":
-        return this.handlePersonalityMemoryListRequest(msg);
-      case "personality.memory.update.request":
-        return this.handlePersonalityMemoryUpdateRequest(msg);
-      case "personality.memory.transfer.request":
-        return this.handlePersonalityMemoryTransferRequest(msg);
-      case "personality.memory.stats.request":
-        return this.handlePersonalityMemoryStatsRequest(msg);
-      default:
-        return undefined;
-    }
-  }
-
-  private async handlePersonalityMemoryListRequest(
-    msg: Extract<SessionInboundMessage, { type: "personality.memory.list.request" }>,
-  ): Promise<void> {
-    const emitEmpty = (): void => {
-      this.emit({
-        type: "personality.memory.list.response",
-        payload: {
-          requestId: msg.requestId,
-          personalityId: msg.personalityId,
-          personalityName: msg.personalityId,
-          enabled: false,
-          entries: [],
-          brief: "",
-          briefTokens: 0,
-        },
-      });
-    };
-    if (!this.personalityMemory) {
-      emitEmpty();
-      return;
-    }
-    try {
-      // The daemon owns root resolution: a client computing it would disagree
-      // the moment the workspace is a worktree, and then the brief shown here
-      // would not be the brief that gets injected.
-      const resolvedRoot = await this.resolveMemoryRequestRoot(msg);
-      const view = await this.personalityMemory.view({
-        personalityId: msg.personalityId,
-        ...(resolvedRoot ? { projectRoot: resolvedRoot } : {}),
-      });
-      this.emit({
-        type: "personality.memory.list.response",
-        payload: {
-          requestId: msg.requestId,
-          personalityId: view.personalityId,
-          personalityName: view.personalityName,
-          enabled: view.enabled,
-          // Mapped field-by-field rather than spread: the wire schema is
-          // `.passthrough()`, so its inferred type carries an index signature the
-          // domain type does not, and a spread would also leak any future
-          // internal field onto the wire by accident.
-          entries: view.entries.map((entry) => ({
-            id: entry.id,
-            text: entry.text,
-            scope: entry.scope,
-            ...(entry.projectRoot ? { projectRoot: entry.projectRoot } : {}),
-            createdAt: entry.createdAt,
-            updatedAt: entry.updatedAt,
-            source: entry.source,
-            ...(entry.reinforcedCount !== undefined
-              ? { reinforcedCount: entry.reinforcedCount }
-              : {}),
-            ...(entry.transferredFrom ? { transferredFrom: entry.transferredFrom } : {}),
-          })),
-          // The exact injected text, never a reconstruction - the whole point of
-          // the visibility requirement is that these two cannot differ.
-          brief: view.brief.text,
-          briefTokens: view.brief.estTokens,
-          briefOmittedCount: view.brief.omittedCount,
-          // The root the entries above were filtered against, so the UI can say
-          // which project-scoped rows actually apply here.
-          ...(resolvedRoot ? { projectRoot: resolvedRoot } : {}),
-        },
-      });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err }, "Failed to list personality memory");
-      this.emit({
-        type: "rpc_error",
-        payload: {
-          requestId: msg.requestId,
-          requestType: msg.type,
-          error: `Failed to read personality memory: ${err.message}`,
-          code: "personality_memory_list_failed",
-        },
-      });
-    }
-  }
-
-  /**
-   * The project a memory request is about. Shared by the read and the write
-   * paths on purpose: the brief filters project entries by comparing roots, so
-   * if a write bound a different root than the read resolves, the entry would be
-   * listed and never injected. One resolver means they cannot disagree.
-   */
-  private async resolveMemoryRequestRoot(request: {
-    workspaceId?: string;
-    projectRoot?: string;
-  }): Promise<string | undefined> {
-    const cwd =
-      (request.workspaceId
-        ? (await this.workspaceRegistry.get(request.workspaceId))?.cwd
-        : undefined) ?? request.projectRoot;
-    return cwd ? await this.resolveMemoryProjectRoot(cwd) : undefined;
-  }
-
-  /**
-   * The repo root a cwd belongs to, so a worktree and its main checkout share
-   * one project's lessons - the same resolution the spawn path uses.
-   */
-  private async resolveMemoryProjectRoot(cwd: string): Promise<string> {
-    try {
-      return await this.workspaceGitService.resolveRepoRoot(cwd);
-    } catch {
-      // A non-git directory is ordinary, not an error: the cwd IS the project.
-      return cwd;
-    }
-  }
-
-  private async handlePersonalityMemoryUpdateRequest(
-    msg: Extract<SessionInboundMessage, { type: "personality.memory.update.request" }>,
-  ): Promise<void> {
-    const respond = (ok: boolean, error?: string): void => {
-      this.emit({
-        type: "personality.memory.update.response",
-        payload: { requestId: msg.requestId, ok, ...(error ? { error } : {}) },
-      });
-    };
-    if (!this.personalityMemory) {
-      respond(false, "This host does not support personality memory.");
-      return;
-    }
-    // Scope rides the wire as a plain string for forward compat, so an
-    // unrecognized value is dropped here rather than trusted downstream.
-    const scope = readPersonalityMemoryScope(msg.scope);
-    try {
-      const resolvedRoot = await this.resolveMemoryRequestRoot(msg);
-      // A project-scoped lesson with no root belongs to no project, so it can
-      // never appear in any brief. Storing it would be the worst outcome: the
-      // Memory tab would list it while the injection quietly ignored it.
-      if (scope === "project" && !resolvedRoot && !msg.drop) {
-        respond(false, "Otto could not tell which project this lesson belongs to.");
-        return;
-      }
-      if (!msg.entryId) {
-        const text = msg.text?.trim();
-        if (!text) {
-          respond(false, "A lesson needs some text.");
-          return;
-        }
-        await this.personalityMemory.addUserEntry({
-          personalityId: msg.personalityId,
-          text,
-          scope: scope ?? "global",
-          ...(resolvedRoot ? { projectRoot: resolvedRoot } : {}),
-        });
-        respond(true);
-        return;
-      }
-      const applied = await this.personalityMemory.revise({
-        personalityId: msg.personalityId,
-        entryId: msg.entryId,
-        ...(msg.text !== undefined ? { text: msg.text } : {}),
-        ...(scope ? { scope } : {}),
-        ...(resolvedRoot ? { projectRoot: resolvedRoot } : {}),
-        ...(msg.drop ? { drop: true } : {}),
-      });
-      respond(applied, applied ? undefined : "That lesson no longer exists.");
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err }, "Failed to update personality memory");
-      respond(false, err.message);
-    }
-  }
-
-  private async handlePersonalityMemoryTransferRequest(
-    msg: Extract<SessionInboundMessage, { type: "personality.memory.transfer.request" }>,
-  ): Promise<void> {
-    const respond = (payload: {
-      ok: boolean;
-      transferred?: number;
-      merged?: number;
-      error?: string;
-    }): void => {
-      this.emit({
-        type: "personality.memory.transfer.response",
-        payload: { requestId: msg.requestId, ...payload },
-      });
-    };
-    if (!this.personalityMemory) {
-      respond({ ok: false, error: "This host does not support personality memory." });
-      return;
-    }
-    try {
-      if (msg.mode === "delete") {
-        await this.personalityMemory.clear(msg.fromPersonalityId);
-        respond({ ok: true, transferred: 0, merged: 0 });
-        return;
-      }
-      if (msg.mode !== "transfer") {
-        respond({ ok: false, error: `Unknown transfer mode "${msg.mode}".` });
-        return;
-      }
-      if (!msg.toPersonalityId) {
-        respond({ ok: false, error: "A transfer needs a destination personality." });
-        return;
-      }
-      if (msg.toPersonalityId === msg.fromPersonalityId) {
-        respond({ ok: false, error: "A personality cannot receive its own lessons." });
-        return;
-      }
-      const result = await this.personalityMemory.transfer({
-        fromPersonalityId: msg.fromPersonalityId,
-        toPersonalityId: msg.toPersonalityId,
-      });
-      respond({ ok: true, ...result });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err }, "Failed to transfer personality memory");
-      respond({ ok: false, error: err.message });
-    }
-  }
-
-  private async handlePersonalityMemoryStatsRequest(
-    msg: Extract<SessionInboundMessage, { type: "personality.memory.stats.request" }>,
-  ): Promise<void> {
-    const counts = this.personalityMemory ? await this.personalityMemory.counts() : {};
-    this.emit({
-      type: "personality.memory.stats.response",
-      payload: { requestId: msg.requestId, counts },
-    });
-  }
-
-  private async handleContextReportGetRequest(
-    msg: Extract<SessionInboundMessage, { type: "context.report.get.request" }>,
-  ): Promise<void> {
-    try {
-      const report = await this.contextManagement.getReport({
-        workspaceId: msg.workspaceId,
-        forceRefresh: msg.forceRefresh,
-        ...(msg.provider ? { provider: msg.provider } : {}),
-        ...(typeof msg.windowTokens === "number" ? { windowTokens: msg.windowTokens } : {}),
-        ...(msg.personalityId ? { personalityId: msg.personalityId } : {}),
-      });
-      this.emit({
-        type: "context.report.get.response",
-        payload: { requestId: msg.requestId, report },
-      });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err }, "Failed to build context report");
-      this.emit({
-        type: "rpc_error",
-        payload: {
-          requestId: msg.requestId,
-          requestType: msg.type,
-          error: `Failed to build context report: ${err.message}`,
-          code: "context_report_get_failed",
-        },
-      });
-    }
-  }
-
-  /**
-   * The assembled prompt, for reading. Shares the report's what-if inputs so the
-   * preview always shows the same provider, window and personality the numbers
-   * on screen were computed for.
-   */
-  private async handleContextPromptPreviewGetRequest(
-    msg: Extract<SessionInboundMessage, { type: "context.prompt.preview.get.request" }>,
-  ): Promise<void> {
-    try {
-      const preview = await this.contextManagement.getPromptPreview({
-        workspaceId: msg.workspaceId,
-        ...(msg.provider ? { provider: msg.provider } : {}),
-        ...(typeof msg.windowTokens === "number" ? { windowTokens: msg.windowTokens } : {}),
-        ...(msg.personalityId ? { personalityId: msg.personalityId } : {}),
-        ...(msg.category ? { category: msg.category } : {}),
-      });
-      this.emit({
-        type: "context.prompt.preview.get.response",
-        payload: { requestId: msg.requestId, preview },
-      });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err }, "Failed to assemble context prompt preview");
-      this.emit({
-        type: "rpc_error",
-        payload: {
-          requestId: msg.requestId,
-          requestType: msg.type,
-          error: `Failed to assemble prompt preview: ${err.message}`,
-          code: "context_prompt_preview_get_failed",
-        },
-      });
-    }
-  }
-
-  private async handleContextEdgeConvertRequest(
-    msg: Extract<SessionInboundMessage, { type: "context.edge.convert.request" }>,
-  ): Promise<void> {
-    const respond = (ok: boolean, error?: string): void => {
-      this.emit({
-        type: "context.edge.convert.response",
-        payload: { requestId: msg.requestId, ok, ...(error ? { error } : {}) },
-      });
-    };
-    try {
-      const result = await convertEdge({
-        filePath: msg.filePath,
-        rawTarget: msg.rawTarget,
-        range: msg.range,
-        target: msg.target,
-      });
-      if (result.ok) {
-        // The graph changed under every cached window/provider combination.
-        this.contextManagement.invalidate(msg.workspaceId);
-        await this.pushContextReport(msg.workspaceId);
-        respond(true);
-        return;
-      }
-      respond(false, result.error);
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err }, "Failed to convert context edge");
-      respond(false, err.message);
-    }
-  }
-
-  private async handleContextFindingsFixRequest(
-    msg: Extract<SessionInboundMessage, { type: "context.findings.fix.request" }>,
-  ): Promise<void> {
-    try {
-      const result = await fixFindings(msg.findings);
-      if (result.fixedCount > 0) {
-        // Every fixed finding rewrote a file the graph was built from.
-        this.contextManagement.invalidate(msg.workspaceId);
-        await this.pushContextReport(msg.workspaceId);
-      }
-      this.emit({
-        type: "context.findings.fix.response",
-        payload: {
-          requestId: msg.requestId,
-          fixedCount: result.fixedCount,
-          failedCount: result.failedCount,
-          errors: result.errors,
-        },
-      });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err }, "Failed to fix context findings");
-      this.emit({
-        type: "rpc_error",
-        payload: {
-          requestId: msg.requestId,
-          requestType: msg.type,
-          error: `Failed to fix context findings: ${err.message}`,
-          code: "context_findings_fix_failed",
-        },
-      });
-    }
-  }
-
-  /** Pushes the freshly-scanned report so open clients reconcile immediately. */
-  private async pushContextReport(workspaceId: string): Promise<void> {
-    try {
-      const report = await this.contextManagement.getReport({ workspaceId });
-      this.emit({ type: "context_report_changed", payload: { workspaceId, report } });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.warn({ err, workspaceId }, "Failed to push context report");
-    }
-  }
-
-  private async handleUsageLogGetRequest(
-    msg: Extract<SessionInboundMessage, { type: "usage.log.get.request" }>,
-  ): Promise<void> {
-    try {
-      const page = (await this.getUsageLogPage?.({
-        ...(typeof msg.limit === "number" ? { limit: msg.limit } : {}),
-        ...(typeof msg.before === "number" ? { before: msg.before } : {}),
-      })) ?? { events: [], hasMore: false };
-      this.emit({
-        type: "usage.log.get.response",
-        payload: {
-          requestId: msg.requestId,
-          events: page.events,
-          hasMore: page.hasMore,
-        },
-      });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err }, "Failed to get usage log");
-      this.emit({
-        type: "rpc_error",
-        payload: {
-          requestId: msg.requestId,
-          requestType: msg.type,
-          error: `Failed to get usage log: ${err.message}`,
-          code: "usage_log_get_failed",
-        },
-      });
-    }
-  }
-
-  private async handleStatsActivityGetRequest(
-    msg: Extract<SessionInboundMessage, { type: "stats.activity.get.request" }>,
-  ): Promise<void> {
-    const zero = ActivityCountersSchema.parse({});
-    try {
-      const rollups = (await this.getActivityRollups?.()) ?? {
-        today: zero,
-        yesterday: zero,
-        last7Days: zero,
-        last30Days: zero,
-        allTime: zero,
-      };
-      this.emit({
-        type: "stats.activity.get.response",
-        payload: {
-          requestId: msg.requestId,
-          ...rollups,
-        },
-      });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err }, "Failed to get activity stats");
-      this.emit({
-        type: "rpc_error",
-        payload: {
-          requestId: msg.requestId,
-          requestType: msg.type,
-          error: `Failed to get activity stats: ${err.message}`,
-          code: "stats_activity_get_failed",
-        },
-      });
-    }
-  }
-
-  private async handleStatsActivityResetRequest(
-    msg: Extract<SessionInboundMessage, { type: "stats.activity.reset.request" }>,
-  ): Promise<void> {
-    try {
-      await this.resetActivityStats?.();
-      this.emit({
-        type: "stats.activity.reset.response",
-        payload: { requestId: msg.requestId },
-      });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err }, "Failed to reset activity stats");
-      this.emit({
-        type: "rpc_error",
-        payload: {
-          requestId: msg.requestId,
-          requestType: msg.type,
-          error: `Failed to reset activity stats: ${err.message}`,
-          code: "stats_activity_reset_failed",
-        },
-      });
     }
   }
 
@@ -5371,7 +3146,7 @@ export class Session {
       case "workspace.script.stop.request":
         return this.handleWorkspaceScriptStopRequest(msg);
       default:
-        return this.terminalController.dispatch(msg);
+        return this.terminalController.dispatch(msg, this.delivery);
     }
   }
 
@@ -5400,333 +3175,24 @@ export class Session {
     }
   }
 
-  private dispatchArtifactMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "artifact.list.request":
-        return this.artifactSession.handleArtifactListRequest(msg);
-      case "artifact.create.request":
-        return this.artifactSession.handleArtifactCreateRequest(msg);
-      case "artifact.update.request":
-        return this.artifactSession.handleArtifactUpdateRequest(msg);
-      case "artifact.regenerate.request":
-        return this.artifactSession.handleArtifactRegenerateRequest(msg);
-      case "artifact.cancel.request":
-        return this.artifactSession.handleArtifactCancelRequest(msg);
-      case "artifact.delete.request":
-        return this.artifactSession.handleArtifactDeleteRequest(msg);
-      case "artifact.star.request":
-        return this.artifactSession.handleArtifactStarRequest(msg);
-      case "artifact.get-content.request":
-        return this.artifactSession.handleArtifactGetContentRequest(msg);
-      case "artifact.repair.request":
-        return this.artifactSession.handleArtifactRepairRequest(msg);
-      case "artifact.data.get.request":
-        return this.artifactSession.handleArtifactDataGetRequest(msg);
-      case "artifact.data.update.request":
-        return this.artifactSession.handleArtifactDataUpdateRequest(msg);
-      case "artifact.workspace.attach.request":
-        return this.artifactSession.handleArtifactWorkspaceAttachRequest(msg);
-      case "artifact.store.move.request":
-        return this.artifactSession.handleArtifactStoreMoveRequest(msg);
-      case "project.artifact.store.set.request":
-        return this.handleProjectArtifactStoreSetRequest(msg);
-      case "project.workflow.store.set.request":
-        return this.handleProjectWorkflowStoreSetRequest(msg);
-      default:
-        return undefined;
-    }
-  }
-
-  private dispatchArchitecturalViewsMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    switch (msg.type) {
-      case "architectural-views.deliver.request":
-        return this.architecturalViewsSession.handleDeliverRequest(msg);
-      case "architectural-views.list.request":
-        return this.architecturalViewsSession.handleListRequest(msg);
-      case "architectural-views.get-content.request":
-        return this.architecturalViewsSession.handleGetContentRequest(msg);
-      case "architectural-views.draft.create.request":
-        return this.architecturalViewsSession.handleDraftCreateRequest(msg);
-      case "architectural-views.draft.update.request":
-        return this.architecturalViewsSession.handleDraftUpdateRequest(msg);
-      case "architectural-views.draft.publish.request":
-        return this.architecturalViewsSession.handleDraftPublishRequest(msg);
-      case "architectural-views.draft.discard.request":
-        return this.architecturalViewsSession.handleDraftDiscardRequest(msg);
-      case "architectural-views.draft.get-content.request":
-        return this.architecturalViewsSession.handleDraftGetContentRequest(msg);
-      case "architectural-views.draft.list.request":
-        return this.architecturalViewsSession.handleDraftListRequest(msg);
-      default:
-        return undefined;
-    }
-  }
-
-  private async handleProjectArtifactStoreSetRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.artifact.store.set.request" }>,
-  ): Promise<void> {
-    try {
-      const project = await this.projectRegistry.get(msg.projectId);
-      if (!project) throw new Error("Project not found.");
-      await this.projectRegistry.update(msg.projectId, (record) => ({
-        ...record,
-        artifactLocation: msg.location,
-        updatedAt: new Date().toISOString(),
-      }));
-      await this.announceProjectUpdate(msg.projectId);
-      this.emit({
-        type: "project.artifact.store.set.response",
-        payload: {
-          requestId: msg.requestId,
-          projectId: msg.projectId,
-          accepted: true,
-          error: null,
-        },
-      });
-    } catch (error) {
-      this.emit({
-        type: "project.artifact.store.set.response",
-        payload: {
-          requestId: msg.requestId,
-          projectId: msg.projectId,
-          accepted: false,
-          error: error instanceof Error ? error.message : "Failed to update Artifact storage.",
-        },
-      });
-    }
-  }
-
-  private async handleProjectWorkflowStoreSetRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.workflow.store.set.request" }>,
-  ): Promise<void> {
-    try {
-      const project = await this.projectRegistry.get(msg.projectId);
-      if (!project) throw new Error("Project not found.");
-      await this.projectRegistry.update(msg.projectId, (record) => ({
-        ...record,
-        workflowLocation: msg.location,
-        updatedAt: new Date().toISOString(),
-      }));
-      await this.announceProjectUpdate(msg.projectId);
-      this.emit({
-        type: "project.workflow.store.set.response",
-        payload: {
-          requestId: msg.requestId,
-          projectId: msg.projectId,
-          accepted: true,
-          error: null,
-        },
-      });
-    } catch (error) {
-      this.emit({
-        type: "project.workflow.store.set.response",
-        payload: {
-          requestId: msg.requestId,
-          projectId: msg.projectId,
-          accepted: false,
-          error: error instanceof Error ? error.message : "Failed to update Workflow storage.",
-        },
-      });
-    }
-  }
-
-  // Host-level messages without a dedicated session remain centralized here.
-  // eslint-disable-next-line complexity
   private async dispatchMiscMessage(msg: SessionInboundMessage): Promise<void> {
-    // Brain model/runtime management is a self-contained family; handle it in a
-    // dedicated dispatcher so this method stays under the complexity ceiling.
-    if (await this.dispatchBrainManageMessage(msg)) {
-      return;
-    }
-    if (await this.dispatchBrainConsoleMessage(msg)) {
-      return;
-    }
     switch (msg.type) {
       case "list_commands_request":
         await this.handleListCommandsRequest(msg);
-        return;
-      case "agent.context.get_usage.request":
-        await this.handleAgentContextGetUsageRequest(msg);
         return;
       case "register_push_token":
         this.handleRegisterPushToken(msg.token);
         return;
       case "push.unregister.request":
         this.pushNotifications.revoke(msg.token);
-        if (this.registeredPushToken?.trim() === msg.token.trim()) {
-          this.registeredPushToken = null;
+        if (this.currentClientMetadata().pushToken?.trim() === msg.token.trim()) {
+          this.currentClientMetadata().pushToken = null;
         }
         this.emit({
           type: "push.unregister.response",
           payload: { requestId: msg.requestId },
         });
         return;
-      // Host-level disk the agents filled - no per-agent or per-workspace
-      // family to belong to, so it lands here rather than growing the dispatch
-      // chain. Both are synchronous: a directory listing, not IO worth awaiting.
-      case "attachments.images.get_stats.request":
-        this.handleAttachmentsImagesStatsRequest(msg);
-        return;
-      case "history.agents.get_storage_stats.request":
-        await this.handleHistoryAgentsStorageStatsRequest(msg);
-        return;
-      case "attachments.images.clear.request":
-        this.handleAttachmentsImagesClearRequest(msg);
-        return;
-      // Local AI host (otto-brain) lifecycle. Daemon-level, with no per-agent or
-      // per-workspace family to belong to, so it lands here rather than growing
-      // the dispatch chain.
-      case "brain.host.status.request":
-        await this.brainSession.handleBrainHostStatusRequest(msg.requestId, msg.resources);
-        return;
-      case "brain.host.start.request":
-        await this.brainSession.handleBrainHostStartRequest(msg.model, msg.requestId);
-        return;
-      case "brain.host.stop.request":
-        await this.brainSession.handleBrainHostStopRequest(msg.requestId);
-        return;
-      case "brain.host.restart.request":
-        await this.brainSession.handleBrainHostRestartRequest(msg.model, msg.requestId);
-        return;
-      case "brain.evals.get.request":
-        await this.brainSession.handleBrainEvalsGetRequest(msg.requestId);
-        return;
-      case "brain.network.discover.request":
-        await this.brainSession.handleBrainNetworkDiscoverRequest(msg.requestId);
-        return;
-      case "brain.models.list.request":
-        await this.brainSession.handleBrainModelsListRequest(msg.requestId);
-        return;
-      case "brain.remote.config.get.request":
-        await this.brainSession.handleBrainRemoteConfigGetRequest(msg.requestId);
-        return;
-      case "brain.remote.config.patch.request":
-        await this.brainSession.handleBrainRemoteConfigPatchRequest(msg.patch, msg.requestId);
-        return;
-    }
-  }
-
-  // Brain model/runtime management dispatch. Returns true when it handled `msg`,
-  // false to let dispatchMiscMessage try the rest.
-  private async dispatchBrainManageMessage(msg: SessionInboundMessage): Promise<boolean> {
-    switch (msg.type) {
-      case "brain.models.scan.request":
-        await this.brainSession.handleBrainModelsScanRequest(msg.requestId);
-        return true;
-      case "brain.catalog.list.request":
-        await this.brainSession.handleBrainCatalogListRequest(msg.requestId);
-        return true;
-      case "brain.runtime.list.request":
-        await this.brainSession.handleBrainRuntimeListRequest(msg.requestId);
-        return true;
-      case "brain.models.pull.request":
-        this.brainSession.handleBrainModelsPullRequest(
-          msg.model,
-          msg.components,
-          msg.quant,
-          msg.expectedBytes,
-          msg.requestId,
-        );
-        return true;
-      case "brain.hf.search.request":
-        await this.brainSession.handleBrainHfSearchRequest(msg.query, msg.limit, msg.requestId);
-        return true;
-      case "brain.hf.quants.request":
-        await this.brainSession.handleBrainHfQuantsRequest(msg.repo, msg.requestId);
-        return true;
-      case "brain.models.add.request":
-        this.brainSession.handleBrainModelsAddRequest(
-          msg.repo,
-          msg.quant,
-          msg.components,
-          msg.expectedBytes,
-          msg.requestId,
-        );
-        return true;
-      case "brain.runtime.install.request":
-        this.brainSession.handleBrainRuntimeInstallRequest(msg.build, msg.requestId);
-        return true;
-      case "brain.runtime.remove.request":
-        this.brainSession.handleBrainRuntimeRemoveRequest(msg.name, msg.requestId);
-        return true;
-      case "brain.calibrate.request":
-        this.brainSession.handleBrainCalibrateRequest(msg.model, msg.requestId);
-        return true;
-      case "brain.sweep.request":
-        this.brainSession.handleBrainSweepRequest(msg.model, msg.requestId);
-        return true;
-      case "brain.bench.request":
-        this.brainSession.handleBrainBenchRequest(msg.model, msg.requestId);
-        return true;
-      case "brain.jobs.list.request":
-        await this.brainSession.handleBrainJobsListRequest(msg.requestId);
-        return true;
-      case "brain.jobs.cancel.request":
-        await this.brainSession.handleBrainJobsCancelRequest(msg.jobId, msg.requestId);
-        return true;
-      default:
-        return false;
-    }
-  }
-
-  // Brain Console dispatch: the RPCs that proxy the brain's own /__host/*
-  // management API. Kept separate from the manage/job family above because they
-  // reach the brain a different way (HTTP proxy, not a CLI shell-out) and so
-  // work against a remote brain, and because one switch over both families
-  // exceeds the complexity ceiling.
-  private async dispatchBrainConsoleMessage(msg: SessionInboundMessage): Promise<boolean> {
-    switch (msg.type) {
-      case "brain.models.inventory.request":
-        await this.brainSession.handleBrainModelsInventoryRequest(msg.requestId);
-        return true;
-      case "brain.model.profile.get.request":
-        await this.brainSession.handleBrainModelProfileGetRequest(msg.modelId, msg.requestId);
-        return true;
-      case "brain.model.profile.set.request":
-        await this.brainSession.handleBrainModelProfileSetRequest(
-          msg.modelId,
-          msg.patch,
-          msg.requestId,
-        );
-        return true;
-      case "brain.model.budget.get.request":
-        await this.brainSession.handleBrainModelBudgetGetRequest(
-          msg.modelId,
-          msg.overrides,
-          msg.requestId,
-        );
-        return true;
-      case "brain.model.load.request":
-        await this.brainSession.handleBrainModelLoadRequest(msg.modelId, msg.requestId);
-        return true;
-      case "brain.model.unload.request":
-        await this.brainSession.handleBrainModelUnloadRequest(msg.requestId);
-        return true;
-      case "brain.model.delete.request":
-        await this.brainSession.handleBrainModelDeleteRequest(msg.modelId, msg.requestId);
-        return true;
-      case "brain.model.component.delete.request":
-        await this.brainSession.handleBrainModelComponentDeleteRequest(
-          msg.modelId,
-          msg.componentId,
-          msg.requestId,
-        );
-        return true;
-      case "brain.model.rename.request":
-        await this.brainSession.handleBrainModelRenameRequest(
-          msg.modelId,
-          msg.displayName,
-          msg.requestId,
-        );
-        return true;
-      case "brain.model.rename.reset.request":
-        await this.brainSession.handleBrainModelRenameResetRequest(msg.modelId, msg.requestId);
-        return true;
-      case "brain.logs.tail.request":
-        await this.brainSession.handleBrainLogsTailRequest(msg.limit, msg.requestId);
-        return true;
-      default:
-        return false;
     }
   }
 
@@ -5738,15 +3204,15 @@ export class Session {
     return this.sessionId;
   }
 
-  public async handleBinaryFrame(binaryFrame: BinaryFrame): Promise<void> {
+  public async handleBinaryFrame(binaryFrame: BinaryFrame, source: object): Promise<void> {
     if (!this.authorization.allowsPermission("workspace.write")) {
       return;
     }
     if (binaryFrame.kind === "file_transfer") {
-      await this.workspaceFilesSession.handleFileTransferFrame(binaryFrame.frame);
+      await this.workspaceFilesSession.handleFileTransferFrame(binaryFrame.frame, source);
       return;
     }
-    this.terminalController.handleBinaryFrame(binaryFrame.frame);
+    this.terminalController.handleBinaryFrame(binaryFrame.frame, source);
   }
 
   private async handleRestartServerRequest(requestId: string, reason?: string): Promise<void> {
@@ -5805,23 +3271,9 @@ export class Session {
     }
   }
 
-  /**
-   * Hard-delete one chat's Otto record: fence, close the runtime, drain queued
-   * persistence, unlink the JSON, drop the committed timeline. Shared by the
-   * single-row `delete_agent_request` and the bulk archived sweep, so the two can
-   * never diverge on what "delete" means.
-   *
-   * It deletes **Otto's record only.** The provider's own transcript on disk
-   * (Claude's `<projects>/<sessionId>.jsonl` and its sibling subagent tree, Codex
-   * threads, OpenCode sessions) is left in place by design - Otto never created
-   * it, `claude --resume` still reads it, and deleting another tool's state is
-   * not ours to do. The UI discloses that rather than staying silent about it.
-   * See docs/chat-lifecycle.md - Delete.
-   *
-   * Returns the workspace id the record belonged to, so the caller can refresh
-   * workspace counts once per affected workspace instead of once per chat.
-   */
-  private async deleteAgentRecord(agentId: string): Promise<string | null> {
+  private async handleDeleteAgentRequest(agentId: string, requestId: string): Promise<void> {
+    this.sessionLogger.info({ agentId }, `Deleting agent ${agentId} from registry`);
+
     const knownWorkspaceId =
       this.agentManager.getAgent(agentId)?.workspaceId ??
       (await this.agentStorage.get(agentId))?.workspaceId ??
@@ -5843,22 +3295,16 @@ export class Session {
     // durable snapshot, otherwise an in-flight background write can recreate it.
     await this.agentManager.flush();
 
-    await this.agentStorage.remove(agentId);
-    await this.agentManager.deleteCommittedTimeline(agentId);
-
-    await this.agentUpdates.removeAgent(agentId);
-
-    return knownWorkspaceId;
-  }
-
-  private async handleDeleteAgentRequest(agentId: string, requestId: string): Promise<void> {
-    this.sessionLogger.info({ agentId }, `Deleting agent ${agentId} from registry`);
-
-    let knownWorkspaceId: string | null = null;
     try {
-      await this.discardArchitecturalViewDraftForAgent(agentId);
-      knownWorkspaceId = await this.deleteAgentRecord(agentId);
+      await this.agentStorage.remove(agentId);
       await this.agentManager.deleteAgentState(agentId);
+      // OTTO(chat-search): never put the index on the normal chat-create path.
+      void this.agentManager.ottoChatSearch?.forget(agentId).catch((error: unknown) => {
+        this.sessionLogger.warn(
+          { err: error, agentId },
+          "Could not remove the derived chat search source",
+        );
+      });
     } catch (error) {
       this.sessionLogger.error({ err: error, agentId }, `Failed to fully delete agent ${agentId}`);
     }
@@ -5871,120 +3317,16 @@ export class Session {
       },
     });
 
+    await this.agentUpdates.removeAgent(agentId);
+
     if (knownWorkspaceId) {
       await this.emitWorkspaceUpdateForWorkspaceId(knownWorkspaceId);
     }
   }
 
-  /**
-   * Bulk clear of archived chats. Server-side because the client's history list
-   * is cursor-paginated across hosts and never holds the whole archived set, so
-   * a client-side loop would silently clear only the pages it happened to have.
-   *
-   * `dryRun` exists so the confirm dialog can quote a real number back to the
-   * user before anything is destroyed. Same rule as the single delete: Otto's
-   * records only, never a provider's transcript - clearing in bulk is not a back
-   * door around that.
-   */
-  private async handleHistoryAgentsClearArchivedRequest(
-    msg: Extract<SessionInboundMessage, { type: "history.agents.clear_archived.request" }>,
-  ): Promise<void> {
-    const emitResult = (payload: {
-      matched: number;
-      deleted: number;
-      failed: number;
-      agentIds: string[];
-      error: string | null;
-      ottoBytes?: number;
-      reclaimedBytes?: number;
-    }) => {
-      this.emit({
-        type: "history.agents.clear_archived.response",
-        payload: { ...payload, dryRun: msg.dryRun, requestId: msg.requestId },
-      });
-    };
-
-    let agentIds: string[];
-    let records: StoredAgentRecord[];
-    try {
-      records = await this.agentStorage.list();
-      agentIds = selectArchivedForDeletion({
-        records,
-        olderThanDays: msg.olderThanDays,
-        now: Date.now(),
-      });
-    } catch (error) {
-      const message = getErrorMessageOr(error, "Failed to list archived chats");
-      this.sessionLogger.error({ err: error, requestId: msg.requestId }, message);
-      emitResult({ matched: 0, deleted: 0, failed: 0, agentIds: [], error: message });
-      return;
-    }
-
-    const ottoBytes = await Promise.all(
-      records
-        .filter((record) => agentIds.includes(record.id))
-        .map(async (record) => record.archiveBytes ?? this.agentStorage.getRecordBytes(record.id)),
-    ).then((values) => values.reduce((sum, value) => sum + value, 0));
-
-    if (msg.dryRun) {
-      emitResult({
-        matched: agentIds.length,
-        deleted: 0,
-        failed: 0,
-        agentIds: [],
-        error: null,
-        ottoBytes,
-        reclaimedBytes: ottoBytes,
-      });
-      return;
-    }
-
-    this.sessionLogger.info(
-      { count: agentIds.length, olderThanDays: msg.olderThanDays, requestId: msg.requestId },
-      "Clearing archived chat records",
-    );
-
-    // Sequential on purpose: each delete closes a runtime, flushes the agent
-    // manager, and unlinks files. Hundreds of those in parallel would thrash the
-    // shared write queue for no wall-clock gain on a rare, explicit action.
-    const deleted: string[] = [];
-    const affectedWorkspaceIds = new Set<string>();
-    let failed = 0;
-    for (const agentId of agentIds) {
-      try {
-        const record = await this.agentStorage.get(agentId);
-        if (!record) throw new Error("Archived chat record disappeared before cleanup");
-        const workspaceId = await this.deleteAgentRecord(agentId);
-        deleted.push(agentId);
-        if (workspaceId) {
-          affectedWorkspaceIds.add(workspaceId);
-        }
-      } catch (error) {
-        failed += 1;
-        this.sessionLogger.warn(
-          { err: error, agentId, requestId: msg.requestId },
-          "Failed to delete archived chat during clear",
-        );
-      }
-    }
-
-    emitResult({
-      matched: agentIds.length,
-      deleted: deleted.length,
-      failed,
-      agentIds: deleted,
-      error: null,
-      ottoBytes,
-      reclaimedBytes: ottoBytes,
-    });
-
-    await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds);
-  }
-
   private async handleArchiveAgentRequest(agentId: string, requestId: string): Promise<void> {
     this.sessionLogger.info({ agentId }, `Archiving agent ${agentId}`);
 
-    await this.discardArchitecturalViewDraftForAgent(agentId);
     const { archivedAt } = await this.archiveAgentForClose(agentId);
 
     this.emit({
@@ -5997,163 +3339,9 @@ export class Session {
     });
   }
 
-  /**
-   * The Storage readout: how much disk the images agents produced occupy, and
-   * the policy currently ageing them out. Synchronous fs work on a directory of
-   * a few thousand entries, so it runs inline rather than through a worker.
-   * See docs/attachment-lifecycle.md.
-   */
-  private handleAttachmentsImagesStatsRequest(
-    msg: Extract<SessionInboundMessage, { type: "attachments.images.get_stats.request" }>,
-  ): void {
-    const config = this.daemonConfigStore.get();
-    try {
-      const stats = readMaterializedImageStats(this.ottoHome);
-      this.emit({
-        type: "attachments.images.get_stats.response",
-        payload: {
-          fileCount: stats.fileCount,
-          totalBytes: stats.totalBytes,
-          oldestAt: stats.oldestAtMs === null ? null : new Date(stats.oldestAtMs).toISOString(),
-          maxAgeDays: config.attachmentImageMaxAgeDays,
-          maxTotalMb: config.attachmentImageMaxTotalMb,
-          error: null,
-          requestId: msg.requestId,
-        },
-      });
-    } catch (error) {
-      const message = getErrorMessageOr(error, "Failed to read attachment image storage");
-      this.sessionLogger.error({ err: error, requestId: msg.requestId }, message);
-      this.emit({
-        type: "attachments.images.get_stats.response",
-        payload: {
-          fileCount: 0,
-          totalBytes: 0,
-          oldestAt: null,
-          maxAgeDays: config.attachmentImageMaxAgeDays,
-          maxTotalMb: config.attachmentImageMaxTotalMb,
-          error: message,
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  private async handleHistoryAgentsStorageStatsRequest(
-    msg: Extract<SessionInboundMessage, { type: "history.agents.get_storage_stats.request" }>,
-  ): Promise<void> {
-    try {
-      const baseDir = join(this.ottoHome, "agents");
-      const entries = await readdir(baseDir, { withFileTypes: true });
-      const files: string[] = [];
-      for (const entry of entries) {
-        if (entry.isFile() && entry.name.endsWith(".json")) {
-          files.push(join(baseDir, entry.name));
-        } else if (entry.isDirectory()) {
-          const children = await readdir(join(baseDir, entry.name), { withFileTypes: true });
-          files.push(
-            ...children
-              .filter((child) => child.isFile() && child.name.endsWith(".json"))
-              .map((child) => join(baseDir, entry.name, child.name)),
-          );
-        }
-      }
-      let archivedCount = 0;
-      let totalBytes = 0;
-      await Promise.all(
-        files.map(async (filePath) => {
-          try {
-            const record = JSON.parse(await readFile(filePath, "utf8")) as {
-              archivedAt?: string | null;
-            };
-            if (record.archivedAt) {
-              archivedCount += 1;
-              totalBytes += (await stat(filePath)).size;
-            }
-          } catch {
-            // Match AgentStorage's best-effort handling of invalid records.
-          }
-        }),
-      );
-      this.emit({
-        type: "history.agents.get_storage_stats.response",
-        payload: { archivedCount, totalBytes, error: null, requestId: msg.requestId },
-      });
-    } catch (error) {
-      this.emit({
-        type: "history.agents.get_storage_stats.response",
-        payload: {
-          archivedCount: 0,
-          totalBytes: 0,
-          error: getErrorMessageOr(error, "Failed to read history storage"),
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
-  /**
-   * Reclaim, dry-run by default. A cleared image is not recoverable and the
-   * message that referenced it falls back to alt text, so the client previews
-   * first and quotes the real count and size back before committing - the same
-   * contract as `history.agents.clear_archived`.
-   */
-  private handleAttachmentsImagesClearRequest(
-    msg: Extract<SessionInboundMessage, { type: "attachments.images.clear.request" }>,
-  ): void {
-    try {
-      const result = clearMaterializedProviderImages({
-        ottoHome: this.ottoHome,
-        olderThanDays: msg.olderThanDays,
-        dryRun: msg.dryRun,
-      });
-
-      if (!msg.dryRun) {
-        this.sessionLogger.info(
-          {
-            deleted: result.deleted,
-            freedBytes: result.freedBytes,
-            olderThanDays: msg.olderThanDays,
-            requestId: msg.requestId,
-          },
-          "Cleared materialized attachment images",
-        );
-      }
-
-      this.emit({
-        type: "attachments.images.clear.response",
-        payload: { ...result, dryRun: msg.dryRun, error: null, requestId: msg.requestId },
-      });
-    } catch (error) {
-      const message = getErrorMessageOr(error, "Failed to clear attachment image storage");
-      this.sessionLogger.error({ err: error, requestId: msg.requestId }, message);
-      this.emit({
-        type: "attachments.images.clear.response",
-        payload: {
-          matched: 0,
-          deleted: 0,
-          freedBytes: 0,
-          dryRun: msg.dryRun,
-          error: message,
-          requestId: msg.requestId,
-        },
-      });
-    }
-  }
-
   private async archiveAgentForClose(
     agentId: string,
   ): Promise<{ agentId: string; archivedAt: string }> {
-    // Observed subagents (Claude Task / ultracode fan-out) have no ManagedAgent
-    // and no stored record, so `archiveAgentCommand` would 404 them - the same
-    // root cause the fetch path special-cases above. Archive them through the
-    // registry instead (best-effort stop + retire the projection).
-    // See docs/agent-lifecycle.md (Items 2 + 6).
-    if (this.agentManager.getObservedSubagentPayload(agentId)) {
-      const { archivedAt } = await this.agentManager.archiveObservedSubagent(agentId);
-      return { agentId, archivedAt };
-    }
-
     const { archivedAt, record: archivedRecord } = await archiveAgentCommand(
       {
         agentManager: this.agentManager,
@@ -6163,10 +3351,8 @@ export class Session {
       agentId,
     );
 
-    if (this.agentUpdates.hasSubscription()) {
-      const payload = await this.agentUpdates.emitStoredRecord(
-        (await this.agentStorage.get(agentId)) ?? archivedRecord,
-      );
+    if (archivedRecord && this.agentUpdates.hasSubscription()) {
+      const payload = await this.agentUpdates.emitStoredRecord(archivedRecord);
       if (payload.workspaceId) {
         await this.emitWorkspaceUpdateForWorkspaceId(payload.workspaceId);
       }
@@ -6222,87 +3408,6 @@ export class Session {
           accepted: false,
           error: message,
         },
-      });
-    }
-  }
-
-  private async handleAgentWorkspaceTransferRequest(
-    agentId: string,
-    workspaceId: string,
-    requestId: string,
-  ): Promise<void> {
-    this.sessionLogger.info(
-      { agentId, workspaceId, requestId },
-      "session: agent.workspace.transfer.request",
-    );
-
-    try {
-      const result = await moveChatToWorkspace(
-        {
-          getAgentWorkspaceId: async (id) => {
-            const live = this.agentManager.getAgent(id);
-            if (live) {
-              return { workspaceId: live.workspaceId };
-            }
-            const stored = await this.agentStorage.get(id);
-            return stored ? { workspaceId: stored.workspaceId } : null;
-          },
-          getWorkspace: async (id) => {
-            const record = await this.workspaceRegistry.get(id);
-            return record
-              ? {
-                  workspaceId: record.workspaceId,
-                  archivedAt: record.archivedAt,
-                  hidden: record.hidden,
-                }
-              : null;
-          },
-          transfer: (id, target) => this.agentManager.transferAgentWorkspace(id, target),
-          getAgentLabels: async (id) =>
-            this.agentManager.getAgent(id)?.labels ?? (await this.agentStorage.get(id))?.labels,
-          releaseDraftAuthoringAgent: (input) =>
-            this.architecturalViewsSession.releaseDraftAuthoringAgent(input),
-          clearAuthoringLabels: async (id) => {
-            await this.agentManager.updateAgentMetadata(id, {
-              labels: clearedArchitecturalViewAuthoringLabels,
-            });
-          },
-          emitStoredRecord: async (record) => {
-            await this.agentUpdates.emitStoredRecord(record);
-          },
-          emitWorkspaceUpdates: (workspaceIds) =>
-            this.emitWorkspaceUpdatesForWorkspaceIds(workspaceIds, {}),
-        },
-        { agentId, workspaceId },
-      );
-
-      if (result.status === "refused") {
-        this.emit({
-          type: "agent.workspace.transfer.response",
-          payload: { requestId, agentId, workspaceId: null, accepted: false, error: result.error },
-        });
-        return;
-      }
-
-      this.emit({
-        type: "agent.workspace.transfer.response",
-        payload: {
-          requestId,
-          agentId,
-          workspaceId: result.workspaceId,
-          accepted: true,
-          error: null,
-        },
-      });
-    } catch (error) {
-      const message = getErrorMessageOr(error, "Failed to move chat");
-      this.sessionLogger.error(
-        { err: error, agentId, workspaceId, requestId },
-        "session: agent.workspace.transfer.request error",
-      );
-      this.emit({
-        type: "agent.workspace.transfer.response",
-        payload: { requestId, agentId, workspaceId: null, accepted: false, error: message },
       });
     }
   }
@@ -6364,8 +3469,8 @@ export class Session {
         return candidate;
       }
       const updatedDelta =
-        Date.parse(resolveStoredAgentPayloadUpdatedAt(candidate)) -
-        Date.parse(resolveStoredAgentPayloadUpdatedAt(latest));
+        Date.parse(resolveStoredAgentUpdatedAt(candidate)) -
+        Date.parse(resolveStoredAgentUpdatedAt(latest));
       if (updatedDelta !== 0) {
         return updatedDelta > 0 ? candidate : latest;
       }
@@ -6451,37 +3556,6 @@ export class Session {
     }
   }
 
-  private async handleProjectRelocateRequest(
-    msg: Extract<SessionInboundMessage, { type: "project.root.relocate.request" }>,
-  ): Promise<void> {
-    const relocation = new ProjectRelocationService({
-      ottoHome: this.ottoHome,
-      projectRegistry: this.projectRegistry,
-      workspaceRegistry: this.workspaceRegistry,
-      agentStorage: this.agentStorage,
-      prepareAgents: async (ids) => {
-        for (const id of ids) {
-          const agent = this.agentManager.getAgent(id);
-          if (agent && (agent.lifecycle === "running" || agent.lifecycle === "initializing")) {
-            throw new Error(
-              "Stop active chats in this project before reconnecting its base folder.",
-            );
-          }
-        }
-        for (const id of ids) {
-          if (this.agentManager.getAgent(id))
-            await this.agentManager.closeAgent(id, { preserveTimeline: true });
-        }
-      },
-    });
-    await relocation.relocate(msg.projectId, msg.expectedRootPath, msg.rootPath);
-    await this.announceProjectUpdate(msg.projectId);
-    this.emit({
-      type: "project.root.relocate.response",
-      payload: { requestId: msg.requestId, projectId: msg.projectId },
-    });
-  }
-
   private async handleProjectRenameRequest(
     projectId: string,
     customName: string | null,
@@ -6529,11 +3603,6 @@ export class Session {
         },
       });
 
-      // Only workspaces the client can actually see. Archived and hidden ones
-      // resolve to no descriptor, so listing them here would make the emission
-      // chokepoint fire a spurious `remove` per archived workspace on every
-      // rename.
-      this.emitProjectUpdate({ kind: "upsert", project: updated });
       // Emit a project.update so clients that track the project as an empty
       // project (no workspaces yet) receive the resolved name immediately.
       await this.emitProjectUpdate({ kind: "upsert", project: updated });
@@ -6542,26 +3611,8 @@ export class Session {
       // resolved name lands in the UI immediately.
       const workspaces = await this.workspaceRegistry.list();
       const affectedWorkspaceIds = workspaces
-        .filter(
-          (workspace) =>
-            workspace.projectId === projectId && !workspace.archivedAt && !workspace.hidden,
-        )
+        .filter((workspace) => workspace.projectId === existing.projectId)
         .map((workspace) => workspace.workspaceId);
-
-      // The project's name is host-global state, and a project with no active
-      // workspaces has no workspace descriptor to carry it. Announce the project
-      // itself on the project channel, to every session - that is what makes the
-      // rename land instantly regardless of workspace count or which client asked.
-      this.broadcastToAllSessions({
-        type: "project.updated.notification",
-        payload: {
-          project: await this.buildProjectDescriptor(updated),
-          hasActiveWorkspaces: affectedWorkspaceIds.length > 0,
-        },
-      });
-
-      // Re-emit descriptors for every visible workspace under this project so the
-      // new resolved name lands on the workspace rows too.
       if (affectedWorkspaceIds.length > 0) {
         await this.emitWorkspaceUpdatesForWorkspaceIds(affectedWorkspaceIds);
       }
@@ -6592,90 +3643,13 @@ export class Session {
     }
   }
 
-  /**
-   * Sets which tracking board a project shows on the Kanban screen.
-   *
-   * The stored value is a pointer, never a credential, which is why it can live
-   * unmasked in the project record - `normalizeKanbanProjectTarget` is what
-   * keeps that true, so a rejected value must not be persisted.
-   */
-  private async handleKanbanProjectTargetSetRequest(
-    request: Extract<SessionInboundMessage, { type: "kanban.project.target.set.request" }>,
-  ): Promise<void> {
-    const { projectId, target, requestId } = request;
-    this.sessionLogger.info(
-      { projectId, requestId, adapter: target?.adapter ?? null },
-      "session: kanban.project.target.set.request",
-    );
-
-    const reject = (error: string): void => {
-      this.emit({
-        type: "kanban.project.target.set.response",
-        payload: { requestId, projectId, accepted: false, target: null, error },
-      });
-    };
-
-    try {
-      const existing = await this.projectRegistry.get(projectId);
-      if (!existing) {
-        reject("Project not found");
-        return;
-      }
-
-      let normalized: { adapter: "github" | "jira"; boardId: string | null } | null = null;
-      if (target) {
-        const result = normalizeKanbanProjectTarget({
-          adapter: target.adapter,
-          boardId: target.boardId ?? null,
-        });
-        if (!result.ok) {
-          reject(result.error);
-          return;
-        }
-        normalized = result.target;
-      }
-
-      const updated = {
-        ...existing,
-        kanban: normalized,
-        updatedAt: new Date().toISOString(),
-      };
-      await this.projectRegistry.upsert(updated);
-
-      this.emit({
-        type: "kanban.project.target.set.response",
-        payload: { requestId, projectId, accepted: true, target: normalized, error: null },
-      });
-
-      // The target is host-global project metadata, same as the name: announce
-      // it on the project channel so every session's Kanban picker sees the
-      // project flip between configured and unconfigured immediately.
-      this.emitProjectUpdate({ kind: "upsert", project: updated });
-      const workspaces = await this.workspaceRegistry.list();
-      const hasActiveWorkspaces = workspaces.some(
-        (workspace) =>
-          workspace.projectId === projectId && !workspace.archivedAt && !workspace.hidden,
-      );
-      this.broadcastToAllSessions({
-        type: "project.updated.notification",
-        payload: { project: await this.buildProjectDescriptor(updated), hasActiveWorkspaces },
-      });
-    } catch (error) {
-      this.sessionLogger.error(
-        { err: error, projectId, requestId },
-        "session: kanban.project.target.set.request error",
-      );
-      reject(getErrorMessageOr(error, "Failed to save the Kanban board target"));
-    }
-  }
-
   private async handleProjectIconSetRequest(
     request: Extract<SessionInboundMessage, { type: "project.icon.set.request" }>,
   ): Promise<void> {
     const { projectId, requestId } = request;
     try {
       const updated = await setProjectCustomIcon({
-        ottoHome: this.ottoHome,
+        paseoHome: this.paseoHome,
         projectId,
         source: request.source,
         projects: this.projectRegistry,
@@ -6703,58 +3677,6 @@ export class Session {
           error: getErrorMessageOr(error, "Failed to update project icon"),
         },
       });
-    }
-  }
-
-  private async handleBrowserHistoryRequest(
-    request: Extract<
-      SessionInboundMessage,
-      {
-        type:
-          | "browser.history.search.request"
-          | "browser.history.record.request"
-          | "browser.history.clear.request";
-      }
-    >,
-  ): Promise<void> {
-    let error: string | null = null;
-    let entries: import("@otto-code/protocol/messages").BrowserHistoryEntry[] = [];
-    try {
-      const projectId =
-        request.type === "browser.history.clear.request"
-          ? request.projectId
-          : (await this.workspaceRegistry.get(request.workspaceId))?.projectId;
-      if (!projectId || !(await this.projectRegistry.get(projectId)))
-        throw new Error("Project not found");
-      const history = new BrowserHistoryStore(this.ottoHome);
-      switch (request.type) {
-        case "browser.history.search.request":
-          entries = await history.search(projectId, request.query);
-          break;
-        case "browser.history.record.request":
-          await history.record(projectId, request.url, request.title);
-          break;
-        case "browser.history.clear.request":
-          await history.clear(projectId);
-          break;
-      }
-    } catch (cause) {
-      error = getErrorMessage(cause);
-    }
-    const requestId = request.requestId;
-    switch (request.type) {
-      case "browser.history.search.request":
-        this.emit({
-          type: "browser.history.search.response",
-          payload: { requestId, error, entries },
-        });
-        break;
-      case "browser.history.record.request":
-        this.emit({ type: "browser.history.record.response", payload: { requestId, error } });
-        break;
-      case "browser.history.clear.request":
-        this.emit({ type: "browser.history.clear.response", payload: { requestId, error } });
-        break;
     }
   }
 
@@ -6815,34 +3737,8 @@ export class Session {
         }
 
         await this.projectRegistry.remove(resolvedProjectId);
-        // Same teardown archiveByScope does for a single workspace: the git
-        // operation log buffers and the language servers rooted at these
-        // directories have nothing left to serve.
-        dropGitOperationLogs(
-          {},
-          projectWorkspaces
-            .filter((workspace) => removedWorkspaceIds.includes(workspace.workspaceId))
-            .map((workspace) => workspace.cwd),
-        );
-        await stopLanguageServersForArchivedDirectories(
-          {
-            // Same roots archiveByScope resolves ownership against, so the
-            // last-reference check sees the same backing directories.
-            ottoHome: this.ottoHome,
-            ottoWorktreesBaseRoot: this.worktreesRoot,
-            listActiveWorkspaces: () => this.listActiveWorkspaceRefs(),
-            stopLanguageServers: (rootPath) => this.stopWorkspaceProcesses(rootPath),
-            sessionLogger: this.sessionLogger,
-          },
-          {
-            directories: projectWorkspaces
-              .filter((workspace) => removedWorkspaceIds.includes(workspace.workspaceId))
-              .map((workspace) => workspace.cwd),
-            archivedWorkspaceIds: removedWorkspaceIds,
-          },
-        );
         await removeProjectCustomIcon({
-          ottoHome: this.ottoHome,
+          paseoHome: this.paseoHome,
           projectId: resolvedProjectId,
         }).catch((error) => {
           this.sessionLogger.warn(
@@ -6897,49 +3793,6 @@ export class Session {
           removedWorkspaceIds: [],
           error: getErrorMessageOr(error, "Failed to remove project"),
         },
-      });
-    }
-  }
-
-  /**
-   * Refine - propose rewrites of the documents the client pinned.
-   *
-   * Nothing here reads or writes the filesystem: every document arrives on the
-   * wire and every proposal goes back on it. Accepted results come back later
-   * as ordinary `file.write.request`s, one per file, so the conditional-write
-   * precondition - not this handler - is what protects them.
-   */
-  private async handleFileRefineRequest(msg: FileRefineRequest): Promise<void> {
-    const respond = (result: FileRefineResult): void => {
-      this.emit({
-        type: "file.refine.response",
-        payload: { cwd: msg.cwd, result, requestId: msg.requestId },
-      });
-    };
-    const cwd = msg.cwd.trim();
-    if (!cwd) {
-      respond({ status: "error", message: "cwd is required" });
-      return;
-    }
-    try {
-      const files = await this.refineGenerator.refine({
-        cwd,
-        documents: msg.documents,
-        ...(msg.references ? { references: msg.references } : {}),
-        instruction: msg.instruction,
-      });
-      respond({ status: "ok", files });
-    } catch (error) {
-      this.sessionLogger.error(
-        { err: error, cwd, documents: msg.documents.length },
-        "session: file.refine.request failed",
-      );
-      respond({
-        status: "error",
-        message:
-          error instanceof RefineError
-            ? error.message
-            : getErrorMessageOr(error, "Failed to refine this file"),
       });
     }
   }
@@ -7108,187 +3961,6 @@ export class Session {
   }
 
   /**
-   * UI-initiated preview RPCs behind the Preview toolbar button. Mirrors what
-   * the agent-facing preview_* tools do (packages/server/src/server/preview/preview-tools.ts)
-   * but is driven by the app directly instead of an agent tool call - the
-   * caller creates and places the browser tab itself, then reports the
-   * binding back via preview.bind_tab so a later agent preview_start call
-   * finds the same designated tab.
-   */
-  private async handlePreviewListConfigRequest(cwd: string, requestId: string): Promise<void> {
-    try {
-      const config = await readLaunchConfig(cwd);
-
-      // Collect running servers from DevServerManager
-      let runningServers: Array<{
-        serverId: string;
-        name: string;
-        url: string;
-        port: number;
-        status: "starting" | "running" | "exited";
-      }> = [];
-
-      if (this.previewDevServers) {
-        // Reconcile against reality (port probes), not just the in-memory map:
-        // the map is wiped on daemon restart while the detached dev-server child
-        // keeps serving, so a plain list() would report a live preview as "not
-        // started" after every tsx-watch restart in dev. See reconcileRunning.
-        const reconciled = await this.previewDevServers.reconcileRunning({
-          cwd,
-          configured:
-            config?.configurations.map((entry) => ({
-              name: entry.name,
-              port: entry.port,
-              url: entry.url,
-            })) ?? [],
-        });
-        runningServers = reconciled.map((s) => ({
-          serverId: s.serverId,
-          name: s.name,
-          url: s.url,
-          port: s.port,
-          status: s.status,
-        }));
-      }
-
-      this.emit({
-        type: "preview.list_config.response",
-        payload: {
-          requestId,
-          cwd,
-          configured: config !== null,
-          servers:
-            config?.configurations.map((entry) => ({ name: entry.name, port: entry.port })) ?? [],
-          runningServers,
-          error: null,
-        },
-      });
-    } catch (error) {
-      this.emit({
-        type: "preview.list_config.response",
-        payload: {
-          requestId,
-          cwd,
-          configured: false,
-          servers: [],
-          error: error instanceof LaunchConfigError ? error.message : getErrorMessage(error),
-        },
-      });
-    }
-  }
-
-  private async handlePreviewStartRequest(
-    cwd: string,
-    name: string,
-    requestId: string,
-  ): Promise<void> {
-    if (!this.previewDevServers) {
-      this.emit({
-        type: "preview.start.response",
-        payload: {
-          requestId,
-          cwd,
-          success: false,
-          server: null,
-          reused: false,
-          error: "Preview servers are disabled on this daemon.",
-        },
-      });
-      return;
-    }
-
-    try {
-      const started = await this.previewDevServers.start({ cwd, name });
-      this.emit({
-        type: "preview.start.response",
-        payload: {
-          requestId,
-          cwd,
-          success: true,
-          reused: started.reused,
-          server: {
-            serverId: started.server.serverId,
-            name: started.server.name,
-            url: started.server.url,
-            port: started.server.port,
-            status: started.server.status,
-            boundBrowserId: started.server.boundBrowserId,
-          },
-          error: null,
-        },
-      });
-    } catch (error) {
-      this.emit({
-        type: "preview.start.response",
-        payload: {
-          requestId,
-          cwd,
-          success: false,
-          server: null,
-          reused: false,
-          error: getErrorMessage(error),
-        },
-      });
-    }
-  }
-
-  private async handlePreviewBindTabRequest(
-    serverId: string,
-    browserId: string,
-    requestId: string,
-  ): Promise<void> {
-    if (!this.previewDevServers) {
-      this.emit({
-        type: "preview.bind_tab.response",
-        payload: {
-          requestId,
-          success: false,
-          error: "Preview servers are disabled on this daemon.",
-        },
-      });
-      return;
-    }
-    try {
-      this.previewDevServers.bindTab(serverId, browserId);
-      this.emit({
-        type: "preview.bind_tab.response",
-        payload: { requestId, success: true, error: null },
-      });
-    } catch (error) {
-      this.emit({
-        type: "preview.bind_tab.response",
-        payload: { requestId, success: false, error: getErrorMessage(error) },
-      });
-    }
-  }
-
-  private async handlePreviewStopRequest(serverId: string, requestId: string): Promise<void> {
-    if (!this.previewDevServers) {
-      this.emit({
-        type: "preview.stop.response",
-        payload: {
-          requestId,
-          success: false,
-          error: "Preview servers are disabled on this daemon.",
-        },
-      });
-      return;
-    }
-    try {
-      await this.previewDevServers.stop(serverId);
-      this.emit({
-        type: "preview.stop.response",
-        payload: { requestId, success: true, error: null },
-      });
-    } catch (error) {
-      this.emit({
-        type: "preview.stop.response",
-        payload: { requestId, success: false, error: getErrorMessage(error) },
-      });
-    }
-  }
-
-  /**
    * Handle text message to agent (with optional image attachments)
    */
   private async handleSendAgentMessage(
@@ -7300,7 +3972,6 @@ export class Session {
     runOptions?: AgentRunOptions,
     options?: { spokenInput?: boolean },
   ): Promise<{ ok: true } | { ok: false; error: string }> {
-    this.onAgentBrowserOrigin?.(agentId, this.hasAppBrowserHost ? "app" : "host", this.clientId);
     this.sessionLogger.info(
       {
         agentId,
@@ -7346,115 +4017,263 @@ export class Session {
   /**
    * Handle create agent request
    */
-  /**
-   * Resolve an optional personality id against the roster + this cwd's provider
-   * snapshot and fold its identity onto the create config. Availability is
-   * re-checked here (the cwd may differ from where the picker resolved it); an
-   * unavailable or unknown personality is skipped with a warning rather than
-   * failing the create - the agent still runs with the chosen brain, just
-   * without personality identity, as is one whose provider differs from the
-   * requested provider. The brain fields are never overridden; only
-   * `profileSnapshot` and (when the caller set none) `systemPrompt` are added.
-   */
-  private async applyProfileIdentityToConfig(
-    config: AgentSessionConfig,
-    personalityId: string | undefined,
-  ): Promise<AgentSessionConfig> {
-    if (!personalityId) {
-      return config;
-    }
-    const roster = this.daemonConfigStore.get().agentProfiles ?? [];
-    const personality = roster.find((entry) => entry.id === personalityId);
-    if (!personality) {
-      this.sessionLogger.warn(
-        { personalityId },
-        "create_agent_request: personality id not found in roster; spawning without personality identity",
-      );
-      return config;
-    }
-    const entries = await this.providerSnapshotManager.listProviders({
-      cwd: config.cwd,
-      wait: true,
-    });
-    const resolution = resolveProfile(personality, entries);
-    if (resolution.status === "unavailable") {
-      this.sessionLogger.warn(
-        { personalityId, reason: resolution.reason },
-        "create_agent_request: personality unavailable for cwd; spawning without personality identity",
-      );
-      return config;
-    }
-    const snapshot: ResolvedProfileSnapshot = resolution.snapshot;
-    // A profile is bound to its provider: model, mode and effort may deviate
-    // within that family, but a different provider is a different agent. A
-    // client whose picker drifted (profile still shown, form re-resolved to
-    // another provider) must not stamp this profile's name, prompt and team
-    // layer onto an agent it does not describe.
-    if (snapshot.provider !== config.provider) {
-      this.sessionLogger.warn(
-        {
-          personalityId,
-          profileProvider: snapshot.provider,
-          requestedProvider: config.provider,
-        },
-        "create_agent_request: personality provider differs from requested provider; spawning without personality identity",
-      );
-      return config;
-    }
-    // The one team rule: a member of the active team at spawn time carries the
-    // frozen team layer, and the team prompt stacks directly ahead of the
-    // personality prompt. Caller-authored prompts still win - nothing composes.
-    const teamSnapshot = resolveTeamSnapshotForPersonality(
-      this.daemonConfigStore.get().agentTeams,
-      snapshot.profileId,
-    );
-    const composedPrompt = composeTeamAndPersonalityPrompt(
-      teamSnapshot,
-      snapshot.systemPrompt,
-      snapshot.roles,
-    );
+  private creationUpdate(snapshot: CreationSnapshot): SessionOutboundMessage {
     return {
-      ...config,
-      profileSnapshot: snapshot,
-      ...(teamSnapshot ? { teamSnapshot } : {}),
-      ...(config.systemPrompt === undefined && composedPrompt !== undefined
-        ? { systemPrompt: composedPrompt }
-        : {}),
+      type: snapshot.kind === "workspace" ? "workspace.create.update" : "agent.create.update",
+      payload: snapshot,
     };
   }
 
-  /**
-   * Resolve a roster personality against a *running* agent's cwd for a live
-   * switch (agent.personality.set). Unlike the spawn-time soft-skip above, an
-   * unknown or unavailable personality throws - the RPC rejects with the reason
-   * instead of half-applying.
-   */
-  private async resolvePersonalitySnapshotForAgent(
-    agentId: string,
-    personalityId: string,
-  ): Promise<ResolvedProfileSnapshot> {
-    const agent = this.agentManager.getAgent(agentId);
-    if (!agent) {
-      throw new Error(`Agent not found: ${agentId}`);
+  private async handleCreationSubscription(
+    request: Extract<SessionInboundMessage, { type: "creation.subscribe.request" }>,
+    source?: object,
+  ): Promise<void> {
+    let unsubscribe = () => {};
+    const owner =
+      request.subscribe === false
+        ? undefined
+        : this.delivery.begin(
+            "creation",
+            undefined,
+            () => unsubscribe(),
+            JSON.stringify([request.kind, request.idempotencyKey]),
+          );
+    try {
+      const observation = await this.creationService.subscribe(
+        request.kind,
+        request.idempotencyKey,
+        (snapshot) => owner?.emit(this.creationUpdate(snapshot)),
+      );
+      unsubscribe = observation.unsubscribe;
+      if (!owner || owner.signal.aborted) unsubscribe();
+      this.emitForSource(
+        {
+          type: "creation.subscribe.response",
+          payload: {
+            requestId: request.requestId,
+            subscriptionId: owner?.responseId,
+            snapshot: observation.snapshot,
+            error: null,
+          },
+        },
+        source,
+      );
+    } catch (error) {
+      await owner?.release();
+      this.emitForSource(
+        {
+          type: "creation.subscribe.response",
+          payload: {
+            requestId: request.requestId,
+            snapshot: null,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        },
+        source,
+      );
     }
-    const roster = this.daemonConfigStore.get().agentProfiles ?? [];
-    const personality = roster.find((entry) => entry.id === personalityId);
-    if (!personality) {
-      throw new Error(`Personality not found: ${personalityId}`);
+  }
+
+  private creationResourceExists = async (
+    kind: "workspace" | "agent",
+    id: string,
+  ): Promise<boolean> =>
+    kind === "workspace"
+      ? (await this.workspaceRegistry.get(id)) !== null
+      : this.agentManager.getAgent(id) != null || (await this.agentStorage.get(id)) !== null;
+
+  private createRequestedAgent(
+    request: AgentCreateRequest,
+    observer?: (snapshot: CreationSnapshot) => void,
+  ): Promise<CreationSnapshot> {
+    const { requestId, type: _type, subscribe: _subscribe, idempotencyKey, ...intent } = request;
+    return this.creationService.create(
+      {
+        kind: "agent",
+        key: idempotencyKey ?? requestId,
+        request: intent,
+        workspaceId: request.workspaceId,
+        agentId: request.agentId,
+        hasAgent: true,
+        hasPrompt: hasInitialCreationPrompt(request),
+        exists: this.creationResourceExists,
+        readAgent: async (id) => {
+          const record = await this.agentStorage.get(id);
+          return record ? this.buildStoredAgentPayload(record) : null;
+        },
+        createAgent: async (id, _workspace, onReady) => {
+          try {
+            return await this.createSessionAgent(
+              { ...request, type: "create_agent_request" },
+              id,
+              onReady,
+            );
+          } catch (error) {
+            throw new WorktreeRequestError(toWorktreeWireError(error));
+          }
+        },
+      },
+      observer,
+    );
+  }
+
+  private async handleAgentCreation(request: AgentCreateRequest, source?: object): Promise<void> {
+    const { requestId, subscribe } = request;
+    const progress = subscribe
+      ? this.delivery.operation(
+          (message) =>
+            message.type === "workspace.create.update" || message.type === "agent.create.update",
+          () => {},
+        )
+      : undefined;
+    try {
+      const creation = await this.createRequestedAgent(
+        request,
+        progress ? (snapshot) => progress.emit(this.creationUpdate(snapshot)) : undefined,
+      );
+      this.emitForSource(
+        {
+          type: "agent.create.response",
+          payload: { requestId, agent: creation.agent ?? null, error: creation.error, creation },
+        },
+        source,
+      );
+    } catch (error) {
+      this.emitForSource(
+        {
+          type: "agent.create.response",
+          payload: {
+            requestId,
+            agent: null,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        },
+        source,
+      );
+    } finally {
+      await progress?.release();
     }
-    // Warm only the personality's own provider - a cold workspace snapshot
-    // would otherwise fan out to every registered provider (network probes)
-    // and stall the switch for seconds.
-    const entries = await this.providerSnapshotManager.listProviders({
-      cwd: agent.config.cwd,
-      providers: [personality.provider],
-      wait: true,
-    });
-    const resolution = resolveProfile(personality, entries);
-    if (resolution.status === "unavailable") {
-      throw new Error(resolution.reason);
+  }
+
+  private async handleWorkspaceCreation(
+    request: Extract<SessionInboundMessage, { type: "workspace.create.request" }>,
+    source?: object,
+  ): Promise<void> {
+    const { requestId, subscribe, type: _type, idempotencyKey, ...intent } = request;
+    const progress = subscribe
+      ? this.delivery.operation(
+          (message) =>
+            message.type === "workspace.create.update" || message.type === "agent.create.update",
+          () => {},
+        )
+      : undefined;
+    try {
+      if (
+        request.agent &&
+        !this.authorization.allowsPermission("workspace.write") &&
+        !this.authorization.allowsPermission("hub.execute")
+      ) {
+        throw new Error("Session is not authorized to create an agent");
+      }
+      const agentInput = request.agent;
+      const creation = await this.creationService.create(
+        {
+          kind: "workspace",
+          key: idempotencyKey ?? requestId,
+          request: intent,
+          workspaceId: request.workspaceId,
+          agentId: agentInput?.agentId,
+          hasAgent: Boolean(agentInput),
+          hasPrompt: hasInitialCreationPrompt(agentInput),
+          exists: this.creationResourceExists,
+          provision: async (id) => {
+            const descriptor = await this.createRequestedWorkspace(
+              {
+                ...request,
+                firstAgentContext: agentInput
+                  ? { prompt: agentInput.initialPrompt, attachments: agentInput.attachments }
+                  : request.firstAgentContext,
+              },
+              id,
+            );
+            const workspace = await this.workspaceRegistry.get(descriptor.id);
+            return {
+              workspace: descriptor,
+              setupSkippedReason: workspace?.untrustedSource
+                ? formatWorkspaceAutomationBlockedMessage(workspace.untrustedSource)
+                : undefined,
+            };
+          },
+          createAgent: agentInput
+            ? async (id, workspace, onReady) => {
+                if (!workspace?.workspaceDirectory)
+                  throw new Error("Created workspace has no directory");
+                const sourceCwd =
+                  request.source.kind === "directory"
+                    ? request.source.path
+                    : await resolveWorktreeSourceCwd(request.source, this.projectRegistry);
+                const relativeCwd = relative(resolve(sourceCwd), resolve(agentInput.config.cwd));
+                if (
+                  relativeCwd === ".." ||
+                  relativeCwd.startsWith(`..${sep}`) ||
+                  isAbsolute(relativeCwd)
+                )
+                  throw new Error("Agent directory must be inside the workspace source");
+                return this.createSessionAgent(
+                  {
+                    ...agentInput,
+                    type: "create_agent_request",
+                    requestId,
+                    config: {
+                      ...agentInput.config,
+                      cwd: resolve(workspace.workspaceDirectory, relativeCwd),
+                    },
+                    workspaceId: workspace.id,
+                  },
+                  id,
+                  onReady,
+                );
+              }
+            : undefined,
+        },
+        progress ? (snapshot) => progress.emit(this.creationUpdate(snapshot)) : undefined,
+      );
+      this.emitForSource(
+        {
+          type: "workspace.create.response",
+          payload: {
+            requestId,
+            workspace: creation.workspace ?? null,
+            agent: creation.agent,
+            creation,
+            setupSkippedReason: creation.setupSkippedReason,
+            error: creation.error,
+            errorCode: creation.errorCode,
+            setupTerminalId: null,
+          },
+        },
+        source,
+      );
+    } catch (error) {
+      this.emitForSource(
+        {
+          type: "workspace.create.response",
+          payload: {
+            requestId,
+            workspace: null,
+            error: error instanceof Error ? error.message : String(error),
+            errorCode:
+              error instanceof Error && "code" in error && typeof error.code === "string"
+                ? error.code
+                : undefined,
+            setupTerminalId: null,
+          },
+        },
+        source,
+      );
+    } finally {
+      await progress?.release();
     }
-    return resolution.snapshot;
   }
 
   private async handleCreateAgentRequest(msg: CreateAgentRequestMessage): Promise<void> {
@@ -7464,22 +4283,17 @@ export class Session {
         if (msg.initialPrompt !== undefined) {
           throw new Error("Idempotent creation requires sending the initial prompt separately");
         }
-        const { requestId: _requestId, idempotencyKey, ...request } = msg;
-        const id = await this.agentRequests.create({
-          key: idempotencyKey,
-          request,
-          findAgent: async (agentId) =>
-            this.agentManager.getAgent(agentId) != null ||
-            (await this.agentStorage.get(agentId)) !== null,
-          create: async (agentId) => {
-            await this.createSessionAgent(msg, agentId);
-          },
-        });
-        const record = await this.agentStorage.get(id);
+        const creation = await this.createRequestedAgent({ ...msg, type: "agent.create.request" });
+        if (creation.error || !creation.agent)
+          throw new SessionRequestError(
+            creation.errorCode ?? "unknown",
+            creation.error ?? "Agent creation failed",
+          );
+        const record = await this.agentStorage.get(creation.agent.id);
         if (!record) throw new Error("Previously created agent no longer exists");
         agent = this.buildStoredAgentPayload(record);
       } else {
-        agent = await this.createSessionAgent(msg);
+        ({ agent } = await this.createSessionAgent(msg));
       }
       this.emit({
         type: "status",
@@ -7491,7 +4305,7 @@ export class Session {
         },
       });
     } catch (error) {
-      const wireError = toWorktreeWireError(error);
+      const wireError = error instanceof SessionRequestError ? error : toWorktreeWireError(error);
       this.sessionLogger.error({ err: error }, "Failed to create agent");
       this.emit({
         type: "status",
@@ -7514,18 +4328,31 @@ export class Session {
     }
   }
 
+  private validatePublicAgentWorkspaceIntent(
+    request: CreateAgentRequestMessage,
+    createsWorktree: boolean,
+  ): void {
+    if (request.internal)
+      throw new Error(
+        "Public internal agents were removed; create a background workspace instead.",
+      );
+    if (
+      request.background !== undefined &&
+      (request.workspaceId || (request.callerAgentId && !createsWorktree))
+    ) {
+      throw new Error(
+        "background is workspace creation intent; configure the selected workspace at creation.",
+      );
+    }
+  }
+
   private async createSessionAgent(
     msg: CreateAgentRequestMessage,
     agentId?: string,
-  ): Promise<AgentSnapshotPayload> {
+    onAgentReady?: (agent: AgentSnapshotPayload) => Promise<void>,
+  ): Promise<CreatedAgent> {
     const {
       config,
-      // COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22.
-      // `agentProfile` is the current spelling; `personality` is what clients
-      // older than the rename send, and what current clients still send until
-      // the daemon floor passes v0.8.13. Prefer the new name when both arrive.
-      personality: legacyProfileRef,
-      agentProfile,
       worktreeName,
       initialPrompt,
       clientMessageId,
@@ -7536,7 +4363,6 @@ export class Session {
       images,
       attachments,
       env,
-      architecturalViewDraft,
     } = msg;
     this.sessionLogger.info(
       { cwd: config.cwd, provider: config.provider, worktreeName },
@@ -7545,7 +4371,7 @@ export class Session {
       }`,
     );
 
-    let createdWorktreeForCleanup: CreateOttoWorktreeWorkflowResult | null = null;
+    let createdWorktreeForCleanup: CreatePaseoWorktreeWorkflowResult | null = null;
     let createdAgentId: string | null = null;
     try {
       const requestedCwd = resolve(config.cwd);
@@ -7554,6 +4380,9 @@ export class Session {
       if (needsRequestedDirectory && !(await this.filesystem.isDirectory(requestedCwd))) {
         throw new Error(`Working directory does not exist or is not a directory: ${requestedCwd}`);
       }
+      // Resolve all supported worktree input forms before provisioning workspace ownership.
+      const gitIntent = normalizeAgentCreationGitOptions(git, worktreeName, worktree);
+      this.validatePublicAgentWorkspaceIntent(msg, gitIntent?.createWorktree === true);
       const trimmedPrompt = initialPrompt?.trim();
       const { provisionalTitle } = resolveCreateAgentTitles({
         configTitle: config.title,
@@ -7567,9 +4396,11 @@ export class Session {
       const workspacePromptTitle = resolveFirstAgentPromptTitle(firstAgentContext);
       const createdWorktree = await this.createAgentLifecycleDispatch.createWorktreeForRequest({
         cwd: config.cwd,
-        target: worktree,
+        target: gitIntent,
         firstAgentContext,
-        hasLegacyGitOptions: Boolean(git),
+        setupContinuation: worktree ? undefined : this.agentWorktreeSetupContinuation(),
+        background: msg.background,
+        callerWorkspaceId: this.getCallerWorkspaceId(msg.callerAgentId),
       });
       createdWorktreeForCleanup = createdWorktree;
       const resolvedIntent = await this.resolveSessionCreateAgentIntent({
@@ -7581,78 +4412,51 @@ export class Session {
       if (!(await this.filesystem.isDirectory(resolvedCwd))) {
         throw new Error(`Working directory does not exist or is not a directory: ${resolvedCwd}`);
       }
-      // Otto: a composer-selected Agent Profile arrives by id. Fold its identity
-      // onto the resolved config so the live spinner, voice and prompt read as
-      // that profile. The brain in `config` (provider/model/mode/effort) stays
-      // authoritative: hand-deviations in the picker keep the identity but
-      // override the settings.
-      resolvedIntent.config = await this.applyProfileIdentityToConfig(
-        resolvedIntent.config,
-        agentProfile ?? legacyProfileRef,
-      );
-      resolvedIntent.config = withArchitecturalViewAuthoringBrief(
-        resolvedIntent.config,
-        architecturalViewDraft,
-      );
 
-      const { snapshot, liveSnapshot } = await createAgentCommand(
+      const { snapshot, liveSnapshot, initialPromptStarted } = await createAgentCommand(
         {
           agentManager: this.agentManager,
           agentStorage: this.agentStorage,
           logger: this.sessionLogger,
-          ottoHome: this.ottoHome,
+          paseoHome: this.paseoHome,
           worktreesRoot: this.worktreesRoot,
           providerSnapshotManager: this.providerSnapshotManager,
-          scheduleAutoTitle: (request) =>
-            this.agentAutoTitle.schedule({
-              ...request,
-              currentSelection: this.getFocusedAgentSelectionForCwd(request.cwd),
-            }),
         },
         {
           kind: "session",
+          onAgentReady: async (agent) => {
+            createdAgentId = agent.id;
+            await onAgentReady?.(await this.buildAgentPayload(agent));
+          },
           agentId,
           config: resolvedIntent.config,
           workspaceId: resolvedIntent.intent.workspaceId,
           worktreeName,
           initialPrompt,
+          source: msg.callerAgentId
+            ? { kind: "agent-message", agentId: msg.callerAgentId }
+            : undefined,
           clientMessageId,
           outputSchema,
           images,
           attachments,
           git,
-          labels: withArchitecturalViewAuthoringLabels(
-            resolvedIntent.intent.labels,
-            architecturalViewDraft,
-          ),
+          labels: resolvedIntent.intent.labels,
           env,
           provisionalTitle,
           firstAgentContext,
-          ...(architecturalViewDraft
-            ? {
-                onCreatedBeforeInitialPrompt: async (agent: ManagedAgent) => {
-                  // The authoring binding is an authorization boundary for the
-                  // staged-draft tools. It must exist before createAgentCommand
-                  // starts the first prompt, not after it has already begun.
-                  createdAgentId = agent.id;
-                  await this.bindArchitecturalViewAuthoringChat({
-                    draft: architecturalViewDraft,
-                    workspaceId: resolvedIntent.intent.workspaceId,
-                    agentId: agent.id,
-                  });
-                  // Subscribe while the agent is still idle so the first user
-                  // message, tool calls, and streamed reply reach the linked
-                  // authoring chat instead of appearing only after a reload.
-                  await this.agentUpdates.forwardLiveAgent(agent);
-                },
-              }
-            : {}),
-          buildSessionConfig: (sessionConfig, gitOptions, legacyWorktreeName, ctx) =>
-            this.buildAgentSessionConfig(sessionConfig, gitOptions, legacyWorktreeName, ctx),
+          buildSessionConfig: async (sessionConfig, gitOptions, legacyWorktreeName, ctx) =>
+            createdWorktree
+              ? {
+                  sessionConfig,
+                  setupContinuation: createdWorktree.setupContinuation,
+                  createdWorkspaceId: createdWorktree.workspace.workspaceId,
+                }
+              : this.buildAgentSessionConfig(sessionConfig, gitOptions, legacyWorktreeName, ctx),
         },
       );
       createdAgentId = snapshot.id;
-      await this.forwardCreatedAgentAfterSetup({ snapshot, architecturalViewDraft });
+      await this.agentUpdates.forwardLiveAgent(snapshot);
       if (resolvedIntent.createdDirectoryWorkspace && trimmedPrompt) {
         this.workspaceAutoName.scheduleForDirectory(
           {
@@ -7672,7 +4476,7 @@ export class Session {
         { agentId: snapshot.id, provider: snapshot.provider },
         "Created agent",
       );
-      return this.buildAgentPayload(liveSnapshot);
+      return { agent: await this.buildAgentPayload(liveSnapshot), initialPromptStarted };
     } catch (error) {
       await this.createAgentLifecycleDispatch.cleanupCreatedWorktreeAfterFailedAgentCreate({
         createdWorktree: createdWorktreeForCleanup,
@@ -7682,50 +4486,9 @@ export class Session {
     }
   }
 
-  private async bindArchitecturalViewAuthoringChat(input: {
-    draft: CreateAgentRequestMessage["architecturalViewDraft"];
-    workspaceId: string | undefined;
-    agentId: string;
-  }): Promise<void> {
-    if (!input.draft) return;
-    if (!input.workspaceId) {
-      throw new Error("Architectural View authoring chats require a workspace.");
-    }
-    await this.architecturalViewsSession.bindDraftAuthoringAgent({
-      workspaceId: input.workspaceId,
-      viewId: input.draft.viewId,
-      draftId: input.draft.draftId,
-      agentId: input.agentId,
-    });
-  }
-
-  private async discardArchitecturalViewDraftForAgent(agentId: string): Promise<void> {
-    const live = this.agentManager.getAgent(agentId);
-    const stored = live ? null : await this.agentStorage.get(agentId);
-    const authoring = getArchitecturalViewAuthoringLabels(live?.labels ?? stored?.labels);
-    const workspaceId = live?.workspaceId ?? stored?.workspaceId;
-    if (!authoring || !workspaceId) return;
-    await this.architecturalViewsSession.discardDraftForAuthoringAgent({
-      workspaceId,
-      agentId,
-      ...authoring,
-    });
-  }
-
-  private async forwardCreatedAgentAfterSetup(input: {
-    snapshot: ManagedAgent;
-    architecturalViewDraft: CreateAgentRequestMessage["architecturalViewDraft"];
-  }): Promise<void> {
-    // Architectural View chats subscribe in their pre-prompt binding callback
-    // so the first turn streams live. Every other chat keeps the established
-    // post-create forwarding path.
-    if (input.architecturalViewDraft) return;
-    await this.agentUpdates.forwardLiveAgent(input.snapshot);
-  }
-
   private async resolveSessionCreateAgentIntent(input: {
     request: CreateAgentRequestMessage;
-    createdWorktree: CreateOttoWorktreeWorkflowResult | null;
+    createdWorktree: CreatePaseoWorktreeWorkflowResult | null;
     workspacePromptTitle: string | null;
   }): Promise<ResolvedSessionCreateAgentIntent> {
     const { request, createdWorktree } = input;
@@ -7759,6 +4522,8 @@ export class Session {
           createdWorktree: null,
           cwd: config.cwd,
           initialTitle: input.workspacePromptTitle,
+          background: request.background,
+          callerWorkspaceId: callerAgent?.workspaceId,
         }),
         cwd: config.cwd,
       }),
@@ -7886,15 +4651,6 @@ export class Session {
       if (!normalized.cwd) {
         throw new Error("Import requires cwd from the selected provider session");
       }
-      // Otto keeps import-into-an-archived-workspace working. Upstream's
-      // runInImportWorkspace throws on an archived workspace, so unarchive it
-      // first and then let their helper do its project/cwd validation.
-      if (normalized.workspaceId) {
-        const requestedWorkspace = await this.workspaceRegistry.get(normalized.workspaceId);
-        if (requestedWorkspace?.archivedAt) {
-          await this.workspaceProvisioning.ensureWorkspaceRecordUnarchived(requestedWorkspace);
-        }
-      }
       const { snapshot, timelineSize, createdWorkspace } = await importProviderSession({
         request: normalized,
         workspaceProvisioning: this.workspaceProvisioning,
@@ -8021,7 +4777,7 @@ export class Session {
     this.sessionLogger.info({ agentId }, `Cancel request received for agent ${agentId}`);
 
     try {
-      const { cancelled } = await cancelAgentRunCommand(
+      await cancelAgentRunCommand(
         { agentManager: this.agentManager, logger: this.sessionLogger },
         agentId,
       );
@@ -8034,7 +4790,6 @@ export class Session {
             requestId,
             agentId,
             agent: payload,
-            cancelled,
             error: null,
           },
         });
@@ -8105,29 +4860,36 @@ export class Session {
     const timeline = this.agentManager.fetchTimeline(agentId, { limit: 0 });
     const epoch = timeline.epoch;
 
-    if (this.clientCapabilitiesBySource.size === 0 || !this.onMessageToSource) {
+    if (this.clientSources.size === 0 || !this.onMessageToSource) {
       if (!this.supports(CLIENT_CAPS.timelineReplacementInvalidation)) {
         this.emitReconstructedTimelineRows(agentId, agent.provider, timeline.rows, epoch);
       }
       return;
     }
 
-    for (const [source, capabilities] of this.clientCapabilitiesBySource) {
-      const isInitiator = source === initiatingSource;
-      const supportsReplacement = capabilities.has(CLIENT_CAPS.timelineReplacementInvalidation);
-      const isSubscribed = this.viewedTimelineAgentIdsBySource.get(source)?.has(agentId) === true;
-      if (supportsReplacement) {
-        if (isSubscribed && !isInitiator) {
-          this.onMessageToSource(source, {
-            type: "agent.timeline.replacement",
-            payload: { agentId, epoch },
-          });
-        }
-        continue;
+    for (const subscription of this.timelineSubscriptions.values()) {
+      const source = subscription.owner.source;
+      if (!subscription.agentIds.has(agentId)) continue;
+      const modern = this.delivery.isModern(source);
+      if (
+        modern ||
+        (source !== initiatingSource &&
+          this.supportsForSource(CLIENT_CAPS.timelineReplacementInvalidation, source))
+      ) {
+        subscription.owner.emit({
+          type: "agent.timeline.replacement",
+          payload: { agentId, epoch },
+        });
       }
-      // COMPAT(timelineReplacementInvalidation): added in v0.5.0, replay reconstructed
-      // rows to legacy clients until the supported client floor is >= v0.5.0 after 2027-02-21.
-      this.emitReconstructedTimelineRows(agentId, agent.provider, timeline.rows, epoch, source);
+    }
+    // COMPAT(timelineReplacementInvalidation): added in v0.5.0, remove reconstructed replay after 2027-02-21.
+    for (const [source, { capabilities }] of this.clientSources) {
+      if (
+        !this.delivery.isModern(source) &&
+        !capabilities.has(CLIENT_CAPS.timelineReplacementInvalidation)
+      ) {
+        this.emitReconstructedTimelineRows(agentId, agent.provider, timeline.rows, epoch, source);
+      }
     }
   }
 
@@ -8160,6 +4922,26 @@ export class Session {
     }
   }
 
+  private agentWorktreeSetupContinuation(): CreatePaseoWorktreeSetupContinuationInput {
+    return {
+      kind: "agent",
+      terminalManager: this.terminalManager,
+      appendTimelineItem: ({ agentId, item }) =>
+        appendTimelineItemIfAgentKnown({
+          agentManager: this.agentManager,
+          agentId,
+          item,
+        }),
+      emitLiveTimelineItem: ({ agentId, item }) =>
+        emitLiveTimelineItemIfAgentKnown({
+          agentManager: this.agentManager,
+          agentId,
+          item,
+        }),
+      logger: this.sessionLogger,
+    };
+  }
+
   private async buildAgentSessionConfig(
     config: AgentSessionConfig,
     gitOptions?: GitSetupOptions,
@@ -8167,35 +4949,19 @@ export class Session {
     firstAgentContext?: FirstAgentContext,
   ): Promise<{
     sessionConfig: AgentSessionConfig;
-    setupContinuation?: CreateOttoWorktreeWorkflowResult["setupContinuation"];
+    setupContinuation?: CreatePaseoWorktreeWorkflowResult["setupContinuation"];
     createdWorkspaceId?: string;
   }> {
     return buildWorktreeAgentSessionConfig(
       {
-        ottoHome: this.ottoHome,
+        paseoHome: this.paseoHome,
         worktreesRoot: this.worktreesRoot,
         sessionLogger: this.sessionLogger,
         workspaceGitService: this.workspaceGitService,
-        createOttoWorktree: (input, serviceOptions) =>
-          this.createOttoWorktreeWorkflow(input, {
+        createPaseoWorktree: (input, serviceOptions) =>
+          this.createPaseoWorktreeWorkflow(input, {
             ...serviceOptions,
-            setupContinuation: {
-              kind: "agent",
-              terminalManager: this.terminalManager,
-              appendTimelineItem: ({ agentId, item }) =>
-                appendTimelineItemIfAgentKnown({
-                  agentManager: this.agentManager,
-                  agentId,
-                  item,
-                }),
-              emitLiveTimelineItem: ({ agentId, item }) =>
-                emitLiveTimelineItemIfAgentKnown({
-                  agentManager: this.agentManager,
-                  agentId,
-                  item,
-                }),
-              logger: this.sessionLogger,
-            },
+            setupContinuation: this.agentWorktreeSetupContinuation(),
           }),
         checkoutExistingBranch: (cwd, branch) =>
           this.gitMutation.checkoutExistingBranch(cwd, branch),
@@ -8276,7 +5042,8 @@ export class Session {
     const appVisibilityChangedAt = msg.appVisibilityChangedAt
       ? new Date(msg.appVisibilityChangedAt)
       : new Date(msg.lastActivityAt);
-    this.clientActivity = {
+    const metadata = this.currentClientMetadata();
+    metadata.activity = {
       deviceType: msg.deviceType,
       focusedAgentId: msg.focusedAgentId,
       focusedTerminalId,
@@ -8287,33 +5054,9 @@ export class Session {
     if (msg.appVisible && focusedTerminalId) {
       void this.clearFocusedTerminalAttention(focusedTerminalId);
     }
-    if (this.registeredPushToken) {
-      this.pushNotifications.renew(this.registeredPushToken);
+    if (metadata.pushToken) {
+      this.pushNotifications.renew(metadata.pushToken);
     }
-    this.syncActiveWorkspaceFromActivity();
-  }
-
-  /**
-   * Tell the workspace-scoped subsystems which workspace the client is actually in, so their
-   * periodic work follows the user instead of the whole catalogue.
-   *
-   * Derived from the focused agent's cwd rather than sent explicitly, which keeps this off
-   * the wire entirely. Deliberately **sticky**: focus goes null whenever the user moves to a
-   * tab that is not a chat (files, terminal, browser), and treating that as "no active
-   * workspace" would stop observing the very workspace they are sitting in. Only focusing an
-   * agent in a *different* workspace moves it.
-   */
-  private syncActiveWorkspaceFromActivity(): void {
-    const focusedAgentId = this.clientActivity?.focusedAgentId;
-    if (!focusedAgentId) {
-      return;
-    }
-    const cwd = this.agentManager.getAgent(focusedAgentId)?.cwd;
-    if (!cwd) {
-      return;
-    }
-    this.workspaceGitService.setActiveWorkspace(cwd);
-    this.lspService.setActiveWorkspace(cwd);
   }
 
   private async clearFocusedTerminalAttention(terminalId: string): Promise<void> {
@@ -8331,39 +5074,8 @@ export class Session {
   /**
    * Handle push token registration
    */
-  /**
-   * Per-category context window breakdown for the client's context popup.
-   * `usage: null` (not an error) when the agent is gone, its provider doesn't
-   * implement the read, or the provider has no live handle to report from.
-   */
-  private async handleAgentContextGetUsageRequest(
-    msg: Extract<SessionInboundMessage, { type: "agent.context.get_usage.request" }>,
-  ): Promise<void> {
-    const { agentId, requestId } = msg;
-    try {
-      const agent = this.agentManager.listAgents().find((a) => a.id === agentId);
-      const usage = agent?.session?.getContextUsage ? await agent.session.getContextUsage() : null;
-      this.emit({
-        type: "agent.context.get_usage.response",
-        payload: { requestId, agentId, usage },
-      });
-    } catch (error) {
-      const err = error instanceof Error ? error : new Error(String(error));
-      this.sessionLogger.error({ err, agentId }, "Failed to get agent context usage");
-      this.emit({
-        type: "rpc_error",
-        payload: {
-          requestId,
-          requestType: msg.type,
-          error: `Failed to get agent context usage: ${err.message}`,
-          code: "agent_context_get_usage_failed",
-        },
-      });
-    }
-  }
-
   private handleRegisterPushToken(token: string): void {
-    this.registeredPushToken = token;
+    this.currentClientMetadata().pushToken = token;
     this.pushNotifications.renew(token);
     this.sessionLogger.info("Registered push token");
   }
@@ -8469,6 +5181,15 @@ export class Session {
         response,
         logger: this.sessionLogger,
       });
+      // COMPAT(ownedSubscriptions): added in v0.8.0, remove after 2027-03-09.
+      // Legacy clients consume the single domain resolution; modern request outcomes
+      // are independent of whether this socket (or its logical Session) observes it.
+      if (this.delivery.isModern(this.delivery.currentSource)) {
+        this.delivery.reply({
+          type: "agent_permission_resolved",
+          payload: { agentId, requestId, resolution: response },
+        });
+      }
     } catch (error) {
       this.sessionLogger.error(
         { err: error, agentId, requestId },
@@ -8493,8 +5214,13 @@ export class Session {
     try {
       const workspaceCwd = cwd?.trim();
       const searchesWorkspace = Boolean(workspaceCwd);
+      const homeRoot = process.env.HOME ?? homedir();
+      // readdir on TCC-protected folders under ~/Library blocks forever for a process that cannot
+      // show a consent prompt, and each blocked call holds a libuv threadpool thread.
+      const excludedDiscoveryPaths =
+        !searchesWorkspace && process.platform === "darwin" ? [join(homeRoot, "Library")] : [];
       const entries = await searchDirectoryEntries({
-        root: workspaceCwd ? expandTilde(workspaceCwd) : (process.env.HOME ?? homedir()),
+        root: workspaceCwd ? expandTilde(workspaceCwd) : homeRoot,
         query,
         pathFormat: searchesWorkspace ? "relative" : "absolute",
         pathQueryPolicy: searchesWorkspace ? "slashes" : "rooted",
@@ -8505,6 +5231,7 @@ export class Session {
           : [],
         confidentResultScanThreshold: searchesWorkspace ? undefined : 5_000,
         respectGitIgnore: searchesWorkspace,
+        excludedDiscoveryPaths,
         includeFiles,
         includeDirectories,
         matchMode,
@@ -8535,26 +5262,26 @@ export class Session {
     }
   }
 
-  private async handleOttoWorktreeListRequest(
-    msg: Extract<SessionInboundMessage, { type: "otto_worktree_list_request" }>,
+  private async handlePaseoWorktreeListRequest(
+    msg: Extract<SessionInboundMessage, { type: "paseo_worktree_list_request" }>,
   ): Promise<void> {
     return handleWorktreeListRequest(
       {
         emit: (message) => this.emit(message),
-        ottoHome: this.ottoHome,
+        paseoHome: this.paseoHome,
         workspaceGitService: this.workspaceGitService,
       },
       msg,
     );
   }
 
-  private async handleOttoWorktreeArchiveRequest(
-    msg: Extract<SessionInboundMessage, { type: "otto_worktree_archive_request" }>,
+  private async handlePaseoWorktreeArchiveRequest(
+    msg: Extract<SessionInboundMessage, { type: "paseo_worktree_archive_request" }>,
   ): Promise<void> {
     return handleWorktreeArchiveRequest(
       {
-        ottoHome: this.ottoHome,
-        ottoWorktreesBaseRoot: this.worktreesRoot,
+        paseoHome: this.paseoHome,
+        paseoWorktreesBaseRoot: this.worktreesRoot,
         github: this.github,
         workspaceGitService: this.workspaceGitService,
         agentManager: this.agentManager,
@@ -8570,7 +5297,6 @@ export class Session {
         clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
         killTerminalsForWorkspace: (workspaceId) =>
           this.terminalController.killTerminalsForWorkspace(workspaceId),
-        stopLanguageServers: (rootPath) => this.stopWorkspaceProcesses(rootPath),
         sessionLogger: this.sessionLogger,
       },
       msg,
@@ -8603,110 +5329,25 @@ export class Session {
 
   /**
    * Build the current agent list payload (live + persisted), optionally filtered by labels.
-   *
-   * `workspaceIds`/`agentIds` narrow which agents get PROJECTED, not which
-   * exist: the live-id set below is still built from every live agent, so a
-   * record whose live counterpart sits outside the scope is still recognised as
-   * live rather than resurfacing as a stale stored projection. Scoping exists
-   * because the per-workspace descriptor rebuild runs on every agent lifecycle
-   * event and would otherwise clone every live agent and project every persisted
-   * record in the home. See WorkspaceDirectory.listAgentPayloadsForScope.
    */
-  private async listAgentPayloads(filter?: {
-    labels?: Record<string, string>;
-    includeArchived?: boolean;
-    includeUnavailablePersisted?: boolean;
-    workspaceIds?: ReadonlySet<string>;
-    agentIds?: ReadonlySet<string>;
-  }): Promise<AgentSnapshotPayload[]> {
-    const includeArchived = filter?.includeArchived === true;
-    const labelEntries = filter?.labels ? Object.entries(filter.labels) : [];
-    const scope =
-      filter?.workspaceIds || filter?.agentIds
-        ? {
-            workspaceIds: filter.workspaceIds ?? new Set<string>(),
-            agentIds: filter.agentIds ?? new Set<string>(),
-          }
-        : null;
-    const isInScope = (candidate: { id: string; workspaceId?: string }): boolean =>
-      !scope ||
-      scope.agentIds.has(candidate.id) ||
-      (candidate.workspaceId !== undefined && scope.workspaceIds.has(candidate.workspaceId));
-
-    // Get live agents with session modes
-    const liveManagedAgents = this.agentManager.listAgents();
-    const liveIds = new Set(liveManagedAgents.map((a) => a.id));
-    const agentSnapshots = scope ? liveManagedAgents.filter(isInScope) : liveManagedAgents;
-    const liveAgents = await Promise.all(
-      agentSnapshots.map((agent) => this.buildAgentPayload(agent)),
-    );
-
-    // Add persisted agents that have not been lazily initialized yet
-    // (excluding internal agents which are for ephemeral system tasks)
-    const registryRecords = await this.agentStorage.list(scope ?? undefined);
-    const registeredProviderIds = new Set(this.providerSnapshotManager.listRegisteredProviderIds());
-    const persistedAgents = registryRecords
-      .filter((record) => !liveIds.has(record.id) && !record.internal)
-      // Keep raw-record filters ahead of projection; seeded homes can carry thousands of archived agents.
-      .filter((record) => includeArchived || !record.archivedAt)
-      .filter((record) => labelEntries.every(([key, value]) => record.labels?.[key] === value))
-      .filter(
-        (record) =>
-          filter?.includeUnavailablePersisted === true ||
-          isStoredAgentProviderAvailable(record, registeredProviderIds),
-      )
-      .map((record) => this.buildStoredAgentPayload(record, registeredProviderIds));
-
-    // Observed subagents are ephemeral registry projections (no ManagedAgent,
-    // no stored record) that otherwise reach clients only as live pushes -
-    // include them so a client that fetches mid-run (page refresh, reconnect)
-    // learns about in-flight children instead of waiting for the provider's
-    // next task event. The shared archived/label filters below apply to them
-    // like any other agent.
-    const allObservedAgents = this.agentManager.listObservedSubagentPayloads();
-    const observedAgents = scope ? allObservedAgents.filter(isInScope) : allObservedAgents;
-
-    let agents = [...liveAgents, ...persistedAgents, ...observedAgents];
-
-    agents = agents.filter((agent) => this.isProviderVisibleToClient(agent.provider));
-    if (!includeArchived) {
-      agents = agents.filter((agent) => !agent.archivedAt);
-    }
-
-    // Filter by labels if filter provided
-    if (labelEntries.length > 0) {
-      agents = agents.filter((agent) =>
-        labelEntries.every(([key, value]) => agent.labels[key] === value),
-      );
-    }
-
-    return agents;
+  private listAgentPayloads(
+    filter?: Parameters<AgentDirectory["list"]>[0],
+  ): Promise<AgentSnapshotPayload[]> {
+    return this.agentDirectory.list(filter);
   }
 
   private async resolveAgentIdentifier(
     identifier: string,
-  ): Promise<{ ok: true; agentId: string } | { ok: false; error: string }> {
+  ): Promise<{ ok: true; agentId: string } | { ok: false; notFound: boolean; error: string }> {
     const trimmed = identifier.trim();
     if (!trimmed) {
-      return { ok: false, error: "Agent identifier cannot be empty" };
+      return { ok: false, notFound: false, error: "Agent identifier cannot be empty" };
     }
 
-    // Exact live-agent lookup bypasses the internal-agent exclusion below.
-    // Internal agents (e.g. artifact generation) are deliberately hidden from
-    // the fuzzy prefix/title resolution and general listings further down,
-    // but a caller that already has the literal agentId (not a prefix or
-    // title guess) should still be able to resolve it while it's alive.
-    if (this.agentManager.getAgent(trimmed)) {
-      return { ok: true, agentId: trimmed };
-    }
-
-    // Observed subagents (Claude Task / ultracode fan-out) are ephemeral
-    // projections with no ManagedAgent record and are never written to
-    // storage. A track row can still reference one after the client store
-    // dropped it (placement remove, reconnect), so resolve the synthetic id
-    // straight from the registry - otherwise fetch_agent 404s a run that is
-    // fine. See docs/agent-lifecycle.md (Item 1).
-    if (this.agentManager.getObservedSubagentPayload(trimmed)) {
+    // An internal agent, live or recently archived, is addressable by its exact
+    // id and nothing else: the caller that created it holds the id, and no
+    // listing ever includes it.
+    if (this.agentManager.getAgent(trimmed) || this.agentManager.getRetiredInternalAgent(trimmed)) {
       return { ok: true, agentId: trimmed };
     }
 
@@ -8731,6 +5372,7 @@ export class Session {
     if (prefixMatches.length > 1) {
       return {
         ok: false,
+        notFound: false,
         error: `Agent identifier "${trimmed}" is ambiguous (${prefixMatches
           .slice(0, 5)
           .map((id) => id.slice(0, 8))
@@ -8745,6 +5387,7 @@ export class Session {
     if (titleMatches.length > 1) {
       return {
         ok: false,
+        notFound: false,
         error: `Agent title "${trimmed}" is ambiguous (${titleMatches
           .slice(0, 5)
           .map((r) => r.id.slice(0, 8))
@@ -8752,7 +5395,26 @@ export class Session {
       };
     }
 
-    return { ok: false, error: `Agent not found: ${trimmed}` };
+    return { ok: false, notFound: true, error: `Agent not found: ${trimmed}` };
+  }
+
+  /**
+   * An agent that is no longer live, in its settled form: the retained snapshot
+   * of a recently archived internal agent, else its stored record. Null when
+   * neither exists, and for a stored internal record, which is never served.
+   */
+  private async readSettledAgent(
+    agentId: string,
+  ): Promise<{ record: StoredAgentRecord; lastMessage: string | null } | null> {
+    const retired = this.agentManager.getRetiredInternalAgent(agentId);
+    if (retired) {
+      return { record: retired.record, lastMessage: retired.lastMessage };
+    }
+    const record = await this.agentStorage.get(agentId);
+    if (!record || record.internal) {
+      return null;
+    }
+    return { record, lastMessage: null };
   }
 
   private async getAgentPayloadById(agentId: string): Promise<AgentSnapshotPayload | null> {
@@ -8762,30 +5424,12 @@ export class Session {
       return this.isProviderVisibleToClient(payload.provider) ? payload : null;
     }
 
-    const record = await this.agentStorage.get(agentId);
-    if (record && !record.internal) {
-      const payload = this.buildStoredAgentPayload(record);
-      return this.isProviderVisibleToClient(payload.provider) ? payload : null;
+    const settled = await this.readSettledAgent(agentId);
+    if (!settled) {
+      return null;
     }
-
-    // Observed subagents have no live ManagedAgent and no stored record; serve
-    // the registry projection so the pane hydrates instead of dead-ending on a
-    // 404. See docs/agent-lifecycle.md (Item 1).
-    const observed = this.agentManager.getObservedSubagentPayload(agentId);
-    if (observed && this.isProviderVisibleToClient(observed.provider)) {
-      return observed;
-    }
-
-    // Retained generation transcripts (schedule / artifact) are internal agents
-    // that were closed after their run - no live agent, no stored record - but
-    // we snapshotted their final payload so the read-only viewer can open them.
-    // See docs/safe-unattended.md.
-    const retained = await this.agentManager.getRetainedTranscriptPayload(agentId);
-    if (retained && this.isProviderVisibleToClient(retained.provider)) {
-      return retained;
-    }
-
-    return null;
+    const payload = this.buildStoredAgentPayload(settled.record);
+    return this.isProviderVisibleToClient(payload.provider) ? payload : null;
   }
 
   private async resolveDelegationRootWorkspaceId(agentId: string): Promise<string | null> {
@@ -8852,8 +5496,9 @@ export class Session {
     limit: number;
     getPlacement: (workspaceId: string | undefined) => Promise<ProjectPlacementPayload | null>;
     filter: AgentUpdatesFilter | undefined;
+    search?: string;
   }): Promise<FetchAgentsResponseEntry[]> {
-    const { candidates, limit, getPlacement, filter } = params;
+    const { candidates, limit, getPlacement, filter, search } = params;
     const matchedEntries: FetchAgentsResponseEntry[] = [];
     const batchSize = 25;
     for (
@@ -8881,6 +5526,7 @@ export class Session {
         ) {
           continue;
         }
+        if (search && !matchesAgentHistoryQuery(search, entry)) continue;
         matchedEntries.push(entry);
         if (matchedEntries.length > limit) {
           break;
@@ -8906,6 +5552,9 @@ export class Session {
     let agents = await this.listAgentPayloads({
       labels: filter?.labels,
       includeArchived: filter?.includeArchived,
+      includeBackground:
+        filter?.includeBackground ||
+        (request.type === "fetch_agents_request" && request.includeBackground),
       includeUnavailablePersisted: request.type === "fetch_agent_history_request",
     });
     const activePlacementsByWorkspaceId =
@@ -8939,18 +5588,7 @@ export class Session {
     };
 
     const search = agentDirectorySearchQuery(request);
-    if (search) {
-      return this.listRankedAgentHistoryEntries({
-        search,
-        agents,
-        sort,
-        filter,
-        getPlacement,
-        page: request.page,
-      });
-    }
-
-    let candidates = [...agents];
+    let candidates = filterHistoryCandidates(agents, request); // OTTO(history): scope before pagination.
     candidates.sort((left, right) => this.agentsPager.compare(left, right, sort));
     const cursorToken = request.page?.cursor;
     if (cursorToken) {
@@ -8967,6 +5605,7 @@ export class Session {
       limit,
       getPlacement,
       filter,
+      search,
     });
 
     const pagedEntries = matchedEntries.slice(0, limit);
@@ -8983,64 +5622,6 @@ export class Session {
         prevCursor: request.page?.cursor ?? null,
         hasMore,
       },
-    };
-  }
-
-  /**
-   * The searched history page. Ranking has to see every candidate before it can
-   * name the best one, so this path resolves placements for the whole set
-   * instead of stopping at the page limit — that is what makes a query answer
-   * from all persisted sessions rather than from the first page of them.
-   */
-  private async listRankedAgentHistoryEntries(params: {
-    search: string;
-    agents: AgentSnapshotPayload[];
-    sort: FetchAgentsRequestSort[];
-    filter: AgentUpdatesFilter | undefined;
-    getPlacement: (workspaceId: string | undefined) => Promise<ProjectPlacementPayload | null>;
-    page: AgentDirectoryRequestMessage["page"];
-  }): Promise<{
-    entries: FetchAgentsResponseEntry[];
-    pageInfo: FetchAgentsResponsePageInfo;
-    searchTruncated: boolean;
-  }> {
-    const { search, agents, sort, filter, getPlacement, page } = params;
-    if (page?.cursor) {
-      // A ranked result set has no pages to walk, so a cursor here is caller
-      // misuse. Returning the ranked head instead would hide it.
-      throw new SessionRequestError(
-        "invalid_cursor",
-        "A history search returns one ranked page; it cannot be paged with a cursor.",
-      );
-    }
-
-    const allEntries = await this.collectFetchAgentsEntries({
-      candidates: agents,
-      limit: Number.MAX_SAFE_INTEGER,
-      getPlacement,
-      filter,
-    });
-
-    const ranked = rankAgentHistoryCandidates(search, allEntries, (left, right) =>
-      this.agentsPager.compare(left.agent, right.agent, sort),
-    );
-
-    const limit = page?.limit ?? 200;
-    // Ranges are derived only for the rows that will be rendered; ranking
-    // itself never needs them.
-    const entries = ranked.slice(0, limit).map((result) =>
-      Object.assign({}, result.candidate, {
-        searchScore: result.searchScore,
-        searchMatches: describeAgentHistoryMatches(search, result.candidate),
-      }),
-    );
-
-    return {
-      entries,
-      // No next page exists, so `hasMore` is false and truncation is reported
-      // on its own field. See the note on rankAgentHistoryCandidates.
-      pageInfo: { nextCursor: null, prevCursor: null, hasMore: false },
-      searchTruncated: ranked.length > limit,
     };
   }
 
@@ -9082,37 +5663,6 @@ export class Session {
     }
   }
 
-  /**
-   * The project half of a workspace descriptor.
-   *
-   * A workspace can outlive the project row that named it, so every field here
-   * falls back to something the workspace itself knows rather than reporting a
-   * gap the app would have to render around.
-   */
-  private describeWorkspaceProjectFields(
-    workspace: PersistedWorkspaceRecord,
-    projectRecord: PersistedProjectRecord | null | undefined,
-  ): Pick<
-    WorkspaceDescriptorPayload,
-    | "projectDisplayName"
-    | "projectCustomName"
-    | "projectCustomIconRevision"
-    | "projectOffline"
-    | "projectRootPath"
-    | "projectKind"
-  > {
-    return {
-      projectDisplayName: projectRecord
-        ? resolveProjectDisplayName(projectRecord)
-        : workspace.projectId,
-      projectCustomName: projectRecord?.customName ?? null,
-      projectCustomIconRevision: projectRecord?.customIconRevision ?? null,
-      projectOffline: projectRecord ? isProjectOffline(projectRecord) : false,
-      projectRootPath: projectRecord?.rootPath ?? workspace.cwd,
-      projectKind: (projectRecord?.kind ?? "directory") === "git" ? "git" : "non_git",
-    };
-  }
-
   private async describeWorkspaceRecord(
     workspace: PersistedWorkspaceRecord,
     projectRecord?: PersistedProjectRecord | null,
@@ -9127,33 +5677,35 @@ export class Session {
     }
 
     const worktreeSlug =
-      workspace.isOttoOwnedWorktree && workspace.worktreeRoot
+      workspace.isPaseoOwnedWorktree && workspace.worktreeRoot
         ? basename(workspace.worktreeRoot)
         : undefined;
 
     return {
       id: workspace.workspaceId,
       projectId: workspace.projectId,
-      ...this.describeWorkspaceProjectFields(workspace, resolvedProjectRecord),
+      projectDisplayName: resolvedProjectRecord
+        ? resolveProjectDisplayName(resolvedProjectRecord)
+        : workspace.projectId,
+      projectCustomName: resolvedProjectRecord?.customName ?? null,
+      projectCustomIconRevision: resolvedProjectRecord?.customIconRevision ?? null,
+      projectRootPath: resolvedProjectRecord?.rootPath ?? workspace.cwd,
       workspaceDirectory: workspace.cwd,
       worktreeSlug,
+      projectKind: (resolvedProjectRecord?.kind ?? "directory") === "git" ? "git" : "non_git",
       workspaceKind: workspace.kind,
       name: resolveWorkspaceDisplayName(workspace),
       title: workspace.title,
-      artifactIds: workspace.artifactIds ?? [],
       pinnedAt: workspace.pinnedAt,
       ...(workspace.labels && workspace.labels.length > 0 ? { labels: workspace.labels } : {}),
+      background: workspace.background,
       archivingAt: null,
       status: "done",
       statusEnteredAt: null,
       activityAt: null,
       diffStat,
-      workingTreeDiffStat: snapshot?.git.workingTreeDiffStat ?? null,
-      scripts:
-        resolvedProjectRecord && isProjectOffline(resolvedProjectRecord)
-          ? []
-          : this.buildWorkspaceScriptPayloadSnapshot(workspace, resolvedProjectRecord),
-      ...(resolvedProjectRecord && !isProjectOffline(resolvedProjectRecord)
+      scripts: this.buildWorkspaceScriptPayloadSnapshot(workspace, resolvedProjectRecord),
+      ...(resolvedProjectRecord
         ? {
             project: await this.buildProjectPlacementForWorkspace(workspace, resolvedProjectRecord),
           }
@@ -9171,53 +5723,11 @@ export class Session {
     return {
       currentBranch: snapshot.git.currentBranch,
       remoteUrl: snapshot.git.remoteUrl,
-      isOttoOwnedWorktree: snapshot.git.isOttoOwnedWorktree,
+      isPaseoOwnedWorktree: snapshot.git.isPaseoOwnedWorktree,
       isDirty: snapshot.git.isDirty,
-      baseRef: snapshot.git.baseRef,
       aheadBehind: snapshot.git.aheadBehind,
       aheadOfOrigin: snapshot.git.aheadOfOrigin,
       behindOfOrigin: snapshot.git.behindOfOrigin,
-    };
-  }
-
-  /**
-   * Resolves "which board does this project show?" for the Kanban screen.
-   *
-   * The app names a project; everything else is decided here, so the picker
-   * stays dumb and the wire stays provider-agnostic. A project with no kanban
-   * target returns null, which the screen renders as the unconfigured
-   * watermark rather than an error.
-   */
-  private async resolveKanbanProjectTarget(input: {
-    projectId?: string;
-    projectKey?: string;
-  }): Promise<KanbanProjectTarget | null> {
-    const project = input.projectId
-      ? await this.projectRegistry.get(input.projectId)
-      : ((await this.projectRegistry.list()).find(
-          (candidate) => candidate.projectKey === input.projectKey,
-        ) ?? null);
-    const target = project?.kanban;
-    if (!project || !target) {
-      return null;
-    }
-    if (target.adapter === "jira") {
-      // Jira boards are site-scoped, not repo-scoped: the board id is the whole
-      // address, and an unset one is a misconfiguration the settings form
-      // prevents.
-      return { projectId: project.projectId, adapter: "jira", boardId: target.boardId };
-    }
-    // A GitHub board number is only unique within an owner. A pasted Projects
-    // URL preserves that owner; older number-only records fall back to the
-    // project's remote owner. The remote also scopes the zero-config board
-    // discovery path.
-    const remote = await readKanbanProjectGitHubRemote(project.rootPath);
-    return {
-      projectId: project.projectId,
-      adapter: "github",
-      boardId: target.boardId,
-      ...(target.boardOwner ? { boardOwner: target.boardOwner } : {}),
-      ...(remote ? { owner: remote.owner, repo: remote.repo } : {}),
     };
   }
 
@@ -9236,7 +5746,6 @@ export class Session {
     projectRecord?: PersistedProjectRecord | null,
   ): Promise<WorkspaceDescriptorPayload> {
     const base = await this.describeWorkspaceRecord(workspace, projectRecord);
-    if (base.projectOffline) return base;
     const snapshot = this.workspaceGitService.peekSnapshot(workspace.cwd);
     if (!snapshot) {
       return base;
@@ -9249,7 +5758,6 @@ export class Session {
       ...base,
       name: resolveWorkspaceName({ title: workspace.title, derivedDisplayName: displayName }),
       diffStat: snapshot.git.diffStat ?? null,
-      workingTreeDiffStat: snapshot.git.workingTreeDiffStat ?? null,
       gitRuntime: this.buildWorkspaceGitRuntimePayload(snapshot) ?? undefined,
       githubRuntime: this.buildWorkspaceGitHubRuntimePayload(snapshot),
       // Reuse the forge already resolved on the snapshot (probe-aware; GitHub-only
@@ -9260,7 +5768,7 @@ export class Session {
   }
 
   private async describeCreatedWorktreeWorkspace(
-    result: CreateOttoWorktreeResult,
+    result: CreatePaseoWorktreeResult,
   ): Promise<WorkspaceDescriptorPayload> {
     const projectRecord = await this.projectRegistry.get(result.workspace.projectId);
     return {
@@ -9276,12 +5784,12 @@ export class Session {
       worktreeSlug: basename(result.worktree.worktreePath),
       projectKind: projectRecord?.kind ?? "git",
       workspaceKind: result.workspace.kind,
+      background: result.workspace.background,
       name: resolveWorkspaceName({
         title: result.workspace.title,
         derivedDisplayName: result.worktree.branchName || result.workspace.displayName,
       }),
       title: result.workspace.title,
-      artifactIds: result.workspace.artifactIds ?? [],
       pinnedAt: result.workspace.pinnedAt,
       ...(result.workspace.labels && result.workspace.labels.length > 0
         ? { labels: result.workspace.labels }
@@ -9291,14 +5799,12 @@ export class Session {
       statusEnteredAt: result.workspace.createdAt,
       activityAt: null,
       diffStat: { additions: 0, deletions: 0 },
-      workingTreeDiffStat: null,
       scripts: [],
       gitRuntime: {
         currentBranch: result.worktree.branchName || null,
         remoteUrl: null,
-        isOttoOwnedWorktree: true,
+        isPaseoOwnedWorktree: true,
         isDirty: false,
-        baseRef: null,
         aheadBehind: null,
         aheadOfOrigin: null,
         behindOfOrigin: null,
@@ -9357,7 +5863,13 @@ export class Session {
     pageInfo: FetchWorkspacesResponsePageInfo;
   }> {
     try {
-      return await this.workspaceDirectory.listFetchEntries(request);
+      return await this.workspaceDirectory.listFetchEntries({
+        ...request,
+        filter: {
+          ...request.filter,
+          ...(request.includeBackground ? { includeBackground: true } : {}),
+        },
+      });
     } catch (error) {
       if (error instanceof CursorError) {
         throw new SessionRequestError("invalid_cursor", error.message);
@@ -9370,6 +5882,8 @@ export class Session {
     subscription: WorkspaceUpdatesSubscriptionState,
     payload: WorkspaceUpdatePayload,
   ): void {
+    if (this.workspaceUpdatesSubscriptions.get(subscription.subscriptionId) !== subscription)
+      return;
     if (payload.kind === "upsert") {
       subscription.visibleEmptyProjectIds?.delete(payload.workspace.projectId);
     } else {
@@ -9387,20 +5901,22 @@ export class Session {
     }
     const workspaceId = payload.kind === "upsert" ? payload.workspace.id : payload.id;
     subscription.lastEmittedByWorkspaceId.set(workspaceId, payload);
-    this.emit({
-      type: "workspace_update",
-      payload,
-    });
+    subscription.owner.emit({ type: "workspace_update", payload });
   }
 
-  private flushBootstrappedWorkspaceUpdates(options?: {
-    snapshotByWorkspaceId?: Map<
-      string,
-      { status: string; statusEnteredAt: string | null; activityAtMs: number | null }
-    >;
-  }): void {
-    const subscription = this.workspaceUpdatesSubscription;
-    if (!subscription || !subscription.isBootstrapping) {
+  private flushBootstrappedWorkspaceUpdates(
+    subscription: WorkspaceUpdatesSubscriptionState,
+    options?: {
+      snapshotByWorkspaceId?: Map<
+        string,
+        { status: string; statusEnteredAt: string | null; activityAtMs: number | null }
+      >;
+    },
+  ): void {
+    if (
+      this.workspaceUpdatesSubscriptions.get(subscription.subscriptionId) !== subscription ||
+      !subscription.isBootstrapping
+    ) {
       return;
     }
 
@@ -9434,54 +5950,21 @@ export class Session {
       }
       const workspaceId = payload.kind === "upsert" ? payload.workspace.id : payload.id;
       subscription.lastEmittedByWorkspaceId.set(workspaceId, payload);
-      this.emit({
-        type: "workspace_update",
-        payload,
-      });
+      subscription.owner.emit({ type: "workspace_update", payload });
     }
-  }
-
-  /**
-   * Replay a project's current metadata on the host-global project channel.
-   * Project metadata is not session-scoped, so a change made in one window has
-   * to reach every other one without waiting for a workspace re-fetch.
-   */
-  private async announceProjectUpdate(projectId: string): Promise<void> {
-    const project = await this.projectRegistry.get(projectId);
-    if (!project) return;
-    this.emitProjectUpdate({ kind: "upsert", project });
-    const workspaces = await this.workspaceRegistry.list();
-    const hasActiveWorkspaces = workspaces.some(
-      (workspace) =>
-        workspace.projectId === projectId && !workspace.archivedAt && !workspace.hidden,
-    );
-    this.broadcastToAllSessions({
-      type: "project.updated.notification",
-      payload: {
-        project: await this.buildProjectDescriptor(project),
-        hasActiveWorkspaces,
-      },
-    });
   }
 
   private async buildProjectDescriptor(
     project: PersistedProjectRecord,
   ): Promise<WorkspaceProjectDescriptorPayload> {
-    const icon = isProjectOffline(project)
-      ? { revision: project.customIconRevision ?? null }
-      : await this.projectIcons.snapshot(project);
+    const icon = await this.projectIcons.snapshot(project);
     return {
       projectId: project.projectId,
       ...(project.projectKey ? { projectKey: project.projectKey } : {}),
       projectDisplayName: resolveProjectDisplayName(project),
       projectCustomName: project.customName ?? null,
-      projectKanban: project.kanban ?? null,
-      projectKnowledgeLocation: project.knowledgeLocation ?? null,
-      projectArtifactLocation: project.artifactLocation ?? null,
-      projectWorkflowLocation: project.workflowLocation ?? null,
       projectCustomIconRevision: project.customIconRevision ?? null,
-      projectIconRevision: icon.revision ?? undefined,
-      projectOffline: isProjectOffline(project),
+      projectIconRevision: icon.revision,
       projectRootPath: project.rootPath,
       projectKind: project.kind,
     };
@@ -9524,96 +6007,17 @@ export class Session {
     await this.restoreWorkspaceAndEmit(record.workspaceId);
   }
 
-  // Bring an archived worktree/local workspace back to life: recreate its backing
-  // worktree directory from the kept branch when the directory is gone, then clear
-  // archivedAt. Returns the unarchived record, or null when a worktree record has
-  // no branch to recreate its directory from (nothing to restore). Shared by the
-  // agent-triggered unarchive and the explicit worktree.reattach flow.
-  private async restoreArchivedWorkspaceRecord(
-    workspace: PersistedWorkspaceRecord,
-  ): Promise<PersistedWorkspaceRecord | null> {
-    const directoryExists = await this.filesystem.isDirectory(workspace.cwd).catch(() => false);
-    if (!directoryExists) {
-      if (workspace.kind !== "worktree" || !workspace.branch) {
-        return null;
-      }
-      // Recreate the worktree directory from its kept branch BEFORE clearing
-      // archivedAt - the reconciler re-archives workspaces whose directory is
-      // missing, so the record must point at a real directory first.
-      await this.recreateOwningWorktreeForRestore(workspace, workspace.branch);
-    }
-
-    return this.workspaceProvisioning.ensureWorkspaceRecordUnarchived(workspace);
-  }
-
-  private async recreateOwningWorktreeForRestore(
-    workspace: PersistedWorkspaceRecord,
-    branch: string,
-  ): Promise<void> {
-    const project = await this.projectRegistry.get(workspace.projectId);
-    if (!project) {
-      throw new WorktreeRequestError({
-        code: "unknown",
-        message: `Project ${workspace.projectId} not found for workspace ${workspace.workspaceId}`,
-      });
-    }
-    const projectRootExists = await this.filesystem
-      .isDirectory(project.rootPath)
-      .catch(() => false);
-    if (!projectRootExists) {
-      throw new WorktreeRequestError({
-        code: "unknown",
-        message: `Project root is missing for ${workspace.projectId}: ${project.rootPath}`,
-      });
-    }
-
-    // Archiving through the default path (scope "workspace", worktreePath only)
-    // resolves repoRoot=null, so deleteOttoWorktree's `git worktree remove`/
-    // `prune` is skipped and the admin registration survives - pinning the
-    // branch as "already checked out". Prune here frees any stale registration
-    // whose working dir is missing (a no-op for live worktrees) so the recreate
-    // below succeeds regardless of how the worktree was archived.
-    try {
-      await runGitCommand(["worktree", "prune"], { cwd: project.rootPath, timeout: 30_000 });
-    } catch {
-      // not critical; git will prune lazily
-    }
-
-    let result: WorktreeConfig;
-    try {
-      result = await createWorktree({
-        cwd: project.rootPath,
-        worktreeSlug: basename(workspace.cwd),
-        source: { kind: "checkout-branch", branchName: branch },
-        runSetup: false,
-        ottoHome: this.ottoHome,
-        worktreesRoot: this.worktreesRoot,
-      });
-    } catch (error) {
-      throw toWorktreeRequestError(error);
-    }
-
-    if (normalize(result.worktreePath) !== normalize(workspace.cwd)) {
-      throw new WorktreeRequestError({
-        code: "unknown",
-        message: `Recreated worktree diverged from ${workspace.cwd}: ${result.worktreePath}`,
-      });
-    }
-  }
-
-  private async createOttoWorktree(
-    input: CreateOttoWorktreeInput,
+  private async createPaseoWorktree(
+    input: CreatePaseoWorktreeInput,
     options?: {
       resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
     },
-  ): Promise<CreateOttoWorktreeResult> {
-    const result = await createOttoWorktree(input, {
+  ): Promise<CreatePaseoWorktreeResult> {
+    const result = await createPaseoWorktree(input, {
       github: this.github,
       ...(options?.resolveDefaultBranch
         ? { resolveDefaultBranch: options.resolveDefaultBranch }
         : {}),
-      projectRegistry: this.projectRegistry,
-      workspaceRegistry: this.workspaceRegistry,
       workspaceGitService: this.workspaceGitService,
       workspaceProvisioning: this.workspaceProvisioning,
     });
@@ -9629,19 +6033,6 @@ export class Session {
     return result;
   }
 
-  /**
-   * Every long-lived process this daemon keeps per workspace directory, released together.
-   *
-   * Named for what it does rather than for the language servers it started as: the archive
-   * teardown's last-reference rule is the same for both subsystems, and a second parallel hook
-   * would be a second thing to forget when a third subsystem starts a process. Never throws - a
-   * child that refuses to die must not fail an archive that has already happened.
-   */
-  private async stopWorkspaceProcesses(rootPath: string): Promise<void> {
-    await this.lspService.stopWorkspace(rootPath);
-    await this.solutionService.stopWorkspace(rootPath);
-  }
-
   private async listActiveWorkspaceRefs(): Promise<ActiveWorkspaceRef[]> {
     const workspaces = await this.workspaceRegistry.list();
     return workspaces
@@ -9651,7 +6042,7 @@ export class Session {
         cwd: workspace.cwd,
         kind: workspace.kind,
         worktreeRoot: workspace.worktreeRoot,
-        isOttoOwnedWorktree: workspace.isOttoOwnedWorktree,
+        isPaseoOwnedWorktree: workspace.isPaseoOwnedWorktree,
         mainRepoRoot: workspace.mainRepoRoot,
       }));
   }
@@ -9697,17 +6088,11 @@ export class Session {
     workspaceIds: Iterable<string>,
     options?: WorkspaceUpdateOptions,
   ): Promise<void> {
-    const subscription = this.workspaceUpdatesSubscription;
-    if (!subscription) {
-      return;
+    const uniqueWorkspaceIds = new Set(workspaceIds);
+    if (uniqueWorkspaceIds.size === 0) return;
+    for (const subscription of this.workspaceUpdatesSubscriptions.values()) {
+      await this.enqueueWorkspaceUpdates(uniqueWorkspaceIds, subscription, options);
     }
-
-    const uniqueWorkspaceIds = new Set(Array.from(workspaceIds));
-    if (uniqueWorkspaceIds.size === 0) {
-      return;
-    }
-
-    await this.enqueueWorkspaceUpdates(uniqueWorkspaceIds, subscription, options);
   }
 
   private enqueueWorkspaceUpdates(
@@ -9719,7 +6104,9 @@ export class Session {
       (this.workspaceUpdateTails.get(workspaceId) ?? Promise.resolve()).catch(() => undefined),
     );
     const next = Promise.all(previous).then(() =>
-      this.emitWorkspaceUpdateBatch(workspaceIds, subscription, options),
+      this.delivery.forSource(subscription.owner.source, () =>
+        this.emitWorkspaceUpdateBatch(workspaceIds, subscription, options),
+      ),
     );
     for (const workspaceId of workspaceIds) {
       this.workspaceUpdateTails.set(workspaceId, next);
@@ -9741,7 +6128,7 @@ export class Session {
     subscription: WorkspaceUpdatesSubscriptionState,
     options: WorkspaceUpdateOptions | undefined,
   ): Promise<void> {
-    if (this.workspaceUpdatesSubscription !== subscription) {
+    if (this.workspaceUpdatesSubscriptions.get(subscription.subscriptionId) !== subscription) {
       return;
     }
 
@@ -9751,7 +6138,7 @@ export class Session {
     });
 
     for (const workspaceId of workspaceIds) {
-      if (this.workspaceUpdatesSubscription !== subscription) {
+      if (this.workspaceUpdatesSubscriptions.get(subscription.subscriptionId) !== subscription) {
         return;
       }
       const workspace = descriptorsByWorkspaceId.get(workspaceId);
@@ -9764,21 +6151,29 @@ export class Session {
         options?.optimisticStatus,
       );
       const lastEmitted = subscription.lastEmittedByWorkspaceId.get(workspaceId);
-      if (
-        options?.dedupeGitState &&
-        this.workspaceGitObserver.shouldSkipUpdate(workspaceId, nextWorkspace)
-      ) {
-        continue;
-      }
       this.workspaceGitObserver.recordDescriptorState(workspaceId, nextWorkspace);
       if (!nextWorkspace) {
-        await this.emitWorkspaceRemoval({
+        if (this.shouldSkipWorkspaceRemoval(lastEmitted, options?.removedProjectId)) {
+          continue;
+        }
+        if (this.workspaceUpdatesSubscriptions.get(subscription.subscriptionId) !== subscription) {
+          return;
+        }
+        subscription.lastEmittedByWorkspaceId.delete(workspaceId);
+        const removePayload = await this.buildWorkspaceRemoveUpdatePayload(
           workspaceId,
+          options?.removedProjectId,
+        );
+        this.bufferOrEmitWorkspaceUpdate(
           subscription,
-          options,
-          lastEmitted,
-          workspace: workspace ?? null,
-        });
+          this.directorySync.sequenceWorkspaceUpdate(
+            removePayload,
+            workspace ?? null,
+            workspaceId,
+            subscription.syncEnabled === true,
+            subscription.filter?.includeBackground,
+          ),
+        );
         continue;
       }
 
@@ -9787,6 +6182,7 @@ export class Session {
         workspace ?? null,
         workspaceId,
         subscription.syncEnabled === true,
+        subscription.filter?.includeBackground,
       );
 
       if (
@@ -9799,52 +6195,6 @@ export class Session {
 
       this.bufferOrEmitWorkspaceUpdate(subscription, nextPayload);
     }
-  }
-
-  /**
-   * Emits the removal half of a workspace update batch.
-   *
-   * Split out of the batch loop, which is why it decides for itself whether the
-   * removal is worth sending: a workspace that was never emitted, or was already
-   * removed for the same project, produces nothing.
-   */
-  private async emitWorkspaceRemoval({
-    workspaceId,
-    subscription,
-    options,
-    lastEmitted,
-    workspace,
-  }: {
-    workspaceId: string;
-    subscription: WorkspaceUpdatesSubscriptionState;
-    options: WorkspaceUpdateOptions | undefined;
-    lastEmitted: WorkspaceUpdatePayload | undefined;
-    workspace: WorkspaceDescriptorPayload | null;
-  }): Promise<void> {
-    if (this.shouldSkipWorkspaceRemoval(lastEmitted, options?.removedProjectId)) {
-      return;
-    }
-    if (this.workspaceUpdatesSubscription !== subscription) {
-      return;
-    }
-    subscription.lastEmittedByWorkspaceId.delete(workspaceId);
-    // Otto passes the last emitted project id so a removal can still name
-    // the project the workspace belonged to; upstream then sequences the
-    // payload for directory sync.
-    const removePayload = await this.buildWorkspaceRemoveUpdatePayload(
-      workspaceId,
-      options?.removedProjectId,
-      lastEmitted?.kind === "upsert" ? lastEmitted.workspace.projectId : undefined,
-    );
-    this.bufferOrEmitWorkspaceUpdate(
-      subscription,
-      this.directorySync.sequenceWorkspaceUpdate(
-        removePayload,
-        workspace,
-        workspaceId,
-        subscription.syncEnabled === true,
-      ),
-    );
   }
 
   private applyOptimisticWorkspaceStatus(
@@ -9870,7 +6220,6 @@ export class Session {
   private async buildWorkspaceRemoveUpdatePayload(
     workspaceId: string,
     removedProjectId?: string,
-    projectId?: string,
   ): Promise<WorkspaceUpdatePayload> {
     if (removedProjectId) {
       return { kind: "remove", id: workspaceId, removedProjectId };
@@ -9878,10 +6227,7 @@ export class Session {
     return {
       kind: "remove",
       id: workspaceId,
-      ...(await this.resolveProjectWithoutActiveWorkspacesForArchivedWorkspace(
-        workspaceId,
-        projectId,
-      )),
+      ...(await this.resolveProjectWithoutActiveWorkspacesForArchivedWorkspace(workspaceId)),
     };
   }
 
@@ -9890,15 +6236,13 @@ export class Session {
   // sidebar in sync without a full re-hydration.
   private async resolveProjectWithoutActiveWorkspacesForArchivedWorkspace(
     workspaceId: string,
-    knownProjectId?: string,
   ): Promise<{ emptyProject: WorkspaceProjectDescriptorPayload } | null> {
     const archivedWorkspace = await this.workspaceRegistry.get(workspaceId);
-    const projectId = archivedWorkspace?.projectId ?? knownProjectId;
-    if (!projectId) {
+    if (!archivedWorkspace) {
       return null;
     }
     const projectWithoutActiveWorkspaces = (await this.workspaceDirectory.listEmptyProjects()).find(
-      (project) => project.projectId === projectId,
+      (project) => project.projectId === archivedWorkspace.projectId,
     );
     return projectWithoutActiveWorkspaces ? { emptyProject: projectWithoutActiveWorkspaces } : null;
   }
@@ -9907,7 +6251,7 @@ export class Session {
     event: TerminalWorkspaceContributionChangedEvent,
   ): Promise<void> {
     // A terminal's activity contributes only to the workspace it carries. A
-    // terminal with no workspaceId attributes to nothing - status is per-id.
+    // terminal with no workspaceId attributes to nothing — status is per-id.
     if (!event.workspaceId) {
       return;
     }
@@ -9919,12 +6263,8 @@ export class Session {
   // and emits its own per-id descriptor. This is a deliberate same-folder fan,
   // not a cwd → id ownership lookup: git never resolves which workspace owns a
   // path. See `workspaceIdsOnCheckout`.
-  private async emitWorkspaceUpdateForCwd(
-    cwd: string,
-    options?: {
-      dedupeGitState?: boolean;
-    },
-  ): Promise<void> {
+  private async emitWorkspaceUpdateForCwd(cwd: string, options?: {}): Promise<void> {
+    if (this.workspaceUpdatesSubscriptions.size === 0) return;
     const workspaceIds = workspaceIdsOnCheckout(await this.workspaceRegistry.list(), cwd);
     if (workspaceIds.length === 0) {
       return;
@@ -9935,16 +6275,29 @@ export class Session {
   private async handleFetchAgents(
     request: Extract<SessionInboundMessage, { type: "fetch_agents_request" }>,
   ): Promise<void> {
-    const requestedSubscriptionId = request.subscribe?.subscriptionId?.trim();
-    const subscriptionId = resolveSubscriptionId(request.subscribe, requestedSubscriptionId);
-
+    const owner = request.subscribe
+      ? this.delivery.begin("agents", request.subscribe.subscriptionId, (id) => {
+          this.agentUpdates.clearSubscription(id);
+          this.refreshObservationProducers();
+        })
+      : null;
+    const subscriptionId = owner?.responseId;
     try {
-      if (subscriptionId) {
+      if (owner) {
         this.agentUpdates.beginSubscription({
-          subscriptionId,
-          filter: request.filter,
+          subscriptionId: owner.id,
+          isProviderVisible: (provider) =>
+            this.delivery.forSource(owner.source, () => this.isProviderVisibleToClient(provider)),
+          filter: {
+            ...request.filter,
+            ...(request.includeBackground ? { includeBackground: true } : {}),
+          },
           syncEnabled: Boolean(request.sync),
+          emit: (message) => {
+            if (message.type === "agent_update") owner.emit(message);
+          },
         });
+        this.refreshObservationProducers();
       }
 
       const payload = request.sync
@@ -9968,11 +6321,11 @@ export class Session {
       });
 
       if (subscriptionId) {
-        this.agentUpdates.flushBootstrapped(subscriptionId, { snapshotUpdatedAtByAgentId });
+        this.agentUpdates.flushBootstrapped(owner!.id, { snapshotUpdatedAtByAgentId });
       }
     } catch (error) {
       if (subscriptionId) {
-        this.agentUpdates.clearSubscription(subscriptionId);
+        await owner?.release();
       }
       const code = error instanceof SessionRequestError ? error.code : "fetch_agents_failed";
       const message = error instanceof Error ? error.message : "Failed to fetch agents";
@@ -9987,6 +6340,47 @@ export class Session {
         },
       });
     }
+  }
+
+  // OTTO(history): the archive coordinator uses the existing agent and workspace update owners.
+  private dispatchOttoHistory(
+    message: SessionInboundMessage,
+    source?: object,
+  ): Promise<void> | undefined {
+    if (isChatSearchRequest(message)) {
+      return dispatchChatSearch(message, {
+        service: this.agentManager.ottoChatSearch,
+        visibleProvider: (provider) => this.isProviderVisibleToClient(provider),
+        open: (agentId) => this.openChatSearchTimeline(agentId),
+        emit: (reply) => this.emit(reply),
+      });
+    }
+    if (!isArchiveHistoryRequest(message)) return undefined;
+    this.ottoArchiveHost ??= new ArchiveHost({
+      storage: this.agentStorage,
+      manager: this.agentManager,
+      logger: this.sessionLogger,
+      onRemoved: async (agentId, workspaceId) => {
+        await this.agentUpdates.removeAgent(agentId);
+        if (workspaceId) await this.emitWorkspaceUpdateForWorkspaceId(workspaceId);
+      },
+    });
+    return this.ottoArchiveHost.dispatch(message, source ?? this, (reply) => this.emit(reply));
+  }
+
+  // OTTO(chat-search): a click uses the normal loader; query/indexing never opens a session.
+  private async openChatSearchTimeline(agentId: string) {
+    const record = await this.agentStorage.get(agentId);
+    if (!record || record.archivedAt || !isSearchableRecord(record)) return null;
+    if (!this.isProviderVisibleToClient(record.provider)) return null;
+    const agent = await ensureAgentLoaded(agentId, {
+      agentManager: this.agentManager,
+      agentStorage: this.agentStorage,
+      logger: this.sessionLogger,
+    });
+    const timeline = this.agentManager.getSearchTimeline(agentId);
+    if (!timeline || agent.internal) return null;
+    return { ...timeline, workspaceId: agent.workspaceId ?? null };
   }
 
   private async handleFetchAgentHistory(
@@ -10064,9 +6458,33 @@ export class Session {
   private async handleFetchWorkspacesRequest(
     request: Extract<SessionInboundMessage, { type: "fetch_workspaces_request" }>,
   ): Promise<void> {
-    const requestedSubscriptionId = request.subscribe?.subscriptionId?.trim();
-    const subscriptionId = resolveSubscriptionId(request.subscribe, requestedSubscriptionId);
-
+    const owner = request.subscribe
+      ? this.delivery.begin("workspaces", request.subscribe.subscriptionId, async (id) => {
+          this.workspaceUpdatesSubscriptions.delete(id);
+          this.refreshObservationProducers();
+          await this.reconcileWorkspaceGitObservers();
+        })
+      : null;
+    const subscriptionId = owner?.responseId;
+    const subscription: WorkspaceUpdatesSubscriptionState | null = owner
+      ? {
+          subscriptionId: owner.id,
+          owner,
+          syncEnabled: Boolean(request.sync),
+          filter: {
+            ...request.filter,
+            ...(request.includeBackground ? { includeBackground: true } : {}),
+          },
+          isBootstrapping: true,
+          pendingUpdatesByWorkspaceId: new Map(),
+          lastEmittedByWorkspaceId: new Map(),
+          visibleEmptyProjectIds: new Set(),
+        }
+      : null;
+    if (subscription) {
+      this.workspaceUpdatesSubscriptions.set(subscription.subscriptionId, subscription);
+      this.refreshObservationProducers();
+    }
     try {
       this.sessionLogger.debug(
         {
@@ -10078,22 +6496,10 @@ export class Session {
         },
         "fetch_workspaces_request_received",
       );
-      if (subscriptionId) {
-        this.workspaceUpdatesSubscription = {
-          subscriptionId,
-          syncEnabled: Boolean(request.sync),
-          filter: request.filter,
-          isBootstrapping: true,
-          pendingUpdatesByWorkspaceId: new Map(),
-          lastEmittedByWorkspaceId: new Map(),
-          visibleEmptyProjectIds: new Set(),
-        };
-      }
-
       const payload = request.sync
         ? await this.readWorkspaceDirectorySync(request)
         : await this.listFetchWorkspacesEntries(request);
-      this.workspaceGitObserver.syncObservers(payload.entries);
+
       this.sessionLogger.debug(
         {
           requestId: request.requestId,
@@ -10104,12 +6510,13 @@ export class Session {
         "fetch_workspaces_response_ready",
       );
       const snapshot = this.buildBootstrapSnapshot(payload.entries);
-      this.seedWorkspaceSubscriptionSnapshot(
-        subscriptionId,
-        request.filter,
-        payload.entries,
-        payload.emptyProjects,
-      );
+      if (subscription) {
+        this.seedWorkspaceSubscriptionSnapshot(
+          subscription,
+          payload.entries,
+          payload.emptyProjects,
+        );
+      }
 
       this.emit({
         type: "fetch_workspaces_response",
@@ -10120,13 +6527,12 @@ export class Session {
         },
       });
 
-      if (subscriptionId && this.workspaceUpdatesSubscription?.subscriptionId === subscriptionId) {
-        this.flushBootstrappedWorkspaceUpdates(snapshot);
+      if (subscription) {
+        await this.reconcileWorkspaceGitObservers();
+        this.flushBootstrappedWorkspaceUpdates(subscription, snapshot);
       }
     } catch (error) {
-      if (subscriptionId && this.workspaceUpdatesSubscription?.subscriptionId === subscriptionId) {
-        this.workspaceUpdatesSubscription = null;
-      }
+      await owner?.release();
       const code = error instanceof SessionRequestError ? error.code : "fetch_workspaces_failed";
       const message = error instanceof Error ? error.message : "Failed to fetch workspaces";
       this.sessionLogger.error({ err: error }, "Failed to handle fetch_workspaces_request");
@@ -10154,7 +6560,6 @@ export class Session {
       const synchronized = request.sync
         ? this.directorySync.synchronizeProjects(projects, request.sync)
         : null;
-      if (synchronized) this.projectSyncEnabled = true;
       this.emit({
         type: "project.list.response",
         payload: {
@@ -10201,70 +6606,57 @@ export class Session {
   private async handleWorkspaceLabelList(
     request: Extract<SessionInboundMessage, { type: "workspace.label.list.request" }>,
   ): Promise<void> {
-    const owner = {};
+    const service = this.requireWorkspaceLabels();
+    if (!request.subscribe) {
+      this.emit({
+        type: "workspace.label.list.response",
+        payload: { requestId: request.requestId, ...(await service.list(request.sync)) },
+      });
+      return;
+    }
+    let bootstrap: ReturnType<typeof service.subscribe> | undefined;
+    const owner = this.delivery.begin("labels", request.subscribe.subscriptionId, async () => {
+      await bootstrap?.then(
+        (subscription) => subscription.unsubscribe(),
+        () => undefined,
+      );
+    });
     try {
-      this.workspaceLabelSubscription?.unsubscribe();
-      this.workspaceLabelSubscription = {
-        owner,
-        id: request.subscribe.subscriptionId,
-        unsubscribe: () => undefined,
-      };
-      const service = this.requireWorkspaceLabels();
       type LiveChange = Parameters<Parameters<typeof service.subscribe>[0]["onChange"]>[0];
-      const pending: LiveChange[] = [];
+      const pending = new Map<string, LiveChange>();
       let ready = false;
       const emitChange = (change: LiveChange): void => {
-        this.emit({
+        owner.emit({
           type: "workspace.label.update",
-          payload:
-            change.kind === "upsert"
-              ? {
-                  kind: "upsert",
-                  label: change.label,
-                  ...(change.previousName ? { previousName: change.previousName } : {}),
-                  generation: change.generation,
-                  seq: change.seq,
-                }
-              : {
-                  kind: "remove",
-                  name: change.name,
-                  generation: change.generation,
-                  seq: change.seq,
-                },
+          payload: change,
         });
       };
-      const subscription = await service.subscribe({
+      bootstrap = service.subscribe({
         cursor: request.sync,
         onChange: (change) => {
-          if (this.workspaceLabelSubscription?.owner !== owner) return;
-          if (!ready) pending.push(change);
+          if (owner.signal.aborted) return;
+          if (!ready)
+            pending.set(change.kind === "upsert" ? change.label.name : change.name, change);
           else emitChange(change);
         },
       });
-      const ownsSubscription = this.workspaceLabelSubscription?.owner === owner;
-      if (ownsSubscription) {
-        this.workspaceLabelSubscription = {
-          owner,
-          id: request.subscribe.subscriptionId,
-          unsubscribe: subscription.unsubscribe,
-        };
-      } else {
-        subscription.unsubscribe();
-      }
+      const subscription = await bootstrap;
+      if (owner.signal.aborted) return;
       this.emit({
         type: "workspace.label.list.response",
-        payload: { requestId: request.requestId, ...subscription.snapshot },
+        payload: {
+          requestId: request.requestId,
+          subscriptionId: owner.responseId,
+          ...subscription.snapshot,
+        },
       });
       ready = true;
-      if (ownsSubscription) {
-        for (const change of pending) {
-          if (change.seq > subscription.snapshot.sync.headSeq) emitChange(change);
-        }
+      for (const change of pending.values()) {
+        if (change.seq > subscription.snapshot.sync.headSeq) emitChange(change);
       }
+      pending.clear();
     } catch (error) {
-      if (this.workspaceLabelSubscription?.owner === owner) {
-        this.workspaceLabelSubscription = null;
-      }
+      await owner.release();
       this.emitWorkspaceLabelError(request, error);
     }
   }
@@ -10338,24 +6730,41 @@ export class Session {
     }
     const snapshot = await this.listFetchAgentsEntries({
       ...request,
+      includeBackground: true,
       page: { limit: Number.MAX_SAFE_INTEGER },
     });
-    return this.directorySync.synchronizeAgents(snapshot.entries, request.sync ?? {});
+    const result = this.directorySync.synchronizeAgents(
+      snapshot.entries,
+      request.sync ?? {},
+      request.includeBackground,
+    );
+    const entries = await Promise.all(
+      result.entries.map(async (entry) =>
+        (await this.agentDirectory.includes(entry.agent, request.includeBackground)) ? entry : null,
+      ),
+    );
+    return { ...result, entries: entries.filter((entry) => entry !== null) };
   }
 
   private async readWorkspaceDirectorySync(
     request: Extract<SessionInboundMessage, { type: "fetch_workspaces_request" }>,
   ) {
-    if (request.filter) {
+    if (request.filter)
       throw new SessionRequestError(
         "invalid_request",
         "Sequenced workspace directory reads do not support filters.",
       );
-    }
-    return this.directorySync.synchronizeWorkspaces(
+    const result = this.directorySync.synchronizeWorkspaces(
       await this.workspaceDirectory.listDescriptors(),
       request.sync ?? {},
+      request.includeBackground,
     );
+    return {
+      ...result,
+      entries: result.entries.filter(
+        (workspace) => request.includeBackground || !workspace.background,
+      ),
+    };
   }
 
   // Build the bootstrap snapshot used by `flushBootstrappedWorkspaceUpdates`
@@ -10385,23 +6794,27 @@ export class Session {
     return { snapshotByWorkspaceId };
   }
 
-  /**
-   * An import lands in the workspace it was requested from. A chat tab already
-   * has one, and minting a sibling workspace for the same folder is what used to
-   * leave a duplicate in the sidebar with the imported chat orphaned onto it.
-   * Requests with no workspace context (the home screen) resolve by directory,
-   * which reuses an existing workspace for that folder instead of adding one.
-   */
+  private async reconcileWorkspaceGitObservers(): Promise<void> {
+    const all = this.wantsEvent("checkout_status_update")
+      ? await this.workspaceDirectory.listObservationTargets()
+      : [];
+    const entries = [...this.workspaceUpdatesSubscriptions.values()].flatMap((subscription) =>
+      [...subscription.lastEmittedByWorkspaceId.values()].flatMap((update) =>
+        update.kind === "upsert" ? [update.workspace] : [],
+      ),
+    );
+    this.workspaceGitObserver.reconcileObservers(
+      this.wantsEvent("checkout_status_update") ? [...entries, ...all] : entries,
+    );
+  }
+
   private seedWorkspaceSubscriptionSnapshot(
-    subscriptionId: string | null,
-    filter: FetchWorkspacesRequestFilter | undefined,
+    subscription: WorkspaceUpdatesSubscriptionState,
     entries: FetchWorkspacesResponseEntry[],
     emptyProjects: WorkspaceProjectDescriptorPayload[],
   ): void {
-    const subscription = this.workspaceUpdatesSubscription;
-    if (!subscription) return;
-    if (subscriptionId && subscription.subscriptionId !== subscriptionId) return;
-    if (!subscriptionId && !equal(subscription.filter, filter)) return;
+    if (this.workspaceUpdatesSubscriptions.get(subscription.subscriptionId) !== subscription)
+      return;
     for (const entry of entries) {
       subscription.lastEmittedByWorkspaceId.set(entry.id, {
         kind: "upsert",
@@ -10428,69 +6841,48 @@ export class Session {
     }
   }
 
-  private async handleWorkspaceCreateRequest(
+  private getCallerWorkspaceId(callerAgentId?: string): string | undefined {
+    if (!callerAgentId) return undefined;
+    const caller = this.agentManager.getAgent(callerAgentId);
+    if (!caller) throw new Error(`Caller agent ${callerAgentId} not found`);
+    return caller.workspaceId;
+  }
+
+  private async createRequestedWorkspace(
     request: Extract<SessionInboundMessage, { type: "workspace.create.request" }>,
-  ): Promise<void> {
-    try {
-      if (this.pluginRuntime) {
-        const { type, requestId, ...input } = request;
-        const transformed = await this.pluginRuntime.before("workspace.create", input);
-        request = { ...transformed, type, requestId };
-      }
-      if (request.source.kind === "directory") {
-        await this.handleWorkspaceCreateLocal(request);
-        return;
-      }
-      await this.handleWorkspaceCreateWorktree(request);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to create workspace";
-      this.sessionLogger.error(
-        { err: error, sourceKind: request.source.kind, requestId: request.requestId },
-        "Failed to create workspace",
+    workspaceId?: string,
+  ): Promise<WorkspaceDescriptorPayload> {
+    if (request.internal)
+      throw new Error(
+        "Public internal workspaces were removed; use background workspace creation.",
       );
-      // One code, resolved once: the occupied-directory branch used to be spread
-      // ahead of a bare `errorCode`, so the provisioning code (undefined here)
-      // overwrote it and clients never saw workspace_directory_occupied.
-      let errorCode: string | undefined;
-      if (error instanceof WorkspaceDirectoryOccupiedError) {
-        errorCode = "workspace_directory_occupied";
-      } else if (error instanceof WorkspaceProvisioningError) {
-        errorCode = error.code;
-      }
-      this.emit({
-        type: "workspace.create.response",
-        payload: {
-          requestId: request.requestId,
-          workspace: null,
-          setupTerminalId: null,
-          error: message,
-          errorCode,
-        },
-      });
+    if (request.agent?.background !== undefined)
+      throw new Error("Configure background on the workspace, not its initial agent.");
+    let creationRequest = request;
+    // Hooks belong to the operation: retries fingerprint the caller's input
+    // and must not rerun hooks or compare their potentially changing output.
+    if (this.pluginRuntime) {
+      const { type, requestId, ...input } = request;
+      const transformed = await this.pluginRuntime.before("workspace.create", input);
+      creationRequest = { ...transformed, type, requestId };
     }
+    return creationRequest.source.kind === "directory"
+      ? this.handleWorkspaceCreateLocal(creationRequest, workspaceId)
+      : this.handleWorkspaceCreateWorktree(creationRequest, workspaceId);
   }
 
   private async handleWorkspaceCreateLocal(
     request: Extract<SessionInboundMessage, { type: "workspace.create.request" }>,
-  ): Promise<void> {
+    workspaceId?: string,
+  ): Promise<WorkspaceDescriptorPayload> {
     if (request.source.kind !== "directory") {
-      return;
+      throw new Error("Unexpected workspace source");
     }
 
     const cwd = expandTilde(request.source.path);
     const directoryExists = await this.filesystem.isDirectory(cwd).catch(() => false);
     if (!directoryExists) {
-      this.emit({
-        type: "workspace.create.response",
-        payload: {
-          requestId: request.requestId,
-          workspace: null,
-          setupTerminalId: null,
-          error: `Directory not found: ${cwd}`,
-          errorCode: "directory_not_found",
-        },
-      });
-      return;
+      throw new SessionRequestError("directory_not_found", `Directory not found: ${cwd}`);
     }
 
     const explicitTitle = request.title?.trim() || null;
@@ -10499,19 +6891,15 @@ export class Session {
       cwd,
       explicitTitle ?? promptTitle,
       request.source.projectId,
-      { expectsInitialAgent: Boolean(request.firstAgentContext), rejectIfOccupied: true },
+      {
+        expectsInitialAgent: Boolean(request.firstAgentContext),
+        workspaceId,
+        background: request.background,
+        callerWorkspaceId: this.getCallerWorkspaceId(request.callerAgentId),
+      },
     );
     await this.syncWorkspaceGitObserverForWorkspace(workspace);
     const descriptor = await this.describeWorkspaceRecord(workspace);
-    this.emit({
-      type: "workspace.create.response",
-      payload: {
-        requestId: request.requestId,
-        workspace: descriptor,
-        setupTerminalId: null,
-        error: null,
-      },
-    });
     await this.emitCreatedWorkspaceUpdate(
       descriptor,
       request.firstAgentContext ? "running" : undefined,
@@ -10535,36 +6923,32 @@ export class Session {
         { currentSelection: this.getFocusedAgentSelectionForCwd(workspace.cwd) },
       );
     }
+    return descriptor;
   }
 
   private async handleWorkspaceCreateWorktree(
     request: Extract<SessionInboundMessage, { type: "workspace.create.request" }>,
-  ): Promise<void> {
+    workspaceId?: string,
+  ): Promise<WorkspaceDescriptorPayload> {
     if (request.source.kind !== "worktree") {
-      return;
+      throw new Error("Unexpected workspace source");
     }
 
     const source = request.source;
 
     if (!source.cwd && !source.projectId) {
-      this.emit({
-        type: "workspace.create.response",
-        payload: {
-          requestId: request.requestId,
-          workspace: null,
-          setupTerminalId: null,
-          error: "cwd or projectId is required for a worktree-backed workspace",
-          errorCode: "source_required",
-        },
-      });
-      return;
+      throw new SessionRequestError(
+        "source_required",
+        "cwd or projectId is required for a worktree-backed workspace",
+      );
     }
 
     const sourceCwd = await resolveWorktreeSourceCwd(source, this.projectRegistry);
 
-    const result = await this.createOttoWorktreeWorkflow(
+    const result = await this.createPaseoWorktreeWorkflow(
       {
         cwd: sourceCwd,
+        workspaceId,
         projectId: source.projectId,
         worktreeSlug: source.worktreeSlug,
         action: source.action,
@@ -10574,6 +6958,8 @@ export class Session {
         githubPrNumber: source.githubPrNumber,
         firstAgentContext: request.firstAgentContext,
         title: request.title,
+        background: request.background,
+        callerWorkspaceId: this.getCallerWorkspaceId(request.callerAgentId),
       },
       source.baseBranch
         ? { resolveDefaultBranch: async () => source.baseBranch as string }
@@ -10581,26 +6967,11 @@ export class Session {
     );
 
     const descriptor = await this.describeCreatedWorktreeWorkspace(result);
-    this.emit({
-      type: "workspace.create.response",
-      payload: {
-        requestId: request.requestId,
-        workspace: descriptor,
-        setupTerminalId: null,
-        ...(result.workspace.untrustedSource
-          ? {
-              setupSkippedReason: formatWorkspaceAutomationBlockedMessage(
-                result.workspace.untrustedSource,
-              ),
-            }
-          : {}),
-        error: null,
-      },
-    });
     await this.emitCreatedWorkspaceUpdate(
       descriptor,
       request.firstAgentContext ? "running" : undefined,
     );
+    return descriptor;
   }
 
   private async handleOpenProjectRequest(
@@ -10753,22 +7124,6 @@ export class Session {
         },
       });
     }
-  }
-
-  private async handleProjectResolveWorkspaceForPathRequest(
-    request: Extract<SessionInboundMessage, { type: "project.resolveWorkspaceForPath.request" }>,
-  ): Promise<void> {
-    const workspaceId = resolveWorkspaceIdForPath(
-      request.path,
-      await this.workspaceRegistry.list(),
-    );
-    this.emit({
-      type: "project.resolveWorkspaceForPath.response",
-      payload: {
-        requestId: request.requestId,
-        workspaceId,
-      },
-    });
   }
 
   private async handleProjectCreateDirectoryRequest(
@@ -10924,7 +7279,7 @@ export class Session {
         }
       }
 
-      const cloneStagingPath = await mkdtemp(resolve(targetParent, ".otto-clone-"));
+      const cloneStagingPath = await mkdtemp(resolve(targetParent, ".paseo-clone-"));
       try {
         await runGitCommand(["clone", repo.cloneUrl, cloneStagingPath], {
           cwd: targetParent,
@@ -10992,10 +7347,7 @@ export class Session {
     request: WorkspaceScriptListRequest,
   ): Promise<void> {
     try {
-      const scripts = await this.workspaceScripts.list({
-        workspaceId: request.workspaceId,
-        includeDiscovered: request.includeDiscovered,
-      });
+      const scripts = await this.workspaceScripts.list(request.workspaceId);
       this.emit({
         type: "workspace.script.list.response",
         payload: {
@@ -11102,35 +7454,35 @@ export class Session {
     });
   }
 
-  private async handleCreateOttoWorktreeRequest(
-    request: Extract<SessionInboundMessage, { type: "create_otto_worktree_request" }>,
+  private async handleCreatePaseoWorktreeRequest(
+    request: Extract<SessionInboundMessage, { type: "create_paseo_worktree_request" }>,
   ): Promise<void> {
     return handleCreateWorktreeRequest(
       {
-        ottoHome: this.ottoHome,
+        paseoHome: this.paseoHome,
         worktreesRoot: this.worktreesRoot,
         describeWorkspaceRecord: (result) => this.describeCreatedWorktreeWorkspace(result),
         emit: (message) => this.emit(message),
         sessionLogger: this.sessionLogger,
-        createOttoWorktreeWorkflow: (input) => this.createOttoWorktreeWorkflow(input),
+        createPaseoWorktreeWorkflow: (input) => this.createPaseoWorktreeWorkflow(input),
       },
       request,
     );
   }
 
-  private async createOttoWorktreeWorkflow(
-    input: CreateOttoWorktreeInput,
+  private async createPaseoWorktreeWorkflow(
+    input: CreatePaseoWorktreeInput,
     options?: {
       resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
-      setupContinuation?: CreateOttoWorktreeSetupContinuationInput;
+      setupContinuation?: CreatePaseoWorktreeSetupContinuationInput;
     },
-  ): Promise<CreateOttoWorktreeWorkflowResult> {
+  ): Promise<CreatePaseoWorktreeWorkflowResult> {
     return createWorktreeWorkflow(
       {
-        ottoHome: this.ottoHome,
+        paseoHome: this.paseoHome,
         worktreesRoot: this.worktreesRoot,
-        createOttoWorktree: (workflowInput, serviceOptions) =>
-          this.createOttoWorktree(workflowInput, serviceOptions),
+        createPaseoWorktree: (workflowInput, serviceOptions) =>
+          this.createPaseoWorktree(workflowInput, serviceOptions),
         warmWorkspaceGitData: (workspace) => this.warmWorkspaceGitDataForWorkspace(workspace),
         autoNameWorkspaceBranchForFirstAgent: (autoNameInput) =>
           this.workspaceAutoName.scheduleForWorktree(autoNameInput, {
@@ -11148,7 +7500,6 @@ export class Session {
         emit: (message) => this.emit(message),
         sessionLogger: this.sessionLogger,
         terminalManager: this.terminalManager,
-        archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
         serviceProxy: this.serviceProxy,
         scriptRuntimeStore: this.scriptRuntimeStore,
         getDaemonTcpPort: this.getDaemonTcpPort,
@@ -11186,7 +7537,7 @@ export class Session {
           clearWorkspaceAutomationBlock(this.workspaceRegistry, workspaceId),
         startWorkspaceSetup: (workspaceId, operation) =>
           this.workspaceSetupRuntime.start(workspaceId, operation),
-        ottoHome: this.ottoHome,
+        paseoHome: this.paseoHome,
         worktreesRoot: this.worktreesRoot,
         emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>
           this.emitWorkspaceUpdateForWorkspaceId(workspaceId),
@@ -11195,7 +7546,6 @@ export class Session {
         emit: (message) => this.emit(message),
         sessionLogger: this.sessionLogger,
         terminalManager: this.terminalManager,
-        archiveWorkspaceRecord: (workspaceId) => this.archiveWorkspaceRecord(workspaceId),
         serviceProxy: this.serviceProxy,
         scriptRuntimeStore: this.scriptRuntimeStore,
         getDaemonTcpPort: this.getDaemonTcpPort,
@@ -11217,41 +7567,12 @@ export class Session {
         throw new Error(`Workspace not found: ${request.workspaceId}`);
       }
 
-      const gitSnapshot = await this.workspaceGitService
-        .getSnapshot(existing.cwd)
-        .catch(() => null);
-      const repoRoot = gitSnapshot?.git?.repoRoot ?? null;
-
-      // Resolve the leftover branch to delete before teardown removes the
-      // worktree. The client only asks for "delete" after preflight showed the
-      // branch is an Otto-owned, deletable one; re-check ownership here so a
-      // stale or crafted request can never delete a branch we don't own.
-      let branchCleanup: { branchName: string } | null = null;
-      if (request.branchDisposition === "delete" && repoRoot) {
-        const detection = await detectWorktreeArchiveBranch({
-          cwd: existing.cwd,
-          repoRoot,
-          ottoHome: this.ottoHome,
-          worktreesRoot: this.worktreesRoot,
-          directoryWillBeRemoved: true,
-        }).catch(() => null);
-        if (
-          detection?.isOttoWorktree &&
-          detection.branchName &&
-          !detection.branchCheckedOutElsewhere
-        ) {
-          branchCleanup = { branchName: detection.branchName };
-        }
-      }
-
-      const archiveResult = await archiveByScope(
+      await archiveByScope(
         {
-          ottoHome: this.ottoHome,
-          ottoWorktreesBaseRoot: this.worktreesRoot,
+          paseoHome: this.paseoHome,
+          paseoWorktreesBaseRoot: this.worktreesRoot,
           github: this.github,
           workspaceGitService: this.workspaceGitService,
-          removeWorkspaceObserverForWorkspaceId: (workspaceId) =>
-            this.workspaceGitObserver.removeForWorkspaceId(workspaceId),
           agentManager: this.agentManager,
           agentStorage: this.agentStorage,
           findWorkspaceIdForCwd: (cwd) => this.findWorkspaceIdForCwd(cwd),
@@ -11263,17 +7584,15 @@ export class Session {
           markWorkspaceArchiving: (workspaceIds, archivingAt) =>
             this.markWorkspaceArchiving(workspaceIds, archivingAt),
           clearWorkspaceArchiving: (workspaceIds) => this.clearWorkspaceArchiving(workspaceIds),
+          assertWorkspaceAutomationAllowed: (workspaceId) =>
+            assertWorkspaceAutomationAllowedForWorkspace(this.workspaceRegistry, workspaceId),
           killTerminalsForWorkspace: (workspaceId) =>
             this.terminalController.killTerminalsForWorkspace(workspaceId),
-          stopLanguageServers: (rootPath) => this.stopWorkspaceProcesses(rootPath),
           stopWorkspaceSetup: (workspaceId) => this.workspaceSetupRuntime.stop(workspaceId),
           sessionLogger: this.sessionLogger,
         },
         {
           scope: { kind: "workspace", workspaceId: existing.workspaceId },
-          repoRoot,
-          ottoWorktreesBaseRoot: this.worktreesRoot,
-          branchCleanup,
           requestId: request.requestId,
         },
       );
@@ -11287,7 +7606,6 @@ export class Session {
           workspaceId: request.workspaceId,
           archivedAt,
           error: null,
-          deletedBranch: archiveResult.deletedBranch,
         },
       });
     } catch (error) {
@@ -11308,276 +7626,6 @@ export class Session {
     }
   }
 
-  private async handleWorkspaceArchivePreflightRequest(
-    request: Extract<SessionInboundMessage, { type: "workspace.archive.preflight.request" }>,
-  ): Promise<void> {
-    try {
-      const existing = await this.workspaceRegistry.get(request.workspaceId);
-      if (!existing) {
-        throw new Error(`Workspace not found: ${request.workspaceId}`);
-      }
-
-      const gitSnapshot = await this.workspaceGitService
-        .getSnapshot(existing.cwd)
-        .catch(() => null);
-      const repoRoot = gitSnapshot?.git?.repoRoot ?? null;
-
-      // The backing directory is removed only when no other active workspace
-      // still references it - the same last-reference rule archiveByScope applies.
-      const targetDir = resolve(existing.cwd);
-      const activeWorkspaces = await this.listActiveWorkspaceRefs();
-      const directoryWillBeRemoved = !activeWorkspaces.some(
-        (workspace) =>
-          workspace.workspaceId !== existing.workspaceId && resolve(workspace.cwd) === targetDir,
-      );
-
-      const detection = await detectWorktreeArchiveBranch({
-        cwd: existing.cwd,
-        repoRoot,
-        ottoHome: this.ottoHome,
-        worktreesRoot: this.worktreesRoot,
-        directoryWillBeRemoved,
-      });
-
-      this.emit({
-        type: "workspace.archive.preflight.response",
-        payload: {
-          requestId: request.requestId,
-          workspaceId: request.workspaceId,
-          detection,
-          error: null,
-        },
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to inspect workspace for archive";
-      this.sessionLogger.warn(
-        { err: error, workspaceId: request.workspaceId },
-        "Workspace archive preflight failed",
-      );
-      this.emit({
-        type: "workspace.archive.preflight.response",
-        payload: {
-          requestId: request.requestId,
-          workspaceId: request.workspaceId,
-          detection: null,
-          error: message,
-        },
-      });
-    }
-  }
-
-  private async handleWorktreeBaseRefSetRequest(
-    request: Extract<SessionInboundMessage, { type: "worktree.baseRef.set.request" }>,
-  ): Promise<void> {
-    try {
-      const existing = await this.workspaceRegistry.get(request.workspaceId);
-      if (!existing) {
-        throw new Error(`Workspace not found: ${request.workspaceId}`);
-      }
-
-      const result = await setCheckoutBaseRef(
-        existing.cwd,
-        request.baseRef,
-        {
-          ottoHome: this.ottoHome,
-          worktreesRoot: this.worktreesRoot,
-          logger: this.sessionLogger,
-        },
-        request.redetect ? { redetect: true } : undefined,
-      );
-
-      this.emit({
-        type: "worktree.baseRef.set.response",
-        payload: {
-          requestId: request.requestId,
-          workspaceId: request.workspaceId,
-          baseRef: result.baseRef,
-          isDefault: result.isDefault,
-          baseSource: result.source,
-          error: null,
-        },
-      });
-
-      // The stored base feeds ahead/behind, shortstat and the diff, so the snapshot
-      // the client is holding is stale the moment the write lands.
-      void this.workspaceGitService
-        .getSnapshot(existing.cwd, {
-          force: true,
-          reason: "worktree.baseRef.set",
-        })
-        .catch((error) => {
-          this.sessionLogger.warn(
-            { err: error, cwd: existing.cwd },
-            "Background snapshot refresh failed after base branch change",
-          );
-        });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to set base branch";
-      this.sessionLogger.warn(
-        { err: error, workspaceId: request.workspaceId },
-        "Worktree base branch change failed",
-      );
-      this.emit({
-        type: "worktree.baseRef.set.response",
-        payload: {
-          requestId: request.requestId,
-          workspaceId: request.workspaceId,
-          baseRef: null,
-          isDefault: false,
-          error: message,
-        },
-      });
-    }
-  }
-
-  private async handleWorktreeReattachListRequest(
-    request: Extract<SessionInboundMessage, { type: "worktree.reattach.list.request" }>,
-  ): Promise<void> {
-    try {
-      const scope = await this.resolveReattachScope(request);
-      const onDiskWorktrees = await this.listReattachOnDiskWorktrees(scope.repoRoot);
-      const candidates = buildReattachCandidates({
-        worktreeWorkspaces: scope.worktreeWorkspaces,
-        onDiskWorktrees,
-      });
-      this.emit({
-        type: "worktree.reattach.list.response",
-        payload: { requestId: request.requestId, candidates, error: null },
-      });
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to list re-attachable worktrees";
-      this.sessionLogger.warn({ err: error }, "Worktree reattach list failed");
-      this.emit({
-        type: "worktree.reattach.list.response",
-        payload: { requestId: request.requestId, candidates: [], error: message },
-      });
-    }
-  }
-
-  private async listReattachOnDiskWorktrees(
-    repoRoot: string,
-  ): Promise<{ path: string; branchName: string | null }[]> {
-    try {
-      const worktrees = await this.workspaceGitService.listWorktrees(repoRoot);
-      return worktrees.map((entry) => ({ path: entry.path, branchName: entry.branchName ?? null }));
-    } catch {
-      return [];
-    }
-  }
-
-  // Resolve which project's worktrees a reattach-list request is scoped to. The
-  // client normally passes projectId (the sidebar project row); cwd is a fallback
-  // that resolves the repo root and matches a project by rootPath.
-  private async resolveReattachScope(request: {
-    projectId?: string;
-    cwd?: string;
-  }): Promise<{ repoRoot: string; worktreeWorkspaces: PersistedWorkspaceRecord[] }> {
-    const allWorkspaces = await this.workspaceRegistry.list();
-    if (request.projectId) {
-      const project = await this.projectRegistry.get(request.projectId);
-      if (!project) {
-        throw new Error(`Project not found: ${request.projectId}`);
-      }
-      return {
-        repoRoot: project.rootPath,
-        worktreeWorkspaces: allWorkspaces.filter(
-          (workspace) => workspace.projectId === project.projectId && workspace.kind === "worktree",
-        ),
-      };
-    }
-    if (request.cwd) {
-      const snapshot = await this.workspaceGitService.getSnapshot(request.cwd).catch(() => null);
-      const repoRoot =
-        snapshot?.git?.mainRepoRoot ?? snapshot?.git?.repoRoot ?? resolve(request.cwd);
-      const projects = await this.projectRegistry.list();
-      const project = projects.find(
-        (candidate) => resolve(candidate.rootPath) === resolve(repoRoot),
-      );
-      return {
-        repoRoot,
-        worktreeWorkspaces: project
-          ? allWorkspaces.filter(
-              (workspace) =>
-                workspace.projectId === project.projectId && workspace.kind === "worktree",
-            )
-          : [],
-      };
-    }
-    throw new Error("projectId or cwd is required to list re-attachable worktrees");
-  }
-
-  private async handleWorktreeReattachRequest(
-    request: Extract<SessionInboundMessage, { type: "worktree.reattach.request" }>,
-  ): Promise<void> {
-    try {
-      const workspace = await this.reattachWorktreeTarget(request.target);
-      // Warm the git snapshot so the returned descriptor carries the live branch
-      // and dirty state the sidebar renders on first paint.
-      await this.workspaceGitService
-        .getSnapshot(workspace.cwd, { force: true, reason: "reattach-worktree" })
-        .catch(() => null);
-      const descriptor = await this.describeWorkspaceRecordWithGitData(workspace);
-      this.emit({ type: "workspace_update", payload: { kind: "upsert", workspace: descriptor } });
-      this.emit({
-        type: "worktree.reattach.response",
-        payload: { requestId: request.requestId, workspace: descriptor, error: null },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to re-attach worktree";
-      this.sessionLogger.warn({ err: error }, "Worktree reattach failed");
-      this.emit({
-        type: "worktree.reattach.response",
-        payload: { requestId: request.requestId, workspace: null, error: message },
-      });
-    }
-  }
-
-  private async reattachWorktreeTarget(
-    target: Extract<SessionInboundMessage, { type: "worktree.reattach.request" }>["target"],
-  ): Promise<PersistedWorkspaceRecord> {
-    if (target.kind === "workspace") {
-      const workspace = await this.workspaceRegistry.get(target.workspaceId);
-      if (!workspace) {
-        throw new Error(`Workspace not found: ${target.workspaceId}`);
-      }
-      if (!workspace.archivedAt) {
-        // Already live - reattach is idempotent.
-        return workspace;
-      }
-      const restored = await this.restoreArchivedWorkspaceRecord(workspace);
-      if (!restored) {
-        throw new Error(
-          "Workspace cannot be re-attached: its worktree directory is gone and no branch was kept to recreate it",
-        );
-      }
-      return restored;
-    }
-
-    // Orphan: an on-disk Otto worktree with no live workspace. Bind a fresh
-    // workspace to the existing directory through the explicit source-project
-    // placement owner, without redirecting ordinary directory opens.
-    const ownership = await isOttoOwnedWorktreeCwd(target.worktreePath, {
-      ottoHome: this.ottoHome,
-      worktreesRoot: this.worktreesRoot,
-    });
-    if (!ownership.allowed) {
-      throw new Error("Not a Otto-owned worktree");
-    }
-    const directoryExists = await this.filesystem
-      .isDirectory(target.worktreePath)
-      .catch(() => false);
-    if (!directoryExists) {
-      throw new Error("Worktree directory no longer exists");
-    }
-    return this.workspaceProvisioning.reattachOwnedWorktreeForDirectory({
-      cwd: target.worktreePath,
-      repoRoot: ownership.repoRoot,
-      projectId: target.projectId,
-    });
-  }
-
   private async handleWorkspaceClearAttentionRequest(
     request: Extract<SessionInboundMessage, { type: "workspace.clear_attention.request" }>,
   ): Promise<void> {
@@ -11585,7 +7633,7 @@ export class Session {
     const requestedWorkspaceIds = Array.isArray(workspaceId) ? workspaceId : [workspaceId];
     let agents: AgentSnapshotPayload[];
     try {
-      agents = await this.listAgentPayloads();
+      agents = await this.listAgentPayloads({ includeBackground: true });
     } catch (error) {
       const message = getErrorMessage(error);
       const results = requestedWorkspaceIds.map((requestedWorkspaceId) => ({
@@ -11623,7 +7671,7 @@ export class Session {
         }
 
         // Clearing attention is scoped to the workspace that OWNS the agent, by
-        // workspaceId - never by comparing cwd strings. A sibling workspace
+        // workspaceId — never by comparing cwd strings. A sibling workspace
         // sharing the same directory keeps its own agents' attention.
         const clearableAgentIds = agents
           .filter((agent) => !agent.archivedAt)
@@ -11725,7 +7773,7 @@ export class Session {
         throw new Error(`Workspace not found: ${workspaceId}`);
       }
 
-      const agents = (await this.listAgentPayloads()).filter((agent) =>
+      const agents = (await this.listAgentPayloads({ includeBackground: true })).filter((agent) =>
         this.isProviderVisibleToClient(agent.provider),
       );
       const agentsById = new Map(agents.map((agent) => [agent.id, agent] as const));
@@ -11773,11 +7821,17 @@ export class Session {
   }
 
   private async handleFetchAgent(agentIdOrIdentifier: string, requestId: string): Promise<void> {
+    // An unknown agent is a null agent, not an error. Errors are for empty or ambiguous identifiers.
     const resolved = await this.resolveAgentIdentifier(agentIdOrIdentifier);
     if (!resolved.ok) {
       this.emit({
         type: "fetch_agent_response",
-        payload: { requestId, agent: null, project: null, error: resolved.error },
+        payload: {
+          requestId,
+          agent: null,
+          project: null,
+          error: resolved.notFound ? null : resolved.error,
+        },
       });
       return;
     }
@@ -11786,12 +7840,7 @@ export class Session {
     if (!agent) {
       this.emit({
         type: "fetch_agent_response",
-        payload: {
-          requestId,
-          agent: null,
-          project: null,
-          error: `Agent not found: ${resolved.agentId}`,
-        },
+        payload: { requestId, agent: null, project: null, error: null },
       });
       return;
     }
@@ -11805,105 +7854,12 @@ export class Session {
     });
   }
 
-  private shouldUseFullTimelineForProjectedPage(input: {
-    timeline: AgentTimelineFetchResult;
-    pageLimit: number;
-  }): boolean {
-    const { timeline } = input;
-    if (timeline.rows.length === 0) return false;
-
-    if (timeline.rows.some((row) => row.item.type === "tool_call")) return true;
-
-    const firstRow = timeline.rows[0];
-    if (
-      timeline.hasOlder &&
-      (firstRow?.item.type === "assistant_message" || firstRow?.item.type === "reasoning")
-    ) {
-      return true;
-    }
-
-    const lastRow = timeline.rows.at(-1);
-    if (
-      timeline.hasNewer &&
-      (lastRow?.item.type === "assistant_message" || lastRow?.item.type === "reasoning")
-    ) {
-      return true;
-    }
-
-    if (!timeline.hasNewer || input.pageLimit === 0) return false;
-    return projectTimelineRows({ rows: timeline.rows, mode: "projected" }).length < input.pageLimit;
-  }
-
-  private selectCanonicalTimelineProjection(input: {
-    timeline: AgentTimelineFetchResult;
-  }): AgentTimelineProjectionSelection {
-    const entries = projectTimelineRows({ rows: input.timeline.rows, mode: "canonical" });
-    return {
-      timeline: input.timeline,
-      entries,
-      startSeq: entries[0]?.seqStart ?? null,
-      endSeq: entries[entries.length - 1]?.seqEnd ?? null,
-      hasOlder: input.timeline.hasOlder,
-      hasNewer: input.timeline.hasNewer,
-    };
-  }
-
-  private selectProjectedTimelineProjection(input: {
-    agentId: string;
-    controlTimeline: AgentTimelineFetchResult;
-    direction: AgentTimelineFetchDirection;
-    cursor?: AgentTimelineCursor;
-    pageLimit: number;
-    fullTimeline?: AgentTimelineFetchResult;
-  }): AgentTimelineProjectionSelection {
-    const selectedTimeline = this.shouldUseFullTimelineForProjectedPage({
-      timeline: input.controlTimeline,
-      pageLimit: input.pageLimit,
-    })
-      ? (input.fullTimeline ??
-        this.agentManager.fetchTimeline(input.agentId, { direction: "tail", limit: 0 }))
-      : input.controlTimeline;
-    const page = selectProjectedTimelinePage({
-      rows: selectedTimeline.rows,
-      bounds: selectedTimeline.window,
-      direction: input.controlTimeline.reset ? "tail" : input.direction,
-      ...(input.cursor ? { cursorSeq: input.cursor.seq } : {}),
-      limit: input.pageLimit,
-    });
-
-    return {
-      timeline: selectedTimeline,
-      entries: page.entries,
-      startSeq: page.startSeq,
-      endSeq: page.endSeq,
-      hasOlder:
-        page.hasOlder || (page.startSeq !== null && page.startSeq > selectedTimeline.window.minSeq),
-      hasNewer: page.hasNewer,
-    };
-  }
-
-  private selectTimelineProjection(input: {
-    agentId: string;
-    projection: TimelineProjectionMode;
-    controlTimeline: AgentTimelineFetchResult;
-    direction: AgentTimelineFetchDirection;
-    cursor?: AgentTimelineCursor;
-    pageLimit: number;
-    fullTimeline?: AgentTimelineFetchResult;
-  }): AgentTimelineProjectionSelection {
-    if (input.projection === "canonical") {
-      return this.selectCanonicalTimelineProjection({ timeline: input.controlTimeline });
-    }
-
-    return this.selectProjectedTimelineProjection(input);
-  }
-
   private async handleFetchAgentTimelineRequest(
     msg: Extract<SessionInboundMessage, { type: "fetch_agent_timeline_request" }>,
     source?: object,
   ): Promise<void> {
     const direction: AgentTimelineFetchDirection = msg.direction ?? (msg.cursor ? "after" : "tail");
-    const projection: TimelineProjectionMode = msg.projection ?? "projected";
+    const projection = "projected" as const;
     const requestedLimit = msg.limit;
     const pageLimit = requestedLimit ?? (direction === "after" ? 0 : 200);
     const cursor: AgentTimelineCursor | undefined = msg.cursor
@@ -11914,51 +7870,26 @@ export class Session {
       : undefined;
 
     try {
-      // Observed subagents have no ManagedAgent or stored record; serve their
-      // last emitted snapshot instead. See projects/observed-subagents/observed-subagents.md.
-      const observedPayload = this.agentManager.getObservedSubagentPayload(msg.agentId);
-      // Retained generation transcripts (schedule / artifact) are closed internal
-      // agents: seed their snapshotted rows into the timeline store so fetchTimeline
-      // serves them, and return the stored payload - a pure read, no resume. See
-      // docs/safe-unattended.md.
-      let retainedPayload: AgentSnapshotPayload | null = null;
-      if (
-        !observedPayload &&
-        (await this.agentManager.ensureRetainedTranscriptLoaded(msg.agentId))
-      ) {
-        retainedPayload = await this.agentManager.getRetainedTranscriptPayload(msg.agentId);
-      }
-      const agentPayload =
-        observedPayload ??
-        retainedPayload ??
-        (await this.buildAgentPayload(
-          await ensureAgentLoaded(msg.agentId, {
-            agentManager: this.agentManager,
-            agentStorage: this.agentStorage,
-            logger: this.sessionLogger,
-          }),
-        ));
+      const snapshot = await ensureAgentLoaded(msg.agentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
+      const agentPayload = await this.buildAgentPayload(snapshot);
 
       const fetchedControlTimeline = this.agentManager.fetchTimeline(msg.agentId, {
         direction,
         cursor,
         limit: pageLimit,
       });
-      const selectedTimeline = this.selectTimelineProjection({
-        agentId: msg.agentId,
-        projection,
-        controlTimeline: fetchedControlTimeline,
-        direction,
-        ...(cursor ? { cursor } : {}),
-        pageLimit,
-      });
-      const promptIndex =
-        msg.includePromptIndex === true
-          ? buildTimelinePromptIndex(
-              selectedTimeline.timeline.epoch,
-              await this.agentManager.getTimelineRows(msg.agentId),
-            )
-          : undefined;
+      const selectedTimeline = {
+        timeline: fetchedControlTimeline,
+        entries: fetchedControlTimeline.rows,
+        startSeq: fetchedControlTimeline.startSeq,
+        endSeq: fetchedControlTimeline.endSeq,
+        hasOlder: fetchedControlTimeline.hasOlder,
+        hasNewer: fetchedControlTimeline.hasNewer,
+      };
       const startCursor =
         selectedTimeline.startSeq !== null
           ? { epoch: selectedTimeline.timeline.epoch, seq: selectedTimeline.startSeq }
@@ -11990,10 +7921,9 @@ export class Session {
             hasOlder: selectedTimeline.hasOlder,
             hasNewer: selectedTimeline.hasNewer,
             ...(msg.mergeWindow === true ? { mergeWindow: true } : {}),
-            ...(promptIndex ? { promptIndex } : {}),
             entries: entries.map((entry) => {
               const payloadEntry = {
-                provider: agentPayload.provider,
+                provider: snapshot.provider,
                 item: entry.item,
                 timestamp: entry.timestamp,
                 seqStart: entry.seqStart,
@@ -12012,19 +7942,6 @@ export class Session {
               return payloadEntry;
             }),
             error: null,
-          },
-        },
-        source,
-      );
-      // Live task events alone cannot hydrate a refreshed client. Read after
-      // the awaited timeline load so this reconciliation includes any task
-      // changes during loading; an empty list also clears stale reconnect state.
-      this.emitForSource(
-        {
-          type: "suggested_tasks_changed",
-          payload: {
-            parentAgentId: msg.agentId,
-            tasks: this.agentManager.currentSuggestedTasksFor(msg.agentId),
           },
         },
         source,
@@ -12076,6 +7993,59 @@ export class Session {
       type: "agent.timeline.append.response",
       payload: { requestId: msg.requestId, seq, epoch },
     });
+  }
+
+  private async handleAgentTimelineSearchRequest(
+    msg: Extract<SessionInboundMessage, { type: "agent.timeline.search.request" }>,
+    source?: object,
+  ): Promise<void> {
+    try {
+      await ensureAgentLoaded(msg.agentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
+      const rows = await this.agentManager.getTimelineRows(msg.agentId);
+      const { epoch } = this.agentManager.fetchTimeline(msg.agentId, {
+        direction: "tail",
+        limit: 1,
+      });
+      const result = await searchTimeline({ rows, query: msg.query, cursor: msg.cursor });
+      if (
+        this.agentManager.fetchTimeline(msg.agentId, { direction: "tail", limit: 1 }).epoch !==
+        epoch
+      ) {
+        throw new Error("History changed; search again");
+      }
+      this.emitForSource(
+        {
+          type: "agent.timeline.search.response",
+          payload: {
+            requestId: msg.requestId,
+            agentId: msg.agentId,
+            epoch,
+            ...result,
+            error: null,
+          },
+        },
+        source,
+      );
+    } catch (error) {
+      this.emitForSource(
+        {
+          type: "agent.timeline.search.response",
+          payload: {
+            requestId: msg.requestId,
+            agentId: msg.agentId,
+            epoch: "",
+            locations: [],
+            nextCursor: null,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        },
+        source,
+      );
+    }
   }
 
   private async handleAgentTimelineListPromptsRequest(
@@ -12158,36 +8128,6 @@ export class Session {
     }
   }
 
-  private async handleProviderSubagentControlRequest(
-    msg: Extract<SessionInboundMessage, { type: "agent.provider_subagents.control.request" }>,
-  ): Promise<void> {
-    let error: string | null = null;
-    try {
-      await ensureUnarchivedAgentLoaded(msg.parentAgentId, {
-        agentManager: this.agentManager,
-        agentStorage: this.agentStorage,
-        logger: this.sessionLogger,
-      });
-      await this.agentManager.controlProviderSubagent(
-        msg.parentAgentId,
-        msg.subagentId,
-        msg.action,
-        msg.allowStopParent,
-      );
-    } catch (caught) {
-      error = caught instanceof Error ? caught.message : String(caught);
-    }
-    this.emit({
-      type: "agent.provider_subagents.control.response",
-      payload: {
-        requestId: msg.requestId,
-        parentAgentId: msg.parentAgentId,
-        subagentId: msg.subagentId,
-        error,
-      },
-    });
-  }
-
   private async handleProviderSubagentTimelineRequest(
     msg: Extract<SessionInboundMessage, { type: "agent.provider_subagents.timeline.get.request" }>,
     source?: object,
@@ -12203,6 +8143,10 @@ export class Session {
       if (!descriptor) {
         throw new Error("Provider subagent not found");
       }
+      // COMPAT(projectedSubagentTimeline): added after v0.8.0, remove after 2027-03-14.
+      const supportsProjection = source
+        ? this.supportsForSource(CLIENT_CAPS.projectedSubagentTimeline, source)
+        : this.supports(CLIENT_CAPS.projectedSubagentTimeline);
       const timeline = this.agentManager.fetchProviderSubagentTimeline(
         msg.parentAgentId,
         msg.subagentId,
@@ -12223,17 +8167,37 @@ export class Session {
             provider: descriptor.provider,
             direction,
             epoch: timeline.epoch,
+            projection: "projected",
+            startCursor:
+              timeline.startSeq === null ? null : { epoch: timeline.epoch, seq: timeline.startSeq },
+            endCursor:
+              timeline.endSeq === null ? null : { epoch: timeline.epoch, seq: timeline.endSeq },
             reset: timeline.reset,
             staleCursor: timeline.staleCursor,
             gap: timeline.gap,
             window: timeline.window,
-            hasOlder: timeline.hasOlder,
-            hasNewer: timeline.hasNewer,
-            rows: rows.map((row) => ({
-              item: row.item,
-              timestamp: row.timestamp,
-              seq: row.seq,
-            })),
+            hasOlder: supportsProjection && timeline.hasOlder,
+            hasNewer: supportsProjection && timeline.hasNewer,
+            rows: supportsProjection
+              ? rows.map((row) => ({
+                  item: row.item,
+                  timestamp: row.timestamp,
+                  seq: row.seqEnd,
+                  seqStart: row.seqStart,
+                  seqEnd: row.seqEnd,
+                  sourceSeqRanges: row.sourceSeqRanges,
+                }))
+              : [
+                  {
+                    seq: timeline.window.maxSeq,
+                    timestamp: new Date().toISOString(),
+                    item: {
+                      type: "assistant_message",
+                      // OTTO(identity)
+                      text: "Please upgrade the Otto app to view this subagent conversation.",
+                    },
+                  },
+                ],
             error: null,
           },
         },
@@ -12321,98 +8285,17 @@ export class Session {
     }
   }
 
-  private async handleAgentQueueRemoveRequest(
-    msg: Extract<SessionInboundMessage, { type: "agent.queue.remove.request" }>,
-  ): Promise<void> {
-    const resolved = await this.resolveAgentIdentifier(msg.agentId);
-    if (!resolved.ok) {
-      this.emit({
-        type: "agent.queue.remove.response",
-        payload: {
-          requestId: msg.requestId,
-          agentId: msg.agentId,
-          removed: null,
-          error: resolved.error,
-        },
-      });
-      return;
-    }
-
-    // A null `removed` is not an error: the turn can drain an entry between the
-    // client rendering the row and the tap landing.
-    const entry = this.agentManager.removeSteerQueueEntry(resolved.agentId, msg.messageId);
-    this.emit({
-      type: "agent.queue.remove.response",
-      payload: {
-        requestId: msg.requestId,
-        agentId: resolved.agentId,
-        removed: entry ? { id: entry.id, text: steerQueuePromptText(entry.prompt) } : null,
-        error: null,
-      },
+  private async prepareAgentMessage(agentId: string, text: string): Promise<void> {
+    await ensureAgentLoaded(agentId, {
+      agentManager: this.agentManager,
+      agentStorage: this.agentStorage,
+      logger: this.sessionLogger,
     });
-  }
-
-  private async handleAgentQueueReorderRequest(
-    msg: Extract<SessionInboundMessage, { type: "agent.queue.reorder.request" }>,
-  ): Promise<void> {
-    const resolved = await this.resolveAgentIdentifier(msg.agentId);
-    if (!resolved.ok) {
-      this.emit({
-        type: "agent.queue.reorder.response",
-        payload: {
-          requestId: msg.requestId,
-          agentId: msg.agentId,
-          moved: false,
-          error: resolved.error,
-        },
-      });
-      return;
+    const stored = await this.agentStorage.get(agentId);
+    if (stored && !stored.title && !stored.lastUserMessageAt) {
+      const { provisionalTitle } = resolveCreateAgentTitles({ initialPrompt: text });
+      if (provisionalTitle) await this.agentManager.setTitle(agentId, provisionalTitle);
     }
-
-    // `moved: false` is not an error, for the same reason `removed: null` isn't:
-    // the turn can drain the entry between the client rendering the row and the
-    // tap landing. The new order reaches every client on the agent snapshot.
-    this.emit({
-      type: "agent.queue.reorder.response",
-      payload: {
-        requestId: msg.requestId,
-        agentId: resolved.agentId,
-        moved: this.agentManager.reorderSteerQueueEntry(
-          resolved.agentId,
-          msg.messageId,
-          msg.toIndex,
-        ),
-        error: null,
-      },
-    });
-  }
-
-  private async handleAgentQueueClearRequest(
-    msg: Extract<SessionInboundMessage, { type: "agent.queue.clear.request" }>,
-  ): Promise<void> {
-    const resolved = await this.resolveAgentIdentifier(msg.agentId);
-    if (!resolved.ok) {
-      this.emit({
-        type: "agent.queue.clear.response",
-        payload: {
-          requestId: msg.requestId,
-          agentId: msg.agentId,
-          clearedCount: 0,
-          error: resolved.error,
-        },
-      });
-      return;
-    }
-
-    this.emit({
-      type: "agent.queue.clear.response",
-      payload: {
-        requestId: msg.requestId,
-        agentId: resolved.agentId,
-        clearedCount: this.agentManager.clearSteerQueue(resolved.agentId),
-        error: null,
-      },
-    });
   }
 
   private async handleSendAgentMessageRequest(
@@ -12434,9 +8317,6 @@ export class Session {
 
     try {
       const agentId = resolved.agentId;
-      // Capture the submitting client's browser before the provider runs tools.
-      // A phone can share this agent with a still-connected desktop app.
-      this.onAgentBrowserOrigin?.(agentId, this.hasAppBrowserHost ? "app" : "host", this.clientId);
 
       const prompt = buildAgentPrompt(msg.text, msg.images, msg.attachments);
       this.sessionLogger.trace(
@@ -12454,38 +8334,38 @@ export class Session {
           agentStorage: this.agentStorage,
           agentId,
           prompt,
+          source: msg.sourceAgentId
+            ? { kind: "agent-message", agentId: msg.sourceAgentId }
+            : undefined,
           messageId: msg.messageId,
-          ...(msg.delivery ? { delivery: msg.delivery } : {}),
           activeTurnBehavior: msg.activeTurnBehavior ?? "interrupt",
           clearPendingPermissions: true,
           logger: this.sessionLogger,
         });
         if (result.disposition === "turn_started") {
-          await waitForAgentRunStartWithTimeout(this.agentManager, agentId);
+          await waitForAgentRunStartWithTimeout(
+            this.agentManager,
+            agentId,
+            this.delivery.requestSignal,
+          );
         }
-        return result;
       };
-      let dispatchResult: PromptDispatchResult | undefined;
       if (msg.messageId) {
-        dispatchResult = await this.agentRequests.send({
+        await this.messageReceipts.send({
           agentId,
           messageId: msg.messageId,
           request: {
             prompt,
+            sourceAgentId: msg.sourceAgentId,
             activeTurnBehavior: msg.activeTurnBehavior ?? "interrupt",
-            delivery: msg.delivery ?? "interrupt",
           },
           prepare: async () => {
-            await ensureAgentLoaded(agentId, {
-              agentManager: this.agentManager,
-              agentStorage: this.agentStorage,
-              logger: this.sessionLogger,
-            });
+            if (!msg.sourceAgentId) await this.prepareAgentMessage(agentId, msg.text);
           },
           send,
         });
       } else {
-        dispatchResult = await send();
+        await send();
       }
 
       this.emit({
@@ -12495,17 +8375,10 @@ export class Session {
           agentId,
           accepted: true,
           error: null,
-          ...(dispatchResult?.disposition === "queued"
-            ? {
-                queued: true,
-                ...(dispatchResult.queuedMessageId
-                  ? { queuedMessageId: dispatchResult.queuedMessageId }
-                  : {}),
-              }
-            : {}),
         },
       });
     } catch (error) {
+      if (this.delivery.requestSignal.aborted) return;
       this.handleAgentRunError(resolved.agentId, error, "Failed to send agent message");
       this.emit({
         type: "send_agent_message_response",
@@ -12524,6 +8397,8 @@ export class Session {
     requestId: string,
     timeoutMs?: number,
   ): Promise<void> {
+    const sourceSignal = this.delivery.requestSignal;
+    sourceSignal.throwIfAborted();
     const resolved = await this.resolveAgentIdentifier(agentIdOrIdentifier);
     if (!resolved.ok) {
       this.emit({
@@ -12542,8 +8417,8 @@ export class Session {
     const agentId = resolved.agentId;
     const live = this.agentManager.getAgent(agentId);
     if (!live) {
-      const record = await this.agentStorage.get(agentId);
-      if (!record || record.internal) {
+      const settled = await this.readSettledAgent(agentId);
+      if (!settled) {
         this.emit({
           type: "wait_for_finish_response",
           payload: {
@@ -12556,6 +8431,7 @@ export class Session {
         });
         return;
       }
+      const { record, lastMessage } = settled;
       const final = this.buildStoredAgentPayload(record);
       let status: "permission" | "error" | "idle";
       if (record.attentionReason === "permission") {
@@ -12568,7 +8444,7 @@ export class Session {
       const error = resolveWaitForFinishError({ status, final });
       this.emit({
         type: "wait_for_finish_response",
-        payload: { requestId, status, final, error, lastMessage: null },
+        payload: { requestId, status, final, error, lastMessage },
       });
       return;
     }
@@ -12583,7 +8459,7 @@ export class Session {
 
     try {
       let result = await this.agentManager.waitForAgentEvent(agentId, {
-        signal: abortController.signal,
+        signal: AbortSignal.any([abortController.signal, sourceSignal]),
         waitForActive: true,
       });
       let final = await this.getAgentPayloadById(agentId);
@@ -12606,6 +8482,7 @@ export class Session {
         payload: { requestId, status, final, error, lastMessage: result.lastMessage },
       });
     } catch (error) {
+      if (sourceSignal.aborted) return;
       const isAbort =
         error instanceof Error &&
         (error.name === "AbortError" || error.message.toLowerCase().includes("aborted"));
@@ -12646,52 +8523,80 @@ export class Session {
    */
   // COMPAT(explicitEventSubscriptions): added in v0.8.0, remove legacy broadcasts after 2027-03-08.
   private wantsEvent(event: SessionEventSubscription, source?: object): boolean {
-    if (!source && this.clientCapabilitiesBySource.size > 0) {
-      return [...this.clientCapabilitiesBySource.keys()].some((candidate) =>
-        this.wantsEvent(event, candidate),
-      );
+    for (const subscription of this.eventSubscriptions.values()) {
+      if ((!source || subscription.owner.source === source) && subscription.events.has(event))
+        return true;
     }
+    if (!source && this.clientSources.size > 0) {
+      return [...this.clientSources.keys()].some((candidate) => this.wantsEvent(event, candidate));
+    }
+    if (source && this.delivery.isModern(source)) return false;
+    if (!source && !this.delivery.hasLegacySources()) return false;
+    // COMPAT(ownedSubscriptions): added in v0.8.0, remove implicit event delivery after 2027-03-09.
     const capabilities = source
-      ? this.clientCapabilitiesBySource.get(source)!
+      ? (this.clientSources.get(source)?.capabilities ?? this.clientCapabilities)
       : this.clientCapabilities;
-    if (event === "project.update" && !capabilities.has(CLIENT_CAPS.projectUpdates)) return false;
-    return (
-      !capabilities.has(CLIENT_CAPS.explicitEventSubscriptions) ||
-      this.eventSubscriptions.get(source ?? this.defaultEventSubscriptionSource)?.has(event) ===
-        true
-    );
+    return legacyWantsEvent(event, capabilities);
   }
 
-  private emit(rawMsg: SessionOutboundMessage): void {
-    // Scope is checked against the LEGACY type, before any alias rewrite: a
-    // session scoped to `personality.*` must still receive the response to a
-    // request it was allowed to make, whichever name it asked under.
+  private emitEventToOwner(
+    subscription: { owner: OwnedSubscription; notifications: boolean },
+    message: SessionOutboundMessage,
+    notified: Set<object>,
+  ): void {
     if (
-      rawMsg.type !== "rpc_error" &&
-      (!isSessionRpcAllowed(this.scopes, rawMsg.type) || !this.authorization.allowsOutbound(rawMsg))
+      message.type !== "agent_attention_required" &&
+      message.type !== "terminal_attention_required"
     ) {
+      subscription.owner.emit(message);
       return;
     }
-    // COMPAT(agentProfileRpcs): added in v0.8.13, remove after 2027-02-22.
-    // Guarded on the tracking set being non-empty, so a client speaking the
-    // legacy names never pays for this.
-    const msg =
-      this.aliasedProfileRpcRequestIds.size > 0 ? this.restoreProfileRpcAlias(rawMsg) : rawMsg;
-    if (
-      msg.type === "project.update" ||
-      msg.type === "providers_snapshot_update" ||
-      msg.type === "agent_attention_required" ||
-      msg.type === "agent_permission_request" ||
-      msg.type === "agent_permission_resolved"
-    ) {
-      if (this.clientCapabilitiesBySource.size > 0 && this.onMessageToSource) {
-        for (const source of this.clientCapabilitiesBySource.keys()) {
-          if (this.wantsEvent(msg.type, source)) this.onMessageToSource(source, msg);
-        }
-        return;
-      }
-      if (!this.wantsEvent(msg.type)) return;
+    const shouldNotify =
+      message.payload.shouldNotify &&
+      subscription.notifications &&
+      !notified.has(subscription.owner.source);
+    subscription.owner.emit(
+      message.type === "agent_attention_required"
+        ? { ...message, payload: { ...message.payload, shouldNotify } }
+        : { ...message, payload: { ...message.payload, shouldNotify } },
+    );
+    if (shouldNotify) notified.add(subscription.owner.source);
+  }
+
+  private emitSubscribedEvent(message: SessionOutboundMessage, onlySource?: object): boolean {
+    const event = sessionEventCategory(message);
+    if (!event) return false;
+    if (!this.authorization.allowsOutbound(message)) return true;
+    const delivered = new Set<object>();
+    const notified = new Set<object>();
+    for (const subscription of this.eventSubscriptions.values()) {
+      if (
+        !subscription.events.has(event) ||
+        (onlySource && subscription.owner.source !== onlySource)
+      )
+        continue;
+      this.emitEventToOwner(subscription, message, notified);
+      delivered.add(subscription.owner.source);
     }
+    // COMPAT(ownedSubscriptions): added in v0.8.0, remove implicit event delivery after 2027-03-09.
+    if (this.onMessageToSource && this.clientSources.size > 0) {
+      for (const source of this.clientSources.keys()) {
+        if (
+          (!onlySource || source === onlySource) &&
+          !delivered.has(source) &&
+          !this.delivery.isModern(source) &&
+          this.wantsEvent(event, source)
+        )
+          this.onMessageToSource(source, this.workspaceSetupMessageForClient(message, source));
+      }
+    } else if (delivered.size === 0 && this.wantsEvent(event)) this.onMessage(message);
+    return true;
+  }
+
+  private emit(msg: SessionOutboundMessage): void {
+    if (!this.authorization.allowsOutbound(msg)) return;
+    if (this.delivery.reply(msg)) return;
+    if (this.emitSubscribedEvent(msg)) return;
     // JSON.stringify(msg) is only computed when trace is enabled — it runs for
     // every outbound message otherwise, and trace is disabled by default.
     // Optional-chained because test logger stubs don't implement isLevelEnabled.
@@ -12705,84 +8610,27 @@ export class Session {
       );
     }
     if (msg.type === "workspace_setup_progress" || msg.type === "workspace_setup_status_response") {
-      this.emitWorkspaceSetupMessage(msg);
-      return;
+      if (this.clientSources.size > 0 && this.onMessageToSource) {
+        for (const [source] of this.clientSources) {
+          this.onMessageToSource(source, this.workspaceSetupMessageForClient(msg, source));
+        }
+        return;
+      }
+      msg = this.workspaceSetupMessageForClient(msg);
     }
     this.onMessage(msg);
   }
 
-  private emitWorkspaceSetupMessage(
-    msg: Extract<
-      SessionOutboundMessage,
-      { type: "workspace_setup_progress" | "workspace_setup_status_response" }
-    >,
-  ): void {
-    if (this.clientCapabilitiesBySource.size > 0 && this.onMessageToSource) {
-      for (const source of this.clientCapabilitiesBySource.keys()) {
-        this.onMessageToSource(source, this.workspaceSetupMessageForClient(msg, source));
-      }
-      return;
-    }
-    this.onMessage(this.workspaceSetupMessageForClient(msg));
-  }
-
-  /**
-   * COMPAT(agentProfileRpcs): added in v0.8.13, remove after 2027-02-22.
-   * Rewrite a profile-named request to the legacy literal its handler is
-   * written against, remembering the request id so the response can be
-   * rewritten back. Non-alias messages pass straight through.
-   */
-  private adoptProfileRpcAlias(msg: SessionInboundMessage): SessionInboundMessage {
-    const legacyType = resolveAliasedRequestType(msg.type);
-    if (!legacyType) {
-      return msg;
-    }
-    const requestId = readRpcRequestId(msg);
-    if (requestId !== null) {
-      this.aliasedProfileRpcRequestIds.add(requestId);
-    }
-    return { ...msg, type: legacyType } as SessionInboundMessage;
-  }
-
-  /**
-   * COMPAT(agentProfileRpcs): added in v0.8.13, remove after 2027-02-22.
-   * The mirror of adoptProfileRpcAlias: answer a request that arrived under a
-   * profile name with the profile-named response, and stop tracking it.
-   */
-  private restoreProfileRpcAlias(msg: SessionOutboundMessage): SessionOutboundMessage {
-    // `rpc_error` is the other terminal answer to a request: the scope check
-    // above denied it, or its handler threw. It has no profile-named twin, so
-    // there is nothing to rewrite - but the id still has to stop being tracked
-    // here. Otherwise a single denied or failed aliased request leaks its id
-    // for the life of the session, which both grows the Set without bound and
-    // leaves the per-outbound-message lookup in emit() permanently switched on
-    // for a client the comment there promises never pays for it.
-    if (msg.type === "rpc_error") {
-      const failedRequestId = readRpcRequestId(msg);
-      if (failedRequestId !== null) {
-        this.aliasedProfileRpcRequestIds.delete(failedRequestId);
-      }
-      return msg;
-    }
-    if (!isAliasableResponseType(msg.type)) {
-      return msg;
-    }
-    const requestId = readRpcRequestId(msg);
-    if (requestId === null || !this.aliasedProfileRpcRequestIds.delete(requestId)) {
-      return msg;
-    }
-    const aliasType = resolveAliasedResponseType(msg.type);
-    return aliasType ? ({ ...msg, type: aliasType } as SessionOutboundMessage) : msg;
-  }
-
   // COMPAT(workspaceSetupBlocked): added in v0.8.0, remove after 2027-03-07 once client floor >= v0.8.0.
   private workspaceSetupMessageForClient(
-    message: Extract<
-      SessionOutboundMessage,
-      { type: "workspace_setup_progress" | "workspace_setup_status_response" }
-    >,
+    message: SessionOutboundMessage,
     source?: object,
   ): SessionOutboundMessage {
+    if (
+      message.type !== "workspace_setup_progress" &&
+      message.type !== "workspace_setup_status_response"
+    )
+      return message;
     const supportsBlocked = source
       ? this.supportsForSource(CLIENT_CAPS.workspaceSetupBlocked, source)
       : this.supports(CLIENT_CAPS.workspaceSetupBlocked);
@@ -12793,6 +8641,7 @@ export class Session {
       ...snapshot,
       status: "failed" as const,
       error:
+        // OTTO(identity)
         "Workspace setup is blocked pending approval of code from a fork pull request. Update Otto to review and run setup.",
     };
     return message.type === "workspace_setup_progress"
@@ -12813,6 +8662,7 @@ export class Session {
 
   private async emitBinaryForFileTransfer(frame: Uint8Array, source?: object): Promise<void> {
     if (source && this.onBinaryMessageToSource) {
+      this.delivery.authorizeFileReply(frame, source);
       await this.onBinaryMessageToSource(source, frame);
       return;
     }
@@ -12821,6 +8671,7 @@ export class Session {
 
   private emitForSource(msg: SessionOutboundMessage, source?: object): void {
     if (source && this.onMessageToSource) {
+      msg = this.delivery.authorizeReply(msg, source);
       this.onMessageToSource(source, msg);
       return;
     }
@@ -12833,85 +8684,136 @@ export class Session {
   public async cleanup(): Promise<void> {
     this.sessionLogger.trace({}, "agent.session.lifecycle.cleanup");
     this.isCleanedUp = true;
+    this.pluginRuntime?.releaseClient?.(this.sessionId); // OTTO(feature-host): no feed survives its client session.
+    await this.delivery.close();
 
     if (this.unsubscribeAgentEvents) {
       this.unsubscribeAgentEvents();
       this.unsubscribeAgentEvents = null;
     }
-    this.unsubscribeCommunicationsPresenceChanges?.();
-    this.unsubscribeCommunicationsPresenceChanges = null;
     this.unsubscribeProjectMutations?.();
     this.unsubscribeProjectMutations = null;
     this.unsubscribePluginChanges?.();
     this.unsubscribePluginChanges = null;
     this.unsubscribeWorkspaceMutations?.();
     this.unsubscribeWorkspaceMutations = null;
-    this.workspaceLabelSubscription?.unsubscribe();
-    this.workspaceLabelSubscription = null;
     this.agentUpdates.dispose();
     await this.hubExecutionController?.cleanup();
     if (this.unsubscribeTerminalWorkspaceContributionEvents) {
       this.unsubscribeTerminalWorkspaceContributionEvents();
       this.unsubscribeTerminalWorkspaceContributionEvents = null;
     }
-    if (this.unsubscribeGitOperationLog) {
-      this.unsubscribeGitOperationLog();
-      this.unsubscribeGitOperationLog = null;
-    }
     this.providerCatalogSession.dispose();
-
-    await this.voiceSession.cleanup();
 
     this.terminalController.dispose();
 
     this.checkoutSession.cleanup();
 
-    this.kanbanSession.dispose();
-
     this.workspaceGitObserver.dispose();
-
-    this.workspaceFilesSession.dispose();
-
-    this.artifactSession.stop();
-    this.workspaceFilesSession.dispose();
-  }
-
-  private dispatchWorkspaceSetupMessage(msg: SessionInboundMessage): Promise<void> | undefined {
-    if (msg.type === "workspace_setup_status_request") {
-      return this.handleWorkspaceSetupStatusRequest(msg);
-    }
-    if (msg.type === "workspace.setup.run.request") {
-      return this.handleWorkspaceSetupRunRequest(msg);
-    }
-    return undefined;
   }
 }
 
-function withArchitecturalViewAuthoringLabels(
-  labels: Record<string, string>,
-  draft: CreateAgentRequestMessage["architecturalViewDraft"],
-): Record<string, string> {
-  if (!draft) return labels;
+interface CloneRepositoryInput {
+  name: string;
+  displayName: string;
+  cloneUrl: string;
+}
+
+function normalizeCloneRepository(input: {
+  repo: string;
+  cloneProtocol?: "https" | "ssh";
+}): CloneRepositoryInput {
+  const trimmed = input.repo.trim();
+  if (!trimmed) {
+    throw new Error("Repository is required");
+  }
+
+  const remote = parseGitRemoteLocation(trimmed);
+  if (remote) {
+    const segments = remote.path.split("/").filter(Boolean);
+    const name = segments.at(-1);
+    if (!name || !isValidGitHubRepoSegment(name)) {
+      throw new Error("Repository name contains invalid characters");
+    }
+    return { name, displayName: remote.path, cloneUrl: trimmed };
+  }
+
+  const [owner, rawName, ...extra] = trimmed.split("/");
+  if (!owner || !rawName || extra.length > 0) {
+    throw new Error("Repository must use owner/repo format or a git remote URL");
+  }
+  const name = rawName.endsWith(".git") ? rawName.slice(0, -4) : rawName;
+  if (!isValidGitHubRepoSegment(owner) || !isValidGitHubRepoSegment(name)) {
+    throw new Error("Repository contains invalid characters");
+  }
+  if (!input.cloneProtocol) {
+    throw new Error("Clone protocol is required for owner/repo repository names");
+  }
+  const cloneUrl =
+    input.cloneProtocol === "ssh"
+      ? `git@github.com:${owner}/${name}.git`
+      : `https://github.com/${owner}/${name}.git`;
   return {
-    ...labels,
-    [ARCHITECTURAL_VIEW_AUTHORING_LABEL]: "true",
-    [ARCHITECTURAL_VIEW_ID_LABEL]: draft.viewId,
-    [ARCHITECTURAL_VIEW_DRAFT_ID_LABEL]: draft.draftId,
+    name,
+    displayName: `${owner}/${name}`,
+    cloneUrl,
   };
 }
 
-function withArchitecturalViewAuthoringBrief(
-  config: AgentSessionConfig,
-  draft: CreateAgentRequestMessage["architecturalViewDraft"],
-): AgentSessionConfig {
-  if (!draft) return config;
-  const brief =
-    `You are the bound authoring chat for Architectural View ${draft.viewId}, draft ${draft.draftId}. ` +
-    "Use read_architectural_view_draft before editing; it returns the existing typed JSON and the linked Knowledge references. " +
-    "Read each linked record with read_project_knowledge or root with read_project_knowledge_root, including existing Mermaid and wiki-links, before translating the established documentation into the visual. " +
-    "When browser tools are available, the Interactive View beside this chat is also a toolbar-free Otto browser tab: use browser_list_tabs to find it, then browser_snapshot, browser_inspect, and browser_screenshot to verify the rendered diagram before calling it done. " +
-    "Where the linked Knowledge is new or thin, make the first visual strictly reflect its available facts and make any gaps clear rather than inventing architecture. " +
-    "When the user asks to improve the Knowledge itself, use the normal project-knowledge tools and their evidence and confirmation policy; then update the staged visual when those changes affect it. " +
-    "update_architectural_view_draft replaces only the staged typed JSON. Publishing the visual remains an explicit user action in the Architectural Views tab.";
-  return { ...config, systemPrompt: [config.systemPrompt, brief].filter(Boolean).join("\n\n") };
+function isValidGitHubRepoSegment(value: string): boolean {
+  return /^[A-Za-z0-9._-]+$/u.test(value);
+}
+
+function sessionEventCategory(message: SessionOutboundMessage): SessionEventSubscription | null {
+  switch (message.type) {
+    case "project.update":
+    case "providers_snapshot_update":
+    case "agent_attention_required":
+    case "agent_permission_request":
+    case "agent_permission_resolved":
+    case "checkout_status_update":
+    case "script_status_update":
+    case "workspace_setup_progress":
+    case "agent.provider_subagents.update":
+    case "terminal_attention_required":
+    case "activity_log":
+    case "hub.execution.agent.update":
+    case "hub.execution.agent.stream":
+      return message.type;
+    case "status":
+      switch (message.payload.status) {
+        case "server_info":
+          return "status.server_info";
+        case "daemon_config_changed":
+          return "status.daemon_config_changed";
+        case "plugin_catalog_changed":
+          return "status.plugin_catalog_changed";
+        case "plugin_settings_changed":
+          return "status.plugin_settings_changed";
+        default:
+          return null;
+      }
+    default:
+      return null;
+  }
+}
+
+// COMPAT(ownedSubscriptions): added in v0.8.0, remove implicit event delivery after 2027-03-09.
+function legacyWantsEvent(
+  event: SessionEventSubscription,
+  capabilities: ReadonlySet<ClientCapability>,
+): boolean {
+  if (event === "project.update" && !capabilities.has(CLIENT_CAPS.projectUpdates)) return false;
+  switch (event) {
+    case "project.update":
+    case "providers_snapshot_update":
+    case "agent_attention_required":
+    case "agent_permission_request":
+    case "agent_permission_resolved":
+      return !capabilities.has(CLIENT_CAPS.explicitEventSubscriptions);
+    case "agent.provider_subagents.update":
+      return capabilities.has(CLIENT_CAPS.providerSubagents);
+    default:
+      return true;
+  }
 }

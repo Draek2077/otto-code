@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
 import { createServer } from "http";
-import { mkdtempSync, rmSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { randomUUID } from "crypto";
@@ -182,7 +182,7 @@ describe("getStructuredAgentResponse (e2e)", () => {
     await shutdownProviders(logger);
   }, 60000);
 
-  test("returns schema-valid JSON from Codex without spawning an Otto agent", async (context) => {
+  test("returns schema-valid JSON from a real Codex agent", async (context) => {
     if (!canRunCodex) {
       context.skip();
     }
@@ -191,23 +191,24 @@ describe("getStructuredAgentResponse (e2e)", () => {
       count: z.number(),
     });
 
-    await expect(
-      generateStructuredAgentResponse({
-        manager,
-        agentConfig: {
-          provider: "codex",
-          model: CODEX_TEST_MODEL,
-          ...(CODEX_TEST_THINKING_OPTION_ID
-            ? { thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID }
-            : {}),
-          cwd,
-          title: "Structured Response Test",
-        },
-        prompt: "Return JSON with a short title and count 2.",
-        schema,
-        maxRetries: 1,
-      }),
-    ).resolves.toEqual({ title: expect.any(String), count: 2 });
+    const result = await generateStructuredAgentResponse({
+      manager,
+      agentConfig: {
+        provider: "codex",
+        model: CODEX_TEST_MODEL,
+        ...(CODEX_TEST_THINKING_OPTION_ID
+          ? { thinkingOptionId: CODEX_TEST_THINKING_OPTION_ID }
+          : {}),
+        cwd,
+        title: "Structured Response Test",
+      },
+      prompt: "Return JSON with a short title and count 2.",
+      schema,
+      maxRetries: 1,
+    });
+
+    expect(result.title.length).toBeGreaterThan(0);
+    expect(typeof result.count).toBe("number");
   }, 180000);
 
   test("returns schema-valid JSON from Claude Haiku", async (context) => {
@@ -248,5 +249,40 @@ describe("getStructuredAgentResponse (e2e)", () => {
     }
 
     expect(result.message.trim().toLowerCase()).toBe("hello");
+  }, 180000);
+
+  test("does not run the project's Claude hooks for an internal Claude agent", async (context) => {
+    if (!canRunClaude) {
+      context.skip();
+    }
+    const hookMarker = path.join(cwd, "stop-hook-ran");
+    mkdirSync(path.join(cwd, ".claude"));
+    writeFileSync(
+      path.join(cwd, ".claude", "settings.json"),
+      JSON.stringify({
+        hooks: {
+          Stop: [{ hooks: [{ type: "command", command: `touch '${hookMarker}'` }] }],
+        },
+      }),
+    );
+
+    const result = await generateStructuredAgentResponse({
+      manager,
+      agentConfig: {
+        provider: "claude",
+        model: CLAUDE_TEST_MODEL,
+        cwd,
+        title: "Branch name generator",
+        internal: true,
+      },
+      prompt:
+        'Respond with exactly this JSON (no markdown, no extra keys, no extra text): {"message":"hello"}',
+      schema: z.object({ message: z.string() }),
+      maxRetries: 2,
+      persistSession: false,
+    });
+
+    expect(result.message.trim().toLowerCase()).toBe("hello");
+    expect(existsSync(hookMarker)).toBe(false);
   }, 180000);
 });

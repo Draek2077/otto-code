@@ -314,7 +314,7 @@ describe("ClaudeTaskProtocolSource", () => {
         taskStarted({
           task_type: "local_workflow",
           subagent_type: undefined,
-          workflow_name: "otto-workflow-one-child",
+          workflow_name: "paseo-workflow-one-child",
           description: "Runs one deterministic child and returns its structured result",
           prompt: "export const meta = {};",
         }),
@@ -339,7 +339,7 @@ describe("ClaudeTaskProtocolSource", () => {
   });
 
   it("adds a completed workflow result to its generic timeline", () => {
-    const readWorkflowResult = vi.fn(() => "What Otto is\nA local-first environment.");
+    const readWorkflowResult = vi.fn(() => "What Paseo is\nA local-first environment.");
     const source = new ClaudeTaskProtocolSource({ readWorkflowResult });
     source.observe(
       taskStarted({ task_type: "local_workflow", subagent_type: undefined, prompt: "SECRET" }),
@@ -351,7 +351,7 @@ describe("ClaudeTaskProtocolSource", () => {
         id: "toolu_01DgLoPMW9",
         item: {
           type: "assistant_message",
-          text: "What Otto is\nA local-first environment.",
+          text: "What Paseo is\nA local-first environment.",
         },
       },
       { kind: "status", id: "toolu_01DgLoPMW9", status: "completed" },
@@ -509,6 +509,33 @@ describe("ClaudeTaskProtocolSource", () => {
     } as unknown as SDKMessage);
 
     expect(source.cancelRunningForegroundTasks()).toEqual([]);
+  });
+
+  it("does not cancel a subagent announced as backgrounded at spawn", () => {
+    // Claude sets is_backgrounded on task_started for a child spawned in the background, and
+    // sends no task_updated patch for it.
+    const source = new ClaudeTaskProtocolSource();
+    source.observe(taskStarted({ is_backgrounded: true }));
+
+    expect(source.cancelRunningForegroundTasks()).toEqual([]);
+  });
+
+  it("does not cancel a resumed subagent, which Claude always runs in the background", () => {
+    const source = new ClaudeTaskProtocolSource();
+    source.observe(taskStarted({ tool_use_id: "toolu_original", is_backgrounded: false }));
+    source.observe(taskUpdated("completed"));
+    source.observe(taskStarted({ tool_use_id: "toolu_resumed", is_backgrounded: true }));
+
+    expect(source.cancelRunningForegroundTasks()).toEqual([]);
+  });
+
+  it("still cancels a subagent announced in the foreground", () => {
+    const source = new ClaudeTaskProtocolSource();
+    source.observe(taskStarted({ is_backgrounded: false }));
+
+    expect(source.cancelRunningForegroundTasks()).toEqual([
+      { kind: "status", id: "toolu_01DgLoPMW9", status: "canceled" },
+    ]);
   });
 
   it("still routes a backgrounded subagent that settles after the interrupt", () => {
@@ -723,4 +750,18 @@ describe("ClaudeTaskProtocolSource effort from hooks", () => {
     expect(source.observeHook({} as never)).toEqual([]);
     expect(source.observeHook({ agent_id: 42, effort: { level: 7 } } as never)).toEqual([]);
   });
+});
+
+// OTTO(observed-subagents): a stop identity exists only for the current live query.
+it("resolves only the exact live task in this query and drops the stop target on settle or reset", () => {
+  const source = new ClaudeTaskProtocolSource();
+  const id = "toolu_01DgLoPMW9";
+  expect(source.runningTaskId(id)).toBeNull();
+  source.observe(taskStarted());
+  expect(source.runningTaskId(id)).toBe("a1730a6215e1f5cf6");
+  expect(source.runningTaskId("some-other-child")).toBeNull();
+  source.observe(taskNotification("completed"));
+  expect(source.runningTaskId(id)).toBeNull();
+  source.reset();
+  expect(source.runningTaskId(id)).toBeNull();
 });

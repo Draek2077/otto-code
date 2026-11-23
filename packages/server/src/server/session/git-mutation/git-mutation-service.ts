@@ -1,5 +1,5 @@
 import type pino from "pino";
-import { getErrorMessage } from "@otto-code/protocol/error-utils";
+import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import {
   checkoutResolvedBranch,
   type CheckoutExistingBranchResult,
@@ -36,11 +36,7 @@ export interface GitMutationService {
 
 type GitMutationGitSource = Pick<
   WorkspaceGitService,
-  | "validateBranchRef"
-  | "getSnapshot"
-  | "hasLocalBranch"
-  | "invalidateForge"
-  | "invalidateAuxiliaryReads"
+  "validateBranchRef" | "getSnapshot" | "hasLocalBranch" | "invalidateForge"
 >;
 
 export function createGitMutationService(deps: {
@@ -84,11 +80,6 @@ export function createGitMutationService(deps: {
     if (options?.invalidateForge) {
       workspaceGitService.invalidateForge(cwd);
     }
-    // The daemon just changed this checkout, so every cwd-scoped read it has
-    // cached is now describing the world before the change. Drop them before
-    // the refresh below, or the next diff/stash/branch read serves the
-    // pre-mutation answer for the rest of its TTL.
-    workspaceGitService.invalidateAuxiliaryReads(cwd);
     try {
       await workspaceGitService.getSnapshot(cwd, { force: true, reason });
     } catch (error) {
@@ -127,7 +118,12 @@ export function createGitMutationService(deps: {
       }
 
       await ensureCleanWorkingTree(cwd);
-      await runGitCommand(["checkout", "-b", newBranchName, baseBranch], {
+      // --no-track: a branch we create is not a continuation of its base, so it gets no
+      // upstream. Without it git hands the new branch `origin/<base>` whenever the base is a
+      // remote-tracking ref or branch.autoSetupMerge asks for inheritance, and every later
+      // push then reads that upstream and lands the work on the default branch. The worktree
+      // path makes the same promise with `git worktree add -b <branch> --no-track <base>`.
+      await runGitCommand(["checkout", "-b", newBranchName, "--no-track", baseBranch], {
         cwd,
         timeout: 120_000,
       });

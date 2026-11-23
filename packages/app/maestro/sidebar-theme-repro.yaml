@@ -1,4 +1,4 @@
-appId: me.ottocode.mobile
+appId: me.ottocode.mobile # OTTO(identity)
 ---
 # Ensure sidebar is closed: if sidebar-sessions is visible, close it via swipe left
 - runFlow:

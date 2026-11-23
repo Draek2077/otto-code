@@ -1,10 +1,11 @@
+// OTTO(storage): existing users keep their browser cookies and sessions.
 import { describe, expect, test } from "vitest";
 import {
-  clearOttoBrowserProfile,
-  getLegacyOttoBrowserProfileSession,
-  getOttoBrowserProfileSessions,
-  listOttoBrowserProfileGuests,
-  readLegacyOttoBrowserIds,
+  clearPaseoBrowserProfile,
+  getLegacyPaseoBrowserProfileSession,
+  getPaseoBrowserProfileSessions,
+  listPaseoBrowserProfileGuests,
+  readLegacyPaseoBrowserIds,
 } from "./browser-profile.js";
 
 class FakeProfileSession {
@@ -65,7 +66,7 @@ class FakeWebContents extends FakeLiveGuest {
   }
 }
 
-describe("listOttoBrowserProfileGuests", () => {
+describe("listPaseoBrowserProfileGuests", () => {
   test("returns every live webview and popup in the shared profile", () => {
     const profileSession = {};
     const firstWindowGuest = new FakeWebContents(1, profileSession, "webview");
@@ -74,7 +75,7 @@ describe("listOttoBrowserProfileGuests", () => {
     const popupWindow = new FakeWebContents(4, profileSession, "window");
     const destroyedGuest = new FakeWebContents(5, profileSession, "webview", true);
 
-    const guests = listOttoBrowserProfileGuests({
+    const guests = listPaseoBrowserProfileGuests({
       profileSession,
       webContents: [
         firstWindowGuest,
@@ -93,9 +94,9 @@ describe("legacy browser profiles", () => {
   test("accepts only unique saved browser ids and resolves their old partitions", () => {
     const uuid = "123e4567-e89b-42d3-a456-426614174000";
     const fallbackId = "1700000000000-abcd";
-    const browserIds = readLegacyOttoBrowserIds([uuid, fallbackId, uuid, "not-a-browser-id", 123]);
+    const browserIds = readLegacyPaseoBrowserIds([uuid, fallbackId, uuid, "not-a-browser-id", 123]);
     const partitions: string[] = [];
-    const sessions = getOttoBrowserProfileSessions(
+    const sessions = getPaseoBrowserProfileSessions(
       {
         fromPartition: (partition) => {
           partitions.push(partition);
@@ -122,13 +123,13 @@ describe("legacy browser profiles", () => {
       },
     };
 
-    expect(getLegacyOttoBrowserProfileSession(sessions, "1700000000000-abcd")).not.toBeNull();
-    expect(getLegacyOttoBrowserProfileSession(sessions, "invalid")).toBeNull();
+    expect(getLegacyPaseoBrowserProfileSession(sessions, "1700000000000-abcd")).not.toBeNull();
+    expect(getLegacyPaseoBrowserProfileSession(sessions, "invalid")).toBeNull();
     expect(partitions).toEqual(["persist:otto-browser-1700000000000-abcd"]);
   });
 });
 
-describe("clearOttoBrowserProfile", () => {
+describe("clearPaseoBrowserProfile", () => {
   test("clears site data, HTTP cache, and auth before reloading live guests", async () => {
     const profile = new FakeProfileSession();
     const legacyProfile = new FakeProfileSession();
@@ -139,7 +140,7 @@ describe("clearOttoBrowserProfile", () => {
     const firstGuest = new FakeLiveGuest(1);
     const secondGuest = new FakeLiveGuest(2);
 
-    const clearing = clearOttoBrowserProfile({
+    const clearing = clearPaseoBrowserProfile({
       profileSessions: [profile, legacyProfile],
       listGuests: () => [firstGuest, secondGuest],
       logReloadError: () => {},
@@ -179,7 +180,7 @@ describe("clearOttoBrowserProfile", () => {
     const failedGuest = new FakeLiveGuest(2, false, reloadError);
     const reloadErrors: Array<{ guestId: number; error: unknown }> = [];
 
-    await clearOttoBrowserProfile({
+    await clearPaseoBrowserProfile({
       profileSessions: [profile],
       listGuests: () => [destroyedGuest, failedGuest],
       logReloadError: (guestId, error) => reloadErrors.push({ guestId, error }),
@@ -197,7 +198,7 @@ describe("clearOttoBrowserProfile", () => {
     const guest = new FakeLiveGuest(1);
 
     await expect(
-      clearOttoBrowserProfile({
+      clearPaseoBrowserProfile({
         profileSessions: [profile],
         listGuests: () => [guest],
         logReloadError: () => {},

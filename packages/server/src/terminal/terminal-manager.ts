@@ -9,11 +9,8 @@ import { captureTerminalLines, type CaptureTerminalLinesResult } from "./termina
 import { randomBytes, randomUUID } from "node:crypto";
 import { resolve, sep } from "node:path";
 import { assertAbsolutePath, isSameOrDescendantPath } from "../server/path-utils.js";
-import type {
-  TerminalActivity,
-  TerminalActivityState,
-} from "@otto-code/protocol/terminal-activity";
-import { deriveTerminalActivityStatusBucket } from "@otto-code/protocol/terminal-activity";
+import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
+import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 
 export interface TerminalListItem {
   id: string;
@@ -22,8 +19,6 @@ export interface TerminalListItem {
   workspaceId: string;
   title?: string;
   activity: TerminalActivity | null;
-  presentation?: "embedded";
-  presentationOwner?: string;
 }
 
 export interface TerminalsChangedEvent {
@@ -62,8 +57,6 @@ export interface TerminalManager {
     workspaceId: string;
     name?: string;
     title?: string;
-    titleMode?: "auto" | "default";
-    titleIncludePaths?: boolean;
     env?: Record<string, string>;
     command?: string;
     args?: string[];
@@ -71,8 +64,7 @@ export interface TerminalManager {
     cols?: number;
     activityToken?: string;
     activityUrl?: string | null;
-    presentation?: "embedded";
-    presentationOwner?: string;
+    ottoPreferences?: import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
   }): Promise<TerminalSession>;
   registerCwdEnv(options: { cwd: string; env: Record<string, string> }): void;
   validateTerminalActivityToken(terminalId: string, token: string): "valid" | "unknown" | "invalid";
@@ -82,7 +74,6 @@ export interface TerminalManager {
     options?: TerminalStateSnapshotOptions,
   ): Promise<TerminalStateSnapshot | null>;
   setTerminalTitle(id: string, title: string): boolean;
-  clearTerminalTitle(id: string): boolean;
   setTerminalActivity(id: string, state: TerminalActivityState): Promise<boolean>;
   clearTerminalAttention(id: string): Promise<boolean>;
   killTerminal(id: string): void;
@@ -104,33 +95,12 @@ export interface TerminalManager {
 }
 
 export interface TerminalManagerOptions {
+  getOttoPreferences?: () => import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
   getTerminalActivityUrl?: () => string | null;
 }
 
 function createActivityToken(): string {
   return randomBytes(32).toString("base64url");
-}
-
-function findEmbeddedTerminalByOwner(
-  terminals: Iterable<TerminalSession>,
-  input: { workspaceId: string; presentation?: "embedded"; presentationOwner?: string },
-): TerminalSession | undefined {
-  if (input.presentation !== "embedded" || !input.presentationOwner) {
-    return undefined;
-  }
-  return Array.from(terminals).find(
-    (session) =>
-      session.workspaceId === input.workspaceId &&
-      session.presentation === "embedded" &&
-      session.presentationOwner === input.presentationOwner,
-  );
-}
-
-function mergeTerminalEnvironment(
-  inherited: Record<string, string> | undefined,
-  provided: Record<string, string> | undefined,
-): Record<string, string> | undefined {
-  return inherited || provided ? { ...inherited, ...provided } : undefined;
 }
 
 export function createTerminalManager(
@@ -251,10 +221,6 @@ export function createTerminalManager(
       name: input.session.name,
       cwd: input.session.cwd,
       workspaceId: input.session.workspaceId,
-      ...(input.session.presentation ? { presentation: input.session.presentation } : {}),
-      ...(input.session.presentationOwner
-        ? { presentationOwner: input.session.presentationOwner }
-        : {}),
       title: input.session.getTitle(),
       activity: input.session.getActivity(),
     };
@@ -350,8 +316,6 @@ export function createTerminalManager(
       workspaceId: string;
       name?: string;
       title?: string;
-      titleMode?: "auto" | "default";
-      titleIncludePaths?: boolean;
       env?: Record<string, string>;
       command?: string;
       args?: string[];
@@ -359,20 +323,15 @@ export function createTerminalManager(
       cols?: number;
       activityToken?: string;
       activityUrl?: string | null;
-      presentation?: "embedded";
-      presentationOwner?: string;
+      ottoPreferences?: import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
     }): Promise<TerminalSession> {
       assertAbsolutePath(options.cwd);
-
-      const existing = findEmbeddedTerminalByOwner(terminalsById.values(), options);
-      if (existing) {
-        return existing;
-      }
 
       const terminals = terminalsByCwd.get(options.cwd) ?? [];
       const defaultName = `Terminal ${terminals.length + 1}`;
       const inheritedEnv = resolveDefaultEnvForCwd(options.cwd);
-      const mergedEnv = mergeTerminalEnvironment(inheritedEnv, options.env);
+      const mergedEnv =
+        inheritedEnv || options.env ? { ...inheritedEnv, ...options.env } : undefined;
       const terminalId = options.id ?? randomUUID();
       const activityToken = options.activityToken ?? createActivityToken();
       const terminalActivityUrl =
@@ -380,9 +339,9 @@ export function createTerminalManager(
           ? (managerOptions.getTerminalActivityUrl?.() ?? null)
           : options.activityUrl;
       const activityEnv = {
-        OTTO_TERMINAL_ID: terminalId,
-        OTTO_ACTIVITY_TOKEN: activityToken,
-        ...(terminalActivityUrl ? { OTTO_TERMINAL_ACTIVITY_URL: terminalActivityUrl } : {}),
+        PASEO_TERMINAL_ID: terminalId,
+        PASEO_ACTIVITY_TOKEN: activityToken,
+        ...(terminalActivityUrl ? { PASEO_TERMINAL_ACTIVITY_URL: terminalActivityUrl } : {}),
       };
       terminalActivityTokenById.set(terminalId, activityToken);
       let session: TerminalSession;
@@ -394,16 +353,13 @@ export function createTerminalManager(
             workspaceId: options.workspaceId,
             name: options.name ?? defaultName,
             ...(options.title ? { title: options.title } : {}),
-            ...(options.titleMode ? { titleMode: options.titleMode } : {}),
-            ...(options.titleIncludePaths ? { titleIncludePaths: true } : {}),
             ...(options.command ? { command: options.command } : {}),
             ...(options.args ? { args: options.args } : {}),
-            presentation: options.presentation,
-            presentationOwner: options.presentationOwner,
             ...(options.rows !== undefined ? { rows: options.rows } : {}),
             ...(options.cols !== undefined ? { cols: options.cols } : {}),
             ...(mergedEnv ? { env: mergedEnv } : {}),
             activityEnv,
+            ottoPreferences: options.ottoPreferences ?? managerOptions.getOttoPreferences?.(), // OTTO(terminal)
           }),
         );
       } catch (error) {
@@ -452,13 +408,6 @@ export function createTerminalManager(
       }
 
       session.setTitle(title);
-      return true;
-    },
-
-    clearTerminalTitle(id: string): boolean {
-      const session = terminalsById.get(id);
-      if (!session) return false;
-      session.clearTitle();
       return true;
     },
 

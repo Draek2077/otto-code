@@ -17,7 +17,6 @@ function workspace(
     projectRootPath: "/repo",
     workspaceDirectory: `/repo/${workspaceId}`,
     workspaceDirectoryLabel: workspaceId,
-    hasActiveChat: false,
     projectKind: "git",
     workspaceKind: "worktree",
     name: workspaceId,

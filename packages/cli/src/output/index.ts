@@ -1,5 +1,5 @@
 /**
- * Output abstraction layer for the Otto CLI.
+ * Output abstraction layer for the Paseo CLI.
  *
  * This module provides structured output rendering with support for multiple formats:
  * - table: Human-readable aligned tables (default)
@@ -46,7 +46,6 @@ export type {
   SingleResult,
   ListResult,
   AnyCommandResult,
-  CommandDiagnostic,
   CommandError,
 } from "./types.js";
 

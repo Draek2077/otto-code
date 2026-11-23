@@ -4,7 +4,7 @@ Small callbacks using the existing SDK:
 
 - Send `Try again.` when the latest output contains `out of credits`.
 - Decline a shell request matching `rm -rf`; approve exactly `git status`; leave other requests alone.
-- Inject `OTTO_HOOK_CREATE_EXAMPLE=created` on creation and `OTTO_HOOK_OPEN_EXAMPLE=opened` on each session opening.
+- Inject `PASEO_HOOK_CREATE_EXAMPLE=created` on creation and `PASEO_HOOK_OPEN_EXAMPLE=opened` on each session opening.
 - Change requested Codex agents to Claude Haiku before creation.
 - Create a worktree when a directory creation request is titled `Isolated lifecycle example`.
 
@@ -12,14 +12,14 @@ This is a demonstration plugin: installing it enables all these behaviors on its
 alongside `lifecycle-logger` on a test daemon with plugins enabled:
 
 ```bash
-otto plugin install /absolute/path/to/plugin-examples/lifecycle-actions
-otto plugin install /absolute/path/to/plugin-examples/lifecycle-logger
-otto plugin logs lifecycle-logger
+paseo plugin install /absolute/path/to/plugin-examples/lifecycle-actions
+paseo plugin install /absolute/path/to/plugin-examples/lifecycle-logger
+paseo plugin logs lifecycle-logger
 ```
 
-Outside the Otto repository, `server/inspect.ts` needs `@otto-code/protocol` installed for its
+Outside the Paseo repository, `server/inspect.ts` needs `@getpaseo/protocol` installed for its
 type imports. Add it to your plugin development dependencies at the same version as
-`@otto-code/plugin` before installing this example.
+`@getpaseo/plugin` before installing this example.
 
 Copy the callbacks you need into your own plugin. The follow-up example sends a new message; it does
 not replay attachments or undo previous tool effects. If the provider keeps returning the matching
@@ -33,4 +33,4 @@ Claude agent.
 See [agent configuration](../agent-configuration) for a focused example that injects MCP servers and
 changes Codex sandbox and approval options while preserving other settings.
 
-See the [lifecycle reference](../../public-docs/plugins/v0.8/reference.md#lifecycle-hooks) for the API.
+See the [lifecycle reference](../../public-docs/plugins/reference.md#lifecycle-hooks) for the API.

@@ -12,26 +12,62 @@ It validates the compositor behavior that unit tests cannot see:
   by retrying until the frame appears;
 - both viewport `capturePage` and full-page CDP screenshots return real pixels from
   the permanent production parking state;
-- guest background throttling can be disabled once at attach without per-capture
-  renderer coordination.
+- parked guests remain capturable with Chromium background throttling enabled;
+- the real-Electron host-composer sentinel proves guest Enter cannot submit a focused
+  host composer;
+- the automation group loads the compiled production keyboard boundary and guest
+  preload, then proves that initial page window handlers get first refusal, unhandled
+  shortcuts synchronously suppress editable browser defaults before crossing the host
+  boundary, shortcuts marked unavailable in editable targets retain the browser field's
+  native behavior, handlers registered after preload still get first refusal, focused
+  iframes share the same boundary, digit wildcard shortcuts cross, and background automation
+  stays in the guest.
 
 Run it with the repo Electron:
 
 ```bash
-npm run capture-harness --workspace=@otto-code/desktop
+npm run capture-harness --workspace=@getpaseo/desktop
 ```
 
-Run the browser automation fixture with:
+Build the desktop main process before the automation group so its production guest
+preload is available:
 
 ```bash
-OTTO_CAPTURE_HARNESS_GROUP=automation npm run capture-harness --workspace=@otto-code/desktop
+npm run build:main --workspace=@getpaseo/desktop
+PASEO_CAPTURE_HARNESS_GROUP=automation npm run capture-harness --workspace=@getpaseo/desktop
 ```
+
+Run the shared browser profile fixture with:
+
+```bash
+PASEO_CAPTURE_HARNESS_GROUP=browser-profile npm run capture-harness --workspace=@getpaseo/desktop
+```
+
+On macOS, test native titlebar dragging after scrolling with:
+
+```bash
+PASEO_CAPTURE_HARNESS_GROUP=titlebar-drag npm run capture-harness --workspace=@getpaseo/desktop
+```
+
+This group needs Xcode Command Line Tools and Accessibility permission for the
+terminal running it. It sends real mouse input to its test window and checks
+window movement, including button clicks and a portal over the titlebar. Leave
+the mouse idle during this group. It reads the app's production CSS and writes
+screenshots and window bounds to the output directory.
+
+The browser profile group runs two Electron processes in sequence. It verifies that each
+renderer-side `did-attach` identity maps to the correct main-process guest, that two live
+tabs share cookies and local storage through one persistent session, and that the data is
+still present after the first Electron process exits and the second starts.
 
 The automation group uses a real guest webview to verify the page-side ref contract:
 ARIA-like snapshot text includes headings, static text, and controls; refs survive
 `pushState` when the element still matches; same-URL rerenders stale old refs; and a
 file-input ref can be resolved to a CDP backend node id for upload. It also verifies
 page-context evaluation, including passing a resolved ref element as the function argument.
+Keyboard containment runs last because the host-composer sentinel intentionally leaves
+native focus in the host. It reuses an existing fixture button: adding a test-only control
+changes the inline fixture geometry exercised by the earlier actionability checks.
 
 On macOS the harness process must set `app.setActivationPolicy("accessory")` and
 hide the Dock icon before creating any window. `showInactive()` only prevents window
@@ -48,10 +84,16 @@ The harness writes PNG evidence and `results.json` to:
 packages/desktop/capture-harness/out/
 ```
 
-A passing run prints `PASS` lines for the production P1 attach-off parking state,
+A passing run prints `PASS` lines for the production P1 default-throttling parking state,
 including fresh, settled, 75-second soak, multi-tab, viewport, and full-page checks. The
 PNG sizes may be device-pixel scaled; on a Retina display the 1280x800 logical viewport
 is usually saved as 2560x1600.
+
+The existing `npm run test:e2e:browser-tabs --workspace=@getpaseo/desktop` journey
+verifies that a hidden window stops guest animation, captures fresh viewport pixels,
+and resumes animation after restoring the window. Its artifacts include the screenshot
+and animation measurements. Full-page content correctness remains separately tracked in
+[the full-page repetition bug](https://github.com/getpaseo/paseo/issues/3196).
 
 ## Mechanism
 
@@ -71,48 +113,11 @@ plane stays below the overlay plane regardless of body insertion order; menus ke
 layering inside `overlay-root`. Activating a presented browser also focuses its registered guest
 `WebContents` in main so macOS assigns keyboard first-responder ownership to the page.
 
-There is no renderer prep/restore handshake. Main disables guest background throttling
-once when the webview attaches, then screenshot capture uses the shared serialized queue,
-invalidates before each attempt, and retries known first-frame failures within the
-5-second capture budget. Viewport screenshots use `capturePage({ stayHidden:false })`;
-full-page screenshots use the existing CDP path with layout metrics and screenshot clip.
-
-## Backgrounded parked guests
-
-The paintable parking geometry has a cost: Chromium treats the 1x1 surface as a rendered
-frame, so every parked guest runs `requestAnimationFrame`, CSS animations, and timers at full
-rate and keeps submitting compositor frames. Under software compositing that made app frames
-100 to 230 ms with no app script running.
-
-A parked tab is therefore backgrounded after
-`RESIDENT_BROWSER_BACKGROUND_AFTER_IDLE_MS` (30 seconds, in
-`packages/app/src/desktop/browser/resident-activity.ts`) with no presentation and no AI
-operation. Backgrounding changes one style: the parked surface becomes `visibility: hidden`.
-Geometry, guest size, parent, and the CDP session do not change, so there is no re-attach and
-no guest resize. Waking is the reverse style write, done synchronously before an AI command
-reaches main (`withResidentBrowserAwake` in `resident-webviews.ts`, called from the automation
-handler) and whenever a pane presents the tab. The tab stays awake while commands keep
-arriving and backgrounds again after the same grace.
-
-Main still disables guest background throttling at attach. Do not toggle it per park:
-`webContents.setBackgroundThrottling` re-shows a hidden widget, so calling it after the
-surface is hidden silently undoes the backgrounding, and the DOM change alone already
-throttles the guest.
-
-Measured on 2026-10-09 with Electron 44.2.0 on Windows, using a scratch probe built like this
-harness (inactive corner window, production P1 parking around a 1280x800 webview):
-
-| State                                   | rAF/s | 10 ms interval/s | Guest CPU | Notes                                   |
-| --------------------------------------- | ----: | ---------------: | --------: | --------------------------------------- |
-| Parked, visible (before this change)    |   120 |              100 |     0.6 % | GPU process 1.2 %                       |
-| Parked, backgrounded                    |     0 |                1 |     0.0 % | GPU process 0 %                         |
-| Heavy canvas page, software, visible    |    70 |               62 |     4.3 % | `app.disableHardwareAcceleration()`     |
-| Heavy canvas page, software, background |     0 |              1.7 |     0.1 % |                                         |
-| Woken                                   |   120 |              100 |     0.6 % | capture succeeded first try in 30-53 ms |
-
-CPU is Electron `getAppMetrics()` `percentCPUUsage`. While backgrounded, CDP
-`Runtime.evaluate` still answered (2 to 27 ms), and `console-message` and CDP Network events
-kept arriving at the page's throttled rate, so log and network capture continue.
-`document.visibilityState` stays `visible`. Presenting a backgrounded guest showed the page,
-not white, within 50 ms. With the window minimized, a woken guest captured on the first
-attempt and ran at the same rates as a never-backgrounded guest in a minimized window.
+There is no renderer prep/restore handshake or lifetime background-throttling override.
+Screenshot capture temporarily enables frame production inside the shared serialized queue,
+restores the previous throttling policy on success or failure, and retains a 5-second capture budget.
+The browser tool takes one viewport frame through Electron's frame subscription and releases the
+subscription on completion or cancellation. A resized resident guest can produce fresh pixels
+while `capturePage()` leaves its surface-copy request pending; waiting for animation frames or
+retrying the copy does not repair that state. Full-page screenshots retain the CDP path with layout
+metrics and screenshot clip.

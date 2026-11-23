@@ -3,10 +3,9 @@ import {
   BUILTIN_PROVIDER_ICON_NAMES,
   KNOWN_PROVIDER_ICON_NAMES,
   TERMINAL_PROFILE_ICON_NAMES,
-} from "@otto-code/protocol/provider-icon-names";
+} from "@getpaseo/protocol/provider-icon-names";
 import { ACP_PROVIDER_CATALOG } from "@/data/acp-provider-catalog";
-import { getProviderIcon } from "./provider-icons";
-import { replaceProviderSnapshotIcons, resolveProviderIconName } from "./provider-icon-name";
+import { resolveProviderIconName } from "./provider-icon-name";
 
 describe("resolveProviderIconName", () => {
   it("returns the built-in identifier for known provider ids", () => {
@@ -18,8 +17,10 @@ describe("resolveProviderIconName", () => {
 
   it("returns the catalog identifier for ACP catalog provider ids that ship an icon", () => {
     expect(resolveProviderIconName("amp-acp")).toEqual({ kind: "catalog", id: "amp-acp" });
+    expect(resolveProviderIconName("devin")).toEqual({ kind: "catalog", id: "devin" });
     expect(resolveProviderIconName("gemini")).toEqual({ kind: "catalog", id: "gemini" });
     expect(resolveProviderIconName("gjc")).toEqual({ kind: "catalog", id: "gjc" });
+    expect(resolveProviderIconName("hermes")).toEqual({ kind: "catalog", id: "hermes" });
     expect(resolveProviderIconName("traecli")).toEqual({ kind: "catalog", id: "traecli" });
   });
 
@@ -30,62 +31,16 @@ describe("resolveProviderIconName", () => {
   it("resolves a snapshot SVG for a custom provider", () => {
     const svg = '<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /></svg>';
 
-    replaceProviderSnapshotIcons("server-1", [{ provider: "snapshot-provider", iconSvg: svg }]);
-
-    expect(resolveProviderIconName("snapshot-provider", "server-1")).toEqual({ kind: "svg", svg });
-  });
-
-  it("replaces each host snapshot without leaking icons across hosts", () => {
-    const secondSvg = "<svg id='second' />";
-    replaceProviderSnapshotIcons("server-1", [
-      { provider: "removed-provider", iconSvg: "<svg />" },
-      { provider: "snapshot-provider", iconSvg: "<svg />" },
-      { provider: "claude", iconSvg: "<svg />" },
-    ]);
-    replaceProviderSnapshotIcons("server-2", [
-      { provider: "snapshot-provider", iconSvg: secondSvg },
-    ]);
-
-    expect(resolveProviderIconName("snapshot-provider", "server-1")).toEqual({
-      kind: "svg",
-      svg: "<svg />",
-    });
-    expect(resolveProviderIconName("snapshot-provider", "server-2")).toEqual({
-      kind: "svg",
-      svg: secondSvg,
-    });
-    expect(resolveProviderIconName("claude", "server-1")).toEqual({
-      kind: "builtin",
-      id: "claude",
-    });
-
-    replaceProviderSnapshotIcons("server-1", [{ provider: "snapshot-provider" }]);
-
-    expect(resolveProviderIconName("removed-provider", "server-1")).toEqual({ kind: "bot" });
-    expect(resolveProviderIconName("snapshot-provider", "server-1")).toEqual({ kind: "bot" });
-    expect(resolveProviderIconName("snapshot-provider", "server-2")).toEqual({
-      kind: "svg",
-      svg: secondSvg,
-    });
+    expect(resolveProviderIconName("snapshot-provider", svg)).toEqual({ kind: "svg", svg });
   });
 });
 
 describe("known provider icon names", () => {
-  // Membership in the protocol registry is only ONE of the two routes to a
-  // specific icon: app-only ids resolve through APP_PROVIDER_ICONS in
-  // provider-icons.ts instead, which getProviderIcon consults first. The local
-  // brain host is deliberately on that route - it is Otto's own host rather
-  // than an ACP provider, and adding it to the protocol registry would also
-  // make guessTerminalProfileIcon match a command named "otto-brain".
-  //
-  // So assert the outcome both routes exist for - a catalog entry that ships
-  // an icon never falls back to the generic bot - rather than membership in
-  // one particular route.
-  it("gives every ACP catalog entry that ships an icon a specific icon", () => {
-    const botFallback = getProviderIcon("provider-id-that-cannot-exist");
+  it("includes every ACP catalog entry that ships an icon", () => {
+    const known = new Set(KNOWN_PROVIDER_ICON_NAMES);
     for (const entry of ACP_PROVIDER_CATALOG) {
       if (entry.iconSvg) {
-        expect(getProviderIcon(entry.id), entry.id).not.toBe(botFallback);
+        expect(known).toContain(entry.id);
       }
     }
   });

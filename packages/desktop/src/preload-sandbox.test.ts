@@ -3,12 +3,12 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
-import { OTTO_BROWSER_PROFILE_PARTITION } from "./features/browser-profile.js";
+import { PASEO_BROWSER_PROFILE_PARTITION } from "./features/browser-profile.js";
 
 // The preload runs inside Electron's sandbox and is tsc-compiled (not bundled), so at
 // runtime it may only load Electron's sandbox allowlist. Any other module (local or
 // third-party) emits a require() that the sandbox rejects synchronously, aborting the
-// preload before contextBridge.exposeInMainWorld runs and leaving window.ottoDesktop
+// preload before contextBridge.exposeInMainWorld runs and leaving window.paseoDesktop
 // undefined. That regression (0.1.108, #2103) is what this test guards against.
 const SANDBOX_ALLOWLIST = new Set(["electron"]);
 
@@ -34,7 +34,7 @@ function runtimeModuleSpecifiers(source: string): string[] {
   const isTypeOnlyImport = (node: ts.ImportDeclaration): boolean => {
     const clause = node.importClause;
     if (!clause) {
-      // Side-effect import: `import "./x.js"` - always a runtime load.
+      // Side-effect import: `import "./x.js"` — always a runtime load.
       return false;
     }
     if (clause.isTypeOnly) {
@@ -89,11 +89,11 @@ describe("preload sandbox safety", () => {
 
   it("inlines the browser profile partition instead of importing it", () => {
     const source = readFileSync(preloadPath, "utf8");
-    const match = source.match(/const\s+OTTO_BROWSER_PROFILE_PARTITION\s*=\s*"([^"]+)"/);
+    const match = source.match(/const\s+PASEO_BROWSER_PROFILE_PARTITION\s*=\s*"([^"]+)"/);
     expect(
       match,
-      "OTTO_BROWSER_PROFILE_PARTITION not found as a double-quoted string literal in preload.ts",
+      "PASEO_BROWSER_PROFILE_PARTITION not found as a double-quoted string literal in preload.ts",
     ).not.toBeNull();
-    expect(match![1]).toBe(OTTO_BROWSER_PROFILE_PARTITION);
+    expect(match![1]).toBe(PASEO_BROWSER_PROFILE_PARTITION);
   });
 });

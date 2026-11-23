@@ -1,24 +1,18 @@
-import { PluginClientStateProvider } from "@otto-code/plugin/client/host";
 import type {
   PluginButtonBehavior,
   PluginButtonIcon,
   PluginButtonMenuEntry,
   PluginHostProps,
-} from "@otto-code/plugin/client";
-import type { PluginTheme } from "@otto-code/plugin";
+} from "@getpaseo/plugin/client";
+import type { PluginTheme } from "@getpaseo/plugin";
 import { useCallback, useMemo, useSyncExternalStore, type ReactNode } from "react";
-import { Platform, Pressable, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, Text, View, useWindowDimensions } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import {
-  CircleAlert as AlertCircle,
-  ChevronDown,
-  MoreHorizontal,
-} from "@/components/icons/material-icons";
+import { AlertCircle, ChevronDown, MoreHorizontal } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import {
   MenuRoot,
   MenuTrigger,
-  MenuSurface,
   MenuItem,
   MenuSeparator,
   MenuSubTrigger,
@@ -34,23 +28,27 @@ import {
 } from "@/components/ui/icon-button-chrome";
 import { composerPillStyles } from "@/composer/pill-styles";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { ToastApiProvider, useToast } from "@/contexts/toast-context";
+import { useToast } from "@/contexts/toast-context";
 import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
 import type { Theme } from "@/styles/theme";
 import { createPluginClientStateSource } from "../client-state/source";
 import { Icon } from "../icons";
-import { PluginRuntimeBoundary } from "../runtime-boundary";
-import { createPluginSurfaceRuntime, type PluginSurfaceRuntime } from "../surface-runtime";
+import {
+  PluginEnvironmentProvider,
+  PluginPopoverContent,
+  PluginPopoverSurface,
+  type PluginEnvironment,
+} from "../popover";
 import { SurfaceErrorBoundary } from "../surface-error-boundary";
 import { toPluginTheme } from "../theme";
 import { buttonMatches, type RegisteredPluginButton } from "./model";
 import { pluginButtonStore } from "./store";
+import { resolvePluginPlatform } from "../platform";
 
 interface ButtonView {
   entry: RegisteredPluginButton;
   props: PluginHostProps & RegisteredPluginButton["context"];
-  runtime: PluginSurfaceRuntime;
-  state: ReturnType<typeof createPluginClientStateSource>;
+  environment: PluginEnvironment;
   toast: ReturnType<typeof useToast>;
 }
 
@@ -67,41 +65,20 @@ function headerButtonStyle(compact: boolean, state: IconButtonChromeState, disab
   return [
     styles.headerButton,
     styles.button,
-    state.open && styles.selected,
-    state.hovered && !state.pressed && styles.hovered,
-    state.pressed && styles.pressed,
+    (state.hovered || state.pressed || state.open) && styles.active,
     disabled && styles.disabled,
   ];
 }
 
-function resolvePlatform(): PluginHostProps["layout"]["platform"] {
-  if (Platform.OS === "ios") return "ios";
-  if (Platform.OS === "android") return "android";
-  return "web";
-}
-
-// These providers live inside the surface content as well as around its trigger. Native sheets
-// teleport their children, so providers around MenuRoot alone cannot reach the plugin body.
 function ButtonEnvironment({ view, children }: { view: ButtonView; children: ReactNode }) {
   return (
-    <ToastApiProvider api={view.toast}>
-      <PluginRuntimeBoundary plugin={view.entry.installation} runtime={view.runtime}>
-        <PluginClientStateProvider source={view.state}>{children}</PluginClientStateProvider>
-      </PluginRuntimeBoundary>
-    </ToastApiProvider>
+    <PluginEnvironmentProvider environment={view.environment}>{children}</PluginEnvironmentProvider>
   );
 }
 
-function ButtonIconContent({
-  view,
-  icon,
-  size,
-}: {
-  view: ButtonView;
-  icon: PluginButtonIcon;
-  size: number;
-}) {
+function ButtonIcon({ view, icon }: { view: ButtonView; icon: PluginButtonIcon }) {
   const color = view.props.theme.colors.foregroundMuted;
+  const size = view.entry.placement === "composer" ? 14 : 16;
   return (
     <View
       style={styles.icon}
@@ -116,18 +93,6 @@ function ButtonIconContent({
         renderCustomIcon(icon, view, size, color)
       )}
     </View>
-  );
-}
-
-const ThemedButtonIcon = withUnistyles(ButtonIconContent);
-const composerIconMapping = (theme: Theme) => ({ size: theme.iconSize.sm });
-const headerIconMapping = (theme: Theme) => ({ size: theme.iconSize.md });
-function ButtonIcon(props: { view: ButtonView; icon: PluginButtonIcon }) {
-  return (
-    <ThemedButtonIcon
-      {...props}
-      uniProps={props.view.entry.placement === "composer" ? composerIconMapping : headerIconMapping}
-    />
   );
 }
 
@@ -210,9 +175,9 @@ function ButtonBody({
   if (behavior.kind === "popover") {
     const Content = behavior.Content;
     return (
-      <View style={styles.content}>
+      <PluginPopoverContent>
         <Content {...view.props} close={close} />
-      </View>
+      </PluginPopoverContent>
     );
   }
   if (behavior.kind !== "menu") return null;
@@ -244,11 +209,11 @@ function ButtonSurfaceBody({
   path: readonly string[];
 }) {
   return (
-    <ButtonEnvironment view={view}>
-      <SurfaceErrorBoundary installation={view.entry.installation} Surface={behavior}>
+    <SurfaceErrorBoundary installation={view.entry.installation} Surface={behavior}>
+      <ButtonEnvironment view={view}>
         <ButtonBody view={view} behavior={behavior} path={path} />
-      </SurfaceErrorBoundary>
-    </ButtonEnvironment>
+      </ButtonEnvironment>
+    </SurfaceErrorBoundary>
   );
 }
 
@@ -299,9 +264,7 @@ function ButtonControl({ view }: { view: ButtonView }) {
         ? [
             composerPillStyles.body,
             styles.button,
-            entry.open && styles.selected,
-            hovered && !pressed && styles.hovered,
-            pressed && styles.pressed,
+            (hovered || pressed || entry.open) && styles.active,
             disabled && styles.disabled,
           ]
         : headerButtonStyle(props.layout.compact, { hovered, pressed, open: entry.open }, disabled),
@@ -311,7 +274,7 @@ function ButtonControl({ view }: { view: ButtonView }) {
     <>
       {entry.pending ? (
         <View style={styles.icon}>
-          <LoadingSpinner size="sm" color={props.theme.colors.foregroundMuted} />
+          <LoadingSpinner size={14} color={props.theme.colors.foregroundMuted} />
         </View>
       ) : (
         <ButtonIcon view={view} icon={button.icon} />
@@ -323,7 +286,7 @@ function ButtonControl({ view }: { view: ButtonView }) {
       ) : null}
       {chevron ? (
         <View testID="plugin-button-chevron">
-          <ChevronDown size="xs" color={props.theme.colors.foregroundMuted} />
+          <ChevronDown size={12} color={props.theme.colors.foregroundMuted} />
         </View>
       ) : null}
     </>
@@ -364,19 +327,15 @@ function ButtonControl({ view }: { view: ButtonView }) {
         </TooltipContent>
       </Tooltip>
       {expanded ? (
-        <MenuSurface
+        <PluginPopoverSurface
           sheetTitle={button.title}
           side={composer ? "top" : "bottom"}
           align={composer ? "start" : "end"}
           offset={composer ? 12 : 4}
-          minWidth={280}
-          maxWidth={420}
-          maxHeight={440}
-          scrollable
           pages={pages}
         >
           <ButtonSurfaceBody view={view} behavior={button.behavior} path={ROOT_PATH} />
-        </MenuSurface>
+        </PluginPopoverSurface>
       ) : null}
     </MenuRoot>
   );
@@ -399,7 +358,7 @@ function BrokenButton({
         disabled
         style={headerButtonStyle(compact, {}, true)}
       >
-        <ThemedErrorIcon size="md" uniProps={errorIconMapping} />
+        <ThemedErrorIcon size={16} uniProps={errorIconMapping} />
       </TooltipTrigger>
       <TooltipContent>
         <Text style={styles.tooltipLabel}>{error}</Text>
@@ -423,18 +382,20 @@ function createButtonView({
   hostLabel: string;
   theme: PluginTheme;
 }): ButtonView | null {
-  const runtime = createPluginSurfaceRuntime(client, entry.installation.id);
-  if (!runtime) return null;
+  if (!client) return null;
   return {
     entry,
-    runtime,
     toast,
-    state: createPluginClientStateSource(entry.installation.serverId),
+    environment: {
+      installation: entry.installation,
+      toast,
+      state: createPluginClientStateSource(entry.installation.serverId),
+    },
     props: {
       ...entry.context,
       theme,
       host: { id: entry.installation.serverId, label: hostLabel },
-      layout: { compact, platform: resolvePlatform() },
+      layout: { compact, platform: resolvePluginPlatform() },
     },
   };
 }
@@ -513,11 +474,15 @@ function OverflowPages({
       const view = createButtonView({ entry, client, toast, compact, hostLabel, theme });
       if (!view) continue;
       rows.push(
-        <ButtonEnvironment key={entry.key} view={view}>
-          <SurfaceErrorBoundary installation={entry.installation} Surface={entry.button.icon}>
+        <SurfaceErrorBoundary
+          key={entry.key}
+          installation={entry.installation}
+          Surface={entry.button.icon}
+        >
+          <ButtonEnvironment view={view}>
             <OverflowButton view={view} />
-          </SurfaceErrorBoundary>
-        </ButtonEnvironment>,
+          </ButtonEnvironment>
+        </SurfaceErrorBoundary>,
       );
       if (entry.button.behavior.kind === "action") continue;
       pages.push(
@@ -536,17 +501,13 @@ function OverflowPages({
   }, [entries, client, toast, theme, hostLabel, compact]);
   const { t } = useTranslation();
   return (
-    <MenuSurface
+    <PluginPopoverSurface
       sheetTitle={t("workspace.git.actions.moreActions")}
       align="end"
-      minWidth={280}
-      maxWidth={420}
-      maxHeight={440}
-      scrollable
       pages={menuContent.pages}
     >
       {menuContent.rows}
-    </MenuSurface>
+    </PluginPopoverSurface>
   );
 }
 
@@ -640,7 +601,7 @@ export function PluginHeaderButtons({
             accessibilityLabel={t("workspace.git.actions.moreActions")}
             style={overflowStyle}
           >
-            <ThemedMoreIcon size="md" uniProps={mutedIconMapping} />
+            <ThemedMoreIcon size={16} uniProps={mutedIconMapping} />
           </MenuTrigger>
           <ThemedOverflowPages
             entries={overflow}
@@ -673,34 +634,21 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.borderAccent,
   },
   button: { flexShrink: 1, minWidth: 0, maxWidth: 160 },
-  selected: { backgroundColor: theme.colors.surfaceInteractiveSelected },
-  hovered: { backgroundColor: theme.colors.surfaceInteractiveHover },
-  pressed: { backgroundColor: theme.colors.surfaceInteractivePressed },
+  active: { backgroundColor: theme.colors.surface2 },
   disabled: { opacity: theme.opacity[50] },
-  tooltipLabel: {
-    fontFamily: theme.fontFamily.ui,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foreground,
-  },
+  tooltipLabel: { fontSize: theme.fontSize.sm, color: theme.colors.foreground },
   composerLabel: {
-    fontFamily: theme.fontFamily.ui,
     fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },
-  label: {
-    fontFamily: theme.fontFamily.ui,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foregroundMuted,
-    flexShrink: 1,
-  },
+  label: { fontSize: theme.fontSize.sm, color: theme.colors.foregroundMuted, flexShrink: 1 },
   icon: {
-    width: theme.iconSize.md,
-    height: theme.iconSize.md,
+    width: 16,
+    height: 16,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
     overflow: "hidden",
   },
-  content: { padding: theme.spacing[3], gap: theme.spacing[2] },
 }));

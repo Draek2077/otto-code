@@ -164,11 +164,11 @@ export async function launchAgent(input: {
   };
 }): Promise<AgentHandle> {
   execFileSync("git", ["init", "-b", "main"], { cwd: input.cwd, stdio: "ignore" });
-  execFileSync("git", ["config", "user.email", "otto-test@example.com"], {
+  execFileSync("git", ["config", "user.email", "paseo-test@example.com"], {
     cwd: input.cwd,
     stdio: "ignore",
   });
-  execFileSync("git", ["config", "user.name", "Otto Test"], {
+  execFileSync("git", ["config", "user.name", "Paseo Test"], {
     cwd: input.cwd,
     stdio: "ignore",
   });
@@ -176,7 +176,7 @@ export async function launchAgent(input: {
     cwd: input.cwd,
     stdio: "ignore",
   });
-  writeFileSync(`${input.cwd}/README.md`, "# Otto rewind flow\n", "utf8");
+  writeFileSync(`${input.cwd}/README.md`, "# Paseo rewind flow\n", "utf8");
   execFileSync("git", ["add", "README.md"], { cwd: input.cwd, stdio: "ignore" });
   execFileSync("git", ["commit", "-m", "Initial commit"], { cwd: input.cwd, stdio: "ignore" });
   const client = await connectSeedClient();
@@ -319,12 +319,8 @@ export async function assertFileContains(filePath: string, text: string): Promis
 export async function assertComposerIdle(handle: Pick<AgentHandle, "page">): Promise<void> {
   await expectComposerEditable(handle.page);
   await expect(
-    handle.page.getByRole("button", {
-      name: /^(?:stop agent|canceling agent|interrupt agent|send and interrupt)$/i,
-    }),
-  ).toHaveCount(0, {
-    timeout: 30_000,
-  });
+    handle.page.getByRole("button", { name: /^(?:Stop agent|Canceling agent)$/ }),
+  ).toHaveCount(0, { timeout: 30_000 });
   await expect(handle.page.getByTestId("turn-working-indicator")).toHaveCount(0, {
     timeout: 30_000,
   });

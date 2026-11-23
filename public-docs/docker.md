@@ -6,6 +6,8 @@ order: 6
 category: Getting started
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Docker
 
 The official Otto Docker image runs the daemon and serves the bundled browser UI from the same HTTP origin. It is meant for servers, dev boxes, NAS devices, homelab hosts, and other places where you want Otto running without the desktop app.

@@ -1,6 +1,5 @@
 import { generateDraftId } from "@/stores/draft-keys";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
-import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import type { WorkspaceTabPlacement } from "@/stores/workspace-layout-actions";
 
 export interface PrepareWorkspaceTabInput {
@@ -11,8 +10,6 @@ export interface PrepareWorkspaceTabInput {
   placement?: WorkspaceTabPlacement;
 }
 
-export type NavigateToPreparedWorkspaceTabInput = PrepareWorkspaceTabInput;
-
 export interface PrepareWorkspaceTabDeps {
   openTab: (input: {
     workspaceKey: string;
@@ -21,10 +18,6 @@ export interface PrepareWorkspaceTabDeps {
     pin?: boolean;
     placement?: WorkspaceTabPlacement;
   }) => string | null;
-}
-
-export interface NavigateToPreparedWorkspaceTabDeps extends PrepareWorkspaceTabDeps {
-  navigateToWorkspace: (input: { serverId: string; workspaceId: string }) => unknown;
 }
 
 function getPreparedTarget(target: WorkspaceTabTarget): WorkspaceTabTarget {
@@ -37,7 +30,7 @@ function getPreparedTarget(target: WorkspaceTabTarget): WorkspaceTabTarget {
 export function prepareWorkspaceTab(
   input: PrepareWorkspaceTabInput,
   deps: PrepareWorkspaceTabDeps,
-): string {
+): void {
   const target = getPreparedTarget(input.target);
   const key =
     buildWorkspaceTabPersistenceKey({
@@ -52,15 +45,4 @@ export function prepareWorkspaceTab(
     pin: input.pin === true && target.kind === "agent",
     placement: input.placement,
   });
-
-  return buildHostWorkspaceRoute(input.serverId, input.workspaceId);
-}
-
-export function navigateToPreparedWorkspaceTab(
-  input: NavigateToPreparedWorkspaceTabInput,
-  deps: NavigateToPreparedWorkspaceTabDeps,
-): string {
-  const route = prepareWorkspaceTab(input, deps);
-  deps.navigateToWorkspace({ serverId: input.serverId, workspaceId: input.workspaceId });
-  return route;
 }

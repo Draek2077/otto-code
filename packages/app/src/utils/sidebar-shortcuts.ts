@@ -44,13 +44,13 @@ export function buildSidebarShortcutModel(input: {
 
 export function buildStatusSidebarShortcutModel(input: {
   groups: readonly StatusGroup[];
-  collapsedWorkspaceGroupKeys?: ReadonlySet<string>;
+  collapsedStatusGroupKeys?: ReadonlySet<string>;
   shortcutLimit?: number;
 }): SidebarShortcutModel {
   return buildSidebarShortcutSections({
     sections: input.groups.map((group) => ({
       workspaces: group.rows,
-      collapsed: input.collapsedWorkspaceGroupKeys?.has(group.bucket),
+      collapsed: input.collapsedStatusGroupKeys?.has(group.bucket),
     })),
     shortcutLimit: input.shortcutLimit,
   });
@@ -70,13 +70,10 @@ export function buildSidebarShortcutSections(input: {
     }
 
     for (const workspace of section.workspaces) {
-      if (shortcutTargets.length >= maxShortcuts) {
-        break;
-      }
-
-      const shortcutNumber = shortcutTargets.length + 1;
       shortcutTargets.push(createShortcutTarget(workspace));
-      shortcutIndexByWorkspaceKey.set(workspace.workspaceKey, shortcutNumber);
+      if (shortcutTargets.length <= maxShortcuts) {
+        shortcutIndexByWorkspaceKey.set(workspace.workspaceKey, shortcutTargets.length);
+      }
     }
   }
 

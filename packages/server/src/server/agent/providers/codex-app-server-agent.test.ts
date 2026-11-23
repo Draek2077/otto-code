@@ -8,9 +8,10 @@ import path from "node:path";
 import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 
-import { withTemporaryOttoHome } from "../../../test-utils/temp-otto-home.js";
 import type {
+  AgentClient,
   AgentLaunchContext,
+  AgentPermissionRequest,
   AgentSession,
   AgentSessionConfig,
   AgentSlashCommand,
@@ -28,7 +29,6 @@ import {
   mapCodexPlanToToolCall,
   normalizeCodexOutputSchema,
   toAgentUsage,
-  accumulateCodexTurnUsage,
 } from "./codex-app-server-agent.js";
 
 describe("mapCodexPlanUpdateToTodo", () => {
@@ -95,10 +95,8 @@ import {
 } from "./codex/test-utils/fake-app-server.js";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { asInternals as castInternals, createStub } from "../../test-utils/class-mocks.js";
+import { AgentManager } from "../agent-manager.js";
 import { buildProviderRegistry } from "../provider-registry.js";
-
-// Provider images materialize under $OTTO_HOME; keep them out of the real one.
-withTemporaryOttoHome("otto-home-codex-test");
 
 interface CollaborationModeRecord {
   name: string;
@@ -116,7 +114,7 @@ interface CodexSessionTestAccess {
   ensureThreadLoaded(): Promise<void>;
   handleToolApprovalRequest(params: unknown): Promise<unknown>;
   handleNotification(method: string, params: unknown): void;
-  loadPersistedHistory(): Promise<void>;
+  loadPersistedHistory(client: CodexClientLike | null): Promise<void>;
   refreshResolvedCollaborationMode(): void;
   serviceTier: "fast" | null;
   planModeEnabled: boolean;
@@ -129,7 +127,7 @@ interface CodexClientLike {
 }
 
 type CodexTestSession = AgentSession & {
-  connected: boolean;
+  connectionState: "disconnected" | "history-ready" | "connected";
   currentThreadId: string | null;
   activeForegroundTurnId: string | null;
   client: CodexClientLike | null;
@@ -170,14 +168,22 @@ function createSession(
     options.goalsEnabled === true,
     options.autoReviewEnabled === true,
   ) as CodexTestSession;
-  session.connected = true;
+  session.connectionState = "connected";
   session.currentThreadId = "test-thread";
   session.activeForegroundTurnId = "test-turn";
   return session;
 }
 
-function createProviderWithFakeAppServer(appServer: FakeCodexAppServer): CodexAppServerAgentClient {
-  const provider = new CodexAppServerAgentClient(createTestLogger());
+function createProviderWithFakeAppServer(
+  appServer: FakeCodexAppServer,
+  options?: {
+    runtimeSettings?: ConstructorParameters<typeof CodexAppServerAgentClient>[1];
+    customProvider?: { id: string; label: string; extends: string };
+  },
+): CodexAppServerAgentClient {
+  const provider = new CodexAppServerAgentClient(createTestLogger(), options?.runtimeSettings, {
+    customProvider: options?.customProvider,
+  });
   const internals = castInternals<{
     goalsEnabledPromise: Promise<boolean> | null;
     autoReviewEnabledPromise: Promise<boolean> | null;
@@ -195,7 +201,7 @@ async function startPublicSteeringSession(
     commandName: string;
     args?: string;
   } | null>,
-): Promise<{ session: AgentSession; ottoTurnId: string }> {
+): Promise<{ session: AgentSession; paseoTurnId: string }> {
   const session = new CodexAppServerAgentSession(
     createConfig({ cwd: "/workspace/project" }),
     null,
@@ -207,7 +213,7 @@ async function startPublicSteeringSession(
   await appServer.waitForTurnStart();
   appServer.startsTurn({ threadId: "thread-1", turnId: "native-A" });
   await new Promise((resolve) => setTimeout(resolve, 0));
-  return { session, ottoTurnId: started.turnId };
+  return { session, paseoTurnId: started.turnId };
 }
 
 function deferred<T>() {
@@ -223,13 +229,13 @@ describe("Codex active-turn steering admission", () => {
     const appServer = createFakeCodexAppServer({
       "turn/steer": () => ({ turn: { id: "native-A" } }),
     });
-    const { session, ottoTurnId } = await startPublicSteeringSession(appServer);
+    const { session, paseoTurnId } = await startPublicSteeringSession(appServer);
     castInternals<{ emitSyntheticPlanApprovalRequest: (planText: string) => void }>(
       session,
     ).emitSyntheticPlanApprovalRequest("Ship the thing");
 
     await expect(
-      session.steerActiveTurn!("background notification", { expectedTurnId: ottoTurnId }),
+      session.steerActiveTurn!("background notification", { expectedTurnId: paseoTurnId }),
     ).resolves.toEqual({ status: "accepted" });
     expect(session.getPendingPermissions()).toHaveLength(1);
 
@@ -243,7 +249,7 @@ describe("Codex active-turn steering admission", () => {
     const appServer = createFakeCodexAppServer({
       "turn/steer": () => ({ turn: { id: "native-A" } }),
     });
-    const { session, ottoTurnId } = await startPublicSteeringSession(appServer);
+    const { session, paseoTurnId } = await startPublicSteeringSession(appServer);
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
 
@@ -300,7 +306,7 @@ describe("Codex active-turn steering admission", () => {
 
     await expect(
       session.steerActiveTurn!("review this instead", {
-        expectedTurnId: ottoTurnId,
+        expectedTurnId: paseoTurnId,
         clearPendingPermissions: true,
       }),
     ).resolves.toEqual({ status: "accepted" });
@@ -336,14 +342,14 @@ describe("Codex active-turn steering admission", () => {
     const commandResolution = deferred<{ commandName: string } | null>();
     const resolverEntered = deferred<void>();
     const appServer = createFakeCodexAppServer();
-    const { session, ottoTurnId } = await startPublicSteeringSession(appServer, async (prompt) => {
+    const { session, paseoTurnId } = await startPublicSteeringSession(appServer, async (prompt) => {
       if (prompt !== "/held") return null;
       resolverEntered.resolve();
       return commandResolution.promise;
     });
 
     const steer = session.steerActiveTurn!("/held", {
-      expectedTurnId: ottoTurnId,
+      expectedTurnId: paseoTurnId,
       clientMessageId: "steer-A",
     });
     await resolverEntered.promise;
@@ -355,7 +361,7 @@ describe("Codex active-turn steering admission", () => {
     commandResolution.resolve(null);
 
     await expect(steer).resolves.toEqual({ status: "unavailable" });
-    expect(startedB.turnId).not.toBe(ottoTurnId);
+    expect(startedB.turnId).not.toBe(paseoTurnId);
     expect(appServer.requests().filter((request) => request.method === "turn/steer")).toEqual([]);
     await session.close();
     appServer.assertNoErrors();
@@ -390,9 +396,9 @@ describe("Codex active-turn steering admission", () => {
     const appServer = createFakeCodexAppServer({
       "turn/steer": () => ({ __jsonRpcError: { code, message, ...(data ? { data } : {}) } }),
     });
-    const { session, ottoTurnId } = await startPublicSteeringSession(appServer);
+    const { session, paseoTurnId } = await startPublicSteeringSession(appServer);
     const steer = session.steerActiveTurn!("follow up", {
-      expectedTurnId: ottoTurnId,
+      expectedTurnId: paseoTurnId,
       clientMessageId: "steer-frame",
     });
     if (expected === "unavailable") {
@@ -410,10 +416,10 @@ describe("Codex active-turn steering admission", () => {
         __jsonRpcError: { code: -32000, message: "connection lost" },
       }),
     });
-    const { session, ottoTurnId } = await startPublicSteeringSession(appServer);
+    const { session, paseoTurnId } = await startPublicSteeringSession(appServer);
     await expect(
       session.steerActiveTurn!("follow up", {
-        expectedTurnId: ottoTurnId,
+        expectedTurnId: paseoTurnId,
         clientMessageId: "steer-transport",
       }),
     ).rejects.toThrow("connection lost");
@@ -424,9 +430,9 @@ describe("Codex active-turn steering admission", () => {
     const appServer = createFakeCodexAppServer({
       "turn/steer": () => new Promise<void>(() => undefined),
     });
-    const { session, ottoTurnId } = await startPublicSteeringSession(appServer);
+    const { session, paseoTurnId } = await startPublicSteeringSession(appServer);
     const steer = session.steerActiveTurn!("follow up", {
-      expectedTurnId: ottoTurnId,
+      expectedTurnId: paseoTurnId,
       clientMessageId: "steer-disconnect",
     });
     await appServer.waitForRequest("turn/steer");
@@ -497,15 +503,8 @@ function asInternals(session: CodexTestSession): CodexSessionTestAccess {
   return castInternals<CodexSessionTestAccess>(session);
 }
 
-/** Let every already-queued continuation run, without advancing timers. */
-async function flushMicrotasks(): Promise<void> {
-  for (let index = 0; index < 5; index += 1) {
-    await Promise.resolve();
-  }
-}
-
 function markdownImageSource(markdown: string): string {
-  const match = markdown.match(/^!\[[^\]]*]\((.*)\)$/);
+  const match = markdown.trim().match(/^!\[[^\]]*]\((.*)\)$/);
   if (!match) {
     throw new Error(`Expected markdown image, got: ${markdown}`);
   }
@@ -547,7 +546,7 @@ async function runCustomCodexProviderTurn(
     `
 const fs = require("node:fs");
 
-const capturePath = process.env.OTTO_FAKE_CODEX_CAPTURE;
+const capturePath = process.env.PASEO_FAKE_CODEX_CAPTURE;
 let buffer = "";
 
 fs.appendFileSync(capturePath, JSON.stringify({
@@ -597,7 +596,7 @@ process.stdin.on("data", (chunk) => {
         env: {
           OPENAI_API_KEY: "sk-custom",
           OPENAI_BASE_URL: baseUrl,
-          OTTO_FAKE_CODEX_CAPTURE: capturedRequestsPath,
+          PASEO_FAKE_CODEX_CAPTURE: capturedRequestsPath,
         },
       },
     },
@@ -619,6 +618,131 @@ process.stdin.on("data", (chunk) => {
     await session.close();
     rmSync(tempDir, { recursive: true, force: true });
   }
+}
+
+async function withCustomCodexProviderHome<T>(
+  run: (input: {
+    session: AgentSession;
+    readCaptured: () => CapturedFakeCodexRecord[];
+  }) => Promise<T>,
+  providerPrompts: Record<string, string> = {},
+): Promise<T> {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "codex-provider-home-"));
+  const daemonCodexHome = path.join(tempDir, "daemon-codex-home");
+  const providerCodexHome = path.join(tempDir, "provider-codex-home");
+  const fakeAppServerPath = path.join(tempDir, "fake-codex-app-server.cjs");
+  const capturedRequestsPath = path.join(tempDir, "requests.jsonl");
+  mkdirSync(path.join(daemonCodexHome, "prompts"), { recursive: true });
+  mkdirSync(path.join(providerCodexHome, "prompts"), { recursive: true });
+  writeFileSync(
+    path.join(daemonCodexHome, "prompts", "probe-default.md"),
+    "---\ndescription: Daemon home prompt\n---\nfrom the daemon home\n",
+  );
+  writeFileSync(
+    path.join(providerCodexHome, "prompts", "probe-profile.md"),
+    "---\ndescription: Provider home prompt\n---\nfrom the provider home\n",
+  );
+  for (const [name, content] of Object.entries(providerPrompts)) {
+    writeFileSync(path.join(providerCodexHome, "prompts", `${name}.md`), content);
+  }
+  writeFileSync(
+    fakeAppServerPath,
+    `
+const fs = require("node:fs");
+
+const capturePath = process.env.PASEO_FAKE_CODEX_CAPTURE;
+let buffer = "";
+
+fs.appendFileSync(capturePath, JSON.stringify({ kind: "env", CODEX_HOME: process.env.CODEX_HOME }) + "\\n");
+
+function resultFor(method) {
+  if (method === "collaborationMode/list") return { data: [] };
+  if (method === "skills/list") return { data: [] };
+  if (method === "model/list") return { data: [{ id: "profile-model", isDefault: true }] };
+  if (method === "thread/start") return { thread: { id: "thread-1" } };
+  return {};
+}
+
+process.stdin.on("data", (chunk) => {
+  buffer += chunk.toString();
+  for (;;) {
+    const newlineIndex = buffer.indexOf("\\n");
+    if (newlineIndex === -1) break;
+    const line = buffer.slice(0, newlineIndex).trim();
+    buffer = buffer.slice(newlineIndex + 1);
+    if (!line) continue;
+    const message = JSON.parse(line);
+    fs.appendFileSync(capturePath, JSON.stringify({ kind: "request", method: message.method, params: message.params }) + "\\n");
+    process.stdout.write(JSON.stringify({ id: message.id, result: resultFor(message.method) }) + "\\n");
+  }
+});
+`,
+  );
+
+  vi.stubEnv("CODEX_HOME", daemonCodexHome);
+  const registry = buildProviderRegistry(createTestLogger(), {
+    providerOverrides: {
+      "profile-codex": {
+        extends: "codex",
+        label: "Profile Codex",
+        command: [process.execPath, fakeAppServerPath],
+        env: {
+          CODEX_HOME: providerCodexHome,
+          PASEO_FAKE_CODEX_CAPTURE: capturedRequestsPath,
+        },
+      },
+    },
+  });
+  const session = await registry["profile-codex"].createClient(createTestLogger()).createSession({
+    provider: "profile-codex",
+    cwd: tempDir,
+    modeId: "auto",
+  });
+
+  try {
+    expect(session.usageSession?.()).toMatchObject({
+      provider: "codex",
+      env: { CODEX_HOME: providerCodexHome },
+    });
+    expect(session.usageSession?.()?.sessionKey).toBe(session.usageSession?.()?.sessionKey);
+    return await run({
+      session,
+      readCaptured: () =>
+        readFileSync(capturedRequestsPath, "utf8")
+          .trim()
+          .split("\n")
+          .map((line) => JSON.parse(line) as CapturedFakeCodexRecord),
+    });
+  } finally {
+    await session.close();
+    expect(session.usageSession?.()).toBeNull();
+    vi.unstubAllEnvs();
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function listPromptCommandsFromCustomCodexHome(): Promise<string[]> {
+  return withCustomCodexProviderHome(async ({ session }) => {
+    const commands = await session.listCommands!();
+    return commands.map((command) => command.name).filter((name) => name.startsWith("prompts:"));
+  });
+}
+
+async function runPromptFromCustomCodexHome(
+  prompt: string,
+  providerPrompts: Record<string, string> = {},
+): Promise<CapturedFakeCodexRecord[]> {
+  return withCustomCodexProviderHome(async ({ session, readCaptured }) => {
+    await session.startTurn(prompt);
+    return readCaptured();
+  }, providerPrompts);
+}
+
+async function expandCustomPrompt(template: string, args: string): Promise<string> {
+  const records = await runPromptFromCustomCodexHome(`/prompts:template ${args}`, { template });
+  const turnStart = records.find((record) => record.method === "turn/start");
+  const params = turnStart?.params as { input: Array<{ text: string }> };
+  return params.input[0].text;
 }
 
 function capturedThreadStartConfig(records: CapturedFakeCodexRecord[]): unknown {
@@ -651,6 +775,7 @@ let buffer = "";
 function resultFor(method, params) {
   if (method === "initialize") return {};
   if (method === "collaborationMode/list") return { data: [] };
+  if (method === "model/list") return { data: [] };
   if (method === "skills/list") {
     const cwds = params && params.cwds;
     const projectCwd = ${JSON.stringify(projectCwd)};
@@ -703,195 +828,6 @@ process.stdin.on("data", (chunk) => {
 }
 
 describe("Codex app-server provider", () => {
-  test("Default mode preapproves internal Otto reads while mutators keep their native policy", async () => {
-    const session = createSession({
-      modeId: "auto",
-      mcpServers: { otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents" } },
-    });
-    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
-      if (method === "thread/loaded/list") return { data: ["test-thread"] };
-      if (method === "turn/start") return {};
-      throw new Error(`Unexpected request: ${method}`);
-    });
-    session.client = createStub<CodexClientLike>({ request });
-    session.activeForegroundTurnId = null;
-    await session.startTurn("list workspaces");
-    const turnStart = request.mock.calls.find(([method]) => method === "turn/start")?.[1];
-    expect(turnStart).toMatchObject({
-      approvalPolicy: "on-request",
-      config: {
-        mcp_servers: {
-          otto: {
-            default_tools_approval_mode: "auto",
-            tools: { list_workspaces: { approval_mode: "approve" } },
-          },
-        },
-      },
-    });
-    expect(turnStart).not.toHaveProperty("config.mcp_servers.otto.tools.archive_workspace");
-    expect(turnStart).not.toHaveProperty("config.mcp_servers.otto.enabled_tools");
-  });
-
-  test("Full Access preserves workspace ceilings and exact Otto tool policies", async () => {
-    const session = createSession({
-      modeId: "full-access",
-      workspaceAccess: "read",
-      providerOptions: { sandbox_mode: "danger-full-access" },
-      mcpServers: {
-        otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents" },
-      },
-      toolPolicy: {
-        preapproved: [{ kind: "mcp", server: "otto", tool: "list_workspaces" }],
-      },
-    });
-    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
-      if (method === "thread/loaded/list") return { data: ["test-thread"] };
-      if (method === "turn/start") return {};
-      throw new Error(`Unexpected request: ${method}`);
-    });
-    session.client = createStub<CodexClientLike>({ request });
-    session.activeForegroundTurnId = null;
-
-    await session.startTurn("list workspaces");
-
-    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).toMatchObject({
-      approvalPolicy: "never",
-      sandboxPolicy: { type: "readOnly" },
-      config: {
-        sandbox_mode: "read-only",
-        mcp_servers: {
-          otto: {
-            enabled_tools: ["list_workspaces"],
-            default_tools_approval_mode: "prompt",
-            tools: { list_workspaces: { approval_mode: "approve" } },
-          },
-        },
-      },
-    });
-  });
-
-  test("Full Access does not add a blanket Otto grant to an empty explicit tool policy", async () => {
-    const session = createSession({
-      modeId: "full-access",
-      mcpServers: {
-        otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents" },
-      },
-      toolPolicy: { preapproved: [] },
-    });
-    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
-      if (method === "thread/loaded/list") return { data: ["test-thread"] };
-      if (method === "turn/start") return {};
-      throw new Error(`Unexpected request: ${method}`);
-    });
-    session.client = createStub<CodexClientLike>({ request });
-    session.activeForegroundTurnId = null;
-
-    await session.startTurn("continue");
-
-    const turn = request.mock.calls.find(([method]) => method === "turn/start")?.[1];
-    expect(turn).toHaveProperty("config.mcp_servers.otto.default_tools_approval_mode", "prompt");
-    expect(turn).not.toHaveProperty("config.mcp_servers.otto.tools");
-  });
-
-  test("switching to Full Access replaces saved permissions when resuming a thread", async () => {
-    const session = createSession({
-      modeId: "auto",
-      approvalPolicy: "on-request",
-      sandboxMode: "workspace-write",
-      providerOptions: { approval_policy: "on-request", sandbox_mode: "workspace-write" },
-    });
-    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
-      if (method === "thread/loaded/list") return { data: [] };
-      if (method === "thread/resume") return { sandbox: { type: "workspaceWrite" } };
-      if (method === "turn/start") return {};
-      throw new Error(`Unexpected request: ${method}`);
-    });
-    session.client = createStub<CodexClientLike>({ request });
-    session.activeForegroundTurnId = null;
-    await session.setMode("full-access");
-
-    await session.startTurn("continue the requested changes");
-
-    expect(request.mock.calls.find(([method]) => method === "thread/resume")?.[1]).toMatchObject({
-      approvalPolicy: "never",
-      sandbox: "danger-full-access",
-    });
-    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).toMatchObject({
-      approvalPolicy: "never",
-      sandboxPolicy: { type: "dangerFullAccess" },
-    });
-    await expect(session.getCurrentMode()).resolves.toBe("full-access");
-  });
-
-  test("Otto MCP tool approval follows Full Access and resets when the mode changes", async () => {
-    const session = createSession({
-      modeId: "full-access",
-      mcpServers: {
-        otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents?callerAgentId=test" },
-        external: { type: "http", url: "http://127.0.0.1:1234/mcp" },
-      },
-    });
-    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
-      if (method === "thread/loaded/list") return { data: ["test-thread"] };
-      if (method === "turn/start") return {};
-      throw new Error(`Unexpected request: ${method}`);
-    });
-    session.client = createStub<CodexClientLike>({ request });
-    session.activeForegroundTurnId = null;
-
-    await session.startTurn("list workspaces");
-    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).toMatchObject({
-      config: {
-        mcp_servers: {
-          otto: { default_tools_approval_mode: "approve" },
-          external: { url: "http://127.0.0.1:1234/mcp" },
-        },
-      },
-    });
-    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).not.toHaveProperty(
-      "config.mcp_servers.external.default_tools_approval_mode",
-    );
-
-    session.activeForegroundTurnId = null;
-    await session.setMode("auto");
-    request.mockClear();
-    await session.startTurn("continue in Default mode");
-    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).toMatchObject({
-      approvalPolicy: "on-request",
-      sandboxPolicy: { type: "workspaceWrite" },
-      config: { mcp_servers: { otto: { default_tools_approval_mode: "auto" } } },
-    });
-  });
-
-  test("Full Access overrides conflicting native permission options on new threads and turns", async () => {
-    const session = createSession({
-      modeId: "full-access",
-      thinkingOptionId: "medium",
-      providerOptions: { approval_policy: "on-request", sandbox_mode: "workspace-write" },
-    });
-    session.currentThreadId = null;
-    session.activeForegroundTurnId = null;
-    const request = vi.fn(async (method: string, ..._rest: unknown[]) => {
-      if (method === "thread/start") return { thread: { id: "full-access-thread" } };
-      if (method === "turn/start") return {};
-      throw new Error(`Unexpected request: ${method}`);
-    });
-    session.client = createStub<CodexClientLike>({ request });
-
-    await session.startTurn("rename the requested folder");
-
-    expect(request.mock.calls.find(([method]) => method === "thread/start")?.[1]).toMatchObject({
-      approvalPolicy: "never",
-      sandbox: "danger-full-access",
-      config: { approval_policy: "never", sandbox_mode: "danger-full-access" },
-    });
-    expect(request.mock.calls.find(([method]) => method === "turn/start")?.[1]).toMatchObject({
-      approvalPolicy: "never",
-      sandboxPolicy: { type: "dangerFullAccess" },
-      config: { approval_policy: "never", sandbox_mode: "danger-full-access" },
-    });
-  });
-
   test("getAvailableModes includes auto-review when the Codex version supports it", async () => {
     const session = createSession({}, { autoReviewEnabled: true });
 
@@ -945,16 +881,19 @@ describe("Codex app-server provider", () => {
     });
   });
 
-  test('a "read" workspace access ceiling narrows thread/start sandbox below the mode preset', async () => {
+  test("Default Permissions pins the user as approvals reviewer on thread/start", async () => {
     const requests: Array<{ method: string; params: unknown }> = [];
-    const session = createSession({ thinkingOptionId: "medium", workspaceAccess: "read" });
+    const session = createSession(
+      { modeId: "auto", thinkingOptionId: "medium" },
+      { autoReviewEnabled: true },
+    );
     session.currentThreadId = null;
     session.activeForegroundTurnId = null;
     session.client = {
       request: vi.fn(async (method: string, params: unknown) => {
         requests.push({ method, params });
         if (method === "thread/start") {
-          return { thread: { id: "ceiling-thread" } };
+          return { thread: { id: "default-mode-thread" } };
         }
         if (method === "turn/start") {
           return {};
@@ -966,18 +905,68 @@ describe("Codex app-server provider", () => {
     await session.startTurn("trigger thread creation");
 
     const startCall = requests.find((req) => req.method === "thread/start");
-    // The "auto" preset asks for workspace-write; the ceiling must win.
-    expect(startCall?.params).toMatchObject({ sandbox: "read-only" });
+    expect(startCall?.params).toMatchObject({
+      approvalPolicy: "on-request",
+      sandbox: "workspace-write",
+      approvalsReviewer: "user",
+    });
   });
 
-  test('capabilities admit "read" but not "none" - Codex has no tier below read-only', () => {
-    const provider = new CodexAppServerAgentClient(createTestLogger());
-    expect(provider.capabilities.supportsWorkspaceAccess).toBe(true);
-    // Never set without the enforcement behind it: the app-server protocol has
-    // no tool-deny list and the shell reads inside every sandbox tier, so
-    // "none" cannot be enforced here - the spawn gate refuses such nodes
-    // (capabilitiesEnforceAccess in agent/workspace-access.ts).
-    expect(provider.capabilities.supportsWorkspaceAccessNone).toBeUndefined();
+  test("switching from auto-review back to Default returns approvals to the user", async () => {
+    const session = createSession({ modeId: "auto-review" }, { autoReviewEnabled: true });
+    const request = vi.fn(async (method: string) => {
+      if (method === "thread/loaded/list") {
+        return { data: ["test-thread"] };
+      }
+      if (method === "turn/start") {
+        return {};
+      }
+      throw new Error(`Unexpected request: ${method}`);
+    });
+    session.activeForegroundTurnId = null;
+    session.client = createStub<CodexClientLike>({ request });
+
+    await session.setMode("auto");
+    await session.startTurn("needs approval");
+
+    const turnStartCall = request.mock.calls.find(([method]) => method === "turn/start");
+    expect(turnStartCall?.[1]).toEqual(
+      expect.objectContaining({
+        approvalPolicy: "on-request",
+        approvalsReviewer: "user",
+      }),
+    );
+  });
+
+  test("Read-only pins the user as approvals reviewer on thread/start", async () => {
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const session = createSession(
+      { modeId: "read-only", thinkingOptionId: "medium" },
+      { autoReviewEnabled: true },
+    );
+    session.currentThreadId = null;
+    session.activeForegroundTurnId = null;
+    session.client = {
+      request: vi.fn(async (method: string, params: unknown) => {
+        requests.push({ method, params });
+        if (method === "thread/start") {
+          return { thread: { id: "read-only-thread" } };
+        }
+        if (method === "turn/start") {
+          return {};
+        }
+        throw new Error(`Unexpected request: ${method}`);
+      }),
+    };
+
+    await session.startTurn("trigger thread creation");
+
+    const startCall = requests.find((req) => req.method === "thread/start");
+    expect(startCall?.params).toMatchObject({
+      approvalPolicy: "on-request",
+      sandbox: "read-only",
+      approvalsReviewer: "user",
+    });
   });
 
   test("setMode and setThinkingOption return a next-turn notice while a turn is active", async () => {
@@ -1070,6 +1059,7 @@ describe("Codex app-server provider", () => {
     const turnStart = request.mock.calls.find(([method]) => method === "turn/start")?.[1];
     expect(turnStart).not.toHaveProperty("approvalPolicy");
     expect(turnStart).not.toHaveProperty("sandboxPolicy");
+    expect(turnStart).not.toHaveProperty("approvalsReviewer");
   });
 
   test("carries the complete native workspace-write policy including writable roots", async () => {
@@ -1146,6 +1136,53 @@ describe("Codex app-server provider", () => {
           excludeTmpdirEnvVar: true,
         },
       });
+      appServer.assertNoErrors();
+    } finally {
+      await session.close();
+    }
+  });
+
+  test("keeps the default effort when a session without one is resumed after a restart", async () => {
+    const beforeRestart = createFakeCodexAppServer();
+    const firstSession = await createProviderWithFakeAppServer(beforeRestart).createSession(
+      createConfig({ thinkingOptionId: undefined }),
+    );
+    await firstSession.startTurn("first turn");
+    await expect(beforeRestart.waitForTurnStart()).resolves.toMatchObject({ effort: "medium" });
+    const handle = firstSession.describePersistence()!;
+    await firstSession.close();
+
+    const afterRestart = createFakeCodexAppServer();
+    // The daemon resumes with the stored agent config, which never recorded an effort.
+    const resumed = await createProviderWithFakeAppServer(afterRestart).resumeSession(handle, {
+      model: "gpt-5.4",
+      thinkingOptionId: undefined,
+    });
+
+    try {
+      await expect(resumed.getRuntimeInfo()).resolves.toMatchObject({
+        thinkingOptionId: "medium",
+      });
+      await resumed.startTurn("turn after restart");
+      await expect(afterRestart.waitForTurnStart()).resolves.toMatchObject({ effort: "medium" });
+      beforeRestart.assertNoErrors();
+      afterRestart.assertNoErrors();
+    } finally {
+      await resumed.close();
+    }
+  });
+
+  test("provider persistence leaves options owned by the stored agent config", async () => {
+    const appServer = createFakeCodexAppServer();
+    const provider = createProviderWithFakeAppServer(appServer);
+    const session = await provider.createSession(
+      createConfig({ providerOptions: { sandbox_mode: "read-only", approval_policy: "never" } }),
+    );
+    try {
+      await session.startTurn("persist the configured session");
+      await appServer.waitForTurnStart();
+      const handle = session.describePersistence()!;
+      expect(handle.metadata).not.toHaveProperty("providerOptions");
       appServer.assertNoErrors();
     } finally {
       await session.close();
@@ -1335,6 +1372,75 @@ describe("Codex app-server provider", () => {
     await session.close();
   });
 
+  test("answers each concurrent command approval callback that shares one item", async () => {
+    const appServer = createFakeCodexAppServer({
+      initialize: () => ({}),
+      "collaborationMode/list": () => ({ data: [] }),
+      "skills/list": () => ({ data: [] }),
+    });
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+    const requested: AgentPermissionRequest[] = [];
+    session.subscribe((event) => {
+      if (event.type === "permission_requested") requested.push(event.request);
+    });
+
+    try {
+      await session.connect();
+
+      const firstPermission = waitForNextPermission(session);
+      appServer.requestCommandApproval({
+        itemId: "shared-item",
+        approvalId: "callback-a",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        command: "git add a.txt",
+        cwd: "/workspace/project",
+        reason: "subcommand a",
+      });
+      await firstPermission;
+      const secondPermission = waitForNextPermission(session);
+      appServer.requestCommandApproval({
+        itemId: "shared-item",
+        approvalId: "callback-b",
+        threadId: "thread-1",
+        turnId: "turn-1",
+        command: "git add b.txt",
+        cwd: "/workspace/project",
+        reason: "subcommand b",
+      });
+      await secondPermission;
+
+      expect(requested.map((request) => request.input?.command)).toEqual([
+        "git add a.txt",
+        "git add b.txt",
+      ]);
+      expect(new Set(requested.map((request) => request.id)).size).toBe(2);
+      expect(session.getPendingPermissions()).toHaveLength(2);
+
+      await session.respondToPermission(requested[0]!.id, { behavior: "allow" });
+      await session.respondToPermission(requested[1]!.id, {
+        behavior: "deny",
+        message: "not b",
+      });
+
+      await expect(appServer.waitForCommandApprovalDecision("callback-a")).resolves.toEqual({
+        decision: "accept",
+      });
+      await expect(appServer.waitForCommandApprovalDecision("callback-b")).resolves.toEqual({
+        decision: "decline",
+      });
+      expect(session.getPendingPermissions()).toHaveLength(0);
+      appServer.assertNoErrors();
+    } finally {
+      await session.close();
+    }
+  });
+
   test("shows a successful shell command that produces no output", async () => {
     const appServer = createFakeCodexAppServer();
     const session = new CodexAppServerAgentSession(
@@ -1497,6 +1603,51 @@ describe("Codex app-server provider", () => {
     }
   });
 
+  test.each(["python3 -i", "/usr/bin/zsh -lc 'python3 -i'"])(
+    "labels a terminal write started as %s with the command that started the terminal",
+    async (command) => {
+      const appServer = createFakeCodexAppServer();
+      const session = new CodexAppServerAgentSession(
+        createConfig({ cwd: "/workspace/project" }),
+        null,
+        createTestLogger(),
+        async () => appServer.child,
+      );
+
+      try {
+        await session.connect();
+        appServer.startsTerminalCommand({
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "interactive-shell",
+          processId: "73",
+          command,
+        });
+
+        const terminalWrite = waitForTimelineToolCall(session, "terminal-session-73-1");
+        appServer.typesIntoTerminal({
+          threadId: "thread-1",
+          turnId: "turn-1",
+          itemId: "interactive-shell",
+          processId: "73",
+          text: "print(1)\n",
+        });
+
+        await expect(terminalWrite).resolves.toMatchObject({
+          item: {
+            callId: "terminal-session-73-1",
+            name: "terminal",
+            detail: { type: "plain_text", label: "python3 -i", text: "print(1)\n" },
+            metadata: { processId: "73" },
+          },
+        });
+        appServer.assertNoErrors();
+      } finally {
+        await session.close();
+      }
+    },
+  );
+
   test("keeps repeated writes to one terminal as separate timeline rows", async () => {
     const appServer = createFakeCodexAppServer();
     const session = new CodexAppServerAgentSession(
@@ -1618,7 +1769,7 @@ describe("Codex app-server provider", () => {
     await session.close();
   });
 
-  test("initializes Codex app-server without making Otto the request originator", async () => {
+  test("initializes Codex app-server without making Paseo the request originator", async () => {
     let initializeParams: unknown;
     const appServer = createFakeCodexAppServer({
       initialize: (params) => {
@@ -1649,6 +1800,28 @@ describe("Codex app-server provider", () => {
     await session.close();
   });
 
+  test("resumed session exposes usage before connecting and not after close", async () => {
+    let spawns = 0;
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      { sessionId: "saved-thread" },
+      createTestLogger(),
+      async () => {
+        spawns++;
+        throw new Error("unexpected spawn");
+      },
+      { environment: { HOME: "/fixture/codex", CODEX_HOME: "/fixture/profile" } },
+    );
+    expect(session.usageSession()).toMatchObject({
+      provider: "codex",
+      env: { CODEX_HOME: "/fixture/profile" },
+      sessionKey: expect.any(String),
+    });
+    expect(spawns).toBe(0);
+    await session.close();
+    expect(session.usageSession()).toBeNull();
+  });
+
   test("loads archived Codex history without resuming the native thread", async () => {
     const threadRequests: string[] = [];
     const appServer = createFakeCodexAppServer({
@@ -1671,12 +1844,12 @@ describe("Codex app-server provider", () => {
       purpose: "history",
     });
 
-    expect(threadRequests).toEqual(["thread/loaded/list", "thread/resume", "thread/read"]);
+    expect(threadRequests).toEqual(["thread/read"]);
     await session.close();
     appServer.assertNoErrors();
   });
 
-  test("unarchives Codex when an active Otto agent resumes an archived thread", async () => {
+  test("unarchives Codex when an active Paseo agent resumes an archived thread", async () => {
     const threadRequests: string[] = [];
     let resumeAttempts = 0;
     const appServer = createFakeCodexAppServer({
@@ -1916,6 +2089,66 @@ describe("Codex app-server provider", () => {
     await session.close();
   });
 
+  test("rewinds a legacy conversation with a bounded fork on Codex without thread/rollback", async () => {
+    const appServer = createFakeCodexAppServer({
+      initialize: () => ({ userAgent: "paseo/0.159.0 (Ubuntu 26.4.0; x86_64) (paseo; 0)" }),
+      "thread/read": () => ({
+        thread: { id: "thread-1", historyMode: "legacy", turns: [] },
+      }),
+      "thread/rollback": () => ({
+        __jsonRpcError: {
+          code: -32600,
+          message: "Invalid request: unknown variant `thread/rollback`",
+        },
+      }),
+    });
+    const session = new CodexAppServerAgentSession(
+      createConfig({ cwd: "/workspace/project" }),
+      null,
+      createTestLogger(),
+      async () => appServer.child,
+    );
+
+    await session.startTurn("remember first");
+    emitCodexUserMessage(appServer, {
+      id: "codex-first",
+      text: "remember first",
+      turnId: "turn-first",
+    });
+    appServer.completeTurn();
+    await session.startTurn("remember second");
+    emitCodexUserMessage(appServer, {
+      id: "codex-second",
+      text: "remember second",
+      turnId: "turn-second",
+    });
+    appServer.completeTurn();
+
+    await session.revertConversation({ messageId: "codex-second" });
+
+    const forkRequests = appServer
+      .requests()
+      .filter((request) => request.method === "thread/fork")
+      .map((request) => request.params);
+    expect(forkRequests).toEqual([
+      {
+        threadId: "thread-1",
+        beforeTurnId: "turn-second",
+        cwd: "/workspace/project",
+        model: "gpt-5.4",
+        serviceTier: null,
+        excludeTurns: false,
+        persistExtendedHistory: true,
+      },
+    ]);
+    expect(appServer.recordedRollbacks).toEqual([]);
+    await expect(session.getRuntimeInfo()).resolves.toMatchObject({
+      sessionId: "forked-thread",
+    });
+    appServer.assertNoErrors();
+    await session.close();
+  });
+
   test("rewinds a paginated conversation through the public session capability", async () => {
     const appServer = createFakeCodexAppServer({
       "thread/read": () => ({
@@ -1971,6 +2204,79 @@ describe("Codex app-server provider", () => {
     appServer.assertNoErrors();
     await session.close();
   });
+
+  test.each(["legacy", "paginated"] as const)(
+    "rewinds a %s thread onto a fork that keeps the custom provider and runtime MCP servers",
+    async (historyMode) => {
+      const appServer = createFakeCodexAppServer(
+        historyMode === "paginated"
+          ? {
+              "thread/read": () => ({
+                thread: { id: "thread-1", historyMode: "paginated", turns: [] },
+              }),
+            }
+          : undefined,
+      );
+      const customCodexConfig = {
+        model_provider: "codex-custom",
+        model_providers: {
+          "codex-custom": {
+            name: "Custom Codex",
+            base_url: "https://custom-relay.example.com/v1",
+            env_key: "OPENAI_API_KEY",
+            requires_openai_auth: false,
+            wire_api: "responses",
+          },
+        },
+      };
+      const session = new CodexAppServerAgentSession(
+        createConfig({
+          cwd: "/workspace/project",
+          mcpServers: {
+            paseo: { type: "http", url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=agent-1" },
+          },
+        }),
+        null,
+        createTestLogger(),
+        async () => appServer.child,
+        { customCodexConfig },
+      );
+
+      await session.startTurn("remember first");
+      emitCodexUserMessage(appServer, {
+        id: "codex-first",
+        text: "remember first",
+        turnId: "turn-first",
+      });
+      appServer.completeTurn();
+      await session.startTurn("remember second");
+      emitCodexUserMessage(appServer, {
+        id: "codex-second",
+        text: "remember second",
+        turnId: "turn-second",
+      });
+      appServer.completeTurn();
+
+      await session.revertConversation({ messageId: "codex-first" });
+
+      const forkConfigs = appServer
+        .requests()
+        .filter((request) => request.method === "thread/fork")
+        .map((request) => (request.params as { config?: unknown }).config);
+      expect(forkConfigs).toEqual([
+        expect.objectContaining({
+          ...customCodexConfig,
+          mcp_servers: {
+            paseo: expect.objectContaining({
+              url: "http://127.0.0.1:6767/mcp/agents?callerAgentId=agent-1",
+            }),
+          },
+        }),
+      ]);
+      appServer.assertNoErrors();
+      await session.close();
+    },
+  );
 
   test("correlates a Codex user message with the submitting client message", async () => {
     const appServer = createFakeCodexAppServer();
@@ -2108,7 +2414,12 @@ describe("Codex app-server provider", () => {
       throw new Error(`resumeSession timed out; thread requests: ${threadRequests.join(", ")}`);
     }
 
-    expect(threadRequests).toEqual(["config/read", "thread/loaded/list", "thread/resume"]);
+    expect(threadRequests).toEqual([
+      "model/list",
+      "config/read",
+      "thread/loaded/list",
+      "thread/resume",
+    ]);
     expect(outcome).toBe("rejected");
     appServer.assertNoErrors();
   });
@@ -2128,7 +2439,9 @@ describe("Codex app-server provider", () => {
     };
 
     try {
-      await expect(listCodexSkills(cwd, workspaceGitService)).resolves.toContainEqual({
+      await expect(
+        listCodexSkills(cwd, path.join(tempDir, "codex-home"), workspaceGitService),
+      ).resolves.toContainEqual({
         name: "shipper",
         description: "Ship changes carefully.",
         argumentHint: "",
@@ -2142,21 +2455,19 @@ describe("Codex app-server provider", () => {
 
   const logger = createTestLogger();
 
-  // Codex's `input_tokens` is the whole prompt, cached slice included, so the
-  // disjoint `inputTokens` leaf every consumer sums is 30000 - 5000.
   test("extracts context window usage from snake_case token payloads", () => {
     expect(
       toAgentUsage({
         model_context_window: 200000,
         last: {
           total_tokens: 50000,
-          input_tokens: 30000,
-          cached_input_tokens: 5000,
-          output_tokens: 15000,
+          inputTokens: 30000,
+          cachedInputTokens: 5000,
+          outputTokens: 15000,
         },
       }),
     ).toEqual({
-      inputTokens: 25000,
+      inputTokens: 30000,
       cachedInputTokens: 5000,
       outputTokens: 15000,
       contextWindowMaxTokens: 200000,
@@ -2176,38 +2487,12 @@ describe("Codex app-server provider", () => {
         },
       }),
     ).toEqual({
-      inputTokens: 25000,
+      inputTokens: 30000,
       cachedInputTokens: 5000,
       outputTokens: 15000,
       contextWindowMaxTokens: 200000,
       contextWindowUsedTokens: 50000,
     });
-  });
-
-  // The cached prefix is a SLICE of the prompt, never an addition to it. Booking
-  // `input_tokens + cached_input_tokens` made a real 216,887-token turn land in
-  // the ledger as 432,695 - the whole reason Codex read ~2x Claude.
-  test("books the cached prefix once, not twice", () => {
-    const usage = toAgentUsage({
-      modelContextWindow: 258400,
-      last: {
-        totalTokens: 216957,
-        inputTokens: 216887,
-        cachedInputTokens: 215808,
-        outputTokens: 70,
-      },
-    });
-
-    expect(usage?.inputTokens).toBe(1079);
-    expect(usage?.cachedInputTokens).toBe(215808);
-    expect((usage?.inputTokens ?? 0) + (usage?.cachedInputTokens ?? 0)).toBe(216887);
-  });
-
-  test("clamps to zero rather than going negative on a fully cached prompt", () => {
-    expect(
-      toAgentUsage({ last: { totalTokens: 1000, inputTokens: 900, cachedInputTokens: 1000 } })
-        ?.inputTokens,
-    ).toBe(0);
   });
 
   test("keeps existing usage behavior when context window fields are missing", () => {
@@ -2220,7 +2505,7 @@ describe("Codex app-server provider", () => {
         },
       }),
     ).toEqual({
-      inputTokens: 25000,
+      inputTokens: 30000,
       cachedInputTokens: 5000,
       outputTokens: 15000,
     });
@@ -2240,19 +2525,10 @@ describe("Codex app-server provider", () => {
         },
       }),
     ).toEqual({
-      inputTokens: 25000,
+      inputTokens: 30000,
       cachedInputTokens: 5000,
       outputTokens: 15000,
     });
-  });
-
-  test("accumulates the separately priced cost of every Codex request", () => {
-    expect(
-      accumulateCodexTurnUsage(
-        { inputTokens: 1, totalCostUsd: 0.01 },
-        { inputTokens: 2, totalCostUsd: 0.02 },
-      ),
-    ).toMatchObject({ inputTokens: 3, totalCostUsd: 0.03 });
   });
 
   test("normalizes raw output schemas for Codex structured outputs", () => {
@@ -2317,6 +2593,71 @@ describe("Codex app-server provider", () => {
     });
   });
 
+  test("keeps an output field named properties as a field", () => {
+    const input = {
+      type: "object",
+      properties: { properties: { type: "string" } },
+      required: ["properties"],
+      additionalProperties: false,
+    };
+
+    expect(normalizeCodexOutputSchema(input)).toEqual(input);
+  });
+
+  test("normalizes schemas under keywords and leaves literal values alone", () => {
+    const literal = { type: "object", properties: { type: "string" } };
+    const input = {
+      type: "object",
+      properties: {
+        result: { $ref: "#/$defs/result" },
+        choice: { anyOf: [{ type: "object", properties: { id: { type: "string" } } }] },
+      },
+      $defs: {
+        properties: { type: "string" },
+        result: {
+          type: "object",
+          properties: { value: { type: "string" } },
+          default: literal,
+          examples: [literal],
+          enum: [literal],
+          const: literal,
+        },
+      },
+    };
+
+    expect(normalizeCodexOutputSchema(input)).toEqual({
+      type: "object",
+      properties: {
+        result: { $ref: "#/$defs/result" },
+        choice: {
+          anyOf: [
+            {
+              type: "object",
+              properties: { id: { type: "string" } },
+              required: ["id"],
+              additionalProperties: false,
+            },
+          ],
+        },
+      },
+      required: ["result", "choice"],
+      additionalProperties: false,
+      $defs: {
+        properties: { type: "string" },
+        result: {
+          type: "object",
+          properties: { value: { type: "string" } },
+          default: literal,
+          examples: [literal],
+          enum: [literal],
+          const: literal,
+          required: ["value"],
+          additionalProperties: false,
+        },
+      },
+    });
+  });
+
   test("passes a normalized output schema to turn/start", async () => {
     const session = createSession();
     const request = vi.fn(async (method: string) => {
@@ -2356,37 +2697,6 @@ describe("Codex app-server provider", () => {
     );
   });
 
-  test.each(["/init", "/init focus on test commands"])(
-    "lists init and passes %s unchanged to Codex",
-    async (prompt) => {
-      const session = createSession();
-      const request = vi.fn(async (method: string) => {
-        if (method === "skills/list") return { data: [] };
-        if (method === "thread/loaded/list") return { data: ["test-thread"] };
-        if (method === "turn/start") return {};
-        throw new Error(`Unexpected request: ${method}`);
-      });
-      session.activeForegroundTurnId = null;
-      session.client = createStub<CodexClientLike>({ request });
-
-      expect(await session.listCommands()).toContainEqual({
-        name: "init",
-        description: "Initialize repository instructions in AGENTS.md",
-        argumentHint: "",
-        kind: "command",
-      });
-      await session.startTurn(prompt);
-
-      expect(request).toHaveBeenCalledWith(
-        "turn/start",
-        expect.objectContaining({
-          input: [{ type: "text", text: prompt, text_elements: [] }],
-        }),
-        expect.any(Number),
-      );
-    },
-  );
-
   test("resolves Codex skill slash commands into app-server skill input", async () => {
     const session = createSession();
     const request = vi.fn(async (method: string) => {
@@ -2397,9 +2707,9 @@ describe("Codex app-server provider", () => {
               cwd: "/tmp/codex-question-test",
               skills: [
                 {
-                  name: "otto-implement",
-                  description: "Execute an existing Otto plan.",
-                  path: "/tmp/skills/otto-implement/SKILL.md",
+                  name: "paseo-implement",
+                  description: "Execute an existing Paseo plan.",
+                  path: "/tmp/skills/paseo-implement/SKILL.md",
                 },
               ],
               errors: [],
@@ -2419,7 +2729,7 @@ describe("Codex app-server provider", () => {
     session.activeForegroundTurnId = null;
     session.client = createStub<CodexClientLike>({ request });
 
-    await session.startTurn("/otto-implement in a worktree, remember to use Claude for the UI");
+    await session.startTurn("/paseo-implement in a worktree, remember to use Claude for the UI");
 
     const turnStartCall = request.mock.calls.find(([method]) => method === "turn/start");
     expect(turnStartCall?.[1]).toEqual(
@@ -2427,12 +2737,12 @@ describe("Codex app-server provider", () => {
         input: [
           {
             type: "skill",
-            name: "otto-implement",
-            path: "/tmp/skills/otto-implement/SKILL.md",
+            name: "paseo-implement",
+            path: "/tmp/skills/paseo-implement/SKILL.md",
           },
           {
             type: "text",
-            text: "$otto-implement in a worktree, remember to use Claude for the UI",
+            text: "$paseo-implement in a worktree, remember to use Claude for the UI",
             text_elements: [],
           },
         ],
@@ -2457,23 +2767,62 @@ describe("Codex app-server provider", () => {
     });
   });
 
+  test("lists custom prompts from the CODEX_HOME a custom provider runs Codex with", async () => {
+    await expect(listPromptCommandsFromCustomCodexHome()).resolves.toEqual([
+      "prompts:probe-profile",
+    ]);
+  });
+
+  test("runs a custom prompt from the CODEX_HOME a custom provider runs Codex with", async () => {
+    const records = await runPromptFromCustomCodexHome("/prompts:probe-profile");
+
+    expect(records.find((record) => record.kind === "env")?.CODEX_HOME).toMatch(
+      /provider-codex-home$/,
+    );
+    const turnStart = records.find((record) => record.method === "turn/start");
+    expect(JSON.stringify(turnStart?.params)).toContain("from the provider home");
+  });
+
+  test("inserts custom prompt arguments literally", async () => {
+    await expect(
+      expandCustomPrompt("Implement this exact request: $ARGUMENTS", "Preserve $1 unchanged"),
+    ).resolves.toBe("Implement this exact request: Preserve $1 unchanged");
+    await expect(
+      expandCustomPrompt("Treat this as literal replacement text: $VALUE.", 'VALUE="$&"'),
+    ).resolves.toBe("Treat this as literal replacement text: $&.");
+    await expect(expandCustomPrompt("$1 then $2", '"$2" two')).resolves.toBe("$2 then two");
+    await expect(expandCustomPrompt("$A and $B", 'A="$B" B=b')).resolves.toBe("$B and b");
+    await expect(
+      expandCustomPrompt("$ARGUMENTS", "keep __CODEX_DOLLAR_PLACEHOLDER__ as typed"),
+    ).resolves.toBe("keep __CODEX_DOLLAR_PLACEHOLDER__ as typed");
+  });
+
+  test("expands custom prompt placeholders and escapes", async () => {
+    await expect(
+      expandCustomPrompt("$1/$2 $NAME costs $$5, all: $ARGUMENTS, $MISSING", "one NAME=n two"),
+    ).resolves.toBe("one/two n costs $5, all: one NAME=n two, $MISSING");
+    await expect(
+      expandCustomPrompt("$$ARGUMENTS $$1 $$NAME $9|$NAME_SUFFIX", "first NAME=value"),
+    ).resolves.toBe("$ARGUMENTS $1 $NAME |$NAME_SUFFIX");
+  });
+
   test("deduplicates Codex skill slash commands returned from multiple skill roots", async () => {
     const commands = await listCommandsFromFakeCodex([
       {
-        name: "otto",
+        name: "paseo",
         description: "Shared orchestration skill.",
-        path: "/Users/test/.agents/skills/otto/SKILL.md",
+        path: "/Users/test/.agents/skills/paseo/SKILL.md",
       },
       {
-        name: "otto",
+        name: "paseo",
         description: "Shared orchestration skill.",
-        path: "/Users/test/.codex/skills/otto/SKILL.md",
+        path: "/Users/test/.codex/skills/paseo/SKILL.md",
       },
     ]);
 
-    expect(commands.filter((command) => command.name === "otto")).toEqual([
+    expect(commands.filter((command) => command.name === "paseo")).toEqual([
       {
-        name: "otto",
+        name: "paseo",
         description: "Shared orchestration skill.",
         argumentHint: "",
         kind: "skill",
@@ -2554,7 +2903,7 @@ describe("Codex app-server provider", () => {
           mimeType: "application/github-pr",
           number: 123,
           title: "Fix race in worktree setup",
-          url: "https://github.com/Draek2077/otto-code/pull/123",
+          url: "https://github.com/getpaseo/paseo/pull/123",
           body: "Review body",
           baseRefName: "main",
           headRefName: "fix/worktree-race",
@@ -2596,7 +2945,7 @@ describe("Codex app-server provider", () => {
           mimeType: "application/github-issue",
           number: 456,
           title: "Attachment spacing",
-          url: "https://github.com/Draek2077/otto-code/issues/456",
+          url: "https://github.com/getpaseo/paseo/issues/456",
         },
       ],
       logger,
@@ -2620,7 +2969,7 @@ describe("Codex app-server provider", () => {
           mimeType: "application/github-issue",
           number: 456,
           title: "Attachment spacing",
-          url: "https://github.com/Draek2077/otto-code/issues/456",
+          url: "https://github.com/getpaseo/paseo/issues/456",
         },
       ],
       logger,
@@ -2724,22 +3073,22 @@ describe("Codex app-server provider", () => {
   test("builds app-server env from launch-context env overrides", () => {
     const launchContext: AgentLaunchContext = {
       env: {
-        OTTO_AGENT_ID: "00000000-0000-4000-8000-000000000301",
-        OTTO_TEST_FLAG: "codex-launch-value",
+        PASEO_AGENT_ID: "00000000-0000-4000-8000-000000000301",
+        PASEO_TEST_FLAG: "codex-launch-value",
       },
     };
     const env = buildCodexAppServerEnv(
       {
         env: {
-          OTTO_AGENT_ID: "runtime-value",
-          OTTO_TEST_FLAG: "runtime-test-value",
+          PASEO_AGENT_ID: "runtime-value",
+          PASEO_TEST_FLAG: "runtime-test-value",
         },
       },
       launchContext.env,
     );
 
-    expect(env.OTTO_AGENT_ID).toBe(launchContext.env?.OTTO_AGENT_ID);
-    expect(env.OTTO_TEST_FLAG).toBe(launchContext.env?.OTTO_TEST_FLAG);
+    expect(env.PASEO_AGENT_ID).toBe(launchContext.env?.PASEO_AGENT_ID);
+    expect(env.PASEO_TEST_FLAG).toBe(launchContext.env?.PASEO_TEST_FLAG);
   });
 
   test("projects request_user_input into a question permission and running timeline tool call", () => {
@@ -3112,7 +3461,7 @@ describe("Codex app-server provider", () => {
         id: "child-mcp-image",
         type: "mcpToolCall",
         status: "completed",
-        server: "otto",
+        server: "paseo",
         tool: "browser_screenshot",
         arguments: {},
         result: {
@@ -3225,7 +3574,7 @@ describe("Codex app-server provider", () => {
     }
   });
 
-  test("returns only the latest assistant item and never injects a divider", async () => {
+  test("returns only the latest assistant item without its visual boundary", async () => {
     const appServer = createFakeCodexAppServer();
     const session = new CodexAppServerAgentSession(
       createConfig({ cwd: "/workspace/project" }),
@@ -3393,9 +3742,9 @@ describe("Codex app-server provider", () => {
       const result = await resultPromise;
       const toolCalls = result.timeline.filter((item) => item.type === "tool_call");
       expect(new Set(toolCalls.map((item) => item.callId))).toEqual(
-        new Set(["spawn-child-stable", "message-child-stable", "interrupt-child-stable"]),
+        new Set(["spawn-child-stable"]),
       );
-      expect(toolCalls.findLast((item) => item.detail.type === "sub_agent")).toMatchObject({
+      expect(toolCalls.at(-1)).toMatchObject({
         callId: "spawn-child-stable",
         status: "canceled",
         detail: {
@@ -3403,18 +3752,6 @@ describe("Codex app-server provider", () => {
           log: "[Assistant] Still on the same card.",
         },
       });
-      expect(toolCalls.filter((item) => item.detail.type === "plain_text")).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            callId: "message-child-stable",
-            detail: expect.objectContaining({ label: "Message agent: /root/stable-child" }),
-          }),
-          expect.objectContaining({
-            callId: "interrupt-child-stable",
-            detail: expect.objectContaining({ label: "Interrupt agent: /root/stable-child" }),
-          }),
-        ]),
-      );
       appServer.assertNoErrors();
     } finally {
       await session.close();
@@ -3626,96 +3963,6 @@ describe("Codex app-server provider", () => {
     });
   });
 
-  test("waits for a late terminal action event after Codex reports turn completion", () => {
-    const session = createSession();
-    const events: AgentStreamEvent[] = [];
-    session.subscribe((event) => events.push(event));
-
-    asInternals(session).handleNotification("item/started", {
-      threadId: "test-thread",
-      item: {
-        type: "commandExecution",
-        id: "orphaned-shell-action",
-        status: "running",
-        command: "git push origin main",
-        cwd: "/tmp/codex-question-test",
-      },
-    });
-    asInternals(session).handleNotification("turn/completed", {
-      threadId: "test-thread",
-      turn: { status: "completed" },
-    });
-
-    let toolCalls = events.flatMap((event) =>
-      event.type === "timeline" && event.item.type === "tool_call" ? [event.item] : [],
-    );
-    expect(toolCalls.map((item) => item.status)).toEqual(["running"]);
-
-    asInternals(session).handleNotification("item/completed", {
-      threadId: "test-thread",
-      item: {
-        type: "commandExecution",
-        id: "orphaned-shell-action",
-        status: "completed",
-        command: "git push origin main",
-        cwd: "/tmp/codex-question-test",
-        aggregatedOutput: "Everything up-to-date",
-        exitCode: 0,
-      },
-    });
-
-    toolCalls = events.flatMap((event) =>
-      event.type === "timeline" && event.item.type === "tool_call" ? [event.item] : [],
-    );
-    expect(toolCalls.map((item) => item.status)).toEqual(["running", "completed"]);
-    expect(toolCalls.at(-1)).toMatchObject({
-      callId: "orphaned-shell-action",
-      name: "shell",
-      status: "completed",
-    });
-  });
-
-  test("uses a legacy Codex item completion when its canonical counterpart is absent", () => {
-    const session = createSession();
-    const events: AgentStreamEvent[] = [];
-    session.subscribe((event) => events.push(event));
-
-    asInternals(session).handleNotification("item/started", {
-      threadId: "test-thread",
-      item: {
-        type: "commandExecution",
-        id: "legacy-completion-shell-action",
-        status: "running",
-        command: "git status --short",
-        cwd: "/tmp/codex-question-test",
-      },
-    });
-    asInternals(session).handleNotification("codex/event/item_completed", {
-      threadId: "test-thread",
-      msg: {
-        type: "item_completed",
-        item: {
-          type: "commandExecution",
-          id: "legacy-completion-shell-action",
-          status: "completed",
-          command: "git status --short",
-          cwd: "/tmp/codex-question-test",
-          aggregatedOutput:
-            " M packages/server/src/server/agent/providers/codex-app-server-agent.ts",
-          exitCode: 0,
-        },
-      },
-    });
-
-    const toolCalls = events.flatMap((event) =>
-      event.type === "timeline" && event.item.type === "tool_call" ? [event.item] : [],
-    );
-    expect(toolCalls.map((item) => [item.callId, item.status])).toEqual([
-      ["legacy-completion-shell-action", "running"],
-      ["legacy-completion-shell-action", "completed"],
-    ]);
-  });
-
   test("keeps a nested child under its spawning parent after a root interaction", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];
@@ -3778,281 +4025,6 @@ describe("Codex app-server provider", () => {
         detail: { type: "sub_agent", log: expect.stringContaining("Still nested.") },
       },
     });
-  });
-
-  test("keeps child-to-parent and child-to-sibling messages and waits out of child ownership", () => {
-    const session = createSession();
-    const events: AgentStreamEvent[] = [];
-    session.subscribe((event) => events.push(event));
-    for (const id of ["child", "sibling"]) {
-      asInternals(session).handleNotification("item/completed", {
-        threadId: "test-thread",
-        item: {
-          type: "subAgentActivity",
-          id: `spawn-${id}`,
-          kind: "started",
-          agentThreadId: id,
-          agentPath: `/root/${id}`,
-        },
-      });
-    }
-    const coordination = [
-      {
-        type: "subAgentActivity",
-        id: "message-parent",
-        kind: "interacted",
-        agentThreadId: "test-thread",
-        agentPath: "/root",
-      },
-      {
-        type: "subAgentActivity",
-        id: "message-sibling",
-        kind: "interacted",
-        agentThreadId: "sibling",
-        agentPath: "/root/sibling",
-      },
-      {
-        type: "collabAgentToolCall",
-        id: "wait-sibling",
-        tool: "wait",
-        status: "completed",
-        receiverThreadIds: ["test-thread", "sibling"],
-        agentsStates: { sibling: { status: "running" } },
-      },
-    ];
-    const coordinationStart = events.length;
-    for (const item of coordination) {
-      // MultiAgentV2's mirrored PascalCase/snake_case notifications must use
-      // the same routing as canonical item lifecycle events.
-      asInternals(session).handleNotification("codex/event/item_completed", {
-        threadId: "child",
-        msg: {
-          type: "item_completed",
-          item:
-            item.type === "subAgentActivity"
-              ? {
-                  type: "SubAgentActivity",
-                  id: item.id,
-                  kind: item.kind,
-                  agent_thread_id: item.agentThreadId,
-                  agent_path: item.agentPath,
-                }
-              : item,
-        },
-      });
-    }
-    const childCoordination = events
-      .slice(coordinationStart)
-      .flatMap((event) =>
-        event.type === "provider_subagent" &&
-        event.event.type === "timeline" &&
-        event.event.id === "child"
-          ? [event.event.item]
-          : [],
-      );
-    expect(childCoordination).toMatchObject([
-      {
-        callId: "message-parent",
-        status: "completed",
-        detail: { type: "plain_text", label: "Message agent: Parent (/root)" },
-      },
-      {
-        callId: "message-sibling",
-        status: "completed",
-        detail: { type: "plain_text", label: "Message agent: /root/sibling" },
-      },
-      {
-        callId: "wait-sibling",
-        status: "completed",
-        detail: { type: "plain_text", label: "Wait for agents: test-thread, sibling" },
-      },
-    ]);
-    expect(
-      events.slice(coordinationStart).flatMap((event) =>
-        event.type === "provider_subagent" && event.event.type === "upsert"
-          ? [
-              {
-                id: event.event.id,
-                owner: event.event.parentSubagentId,
-                callId: event.event.toolCallId,
-              },
-            ]
-          : [],
-      ),
-    ).toEqual(
-      Array.from({ length: 3 }, () => ({ id: "child", owner: null, callId: "spawn-child" })),
-    );
-    asInternals(session).handleNotification("item/agentMessage/delta", {
-      threadId: "sibling",
-      itemId: "sibling-output",
-      delta: "Sibling still belongs to root.",
-    });
-    expect(events.at(-1)).toMatchObject({ type: "timeline", item: { callId: "spawn-sibling" } });
-    asInternals(session).handleNotification("turn/completed", {
-      threadId: "child",
-      turn: { status: "completed" },
-    });
-    expect(events).toContainEqual(
-      expect.objectContaining({
-        type: "provider_subagent",
-        event: expect.objectContaining({ type: "upsert", id: "child", status: "completed" }),
-      }),
-    );
-  });
-
-  test("does not adopt parent or sibling targets when viewing a child as the session root", () => {
-    const session = createSession();
-    session.currentThreadId = "operator-child";
-    const events: AgentStreamEvent[] = [];
-    session.subscribe((event) => events.push(event));
-    for (const target of ["parent-thread", "sibling-thread"]) {
-      asInternals(session).handleNotification("item/completed", {
-        threadId: "operator-child",
-        item: {
-          type: "subAgentActivity",
-          id: `message-${target}`,
-          kind: "interacted",
-          agentThreadId: target,
-          agentPath: target === "parent-thread" ? "/root" : "/root/sibling",
-        },
-      });
-      asInternals(session).handleNotification("item/completed", {
-        threadId: "operator-child",
-        item: {
-          type: "collabAgentToolCall",
-          id: `wait-${target}`,
-          tool: "wait",
-          status: "completed",
-          receiverThreadIds: [target],
-          agentsStates: { [target]: { status: "running" } },
-        },
-      });
-    }
-    expect(events.filter((event) => event.type === "provider_subagent")).toEqual([]);
-    expect(
-      events.flatMap((event) => (event.type === "timeline" ? [event.item] : [])),
-    ).toMatchObject([
-      {
-        callId: "message-parent-thread",
-        status: "completed",
-        detail: { type: "plain_text", label: "Message agent: Parent (/root)" },
-      },
-      { callId: "wait-parent-thread", status: "completed", detail: { type: "plain_text" } },
-      {
-        callId: "message-sibling-thread",
-        status: "completed",
-        detail: { type: "plain_text", label: "Message agent: /root/sibling" },
-      },
-      { callId: "wait-sibling-thread", status: "completed", detail: { type: "plain_text" } },
-    ]);
-    const count = events.length;
-    for (const threadId of ["parent-thread", "sibling-thread"]) {
-      asInternals(session).handleNotification("item/agentMessage/delta", {
-        threadId,
-        itemId: `foreign-${threadId}`,
-        delta: "Not a descendant.",
-      });
-    }
-    expect(events).toHaveLength(count);
-  });
-
-  test("replays coordination without hydrating parents or siblings as descendants", async () => {
-    const session = createSession();
-    const readThreads: string[] = [];
-    session.client = {
-      request: vi.fn(async (method: string, params: unknown) => {
-        if (method !== "thread/read") return {};
-        const { threadId } = params as { threadId: string };
-        readThreads.push(threadId);
-        const items =
-          threadId === "test-thread"
-            ? [
-                {
-                  type: "subAgentActivity",
-                  id: "spawn-child",
-                  kind: "started",
-                  agentThreadId: "child",
-                  agentPath: "/root/child",
-                },
-                {
-                  type: "subAgentActivity",
-                  id: "message-child",
-                  kind: "interacted",
-                  agentThreadId: "child",
-                  agentPath: "/root/child",
-                },
-              ]
-            : [
-                {
-                  type: "subAgentActivity",
-                  id: "message-parent",
-                  kind: "interacted",
-                  agentThreadId: "test-thread",
-                  agentPath: "/root",
-                },
-                {
-                  type: "subAgentActivity",
-                  id: "message-sibling",
-                  kind: "interacted",
-                  agentThreadId: "sibling",
-                  agentPath: "/root/sibling",
-                },
-                {
-                  type: "collabAgentToolCall",
-                  id: "wait-sibling",
-                  tool: "wait",
-                  status: "completed",
-                  receiverThreadIds: ["sibling"],
-                  agentsStates: { sibling: { status: "running" } },
-                },
-                {
-                  type: "subAgentActivity",
-                  id: "spawn-grandchild",
-                  kind: "started",
-                  agentThreadId: "grandchild",
-                  agentPath: "/root/child/grandchild",
-                },
-              ];
-        return { thread: { turns: [{ items: threadId === "grandchild" ? [] : items }] } };
-      }),
-    };
-    await asInternals(session).loadPersistedHistory();
-    const history: AgentStreamEvent[] = [];
-    for await (const event of session.streamHistory()) history.push(event);
-    expect(readThreads).toEqual(["test-thread", "child", "grandchild"]);
-    expect(
-      history.flatMap((event) =>
-        event.type === "provider_subagent" && event.event.type === "upsert"
-          ? [{ id: event.event.id, parent: event.event.parentSubagentId }]
-          : [],
-      ),
-    ).toEqual([
-      { id: "child", parent: null },
-      { id: "grandchild", parent: "child" },
-    ]);
-    expect(
-      history.flatMap((event) =>
-        event.type === "provider_subagent" &&
-        event.event.type === "timeline" &&
-        event.event.id === "child"
-          ? [event.event.item]
-          : [],
-      ),
-    ).toMatchObject([
-      { callId: "message-parent", status: "completed", detail: { type: "plain_text" } },
-      { callId: "message-sibling", status: "completed", detail: { type: "plain_text" } },
-      { callId: "wait-sibling", status: "completed", detail: { type: "plain_text" } },
-      { callId: "spawn-grandchild", status: "completed", detail: { type: "sub_agent" } },
-    ]);
-    expect(history).toContainEqual(
-      expect.objectContaining({
-        type: "timeline",
-        item: expect.objectContaining({
-          callId: "message-child",
-          detail: expect.objectContaining({ type: "plain_text" }),
-        }),
-      }),
-    );
   });
 
   test("never treats an unmapped foreign terminal as the root terminal", () => {
@@ -4612,7 +4584,7 @@ describe("Codex app-server provider", () => {
       }),
     };
 
-    await asInternals(session).loadPersistedHistory();
+    await asInternals(session).loadPersistedHistory(session.client);
 
     const history: AgentStreamEvent[] = [];
     for await (const event of session.streamHistory()) {
@@ -4666,7 +4638,7 @@ describe("Codex app-server provider", () => {
       })),
     };
 
-    await asInternals(session).loadPersistedHistory();
+    await asInternals(session).loadPersistedHistory(session.client);
 
     expect(asInternals(session).codexUserMessageTurns().resolve("message-history")).toEqual({
       index: 0,
@@ -4735,7 +4707,7 @@ describe("Codex app-server provider", () => {
       }),
     };
 
-    await asInternals(session).loadPersistedHistory();
+    await asInternals(session).loadPersistedHistory(session.client);
 
     const history: AgentStreamEvent[] = [];
     for await (const event of session.streamHistory()) {
@@ -4825,7 +4797,7 @@ describe("Codex app-server provider", () => {
       event.type === "timeline" && event.item.type === "tool_call" ? [event.item] : [],
     );
     expect(new Set(liveToolCalls.map((item) => item.callId))).toEqual(
-      new Set(["v2-spawn-history", "v2-interaction-after-resume"]),
+      new Set(["v2-spawn-history"]),
     );
     expect(liveToolCalls.at(-1)).toMatchObject({
       status: "running",
@@ -4897,7 +4869,7 @@ describe("Codex app-server provider", () => {
       }),
     };
 
-    await asInternals(session).loadPersistedHistory();
+    await asInternals(session).loadPersistedHistory(session.client);
 
     const history: AgentStreamEvent[] = [];
     for await (const event of session.streamHistory()) {
@@ -4915,7 +4887,7 @@ describe("Codex app-server provider", () => {
     ]);
   });
 
-  test("replays one settled child card and separate timestamped coordination rows", async () => {
+  test("coalesces persisted MultiAgentV2 activity for one child into one terminal card", async () => {
     const session = createSession();
     session.client = {
       request: vi.fn(async (method: string, params: unknown) => {
@@ -4962,13 +4934,13 @@ describe("Codex app-server provider", () => {
       }),
     };
 
-    await asInternals(session).loadPersistedHistory();
+    await asInternals(session).loadPersistedHistory(session.client);
 
     const history: AgentStreamEvent[] = [];
     for await (const event of session.streamHistory()) {
       history.push(event);
     }
-    expect(history.slice(0, 2)).toEqual([
+    expect(history).toEqual([
       {
         type: "provider_subagent",
         provider: "codex",
@@ -4991,26 +4963,6 @@ describe("Codex app-server provider", () => {
             description: "history-child",
           }),
         }),
-      },
-    ]);
-    expect(history.slice(2)).toMatchObject([
-      {
-        type: "timeline",
-        timestamp: "2026-07-09T10:01:00.000Z",
-        item: {
-          callId: "child-interacted-history",
-          status: "completed",
-          detail: { type: "plain_text", label: "Message agent: /root/history-child" },
-        },
-      },
-      {
-        type: "timeline",
-        timestamp: "2026-07-09T10:02:00.000Z",
-        item: {
-          callId: "child-interrupted-history",
-          status: "completed",
-          detail: { type: "plain_text", label: "Interrupt agent: /root/history-child" },
-        },
       },
     ]);
   });
@@ -5156,7 +5108,7 @@ describe("Codex app-server provider", () => {
       }),
     };
 
-    await asInternals(session).loadPersistedHistory();
+    await asInternals(session).loadPersistedHistory(session.client);
 
     const history: AgentStreamEvent[] = [];
     for await (const event of session.streamHistory()) {
@@ -5217,7 +5169,7 @@ describe("Codex app-server provider", () => {
       }),
     };
 
-    await asInternals(session).loadPersistedHistory();
+    await asInternals(session).loadPersistedHistory(session.client);
 
     const history: AgentStreamEvent[] = [];
     for await (const event of session.streamHistory()) {
@@ -5510,14 +5462,7 @@ describe("Codex app-server provider", () => {
     expect(session.currentThreadId).toBe("archived-thread-id");
     expect(requests).toEqual([
       { method: "thread/loaded/list", params: {} },
-      {
-        method: "thread/resume",
-        params: {
-          threadId: "archived-thread-id",
-          approvalPolicy: "on-request",
-          sandbox: "workspace-write",
-        },
-      },
+      { method: "thread/resume", params: { threadId: "archived-thread-id" } },
     ]);
   });
 
@@ -5588,17 +5533,7 @@ describe("Codex app-server provider", () => {
 
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
-    // The handler must stay open across the whole rewrite: the daemon holds the
-    // agent busy for exactly its lifetime, and that is what keeps a prompt
-    // queued during /compact parked instead of racing the compaction.
-    let settled = false;
-    const running = handler?.run({ emit: (event) => events.push(event) }).then(() => {
-      settled = true;
-      return undefined;
-    });
-    await flushMicrotasks();
-    expect(settled).toBe(false);
-
+    await handler?.run({ emit: (event) => events.push(event) });
     asInternals(session).handleNotification("item/started", {
       threadId: "test-thread",
       item: {
@@ -5606,9 +5541,6 @@ describe("Codex app-server provider", () => {
         id: "manual-compact",
       },
     });
-    await flushMicrotasks();
-    expect(settled).toBe(false);
-
     asInternals(session).handleNotification("item/completed", {
       threadId: "test-thread",
       item: {
@@ -5616,8 +5548,6 @@ describe("Codex app-server provider", () => {
         id: "manual-compact",
       },
     });
-    await running;
-    expect(settled).toBe(true);
 
     expect(requests).toContainEqual({
       method: "thread/compact/start",
@@ -5746,14 +5676,22 @@ describe("Codex app-server provider", () => {
       turn: { status: "completed", error: null },
     });
 
-    expect(
-      events.some(
-        (event) =>
-          event.type === "timeline" &&
-          event.item.type === "tool_call" &&
-          event.item.detail.type === "plan",
-      ),
-    ).toBe(false);
+    expect(events.at(-3)).toEqual({
+      type: "timeline",
+      provider: "codex",
+      turnId: "test-turn",
+      item: {
+        type: "tool_call",
+        callId: session.getPendingPermissions()[0]?.id,
+        name: "plan_approval",
+        status: "running",
+        error: null,
+        detail: {
+          type: "plan",
+          text: "- Inspect the existing auth flow\n- Implement the button behavior",
+        },
+      },
+    });
     expect(events.at(-2)).toEqual({
       type: "permission_requested",
       provider: "codex",
@@ -5788,7 +5726,7 @@ describe("Codex app-server provider", () => {
     });
   });
 
-  test("does not emit Codex plan thread items as timeline cards while plan approval is pending", () => {
+  test("does not complete Codex plan timeline cards while plan approval is pending", () => {
     const session = createSession({
       featureValues: { plan_mode: true, fast_mode: true },
     });
@@ -5814,6 +5752,7 @@ describe("Codex app-server provider", () => {
         type: "timeline",
         item: expect.objectContaining({
           type: "tool_call",
+          status: "completed",
           detail: expect.objectContaining({ type: "plan" }),
         }),
       }),
@@ -6052,7 +5991,7 @@ describe("Codex app-server provider", () => {
       item: {
         id: "image-view-1",
         type: "imageView",
-        path: "/tmp/otto image.png",
+        path: "/tmp/paseo image.png",
       },
     });
 
@@ -6063,7 +6002,7 @@ describe("Codex app-server provider", () => {
         turnId: "test-turn",
         item: {
           type: "assistant_message",
-          text: "![Image](file:///tmp/otto%20image.png)",
+          text: "\n\n![Image](file:///tmp/paseo%20image.png)\n\n",
         },
       },
     ]);
@@ -6095,7 +6034,7 @@ describe("Codex app-server provider", () => {
           turnId: "test-turn",
           item: {
             type: "assistant_message",
-            text: `![Image](${expectedPath})`,
+            text: `\n\n![Image](${expectedPath})\n\n`,
           },
         },
       ]);
@@ -6130,7 +6069,7 @@ describe("Codex app-server provider", () => {
     expect(event.item.text).not.toContain("data:image");
     expect(event.item.text).not.toContain(ONE_BY_ONE_PNG_BASE64);
     const source = markdownImageSource(event.item.text);
-    expect(source).toMatch(/attachments[\\/].+\.png$/);
+    expect(source).toMatch(/paseo-attachments(?:-[^\\/]+)?[\\/].+\.png$/);
     expect(existsSync(source)).toBe(true);
     rmSync(source, { force: true });
   });
@@ -6174,7 +6113,7 @@ describe("Codex app-server provider", () => {
               id: "mcp-browser-screenshot",
               type: "mcpToolCall",
               status: "completed",
-              server: "otto",
+              server: "paseo",
               tool: "browser_screenshot",
               arguments: { browserId: "11111111-1111-4111-8111-111111111111" },
               result: {
@@ -6208,7 +6147,7 @@ describe("Codex app-server provider", () => {
           item: {
             type: "tool_call",
             callId: "mcp-browser-screenshot",
-            name: "otto.browser_screenshot",
+            name: "paseo.browser_screenshot",
             status: "completed",
             error: null,
             detail: {
@@ -6246,7 +6185,7 @@ describe("Codex app-server provider", () => {
       }
       expect(JSON.stringify(events)).not.toContain(ONE_BY_ONE_PNG_BASE64);
       const source = markdownImageSource(imageEvent.item.text);
-      expect(source).toMatch(/attachments[\\/].+\.png$/);
+      expect(source).toMatch(/paseo-attachments(?:-[^\\/]+)?[\\/].+\.png$/);
       expect(existsSync(source)).toBe(true);
       rmSync(source, { force: true });
       appServer.assertNoErrors();
@@ -6283,6 +6222,107 @@ describe("Codex app-server provider", () => {
     ]);
   });
 
+  test.each([
+    [
+      "a usage limit",
+      { type: "usageLimitExceeded", limitId: "image_gen", resetsAt: 1786150800 },
+      { type: "usageLimitExceeded", limitId: "image_gen", resetsAt: 1786150800 },
+    ],
+    ["no failure details", null, { message: "Image generation failed" }],
+  ])(
+    "emits failed imageGeneration items with %s as failed tool calls",
+    (_label, failure, expectedError) => {
+      const session = createSession();
+      const events: AgentStreamEvent[] = [];
+      session.subscribe((event) => events.push(event));
+
+      asInternals(session).handleNotification("item/completed", {
+        item: {
+          id: "image-generation-failed",
+          type: "imageGeneration",
+          status: "failed",
+          revisedPrompt: "paint a blue whale",
+          result: "",
+          transparentBackground: null,
+          failure,
+          savedPath: null,
+        },
+      });
+
+      expect(events).toEqual([
+        {
+          type: "timeline",
+          provider: "codex",
+          turnId: "test-turn",
+          item: {
+            type: "tool_call",
+            callId: "image-generation-failed",
+            name: "image_generation",
+            status: "failed",
+            error: expectedError,
+            detail: {
+              type: "unknown",
+              input: { prompt: "paint a blue whale" },
+              output: null,
+            },
+          },
+        },
+      ]);
+    },
+  );
+
+  test("keeps failed imageGeneration items in persisted history", async () => {
+    const session = createSession();
+    session.client = {
+      request: vi.fn(async () => ({
+        thread: {
+          turns: [
+            {
+              items: [
+                {
+                  type: "imageGeneration",
+                  id: "image-generation-failed",
+                  status: "failed",
+                  revisedPrompt: "paint a blue whale",
+                  result: "",
+                  transparentBackground: null,
+                  failure: { type: "usageLimitExceeded", limitId: "image_gen", resetsAt: null },
+                  savedPath: null,
+                },
+              ],
+            },
+          ],
+        },
+      })),
+    };
+
+    await asInternals(session).loadPersistedHistory(session.client);
+
+    const history: AgentStreamEvent[] = [];
+    for await (const event of session.streamHistory()) {
+      history.push(event);
+    }
+
+    expect(history).toEqual([
+      {
+        type: "timeline",
+        provider: "codex",
+        item: {
+          type: "tool_call",
+          callId: "image-generation-failed",
+          name: "image_generation",
+          status: "failed",
+          error: { type: "usageLimitExceeded", limitId: "image_gen", resetsAt: null },
+          detail: {
+            type: "unknown",
+            input: { prompt: "paint a blue whale" },
+            output: null,
+          },
+        },
+      },
+    ]);
+  });
+
   test("emits usage_updated on token usage updates and keeps usage on turn completion", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];
@@ -6308,10 +6348,9 @@ describe("Codex app-server provider", () => {
       provider: "codex",
       turnId: "test-turn",
       usage: {
-        inputTokens: 25000,
+        inputTokens: 30000,
         cachedInputTokens: 5000,
         outputTokens: 15000,
-        totalCostUsd: 0.28875,
         contextWindowMaxTokens: 200000,
         contextWindowUsedTokens: 50000,
       },
@@ -6321,179 +6360,12 @@ describe("Codex app-server provider", () => {
       provider: "codex",
       turnId: "test-turn",
       usage: {
-        inputTokens: 25000,
+        inputTokens: 30000,
         cachedInputTokens: 5000,
         outputTokens: 15000,
-        totalCostUsd: 0.28875,
         contextWindowMaxTokens: 200000,
         contextWindowUsedTokens: 50000,
       },
-    });
-  });
-
-  // Codex reports usage per model REQUEST, and one turn is many requests. These
-  // cover the turn-level accumulation that keeps a Codex turn comparable to a
-  // Claude turn (which the SDK already reports as the sum of its rounds).
-  function sendCodexRequestUsage(
-    session: ReturnType<typeof createSession>,
-    input: {
-      totalTokens: number;
-      inputTokens: number;
-      cachedInputTokens: number;
-      outputTokens: number;
-    },
-  ): void {
-    asInternals(session).handleNotification("thread/tokenUsage/updated", {
-      tokenUsage: { modelContextWindow: 258400, last: input },
-    });
-  }
-
-  test("sums every request in a turn instead of booking only the last one", () => {
-    const session = createSession();
-    const events: AgentStreamEvent[] = [];
-    session.subscribe((event) => events.push(event));
-
-    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-1" } });
-    sendCodexRequestUsage(session, {
-      totalTokens: 12000,
-      inputTokens: 10000,
-      cachedInputTokens: 8000,
-      outputTokens: 2000,
-    });
-    sendCodexRequestUsage(session, {
-      totalTokens: 21000,
-      inputTokens: 18000,
-      cachedInputTokens: 16000,
-      outputTokens: 3000,
-    });
-    asInternals(session).handleNotification("turn/completed", {
-      turn: { status: "completed", error: null },
-    });
-
-    const completed = events.at(-1);
-    expect(completed).toEqual({
-      type: "turn_completed",
-      provider: "codex",
-      turnId: "test-turn",
-      usage: {
-        // Fresh input per request is 10000-8000 and 18000-16000.
-        inputTokens: 4000,
-        cachedInputTokens: 24000,
-        outputTokens: 5000,
-        totalCostUsd: 0.091,
-        contextWindowMaxTokens: 258400,
-        // Occupancy is absolute: the newest reading, never the sum.
-        contextWindowUsedTokens: 21000,
-      },
-    });
-  });
-
-  test("starts each turn from zero rather than re-booking the previous turn", () => {
-    const session = createSession();
-    const events: AgentStreamEvent[] = [];
-    session.subscribe((event) => events.push(event));
-
-    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-1" } });
-    sendCodexRequestUsage(session, {
-      totalTokens: 12000,
-      inputTokens: 10000,
-      cachedInputTokens: 8000,
-      outputTokens: 2000,
-    });
-    asInternals(session).handleNotification("turn/completed", {
-      turn: { status: "completed", error: null },
-    });
-    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-2" } });
-    sendCodexRequestUsage(session, {
-      totalTokens: 13000,
-      inputTokens: 12000,
-      cachedInputTokens: 11500,
-      outputTokens: 1000,
-    });
-    asInternals(session).handleNotification("turn/completed", {
-      turn: { status: "completed", error: null },
-    });
-
-    const completed = events.at(-1);
-    expect(completed?.type).toBe("turn_completed");
-    expect(completed).toHaveProperty("usage", {
-      inputTokens: 500,
-      cachedInputTokens: 11500,
-      outputTokens: 1000,
-      totalCostUsd: 0.019125,
-      contextWindowMaxTokens: 258400,
-      contextWindowUsedTokens: 13000,
-    });
-  });
-
-  test("reports a turn with no request at all as unmeasured, not as the last turn's spend", () => {
-    const session = createSession();
-    const events: AgentStreamEvent[] = [];
-    session.subscribe((event) => events.push(event));
-
-    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-1" } });
-    sendCodexRequestUsage(session, {
-      totalTokens: 12000,
-      inputTokens: 10000,
-      cachedInputTokens: 8000,
-      outputTokens: 2000,
-    });
-    asInternals(session).handleNotification("turn/completed", {
-      turn: { status: "completed", error: null },
-    });
-    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-2" } });
-    asInternals(session).handleNotification("turn/completed", {
-      turn: { status: "completed", error: null },
-    });
-
-    const completed = events.at(-1);
-    expect(completed?.type).toBe("turn_completed");
-    expect(completed).toHaveProperty("usage", undefined);
-  });
-
-  test("carries the accrued spend onto an interrupted turn", () => {
-    const session = createSession();
-    const events: AgentStreamEvent[] = [];
-    session.subscribe((event) => events.push(event));
-
-    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-1" } });
-    sendCodexRequestUsage(session, {
-      totalTokens: 12000,
-      inputTokens: 10000,
-      cachedInputTokens: 8000,
-      outputTokens: 2000,
-    });
-    asInternals(session).handleNotification("turn/completed", {
-      turn: { status: "interrupted", error: null },
-    });
-
-    expect(events.at(-1)).toMatchObject({
-      type: "turn_canceled",
-      provider: "codex",
-      usage: { inputTokens: 2000, cachedInputTokens: 8000, outputTokens: 2000 },
-    });
-  });
-
-  test("carries the accrued spend onto a failed turn", () => {
-    const session = createSession();
-    const events: AgentStreamEvent[] = [];
-    session.subscribe((event) => events.push(event));
-
-    asInternals(session).handleNotification("turn/started", { turn: { id: "turn-usage-1" } });
-    sendCodexRequestUsage(session, {
-      totalTokens: 12000,
-      inputTokens: 10000,
-      cachedInputTokens: 8000,
-      outputTokens: 2000,
-    });
-    asInternals(session).handleNotification("turn/completed", {
-      turn: { status: "failed", error: { message: "boom" } },
-    });
-
-    expect(events.at(-1)).toMatchObject({
-      type: "turn_failed",
-      provider: "codex",
-      usage: { inputTokens: 2000, cachedInputTokens: 8000, outputTokens: 2000 },
     });
   });
 
@@ -6532,58 +6404,6 @@ describe("Codex app-server provider", () => {
         item: { type: "assistant_message", text: "lo", messageId: "assistant-item-1" },
       },
     ]);
-  });
-
-  test("adapts a Codex visualize marker into an Otto widget", async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), "codex-visualize-marker-"));
-    const fragmentPath = path.join(directory, "icon-grid.html");
-    writeFileSync(fragmentPath, '<div id="icon-grid"><svg viewBox="0 0 24 24"></svg></div>');
-    try {
-      const session = createSession();
-      const events: AgentStreamEvent[] = [];
-      session.subscribe((event) => events.push(event));
-      const marker = `\uE200visualize\uE202${JSON.stringify({ path: fragmentPath }).replaceAll(
-        '"',
-        "“",
-      )}\uE201`;
-
-      asInternals(session).handleNotification("item/agentMessage/delta", {
-        itemId: "assistant-visualize-item",
-        delta: `Here are the icons.\n\n${marker}\n\nThey are monochrome.`,
-      });
-
-      expect(events).toEqual([
-        expect.objectContaining({
-          item: {
-            type: "assistant_message",
-            messageId: "assistant-visualize-item",
-            text: "Here are the icons.\n\n",
-          },
-        }),
-        expect.objectContaining({
-          item: expect.objectContaining({
-            type: "tool_call",
-            callId: "codex-visualize-assistant-visualize-item",
-            name: "show_widget",
-            detail: expect.objectContaining({
-              input: expect.objectContaining({
-                title: "icon_grid",
-                widget_code: '<div id="icon-grid"><svg viewBox="0 0 24 24"></svg></div>',
-              }),
-            }),
-          }),
-        }),
-        expect.objectContaining({
-          item: {
-            type: "assistant_message",
-            messageId: "assistant-visualize-item",
-            text: "\n\nThey are monochrome.",
-          },
-        }),
-      ]);
-    } finally {
-      rmSync(directory, { recursive: true, force: true });
-    }
   });
 
   test("emits only the missing assistant suffix when completed text extends streamed deltas", () => {
@@ -6629,7 +6449,7 @@ describe("Codex app-server provider", () => {
     ]);
   });
 
-  test("does not inject a markdown divider when a new Codex assistant item starts after the previous one completed", () => {
+  test("emits a markdown divider when a new Codex assistant item starts after the previous one completed", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];
     session.subscribe((event) => events.push(event));
@@ -6670,7 +6490,7 @@ describe("Codex app-server provider", () => {
         item: {
           type: "assistant_message",
           messageId: "assistant-item-4",
-          text: "CI is still cooking. I’m staying on the current run rather than jumping around, because the first red job will tell us exactly whether anything else needs work.",
+          text: "\n\n---\n\nCI is still cooking. I’m staying on the current run rather than jumping around, because the first red job will tell us exactly whether anything else needs work.",
         },
       },
     ]);
@@ -6925,6 +6745,187 @@ describe("Codex app-server provider", () => {
 });
 
 describe("Codex importable sessions", () => {
+  const CODEX_THREAD_PAGE_CAP = 100;
+
+  // Codex answers thread/list with at most 100 rows per response whatever limit
+  // the caller asks for, and hands back a cursor for the remaining threads.
+  function cappedThreadListHandler(threads: Array<Record<string, unknown>>) {
+    return (input: unknown) => {
+      const params = (input ?? {}) as {
+        limit?: number;
+        cursor?: string;
+        cwd?: string;
+        sortKey?: string;
+      };
+      const recencyKey = params.sortKey === "updated_at" ? "updatedAt" : "createdAt";
+      const matching = threads
+        .filter((thread) => !params.cwd || thread.cwd === params.cwd)
+        .sort((a, b) => Number(b[recencyKey]) - Number(a[recencyKey]));
+      const offset = Number(params.cursor ?? 0);
+      const page = matching.slice(
+        offset,
+        offset + Math.min(params.limit ?? CODEX_THREAD_PAGE_CAP, CODEX_THREAD_PAGE_CAP),
+      );
+      const nextOffset = offset + page.length;
+      return {
+        data: page,
+        nextCursor: nextOffset < matching.length ? String(nextOffset) : null,
+      };
+    };
+  }
+
+  function threadsUsedInReverseCreationOrder(count: number) {
+    // The most recently used thread is also the oldest one created, so a scan
+    // that follows Codex's creation-time page order misses it.
+    return Array.from({ length: count }, (_, index) => ({
+      id: `thread-${index}`,
+      cwd: "/workspace/project-a",
+      preview: `Session ${index}`,
+      createdAt: index,
+      updatedAt: count - index,
+    }));
+  }
+
+  test("fills the requested window across the pages Codex caps at 100 rows", async () => {
+    const threads = threadsUsedInReverseCreationOrder(250);
+    const appServer = createFakeCodexAppServer({
+      "thread/list": cappedThreadListHandler([
+        ...threads,
+        { id: "other-project", cwd: "/workspace/project-b", createdAt: 9000, updatedAt: 9000 },
+      ]),
+    });
+    const provider = createProviderWithFakeAppServer(appServer);
+
+    const sessions = await provider.listImportableSessions({
+      limit: 240,
+      cwd: "/workspace/project-a",
+    });
+
+    expect(sessions.map((session) => session.providerHandleId)).toEqual(
+      threads.slice(0, 240).map((thread) => thread.id),
+    );
+    appServer.assertNoErrors();
+  });
+
+  test("keeps the scanned window on the most recently used threads", async () => {
+    const threads = threadsUsedInReverseCreationOrder(550);
+    const appServer = createFakeCodexAppServer({
+      "thread/list": cappedThreadListHandler(threads),
+    });
+    const provider = createProviderWithFakeAppServer(appServer);
+
+    const sessions = await provider.listImportableSessions({ limit: 500, scanLimit: 700 });
+
+    expect(sessions.map((session) => session.providerHandleId)).toEqual(
+      threads.slice(0, 500).map((thread) => thread.id),
+    );
+    appServer.assertNoErrors();
+  });
+
+  test("keeps a thread once when it moves onto a later page mid-scan", async () => {
+    // A thread used while the scan is paging sorts to the front and comes back
+    // on the next page.
+    const appServer = createFakeCodexAppServer({
+      "thread/list": (input) => {
+        const { cursor } = (input ?? {}) as { cursor?: string };
+        return cursor
+          ? {
+              data: [
+                { id: "thread-1", cwd: "/workspace/project-a", updatedAt: 9000 },
+                { id: "thread-3", cwd: "/workspace/project-a", updatedAt: 1000 },
+              ],
+              nextCursor: null,
+            }
+          : {
+              data: [
+                { id: "thread-1", cwd: "/workspace/project-a", updatedAt: 3000 },
+                { id: "thread-2", cwd: "/workspace/project-a", updatedAt: 2000 },
+              ],
+              nextCursor: "page-2",
+            };
+      },
+    });
+    const provider = createProviderWithFakeAppServer(appServer);
+
+    const sessions = await provider.listImportableSessions({ limit: 500, scanLimit: 500 });
+
+    expect(sessions.map((session) => session.providerHandleId)).toEqual([
+      "thread-1",
+      "thread-2",
+      "thread-3",
+    ]);
+    appServer.assertNoErrors();
+  });
+
+  test("stops scanning when Codex pages without handing back a new thread", async () => {
+    const appServer = createFakeCodexAppServer({
+      // A cursor cycle: the two pages after the first serve threads the scan
+      // already holds and point at each other, so it can never fill its window.
+      "thread/list": (input) => {
+        const { cursor } = (input ?? {}) as { cursor?: string };
+        const thread = { id: "thread-1", cwd: "/workspace/project-a" };
+        if (cursor === "page-a") return { data: [thread], nextCursor: "page-b" };
+        if (cursor === "page-b") return { data: [thread], nextCursor: "page-a" };
+        return { data: [thread], nextCursor: "page-a" };
+      },
+    });
+    const provider = createProviderWithFakeAppServer(appServer);
+
+    const sessions = await provider.listImportableSessions({ limit: 500, scanLimit: 500 });
+
+    expect(sessions.map((session) => session.providerHandleId)).toEqual(["thread-1"]);
+    appServer.assertNoErrors();
+  });
+
+  // Codex filters thread/list by model provider: with no `modelProviders` it
+  // returns only threads of the provider its own config selects, an empty
+  // list returns every provider, and a list returns only those providers.
+  function providerFilteringThreadListHandler(threads: Array<Record<string, unknown>>) {
+    return (input: unknown) => {
+      const { modelProviders } = (input ?? {}) as { modelProviders?: string[] };
+      const included = (thread: Record<string, unknown>) => {
+        if (modelProviders === undefined) return thread.modelProvider === "openai";
+        if (modelProviders.length === 0) return true;
+        return modelProviders.includes(String(thread.modelProvider));
+      };
+      return { data: threads.filter(included), nextCursor: null };
+    };
+  }
+
+  const threadsByModelProvider = [
+    { id: "stock-thread", cwd: "/workspace/project-a", modelProvider: "openai", updatedAt: 2 },
+    { id: "custom-thread", cwd: "/workspace/project-a", modelProvider: "my-codex", updatedAt: 1 },
+  ];
+
+  test("a custom Codex provider lists the threads it created", async () => {
+    const appServer = createFakeCodexAppServer({
+      "thread/list": providerFilteringThreadListHandler(threadsByModelProvider),
+    });
+    const provider = createProviderWithFakeAppServer(appServer, {
+      runtimeSettings: {
+        env: { OPENAI_BASE_URL: "https://llm.example.test/v1", OPENAI_API_KEY: "test-key" },
+      },
+      customProvider: { id: "my-codex", label: "My Codex", extends: "codex" },
+    });
+
+    const sessions = await provider.listImportableSessions({ cwd: "/workspace/project-a" });
+
+    expect(sessions.map((session) => session.providerHandleId)).toEqual(["custom-thread"]);
+    appServer.assertNoErrors();
+  });
+
+  test("stock Codex keeps listing only its own threads", async () => {
+    const appServer = createFakeCodexAppServer({
+      "thread/list": providerFilteringThreadListHandler(threadsByModelProvider),
+    });
+    const provider = createProviderWithFakeAppServer(appServer);
+
+    const sessions = await provider.listImportableSessions({ cwd: "/workspace/project-a" });
+
+    expect(sessions.map((session) => session.providerHandleId)).toEqual(["stock-thread"]);
+    appServer.assertNoErrors();
+  });
+
   test("listImportableSessions uses thread list metadata without hydrating thread history", async () => {
     const allThreads = [
       {
@@ -7005,7 +7006,10 @@ describe("Codex importable sessions", () => {
           capabilities: { experimentalApi: true, mcpServerOpenaiFormElicitation: true },
         },
       },
-      { method: "thread/list", params: { limit: 50, cwd: "/workspace/project-a" } },
+      {
+        method: "thread/list",
+        params: { limit: 50, sortKey: "updated_at", cwd: "/workspace/project-a" },
+      },
     ]);
   });
 });
@@ -7016,7 +7020,8 @@ describe("Codex denied plan approvals", () => {
       (event) =>
         event.type === "timeline" &&
         event.item.type === "tool_call" &&
-        event.item.name === "plan_approval",
+        event.item.name === "plan_approval" &&
+        event.item.status === "completed",
     );
   }
 
@@ -7069,4 +7074,96 @@ describe("Codex denied plan approvals", () => {
       metadata: { approved: false },
     });
   });
+});
+
+describe("Codex interactive resume startup", () => {
+  test("delivers an autonomous turn that starts during resume to the first subscriber", async () => {
+    const appServer = createFakeCodexAppServer({
+      "turn/interrupt": () => ({}),
+      "thread/resume": () => {
+        appServer.startsTurn({ threadId: "saved-thread", turnId: "autonomous-turn" });
+        appServer.says({ threadId: "saved-thread", text: "Working on the goal" });
+        return { thread: { id: "saved-thread" } };
+      },
+      "thread/read": () => ({ thread: { turns: [] } }),
+    });
+    const session = new CodexAppServerAgentSession(
+      createConfig({ modeId: "full-access" }),
+      { sessionId: "saved-thread" },
+      createTestLogger(),
+      async () => appServer.child,
+    );
+    try {
+      await session.connect();
+      const events: AgentStreamEvent[] = [];
+      const unsubscribe = session.subscribe((event) => events.push(event));
+      expect(events.some((event) => event.type === "turn_started")).toBe(true);
+      expect(
+        events.some(
+          (event) =>
+            event.type === "timeline" &&
+            event.item.type === "assistant_message" &&
+            event.item.text.includes("Working on the goal"),
+        ),
+      ).toBe(true);
+      await session.interrupt();
+      expect(
+        appServer.requests().find((request) => request.method === "turn/interrupt"),
+      ).toMatchObject({ params: { threadId: "saved-thread", turnId: "autonomous-turn" } });
+      unsubscribe();
+      const laterEvents: AgentStreamEvent[] = [];
+      session.subscribe((event) => laterEvents.push(event));
+      expect(laterEvents).toEqual([]);
+    } finally {
+      await session.close();
+      appServer.assertNoErrors();
+    }
+  });
+  test.each([false, true])(
+    "applies resumed goal events before returning (completed during resume: %s)",
+    async (completedDuringResume) => {
+      const appServer = createFakeCodexAppServer({
+        "thread/resume": () => {
+          appServer.startsTurn({ threadId: "saved-thread", turnId: "autonomous-turn" });
+          if (completedDuringResume) appServer.completeTurn({ threadId: "saved-thread" });
+          return { thread: { id: "saved-thread" } };
+        },
+        "thread/read": () => ({ thread: { turns: [] } }),
+      });
+      const session = new CodexAppServerAgentSession(
+        createConfig({ title: "Resumed goal", cwd: process.cwd() }),
+        { sessionId: "saved-thread" },
+        createTestLogger(),
+        async () => appServer.child,
+      );
+      const client: AgentClient = {
+        provider: "codex",
+        capabilities: session.capabilities,
+        isAvailable: async () => true,
+        fetchCatalog: async () => ({ models: [], modes: [] }),
+        createSession: async () => {
+          throw new Error("Unexpected create");
+        },
+        resumeSession: async () => {
+          await session.connect();
+          return session;
+        },
+      };
+      const manager = new AgentManager({ clients: { codex: client }, logger: createTestLogger() });
+      let id: string | undefined;
+      try {
+        const resumed = await manager.resumeAgentFromPersistence(
+          { provider: "codex", sessionId: "saved-thread" },
+          createConfig({ title: "Resumed goal", cwd: process.cwd() }),
+        );
+        id = resumed.id;
+        expect(resumed.lifecycle).toBe(completedDuringResume ? "idle" : "running");
+        expect(manager.getAgent(id)?.lifecycle).toBe(completedDuringResume ? "idle" : "running");
+      } finally {
+        if (id) await manager.closeAgent(id);
+        await session.close();
+        appServer.assertNoErrors();
+      }
+    },
+  );
 });

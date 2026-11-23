@@ -82,7 +82,7 @@ function workspaceReviewAttachment(): Extract<ComposerAttachment, { kind: "revie
     commentCount: 1,
     attachment: {
       type: "review",
-      mimeType: "application/otto-review",
+      mimeType: "application/paseo-review",
       cwd: "/repo",
       mode: "uncommitted",
       baseRef: null,

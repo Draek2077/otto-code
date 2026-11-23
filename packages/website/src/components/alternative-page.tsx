@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import { DocsMarkdown } from "~/components/docs-markdown";
 import { SiteShell } from "~/components/site-shell";
 import { getAlternativePage } from "~/data/alternative-pages";

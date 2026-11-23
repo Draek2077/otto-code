@@ -1,4 +1,4 @@
-import { defineSettings } from "@otto-code/plugin";
+import { defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const preferences = defineSettings({

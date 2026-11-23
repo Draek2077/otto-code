@@ -2,13 +2,16 @@ const fs = require("node:fs");
 const path = require("node:path");
 const pkg = require("./package.json");
 const withAndroidAsyncStorageSize = require("./plugins/with-android-async-storage-size");
+const withAndroidOptionalCamera = require("./plugins/with-android-optional-camera");
 const withAndroidProfileable = require("./plugins/with-android-profileable");
 const withFdroidAutolinking = require("./plugins/with-fdroid-autolinking");
 const withPasteInput = require("./plugins/with-paste-input");
+const withAndroidScroll = require("./modules/paseo-scroll/app.plugin");
+const withOttoSpeechBackground = require("./plugins/with-otto-speech-background"); // OTTO(speech)
 const { getNativeReleaseVersion } = require("./native-release-version");
 const appVariant = process.env.APP_VARIANT ?? "production";
-const isFdroidBuild = process.env.OTTO_FDROID_BUILD === "1";
-const isProfileBuild = process.env.OTTO_PROFILE_BUILD === "1";
+const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
+const isProfileBuild = process.env.PASEO_PROFILE_BUILD === "1";
 
 const buildProfile = isFdroidBuild
   ? {
@@ -66,6 +69,7 @@ function resolveSecretFile(params) {
 
 const variants = {
   production: {
+    // OTTO(identity): Otto store names and package ids.
     name: "Otto",
     packageId: "me.ottocode.mobile",
     googleServicesFile: resolveSecretFile({
@@ -78,7 +82,7 @@ const variants = {
     }),
   },
   development: {
-    name: "Otto Debug",
+    name: "Otto Debug", // OTTO(identity)
     packageId: "me.ottocode.mobile.debug",
     googleServicesFile: resolveSecretFile({
       envKey: "GOOGLE_SERVICES_FILE_DEBUG",
@@ -97,27 +101,13 @@ const nativeReleaseVersion = getNativeReleaseVersion(pkg.version);
 export default {
   expo: {
     name: variant.name,
-    slug: "otto-code-mobile",
+    slug: "otto-code-mobile", // OTTO(identity)
     version: nativeReleaseVersion.appVersion,
-    // Shared by iOS and Android. Kept "portrait" on purpose: the only value that
-    // unlocks rotation is "default", which would also allow all four iOS
-    // orientations. Android instead gets android:screenOrientation="unspecified"
-    // via plugins/with-android-rotation.js (same value "default" maps to there),
-    // so the app follows the device's auto-rotate setting - landscape is
-    // available on tablets, phones stay portrait unless the user enables
-    // auto-rotate in their OS.
     orientation: "portrait",
     icon: "./assets/images/icon.png",
-    scheme: "otto",
+    scheme: "otto", // OTTO(identity)
     userInterfaceStyle: "automatic",
     newArchEnabled: true,
-    runtimeVersion: {
-      policy: "appVersion",
-    },
-    updates: {
-      url: "https://u.expo.dev/69eddb63-f77d-413a-b2b7-ed83e8e16759",
-      ...buildProfile.updates,
-    },
     ios: {
       supportsTablet: true,
       infoPlist: {
@@ -155,8 +145,10 @@ export default {
     plugins: [
       "expo-router",
       withPasteInput,
+      withAndroidScroll,
       [withAndroidAsyncStorageSize, 64],
       ...buildProfile.cameraPlugins,
+      withAndroidOptionalCamera,
       [
         "expo-splash-screen",
         {
@@ -171,6 +163,7 @@ export default {
       ],
       ...buildProfile.notificationPlugins,
       "expo-audio",
+      withOttoSpeechBackground, // OTTO(speech): playback only; never enable background recording.
       [
         "expo-gradle-jvmargs",
         {
@@ -189,13 +182,6 @@ export default {
           },
         },
       ],
-      // Android-only: let the app follow the device rotation setting
-      // (landscape on tablets). See plugins/with-android-rotation.js.
-      "./plugins/with-android-rotation",
-      // Windows-only: re-absolutize the Android bundle `--entry-file` so local
-      // release builds don't fail with "Unable to resolve module ./index.ts".
-      // No-op on Linux/macOS. See plugins/with-metro-embed-cli.js.
-      "./plugins/with-metro-embed-cli",
       ...buildProfile.fdroidPlugins,
       ...(isProfileBuild ? [withAndroidProfileable] : []),
     ],
@@ -209,9 +195,9 @@ export default {
       profileBuild: isProfileBuild,
       router: {},
       eas: {
-        projectId: "69eddb63-f77d-413a-b2b7-ed83e8e16759",
+        projectId: "69eddb63-f77d-413a-b2b7-ed83e8e16759", // OTTO(identity): Otto EAS project
       },
     },
-    owner: "otto-code",
+    owner: "otto-code", // OTTO(identity)
   },
 };

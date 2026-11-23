@@ -1,7 +1,7 @@
-import { createOttoClient, type OttoClient } from "@otto-code/client";
+import { createPaseoClient, type PaseoClient } from "@getpaseo/client";
 
-export function createClient(url: string): OttoClient {
-  return createOttoClient({
+export function createClient(url: string): PaseoClient {
+  return createPaseoClient({
     url,
   });
 }

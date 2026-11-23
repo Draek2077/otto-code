@@ -3,7 +3,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { createAgentProviderRuntime } from "./provider-runtime.js";
 import { OpenCodeBridge } from "./providers/opencode/bridge.js";
-import type { OttoToolCatalog } from "./tools/types.js";
+import type { PaseoToolCatalog } from "./tools/types.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -17,7 +17,7 @@ describe("agent provider runtime", () => {
       .mockImplementation(() => undefined);
     const close = vi.spyOn(OpenCodeBridge.prototype, "close").mockResolvedValue();
     const runtime = await createAgentProviderRuntime({
-      ottoHome: "/tmp/paseo-provider-runtime-test",
+      paseoHome: "/tmp/paseo-provider-runtime-test",
       logger: createTestLogger(),
       snapshotManager: {},
     });
@@ -25,9 +25,9 @@ describe("agent provider runtime", () => {
 
     expect(
       runtime.snapshotManager.getAgentManagerProviderState().clients.opencode?.capabilities
-        .supportsNativeOttoTools,
+        .supportsNativePaseoTools,
     ).toBe(true);
-    runtime.setOttoToolCatalog(catalog);
+    runtime.setPaseoToolCatalog(catalog);
     await Promise.all([runtime.shutdown(), runtime.shutdown()]);
 
     expect(setManifestCatalog).toHaveBeenCalledOnce();
@@ -41,7 +41,7 @@ describe("agent provider runtime", () => {
 
     await expect(
       createAgentProviderRuntime({
-        ottoHome: "/tmp/paseo-provider-runtime-test",
+        paseoHome: "/tmp/paseo-provider-runtime-test",
         logger: createTestLogger(),
         snapshotManager: {},
       }),
@@ -50,7 +50,7 @@ describe("agent provider runtime", () => {
   });
 });
 
-function emptyCatalog(): OttoToolCatalog {
+function emptyCatalog(): PaseoToolCatalog {
   return {
     tools: new Map(),
     getTool: () => undefined,

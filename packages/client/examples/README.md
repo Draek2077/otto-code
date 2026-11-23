@@ -1,9 +1,9 @@
-# Otto Client SDK Examples
+# Paseo Client SDK Examples
 
 These examples use only the public SDK root:
 
 ```ts
-import { createOttoClient, type OttoClient } from "@otto-code/client";
+import { createPaseoClient, type PaseoClient } from "@getpaseo/client";
 ```
 
 Each example takes the daemon WebSocket URL as an argument. In worktree dev, read it

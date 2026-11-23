@@ -6,7 +6,7 @@ import pino from "pino";
 
 import type { AgentTimelineItem } from "../agent/agent-sdk-types.js";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import {
   canRunRealProvider,
   createRealProviderClients,
@@ -63,7 +63,7 @@ describe("daemon E2E (real claude) - thinking effort memory", () => {
   test("changing thinking effort preserves the previous conversation", async () => {
     const logger = pino({ level: "silent" });
     const cwd = tmpCwd();
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       agentClients: createRealProviderClients(["claude"], logger),
       logger,
     });
@@ -72,7 +72,7 @@ describe("daemon E2E (real claude) - thinking effort memory", () => {
     try {
       await client.connect();
       await client.fetchAgents({
-        subscribe: { subscriptionId: "claude-thinking-memory-real" },
+        subscribe: {},
       });
 
       const modelList = await client.listProviderModels("claude", { cwd });
@@ -90,7 +90,7 @@ describe("daemon E2E (real claude) - thinking effort memory", () => {
 
       await client.sendMessage(
         agent.id,
-        "Remember the code phrase OTTO_MEMORY_56. Reply exactly: ACK_56",
+        "Remember the code phrase PASEO_MEMORY_56. Reply exactly: ACK_56",
       );
       const firstFinish = await client.waitForFinish(agent.id, 180_000);
       expect(firstFinish.status).toBe("idle");
@@ -108,7 +108,7 @@ describe("daemon E2E (real claude) - thinking effort memory", () => {
       expect(secondFinish.final?.lastError).toBeUndefined();
 
       const assistantText = await getAssistantText(client, agent.id);
-      expect(compactText(assistantText)).toContain("otto_memory_56");
+      expect(compactText(assistantText)).toContain("paseo_memory_56");
     } finally {
       await client.close().catch(() => undefined);
       await daemon.close().catch(() => undefined);

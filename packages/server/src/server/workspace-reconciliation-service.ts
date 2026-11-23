@@ -1,7 +1,5 @@
-import { statSync } from "node:fs";
-import { isProjectOffline, observeOfflineProjects } from "./project-availability.js";
-import { watchDirectory } from "../utils/watch-directory.js";
-import type { ProjectCheckoutLitePayload } from "@otto-code/protocol/messages";
+import { statSync, watch as watchPath } from "node:fs";
+import type { ProjectCheckoutLitePayload } from "@getpaseo/protocol/messages";
 import type pino from "pino";
 import type {
   ProjectRegistry,
@@ -58,7 +56,7 @@ const systemClock: ReconciliationClock = {
 };
 
 const watchProjectRoot: ProjectRootWatch = (rootPath, options, onChange, onError) => {
-  const watcher = watchDirectory(rootPath, options, onChange);
+  const watcher = watchPath(rootPath, options, onChange);
   watcher.on("error", onError);
   return watcher;
 };
@@ -89,7 +87,7 @@ export interface WorkspaceReconciliationServiceOptions {
   workspaceRegistry: WorkspaceRegistry;
   logger: pino.Logger;
   onChanges?: (changes: ReconciliationChange[]) => void;
-  workspaceGitService?: Pick<WorkspaceGitService, "getCheckoutLite">;
+  workspaceGitService?: Pick<WorkspaceGitService, "getCheckout">;
   onProjectUpdate?: (update: ProjectUpdate) => void;
   onWorkspaceArchived?: (workspaceId: string) => void | Promise<void>;
   onWorkspacesChanged?: (workspaceIds: string[]) => Promise<void>;
@@ -120,7 +118,7 @@ export class WorkspaceReconciliationService {
   private readonly workspaceRegistry: WorkspaceRegistry;
   private readonly logger: pino.Logger;
   private readonly onChanges: ((changes: ReconciliationChange[]) => void) | null;
-  private readonly workspaceGitService: Pick<WorkspaceGitService, "getCheckoutLite"> | null;
+  private readonly workspaceGitService: Pick<WorkspaceGitService, "getCheckout"> | null;
   private readonly onProjectUpdate: ((update: ProjectUpdate) => void) | null;
   private readonly onWorkspaceArchived: ((workspaceId: string) => void | Promise<void>) | null;
   private readonly onWorkspacesChanged: ((workspaceIds: string[]) => Promise<void>) | null;
@@ -131,7 +129,6 @@ export class WorkspaceReconciliationService {
   private readonly watchers: Array<{ rootPath: string; watcher: ProjectRootWatcher }> = [];
   private unsubscribeRegistry: (() => void) | null = null;
   private rescanTimer: ReconciliationTimer | null = null;
-  private availabilityTimer: ReconciliationTimer | null = null;
   private debounceTimer: ReconciliationTimer | null = null;
   private disposed = false;
   private started = false;
@@ -179,14 +176,6 @@ export class WorkspaceReconciliationService {
       this.rescanIntervalMs,
     );
     this.rescanTimer.unref?.();
-    this.availabilityTimer = this.clock.setInterval(
-      () =>
-        observeOfflineProjects(this.projectRegistry).catch((error) => {
-          this.logger.warn({ err: error }, "Project availability probe failed");
-        }),
-      2000,
-    );
-    this.availabilityTimer.unref?.();
   }
 
   dispose(): void {
@@ -194,7 +183,6 @@ export class WorkspaceReconciliationService {
     this.unsubscribeRegistry?.();
     this.unsubscribeRegistry = null;
     if (this.rescanTimer) this.clock.clearInterval(this.rescanTimer);
-    if (this.availabilityTimer) this.clock.clearInterval(this.availabilityTimer);
     if (this.debounceTimer) this.clock.clearTimeout(this.debounceTimer);
     for (const { watcher } of this.watchers) watcher.close();
     this.watchers.length = 0;
@@ -208,23 +196,17 @@ export class WorkspaceReconciliationService {
       this.projectRegistry.list(),
       this.workspaceRegistry.list(),
     ]);
-    const offlineIds = new Set(
-      projects.filter(isProjectOffline).map((project) => project.projectId),
-    );
     const workspacesByProject = new Map<string, PersistedWorkspaceRecord[]>();
     for (const workspace of workspaces) {
-      if (
-        workspace.archivedAt ||
-        offlineIds.has(workspace.projectId) ||
-        this.inspectDirectory(workspace.cwd) !== "directory"
-      )
-        continue;
+      if (workspace.archivedAt || this.inspectDirectory(workspace.cwd) !== "directory") continue;
       const siblings = workspacesByProject.get(workspace.projectId) ?? [];
       siblings.push(workspace);
       workspacesByProject.set(workspace.projectId, siblings);
     }
     await this.reconcileGitMetadataForProjects(
-      projects.filter((project) => !project.archivedAt && !isProjectOffline(project)),
+      projects.filter(
+        (project) => !project.archivedAt && this.inspectDirectory(project.rootPath) === "directory",
+      ),
       workspacesByProject,
       changes,
     );
@@ -233,7 +215,6 @@ export class WorkspaceReconciliationService {
   }
 
   async runOnce(): Promise<ReconciliationResult> {
-    await observeOfflineProjects(this.projectRegistry);
     const start = Date.now();
     const changes: ReconciliationChange[] = [];
 
@@ -241,14 +222,19 @@ export class WorkspaceReconciliationService {
     const allWorkspaces = await this.workspaceRegistry.list();
 
     const activeProjects = allProjects.filter((p) => !p.archivedAt);
-    const offlineProjectIds = new Set(allProjects.filter(isProjectOffline).map((p) => p.projectId));
-    const activeWorkspaces = allWorkspaces.filter(
-      (w) => !w.archivedAt && !offlineProjectIds.has(w.projectId),
-    );
+    const activeWorkspaces = allWorkspaces.filter((w) => !w.archivedAt);
     const workspaceDirectoryStates = activeWorkspaces.map((workspace) => ({
       workspace,
       state: this.inspectDirectory(workspace.cwd),
     }));
+    // Project roots are read after the workspace directories, so a volume that
+    // goes away mid-pass leaves its project unreachable rather than its workspaces
+    // alone. The skew can only withhold an archive, never produce one.
+    const reachableProjectIds = new Set(
+      activeProjects
+        .filter((project) => this.inspectDirectory(project.rootPath) === "directory")
+        .map((project) => project.projectId),
+    );
 
     const workspacesByProject = new Map<string, PersistedWorkspaceRecord[]>();
     for (const { workspace, state } of workspaceDirectoryStates) {
@@ -258,9 +244,16 @@ export class WorkspaceReconciliationService {
       workspacesByProject.set(workspace.projectId, list);
     }
 
-    // 1. Archive workspaces whose directories no longer exist
+    // 1. Archive workspaces whose directories no longer exist, but only when the
+    //    project they belong to is still reachable. A missing project root means the
+    //    whole location is unavailable - an unmounted volume, an offline share, a disk
+    //    that has not appeared yet - and absence there proves nothing about the
+    //    workspace. Projects already persist through that; their workspaces do too.
     const missingWorkspaces = workspaceDirectoryStates
-      .filter(({ state }) => state === "missing")
+      .filter(
+        ({ workspace, state }) =>
+          state === "missing" && reachableProjectIds.has(workspace.projectId),
+      )
       .map(({ workspace }) => workspace);
     await Promise.all(
       missingWorkspaces.map(async (workspace) => {
@@ -287,7 +280,7 @@ export class WorkspaceReconciliationService {
     //    Projects persist until explicitly removed, even when they currently have
     //    zero active workspaces, so they still reconcile their own metadata.
     await this.reconcileGitMetadataForProjects(
-      activeProjects.filter((project) => !isProjectOffline(project)),
+      activeProjects.filter((project) => reachableProjectIds.has(project.projectId)),
       workspacesByProject,
       changes,
     );
@@ -399,35 +392,24 @@ export class WorkspaceReconciliationService {
 
     await Promise.all(
       workspaceCheckouts.map(async ({ workspace, checkout: wsGit }) => {
-        // Re-read before writing. `workspace` was snapshotted when this
-        // reconciliation pass started, and reading a checkout is slow enough
-        // that an archive can land in between - writing the stale copy back
-        // carried its `archivedAt: null` with it and resurrected the record.
-        // That is how an archive could report success, drop the workspace from
-        // the active list, and then have it reappear moments later.
-        // Reconciliation only syncs git metadata; it must never revive a
-        // workspace that has since been archived or removed.
-        const current = await this.workspaceRegistry.get(workspace.workspaceId);
-        if (!current || current.archivedAt) return;
-
         const timestamp = new Date().toISOString();
         const update = reconcileWorkspacePlacement({
-          workspace: current,
+          workspace,
           checkout: wsGit,
           updatedAt: timestamp,
         });
         if (!update) return;
 
-        const updated = await this.workspaceRegistry.update(workspace.workspaceId, (record) => ({
-          ...record,
+        const updated = await this.workspaceRegistry.update(workspace.workspaceId, (current) => ({
+          ...current,
           ...update.fields,
           updatedAt: timestamp,
         }));
         if (!updated) return;
         changes.push({
           kind: "workspace_updated",
-          workspaceId: current.workspaceId,
-          directory: current.cwd,
+          workspaceId: workspace.workspaceId,
+          directory: workspace.cwd,
           fields: update.fields,
         });
       }),
@@ -438,9 +420,7 @@ export class WorkspaceReconciliationService {
     if (this.disposed) return;
     const projects = await this.projectRegistry.list();
     if (this.disposed) return;
-    const activeProjects = projects.filter(
-      (project) => !project.archivedAt && !isProjectOffline(project),
-    );
+    const activeProjects = projects.filter((project) => !project.archivedAt);
 
     for (let index = this.watchers.length - 1; index >= 0; index -= 1) {
       const target = this.watchers[index]!;
@@ -550,15 +530,11 @@ export class WorkspaceReconciliationService {
         currentBranch: null,
         remoteUrl: null,
         worktreeRoot: null,
-        isOttoOwnedWorktree: false as const,
+        isPaseoOwnedWorktree: false as const,
         mainRepoRoot: null,
       };
     }
-    // Identity fields only. Reconciliation compares branch, remote and root
-    // identity and throws the rest away, so the full checkout read's dirty
-    // check and ahead/behind counts would be pure waste - and this runs for
-    // every project root and every workspace cwd on every tick.
-    return this.workspaceGitService.getCheckoutLite(cwd);
+    return this.workspaceGitService.getCheckout(cwd);
   }
 
   private inspectDirectory(targetPath: string): DirectoryState {

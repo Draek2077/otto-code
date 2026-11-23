@@ -1,8 +1,8 @@
 {
-  "name": "@otto-code/desktop",
+  "name": "@getpaseo/desktop",
   "version": "0.9.35",
   "private": true,
-  "description": "Monitor and control your local AI coding agents from anywhere.",
+  "description": "Paseo desktop app (Electron wrapper)",
   "homepage": "https://otto-code.me",
   "license": "AGPL-3.0-or-later",
   "author": {
@@ -16,29 +16,26 @@
   "main": "dist/main.js",
   "scripts": {
     "build": "npm --prefix ../.. run build:server:clean && npm run build:main && electron-builder --config electron-builder.yml",
-    "build:zoom-recorder": "python ./scripts/build-zoom-recorder-runtime.py",
     "build:main": "tsc -p tsconfig.json",
-    "capture-harness": "./capture-harness/run.sh",
+    "build:zoom-recorder": "python ./scripts/build-zoom-recorder-runtime.py",
+    "capture-harness": "npm run build:main && ./capture-harness/run.sh",
     "dev": "./scripts/dev.sh",
-    "dev:win": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/dev.ps1",
-    "test:e2e:browser-tab-bridge": "npm run build:main && node ./scripts/browser-tab-bridge.e2e.mjs",
-    "test:e2e:skill-selection-upgrade": "npm run build:main && node ./scripts/skill-selection-upgrade.e2e.mjs",
-    "pretest:e2e:renderer": "npm --prefix ../.. run browsers:install",
-    "test:e2e:renderer": "cross-env E2E_DESKTOP_RUNTIME=1 node ../../scripts/run-playwright.mjs test --config=playwright.config.ts --project=desktop",
+    "dev:win": "powershell ./scripts/dev.ps1",
+    "test:e2e:renderer": "cross-env E2E_DESKTOP_RUNTIME=1 playwright test --config=playwright.config.ts --project=desktop",
     "test:e2e:browser-tabs": "npm run build:main && node ./e2e/browser-tabs.e2e.mjs",
-    "test:e2e:browser-focus": "node ./e2e/browser-focus.e2e.cjs",
-    "test:e2e:browser-edge-pointer": "npm run build:main && node ./e2e/browser-edge-pointer.e2e.cjs",
-    "test:e2e:browser-layering": "node ./e2e/browser-layering.e2e.cjs",
     "verify:electron-cdp": "node ./scripts/verify-electron-cdp.mjs",
-    "test": "vitest run --exclude \"e2e/**\"",
-    "typecheck": "tsgo --noEmit -p tsconfig.json"
+    "test": "install-electron && vitest run --exclude \"e2e/**\"",
+    "typecheck": "tsgo --noEmit -p tsconfig.json",
+    "test:e2e:lifecycle": "npm run build:main && node ./e2e/daemon-lifecycle.e2e.mjs",
+    "test:e2e:window-startup": "npm run build:main && node ./e2e/window-startup.e2e.mjs"
   },
   "dependencies": {
-    "@otto-code/cli": "*",
-    "@otto-code/server": "*",
+    "@getpaseo/cli": "*",
+    "@getpaseo/plugin": "*",
+    "@getpaseo/server": "*",
     "electron-log": "^5.4.3",
     "electron-updater": "^6.6.2",
-    "ws": "^8.21.0",
+    "ws": "^8.14.2",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -46,11 +43,11 @@
     "@types/node": "24.6.0",
     "@types/ws": "^8.5.14",
     "electron": "44.2.0",
-    "electron-builder": "26.16.1",
+    "electron-builder": "26.8.1",
     "typescript": "5.9.3",
     "unzip-crx-3": "^0.2.0",
-    "vitest": "^4.1.11",
-    "wait-on": "9.1.0"
+    "vitest": "^4.1.6",
+    "wait-on": "8.0.5"
   },
-  "desktopName": "otto-code-desktop.desktop"
+  "desktopName": "Otto.desktop"
 }

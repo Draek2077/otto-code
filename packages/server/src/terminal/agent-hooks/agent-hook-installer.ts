@@ -137,18 +137,18 @@ export function buildAgentHookShellCommand<TConfig>(
   provider: AgentHookProvider<TConfig>,
   event: AgentHookEventDefinition,
 ): string {
-  const hookCommand = `"\${OTTO_HOOK_CLI:-otto}" hooks ${shellToken(provider.id)} ${shellToken(event.event)}`;
-  return `if [ -n "$OTTO_TERMINAL_ID" ]; then ${hookCommand}; fi`;
+  // OTTO(identity): the fallback command on PATH is otto.
+  const hookCommand = `"\${PASEO_HOOK_CLI:-otto}" hooks ${shellToken(provider.id)} ${shellToken(event.event)}`;
+  return `if [ -n "$PASEO_TERMINAL_ID" ]; then ${hookCommand}; fi`;
 }
 
 export function buildAgentHookWindowsCommand<TConfig>(
   provider: AgentHookProvider<TConfig>,
   event: AgentHookEventDefinition,
 ): string {
-  const hookArgs = `hooks ${powershellToken(provider.id)} ${powershellToken(event.event)}`;
-  const script = `if ($env:OTTO_TERMINAL_ID) { if ($env:OTTO_HOOK_CLI) { & $env:OTTO_HOOK_CLI ${hookArgs} } else { & otto ${hookArgs} } }`;
-  const encodedScript = Buffer.from(script, "utf16le").toString("base64");
-  return `powershell.exe -NoProfile -NonInteractive -EncodedCommand ${encodedScript}`;
+  const hookArgs = `hooks ${windowsToken(provider.id)} ${windowsToken(event.event)}`;
+  // OTTO(identity): the fallback command on PATH is otto.
+  return `if defined PASEO_TERMINAL_ID (if defined PASEO_HOOK_CLI ("%PASEO_HOOK_CLI%" ${hookArgs}) else (otto ${hookArgs})) else (exit /b 0)`;
 }
 
 function installAgentHookPluginFile(
@@ -241,9 +241,9 @@ function shellToken(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-function powershellToken(value: string): string {
+function windowsToken(value: string): string {
   if (/^[A-Za-z0-9_./:-]+$/.test(value)) {
     return value;
   }
-  return `'${value.replaceAll("'", "''")}'`;
+  return `"${value.replaceAll('"', '\\"')}"`;
 }

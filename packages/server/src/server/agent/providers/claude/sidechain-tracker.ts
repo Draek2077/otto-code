@@ -5,7 +5,11 @@ import {
   mapClaudeFailedToolCall,
   mapClaudeRunningToolCall,
 } from "./tool-call-mapper.js";
-import { buildToolCallDisplayModel } from "@otto-code/protocol/tool-call-display";
+import { buildToolCallDisplayModel } from "@getpaseo/protocol/tool-call-display";
+import {
+  isClaudeSubagentHandbackToolName,
+  readClaudeSubagentHandback,
+} from "./subagent-handback.js";
 
 import type { AgentMetadata, AgentStreamEvent, AgentTimelineItem } from "../../agent-sdk-types.js";
 
@@ -13,6 +17,8 @@ interface ClaudeContentChunk {
   type: string;
   [key: string]: unknown;
 }
+
+type ClaudeToolCallItem = Extract<AgentTimelineItem, { type: "tool_call" }>;
 
 interface SubAgentActionEntry {
   index: number;
@@ -55,19 +61,12 @@ function isClaudeContentChunk(value: unknown): value is ClaudeContentChunk {
   );
 }
 
-function buildActionsLog(state: SubAgentActivityState): string {
-  return state.actions
-    .map((action) =>
-      action.summary ? `[${action.toolName}] ${action.summary}` : `[${action.toolName}]`,
-    )
-    .join("\n");
-}
-
 export class ClaudeSidechainTracker {
   private readonly activeSidechains = new Map<string, SubAgentActivityState>();
   private readonly getToolInput: (toolUseId: string) => AgentMetadata | null | undefined;
   private readonly isDescriptorOwnedElsewhere: () => boolean;
   private readonly needsSyntheticParentToolCard: (toolUseId: string) => boolean;
+  private readonly getSettledParentToolCall: (toolUseId: string) => ClaudeToolCallItem | undefined;
 
   constructor(input: {
     getToolInput: (toolUseId: string) => AgentMetadata | null | undefined;
@@ -78,10 +77,17 @@ export class ClaudeSidechainTracker {
      */
     isDescriptorOwnedElsewhere?: () => boolean;
     needsSyntheticParentToolCard?: (toolUseId: string) => boolean;
+    /**
+     * The parent's tool call once Claude has answered it. A background child streams its frames
+     * after that answer, so its card keeps the settled status and output and gains the child's
+     * action log.
+     */
+    getSettledParentToolCall?: (toolUseId: string) => ClaudeToolCallItem | undefined;
   }) {
     this.getToolInput = input.getToolInput;
     this.isDescriptorOwnedElsewhere = input.isDescriptorOwnedElsewhere ?? (() => false);
     this.needsSyntheticParentToolCard = input.needsSyntheticParentToolCard ?? (() => true);
+    this.getSettledParentToolCall = input.getSettledParentToolCall ?? (() => undefined);
   }
 
   handleMessage(message: SDKMessage, parentToolUseId: string): AgentStreamEvent[] {
@@ -99,7 +105,7 @@ export class ClaudeSidechainTracker {
     const contextUpdated = this.updateSubAgentContextFromTaskInput(state, parentToolUseId);
     const actionCandidates = this.extractSubAgentActionCandidates(message);
     const childTimelineItems = [
-      ...this.extractSubAgentTimelineItems(message),
+      ...this.extractSubAgentTimelineItems(message, state),
       ...this.extractSubAgentToolResults(message, state),
     ];
     let actionUpdated = false;
@@ -123,17 +129,19 @@ export class ClaudeSidechainTracker {
       return [];
     }
 
-    const toolCall = mapClaudeRunningToolCall({
-      name: "Task",
-      callId: parentToolUseId,
-      input: null,
-      output: null,
-    });
+    const toolCall =
+      this.getSettledParentToolCall(parentToolUseId) ??
+      mapClaudeRunningToolCall({
+        name: "Task",
+        callId: parentToolUseId,
+        input: null,
+        output: null,
+      });
     if (!toolCall) {
       return [];
     }
 
-    const detail: Extract<AgentTimelineItem, { type: "tool_call" }>["detail"] = {
+    const detail: ClaudeToolCallItem["detail"] = {
       type: "sub_agent",
       ...(state.subAgentType ? { subAgentType: state.subAgentType } : {}),
       ...(state.description ? { description: state.description } : {}),
@@ -191,7 +199,7 @@ export class ClaudeSidechainTracker {
   finishAll(status: "completed" | "failed" | "canceled"): AgentStreamEvent[] {
     const events: AgentStreamEvent[] = [];
     if (this.isDescriptorOwnedElsewhere()) {
-      this.activeSidechains.clear();
+      // The task protocol owns child completion; the parent finishing does not end its children.
       return events;
     }
     for (const [id, state] of this.activeSidechains) {
@@ -241,7 +249,10 @@ export class ClaudeSidechainTracker {
     this.activeSidechains.clear();
   }
 
-  private extractSubAgentTimelineItems(message: SDKMessage): AgentTimelineItem[] {
+  private extractSubAgentTimelineItems(
+    message: SDKMessage,
+    state: SubAgentActivityState,
+  ): AgentTimelineItem[] {
     if (message.type !== "assistant" || !Array.isArray(message.message?.content)) {
       return [];
     }
@@ -261,6 +272,18 @@ export class ClaudeSidechainTracker {
       } else if (block.type === "thinking") {
         const text = readTrimmedString(block.thinking);
         if (text) items.push({ type: "reasoning", text });
+      } else {
+        const handback = readClaudeSubagentHandback(block);
+        if (!handback) continue;
+        // The handback's result is only an acknowledgement, never a tool card.
+        state.completedActionKeys.add(handback.callId);
+        if (handback.report) {
+          items.push({
+            type: "assistant_message",
+            text: handback.report,
+            ...(messageId ? { messageId } : {}),
+          });
+        }
       }
     }
     return items;
@@ -399,6 +422,12 @@ export class ClaudeSidechainTracker {
   }
 
   private extractSubAgentActionCandidates(message: SDKMessage): SubAgentActionCandidate[] {
+    return this.extractToolActionCandidates(message).filter(
+      (action) => !isClaudeSubagentHandbackToolName(action.toolName),
+    );
+  }
+
+  private extractToolActionCandidates(message: SDKMessage): SubAgentActionCandidate[] {
     if (message.type === "assistant") {
       return this.extractAssistantMessageActions(message);
     }
@@ -498,13 +527,5 @@ export class ClaudeSidechainTracker {
       metadata: runningToolCall.metadata,
     });
     return this.normalizeSubAgentText(display.summary);
-  }
-
-  getAccumulatedLog(toolUseId: string): string | undefined {
-    const state = this.activeSidechains.get(toolUseId);
-    if (!state || state.actions.length === 0) {
-      return undefined;
-    }
-    return buildActionsLog(state);
   }
 }

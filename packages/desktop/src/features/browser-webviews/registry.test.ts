@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { OttoBrowserWebviewRegistry } from "./registry.js";
+import { PaseoBrowserWebviewRegistry } from "./registry.js";
 
-describe("OttoBrowserWebviewRegistry", () => {
+describe("PaseoBrowserWebviewRegistry", () => {
   it("keeps one authoritative webContents target per host and browser", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.registerWebContents({
       webContentsId: 1,
@@ -34,7 +34,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("keeps the active browser when the same guest registers again", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.registerWebContents({
       webContentsId: 1,
@@ -60,7 +60,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("ignores stale destroy events after a duplicate browserId moved", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.registerWebContents({
       webContentsId: 1,
@@ -78,7 +78,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("returns the active browser only from the requested host window", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.registerWebContents({
       webContentsId: 11,
@@ -112,7 +112,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("keeps active updates and clears inside their owning host window", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.registerWebContents({
       webContentsId: 11,
@@ -151,7 +151,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("keeps same-browser active references in separate host windows", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.registerWebContents({
       webContentsId: 11,
@@ -181,7 +181,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("removes only the closing host's same-browser guest", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.registerWebContents({
       webContentsId: 11,
@@ -206,7 +206,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("unregisters a browser only from the requesting host", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
     registry.registerWebContents({
       webContentsId: 11,
       browserId: "browser-a",
@@ -227,7 +227,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("keeps another host's active browser when one guest is destroyed", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.registerWebContents({
       webContentsId: 11,
@@ -258,7 +258,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("keeps the same-window active selection made before the guest attaches", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.setWorkspaceActiveBrowser({
       hostWebContentsId: 101,
@@ -275,7 +275,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("keeps a pre-attach selection when another host attaches the same browser", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.setWorkspaceActiveBrowser({
       hostWebContentsId: 101,
@@ -293,7 +293,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("keeps a pre-attach selection when another host tears down the same browser", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
 
     registry.setWorkspaceActiveBrowser({
       hostWebContentsId: 101,
@@ -316,7 +316,7 @@ describe("OttoBrowserWebviewRegistry", () => {
   });
 
   it("reports when another host still owns the same browser", () => {
-    const registry = new OttoBrowserWebviewRegistry();
+    const registry = new PaseoBrowserWebviewRegistry();
     registry.registerWebContents({
       webContentsId: 11,
       browserId: "browser-a",

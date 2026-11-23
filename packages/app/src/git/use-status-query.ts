@@ -11,18 +11,9 @@ export const CHECKOUT_STATUS_STALE_TIME = 15_000;
 interface UseCheckoutStatusQueryOptions {
   serverId: string;
   cwd: string;
-  /**
-   * An action whose availability depends on the current working tree can ask
-   * for one fresh snapshot when it mounts. Status is otherwise push-driven.
-   */
-  refreshOnMount?: boolean;
 }
 
-export function useCheckoutStatusQuery({
-  serverId,
-  cwd,
-  refreshOnMount = false,
-}: UseCheckoutStatusQueryOptions) {
+export function useCheckoutStatusQuery({ serverId, cwd }: UseCheckoutStatusQueryOptions) {
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -37,25 +28,17 @@ export function useCheckoutStatusQuery({
     },
     enabled: !!client && isConnected && !!cwd,
     staleTime: Infinity,
-    // Freshness is ordinarily push-driven (checkout_status_update applied
-    // globally). `refreshOnMount` is reserved for UI affordances that need to
-    // repair a missed push before deciding whether to render.
-    refetchOnMount: refreshOnMount ? "always" : true,
-    // Only bites when the query holds no successful data: `staleTime: Infinity`
-    // makes a good status permanently fresh, so this costs nothing in the healthy
-    // case. It is the recovery path for a workspace whose status measurement
-    // failed while the pane stayed mounted (see fetchCheckoutStatus).
-    refetchOnReconnect: true,
+    // Freshness is push-driven (checkout_status_update applied globally); with
+    // staleTime: Infinity, refetchOnMount only fires after an explicit invalidation
+    // (e.g. reconnect), which is exactly when the push stream may have been missed.
+    refetchOnMount: true,
+    refetchOnReconnect: false,
     refetchOnWindowFocus: false,
   });
 
   return {
     status: query.data ?? null,
-    // `isLoading` drops between retries even though the first repository
-    // measurement has not produced an answer yet. Keep consumers in their
-    // loading state until that initial query settles, so a retryable discovery
-    // failure never flashes a terminal "not a repository" message.
-    isLoading: query.isPending,
+    isLoading: query.isLoading,
     isFetching: query.isFetching,
     isError: query.isError,
     error: query.error,

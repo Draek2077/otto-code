@@ -13,10 +13,7 @@ import { buildAgentRoute } from "../support/helpers/mock-agent";
 import { connectNewWorkspaceDaemonClient } from "../support/helpers/new-workspace";
 import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
-import {
-  closeMobileAgentSidebar,
-  expectMobileAgentSidebarHidden,
-} from "../support/helpers/sidebar";
+import { expectMobileAgentSidebarHidden } from "../support/helpers/sidebar";
 import {
   switchWorkspaceViaSidebar,
   waitForWorkspaceInSidebar,
@@ -30,10 +27,18 @@ function isSettledWorkspaceUrl(url: URL): boolean {
   return url.pathname.includes("/workspace/") && !url.searchParams.has("open");
 }
 
-function pluginClientSource(input: { workspaceId: string; agentId: string }): string {
+function pluginClientSource(input: {
+  workspaceId: string;
+  agentId: string;
+  remoteServerId: string;
+  remoteWorkspaceId: string;
+  remoteAgentId: string;
+}): string {
   return `import React, { useRef } from "react";
 import { Pressable, Text, View } from "react-native";
-import { useAgent, useWorkspace } from "@otto-code/plugin/client";
+import { Icon } from "@getpaseo/plugin/client/react-native";
+import { useAgent, useWorkspace, openExternalUrl } from "@getpaseo/plugin/client";
+import { ExternalLink } from "@getpaseo/plugin/client/ui";
 import { recordComposerOpen } from "./shared/rpc";
 
 function WorkspacePanel({ workspaceId, host, layout }) {
@@ -52,9 +57,14 @@ function AgentPanel({ workspaceId, agentId, host, layout }) {
 function DirectCollisionSurface({ navigation }) {
   return <View>
     <Text>Direct collision surface</Text>
+    <Text>{navigation.openBrowser ? "Browser available" : "Browser unavailable"}</Text>
+    <ExternalLink href="https://example.com/">Plugin documentation</ExternalLink>
+    <Pressable accessibilityRole="button" onPress={() => openExternalUrl("https://example.com/")}><Text>Open external plugin URL</Text></Pressable>
     {navigation ? <>
       <Pressable accessibilityRole="button" onPress={() => navigation.openWorkspace({ workspaceId: ${JSON.stringify(input.workspaceId)} })}><Text>Open workspace from plugin</Text></Pressable>
       <Pressable accessibilityRole="button" onPress={() => navigation.openAgent({ agentId: ${JSON.stringify(input.agentId)} })}><Text>Open agent from plugin</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => navigation.openWorkspace({ serverId: ${JSON.stringify(input.remoteServerId)}, workspaceId: ${JSON.stringify(input.remoteWorkspaceId)} })}><Text>Open remote workspace from plugin</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => navigation.openAgent({ serverId: ${JSON.stringify(input.remoteServerId)}, agentId: ${JSON.stringify(input.remoteAgentId)} })}><Text>Open remote agent from plugin</Text></Pressable>
     </> : null}
   </View>;
 }
@@ -69,7 +79,7 @@ function contributeClient(client) {
     pills.get(agentId)?.();
     pills.delete(agentId);
   };
-  const unsubscribe = client.otto.agents.subscribe((update) => {
+  const apply = (update) => {
     if (update.kind === "remove") {
       remove(update.agentId);
       return;
@@ -96,9 +106,20 @@ function contributeClient(client) {
       },
     });
     pills.set(agent.id, () => pill.remove());
-  });
+  };
+  const lifetime = new AbortController();
+  void client.paseo.agents.list({ subscribe: {}, signal: lifetime.signal }).then(({ subscription }) => {
+    subscription.subscribe({
+      snapshot({ entries }) {
+        for (const removePill of pills.values()) removePill();
+        pills.clear();
+        for (const { agent } of entries) apply({ kind: "upsert", agent });
+      },
+      update(message) { if (message.type === "agent_update") apply(message.payload); },
+    });
+  }).catch((error) => { if (!lifetime.signal.aborted) console.error(error); });
   return () => {
-    unsubscribe();
+    lifetime.abort();
     for (const removePill of pills.values()) removePill();
     pills.clear();
   };
@@ -118,7 +139,7 @@ export default function contribute(client) {
 }`;
 }
 
-const pluginSharedSource = `import { defineRpc } from "@otto-code/plugin";
+const pluginSharedSource = `import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 export const recordComposerOpen = defineRpc({
@@ -130,8 +151,8 @@ export const recordComposerOpen = defineRpc({
 const pluginServerSource = `import { recordComposerOpen } from "./shared/rpc";
 
 export default function contribute(server) {
-  server.handle(recordComposerOpen, async ({ workspaceId }, { otto }) => {
-    await otto.workspaces.ref(workspaceId).setTitle("Opened from composer pill");
+  server.handle(recordComposerOpen, async ({ workspaceId }, { paseo }) => {
+    await paseo.workspaces.ref(workspaceId).setTitle("Opened from composer pill");
     return { opened: true };
   });
   return () => {};
@@ -139,7 +160,13 @@ export default function contribute(server) {
 
 async function writePluginSources(
   directory: string,
-  input: { workspaceId: string; agentId: string },
+  input: {
+    workspaceId: string;
+    agentId: string;
+    remoteServerId: string;
+    remoteWorkspaceId: string;
+    remoteAgentId: string;
+  },
 ): Promise<void> {
   await mkdir(path.join(directory, "shared"), { recursive: true });
   await Promise.all([
@@ -173,6 +200,52 @@ async function runCommand(page: Page, title: string): Promise<void> {
   await expect(panel).not.toBeVisible();
 }
 
+async function openPluginExternalTab(page: Page, role: "link" | "button", name: string) {
+  const opened = page.context().waitForEvent("page");
+  await page.getByRole(role, { name, exact: true }).click();
+  const tab = await opened;
+  await tab.waitForURL("https://example.com/");
+  await tab.close();
+}
+
+interface RemoteNavigationTarget {
+  serverId: string;
+  workspaceId: string;
+  agentId: string;
+}
+
+function remoteWorkspaceRoute(target: RemoteNavigationTarget): RegExp {
+  return new RegExp(
+    `/h/${encodeURIComponent(target.serverId)}/workspace/${encodeURIComponent(target.workspaceId)}(?:\\?.*)?$`,
+  );
+}
+
+async function openRemoteWorkspaceFromPlugin(
+  page: Page,
+  target: RemoteNavigationTarget,
+): Promise<void> {
+  await page
+    .getByRole("button", { name: "Open remote workspace from plugin", exact: true })
+    .click();
+  await page.waitForURL(remoteWorkspaceRoute(target));
+  await expect(
+    page
+      .getByTestId(`workspace-deck-entry-${target.serverId}:${target.workspaceId}`)
+      .getByTestId("workspace-header-title"),
+  ).toBeVisible();
+}
+
+async function openRemoteAgentFromPlugin(
+  page: Page,
+  target: RemoteNavigationTarget,
+): Promise<void> {
+  await page.getByRole("button", { name: "Open remote agent from plugin", exact: true }).click();
+  await page.waitForURL(remoteWorkspaceRoute(target));
+  await expect(
+    page.getByTestId(`workspace-tab-agent_${target.agentId}`).filter({ visible: true }).first(),
+  ).toBeVisible();
+}
+
 async function openCompactSidebar(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Open menu", exact: true }).click();
   await expect(page.getByTestId("sidebar-search")).toBeVisible();
@@ -190,7 +263,7 @@ test.describe("plugin workspace panels and Command Center", () => {
   test("follows workspace, agent, host, compact, and unavailable state", async ({
     page,
   }, testInfo) => {
-    const directory = await mkdtemp(path.join(tmpdir(), "otto-plugin-workspace-panel-e2e-"));
+    const directory = await mkdtemp(path.join(tmpdir(), "paseo-plugin-workspace-panel-e2e-"));
     const primaryClient = await connectNewWorkspaceDaemonClient({ ownProjects: false });
     const previousConfig = await primaryClient.getDaemonConfig();
     const primary = await seedWorkspace({ repoPrefix: "plugin-panel-primary-" });
@@ -199,13 +272,24 @@ test.describe("plugin workspace panels and Command Center", () => {
       repoPrefix: "plugin-panel-secondary-",
       port: secondaryDaemon.port,
     });
+    const secondaryAgent = await secondary.client.createAgent({
+      provider: "mock",
+      cwd: secondary.repoPath,
+      workspaceId: secondary.workspaceId,
+      title: "Remote plugin navigation agent",
+      model: "ten-second-stream",
+      modeId: "load-test",
+    });
     await writeFile(
-      path.join(directory, "otto-plugin.json"),
+      path.join(directory, "paseo-plugin.json"),
       JSON.stringify({ id: PLUGIN_ID, requirements: pluginRequirements }),
     );
     await writePluginSources(directory, {
       workspaceId: primary.workspaceId,
       agentId: "missing-agent",
+      remoteServerId: secondaryDaemon.serverId,
+      remoteWorkspaceId: secondary.workspaceId,
+      remoteAgentId: secondaryAgent.id,
     });
 
     try {
@@ -227,7 +311,6 @@ test.describe("plugin workspace panels and Command Center", () => {
         serverId: secondaryDaemon.serverId,
         workspaceId: secondary.workspaceId,
       });
-      let agentId = "";
 
       await test.step("workspace context opens the real wide panel bridge", async () => {
         await switchWorkspaceViaSidebar({
@@ -253,6 +336,15 @@ test.describe("plugin workspace panels and Command Center", () => {
         await expect(page.getByText(`Host ${getServerId()}`, { exact: true })).toBeVisible();
         await expect(page.getByText("Layout wide", { exact: true })).toBeVisible();
         await capture(page, testInfo, "plugin-workspace-panel-wide");
+      });
+
+      await test.step("plugin links open browser tabs and in-app browsing is unavailable", async () => {
+        await runCommand(page, "Open direct collision surface");
+        await expect(page.getByText("Browser unavailable", { exact: true })).toBeVisible();
+        await openPluginExternalTab(page, "link", "Plugin documentation");
+        await openPluginExternalTab(page, "button", "Open external plugin URL");
+        await capture(page, testInfo, "plugin-external-links-web");
+        await page.getByTestId("plugin-surface-close").click();
       });
 
       await test.step("direct and sidebar routes preserve same-id contribution kind", async () => {
@@ -286,6 +378,9 @@ test.describe("plugin workspace panels and Command Center", () => {
         await writePluginSources(directory, {
           workspaceId: primary.workspaceId,
           agentId: navigationAgentId,
+          remoteServerId: secondaryDaemon.serverId,
+          remoteWorkspaceId: secondary.workspaceId,
+          remoteAgentId: secondaryAgent.id,
         });
         await primaryClient.reloadPlugin(PLUGIN_ID);
 
@@ -298,6 +393,23 @@ test.describe("plugin workspace panels and Command Center", () => {
             .filter({ visible: true })
             .first(),
         ).toBeVisible();
+      });
+
+      await test.step("surface navigation opens a workspace and agent on another host", async () => {
+        const remoteTarget = {
+          serverId: secondaryDaemon.serverId,
+          workspaceId: secondary.workspaceId,
+          agentId: secondaryAgent.id,
+        };
+        await runCommand(page, "Open direct collision surface");
+        await openRemoteWorkspaceFromPlugin(page, remoteTarget);
+        await switchWorkspaceViaSidebar({
+          page,
+          serverId: getServerId(),
+          workspaceId: primary.workspaceId,
+        });
+        await runCommand(page, "Open direct collision surface");
+        await openRemoteAgentFromPlugin(page, remoteTarget);
       });
 
       await test.step("switching hosts removes commands from an uninstalled host", async () => {
@@ -325,7 +437,6 @@ test.describe("plugin workspace panels and Command Center", () => {
           model: "ten-second-stream",
           modeId: "load-test",
         });
-        agentId = agent.id;
         await page.goto(buildAgentRoute(primary.workspaceId, agent.id));
         await page.waitForURL(isSettledWorkspaceUrl, { timeout: 60_000 });
         await submitMessage(page, "emit 1 agent stream updates");
@@ -348,7 +459,9 @@ test.describe("plugin workspace panels and Command Center", () => {
 
         await page.goto(buildAgentRoute(primary.workspaceId, agent.id));
         await page.waitForURL(isSettledWorkspaceUrl, { timeout: 60_000 });
-        await expect(page.getByRole("button", { name: "Open composer review" })).toHaveCount(0);
+        // Pressing removed the pill from that page only. The reloaded page evaluates
+        // the plugin again, and its agents snapshot contributes the pill afresh.
+        await expect(page.getByRole("button", { name: "Open composer review" })).toBeVisible();
         await openCompactSidebar(page);
         // The sidebar's Search row dismisses the compact sidebar on its way to the
         // command center, so nothing has to close it after the command runs.
@@ -360,29 +473,6 @@ test.describe("plugin workspace panels and Command Center", () => {
         ).toBeVisible();
         await expect(page.getByText(`Host ${getServerId()}`, { exact: true })).toBeVisible();
         await expect(page.getByText("Layout compact", { exact: true })).toBeVisible();
-      });
-
-      await test.step("disabling the active plugin cleans up its catalog contributions", async () => {
-        await primaryClient.disablePlugin(PLUGIN_ID);
-        await expect(
-          page.getByText("This plugin panel is unavailable.", { exact: true }),
-        ).toBeVisible({
-          timeout: 30_000,
-        });
-        await capture(page, testInfo, "plugin-panel-disabled");
-        await openCompactSidebar(page);
-        await expectCommandUnavailable(page, "Plugin global action");
-      });
-
-      await test.step("re-enabling the plugin refreshes its catalog contributions", async () => {
-        await primaryClient.enablePlugin(PLUGIN_ID);
-        await expectCommandAvailable(page, "Plugin global action");
-        await expect(page.getByText(`Agent bridge ${agentId}`)).toBeVisible({
-          timeout: 30_000,
-        });
-        await closeMobileAgentSidebar(page);
-        await expectMobileAgentSidebarHidden(page);
-        await capture(page, testInfo, "plugin-panel-reenabled");
       });
 
       await test.step("removing the active plugin renders the panel unavailable", async () => {

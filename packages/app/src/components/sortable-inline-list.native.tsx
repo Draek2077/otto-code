@@ -15,7 +15,6 @@ export function SortableInlineList<T>({
   externalDndContext?: boolean;
   activeId?: string | null;
   getItemData?: (item: T, index: number) => Record<string, unknown>;
-  orientation?: "horizontal" | "vertical";
 }): ReactElement {
   return (
     <>

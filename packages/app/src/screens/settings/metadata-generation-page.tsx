@@ -1,9 +1,9 @@
-import { SettingsTargetText } from "@/screens/settings-search/target";
+import { WriterSetting } from "@/otto/agent-profiles/writer-setting"; // OTTO(agent-teams)
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Alert, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
-import type { AgentProvider } from "@otto-code/protocol/agent-types";
+import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -11,11 +11,11 @@ import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
 import { buildSelectableProviderSelectorProviders } from "@/provider-selection/provider-selection";
-import { SettingsSection } from "@/screens/settings/settings-section";
-import { MetadataGenerationRows } from "@/screens/settings/otto-tools-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { settingsStyles } from "@/styles/settings";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
-const METADATA_GENERATION_DOCS_URL = "https://otto-code.me/docs/metadata-generation";
+const METADATA_GENERATION_DOCS_URL = `${OTTO_WEBSITE_URL}/docs/metadata-generation`; // OTTO(identity)
 type SelectionMode = "automatic" | "preferred";
 
 export function MetadataGenerationPage({ serverId }: { serverId: string }) {
@@ -113,18 +113,16 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
     <SettingsSection
       title={t("settings.metadataGeneration.title")}
       info={t("settings.metadataGeneration.description")}
+      trailing={docsLink}
       testID="metadata-generation-settings"
     >
       <View style={settingsStyles.card}>
-        <MetadataGenerationRows serverId={serverId} />
+        <WriterSetting serverId={serverId} />
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
-            <SettingsTargetText
-              settingId="host-metadata-metadata-generation-model-selection"
-              style={settingsStyles.rowTitle}
-            >
+            <Text style={settingsStyles.rowTitle}>
               {t("settings.metadataGeneration.selection")}
-            </SettingsTargetText>
+            </Text>
             <Text style={settingsStyles.rowHint}>
               {mode === "automatic"
                 ? t("settings.metadataGeneration.automaticHint")
@@ -140,14 +138,9 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
           />
         </View>
         {mode === "preferred" ? (
-          <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
+          <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
             <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="host-metadata-metadata-generation-model"
-                style={settingsStyles.rowTitle}
-              >
-                {t("settings.metadataGeneration.model")}
-              </SettingsTargetText>
+              <Text style={settingsStyles.rowTitle}>{t("settings.metadataGeneration.model")}</Text>
               <Text style={settingsStyles.rowHint}>
                 {t("settings.metadataGeneration.fallbackHint")}
               </Text>
@@ -169,16 +162,11 @@ export function MetadataGenerationPage({ serverId }: { serverId: string }) {
           </View>
         ) : null}
       </View>
-      <View style={styles.docsLink}>{docsLink}</View>
     </SettingsSection>
   );
 }
 
 const styles = StyleSheet.create((theme) => ({
-  docsLink: {
-    alignSelf: "center",
-    marginTop: theme.spacing[3],
-  },
   loading: {
     alignItems: "center",
     justifyContent: "center",

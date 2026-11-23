@@ -1,11 +1,15 @@
 import type { ReactNode } from "react";
-import { View, type ViewStyle } from "react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { BlobLoader } from "@/components/blob-loader";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { compactUp } from "@/styles/theme";
+import { StyleSheet as RNStyleSheet, View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
-import { STATUS_RING_FRAME_SIZE } from "@/components/status-ring/geometry";
+import { getStatusDotColor } from "@/utils/status-dot-color";
+import {
+  STATUS_RING_FRAME_SIZE,
+  STATUS_RING_HEAD_OPACITY,
+  STATUS_RING_SIZE,
+  STATUS_RING_STROKE,
+  STATUS_RING_TRACK_OPACITY,
+} from "@/components/status-ring/geometry";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
 
 export interface StatusRingProps {
@@ -15,41 +19,23 @@ export interface StatusRingProps {
   // tab dot, the project tile under a sidebar badge. Leave it out where the ring sits on flat
   // background and has nothing to knock out.
   backdrop?: SurfaceBackdrop | null;
-  /** Recolors the normal running-blue centre without changing the ring's running semantics. */
-  centerStyle?: ViewStyle;
 }
 
 /**
- * The ring doubles on a compact form factor, in step with the status dots it wraps and the icons
- * around it. The plasma spinner takes its size as a plain prop, so it reads the scale from here
- * rather than from the ambient theme patch, which never reaches a `size` prop.
+ * The static half of the running indicator: the knockout, the track, and the centre dot. The
+ * platform entry points supply the rotating quarter and own only how it is driven.
+ *
+ * The ring has no colour prop. It only ever means one thing — an agent is running — so it reads
+ * that one colour out of the theme itself. Passing the colour in would materialise it at the call
+ * site, outside anything Unistyles tracks, and leave the mark in the old theme until something
+ * incidental re-rendered the row.
  */
-export function useStatusRingFrameSize(): number {
-  const isCompact = useIsCompactFormFactor();
-  return isCompact ? STATUS_RING_FRAME_SIZE * 2 : STATUS_RING_FRAME_SIZE;
-}
-
-/** The working ring is the app's live-model plasma spinner, fixed to status-info blue. */
-export const ThemedStatusBlobLoader = withUnistyles(BlobLoader, (theme) => ({
-  glowA: theme.colors.statusInfo,
-  glowB: theme.colors.statusInfo,
-}));
-
-/**
- * The static half of the running indicator: the knockout and the centre dot. Platform entry
- * points supply the blue plasma ring, whose themed leaf stays reactive without re-rendering rows.
- */
-export function StatusRingFrame({
-  backdrop,
-  centerStyle,
-  children,
-}: StatusRingProps & { children: ReactNode }) {
+export function StatusRingFrame({ backdrop, children }: StatusRingProps & { children: ReactNode }) {
   return (
     <View style={[styles.frame, getBackdropStyle(backdrop)]}>
-      <View pointerEvents="none" style={styles.ring}>
-        {children}
-      </View>
-      <View style={[styles.centerDot, centerStyle]} />
+      <View style={styles.track} />
+      {children}
+      <View style={styles.centerDot} />
     </View>
   );
 }
@@ -73,21 +59,33 @@ function getBackdropStyle(backdrop: SurfaceBackdrop | null | undefined) {
   }
 }
 
+// The rotating quarter's geometry, deliberately plain React Native rather than Unistyles: on
+// native this style lands on a Reanimated `Animated.View`, and applying a theme-tracked style to
+// one crashes when the theme changes — Unistyles and Reanimated both mutate the same native node.
+// See docs/unistyles.md. The colour it needs lives on `styles.arc`, one level in, on a view
+// Reanimated never touches.
+export const rotatorStyles = RNStyleSheet.create({
+  rotator: {
+    position: "absolute",
+    width: STATUS_RING_SIZE,
+    height: STATUS_RING_SIZE,
+  },
+});
+
 export const styles = StyleSheet.create((theme) => {
+  const circle = {
+    width: STATUS_RING_SIZE,
+    height: STATUS_RING_SIZE,
+    borderRadius: theme.borderRadius.full,
+    borderWidth: STATUS_RING_STROKE,
+  } as const;
+  const runningColor = getStatusDotColor({ theme, bucket: "running" }) ?? undefined;
+
   return {
     frame: {
-      width: compactUp(STATUS_RING_FRAME_SIZE),
-      height: compactUp(STATUS_RING_FRAME_SIZE),
+      width: STATUS_RING_FRAME_SIZE,
+      height: STATUS_RING_FRAME_SIZE,
       borderRadius: theme.borderRadius.full,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    ring: {
-      position: "absolute",
-      top: 0,
-      left: 0,
-      width: compactUp(STATUS_RING_FRAME_SIZE),
-      height: compactUp(STATUS_RING_FRAME_SIZE),
       alignItems: "center",
       justifyContent: "center",
     },
@@ -98,11 +96,29 @@ export const styles = StyleSheet.create((theme) => {
     backdropSurfaceSidebarSelected: { backgroundColor: theme.colors.surfaceSidebarSelected },
     backdropSurface2: { backgroundColor: theme.colors.surface2 },
 
+    // The closed ring the quarter runs on. Same colour rather than a grey so the indicator is one
+    // object at one hue; the opacity is what puts it behind the quarter instead of competing.
+    track: {
+      ...circle,
+      position: "absolute",
+      borderColor: runningColor,
+      opacity: STATUS_RING_TRACK_OPACITY,
+    },
+
+    // The moving quarter. Three sides transparent leaves the top border alone, which on a fully
+    // rounded box is a 90° arc — the edge that makes the rotation legible against the track.
+    arc: {
+      ...circle,
+      borderColor: "transparent",
+      borderTopColor: runningColor,
+      opacity: STATUS_RING_HEAD_OPACITY,
+    },
+
     centerDot: {
-      width: compactUp(STATUS_INDICATOR_FILLED_DOT_SIZE),
-      height: compactUp(STATUS_INDICATOR_FILLED_DOT_SIZE),
+      width: STATUS_INDICATOR_FILLED_DOT_SIZE,
+      height: STATUS_INDICATOR_FILLED_DOT_SIZE,
       borderRadius: theme.borderRadius.full,
-      backgroundColor: theme.colors.statusInfo,
+      backgroundColor: runningColor,
     },
   };
 });

@@ -4,6 +4,7 @@ import log from "electron-log/main";
 import { resolveCliInstallSourcePath } from "./path.js";
 import { getBundledCliShimPath, getCliTargetPath, getLocalBinDir } from "./paths.js";
 import { ensurePathInShellRc } from "./shell-rc.js";
+import { OTTO_PRODUCT_NAME } from "@getpaseo/protocol/otto/identity";
 
 interface InstallStatus {
   installed: boolean;
@@ -37,13 +38,14 @@ export async function installCli(): Promise<InstallStatus> {
       await fs.unlink(targetPath);
     }
     // Generate a thin .cmd trampoline that delegates to the bundled shim.
-    // Only the app install path is baked in - internal details (asar layout,
+    // Only the app install path is baked in — internal details (asar layout,
     // entrypoint scripts) live in the bundled shim and update with the app.
     const cmdContent = [
       "@echo off",
       `set "BUNDLED_CLI=${shimPath}"`,
       `if not exist "%BUNDLED_CLI%" (`,
-      `  echo Otto CLI not found at %BUNDLED_CLI% - is Otto installed? 1>&2`,
+      // OTTO(identity)
+      `  echo ${OTTO_PRODUCT_NAME} CLI not found at %BUNDLED_CLI%. Is ${OTTO_PRODUCT_NAME} installed? 1>&2`,
       `  exit /b 1`,
       `)`,
       `call "%BUNDLED_CLI%" %*`,
@@ -59,7 +61,7 @@ export async function installCli(): Promise<InstallStatus> {
 
   const { shellUpdated } = await ensurePathInShellRc();
   if (shellUpdated) {
-    log.info("[integrations] Registered ~/.local/bin on PATH");
+    log.info("[integrations] Updated shell rc with ~/.local/bin PATH");
   }
 
   return getCliInstallStatus();

@@ -8,15 +8,6 @@ import {
 import { CodexAppServerClient } from "./app-server-transport.js";
 
 describe("Codex app-server transport", () => {
-  test("disposal rejects pending requests instead of leaving timeout timers alive", async () => {
-    const child = createCodexAppServerChildProcess();
-    const client = new CodexAppServerClient(child, createTestLogger());
-    const request = client.request("initialize", {});
-    const assertion = expect(request).rejects.toThrow("client is closed");
-    await client.dispose();
-    await assertion;
-  });
-
   test("ignores non-JSON stdout lines without dropping pending requests", async () => {
     const child = createCodexAppServerChildProcess();
     const client = new CodexAppServerClient(child, createTestLogger());
@@ -31,14 +22,18 @@ describe("Codex app-server transport", () => {
     child.stdin.end();
   });
 
-  test("keeps responses whole when string values contain U+2028 or U+2029", async () => {
+  test("keeps a JSON message intact when it contains raw U+2028/U+2029", async () => {
     const child = createCodexAppServerChildProcess();
     const client = new CodexAppServerClient(child, createTestLogger());
 
-    // JSON carries these separators unescaped; scraped web text often has them.
-    const text = "Make money work for you with Printify";
-    const request = client.request("thread/read", {});
-    child.stdout.write(`{"id":1,"result":{"text":"${text}"}}\n`);
+    const request = client.request("thread/resume", {});
+    const text = "a\u2028b\u2029c\u0085d";
+    // Codex does not escape U+2028/U+2029 in JSON output, so write them raw.
+    const message = `{"id":1,"result":{"text":"${text}"}}\n`;
+    const bytes = Buffer.from(message, "utf8");
+    // Split mid-way (inside a multi-byte character) to exercise chunk boundaries.
+    child.stdout.write(bytes.subarray(0, 28));
+    child.stdout.write(bytes.subarray(28));
 
     await expect(request).resolves.toEqual({ text });
     child.stdout.end();
@@ -46,17 +41,20 @@ describe("Codex app-server transport", () => {
     child.stdin.end();
   });
 
-  test("reassembles a response split across stdout chunks mid-character", async () => {
+  test("reads a multi-megabyte JSON message arriving in 64 KB chunks", async () => {
     const child = createCodexAppServerChildProcess();
     const client = new CodexAppServerClient(child, createTestLogger());
 
-    const request = client.request("thread/read", {});
-    const frame = Buffer.from('{"id":1,"result":{"text":"café"}}\r\n', "utf8");
-    const splitInsideMultibyte = frame.indexOf(0xc3) + 1;
-    child.stdout.write(frame.subarray(0, splitInsideMultibyte));
-    child.stdout.write(frame.subarray(splitInsideMultibyte));
+    const request = client.request("thread/resume", {});
+    // A resumed long thread arrives as one large line, split into 64 KB stdout chunks.
+    const text = "x".repeat(32 * 1024 * 1024);
+    const bytes = Buffer.from(`{"id":1,"result":{"text":"${text}"}}\n`, "utf8");
+    const chunkSize = 64 * 1024;
+    for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+      child.stdout.write(bytes.subarray(offset, offset + chunkSize));
+    }
 
-    await expect(request).resolves.toEqual({ text: "café" });
+    await expect(request).resolves.toEqual({ text });
     child.stdout.end();
     child.stderr.end();
     child.stdin.end();

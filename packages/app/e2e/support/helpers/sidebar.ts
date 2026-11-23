@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page, type Locator } from "@playwright/test";
 import { getServerId } from "./server-id";
 
 interface ContextMenuAnchor {
@@ -30,10 +30,31 @@ async function expectContextMenuAtPointer(
   menuTestID: string,
   anchor: ContextMenuAnchor,
 ): Promise<void> {
-  const bounds = await page.getByTestId(menuTestID).boundingBox();
+  // OTTO(knowledge): portal replacement can briefly remove the measured node
+  // after visibility succeeds. Wait for measurable geometry, not an arbitrary delay.
+  const measured: { value: Awaited<ReturnType<Locator["boundingBox"]>> } = { value: null };
+  await expect
+    .poll(
+      async () => {
+        measured.value = await page.getByTestId(menuTestID).boundingBox();
+        return measured.value !== null;
+      },
+      { timeout: 10000 },
+    )
+    .toBe(true);
+  const bounds = measured.value;
   if (!bounds) throw new Error(`Could not measure ${menuTestID}`);
   expect(Math.abs(bounds.x - anchor.x)).toBeLessThanOrEqual(2);
-  expect(Math.abs(bounds.y - (anchor.y + 4))).toBeLessThanOrEqual(2);
+  // OTTO(architectural-views): additional registered navigation rows can put the
+  // pointer near the viewport edge. The existing menu owner flips above it;
+  // either anchored edge must retain the 4px gap and remain inside the viewport.
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("Context-menu placement needs a measured viewport");
+  const belowGap = Math.abs(bounds.y - (anchor.y + 4));
+  const aboveGap = Math.abs(bounds.y + bounds.height - (anchor.y - 4));
+  expect(Math.min(belowGap, aboveGap)).toBeLessThanOrEqual(2);
+  expect(bounds.y).toBeGreaterThanOrEqual(6);
+  expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height - 6);
 }
 
 export async function openWorkspaceContextMenu(page: Page, workspaceId: string): Promise<void> {
@@ -51,6 +72,37 @@ export async function showWorkspaceHoverCard(page: Page, workspaceId: string): P
   const workspaceKey = `${getServerId()}:${workspaceId}`;
   await page.getByTestId(`sidebar-workspace-row-${workspaceKey}`).hover();
   await expect(page.getByTestId("workspace-hover-card")).toBeVisible();
+}
+
+export async function movePointerAwayFromWorkspaceHoverCard(page: Page): Promise<void> {
+  // Two moves, so the pointer always moves even when it is already parked here.
+  await page.mouse.move(1200, 200, { steps: 5 });
+  await page.mouse.move(1200, 400, { steps: 5 });
+}
+
+export async function focusWorkspaceRowWithKeyboard(
+  page: Page,
+  workspaceId: string,
+): Promise<void> {
+  const row = page.getByTestId(`sidebar-workspace-row-${getServerId()}:${workspaceId}`);
+  await row.focus();
+  await page.keyboard.press("Shift+Tab");
+  await page.keyboard.press("Tab");
+  await expect(row).toBeFocused();
+}
+
+export async function expectWorkspaceHoverCardOpen(page: Page): Promise<void> {
+  await expect(page.getByTestId("workspace-hover-card")).toBeVisible();
+}
+
+export async function expectWorkspaceHoverCardStaysOpen(page: Page): Promise<void> {
+  // Longer than the hover card's close grace period.
+  await page.waitForTimeout(300);
+  await expectWorkspaceHoverCardOpen(page);
+}
+
+export async function expectWorkspaceHoverCardClosed(page: Page): Promise<void> {
+  await expect(page.getByTestId("workspace-hover-card")).toHaveCount(0);
 }
 
 export async function closeWorkspaceContextMenu(page: Page, workspaceId: string): Promise<void> {
@@ -131,7 +183,7 @@ export async function expectWorkspaceListed(page: Page, name: string): Promise<v
 }
 
 // The workspace row kebab and its menu items carry no web ARIA role, so the sidebar
-// suite addresses them by the stable test ids the app assigns per workspace - the same
+// suite addresses them by the stable test ids the app assigns per workspace — the same
 // convention the rename flow uses. The kebab only reveals on hover.
 export async function clickArchiveWorkspaceMenuItem(
   page: Page,
@@ -151,21 +203,10 @@ export async function pinWorkspaceFromSidebar(page: Page, workspaceId: string): 
 }
 
 export async function archiveWorkspaceFromSidebar(page: Page, workspaceId: string): Promise<void> {
-  // A clean workspace archives with no prompt. A worktree-backed one raises the
-  // branch-aware archive sheet ("Archive <name>?" plus an "Also delete branch"
-  // checkbox), which is the in-app ConfirmDialogHost - NOT a native
-  // window.confirm. Accepting only the native dialog left the confirmation
-  // unanswered, so the daemon saw the archive preflight and never the archive
-  // itself, and the row stayed in the sidebar looking like a broken archive.
-  // The native handler stays for any surface that still uses one.
+  // A clean workspace archives with no prompt. Managed worktree backing may raise
+  // a browser confirm for unsynced work, so accept it when present.
   page.once("dialog", (dialog) => void dialog.accept());
   await clickArchiveWorkspaceMenuItem(page, workspaceId);
-
-  const confirmButton = page.getByTestId("confirm-dialog-confirm");
-  await confirmButton.waitFor({ state: "visible", timeout: 5_000 }).catch(() => undefined);
-  if (await confirmButton.isVisible().catch(() => false)) {
-    await confirmButton.click();
-  }
 }
 
 export async function expectWorkspaceAbsentFromSidebar(
@@ -212,7 +253,7 @@ export async function selectSidebarStatusGrouping(page: Page): Promise<void> {
 }
 
 export async function openMobileAgentSidebar(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Open menu" }).click();
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
 }
 
 export async function closeMobileAgentSidebar(page: Page): Promise<void> {
@@ -229,4 +270,42 @@ export async function expectMobileAgentSidebarVisible(page: Page): Promise<void>
 
 export async function expectMobileAgentSidebarHidden(page: Page): Promise<void> {
   await expect(page.getByTestId("sidebar-sessions")).not.toBeInViewport({ timeout: 5_000 });
+}
+
+/** Drag from the left edge: the only way to open the list while fullscreen hides the header. */
+export async function swipeOpenMobileAgentSidebar(page: Page): Promise<void> {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("viewport size is required");
+  const y = Math.round(viewport.height / 2);
+  await page.mouse.move(8, y);
+  await page.mouse.down();
+  await page.mouse.move(40, y, { steps: 4 });
+  await page.mouse.move(Math.round(viewport.width * 0.7), y, { steps: 12 });
+  await page.mouse.up();
+}
+
+/** Drag from the right edge to open the compact Explorer over the agent. */
+export async function swipeOpenMobileExplorer(page: Page): Promise<void> {
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("viewport size is required");
+  const y = Math.round(viewport.height / 2);
+  await page.mouse.move(viewport.width - 8, y);
+  await page.mouse.down();
+  await page.mouse.move(viewport.width - 40, y, { steps: 4 });
+  await page.mouse.move(Math.round(viewport.width * 0.3), y, { steps: 12 });
+  await page.mouse.up();
+}
+
+export async function closeMobileExplorer(page: Page): Promise<void> {
+  const closeButton = page.getByTestId("explorer-close");
+  await expect(closeButton).toBeInViewport({ ratio: 1, timeout: 5_000 });
+  await closeButton.click();
+}
+
+export async function expectMobileExplorerVisible(page: Page): Promise<void> {
+  await expect(page.getByTestId("explorer-header")).toBeInViewport({ ratio: 1, timeout: 5_000 });
+}
+
+export async function expectMobileExplorerHidden(page: Page): Promise<void> {
+  await expect(page.getByTestId("explorer-header")).not.toBeInViewport({ timeout: 5_000 });
 }

@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState } from "react-native";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
-  didActivateAgentTab,
-  isAttentionRaisedWhileActivelyViewed,
   shouldClearAgentAttention,
   type AgentAttentionClearTrigger,
 } from "@/utils/agent-attention";
@@ -19,7 +17,6 @@ interface UseAgentAttentionClearParams {
   requiresAttention: boolean | null | undefined;
   attentionReason: AttentionReason;
   isScreenFocused: boolean;
-  isWorkspaceFocused: boolean;
 }
 
 interface AgentAttentionClearController {
@@ -35,17 +32,13 @@ export function useAgentAttentionClear({
   requiresAttention,
   attentionReason,
   isScreenFocused,
-  isWorkspaceFocused,
 }: UseAgentAttentionClearParams): AgentAttentionClearController {
   const [isAppVisible, setIsAppVisible] = useState<boolean>(() => getIsAppActivelyVisible());
   const deferredFocusEntryClearRef = useRef(false);
   const prevRequiresAttentionRef = useRef(Boolean(requiresAttention));
   const prevActivelyViewedRef = useRef(isScreenFocused && getIsAppActivelyVisible());
-  // Start from the mounted tab's real focus state. Treating every mount as
-  // `false -> true` cleared a completed chat merely because its workspace was
-  // opened, before the reader ever chose that tab.
-  const prevScreenFocusedRef = useRef(isScreenFocused);
-  const prevWorkspaceFocusedRef = useRef(isWorkspaceFocused);
+  const prevScreenFocusedRef = useRef(false);
+  const prevAppVisibleRef = useRef(getIsAppActivelyVisible());
 
   const clearAttention = useCallback(
     (trigger: AgentAttentionClearTrigger) => {
@@ -105,39 +98,28 @@ export function useAgentAttentionClear({
   useEffect(() => {
     const isActivelyViewed = isScreenFocused && isAppVisible;
     if (
-      isAttentionRaisedWhileActivelyViewed({
-        wasRequiringAttention: prevRequiresAttentionRef.current,
-        requiresAttention,
-        wasActivelyViewed: prevActivelyViewedRef.current,
-        isActivelyViewed,
-      })
+      !prevRequiresAttentionRef.current &&
+      Boolean(requiresAttention) &&
+      prevActivelyViewedRef.current &&
+      isActivelyViewed
     ) {
-      // Keep the deferred flag for the case where the clear below is refused
-      // (a pending permission must keep its badge); clearAttention resets it
-      // once the clear actually lands.
       deferredFocusEntryClearRef.current = true;
-      clearAttention("active-view");
     }
     prevRequiresAttentionRef.current = Boolean(requiresAttention);
     prevActivelyViewedRef.current = isActivelyViewed;
-  }, [clearAttention, isAppVisible, isScreenFocused, requiresAttention]);
+  }, [isAppVisible, isScreenFocused, requiresAttention]);
 
   useEffect(() => {
-    const enteredScreenFocus =
-      didActivateAgentTab({
-        wasWorkspaceFocused: prevWorkspaceFocusedRef.current,
-        isWorkspaceFocused,
-        wasFocused: prevScreenFocusedRef.current,
-        isFocused: isScreenFocused,
-      }) && isAppVisible;
+    const enteredScreenFocus = !prevScreenFocusedRef.current && isScreenFocused && isAppVisible;
+    const resumedIntoFocusedAgent = !prevAppVisibleRef.current && isAppVisible && isScreenFocused;
 
-    if (enteredScreenFocus) {
+    if (enteredScreenFocus || resumedIntoFocusedAgent) {
       clearAttention("focus-entry");
     }
 
     prevScreenFocusedRef.current = isScreenFocused;
-    prevWorkspaceFocusedRef.current = isWorkspaceFocused;
-  }, [clearAttention, isAppVisible, isScreenFocused, isWorkspaceFocused]);
+    prevAppVisibleRef.current = isAppVisible;
+  }, [clearAttention, isAppVisible, isScreenFocused]);
 
   return {
     clearOnInputFocus: useCallback(() => {

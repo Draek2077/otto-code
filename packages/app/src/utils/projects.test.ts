@@ -7,17 +7,14 @@ function descriptor(
   id: string,
   key: string,
   root: string,
-  customIconRevision: string | null = null,
-  iconRevision: string | undefined = undefined,
+  iconRevision?: string,
 ): ProjectDescriptor {
   return {
     projectId: id,
     projectKey: key,
     projectDisplayName: "acme/app",
     projectCustomName: null,
-    projectCustomIconRevision: customIconRevision,
-    projectKanban: null,
-    ...(iconRevision === undefined ? {} : { projectIconRevision: iconRevision }),
+    projectIconRevision: iconRevision,
     projectRootPath: root,
     projectKind: "git",
   };
@@ -67,7 +64,6 @@ describe("buildProjects", () => {
     expect(result.projects).toEqual([
       expect.objectContaining({
         viewKey: createProjectViewKey({ kind: "equivalence", projectKey: key }),
-        projectKey: key,
         hostCount: 2,
         onlineHostCount: 1,
         totalWorkspaceCount: 2,
@@ -75,12 +71,12 @@ describe("buildProjects", () => {
           expect.objectContaining({
             serverId: "host-a",
             projectId: "prj_a",
-            customIconRevision: "revision-a",
+            iconRevision: "revision-a",
           }),
           expect.objectContaining({
             serverId: "host-b",
             projectId: "prj_b",
-            customIconRevision: "revision-b",
+            iconRevision: "revision-b",
           }),
         ],
       }),
@@ -104,22 +100,6 @@ describe("buildProjects", () => {
       totalWorkspaceCount: 0,
       hosts: [{ projectId: "prj_a", repoRoot: "/a/app" }],
     });
-  });
-
-  test("retains a host project's custom icon revision without workspaces", () => {
-    const result = buildProjects({
-      hosts: [
-        {
-          serverId: "host-a",
-          serverName: "Host A",
-          isOnline: true,
-          projects: [descriptor("prj_a", "local-a", "/a/app", "icon-rev-3")],
-          workspaces: [],
-        },
-      ],
-    });
-
-    expect(result.projects[0]?.hosts[0]?.customIconRevision).toBe("icon-rev-3");
   });
 
   test("keeps a new project's own root when it has not created a workspace", () => {

@@ -1,10 +1,12 @@
-import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
+import type { ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
+// OTTO(provider-identity): keep display labels separate from stable provider IDs.
+import { ottoProviderLabel } from "@/otto/provider-identity";
 import {
   type AgentModeColorTier,
   type AgentModeIcon,
   type AgentProviderDefinition,
   type AgentProviderModeDefinition,
-} from "@otto-code/protocol/provider-manifest";
+} from "@getpaseo/protocol/provider-manifest";
 
 function buildProviderModes(entry: ProviderSnapshotEntry): AgentProviderModeDefinition[] {
   const entryModes = entry.modes ?? [];
@@ -12,7 +14,7 @@ function buildProviderModes(entry: ProviderSnapshotEntry): AgentProviderModeDefi
   return entryModes.map((mode) =>
     Object.assign({}, mode, {
       icon: (mode.icon ?? "ShieldCheck") as AgentModeIcon,
-      colorTier: (mode.colorTier ?? "neutral") as AgentModeColorTier,
+      colorTier: (mode.colorTier ?? "moderate") as AgentModeColorTier,
     }),
   );
 }
@@ -26,7 +28,8 @@ export function buildProviderDefinitions(
 
   return snapshotEntries.map((entry) => ({
     id: entry.provider,
-    label: entry.label ?? entry.provider,
+    // OTTO(provider-identity)
+    label: ottoProviderLabel(entry.provider, entry.label ?? entry.provider),
     description: entry.description ?? "",
     defaultModeId: entry.defaultModeId ?? null,
     modes: buildProviderModes(entry),
@@ -37,19 +40,11 @@ export function resolveProviderLabel(
   provider: string,
   snapshotEntries: ProviderSnapshotEntry[] | undefined,
 ): string {
-  return snapshotEntries?.find((entry) => entry.provider === provider)?.label ?? provider;
-}
-
-/** The friendly display name for a model id (e.g. "Opus 4.8" for
- * "claude-opus-4-8"), resolved from the provider's snapshot model list. Falls
- * back to the raw id when the snapshot is absent or the model isn't listed. */
-export function resolveModelLabel(
-  provider: string,
-  model: string,
-  snapshotEntries: ProviderSnapshotEntry[] | undefined,
-): string {
-  const entry = snapshotEntries?.find((candidate) => candidate.provider === provider);
-  return entry?.models?.find((candidate) => candidate.id === model)?.label ?? model;
+  // OTTO(provider-identity)
+  return ottoProviderLabel(
+    provider,
+    snapshotEntries?.find((entry) => entry.provider === provider)?.label ?? provider,
+  );
 }
 
 export function resolveProviderDefinition(

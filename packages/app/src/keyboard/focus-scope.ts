@@ -63,23 +63,15 @@ export function resolveKeyboardFocusScope(input: {
   ) {
     return "message-input";
   }
-
-  // Checked before the plain editor below, because the markdown surface carries
-  // BOTH markers: it is a code editor that additionally claims a few combos of
-  // its own. Matching the narrower one first is what makes `Mod+K` a link in a
-  // `.md` file while staying the command center everywhere else.
-  if (candidates.some((element) => Boolean(element.closest("[data-markdown-editor]")))) {
-    return commandCenterOpen ? "command-center" : "markdown-editor";
-  }
-
-  // Checked before the generic editable test below: CM6's content node is
-  // contenteditable, so without this the file editor would read as a plain text
-  // field and every shortcut it binds itself (Mod+B → Go to Definition) would
-  // still lose to the app-wide binding for the same combo.
-  if (
-    candidates.some((element) => Boolean(element.closest("[data-testid='code-editor-surface']")))
-  ) {
-    return commandCenterOpen ? "command-center" : "code-editor";
+  // OTTO(editor): only the source content, never a toolbar/search input.
+  if (!commandCenterOpen) {
+    const editor = candidates
+      .find((element) => element.closest(".cm-content"))
+      ?.closest("[data-otto-editor-language]");
+    if (editor)
+      return editor.getAttribute("data-otto-editor-language") === "markdown"
+        ? "markdown-editor"
+        : "code-editor";
   }
 
   if (

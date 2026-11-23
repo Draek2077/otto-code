@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, renderHook } from "@testing-library/react";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
 import { seedSessionWorkspaces } from "@/test/seed-session";
@@ -26,12 +26,10 @@ const workspace: WorkspaceDescriptor = {
   scripts: [],
 };
 
-function setWorkingTreeDiffStat(
-  workingTreeDiffStat: WorkspaceDescriptor["workingTreeDiffStat"],
-): void {
+function setDiffStat(diffStat: WorkspaceDescriptor["diffStat"]): void {
   useSessionStore.getState().setWorkspaces(SERVER_ID, (workspaces) => {
     const next = new Map(workspaces);
-    next.set(WORKSPACE_ID, { ...workspace, workingTreeDiffStat });
+    next.set(WORKSPACE_ID, { ...workspace, diffStat });
     return next;
   });
 }
@@ -50,21 +48,21 @@ describe("useWorkspaceHasDiffStat", () => {
     let renderCount = 0;
     const { result } = renderHook(() => {
       renderCount += 1;
-      return useWorkspaceHasDiffStat(SERVER_ID, WORKSPACE_ID, "uncommitted");
+      return useWorkspaceHasDiffStat(SERVER_ID, WORKSPACE_ID);
     });
 
     expect(result.current).toBe(false);
     expect(renderCount).toBe(1);
 
-    act(() => setWorkingTreeDiffStat({ additions: 2, deletions: 0 }));
+    act(() => setDiffStat({ additions: 2, deletions: 0 }));
     expect(result.current).toBe(true);
     expect(renderCount).toBe(2);
 
-    act(() => setWorkingTreeDiffStat({ additions: 5, deletions: 3 }));
+    act(() => setDiffStat({ additions: 5, deletions: 3 }));
     expect(result.current).toBe(true);
     expect(renderCount).toBe(2);
 
-    act(() => setWorkingTreeDiffStat(null));
+    act(() => setDiffStat(null));
     expect(result.current).toBe(false);
     expect(renderCount).toBe(3);
   });

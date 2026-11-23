@@ -1,22 +1,16 @@
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import { RetainedPanel } from "@/components/retained-panel";
 import { useModifiedPanelTabIds } from "@/panels/panel-instance-attributes";
-import { PaneSurfaceProvider, type PaneSurface } from "@/panels/pane-context";
 import {
   WorkspacePaneContent,
   type WorkspacePaneContentModel,
 } from "@/screens/workspace/workspace-pane-content";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
-import { resolveMountedTabLimit } from "@/screens/workspace/mounted-tab-retention";
-import { useAppSettings } from "@/hooks/use-settings";
-import { useIsCompactFormFactor } from "@/constants/layout";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import { RenderProfile } from "@/utils/render-profiler";
 
 interface WorkspacePanelHostProps {
-  /** The physical host owns the visual surface inherited by every mounted pane. */
-  surface?: PaneSurface;
   paneId: string;
   tabs: WorkspaceTabDescriptor[];
   activeTabId: string | null;
@@ -96,7 +90,6 @@ function useStableTabs(tabs: WorkspaceTabDescriptor[]) {
 
 /** Mounts panel implementations behind the shared host contract and retains modified tabs. */
 export function WorkspacePanelHost({
-  surface = "workspace",
   paneId,
   tabs,
   activeTabId,
@@ -114,44 +107,32 @@ export function WorkspacePanelHost({
     tabIds,
   });
   const stableTabs = useStableTabs(tabs);
-  // How many of this pane's tabs stay mounted behind the frontmost one. Otto's
-  // setting wins; unset resolves per device. See mounted-tab-retention.ts.
-  const { settings } = useAppSettings();
-  const isCompactFormFactor = useIsCompactFormFactor();
-  const mountedTabLimit = resolveMountedTabLimit({
-    setting: settings.mountedTabLimit,
-    isCompact: isCompactFormFactor,
-  });
   const { mountedTabIds } = useMountedTabSet({
     activeTabId,
     allTabIds: tabIds,
     retainedTabIds,
-    cap: mountedTabLimit,
+    cap: 3,
   });
   const mountedIds = useMemo(
     () => tabIds.filter((tabId) => mountedTabIds.has(tabId)),
     [mountedTabIds, tabIds],
   );
 
-  return (
-    <PaneSurfaceProvider surface={surface}>
-      {mountedIds.map((tabId) => {
-        const tab = stableTabs.get(tabId);
-        if (!tab) return null;
-        const visible = tabId === activeTabId;
-        return (
-          <MountedTab
-            key={tabId}
-            tab={tab}
-            paneId={paneId}
-            visible={visible}
-            interactive={isPaneFocused && visible}
-            isWorkspaceFocused={isWorkspaceFocused}
-            onFocusPane={onFocusPane}
-            buildPaneContentModel={buildPaneContentModel}
-          />
-        );
-      })}
-    </PaneSurfaceProvider>
-  );
+  return mountedIds.map((tabId) => {
+    const tab = stableTabs.get(tabId);
+    if (!tab) return null;
+    const visible = tabId === activeTabId;
+    return (
+      <MountedTab
+        key={tabId}
+        tab={tab}
+        paneId={paneId}
+        visible={visible}
+        interactive={isPaneFocused && visible}
+        isWorkspaceFocused={isWorkspaceFocused}
+        onFocusPane={onFocusPane}
+        buildPaneContentModel={buildPaneContentModel}
+      />
+    );
+  });
 }

@@ -2,7 +2,7 @@ import {
   CHECK_TRAIT_ACTION_REQUIRED,
   CHECK_TRAIT_MANUAL,
   CHECK_TRAIT_WARNING,
-} from "@otto-code/protocol/check-traits";
+} from "@getpaseo/protocol/check-traits";
 
 export interface PresentableCheck {
   status: string;

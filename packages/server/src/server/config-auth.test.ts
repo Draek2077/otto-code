@@ -4,18 +4,18 @@ import path from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 
 import { loadConfig } from "./config.js";
-import { isBearerTokenValid } from "./auth.js";
+import { isBearerTokenValidAsync } from "./auth.js";
 
 const roots: string[] = [];
 const CONFIG_PASSWORD_HASH = "$2b$12$OLxyuuP9uLK30Uzc4wQX0O6liuU/Q1t5P2b0Ebf36mULvpVK3DRZW";
 
-async function createOttoHome(config: unknown): Promise<string> {
-  const root = await mkdtemp(path.join(os.tmpdir(), "otto-config-auth-"));
+async function createPaseoHome(config: unknown): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "paseo-config-auth-"));
   roots.push(root);
-  const ottoHome = path.join(root, ".otto");
-  await mkdir(ottoHome, { recursive: true });
-  await writeFile(path.join(ottoHome, "config.json"), JSON.stringify(config, null, 2));
-  return ottoHome;
+  const paseoHome = path.join(root, ".paseo");
+  await mkdir(paseoHome, { recursive: true });
+  await writeFile(path.join(paseoHome, "config.json"), JSON.stringify(config, null, 2));
+  return paseoHome;
 }
 
 describe("daemon auth config", () => {
@@ -24,35 +24,37 @@ describe("daemon auth config", () => {
   });
 
   test("loads optional auth password hash from config.json", async () => {
-    const ottoHome = await createOttoHome({
+    const paseoHome = await createPaseoHome({
       version: 1,
       daemon: {
         auth: { password: CONFIG_PASSWORD_HASH },
       },
     });
 
-    const config = loadConfig(ottoHome, { env: {} });
+    const config = loadConfig(paseoHome, { env: {} });
 
     expect(config.auth?.password).toBe(CONFIG_PASSWORD_HASH);
-    expect(isBearerTokenValid({ password: config.auth?.password, token: "correct-password" })).toBe(
-      true,
-    );
+    expect(
+      await isBearerTokenValidAsync({ password: config.auth?.password, token: "correct-password" }),
+    ).toBe(true);
   });
 
-  test("lets OTTO_PASSWORD override config.json auth password hash", async () => {
-    const ottoHome = await createOttoHome({
+  test("lets PASEO_PASSWORD override config.json auth password hash", async () => {
+    const paseoHome = await createPaseoHome({
       version: 1,
       daemon: {
         auth: { password: CONFIG_PASSWORD_HASH },
       },
     });
 
-    const config = loadConfig(ottoHome, {
-      env: { OTTO_PASSWORD: "from-env" },
+    const config = loadConfig(paseoHome, {
+      env: { PASEO_PASSWORD: "from-env" },
     });
 
     expect(config.auth?.password).not.toBe(CONFIG_PASSWORD_HASH);
     expect(config.auth?.password).toMatch(/^\$2[aby]\$12\$/);
-    expect(isBearerTokenValid({ password: config.auth?.password, token: "from-env" })).toBe(true);
+    expect(
+      await isBearerTokenValidAsync({ password: config.auth?.password, token: "from-env" }),
+    ).toBe(true);
   });
 });

@@ -1,7 +1,6 @@
-import React, { type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { withUnistyles } from "react-native-unistyles";
-import { CircleCheck, CircleDot, CircleSlash, CircleX } from "@/components/icons/material-icons";
-import { withIconSizeToken, type IconSizeProp } from "@/components/icons/icon-size";
+import { CircleCheck, CircleDot, CircleSlash, CircleX } from "lucide-react-native";
 import { ManualStatusIcon } from "@/components/icons/manual-status-icon";
 import type { Theme } from "@/styles/theme";
 import type { CheckPresentation } from "./check-presentation";
@@ -10,9 +9,7 @@ const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleDot = withUnistyles(CircleDot);
 const ThemedCircleSlash = withUnistyles(CircleSlash);
 const ThemedCircleX = withUnistyles(CircleX);
-const ThemedManualStatusIcon = withUnistyles(
-  withIconSizeToken(ManualStatusIcon, "ManualStatusIcon"),
-);
+const ThemedManualStatusIcon = withUnistyles(ManualStatusIcon);
 
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 const successColorMapping = (theme: Theme) => ({ color: theme.colors.statusSuccess });
@@ -23,7 +20,7 @@ export type CheckPresentationTone = "success" | "danger" | "warning" | "muted";
 
 interface CheckPresentationViewPolicy {
   tone: CheckPresentationTone;
-  renderIcon: (size: IconSizeProp) => ReactNode;
+  renderIcon: (size: number) => ReactNode;
 }
 
 const CHECK_PRESENTATION_VIEW_POLICY: Record<CheckPresentation, CheckPresentationViewPolicy> = {
@@ -80,7 +77,7 @@ export function CheckPresentationIcon({
   size,
 }: {
   presentation: CheckPresentation;
-  size: IconSizeProp;
+  size: number;
 }): ReactNode {
   return CHECK_PRESENTATION_VIEW_POLICY[presentation].renderIcon(size);
 }

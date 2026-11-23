@@ -1,4 +1,3 @@
-import type { OpenTarget } from "../open-project-routing.js";
 import { PendingOpenProjectStore } from "../pending-open-project-store.js";
 
 export interface OwnedDesktopWindow<TAgentTarget> {
@@ -29,12 +28,8 @@ export interface DesktopWindowOwner<TAgentTarget> {
   openPrimary(input?: {
     initialRoute?: string | null;
     pendingProjectPath?: string | null;
-    pendingOpenTarget?: OpenTarget | null;
   }): Promise<void>;
-  openAdditional(input?: {
-    pendingProjectPath?: string | null;
-    pendingOpenTarget?: OpenTarget | null;
-  }): Promise<void>;
+  openAdditional(input?: { pendingProjectPath?: string | null }): Promise<void>;
   openOrFocusAgent(target: TAgentTarget): Promise<void>;
   restoreWhenActivated(): Promise<void>;
   takePendingProject(webContentsId: number): string | null;
@@ -42,23 +37,19 @@ export interface DesktopWindowOwner<TAgentTarget> {
 
 export function createDesktopWindowOwner<TAgentTarget>(
   port: DesktopWindowOwnerPort<TAgentTarget>,
-  pendingProjects = new PendingOpenProjectStore(),
 ): DesktopWindowOwner<TAgentTarget> {
+  const pendingProjects = new PendingOpenProjectStore();
   let agentWindowCreation: Promise<void> | null = null;
 
   const open = async (input: {
     initialRoute: string | null;
     pendingProjectPath: string | null;
-    pendingOpenTarget: OpenTarget | null;
     restoreWindowState: boolean;
   }): Promise<void> => {
     await port.create({
       initialRoute: input.initialRoute,
       restoreWindowState: input.restoreWindowState,
-      onCreated: (webContentsId) => {
-        pendingProjects.set(webContentsId, input.pendingProjectPath);
-        pendingProjects.setTarget(webContentsId, input.pendingOpenTarget);
-      },
+      onCreated: (webContentsId) => pendingProjects.set(webContentsId, input.pendingProjectPath),
       onClosed: (webContentsId) => pendingProjects.delete(webContentsId),
     });
   };
@@ -68,14 +59,12 @@ export function createDesktopWindowOwner<TAgentTarget>(
       open({
         initialRoute: input.initialRoute ?? null,
         pendingProjectPath: input.pendingProjectPath ?? null,
-        pendingOpenTarget: input.pendingOpenTarget ?? null,
         restoreWindowState: true,
       }),
     openAdditional: (input = {}) =>
       open({
         initialRoute: null,
         pendingProjectPath: input.pendingProjectPath ?? null,
-        pendingOpenTarget: input.pendingOpenTarget ?? null,
         restoreWindowState: false,
       }),
     async openOrFocusAgent(target) {

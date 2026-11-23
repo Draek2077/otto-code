@@ -8,7 +8,6 @@ import type pino from "pino";
 import type {
   SpeechStreamResult,
   SpeechToTextProvider,
-  SpeechVoiceOverride,
   StreamingTranscriptionSession,
   TextToSpeechProvider,
 } from "../../speech-provider.js";
@@ -171,7 +170,8 @@ function buildWorkerExitMessage(params: {
       : "";
   const stderr = params.stderrTail
     ? ` Last stderr: ${truncateStart(params.stderrTail, USER_ERROR_STDERR_MAX_CHARS)}`
-    : " Check daemon.log and macOS DiagnosticReports for Otto Voice crash details.";
+    : // OTTO(identity)
+      " Check daemon.log and macOS DiagnosticReports for Otto Voice crash details.";
   return `Local speech worker exited (${formatExitStatus(params.code, params.signal)})${pending}.${stderr}`;
 }
 
@@ -200,12 +200,18 @@ export class LocalSpeechWorkerClient {
     this.forkWorker = options.forkWorker ?? forkLocalSpeechWorker;
   }
 
-  async synthesizeSpeech(text: string, voice?: SpeechVoiceOverride): Promise<SpeechStreamResult> {
+  // OTTO(speech-models): previews and read-aloud use the existing worker and IPC.
+  async synthesizeSpeech(
+    text: string,
+    overrides?: Pick<
+      Partial<LocalSpeechWorkerConfig>,
+      "voiceTtsModel" | "voiceTtsSpeakerId" | "voiceTtsSpeed"
+    >,
+  ): Promise<SpeechStreamResult> {
     const result = await this.sendRequest<LocalSpeechTtsResult>({
       type: "tts.synthesize",
-      config: this.config,
+      config: { ...this.config, ...overrides }, // OTTO(speech-models)
       text,
-      ...(voice ? { voice } : {}),
     });
     return {
       stream: Readable.from([workerBytesToBuffer(result.audio)]),
@@ -600,8 +606,15 @@ export class LocalSpeechWorkerClient {
 export class WorkerBackedTextToSpeechProvider implements TextToSpeechProvider {
   constructor(private readonly client: LocalSpeechWorkerClient) {}
 
-  synthesizeSpeech(text: string, voice?: SpeechVoiceOverride): Promise<SpeechStreamResult> {
-    return this.client.synthesizeSpeech(text, voice);
+  // OTTO(speech-models): previews borrow this same worker instead of loading a second model stack.
+  synthesizeSpeech(
+    text: string,
+    overrides?: Pick<
+      Partial<LocalSpeechWorkerConfig>,
+      "voiceTtsModel" | "voiceTtsSpeakerId" | "voiceTtsSpeed"
+    >,
+  ): Promise<SpeechStreamResult> {
+    return this.client.synthesizeSpeech(text, overrides);
   }
 }
 

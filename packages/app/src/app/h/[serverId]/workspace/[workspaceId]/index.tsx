@@ -1,15 +1,6 @@
-import {
-  useCallback,
-  useDeferredValue,
-  useEffect,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
-import { View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, View } from "react-native";
 import { useGlobalSearchParams, useLocalSearchParams, useRootNavigationState } from "expo-router";
 import { HostRouteBootstrapBoundary } from "@/components/host-route-bootstrap-boundary";
 import { RetainedPanel } from "@/components/retained-panel";
@@ -18,22 +9,21 @@ import {
   useActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { useHasHydratedWorkspaces, useWorkspaceExists } from "@/stores/session-store-hooks";
-import type { WorkspaceTabTarget } from "@/stores/workspace-tabs-store";
+import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { WorkspaceScreen } from "@/screens/workspace/workspace-screen";
-import { isWorkspaceDeckEntryPinned } from "@/screens/workspace/workspace-deck-pins";
 import { useWorkspaceLayoutStoreHydrated } from "@/stores/workspace-layout-store";
 import {
-  areWorkspaceSelectionListsEqual,
+  areRetainedWorkspaceSelectionListsEqual,
   areWorkspaceSelectionsEqual,
+  getNextWorkspaceDeckExpirationDelay,
   getWorkspaceSelectionKey,
   orderWorkspaceSelectionsForStableRender,
-  pruneMountedWorkspaceSelections,
+  reconcileRetainedWorkspaceSelections,
+  resolveWorkspaceDeckRetentionLimit,
+  type RetainedWorkspaceSelection,
   resolveWorkspaceDeckEntries,
-  resolveWorkspaceDeckExpiry,
   shouldKeepWorkspaceDeckEntryMounted,
-  WORKSPACE_DECK_INACTIVE_TTL_MS,
 } from "@/screens/workspace/workspace-deck-retention";
-import { useAppSettingValue, type AppSettings } from "@/hooks/use-settings";
 import {
   decodeWorkspaceIdFromPathSegment,
   parseWorkspaceOpenIntent,
@@ -44,7 +34,8 @@ import {
   stripHostWorkspaceRouteEchoSearchFromBrowserUrlAfterCommit,
 } from "@/utils/host-route-browser";
 import { prepareWorkspaceTab } from "@/utils/workspace-navigation";
-import { isWeb } from "@/constants/platform";
+import { isNative, isWeb } from "@/constants/platform";
+import { RenderProfile } from "@/utils/render-profiler";
 
 function getParamValue(value: string | string[] | undefined): string {
   if (typeof value === "string") {
@@ -121,6 +112,13 @@ function HostWorkspaceRouteContent() {
     ? (decodeWorkspaceIdFromPathSegment(workspaceValue) ?? "")
     : "";
   const openValue = getParamValue(globalParams.open);
+  const hasHydratedWorkspaces = useHasHydratedWorkspaces(serverId);
+  const workspaceExists = useWorkspaceExists(serverId, workspaceId);
+  const openIntent = useMemo(() => parseWorkspaceOpenIntent(openValue), [openValue]);
+  const isAgentOpenIntent = openIntent?.kind === "agent";
+  const isOpenIntentWaitingForWorkspace = Boolean(
+    isAgentOpenIntent && (!hasHydratedWorkspaces || !workspaceExists),
+  );
   useEffect(() => {
     if (!serverId || !workspaceId) {
       return;
@@ -138,6 +136,9 @@ function HostWorkspaceRouteContent() {
     if (!hasHydratedWorkspaceLayoutStore) {
       return;
     }
+    if (isOpenIntentWaitingForWorkspace) {
+      return;
+    }
 
     const consumptionKey = `${serverId}:${workspaceId}:${openValue}`;
     if (consumedIntentRef.current === consumptionKey) {
@@ -151,7 +152,6 @@ function HostWorkspaceRouteContent() {
     }
     consumedIntentRef.current = consumptionKey;
 
-    const openIntent = parseWorkspaceOpenIntent(openValue);
     if (openIntent) {
       prepareWorkspaceTab({
         serverId,
@@ -173,82 +173,54 @@ function HostWorkspaceRouteContent() {
     setIntentConsumed(true);
   }, [
     hasHydratedWorkspaceLayoutStore,
+    isOpenIntentWaitingForWorkspace,
     navigation,
+    openIntent,
     openValue,
     rootNavigationState?.key,
     serverId,
     workspaceId,
   ]);
 
-  if (openValue && (!intentConsumed || !hasHydratedWorkspaceLayoutStore)) {
+  if (
+    openValue &&
+    !isOpenIntentWaitingForWorkspace &&
+    (!intentConsumed || !hasHydratedWorkspaceLayoutStore)
+  ) {
     return null;
   }
 
-  return <WorkspaceDeck />;
+  return <WorkspaceDeck recoveryRequested={isAgentOpenIntent} />;
 }
 
-// Module-level so the narrow subscription is stable: the deck must re-render
-// when the retention limit changes and on nothing else in settings.
-const selectMountedWorkspaceLimit = (settings: AppSettings) => settings.mountedWorkspaceLimit;
-
-function WorkspaceDeck() {
-  const mountedWorkspaceLimit = useAppSettingValue(selectMountedWorkspaceLimit);
-  const liveSelection = useActiveWorkspaceSelection();
-  // Stable identity per (serverId, workspaceId): the hook returns a fresh
-  // object every render, and useDeferredValue compares with Object.is, so
-  // without this it would keep scheduling background re-renders.
-  const liveServerId = liveSelection?.serverId ?? null;
-  const liveWorkspaceId = liveSelection?.workspaceId ?? null;
-  const stableSelection = useMemo<ActiveWorkspaceSelection | null>(
-    () =>
-      liveServerId && liveWorkspaceId
-        ? { serverId: liveServerId, workspaceId: liveWorkspaceId }
-        : null,
-    [liveServerId, liveWorkspaceId],
+function WorkspaceDeck({ recoveryRequested }: { recoveryRequested: boolean }) {
+  const activeSelection = useActiveWorkspaceSelection();
+  const [retainedSelections, setRetainedSelections] = useState<RetainedWorkspaceSelection[]>(() =>
+    activeSelection ? [{ selection: activeSelection, inactiveSince: null }] : [],
   );
-  const deferredSelection = useDeferredValue(stableSelection);
-  const [mountedSelections, setMountedSelections] = useState<ActiveWorkspaceSelection[]>(() =>
-    stableSelection ? [stableSelection] : [],
-  );
-  // Swap the deck's view of the active workspace SYNCHRONOUSLY when the target is
-  // already mounted (a warm switch - both panels live in the deck, so it is just
-  // a RetainedPanel visibility toggle). Only defer a COLD switch: mounting a
-  // not-yet-mounted workspace renders a full WorkspaceScreen, so deferral keeps
-  // the outgoing one painted and interactive while the incoming mounts in the
-  // background. The route-fade veil (RouteFadeContainer) keys off the NON-deferred
-  // selection; deferring a warm switch would decouple the on-screen swap from the
-  // veil, so the fade would play over the old workspace and the new one would pop
-  // in after the fade finished. A synchronous warm swap keeps the veil in lockstep
-  // - one correctly-timed fade.
-  const isTargetMounted =
-    stableSelection != null &&
-    mountedSelections.some((mountedSelection) =>
-      areWorkspaceSelectionsEqual(mountedSelection, stableSelection),
-    );
-  const activeSelection = isTargetMounted ? stableSelection : deferredSelection;
   const unmountWorkspaceSelection = useCallback((selection: ActiveWorkspaceSelection) => {
-    setMountedSelections((current) =>
-      current.filter(
-        (mountedSelection) => !areWorkspaceSelectionsEqual(mountedSelection, selection),
-      ),
+    setRetainedSelections((current) =>
+      current.filter((entry) => !areWorkspaceSelectionsEqual(entry.selection, selection)),
     );
   }, []);
 
-  // Lowering the limit prunes on the next render, so the trees the user just
-  // asked to stop retaining are released immediately rather than at the next
-  // workspace switch.
-  const nextMountedSelections = useMemo(
+  const reconciliationNow = Date.now();
+  const nextRetainedSelections = useMemo(
     () =>
-      pruneMountedWorkspaceSelections({
-        currentSelections: mountedSelections,
+      reconcileRetainedWorkspaceSelections({
+        currentEntries: retainedSelections,
         activeSelection,
-        maxMountedWorkspaces: mountedWorkspaceLimit,
+        now: reconciliationNow,
+        maxMountedWorkspaces: resolveWorkspaceDeckRetentionLimit({ isNative }),
       }),
-    [activeSelection, mountedSelections, mountedWorkspaceLimit],
+    [activeSelection, reconciliationNow, retainedSelections],
   );
   const renderedSelections = useMemo(
-    () => orderWorkspaceSelectionsForStableRender(nextMountedSelections),
-    [nextMountedSelections],
+    () =>
+      orderWorkspaceSelectionsForStableRender(
+        nextRetainedSelections.map((entry) => entry.selection),
+      ),
+    [nextRetainedSelections],
   );
   const renderedEntries = useMemo(
     () => resolveWorkspaceDeckEntries({ selections: renderedSelections, activeSelection }),
@@ -256,66 +228,61 @@ function WorkspaceDeck() {
   );
 
   useLayoutEffect(() => {
-    if (!areWorkspaceSelectionListsEqual(mountedSelections, nextMountedSelections)) {
-      setMountedSelections(nextMountedSelections);
+    if (!areRetainedWorkspaceSelectionListsEqual(retainedSelections, nextRetainedSelections)) {
+      setRetainedSelections(nextRetainedSelections);
     }
-  }, [mountedSelections, nextMountedSelections]);
+  }, [nextRetainedSelections, retainedSelections]);
 
-  // Idle eviction: a hidden workspace unmounts once it has gone unshown for
-  // WORKSPACE_DECK_INACTIVE_TTL_MS. Timestamps live in a ref because only the
-  // expiry timer reads them; the tick state re-runs this effect when it fires.
-  const inactiveSinceRef = useRef(new Map<string, number>());
-  const [expiryTick, setExpiryTick] = useState(0);
   useEffect(() => {
-    const now = Date.now();
-    const inactiveSince = inactiveSinceRef.current;
-    const activeKey = activeSelection ? getWorkspaceSelectionKey(activeSelection) : null;
-    const mountedKeys = new Set(nextMountedSelections.map(getWorkspaceSelectionKey));
-    for (const key of inactiveSince.keys()) {
-      if (key === activeKey || !mountedKeys.has(key)) inactiveSince.delete(key);
-    }
-    for (const key of mountedKeys) {
-      if (key !== activeKey && !inactiveSince.has(key)) inactiveSince.set(key, now);
-    }
-    const { expired, nextDelayMs } = resolveWorkspaceDeckExpiry({
-      selections: nextMountedSelections,
+    const expirationDelay = getNextWorkspaceDeckExpirationDelay({
+      entries: nextRetainedSelections,
       activeSelection,
-      inactiveSince,
-      now,
-      ttlMs: WORKSPACE_DECK_INACTIVE_TTL_MS,
-      isPinned: isWorkspaceDeckEntryPinned,
+      now: reconciliationNow,
     });
-    for (const selection of expired) {
-      unmountWorkspaceSelection(selection);
+    if (expirationDelay === null) {
+      return;
     }
-    if (nextDelayMs === null) return;
-    const timeout = setTimeout(() => setExpiryTick((tick) => tick + 1), nextDelayMs + 1);
+    const timeout = setTimeout(() => {
+      setRetainedSelections((current) =>
+        reconcileRetainedWorkspaceSelections({
+          currentEntries: current,
+          activeSelection,
+          now: Date.now(),
+          maxMountedWorkspaces: resolveWorkspaceDeckRetentionLimit({ isNative }),
+        }),
+      );
+    }, expirationDelay + 1);
     return () => clearTimeout(timeout);
-  }, [activeSelection, expiryTick, nextMountedSelections, unmountWorkspaceSelection]);
+  }, [activeSelection, nextRetainedSelections, reconciliationNow]);
 
   return (
-    <View style={styles.deck}>
-      {renderedEntries.map(({ selection, active }) => {
-        return (
-          <WorkspaceDeckEntry
-            key={getWorkspaceSelectionKey(selection)}
-            selection={selection}
-            active={active}
-            onUnmountInactive={unmountWorkspaceSelection}
-          />
-        );
-      })}
-    </View>
+    <RenderProfile id="WorkspaceDeck">
+      <View style={styles.deck}>
+        {renderedEntries.map(({ selection, active }) => {
+          return (
+            <WorkspaceDeckEntry
+              key={getWorkspaceSelectionKey(selection)}
+              selection={selection}
+              active={active}
+              recoveryRequested={recoveryRequested}
+              onUnmountInactive={unmountWorkspaceSelection}
+            />
+          );
+        })}
+      </View>
+    </RenderProfile>
   );
 }
 
 function WorkspaceDeckEntry({
   selection,
   active,
+  recoveryRequested,
   onUnmountInactive,
 }: {
   selection: ActiveWorkspaceSelection;
   active: boolean;
+  recoveryRequested: boolean;
   onUnmountInactive: (selection: ActiveWorkspaceSelection) => void;
 }) {
   const hasHydratedWorkspaces = useHasHydratedWorkspaces(selection.serverId);
@@ -345,17 +312,14 @@ function WorkspaceDeckEntry({
         serverId={selection.serverId}
         workspaceId={selection.workspaceId}
         isRouteFocused={active}
+        recoveryRequested={active && recoveryRequested}
       />
     </RetainedPanel>
   );
 }
 
-// The deck paints the theme background itself: while a cold workspace mounts,
-// its route gate can render null for a frame, and without a background here
-// that frame flashes the bare window color (white) instead of the app surface.
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create({
   deck: {
     flex: 1,
-    backgroundColor: theme.colors.surface0,
   },
-}));
+});

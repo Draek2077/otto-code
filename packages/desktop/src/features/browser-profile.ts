@@ -1,9 +1,10 @@
-export const OTTO_BROWSER_PROFILE_PARTITION = "persist:otto-browser";
+// OTTO(storage): reuse the installed browser profile, including cookies and sign-ins.
+export const PASEO_BROWSER_PROFILE_PARTITION = "persist:otto-browser";
 const LEGACY_BROWSER_ID_PATTERN =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}|\d{13,}-[0-9a-f]+)$/i;
 const MAX_LEGACY_BROWSER_PROFILES = 1000;
 
-const OTTO_BROWSER_STORAGE_TYPES = [
+const PASEO_BROWSER_STORAGE_TYPES = [
   "cookies",
   "filesystem",
   "indexdb",
@@ -15,7 +16,7 @@ const OTTO_BROWSER_STORAGE_TYPES = [
 
 interface BrowserProfileSession {
   clearStorageData(options: {
-    storages: Array<(typeof OTTO_BROWSER_STORAGE_TYPES)[number]>;
+    storages: Array<(typeof PASEO_BROWSER_STORAGE_TYPES)[number]>;
   }): Promise<void>;
   clearCache(): Promise<void>;
   clearAuthCache(): Promise<void>;
@@ -47,11 +48,11 @@ interface ElectronSessions {
   fromPartition(partition: string): BrowserProfileSession;
 }
 
-export function getOttoBrowserProfileSession(sessions: ElectronSessions): BrowserProfileSession {
-  return sessions.fromPartition(OTTO_BROWSER_PROFILE_PARTITION);
+export function getPaseoBrowserProfileSession(sessions: ElectronSessions): BrowserProfileSession {
+  return sessions.fromPartition(PASEO_BROWSER_PROFILE_PARTITION);
 }
 
-export function readLegacyOttoBrowserIds(input: unknown): string[] {
+export function readLegacyPaseoBrowserIds(input: unknown): string[] {
   if (!Array.isArray(input)) {
     return [];
   }
@@ -67,30 +68,30 @@ export function readLegacyOttoBrowserIds(input: unknown): string[] {
   return [...browserIds];
 }
 
-export function getOttoBrowserProfileSessions(
+export function getPaseoBrowserProfileSessions(
   sessions: ElectronSessions,
   legacyBrowserIds: string[],
 ): [BrowserProfileSession, ...BrowserProfileSession[]] {
   return [
-    getOttoBrowserProfileSession(sessions),
+    getPaseoBrowserProfileSession(sessions),
     // COMPAT(browserProfile): added in v0.1.108; remove after 2027-01-15.
     ...legacyBrowserIds.map((browserId) =>
-      sessions.fromPartition(`${OTTO_BROWSER_PROFILE_PARTITION}-${browserId}`),
+      sessions.fromPartition(`${PASEO_BROWSER_PROFILE_PARTITION}-${browserId}`),
     ),
   ];
 }
 
-export function getLegacyOttoBrowserProfileSession(
+export function getLegacyPaseoBrowserProfileSession(
   sessions: ElectronSessions,
   browserId: string,
 ): BrowserProfileSession | null {
-  const [legacyBrowserId] = readLegacyOttoBrowserIds([browserId]);
+  const [legacyBrowserId] = readLegacyPaseoBrowserIds([browserId]);
   return legacyBrowserId
-    ? sessions.fromPartition(`${OTTO_BROWSER_PROFILE_PARTITION}-${legacyBrowserId}`)
+    ? sessions.fromPartition(`${PASEO_BROWSER_PROFILE_PARTITION}-${legacyBrowserId}`)
     : null;
 }
 
-export function listOttoBrowserProfileGuests(
+export function listPaseoBrowserProfileGuests(
   input: ListBrowserProfileGuestsInput,
 ): BrowserProfileGuest[] {
   return input.webContents.filter(
@@ -101,10 +102,10 @@ export function listOttoBrowserProfileGuests(
   );
 }
 
-export async function clearOttoBrowserProfile(input: ClearBrowserProfileInput): Promise<void> {
+export async function clearPaseoBrowserProfile(input: ClearBrowserProfileInput): Promise<void> {
   await Promise.all(
     input.profileSessions.flatMap((profileSession) => [
-      profileSession.clearStorageData({ storages: [...OTTO_BROWSER_STORAGE_TYPES] }),
+      profileSession.clearStorageData({ storages: [...PASEO_BROWSER_STORAGE_TYPES] }),
       profileSession.clearCache(),
       profileSession.clearAuthCache(),
     ]),

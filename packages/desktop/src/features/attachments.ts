@@ -1,6 +1,6 @@
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { resolveOttoHome } from "@otto-code/server";
+import { resolvePaseoHome } from "@getpaseo/server/daemon-control";
 
 const ATTACHMENTS_DIRNAME = "desktop-attachments";
 const ATTACHMENT_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
@@ -12,7 +12,7 @@ interface AttachmentFileResult {
 }
 
 function attachmentsDirPath(): string {
-  return path.join(resolveOttoHome(process.env), ATTACHMENTS_DIRNAME);
+  return path.join(resolvePaseoHome(process.env), ATTACHMENTS_DIRNAME);
 }
 
 async function ensureAttachmentsDir(): Promise<string> {
@@ -158,79 +158,6 @@ export async function deleteManagedAttachmentFile(input: { path?: unknown }): Pr
   const filePath = resolveManagedAttachmentPath(input.path);
   await rm(filePath, { force: true });
   return true;
-}
-
-/**
- * The id prefix `createPreviewAttachmentId` mints. Preview attachments are
- * regenerable copies of images that live elsewhere (a daemon-side screenshot, a
- * workspace file), so the Storage section reports and clears them apart from the
- * files the user actually attached to a message. See docs/attachment-lifecycle.md.
- */
-const PREVIEW_ATTACHMENT_PREFIX = "preview_";
-
-export interface ManagedAttachmentUsage {
-  previewCount: number;
-  previewBytes: number;
-  otherCount: number;
-  otherBytes: number;
-}
-
-export async function readManagedAttachmentUsage(): Promise<ManagedAttachmentUsage> {
-  const dirPath = await ensureAttachmentsDir();
-  const usage: ManagedAttachmentUsage = {
-    previewCount: 0,
-    previewBytes: 0,
-    otherCount: 0,
-    otherBytes: 0,
-  };
-
-  const entries = await readdir(dirPath, { withFileTypes: true });
-  for (const entry of entries) {
-    if (!entry.isFile()) {
-      continue;
-    }
-    let size: number;
-    try {
-      size = (await stat(path.join(dirPath, entry.name))).size;
-    } catch {
-      continue;
-    }
-    if (path.parse(entry.name).name.startsWith(PREVIEW_ATTACHMENT_PREFIX)) {
-      usage.previewCount += 1;
-      usage.previewBytes += size;
-    } else {
-      usage.otherCount += 1;
-      usage.otherBytes += size;
-    }
-  }
-
-  return usage;
-}
-
-export async function clearManagedPreviewAttachments(): Promise<{
-  deleted: number;
-  freedBytes: number;
-}> {
-  const dirPath = await ensureAttachmentsDir();
-  const entries = await readdir(dirPath, { withFileTypes: true });
-
-  let deleted = 0;
-  let freedBytes = 0;
-  for (const entry of entries) {
-    if (!entry.isFile() || !path.parse(entry.name).name.startsWith(PREVIEW_ATTACHMENT_PREFIX)) {
-      continue;
-    }
-    const filePath = path.join(dirPath, entry.name);
-    try {
-      freedBytes += (await stat(filePath)).size;
-      await rm(filePath, { force: true });
-      deleted += 1;
-    } catch {
-      // Already gone, or locked by a read in flight. Next clear takes it.
-    }
-  }
-
-  return { deleted, freedBytes };
 }
 
 export async function garbageCollectManagedAttachmentFiles(input: {

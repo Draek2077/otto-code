@@ -1,17 +1,11 @@
 import { z } from "zod";
-import {
-  BrowserAutomationBrowserIdSchema,
-  type BrowserAutomationTabInfo,
-} from "@otto-code/protocol/browser-automation/rpc-schemas";
+import { BrowserAutomationBrowserIdSchema } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import type { BrowserToolsBroker } from "./broker.js";
 import type { BrowserToolsResponsePayload } from "./errors.js";
-import { chatBrowserTabIds, rememberChatBrowserTabs, withChatBrowserTab } from "./chat-tabs.js";
-import type { DevServerManager, PreviewServerSummary } from "../preview/dev-server-manager.js";
-import { screenBrowserUrl, type LookupAllFunction } from "../agent/url-screen.js";
 import type {
-  OttoToolConfig,
-  OttoToolExecutionContext,
-  OttoToolResult,
+  PaseoToolConfig,
+  PaseoToolExecutionContext,
+  PaseoToolResult,
 } from "../agent/tools/types.js";
 
 interface CallerAgentContext {
@@ -23,33 +17,22 @@ interface CallerAgentContext {
 export interface RegisterBrowserToolsOptions {
   registerTool: (
     name: string,
-    config: OttoToolConfig,
+    config: PaseoToolConfig,
     handler: (
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Tool inputs are validated by the catalog before execution.
       input: any,
-      context: OttoToolExecutionContext,
-    ) => Promise<OttoToolResult>,
+      context: PaseoToolExecutionContext,
+    ) => Promise<PaseoToolResult>,
   ) => void;
   broker: Pick<BrowserToolsBroker, "execute">;
   callerAgentId?: string;
   resolveCallerAgent: () => CallerAgentContext | null;
-  /**
-   * Running preview dev servers, when the preview subsystem is enabled. Used to
-   * redirect browser_new_tab / browser_navigate calls that target a preview
-   * server's URL back to that server's designated preview tab, so agents can't
-   * end up verifying against a detached duplicate tab.
-   */
-  previewServers?: Pick<DevServerManager, "list"> | null;
-  /**
-   * DNS resolver used by the navigation SSRF screen (screenBrowserUrl).
-   * Defaults to getaddrinfo; injectable so tests stay deterministic.
-   */
-  lookupHost?: LookupAllFunction;
 }
 
 const HTTP_URL_ONLY_MESSAGE = "URL must use http/https only";
 const WORKSPACE_CONTEXT_MESSAGE =
-  "This browser tool needs a workspace. Start the agent from a Otto workspace before calling browser_new_tab or browser_list_tabs.";
+  // OTTO(identity)
+  "This browser tool needs a workspace. Start the agent from an Otto workspace before calling browser_new_tab or browser_list_tabs.";
 const URL_WHITESPACE_PATTERN = /\s/;
 const NON_HTTP_EXPLICIT_SCHEME_PATTERN = /^(?!https?:\/\/)[a-z][a-z0-9+.-]*:\/\//i;
 
@@ -69,20 +52,6 @@ const BrowserHttpUrlInputSchema = z
   });
 const BrowserRefInputSchema = z.string().regex(/^@e\d+$/);
 const BrowserClickButtonInputSchema = z.enum(["left", "right", "middle"]);
-const BrowserResizePresetInputSchema = z.enum(["mobile", "tablet", "desktop"]);
-const BrowserColorSchemeInputSchema = z.enum(["light", "dark", "auto"]);
-const BrowserTabHostInputSchema = z.enum(["app", "host"]);
-type BrowserResizePreset = z.infer<typeof BrowserResizePresetInputSchema>;
-
-/** Mirrors the wire schema's maxChars default - the broker input type is the parsed shape. */
-const PAGE_TEXT_DEFAULT_MAX_CHARS = 20_000;
-
-/** Same dimensions as the Claude Desktop browser pane's resize presets. */
-const RESIZE_PRESET_DIMENSIONS: Record<BrowserResizePreset, { width: number; height: number }> = {
-  mobile: { width: 375, height: 812 },
-  tablet: { width: 768, height: 1024 },
-  desktop: { width: 1280, height: 800 },
-};
 const BrowserClickModifierInputSchema = z.enum(["Alt", "Control", "Meta", "Shift"]);
 const BrowserWaitInputSchema = z
   .object({
@@ -95,157 +64,17 @@ const BrowserWaitInputSchema = z
     message: "browser_wait requires exactly one of text or url",
   });
 
-const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
-
-function urlPort(url: URL): number {
-  if (url.port) {
-    return Number(url.port);
-  }
-  return url.protocol === "https:" ? 443 : 80;
-}
-
-/**
- * Find the running preview server a URL points at, if any. Preview servers
- * match their configured browser origin or their local process port. Loopback
- * aliases also match, since an agent may use localhost instead of 127.0.0.1.
- */
-function findPreviewServerForUrl(params: {
-  previewServers: Pick<DevServerManager, "list"> | null | undefined;
-  cwd: string | undefined;
-  url: string;
-}): PreviewServerSummary | null {
-  const { previewServers, cwd, url } = params;
-  if (!previewServers || !cwd) {
-    return null;
-  }
-  let target: URL;
-  try {
-    target = new URL(url);
-  } catch {
-    return null;
-  }
-  if (target.protocol !== "http:" && target.protocol !== "https:") {
-    return null;
-  }
-  const port = urlPort(target);
-  for (const server of previewServers.list(cwd)) {
-    if (server.status === "exited") {
-      continue;
-    }
-    const destination = new URL(server.url);
-    // Match the proxy origin without claiming unrelated hosts on its HTTP(S) port.
-    // The underlying local port still belongs to the same designated preview tab.
-    if (
-      destination.origin === target.origin ||
-      (LOOPBACK_HOSTS.has(target.hostname) &&
-        (server.port === port ||
-          (LOOPBACK_HOSTS.has(destination.hostname) && urlPort(destination) === port)))
-    ) {
-      return server;
-    }
-  }
-  return null;
-}
-
-/**
- * Deterministic backstop behind the tool-description guardrails: opening a
- * preview server's URL anywhere but its designated tab is rejected with a
- * message pointing at the right browserId (or at preview_start when no tab is
- * bound yet), instead of trusting the agent to have read the descriptions.
- */
-function previewTabRedirectResult(params: {
-  server: PreviewServerSummary;
-  context: { agentId?: string; cwd?: string; workspaceId?: string; browserId?: string };
-}): OttoToolResult {
-  const { server, context } = params;
-  const message = server.boundBrowserId
-    ? `${server.url} belongs to the preview server "${server.name}" started with preview_start. ` +
-      `Use its designated preview tab instead of opening another one: pass browserId=${server.boundBrowserId} ` +
-      `to browser_snapshot, browser_navigate, browser_screenshot, and the other browser tools.`
-    : `${server.url} belongs to the preview server "${server.name}", which has no designated preview tab yet. ` +
-      `Call preview_start with name "${server.name}" - it opens (or re-finds) the tab and returns its browserId.`;
-  return browserToolResult({
-    payload: {
-      requestId: "browser-tools-preview-redirect",
-      ok: false,
-      error: {
-        code: "browser_denied",
-        message,
-        retryable: false,
-      },
-    },
-    context,
-  });
-}
-
-/**
- * SSRF screen behind the URL-shape validation: link-local/cloud-metadata and
- * other special-use destinations are rejected before the navigate command
- * reaches the browser host. Loopback and private-LAN hosts pass - previews
- * and dev servers are the browser pane's purpose. Policy and rationale live
- * in ../agent/url-screen.ts.
- */
-function blockedUrlResult(params: {
-  message: string;
-  context: { agentId?: string; cwd?: string; workspaceId?: string; browserId?: string };
-}): OttoToolResult {
-  return browserToolResult({
-    payload: {
-      requestId: "browser-tools-url-screen",
-      ok: false,
-      error: {
-        code: "browser_denied",
-        message: params.message,
-        retryable: false,
-      },
-    },
-    context: params.context,
-  });
-}
-
-function resizeInputFailure(
-  message: string,
-  context: { agentId?: string; cwd?: string; workspaceId?: string; browserId?: string },
-): OttoToolResult {
-  return browserToolResult({
-    payload: {
-      requestId: "browser-tools-resize-input",
-      ok: false,
-      error: {
-        code: "browser_denied",
-        message,
-        retryable: false,
-      },
-    },
-    context,
-  });
-}
-
-function appendBrowserToolResultNote(result: OttoToolResult, note: string): OttoToolResult {
-  const [first, ...rest] = result.content;
-  if (!first || first.type !== "text") {
-    return result;
-  }
-  return {
-    ...result,
-    content: [{ ...first, text: `${first.text}\n${note}` }, ...rest],
-  };
-}
-
 export function registerBrowserTools(options: RegisterBrowserToolsOptions): void {
   options.registerTool(
     "browser_list_tabs",
     {
       title: "List browser tabs",
       description:
-        "List open Otto browser tabs for this agent's workspace across connected browser automation hosts. Set host to 'app' or 'host' to list only that browser. Use returned browserId values with tab-scoped tools. " +
-        "Reuse the tab you have been using for this chat across tasks: navigate or reload it, including after page errors. Do not take over another chat's or the user's tab. " +
-        "Every tab that exists is listed: status 'starting' or 'detached' means the tab is on screen but not drivable yet, so wait and reuse that browserId instead of opening another tab.",
-      inputSchema: {
-        host: BrowserTabHostInputSchema.optional().describe("Optional browser location filter"),
-      },
+        // OTTO(identity)
+        "List open Otto browser tabs for this agent's workspace across connected browser automation hosts. Use returned browserId values with tab-scoped tools.",
+      inputSchema: {},
     },
-    async ({ host }) => {
+    async () => {
       const context = resolveBrowserToolContext(options);
       const missingWorkspace = requireWorkspaceContext(context);
       if (missingWorkspace) {
@@ -253,7 +82,6 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       }
       const payload = await options.broker.execute({
         agentId: context.agentId,
-        ...(host ? { tabHost: host } : {}),
         cwd: context.cwd,
         ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
         command: {
@@ -261,140 +89,37 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
           args: {},
         },
       });
-      const result = browserToolResult({ payload, context });
-      if (payload.ok && payload.result.command === "list_tabs") {
-        const key = JSON.stringify([context.workspaceId, context.agentId]);
-        // Desktop creator metadata survives restart. Discovery recovers only
-        // this chat's general tabs; preview bindings stay with preview_start.
-        rememberChatBrowserTabs(
-          options.broker,
-          key,
-          payload.result.tabs
-            .filter(
-              (tab) =>
-                Boolean(context.agentId) &&
-                tab.openedByAgentId === context.agentId &&
-                !tab.isPreview,
-            )
-            .map((tab) => tab.browserId),
-        );
-        const owned = new Set(chatBrowserTabIds(options.broker, key));
-        const ownTabs = payload.result.tabs.filter((tab) => owned.has(tab.browserId));
-        if (ownTabs.length) {
-          return appendBrowserToolResultNote(
-            result,
-            `This chat's general-browsing tabs: ${ownTabs.map((tab) => tab.browserId).join(", ")}. Reuse these across tasks with browser_navigate or browser_reload.`,
-          );
-        }
-      }
-      return result;
+      return browserToolResult({ payload, context });
     },
   );
 
   options.registerTool(
     "browser_new_tab",
     {
-      title: "Open browser tab",
+      title: "Create browser tab",
       description:
-        "Open a browser URL using this chat's existing general-browsing tab, or create its first tab in the background. Reuses the same tab across tasks, even after page errors. Prefer browser_navigate or browser_reload with your known browserId. Pass additionalTabReason only when a separate tab is necessary, such as comparing pages side by side or an explicit user request; an error or a new task is not a reason. " +
-        "By default a desktop request uses that app's browser and a mobile request uses the daemon host. Set host to 'app' or 'host' to choose explicitly. Pass an http(s) URL or a scheme-less host URL, which is treated as http; keep the returned browserId. " +
-        "Each chat may control at most 12 browser and preview tabs combined. Close an owned tab or reuse one at the limit; an additionalTabReason does not bypass it. " +
-        "Do NOT use this to open or view a dev server - preview_start opens the server's designated preview tab and returns its browserId. Use this tool only for external sites and general browsing.",
+        // OTTO(identity)
+        "Create a background tab on this workspace's daemon Host Browser without switching the user's view. First use browser_list_tabs and reuse a suitable tab. For a running Preview server, use preview_start and its designated browserId instead. Pass an http(s) URL or a scheme-less host URL, treated as http. Use the returned browserId for tab-scoped tools.",
       inputSchema: {
         url: BrowserHttpUrlInputSchema.optional(),
-        host: BrowserTabHostInputSchema.optional().describe(
-          "Optional browser location: app or host",
-        ),
-        additionalTabReason: z
-          .string()
-          .trim()
-          .min(1)
-          .optional()
-          .describe(
-            "Why an additional tab is necessary instead of navigating this chat's existing tab",
-          ),
       },
     },
-    async ({ url, host, additionalTabReason }) => {
+    async ({ url }) => {
       const context = resolveBrowserToolContext(options);
       const missingWorkspace = requireWorkspaceContext(context);
       if (missingWorkspace) {
         return missingWorkspace;
       }
-      if (url) {
-        const previewServer = findPreviewServerForUrl({
-          previewServers: options.previewServers,
-          cwd: context.cwd,
-          url,
-        });
-        if (previewServer) {
-          return previewTabRedirectResult({ server: previewServer, context });
-        }
-        const blockedMessage = await screenBrowserUrl(url, { lookup: options.lookupHost });
-        if (blockedMessage) {
-          return blockedUrlResult({ message: blockedMessage, context });
-        }
-      }
-      return withChatBrowserTab(
-        options.broker,
-        JSON.stringify([context.workspaceId, context.agentId]),
-        async (tab) => {
-          // Reuse only IDs created for this chat. Choosing an arbitrary workspace
-          // tab would overwrite the user's page or another agent's work.
-          if (tab.browserIds.length && !additionalTabReason) {
-            const listed = await options.broker.execute({
-              ...context,
-              ...(host ? { tabHost: host } : {}),
-              command: { command: "list_tabs", args: {} },
-            });
-            if (!listed.ok || listed.result.command !== "list_tabs") {
-              return appendBrowserToolResultNote(
-                browserToolResult({ payload: listed, context }),
-                `Keep browserId=${tab.browserIds.at(-1)}. The lookup failed; do not open a replacement tab.`,
-              );
-            }
-            const listedById = new Map(listed.result.tabs.map((entry) => [entry.browserId, entry]));
-            if (!host) tab.browserIds = tab.browserIds.filter((id) => listedById.has(id));
-            const existing = tab.browserIds
-              .toReversed()
-              .map((id) => listedById.get(id))
-              .find(Boolean);
-            if (existing) {
-              const browserId = existing.browserId;
-              if (url && (!existing.status || existing.status === "ready")) {
-                const navigated = await options.broker.execute({
-                  ...context,
-                  command: { command: "navigate", args: { browserId, url } },
-                });
-                return appendBrowserToolResultNote(
-                  browserToolResult({ payload: navigated, context: { ...context, browserId } }),
-                  `Reused this chat's browserId=${browserId}. Keep using it across tasks; reload or retry it after errors.`,
-                );
-              }
-              return appendBrowserToolResultNote(
-                browserToolResult({ payload: listed, context: { ...context, browserId } }),
-                `Reuse this chat's browserId=${browserId}${existing.status ? ` (status=${existing.status})` : ""}. Navigate it when ready; do not open a replacement.`,
-              );
-            }
-            // Only a successful listing proving absence at this location permits
-            // a replacement. A host-filtered list must retain IDs on other hosts.
-          }
-          const payload = await options.broker.execute({
-            agentId: context.agentId,
-            ...(host ? { tabHost: host } : {}),
-            cwd: context.cwd,
-            ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-            command: {
-              command: "new_tab",
-              args: url ? { url } : {},
-            },
-          });
-          if (payload.ok && payload.result.command === "new_tab") {
-            tab.browserIds.push(payload.result.browserId);
-          }
-          return browserToolResult({ payload, context });
+      const payload = await options.broker.execute({
+        agentId: context.agentId,
+        cwd: context.cwd,
+        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
+        command: {
+          command: "new_tab",
+          args: url ? { url } : {},
         },
-      );
+      });
+      return browserToolResult({ payload, context });
     },
   );
 
@@ -403,11 +128,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Snapshot browser page",
       description:
-        // The one place an agent learns the ref contract in full: this tool mints
-        // the refs, so the provenance and expiry sentence stays here (and on
-        // browser_click, the ref consumer agents reach for first) rather than
-        // being repeated on every ref-taking tool.
-        "Return a model-readable snapshot of an Otto browser tab. Needs a tab browserId. Refs are from the latest browser_snapshot and expire on navigation.",
+        // OTTO(identity)
+        "Return a model-readable snapshot of an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
       },
@@ -435,7 +157,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Click browser element",
       description:
-        "Click an element in an Otto browser tab. Needs a tab browserId. Refs are from the latest browser_snapshot and expire on navigation.",
+        // OTTO(identity)
+        "Click an element in an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         browserId: BrowserAutomationBrowserIdSchema,
@@ -471,7 +194,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Fill browser element",
       description:
-        "Fill an input-like element in an Otto browser tab. Needs a tab browserId. Refs expire on navigation.",
+        // OTTO(identity)
+        "Fill an input-like element in an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         value: z.string(),
@@ -503,7 +227,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Wait for browser condition",
       description:
-        "Wait until an Otto browser tab contains text or reaches a URL fragment. Needs a tab browserId. Waits up to 5s by default on the browser host.",
+        // OTTO(identity)
+        "Wait until an Otto browser tab contains text or reaches a URL fragment. Use browserId from browser_new_tab or browser_list_tabs; waits up to 5s by default on the browser host.",
       inputSchema: BrowserWaitInputSchema,
     },
     async ({ text, url, timeoutMs, browserId }) => {
@@ -533,7 +258,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Type into browser",
       description:
-        "Type text into an element, or into the focused element when ref is omitted. Needs a tab browserId. Refs expire on navigation.",
+        "Type text into an element, or into the focused element when ref is omitted. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         text: z.string(),
         ref: BrowserRefInputSchema.optional(),
@@ -565,7 +290,7 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Press browser key",
       description:
-        "Dispatch a keypress to an element, or to the focused element when ref is omitted. Needs a tab browserId. Refs expire on navigation.",
+        "Dispatch a keypress to an element, or to the focused element when ref is omitted. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         key: z.string().min(1),
         ref: BrowserRefInputSchema.optional(),
@@ -597,27 +322,12 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Navigate browser",
       description:
-        "Navigate an Otto browser tab to a URL. Needs a tab browserId. Pass an http(s) URL or a scheme-less host URL, which is treated as http. " +
-        "Dev server URLs can only be opened in the server's designated preview tab - the browserId returned by preview_start.",
+        // OTTO(identity)
+        "Navigate an Otto browser tab to a URL. Use browserId from browser_new_tab or browser_list_tabs; pass an http(s) URL or a scheme-less host URL, which is treated as http.",
       inputSchema: { url: BrowserHttpUrlInputSchema, browserId: BrowserAutomationBrowserIdSchema },
     },
     async ({ url, browserId }) => {
       const context = resolveBrowserToolContext(options);
-      const previewServer = findPreviewServerForUrl({
-        previewServers: options.previewServers,
-        cwd: context.cwd,
-        url,
-      });
-      if (previewServer && previewServer.boundBrowserId !== browserId) {
-        return previewTabRedirectResult({
-          server: previewServer,
-          context: { ...context, browserId },
-        });
-      }
-      const blockedMessage = await screenBrowserUrl(url, { lookup: options.lookupHost });
-      if (blockedMessage) {
-        return blockedUrlResult({ message: blockedMessage, context: { ...context, browserId } });
-      }
       const payload = await options.broker.execute({
         agentId: context.agentId,
         cwd: context.cwd,
@@ -640,19 +350,25 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       name: "browser_back",
       command: "back",
       title: "Browser back",
-      description: "Go back in an Otto browser tab. Needs a tab browserId.",
+      description:
+        // OTTO(identity)
+        "Go back in an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
     },
     {
       name: "browser_forward",
       command: "forward",
       title: "Browser forward",
-      description: "Go forward in an Otto browser tab. Needs a tab browserId.",
+      description:
+        // OTTO(identity)
+        "Go forward in an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
     },
     {
       name: "browser_reload",
       command: "reload",
       title: "Browser reload",
-      description: "Reload an Otto browser tab. Needs a tab browserId.",
+      description:
+        // OTTO(identity)
+        "Reload an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs.",
     },
   ] as const) {
     options.registerTool(
@@ -686,61 +402,27 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Capture browser screenshot",
       description:
-        "Capture a PNG screenshot of an Otto browser tab. " +
-        "Reported width and height are after downscaling to vision-model-legible dimensions: aspect ratio is always preserved, so a scale below 1 means softer text, not a distorted layout. " +
-        "Default captures the viewport; fullPage captures the whole page, which scales tall pages down hardest. " +
-        "Pass ref (from the latest browser_snapshot) to capture just that element at up to 3x zoom - best for reading small text, charts, or a component closely. " +
-        "For exact colors, fonts, and spacing prefer browser_inspect. Needs a tab browserId.",
+        // OTTO(identity)
+        "Capture a PNG screenshot of an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs. Set fullPage to true to capture the full page.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
         fullPage: z.boolean().default(false),
-        ref: BrowserRefInputSchema.optional().describe(
-          "Element ref from the latest browser_snapshot - captures just that element, zoomed for legibility",
-        ),
       },
     },
-    async ({
-      browserId,
-      fullPage,
-      ref,
-    }: {
-      browserId: string;
-      fullPage?: boolean;
-      ref?: string;
-    }) => {
+    async ({ browserId, fullPage }) => {
       const context = resolveBrowserToolContext(options);
-      if (ref && fullPage) {
-        return browserToolResult({
-          payload: {
-            requestId: "browser-tools-screenshot-input",
-            ok: false,
-            error: {
-              code: "browser_denied",
-              message:
-                "browser_screenshot captures either an element (ref) or the page (fullPage) - not both.",
-              retryable: false,
-            },
-          },
-          context: { ...context, browserId },
-        });
-      }
       const payload = await options.broker.execute({
         agentId: context.agentId,
         cwd: context.cwd,
         ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
 
-        command: ref
-          ? {
-              command: "screenshot_element",
-              args: { browserId, ref },
-            }
-          : {
-              command: "screenshot",
-              args: {
-                browserId,
-                fullPage: fullPage ?? false,
-              },
-            },
+        command: {
+          command: "screenshot",
+          args: {
+            browserId,
+            fullPage: fullPage ?? false,
+          },
+        },
       });
       return browserToolResult({ payload, context: { ...context, browserId } });
     },
@@ -751,7 +433,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Upload files in browser",
       description:
-        "Set workspace files on a file input in an Otto browser tab. Needs a tab browserId. Refs expire on navigation.",
+        // OTTO(identity)
+        "Set workspace files on a file input in an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         filePaths: z.array(z.string().min(1)).min(1),
@@ -784,7 +467,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
       command: "hover",
       title: "Hover browser element",
       description:
-        "Hover an element in an Otto browser tab. Needs a tab browserId. Refs expire on navigation.",
+        // OTTO(identity)
+        "Hover an element in an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
     },
   ] as const) {
     options.registerTool(
@@ -819,7 +503,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Select browser option",
       description:
-        "Set a select element in an Otto browser tab to a value. Needs a tab browserId. Refs expire on navigation.",
+        // OTTO(identity)
+        "Set a select element in an Otto browser tab to a value. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         ref: BrowserRefInputSchema,
         value: z.string(),
@@ -851,7 +536,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Drag browser element",
       description:
-        "Drag one element onto another in an Otto browser tab. Needs a tab browserId. Refs expire on navigation.",
+        // OTTO(identity)
+        "Drag one element onto another in an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; refs come from the latest browser_snapshot of the same tab and expire when the page changes.",
       inputSchema: {
         sourceRef: BrowserRefInputSchema,
         targetRef: BrowserRefInputSchema,
@@ -883,7 +569,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Read browser logs",
       description:
-        "Read recent console messages and browser performance network entries for an Otto browser tab. Needs a tab browserId. maxEntries defaults to 50.",
+        // OTTO(identity)
+        "Read recent console messages and browser performance network entries for an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; maxEntries defaults to 50.",
       inputSchema: {
         maxEntries: z.number().int().positive().max(200).optional(),
         browserId: BrowserAutomationBrowserIdSchema,
@@ -909,133 +596,12 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
   );
 
   options.registerTool(
-    "browser_inspect",
-    {
-      title: "Inspect browser element",
-      description:
-        "Inspect a DOM element in an Otto browser tab by CSS selector or snapshot ref. Returns tag/id/class, text content, bounding box, and computed styles. " +
-        "BEST tool for verifying visual properties like colors, fonts, spacing, and dimensions - more accurate than screenshots. " +
-        "Pass styles to select which CSS properties to return; defaults to common layout and typography properties. Needs a tab browserId.",
-      inputSchema: {
-        browserId: BrowserAutomationBrowserIdSchema,
-        selector: z
-          .string()
-          .min(1)
-          .optional()
-          .describe("CSS selector (e.g., '.button', '#header'); the first match is inspected"),
-        ref: BrowserRefInputSchema.optional().describe(
-          "Element ref from the latest browser_snapshot (alternative to selector)",
-        ),
-        styles: z
-          .array(z.string().min(1))
-          .max(50)
-          .optional()
-          .describe("CSS properties to return (e.g., ['padding', 'color'])"),
-      },
-    },
-    async ({
-      browserId,
-      selector,
-      ref,
-      styles,
-    }: {
-      browserId: string;
-      selector?: string;
-      ref?: string;
-      styles?: string[];
-    }) => {
-      if (Number(Boolean(selector)) + Number(Boolean(ref)) !== 1) {
-        return browserToolResult({
-          payload: {
-            requestId: "browser-tools-inspect-target",
-            ok: false,
-            error: {
-              code: "browser_denied",
-              message: "browser_inspect requires exactly one of selector or ref",
-              retryable: false,
-            },
-          },
-          context: resolveBrowserToolContext(options),
-        });
-      }
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "inspect",
-          args: {
-            browserId,
-            ...(selector ? { selector } : {}),
-            ...(ref ? { ref } : {}),
-            ...(styles && styles.length > 0 ? { styles } : {}),
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
-
-  options.registerTool(
-    "browser_network",
-    {
-      title: "Inspect browser network traffic",
-      description:
-        "List captured network requests in an Otto browser tab, or fetch a specific response body. " +
-        "Without requestId, lists requests with method, URL, status, and requestId. With requestId, returns that request's full response body (useful for inspecting API payloads). " +
-        "Capture starts on the first call for a tab - reload the page (browser_reload) after the first call to record its traffic. " +
-        "Use filter 'failed' to show only 4xx/5xx and network errors. Needs a tab browserId.",
-      inputSchema: {
-        browserId: BrowserAutomationBrowserIdSchema,
-        filter: z
-          .enum(["all", "failed"])
-          .optional()
-          .describe("Filter: 'all' (default) or 'failed' (4xx/5xx and network errors)"),
-        requestId: z
-          .string()
-          .min(1)
-          .optional()
-          .describe(
-            "If provided, returns the response body for this captured request instead of listing",
-          ),
-      },
-    },
-    async ({
-      browserId,
-      filter,
-      requestId,
-    }: {
-      browserId: string;
-      filter?: "all" | "failed";
-      requestId?: string;
-    }) => {
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "network",
-          args: {
-            browserId,
-            filter: filter ?? "all",
-            ...(requestId ? { requestId } : {}),
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
-
-  options.registerTool(
     "browser_evaluate",
     {
       title: "Evaluate browser JavaScript",
       description:
-        "Evaluate a JavaScript function in an Otto browser tab. Needs a tab browserId. When ref is provided, refs are from the latest browser_snapshot and the resolved element is passed as the first argument.",
+        // OTTO(identity)
+        "Evaluate a JavaScript function in an Otto browser tab. Use browserId from browser_new_tab or browser_list_tabs; when ref is provided, refs come from the latest browser_snapshot and the resolved element is passed as the first argument.",
       inputSchema: {
         function: z.string().min(1),
         ref: BrowserRefInputSchema.optional(),
@@ -1067,7 +633,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Scroll browser",
       description:
-        "Scroll an Otto browser tab by deltaX/deltaY CSS pixels. Needs a tab browserId. Optional ref is from the latest browser_snapshot and centers the wheel input over that element.",
+        // OTTO(identity)
+        "Scroll an Otto browser tab by deltaX/deltaY CSS pixels. Use browserId from browser_new_tab or browser_list_tabs; optional ref comes from the latest browser_snapshot and centers the wheel input over that element.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
         ref: BrowserRefInputSchema.optional(),
@@ -1101,132 +668,15 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Resize browser viewport",
       description:
-        "Resize an Otto browser tab's viewport and/or emulate the page's preferred color scheme. " +
-        "The user sees this: the tab becomes a fixed frame in its pane, cropped rather than scaled when it exceeds the pane size reported by browser_list_tabs. Match that pane size unless you need a wider layout, and say so when you deviate. " +
-        "Pass preset mobile (375x812), tablet (768x1024), or desktop (1280x800), or an explicit width and height. " +
-        "Pass colorScheme to verify dark or light mode without changing OS settings; 'auto' returns the page to the real OS preference. " +
-        "Needs a tab browserId.",
+        // OTTO(identity)
+        "Resize an Otto browser tab's resident webview viewport. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
-        width: z.number().int().positive().optional(),
-        height: z.number().int().positive().optional(),
-        preset: BrowserResizePresetInputSchema.optional().describe(
-          "Viewport preset: mobile (375x812), tablet (768x1024), or desktop (1280x800); overrides width/height",
-        ),
-        colorScheme: BrowserColorSchemeInputSchema.optional().describe(
-          "Emulate prefers-color-scheme: 'light', 'dark', or 'auto' to follow the OS again",
-        ),
+        width: z.number().int().positive(),
+        height: z.number().int().positive(),
       },
     },
-    async ({
-      browserId,
-      width,
-      height,
-      preset,
-      colorScheme,
-    }: {
-      browserId: string;
-      width?: number;
-      height?: number;
-      preset?: BrowserResizePreset;
-      colorScheme?: "light" | "dark" | "auto";
-    }) => {
-      const context = resolveBrowserToolContext(options);
-      let dimensions: { width: number; height: number } | null = null;
-      if (preset) {
-        dimensions = RESIZE_PRESET_DIMENSIONS[preset];
-      } else if (width !== undefined && height !== undefined) {
-        dimensions = { width, height };
-      }
-      if (!preset && !dimensions && (width !== undefined) !== (height !== undefined)) {
-        return resizeInputFailure(
-          "browser_resize needs width and height together - or use a preset.",
-          { ...context, browserId },
-        );
-      }
-      if (!dimensions && !colorScheme) {
-        return resizeInputFailure(
-          "browser_resize requires a preset, an explicit width and height, or a colorScheme.",
-          { ...context, browserId },
-        );
-      }
-
-      const brokerContext = {
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-      };
-
-      let resizePayload: BrowserToolsResponsePayload | null = null;
-      if (dimensions) {
-        resizePayload = await options.broker.execute({
-          ...brokerContext,
-          command: {
-            command: "resize",
-            args: {
-              browserId,
-              width: dimensions.width,
-              height: dimensions.height,
-            },
-          },
-        });
-        if (!resizePayload.ok) {
-          return browserToolResult({ payload: resizePayload, context: { ...context, browserId } });
-        }
-      }
-
-      if (colorScheme) {
-        const schemePayload = await options.broker.execute({
-          ...brokerContext,
-          command: {
-            command: "set_color_scheme",
-            args: { browserId, colorScheme },
-          },
-        });
-        if (!schemePayload.ok) {
-          const payload =
-            resizePayload && dimensions
-              ? {
-                  ...schemePayload,
-                  error: {
-                    ...schemePayload.error,
-                    message:
-                      `Viewport resized to ${dimensions.width}x${dimensions.height}, but color-scheme emulation failed: ` +
-                      schemePayload.error.message,
-                  },
-                }
-              : schemePayload;
-          return browserToolResult({ payload, context: { ...context, browserId } });
-        }
-        if (!resizePayload) {
-          return browserToolResult({ payload: schemePayload, context: { ...context, browserId } });
-        }
-        return appendBrowserToolResultNote(
-          browserToolResult({ payload: resizePayload, context: { ...context, browserId } }),
-          `Emulated prefers-color-scheme: ${colorScheme}.`,
-        );
-      }
-
-      return browserToolResult({
-        // dimensions (and therefore resizePayload) are set: the input checks
-        // above rejected every colorScheme-less call without them.
-        payload: resizePayload as BrowserToolsResponsePayload,
-        context: { ...context, browserId },
-      });
-    },
-  );
-
-  options.registerTool(
-    "browser_focus_tab",
-    {
-      title: "Focus browser tab",
-      description:
-        "Bring an Otto browser tab to the front of its pane so the user can see it. Tabs opened with browser_new_tab stay in the background - focus one when you have something worth showing (verification proof, a page opened on the user's behalf), not after every action. Needs a tab browserId.",
-      inputSchema: {
-        browserId: BrowserAutomationBrowserIdSchema,
-      },
-    },
-    async ({ browserId }) => {
+    async ({ browserId, width, height }) => {
       const context = resolveBrowserToolContext(options);
       const payload = await options.broker.execute({
         agentId: context.agentId,
@@ -1234,47 +684,11 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
         ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
 
         command: {
-          command: "focus_tab",
+          command: "resize",
           args: {
             browserId,
-          },
-        },
-      });
-      return browserToolResult({ payload, context: { ...context, browserId } });
-    },
-  );
-
-  options.registerTool(
-    "browser_page_text",
-    {
-      title: "Read browser page text",
-      description:
-        "Extract the readable text of an Otto browser tab - article/main content first, falling back to full body text. " +
-        "BEST tool for reading documentation, articles, or search results: much cheaper than browser_snapshot, which you should use instead when you need element refs to click or fill. " +
-        "maxChars defaults to 20000; the truncated flag tells you when content was cut. Needs a tab browserId.",
-      inputSchema: {
-        browserId: BrowserAutomationBrowserIdSchema,
-        maxChars: z
-          .number()
-          .int()
-          .positive()
-          .max(100_000)
-          .optional()
-          .describe("Maximum characters of text to return (default: 20000)"),
-      },
-    },
-    async ({ browserId, maxChars }: { browserId: string; maxChars?: number }) => {
-      const context = resolveBrowserToolContext(options);
-      const payload = await options.broker.execute({
-        agentId: context.agentId,
-        cwd: context.cwd,
-        ...(context.workspaceId ? { workspaceId: context.workspaceId } : {}),
-
-        command: {
-          command: "page_text",
-          args: {
-            browserId,
-            maxChars: maxChars ?? PAGE_TEXT_DEFAULT_MAX_CHARS,
+            width,
+            height,
           },
         },
       });
@@ -1287,7 +701,8 @@ export function registerBrowserTools(options: RegisterBrowserToolsOptions): void
     {
       title: "Close browser tab",
       description:
-        "Close an Otto browser tab, remove its resident webview, and unregister it from the browser automation host. Needs a tab browserId.",
+        // OTTO(identity)
+        "Close an Otto browser tab, remove its resident webview, and unregister it from the browser automation host. Use browserId from browser_new_tab or browser_list_tabs.",
       inputSchema: {
         browserId: BrowserAutomationBrowserIdSchema,
       },
@@ -1355,7 +770,7 @@ function requireWorkspaceContext(context: {
   agentId?: string;
   cwd?: string;
   workspaceId?: string;
-}): OttoToolResult | null {
+}): PaseoToolResult | null {
   if (context.workspaceId) {
     return null;
   }
@@ -1377,7 +792,7 @@ function requireWorkspaceContext(context: {
 function browserToolResult(params: {
   payload: BrowserToolsResponsePayload;
   context: { agentId?: string; cwd?: string; workspaceId?: string; browserId?: string };
-}): OttoToolResult {
+}): PaseoToolResult {
   const { payload, context } = params;
   if (payload.ok) {
     return {
@@ -1407,45 +822,20 @@ function browserToolResult(params: {
   };
 }
 
-/**
- * Drop the one bulky field a result already spent in full inside
- * content[0].text. MCP clients forward `structuredContent` alongside `content`,
- * so leaving it in ships the same snapshot / page text / eval result to the
- * model twice, and it is replayed on every subsequent round. Only fields
- * reproduced verbatim by summarizeBrowserSuccess are stripped - the metadata
- * beside them (stats, url, title, truncated) is small and stays, and
- * structure-only results (logs, network, inspect, list_tabs) are untouched
- * because structuredContent is the only place they exist.
- */
 function browserToolStructuredResult(
   result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
 ): Extract<BrowserToolsResponsePayload, { ok: true }>["result"] | Record<string, unknown> {
-  if (result.command === "screenshot" || result.command === "screenshot_element") {
-    const { dataBase64: _dataBase64, ...metadata } = result;
-    return metadata;
+  if (result.command !== "screenshot") {
+    return result;
   }
 
-  if (result.command === "snapshot") {
-    const { snapshot: _snapshot, ...metadata } = result;
-    return metadata;
-  }
-
-  if (result.command === "page_text") {
-    const { text: _text, ...metadata } = result;
-    return metadata;
-  }
-
-  if (result.command === "evaluate") {
-    const { resultJson: _resultJson, ...metadata } = result;
-    return metadata;
-  }
-
-  return result;
+  const { dataBase64: _dataBase64, ...metadata } = result;
+  return metadata;
 }
 
 function browserToolSuccessContent(
   payload: Extract<BrowserToolsResponsePayload, { ok: true }>,
-): OttoToolResult["content"] {
+): PaseoToolResult["content"] {
   const textContent = { type: "text" as const, text: summarizeBrowserSuccess(payload) };
   const imageContent = browserToolImageContent(payload.result);
   return imageContent ? [textContent, imageContent] : [textContent];
@@ -1453,8 +843,8 @@ function browserToolSuccessContent(
 
 function browserToolImageContent(
   result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
-): OttoToolResult["content"][number] | null {
-  if (result.command !== "screenshot" && result.command !== "screenshot_element") {
+): PaseoToolResult["content"][number] | null {
+  if (result.command !== "screenshot") {
     return null;
   }
 
@@ -1502,15 +892,16 @@ function summarizeBrowserSuccess(
   if (payload.result.command === "list_tabs") {
     const count = payload.result.tabs.length;
     if (count === 0) {
+      // OTTO(identity)
       return "No Otto browser tabs are open. Call browser_new_tab to create one.";
     }
     const tabLines = payload.result.tabs.map((tab) => {
       const active = tab.isActive ? " active" : "";
-      const status = tab.status ? ` status=${tab.status}` : "";
-      return `- browserId=${tab.browserId}${active}${status} title=${JSON.stringify(tab.title || "Untitled")} url=${tab.url}${formatTabGeometry(tab)}`;
+      return `- browserId=${tab.browserId}${active} title=${JSON.stringify(tab.title || "Untitled")} url=${tab.url}`;
     });
     return withDialogs(
       [
+        // OTTO(identity)
         `Found ${count} Otto browser tab${count === 1 ? "" : "s"}. Use these browserId values for tab-scoped browser tools.`,
         ...tabLines,
       ].join("\n"),
@@ -1539,18 +930,6 @@ function summarizeBrowserSuccess(
     return withDialogs(`Browser wait matched ${payload.result.matched}.`);
   }
 
-  if (payload.result.command === "page_text") {
-    return withDialogs(
-      [
-        `Extracted ${payload.result.text.length} characters of page text from <${payload.result.source}>${payload.result.truncated ? " (truncated - raise maxChars for more)" : ""}.`,
-        `Title: ${payload.result.title || "Untitled"}`,
-        `URL: ${payload.result.url}`,
-        "",
-        payload.result.text,
-      ].join("\n"),
-    );
-  }
-
   return withDialogs(`Browser ${payload.result.command} complete.`);
 }
 
@@ -1566,53 +945,17 @@ function appendDialogSummary(
     .join("; ")}.`;
 }
 
-/**
- * Viewport and pane size of a presented tab. Printed together because the
- * comparison is the point: a fixed viewport wider than its pane is cropped to
- * the pane, so the caller's screenshots show a layout the user cannot see.
- * Omitted for tabs the host never presented, or hosts that predate the fields.
- */
-function formatTabGeometry(tab: BrowserAutomationTabInfo): string {
-  if (!tab.viewportWidth || !tab.viewportHeight || !tab.paneWidth || !tab.paneHeight) {
-    return "";
-  }
-  const mode = tab.viewportMode === "fixed" ? " fixed" : "";
-  const cropped =
-    tab.viewportWidth > tab.paneWidth || tab.viewportHeight > tab.paneHeight
-      ? " (cropped to the pane - the user sees part of this page)"
-      : "";
-  return ` viewport=${tab.viewportWidth}x${tab.viewportHeight}${mode} pane=${tab.paneWidth}x${tab.paneHeight}${cropped}`;
-}
-
-const SCREENSHOT_LEGIBILITY_WARN_SCALE = 0.6;
-
 function summarizeBrowserMediaSuccess(
   result: Extract<BrowserToolsResponsePayload, { ok: true }>["result"],
 ): string | null {
   if (result.command === "screenshot") {
-    const scaleWarning =
-      result.scale !== undefined && result.scale < SCREENSHOT_LEGIBILITY_WARN_SCALE
-        ? ` The page was captured at ${Math.round(result.scale * 100)}% scale to fit - small text may be unreadable. For readable detail, take viewport screenshots with browser_scroll between them, or pass ref to zoom into one element.`
-        : "";
-    return `Captured browser screenshot (${result.width}x${result.height}).${scaleWarning}`;
-  }
-  if (result.command === "screenshot_element") {
-    const zoomNote =
-      result.scale !== undefined && result.scale > 1
-        ? ` at ${formatZoomScale(result.scale)}x zoom`
-        : "";
-    return `Captured element ${result.ref} (${result.width}x${result.height})${zoomNote}.`;
+    return `Captured browser screenshot (${result.width}x${result.height}).`;
   }
   if (result.command === "upload") {
     const count = result.filePaths.length;
     return `Uploaded ${count} file${count === 1 ? "" : "s"} to browser element ${result.ref}.`;
   }
   return null;
-}
-
-function formatZoomScale(scale: number): string {
-  const rounded = Math.round(scale * 10) / 10;
-  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
 function summarizeBrowserKeyboardSuccess(
@@ -1708,16 +1051,6 @@ function summarizeBrowserControlSuccess(
 
   if (result.command === "close_tab") {
     return `Closed browser tab ${result.browserId}.`;
-  }
-
-  if (result.command === "focus_tab") {
-    return `Focused browser tab ${result.browserId} - it is now visible to the user.`;
-  }
-
-  if (result.command === "set_color_scheme") {
-    return result.colorScheme === "auto"
-      ? "Cleared color-scheme emulation - the page follows the OS preference again."
-      : `Emulated prefers-color-scheme: ${result.colorScheme}.`;
   }
 
   return null;

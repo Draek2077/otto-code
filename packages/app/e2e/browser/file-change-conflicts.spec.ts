@@ -9,12 +9,13 @@ import {
 import type { WithWorkspace } from "../support/helpers/with-workspace";
 import { installDaemonWebSocketGate } from "../support/helpers/daemon-websocket-gate";
 import {
+  expectFileCalloutWasRendered,
   expectNoFileCalloutWasRendered,
   recordFileCallouts,
 } from "../support/helpers/file-callouts";
 
 function visibleEditor(page: Page) {
-  return page.getByTestId("code-editor-surface").filter({ visible: true }).locator(".cm-content");
+  return page.getByTestId("file-source-editor").filter({ visible: true }).locator(".cm-content");
 }
 
 function filePane(page: Page) {
@@ -22,11 +23,7 @@ function filePane(page: Page) {
 }
 
 function fileCallout(page: Page) {
-  return page
-    .locator(
-      '[data-testid="workspace-file-pane"] [role="alert"], [data-testid="workspace-file-tab-pane"] [role="alert"]',
-    )
-    .filter({ visible: true });
+  return filePane(page).getByRole("alert");
 }
 
 async function openFile(page: Page, filename: string): Promise<void> {
@@ -55,25 +52,65 @@ async function openTrackedFile(
 async function replaceEditorText(page: Page, content: string): Promise<void> {
   const editor = visibleEditor(page);
   await editor.click();
-  await editor.press("ControlOrMeta+A");
-  await page.keyboard.insertText(content);
-  await expect(page.getByTestId("editor-save").filter({ visible: true })).toBeEnabled();
+  await editor.press("Control+A");
+  await editor.type(content);
+}
+
+async function replaceFileAfterDeletionWasObserved(input: {
+  page: Page;
+  gate: Awaited<ReturnType<typeof installDaemonWebSocketGate>>;
+  filePath: string;
+  relativePath: string;
+  content: string;
+}): Promise<void> {
+  const { page, gate, filePath, relativePath, content } = input;
+  // Recreate the observed race without faking file state: the daemon publishes the
+  // deletion, then a real read succeeds after the replacement while its ready event waits.
+  await gate.waitForFileSubscription(relativePath);
+  gate.holdFileReads(relativePath);
+  await unlink(filePath);
+  await gate.waitForHeldFileRead();
+  await expect(fileCallout(page)).toHaveCount(0);
+  gate.releaseHeldFileRead();
+  await expectOnlyFileCallout(page, "File deleted on disk");
+  gate.holdNextReadyFileUpdate(relativePath);
+  await writeFile(filePath, content, "utf8");
+  await gate.waitForHeldReadyFileUpdate();
+  await expect.poll(() => readFile(filePath, "utf8")).toBe(content);
 }
 
 async function expectOnlyFileCallout(page: Page, title: string): Promise<void> {
   await expect(fileCallout(page)).toHaveCount(1);
   await expect(fileCallout(page)).toContainText(title);
-  await expect(fileCallout(page).getByText(title, { exact: true })).toHaveCount(1);
+  await expect(filePane(page).getByText(title, { exact: true })).toHaveCount(1);
+}
+
+async function expectCleanReplacementCanReload(page: Page): Promise<void> {
+  await expectOnlyFileCallout(page, "Changed on disk");
+  await expect(filePane(page).getByText("File deleted on disk", { exact: true })).toHaveCount(0);
+  await expect(fileCallout(page).getByRole("button", { name: "Overwrite" })).toHaveCount(0);
+  await expect(fileCallout(page).getByRole("button", { name: "Reload" })).toBeEnabled();
+  await fileCallout(page).getByRole("button", { name: "Reload" }).click();
+  await expect(filePane(page).getByText("After", { exact: true })).toBeVisible();
+  await expect(fileCallout(page)).toHaveCount(0);
 }
 
 async function expectDeletedFileNotice(page: Page): Promise<void> {
-  await expect(fileCallout(page)).toHaveCount(1);
-  await expect(page.getByTestId("editor-disk-banner").filter({ visible: true })).toContainText(
-    /deleted/i,
-  );
+  await expectOnlyFileCallout(page, "File deleted on disk");
+  await expect(fileCallout(page)).toContainText("The open copy is preserved.");
   await expect(filePane(page).getByText("Changed on disk", { exact: true })).toHaveCount(0);
   await expect(fileCallout(page).getByRole("button", { name: "Overwrite" })).toHaveCount(0);
   await expect(fileCallout(page).getByRole("button", { name: "Reload" })).toHaveCount(0);
+}
+
+async function expectDirtyConflictCanReload(page: Page): Promise<void> {
+  await expectOnlyFileCallout(page, "Changed on disk");
+  await expect(fileCallout(page).getByRole("button", { name: "Overwrite" })).toBeEnabled();
+  await expect(fileCallout(page).getByRole("button", { name: "Reload" })).toBeEnabled();
+  page.once("dialog", (dialog) => dialog.accept());
+  await fileCallout(page).getByRole("button", { name: "Reload" }).click();
+  await expect(visibleEditor(page)).toContainText("const external = true;");
+  await expect(fileCallout(page)).toHaveCount(0);
 }
 
 async function restoreFileAfterWatcherObservedTemporaryAbsence(input: {
@@ -109,7 +146,6 @@ test.describe("Workspace file change conflicts", () => {
     await restoreFileAfterWatcherObservedTemporaryAbsence({ gate, filePath, relativePath });
     await replaceEditorText(page, "const local = true;\n");
 
-    await page.getByTestId("editor-save").filter({ visible: true }).click();
     await expect.poll(() => readFile(filePath, "utf8")).toContain("const local = true;");
     await expect(fileCallout(page)).toHaveCount(0);
     await expectNoFileCalloutWasRendered(page);
@@ -137,7 +173,6 @@ test.describe("Workspace file change conflicts", () => {
     await replaceEditorText(page, "const local = true;\n");
     gate.releaseHeldReadyFileUpdate();
 
-    await page.getByTestId("editor-save").filter({ visible: true }).click();
     await expect.poll(() => readFile(filePath, "utf8")).toContain("const local = true;");
     await expect(fileCallout(page)).toHaveCount(0);
     await expectNoFileCalloutWasRendered(page);
@@ -156,20 +191,19 @@ test.describe("Workspace file change conflicts", () => {
     });
     await gate.waitForFileSubscription(relativePath);
     await recordFileCallouts(page);
-    gate.holdNextReadyFileUpdate(relativePath);
+    gate.holdFileReads(relativePath);
 
     await replaceEditorText(page, "const saved = true;\n");
-    await page.getByTestId("editor-save").filter({ visible: true }).click();
     await expect.poll(() => readFile(filePath, "utf8")).toContain("const saved = true;");
-    await gate.waitForHeldReadyFileUpdate();
-    gate.releaseHeldReadyFileUpdate();
+    await gate.waitForHeldFileRead();
 
     await expect(visibleEditor(page)).toContainText("const saved = true;");
     await expect(fileCallout(page)).toHaveCount(0);
     await expectNoFileCalloutWasRendered(page);
+    gate.releaseHeldFileRead();
   });
 
-  test("a clean file replaced on disk reloads automatically without losing its tab", async ({
+  test("a clean file replaced on disk offers one working reload action", async ({
     page,
     withWorkspace,
   }) => {
@@ -179,17 +213,16 @@ test.describe("Workspace file change conflicts", () => {
       relativePath: "inventory.md",
       content: "# Before\n",
     });
-    await expect(visibleEditor(page)).toContainText("# Before");
-    await gate.waitForFileSubscription("inventory.md");
-    await unlink(filePath);
-    await expectDeletedFileNotice(page);
-    gate.holdNextReadyFileUpdate("inventory.md");
-    await writeFile(filePath, "# After\n", "utf8");
-    await gate.waitForHeldReadyFileUpdate();
+    await expect(filePane(page).getByText("Before", { exact: true })).toBeVisible();
+    await replaceFileAfterDeletionWasObserved({
+      page,
+      gate,
+      filePath,
+      relativePath: "inventory.md",
+      content: "# After\n",
+    });
     gate.releaseHeldReadyFileUpdate();
-    await expect(visibleEditor(page)).toContainText("# After");
-    await expect(fileCallout(page)).toHaveCount(0);
-    await expectFileTabOpen(page, "inventory.md");
+    await expectCleanReplacementCanReload(page);
   });
 
   test("a deleted file shows one explanatory notice and no resolution actions", async ({
@@ -201,15 +234,11 @@ test.describe("Workspace file change conflicts", () => {
       relativePath: "deleted.md",
       content: "# Present\n",
     });
-    await expect(visibleEditor(page)).toContainText("# Present");
+    await expect(filePane(page).getByText("Present", { exact: true })).toBeVisible();
     await recordFileCallouts(page);
     await unlink(filePath);
     await expectDeletedFileNotice(page);
-    await expect(visibleEditor(page)).toContainText("# Present");
-    await replaceEditorText(page, "# Recreated\n");
-    await page.getByTestId("editor-save").filter({ visible: true }).click();
-    await expect.poll(() => readFile(filePath, "utf8")).toBe("# Recreated\n");
-    await expect(fileCallout(page)).toHaveCount(0);
+    await expectFileCalloutWasRendered(page, "File deleted on disk");
   });
 
   test("a file check error offers a working retry", async ({ page, withWorkspace }) => {
@@ -221,7 +250,7 @@ test.describe("Workspace file change conflicts", () => {
       content: "# Before\n",
     });
     await gate.waitForFileSubscription(relativePath);
-    await expect(visibleEditor(page)).toContainText("# Before");
+    await expect(filePane(page).getByText("Before", { exact: true })).toBeVisible();
 
     await unlink(filePath);
     await mkdir(filePath);
@@ -239,8 +268,7 @@ test.describe("Workspace file change conflicts", () => {
     await gate.waitForHeldFileRead();
     await expect(fileCallout(page).getByRole("button", { name: "Retry" })).toBeDisabled();
     gate.releaseHeldFileRead();
-    await expect(visibleEditor(page)).toContainText("# After");
-    await expect(fileCallout(page)).toHaveCount(0);
+    await expectCleanReplacementCanReload(page);
     gate.releaseHeldReadyFileUpdate();
   });
 
@@ -257,7 +285,7 @@ test.describe("Workspace file change conflicts", () => {
     });
     const parkedPath = `${filePath}.parked`;
     await gate.waitForFileSubscription(relativePath);
-    await expect(visibleEditor(page)).toContainText("# Unchanged");
+    await expect(filePane(page).getByText("Unchanged", { exact: true })).toBeVisible();
 
     await rename(filePath, parkedPath);
     await mkdir(filePath);
@@ -270,7 +298,6 @@ test.describe("Workspace file change conflicts", () => {
     await fileCallout(page).getByRole("button", { name: "Retry" }).click();
 
     await expect(fileCallout(page)).toHaveCount(0);
-    await expect(visibleEditor(page)).toContainText("# Unchanged");
     await expect(filePane(page).getByText("Changed on disk", { exact: true })).toHaveCount(0);
     gate.releaseHeldReadyFileUpdate();
   });
@@ -329,33 +356,8 @@ test.describe("Workspace file change conflicts", () => {
       relativePath: "source.ts",
       content: "const before = true;\n",
     });
-    const editor = page
-      .getByTestId("code-editor-surface")
-      .filter({ visible: true })
-      .locator(".cm-content");
-    const replaceText = async (content: string) => {
-      await editor.click();
-      await editor.press("ControlOrMeta+A");
-      await page.keyboard.insertText(content);
-      await expect(page.getByTestId("editor-save").filter({ visible: true })).toBeEnabled();
-    };
-    await replaceText("const local = true;\n");
+    await replaceEditorText(page, "const local = true;\n");
     await writeFile(filePath, "const external = true;\n", "utf8");
-    const banner = page.getByTestId("editor-disk-banner").filter({ visible: true });
-    await expect(banner).toBeVisible();
-    await expect(editor).toContainText("const local = true;");
-    await expect(banner.getByTestId("editor-disk-overwrite")).toBeEnabled();
-    await banner.getByTestId("editor-disk-reload").click();
-    await expect(editor).toContainText("const external = true;");
-    await expect(banner).toHaveCount(0);
-
-    // The other resolution remains a real conditional write, not just a button.
-    await replaceText("const overwrite = true;\n");
-    await writeFile(filePath, "const anotherExternal = true;\n", "utf8");
-    await expect(banner).toBeVisible();
-    await banner.getByTestId("editor-disk-overwrite").click();
-    await expect.poll(() => readFile(filePath, "utf8")).toBe("const overwrite = true;\n");
-    await expect(editor).toContainText("const overwrite = true;");
-    await expect(banner).toHaveCount(0);
+    await expectDirtyConflictCanReload(page);
   });
 });

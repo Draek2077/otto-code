@@ -1,29 +1,8 @@
-import { getForgeDefinitionOrNeutral } from "@otto-code/protocol/forge-manifest";
-import type { AgentAttachment, GitHostingProviderId } from "@otto-code/protocol/messages";
-import { normalizeGitHostingProviderId } from "@otto-code/protocol/messages";
+import { getForgeDefinitionOrNeutral } from "@getpaseo/protocol/forge-manifest";
+import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import type { AgentPromptContentBlock, AgentPromptInput } from "./agent-sdk-types.js";
 
 const REVIEW_LINE_MARKERS = { add: "+", remove: "-", context: " " } as const;
-
-// COMPAT(hostingAttachments): added in v0.7.6, remove after 2027-02-01.
-// `hosting_pr` / `hosting_issue` are the pre-forge attachment kinds. Otto's own
-// clients send `forge_*` now, but the protocol still accepts these
-// (HostingPrAttachmentSchema / HostingIssueAttachmentSchema in messages.ts), so
-// a client built before the forge merge can still attach a PR to a prompt.
-// Without these arms the switch fell through to the exhaustiveness throw and
-// took the prompt-build path down for every provider. Drop both arms in the
-// same change that drops the schemas.
-const HOSTING_PROVIDER_LABELS: Record<GitHostingProviderId, string> = {
-  github: "GitHub",
-  "bitbucket-cloud": "Bitbucket",
-};
-
-// The wire provider id is an open string (forward-compat), so degrade to a
-// neutral label for a provider this build doesn't recognize.
-function hostingProviderLabel(provider: string): string {
-  const known = normalizeGitHostingProviderId(provider);
-  return known ? HOSTING_PROVIDER_LABELS[known] : "Git";
-}
 
 export function buildAgentPrompt(
   text: string,
@@ -106,37 +85,11 @@ export function renderPromptAttachmentAsText(attachment: AgentAttachment): strin
         body: attachment.body,
       });
     }
-    // COMPAT(hostingAttachments): added in v0.7.6, remove after 2027-02-01.
-    // No hosting provider is a registered forge - Bitbucket rides the `github`
-    // forge id as a routing facade (bootstrap.ts) - so the provider id is passed
-    // through as an unknown forge, which yields the neutral "PR"/"#" grammar
-    // both providers use, and only the brand label is resolved separately.
-    case "hosting_pr": {
-      return renderChangeRequestAttachment({
-        forge: attachment.provider,
-        displayName: hostingProviderLabel(attachment.provider),
-        number: attachment.number,
-        title: attachment.title,
-        url: attachment.url,
-        body: attachment.body,
-        baseRefName: attachment.baseRefName,
-        headRefName: attachment.headRefName,
-      });
-    }
-    case "hosting_issue": {
-      return renderIssueAttachment({
-        forge: attachment.provider,
-        displayName: hostingProviderLabel(attachment.provider),
-        number: attachment.number,
-        title: attachment.title,
-        url: attachment.url,
-        body: attachment.body,
-      });
-    }
     case "text": {
       return attachment.text;
     }
     case "review": {
+      // OTTO(identity)
       const lines = [`Otto review attachment (${attachment.mode})`, `CWD: ${attachment.cwd}`];
       if (attachment.baseRef) {
         lines.push(`Base: ${attachment.baseRef}`);
@@ -171,21 +124,13 @@ export function renderPromptAttachmentAsText(attachment: AgentAttachment): strin
         `Size: ${attachment.size} bytes`,
       ].join("\n");
     }
-    default: {
-      // Compile-time exhaustiveness. A schema branch added to
-      // AgentAttachmentSchema with no arm here is a type error, not a runtime
-      // throw on the prompt-build path - which is exactly how the hosting_*
-      // arms went missing without a single test or typecheck noticing.
-      const unhandled: never = attachment;
-      throw new Error(`unsupported prompt attachment: ${(unhandled as AgentAttachment).type}`);
-    }
+    default:
+      throw new Error("unreachable");
   }
 }
 
 function renderChangeRequestAttachment(input: {
   forge: string;
-  /** Brand label override for non-forge sources; defaults to the forge's. */
-  displayName?: string;
   number: number;
   title: string;
   url: string;
@@ -195,7 +140,7 @@ function renderChangeRequestAttachment(input: {
   headRefName?: string | null;
 }): string {
   const lines = [
-    `${input.displayName ?? formatForgeLabel(input.forge)} ${formatChangeRequestAbbrev(input.forge)} ${formatChangeRequestNumber(input.forge, input.number)}: ${input.title}`,
+    `${formatForgeLabel(input.forge)} ${formatChangeRequestAbbrev(input.forge)} ${formatChangeRequestNumber(input.forge, input.number)}: ${input.title}`,
     input.url,
   ];
   if (input.projectPath) {
@@ -215,8 +160,6 @@ function renderChangeRequestAttachment(input: {
 
 function renderIssueAttachment(input: {
   forge: string;
-  /** Brand label override for non-forge sources; defaults to the forge's. */
-  displayName?: string;
   number: number;
   title: string;
   url: string;
@@ -224,7 +167,7 @@ function renderIssueAttachment(input: {
   projectPath?: string;
 }): string {
   const lines = [
-    `${input.displayName ?? formatForgeLabel(input.forge)} Issue ${formatIssueNumber(input.forge, input.number)}: ${input.title}`,
+    `${formatForgeLabel(input.forge)} Issue ${formatIssueNumber(input.forge, input.number)}: ${input.title}`,
     input.url,
   ];
   if (input.projectPath) {

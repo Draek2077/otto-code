@@ -1,9 +1,6 @@
 package expo.modules.twowayaudio
 
 import AudioEngine
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.core.content.ContextCompat
 import androidx.core.os.bundleOf
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -17,12 +14,12 @@ class ExpoTwoWayAudioModule : Module() {
         private const val ON_OUTPUT_VOLUME_LEVEL_EVENT = "onOutputVolumeLevelData"
         private const val ON_RECORDING_CHANGE_EVENT = "onRecordingChange"
         private const val ON_AUDIO_INTERRUPTION_EVENT = "onAudioInterruption"
-        private const val ON_WAKE_WORD_DETECTED_EVENT = "onWakeWordDetected"
         var audioEngine: AudioEngine? = null
     }
 
     override fun definition() = ModuleDefinition {
         Name("ExpoTwoWayAudio")
+        OnDestroy { audioEngine?.stopWakeWordDetection(true) } // OTTO(wake-word): revoke idle capture on bridge teardown.
         AsyncFunction("initialize") { promise: Promise ->
             try {
                 if (audioEngine != null) {
@@ -44,6 +41,12 @@ class ExpoTwoWayAudioModule : Module() {
 
          Function("isRecording") {
              audioEngine?.isRecording ?: false
+         }
+
+         Function("startDictation") {
+             val isRecording = audioEngine?.startDictation() ?: false
+             sendEvent(ON_RECORDING_CHANGE_EVENT, mapOf("data" to isRecording))
+             isRecording
          }
 
          Function("toggleRecording") { value: Boolean ->
@@ -88,45 +91,33 @@ class ExpoTwoWayAudioModule : Module() {
          }
 
          Function("resumePlayback") {
-            audioEngine?.resumePlayback()
+             audioEngine?.resumePlayback()
          }
-
-        Function("getWakeWordCapabilities") {
-            val context = appContext.reactContext
-            val available = context != null && AndroidWakeWordDetector.isAvailable(context)
-            mapOf(
-                "available" to available,
-                "safePhraseSupported" to available,
-                "modelVersion" to if (available) AndroidWakeWordDetector.modelVersion else null,
-            )
-        }
-
-        AsyncFunction("startWakeWordDetection") { phrase: String, sensitivity: Double ->
-            val context = appContext.reactContext
-                ?: throw IllegalStateException("Android application context is unavailable.")
-            if (!AndroidWakeWordDetector.isAvailable(context)) {
-                throw IllegalStateException("This build does not include a native wake-word model.")
-            }
-            if (ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) !=
-                PackageManager.PERMISSION_GRANTED
-            ) {
-                throw IllegalStateException(
-                    "Microphone access is required for Hey Otto. Allow microphone access in system settings, then try again.",
-                )
-            }
-            if (audioEngine == null) {
-                audioEngine = AudioEngine(context)
-                setupCallbacks()
-            }
-            audioEngine?.startWakeWordDetection(phrase, sensitivity)
-        }
-
-        AsyncFunction("stopWakeWordDetection") {
-            audioEngine?.stopWakeWordDetection()
-        }
 
         Function("getMicrophoneModeIOS") {
             throw UnsupportedOperationException("getMicrophoneModeIOS is only supported on iOS")
+        }
+
+        // OTTO(wake-word): device-local capability and control, never daemon PCM.
+        Function("getWakeWordCapabilities") {
+            val available = appContext.reactContext?.let { AndroidWakeWordDetector.isAvailable(it) } ?: false
+            mapOf("available" to available, "safePhraseSupported" to available,
+                "modelVersion" to AndroidWakeWordDetector.modelVersion)
+        }
+        AsyncFunction("startWakeWordDetection") { phrase: String, sensitivity: Double ->
+            check(appContext.currentActivity?.hasWindowFocus() == true) { "Hey Otto can listen only while Otto is in the foreground." }
+            if (audioEngine == null) {
+                audioEngine = appContext.reactContext?.let { AudioEngine(it) }
+            }
+            setupCallbacks() // Also rebind after a JS bridge reload reuses the native engine.
+            checkNotNull(audioEngine) { "Audio context is unavailable." }.startWakeWordDetection(phrase, sensitivity)
+        }
+        Function("startWakeWordDictation") {
+            if (appContext.currentActivity?.hasWindowFocus() == true) audioEngine?.startWakeWordDictation() ?: false
+            else false
+        }
+        Function("stopWakeWordDetection") { discardHandoff: Boolean ->
+            audioEngine?.stopWakeWordDetection(discardHandoff)
         }
 
         Function ("setMicrophoneModeIOS") {
@@ -156,12 +147,13 @@ class ExpoTwoWayAudioModule : Module() {
             ON_OUTPUT_VOLUME_LEVEL_EVENT,
             ON_RECORDING_CHANGE_EVENT,
             ON_AUDIO_INTERRUPTION_EVENT,
-            ON_WAKE_WORD_DETECTED_EVENT
+            "onWakeWordDetected" // OTTO(wake-word)
         )
     }
 
     private fun setupCallbacks() {
         audioEngine?.apply {
+            onWakeWordDetectedCallback = { sendEvent("onWakeWordDetected", bundleOf("data" to "Hey Otto")) } // OTTO(wake-word)
             onMicDataCallback = { data ->
                 sendEvent(ON_MIC_DATA_EVENT, bundleOf("data" to data))
             }
@@ -176,12 +168,6 @@ class ExpoTwoWayAudioModule : Module() {
                 sendEvent(ON_RECORDING_CHANGE_EVENT, bundleOf(
                     "data" to (audioEngine?.isRecording ?: false)
                 ))
-            }
-            onWakeWordDetectedCallback = { phrase ->
-                sendEvent(
-                    ON_WAKE_WORD_DETECTED_EVENT,
-                    bundleOf("data" to bundleOf("phrase" to phrase)),
-                )
             }
         }
     }

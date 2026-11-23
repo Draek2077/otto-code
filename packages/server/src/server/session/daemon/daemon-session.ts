@@ -40,7 +40,7 @@ export interface DaemonSessionHost {
 export interface DaemonSessionOptions {
   host: DaemonSessionHost;
   clientId: string;
-  ottoHome: string;
+  paseoHome: string;
   serverId: string | undefined;
   daemonVersion: string | undefined;
   daemonRuntimeConfig: DaemonRuntimeConfig | undefined;
@@ -49,6 +49,7 @@ export interface DaemonSessionOptions {
   listWorkspaces: () => Promise<PersistedWorkspaceRecord[]>;
   listProviderAvailability: () => Promise<ProviderAvailability[]>;
   getWebSocketRuntimeMetrics?: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  getObservationMetrics?: () => Record<string, number>;
   logger: pino.Logger;
   hubRelationships?: HubRelationshipManagement;
   reloadConfig: () => DaemonConfigReloadResult;
@@ -64,7 +65,7 @@ export interface DaemonSessionOptions {
 export class DaemonSession {
   private readonly host: DaemonSessionHost;
   private readonly clientId: string;
-  private readonly ottoHome: string;
+  private readonly paseoHome: string;
   private readonly serverId: string | undefined;
   private readonly daemonVersion: string | undefined;
   private readonly daemonRuntimeConfig: DaemonRuntimeConfig | undefined;
@@ -73,6 +74,7 @@ export class DaemonSession {
   private readonly listWorkspaces: () => Promise<PersistedWorkspaceRecord[]>;
   private readonly listProviderAvailability: () => Promise<ProviderAvailability[]>;
   private readonly getWebSocketRuntimeMetrics: () => DaemonWebSocketRuntimeDiagnosticSnapshot | null;
+  private readonly getObservationMetrics: DaemonSessionOptions["getObservationMetrics"];
   private readonly logger: pino.Logger;
   private readonly selfUpdate: DaemonSelfUpdateSessionController;
   private readonly hubRelationships: HubRelationshipManagement | null;
@@ -81,7 +83,7 @@ export class DaemonSession {
   constructor(options: DaemonSessionOptions) {
     this.host = options.host;
     this.clientId = options.clientId;
-    this.ottoHome = options.ottoHome;
+    this.paseoHome = options.paseoHome;
     this.serverId = options.serverId;
     this.daemonVersion = options.daemonVersion;
     this.daemonRuntimeConfig = options.daemonRuntimeConfig;
@@ -90,6 +92,7 @@ export class DaemonSession {
     this.listWorkspaces = options.listWorkspaces;
     this.listProviderAvailability = options.listProviderAvailability;
     this.getWebSocketRuntimeMetrics = options.getWebSocketRuntimeMetrics ?? (() => null);
+    this.getObservationMetrics = options.getObservationMetrics;
     this.logger = options.logger;
     this.hubRelationships = options.hubRelationships ?? null;
     this.reloadConfig = options.reloadConfig;
@@ -170,7 +173,7 @@ export class DaemonSession {
     msg: Extract<SessionInboundMessage, { type: "daemon.get_status.request" }>,
   ): Promise<void> {
     try {
-      const pidInfo = await getPidLockInfo(this.ottoHome);
+      const pidInfo = await getPidLockInfo(this.paseoHome);
       const providers = (await this.listProviderAvailability()).map((p) => ({
         provider: p.provider,
         available: p.available,
@@ -215,7 +218,7 @@ export class DaemonSession {
     try {
       const relay = this.daemonRuntimeConfig?.getRelayConfig();
       const pairing = await generateLocalPairingOffer({
-        ottoHome: this.ottoHome,
+        paseoHome: this.paseoHome,
         relayEnabled: relay?.enabled ?? false,
         relayEndpoint: relay?.endpoint,
         relayPublicEndpoint: relay?.publicEndpoint,
@@ -274,7 +277,7 @@ export class DaemonSession {
   ): Promise<void> {
     try {
       const diagnostic = await collectDaemonDiagnostics({
-        ottoHome: this.ottoHome,
+        paseoHome: this.paseoHome,
         serverId: this.serverId,
         daemonVersion: this.daemonVersion,
         daemonRuntimeConfig: this.daemonRuntimeConfig,
@@ -283,6 +286,7 @@ export class DaemonSession {
         listWorkspaces: this.listWorkspaces,
         listProviderAvailability: this.listProviderAvailability,
         getWebSocketRuntimeMetrics: this.getWebSocketRuntimeMetrics,
+        getObservationMetrics: this.getObservationMetrics,
         logger: this.logger,
       });
       this.host.emit({
@@ -298,6 +302,7 @@ export class DaemonSession {
         type: "diagnostics.response",
         payload: {
           requestId: msg.requestId,
+          // OTTO(identity)
           diagnostic: `Otto diagnostics\n  Error: ${
             error instanceof Error ? error.message : String(error)
           }`,

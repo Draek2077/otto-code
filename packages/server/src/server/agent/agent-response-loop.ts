@@ -61,18 +61,6 @@ export class StructuredAgentFallbackError extends Error {
   }
 }
 
-/**
- * True when `error` is one of the expected structured-generation failures
- * (invalid model output after retries, or every fallback provider exhausted) -
- * the "generation just didn't work out" cases callers degrade gracefully on,
- * as opposed to unexpected errors they should rethrow.
- */
-export function isStructuredGenerationFailure(error: unknown): boolean {
-  return (
-    error instanceof StructuredAgentResponseError || error instanceof StructuredAgentFallbackError
-  );
-}
-
 export interface StructuredAgentResponseOptions<T> {
   caller: AgentCaller;
   prompt: string;
@@ -363,35 +351,41 @@ export async function getStructuredAgentResponse<T>(
   });
 }
 
-/**
- * Run one structured generation against a single resolved provider/model.
- *
- * This is a **bare completion**: the caller drives `getStructuredAgentResponse`'s
- * retry loop over `manager.generateBareCompletion`, a direct tool-less provider
- * call. It intentionally does NOT spawn an agent (no createAgent → runAgent →
- * closeAgent), so no full session config, no Otto tool catalog / MCP mount, and
- * on Claude no `claude_code` preset or CLAUDE.md is ever built - the prompt is
- * self-contained. Behavior contract is preserved: same schemas, same `maxRetries`
- * handling, and the fallback ladder in
- * `generateStructuredAgentResponseWithFallback` still applies (a provider that
- * can't do a tool-less completion throws here and the ladder skips to the next).
- *
- * `agentId`/`persistSession` on the options are legacy no-ops for this path -
- * kept so the runner signature and existing callers stay unchanged.
- */
 export async function generateStructuredAgentResponse<T>(
   options: StructuredAgentGenerationOptions<T>,
 ): Promise<T> {
-  const { manager, agentConfig, prompt, schema, maxRetries, schemaName } = options;
-  const caller: AgentCaller = (nextPrompt) =>
-    manager.generateBareCompletion(agentConfig, nextPrompt);
-  return getStructuredAgentResponse({
-    caller,
-    prompt,
-    schema,
-    maxRetries,
-    schemaName,
+  const { manager, agentConfig, agentId, persistSession, prompt, schema, maxRetries, schemaName } =
+    options;
+  const agent = await manager.createAgent(agentConfig, agentId, {
+    persistSession,
+    workspaceId: undefined,
   });
+  try {
+    const caller: AgentCaller = async (nextPrompt) => {
+      const result = await manager.runAgent(agent.id, nextPrompt);
+      if (typeof result.finalText === "string" && result.finalText.length > 0) {
+        return result.finalText;
+      }
+      // Fallback for providers that may not populate finalText consistently.
+      const lastAssistant = result.timeline.findLast((item) => item.type === "assistant_message");
+      return lastAssistant?.text ?? "";
+    };
+    return await getStructuredAgentResponse({
+      caller,
+      prompt,
+      schema,
+      maxRetries,
+      schemaName,
+    });
+  } finally {
+    try {
+      await manager.closeAgent(agent.id);
+    } catch {
+      // ignore cleanup errors
+    } finally {
+      await manager.deleteAgentState(agent.id).catch(() => undefined);
+    }
+  }
 }
 
 function errorMessage(error: unknown): string {

@@ -38,9 +38,9 @@ export function resolveSelectedAgentForNewAgent(input: {
   return parseHostAgentRouteFromPathname(input.pathname) ?? parseAgentKey(input.selectedAgentId);
 }
 
-function inferMainRepoRootFromOttoWorktreePath(cwd: string): string | null {
+function inferMainRepoRootFromPaseoWorktreePath(cwd: string): string | null {
   const normalizedPath = cwd.replace(/\\/g, "/");
-  const marker = "/.otto/worktrees";
+  const marker = "/.paseo/worktrees";
   const markerIndex = normalizedPath.indexOf(marker);
   if (markerIndex <= 0) {
     return null;
@@ -58,12 +58,12 @@ export function resolveNewAgentWorkingDir(
   cwd: string,
   checkout: CheckoutStatusPayload | null,
 ): string {
-  const explicitMainRepoRoot = checkout?.isOttoOwnedWorktree
+  const explicitMainRepoRoot = checkout?.isPaseoOwnedWorktree
     ? checkout.mainRepoRoot?.trim() || null
     : null;
   if (explicitMainRepoRoot) {
     return explicitMainRepoRoot;
   }
 
-  return inferMainRepoRootFromOttoWorktreePath(cwd) ?? cwd;
+  return inferMainRepoRootFromPaseoWorktreePath(cwd) ?? cwd;
 }

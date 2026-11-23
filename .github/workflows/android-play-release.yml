@@ -1,3 +1,4 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
 name: Android Play Release
 
 # Builds an Android App Bundle (AAB) via EAS and submits it to the Google Play

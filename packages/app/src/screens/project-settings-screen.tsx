@@ -1,30 +1,19 @@
-import { SettingsMenuItem } from "@/screens/settings-search/menu-item";
-import { SettingsButton, SettingsPressable } from "@/screens/settings-search/controls";
-import {
-  SettingsTargetText,
-  useRevealSettingsTarget,
-  SettingsSearchProvider,
-  useSettingsSearchRequest,
-} from "@/screens/settings-search/target";
-import { settingsTargetIdsForPersistence } from "@/screens/settings-search-catalog";
-import { SettingsAdaptiveModalSheet as AdaptiveModalSheet } from "@/screens/settings-search/sheets";
-import { OfflineProjectPanel } from "@/projects/offline-project-panel";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TeamSelection } from "@/otto/agent-profiles/team-select"; // OTTO(agent-teams)
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { Pressable, Text, TextInput, View } from "react-native";
-import { router } from "expo-router";
-import { useFocusEffect, useNavigation, usePreventRemove } from "@react-navigation/native";
+import { Pressable, Text, View } from "react-native";
+import { useFocusEffect } from "@react-navigation/native";
 import { StyleSheet } from "react-native-unistyles";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, MoreVertical, Pencil, Plus } from "@/components/icons/material-icons";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, MoreVertical, Pencil, Plus } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
 import type {
-  OttoConfigRaw,
-  OttoConfigRevision,
+  PaseoConfigRaw,
+  PaseoConfigRevision,
   ProjectConfigRpcError,
-} from "@otto-code/protocol/messages";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+} from "@getpaseo/protocol/messages";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -36,56 +25,46 @@ import { Alert } from "@/components/ui/alert";
 import { ExternalLink } from "@/components/ui/external-link";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Switch } from "@/components/ui/switch";
-import { TextArea } from "@/components/ui/text-area";
-import { type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { ProjectEditSheet } from "@/components/project-edit-sheet";
+import { EditingTextInput as TextInput } from "@/components/ui/text-input";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
 import { SettingsGroup } from "@/components/settings/headings/settings-group";
-import { SettingsSection as TargetSection } from "@/screens/settings-search/fields";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { settingsStyles } from "@/styles/settings";
-import { ForgeConnectionsSettings } from "@/screens/settings/forge-connections-settings";
-import { isNative } from "@/constants/platform";
 import { useProjects } from "@/hooks/use-projects";
-import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
-import { useHostFeature } from "@/runtime/host-features";
 import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
 import { useProjectIcons } from "@/projects/icons";
+import { createProjectIconTarget } from "@/projects/icon-target";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
-import { useToast } from "@/contexts/toast-context";
+import { useHostFeature } from "@/runtime/host-features";
+// OTTO(kanban): feature-owned section inside canonical Project Settings.
+import { OttoKanbanProjectSettings } from "@/otto/kanban/project-settings";
+import { OttoBitbucketProjectSettings } from "@/otto/bitbucket/project-settings"; // OTTO(bitbucket)
+import { OttoArtifactProjectSettings } from "@/otto/artifacts/project-settings"; // OTTO(artifacts): canonical settings placement.
+import { ScheduleProjectSettings } from "@/otto/schedules/settings-entry"; // OTTO(schedules): independent category override at canonical Project Settings.
+import { ProjectConfigSettingsForm } from "@/otto/settings/project-config-form"; // OTTO(settings): serialized preference autosave.
+import { useAppVisible } from "@/hooks/use-app-visible"; // OTTO(settings): hidden forms release save authority.
+import { useRetainedPanelActive } from "@/components/retained-panel"; // OTTO(settings)
 import { confirmDialog } from "@/utils/confirm-dialog";
 import {
-  applyDraftToConfig,
-  configToDraft,
   METADATA_PROMPT_KEYS,
   type LifecycleOriginalKind,
   type MetadataPromptKey,
   type ProjectConfigDraft,
   type ProjectScriptDraft,
 } from "@/utils/project-config-form";
-import { buildProjectsSettingsRoute } from "@/utils/host-routes";
 import {
   getProjectHostEntry,
   getProjectSummaryForHostProject,
   type ProjectHostEntry,
   type ProjectSummary,
 } from "@/utils/projects";
-import { ProjectKanbanSection } from "./project-settings-kanban-section";
-import { ProjectTeamSection } from "./project-settings-team-section";
-import { ProjectKnowledgeSection } from "./project-settings-knowledge-section";
-import { ProjectBrowserSection } from "./project-settings-browser-section";
-import { ProjectArtifactsSection } from "./project-settings-artifacts-section";
-import { ProjectWorkflowsSection } from "./project-settings-workflows-section";
-import {
-  combineProjectFormSaveStates,
-  type ProjectFormSaveState,
-} from "./project-settings-save-state";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 const SCRIPT_SERVICE_TYPE = "service";
 
-const PROJECT_IDENTITY_SETTINGS = [
-  "host-projects-project-settings-identity-name",
-  "host-projects-project-settings-identity-appearance",
-] as const;
+const ICON_SIZE = 14;
 
 interface MetadataPromptField {
   titleKey: string;
@@ -115,38 +94,22 @@ const METADATA_PROMPT_FIELDS: Record<MetadataPromptKey, MetadataPromptField> = {
   },
 };
 
-const WORKTREE_DOCS_URL = "https://otto-code.me/docs/worktrees";
+const WORKTREE_DOCS_URL = `${OTTO_WEBSITE_URL}/docs/worktrees`; // OTTO(identity)
 
 type ReadProjectConfigData = Awaited<ReturnType<DaemonClient["readProjectConfig"]>>;
-
-// What the header save button needs from the (separately mounted) config form.
-/**
- * Shared discard/keep-editing confirmation for leaving project settings with
- * unsaved changes. Used by this screen's own back affordance and by the
- * settings shell's exit handlers (sidebar, back header).
- */
-export function confirmDiscardProjectSettingsChanges(t: TFunction): Promise<boolean> {
-  return confirmDialog({
-    title: t("settings.project.unsavedChanges.title"),
-    message: t("settings.project.unsavedChanges.message"),
-    confirmLabel: t("settings.project.unsavedChanges.discard"),
-    cancelLabel: t("settings.project.unsavedChanges.keepEditing"),
-    destructive: true,
-  });
-}
 
 export interface ProjectSettingsScreenProps {
   serverId: string;
   projectId: string;
-  // Reports whether the config form has unsaved changes, so the settings shell
-  // can guard its own exit affordances (sidebar navigation, back header).
-  onDirtyChange?: (dirty: boolean) => void;
+  onBackToProjects: () => void;
+  showBackToProjects: boolean;
 }
 
 export default function ProjectSettingsScreen({
   serverId,
   projectId,
-  onDirtyChange,
+  onBackToProjects,
+  showBackToProjects,
 }: ProjectSettingsScreenProps) {
   const { projects } = useProjects();
   const project = useMemo(
@@ -167,16 +130,10 @@ export default function ProjectSettingsScreen({
     selectedHost.repoRoot.trim().length > 0;
 
   if (!project || !selectedHost || !client || !canEdit) {
-    return <NoEditableTarget serverId={serverId} />;
-  }
-
-  if (selectedHost.projectOffline) {
     return (
-      <OfflineProjectPanel
-        serverId={serverId}
-        projectId={projectId}
-        projectName={selectedHost.projectName}
-        rootPath={selectedHost.repoRoot}
+      <NoEditableTarget
+        onBackToProjects={onBackToProjects}
+        showBackToProjects={showBackToProjects}
       />
     );
   }
@@ -187,42 +144,46 @@ export default function ProjectSettingsScreen({
       selectedHost={selectedHost}
       client={client}
       isHostGone={isHostGone}
-      onDirtyChange={onDirtyChange}
+      onBackToProjects={onBackToProjects}
+      showBackToProjects={showBackToProjects}
     />
   );
 }
 
-function navigateBackToProjects(serverId: string) {
-  router.navigate(buildProjectsSettingsRoute(serverId));
-}
-
-function NoEditableTarget({ serverId }: { serverId: string }) {
+function NoEditableTarget({
+  onBackToProjects,
+  showBackToProjects,
+}: {
+  onBackToProjects: () => void;
+  showBackToProjects: boolean;
+}) {
   const { t } = useTranslation();
-  const handleBack = useCallback(() => navigateBackToProjects(serverId), [serverId]);
   return (
     <View style={styles.noTargetContainer}>
-      <BackToProjectsButton serverId={serverId} />
+      {showBackToProjects ? <BackToProjectsButton onPress={onBackToProjects} /> : null}
+
       <Text style={styles.noTargetText}>{t("settings.project.noEditableTarget")}</Text>
-      <Button
-        testID="project-settings-back-button"
-        onPress={handleBack}
-        variant="secondary"
-        size="md"
-      >
-        {t("settings.project.backToProjects")}
-      </Button>
+      {showBackToProjects ? (
+        <Button
+          testID="project-settings-back-button"
+          onPress={onBackToProjects}
+          variant="secondary"
+          size="md"
+        >
+          {t("settings.project.backToProjects")}
+        </Button>
+      ) : null}
     </View>
   );
 }
 
-function BackToProjectsButton({ serverId, onPress }: { serverId: string; onPress?: () => void }) {
+function BackToProjectsButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
-  const handleBack = useCallback(() => navigateBackToProjects(serverId), [serverId]);
   return (
     <Button
       testID="project-settings-back-link"
       accessibilityLabel={t("settings.project.backToProjects")}
-      onPress={onPress ?? handleBack}
+      onPress={onPress}
       variant="ghost"
       size="sm"
       leftIcon={ArrowLeft}
@@ -238,7 +199,8 @@ interface ProjectSettingsBodyProps {
   selectedHost: ProjectHostEntry;
   client: DaemonClient;
   isHostGone: boolean;
-  onDirtyChange?: (dirty: boolean) => void;
+  onBackToProjects: () => void;
+  showBackToProjects: boolean;
 }
 
 function ProjectSettingsBody({
@@ -246,53 +208,10 @@ function ProjectSettingsBody({
   selectedHost,
   client,
   isHostGone,
-  onDirtyChange,
+  onBackToProjects,
+  showBackToProjects,
 }: ProjectSettingsBodyProps) {
   const { t } = useTranslation();
-  const navigation = useNavigation();
-  const [configSaveState, setConfigSaveState] = useState<ProjectFormSaveState | null>(null);
-  const [kanbanSaveState, setKanbanSaveState] = useState<ProjectFormSaveState | null>(null);
-  const saveState = useMemo(
-    () => combineProjectFormSaveStates([configSaveState, kanbanSaveState]),
-    [configSaveState, kanbanSaveState],
-  );
-  const isFormDirty = saveState?.isDirty ?? false;
-
-  useEffect(() => {
-    onDirtyChange?.(isFormDirty);
-    return () => onDirtyChange?.(false);
-  }, [onDirtyChange, isFormDirty]);
-
-  // Native: a single route-removal guard covers hardware back, swipe-back, and
-  // any in-app navigation that pops this screen. Web keeps the guard in the
-  // explicit exit handlers instead - preventing removal there fights the
-  // browser's URL, which expo-router does not recover from (see
-  // docs/expo-router.md on route-tree fragility).
-  const handlePreventRemove = useCallback(
-    ({ data }: { data: { action: Parameters<typeof navigation.dispatch>[0] } }) => {
-      void (async () => {
-        if (await confirmDiscardProjectSettingsChanges(t)) {
-          navigation.dispatch(data.action);
-        }
-      })();
-    },
-    [navigation, t],
-  );
-  usePreventRemove(isNative && isFormDirty, handlePreventRemove);
-
-  const handleBackToProjects = useCallback(() => {
-    // Native removal is guarded by usePreventRemove above; don't double-prompt.
-    if (isNative || !isFormDirty) {
-      navigateBackToProjects(selectedHost.serverId);
-      return;
-    }
-    void (async () => {
-      if (await confirmDiscardProjectSettingsChanges(t)) {
-        navigateBackToProjects(selectedHost.serverId);
-      }
-    })();
-  }, [isFormDirty, selectedHost.serverId, t]);
-
   const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
   const [editSessionId, setEditSessionId] = useState(0);
   const openEditSheet = useCallback(() => {
@@ -300,7 +219,6 @@ function ProjectSettingsBody({
     setIsEditSheetOpen(true);
   }, []);
   const closeEditSheet = useCallback(() => setIsEditSheetOpen(false), []);
-
   const queryKey = useMemo(
     () => ["project-config", selectedHost.serverId, selectedHost.repoRoot] as const,
     [selectedHost.serverId, selectedHost.repoRoot],
@@ -321,27 +239,14 @@ function ProjectSettingsBody({
   const data = readQuery.data;
   const supportsCustomIcon = useHostFeature(selectedHost.serverId, "projectCustomIcon");
   const customIconRevision = selectedHost.customIconRevision ?? null;
-  const projectIconTargets = useMemo(
-    () => [
-      {
-        serverId: selectedHost.serverId,
-        projectViewKey: project.viewKey,
-        projectId: selectedHost.projectId,
-        iconWorkingDir: selectedHost.repoRoot,
-        customIconRevision,
-      },
-    ],
-    [
-      customIconRevision,
-      project.viewKey,
-      selectedHost.projectId,
-      selectedHost.repoRoot,
-      selectedHost.serverId,
-    ],
-  );
-  const projectIcons = useProjectIcons({
-    projects: projectIconTargets,
-  });
+  const projectIconTargets = useMemo(() => {
+    const target = createProjectIconTarget({
+      projectViewKey: project.viewKey,
+      placement: { ...selectedHost, iconWorkingDir: selectedHost.repoRoot },
+    });
+    return target ? [target] : [];
+  }, [project.viewKey, selectedHost]);
+  const projectIcons = useProjectIcons({ projects: projectIconTargets });
   const projectIconDataUri = projectIcons.get(project.viewKey) ?? null;
   const editSnapshot = useMemo<ProjectEditFormSnapshot>(
     () => ({
@@ -357,13 +262,11 @@ function ProjectSettingsBody({
       selectedHost.projectName,
     ],
   );
-  const loadedConfig: OttoConfigRaw | null = data?.ok ? (data.config ?? {}) : null;
-  const loadedRevision: OttoConfigRevision | null = data?.ok ? data.revision : null;
+  const loadedConfig: PaseoConfigRaw | null = data?.ok ? (data.config ?? {}) : null;
+  const loadedRevision: PaseoConfigRevision | null = data?.ok ? data.revision : null;
   const hasUncommittedWorktreeSetupChanges =
     data?.ok === true && data.hasUncommittedWorktreeSetupChanges === true;
   const readError: ProjectConfigRpcError | null = data && !data.ok ? data.error : null;
-
-  useRevealSettingsTarget(PROJECT_IDENTITY_SETTINGS, openEditSheet);
 
   const handleReload = useCallback(() => {
     void readQuery.refetch();
@@ -371,26 +274,7 @@ function ProjectSettingsBody({
 
   return (
     <View role="main" style={styles.body}>
-      <View style={styles.topBar}>
-        <BackToProjectsButton serverId={selectedHost.serverId} onPress={handleBackToProjects} />
-        {saveState ? (
-          <SettingsButton
-            settingIds={["host-projects-project-settings-actions-save"]}
-            testID="save-button"
-            accessibilityLabel={t("settings.project.actions.save")}
-            variant="default"
-            size="sm"
-            disabled={!saveState.canSave}
-            loading={saveState.isSaving}
-            onPress={saveState.save}
-          >
-            {saveState.isSaving
-              ? t("settings.project.actions.saving")
-              : t("settings.project.actions.save")}
-          </SettingsButton>
-        ) : null}
-      </View>
-
+      {showBackToProjects ? <BackToProjectsButton onPress={onBackToProjects} /> : null}
       <View style={styles.headerBlock}>
         <View style={styles.titleRow}>
           <ProjectTitleIcon
@@ -409,12 +293,13 @@ function ProjectSettingsBody({
             hitSlop={8}
             style={styles.editButton}
           >
-            <Pencil size="sm" color={styles.iconColor.color} />
+            <Pencil size={ICON_SIZE} color={styles.iconColor.color} />
           </Pressable>
         </View>
       </View>
 
       <ProjectEditSheet
+        // A new instance per open seeds the form from the project as it stands now.
         key={`${selectedHost.serverId}:${selectedHost.projectId}:${editSessionId}`}
         visible={isEditSheetOpen}
         onClose={closeEditSheet}
@@ -424,41 +309,6 @@ function ProjectSettingsBody({
         client={client}
         supportsCustomIcon={supportsCustomIcon}
         snapshot={editSnapshot}
-      />
-
-      <ProjectTeamSection serverId={selectedHost.serverId} projectId={selectedHost.projectId} />
-
-      <ProjectKanbanSection
-        serverId={selectedHost.serverId}
-        projectId={selectedHost.projectId}
-        client={client}
-        onSaveStateChange={setKanbanSaveState}
-      />
-
-      <ForgeConnectionsSettings
-        serverId={selectedHost.serverId}
-        projectId={selectedHost.projectId}
-      />
-
-      <ProjectBrowserSection
-        serverId={selectedHost.serverId}
-        projectId={selectedHost.projectId}
-        client={client}
-      />
-      <ProjectKnowledgeSection
-        serverId={selectedHost.serverId}
-        projectId={selectedHost.projectId}
-        client={client}
-      />
-      <ProjectArtifactsSection
-        serverId={selectedHost.serverId}
-        projectId={selectedHost.projectId}
-        client={client}
-      />
-      <ProjectWorkflowsSection
-        serverId={selectedHost.serverId}
-        projectId={selectedHost.projectId}
-        client={client}
       />
 
       {renderContent({
@@ -472,16 +322,41 @@ function ProjectSettingsBody({
         client,
         onReload: handleReload,
         isHostGone,
-        onSaveStateChange: setConfigSaveState,
+        onBackToProjects,
+        showBackToProjects,
       })}
+      <TeamSelection
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+        projectDefault
+      />
+      <OttoKanbanProjectSettings
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+      />
+      {/* OTTO(bitbucket): canonical Project Settings placement; forms and account ownership remain in Otto modules. */}
+      <OttoBitbucketProjectSettings
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+      />
+      {/* OTTO(artifacts): feature-owned controls in canonical Project Settings. */}
+      <OttoArtifactProjectSettings
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+      />
+      {/* OTTO(schedules): does not inherit or change any other category's settings. */}
+      <ScheduleProjectSettings
+        serverId={selectedHost.serverId}
+        projectId={selectedHost.projectId}
+      />
     </View>
   );
 }
 
 interface RenderContentInput {
   readQuery: ReturnType<typeof useQuery<ReadProjectConfigData>>;
-  loadedConfig: OttoConfigRaw | null;
-  loadedRevision: OttoConfigRevision | null;
+  loadedConfig: PaseoConfigRaw | null;
+  loadedRevision: PaseoConfigRevision | null;
   hasUncommittedWorktreeSetupChanges: boolean;
   readError: ProjectConfigRpcError | null;
   selectedHost: ProjectHostEntry;
@@ -489,7 +364,8 @@ interface RenderContentInput {
   client: DaemonClient;
   onReload: () => void;
   isHostGone: boolean;
-  onSaveStateChange: (state: ProjectFormSaveState | null) => void;
+  onBackToProjects: () => void;
+  showBackToProjects: boolean;
 }
 
 function renderContent({
@@ -503,7 +379,8 @@ function renderContent({
   client,
   onReload,
   isHostGone,
-  onSaveStateChange,
+  onBackToProjects,
+  showBackToProjects,
 }: RenderContentInput) {
   if (readQuery.isLoading) {
     return (
@@ -522,7 +399,12 @@ function renderContent({
   }
 
   if (isHostGone) {
-    return <NoEditableTarget serverId={selectedHost.serverId} />;
+    return (
+      <NoEditableTarget
+        onBackToProjects={onBackToProjects}
+        showBackToProjects={showBackToProjects}
+      />
+    );
   }
 
   if (!loadedConfig) {
@@ -533,7 +415,8 @@ function renderContent({
     );
   }
 
-  const formKey = `${selectedHost.serverId}::${selectedHost.repoRoot}::${revisionToKey(loadedRevision)}`;
+  // OTTO(settings): keep the open draft mounted across our own accepted revisions.
+  const formKey = `${selectedHost.serverId}::${selectedHost.repoRoot}`;
   return (
     <ProjectConfigForm
       key={formKey}
@@ -544,14 +427,8 @@ function renderContent({
       queryKey={queryKey}
       client={client}
       onReload={onReload}
-      onSaveStateChange={onSaveStateChange}
     />
   );
-}
-
-function revisionToKey(revision: OttoConfigRevision | null): string {
-  if (!revision) return "none";
-  return `${revision.mtimeMs}-${revision.size}`;
 }
 
 interface ReadFailureCalloutProps {
@@ -569,7 +446,7 @@ function ReadFailureCallout({ kind, error, onReload }: ReadFailureCalloutProps) 
   });
   return (
     <View style={styles.errorBlock}>
-      <Alert testID={testID} variant="error" title={title} description={description}>
+      <Alert size="md" testID={testID} variant="error" title={title} description={description}>
         <Button testID={`${testID}-action-0`} onPress={onReload} variant="outline" size="sm">
           {t("settings.project.actions.reload")}
         </Button>
@@ -619,24 +496,13 @@ function errorToDetail(error: unknown): string | null {
 }
 
 interface ProjectConfigFormProps {
-  baseConfig: OttoConfigRaw;
-  revision: OttoConfigRevision | null;
+  baseConfig: PaseoConfigRaw;
+  revision: PaseoConfigRevision | null;
   hasUncommittedWorktreeSetupChanges: boolean;
   repoRoot: string;
   queryKey: readonly [string, string, string];
   client: DaemonClient;
   onReload: () => void;
-  onSaveStateChange: (state: ProjectFormSaveState | null) => void;
-}
-
-// Content-only identity of a draft, for dirty comparison. Script row ids come
-// from a module counter, so two configToDraft calls over the same config would
-// differ by id alone - strip them.
-function draftFingerprint(draft: ProjectConfigDraft): string {
-  return JSON.stringify({
-    ...draft,
-    scripts: draft.scripts.map(({ id: _id, ...rest }) => rest),
-  });
 }
 
 function ProjectConfigForm({
@@ -647,68 +513,57 @@ function ProjectConfigForm({
   queryKey,
   client,
   onReload,
-  onSaveStateChange,
 }: ProjectConfigFormProps) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
-  const toast = useToast();
-  const isDeveloperMode = useIsDeveloperMode();
-
-  const [draft, setDraft] = useState<ProjectConfigDraft>(() => configToDraft(baseConfig));
-  const [initialFingerprint] = useState(() => draftFingerprint(draft));
-  const [writeError, setWriteError] = useState<ProjectConfigRpcError | null>(null);
-  const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
-
-  const isDirty = useMemo(
-    () => draftFingerprint(draft) !== initialFingerprint,
-    [draft, initialFingerprint],
+  // OTTO(settings): React renders a plain form owner; it does not sequence writes.
+  const [model] = useState(
+    () =>
+      new ProjectConfigSettingsForm(baseConfig, revision, {
+        read: () => client.readProjectConfig(repoRoot),
+        write: (config, expectedRevision) =>
+          client.writeProjectConfig({ repoRoot, config, expectedRevision }),
+        valid: (next) => !next.scripts.some((script) => validateScript(script, t).hasErrors),
+        accepted: (result) => {
+          queryClient.setQueryData<ReadProjectConfigData>(queryKey, {
+            ...result,
+            requestId: "local-cache",
+            repoRoot,
+          });
+          void queryClient.invalidateQueries({ queryKey: ["projects"] });
+        },
+      }),
   );
-
-  const saveMutation = useMutation({
-    mutationFn: async (input: {
-      config: OttoConfigRaw;
-      expectedRevision: OttoConfigRevision | null;
-    }) => {
-      return client.writeProjectConfig({
-        repoRoot,
-        config: input.config,
-        expectedRevision: input.expectedRevision,
-      });
-    },
-    onSuccess: (result) => {
-      if (result.ok) {
-        queryClient.setQueryData<ReadProjectConfigData>(queryKey, {
-          ok: true,
-          config: result.config,
-          revision: result.revision,
-          hasUncommittedWorktreeSetupChanges: result.hasUncommittedWorktreeSetupChanges,
-          requestId: "local-cache",
-          repoRoot,
-        });
-        setWriteError(null);
-        queryClient.invalidateQueries({ queryKey: ["projects"] });
-        toast.show(t("settings.project.actions.saved"), { variant: "success" });
-      } else {
-        setWriteError(result.error);
-      }
-    },
-  });
-
-  const handleSave = useCallback(() => {
-    if (writeError?.code === "stale_project_config") return;
-    const config = applyDraftToConfig({ draft, base: baseConfig });
-    saveMutation.mutate({ config, expectedRevision: revision });
-  }, [draft, baseConfig, revision, writeError, saveMutation]);
-
-  const handleReload = useCallback(() => {
-    setWriteError(null);
+  const appVisible = useAppVisible();
+  const retainedActive = useRetainedPanelActive();
+  useEffect(
+    () => (appVisible && retainedActive ? model.activate() : undefined),
+    [model, appVisible, retainedActive],
+  );
+  const {
+    draft,
+    error: writeError,
+    reading,
+  } = useSyncExternalStore(model.subscribe, model.getSnapshot);
+  const [editingScriptId, setEditingScriptId] = useState<string | null>(null);
+  const handleReload = useCallback(async () => {
+    if (
+      !(await confirmDialog({
+        title: t("settings.project.actions.reload"),
+        message: "Replace unsaved changes with the saved project settings?",
+        confirmLabel: t("settings.project.actions.reload"),
+      }))
+    )
+      return;
+    await model.reload();
     onReload();
-  }, [onReload]);
-
-  const updateDraft = useCallback((updater: (draft: ProjectConfigDraft) => ProjectConfigDraft) => {
-    setDraft((prev) => updater(prev));
-  }, []);
-
+  }, [model, onReload, t]);
+  const updateDraft = useCallback(
+    (updater: (value: ProjectConfigDraft) => ProjectConfigDraft) => {
+      model.edit(updater);
+    },
+    [model],
+  );
   const handleSetupChange = useCallback(
     (text: string) => updateDraft((d) => ({ ...d, setupText: text })),
     [updateDraft],
@@ -805,15 +660,9 @@ function ProjectConfigForm({
 
   const editingScript = draft.scripts.find((entry) => entry.id === editingScriptId);
 
-  const hasInvalidScripts = useMemo(
-    () => draft.scripts.some((script) => validateScript(script, t).hasErrors),
-    [draft.scripts, t],
-  );
-
   const scriptsTrailing = useMemo(
     () => (
-      <SettingsPressable
-        settingIds={["host-projects-project-settings-scripts-add-script"]}
+      <Pressable
         onPress={handleAddScript}
         hitSlop={8}
         style={settingsStyles.sectionHeaderLink}
@@ -821,8 +670,8 @@ function ProjectConfigForm({
         accessibilityLabel={t("settings.project.scripts.actions.add")}
         testID="scripts-add-button"
       >
-        <Plus size="sm" color={styles.iconColor.color} />
-      </SettingsPressable>
+        <Plus size={ICON_SIZE} color={styles.iconColor.color} />
+      </Pressable>
     ),
     [handleAddScript, t],
   );
@@ -852,179 +701,150 @@ function ProjectConfigForm({
 
   const isStale = writeError?.code === "stale_project_config";
   const isWriteFailed = writeError?.code === "write_failed";
-  const saveDisabled = saveMutation.isPending || isStale || hasInvalidScripts || !isDirty;
 
-  // Publish save state to the header button without re-rendering the whole
-  // body on every keystroke: the handler is ref-stable, so the effect only
-  // fires when one of the booleans flips.
-  const saveHandlerRef = useRef(handleSave);
-  useEffect(() => {
-    saveHandlerRef.current = handleSave;
-  }, [handleSave]);
-  const stableSave = useCallback(() => saveHandlerRef.current(), []);
-
-  const isSaving = saveMutation.isPending;
-  useEffect(() => {
-    if (!isDeveloperMode) {
-      onSaveStateChange(null);
-      return;
-    }
-    onSaveStateChange({
-      isDirty,
-      isSaving,
-      canSave: !saveDisabled,
-      save: stableSave,
-    });
-  }, [onSaveStateChange, isDeveloperMode, isDirty, isSaving, saveDisabled, stableSave]);
-
-  useEffect(() => () => onSaveStateChange(null), [onSaveStateChange]);
+  // OTTO(settings): confirmed reload owns the form until the saved snapshot arrives.
+  if (reading)
+    return (
+      <View style={styles.centered}>
+        <LoadingSpinner color={ResolveSpinnerColor()} />
+      </View>
+    );
 
   return (
     <View>
-      {isDeveloperMode ? (
-        <>
-          <SettingsGroup
-            title={t("settings.project.worktree.title")}
-            info={t("settings.project.worktree.info")}
-            testID="worktree-group"
-          >
-            <TargetSection
-              settingIds={["host-projects-project-settings-worktree-setup-command"]}
-              title={t("settings.project.worktree.setup")}
-              testID="worktree-setup-section"
-              trailing={setupDocsLink}
-            >
-              {hasUncommittedWorktreeSetupChanges ? (
-                <Alert
-                  variant="warning"
-                  title={t("settings.project.worktree.uncommittedTitle")}
-                  description={t("settings.project.worktree.uncommittedDescription")}
-                />
-              ) : null}
-              <SettingsTextAreaCard
-                testID="worktree-setup-input"
-                accessibilityLabel={t("settings.project.worktree.setupAccessibility")}
-                value={draft.setupText}
-                onChangeText={handleSetupChange}
-                placeholder="npm install"
-              />
-            </TargetSection>
-
-            <TargetSection
-              settingIds={["host-projects-project-settings-worktree-teardown-command"]}
-              title={t("settings.project.worktree.teardown")}
-              testID="worktree-teardown-section"
-              trailing={teardownDocsLink}
-              flush
-            >
-              <SettingsTextAreaCard
-                testID="worktree-teardown-input"
-                accessibilityLabel={t("settings.project.worktree.teardownAccessibility")}
-                value={draft.teardownText}
-                onChangeText={handleTeardownChange}
-                placeholder="docker compose down"
-              />
-            </TargetSection>
-          </SettingsGroup>
-
-          <SettingsGroup
-            title={t("settings.project.scripts.title")}
-            info={t("settings.project.scripts.info")}
-            trailing={scriptsTrailing}
-            testID="scripts-group"
-          >
-            <View style={settingsStyles.card} testID="scripts-list">
-              {draft.scripts.length === 0 ? (
-                <View style={settingsStyles.row}>
-                  <Text style={styles.emptyScripts}>{t("settings.project.scripts.empty")}</Text>
-                </View>
-              ) : (
-                draft.scripts.map((script, index) => (
-                  <ScriptRow
-                    key={script.id}
-                    script={script}
-                    isFirst={index === 0}
-                    onEdit={handleEditScript}
-                    onRemove={handleRemoveScript}
-                  />
-                ))
-              )}
-            </View>
-          </SettingsGroup>
-
-          <SettingsGroup
-            title={t("settings.project.metadata.title")}
-            info={t("settings.project.metadata.info")}
-            testID="metadata-group"
-          >
-            {METADATA_PROMPT_KEYS.map((key, index) => (
-              <MetadataPromptSection
-                key={key}
-                promptKey={key}
-                value={draft.metadataPrompts[key]}
-                onChange={handleMetadataPromptChange}
-                flush={index === METADATA_PROMPT_KEYS.length - 1}
-              />
-            ))}
-          </SettingsGroup>
-
-          {isStale ? (
-            <View style={styles.calloutWrap}>
-              <Alert
-                testID="stale-callout"
-                variant="error"
-                title={t("settings.project.writeFailures.staleTitle")}
-                description={t("settings.project.writeFailures.staleDescription")}
-              >
-                <Button
-                  testID="stale-callout-action-0"
-                  onPress={handleReload}
-                  variant="outline"
-                  size="sm"
-                >
-                  {t("settings.project.actions.reload")}
-                </Button>
-              </Alert>
-            </View>
-          ) : null}
-
-          {isWriteFailed ? (
-            <View style={styles.calloutWrap}>
-              <Alert
-                testID="write-failed-callout"
-                variant="error"
-                title={t("settings.project.writeFailures.failedTitle")}
-                description={t("settings.project.writeFailures.failedDescription")}
-              >
-                <Button
-                  testID="write-failed-callout-action-0"
-                  onPress={handleSave}
-                  variant="outline"
-                  size="sm"
-                >
-                  {t("settings.project.actions.tryAgain")}
-                </Button>
-                <Button
-                  testID="write-failed-callout-action-1"
-                  onPress={handleReload}
-                  variant="outline"
-                  size="sm"
-                >
-                  {t("settings.project.actions.reload")}
-                </Button>
-              </Alert>
-            </View>
-          ) : null}
-
-          {editingScript ? (
-            <ScriptEditModal
-              script={editingScript}
-              onChange={handleEditingDraftChange}
-              onCancel={handleCancelEditing}
-              onSave={handleSaveEditing}
+      <SettingsGroup
+        title={t("settings.project.worktree.title")}
+        info={t("settings.project.worktree.info")}
+        testID="worktree-group"
+      >
+        <SettingsSection
+          title={t("settings.project.worktree.setup")}
+          testID="worktree-setup-section"
+          trailing={setupDocsLink}
+        >
+          {hasUncommittedWorktreeSetupChanges ? (
+            <Alert
+              size="sm"
+              variant="warning"
+              title={t("settings.project.worktree.uncommittedTitle")}
+              description={t("settings.project.worktree.uncommittedDescription")}
             />
           ) : null}
-        </>
+          <SettingsTextAreaCard
+            testID="worktree-setup-input"
+            accessibilityLabel={t("settings.project.worktree.setupAccessibility")}
+            value={draft.setupText}
+            onChangeText={handleSetupChange}
+            placeholder="npm install"
+          />
+        </SettingsSection>
+
+        <SettingsSection
+          title={t("settings.project.worktree.teardown")}
+          testID="worktree-teardown-section"
+          trailing={teardownDocsLink}
+          flush
+        >
+          <SettingsTextAreaCard
+            testID="worktree-teardown-input"
+            accessibilityLabel={t("settings.project.worktree.teardownAccessibility")}
+            value={draft.teardownText}
+            onChangeText={handleTeardownChange}
+            placeholder="docker compose down"
+          />
+        </SettingsSection>
+      </SettingsGroup>
+
+      <SettingsGroup
+        title={t("settings.project.scripts.title")}
+        info={t("settings.project.scripts.info")}
+        trailing={scriptsTrailing}
+        testID="scripts-group"
+      >
+        <View style={settingsStyles.card} testID="scripts-list">
+          {draft.scripts.length === 0 ? (
+            <View style={settingsStyles.row}>
+              <Text style={styles.emptyScripts}>{t("settings.project.scripts.empty")}</Text>
+            </View>
+          ) : (
+            draft.scripts.map((script, index) => (
+              <ScriptRow
+                key={script.id}
+                script={script}
+                isFirst={index === 0}
+                onEdit={handleEditScript}
+                onRemove={handleRemoveScript}
+              />
+            ))
+          )}
+        </View>
+      </SettingsGroup>
+
+      <SettingsGroup
+        title={t("settings.project.metadata.title")}
+        info={t("settings.project.metadata.info")}
+        testID="metadata-group"
+      >
+        {METADATA_PROMPT_KEYS.map((key, index) => (
+          <MetadataPromptSection
+            key={key}
+            promptKey={key}
+            value={draft.metadataPrompts[key]}
+            onChange={handleMetadataPromptChange}
+            flush={index === METADATA_PROMPT_KEYS.length - 1}
+          />
+        ))}
+      </SettingsGroup>
+
+      {isStale ? (
+        <View style={styles.calloutWrap}>
+          <Alert
+            size="sm"
+            testID="stale-callout"
+            variant="error"
+            title={t("settings.project.writeFailures.staleTitle")}
+            description={t("settings.project.writeFailures.staleDescription")}
+          >
+            <Button
+              testID="stale-callout-action-0"
+              onPress={handleReload}
+              variant="outline"
+              size="sm"
+            >
+              {t("settings.project.actions.reload")}
+            </Button>
+          </Alert>
+        </View>
+      ) : null}
+
+      {isWriteFailed ? (
+        <View style={styles.calloutWrap}>
+          <Alert
+            size="sm"
+            testID="write-failed-callout"
+            variant="error"
+            title={t("settings.project.writeFailures.failedTitle")}
+            description={t("settings.project.writeFailures.failedDescription")}
+          >
+            <Button
+              testID="write-failed-callout-action-1"
+              onPress={handleReload}
+              variant="outline"
+              size="sm"
+            >
+              {t("settings.project.actions.reload")}
+            </Button>
+          </Alert>
+        </View>
+      ) : null}
+
+      {editingScript ? (
+        <ScriptEditModal
+          script={editingScript}
+          onChange={handleEditingDraftChange}
+          onCancel={handleCancelEditing}
+          onSave={handleSaveEditing}
+        />
       ) : null}
     </View>
   );
@@ -1049,7 +869,7 @@ function ProjectTitleIcon({
       iconDataUri={iconDataUri}
       initial={initial}
       projectViewKey={projectViewKey}
-      size={40}
+      size={28}
       textStyle={styles.titleIconFallbackText}
     />
   );
@@ -1071,15 +891,7 @@ function MetadataPromptSection({ promptKey, value, onChange, flush }: MetadataPr
     [onChange, promptKey],
   );
   return (
-    <TargetSection
-      settingIds={settingsTargetIdsForPersistence(
-        "projects",
-        `project.metadataPrompts.${promptKey}`,
-      )}
-      title={title}
-      testID={meta.sectionTestID}
-      flush={flush}
-    >
+    <SettingsSection title={title} testID={meta.sectionTestID} flush={flush}>
       <SettingsTextAreaCard
         testID={meta.inputTestID}
         accessibilityLabel={title}
@@ -1087,7 +899,7 @@ function MetadataPromptSection({ promptKey, value, onChange, flush }: MetadataPr
         onChangeText={handleChange}
         placeholder={t(meta.placeholderKey)}
       />
-    </TargetSection>
+    </SettingsSection>
   );
 }
 
@@ -1099,7 +911,6 @@ interface ScriptRowProps {
 }
 
 function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
-  const requestedSetting = useSettingsSearchRequest();
   const { t } = useTranslation();
   const handleEdit = useCallback(() => onEdit(script), [onEdit, script]);
   const handleRemove = useCallback(() => onRemove(script), [onRemove, script]);
@@ -1107,40 +918,33 @@ function ScriptRow({ script, isFirst, onEdit, onRemove }: ScriptRowProps) {
 
   return (
     <View style={rowStyle} testID={`script-row-${script.id}`}>
-      <SettingsPressable
-        settingIds={["host-projects-project-settings-scripts-edit-script"]}
-        style={styles.scriptRowMain}
-        onPress={handleEdit}
-      >
+      <Pressable style={styles.scriptRowMain} onPress={handleEdit}>
         <Text style={settingsStyles.rowTitle} numberOfLines={1}>
           {script.name || t("settings.project.scripts.untitled")}
         </Text>
         <Text style={settingsStyles.rowHint} numberOfLines={1}>
           {scriptHint(script, t)}
         </Text>
-      </SettingsPressable>
+      </Pressable>
       <DropdownMenu>
         <DropdownMenuTrigger
           accessibilityLabel={t("settings.project.scripts.menuAccessibility")}
           testID={`script-row-menu-${script.id}`}
           style={styles.scriptKebab}
         >
-          <MoreVertical size="sm" color={styles.chevronColor.color} />
+          <MoreVertical size={ICON_SIZE} color={styles.chevronColor.color} />
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" minWidth={160}>
-          <SettingsSearchProvider settingId={requestedSetting}>
-            <DropdownMenuItem testID={`script-action-${script.id}-edit`} onSelect={handleEdit}>
-              {t("settings.project.scripts.actions.edit")}
-            </DropdownMenuItem>
-            <SettingsMenuItem
-              settingIds={["host-projects-project-settings-scripts-delete-script"]}
-              testID={`script-action-${script.id}-remove`}
-              destructive
-              onSelect={handleRemove}
-            >
-              {t("settings.project.scripts.actions.remove")}
-            </SettingsMenuItem>
-          </SettingsSearchProvider>
+          <DropdownMenuItem testID={`script-action-${script.id}-edit`} onSelect={handleEdit}>
+            {t("settings.project.scripts.actions.edit")}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            testID={`script-action-${script.id}-remove`}
+            destructive
+            onSelect={handleRemove}
+          >
+            {t("settings.project.scripts.actions.remove")}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
     </View>
@@ -1238,32 +1042,6 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
     [script.name, t],
   );
 
-  const footer = useMemo(
-    () => (
-      <View style={styles.modalFooter}>
-        <Button
-          style={styles.modalFooterButton}
-          onPress={onCancel}
-          variant="ghost"
-          size="md"
-          testID="script-edit-cancel"
-        >
-          {t("settings.project.actions.cancel")}
-        </Button>
-        <Button
-          style={styles.modalFooterButton}
-          onPress={handleSavePress}
-          variant="default"
-          size="md"
-          testID="script-edit-save"
-        >
-          {t("settings.project.actions.save")}
-        </Button>
-      </View>
-    ),
-    [handleSavePress, onCancel, t],
-  );
-
   return (
     <AdaptiveModalSheet
       visible
@@ -1271,19 +1049,13 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
       onClose={onCancel}
       testID="script-edit-modal"
       desktopMaxWidth={560}
-      footer={footer}
     >
       <View style={styles.modalSection}>
-        <SettingsTargetText
-          settingId="host-projects-project-settings-script-editor-name"
-          style={styles.modalLabel}
-        >
-          {t("settings.project.scripts.name")}
-        </SettingsTargetText>
+        <Text style={styles.modalLabel}>{t("settings.project.scripts.name")}</Text>
         <TextInput
           testID="script-edit-name"
           accessibilityLabel={t("settings.project.scripts.nameAccessibility")}
-          value={script.name}
+          initialValue={script.name}
           onChangeText={handleNameChange}
           onBlur={handleNameBlur}
           placeholder="dev"
@@ -1297,16 +1069,12 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
         ) : null}
       </View>
       <View style={styles.modalSection}>
-        <SettingsTargetText
-          settingId="host-projects-project-settings-script-editor-command"
-          style={styles.modalLabel}
-        >
-          {t("settings.project.scripts.command")}
-        </SettingsTargetText>
-        <TextArea
+        <Text style={styles.modalLabel}>{t("settings.project.scripts.command")}</Text>
+        <TextInput
           testID="script-edit-command"
           accessibilityLabel={t("settings.project.scripts.commandAccessibility")}
-          value={script.commandText}
+          multiline
+          initialValue={script.commandText}
           onChangeText={handleCommandChange}
           onBlur={handleCommandBlur}
           placeholder="npm run dev"
@@ -1322,12 +1090,9 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
       <View style={styles.modalSection}>
         <View style={styles.serviceToggleRow}>
           <View style={styles.serviceToggleText}>
-            <SettingsTargetText
-              settingId="host-projects-project-settings-script-editor-service"
-              style={styles.serviceToggleLabel}
-            >
+            <Text style={styles.serviceToggleLabel}>
               {t("settings.project.scripts.runAsService")}
-            </SettingsTargetText>
+            </Text>
             <Text style={styles.modalHint}>{t("settings.project.scripts.serviceHint")}</Text>
           </View>
           <Switch
@@ -1337,6 +1102,14 @@ function ScriptEditModal({ script, onChange, onCancel, onSave }: ScriptEditModal
             testID="script-edit-service-toggle"
           />
         </View>
+      </View>
+      <View style={styles.modalFooter}>
+        <Button onPress={onCancel} variant="ghost" size="md" testID="script-edit-cancel">
+          {t("settings.project.actions.cancel")}
+        </Button>
+        <Button onPress={handleSavePress} variant="default" size="md" testID="script-edit-save">
+          {t("settings.project.actions.save")}
+        </Button>
       </View>
     </AdaptiveModalSheet>
   );
@@ -1350,7 +1123,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   noTargetText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   body: {
     padding: theme.spacing[4],
@@ -1359,12 +1132,6 @@ const styles = StyleSheet.create((theme) => ({
   backButton: {
     alignSelf: "flex-start",
     paddingHorizontal: 0,
-  },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[3],
   },
   headerBlock: {
     marginTop: theme.spacing[2],
@@ -1376,80 +1143,21 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     gap: theme.spacing[3],
   },
-  editButton: {
-    padding: theme.spacing[1],
-  },
   projectTitle: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
     flexShrink: 1,
   },
-  nameEditorRow: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    minWidth: 0,
-  },
-  nameEditorIconButton: {
+  editButton: {
     padding: theme.spacing[1],
   },
-  nameEditorInput: {
-    flex: 1,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.lg,
-    fontWeight: theme.fontWeight.medium,
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.surface2,
-    minWidth: 0,
-  },
-  nameEditorResetButton: {
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-  },
-  nameEditorResetText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-  },
-  titleIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: theme.borderRadius.md,
-  },
-  titleIconFallback: {
-    width: 28,
-    height: 28,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   titleIconFallbackText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
   },
   iconColor: {
     color: theme.colors.foregroundMuted,
-  },
-  hostIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
-    paddingHorizontal: theme.spacing[2],
-    paddingVertical: theme.spacing[1],
-    borderRadius: theme.borderRadius.lg,
-    alignSelf: "flex-start",
-    minWidth: 0,
-  },
-  hostName: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    flexShrink: 1,
-    minWidth: 0,
   },
   centered: {
     flex: 1,
@@ -1462,7 +1170,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   emptyScripts: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
   },
   scriptRow: {
     flexDirection: "row",
@@ -1491,16 +1199,21 @@ const styles = StyleSheet.create((theme) => ({
   calloutWrap: {
     marginTop: theme.spacing[3],
   },
+  footer: {
+    marginTop: theme.spacing[4],
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
   modalSection: {
     gap: theme.spacing[2],
   },
   modalLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   modalInput: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
@@ -1510,7 +1223,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   modalMultilineInput: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     borderRadius: theme.borderRadius.md,
@@ -1518,21 +1231,17 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface2,
     minHeight: 100,
+    textAlignVertical: "top",
   },
-  // Row handed to AdaptiveModalSheet's `footer` - the sheet's own wrapper
-  // already supplies padding, the top border, and the row alignment.
   modalFooter: {
-    flex: 1,
     flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-  },
-  modalFooterButton: {
-    flex: 1,
+    justifyContent: "flex-end",
+    gap: theme.spacing[2],
+    marginTop: theme.spacing[2],
   },
   fieldError: {
     color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   serviceToggleRow: {
     flexDirection: "row",
@@ -1546,12 +1255,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   serviceToggleLabel: {
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
   },
   modalHint: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
   },
   placeholderColor: {
     color: theme.colors.foregroundMuted,

@@ -1,9 +1,9 @@
-import { createTestOttoDaemon, type TestOttoDaemon } from "./otto-daemon.js";
+import { createTestPaseoDaemon, type TestPaseoDaemon } from "./paseo-daemon.js";
 import { DaemonClient } from "./daemon-client.js";
 import { createTestAgentClients } from "./fake-agent-client.js";
 
 export interface DaemonTestContext {
-  daemon: TestOttoDaemon;
+  daemon: TestPaseoDaemon;
   client: DaemonClient;
   cleanup: () => Promise<void>;
 }
@@ -33,9 +33,9 @@ export interface DaemonTestContext {
  * ```
  */
 export async function createDaemonTestContext(
-  options?: Parameters<typeof createTestOttoDaemon>[0],
+  options?: Parameters<typeof createTestPaseoDaemon>[0],
 ): Promise<DaemonTestContext> {
-  const daemon = await createTestOttoDaemon({
+  const daemon = await createTestPaseoDaemon({
     agentClients: createTestAgentClients(),
     ...options,
   });
@@ -43,7 +43,7 @@ export async function createDaemonTestContext(
     url: `ws://127.0.0.1:${daemon.port}/ws`,
   });
   await client.connect();
-  await client.fetchAgents({ subscribe: { subscriptionId: "test" } });
+  await client.fetchAgents({ subscribe: {} });
 
   return {
     daemon,

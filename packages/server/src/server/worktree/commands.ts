@@ -1,6 +1,6 @@
 import { join } from "node:path";
 
-import { getOttoWorktreesRoot, isOttoOwnedWorktreeCwd } from "../../utils/worktree.js";
+import { getPaseoWorktreesRoot, isPaseoOwnedWorktreeCwd } from "../../utils/worktree.js";
 import {
   archiveByScope,
   resolveWorkspaceIdAtPath,
@@ -8,24 +8,24 @@ import {
   type ArchiveScope,
 } from "../workspace-archive-service.js";
 import type {
-  CreateOttoWorktreeInput,
-  CreateOttoWorktreeResult,
-} from "../otto-worktree-service.js";
+  CreatePaseoWorktreeInput,
+  CreatePaseoWorktreeResult,
+} from "../paseo-worktree-service.js";
 import { toWorktreeWireError, type WorktreeWireError } from "../worktree-errors.js";
 import type { WorkspaceGitService, WorkspaceGitWorktreeInfo } from "../workspace-git-service.js";
 
-export interface ListOttoWorktreesCommandDependencies {
+export interface ListPaseoWorktreesCommandDependencies {
   workspaceGitService: Pick<WorkspaceGitService, "listWorktrees">;
 }
 
-export interface ListOttoWorktreesCommandInput {
+export interface ListPaseoWorktreesCommandInput {
   cwd: string;
   reason?: string;
 }
 
-export async function listOttoWorktreesCommand(
-  dependencies: ListOttoWorktreesCommandDependencies,
-  input: ListOttoWorktreesCommandInput,
+export async function listPaseoWorktreesCommand(
+  dependencies: ListPaseoWorktreesCommandDependencies,
+  input: ListPaseoWorktreesCommandInput,
 ): Promise<WorkspaceGitWorktreeInfo[]> {
   if (input.reason) {
     return dependencies.workspaceGitService.listWorktrees(input.cwd, { reason: input.reason });
@@ -33,27 +33,27 @@ export async function listOttoWorktreesCommand(
   return dependencies.workspaceGitService.listWorktrees(input.cwd);
 }
 
-type CreateOttoWorktreeWorkflow<Result extends CreateOttoWorktreeResult> = (
-  input: CreateOttoWorktreeInput,
+type CreatePaseoWorktreeWorkflow<Result extends CreatePaseoWorktreeResult> = (
+  input: CreatePaseoWorktreeInput,
 ) => Promise<Result>;
 
-export interface CreateOttoWorktreeCommandDependencies<
-  Result extends CreateOttoWorktreeResult = CreateOttoWorktreeResult,
+export interface CreatePaseoWorktreeCommandDependencies<
+  Result extends CreatePaseoWorktreeResult = CreatePaseoWorktreeResult,
 > {
-  ottoHome?: string;
+  paseoHome?: string;
   worktreesRoot?: string;
-  createOttoWorktreeWorkflow?: CreateOttoWorktreeWorkflow<Result>;
+  createPaseoWorktreeWorkflow?: CreatePaseoWorktreeWorkflow<Result>;
 }
 
-export type CreateOttoWorktreeCommandInput = Omit<
-  CreateOttoWorktreeInput,
-  "ottoHome" | "runSetup"
+export type CreatePaseoWorktreeCommandInput = Omit<
+  CreatePaseoWorktreeInput,
+  "paseoHome" | "runSetup"
 > & {
-  ottoHome?: string;
+  paseoHome?: string;
   worktreesRoot?: string;
 };
 
-export type CreateOttoWorktreeCommandResult<Result extends CreateOttoWorktreeResult> =
+export type CreatePaseoWorktreeCommandResult<Result extends CreatePaseoWorktreeResult> =
   | {
       ok: true;
       createdWorktree: Result;
@@ -64,19 +64,20 @@ export type CreateOttoWorktreeCommandResult<Result extends CreateOttoWorktreeRes
       cause: unknown;
     };
 
-export async function createOttoWorktreeCommand<Result extends CreateOttoWorktreeResult>(
-  dependencies: CreateOttoWorktreeCommandDependencies<Result>,
-  input: CreateOttoWorktreeCommandInput,
-): Promise<CreateOttoWorktreeCommandResult<Result>> {
+export async function createPaseoWorktreeCommand<Result extends CreatePaseoWorktreeResult>(
+  dependencies: CreatePaseoWorktreeCommandDependencies<Result>,
+  input: CreatePaseoWorktreeCommandInput,
+): Promise<CreatePaseoWorktreeCommandResult<Result>> {
   try {
-    if (!dependencies.createOttoWorktreeWorkflow) {
+    if (!dependencies.createPaseoWorktreeWorkflow) {
+      // OTTO(identity)
       throw new Error("Otto worktree service is not configured");
     }
 
-    const createdWorktree = await dependencies.createOttoWorktreeWorkflow({
+    const createdWorktree = await dependencies.createPaseoWorktreeWorkflow({
       ...input,
       runSetup: false,
-      ottoHome: input.ottoHome ?? dependencies.ottoHome,
+      paseoHome: input.paseoHome ?? dependencies.paseoHome,
       worktreesRoot: input.worktreesRoot ?? dependencies.worktreesRoot,
     });
     return { ok: true, createdWorktree };
@@ -95,7 +96,7 @@ export interface ArchiveCommandDependencies extends Omit<
 > {
   workspaceGitService: Pick<
     WorkspaceGitService,
-    "getSnapshot" | "listWorktrees" | "invalidateAuxiliaryReads"
+    "getSnapshot" | "listWorktrees" | "invalidateWorktrees"
   >;
 }
 
@@ -127,9 +128,9 @@ export async function archiveCommand(
 ): Promise<ArchiveCommandResult> {
   const targetPath = await resolveArchiveTarget(dependencies, input);
   const scope = input.scope ?? "workspace";
-  const ownership = await isOttoOwnedWorktreeCwd(targetPath, {
-    ottoHome: dependencies.ottoHome,
-    worktreesRoot: dependencies.ottoWorktreesBaseRoot,
+  const ownership = await isPaseoOwnedWorktreeCwd(targetPath, {
+    paseoHome: dependencies.paseoHome,
+    worktreesRoot: dependencies.paseoWorktreesBaseRoot,
   });
 
   if (scope === "worktree") {
@@ -137,7 +138,8 @@ export async function archiveCommand(
       return {
         ok: false,
         code: "NOT_ALLOWED",
-        message: "Worktree is not a Otto-owned worktree",
+        // OTTO(identity)
+        message: "Worktree is not an Otto-owned worktree",
         removedAgents: [],
       };
     }
@@ -145,10 +147,6 @@ export async function archiveCommand(
     const result = await archiveByScope(dependencies, {
       scope: { kind: "worktree", targetPath },
       requestId: input.requestId,
-      // Forwarded, not dropped: archiveByScope force-refreshes this repo's git
-      // snapshot so the removed worktree stops showing in every client that
-      // still holds the pre-archive worktree list.
-      ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
     });
 
     return {
@@ -174,7 +172,6 @@ export async function archiveCommand(
   const result = await archiveByScope(dependencies, {
     scope: { kind: "workspace", workspaceId },
     requestId: input.requestId,
-    ...(input.repoRoot ? { repoRoot: input.repoRoot } : {}),
   });
 
   return {
@@ -203,6 +200,7 @@ async function resolveArchiveTarget(
     const worktrees = await dependencies.workspaceGitService.listWorktrees(repoRoot);
     const match = worktrees.find((entry) => entry.branchName === input.branchName);
     if (!match) {
+      // OTTO(identity)
       throw new Error(`Otto worktree not found for branch ${input.branchName}`);
     }
     return match.path;
@@ -216,10 +214,10 @@ async function resolveWorktreeSlugPath(
   repoRoot: string,
   worktreeSlug: string,
 ): Promise<string> {
-  const worktreesRoot = await getOttoWorktreesRoot(
+  const worktreesRoot = await getPaseoWorktreesRoot(
     repoRoot,
-    dependencies.ottoHome,
-    dependencies.ottoWorktreesBaseRoot,
+    dependencies.paseoHome,
+    dependencies.paseoWorktreesBaseRoot,
   );
   return join(worktreesRoot, worktreeSlug);
 }

@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 // Agent provider brand marks, shared by the landing page.
 
 import type * as React from "react";

@@ -4,12 +4,6 @@ import { extractForgeRefs, parseForgeRef } from "./forge-refs";
 describe("parseForgeRef", () => {
   it.each([
     [
-      "Bitbucket Cloud pull request",
-      "git@bitbucket.org:acme/project.git",
-      "https://bitbucket.org/acme/project/pull-requests/42/diff#comment-1",
-      { kind: "change_request", number: 42 },
-    ],
-    [
       "GitHub pull request",
       "git@github.com:getpaseo/paseo.git",
       "https://github.com/getpaseo/paseo/pull/994/files?diff=split#discussion_r123",
@@ -89,20 +83,6 @@ describe("parseForgeRef", () => {
 });
 
 describe("extractForgeRefs", () => {
-  it("retains Bitbucket PR attachment matching without enabling unsupported issue routes", () => {
-    expect(
-      extractForgeRefs(
-        [
-          "[PR](https://bitbucket.org/acme/project/pull-requests/42)",
-          "https://bitbucket.org/acme/project/pull-requests/42/diff",
-          "https://bitbucket.org/acme/other/pull-requests/43",
-          "https://bitbucket.org/acme/project/issues/44",
-          "https://github.com/acme/project/pull/45",
-        ].join("\n"),
-        "https://bitbucket.org/acme/project.git",
-      ),
-    ).toEqual([{ kind: "change_request", number: 42 }]);
-  });
   it("extracts matching references in text order and deduplicates them", () => {
     const text = [
       "[MR](https://gitlab.com/group/project/-/merge_requests/12/diffs).",

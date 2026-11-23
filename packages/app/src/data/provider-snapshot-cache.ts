@@ -1,18 +1,21 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Buffer } from "buffer";
-import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
+import {
+  normalizeAgentModelCatalog,
+  type ProviderSnapshotEntry,
+} from "@getpaseo/protocol/agent-types";
 import {
   expandProviderSnapshot,
   type CompactProviderSnapshot,
-} from "@otto-code/protocol/provider-snapshot-codec";
-import { CompactProviderSnapshotSchema } from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/provider-snapshot-codec";
+import { CompactProviderSnapshotSchema } from "@getpaseo/protocol/messages";
 import { z } from "zod";
-import type { GetProvidersSnapshotResponseMessage } from "@otto-code/protocol/messages";
+import type { GetProvidersSnapshotResponseMessage } from "@getpaseo/protocol/messages";
 type SnapshotPayload = GetProvidersSnapshotResponseMessage["payload"];
 
 const CACHE_VERSION = 2;
-const CACHE_KEY_PREFIX = "@otto/provider-snapshot/v2";
-const CACHE_INDEX_KEY = "@otto/provider-snapshot-index/v2";
+const CACHE_KEY_PREFIX = "@paseo/provider-snapshot/v2";
+const CACHE_INDEX_KEY = "@paseo/provider-snapshot-index/v2";
 const DEFAULT_MAX_CACHE_BYTES = 4 * 1024 * 1024;
 
 interface ProviderSnapshotStorage {
@@ -77,6 +80,17 @@ export class ProviderSnapshotCacheMissError extends Error {
   }
 }
 
+// COMPAT(duplicateModelCatalog): added in v0.8.1, remove after 2027-03-14 once
+// the daemon floor is v0.8.1 and pre-fix cached catalogs are no longer supported.
+// Keep the original compact body/hash: normalization belongs to its decoded view.
+function normalizeCatalogs(entries: ProviderSnapshotEntry[]): ProviderSnapshotEntry[] {
+  return entries.map((entry) => {
+    if (!entry.models) return entry;
+    const models = normalizeAgentModelCatalog(entry.models);
+    return models === entry.models ? entry : { ...entry, models };
+  });
+}
+
 function cacheKey(serverId: string, cwd: string | null): string {
   return `${CACHE_KEY_PREFIX}:${JSON.stringify([serverId, "cwd", cwd])}`;
 }
@@ -129,8 +143,8 @@ export function createProviderSnapshotCache(
     // COMPAT(providerSnapshotCache): added in v0.7.2, remove legacy cleanup after 2027-03-06.
     const legacyKeys = allKeys.filter(
       (key) =>
-        key.startsWith("@otto/provider-snapshot/v1:") ||
-        key === "@otto/provider-snapshot-index/v1" ||
+        key.startsWith("@paseo/provider-snapshot/v1:") ||
+        key === "@paseo/provider-snapshot-index/v1" ||
         key === CACHE_INDEX_KEY,
     );
     if (legacyKeys.length) await storage.multiRemove(legacyKeys);
@@ -303,7 +317,7 @@ export function createProviderSnapshotCache(
       const body = {
         ...stored,
         compactSnapshot: stored.compactSnapshot,
-        entries: expandProviderSnapshot(stored.compactSnapshot),
+        entries: normalizeCatalogs(expandProviderSnapshot(stored.compactSnapshot)),
       };
       bodies.set(key, body);
       return body;
@@ -328,7 +342,7 @@ export function createProviderSnapshotCache(
   return {
     async materialize(serverId, snapshot) {
       const { snapshotHash: hash, compactSnapshot } = snapshot;
-      if (!hash) return snapshot;
+      if (!hash) return { ...snapshot, entries: normalizeCatalogs(snapshot.entries) };
       let body = await safely(async () => {
         const cached = await readBody(serverId, hash);
         if (cached) return cached;
@@ -348,7 +362,7 @@ export function createProviderSnapshotCache(
           hash,
           generatedAt: snapshot.generatedAt,
           compactSnapshot,
-          entries: expandProviderSnapshot(compactSnapshot),
+          entries: normalizeCatalogs(expandProviderSnapshot(compactSnapshot)),
         };
       }
       return {

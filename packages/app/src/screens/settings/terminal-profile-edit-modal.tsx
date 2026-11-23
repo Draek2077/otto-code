@@ -1,26 +1,10 @@
-import { SettingsAdaptiveModalSheet as AdaptiveModalSheet } from "@/screens/settings-search/sheets";
-import { SettingsTargetScope, useSettingsSearchRequest } from "@/screens/settings-search/target";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
-import { type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
-import { SettingsField as Field } from "@/screens/settings-search/fields";
-import { FormTextInput } from "@/components/ui/form-field";
-import { TextFieldPicker, type ComboboxOption } from "@/components/ui/text-field-picker";
-
-// Common shell binaries - still fully freeform via allowCustomValue, since a
-// custom wrapper script or an uncommon shell path is entirely valid too.
-const SHELL_COMMAND_PRESETS: ComboboxOption[] = [
-  { id: "bash", label: "bash" },
-  { id: "zsh", label: "zsh" },
-  { id: "fish", label: "fish" },
-  { id: "pwsh", label: "PowerShell (pwsh)" },
-  { id: "cmd.exe", label: "Command Prompt (cmd.exe)" },
-  { id: "/bin/bash", label: "/bin/bash" },
-  { id: "/opt/homebrew/bin/fish", label: "/opt/homebrew/bin/fish (Homebrew fish)" },
-];
+import { Field, FormTextInput } from "@/components/ui/form-field";
 import type { EditingTextInputHandle } from "@/components/ui/text-input";
 
 export interface ProfileDraft {
@@ -52,7 +36,6 @@ export function TerminalProfileEditModal({
   testID,
 }: TerminalProfileEditModalProps) {
   const { t } = useTranslation();
-  const requestedSetting = useSettingsSearchRequest();
   const [name, setName] = useState(initialDraft.name);
   const [command, setCommand] = useState(initialDraft.command);
   const [args, setArgs] = useState(initialDraft.args);
@@ -60,7 +43,7 @@ export function TerminalProfileEditModal({
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
   const nameInputRef = useRef<EditingTextInputHandle>(null);
-
+  const commandInputRef = useRef<EditingTextInputHandle>(null);
   const argsInputRef = useRef<EditingTextInputHandle>(null);
 
   const handleNameChange = useCallback((value: string) => {
@@ -71,7 +54,6 @@ export function TerminalProfileEditModal({
   const handleCommandChange = useCallback((value: string) => {
     setCommand(value);
     setFieldErrors((current) => ({ ...current, command: undefined }));
-    argsInputRef.current?.focus();
   }, []);
 
   const handleArgsChange = useCallback((value: string) => {
@@ -92,12 +74,11 @@ export function TerminalProfileEditModal({
     setSubmitError(null);
     setIsPending(false);
 
-    if (requestedSetting?.startsWith("host-terminals-terminal-profile-editor-")) return;
     const timeout = setTimeout(() => {
       nameInputRef.current?.focus();
     }, 50);
     return () => clearTimeout(timeout);
-  }, [visible, initialDraft.name, initialDraft.command, initialDraft.args, requestedSetting]);
+  }, [visible, initialDraft.name, initialDraft.command, initialDraft.args]);
 
   const validate = useCallback((): boolean => {
     const errors: FieldErrors = {};
@@ -135,6 +116,14 @@ export function TerminalProfileEditModal({
     onClose();
   }, [isPending, onClose]);
 
+  const handleNameSubmit = useCallback(() => {
+    commandInputRef.current?.focus();
+  }, []);
+
+  const handleCommandSubmit = useCallback(() => {
+    argsInputRef.current?.focus();
+  }, []);
+
   const handleArgsSubmit = useCallback(() => {
     void handleSave();
   }, [handleSave]);
@@ -142,112 +131,109 @@ export function TerminalProfileEditModal({
   const nameError = fieldErrors.name;
   const commandError = fieldErrors.command;
 
-  const footer = useMemo(
-    () => (
-      <View style={styles.footer}>
-        <Button
-          variant="secondary"
-          style={styles.footerButton}
-          onPress={handleCancel}
-          disabled={isPending}
-          testID="terminal-profile-cancel-button"
-        >
-          {t("common.actions.cancel")}
-        </Button>
-        <Button
-          variant="default"
-          style={styles.footerButton}
-          onPress={handleSave}
-          disabled={isPending}
-          testID="terminal-profile-save-button"
-        >
-          {isPending
-            ? t("settings.host.terminalProfiles.saving")
-            : t("settings.host.terminalProfiles.save")}
-        </Button>
-      </View>
-    ),
-    [handleCancel, handleSave, isPending, t],
-  );
-
   return (
     <AdaptiveModalSheet
       visible={visible}
       header={sheetHeader}
       onClose={handleCancel}
-      footer={footer}
       testID={testID}
       desktopMaxWidth={480}
     >
       <View style={styles.body}>
-        <SettingsTargetScope settingIds={["host-terminals-terminal-profile-editor-name"]}>
-          <Field
-            label={t("settings.host.terminalProfiles.nameLabel")}
-            error={nameError}
-            testID="terminal-profile-name-field"
-          >
-            <FormTextInput
-              ref={nameInputRef}
-              initialValue={initialDraft.name}
-              resetKey={visible ? "open" : "closed"}
-              onChangeText={handleNameChange}
-              placeholder={t("settings.host.terminalProfiles.namePlaceholder")}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isPending}
-              returnKeyType="done"
-              nativeID="terminal-profile-name-input"
-              accessibilityLabel={t("settings.host.terminalProfiles.nameLabel")}
-              testID="terminal-profile-name-input"
-            />
-          </Field>
-        </SettingsTargetScope>
+        <Field
+          label={t("settings.host.terminalProfiles.nameLabel")}
+          error={nameError}
+          testID="terminal-profile-name-field"
+        >
+          <FormTextInput
+            ref={nameInputRef}
+            initialValue={initialDraft.name}
+            resetKey={visible ? "open" : "closed"}
+            onChangeText={handleNameChange}
+            placeholder={t("settings.host.terminalProfiles.namePlaceholder")}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!isPending}
+            returnKeyType="next"
+            onSubmitEditing={handleNameSubmit}
+            nativeID="terminal-profile-name-input"
+            accessibilityLabel={t("settings.host.terminalProfiles.nameLabel")}
+            testID="terminal-profile-name-input"
+          />
+        </Field>
 
-        <SettingsTargetScope settingIds={["host-terminals-terminal-profile-editor-command"]}>
-          <Field
-            label={t("settings.host.terminalProfiles.commandLabel")}
-            error={commandError}
-            testID="terminal-profile-command-field"
-          >
-            <TextFieldPicker
-              value={command}
-              onChange={handleCommandChange}
-              options={SHELL_COMMAND_PRESETS}
-              placeholder={t("settings.host.terminalProfiles.commandPlaceholder")}
-              testID="terminal-profile-command-input"
-            />
-          </Field>
-        </SettingsTargetScope>
+        <Field
+          label={t("settings.host.terminalProfiles.commandLabel")}
+          error={commandError}
+          testID="terminal-profile-command-field"
+        >
+          <FormTextInput
+            ref={commandInputRef}
+            initialValue={initialDraft.command}
+            resetKey={visible ? "open" : "closed"}
+            onChangeText={handleCommandChange}
+            placeholder={t("settings.host.terminalProfiles.commandPlaceholder")}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!isPending}
+            returnKeyType="next"
+            onSubmitEditing={handleCommandSubmit}
+            nativeID="terminal-profile-command-input"
+            accessibilityLabel={t("settings.host.terminalProfiles.commandLabel")}
+            testID="terminal-profile-command-input"
+          />
+        </Field>
 
-        <SettingsTargetScope settingIds={["host-terminals-terminal-profile-editor-arguments"]}>
-          <Field
-            label={t("settings.host.terminalProfiles.argsLabel")}
-            hint={t("settings.host.terminalProfiles.argsHint")}
-            testID="terminal-profile-args-field"
-          >
-            <FormTextInput
-              ref={argsInputRef}
-              initialValue={initialDraft.args}
-              resetKey={visible ? "open" : "closed"}
-              onChangeText={handleArgsChange}
-              placeholder={t("settings.host.terminalProfiles.argsPlaceholder")}
-              autoCapitalize="none"
-              autoCorrect={false}
-              editable={!isPending}
-              returnKeyType="done"
-              onSubmitEditing={handleArgsSubmit}
-              nativeID="terminal-profile-args-input"
-              accessibilityLabel={t("settings.host.terminalProfiles.argsLabel")}
-              testID="terminal-profile-args-input"
-            />
-          </Field>
-        </SettingsTargetScope>
+        <Field
+          label={t("settings.host.terminalProfiles.argsLabel")}
+          hint={t("settings.host.terminalProfiles.argsHint")}
+          testID="terminal-profile-args-field"
+        >
+          <FormTextInput
+            ref={argsInputRef}
+            initialValue={initialDraft.args}
+            resetKey={visible ? "open" : "closed"}
+            onChangeText={handleArgsChange}
+            placeholder={t("settings.host.terminalProfiles.argsPlaceholder")}
+            autoCapitalize="none"
+            autoCorrect={false}
+            editable={!isPending}
+            returnKeyType="done"
+            onSubmitEditing={handleArgsSubmit}
+            nativeID="terminal-profile-args-input"
+            accessibilityLabel={t("settings.host.terminalProfiles.argsLabel")}
+            testID="terminal-profile-args-input"
+          />
+        </Field>
 
         {submitError ? (
           <Text style={styles.submitError} testID="terminal-profile-submit-error">
             {submitError}
           </Text>
         ) : null}
+
+        <View style={styles.actions}>
+          <Button
+            variant="secondary"
+            style={styles.actionButton}
+            onPress={handleCancel}
+            disabled={isPending}
+            testID="terminal-profile-cancel-button"
+          >
+            {t("common.actions.cancel")}
+          </Button>
+          <Button
+            variant="default"
+            style={styles.actionButton}
+            onPress={handleSave}
+            disabled={isPending}
+            testID="terminal-profile-save-button"
+          >
+            {isPending
+              ? t("settings.host.terminalProfiles.saving")
+              : t("settings.host.terminalProfiles.save")}
+          </Button>
+        </View>
       </View>
     </AdaptiveModalSheet>
   );
@@ -258,13 +244,13 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[4],
     paddingBottom: theme.spacing[2],
   },
-  footer: {
-    flex: 1,
+  actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[3],
+    gap: theme.spacing[2],
+    marginTop: theme.spacing[2],
   },
-  footerButton: {
+  actionButton: {
     flex: 1,
   },
   submitError: {

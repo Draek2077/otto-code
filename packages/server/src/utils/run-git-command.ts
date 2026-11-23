@@ -1,61 +1,24 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync } from "node:fs";
+import type { Logger } from "pino";
+import type { ProcessEnvRecord } from "../server/paseo-env.js";
 import {
   GitCommandRuntimeMetricsWindow,
   type GitCommandRuntimeMetricsSnapshot,
 } from "./git-command-runtime-metrics.js";
-import type { Logger } from "pino";
-import type { ProcessEnvRecord } from "../server/otto-env.js";
-import { getActiveGitCommandObserver } from "../server/git-operation-log.js";
+import {
+  settleGitCommandTrace,
+  spawnGitCommandTrace,
+  startGitCommandTrace,
+  submitGitCommandTrace,
+} from "./git-command-trace.js";
 import { spawnProcess } from "./spawn.js";
 import {
   GitProcessScheduler,
-  type GitProcessPolicy,
   type GitProcessPriority,
   resolveGitProcessPolicy,
+  type GitProcessPolicy,
 } from "./git-process-scheduler.js";
-
-/**
- * Config pinned on every git invocation so output shape is ours to parse, not the
- * user's to configure. Their own `git diff` keeps whatever they set; only these
- * daemon reads are normalized.
- *
- * - `core.quotepath=false` emits raw UTF-8 paths instead of octal-escaping non-ASCII
- *   bytes (e.g. `测试文件.txt` vs `"\346\265\213..."`).
- * - The prefix keys keep patch headers at `a/path b/path`. `diff.mnemonicPrefix`
- *   (`c/`, `w/`, `i/`, `o/`) and custom `diff.srcPrefix`/`dstPrefix` are common
- *   personal settings that otherwise reshape every header we read.
- * - `color.ui=false` defeats `color.ui=always`, which wraps patch lines in ANSI
- *   escapes even when stdout is a pipe.
- * - `core.fsmonitor=false` prevents repository config from launching a command.
- *
- * `diff.external` cannot be pinned here: an empty value makes git exit with
- * "external diff died", so patch-producing commands pass `--no-ext-diff` instead.
- */
-const MACHINE_READABLE_GIT_CONFIG = [
-  "-c",
-  "core.quotepath=false",
-  "-c",
-  "core.fsmonitor=false",
-  "-c",
-  "diff.mnemonicPrefix=false",
-  "-c",
-  "diff.noprefix=false",
-  "-c",
-  "diff.srcPrefix=a/",
-  "-c",
-  "diff.dstPrefix=b/",
-  "-c",
-  "color.ui=false",
-];
-
-/**
- * Flags for commands whose patch output the daemon parses. Config cannot cover these:
- * a configured `diff.external` (difftastic, delta, meld) replaces the patch entirely,
- * and a `diff=<driver>` textconv attribute rewrites its content so hunk line numbers
- * no longer anchor to the real file.
- */
-export const MACHINE_READABLE_DIFF_FLAGS = ["--no-ext-diff", "--no-textconv"];
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_BYTES = 20 * 1024 * 1024; // 20MB
@@ -65,6 +28,10 @@ let gitProcessScheduler = new GitProcessScheduler(resolveGitProcessPolicy({ env:
 let gitRuntimeMetrics = createGitCommandRuntimeMetricsWindow(gitProcessScheduler.policy);
 const gitCommandPriority = new AsyncLocalStorage<GitProcessPriority>();
 
+export function runWithGitCommandPriority<T>(priority: GitProcessPriority, operation: () => T): T {
+  return gitCommandPriority.run(priority, operation);
+}
+
 function createGitCommandRuntimeMetricsWindow(policy: GitProcessPolicy) {
   return new GitCommandRuntimeMetricsWindow({
     concurrencyLimit: policy.maxProcessConcurrency,
@@ -72,32 +39,24 @@ function createGitCommandRuntimeMetricsWindow(policy: GitProcessPolicy) {
   });
 }
 
-export function configureGitProcessPolicy(
-  policy: GitProcessPolicy = resolveGitProcessPolicy({ env: process.env }),
-): void {
+export function configureGitProcessPolicy(policy: GitProcessPolicy): void {
   gitProcessScheduler = new GitProcessScheduler(policy);
   gitRuntimeMetrics = createGitCommandRuntimeMetricsWindow(policy);
 }
 
-export function runWithGitCommandPriority<T>(priority: GitProcessPriority, operation: () => T): T {
-  return gitCommandPriority.run(priority, operation);
-}
-
 export interface GitCommandOptions {
   cwd: string;
+  input?: string | Buffer;
   env?: ProcessEnvRecord;
   envOverlay?: ProcessEnvRecord;
   logger?: Pick<Logger, "trace">;
   timeout?: number;
   maxOutputBytes?: number;
-  // Raise past the 2 KB default when stderr carries user-facing output the
-  // caller must relay in full (e.g. commit hook failures).
-  maxStderrBytes?: number;
   acceptExitCodes?: number[];
 }
 
-export interface GitCommandResult {
-  stdout: string;
+export interface GitCommandResult<Output = string> {
+  stdout: Output;
   stderr: string;
   truncated: boolean;
   exitCode: number | null;
@@ -195,7 +154,10 @@ export function stopGitCommandMetrics(): GitCommandMetricsSnapshot {
 
 export function getGitCommandMetrics(): GitCommandMetricsSnapshot {
   const state = gitCommandMetricsState;
-  return state ? snapshotGitCommandMetricsState(state) : stopGitCommandMetrics();
+  if (!state) {
+    return stopGitCommandMetrics();
+  }
+  return snapshotGitCommandMetricsState(state);
 }
 
 export async function waitForGitCommandMetricsIdle(options: {
@@ -205,16 +167,18 @@ export async function waitForGitCommandMetricsIdle(options: {
   const startedAtMs = Date.now();
   while (true) {
     const state = gitCommandMetricsState;
-    if (!state) throw new Error("Git command metrics are not running");
-    if (
-      state.completed === state.submitted &&
-      Date.now() - state.lastSubmittedAtMs >= options.quietMs
-    ) {
+    if (!state) {
+      throw new Error("Git command metrics are not running");
+    }
+    const isComplete = state.completed === state.submitted;
+    const hasBeenQuiet = Date.now() - state.lastSubmittedAtMs >= options.quietMs;
+    if (isComplete && hasBeenQuiet) {
       return;
     }
     if (Date.now() - startedAtMs >= options.timeoutMs) {
+      const unfinished = state.submitted - state.completed;
       throw new Error(
-        `Timed out waiting for Git command metrics to become idle (${state.submitted - state.completed} unfinished)`,
+        `Timed out waiting for Git command metrics to become idle (${unfinished} unfinished)`,
       );
     }
     await new Promise((resolve) => setTimeout(resolve, 10));
@@ -239,9 +203,18 @@ function snapshotGitCommandMetricsState(state: GitCommandMetricsState): GitComma
   };
 }
 
+export function snapshotGitCommandRuntimeMetrics(): GitCommandRuntimeMetricsSnapshot {
+  return gitRuntimeMetrics.snapshotAndReset({
+    active: gitProcessScheduler.activeCount,
+    pending: gitProcessScheduler.pendingCount,
+  });
+}
+
 function submitGitCommandMetric(args: string[], cwd: string): GitCommandMetricsState | null {
   const state = gitCommandMetricsState;
-  if (!state) return null;
+  if (!state) {
+    return null;
+  }
   state.submissions.push({ args: [...args], cwd });
   state.submitted += 1;
   state.lastSubmittedAtMs = Date.now();
@@ -249,7 +222,9 @@ function submitGitCommandMetric(args: string[], cwd: string): GitCommandMetricsS
 }
 
 function beginGitCommandMetric(state: GitCommandMetricsState | null): void {
-  if (!state) return;
+  if (!state) {
+    return;
+  }
   state.started += 1;
   state.active += 1;
   state.maxConcurrent = Math.max(state.maxConcurrent, state.active);
@@ -289,27 +264,42 @@ function runGitCommandWithProvenance(
   options: GitCommandOptions,
   provenance?: string,
 ): Promise<GitCommandResult> {
-  // Captured before the concurrency queue: the thunk may execute in a later
-  // async context where the operation-log ALS store is no longer active.
-  const commandObserver = getActiveGitCommandObserver();
+  return executeGitCommand(args, options, (output) => output.toString("utf8"), provenance);
+}
+
+/** Binary stdout preserves cat-file byte framing before text decoding. */
+export function runGitCommandBytes(
+  args: string[],
+  options: GitCommandOptions,
+): Promise<GitCommandResult<Buffer>> {
+  return executeGitCommand(args, options, (output) => output);
+}
+
+function executeGitCommand<Output>(
+  args: string[],
+  options: GitCommandOptions,
+  decode: (output: Buffer) => Output,
+  provenance?: string,
+): Promise<GitCommandResult<Output>> {
   const metricsState = submitGitCommandMetric(args, options.cwd);
+  const commandTrace = submitGitCommandTrace(args, options.cwd, {
+    active: gitProcessScheduler.activeCount,
+    pending: gitProcessScheduler.pendingCount,
+  });
   const runtimeMetric = gitRuntimeMetrics.submit(getGitOperation(args), provenance);
   const startCommand = () => {
     let releaseProcessSlot!: () => void;
     const exited = new Promise<void>((resolve) => {
       releaseProcessSlot = resolve;
     });
-    let processSlotReleased = false;
-    const releaseProcessSlotOnce = () => {
-      if (processSlotReleased) return;
-      processSlotReleased = true;
-      releaseProcessSlot();
-    };
-    const result = new Promise<GitCommandResult>((resolve, reject) => {
+    const resultPromise = new Promise<GitCommandResult<Output>>((resolve, reject) => {
+      startGitCommandTrace(commandTrace, {
+        active: gitProcessScheduler.activeCount,
+        pending: gitProcessScheduler.pendingCount,
+      });
       gitRuntimeMetrics.start(runtimeMetric);
       const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
       const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES;
-      const maxStderrBytes = options.maxStderrBytes ?? DEFAULT_STDERR_LIMIT;
       const acceptExitCodes = options.acceptExitCodes ?? [0];
       const command = formatGitCommand(args);
       const envOverlay = mergeEnvOverlays(options.env, options.envOverlay);
@@ -333,85 +323,116 @@ function runGitCommandWithProvenance(
         logger.trace(traceContext, "Spawning git command");
       }
 
-      let child: ReturnType<typeof spawnProcess>;
-      try {
-        child = spawnProcess("git", [...MACHINE_READABLE_GIT_CONFIG, ...args], {
-          cwd: options.cwd,
-          envOverlay,
-          shell: false,
-          stdio: ["ignore", "pipe", "pipe"],
-        });
-      } catch (error) {
-        releaseProcessSlotOnce();
-        finishGitCommandMetric(metricsState, {
-          args,
-          cwd: options.cwd,
-          startedAtMs: startedAt,
-          durationMs: Date.now() - startedAt,
-          exitCode: null,
-          signal: null,
-          success: false,
-        });
-        gitRuntimeMetrics.finish(runtimeMetric, { success: false, timedOut: false });
-        reject(error);
-        return;
-      }
-
       let settled = false;
       let metricFinished = false;
-      // Mirrors Paseo's runtime-metrics contract: distinguishes a timeout kill
-      // from an ordinary non-zero exit.
-      let timedOut = false;
+      let processError: Error | null = null;
+      let processExit: { exitCode: number | null; signal: NodeJS.Signals | null } | null = null;
+      let timeoutError: Error | null = null;
       let truncated = false;
       let stdoutBytes = 0;
       let stderrBytes = 0;
       const stdoutChunks: Buffer[] = [];
       const stderrChunks: Buffer[] = [];
-
-      commandObserver?.onCommandStart(command);
-      let observerEnded = false;
-      const endObserver = (exitCode: number | null) => {
-        if (!commandObserver || observerEnded) return;
-        observerEnded = true;
-        commandObserver.onCommandEnd({ exitCode, durationMs: Date.now() - startedAt });
-      };
+      let timer: NodeJS.Timeout | undefined;
 
       const settle = (callback: () => void) => {
         if (settled) return;
         settled = true;
-        clearTimeout(timer);
+        if (timer) clearTimeout(timer);
         callback();
       };
 
-      const finishMetricOnce = (metric: GitCommandMetric) => {
+      const finishMetricOnce = (metric: GitCommandMetric, timedOut = false) => {
         if (metricFinished) return;
         metricFinished = true;
         finishGitCommandMetric(metricsState, metric);
         gitRuntimeMetrics.finish(runtimeMetric, { success: metric.success, timedOut });
       };
 
-      const timer = setTimeout(() => {
-        timedOut = true;
-        const error = new Error(`Git command timed out after ${timeout}ms: ${command}`);
-        child.kill("SIGKILL");
-        endObserver(null);
-        finishMetricOnce({
-          args,
-          cwd: options.cwd,
-          startedAtMs: startedAt,
-          durationMs: Date.now() - startedAt,
-          exitCode: null,
-          signal: "SIGKILL",
-          success: false,
+      const settleTimeoutTrace = (exitCode: number | null, signal: NodeJS.Signals | null) => {
+        settleGitCommandTrace(commandTrace, {
+          outcome: "timed_out",
+          exitCode,
+          signal,
         });
-        settle(() => reject(error));
+      };
+
+      const markProcessExited = (exitCode: number | null, signal: NodeJS.Signals | null) => {
+        if (processExit) return;
+        processExit = { exitCode, signal };
+        const timedOut = timeoutError !== null;
+        finishMetricOnce(
+          {
+            args,
+            cwd: options.cwd,
+            startedAtMs: startedAt,
+            durationMs: Date.now() - startedAt,
+            exitCode,
+            signal,
+            success:
+              !timedOut && !processError && (truncated || acceptExitCodes.includes(exitCode ?? -1)),
+          },
+          timedOut,
+        );
+        releaseProcessSlot();
+        if (timedOut) {
+          settleTimeoutTrace(exitCode, signal);
+        }
+      };
+
+      const rejectSpawnFailure = (error: unknown) => {
+        processError = error instanceof Error ? error : new Error(String(error));
+        markProcessExited(null, null);
+        settleGitCommandTrace(commandTrace, {
+          outcome: "spawn_error",
+          exitCode: null,
+          signal: null,
+        });
+        settle(() => reject(processError));
+      };
+
+      let child: ReturnType<typeof spawnProcess>;
+      try {
+        // `core.quotepath=false` makes git emit raw UTF-8 paths instead of
+        // octal-escaping non-ASCII bytes (e.g. `测试文件.txt` vs `"\346\265\213..."`).
+        // `core.fsmonitor=false` prevents repository config from launching a command.
+        child = spawnProcess(
+          "git",
+          ["-c", "core.quotepath=false", "-c", "core.fsmonitor=false", ...args],
+          {
+            cwd: options.cwd,
+            envOverlay,
+            shell: false,
+            stdio: [options.input === undefined ? "ignore" : "pipe", "pipe", "pipe"],
+          },
+        );
+        spawnGitCommandTrace(commandTrace, child.pid);
+      } catch (error) {
+        rejectSpawnFailure(error);
+        return;
+      }
+
+      const stdout = child.stdout;
+      const stderr = child.stderr;
+      if (!stdout || !stderr) {
+        child.kill("SIGKILL");
+        rejectSpawnFailure(new Error("Git process did not expose piped stdout and stderr"));
+        return;
+      }
+
+      timer = setTimeout(() => {
+        timeoutError = new Error(`Git command timed out after ${timeout}ms: ${command}`);
+        child.kill("SIGKILL");
+        settle(() => reject(timeoutError));
+        if (processExit) {
+          settleTimeoutTrace(processExit.exitCode, processExit.signal);
+        }
       }, timeout);
 
-      child.stdout!.on("data", (chunk: Buffer | string) => {
+      stdout.on("data", (chunk: Buffer | string) => {
         if (settled || truncated) return;
 
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        commandObserver?.onCommandOutput(buffer.toString("utf8"), "stdout");
         const remainingBytes = maxOutputBytes - stdoutBytes;
 
         if (remainingBytes <= 0) {
@@ -432,13 +453,11 @@ function runGitCommandWithProvenance(
         stdoutBytes += buffer.length;
       });
 
-      child.stderr!.on("data", (chunk: Buffer | string) => {
-        if (settled) return;
+      stderr.on("data", (chunk: Buffer | string) => {
+        if (settled || stderrBytes >= DEFAULT_STDERR_LIMIT) return;
 
         const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        commandObserver?.onCommandOutput(buffer.toString("utf8"), "stderr");
-        if (stderrBytes >= maxStderrBytes) return;
-        const remainingBytes = maxStderrBytes - stderrBytes;
+        const remainingBytes = DEFAULT_STDERR_LIMIT - stderrBytes;
 
         if (buffer.length > remainingBytes) {
           stderrChunks.push(buffer.subarray(0, remainingBytes));
@@ -451,17 +470,7 @@ function runGitCommandWithProvenance(
       });
 
       child.on("error", (error) => {
-        releaseProcessSlotOnce();
-        endObserver(null);
-        finishMetricOnce({
-          args,
-          cwd: options.cwd,
-          startedAtMs: startedAt,
-          durationMs: Date.now() - startedAt,
-          exitCode: null,
-          signal: null,
-          success: false,
-        });
+        processError = error;
         if (logger && traceContext) {
           logger.trace(
             {
@@ -472,27 +481,25 @@ function runGitCommandWithProvenance(
             "Git command process error",
           );
         }
-        settle(() => reject(error));
       });
 
-      child.on("exit", (exitCode, signal) => {
-        releaseProcessSlotOnce();
-        finishMetricOnce({
-          args,
-          cwd: options.cwd,
-          startedAtMs: startedAt,
-          durationMs: Date.now() - startedAt,
-          exitCode,
-          signal,
-          success: !timedOut && (truncated || acceptExitCodes.includes(exitCode ?? -1)),
+      if (options.input !== undefined) {
+        child.stdin!.on("error", (error: NodeJS.ErrnoException) => {
+          // A command may close stdin when it exits or reaches the output limit.
+          if (error.code !== "EPIPE") {
+            processError = error;
+            child.kill("SIGKILL");
+          }
         });
-      });
+        child.stdin!.end(options.input);
+      }
+
+      child.on("exit", markProcessExited);
 
       child.on("close", (exitCode, signal) => {
-        releaseProcessSlotOnce();
-        endObserver(exitCode);
-        const commandResult: GitCommandResult = {
-          stdout: Buffer.concat(stdoutChunks).toString("utf8"),
+        markProcessExited(exitCode, signal);
+        const result: GitCommandResult<Output> = {
+          stdout: decode(Buffer.concat(stdoutChunks)),
           stderr: Buffer.concat(stderrChunks).toString("utf8"),
           truncated,
           exitCode,
@@ -513,18 +520,30 @@ function runGitCommandWithProvenance(
           );
         }
 
-        if (!truncated && !acceptExitCodes.includes(exitCode ?? -1)) {
-          finishMetricOnce({
-            args,
-            cwd: options.cwd,
-            startedAtMs: startedAt,
-            durationMs: Date.now() - startedAt,
+        if (timeoutError) {
+          return;
+        }
+
+        if (processError) {
+          settleGitCommandTrace(commandTrace, {
+            outcome: "spawn_error",
             exitCode,
             signal,
-            success: false,
           });
-          const stderrPreview = commandResult.stderr.trim() || "(no stderr)";
-          const truncationNote = commandResult.truncated ? " (stdout truncated)" : "";
+          settle(() => reject(processError));
+          return;
+        }
+
+        settleGitCommandTrace(commandTrace, {
+          outcome: "closed",
+          exitCode,
+          signal,
+          truncated,
+        });
+
+        if (!truncated && !acceptExitCodes.includes(exitCode ?? -1)) {
+          const stderrPreview = result.stderr.trim() || "(no stderr)";
+          const truncationNote = result.truncated ? " (stdout truncated)" : "";
 
           settle(() =>
             reject(
@@ -536,22 +555,13 @@ function runGitCommandWithProvenance(
           return;
         }
 
-        finishMetricOnce({
-          args,
-          cwd: options.cwd,
-          startedAtMs: startedAt,
-          durationMs: Date.now() - startedAt,
-          exitCode,
-          signal,
-          success: true,
-        });
-        settle(() => resolve(commandResult));
+        settle(() => resolve(result));
       });
     });
-    return { result, exited };
+    return { result: resultPromise, exited };
   };
   const promise = gitProcessScheduler.run(startCommand, {
-    priority: gitCommandPriority.getStore(),
+    priority: gitCommandPriority.getStore() ?? "normal",
   });
   gitRuntimeMetrics.observeLimiter(
     gitProcessScheduler.activeCount,
@@ -564,13 +574,6 @@ export const runGitCommand: RunGitCommand = runGitCommandWithProvenance;
 
 function formatGitCommand(args: string[]): string {
   return ["git", ...args].join(" ");
-}
-
-export function snapshotGitCommandRuntimeMetrics(): GitCommandRuntimeMetricsSnapshot {
-  return gitRuntimeMetrics.snapshotAndReset({
-    active: gitProcessScheduler.activeCount,
-    pending: gitProcessScheduler.pendingCount,
-  });
 }
 
 function getGitOperation(args: string[]): string {

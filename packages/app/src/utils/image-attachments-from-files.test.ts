@@ -4,7 +4,7 @@ import {
   filesToImageAttachments,
 } from "./image-attachments-from-files";
 import { __setAttachmentStoreForTests } from "@/attachments/store";
-import { EMPTY_ATTACHMENT_STORE_USAGE, type AttachmentStore } from "@/attachments/types";
+import type { AttachmentStore } from "@/attachments/types";
 
 function createClipboardItem(params: { kind: string; type: string; file?: File | null }) {
   return {
@@ -51,12 +51,6 @@ function createTestStore(): AttachmentStore {
     },
     async delete() {},
     async garbageCollect() {},
-    async usage() {
-      return EMPTY_ATTACHMENT_STORE_USAGE;
-    },
-    async clearPreviews() {
-      return { deleted: 0, freedBytes: 0 };
-    },
   };
 }
 
@@ -99,28 +93,6 @@ describe("collectImageFilesFromClipboardData", () => {
     });
 
     expect(files).toEqual([{ file: imagePng, mimeType: "image/png" }]);
-  });
-
-  it("uses the pasted file MIME when Windows leaves the clipboard item MIME empty", () => {
-    const imagePng = new File([new Uint8Array([0, 1, 2, 3])], "paste.png", {
-      type: "image/png",
-    });
-
-    expect(
-      collectImageFilesFromClipboardData({
-        items: [createClipboardItem({ kind: "file", type: "", file: imagePng })],
-      }),
-    ).toEqual([{ file: imagePng, mimeType: "image/png" }]);
-  });
-
-  it("falls back to clipboard files when it exposes no items", () => {
-    const imagePng = new File([new Uint8Array([0, 1, 2, 3])], "paste.png", {
-      type: "image/png",
-    });
-
-    expect(collectImageFilesFromClipboardData({ files: [imagePng] })).toEqual([
-      { file: imagePng, mimeType: "image/png" },
-    ]);
   });
 
   it("ignores SVG clipboard files", () => {

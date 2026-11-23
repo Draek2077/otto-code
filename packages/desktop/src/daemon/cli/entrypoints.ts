@@ -9,8 +9,9 @@ import {
   resolvePackagedAsarPath,
 } from "../package-paths.js";
 
-const CLI_PACKAGE_NAME = "@otto-code/cli";
-const CLI_BIN_ENTRY = `${CLI_PACKAGE_NAME}/bin/otto`;
+const CLI_PACKAGE_NAME = "@getpaseo/cli";
+const CLI_BIN_ENTRY = `${CLI_PACKAGE_NAME}/bin/paseo`;
+const CLI_RUN_ENTRY = `${CLI_PACKAGE_NAME}/dist/run.js`;
 
 const esmRequire = createRequire(__filename);
 
@@ -29,7 +30,7 @@ export function resolveExternalCliEntrypoint(): NodeEntrypointSpec {
         filePath: path.join(
           resolvePackagedAsarPath(),
           "node_modules",
-          "@otto-code",
+          "@getpaseo",
           "cli",
           "dist",
           "index.js",
@@ -55,4 +56,25 @@ export function resolveExternalCliEntrypoint(): NodeEntrypointSpec {
     }),
     execArgv: ["--import", "tsx"],
   };
+}
+
+export function resolvePassthroughCliEntrypoint(): string {
+  if (app.isPackaged) {
+    return assertPathExists({
+      label: "Bundled passthrough CLI entrypoint",
+      filePath: path.join(
+        resolvePackagedAsarPath(),
+        "node_modules",
+        "@getpaseo",
+        "cli",
+        "dist",
+        "run.js",
+      ),
+    });
+  }
+
+  return assertPathExists({
+    label: "Passthrough CLI entrypoint",
+    filePath: esmRequire.resolve(CLI_RUN_ENTRY),
+  });
 }

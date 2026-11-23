@@ -12,15 +12,13 @@
   "bracketSameLine": false,
   "bracketSpacing": true,
   "ignorePatterns": [
-    "vendor/**",
-    "**/vendor/**",
-    "test-documents/**",
     "*.lock",
     "**/*.gen.ts",
     "**/*.gen.tsx",
-    "**/*webview-html.ts",
-    "AGENTS.md",
-    "packages/server/AGENTS.md",
-    ".otto/knowledge/**"
+    ".otto/**",
+    "test-documents/**",
+    "vendor/archify/**",
+    "vendor/agent-flow/**",
+    "packages/app/src/otto/workflows/canvas/vendor/drawflow.min.js"
   ]
 }

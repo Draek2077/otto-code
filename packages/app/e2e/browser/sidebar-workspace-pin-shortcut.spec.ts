@@ -10,7 +10,7 @@ import { getServerId } from "../support/helpers/server-id";
 import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
 
 // The pin shortcut used to be registered by the sidebar row itself, so it silently did nothing
-// whenever the row was unmounted - a collapsed project section being the common case. It now
+// whenever the row was unmounted — a collapsed project section being the common case. It now
 // lives in a single always-mounted handler keyed on the active route selection.
 const PIN_SHORTCUT = "ControlOrMeta+Shift+P";
 
@@ -88,7 +88,7 @@ interface PinRpcGate {
 
 // Proxies everything so the app boots against the real daemon, counting pin RPCs and optionally
 // rejecting the first `rejectFirst` of them. The count asserts how many pins one keypress actually
-// dispatched, which the rendered pin state cannot show - a toggle that fired twice lands back
+// dispatched, which the rendered pin state cannot show — a toggle that fired twice lands back
 // where it started.
 async function installPinRpcGate(
   page: Page,
@@ -219,34 +219,6 @@ test.describe("Pin workspace shortcut", () => {
       await page.keyboard.press(PIN_SHORTCUT);
 
       await expect(pinnedSection(page)).toHaveCount(0, { timeout: 10_000 });
-    } finally {
-      await workspace.cleanup();
-    }
-  });
-
-  test("sends exactly one pin RPC per press when the row is rendered and selected", async ({
-    page,
-  }) => {
-    const workspace = await seedWorkspace({ repoPrefix: "pin-shortcut-expanded-" });
-
-    try {
-      const gate = await installPinRpcGate(page);
-
-      await gotoAppShell(page);
-      await openWorkspace(page, workspace.workspaceId);
-
-      await page.keyboard.press(PIN_SHORTCUT);
-      await expect(pinnedSection(page)).toBeVisible({ timeout: 10_000 });
-      // Counting frames catches a press that produces zero or two RPCs - a misfiring in-flight
-      // guard, or a second dispatch path. It cannot detect a duplicate handler registration:
-      // `keyboardActionDispatcher.dispatch` returns at the first handler that returns true, so a
-      // shadowed second handler is unobservable from outside by design.
-      expect(gate.sentCount()).toBe(1);
-
-      await page.keyboard.press(PIN_SHORTCUT);
-      await expect(pinnedSection(page)).toHaveCount(0, { timeout: 10_000 });
-      expect(gate.sentCount()).toBe(2);
-      await expect(workspaceRow(page, workspace.workspaceId)).toHaveCount(1);
     } finally {
       await workspace.cleanup();
     }

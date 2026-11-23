@@ -1,50 +1,17 @@
 import type pino from "pino";
 import { OpenAI } from "openai";
-import { Readable } from "node:stream";
-import type { ReadableStream as WebReadableStream } from "node:stream/web";
-import type {
-  SpeechStreamResult,
-  SpeechVoiceOverride,
-  TextToSpeechProvider,
-} from "../../speech-provider.js";
+import { nodeSpeechStream } from "../../../otto/speech/api-stream.js"; // OTTO(speech): one standards-based HTTP stream adapter.
+import type { SpeechStreamResult, TextToSpeechProvider } from "../../speech-provider.js";
 
 export type { SpeechStreamResult };
-
-// The voices the OpenAI speech API accepts. A personality voice naming one of
-// these is honored; any other name (e.g. a local Kokoro voice) falls back to the
-// provider's configured voice - the binding is soft, never a hard error.
-const OPENAI_TTS_VOICES: ReadonlySet<string> = new Set([
-  "alloy",
-  "ash",
-  "ballad",
-  "coral",
-  "echo",
-  "fable",
-  "nova",
-  "onyx",
-  "sage",
-  "shimmer",
-  "verse",
-]);
 
 export interface TTSConfig {
   apiKey: string;
   baseUrl?: string;
-  model?: "tts-1" | "tts-1-hd" | "gpt-4o-mini-tts" | (string & {});
-  voice?:
-    | "alloy"
-    | "ash"
-    | "ballad"
-    | "coral"
-    | "echo"
-    | "fable"
-    | "nova"
-    | "onyx"
-    | "sage"
-    | "shimmer"
-    | "verse"
-    | (string & {});
+  model?: "tts-1" | "tts-1-hd" | (string & {});
+  voice?: "alloy" | "echo" | "fable" | "onyx" | "nova" | "shimmer" | (string & {});
   responseFormat?: "mp3" | "opus" | "aac" | "flac" | "wav" | "pcm";
+  speed?: number; // OTTO(speech): preserve speaking speed through the existing API.
 }
 
 export class OpenAITTS implements TextToSpeechProvider {
@@ -75,16 +42,9 @@ export class OpenAITTS implements TextToSpeechProvider {
     return this.config;
   }
 
-  private resolveVoice(voice?: SpeechVoiceOverride): string {
-    if (voice && OPENAI_TTS_VOICES.has(voice.name)) {
-      return voice.name;
-    }
-    return this.config.voice!;
-  }
-
   public async synthesizeSpeech(
     text: string,
-    voice?: SpeechVoiceOverride,
+    options?: { signal?: AbortSignal },
   ): Promise<SpeechStreamResult> {
     if (!text || text.trim().length === 0) {
       throw new Error("Cannot synthesize empty text");
@@ -93,31 +53,30 @@ export class OpenAITTS implements TextToSpeechProvider {
     const startTime = Date.now();
 
     try {
-      this.logger.debug(
-        { textLength: text.length, preview: text.substring(0, 50) },
-        "Synthesizing speech",
-      );
+      // OTTO(speech): read-aloud content is private, including in debug logs.
+      this.logger.debug({ textLength: text.length }, "Synthesizing speech");
 
-      const response = await this.openaiClient.audio.speech.create({
-        model: this.config.model!,
-        voice: this.resolveVoice(voice),
-        input: text,
-        response_format: this.config.responseFormat as
-          | "mp3"
-          | "opus"
-          | "aac"
-          | "flac"
-          | "wav"
-          | "pcm",
-      });
+      const response = await this.openaiClient.audio.speech.create(
+        {
+          model: this.config.model!,
+          voice: this.config.voice!,
+          input: text,
+          ...(this.config.speed !== undefined ? { speed: this.config.speed } : {}), // OTTO(speech)
+          response_format: this.config.responseFormat as
+            | "mp3"
+            | "opus"
+            | "aac"
+            | "flac"
+            | "wav"
+            | "pcm",
+        },
+        { signal: options?.signal },
+      ); // OTTO(speech): an explicit Stop cancels the cloud request.
 
-      // The SDK returns a fetch body: a web ReadableStream, not a Node stream.
-      // Convert it so the TTS manager's destroy() on interrupt actually
-      // cancels the request instead of leaving it downloading.
-      if (!response.body) {
-        throw new Error("OpenAI speech response has no body");
-      }
-      const audioStream = Readable.fromWeb(response.body as WebReadableStream<Uint8Array>);
+      // OTTO(speech): expose a real Node stream for shared playback lifetimes,
+      // cancellation and first-chunk delivery; do not buffer the response body.
+      if (!response.body) throw new Error("Speech response did not contain audio.");
+      const audioStream = nodeSpeechStream(response.body);
 
       const duration = Date.now() - startTime;
       this.logger.debug({ duration }, "Speech synthesis stream ready");

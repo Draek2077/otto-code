@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { FetchRecentProviderSessionEntry } from "@otto-code/client/internal/daemon-client";
+import type { FetchRecentProviderSessionEntry } from "@getpaseo/client/internal/daemon-client";
 import {
   aggregateSessionEntries,
   ALL_FILTER_VALUE,
@@ -27,7 +27,7 @@ function entry(
     providerId: "claude",
     providerLabel: "Claude Code",
     providerHandleId: "thread-1",
-    cwd: "/repo/otto",
+    cwd: "/repo/paseo",
     title: null,
     firstPromptPreview: null,
     lastPromptPreview: null,
@@ -464,24 +464,5 @@ describe("computeEmptyState", () => {
       aggregatedCount: 1,
     });
     expect(result.emptyStateTitle).toBe("No z-ai sessions found.");
-  });
-});
-
-describe("remote host path spelling", () => {
-  it("matches Windows separators without changing POSIX backslash names", () => {
-    expect(
-      resolveDirectoryLabel("C:\\repo\\app\\src", [{ rootPath: "C:/repo/app/", name: "App" }]),
-    ).toEqual({ name: "App", detail: "src" });
-    expect(
-      resolveImportTarget({
-        entryCwd: "C:\\repo\\app\\",
-        workspaceCwd: "C:/repo/app",
-        workspaceId: "ws",
-        isScopedListing: false,
-      }),
-    ).toEqual({ workspaceId: "ws", crossWorkspace: false });
-    expect(resolveDirectoryLabel("/repo/a\\b", [{ rootPath: "/repo/a", name: "A" }])).toEqual({
-      name: "/repo/a\\b",
-    });
   });
 });

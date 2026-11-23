@@ -113,6 +113,7 @@ function createTypographyResource(input: TypographyResourceInput): DiffTypograph
 function modelVariantKey(input: Omit<BuildDiffDocumentModelInput, "reuseFrom">): string {
   return JSON.stringify([
     input.layout,
+    input.structural, // OTTO(structural-diff)
     input.wrapLines,
     input.viewportWidth,
     typographyKey(input.typography),

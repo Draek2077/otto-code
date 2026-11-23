@@ -1,16 +1,17 @@
-const GITHUB_HOSTS = new Set(["github.com", "ssh.github.com"]);
-const BITBUCKET_CLOUD_HOSTS = new Set(["bitbucket.org", "altssh.bitbucket.org"]);
+import { getForgeDefinition } from "./forge-manifest.js";
 
-const DEFAULT_PORT_BY_PROTOCOL: Record<string, string> = {
-  "https:": "443",
-  "http:": "80",
-  "ssh:": "22",
-};
+const GITHUB_HOSTS = new Set(getForgeDefinition("github")?.cloudHosts ?? []);
 
 const TRANSPORT_BY_PROTOCOL: Record<string, GitRemoteLocation["transport"]> = {
   "https:": "https",
   "http:": "http",
   "ssh:": "ssh",
+};
+
+const DEFAULT_PORT_BY_PROTOCOL: Record<string, string> = {
+  "https:": "443",
+  "http:": "80",
+  "ssh:": "22",
 };
 
 export interface GitRemoteLocation {
@@ -38,16 +39,17 @@ export function parseGitHubRemoteUrl(remoteUrl: string): GitHubRemoteIdentity | 
   return parseGitHubRemoteIdentity(location.path);
 }
 
-export function isBitbucketCloudHost(host: string): boolean {
-  return BITBUCKET_CLOUD_HOSTS.has(host);
-}
-
-// Bitbucket Cloud remotes share GitHub's two-segment workspace/repo shape, so
-// identity parsing is common; only host classification differs.
-export function parseBitbucketCloudRemoteUrl(remoteUrl: string): GitHubRemoteIdentity | null {
-  const location = parseGitRemoteLocation(remoteUrl);
-  if (!location || !isBitbucketCloudHost(location.host)) return null;
-  return parseGitHubRemoteIdentity(location.path);
+/**
+ * Whether `repo` is already a complete git remote (a URL or scp-like address)
+ * rather than `owner/repo` shorthand that still needs a clone protocol picked.
+ *
+ * Clients (app + CLI) and the daemon must agree on this classification: the
+ * daemon treats `parseGitRemoteLocation(repo) !== null` as "complete remote"
+ * and everything else as shorthand, so reuse the same parser here instead of a
+ * separate regex that would drift (e.g. accepting `git://` the parser rejects).
+ */
+export function isCompleteGitRemote(repo: string): boolean {
+  return parseGitRemoteLocation(repo) !== null;
 }
 
 export function parseGitRemoteLocation(remoteUrl: string): GitRemoteLocation | null {
@@ -55,7 +57,7 @@ export function parseGitRemoteLocation(remoteUrl: string): GitRemoteLocation | n
   if (!trimmed) return null;
 
   // scp form has no scheme. Testing it first would match `ssh://git@host:22/x`
-  // - `[^@]+` happily eats `ssh://git` - and swallow the port into the path.
+  // — `[^@]+` happily eats `ssh://git` — and swallow the port into the path.
   const scpLike = trimmed.includes("://") ? null : trimmed.match(/^[^@]+@([^:]+):(.+)$/u);
   if (scpLike) {
     const host = normalizeHost(scpLike[1] ?? "");
@@ -114,17 +116,4 @@ function normalizeRemotePath(path: string): string | null {
 
 function isValidRemoteHost(host: string): boolean {
   return /^[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?$/u.test(host);
-}
-
-/**
- * Whether `repo` is already a complete git remote (a URL or scp-like address)
- * rather than `owner/repo` shorthand that still needs a clone protocol picked.
- *
- * Clients (app + CLI) and the daemon must agree on this classification: the
- * daemon treats `parseGitRemoteLocation(repo) !== null` as "complete remote"
- * and everything else as shorthand, so reuse the same parser here instead of a
- * separate regex that would drift (e.g. accepting `git://` the parser rejects).
- */
-export function isCompleteGitRemote(repo: string): boolean {
-  return parseGitRemoteLocation(repo) !== null;
 }

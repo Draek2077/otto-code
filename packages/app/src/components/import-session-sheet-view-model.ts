@@ -1,5 +1,5 @@
-import type { FetchRecentProviderSessionEntry } from "@otto-code/client/internal/daemon-client";
-import type { AgentProvider } from "@otto-code/protocol/agent-types";
+import type { FetchRecentProviderSessionEntry } from "@getpaseo/client/internal/daemon-client";
+import type { AgentProvider } from "@getpaseo/protocol/agent-types";
 import { i18n } from "@/i18n/i18next";
 
 export const PER_PROVIDER_LIMIT = 15;
@@ -44,7 +44,7 @@ export function resolveProvidersToFetch(
   snapshotEntries: ReadonlyArray<{ provider: string; enabled?: boolean }> | undefined,
 ): AgentProvider[] | null {
   // COMPAT(providersSnapshot): the import-recent-sessions feature ships alongside
-  // providersSnapshot (v0.1.48, 2026-04-05). Daemons older than that lack both -
+  // providersSnapshot (v0.1.48, 2026-04-05). Daemons older than that lack both —
   // we render an "update host" empty state instead of degrading. Drop this gate
   // when the supported daemon floor is >= v0.1.48 (target: 2026-10-05).
   if (!supportsSnapshot) return null;
@@ -157,11 +157,7 @@ export interface DirectoryLabel {
 }
 
 function withoutTrailingSlash(path: string): string {
-  // A remote host owns path semantics; normalize separators only for Windows-shaped
-  // absolute paths. POSIX names may legitimately contain a backslash.
-  const normalized =
-    /^[a-z]:[\\/]/i.test(path) || path.startsWith("\\\\") ? path.replace(/\\/g, "/") : path;
-  return normalized.length > 1 ? normalized.replace(/\/+$/, "") : normalized;
+  return path.length > 1 ? path.replace(/\/+$/, "") : path;
 }
 
 /** The project's name when the app knows the directory, else the directory itself. */

@@ -5,7 +5,7 @@ import path from "node:path";
 import pino from "pino";
 
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 import {
   canRunRealProvider,
   createRealProviderClients,
@@ -36,7 +36,7 @@ describe("daemon E2E (real claude) - autonomous wake simple", () => {
   test("hello + background sleep returns idle, then wakes once on completion", async () => {
     const logger = pino({ level: "silent" });
     const cwd = tmpCwd();
-    const daemon = await createTestOttoDaemon({
+    const daemon = await createTestPaseoDaemon({
       agentClients: createRealProviderClients(["claude"], logger),
       logger,
     });
@@ -45,7 +45,7 @@ describe("daemon E2E (real claude) - autonomous wake simple", () => {
     try {
       await client.connect();
       await client.fetchAgents({
-        subscribe: { subscriptionId: "claude-autonomous-simple-real" },
+        subscribe: {},
       });
 
       const agent = await client.createAgent({

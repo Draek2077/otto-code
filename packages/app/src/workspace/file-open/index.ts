@@ -6,33 +6,11 @@ export interface WorkspaceFileLocation {
   path: string;
   lineStart?: number;
   lineEnd?: number;
-  /** A GitHub-style Markdown heading target in the rendered document. */
-  anchor?: string;
+  columnStart?: number; // OTTO(editor): one-based UTF-16 source navigation.
+  columnEnd?: number; // OTTO(editor)
 }
 
-/**
- * When a file tab shows a file outside the workspace hosting the tab, `origin`
- * records the workspace or directory serving that file so the panel resolves
- * its cwd and buffer correctly. Absent for ordinary workspace-local tabs.
- */
-export interface WorkspaceFileOrigin {
-  workspaceId: string;
-  cwd: string;
-  projectId: string;
-  projectName?: string;
-  /**
-   * True for a file outside every registered workspace, such as an agent plan
-   * under `~/.claude`. Its `cwd` is the file's own directory and its ids are
-   * synthetic, path-derived, and stable. Workspace-only actions are withheld,
-   * but reading and editing work normally.
-   */
-  outsideAnyProject?: boolean;
-}
-
-export type WorkspaceFileTabTarget = {
-  kind: "file";
-  origin?: WorkspaceFileOrigin;
-} & WorkspaceFileLocation;
+export type WorkspaceFileTabTarget = { kind: "file" } & WorkspaceFileLocation;
 
 export interface WorkspaceFileOpenRequest {
   location: WorkspaceFileLocation;
@@ -53,12 +31,16 @@ export function normalizeWorkspaceFileLocation(
 
   const lineStart = normalizeLineNumber(location.lineStart);
   const lineEnd = normalizeLineNumber(location.lineEnd);
-  const anchor = location.anchor?.trim();
   return {
     path,
     ...(lineStart ? { lineStart } : {}),
     ...(lineStart && lineEnd && lineEnd >= lineStart ? { lineEnd } : {}),
-    ...(anchor ? { anchor } : {}),
+    ...(lineStart && normalizeLineNumber(location.columnStart)
+      ? { columnStart: normalizeLineNumber(location.columnStart) }
+      : {}), // OTTO(editor)
+    ...(lineStart && normalizeLineNumber(location.columnEnd)
+      ? { columnEnd: normalizeLineNumber(location.columnEnd) }
+      : {}), // OTTO(editor)
   };
 }
 
@@ -70,34 +52,18 @@ export function workspaceFileLocationsEqual(
     left.path === right.path &&
     left.lineStart === right.lineStart &&
     left.lineEnd === right.lineEnd &&
-    left.anchor === right.anchor
+    left.columnStart === right.columnStart &&
+    left.columnEnd === right.columnEnd // OTTO(editor)
   );
 }
 
 export function createWorkspaceFileTabTarget(
   location: WorkspaceFileLocation,
-  origin?: WorkspaceFileOrigin,
 ): WorkspaceFileTabTarget {
   return {
     kind: "file",
     ...location,
-    ...(origin ? { origin } : {}),
   };
-}
-
-/**
- * Two file tab targets are the same tab when they point at the same location
- * and the same serving workspace, preventing equal relative paths from
- * colliding across roots.
- */
-export function workspaceFileTabTargetsEqual(
-  left: WorkspaceFileTabTarget,
-  right: WorkspaceFileTabTarget,
-): boolean {
-  return (
-    workspaceFileLocationsEqual(left, right) &&
-    (left.origin?.workspaceId ?? null) === (right.origin?.workspaceId ?? null)
-  );
 }
 
 function normalizeLineNumber(value: number | null | undefined): number | undefined {
@@ -163,12 +129,7 @@ function isWindowsPath(value: string): boolean {
   return /^[A-Za-z]:\//.test(value);
 }
 
-/**
- * Compares two already-normalized paths (as produced by `resolveWorkspaceFilePaths`).
- * Case-insensitive for Windows paths, exact otherwise - a POSIX filesystem is
- * case-sensitive, and folding case there would merge two distinct files.
- */
-export function absolutePathsEqual(left: string, right: string): boolean {
+function pathsEqual(left: string, right: string): boolean {
   return isWindowsPath(left) || isWindowsPath(right)
     ? left.toLowerCase() === right.toLowerCase()
     : left === right;
@@ -180,6 +141,17 @@ function startsWithPath(value: string, prefix: string): boolean {
     : value.startsWith(prefix);
 }
 
+function pathWithinRoot(root: string, relativePath: string): string {
+  return root.endsWith("/") ? `${root}${relativePath}` : `${root}/${relativePath}`;
+}
+
+/** Whether an absolute path names the workspace directory itself. */
+export function isWorkspaceRootPath(input: { path: string; workspaceRoot: string }): boolean {
+  const path = normalizeAbsolutePath(input.path.trim().replace(/\\/g, "/"));
+  const root = normalizeAbsolutePath(input.workspaceRoot.trim().replace(/\\/g, "/"));
+  return path !== null && root !== null && pathsEqual(path, root);
+}
+
 export interface ResolvedWorkspaceFilePaths {
   /** Absolute path on the host, suitable for opening in an editor / file manager. */
   absolutePath: string;
@@ -189,7 +161,7 @@ export interface ResolvedWorkspaceFilePaths {
 
 /**
  * Resolves a file tab's path (which may be workspace-relative) against the workspace
- * root. Returns null when an absolute host path cannot be derived - e.g. a `~`-relative
+ * root. Returns null when an absolute host path cannot be derived — e.g. a `~`-relative
  * path or a relative path with no workspace root to anchor it.
  */
 export function resolveWorkspaceFilePaths(input: {
@@ -207,10 +179,10 @@ export function resolveWorkspaceFilePaths(input: {
     if (!normalizedFile) {
       return null;
     }
-    if (absolutePathsEqual(normalizedFile, workspaceRoot)) {
+    if (pathsEqual(normalizedFile, workspaceRoot)) {
       return null;
     }
-    const prefix = `${workspaceRoot}/`;
+    const prefix = pathWithinRoot(workspaceRoot, "");
     const relativePath = startsWithPath(normalizedFile, prefix)
       ? normalizedFile.slice(prefix.length)
       : null;
@@ -225,5 +197,5 @@ export function resolveWorkspaceFilePaths(input: {
   if (!relativePath) {
     return null;
   }
-  return { absolutePath: `${workspaceRoot}/${relativePath}`, relativePath };
+  return { absolutePath: pathWithinRoot(workspaceRoot, relativePath), relativePath };
 }

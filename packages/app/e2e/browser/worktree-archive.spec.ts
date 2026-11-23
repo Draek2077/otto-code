@@ -39,30 +39,43 @@ test.describe("Workspace archive with worktree backing", () => {
     await tempRepo?.cleanup().catch(() => undefined);
   });
 
-  test("archiving the final workspace removes its managed worktree directory", async ({ page }) => {
+  test("a managed worktree remains until its last workspace is archived", async ({ page }) => {
     const serverId = getServerId();
     await openProjectViaDaemon(client, tempRepo.path);
-    const worktree = await createWorktreeViaDaemon(client, {
+    const first = await createWorktreeViaDaemon(client, {
       cwd: tempRepo.path,
-      slug: `archive-${Date.now()}`,
+      slug: `shared-archive-${Date.now()}`,
     });
-    createdWorktreeDirectories.add(worktree.workspaceDirectory);
-    expect(existsSync(worktree.workspaceDirectory)).toBe(true);
+    createdWorktreeDirectories.add(first.workspaceDirectory);
+
+    const siblingPayload = await client.createWorkspace({
+      source: {
+        kind: "directory",
+        path: first.workspaceDirectory,
+      },
+      title: "Second workspace",
+    });
+    if (!siblingPayload.workspace) {
+      throw new Error(siblingPayload.error ?? "Failed to create a workspace on the worktree");
+    }
+    const sibling = siblingPayload.workspace;
+    expect(sibling.workspaceKind).toBe("worktree");
+    expect(sibling.workspaceDirectory).toBe(first.workspaceDirectory);
 
     await gotoAppShell(page);
     await waitForSidebarHydration(page);
-    await waitForWorkspaceInSidebar(page, { serverId, workspaceId: worktree.workspaceId });
+    await waitForWorkspaceInSidebar(page, { serverId, workspaceId: first.workspaceId });
+    await waitForWorkspaceInSidebar(page, { serverId, workspaceId: sibling.id });
 
-    await archiveWorkspaceFromSidebar(page, worktree.workspaceId);
+    await archiveWorkspaceFromSidebar(page, first.workspaceId);
 
-    await expectWorkspaceAbsentFromSidebar(page, worktree.workspaceId);
-    await expect
-      .poll(() => existsSync(worktree.workspaceDirectory), { timeout: 30_000 })
-      .toBe(false);
+    await expectWorkspaceAbsentFromSidebar(page, first.workspaceId);
+    expect(existsSync(first.workspaceDirectory)).toBe(true);
+    await waitForWorkspaceInSidebar(page, { serverId, workspaceId: sibling.id });
+
+    await archiveWorkspaceFromSidebar(page, sibling.id);
+
+    await expectWorkspaceAbsentFromSidebar(page, sibling.id);
+    await expect.poll(() => existsSync(first.workspaceDirectory), { timeout: 30_000 }).toBe(false);
   });
-
-  // A companion test used to archive a SECOND workspace sharing this worktree directory, to
-  // prove the directory survived until the last one went. Two visible workspaces can no longer
-  // back one directory (docs/workspace-lifecycle.md, occupied-directory guard), so there is no
-  // longer a second workspace to outlive the first.
 });

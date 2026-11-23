@@ -5,7 +5,6 @@ import {
   indentOnInput,
   syntaxHighlighting,
 } from "@codemirror/language";
-import { searchKeymap } from "@codemirror/search";
 import {
   EditorView,
   drawSelection,
@@ -13,7 +12,7 @@ import {
   keymap,
   lineNumbers,
 } from "@codemirror/view";
-import { createCodeMirrorHighlightStyle, type HighlightStyle } from "@otto-code/highlight";
+import { createCodeMirrorHighlightStyle, type HighlightStyle } from "@getpaseo/highlight";
 
 export interface EditorVisualTheme {
   colorScheme: "light" | "dark";
@@ -28,7 +27,8 @@ export interface EditorVisualTheme {
   syntax: Record<HighlightStyle, string>;
 }
 
-export function editorBaseExtensions(onSave: () => void) {
+export function editorBaseExtensions(onSave: () => void, manageSaveKey = true) {
+  // OTTO(editor): owned renderers take every rebindable key from the registry.
   return [
     lineNumbers(),
     history(),
@@ -38,11 +38,12 @@ export function editorBaseExtensions(onSave: () => void) {
     highlightActiveLine(),
     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     keymap.of([
-      { key: "Mod-s", preventDefault: true, run: () => (onSave(), true) },
+      ...(manageSaveKey
+        ? [{ key: "Mod-s", preventDefault: true, run: () => (onSave(), true) }]
+        : []), // OTTO(editor)
       indentWithTab,
       ...defaultKeymap,
       ...historyKeymap,
-      ...searchKeymap,
     ]),
   ];
 }
@@ -62,6 +63,13 @@ export function editorTheme(theme: EditorVisualTheme) {
           overflow: "auto",
           fontFamily: theme.monoFont,
           lineHeight: "1.45",
+        },
+        ".cm-panels": { backgroundColor: theme.background, color: theme.foreground },
+        ".cm-panels-top": { borderBottom: "none" },
+        ".cm-searchMatch": { backgroundColor: theme.selection },
+        ".cm-searchMatch-selected": {
+          backgroundColor: theme.selection,
+          outline: `1px solid ${theme.cursor}`,
         },
         ".cm-content": { caretColor: theme.foreground, padding: "16px 0" },
         ".cm-cursor, .cm-dropCursor": { borderLeftColor: theme.cursor },

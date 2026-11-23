@@ -1,4 +1,7 @@
-import { createAgentRequestsStub } from "./test-utils/session-stubs.js";
+import {
+  createMessageReceiptsStub,
+  createTestCreationService,
+} from "./test-utils/session-stubs.js";
 import os from "node:os";
 import path from "node:path";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -7,7 +10,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { Session } from "./session.js";
 import type { SessionOptions } from "./session.js";
 import { OWNER_PERMISSIONS } from "./authorization/index.js";
-import { createTestOttoDaemon } from "./test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { asInternals, createStub } from "./test-utils/class-mocks.js";
 import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
 
@@ -27,7 +30,7 @@ describe("snapshot mutation ownership boundary", () => {
   });
 
   test("daemon live mutations write one durable snapshot through the manager-owned path", async () => {
-    const daemonHandle = await createTestOttoDaemon();
+    const daemonHandle = await createTestPaseoDaemon();
     const cwd = mkdtempSync(path.join(os.tmpdir(), "snapshot-owner-live-"));
 
     try {
@@ -100,23 +103,19 @@ describe("snapshot mutation ownership boundary", () => {
 
     const session = asInternals<SessionInternals>(
       new Session({
-        agentRequests: createAgentRequestsStub(),
+        messageReceipts: createMessageReceiptsStub(),
+        creationService: createTestCreationService(),
         clientId: "test-client",
         permissions: OWNER_PERMISSIONS,
         onMessage,
         logger: createStub<SessionOptions["logger"]>(logger),
         downloadTokenStore: createStub<SessionOptions["downloadTokenStore"]>({}),
         pushNotifications: createStub<SessionOptions["pushNotifications"]>({}),
-        ottoHome: "/tmp/otto-test",
+        paseoHome: "/tmp/paseo-test",
         agentManager: createStub<SessionOptions["agentManager"]>({
           subscribe: () => () => {},
           listAgents: () => [],
           getAgent: () => null,
-          // Archiving consults the observed-subagent registry before it decides what to write.
-          // Unstubbed, `createStub` throws from inside the archive path, which surfaces as this
-          // test failing on its storage-write assertion rather than on the missing method.
-          getObservedSubagentPayload: () => null,
-          listObservedSubagentPayloads: () => [],
           archiveSnapshot,
           updateAgentMetadata,
         }),

@@ -37,19 +37,19 @@ async function createWorkspaceJourney() {
   cleanupPaths.push(tempDir);
   const repoDir = path.join(tempDir, "repo");
   run(tempDir, ["init", "-b", "main", repoDir]);
-  run(repoDir, ["config", "user.email", "test@otto-code.local"]);
-  run(repoDir, ["config", "user.name", "Otto Test"]);
+  run(repoDir, ["config", "user.email", "test@getpaseo.local"]);
+  run(repoDir, ["config", "user.name", "Paseo Test"]);
   writeFileSync(path.join(repoDir, "README.md"), "workspace journey\n");
   run(repoDir, ["add", "README.md"]);
   run(repoDir, ["-c", "commit.gpgsign=false", "commit", "-m", "initial"]);
 
-  const ottoHome = path.join(tempDir, ".otto");
+  const paseoHome = path.join(tempDir, ".paseo");
   const worktree = await createWorktree({
     cwd: repoDir,
     worktreeSlug: "workspace",
     source: { kind: "branch-off", baseBranch: "main", branchName: "workspace" },
     runSetup: false,
-    ottoHome,
+    paseoHome,
   });
   const workspaceId = "workspace-under-test";
   let active = true;
@@ -70,7 +70,7 @@ async function createWorkspaceJourney() {
         mainRepoRoot: repoDir,
         currentBranch: branch,
         remoteUrl: "https://github.com/acme/repo.git",
-        isOttoOwnedWorktree: true,
+        isPaseoOwnedWorktree: true,
         isDirty: false,
         baseRef: "main",
         aheadBehind: { ahead: 0, behind: 0 },

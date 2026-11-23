@@ -15,7 +15,7 @@ import {
   type PackageInfo,
 } from "./package-paths.js";
 
-const SERVER_PACKAGE_NAME = "@otto-code/server";
+const SERVER_PACKAGE_NAME = "@getpaseo/server";
 
 const esmRequire = createRequire(__filename);
 
@@ -45,7 +45,7 @@ export function resolveDaemonRunnerEntrypoint(): NodeEntrypointSpec {
         filePath: path.join(
           resolvePackagedAsarPath(),
           "node_modules",
-          "@otto-code",
+          "@getpaseo",
           "server",
           "dist",
           "scripts",

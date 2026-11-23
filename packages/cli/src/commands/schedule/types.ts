@@ -31,11 +31,6 @@ export type ScheduleTarget =
         title?: string | null;
         providerOptions?: Record<string, unknown>;
       };
-    }
-  | {
-      type: "workflow";
-      definitionId: string;
-      projectRoot: string;
     };
 
 export interface ScheduleRunRecord {

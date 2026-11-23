@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { selectAgentTimelineState, useSessionStore } from "@/stores/session-store";
 import {
   createInitDeferred,
@@ -70,15 +70,10 @@ export function ensureAgentIsInitialized(input: EnsureAgentIsInitializedInput): 
     return deferred.promise;
   }
 
-  input.runtime
-    .fetchAgentTimeline(serverId, agentId, {
-      ...timelineRequest,
-      includePromptIndex: true,
-    })
-    .catch((error) => {
-      setAgentInitializing(agentId, false);
-      rejectInitDeferred(key, error instanceof Error ? error : new Error(String(error)));
-    });
+  input.runtime.fetchAgentTimeline(serverId, agentId, timelineRequest).catch((error) => {
+    setAgentInitializing(agentId, false);
+    rejectInitDeferred(key, error instanceof Error ? error : new Error(String(error)));
+  });
 
   return deferred.promise;
 }

@@ -1,5 +1,5 @@
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
-import type { JsonValue } from "@otto-code/protocol/agent-types";
+import type { JsonValue } from "@getpaseo/protocol/agent-types";
 
 const TOOL_CALL_CONTENT_MAX_LENGTH = 64 * 1024;
 export const PLUGIN_TIMELINE_DATA_MAX_BYTES = 64 * 1024;
@@ -9,52 +9,6 @@ export function assertPluginTimelineDataSize(data: JsonValue): void {
   if (serializedBytes > PLUGIN_TIMELINE_DATA_MAX_BYTES) {
     throw new Error(`Plugin timeline item data exceeds ${PLUGIN_TIMELINE_DATA_MAX_BYTES} bytes`);
   }
-}
-
-// File-content details ride in every running-status snapshot of a streamed
-// Write/Edit, so an uncapped one is re-sent and re-retained on each update. Keep
-// the same 64 KB budget as shell output, split head/tail so the preview still
-// shows how the file starts and ends.
-const FILE_CONTENT_HEAD_LENGTH = 48 * 1024;
-const FILE_CONTENT_TAIL_LENGTH = TOOL_CALL_CONTENT_MAX_LENGTH - FILE_CONTENT_HEAD_LENGTH;
-
-function limitFileContentValue(value: string | undefined): string | undefined {
-  if (typeof value !== "string" || value.length <= TOOL_CALL_CONTENT_MAX_LENGTH) {
-    return value;
-  }
-  const omitted = value.length - TOOL_CALL_CONTENT_MAX_LENGTH;
-  return [
-    value.slice(0, FILE_CONTENT_HEAD_LENGTH),
-    `[... Otto truncated ${omitted} characters ...]`,
-    value.slice(value.length - FILE_CONTENT_TAIL_LENGTH),
-  ].join("\n");
-}
-
-function limitFileContent(item: AgentTimelineItem): AgentTimelineItem {
-  if (item.type !== "tool_call") {
-    return item;
-  }
-  if (item.detail.type === "write") {
-    const content = limitFileContentValue(item.detail.content);
-    if (content === item.detail.content) {
-      return item;
-    }
-    return { ...item, detail: { ...item.detail, content } };
-  }
-  if (item.detail.type === "edit") {
-    const oldString = limitFileContentValue(item.detail.oldString);
-    const newString = limitFileContentValue(item.detail.newString);
-    const unifiedDiff = limitFileContentValue(item.detail.unifiedDiff);
-    if (
-      oldString === item.detail.oldString &&
-      newString === item.detail.newString &&
-      unifiedDiff === item.detail.unifiedDiff
-    ) {
-      return item;
-    }
-    return { ...item, detail: { ...item.detail, oldString, newString, unifiedDiff } };
-  }
-  return item;
 }
 
 function limitFailedShellError(item: AgentTimelineItem): AgentTimelineItem {
@@ -88,11 +42,12 @@ function limitPlainText(item: AgentTimelineItem): AgentTimelineItem {
   ) {
     return item;
   }
+  const notice = "\n\n[Content truncated]";
   return {
     ...item,
     detail: {
       ...item.detail,
-      text: item.detail.text.slice(0, TOOL_CALL_CONTENT_MAX_LENGTH),
+      text: item.detail.text.slice(0, TOOL_CALL_CONTENT_MAX_LENGTH - notice.length) + notice,
     },
   };
 }
@@ -100,7 +55,6 @@ function limitPlainText(item: AgentTimelineItem): AgentTimelineItem {
 export function limitAgentTimelineItemContent(item: AgentTimelineItem): AgentTimelineItem {
   item = limitFailedShellError(item);
   item = limitPlainText(item);
-  item = limitFileContent(item);
   if (
     item.type !== "tool_call" ||
     item.detail.type !== "shell" ||

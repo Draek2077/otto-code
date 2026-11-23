@@ -1,7 +1,7 @@
-import type { OttoAgentHandle, OttoClient } from "@otto-code/client";
+import type { PaseoAgentHandle, PaseoClient } from "@getpaseo/client";
 
-export async function reviewInParallel(client: OttoClient, cwd: string): Promise<string[]> {
-  const agents: OttoAgentHandle[] = [];
+export async function reviewInParallel(client: PaseoClient, cwd: string): Promise<string[]> {
+  const agents: PaseoAgentHandle[] = [];
 
   try {
     agents.push(

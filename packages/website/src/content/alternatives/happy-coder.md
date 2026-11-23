@@ -5,6 +5,8 @@ nav: Happy Coder
 order: 53
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Otto vs Happy Coder
 
 Happy Coder is a mobile and web client for Claude Code and Codex. It wraps the agent CLI on your laptop and syncs sessions to phone and browser over an end-to-end encrypted relay. Open source under MIT.

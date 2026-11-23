@@ -55,11 +55,6 @@ export async function submitAgentInput<TAttachment>(
   if (shouldClearOnSubmit) {
     input.setUserInput("");
     input.setAttachments([]);
-  } else {
-    // Dictation can submit directly without first writing the transcript into
-    // the controlled input. Preserve the actual submission while the parent
-    // creates the workspace, including when creation fails.
-    input.setUserInput(input.message);
   }
   input.setSendError(null);
   input.setIsProcessing(true);

@@ -1,27 +1,23 @@
+import type { AgentPromptSource } from "../agent-messages/index.js";
 import type { Logger } from "pino";
 
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
-import type { CreateOttoWorktreeInput } from "../../otto-worktree-service.js";
+import type { CreatePaseoWorktreeInput } from "../../paseo-worktree-service.js";
 import { expandUserPath, resolvePathFromBase } from "../../path-utils.js";
 import { toWorktreeRequestError } from "../../worktree-errors.js";
 import type {
   AgentWorktreeSetupContinuation,
-  CreateOttoWorktreeSetupContinuationInput,
-  CreateOttoWorktreeWorkflowFn,
-  CreateOttoWorktreeWorkflowResult,
+  CreatePaseoWorktreeSetupContinuationInput,
+  CreatePaseoWorktreeWorkflowFn,
+  CreatePaseoWorktreeWorkflowResult,
 } from "../../worktree-session.js";
-import type { ChangeRequestCheckoutSource } from "@otto-code/protocol/messages";
 import type { AgentAttachment, FirstAgentContext, GitSetupOptions } from "../../messages.js";
 import type { AgentManager, CreateAgentOptions, ManagedAgent } from "../agent-manager.js";
 import type { AgentPromptInput, AgentRunOptions, AgentSessionConfig } from "../agent-sdk-types.js";
 import type { AgentStorage } from "../agent-storage.js";
-import type {
-  ProviderSnapshotManager,
-  ResolvedProviderCreateConfig,
-} from "../provider-snapshot-manager.js";
 import type { AgentOwner } from "../agent-owner.js";
+import type { ProviderSnapshotManager } from "../provider-snapshot-manager.js";
 import { setupFinishNotification, startCreatedAgentInitialPrompt } from "../agent-prompt.js";
-import type { AgentAutoTitleRequest } from "../agent-auto-title.js";
 import { resolveCreateAgentTitles } from "../create-agent-title.js";
 import { buildAgentPrompt } from "../prompt-attachments.js";
 import { normalizeClientMessageId, resolveClientMessageId } from "../../client-message-id.js";
@@ -44,31 +40,30 @@ export interface CreateAgentCommandDependencies {
   agentManager: AgentManager;
   agentStorage: AgentStorage;
   logger: Logger;
-  ottoHome?: string;
+  paseoHome?: string;
   worktreesRoot?: string;
   terminalManager?: TerminalManager | null;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig">;
-  createOttoWorktree?: CreateOttoWorktreeWorkflowFn;
+  createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: EnsureWorkspaceForCreate;
-  // Schedules an AI-written short chat title from the first message, off the
-  // create hot path. Absent in contexts that don't wire structured generation
-  // (e.g. tests) - the chat then keeps its provisional first-line title.
-  scheduleAutoTitle?: (request: AgentAutoTitleRequest) => void;
 }
 
 export type EnsureWorkspaceForCreate = (
   cwd: string,
   firstAgentContext?: FirstAgentContext,
+  context?: { callerWorkspaceId?: string },
 ) => Promise<string>;
 
 export interface CreateAgentFromSessionInput {
   kind: "session";
+  onAgentReady?: (agent: ManagedAgent) => Promise<void>;
   agentId?: string;
   config: AgentSessionConfig;
   workspaceId: string;
   worktreeName?: string;
   initialPrompt?: string;
+  source?: AgentPromptSource;
   clientMessageId?: string;
   outputSchema?: Record<string, unknown>;
   images?: Array<{ data: string; mimeType: string }>;
@@ -78,12 +73,6 @@ export interface CreateAgentFromSessionInput {
   env?: Record<string, string>;
   provisionalTitle: string | null;
   firstAgentContext: FirstAgentContext;
-  /**
-   * Runs after the agent record exists but before its initial prompt is
-   * started. Session-owned capabilities that authorize agent-scoped tools use
-   * this seam so the very first tool invocation sees its complete binding.
-   */
-  onCreatedBeforeInitialPrompt?: (agent: ManagedAgent) => Promise<void>;
   buildSessionConfig: (
     config: AgentSessionConfig,
     gitOptions?: GitSetupOptions,
@@ -95,13 +84,7 @@ export interface CreateAgentFromSessionInput {
 export interface CreateAgentFromMcpInput {
   kind: "mcp";
   provider: string;
-  title?: string;
-  /**
-   * True when `title` is our own placeholder for a bare spawn rather than a name
-   * the caller chose. A caller's title must win over auto-naming; a placeholder
-   * must not, or the chat is stuck on the filler name forever.
-   */
-  titleIsPlaceholder?: boolean;
+  title: string;
   initialPrompt?: string;
   config?: Partial<AgentSessionConfig>;
   cwd?: string;
@@ -112,7 +95,6 @@ export interface CreateAgentFromMcpInput {
   mode?: string;
   unattended?: boolean;
   promptFailure?: CreateAgentPromptFailureMode;
-  background: boolean;
   notifyOnFinish: boolean;
   internal?: boolean;
   detached?: boolean;
@@ -120,9 +102,9 @@ export interface CreateAgentFromMcpInput {
   env?: Record<string, string>;
   onCreated?: (created: {
     agentId: string;
-    createdWorktree: CreateOttoWorktreeWorkflowResult | null;
+    createdWorktree: CreatePaseoWorktreeWorkflowResult | null;
   }) => void;
-  onWorktreeCreated?: (createdWorktree: CreateOttoWorktreeWorkflowResult) => void;
+  onWorktreeCreated?: (createdWorktree: CreatePaseoWorktreeWorkflowResult) => void;
   callerAgentId?: string;
   callerContext?: {
     lockedCwd?: string;
@@ -136,9 +118,6 @@ export interface CreateAgentFromMcpInput {
     refName?: string;
     action?: "branch-off" | "checkout";
     githubPrNumber?: number;
-    // Forge-neutral change-request checkout. Carried alongside githubPrNumber so
-    // a spawn onto a Bitbucket or GitLab PR is not resolved against GitHub.
-    checkoutSource?: ChangeRequestCheckoutSource;
   };
 }
 
@@ -148,10 +127,9 @@ export type CreateAgentPromptFailureMode = "throw" | "log" | "return-error";
 export interface CreateAgentCommandResult {
   snapshot: ManagedAgent;
   liveSnapshot: ManagedAgent;
-  background: boolean;
   initialPromptStarted: boolean;
   initialPromptError: unknown | null;
-  createdWorktree?: CreateOttoWorktreeWorkflowResult;
+  createdWorktree?: CreatePaseoWorktreeWorkflowResult;
 }
 
 export type BoundCreateAgentCommand = (
@@ -187,16 +165,12 @@ interface ResolvedCreateAgent {
   config: AgentSessionConfig;
   createOptions: CreateAgentOptions;
   prompt?: AgentPromptInput;
+  source?: AgentPromptSource;
   runOptions?: AgentRunOptions;
   setupContinuation?: AgentWorktreeSetupContinuation;
-  background: boolean;
   promptFailure: CreateAgentPromptFailureMode;
   promptLogger?: Logger;
-  // Present when this chat should get an AI-written title from its first
-  // message. Omitted for internal/utility agents, which never carry a
-  // user-facing title.
-  autoTitle?: Omit<AgentAutoTitleRequest, "agentId">;
-  createdWorktree?: CreateOttoWorktreeWorkflowResult;
+  createdWorktree?: CreatePaseoWorktreeWorkflowResult;
 }
 
 export async function createAgentCommand(
@@ -214,13 +188,7 @@ export async function createAgentCommand(
     resolved.createOptions,
   );
 
-  if (input.kind === "session") {
-    await input.onCreatedBeforeInitialPrompt?.(snapshot);
-  }
-
-  resolved.setupContinuation?.startAfterAgentCreate({
-    agentId: snapshot.id,
-  });
+  if (input.kind === "session") await input.onAgentReady?.(snapshot);
 
   let liveSnapshot = snapshot;
   let initialPromptStarted = false;
@@ -228,32 +196,37 @@ export async function createAgentCommand(
   if (input.kind === "mcp") {
     input.onCreated?.({ agentId: snapshot.id, createdWorktree: resolved.createdWorktree ?? null });
   }
+  const stopNotification =
+    input.kind === "mcp" &&
+    input.notifyOnFinish &&
+    input.callerAgentId &&
+    (resolved.prompt !== undefined || resolved.setupContinuation !== undefined)
+      ? setupFinishNotification({
+          agentManager: dependencies.agentManager,
+          agentStorage: dependencies.agentStorage,
+          childAgentId: snapshot.id,
+          callerAgentId: input.callerAgentId,
+          requireParentOwnership: true,
+          logger: dependencies.logger,
+        })
+      : undefined;
+
+  resolved.setupContinuation?.startAfterAgentCreate({
+    agentId: snapshot.id,
+  });
   if (resolved.prompt !== undefined) {
-    const sendResult = await sendInitialPrompt(dependencies, resolved, snapshot);
+    const sendResult = await sendInitialPrompt(dependencies, resolved, snapshot).catch((error) => {
+      stopNotification?.();
+      throw error;
+    });
     initialPromptStarted = sendResult.started;
     liveSnapshot = sendResult.liveSnapshot;
     initialPromptError = sendResult.error ?? null;
   }
 
-  if (resolved.autoTitle && dependencies.scheduleAutoTitle) {
-    dependencies.scheduleAutoTitle({ agentId: snapshot.id, ...resolved.autoTitle });
-  }
-
-  if (input.kind === "mcp" && input.notifyOnFinish && input.callerAgentId && initialPromptStarted) {
-    setupFinishNotification({
-      agentManager: dependencies.agentManager,
-      agentStorage: dependencies.agentStorage,
-      childAgentId: snapshot.id,
-      callerAgentId: input.callerAgentId,
-      requireParentOwnership: true,
-      logger: dependencies.logger,
-    });
-  }
-
   return {
     snapshot,
     liveSnapshot,
-    background: resolved.background,
     initialPromptStarted,
     initialPromptError,
     ...(resolved.createdWorktree ? { createdWorktree: resolved.createdWorktree } : {}),
@@ -277,11 +250,11 @@ async function resolveSessionCreateAgent(
   );
   // Validate the requested mode against the provider's modes for the resolved
   // cwd. The app remembers mode preferences globally, so a saved mode can be
-  // stale for a workspace whose provider config no longer defines it - reject
+  // stale for a workspace whose provider config no longer defines it — reject
   // it here instead of letting the provider fail mid-turn.
   //
   // This runs after buildSessionConfig, which may already have created a
-  // worktree and/or workspace record - cwd (required to resolve modes) is
+  // worktree and/or workspace record — cwd (required to resolve modes) is
   // only known once that step completes. If validation throws, any
   // worktree/workspace buildSessionConfig created is the caller's
   // responsibility to clean up (session.ts's handleCreateAgentRequest does
@@ -320,43 +293,35 @@ async function resolveSessionCreateAgent(
       initialPrompt: trimmedPrompt,
       env: input.env,
       initialTitle: input.provisionalTitle,
+      // Paseo never persists an internal agent, so nothing could resume its
+      // provider session either. Same as the daemon's own ephemeral helpers.
+      ...(sessionConfig.internal ? { persistSession: false } : {}),
       // A legacy git/worktreeName worktree creates a fresh workspace, so the
       // agent belongs to that workspace, not the source one. createdWorkspaceId
       // is the freshly created worktree's workspace.
       workspaceId: requireResolvedWorkspaceId(workspaceId),
     },
     prompt: hasPromptContent ? prompt : undefined,
+    source: input.source,
     runOptions,
     setupContinuation,
-    background: true,
-    promptFailure: "throw",
+    // Registration commits creation. First-turn failures belong to the created agent.
+    promptFailure: "return-error",
     promptLogger: dependencies.logger.child({
       clientMessageId: resolveClientMessageId(input.clientMessageId),
     }),
-    // Auto-name only a normal new chat: skip when the caller pinned an explicit
-    // title or the agent is internal (its title is a fixed utility label).
-    autoTitle:
-      hasPromptContent && !input.config.title && !input.config.internal
-        ? {
-            cwd: sessionConfig.cwd,
-            firstAgentContext: input.firstAgentContext,
-            provisionalTitle: input.provisionalTitle,
-            currentSelection: autoTitleCurrentSelection(sessionConfig),
-          }
-        : undefined,
   };
 }
 
-/**
- * Where an MCP-created agent runs: its working directory (creating a worktree
- * when asked), and the workspace/labels intent that follows from it.
- */
-async function resolveMcpCreatePlacement(params: {
-  dependencies: CreateAgentCommandDependencies;
-  input: CreateAgentFromMcpInput;
-  parentAgent: ReturnType<typeof requireParentAgent> | null;
-}) {
-  const { dependencies, input, parentAgent } = params;
+async function resolveMcpCreateAgent(
+  dependencies: CreateAgentCommandDependencies,
+  input: CreateAgentFromMcpInput,
+): Promise<ResolvedCreateAgent> {
+  const resolvedProviderModel = resolveProviderModel(input.provider);
+  const provider = resolvedProviderModel.provider;
+  const parentAgent = input.callerAgentId
+    ? requireParentAgent(dependencies.agentManager, input.callerAgentId)
+    : null;
   const cwd = resolveMcpInitialCwd(input, parentAgent);
   const { resolvedCwd, setupContinuation, createdWorkspaceId, createdWorktree } =
     await resolveMcpCwd({
@@ -364,6 +329,7 @@ async function resolveMcpCreatePlacement(params: {
       cwd,
       worktree: input.worktree,
       initialPrompt: input.initialPrompt ?? "",
+      callerWorkspaceId: parentAgent?.workspaceId,
     });
   if (createdWorktree) input.onWorktreeCreated?.(createdWorktree);
 
@@ -378,61 +344,35 @@ async function resolveMcpCreatePlacement(params: {
     resolveWorkspace: async (workspaceId) => ({ workspaceId, cwd: resolvedCwd }),
     createWorkspace: async () => ({
       workspaceId: requireResolvedWorkspaceId(
-        await ensureWorkspaceForMcpCreate(dependencies, resolvedCwd, input.initialPrompt ?? ""),
+        await ensureWorkspaceForMcpCreate(
+          dependencies,
+          resolvedCwd,
+          input.initialPrompt ?? "",
+          parentAgent?.workspaceId,
+        ),
       ),
       cwd: resolvedCwd,
     }),
   });
-
-  return { resolvedCwd, setupContinuation, createdWorktree, intent };
-}
-
-async function resolveMcpCreateAgent(
-  dependencies: CreateAgentCommandDependencies,
-  input: CreateAgentFromMcpInput,
-): Promise<ResolvedCreateAgent> {
-  const resolvedProviderModel = resolveProviderModel(input.provider);
-  const provider = resolvedProviderModel.provider;
-  const parentAgent = input.callerAgentId
-    ? requireParentAgent(dependencies.agentManager, input.callerAgentId)
-    : null;
-  const { resolvedCwd, setupContinuation, createdWorktree, intent } =
-    await resolveMcpCreatePlacement({ dependencies, input, parentAgent });
   const resolvedCreateConfig = await resolveMcpProviderCreateConfig({
     dependencies,
     input,
     provider,
     resolvedCwd,
     parentAgent,
-    model: resolvedProviderModel.model ?? input.config?.model,
   });
 
   const trimmedPrompt = input.initialPrompt?.trim() ?? "";
-  // Only auto-name when the caller left the title blank: an explicit MCP/caller
-  // title (a spawned subagent's task name, an orchestration phase, …) must win.
-  const { explicitTitle, provisionalTitle } = resolveCreateAgentTitles({
-    configTitle: input.config?.title ?? input.title,
-    initialPrompt: trimmedPrompt,
-  });
-  const isInternal = input.internal ?? input.config?.internal ?? false;
-  // A bare spawn ("just open a new chat") carries a placeholder title so the tab
-  // has something to show immediately. It must still auto-name once the first
-  // exchange exists, so it does not count as a caller-chosen title here. The
-  // placeholder rides along as provisionalTitle, which is exactly what
-  // AgentAutoTitle overwrites (and it still declines to touch a user rename).
-  const callerChoseTitle = input.titleIsPlaceholder ? null : explicitTitle;
-  const mcpSessionConfig = buildMcpSessionConfig({
-    input,
-    resolvedProviderModel,
-    provider,
-    resolvedCwd,
-    trimmedPrompt,
-    resolvedMode: resolvedCreateConfig.modeId,
-    resolvedFeatures: resolvedCreateConfig.featureValues,
-    resolvedUnattended: resolvedCreateConfig.unattended,
-  });
   return {
-    config: mcpSessionConfig,
+    config: buildMcpSessionConfig({
+      input,
+      resolvedProviderModel,
+      provider,
+      resolvedCwd: intent.cwd,
+      trimmedPrompt,
+      resolvedMode: resolvedCreateConfig.modeId,
+      resolvedFeatures: resolvedCreateConfig.featureValues,
+    }),
     createOptions: {
       ...(Object.keys(intent.labels).length > 0 ? { labels: intent.labels } : {}),
       workspaceId: intent.workspaceId,
@@ -440,41 +380,12 @@ async function resolveMcpCreateAgent(
       env: input.env,
     },
     prompt: trimmedPrompt ? trimmedPrompt : undefined,
+    source: input.callerAgentId
+      ? { kind: "agent-message", agentId: input.callerAgentId }
+      : undefined,
     setupContinuation,
     createdWorktree,
-    background: input.background,
     promptFailure: input.promptFailure ?? "log",
-    autoTitle:
-      trimmedPrompt && !callerChoseTitle && !isInternal
-        ? {
-            cwd: resolvedCwd,
-            firstAgentContext: { prompt: trimmedPrompt },
-            provisionalTitle,
-            currentSelection: autoTitleCurrentSelection(mcpSessionConfig),
-          }
-        : undefined,
-  };
-}
-
-/**
- * Last-resort entry in the auto-title provider chain: the chat's OWN provider and model.
- *
- * The chain is the cheap ladder (haiku, gpt-5.4-mini, minimax-m3, …) plus any role-matched Writer
- * personality, and `resolveStructuredGenerationProviders` appends this selection at the end - so
- * preference order is unchanged and this only decides what happens when none of the preferred
- * models are reachable. Without it a host that has only one provider configured (LM Studio, Codex,
- * the deterministic e2e mock) silently gets no titles at all: every laddered candidate is either
- * absent or, as on CI, present-but-unauthenticated.
- */
-function autoTitleCurrentSelection(config: {
-  provider?: string | null;
-  model?: string | null;
-  thinkingOptionId?: string | null;
-}): { provider?: string | null; model?: string | null; thinkingOptionId?: string | null } {
-  return {
-    provider: config.provider ?? null,
-    model: config.model ?? null,
-    thinkingOptionId: config.thinkingOptionId ?? null,
   };
 }
 
@@ -499,8 +410,7 @@ async function resolveMcpProviderCreateConfig(params: {
   provider: string;
   resolvedCwd: string;
   parentAgent: ManagedAgent | null;
-  model: string | null | undefined;
-}): Promise<ResolvedProviderCreateConfig> {
+}): Promise<{ modeId?: string; featureValues?: Record<string, unknown> }> {
   const passthroughConfig = params.input.config;
   return params.dependencies.providerSnapshotManager.resolveCreateConfig({
     cwd: params.resolvedCwd,
@@ -509,9 +419,6 @@ async function resolveMcpProviderCreateConfig(params: {
     featureValues: params.input.features ?? passthroughConfig?.featureValues,
     parent: params.parentAgent,
     unattended: params.input.unattended ?? false,
-    // Model-aware unattended-target selection (Claude dontAsk → auto) needs the
-    // resolved model here, before the session config is built.
-    model: params.model,
   });
 }
 
@@ -523,10 +430,6 @@ function buildMcpSessionConfig(params: {
   trimmedPrompt: string;
   resolvedMode?: string;
   resolvedFeatures?: Record<string, unknown>;
-  // Effective unattended after OR-ing in an unattended parent (from the
-  // resolver), so a child of an unattended parent arms the deny-responder even
-  // though the MCP create_chat input never sets `unattended` itself.
-  resolvedUnattended: boolean;
 }): AgentSessionConfig {
   const passthroughConfig = params.input.config;
   const { provisionalTitle } = resolveCreateAgentTitles({
@@ -542,13 +445,6 @@ function buildMcpSessionConfig(params: {
     model: params.resolvedProviderModel.model ?? passthroughConfig?.model,
     thinkingOptionId: params.input.thinking ?? passthroughConfig?.thinkingOptionId,
     internal: params.input.internal ?? passthroughConfig?.internal,
-    // Stamp the creation-time unattended signal onto the config so the daemon's
-    // guardrail deny-responder can auto-deny permission escalations for runs
-    // nobody is watching. Uses the resolver's effective value (input OR an
-    // unattended parent), falling back to an explicit passthrough flag, so a
-    // child spawned by an unattended parent is guarded too - matching the mode
-    // coercion. See docs/safe-unattended.md.
-    unattended: params.resolvedUnattended || passthroughConfig?.unattended === true,
   };
   if (provisionalTitle) {
     config.title = provisionalTitle;
@@ -563,11 +459,16 @@ async function ensureWorkspaceForMcpCreate(
   dependencies: CreateAgentCommandDependencies,
   cwd: string,
   initialPrompt: string,
+  callerWorkspaceId?: string,
 ): Promise<string | undefined> {
   if (!dependencies.ensureWorkspaceForCreate) {
     return undefined;
   }
-  return dependencies.ensureWorkspaceForCreate(cwd, { prompt: initialPrompt });
+  return dependencies.ensureWorkspaceForCreate(
+    cwd,
+    { prompt: initialPrompt },
+    { callerWorkspaceId },
+  );
 }
 
 async function sendInitialPrompt(
@@ -581,10 +482,12 @@ async function sendInitialPrompt(
       return { started: false, liveSnapshot: snapshot };
     }
     const liveSnapshot = await startCreatedAgentInitialPrompt({
+      agentStorage: dependencies.agentStorage,
       agentManager: dependencies.agentManager,
       agentId: snapshot.id,
       snapshot,
       prompt,
+      source: resolved.source,
       runOptions: resolved.runOptions,
       logger: resolved.promptLogger ?? dependencies.logger,
     });
@@ -594,7 +497,11 @@ async function sendInitialPrompt(
       throw error;
     }
     if (resolved.promptFailure === "return-error") {
-      return { started: false, liveSnapshot: snapshot, error };
+      return {
+        started: false,
+        liveSnapshot: dependencies.agentManager.getAgent(snapshot.id) ?? snapshot,
+        error,
+      };
     }
     dependencies.logger.error({ err: error, agentId: snapshot.id }, "Failed to run initial prompt");
     return { started: false, liveSnapshot: snapshot };
@@ -632,23 +539,20 @@ async function resolveMcpCwd(params: {
   dependencies: CreateAgentCommandDependencies;
   cwd: string;
   initialPrompt: string;
+  callerWorkspaceId?: string;
   worktree: CreateAgentFromMcpInput["worktree"];
 }): Promise<{
   resolvedCwd: string;
   setupContinuation?: AgentWorktreeSetupContinuation;
   createdWorkspaceId?: string;
-  createdWorktree?: CreateOttoWorktreeWorkflowResult;
+  createdWorktree?: CreatePaseoWorktreeWorkflowResult;
 }> {
   const { dependencies, worktree } = params;
   if (!worktree) {
     return { resolvedCwd: params.cwd };
   }
   const shouldCreateWorktree = Boolean(
-    worktree.worktreeName ||
-    worktree.refName ||
-    worktree.action ||
-    worktree.githubPrNumber ||
-    worktree.checkoutSource,
+    worktree.worktreeName || worktree.refName || worktree.action || worktree.githubPrNumber,
   );
   if (!shouldCreateWorktree) {
     return { resolvedCwd: params.cwd };
@@ -658,7 +562,6 @@ async function resolveMcpCwd(params: {
     !worktree.baseBranch &&
     !worktree.refName &&
     !worktree.action &&
-    !worktree.checkoutSource &&
     worktree.githubPrNumber === undefined
   ) {
     throw new Error("baseBranch is required when creating a worktree");
@@ -667,18 +570,18 @@ async function resolveMcpCwd(params: {
   const createdWorktree = await createMcpWorktree({
     input: {
       cwd: params.cwd,
+      callerWorkspaceId: params.callerWorkspaceId,
       worktreeSlug: worktree.worktreeName,
       branchName: worktree.branchName,
       refName: worktree.refName,
       action: worktree.action,
       githubPrNumber: worktree.githubPrNumber,
-      ...(worktree.checkoutSource ? { checkoutSource: worktree.checkoutSource } : {}),
       firstAgentContext: { prompt: params.initialPrompt },
       runSetup: false,
-      ottoHome: dependencies.ottoHome,
+      paseoHome: dependencies.paseoHome,
       worktreesRoot: dependencies.worktreesRoot,
     },
-    createOttoWorktree: dependencies.createOttoWorktree,
+    createPaseoWorktree: dependencies.createPaseoWorktree,
     resolveDefaultBranch: baseBranch ? async () => baseBranch : undefined,
     setupContinuation: {
       kind: "agent",
@@ -707,20 +610,21 @@ async function resolveMcpCwd(params: {
 }
 
 interface CreateMcpWorktreeOptions {
-  input: CreateOttoWorktreeInput;
-  createOttoWorktree: CreateOttoWorktreeWorkflowFn | undefined;
+  input: CreatePaseoWorktreeInput;
+  createPaseoWorktree: CreatePaseoWorktreeWorkflowFn | undefined;
   resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
-  setupContinuation?: CreateOttoWorktreeSetupContinuationInput;
+  setupContinuation?: CreatePaseoWorktreeSetupContinuationInput;
 }
 
 async function createMcpWorktree(
   options: CreateMcpWorktreeOptions,
-): Promise<CreateOttoWorktreeWorkflowResult> {
+): Promise<CreatePaseoWorktreeWorkflowResult> {
   try {
-    if (!options.createOttoWorktree) {
+    if (!options.createPaseoWorktree) {
+      // OTTO(identity)
       throw new Error("Otto worktree service is not configured");
     }
-    return await options.createOttoWorktree(options.input, {
+    return await options.createPaseoWorktree(options.input, {
       ...(options.resolveDefaultBranch
         ? { resolveDefaultBranch: options.resolveDefaultBranch }
         : {}),

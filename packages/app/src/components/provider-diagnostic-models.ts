@@ -1,4 +1,5 @@
-import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
+import type { AgentModelDefinition } from "@getpaseo/protocol/agent-types";
+import { filterSelectableModels } from "@/provider-selection/model-catalog";
 
 export interface ProviderDiscoveredModelsCache {
   serverId: string;
@@ -26,9 +27,7 @@ export function resolveProviderDiscoveredModels({
   providerSnapshotRefreshing,
   previousCache,
 }: ResolveProviderDiscoveredModelsInput): ResolveProviderDiscoveredModelsResult {
-  // Settings must retain hidden models so their checkboxes can turn them back
-  // on. Only provider-native compatibility rows are excluded here.
-  const selectableModels = currentModels?.filter((model) => model.isSelectable !== false) ?? [];
+  const selectableModels = filterSelectableModels(currentModels ?? null) ?? [];
   if (selectableModels.length > 0) {
     const cache = { serverId, provider, models: selectableModels };
     return { models: selectableModels, cache };

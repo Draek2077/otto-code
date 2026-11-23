@@ -2,60 +2,47 @@ import { useCallback, useEffect, useRef } from "react";
 import { Buffer } from "buffer";
 import { useState } from "react";
 
-import { createAudioEngine } from "@/voice/audio-engine";
+import { createAudioEngine } from "@/audio";
+import type { WakeDictationStart } from "@/otto/speech/wake/dictation-session"; // OTTO(wake-word)
 
 import type {
   DictationAudioSource,
   DictationAudioSourceConfig,
 } from "./use-dictation-audio-source.types";
 
-// Match web dictation's one-second PCM16 chunks. Forwarding Android's 1024-byte
-// microphone frames individually exceeds the relay's 200 messages per 10 seconds.
-const PCM_CHUNK_BYTES = 16_000 * 2;
-
 export function useDictationAudioSource(config: DictationAudioSourceConfig): DictationAudioSource {
   const onPcmSegmentRef = useRef(config.onPcmSegment);
   const onErrorRef = useRef(config.onError);
   const onInterruptionRef = useRef(config.onInterruption);
   const [volume, setVolume] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
   const engineRef = useRef<ReturnType<typeof createAudioEngine> | null>(null);
-  const pendingPcmRef = useRef(Buffer.alloc(0));
-
-  const flushPendingPcm = useCallback(() => {
-    const pending = pendingPcmRef.current;
-    pendingPcmRef.current = Buffer.alloc(0);
-    if (pending.length > 0) {
-      onPcmSegmentRef.current(pending.toString("base64"));
-    }
-  }, []);
 
   const getOrCreateEngine = useCallback(() => {
     if (engineRef.current) {
       return engineRef.current;
     }
 
-    engineRef.current = createAudioEngine({
-      onCaptureData: (pcm) => {
-        let pending = Buffer.concat([pendingPcmRef.current, pcm]);
-        while (pending.length >= PCM_CHUNK_BYTES) {
-          onPcmSegmentRef.current(pending.subarray(0, PCM_CHUNK_BYTES).toString("base64"));
-          pending = pending.subarray(PCM_CHUNK_BYTES);
-        }
-        pendingPcmRef.current = pending;
+    engineRef.current = createAudioEngine(
+      {
+        onCaptureData: (pcm) => {
+          onPcmSegmentRef.current(Buffer.from(pcm).toString("base64"));
+        },
+        onVolumeLevel: (level) => {
+          setVolume(level);
+        },
+        onError: (error) => {
+          onErrorRef.current?.(error);
+        },
+        onInterruption: () => {
+          onInterruptionRef.current?.();
+        },
+        onCaptureAvailabilityChange: (available) => setIsPaused(!available),
       },
-      onVolumeLevel: (level) => {
-        setVolume(level);
-      },
-      onError: (error) => {
-        onErrorRef.current?.(error);
-      },
-      onInterruption: () => {
-        flushPendingPcm();
-        onInterruptionRef.current?.();
-      },
-    });
+      { captureMode: "dictation" },
+    );
     return engineRef.current;
-  }, [flushPendingPcm]);
+  }, []);
 
   useEffect(() => {
     onPcmSegmentRef.current = config.onPcmSegment;
@@ -63,24 +50,26 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
     onInterruptionRef.current = config.onInterruption;
   }, [config.onPcmSegment, config.onError, config.onInterruption]);
 
-  const start = useCallback(async () => {
-    pendingPcmRef.current = Buffer.alloc(0);
-    const engine = getOrCreateEngine();
-    await engine.initialize();
-    await engine.startCapture();
-  }, [getOrCreateEngine]);
+  const start = useCallback(
+    async (initial?: WakeDictationStart) => {
+      const engine = getOrCreateEngine();
+      await engine.initialize();
+      // OTTO(wake-word): leave ordinary dictation's capture call unchanged.
+      if (initial?.wakeWord) await engine.startCapture({ ottoWakeWordHandoff: true });
+      else await engine.startCapture();
+    },
+    [getOrCreateEngine],
+  );
 
   const stop = useCallback(async () => {
     await engineRef.current?.stopCapture();
-    flushPendingPcm();
     setVolume(0);
-  }, [flushPendingPcm]);
+  }, []);
 
   useEffect(() => {
     return () => {
       const engine = engineRef.current;
       engineRef.current = null;
-      pendingPcmRef.current = Buffer.alloc(0);
       void engine?.destroy().catch(() => undefined);
     };
   }, []);
@@ -89,5 +78,6 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
     start,
     stop,
     volume,
+    isPaused,
   };
 }

@@ -4,10 +4,10 @@ import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { refreshProviderSubagents, useProviderSubagentStore } from "./provider-store";
-import type { ProviderSubagentDescriptorPayload } from "@otto-code/protocol/messages";
+import type { ProviderSubagentDescriptorPayload } from "@getpaseo/protocol/messages";
 
-export interface OttoSubagentRow {
-  kind: "otto";
+export interface PaseoSubagentRow {
+  kind: "paseo";
   id: Agent["id"];
   provider: Agent["provider"];
   title: Agent["title"];
@@ -18,15 +18,6 @@ export interface OttoSubagentRow {
   turn: Agent["turn"];
   requiresAttention: Agent["requiresAttention"];
   createdAt: Agent["createdAt"];
-  updatedAt: Agent["updatedAt"];
-  attend?: Agent["attend"];
-  backgrounded?: Agent["backgrounded"];
-  cumulativeTokens?: Agent["cumulativeTokens"];
-  cumulativeUsage?: Agent["cumulativeUsage"];
-  toolUseCount?: Agent["toolUseCount"];
-  currentTool?: Agent["currentTool"];
-  personalityName?: Agent["personalityName"];
-  personalitySpinner?: Agent["personalitySpinner"];
 }
 
 export interface ProviderSubagentRow {
@@ -46,7 +37,7 @@ export interface ProviderSubagentRow {
   createdAt: Date;
 }
 
-export type SubagentRow = OttoSubagentRow | ProviderSubagentRow;
+export type SubagentRow = PaseoSubagentRow | ProviderSubagentRow;
 
 type SessionStoreSnapshot = ReturnType<typeof useSessionStore.getState>;
 type ProviderSubagentStoreSnapshot = ReturnType<typeof useProviderSubagentStore.getState>;
@@ -60,11 +51,10 @@ interface SelectSubagentsParams {
 
 const EMPTY_SUBAGENT_ROWS: SubagentRow[] = [];
 const EMPTY_PROVIDER_SUBAGENT_ROWS: ProviderSubagentRow[] = [];
-const EMPTY_SHADOWED_PROVIDER_SUBAGENT_IDS: string[] = [];
 
 function toSubagentRow(agent: Agent): SubagentRow {
   return {
-    kind: "otto",
+    kind: "paseo",
     id: agent.id,
     provider: agent.provider,
     title: agent.title,
@@ -74,71 +64,7 @@ function toSubagentRow(agent: Agent): SubagentRow {
     turn: agent.turn,
     requiresAttention: agent.requiresAttention,
     createdAt: agent.createdAt,
-    updatedAt: agent.updatedAt,
-    attend: agent.attend,
-    backgrounded: agent.backgrounded,
-    cumulativeTokens: agent.cumulativeTokens,
-    cumulativeUsage: agent.cumulativeUsage,
-    toolUseCount: agent.toolUseCount,
-    currentTool: agent.currentTool,
-    personalityName: agent.personalityName,
-    personalitySpinner: agent.personalitySpinner,
   };
-}
-
-/** Backstop against a parent-id cycle in corrupt data; real nesting is a few
- * levels deep at most (chat -> subagent -> its own subagents). */
-const MAX_PARENT_WALK_DEPTH = 8;
-
-/**
- * True when `agent` belongs in the track of `parentAgentId`: a direct child,
- * or a nested observed subagent reached by walking up THROUGH observed rows
- * only (a subagent's own fan-out parents to its spawning subagent's row, and
- * that whole tree is this chat's doing). An ATTENDED intermediate breaks the
- * chain on purpose - an attended child is its own chat with its own track,
- * and its children are not this chat's rows.
- */
-export function isTrackDescendantOf(
-  agent: Agent,
-  parentAgentId: string,
-  agentsById: ReadonlyMap<string, Agent>,
-): boolean {
-  let currentParentId = agent.parentAgentId;
-  for (let depth = 0; depth < MAX_PARENT_WALK_DEPTH && currentParentId; depth += 1) {
-    if (currentParentId === parentAgentId) {
-      return true;
-    }
-    const intermediate = agentsById.get(currentParentId);
-    if (!intermediate || intermediate.attend !== "observed") {
-      return false;
-    }
-    currentParentId = intermediate.parentAgentId;
-  }
-  return false;
-}
-
-/**
- * True when at least one OBSERVED sub-agent in `parentAgentId`'s track is still
- * running - i.e. the parent's own turn may be over, but the fan-out it spawned
- * is not. Attended children are excluded on purpose: they are their own chats
- * the user drives, not work this chat is waiting on. Used by the Visualizer's
- * "waiting" voice cue (see docs/visualizer.md "Voice cues").
- */
-export function hasRunningObservedSubagent(
-  agents: ReadonlyMap<string, Agent>,
-  parentAgentId: string,
-): boolean {
-  for (const agent of agents.values()) {
-    if (
-      agent.turn.phase === "open" &&
-      agent.attend === "observed" &&
-      !agent.archivedAt &&
-      isTrackDescendantOf(agent, parentAgentId, agents)
-    ) {
-      return true;
-    }
-  }
-  return false;
 }
 
 export function selectSubagentsForParent(
@@ -156,7 +82,7 @@ export function selectSubagentsForParent(
     if (
       agent.archivedAt ||
       pendingArchiveIds.has(agent.id) ||
-      !isTrackDescendantOf(agent, params.parentAgentId, agents)
+      agent.parentAgentId !== params.parentAgentId
     ) {
       continue;
     }
@@ -171,35 +97,29 @@ export function selectSubagentsForParent(
   return rows;
 }
 
-/**
- * Provider-native rows and Otto's older observed-agent projection can describe
- * the same run. The observed projection uses the provider key as the suffix of
- * its deterministic agent id, so retain those keys even when the observed row
- * is archived or pending archive. Otherwise clearing one representation would
- * reveal the duplicate representation underneath it.
- */
-export function selectProviderSubagentIdsShadowedByObservedAgents(
-  state: SessionStoreSnapshot,
+// Session-store selectors run on every store update, including every stream tick, which
+// leaves the agent map untouched. Reuse the previous rows until the map changes, and keep
+// them when a recompute yields equal rows so the hook's equality check stays O(1).
+export function createSubagentsForParentSelector(
   params: SelectSubagentsParams,
-): string[] {
-  const agents = state.sessions[params.serverId]?.agents;
-  if (!agents || agents.size === 0) {
-    return EMPTY_SHADOWED_PROVIDER_SUBAGENT_IDS;
-  }
+  pendingArchiveIds: ReadonlySet<string>,
+): (state: SessionStoreSnapshot) => SubagentRow[] {
+  let previousAgents: Map<string, Agent> | undefined;
+  let previousRows: SubagentRow[] | null = null;
 
-  const observedIdPrefix = `${params.parentAgentId}::sub::`;
-  const ids: string[] = [];
-  for (const agent of agents.values()) {
-    if (
-      agent.attend !== "observed" ||
-      !agent.id.startsWith(observedIdPrefix) ||
-      !isTrackDescendantOf(agent, params.parentAgentId, agents)
-    ) {
-      continue;
+  return (state) => {
+    const agents = state.sessions[params.serverId]?.agents;
+    if (previousRows && agents === previousAgents) {
+      return previousRows;
     }
-    ids.push(agent.id.slice(observedIdPrefix.length));
-  }
-  return ids.length === 0 ? EMPTY_SHADOWED_PROVIDER_SUBAGENT_IDS : ids.sort();
+
+    const rows = selectSubagentsForParent(state, params, pendingArchiveIds);
+    previousAgents = agents;
+    if (!previousRows || !equal(previousRows, rows)) {
+      previousRows = rows;
+    }
+    return previousRows;
+  };
 }
 
 export function selectProviderSubagentsForParent(
@@ -207,22 +127,13 @@ export function selectProviderSubagentsForParent(
   params: SelectSubagentsParams,
   supported: boolean,
   nestingSupported = false,
-  shadowedIds: ReadonlySet<string> = new Set(),
 ): ProviderSubagentRow[] {
   if (!supported) return EMPTY_PROVIDER_SUBAGENT_ROWS;
   if (params.providerParentSubagentId && !nestingSupported) return EMPTY_PROVIDER_SUBAGENT_ROWS;
   const rows: ProviderSubagentRow[] = [];
   const prefix = `${params.serverId}\0${params.parentAgentId}\0`;
   for (const [key, subagent] of state.descriptors) {
-    if (
-      !key.startsWith(prefix) ||
-      subagent.archivedAt ||
-      state.hiddenFromTrack.has(key) ||
-      shadowedIds.has(subagent.id) ||
-      (subagent.toolCallId !== null && shadowedIds.has(subagent.toolCallId))
-    ) {
-      continue;
-    }
+    if (!key.startsWith(prefix) || state.hiddenFromTrack.has(key)) continue;
     if (
       nestingSupported &&
       (subagent.parentSubagentId ?? null) !== (params.providerParentSubagentId ?? null)
@@ -247,12 +158,13 @@ export function selectProviderSubagentsForParent(
 }
 
 export function useSubagentsForParent(params: SelectSubagentsParams): SubagentRow[] {
-  const pendingArchiveIds = usePendingArchiveAgentIds(params.serverId);
-  const ottoRows = useStoreWithEqualityFn(
-    useSessionStore,
-    (state) => selectSubagentsForParent(state, params, pendingArchiveIds),
-    equal,
+  const { serverId, parentAgentId } = params;
+  const pendingArchiveIds = usePendingArchiveAgentIds(serverId);
+  const selectPaseoRows = useMemo(
+    () => createSubagentsForParentSelector({ serverId, parentAgentId }, pendingArchiveIds),
+    [serverId, parentAgentId, pendingArchiveIds],
   );
+  const paseoRows = useStoreWithEqualityFn(useSessionStore, selectPaseoRows, equal);
   const supported = useSessionStore(
     (state) => state.sessions[params.serverId]?.serverInfo?.features?.providerSubagents === true,
   );
@@ -260,25 +172,9 @@ export function useSubagentsForParent(params: SelectSubagentsParams): SubagentRo
     (state) =>
       state.sessions[params.serverId]?.serverInfo?.features?.providerSubagentNesting === true,
   );
-  const shadowedProviderSubagentIds = useStoreWithEqualityFn(
-    useSessionStore,
-    (state) => selectProviderSubagentIdsShadowedByObservedAgents(state, params),
-    equal,
-  );
-  const shadowedProviderSubagentIdSet = useMemo(
-    () => new Set(shadowedProviderSubagentIds),
-    [shadowedProviderSubagentIds],
-  );
   const providerRows = useStoreWithEqualityFn(
     useProviderSubagentStore,
-    (state) =>
-      selectProviderSubagentsForParent(
-        state,
-        params,
-        supported,
-        nestingSupported,
-        shadowedProviderSubagentIdSet,
-      ),
+    (state) => selectProviderSubagentsForParent(state, params, supported, nestingSupported),
     equal,
   );
   const client = useSessionStore((state) => state.sessions[params.serverId]?.client ?? null);
@@ -292,9 +188,9 @@ export function useSubagentsForParent(params: SelectSubagentsParams): SubagentRo
 
   return useMemo(() => {
     if (params.providerParentSubagentId) return providerRows;
-    if (providerRows.length === 0) return ottoRows;
-    const rows = [...ottoRows, ...providerRows];
+    if (providerRows.length === 0) return paseoRows;
+    const rows = [...paseoRows, ...providerRows];
     rows.sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
     return rows;
-  }, [params.providerParentSubagentId, ottoRows, providerRows]);
+  }, [params.providerParentSubagentId, paseoRows, providerRows]);
 }

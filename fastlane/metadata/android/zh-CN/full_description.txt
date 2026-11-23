@@ -1,23 +1,37 @@
-Otto 将你的 Android 设备连接到运行在电脑或服务器上的编程智能体。离开办公桌后，你仍可阅读聊天、发送提示，并回答智能体的问题。
+Otto 是运行在你自己机器上的 AI 编程 agents 的客户端。把你的开发环境装进口袋。
 
-<b>操作你的开发环境</b>
+Otto 会在你的电脑上运行一个名为 daemon 的本地服务，管理编程 agents 并实时推送输出。本应用直接或通过端到端加密中继连接到 daemon。模型请求使用你配置的提供商。
+
+<b>支持的 agents</b>
 
 <ul>
-<li>打开项目和工作区，查看多个智能体的聊天</li>
-<li>审查改动、浏览文件和编辑代码</li>
-<li>回答问题并处理权限请求</li>
-<li>使用所连接主机上的终端</li>
-<li>通过主机配置的语音服务口述提示</li>
+<li>Claude Code</li>
+<li>Codex</li>
+<li>GitHub Copilot</li>
+<li>OpenCode</li>
+<li>Pi</li>
 </ul>
 
-<b>选择主机和提供方</b>
+你使用自己的提供商凭据和现有订阅。Otto 不加价，也不产生自己的推理费用。
 
-在主机上运行 Otto 守护进程，并配置你要使用的提供方。Otto 支持编程智能体 CLI，以及兼容的云端或本地模型端点。可用的模型和工具取决于主机配置。
+<b>你可以做什么</b>
 
-你可以直接连接主机，也可以选择使用端到端加密中继。模型和语音请求在哪里处理，取决于你选择的提供方。
+<ul>
+<li>在手机上启动 agents、查看进展并回答它们的提问</li>
+<li>跨项目和 git worktree 并行运行多个 agents</li>
+<li>审查差异、浏览提交历史、编辑文件</li>
+<li>处理来自 GitHub、GitLab、Gitea、Forgejo 和 Codeberg 的合并请求</li>
+<li>在任意工作区打开终端</li>
+<li>用语音输入提示，或在语音模式下讨论问题</li>
+<li>将 agents 设置为定期运行</li>
+</ul>
 
-Otto 是 Paseo 的分支，为云端和本地提供方增加了工具。Android 应用是主机的客户端，不会在手机上安装编程智能体或运行桌面开发环境。
+<b>隐私</b>
 
-文档：https://otto-code.me/docs
-源代码与问题反馈：https://github.com/Draek2077/otto-code
-上游 Paseo：https://github.com/getpaseo/paseo
+没有遥测、没有追踪、无需账号。应用只与你指定的 daemon 通信。远程访问通过无法读取你流量的端到端加密中继，或者你也可以使用自己的网络或 VPN。
+
+<b>你需要一个可连接的 daemon</b>
+
+本应用无法独立使用。请在存放代码和 agent CLI 的电脑上安装 Otto daemon，然后在设置中将本应用与其配对。桌面应用已内置 daemon，你也可以通过 npm、Docker 或 Nix 运行。
+
+安装说明：https://otto-code.me

@@ -1,66 +1,71 @@
-import React, { memo, useCallback, useState, type ReactNode } from "react";
-import { Text, View } from "react-native";
+import React, { memo, useCallback, useMemo, type ReactNode } from "react";
+import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { formatLiveTokenCount } from "@/components/context-window-meter.utils";
-import { ChatWidthBounds } from "@/components/chat-width-bounds";
-import { isNative } from "@/constants/platform";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { useChatRenderSettings } from "@/components/chat-render-settings-context";
+import { SPACING } from "@/styles/theme";
 import type { TurnTiming } from "@/timeline/turn-time";
 import type { StreamItem } from "@/types/stream";
 import {
-  collectAssistantTurnContentForStreamRenderStrategy,
+  collectAssistantResponseContentForStreamRenderStrategy,
   type StreamStrategy,
 } from "./strategy";
 import { resolveAssistantTurnForkBoundary, type AssistantTurnForkBoundary } from "./turn-boundary";
-import { MessageFooter, LiveElapsed, type AssistantForkTarget } from "@/components/message";
+import {
+  AssistantTurnFooter,
+  LiveElapsed,
+  STREAM_METADATA_FONT_SIZE,
+  type AssistantForkTarget,
+} from "@/components/message";
 import type { TurnFooterHost } from "./layout";
-import { BlobLoader, ThemedBlobLoader } from "@/components/blob-loader";
+import { AssistantForkMenu } from "@/components/assistant-fork-menu";
+import { ChatSpinner } from "@/otto/chat/identity/spinner"; // OTTO(chat-identity): replace the dotted grid with the released plasma ring.
 import { useRetainedPanelActive } from "@/components/retained-panel";
-import { SPACING } from "@/styles/theme";
+import type { SpinnerColors } from "@/otto/chat/identity/palette";
 
-// The running footer's actual padding below its content. Bottom-overlay
-// clearance deducts this value, so it must stay in step with turnFooterSlot.
-export const TURN_FOOTER_BOTTOM_SPACING = SPACING[2];
-
-/** Two glow colors for an agent's personality thinking spinner. */
-export interface PersonalitySpinnerColors {
-  glowA: string;
-  glowB: string;
-}
+export const TURN_FOOTER_BOTTOM_SPACING = SPACING[8];
 
 export type TurnContentStrategy = StreamStrategy;
 export type AssistantTurnForkHandler = (input: {
   target: AssistantForkTarget;
   boundary: AssistantTurnForkBoundary;
 }) => Promise<void> | void;
+/**
+ * Fork handler for the turn that is still streaming. It deliberately takes no
+ * boundary: `selectForkContextRows` projects the entire timeline when neither
+ * boundary field is given, which is what captures the partially streamed text
+ * the user is watching. Pinning a boundary here would silently drop the live
+ * response — the opposite of what a fork button next to the loader promises.
+ *
+ * Kept separate from `AssistantTurnForkHandler` (whose `boundary` stays
+ * required) so the compiler keeps enforcing that completed turns always pin one.
+ */
+export type InFlightTurnForkHandler = (target: AssistantForkTarget) => Promise<void> | void;
 
 export const TurnFooter = memo(function TurnFooter({
   isRunning,
   inFlightTurnStartedAt,
-  inFlightEstimatedTokens,
   host,
   strategy,
   supportsTimelineCursor,
   onForkAssistantTurn,
-  spinner,
+  onForkInFlightTurn,
+  spinnerColors,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
-  inFlightEstimatedTokens?: number | null;
   host: TurnFooterHost | null;
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
-  spinner?: PersonalitySpinnerColors;
+  onForkInFlightTurn?: InFlightTurnForkHandler;
+  spinnerColors?: SpinnerColors;
 }) {
   if (isRunning) {
     return (
       <TurnFooterRow>
         <RunningTurnFooter
+          spinnerColors={spinnerColors}
           inFlightTurnStartedAt={inFlightTurnStartedAt}
-          estimatedTokens={inFlightEstimatedTokens ?? null}
-          spinner={spinner}
+          onForkInFlightTurn={onForkInFlightTurn}
         />
       </TurnFooterRow>
     );
@@ -80,14 +85,6 @@ export const TurnFooter = memo(function TurnFooter({
   );
 });
 
-// Completed-turn details honor the hide-until-hover appearance setting. The
-// running-turn footer never hides (see TurnFooter above). `revealed` lets a
-// wider hover scope (the turn's content in the stream) reveal the row; the
-// row additionally tracks hover on its own full-width strip so the bottom
-// auxiliary footer - which has no adjacent stream item - stays reachable.
-// Hidden state uses opacity so the strip keeps its geometry and stays
-// hoverable (docs/hover.md), with pointerEvents off so invisible buttons
-// can't be clicked.
 export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   strategy,
   items,
@@ -95,7 +92,6 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
-  revealed = false,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -103,108 +99,70 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
-  revealed?: boolean;
 }) {
-  const { hideChatMessageDetails: hideDetails } = useChatRenderSettings();
-  const isCompact = useIsCompactFormFactor();
-  const [selfHovered, setSelfHovered] = useState(false);
-  const handlePointerEnter = useCallback(() => setSelfHovered(true), []);
-  const handlePointerLeave = useCallback(() => setSelfHovered(false), []);
-  const visible = !hideDetails || isNative || isCompact || revealed || selfHovered;
-
   return (
     <TurnFooterRow>
-      <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
-        <View
-          style={visible ? stylesheet.footerReveal : stylesheet.footerRevealHidden}
-          pointerEvents={visible ? "auto" : "none"}
-        >
-          <CompletedTurnFooter
-            strategy={strategy}
-            items={items}
-            timing={timing}
-            startIndex={startIndex}
-            supportsTimelineCursor={supportsTimelineCursor}
-            onForkAssistantTurn={onForkAssistantTurn}
-          />
-        </View>
-      </View>
+      <CompletedTurnFooter
+        strategy={strategy}
+        items={items}
+        timing={timing}
+        startIndex={startIndex}
+        supportsTimelineCursor={supportsTimelineCursor}
+        onForkAssistantTurn={onForkAssistantTurn}
+      />
     </TurnFooterRow>
   );
 });
 
-// The spinner is memo-isolated: BlobLoader recreates reanimated styles and an
-// SVG gradient tree on every render, so it must not re-render when the token
-// estimate ticks or the agent snapshot rebuilds the spinner object - only
-// when the personality's glow colors actually change (hence value equality).
-const TurnSpinner = memo(
-  function TurnSpinner({ spinner }: { spinner?: PersonalitySpinnerColors }) {
-    return (
-      <View style={stylesheet.workingLoader} testID="turn-working-spinner">
-        {spinner ? (
-          <BlobLoader size={18} glowA={spinner.glowA} glowB={spinner.glowB} />
-        ) : (
-          <ThemedBlobLoader size={18} />
-        )}
-      </View>
-    );
-  },
-  (prev, next) =>
-    prev.spinner?.glowA === next.spinner?.glowA && prev.spinner?.glowB === next.spinner?.glowB,
-);
-
 const WorkingIndicator = memo(function WorkingIndicator({
   inFlightTurnStartedAt = null,
-  estimatedTokens = null,
-  spinner,
+  onForkInFlightTurn,
+  spinnerColors,
 }: {
   inFlightTurnStartedAt?: Date | null;
-  estimatedTokens?: number | null;
-  spinner?: PersonalitySpinnerColors;
+  onForkInFlightTurn?: InFlightTurnForkHandler;
+  spinnerColors?: SpinnerColors;
 }) {
   const active = useRetainedPanelActive();
   return (
     <View style={stylesheet.turnFooterContent}>
-      <TurnSpinner spinner={spinner} />
-      <View style={stylesheet.workingMetadata}>
-        {inFlightTurnStartedAt ? (
-          <LiveElapsed
-            startedAt={inFlightTurnStartedAt}
-            active={active}
-            style={stylesheet.workingElapsed}
-            testID="turn-working-elapsed"
-          />
-        ) : null}
-        {inFlightTurnStartedAt && estimatedTokens !== null && estimatedTokens > 0 ? (
-          <View style={stylesheet.workingTokenSegment}>
-            <Text style={stylesheet.workingSeparator} testID="turn-working-separator">
-              •
-            </Text>
-            <Text style={stylesheet.workingTokens} testID="turn-working-tokens">
-              {`${formatLiveTokenCount(estimatedTokens)} tokens`}
-            </Text>
-          </View>
-        ) : null}
+      <View style={stylesheet.workingLoader}>
+        <ChatSpinner
+          size={18}
+          glowA={spinnerColors?.glowA}
+          glowB={spinnerColors?.glowB}
+          testID="turn-working-spinner"
+        />
       </View>
+      {/* Match the completed-turn footer: actions precede timing metadata. */}
+      {onForkInFlightTurn ? <AssistantForkMenu onFork={onForkInFlightTurn} /> : null}
+      {inFlightTurnStartedAt ? (
+        <LiveElapsed
+          startedAt={inFlightTurnStartedAt}
+          active={active}
+          style={stylesheet.workingElapsed}
+          testID="turn-working-elapsed"
+        />
+      ) : null}
     </View>
   );
 });
 
 function RunningTurnFooter({
   inFlightTurnStartedAt,
-  estimatedTokens,
-  spinner,
+  onForkInFlightTurn,
+  spinnerColors,
 }: {
   inFlightTurnStartedAt: Date | null;
-  estimatedTokens: number | null;
-  spinner?: PersonalitySpinnerColors;
+  onForkInFlightTurn?: InFlightTurnForkHandler;
+  spinnerColors?: SpinnerColors;
 }) {
   return (
     <View style={stylesheet.turnFooterSlot} testID="turn-working-indicator">
       <WorkingIndicator
+        spinnerColors={spinnerColors}
         inFlightTurnStartedAt={inFlightTurnStartedAt}
-        estimatedTokens={estimatedTokens}
-        spinner={spinner}
+        onForkInFlightTurn={onForkInFlightTurn}
       />
     </View>
   );
@@ -227,17 +185,13 @@ function CompletedTurnFooter({
 }) {
   const getContent = useCallback(
     () =>
-      collectAssistantTurnContentForStreamRenderStrategy({
+      collectAssistantResponseContentForStreamRenderStrategy({
         strategy,
         items,
         startIndex,
       }),
     [strategy, items, startIndex],
   );
-  // A failed turn can end in a daemon-authored timeline item that carries no
-  // provider message id, so the boundary falls back to the canonical timeline
-  // cursor. Gating the menu on the message id alone hid the fork action for
-  // exactly the turns most worth forking.
   const boundary = resolveAssistantTurnForkBoundary({
     items,
     startIndex,
@@ -254,11 +208,10 @@ function CompletedTurnFooter({
   );
   return (
     <View style={stylesheet.turnFooterSlot}>
-      <MessageFooter
+      <AssistantTurnFooter
         getContent={getContent}
         completedAt={timing?.completedAt}
         durationMs={timing?.durationMs}
-        usage={timing?.usage}
         onFork={boundary && onForkAssistantTurn ? handleFork : undefined}
       />
     </View>
@@ -266,23 +219,19 @@ function CompletedTurnFooter({
 }
 
 function TurnFooterRow({ children }: { children: ReactNode }) {
-  return <ChatWidthBounds style={turnFooterRowStyle}>{children}</ChatWidthBounds>;
+  const rowStyle = useMemo(() => [stylesheet.streamItemWrapper, stylesheet.turnFooterRow], []);
+  return <View style={rowStyle}>{children}</View>;
 }
 
 const stylesheet = StyleSheet.create((theme) => ({
   streamItemWrapper: {
     width: "100%",
+    maxWidth: theme.contentMaxWidth,
     alignSelf: "center",
     paddingHorizontal: theme.spacing[2],
   },
   turnFooterRow: {
-    marginTop: 0,
-  },
-  footerReveal: {
-    opacity: 1,
-  },
-  footerRevealHidden: {
-    opacity: 0,
+    marginTop: theme.spacing[2] + 5,
   },
   turnFooterSlot: {
     flexDirection: "row",
@@ -298,37 +247,12 @@ const stylesheet = StyleSheet.create((theme) => ({
     justifyContent: "flex-start",
     gap: theme.spacing[3],
   },
-  // The spinner stays at the wider row gap, while the elapsed label, bullet,
-  // and token estimate share the compact gap. Keeping the bullet as its own
-  // segment prevents a one-sided flex gap plus a text-space from making its
-  // left side look wider than its right.
-  workingMetadata: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  workingTokenSegment: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
   workingElapsed: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontVariant: ["tabular-nums"],
-  },
-  workingSeparator: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-  },
-  workingTokens: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
+    fontSize: STREAM_METADATA_FONT_SIZE,
     fontVariant: ["tabular-nums"],
   },
   workingLoader: {
     marginLeft: -2,
   },
 }));
-
-const turnFooterRowStyle = [stylesheet.streamItemWrapper, stylesheet.turnFooterRow];

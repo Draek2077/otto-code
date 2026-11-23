@@ -1,3 +1,4 @@
+// OTTO(identity): plugin migration hints target Otto and its Paseo API.
 import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -16,12 +17,12 @@ async function directory() {
   roots.push(root);
   return root;
 }
-async function writePlugin(root: string, paseoRange?: string, build?: string[][]) {
+async function writePlugin(root: string, paseo?: string, build?: string[][]) {
   await writeFile(
-    path.join(root, "otto-plugin.json"),
+    path.join(root, "paseo-plugin.json"),
     JSON.stringify({
       id: "example",
-      requirements: paseoRange === undefined ? undefined : { paseo: paseoRange },
+      requirements: paseo === undefined ? undefined : { paseo },
       build,
     }),
   );
@@ -73,25 +74,14 @@ it("rejects incompatible installs without persisting them, then accepts the corr
   ]);
 });
 
-it("uses the integrated Paseo API version instead of the Otto product version", async () => {
-  const root = await directory();
-  await writePlugin(root, "^0.8.0");
-  const { service } = await host("0.9.10");
-  await expect(service.installDirectory({ path: root })).resolves.toMatchObject({
-    status: "running",
-  });
-  await writePlugin(root, ">=0.9.0");
-  await expect(service.reloadPlugin("example")).rejects.toThrow("requires Paseo >=0.9.0");
-});
-
 it("marks pre-0.8 plugins failed on startup and recovers after migration and reload", async () => {
   const root = await directory();
   await writePlugin(root);
   const { service } = await host("0.8.0", root);
-  expect(service.listPlugins()).toEqual([
+  expect(await service.listPlugins()).toEqual([
     expect.objectContaining({
       status: "failed",
-      error: expect.stringContaining("https://otto-code.me/docs/plugins/v0.8/migration"),
+      error: expect.stringContaining("https://otto-code.me/docs/plugins/migration"),
     }),
   ]);
   await writePlugin(root, ">=0.8.0");
@@ -108,14 +98,14 @@ it("still requires entry migration when an old plugin adds a compatible requirem
   await writeFile(path.join(root, "index.ts"), "export default () => () => {};");
   const { service } = await host();
   await expect(service.installDirectory({ path: root })).rejects.toThrow(
-    "https://otto-code.me/docs/plugins/v0.8/migration",
+    "https://otto-code.me/docs/plugins/migration",
   );
 });
 
 it("rejects Git install and update before build commands, preserving the running revision", async () => {
   const repository = await directory();
   await runGitCommand(["init", "-b", "main"], { cwd: repository });
-  await runGitCommand(["config", "user.name", "Otto Tests"], { cwd: repository });
+  await runGitCommand(["config", "user.name", "Paseo Tests"], { cwd: repository });
   await runGitCommand(["config", "user.email", "tests@example.test"], { cwd: repository });
   const commit = async () => {
     await runGitCommand(["add", "-A"], { cwd: repository });
@@ -131,8 +121,12 @@ it("rejects Git install and update before build commands, preserving the running
     [process.execPath, "-e", 'require("node:fs").writeFileSync(process.argv[1], "ran")', marker],
   ]);
   await commit();
-  await expect(service.updateSources("example")).rejects.toThrow("requires Paseo >=0.9.0");
-  expect(service.listPlugins()).toEqual([installed]);
+  const [preview] = await service.previewUpdates({ pluginId: "example" });
+  expect(preview).toMatchObject({ outcome: "update" });
+  await expect(service.applyUpdates([preview!.proposal!])).resolves.toMatchObject([
+    { id: "example", outcome: "error", error: expect.stringContaining("requires Paseo >=0.9.0") },
+  ]);
+  expect(await service.listPlugins()).toEqual([installed]);
   expect(service.catalog()).toHaveLength(1);
   expect(await readdir(path.join(home, "plugins", ".staging"))).toEqual([]);
   await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
@@ -140,5 +134,5 @@ it("rejects Git install and update before build commands, preserving the running
     "requires Paseo >=0.9.0",
   );
   await expect(readFile(marker)).rejects.toMatchObject({ code: "ENOENT" });
-  expect(service.listPlugins()).toEqual([installed]);
+  expect(await service.listPlugins()).toEqual([installed]);
 });

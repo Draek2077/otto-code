@@ -1,16 +1,11 @@
 import { beforeEach, describe, expect, test } from "vitest";
-import type { SessionInboundMessage, SessionOutboundMessage } from "@otto-code/protocol/messages";
+import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import { createJSONStorage, type StateStorage } from "zustand/middleware";
 import { mountBrowserAutomationHandler } from "./handler";
 import type { DesktopHostBridge } from "@/desktop/host";
 import { useBrowserStore } from "@/desktop/browser/store";
-import {
-  collectAllPanes,
-  EXPLORER_SIDEBAR_PANE_ID,
-  findPaneById,
-} from "@/stores/workspace-layout-actions";
+import { findPaneById } from "@/stores/workspace-layout-actions";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 
 type BrowserAutomationExecuteRequest = Extract<
@@ -183,19 +178,6 @@ function browserNewTabRequest(): BrowserAutomationExecuteRequest {
   };
 }
 
-function previewNewTabRequest(): BrowserAutomationExecuteRequest {
-  return {
-    type: "browser.automation.execute.request",
-    requestId: "req-new",
-    agentId: "agent-1",
-    workspaceId: "wks_workspace_a",
-    command: {
-      command: "new_tab",
-      args: { url: "https://example.com", layout: "split-right" },
-    },
-  };
-}
-
 function browserResizeRequest(
   browserId: string,
   input: { workspaceId?: string } = {},
@@ -220,19 +202,6 @@ function browserCloseTabRequest(browserId: string): BrowserAutomationExecuteRequ
     workspaceId: "wks_workspace_a",
     command: {
       command: "close_tab",
-      args: { browserId },
-    },
-  };
-}
-
-function browserFocusTabRequest(browserId: string): BrowserAutomationExecuteRequest {
-  return {
-    type: "browser.automation.execute.request",
-    requestId: "req-focus-tab",
-    agentId: "agent-1",
-    workspaceId: "wks_workspace_a",
-    command: {
-      command: "focus_tab",
       args: { browserId },
     },
   };
@@ -271,9 +240,9 @@ function currentBrowserTabs() {
   }));
 }
 
-function newTabResultFrom(payload: BrowserAutomationResponsePayload, requestId = "req-new") {
+function newTabResultFrom(payload: BrowserAutomationResponsePayload) {
   expect(payload).toMatchObject({
-    requestId,
+    requestId: "req-new",
     ok: true,
     result: { command: "new_tab", workspaceId: "wks_workspace_a", url: "https://example.com" },
   });
@@ -310,12 +279,7 @@ describe("mountBrowserAutomationHandler", () => {
   beforeEach(() => {
     browserAutomationStorage.clear();
     useBrowserStore.setState({ browsersById: {} });
-    useWorkspaceLayoutStore.setState({
-      layoutByWorkspace: {},
-      sidePaneIdByWorkspace: {},
-      explorerSidebarPaneIdByWorkspace: {},
-    });
-    usePreviewRunningServersStore.setState({ runningServerIdsBySessionAndCwd: {} });
+    useWorkspaceLayoutStore.setState({ layoutByWorkspace: {} });
   });
 
   test("browser_new_tab creates a workspace browser tab without stealing focus", async () => {
@@ -360,7 +324,6 @@ describe("mountBrowserAutomationHandler", () => {
     expect(browser.resident.ensuredWebviews).toEqual([
       {
         browserId: result.browserId,
-        serverId: "server-1",
         workspaceId: "wks_workspace_a",
         url: "https://example.com",
       },
@@ -376,180 +339,7 @@ describe("mountBrowserAutomationHandler", () => {
     ]);
   });
 
-  test("split-right previews share a side pane and preserve the focused pane", async () => {
-    const browser = new BrowserAutomationHandlerHarness();
-    const workspaceKey = buildWorkspaceTabPersistenceKey({
-      serverId: "server-1",
-      workspaceId: "wks_workspace_a",
-    });
-    if (!workspaceKey) {
-      throw new Error("Expected workspace key");
-    }
-    const previousFocusedTabId = useWorkspaceLayoutStore
-      .getState()
-      .openTabFocused(workspaceKey, { kind: "draft", draftId: "human-draft" });
-    browser.mount({ serverId: "server-1" });
-
-    browser.receive(previewNewTabRequest());
-    await flushAsyncWork();
-
-    const result = newTabResultFrom(browser.client.payloadAt(0));
-    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
-    expect(layout?.root).toEqual(expect.objectContaining({ kind: "group" }));
-    const openedTabs = workspaceBrowserTabs(workspaceKey, result.browserId);
-    expect(openedTabs).toHaveLength(1);
-    expect(openedTabs[0]?.tabId).not.toBe(previousFocusedTabId);
-    const focusedPane = findPaneById(layout!.root, layout!.focusedPaneId);
-    expect(focusedPane?.focusedTabId).toBe(previousFocusedTabId);
-
-    browser.receive({ ...previewNewTabRequest(), requestId: "req-new-2" });
-    await flushAsyncWork();
-    const second = newTabResultFrom(browser.client.payloadAt(1), "req-new-2");
-    const nextLayout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
-    const panes = collectAllPanes(nextLayout!.root);
-    const firstPreviewPane = panes.find((pane) => pane.tabIds.includes(openedTabs[0]!.tabId));
-    const secondPreviewTab = workspaceBrowserTabs(workspaceKey, second.browserId)[0];
-    expect(firstPreviewPane?.tabIds).toContain(secondPreviewTab?.tabId);
-    expect(panes.filter((pane) => pane.id !== EXPLORER_SIDEBAR_PANE_ID)).toHaveLength(2);
-    expect(findPaneById(nextLayout!.root, nextLayout!.focusedPaneId)?.focusedTabId).toBe(
-      previousFocusedTabId,
-    );
-  });
-
-  test.each([false, true])(
-    "AI browser and preview tabs reuse an existing right pane with nested chat column=%s",
-    async (nested) => {
-      const browser = new BrowserAutomationHandlerHarness();
-      const workspaceKey = buildWorkspaceTabPersistenceKey({
-        serverId: "server-1",
-        workspaceId: "wks_workspace_a",
-      })!;
-      const store = useWorkspaceLayoutStore.getState();
-      const mainTabId = store.openTabFocused(workspaceKey, {
-        kind: "agent",
-        agentId: "agent-1",
-      })!;
-      const splitTabId = store.openTabFocused(workspaceKey, {
-        kind: "file",
-        path: "/repo/README.md",
-      })!;
-      const secondPaneId = store.splitPane(workspaceKey, {
-        tabId: splitTabId,
-        targetPaneId: "main",
-        position: "right",
-      })!;
-      if (nested) {
-        const terminalTabId = store.openTabFocused(workspaceKey, {
-          kind: "terminal",
-          terminalId: "terminal-1",
-        })!;
-        store.splitPane(workspaceKey, {
-          tabId: terminalTabId,
-          targetPaneId: "main",
-          position: "bottom",
-        });
-      }
-      store.focusTab(workspaceKey, mainTabId);
-      // Automation placement follows the caller even while the user works right.
-      store.focusPane(workspaceKey, secondPaneId);
-      browser.mount({ serverId: "server-1" });
-
-      browser.receive(browserNewTabRequest());
-      await flushAsyncWork();
-      const ordinary = newTabResultFrom(browser.client.payloadAt(0));
-      const afterOrdinary = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
-      expect(findPaneById(afterOrdinary.root, afterOrdinary.focusedPaneId)?.focusedTabId).toBe(
-        splitTabId,
-      );
-      browser.receive({ ...previewNewTabRequest(), requestId: "req-preview" });
-      await flushAsyncWork();
-      const preview = newTabResultFrom(browser.client.payloadAt(1), "req-preview");
-
-      const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]!;
-      const secondPane = findPaneById(layout.root, secondPaneId)!;
-      expect(secondPane.tabIds).toContain(
-        workspaceBrowserTabs(workspaceKey, ordinary.browserId)[0]?.tabId,
-      );
-      expect(secondPane.tabIds).toContain(
-        workspaceBrowserTabs(workspaceKey, preview.browserId)[0]?.tabId,
-      );
-      expect(
-        collectAllPanes(layout.root).filter((pane) => pane.id !== EXPLORER_SIDEBAR_PANE_ID),
-      ).toHaveLength(nested ? 3 : 2);
-      expect(findPaneById(layout.root, layout.focusedPaneId)?.focusedTabId).toBe(splitTabId);
-    },
-  );
-
-  test("preview new_tab with split-right layout skips the split when the focused pane was empty", async () => {
-    const browser = new BrowserAutomationHandlerHarness();
-    const workspaceKey = buildWorkspaceTabPersistenceKey({
-      serverId: "server-1",
-      workspaceId: "wks_workspace_a",
-    });
-    if (!workspaceKey) {
-      throw new Error("Expected workspace key");
-    }
-    browser.mount({ serverId: "server-1" });
-
-    browser.receive(previewNewTabRequest());
-    await flushAsyncWork();
-
-    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
-    // The default tree already holds the hidden Explorer sidebar alongside main,
-    // so "no split happened" is one visible pane rather than a pane at the root.
-    const visiblePanes = collectAllPanes(layout!.root).filter(
-      (pane) => pane.id !== EXPLORER_SIDEBAR_PANE_ID,
-    );
-
-    expect(visiblePanes).toHaveLength(1);
-  });
-
-  test("new_tab with preview metadata creates the tab as a ready preview tab", async () => {
-    const browser = new BrowserAutomationHandlerHarness();
-    browser.mount({ serverId: "server-1" });
-
-    const request = previewNewTabRequest();
-    if (request.command.command === "new_tab") {
-      request.command.args.preview = {
-        serverId: "srv_1",
-        serverName: "forge-preview",
-        cwd: "/repo",
-      };
-    }
-    browser.receive(request);
-    await flushAsyncWork();
-
-    const result = newTabResultFrom(browser.client.payloadAt(0));
-    expect(useBrowserStore.getState().browsersById[result.browserId]).toMatchObject({
-      isPreview: true,
-      previewServerId: "srv_1",
-      previewServerName: "forge-preview",
-      previewCwd: "/repo",
-      previewStatus: "ready",
-    });
-    expect(
-      usePreviewRunningServersStore.getState().runningServerIdsBySessionAndCwd["server-1"]?.[
-        "/repo"
-      ],
-    ).toEqual(new Set(["srv_1"]));
-  });
-
-  test("new_tab without preview metadata creates a plain browser tab", async () => {
-    const browser = new BrowserAutomationHandlerHarness();
-    browser.mount({ serverId: "server-1" });
-
-    browser.receive(browserNewTabRequest());
-    await flushAsyncWork();
-
-    const result = newTabResultFrom(browser.client.payloadAt(0));
-    expect(useBrowserStore.getState().browsersById[result.browserId]).toMatchObject({
-      isPreview: false,
-      previewServerId: null,
-      previewStatus: "ready",
-    });
-  });
-
-  test("browser_new_tab retains the created identity when the resident webview does not register", async () => {
+  test("browser_new_tab returns a retryable timeout when the resident webview does not register", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     browser.browser.response = emptyListTabsPayload();
     browser.mount({
@@ -561,48 +351,20 @@ describe("mountBrowserAutomationHandler", () => {
     browser.receive(browserNewTabRequest());
     await waitForRegistrationTimeout();
 
-    const result = newTabResultFrom(browser.client.payloadAt(0));
-    browser.receive({ ...browserAutomationRequest(), workspaceId: "wks_workspace_a" });
-    await flushAsyncWork();
-    expect(browser.client.payloadAt(1)).toMatchObject({
-      ok: true,
-      result: {
-        command: "list_tabs",
-        tabs: [{ browserId: result.browserId, status: "starting", url: "https://example.com" }],
+    expect(browser.client.sentResponses).toEqual([
+      {
+        type: "browser.automation.execute.response",
+        payload: {
+          requestId: "req-new",
+          ok: false,
+          error: {
+            code: "browser_timeout",
+            message: expect.stringContaining("Timed out waiting for browser tab"),
+            retryable: true,
+          },
+        },
       },
-    });
-    browser.browser.response = {
-      requestId: "snapshot",
-      ok: false,
-      error: { code: "browser_tab_not_found", message: "Guest not registered", retryable: false },
-    };
-    browser.receive({
-      ...browserAutomationRequest(),
-      workspaceId: "wks_workspace_a",
-      command: { command: "snapshot", args: { browserId: result.browserId } },
-    });
-    await flushAsyncWork();
-    expect(browser.client.payloadAt(2)).toMatchObject({
-      ok: false,
-      error: {
-        code: "browser_timeout",
-        retryable: true,
-        message: expect.stringContaining("do not open a replacement"),
-      },
-    });
-    browser.browser.response = emptyListTabsPayload();
-    browser.receive({ ...browserAutomationRequest(), workspaceId: "wks_other" });
-    await flushAsyncWork();
-    expect(browser.client.payloadAt(3)).toMatchObject({
-      ok: true,
-      result: { command: "list_tabs", tabs: [] },
-    });
-    expect(
-      workspaceBrowserTabs(
-        buildWorkspaceTabPersistenceKey({ serverId: "server-1", workspaceId: "wks_workspace_a" })!,
-        result.browserId,
-      ),
-    ).toHaveLength(1);
+    ]);
     expect(browser.resident.ensuredWebviews).toEqual([
       expect.objectContaining({
         workspaceId: "wks_workspace_a",
@@ -611,7 +373,7 @@ describe("mountBrowserAutomationHandler", () => {
     ]);
   });
 
-  test("browser_new_tab retains the created identity after a registration bridge error", async () => {
+  test("browser_new_tab wraps registration bridge errors in a response", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     browser.browser.thrownError = new Error("IPC registration check failed");
     browser.mount({ serverId: "server-1" });
@@ -619,10 +381,20 @@ describe("mountBrowserAutomationHandler", () => {
     browser.receive(browserNewTabRequest());
     await flushAsyncWork();
 
-    const result = newTabResultFrom(browser.client.payloadAt(0));
-    expect(useBrowserStore.getState().browsersById[result.browserId]?.url).toBe(
-      "https://example.com",
-    );
+    expect(browser.client.sentResponses).toEqual([
+      {
+        type: "browser.automation.execute.response",
+        payload: {
+          requestId: "req-new",
+          ok: false,
+          error: {
+            code: "browser_unknown_error",
+            message: "IPC registration check failed",
+            retryable: false,
+          },
+        },
+      },
+    ]);
   });
 
   test("browser_resize updates resident webview dimensions", async () => {
@@ -729,59 +501,6 @@ describe("mountBrowserAutomationHandler", () => {
     });
   });
 
-  test("browser_focus_tab fronts a background browser tab for the user", async () => {
-    const browser = new BrowserAutomationHandlerHarness();
-    const workspaceKey = buildWorkspaceTabPersistenceKey({
-      serverId: "server-1",
-      workspaceId: "wks_workspace_a",
-    });
-    if (!workspaceKey) {
-      throw new Error("Expected workspace key");
-    }
-    const previousFocusedTabId = useWorkspaceLayoutStore
-      .getState()
-      .openTabFocused(workspaceKey, { kind: "draft", draftId: "human-draft" });
-    browser.mount({ serverId: "server-1" });
-
-    browser.receive(browserNewTabRequest());
-    await flushAsyncWork();
-    const result = newTabResultFrom(browser.client.payloadAt(0));
-
-    browser.receive(browserFocusTabRequest(result.browserId));
-    await flushAsyncWork();
-
-    expect(browser.client.payloadAt(1)).toEqual({
-      requestId: "req-focus-tab",
-      ok: true,
-      result: { command: "focus_tab", browserId: result.browserId },
-    });
-    const openedTab = workspaceBrowserTabs(workspaceKey, result.browserId)[0];
-    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
-    // The default tree carries the hidden Explorer sidebar, so the root is a
-    // group; what matters is that the tab is the focused one in its own pane.
-    const focusedPane = findPaneById(layout!.root, layout!.focusedPaneId);
-    expect(focusedPane?.focusedTabId).toBe(openedTab?.tabId);
-    expect(openedTab?.tabId).not.toBe(previousFocusedTabId);
-  });
-
-  test("browser_focus_tab returns not found for an unknown tab", async () => {
-    const browser = new BrowserAutomationHandlerHarness();
-    browser.mount({ serverId: "server-1" });
-
-    browser.receive(browserFocusTabRequest("33333333-3333-4333-8333-333333333333"));
-    await flushAsyncWork();
-
-    expect(browser.client.payloadAt(0)).toEqual({
-      requestId: "req-focus-tab",
-      ok: false,
-      error: {
-        code: "browser_tab_not_found",
-        message: "No browser tab found for ID: 33333333-3333-4333-8333-333333333333",
-        retryable: false,
-      },
-    });
-  });
-
   test("non-new-tab requests send the desktop bridge response", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     browser.browser.response = {
@@ -862,7 +581,7 @@ describe("mountBrowserAutomationHandler", () => {
   test("unimplemented preload IPC reports browser_unsupported", async () => {
     const browser = new BrowserAutomationHandlerHarness();
     browser.browser.thrownError = new Error(
-      'No handler registered for "otto:browser:execute-automation-command"',
+      'No handler registered for "paseo:browser:execute-automation-command"',
     );
     browser.mount();
 

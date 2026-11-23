@@ -1,6 +1,6 @@
+import { ComposerEditingScope } from "@/composer/editing-session";
 import React, { useMemo, type ComponentType } from "react";
 import invariant from "tiny-invariant";
-import { View } from "react-native";
 import {
   createPaneFocusContextValue,
   PaneFocusProvider,
@@ -8,7 +8,6 @@ import {
   type PaneContextValue,
 } from "@/panels/pane-context";
 import { useStableEvent } from "@/hooks/use-stable-event";
-import { useBottomSafeAreaPadding } from "@/hooks/use-bottom-safe-area-padding";
 import { getPanelRegistration } from "@/panels/panel-registry";
 import { ensurePanelsRegistered } from "@/panels/register-panels";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
@@ -27,7 +26,6 @@ export interface BuildWorkspacePaneContentModelInput {
   tab: WorkspaceTabDescriptor;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
-  paneId: string;
   host: PaneHost;
   fileNavigationRevision?: number;
   onOpenTab: (target: WorkspaceTabDescriptor["target"]) => void;
@@ -47,7 +45,6 @@ export function buildWorkspacePaneContentModel({
   tab,
   normalizedServerId,
   normalizedWorkspaceId,
-  paneId,
   host,
   fileNavigationRevision,
   onOpenTab,
@@ -68,7 +65,6 @@ export function buildWorkspacePaneContentModel({
     paneContextValue: {
       serverId: normalizedServerId,
       workspaceId: normalizedWorkspaceId,
-      paneId,
       host,
       tabId: tab.tabId,
       target: tab.target,
@@ -90,29 +86,16 @@ export interface WorkspacePaneContentProps {
   content: WorkspacePaneContentModel;
   isWorkspaceFocused: boolean;
   isPaneFocused: boolean;
-  /** The content is on screen (workspace focused AND this tab is frontmost in
-   * its pane) - see `isVisible` on PaneFocusContextValue. Optional; defaults
-   * to the focused value inside createPaneFocusContextValue. */
-  isVisible?: boolean;
   onFocusPane?: () => void;
-}
-
-function paneOwnsBottomSafeArea(target: WorkspaceTabDescriptor["target"]): boolean {
-  // Agent composer and terminal keyboard stacks already reserve the system
-  // obstruction themselves. A second reservation here creates a visibly empty
-  // gesture band below their controls.
-  return target.kind === "agent" || target.kind === "draft" || target.kind === "terminal";
 }
 
 export function WorkspacePaneContent({
   content,
   isWorkspaceFocused,
   isPaneFocused,
-  isVisible,
   onFocusPane,
 }: WorkspacePaneContentProps) {
   const { Component, key, paneContextValue } = content;
-  const bottomSafeAreaPadding = useBottomSafeAreaPadding();
   const openTab = useStableEvent(paneContextValue.openTab);
   const openPreferredTarget = useStableEvent(paneContextValue.openPreferredTarget);
   const openTargetToSide = useStableEvent(paneContextValue.openTargetToSide ?? (() => undefined));
@@ -125,7 +108,6 @@ export function WorkspacePaneContent({
     () => ({
       serverId: paneContextValue.serverId,
       workspaceId: paneContextValue.workspaceId,
-      paneId: paneContextValue.paneId,
       host: paneContextValue.host,
       tabId: paneContextValue.tabId,
       target: paneContextValue.target,
@@ -153,7 +135,6 @@ export function WorkspacePaneContent({
       paneContextValue.target,
       paneContextValue.state,
       paneContextValue.workspaceId,
-      paneContextValue.paneId,
       paneContextValue.host,
       paneContextValue.openTargetToSide,
       retargetCurrentTab,
@@ -165,17 +146,9 @@ export function WorkspacePaneContent({
       createPaneFocusContextValue({
         isWorkspaceFocused,
         isPaneFocused,
-        isVisible,
         onFocusPane,
       }),
-    [isPaneFocused, isVisible, isWorkspaceFocused, onFocusPane],
-  );
-  const paneContentStyle = useMemo(
-    () => [
-      paneContainerStyle,
-      paneOwnsBottomSafeArea(paneContextValue.target) ? null : bottomSafeAreaPadding,
-    ],
-    [bottomSafeAreaPadding, paneContextValue.target],
+    [isPaneFocused, isWorkspaceFocused, onFocusPane],
   );
 
   return (
@@ -184,13 +157,14 @@ export function WorkspacePaneContent({
     >
       <PaneProvider value={stablePaneContextValue}>
         <PaneFocusProvider value={paneFocusValue}>
-          <View style={paneContentStyle}>
+          <ComposerEditingScope
+            tabId={paneContextValue.tabId}
+            targetKey={JSON.stringify(paneContextValue.target)}
+          >
             <Component key={key} />
-          </View>
+          </ComposerEditingScope>
         </PaneFocusProvider>
       </PaneProvider>
     </RenderProfile>
   );
 }
-
-const paneContainerStyle = { flex: 1, minHeight: 0 } as const;

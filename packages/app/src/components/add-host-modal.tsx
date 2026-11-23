@@ -1,16 +1,9 @@
-import { useCallback, useMemo, useReducer, useState } from "react";
+import { useCallback, useMemo, useReducer, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import {
-  Check,
-  ChevronDown,
-  ChevronRight,
-  Eye,
-  EyeOff,
-  Link2,
-} from "@/components/icons/material-icons";
+import { Check, ChevronDown, ChevronRight, Eye, EyeOff, Link2 } from "lucide-react-native";
 import type { HostProfile } from "@/types/host-connection";
 import { useHosts, useHostMutations } from "@/runtime/host-runtime";
 import {
@@ -18,9 +11,14 @@ import {
   serializeConnectionUri,
   serializeConnectionUriForStorage,
 } from "@/utils/daemon-endpoints";
-import { DaemonConnectionTestError } from "@/utils/test-daemon-connection";
+import {
+  DaemonConnectionTestError,
+  getConnectionAuthFailureReason,
+} from "@/utils/test-daemon-connection";
 import { AdaptiveModalSheet, AdaptiveTextInput, type SheetHeader } from "./adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
+import { PairingTargetTracker } from "./pair-link-credentials";
+import { OTTO_DEFAULT_DAEMON_PORT } from "@getpaseo/protocol/otto/identity";
 
 const FLEX_ONE_STYLE = { flex: 1 } as const;
 
@@ -130,11 +128,10 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.medium,
   },
-  footer: {
-    flex: 1,
+  actions: {
     flexDirection: "row",
-    alignItems: "center",
     gap: theme.spacing[3],
+    marginTop: theme.spacing[2],
   },
   helper: {
     color: theme.colors.foregroundMuted,
@@ -231,7 +228,7 @@ function formatTechnicalTransportDetails(
     return labels.noAdditionalDetails(unique[0] ?? "");
   }
 
-  return unique.join(" - ");
+  return unique.join(" — ");
 }
 
 function buildConnectionFailureCopy(input: {
@@ -258,8 +255,8 @@ function buildConnectionFailureCopy(input: {
   const rawLower = raw?.toLowerCase() ?? "";
   let detail: string | null = null;
 
-  if (raw === "Incorrect password" || raw === "Password required") {
-    detail = raw;
+  if (getConnectionAuthFailureReason(error)) {
+    detail = error instanceof Error ? error.message : raw;
   } else if (rawLower.includes("timed out")) {
     detail = labels.timedOut;
   } else if (
@@ -298,36 +295,39 @@ export interface AddHostModalProps {
 }
 
 export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostModalProps) {
+  return (
+    <AddHostModalContent
+      key={String(visible)}
+      visible={visible}
+      onClose={onClose}
+      onCancel={onCancel}
+      onSaved={onSaved}
+    />
+  );
+}
+
+function AddHostModalContent({ visible, onClose, onCancel, onSaved }: AddHostModalProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const daemons = useHosts();
-  const { probeAndUpsertDirectConnection } = useHostMutations();
+  const { probeAndUpsertDirectConnection, beginLinkPairing } = useHostMutations();
+  const [linkPairing] = useState(() => beginLinkPairing());
   const isMobile = useIsCompactFormFactor();
 
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [host, setHost] = useState("");
-  const [port, setPort] = useState("6868");
+  const [port, setPort] = useState(String(OTTO_DEFAULT_DAEMON_PORT)); // OTTO(identity)
   const [useTls, setUseTls] = useState(false);
   const [password, setPassword] = useState("");
   const [isPasswordVisible, setIsPasswordVisible] = useState(false);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
   const [advancedUri, setAdvancedUri] = useState("");
   const [inputResetKey, bumpInputResetKey] = useReducer((key: number) => key + 1, 0);
-
-  const clearInput = useCallback(() => {
-    setHost("");
-    setPort("6868");
-    setUseTls(false);
-    setPassword("");
-    setIsPasswordVisible(false);
-    setIsAdvancedOpen(false);
-    setAdvancedUri("");
-    bumpInputResetKey();
-  }, []);
+  const advancedTarget = useRef(new PairingTargetTracker("", true));
 
   const connectIcon = useMemo(
-    () => <Link2 size="md" color={theme.colors.accentForeground} />,
+    () => <Link2 size={16} color={theme.colors.accentForeground} />,
     [theme.colors.accentForeground],
   );
   const hostFieldStyle = useMemo(() => [styles.field, styles.hostField], []);
@@ -359,22 +359,54 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
   );
   const header = useMemo<SheetHeader>(() => ({ title: t("pairing.direct.title") }), [t]);
 
+  // Each open mounts a fresh form (see AddHostModal), so closing needs no reset.
   const handleClose = useCallback(() => {
     if (isSaving) return;
-    clearInput();
-    setErrorMessage("");
     onClose();
-  }, [isSaving, clearInput, onClose]);
+  }, [isSaving, onClose]);
 
   const handleCancel = useCallback(() => {
     if (isSaving) return;
-    clearInput();
-    setErrorMessage("");
     (onCancel ?? onClose)();
-  }, [isSaving, clearInput, onCancel, onClose]);
+  }, [isSaving, onCancel, onClose]);
+
+  const handleSaveRelay = useCallback(
+    async (relayUri: string) => {
+      try {
+        setIsSaving(true);
+        setErrorMessage("");
+        const result = await linkPairing.submit(relayUri, password || undefined);
+        if (result.status === "cancelled") return;
+        const { profile, serverId, hostname } = result;
+        const isNewHost = !daemons.some((daemon) => daemon.serverId === serverId);
+        onSaved?.({ profile, serverId, hostname, isNewHost });
+        handleClose();
+      } catch (error) {
+        setErrorMessage(
+          error instanceof Error ? error.message : directConnectionLabels.invalidConnection,
+        );
+      } finally {
+        setIsSaving(false);
+      }
+    },
+    [
+      daemons,
+      directConnectionLabels.invalidConnection,
+      handleClose,
+      linkPairing,
+      onSaved,
+      password,
+    ],
+  );
 
   const handleSave = useCallback(async () => {
     if (isSaving) return;
+
+    const relayUri = isAdvancedOpen ? advancedUri.trim() : "";
+    if (relayUri.startsWith("relay://") || relayUri.includes("#connect=")) {
+      await handleSaveRelay(relayUri);
+      return;
+    }
 
     let connection: PreparedDirectConnection;
     try {
@@ -430,10 +462,12 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
       setIsSaving(false);
     }
   }, [
+    advancedUri,
     daemons,
     directConnectionLabels,
     handleClose,
     host,
+    isAdvancedOpen,
     isMobile,
     isSaving,
     onSaved,
@@ -441,6 +475,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
     port,
     probeAndUpsertDirectConnection,
     t,
+    handleSaveRelay,
     useTls,
   ]);
 
@@ -451,6 +486,15 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
   const handleSavePress = useCallback(() => {
     void handleSave();
   }, [handleSave]);
+
+  const handleChangeAdvancedUri = useCallback((next: string) => {
+    if (advancedTarget.current.changeUrl(next)) {
+      setPassword("");
+      bumpInputResetKey();
+      setErrorMessage("");
+    }
+    setAdvancedUri(next);
+  }, []);
 
   const handleToggleUseTls = useCallback(() => {
     if (isSaving) return;
@@ -463,6 +507,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
 
   const handleToggleAdvanced = useCallback(() => {
     if (!isAdvancedOpen) {
+      advancedTarget.current = new PairingTargetTracker("", true);
       try {
         setAdvancedUri(
           buildConnectionUriFromDraft({ host, port, useTls, password }, directConnectionLabels),
@@ -492,40 +537,11 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
   const AdvancedIcon = isAdvancedOpen ? ChevronDown : ChevronRight;
   const PasswordIcon = isPasswordVisible ? EyeOff : Eye;
 
-  const footer = useMemo(
-    () => (
-      <View style={styles.footer}>
-        <Button
-          style={FLEX_ONE_STYLE}
-          variant="secondary"
-          onPress={handleCancel}
-          disabled={isSaving}
-        >
-          {t("pairing.direct.actions.cancel")}
-        </Button>
-        <Button
-          style={FLEX_ONE_STYLE}
-          variant="default"
-          onPress={handleSavePress}
-          disabled={isSaving}
-          leftIcon={connectIcon}
-          testID="direct-host-submit"
-        >
-          {isSaving ? t("pairing.direct.actions.connecting") : t("pairing.direct.actions.connect")}
-        </Button>
-      </View>
-    ),
-    [connectIcon, handleCancel, handleSavePress, isSaving, t],
-  );
-
   return (
     <AdaptiveModalSheet
       header={header}
       visible={visible}
       onClose={handleClose}
-      footer={footer}
-      // Keep fields measurable on Android; the animated snap-height wrapper can collapse them.
-      sizeContentToCurrentSnapPoint={false}
       testID="add-host-modal"
     >
       <Text style={styles.helper}>{t("pairing.direct.helper")}</Text>
@@ -559,7 +575,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
             initialValue={port}
             resetKey={`direct-port-${inputResetKey}`}
             onChangeText={setPort}
-            placeholder="6868"
+            placeholder={String(OTTO_DEFAULT_DAEMON_PORT)} /* OTTO(identity) */
             placeholderTextColor={theme.colors.foregroundMuted}
             style={styles.input}
             autoCapitalize="none"
@@ -584,7 +600,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
         <View style={checkboxStyle}>
           {useTls ? (
             <View testID="direct-ssl-toggle-checked">
-              <Check size="sm" color={theme.colors.accentForeground} />
+              <Check size={14} color={theme.colors.accentForeground} />
             </View>
           ) : null}
         </View>
@@ -623,7 +639,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
             }
             testID="direct-password-visibility-toggle"
           >
-            <PasswordIcon size="mdPlus" color={theme.colors.foregroundMuted} />
+            <PasswordIcon size={18} color={theme.colors.foregroundMuted} />
           </Pressable>
         </View>
       </View>
@@ -639,7 +655,7 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
           }
           testID="direct-host-advanced-toggle"
         >
-          <AdvancedIcon size="md" color={theme.colors.foregroundMuted} />
+          <AdvancedIcon size={16} color={theme.colors.foregroundMuted} />
           <Text style={styles.advancedText}>{t("pairing.direct.advanced.label")}</Text>
         </Pressable>
         {isAdvancedOpen ? (
@@ -649,8 +665,8 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
             accessibilityLabel={t("pairing.direct.fields.connectionUri")}
             initialValue={advancedUri}
             resetKey={`direct-host-uri-${inputResetKey}`}
-            onChangeText={setAdvancedUri}
-            placeholder="tcp://localhost:6868?ssl=true"
+            onChangeText={handleChangeAdvancedUri}
+            placeholder={`tcp://localhost:${OTTO_DEFAULT_DAEMON_PORT}?ssl=true`} /* OTTO(identity) */
             placeholderTextColor={theme.colors.foregroundMuted}
             style={styles.input}
             autoCapitalize="none"
@@ -662,6 +678,27 @@ export function AddHostModal({ visible, onClose, onCancel, onSaved }: AddHostMod
           />
         ) : null}
         {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+      </View>
+
+      <View style={styles.actions}>
+        <Button
+          style={FLEX_ONE_STYLE}
+          variant="secondary"
+          onPress={handleCancel}
+          disabled={isSaving}
+        >
+          {t("pairing.direct.actions.cancel")}
+        </Button>
+        <Button
+          style={FLEX_ONE_STYLE}
+          variant="default"
+          onPress={handleSavePress}
+          disabled={isSaving}
+          leftIcon={connectIcon}
+          testID="direct-host-submit"
+        >
+          {isSaving ? t("pairing.direct.actions.connecting") : t("pairing.direct.actions.connect")}
+        </Button>
       </View>
     </AdaptiveModalSheet>
   );

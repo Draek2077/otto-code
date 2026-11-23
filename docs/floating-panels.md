@@ -1,6 +1,6 @@
 # Floating Panels
 
-Anchored popovers - tooltips, hover cards, dropdowns, autocompletes - that visually
+Anchored popovers — tooltips, hover cards, dropdowns, autocompletes — that visually
 float above an anchor element on iOS, Android, and web. This doc captures the
 non-obvious traps. It is **not** a tutorial; it assumes you have seen the
 canonical files and are trying to add or change one.
@@ -11,47 +11,14 @@ canonical files and are trying to add or change one.
 | ---------------------------------------- | ----------------------------------------------------------------- |
 | `components/ui/combobox.tsx`             | Anchored picker with search; mobile falls back to bottom sheet    |
 | `components/ui/tooltip.tsx`              | Non-interactive hover/long-press tooltip                          |
-| `components/workspace-hover-card.tsx`    | Desktop-web hover card with measure + computePosition + Portal    |
+| `components/ui/hover-card.tsx`           | Desktop-web hover card the pointer can move onto; Portal          |
 | `components/ui/autocomplete-popover.tsx` | Slash-command autocomplete anchored to the focused composer input |
 
 Each handles a different mix of concerns: combobox owns input focus, tooltip is
 non-interactive, hover-card is web-only desktop, autocomplete keeps the composer
 input focused while its scrollable list lives in a Portal. There is no shared
-"floating panel" primitive yet - when a fifth use case shows up we can revisit;
+"floating panel" primitive yet — when a fifth use case shows up we can revisit;
 until then prefer copying the closest file and trimming.
-
-## The bottom-sheet frame
-
-Every sheet in the app arrives in one frame, and it lives in
-`components/ui/sheet-chrome.tsx`. Use `SheetSurfaceModal` rather than
-`IsolatedBottomSheetModal` directly, and take the title and the content indent from the same
-file.
-
-| Piece          | Value                                            | Owner                            |
-| -------------- | ------------------------------------------------ | -------------------------------- |
-| Surface        | `surface0`, top corners at `borderRadius["2xl"]` | `SheetSurfaceModal`              |
-| Grab handle    | 36 x 4, `palette.zinc[600]`                      | `SheetSurfaceModal`              |
-| Content indent | `spacing[SHEET_HORIZONTAL_PADDING_SCALE]`        | `SHEET_HORIZONTAL_PADDING_SCALE` |
-| Title          | `base` compact / `lg` wide, medium               | `sheetChromeStyles.title`        |
-| Opening detent | ~60-65%, with a second detent near 90%           | the sheet                        |
-
-**Pin the grab handle.** Left to the library, the indicator is 7.5% of the _window_ width, so
-the same sheet grows a handle three times wider on a desktop window than on a phone and no two
-sheets agree unless they happen to be open at the same width. This is the single loudest source
-of "these sheets look unrelated".
-
-**Only the top corners are rounded.** The bottom two sit past the screen edge, so rounding them
-buys nothing and costs the illusion that the sheet is anchored there.
-
-**A dialog sheet carries a close X; a menu sheet does not.** `AdaptiveModalSheet` and the tool-call
-sheet are dialogs - they hold a form or a document, and an explicit dismissal is expected, the
-more so because the same component renders as a centred modal on desktop. A menu sheet
-([menus.md](menus.md)) and a picker close by choosing something, dragging down, or tapping the
-backdrop, and an X there is chrome on the one surface that needs none. Do not split the
-difference per sheet.
-
-**Open at ~60-65%, not 80%.** A sheet that opens nearly full-screen reads as a screen that failed
-to be a route. Give it a second detent near 90% for the drag up.
 
 ## Popover width contract
 
@@ -76,13 +43,13 @@ Consumers: `composer/agent-controls/mode-control.tsx`,
 `components/import-session-sheet.tsx`, `screens/workspace/workspace-screen.tsx`,
 `screens/settings-screen.tsx`, and `screens/project-settings-screen.tsx`.
 
-## Gotcha 1 - Android touch hit-test by parent bounds
+## Gotcha 1 — Android touch hit-test by parent bounds
 
 On Android, a child View whose bounds fall outside its parent's bounds renders
 correctly (with `overflow: visible`, the default) but **does not receive touch
 events**. `ViewGroup.dispatchTouchEvent` filters touches by the parent's hit
 rect first, then iterates children. A touch in the overflowing region never
-reaches the parent, let alone the child. iOS and web do not share this rule -
+reaches the parent, let alone the child. iOS and web do not share this rule —
 iOS hit-test descends into overflowing children, web uses standard CSS pointer
 events. This is the bug that put autocomplete on this path: the popover was
 positioned `bottom: 100%` of its parent and worked on iOS/web for months;
@@ -90,12 +57,15 @@ Android touches sailed straight through to the chat scroll view behind it.
 
 Two escape hatches in the codebase:
 
-- **`Modal`** (combobox, dropdown menu and tooltip on native) - opens a new Android window, so
-  hit-testing starts fresh in that window. Side effect: a Modal opening on
+- **`Modal`** (combobox, dropdown menu and tooltip on native) — opens a new Android window, so
+  hit-testing starts fresh in that window. If its children use gesture-handler,
+  the Modal owner must wrap its content in a full-height `GestureHandlerRootView`:
+  the app's root does not span Android windows. React context alone does not
+  establish a native gesture root. Side effect: a Modal opening on
   Android can detach the IME from an underlying TextInput. Fine for combobox
   (it has its own input) and tooltip (no input). **Not** fine for autocomplete
   (the composer's input must stay focused so the user keeps typing).
-- **`<Portal>` from `@gorhom/portal`** (hover-card, autocomplete-popover) -
+- **`<Portal>` from `@gorhom/portal`** (hover-card, autocomplete-popover) —
   hoists the React subtree to a fixed mount point whose bounds cover the
   screen. Same window, same IME, hit-test works because the new parent is
   full-screen. This is the right default when you must keep IME attachment.
@@ -122,7 +92,7 @@ portal can cover them.
 Painting and keyboard ownership use the same relative layer model. Register
 desktop modal, combobox, and dropdown focus scopes with `useWebOverlayRegistration`; the
 highest painted scope alone receives overlay keys, traps focus, and restores
-focus when it closes. Do not add component-local global Escape listeners: two
+focus when it closes. Hover cards register with `manageFocus={false}`: they claim overlay keys without moving or trapping focus on pointer hover. Do not add component-local global Escape listeners: two
 stacked overlays would both close on one keypress.
 
 If an overlay is rendered by a global host rather than beneath its opener in
@@ -134,21 +104,21 @@ action and has no component context to carry, resolve the host layer with
 current top registered layer before the new host joins the stack; do not give a
 global dialog a fixed root-derived modal layer.
 
-## Gotcha 2 - Portal breaks lifecycle and coordinate-system inheritance
+## Gotcha 2 — Portal breaks lifecycle and coordinate-system inheritance
 
 A Portal escapes Android's hit-test, but it also escapes two things you were
 quietly relying on:
 
 - **Lifecycle.** The portal'd subtree mounts at the app root, not inside your
   component's natural ancestor chain. When the user navigates away, your
-  component may stay mounted (offscreen, in a tab) - the popover stays with it.
+  component may stay mounted (offscreen, in a tab) — the popover stays with it.
   Gate `visible` on a screen-focus signal. For panes inside `agent-panel`, the
   `isPaneFocused` prop already exists and flips on pane switches; pass
   `visible={isYourOwnVisible && isPaneFocused}`.
 - **Transforms.** `KeyboardShiftProvider` owns the canonical keyboard shift
   SharedValue, and `useKeyboardShiftStyle()` only adapts that value into
   translate/padding styles. The composer and chat content must both read that
-  provider-owned value. A portal'd popover is outside the composer tree - it
+  provider-owned value. A portal'd popover is outside the composer tree — it
   does not get that transform unless you apply it yourself.
 - **Layering.** The default root host renders after app content, so it sits
   above compact sidebars. Content overlays that must sit below sidebars should
@@ -157,23 +127,48 @@ quietly relying on:
   renders inside its host, not necessarily at window origin. Position anchored
   content relative to the host: `anchorRect - hostRect`. This is what
   `measureFloatingPanelPortalHost()` is for.
-- **React context.** `@gorhom/portal` is not a React portal; a real one keeps
+- **React context.** `@gorhom/portal` is not a React portal — a real one keeps
   context, this one does not. It stores the element and the host renders it, so
   context resolves at the _host's_ position. Everything provided between
   `PortalProvider` in `app/_layout.tsx` and your sheet is invisible inside it.
   This is why app-wide providers wrap `PortalProvider` rather than the reverse.
 
-The fix for transforms is Gotcha 3. The fix for context is Gotcha 8.
+The fix for transforms is Gotcha 3. The fix for context is Gotcha 7.
 
 ## Gotcha 3 — Keyboard layout and portal anchors
 
-`KeyboardTranslateView` owns visual keyboard motion. Android uses the
+`composer/dock` owns the stationary viewport, bottom-anchored surface, composer
+capacity, and keyboard motion for chat, workspace draft tabs, and New workspace.
+Render `<ComposerDock>{contentAbove}{composer}</ComposerDock>` below the header.
+The optional third child is an overlay that moves with the surface. New workspace
+uses `centered` for its existing desktop/tablet form. Hosts never reserve keyboard
+space or translate the composer themselves. Put the dismiss surface behind content
+as a sibling, with `pointerEvents="box-none"` on its content wrapper. A Pressable
+ancestor takes the JS responder on idle Android Fabric and intercepts the stream's
+MOVE events before its native scroll view reaches touch slop. Streaming can hide
+this failure by delaying the responder grant. Native scroll views retain their own
+tap-to-dismiss behavior; unclaimed empty-space taps reach the dismiss sibling.
+On iOS, decorative form containers also need `box-none` (and inert titles/spacers
+need `none`); otherwise their empty padding blocks hit testing of that sibling.
+The shared screen header uses the same dismiss surface. Keep the
+header escape available when a capped draft clips all content above it, since
+iPhone has no system keyboard-dismiss button. Child controls keep their touches,
+and the stream keeps its existing flick-to-dismiss gesture.
+
+The dock's private viewport and capacity model are extracted from chat. The
+app-wide `@/keyboard/shift` module owns shared motion for the dock, portals, streams,
+terminal, explorer, and dialogs. Import only its public entry point: the provider,
+shift hooks, shift style, translate view, settled stream inset, and explorer padding
+policy. Its contexts and reconciliation stay private. Keep `KeyboardShiftProvider`
+at its root mount point outside the portal host when changing dock hosts.
+
+`KeyboardTranslateView` owns visual keyboard motion inside `@/keyboard/shift`. Android uses the
 controller's Reanimated signal. iOS uses its native-driver `Animated.event`
 signal because the stock iOS Reanimated value changes at move start, while
 writing a replacement Reanimated value every frame interrupts UIKit's hide
-animation. Keep this platform choice inside `KeyboardTranslateView`.
+animation. Keep this platform choice inside the keyboard module's private platform-specific translate files.
 
-`KeyboardDock` always keeps the chat surface at full height and wraps it in
+`ComposerDock` always keeps the surface at full height and wraps it in
 `KeyboardTranslateView`. The panel root clips it at the header edge, so rows
 slide under the header on open and out from under it on close. Do not swap the
 dock to keyboard padding at rest. Changing its height creates either a blank
@@ -181,14 +176,79 @@ band or a paused transition when the inverted list updates its viewport.
 
 Do not animate a layout prop through the keyboard transition. On Android
 Fabric, each animated layout update clones the shadow tree and runs Yoga over
-the dock subtree. The upstream keyboard investigation measured about 10 ms per frame on its emulator,
-with mounted layouts arriving in bursts every 2 to 4 frames; this is historical evidence, not
-validation of the current Otto build. A transform does not dirty
+the dock subtree. This measured about 10 ms per frame on the emulator and the
+mounted layouts arrived in bursts every 2–4 frames. A transform does not dirty
 layout. Preserve the translated dock's history scroll range with a far-end
 content inset on the inverted stream list. Update that inset only when keyboard
 motion settles; never drive it per frame.
 
-Move the stream and composer together through `KeyboardDock`. Do not translate
+The translated dock's height is not the composer's available height. Bound the
+composer against the stationary space below the header inside
+`composer/dock`, including its controls and attachments. Reserve the
+keyboard destination at move start on the UI thread. Waiting for a settled JS
+update lets a long draft disappear behind the header during opening. This is a
+boundary-time layout change, not an animated layout prop. Keep the input's
+native intrinsic sizing and internal scrolling. Keep the editing input's
+`defaultValue` current on every edit: Fabric re-measures the Android input from
+the JS text whenever its frame changed, so a stale prop inflates or collapses
+the input (see `packages/app/src/components/ui/text-input/text-input.native.tsx`).
+
+Closing the keyboard moves the composer; it does not enlarge its capacity. The
+viewport keeps the last keyboard reservation until the next opening replaces
+it, so a capped draft keeps one height through every keyboard transition
+instead of expanding on close and shrinking again on open.
+
+Fullscreen is a layout mode of the dock, not a second editor. `ComposerDock
+fullscreen` fills the stationary viewport with the composer slot over the
+still-mounted content, paints its own surface under the safe areas, and turns
+the surface translation off. The composer's single tree keeps the editing
+surface at the same position in both modes, so the mounted editor, its native
+buffer, selection, and focus survive the toggle and Send's clear always reaches
+the live input. A viewport crossing the compact breakpoint still remounts it:
+the app shell swaps its gesture wrapper and the workspace screen
+mounts tabs in different trees, so every screen below remounts. The draft owner
+restores the text and the editing session restores the caret. Focus restoration
+is limited to mouse-driven UIs, using the same fine-pointer policy as autofocus.
+New workspace keys its sessions by draft in the app-level store for the same
+reason. The centered form honors fullscreen by style alone: no centering, no
+translation, setup fields hidden, slot filling the stationary viewport. The
+global exit action (Escape, hardware back) is registered only for the active
+composer: a retained tab keeps its fullscreen editor mounted while hidden, the
+sheet suspends pane focus, and the composer gives up input from the moment the
+user asks for the compact agent list or explorer, before the panel's motion
+settles. Pane focus itself stays put under those panels: the agent panel reads
+it as "the user is in this chat" for attention clearing, and opening the agent
+list must not clear the attention it shows. On mouse-driven UIs, focus restoration
+follows pane focus, not the active composer. Keying it on the active composer
+made sidebar dismissal look like a hidden-tab blur and refocused on close.
+Native and touch-web navigation must not replay old editor focus, including
+when blur arrives after pane deactivation or the editor unmounts before blur.
+Fullscreen toggles keep the editor mounted and need no focus restoration.
+The band beside the inline editor where the fullscreen glyph sits is the input's
+own right padding, so a tap anywhere in it focuses the editor whether or not the
+glyph shows. On web the slot is a fixed box over the visible viewport, which is
+also what lets a zoomed mobile page pan under it. Inside the slot, `ComposerFullscreenBody` reserves the keyboard
+height as a bottom margin at move start and end (boundary-time, like the
+capacity reservation) while `ComposerFullscreenFooter` rides the keyboard per
+frame with `KeyboardTranslateView`, so Send lands on the keyboard without a gap
+and without animating the editor's height. The screen that owns the chrome
+unmounts it: the workspace screen reads `useComposerTabFullscreen` for the
+active tab and New workspace reads the mounted composer's session. Hosts that
+render the dock pass the same `ComposerEditingSession` to the `Composer` so the
+dock, chrome, and editor agree on one fullscreen state. Escape (web overlay
+registration, focus untouched) and the Android back button leave fullscreen.
+
+Keep setup fields out of the composer's shrink chain. New workspace supplies its
+setup fields as the first dock child so they move up under the header as the draft
+grows. Putting the fields and composer in one bounded, shrinkable column made
+Yoga split the shortage between them: rows vanished behind the composer while
+the input lost lines at the same time. Keep that separation inside the dock,
+shared by every phone host. The centered tablet form caps the complete block
+for header clearance, but reserves the composer's own capped height before
+shrinking the setup scroll view. The form must not take editing space from the
+composer.
+
+Move the stream and composer together through `ComposerDock`. Do not translate
 them independently.
 
 `KeyboardShiftProvider` owns the normalized shift used for settled insets and
@@ -227,7 +287,7 @@ with `measureInWindow`, Android's status-bar coordinate behavior cancels out.
 Only add a status-bar offset when the render surface is not measured in the same
 coordinate system. See `tooltip.tsx` for that separate case.
 
-## Gotcha 5 - The two-measurement flash
+## Gotcha 5 — The two-measurement flash
 
 If your popover needs `top` (or `left`) computed from both:
 
@@ -236,14 +296,14 @@ If your popover needs `top` (or `left`) computed from both:
 
 then a naïve implementation will flash through three positions on every open:
 
-1. **Frame 1** - render with `top: -9999` (or any placeholder) while waiting
+1. **Frame 1** — render with `top: -9999` (or any placeholder) while waiting
    for either measurement. Wrapper has no `width`, so the inner content lays
    out at its natural (often narrow) intrinsic width.
-2. **Frame 2** - `anchorRect` lands. Wrapper now has `width: anchorRect.width`.
+2. **Frame 2** — `anchorRect` lands. Wrapper now has `width: anchorRect.width`.
    But the stale `onLayout` from frame 1 has already set `contentSize` to the
-   narrow-width dimensions. `top = anchorRect.y - wrongHeight - gap` - visible
+   narrow-width dimensions. `top = anchorRect.y - wrongHeight - gap` — visible
    at the wrong spot.
-3. **Frame 3** - real `onLayout` fires with the correct width. `contentSize`
+3. **Frame 3** — real `onLayout` fires with the correct width. `contentSize`
    updates. Position snaps to the right place.
 
 The visible jump in frame 2 is the flash. Two pieces solve it, and you need
@@ -254,7 +314,7 @@ both:
   all.
 - **Once `anchorRect` is set but `contentSize` isn't, render the wrapper with
   the final width but `opacity: 0`.** The first visible paint is at the
-  correct position. This is the combobox pattern -
+  correct position. This is the combobox pattern —
   `shouldHideDesktopContent` at `combobox.tsx:481, 876`. **Do not** use
   `top: -9999` as the placeholder; the layout work still happens at -9999 and
   any subsequent state-flash is visible when you flip back.
@@ -263,7 +323,16 @@ The "render invisible to measure, then reveal" pattern is the canonical
 solution to chicken-and-egg positioning in this codebase. Reach for it before
 anything fancier.
 
-## Gotcha 6 - Bottom sheet refs are not lifecycle truth
+<!-- OTTO(menu-geometry): preserve position while asynchronous menu content grows. -->
+
+For content that changes after opening, keep geometry under the positioning code's control.
+Custom Reanimated web keyframes restore an animation-end snapshot during delayed cleanup. That
+can undo a newer position, width and height when account reports or submenu contents arrive.
+The menu surface uses a predefined web fade, which leaves geometry alone; native keeps its
+existing animation. A timer that removes a fixed height cannot prevent a later snapshot from
+restoring stale coordinates.
+
+## Gotcha 6 — Bottom sheet refs are not lifecycle truth
 
 `@gorhom/bottom-sheet` modals churn their imperative ref while presenting and
 dismissing. Do not treat `ref != null` as permission to call `present()`, and do
@@ -282,58 +351,35 @@ Do not treat `onChange(-1)` as a close by itself. In a stacked
 another pushed sheet. Close React state from `onDismiss`; use `onChange` only to
 track phase.
 
-## Gotcha 7 - Electron drag regions hit-test ahead of your overlay
+All sheets use the app-wide Gorhom modal provider through `IsolatedBottomSheetModal`, with no
+exceptions: one stack means a sheet opened from any sheet lands on top of it and uncovers it on
+close. This includes native centered dialogs: separate React Native Modals cannot present a
+root-owned sibling dialog over an existing iOS presenter. A sheet that must draw inside a subtree
+(the [sheet tabs](explorer-sidebar.md#sheets) draw inside the compact workspace column so their
+panels read the workspace providers) presents from inside a `SheetHostScope`, which moves the
+portal host and container measurement while the sheet still joins the same stack. That export is
+what `patches/@gorhom+bottom-sheet+*.patch` adds.
 
-On Electron, `-webkit-app-region: drag` rects are computed from **unclipped
-bounding boxes document-wide, ignoring DOM z-order** (electron/electron#7605).
-An overlay floating visually above a drag region (a titlebar strip, the
-workspace header label, or the New Workspace screen's full-screen drag
-overlay) is still click-dead wherever the two rects overlap - mouse-down
-starts a window drag instead of a click. Nothing logs; it feels like a CSS
-bug and typically only shows in compact mode, where pickers become
-full-screen-adjacent sheets instead of small anchored popovers.
+A sheet whose owner may veto the close (unsaved work) passes `enableDismissOnClose={false}`. Every
+close path then parks the sheet at index -1 with its content mounted; the owner hears
+`onChange(-1)`, runs its guard, and either snaps back to 0 or drops its state, which unmounts the
+sheet and takes it off the stack. Calling `dismiss()` on such a sheet bypasses the guard and
+unmounts it, so its backdrop and Back press call `close()`.
 
-The no-drag backstop in `packages/app/public/index.html` is deliberately
-scoped (a global rule lets scrolled-away chat content punch invisible holes
-in the titlebar drag strip - same unclipped-rect behavior). It covers two
-layer families:
+The wrapper must give Gorhom an object ref. Gorhom accepts a callback ref at the React boundary
+but stores it in the modal queue and later reads `.current`; provider dismissal, replacement,
+and restoration then silently do nothing. Callers may use callback refs on the wrapper, which
+forwards commands to the current Gorhom handle.
 
-- interactive elements inside a drag-region container
-  (`[data-app-region-drag]` / `:has(> [data-app-region-drag])`), and
-- overlays portaled to `body > :not(#root)` - react-native-web `Modal`
-  layers and `#overlay-root`.
+Request a backdrop with `backdropOpacity`; do not install a caller-owned backdrop. On web,
+Gorhom's default backdrop closes its own sheet, even when another modal is above it. Its animated
+pointer-event changes can expose a lower backdrop during a transition. The shared web backdrop
+keeps its press target until portal teardown and asks the provider to dismiss the top modal
+(a guarded sheet closes itself instead, see above). Gorhom's presentation queue remains the
+authority; backdrop mount order is irrelevant. Native retains Gorhom's gesture backdrop and the
+same push/replace presentation semantics.
 
-Anything that floats **inside `#root`** is NOT covered - gorhom bottom sheets
-and `@gorhom/portal` panels. Those carve themselves out with
-`FLOATING_LAYER_NO_DRAG_STYLE` (`components/desktop/app-region.ts`,
-`WebkitAppRegion: "no-drag"`), applied at three choke points:
-
-- `IsolatedBottomSheetModal` - the sheet's full-screen hosting container
-  (covers every compact-mode sheet: combobox, menus, command center,
-  `AdaptiveModalSheet`),
-- `FloatingSurface` in `components/ui/floating.tsx` - the shared frame for
-  desktop panels (hover card via `@gorhom/portal`; menus/combobox render in
-  RNW `Modal` so they're double-covered, harmlessly),
-- `AutocompletePopover` - portals into `FloatingPanelPortalHost` inside
-  `#root`, and sits directly over the New Workspace screen's full-screen
-  drag overlay.
-- `MobileSidebar`'s overlay wrapper (`left-sidebar.tsx`) - the compact
-  sidebar drawer has no `TitlebarDragRegion` of its own, so without the
-  carve-out the underlying screen header's drag strip eats clicks on its top
-  rows. The wrapper is `display: none` while closed (no boxes), so the
-  closed drawer can't hole the drag strip.
-
-Two rules when adding a new floating layer:
-
-1. If it neither portals to `<body>` nor goes through one of the choke
-   points above, stamp `FLOATING_LAYER_NO_DRAG_STYLE` on its frame or its
-   contents will be unclickable over drag strips.
-2. Apply it only to views that **exist while the panel is open**. Stamping an
-   always-mounted full-screen host (e.g. `FloatingPanelPortalHost`'s
-   absolute-fill wrapper) permanently disables titlebar dragging - the exact
-   unclipped-rect bug the scoped backstop exists to prevent.
-
-## Gotcha 8 - A sheet cannot read context from its call site
+## Gotcha 7 — A sheet cannot read context from its call site
 
 React cannot copy contexts reflectively, so the only way across the teleport in
 Gotcha 2 is to render the providers a second time, with values captured on the
@@ -349,7 +395,7 @@ const contextBridge = useCallback<ContextBridge>(
 
 The prop is **required**, and `null` is a real answer. A sheet whose content
 needs nothing local should have to say so, because the failure mode is silent
-until someone adds a `useContext` deep inside and it throws on device only,
+until someone adds a `useContext` deep inside and it throws on device only —
 never on web, where the desktop path uses a real portal. `menu-surface.tsx`
 bridges the menu's two contexts; the rest pass `null`.
 
@@ -361,7 +407,7 @@ Before you write a new one, ask:
 
 1. **Can the underlying input lose its keyboard?** If yes, use Modal (simpler).
    If no, use Portal.
-2. **Does the panel need to dismiss on screen change?** Almost always yes -
+2. **Does the panel need to dismiss on screen change?** Almost always yes —
    gate `visible` on an upstream focus prop (`isPaneFocused` or similar).
 3. **Is the panel rendered in a Portal host?** Measure the host too. Never use
    raw window coordinates as local Portal coordinates.
@@ -370,13 +416,13 @@ Before you write a new one, ask:
    If no, you can probably skip the transform entirely.
 5. **Will the panel's content height vary?** If yes, you need both
    `anchorRect` and `contentSize` for positioning → apply Gotcha 5 (return
-   null until anchor, then opacity-0 until contentSize). If no - content has
-   a known fixed max height - you might be able to use bottom-anchored
+   null until anchor, then opacity-0 until contentSize). If no — content has
+   a known fixed max height — you might be able to use bottom-anchored
    positioning (`bottom: windowHeight - anchor.y + gap`) and skip the
    `contentSize` round-trip entirely. **But only if the height is genuinely
    bounded**. Verify before you commit.
 
 Then copy the closest canonical file and trim.
 
-Building a **menu** rather than a bare panel? Don't. Use the menu engine. It already solves
+Building a **menu** rather than a bare panel? Don't. Use the menu engine — it already solves
 everything above, plus submenus, sheets, and hover intent. See [menus.md](menus.md).

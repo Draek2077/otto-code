@@ -1,8 +1,8 @@
-appId: me.ottocode.mobile
+appId: me.ottocode.mobile # OTTO(identity)
 ---
 - runFlow:
     when:
-      visible: "Open in.*Otto.*\\?"
+      visible: "Open in.*Paseo.*\\?"
     commands:
       - tapOn: "Open"
 

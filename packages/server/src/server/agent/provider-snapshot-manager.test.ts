@@ -2,8 +2,11 @@ import pino from "pino";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
 import { describe, expect, test, vi } from "vitest";
-import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
-import type { ProviderEvent, ProviderRegistration } from "@otto-code/plugin/server/provider";
+import type {
+  ProviderEvent,
+  ProviderRegistration,
+  ProviderLaunch,
+} from "@getpaseo/plugin/server/provider";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import type {
@@ -139,6 +142,79 @@ async function runTestCatalogActivities(
 }
 
 describe("ProviderSnapshotManager public surface", () => {
+  test("publishes one model per provider identity and retains the first definition", async () => {
+    const first = { provider: "codex", id: "shared", label: "First", isDefault: true };
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      extraClients: {
+        codex: createExtraClient("codex", {
+          isAvailable: async () => true,
+          fetchCatalog: async () => ({
+            models: [first, { ...first, label: "Duplicate" }],
+            modes: [],
+          }),
+        }),
+        claude: createExtraClient("claude", {
+          isAvailable: async () => true,
+          fetchCatalog: async () => ({ models: [{ ...first, provider: "claude" }], modes: [] }),
+        }),
+      },
+    });
+    try {
+      const codex = await manager.getProvider({ provider: "codex", wait: true });
+      const claude = await manager.getProvider({ provider: "claude", wait: true });
+      expect(codex.models).toEqual([first]);
+      expect(claude.models).toEqual([{ ...first, provider: "claude" }]);
+    } finally {
+      manager.destroy();
+    }
+  });
+
+  test("normalizes plugin model catalogs at the same publication boundary", async () => {
+    const manager = new ProviderSnapshotManager({ logger: createTestLogger() });
+    manager.replacePluginProviders([
+      {
+        id: "catalog-plugin",
+        label: "Catalog plugin",
+        async connect() {
+          let listener: ((event: ProviderEvent) => void) | undefined;
+          return {
+            version: 1,
+            capabilities: [],
+            async send(input) {
+              if (input.type === "catalog")
+                listener?.({
+                  type: "catalog",
+                  requestId: input.requestId,
+                  catalog: {
+                    models: [
+                      { id: "same", label: "First" },
+                      { id: "same", label: "Second" },
+                    ],
+                    modes: [],
+                  },
+                });
+            },
+            onEvent(next) {
+              listener = next;
+              return () => {
+                listener = undefined;
+              };
+            },
+            async close() {},
+          };
+        },
+      },
+    ]);
+    try {
+      const entry = await manager.getProvider({ provider: "catalog-plugin", wait: true });
+      expect(entry.models).toHaveLength(1);
+      expect(entry.models?.[0]).toMatchObject({ id: "same", label: "First" });
+    } finally {
+      manager.destroy();
+    }
+  });
+
   test("carries a plugin provider icon in snapshot metadata", () => {
     const iconSvg = '<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /></svg>';
     const registration: ProviderRegistration = {
@@ -162,7 +238,7 @@ describe("ProviderSnapshotManager public surface", () => {
     }
   });
 
-  test("validates complete Hub agent configurations through the current provider contract", async () => {
+  test("validates catalog choices while leaving provider options opaque", async () => {
     const manager = new ProviderSnapshotManager({
       logger: createTestLogger(),
       extraClients: {
@@ -217,11 +293,19 @@ describe("ProviderSnapshotManager public surface", () => {
           path: ["thinkingOptionId"],
           message: "Thinking option 'missing' is not available for provider 'codex'",
         },
-        {
-          path: ["providerOptions", "sandbox_workspace_write", "network_access"],
-          message: "Invalid input: expected boolean, received string",
-        },
       ]);
+      await expect(
+        manager.validateAgentConfiguration({
+          provider: "codex",
+          model: "gpt-latest",
+          modeId: "auto-review",
+          thinkingOptionId: "xhigh",
+          providerOptions: {
+            sandbox_workspace_write: { network_access: "sometimes" },
+            arbitrary: true,
+          },
+        }),
+      ).resolves.toEqual([]);
     } finally {
       manager.destroy();
     }
@@ -291,10 +375,8 @@ describe("ProviderSnapshotManager public surface", () => {
       const codex = snapshot.find((entry) => entry.provider === "codex");
       expect(claude?.status).toBe("loading");
       expect(claude?.label).toBe("Claude");
-      // From the manifest rather than hardcoded: which permission mode a
-      // provider defaults to is a product choice, not this test's subject.
-      expect(claude?.defaultModeId).toBe(getAgentProviderDefinition("claude").defaultModeId);
-      expect(codex?.defaultModeId).toBe(getAgentProviderDefinition("codex").defaultModeId);
+      expect(claude?.defaultModeId).toBe("auto");
+      expect(codex?.defaultModeId).toBe("auto-review");
     } finally {
       manager.destroy();
     }
@@ -423,49 +505,6 @@ describe("ProviderSnapshotManager public surface", () => {
     }
   });
 
-  test("stamps picker visibility without making hidden models unrunnable", async () => {
-    const models: AgentModelDefinition[] = [
-      { provider: "codex", id: "visible", label: "Visible" },
-      { provider: "codex", id: "hidden", label: "Hidden" },
-    ];
-    const manager = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      modelVisibilityOverrides: [{ provider: "codex", modelId: "hidden", visible: false }],
-      extraClients: {
-        codex: createExtraClient("codex", {
-          isAvailable: async () => true,
-          fetchCatalog: async () => ({ models, modes: [] }),
-        }),
-      },
-    });
-
-    try {
-      const entry = await manager.getProvider({
-        cwd: "/tmp/project",
-        provider: "codex",
-        wait: true,
-      });
-      expect(entry.models).toEqual([
-        { provider: "codex", id: "visible", label: "Visible" },
-        { provider: "codex", id: "hidden", label: "Hidden", isVisible: false },
-      ]);
-      expect(
-        (await manager.listModels({ cwd: "/tmp/project", provider: "codex" })).map(
-          (model) => model.id,
-        ),
-      ).toEqual(["visible", "hidden"]);
-
-      manager.setModelVisibilityOverrides([]);
-      expect(
-        manager
-          .getSnapshot("/tmp/project")
-          .records.find(({ entry: candidate }) => candidate.provider === "codex")?.entry.models,
-      ).toEqual(models);
-    } finally {
-      manager.destroy();
-    }
-  });
-
   test("explicit refresh re-probes only the requested warm provider", async () => {
     const cwd = "/tmp/project";
     const isAvailableCodex = vi.fn(async () => true);
@@ -582,8 +621,6 @@ describe("ProviderSnapshotManager public surface", () => {
         copilot: { enabled: false },
         opencode: { enabled: false },
         pi: { enabled: false },
-        omp: { enabled: false },
-        "otto-brain": { enabled: false },
       },
       extraClients: {
         codex: createExtraClient("codex", {
@@ -769,8 +806,8 @@ describe("ProviderSnapshotManager public surface", () => {
     }
   });
 
-  test("OTTO_PROVIDER_REFRESH_TIMEOUT_MS env var is honored when no option is given", async () => {
-    vi.stubEnv("OTTO_PROVIDER_REFRESH_TIMEOUT_MS", "1");
+  test("PASEO_PROVIDER_REFRESH_TIMEOUT_MS env var is honored when no option is given", async () => {
+    vi.stubEnv("PASEO_PROVIDER_REFRESH_TIMEOUT_MS", "1");
     const isAvailable = vi.fn(waitUntilAborted);
     const manager = new ProviderSnapshotManager({
       logger: createTestLogger(),
@@ -796,8 +833,8 @@ describe("ProviderSnapshotManager public surface", () => {
     }
   });
 
-  test("OTTO_PROVIDER_REFRESH_TIMEOUT_MS env var is ignored when option is provided", async () => {
-    vi.stubEnv("OTTO_PROVIDER_REFRESH_TIMEOUT_MS", "1");
+  test("PASEO_PROVIDER_REFRESH_TIMEOUT_MS env var is ignored when option is provided", async () => {
+    vi.stubEnv("PASEO_PROVIDER_REFRESH_TIMEOUT_MS", "1");
     const isAvailable = vi.fn(waitUntilAborted);
     const manager = new ProviderSnapshotManager({
       logger: createTestLogger(),
@@ -834,21 +871,12 @@ describe("ProviderSnapshotManager public surface", () => {
         copilot: { enabled: false },
         opencode: { enabled: false },
         pi: { enabled: false },
-        "otto-brain": { enabled: false },
       },
     });
     try {
       const entries = await manager.listProviders({ cwd: "/tmp/project", wait: true });
       const providers = entries.map((entry) => entry.provider).sort();
-      expect(providers).toEqual([
-        "claude",
-        "codex",
-        "copilot",
-        "omp",
-        "opencode",
-        "otto-brain",
-        "pi",
-      ]);
+      expect(providers).toEqual(["claude", "codex", "copilot", "omp", "opencode", "pi"]);
       for (const entry of entries) {
         expect(entry.enabled).toBe(false);
         expect(entry.status).toBe("unavailable");
@@ -963,67 +991,6 @@ describe("ProviderSnapshotManager public surface", () => {
       expect(id).toBeUndefined();
     } finally {
       manager.destroy();
-    }
-  });
-
-  test("discovery diagnostic selects the configured derived client without catalog/legacy probes", async () => {
-    const diagnoseDiscovery = vi.fn(async () => {
-      throw new Error("fixture diagnostic reached");
-    });
-    const fetchCatalog = vi.fn();
-    const getDiagnostic = vi.fn();
-    const client = createExtraClient("my-codex", {
-      diagnoseDiscovery,
-      fetchCatalog,
-      getDiagnostic,
-    });
-    const manager = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: { "my-codex": { extends: "codex", label: "My Codex", enabled: true } },
-      extraClients: { "my-codex": client },
-    });
-    const options = { threadId: "01a14152-e1ac-72f4-9565-0978e4520014" };
-    const imports = { knownImportedSessionCount: 16, isImported: () => false };
-    try {
-      await expect(
-        manager.getProviderDiscoveryDiagnostic("my-codex", options, imports),
-      ).rejects.toThrow("fixture diagnostic reached");
-      expect(diagnoseDiscovery).toHaveBeenCalledWith(options, imports);
-      expect(fetchCatalog).not.toHaveBeenCalled();
-      expect(getDiagnostic).not.toHaveBeenCalled();
-      await expect(
-        manager.getProviderDiscoveryDiagnostic("unknown", options, imports),
-      ).rejects.toThrow("enabled provider");
-    } finally {
-      manager.destroy();
-    }
-  });
-
-  test("discovery diagnostic rejects disabled and unsupported providers without invoking diagnostics", async () => {
-    const diagnoseDiscovery = vi.fn();
-    const imports = { knownImportedSessionCount: 0, isImported: () => false };
-    const options = { threadId: "01a14152-e1ac-72f4-9565-0978e4520014" };
-    const disabled = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: { codex: { enabled: false } },
-      extraClients: { codex: createExtraClient("codex", { diagnoseDiscovery }) },
-    });
-    const unsupported = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: { codex: { enabled: true } },
-      extraClients: { codex: createExtraClient("codex") },
-    });
-    try {
-      await expect(
-        disabled.getProviderDiscoveryDiagnostic("codex", options, imports),
-      ).rejects.toThrow("enabled provider");
-      await expect(
-        unsupported.getProviderDiscoveryDiagnostic("codex", options, imports),
-      ).rejects.toThrow("does not support");
-      expect(diagnoseDiscovery).not.toHaveBeenCalled();
-    } finally {
-      disabled.destroy();
-      unsupported.destroy();
     }
   });
 
@@ -1253,7 +1220,7 @@ describe("ProviderSnapshotManager public surface", () => {
   });
 
   test("getProviderDiagnostic reports a stuck catalog refresh inside the diagnostic", async () => {
-    await withEnv("OTTO_ENABLE_MOCK_SLOW", "true", async () => {
+    await withEnv("PASEO_ENABLE_MOCK_SLOW", "true", async () => {
       vi.useFakeTimers();
       const manager = new ProviderSnapshotManager({
         logger: createTestLogger(),
@@ -1267,7 +1234,7 @@ describe("ProviderSnapshotManager public surface", () => {
         const result = await diagnosticRequest;
         expect(result.provider).toBe("mock-slow");
         expect(result.diagnostic).toContain("Mock slow provider");
-        expect(result.diagnostic).toContain("Models: -");
+        expect(result.diagnostic).toContain("Models: —");
         expect(result.diagnostic).toContain(
           `Status: Error: Timed out refreshing Mock Slow Provider after ${TEST_REFRESH_TIMEOUT_MS}ms`,
         );
@@ -1376,14 +1343,7 @@ describe("ProviderSnapshotManager public surface", () => {
         unattended: false,
       });
 
-      // The resolver reports the effective unattended (input.unattended OR the
-      // unattended parent), so a child of an unattended parent can arm its
-      // deny-responder even though its own create input never set the flag.
-      expect(resolved).toEqual({
-        modeId: "child-unattended",
-        featureValues: undefined,
-        unattended: true,
-      });
+      expect(resolved).toEqual({ modeId: "child-unattended", featureValues: undefined });
       expect(resolverInputs).toEqual([
         {
           provider: "codex",
@@ -1442,7 +1402,7 @@ describe("ProviderSnapshotManager public surface", () => {
         unattended: true,
       });
 
-      expect(resolved).toEqual({ modeId: "worker", featureValues: undefined, unattended: true });
+      expect(resolved).toEqual({ modeId: "worker", featureValues: undefined });
       expect(resolverInputs).toEqual([
         {
           provider: "codex",
@@ -1509,11 +1469,7 @@ describe("ProviderSnapshotManager public surface", () => {
         unattended: false,
       });
 
-      expect(resolved).toEqual({
-        modeId: "base",
-        featureValues: { auto_accept: true },
-        unattended: true,
-      });
+      expect(resolved).toEqual({ modeId: "base", featureValues: { auto_accept: true } });
     } finally {
       manager.destroy();
     }
@@ -1897,155 +1853,6 @@ describe("ProviderSnapshotManager applyMutableProviderConfig", () => {
         { msg: "Provider snapshot subscriber failed", err: { message: "subscriber failed" } },
       ]);
     } finally {
-      manager.destroy();
-    }
-  });
-});
-
-// A probe that lost once must not be lost for the life of the daemon. Before
-// these, "error" and "unavailable" were terminal for a given cwd and only an
-// explicit Settings refresh (the sole force:true caller) could clear them, so
-// one flaky Codex catalog spawn cost the user their model list until they went
-// and pressed a button.
-describe("ProviderSnapshotManager failed-probe recovery", () => {
-  const OTHERS_DISABLED = {
-    claude: { enabled: false },
-    copilot: { enabled: false },
-    opencode: { enabled: false },
-    pi: { enabled: false },
-    omp: { enabled: false },
-    "otto-brain": { enabled: false },
-  } as const;
-
-  async function flushMicrotasks(): Promise<void> {
-    for (let i = 0; i < 20; i += 1) {
-      await Promise.resolve();
-    }
-  }
-
-  test("re-probes a provider whose catalog fetch failed once the retry window lapses", async () => {
-    const cwd = "/tmp/project";
-    const fetchCatalog = vi
-      .fn()
-      .mockRejectedValueOnce(new Error("Codex app-server exited with code 1"))
-      .mockResolvedValue({
-        models: [{ provider: "codex", id: "gpt-5.4-mini", label: "GPT 5.4 Mini" }],
-        modes: [] as AgentMode[],
-      });
-    const manager = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: { ...OTHERS_DISABLED },
-      extraClients: {
-        codex: createExtraClient("codex", { isAvailable: async () => true, fetchCatalog }),
-      },
-    });
-    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
-    try {
-      const failed = await manager.getProvider({ cwd, provider: "codex", wait: true });
-      expect(failed.status).toBe("error");
-
-      // Inside the window the failure stays cached, so a burst of reads cannot
-      // turn one bad spawn into a spawn loop.
-      const stillFailed = await manager.getProvider({ cwd, provider: "codex", wait: true });
-      expect(stillFailed.status).toBe("error");
-      expect(fetchCatalog).toHaveBeenCalledTimes(1);
-
-      now.mockReturnValue(1_031_000);
-      const healed = await manager.getProvider({ cwd, provider: "codex", wait: true });
-      expect(healed.status).toBe("ready");
-      expect(healed.models?.map((model) => model.id)).toEqual(["gpt-5.4-mini"]);
-      expect(fetchCatalog).toHaveBeenCalledTimes(2);
-    } finally {
-      now.mockRestore();
-      manager.destroy();
-    }
-  });
-
-  test("re-probes a provider that reported unavailable once the retry window lapses", async () => {
-    const cwd = "/tmp/project";
-    const isAvailable = vi.fn().mockResolvedValueOnce(false).mockResolvedValue(true);
-    const manager = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: { ...OTHERS_DISABLED },
-      extraClients: { codex: createExtraClient("codex", { isAvailable }) },
-    });
-    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
-    try {
-      expect((await manager.getProvider({ cwd, provider: "codex", wait: true })).status).toBe(
-        "unavailable",
-      );
-      expect(isAvailable).toHaveBeenCalledTimes(1);
-
-      now.mockReturnValue(1_031_000);
-      expect((await manager.getProvider({ cwd, provider: "codex", wait: true })).status).toBe(
-        "ready",
-      );
-      expect(isAvailable).toHaveBeenCalledTimes(2);
-    } finally {
-      now.mockRestore();
-      manager.destroy();
-    }
-  });
-
-  test("a provider disabled by config stays unavailable and is never re-probed", async () => {
-    const cwd = "/tmp/project";
-    const isAvailable = vi.fn(async () => true);
-    const manager = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: { ...OTHERS_DISABLED, codex: { enabled: false } },
-      extraClients: { codex: createExtraClient("codex", { isAvailable }) },
-    });
-    const now = vi.spyOn(Date, "now").mockReturnValue(1_000_000);
-    try {
-      expect((await manager.getProvider({ cwd, provider: "codex", wait: true })).status).toBe(
-        "unavailable",
-      );
-      now.mockReturnValue(1_031_000);
-      expect((await manager.getProvider({ cwd, provider: "codex", wait: true })).status).toBe(
-        "unavailable",
-      );
-      expect(isAvailable).not.toHaveBeenCalled();
-    } finally {
-      now.mockRestore();
-      manager.destroy();
-    }
-  });
-
-  test("applyMutableProviderConfig leaves an in-flight probe loading instead of demoting it", async () => {
-    const cwd = "/tmp/project";
-    let releaseCatalog: (() => void) | undefined;
-    const fetchCatalog = vi.fn(
-      () =>
-        new Promise((resolveCatalog) => {
-          releaseCatalog = () => resolveCatalog({ models: [], modes: [] });
-        }),
-    );
-    const manager = new ProviderSnapshotManager({
-      logger: createTestLogger(),
-      providerOverrides: { ...OTHERS_DISABLED },
-      extraClients: {
-        codex: createExtraClient("codex", { isAvailable: async () => true, fetchCatalog }),
-      },
-    });
-    try {
-      manager.getSnapshot(cwd);
-      await flushMicrotasks();
-      expect(fetchCatalog).toHaveBeenCalled();
-      expect(
-        manager.getSnapshot(cwd).records.find(({ entry }) => entry.provider === "codex")?.entry
-          .status,
-      ).toBe("loading");
-
-      // The reconcile that used to freeze Codex. It runs up to three times per
-      // daemon-config change (providers, model tiers, connectors).
-      manager.applyMutableProviderConfig({});
-
-      expect(
-        manager.getSnapshot(cwd).records.find(({ entry }) => entry.provider === "codex")?.entry
-          .status,
-      ).toBe("loading");
-    } finally {
-      releaseCatalog?.();
       manager.destroy();
     }
   });
@@ -2583,8 +2390,6 @@ describe("provider-owned catalogue identity", () => {
     copilot: { enabled: false },
     opencode: { enabled: false },
     pi: { enabled: false },
-    omp: { enabled: false },
-    "otto-brain": { enabled: false },
   };
 
   test("shares effective runtime/configuration keys, preserves targets, and isolates provider identities", async () => {
@@ -3415,7 +3220,7 @@ test("result identity covers content, metadata and status while unchanged refres
 });
 
 const PUBLICATION_PROVIDERS = Object.fromEntries(
-  ["claude", "codex", "copilot", "opencode", "pi", "omp", "otto-brain"].map((provider) => [
+  ["claude", "codex", "copilot", "opencode", "pi", "omp"].map((provider) => [
     provider,
     { enabled: provider === "codex" },
   ]),
@@ -3656,62 +3461,315 @@ test("binding a settled catalogue publishes once and rebinding an equal settled 
   }
 });
 
-test("restamping model visibility retains immutable shared catalogs without discovery", async () => {
-  const models: AgentModelDefinition[] = [{ provider: "codex", id: "kept", label: "Kept" }];
-  const fetchCatalog = vi.fn(async () => ({ models, modes: [] }));
+describe("plugin provider overrides and launch", () => {
+  function provider() {
+    const launches: Array<ProviderLaunch | undefined> = [];
+    const registration: ProviderRegistration = {
+      id: "launch-plugin",
+      label: "Launch plugin",
+      command: [process.execPath, "default.js"],
+      async status({ launch }) {
+        if (launch?.env.PLUGIN_LOGIN !== "yes") {
+          return { available: false, diagnostic: "Sign in to the provider" };
+        }
+        return { available: true };
+      },
+      async connect(request) {
+        launches.push(request.launch);
+        let listener: ((event: ProviderEvent) => void) | undefined;
+        return {
+          version: 1,
+          capabilities: ["session.persistence"],
+          async send(input) {
+            if (input.type !== "catalog") return;
+            listener?.({
+              type: "catalog",
+              requestId: input.requestId,
+              catalog: { models: [{ id: "runtime", label: "Runtime" }], modes: [] },
+            });
+          },
+          onEvent(next) {
+            listener = next;
+            return () => {
+              listener = undefined;
+            };
+          },
+          async close() {},
+        };
+      },
+    };
+    return { registration, launches };
+  }
+
+  test("reports plugin status diagnostics without connecting", async () => {
+    const { registration, launches } = provider();
+    const manager = new ProviderSnapshotManager({ logger: createTestLogger() });
+    try {
+      manager.replacePluginProviders([registration]);
+      expect(await manager.getProvider({ provider: registration.id, wait: true })).toMatchObject({
+        status: "unavailable",
+      });
+      expect((await manager.getProviderDiagnostic(registration.id)).diagnostic).toContain(
+        "Sign in to the provider",
+      );
+      expect(launches).toEqual([]);
+    } finally {
+      await manager.shutdown();
+      manager.destroy();
+    }
+  });
+
+  test("applies plugin overrides and refreshes the resolved launch on config edits", async () => {
+    const { registration, launches } = provider();
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: {
+        [registration.id]: {
+          enabled: false,
+          label: "Configured plugin",
+          models: [{ id: "configured", label: "Configured" }],
+          additionalModels: [{ id: "extra", label: "Extra" }],
+          command: [process.execPath, "override.js"],
+          env: { PLUGIN_LOGIN: "yes", CLAUDECODE: "parent" },
+        },
+      },
+    });
+    try {
+      manager.replacePluginProviders([registration]);
+      expect(await manager.getProvider({ provider: registration.id, wait: true })).toMatchObject({
+        enabled: false,
+        status: "unavailable",
+        label: "Configured plugin",
+      });
+      expect(launches).toEqual([]);
+      manager.applyMutableProviderConfig({ [registration.id]: { enabled: true } });
+      expect(await manager.getProvider({ provider: registration.id, wait: true })).toMatchObject({
+        status: "ready",
+      });
+      expect(
+        (await manager.getProvider({ provider: registration.id })).models?.map((model) => model.id),
+      ).toEqual(["configured", "extra"]);
+      expect(launches[0]).toMatchObject({
+        command: process.execPath,
+        args: ["override.js"],
+        env: { PLUGIN_LOGIN: "yes" },
+      });
+      expect(launches[0]!.env).not.toHaveProperty("CLAUDECODE");
+      const previous = manager.getAgentManagerProviderState().clients[registration.id];
+      manager.applyMutableProviderConfig({
+        [registration.id]: {
+          enabled: true,
+          command: [process.execPath, "edited.js"],
+          env: { PLUGIN_LOGIN: "no" },
+        },
+      });
+      expect(manager.getAgentManagerProviderState().clients[registration.id]).not.toBe(previous);
+      expect(await manager.getProvider({ provider: registration.id, wait: true })).toMatchObject({
+        status: "unavailable",
+      });
+      manager.applyMutableProviderConfig({
+        [registration.id]: {
+          enabled: true,
+          command: [process.execPath, "edited.js"],
+          env: { PLUGIN_LOGIN: "yes" },
+        },
+      });
+      expect(await manager.getProvider({ provider: registration.id, wait: true })).toMatchObject({
+        status: "ready",
+      });
+      expect(launches.at(-1)).toMatchObject({ args: ["edited.js"] });
+    } finally {
+      await manager.shutdown();
+      manager.destroy();
+    }
+  });
+
+  test("does not warn for a plugin override during startup before provider registration settles", async () => {
+    const { registration } = provider();
+    const warnings: string[] = [];
+    const logger = pino(
+      { level: "warn" },
+      {
+        write(line: string) {
+          warnings.push(line);
+        },
+      },
+    );
+    const manager = new ProviderSnapshotManager({
+      logger,
+      providerOverrides: {
+        [registration.id]: { command: [process.execPath], env: { PLUGIN_LOGIN: "yes" } },
+      },
+    });
+    try {
+      expect(warnings).toEqual([]);
+      manager.replacePluginProviders([]);
+      expect(warnings).toEqual([]);
+      manager.replacePluginProviders([registration]);
+      manager.settlePluginProviders();
+      expect(warnings).toEqual([]);
+      expect(await manager.getProvider({ provider: registration.id, wait: true })).toMatchObject({
+        status: "ready",
+      });
+    } finally {
+      await manager.shutdown();
+      manager.destroy();
+    }
+  });
+
+  test("warns for unknown overrides when plugin startup settles without registered plugins", async () => {
+    const warnings: string[] = [];
+    const logger = pino(
+      { level: "warn" },
+      {
+        write(line: string) {
+          warnings.push(line);
+        },
+      },
+    );
+    const manager = new ProviderSnapshotManager({
+      logger,
+      providerOverrides: { "typo-provider": { enabled: false } },
+    });
+    try {
+      expect(warnings).toEqual([]);
+      manager.settlePluginProviders();
+      manager.settlePluginProviders();
+      expect(warnings).toHaveLength(1);
+      expect(JSON.parse(warnings[0]!)).toMatchObject({
+        provider: "typo-provider",
+        msg: "Provider override matches no registered provider",
+      });
+    } finally {
+      await manager.shutdown();
+      manager.destroy();
+    }
+  });
+
+  test("warns once for unknown overrides after plugin startup settles without warning for known providers", async () => {
+    const { registration } = provider();
+    const warnings: string[] = [];
+    const logger = pino(
+      { level: "warn" },
+      {
+        write(line: string) {
+          warnings.push(line);
+        },
+      },
+    );
+    const manager = new ProviderSnapshotManager({
+      logger,
+      providerOverrides: {
+        "typo-provider": { enabled: false },
+        [registration.id]: { enabled: false },
+        codex: { enabled: false },
+      },
+    });
+    try {
+      expect(warnings).toEqual([]);
+      manager.replacePluginProviders([registration]);
+      expect(warnings).toEqual([]);
+      manager.settlePluginProviders();
+      manager.settlePluginProviders();
+      const unknown = warnings.map((line) => JSON.parse(line) as { provider: string; msg: string });
+      expect(unknown).toEqual([
+        expect.objectContaining({
+          provider: "typo-provider",
+          msg: "Provider override matches no registered provider",
+        }),
+      ]);
+    } finally {
+      await manager.shutdown();
+      manager.destroy();
+    }
+  });
+
+  test("a same-ID extends entry shadows the plugin without throwing", async () => {
+    const { registration, launches } = provider();
+    const warnings: string[] = [];
+    const logger = pino(
+      { level: "warn" },
+      {
+        write(line: string) {
+          warnings.push(line);
+        },
+      },
+    );
+    const manager = new ProviderSnapshotManager({
+      logger,
+      providerOverrides: {
+        [registration.id]: {
+          extends: "acp",
+          label: "Own provider",
+          command: [process.execPath],
+          enabled: true,
+        },
+      },
+    });
+    try {
+      const previous = manager.getAgentManagerProviderState().clients[registration.id];
+      manager.replacePluginProviders([registration]);
+      expect(manager.getAgentManagerProviderState().clients[registration.id]).toBe(previous);
+      expect(manager.getProviderLabel(registration.id)).toBe("Own provider");
+      expect(
+        manager.getAgentManagerProviderState().providerDefinitions[registration.id],
+      ).toMatchObject({ enabled: true });
+      expect(warnings.join("\n")).toContain("shadowed");
+      expect(launches).toEqual([]);
+      manager.replacePluginProviders([]);
+      expect(manager.hasProvider(registration.id)).toBe(true);
+    } finally {
+      await manager.shutdown();
+      manager.destroy();
+    }
+  });
+});
+
+test("model overrides preserve negotiated plugin capabilities and connection shutdown", async () => {
+  let closed = 0;
+  const registration: ProviderRegistration = {
+    id: "model-plugin",
+    label: "Model plugin",
+    async connect() {
+      let listener: ((event: ProviderEvent) => void) | undefined;
+      return {
+        version: 1,
+        capabilities: ["session.persistence"],
+        async send(input) {
+          if (input.type === "catalog")
+            listener?.({
+              type: "catalog",
+              requestId: input.requestId,
+              catalog: { models: [], modes: [] },
+            });
+        },
+        onEvent(next) {
+          listener = next;
+          return () => {
+            listener = undefined;
+          };
+        },
+        async close() {
+          closed += 1;
+        },
+      };
+    },
+  };
   const manager = new ProviderSnapshotManager({
     logger: createTestLogger(),
-    extraClients: {
-      codex: createExtraClient("codex", {
-        isAvailable: async () => true,
-        getCatalogCacheKey: async () => "shared-test",
-        fetchCatalog,
-      }),
+    providerOverrides: {
+      [registration.id]: { models: [{ id: "configured", label: "Configured" }] },
     },
   });
   try {
-    const original = await manager.getProvider({ cwd: "/tmp/a", provider: "codex", wait: true });
-    await manager.getProvider({ cwd: "/tmp/b", provider: "codex", wait: true });
-    expect(fetchCatalog).toHaveBeenCalledTimes(1);
-    manager.setModelVisibilityOverrides([{ provider: "codex", modelId: "kept", visible: false }]);
-    const hidden = await manager.getProvider({ cwd: "/tmp/a", provider: "codex", wait: true });
-    const sibling = await manager.getProvider({ cwd: "/tmp/b", provider: "codex", wait: true });
-    expect(hidden.models?.[0]?.isVisible).toBe(false);
-    expect(sibling).toBe(hidden);
-    expect(original.models?.[0]?.isVisible).toBeUndefined();
-    expect(models[0]?.isVisible).toBeUndefined();
-    manager.setModelVisibilityOverrides([]);
-    const restored = await manager.getProvider({ cwd: "/tmp/a", provider: "codex", wait: true });
-    expect(restored.models?.[0]?.isVisible).toBeUndefined();
-    expect(hidden.models?.[0]?.isVisible).toBe(false);
-    expect(fetchCatalog).toHaveBeenCalledTimes(1);
+    manager.replacePluginProviders([registration]);
+    await manager.getProvider({ provider: registration.id, wait: true });
+    const client = manager.getAgentManagerProviderState().clients[registration.id]!;
+    expect(client.capabilities.supportsSessionPersistence).toBe(true);
+    await manager.shutdown();
+    expect(closed).toBe(1);
   } finally {
-    manager.destroy();
-  }
-});
-
-test("prepared Otto provider policy describes next state without publishing it early", () => {
-  const manager = new ProviderSnapshotManager({
-    logger: createTestLogger(),
-    providerOverrides: { "otto-brain": { compaction: { keepRecentTokens: 6_000 } } },
-  });
-  try {
-    const prepared = manager.prepareMutableProviderConfig({
-      "otto-brain": { compaction: { keepRecentTokens: 7_000 } },
-    });
-    expect(
-      prepared.agentManagerState.providerDefinitions["otto-brain"]?.compaction?.keepRecentTokens,
-    ).toBe(7_000);
-    expect(
-      manager.getAgentManagerProviderState().providerDefinitions["otto-brain"]?.compaction
-        ?.keepRecentTokens,
-    ).toBe(6_000);
-    prepared.commit();
-    expect(
-      manager.getAgentManagerProviderState().providerDefinitions["otto-brain"]?.compaction
-        ?.keepRecentTokens,
-    ).toBe(7_000);
-  } finally {
+    await manager.shutdown();
     manager.destroy();
   }
 });

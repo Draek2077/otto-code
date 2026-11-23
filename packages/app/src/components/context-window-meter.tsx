@@ -1,66 +1,28 @@
-import { useCallback, useMemo, useState } from "react";
-import { Text, View } from "react-native";
-import Svg, { Circle, G } from "react-native-svg";
+import { UsageDetailsButton } from "@/otto/ui/usage-details-button"; // OTTO(usage-button): tooltip on hover, details on explicit press for every platform.
+import { useCallback, useMemo } from "react";
+import { Text } from "react-native";
+import Svg, { Circle } from "react-native-svg";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
-import { useProviderUsage } from "@/provider-usage/use-provider-usage";
-import { useAgentContextUsage } from "@/hooks/use-agent-context-usage";
-import { compactUp, useIconSize, type Theme } from "@/styles/theme";
-import { COMPOSER_ICON_SIZE } from "@/composer/composer-icon-size";
-import { themeColorRef } from "@/styles/theme-color-ref";
-import type { AgentContextUsage } from "@otto-code/protocol/messages";
-import { formatTokenCount } from "./context-window-meter.utils";
+import type { Theme } from "@/styles/theme";
+import { ContextWindowDetails } from "./context-window-details";
 
 interface ContextWindowMeterProps {
+  serverId: string;
+  agentId: string;
   maxTokens: number | null;
   usedTokens: number | null;
   totalCostUsd?: number | null;
-  serverId?: string;
-  agentId?: string | null;
-  /** The Otto provider key, e.g. "claude", "gemini", "codex" */
-  provider?: string | null;
-}
-
-interface ContextWindowMeterInnerProps extends ContextWindowMeterProps {
-  /**
-   * Theme-dependent meter colors, mapped by the `withUnistyles` wrapper below.
-   * These are `themeColorRef` values: `var(--colors-...)` on web so the ring
-   * follows the nearest scope's CSS variables (the black chat scope wraps the
-   * whole chat pane, composer included - see `styles/black-chat-scope.ts`),
-   * and concrete scoped-theme colors on native where `ScopedTheme` works.
-   * Resolving concrete colors through React here (the old `useUnistyles()`
-   * approach) painted the ring track with the app theme's `surface3` on the
-   * pure-black pane.
-   */
-  meterTrackColor: string;
-  meterSuccessColor: string;
-  meterWarningColor: string;
-  meterDangerColor: string;
+  showPercentage?: boolean;
+  /** Optional glyph envelope for icon-toolbar alignment. */
+  glyphSize?: number;
 }
 
 const SVG_SIZE = 14;
-const CENTER = SVG_SIZE / 2;
-const RADIUS = 6;
+const COMPACT_SVG_SIZE = 12;
+const COMPACT_RADIUS = 5;
 const STROKE_WIDTH = 2;
-const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
-
-// Rotate the circles (not the outermost <Svg>) so the ring starts at 12
-// o'clock instead of the SVG default of 3 o'clock. A `transform` on the
-// outermost <svg> is unreliable on web (browsers largely ignore it there,
-// and Unistyles-generated `style` transforms don't consistently reach the
-// <svg> element either - see the width/height comment below), and it's
-// applied in rendered CSS-pixel space rather than viewBox units, which would
-// need to track `svgSize` as it doubles on compact form factors. A <G> is an
-// inner SVG element, so its transform always applies in the fixed 14x14
-// viewBox space regardless of the outer rendered size, on both platforms.
-const RING_ROTATE_TRANSFORM = `rotate(-90 ${CENTER} ${CENTER})`;
+const COMPACT_STROKE_WIDTH = 1.75;
 
 function isValidMaxTokens(value: number): boolean {
   return Number.isFinite(value) && value > 0;
@@ -91,372 +53,181 @@ function formatSessionCost(value: number): string | null {
   return `$${value.toFixed(2)}`;
 }
 
-// SVG strokes are delivered through the `style` prop, not the `stroke` prop:
-// on web the prop lands as an SVG presentation attribute, where the
-// `var(--...)` refs from `themeColorRef` never resolve, while style entries
-// land as real CSS (react-native-web compiles SVG stroke styles) that follows
-// the cascade - and therefore the black chat scope's variables. Native merges
-// style entries into props (`propsAndStyles` in react-native-svg), so the
-// same delivery works there. `CircleProps` omits `style` even though the
-// runtime supports it on both platforms; spreading (exempt from excess
-// property checks) passes it through without a cast.
-function strokeStyleProps(stroke: string): { style: { stroke: string } } {
-  return { style: { stroke } };
-}
-
-// These are semantic status colors, not raw palette shades: their contrast is
-// calibrated separately for light and dark surfaces. They arrive as
-// cascade-following refs so the black chat scope keeps the same meaning and
-// contrast as every other status treatment.
-function getMeterColors(
-  percentage: number,
-  trackColor: string,
-  successColor: string,
-  warningColor: string,
-  dangerColor: string,
-): { progress: string; track: string } {
-  if (percentage >= 60) {
-    return { progress: dangerColor, track: trackColor };
+function getProgressColor(percentage: number, theme: Theme): string {
+  if (percentage > 90) {
+    return theme.colors.destructive;
   }
-  if (percentage >= 40) {
-    return { progress: warningColor, track: trackColor };
+  if (percentage >= 70) {
+    return theme.colors.palette.amber[500];
   }
-  return { progress: successColor, track: trackColor };
+  return theme.colors.foregroundMuted;
 }
 
-function formatCategoryPercentage(tokens: number, maxTokens: number): string {
-  return `${((tokens / maxTokens) * 100).toFixed(1)}%`;
+function getMeterGeometry(showPercentage: boolean, glyphSize?: number) {
+  if (showPercentage) {
+    return {
+      svgSize: COMPACT_SVG_SIZE,
+      radius: COMPACT_RADIUS,
+      strokeWidth: COMPACT_STROKE_WIDTH,
+      containerStyle: styles.containerWithLabel,
+    };
+  }
+  const resolvedSize = glyphSize ?? SVG_SIZE;
+  const resolvedStrokeWidth = glyphSize ? 2 : STROKE_WIDTH;
+  return {
+    svgSize: resolvedSize,
+    radius: (resolvedSize - resolvedStrokeWidth) / 2,
+    strokeWidth: resolvedStrokeWidth,
+    containerStyle: styles.container,
+  };
 }
 
-function ContextBreakdownRow({
-  name,
-  tokens,
+// Wrap the whole SVG: withUnistyles adds a div on web, which cannot sit inside an SVG.
+const ContextWindowRing = withUnistyles(function ContextWindowRing({
+  size,
+  radius,
+  strokeWidth,
   percentage,
-  filled,
+  trackColor,
+  progressColor,
 }: {
-  name: string;
-  tokens: number;
-  percentage: string;
-  filled: boolean;
+  size: number;
+  radius: number;
+  strokeWidth: number;
+  percentage: number | null;
+  trackColor: string;
+  progressColor: string;
 }) {
+  const center = size / 2;
+  const circumference = 2 * Math.PI * radius;
   return (
-    <View style={styles.breakdownRow}>
-      <View style={filled ? styles.breakdownSwatchFilled : styles.breakdownSwatchEmpty} />
-      <Text style={styles.breakdownName} numberOfLines={1}>
-        {name}
-      </Text>
-      <Text style={styles.breakdownTokens}>{formatTokenCount(tokens)}</Text>
-      <Text style={styles.breakdownPercentage}>{percentage}</Text>
-    </View>
-  );
-}
-
-// The context makeup: what the window is currently filled with, one row per
-// provider-reported category, then free space and deferred (uncounted) content.
-function ContextBreakdownList({ usage }: { usage: AgentContextUsage }) {
-  const { t } = useTranslation();
-  if (usage.maxTokens <= 0) {
-    return null;
-  }
-  const counted = usage.categories
-    .filter((category) => !category.isDeferred)
-    .sort((a, b) => b.tokens - a.tokens);
-  const deferred = usage.categories.filter((category) => category.isDeferred);
-  const freeTokens = Math.max(0, usage.maxTokens - usage.totalTokens);
-  return (
-    <View style={styles.breakdownList}>
-      {counted.map((category) => (
-        <ContextBreakdownRow
-          key={category.name}
-          name={category.name}
-          tokens={category.tokens}
-          percentage={formatCategoryPercentage(category.tokens, usage.maxTokens)}
-          filled
-        />
-      ))}
-      <ContextBreakdownRow
-        name={t("contextWindow.freeSpace")}
-        tokens={freeTokens}
-        percentage={formatCategoryPercentage(freeTokens, usage.maxTokens)}
-        filled={false}
+    <Svg
+      width={size}
+      height={size}
+      viewBox={`0 0 ${size} ${size}`}
+      accessibilityElementsHidden
+      importantForAccessibility="no-hide-descendants"
+    >
+      <Circle
+        cx={center}
+        cy={center}
+        r={radius}
+        fill="none"
+        stroke={trackColor}
+        strokeWidth={strokeWidth}
       />
-      {deferred.map((category) => (
-        <ContextBreakdownRow
-          key={category.name}
-          name={category.name}
-          tokens={category.tokens}
-          percentage="-"
-          filled={false}
+      {percentage !== null ? (
+        <Circle
+          cx={center}
+          cy={center}
+          r={radius}
+          fill="none"
+          stroke={progressColor}
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference - (clampPercentage(percentage) / 100) * circumference}
+          // SVG strokes start at three o'clock; the ring reads clockwise from twelve.
+          transform={`rotate(-90 ${center} ${center})`}
         />
-      ))}
-    </View>
+      ) : null}
+    </Svg>
   );
-}
+});
 
-// Mirrors the provider-usage window bars so the popup reads as one usage panel.
-function ContextUsageBar({ percentage, color }: { percentage: number; color: string }) {
-  const fillStyle = useMemo(
-    () => [styles.barFill, { width: `${percentage}%` as const, backgroundColor: color }],
-    [percentage, color],
-  );
-  return (
-    <View style={styles.barTrack}>
-      <View style={fillStyle} />
-    </View>
-  );
-}
-
-function ContextWindowMeterInner({
+export function ContextWindowMeter({
+  serverId,
+  agentId,
   maxTokens,
   usedTokens,
   totalCostUsd,
-  serverId,
-  agentId,
-  provider,
-  meterTrackColor,
-  meterSuccessColor,
-  meterWarningColor,
-  meterDangerColor,
-}: ContextWindowMeterInnerProps) {
+  showPercentage = false,
+  glyphSize,
+}: ContextWindowMeterProps) {
   const { t } = useTranslation();
-  // react-native-svg needs explicit dimensions - unistyles breakpoint styles don't
-  // reach the <svg> element on web, leaving it 0x0 - so this is one of the few places
-  // that resolves an icon token to a number instead of handing the token to a glyph.
-  // The ring sits in the composer toolbar row and takes that row's size; only the
-  // rendered box changes, the viewBox stays the fixed geometry space below.
-  const svgSize = useIconSize()[COMPOSER_ICON_SIZE];
-  const [isPopupOpen, setIsPopupOpen] = useState(false);
-  const { view: providerUsageView, refresh: refreshProviderUsage } = useProviderUsage(
-    serverId ?? null,
-    { enabled: isPopupOpen },
-  );
-  const { usage: contextUsage, refresh: refreshContextUsage } = useAgentContextUsage(
-    serverId ?? null,
-    agentId ?? null,
-    { enabled: isPopupOpen },
-  );
   const percentage =
     maxTokens !== null && usedTokens !== null ? getUsagePercentage(maxTokens, usedTokens) : null;
-  const handlePopupOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      setIsPopupOpen(nextOpen);
-      if (nextOpen) {
-        void refreshProviderUsage().catch(() => {});
-        void refreshContextUsage();
-      }
-    },
-    [refreshProviderUsage, refreshContextUsage],
-  );
-  const triggerStyle = useCallback(
-    ({ hovered, pressed, open }: { hovered: boolean; pressed: boolean; open: boolean }) => [
-      styles.button,
-      hovered || pressed || open ? styles.buttonHovered : null,
-    ],
-    [],
-  );
+  const geometry = getMeterGeometry(showPercentage, glyphSize);
 
-  // No usage yet - a brand-new conversation, a draft, or a chat just cleared
-  // with /clear or /new. Always render the ring so the footer's footprint
-  // stays stable, but as an inert, non-interactive track: there's nothing to
-  // show a breakdown of yet.
-  if (percentage === null || maxTokens === null || usedTokens === null) {
-    return (
-      <View style={styles.button}>
-        <Svg width={svgSize} height={svgSize} viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`} aria-hidden>
-          <G transform={RING_ROTATE_TRANSFORM}>
-            <Circle
-              cx={CENTER}
-              cy={CENTER}
-              r={RADIUS}
-              fill="none"
-              strokeWidth={STROKE_WIDTH}
-              {...strokeStyleProps(meterTrackColor)}
-            />
-          </G>
-        </Svg>
-      </View>
-    );
-  }
-
-  const clampedPercentage = clampPercentage(percentage);
-  const roundedPercentage = Math.round(percentage);
-  const dashOffset = CIRCUMFERENCE - (clampedPercentage / 100) * CIRCUMFERENCE;
-  const colors = getMeterColors(
-    clampedPercentage,
-    meterTrackColor,
-    meterSuccessColor,
-    meterWarningColor,
-    meterDangerColor,
+  const context = useMemo(
+    () =>
+      percentage !== null && maxTokens !== null && usedTokens !== null
+        ? { percentage: Math.round(percentage), maxTokens, usedTokens }
+        : null,
+    [percentage, maxTokens, usedTokens],
+  );
+  const meterColors = useCallback(
+    (theme: Theme) => ({
+      progressColor: getProgressColor(percentage ?? 0, theme),
+      trackColor: theme.colors.surface3,
+    }),
+    [percentage],
   );
   const formattedSessionCost =
     typeof totalCostUsd === "number" ? formatSessionCost(totalCostUsd) : null;
+  const ring = (
+    <ContextWindowRing
+      size={geometry.svgSize}
+      radius={geometry.radius}
+      strokeWidth={geometry.strokeWidth}
+      percentage={percentage}
+      uniProps={meterColors}
+    />
+  );
+  const percentageLabel =
+    showPercentage && context ? (
+      <Text style={styles.percentageLabel}>{`${context.percentage}%`}</Text>
+    ) : null;
+  const accessibilityLabel = context
+    ? t("contextWindow.accessibility", { percentage: context.percentage })
+    : t("contextWindow.accessibilityNoData");
 
   return (
-    <DropdownMenu open={isPopupOpen} onOpenChange={handlePopupOpenChange}>
-      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger
-            style={triggerStyle}
-            accessibilityRole="button"
-            testID="context-window-meter"
-            accessibilityLabel={t("contextWindow.accessibility", {
-              percentage: roundedPercentage,
-            })}
-          >
-            <Svg
-              width={svgSize}
-              height={svgSize}
-              viewBox={`0 0 ${SVG_SIZE} ${SVG_SIZE}`}
-              aria-hidden
-            >
-              <G transform={RING_ROTATE_TRANSFORM}>
-                <Circle
-                  cx={CENTER}
-                  cy={CENTER}
-                  r={RADIUS}
-                  fill="none"
-                  strokeWidth={STROKE_WIDTH}
-                  {...strokeStyleProps(colors.track)}
-                />
-                <Circle
-                  cx={CENTER}
-                  cy={CENTER}
-                  r={RADIUS}
-                  fill="none"
-                  strokeWidth={STROKE_WIDTH}
-                  strokeLinecap="round"
-                  strokeDasharray={CIRCUMFERENCE}
-                  strokeDashoffset={dashOffset}
-                  {...strokeStyleProps(colors.progress)}
-                />
-              </G>
-            </Svg>
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="top" align="center" offset={8}>
-          <Text style={styles.tooltipText}>{t("contextWindow.tooltip")}</Text>
-        </TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent side="top" align="center" offset={8} minWidth={220}>
-        <View style={styles.popupContent}>
-          <Text style={styles.popupTitle}>
-            {t("contextWindow.title", { percentage: roundedPercentage })}
-          </Text>
-          <ContextUsageBar percentage={clampedPercentage} color={colors.progress} />
-          <View style={styles.barEndsRow}>
-            <Text style={styles.popupDetail}>{formatTokenCount(usedTokens)}</Text>
-            <Text style={styles.popupDetail}>{formatTokenCount(maxTokens)}</Text>
-          </View>
-          {contextUsage ? <ContextBreakdownList usage={contextUsage} /> : null}
-          {formattedSessionCost ? (
-            <Text style={styles.popupDetail}>
-              {t("contextWindow.sessionCost", { cost: formattedSessionCost })}
-            </Text>
-          ) : null}
-          <ProviderUsageTooltipSection view={providerUsageView} activeProviderId={provider} />
-        </View>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <UsageDetailsButton
+      key={serverId + ":" + agentId}
+      label={accessibilityLabel}
+      tooltip={t("contextWindow.title")}
+      glyph={
+        <>
+          {ring}
+          {percentageLabel}
+        </>
+      }
+    >
+      <ContextWindowDetails
+        serverId={serverId}
+        agentId={agentId}
+        context={context}
+        sessionCost={formattedSessionCost}
+        showTitle
+        refreshable
+      />
+    </UsageDetailsButton>
   );
 }
 
-// `useUnistyles()` is banned (docs/unistyles.md); the theme-dependent meter
-// colors are mapped as props instead (the wizard-brand-backdrop pattern), so
-// only this wrapper re-renders on theme changes. `themeColorRef` keeps the
-// mapping scope-correct: on web it emits `var(--...)` refs that follow the
-// black chat scope's CSS variables, and on native the mapping itself resolves
-// against the `ScopedTheme` captured at mount.
-export const ContextWindowMeter = withUnistyles(ContextWindowMeterInner, (theme: Theme) => ({
-  meterTrackColor: themeColorRef(theme, "surface3"),
-  meterSuccessColor: themeColorRef(theme, "statusSuccess"),
-  meterWarningColor: themeColorRef(theme, "statusWarning"),
-  meterDangerColor: themeColorRef(theme, "statusDanger"),
-}));
-
 const styles = StyleSheet.create((theme) => ({
-  button: {
-    width: compactUp(28),
-    height: compactUp(28),
+  container: {
+    width: 28,
+    height: 28,
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
   },
-  buttonHovered: {
-    backgroundColor: theme.colors.surfaceHover,
-  },
-  tooltipText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.4,
-  },
-  popupContent: {
-    gap: theme.spacing[1.5],
-    padding: theme.spacing[3],
-  },
-  popupTitle: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-  },
-  barTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: theme.colors.surface3,
-    overflow: "hidden",
-  },
-  barFill: {
-    height: 4,
-    borderRadius: 2,
-  },
-  barEndsRow: {
+  containerWithLabel: {
+    height: 28,
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    gap: theme.spacing[2],
-  },
-  popupDetail: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    lineHeight: theme.fontSize.xs * 1.4,
-  },
-  breakdownList: {
+    justifyContent: "center",
     gap: theme.spacing[1],
-    marginTop: theme.spacing[1],
+    borderRadius: theme.borderRadius.full,
   },
-  breakdownRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1.5],
-  },
-  breakdownSwatchFilled: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
-    backgroundColor: theme.colors.accent,
-  },
-  breakdownSwatchEmpty: {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
-    backgroundColor: theme.colors.surface3,
-  },
-  breakdownName: {
-    flexGrow: 1,
-    flexShrink: 1,
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
-    lineHeight: theme.fontSize.xs * 1.4,
-  },
-  breakdownTokens: {
+  percentageLabel: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.4,
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.normal,
   },
-  breakdownPercentage: {
-    minWidth: 40,
-    textAlign: "right",
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.xs,
-    lineHeight: theme.fontSize.xs * 1.4,
-    fontWeight: theme.fontWeight.medium,
-  },
+  // Plain details use a small inset; account usage cards have their own content density.
+  plainPopover: { paddingVertical: theme.spacing[1], paddingHorizontal: theme.spacing[2] },
+  usagePopover: { padding: theme.spacing[3], gap: theme.spacing[3] },
 }));

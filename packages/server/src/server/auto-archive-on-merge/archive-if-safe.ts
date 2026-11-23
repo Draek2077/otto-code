@@ -14,12 +14,12 @@ import type {
 } from "../workspace-git-service.js";
 import type { ForgeService } from "../../services/forge-service.js";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
-import { isOttoOwnedWorktreeCwd } from "../../utils/worktree.js";
+import { isPaseoOwnedWorktreeCwd } from "../../utils/worktree.js";
 import type { WorkspaceArchiveContext } from "../workspace-registry.js";
 
 export interface AutoArchiveArchiveOptions {
-  ottoHome: string;
-  ottoWorktreesBaseRoot?: string;
+  paseoHome: string;
+  paseoWorktreesBaseRoot?: string;
   daemonConfigStore: DaemonConfigStore;
   workspaceGitService: WorkspaceGitServiceImpl;
   github: ForgeService;
@@ -37,13 +37,13 @@ export interface AutoArchiveArchiveOptions {
 
 export interface ArchiveIfSafeDependencies {
   archiveByScope: typeof archiveByScope;
-  isOttoOwnedWorktreeCwd: typeof isOttoOwnedWorktreeCwd;
+  isPaseoOwnedWorktreeCwd: typeof isPaseoOwnedWorktreeCwd;
   killTerminalsForWorkspace: typeof killTerminalsForWorkspace;
 }
 
 const defaultDependencies: ArchiveIfSafeDependencies = {
   archiveByScope,
-  isOttoOwnedWorktreeCwd,
+  isPaseoOwnedWorktreeCwd,
   killTerminalsForWorkspace,
 };
 
@@ -69,9 +69,9 @@ export async function archiveIfSafe(input: {
     return;
   }
 
-  const ownership = await deps.isOttoOwnedWorktreeCwd(cwd, {
-    ottoHome: options.ottoHome,
-    worktreesRoot: options.ottoWorktreesBaseRoot,
+  const ownership = await deps.isPaseoOwnedWorktreeCwd(cwd, {
+    paseoHome: options.paseoHome,
+    worktreesRoot: options.paseoWorktreesBaseRoot,
   });
   if (!ownership.allowed) {
     return;
@@ -85,8 +85,8 @@ export async function archiveIfSafe(input: {
 
     await deps.archiveByScope(
       {
-        ottoHome: options.ottoHome,
-        ottoWorktreesBaseRoot: options.ottoWorktreesBaseRoot,
+        paseoHome: options.paseoHome,
+        paseoWorktreesBaseRoot: options.paseoWorktreesBaseRoot,
         github: options.github,
         workspaceGitService: options.workspaceGitService,
         agentManager: options.agentManager,

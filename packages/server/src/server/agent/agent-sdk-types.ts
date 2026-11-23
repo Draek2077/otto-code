@@ -1,30 +1,24 @@
-import type { Options as ClaudeAgentOptions } from "@anthropic-ai/claude-agent-sdk";
 import type {
+  AgentFeature,
+  AgentFeatureSelect,
+  AgentFeatureToggle,
   AgentProviderNotice,
   AgentTaskItem,
-  ModelTier,
   JsonValue,
   ProviderOptions,
   ToolPolicy,
-} from "@otto-code/protocol/agent-types";
-import type {
-  AgentAttachment,
-  AgentContextUsage,
-  AgentRateLimitInfo,
-} from "@otto-code/protocol/messages";
-import type {
-  ProviderActionBreakerConfig,
-  ProviderCompactionConfig,
-} from "@otto-code/protocol/provider-config";
-import type { OttoToolCatalog } from "./tools/types.js";
-// Type-only import - erased at compile time, so the resolver ⇄ config-types
-// cycle never exists at runtime.
-import type { ResolvedProfileSnapshot } from "./agent-profiles.js";
-import type { ResolvedTeamSnapshot } from "./agent-teams.js";
+} from "@getpaseo/protocol/agent-types";
+import type { AgentMessage } from "@getpaseo/protocol/agent-message";
+import type { AgentAttachment } from "@getpaseo/protocol/messages";
+import type { PaseoToolCatalog } from "./tools/types.js";
 
-export type { AgentProviderNotice, AgentTaskItem };
-export type { AgentContextUsage };
-export type { AgentRateLimitInfo };
+export type {
+  AgentFeature,
+  AgentFeatureSelect,
+  AgentFeatureToggle,
+  AgentProviderNotice,
+  AgentTaskItem,
+};
 
 export type AgentProvider = string;
 
@@ -89,13 +83,6 @@ export interface AgentMode {
   icon?: string;
   colorTier?: string;
   isUnattended?: boolean;
-  /**
-   * The provider chooses the model per turn while this mode is active, so an
-   * explicit model pick cannot stick. Setting a model on an agent in such a
-   * mode moves it out of the mode first; see resolveModelPickExitModeId.
-   * Purely a capability marker: providers without one are unaffected.
-   */
-  selectsModel?: boolean;
 }
 
 export type ProviderStatus = "ready" | "loading" | "error" | "unavailable";
@@ -107,29 +94,11 @@ export interface AgentModelDefinition {
   isSelectable?: boolean;
   label: string;
   description?: string;
-  /** Catalog-owned model-family identity, currently emitted by Otto Brain only. */
-  family?: string;
   isDefault?: boolean;
   metadata?: AgentMetadata;
   contextWindowMaxTokens?: number;
   thinkingOptions?: AgentSelectOption[];
   defaultThinkingOptionId?: string;
-  /**
-   * Capability tier stamped by the provider snapshot manager at ingest (user
-   * override → shipped catalog, else undefined = "Unknown"). Mirrors the
-   * protocol `AgentModelDefinition.tier`. Read by cheap-tier metadata-generation
-   * routing to prefer the cheapest capable model. See model-tiers.ts.
-   */
-  tier?: ModelTier;
-  /** False when hidden from client model pickers; absent means visible. */
-  isVisible?: boolean;
-  /**
-   * False when this model cannot run the provider's "auto" permission mode
-   * (e.g. Claude's classifier-based Auto mode is unsupported on Haiku, and on
-   * 4.6-era models without Anthropic API-key auth). Absent = supported or
-   * unknown; clients only hide Auto on an explicit false.
-   */
-  supportsAutoMode?: boolean;
 }
 
 export interface AgentSelectOption {
@@ -183,14 +152,6 @@ export interface ResolveAgentCreateConfigInput {
   parent: AgentCreateConfigParent | null;
   unattended: boolean;
   availableModes: AgentMode[] | undefined;
-  // The requested/default model for this create, when known. Lets a provider's
-  // own resolveCreateConfig make model-aware decisions (e.g. Claude upgrading
-  // the unattended target to `auto` when the model supports the classifier).
-  model?: string | null;
-  // Provider-computed model-aware override for the unattended coercion target;
-  // see ResolveCreateAgentModeInput.preferredUnattendedModeId. The default
-  // resolver forwards it; provider-specific resolvers set it.
-  preferredUnattendedModeId?: string;
 }
 
 export interface ResolveAgentCreateConfigResult {
@@ -205,31 +166,6 @@ export interface AgentCreateConfigUnattendedInput {
   availableModes: AgentMode[];
 }
 
-export interface AgentFeatureToggle {
-  type: "toggle";
-  id: string;
-  label: string;
-  description?: string;
-  tooltip?: string;
-  icon?: string;
-  value: boolean;
-  /** Provider-reported reason the feature is not taking effect; see the protocol type. */
-  unavailableReason?: string;
-}
-
-export interface AgentFeatureSelect {
-  type: "select";
-  id: string;
-  label: string;
-  description?: string;
-  tooltip?: string;
-  icon?: string;
-  value: string | null;
-  options: AgentSelectOption[];
-}
-
-export type AgentFeature = AgentFeatureToggle | AgentFeatureSelect;
-
 export interface AgentCapabilityFlags {
   [capability: string]: boolean | undefined;
   supportsStreaming: boolean;
@@ -237,51 +173,12 @@ export interface AgentCapabilityFlags {
   supportsSessionListing?: boolean;
   supportsDynamicModes: boolean;
   supportsMcpServers: boolean;
-  supportsNativeOttoTools?: boolean;
-  /**
-   * The adapter honours `AgentSessionConfig.workspaceAccess` by actually
-   * narrowing the tools it offers. Absent/false means it does not - and a graph
-   * node asking for restricted access on such a seat is refused at compile
-   * time rather than silently running with full access. Never set this true
-   * without the enforcement to back it.
-   */
-  supportsWorkspaceAccess?: boolean;
-  /**
-   * The adapter can also enforce the `none` level - no workspace at all.
-   * Separate from `supportsWorkspaceAccess` because a provider can bound
-   * writes natively and still have no way to express "no filesystem" (Codex's
-   * sandbox floor is read-only, and its shell reads inside every tier). Same
-   * contract as above: never set this true without the enforcement behind it.
-   */
-  supportsWorkspaceAccessNone?: boolean;
-  /**
-   * Otto composes this provider's whole request in-process, so it owns the
-   * parts a CLI-backed provider assembles behind our back: the preset, the tool
-   * schemas, and the workspace's `AGENTS.md` chain.
-   *
-   * Two things key off it, and both are wrong if it is set without the
-   * behaviour: `applyInstructionFiles` only loads context files for these
-   * providers (a CLI reads its own and would get them twice) - as does the tool
-   * loop's subdirectory injection, which is the same gate on the conditional
-   * half - and Context
-   * Management reports `system_prompt` and `mcp_tools` as `exact` rather than
-   * `not_visible`. It is a capability rather than a provider-id test because
-   * the OpenAI-compatible family has no single id - `otto-brain` is one member
-   * and every user-configured endpoint mints its own.
-   */
-  ownsContextPayload?: boolean;
+  supportsNativePaseoTools?: boolean;
   supportsReasoningStream: boolean;
   supportsToolInvocations: boolean;
   supportsRewindConversation?: boolean;
   supportsRewindFiles?: boolean;
   supportsRewindBoth?: boolean;
-  /**
-   * The adapter emits `prompt_suggestion` stream events after a turn. The app
-   * only offers the composer's Autonomous mode toggle on chats that can produce
-   * one, so never set this without the emitter behind it. Rides the capability
-   * schema's boolean catchall, so no wire schema change was needed.
-   */
-  supportsPromptSuggestions?: boolean;
 }
 
 export interface AgentPersistenceHandle {
@@ -300,40 +197,10 @@ export type AgentPromptContentBlock =
 export type AgentPromptInput = string | AgentPromptContentBlock[];
 
 export interface AgentRunOptions {
-  /** Composer-side id of the message that started this run, echoed back on the timeline. */
-  clientMessageId?: string;
   outputSchema?: unknown;
   resumeFrom?: AgentPersistenceHandle;
   maxThinkingTokens?: number;
-  messageId?: string;
-}
-
-/**
- * How the tokens occupying an agent's context window break down by origin.
- * Mirrors the protocol `ContextComposition` (packages/protocol/agent-types) -
- * this file keeps the server's own copy of the provider-facing types. Every
- * field is an optional best-effort token count; a provider fills what it can
- * attribute and omits the rest. Powers the visualizer context ring/bar.
- */
-export interface ContextComposition {
-  systemPrompt?: number;
-  userMessages?: number;
-  toolResults?: number;
-  reasoning?: number;
-  subagentResults?: number;
-}
-
-/**
- * One provider-reported context-window category, with the provider's OWN
- * display label (open-ended, never an enum). Mirrors the protocol
- * `AgentContextCategory`, and is structurally the same as
- * {@link AgentContextUsageCategory} on the pull path - the two carry one
- * accounting, pushed and pulled.
- */
-export interface AgentContextCategory {
-  name: string;
-  tokens: number;
-  isDeferred?: boolean;
+  clientMessageId?: string;
 }
 
 export interface AgentSteerOptions extends AgentRunOptions {
@@ -350,39 +217,11 @@ export interface SteerActiveTurnOptions extends AgentSteerOptions {
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
-  /**
-   * Prompt tokens spent writing (not reading) the prompt cache this turn -
-   * Anthropic's `cache_creation_input_tokens`, billed at a premium over normal
-   * input. Disjoint from `inputTokens`/`cachedInputTokens` (the three input
-   * categories sum to total input). Claude-specific today; other providers omit
-   * it. Additive/optional - a consumer that ignores it loses only cache-write
-   * visibility. Powers WP-G's cost ledger.
-   */
-  cacheCreationInputTokens?: number;
+  cacheCreationInputTokens?: number; // OTTO(activity): providers may report cache writes separately.
   outputTokens?: number;
   totalCostUsd?: number;
   contextWindowMaxTokens?: number;
   contextWindowUsedTokens?: number;
-  contextComposition?: ContextComposition;
-  /**
-   * The provider's own labelled context split (see {@link AgentContextCategory}),
-   * refreshed from `AgentSession.getContextUsage()` at turn boundaries. Preferred
-   * over {@link ContextComposition} by every consumer; the estimate stays the
-   * coarse tier for providers that can't report one.
-   */
-  contextCategories?: AgentContextCategory[];
-  /**
-   * Server-internal only (WP-G): how much of this turn's billed input/output was
-   * spent by the mid-turn auto-compaction summarizer, so the activity ledger can
-   * break "compaction" out as its own cost category without double-counting.
-   * WP-D folds the summarizer's spend into the turn's billed total; these two
-   * fields report that folded-in slice so the manager can attribute it to
-   * `compaction` and the remainder to `mainChat`/`subagent`. Deliberately NOT
-   * projected to the wire (`sanitizeUsage` drops it) - the client reads
-   * compaction from the daemon-computed counters, not from live usage.
-   */
-  compactionInputTokens?: number;
-  compactionOutputTokens?: number;
 }
 
 export const TOOL_CALL_ICON_NAMES = [
@@ -505,6 +344,8 @@ interface ToolCallBase {
   name: string;
   detail: ToolCallDetail;
   metadata?: Record<string, unknown>;
+  /** Set when the row is a delivered agent message rather than a provider tool call. */
+  agentMessage?: AgentMessage;
 }
 
 type ToolCallRunningTimelineItem = ToolCallBase & {
@@ -536,8 +377,7 @@ export type ToolCallTimelineItem =
 export interface CompactionTimelineItem {
   [key: string]: unknown;
   type: "compaction";
-  // COMPAT(compactionFailedStatus): "failed" added in v0.4.3; see protocol messages.ts.
-  status: "loading" | "completed" | "failed";
+  status: "loading" | "completed";
   trigger?: "auto" | "manual";
   preTokens?: number;
 }
@@ -552,18 +392,12 @@ export interface PluginTimelineItem {
 }
 
 export type AgentTimelineItem =
-  | {
-      type: "user_message";
-      text: string;
-      messageId?: string;
-      clientMessageId?: string;
-      images?: Array<{ path: string; mimeType: string }>;
-    }
+  | { type: "user_message"; text: string; messageId?: string; clientMessageId?: string }
   | { type: "assistant_message"; text: string; messageId?: string }
   | { type: "reasoning"; text: string }
   | ToolCallTimelineItem
   | { type: "todo"; items: AgentTaskItem[] }
-  | { type: "error"; message: string; details?: string[] }
+  | { type: "error"; message: string }
   | {
       type: "notification";
       level: "info" | "warning" | "error";
@@ -575,8 +409,15 @@ export type AgentTimelineItem =
 export type AgentStreamEvent =
   | { type: "thread_started"; sessionId: string; provider: AgentProvider }
   | { type: "turn_started"; provider: AgentProvider; turnId?: string }
-  | { type: "turn_completed"; provider: AgentProvider; usage?: AgentUsage; turnId?: string }
+  | {
+      type: "turn_completed";
+      provider: AgentProvider;
+      usage?: AgentUsage;
+      activityUsage?: AgentUsage; // OTTO(activity): an interval measurement when usage is cumulative.
+      turnId?: string;
+    }
   | { type: "usage_updated"; provider: AgentProvider; usage: AgentUsage; turnId?: string }
+  | { type: "prompt_suggestion"; provider: AgentProvider; suggestion: string } // OTTO(prompt-suggestions)
   | {
       type: "mode_changed";
       provider: AgentProvider;
@@ -596,21 +437,8 @@ export type AgentStreamEvent =
       code?: string;
       diagnostic?: string;
       turnId?: string;
-      // Provider-reported spend up to the point of failure, when known. Fed into
-      // the same token accounting as turn_completed so retry storms aren't
-      // invisible. Optional - providers that can't attribute partial-turn usage
-      // omit it. (WP-D)
-      usage?: AgentUsage;
     }
-  | {
-      type: "turn_canceled";
-      provider: AgentProvider;
-      reason: string;
-      turnId?: string;
-      // Spend accrued before the interrupt, when the provider can report it. See
-      // the turn_failed note above. (WP-D)
-      usage?: AgentUsage;
-    }
+  | { type: "turn_canceled"; provider: AgentProvider; reason: string; turnId?: string }
   | {
       type: "timeline";
       item: AgentTimelineItem;
@@ -637,134 +465,11 @@ export type AgentStreamEvent =
       reason: "finished" | "error" | "permission";
       timestamp: string;
     }
-  // A predicted next-user-prompt suggestion, emitted after a turn completes.
-  // Transient: the app shows the latest as composer ghost text and clears it when
-  // the next turn starts. Not persisted to the timeline.
-  | {
-      type: "prompt_suggestion";
-      provider: AgentProvider;
-      suggestion: string;
-    }
-  // Provider-reported plan rate-limit status (e.g. Claude claude.ai plan
-  // windows). Transient client state: the app shows a suppressible warning
-  // strip near the composer. Deduped provider-side so it only fires when the
-  // meaningful fields change. Not persisted to the timeline.
-  | {
-      type: "rate_limit_updated";
-      provider: AgentProvider;
-      info: AgentRateLimitInfo;
-    }
-  // A provider-managed subagent's lifecycle changed. The daemon materializes it
-  // as a read-only "observed subagent" agent record. See .otto/knowledge/projects/observed-subagents.md.
-  | {
-      type: "observed_subagent_updated";
-      provider: AgentProvider;
-      update: ObservedSubagentUpdate;
-    }
-  // A timeline item belonging to a provider-managed subagent, routed by the
-  // daemon to the observed subagent's own timeline (keyed by `key`).
-  | {
-      type: "observed_subagent_timeline";
-      provider: AgentProvider;
-      key: string;
-      item: AgentTimelineItem;
-      turnId?: string;
-      timestamp?: string;
-    }
-  // A background shell task launched by the provider's own Bash tool (Claude:
-  // run_in_background) changed lifecycle state. Not an AI subagent - a plain
-  // shell process the daemon tracks for the Background Tasks track.
-  | {
-      type: "background_shell_task_updated";
-      provider: AgentProvider;
-      update: BackgroundShellTaskUpdate;
-    }
-  // Otto's provider-subagent ingestion: the provider telling us about children
-  // it spawned itself, folded into the ProviderSubagentStore by AgentManager.
   | {
       type: "provider_subagent";
       provider: AgentProvider;
       event: import("./provider-subagents/store.js").ProviderSubagentInputEvent;
     };
-
-/**
- * A provider-managed subagent (Claude `Task` / ultracode fan-out) reported by a
- * provider so the daemon can promote it to a read-only "observed subagent".
- * `key` is a provider-local stable identifier (Claude: the Task tool_use id);
- * the daemon namespaces it under the owning agent. See .otto/knowledge/projects/observed-subagents.md.
- */
-export interface ObservedSubagentUpdate {
-  key: string;
-  /** Provider task id, used to stop the subagent (Claude: `task_id`). */
-  taskId?: string;
-  /**
-   * Key of ANOTHER observed subagent this one was spawned by (nested fan-out:
-   * a subagent's own Task call, recognized from its tool_use appearing inside
-   * that subagent's sidechain). The daemon parents the row to that observed
-   * row instead of the owning agent, so trees render as trees. Absent = a
-   * direct child of the owning agent.
-   */
-  parentKey?: string;
-  sessionId?: string | null;
-  subAgentType?: string;
-  description?: string;
-  status: "initializing" | "running" | "idle" | "error" | "closed";
-  requiresAttention?: boolean;
-  usage?: AgentUsage;
-  // The model this subagent actually ran on (e.g. "claude-haiku-4-5-…"). A
-  // subagent can run a DIFFERENT, cheaper model than its parent, so this is
-  // required to price its usage correctly - never assume the parent's model. A
-  // neutral field any provider sets; the owning provider prices it (Claude reads
-  // it from the subagent's frames). Optional/additive.
-  model?: string;
-  // Model round-trips this subagent has made so far (cumulative, like `usage`).
-  // A neutral field any provider can set; it makes the row's cumulative
-  // cache-read figure legible ("622k cached · 10 rounds"). Optional/additive.
-  usageRounds?: number;
-  // Cumulative token total for this subagent's run so far, from the provider's
-  // per-task usage (Claude: task_progress/task_notification `usage.total_tokens`,
-  // which is already cumulative-per-subagent). Honest cost for the track readout.
-  // See docs/agent-lifecycle.md (Item 3).
-  cumulativeTokens?: number;
-  // Tool invocations this subagent has made so far (cumulative). A neutral field
-  // any provider can set; the daemon keeps it monotonic like cumulativeTokens so
-  // a status-only final update can't drop the readout. Claude reads it from the
-  // SDK's per-task `usage.tool_uses`. Optional/additive - absent ⇒ no count on
-  // the row. See docs/chat-lifecycle.md (the subagents track).
-  toolUseCount?: number;
-  // The tool this subagent is running (or ran last). A neutral field any
-  // provider can set; unlike the counters it is NOT monotonic (latest wins) and
-  // the daemon drops it once the row is terminal - a finished subagent isn't
-  // "running Bash". Claude reads it from `task_progress.last_tool_name`.
-  // Optional/additive - absent ⇒ the row omits it, never a guessed value.
-  currentTool?: string;
-  // True once this run is known to outlive an interrupt of the parent's turn:
-  // the provider backgrounded it, so the parent's teardown leaves it alone. A
-  // neutral field any provider can set; the daemon latches it (a backgrounded
-  // run never becomes foreground again) and inherits it to nested rows. Claude
-  // sets it for Workflow runs and for a Task/Agent whose tool_result turned out
-  // to be a launch ack. Absent ⇒ foreground: the run dies with the turn, which
-  // is the only case the client's interrupt warning may count.
-  // See docs/chat-lifecycle.md.
-  backgrounded?: boolean;
-}
-
-/**
- * A background shell task reported by a provider's own Bash tool (Claude:
- * `run_in_background`). `key` is a provider-local stable identifier (Claude:
- * the Bash tool_use id); the daemon namespaces it under the owning agent.
- * Unlike {@link ObservedSubagentUpdate} this has no transcript/pane - it's a
- * plain status row (command, status, elapsed) in the Background Tasks track.
- */
-export interface BackgroundShellTaskUpdate {
-  key: string;
-  /** Provider task id, used to stop the task (Claude: `task_id`). */
-  taskId?: string;
-  command?: string;
-  description?: string;
-  status: "running" | "idle" | "error" | "closed";
-  requiresAttention?: boolean;
-}
 
 export function getAgentStreamEventTurnId(event: AgentStreamEvent): string | undefined {
   return "turnId" in event ? event.turnId : undefined;
@@ -841,6 +546,7 @@ export interface AgentSlashCommand {
 }
 
 export interface ListImportableSessionsOptions {
+  providerOptions?: ProviderOptions;
   limit?: number;
   /** Optional case-insensitive descriptor search text. */
   query?: string;
@@ -890,6 +596,8 @@ export interface ImportedProviderSession {
 }
 
 export interface AgentSessionConfig {
+  ottoActivityGeneration?: string; // OTTO(activity): only set by hidden structured generation.
+  ottoProfile?: import("@getpaseo/protocol/otto/agent-teams").ProfileBinding; // OTTO(agent-teams): daemon-resolved snapshot, absent from inbound config.
   provider: AgentProvider;
   cwd: string;
   /**
@@ -907,126 +615,28 @@ export interface AgentSessionConfig {
   thinkingOptionId?: string;
   featureValues?: Record<string, unknown>;
   title?: string | null;
-  approvalPolicy?: string;
-  sandboxMode?: string;
-  /**
-   * Ceiling on what this session may do to its workspace: "none" | "read" |
-   * "write" (absent ⇒ "write", today's behaviour). Set by graph nodes that
-   * declare an access level; every adapter that advertises
-   * `supportsWorkspaceAccess` narrows its own tool surface to match. See
-   * agent/workspace-access.ts.
-   */
-  workspaceAccess?: string;
-  networkAccess?: boolean;
-  webSearch?: boolean;
-  extra?: {
-    codex?: AgentMetadata;
-    claude?: Partial<ClaudeAgentOptions>;
-  };
   providerOptions?: ProviderOptions;
   toolPolicy?: ToolPolicy;
   mcpServers?: Record<string, McpServerConfig>;
-  /**
-   * Frozen personality resolution captured at spawn when the agent was created
-   * from an Agent Personality. Everything the agent needs to keep the
-   * personality's identity (spinner, voice, roles) and honor its prompt
-   * composition (`respectGlobalAppendPrompt`) lives here. Editing the personality
-   * later never mutates this; it only changes through an explicit
-   * agent.personality.set switch (AgentManager.setAgentPersonality), which
-   * re-resolves a roster personality and replaces the snapshot wholesale.
-   */
-  profileSnapshot?: ResolvedProfileSnapshot;
-  /**
-   * Frozen active-team resolution captured at spawn when the spawning
-   * personality was a member of the host's active Agent Team. Same lifecycle
-   * as profileSnapshot: switching or editing teams never mutates a running
-   * agent - the born team is frozen identity, and a live personality switch
-   * recomposes the prompt against THIS snapshot's teamPrompt, not the current
-   * active team. Absent on raw spawns and non-member personality spawns.
-   */
-  teamSnapshot?: ResolvedTeamSnapshot;
-  /**
-   * Marks a run created for unattended execution (schedules, loops, artifact
-   * refreshes, unattended-parent spawns - anyone passing `createAgent(...,
-   * unattended: true)`). This is a creation-time signal, NOT derived from the
-   * permission mode: an attended user chatting in Claude auto mode still wants
-   * the prompt. The daemon's guardrail deny-responder keys off this flag to
-   * auto-deny permission escalations that would otherwise stall a run nobody is
-   * watching. See docs/safe-unattended.md (Phase 2).
-   */
-  unattended?: boolean;
   /**
    * Internal agents are hidden from listings and don't trigger notifications.
    * They are used for ephemeral system tasks like commit/PR generation.
    */
   internal?: boolean;
-  /**
-   * Observable agents still forward their live `agent_stream` events to
-   * clients even when `internal` - used for internal work a user may want to
-   * watch live (e.g. artifact generation). Unlike a non-internal agent, an
-   * observable-internal agent stays out of listings/sidebar (its `agent_state`
-   * is still filtered); only its message/tool stream is forwarded, and only to
-   * a client that has explicitly opened its timeline. Non-observable internal
-   * agents (branch-name/git-metadata generators) stay fully silent.
-   */
-  observable?: boolean;
-}
-
-/**
- * The prompt-side half of a live personality switch, computed by the manager
- * (which owns the daemon-global append text) and applied wholesale by the
- * provider session. All three fields are absolute new values, not patches -
- * `undefined` means "clear". Clearing the personality passes all-undefined
- * except a restored `daemonAppendSystemPrompt`.
- */
-export interface AgentPersonalityUpdate {
-  profileSnapshot: ResolvedProfileSnapshot | undefined;
-  systemPrompt: string | undefined;
-  daemonAppendSystemPrompt: string | undefined;
-}
-
-/**
- * Fully-resolved daemon-wide agent behavior toggles (Claude is the reference
- * tier). Every field is a concrete boolean - the daemon config carries these
- * as optional-with-default, and the manager resolves "absent/undefined = on"
- * before handing them to a session. Providers that cannot honor a given
- * behavior simply ignore it (no-op, no error) per the provider-parity rule.
- * See docs and docs/token-economy.md.
- */
-export interface AgentBehaviorSettings {
-  /** Emit predicted next-user-prompt suggestions after each turn (Claude). */
-  promptSuggestions: boolean;
-  /** Emit periodic AI progress summaries for observed subagents (Claude). */
-  agentProgressSummaries: boolean;
-  /** Default for agent-to-agent create/send finish notifications (Otto tools). */
-  notifyOnFinishDefault: boolean;
-  /** Default busy-chat delivery for agent-to-agent sends. */
-  defaultSendBehavior: "interrupt" | "steer" | "queue";
-  /** Attach a stale-todo reminder to an agent's next turn (provider-agnostic). */
-  todoNudge: boolean;
-  /** Inject a one-shot reconcile pass when an agent goes idle with a stale todo list. */
-  todoReconcileOnIdle: boolean;
-  /**
-   * Consecutive assistant messages that neither call a tool nor hand back to
-   * the user before the daemon interrupts the run. 0 disables the guard.
-   * Provider-agnostic and purely structural - see agent-stall-guard.ts.
-   */
-  stallGuardThreshold: number;
 }
 
 export interface AgentLaunchContext {
+  /** OTTO(workflows): runtime-only ceiling for an explicitly owned Workflow session. */
+  ottoWorkflowPolicy?: { access: "write" | "read" | "none" };
+  /** OTTO(context-generation): runtime-only restriction for fresh reviewed-prose utility sessions. */
+  ottoReadOnlyGeneration?: true;
   agentId?: string;
   env?: Record<string, string>;
   /**
-   * Runtime-only internal Otto tools. This must never be persisted into
+   * Runtime-only internal Paseo tools. This must never be persisted into
    * AgentSessionConfig; providers may adapt it to their native tool surface.
    */
-  ottoTools?: OttoToolCatalog;
-  /**
-   * Resolved daemon-wide behavior toggles for this launch. Runtime-only (never
-   * persisted); providers that don't support a behavior ignore it.
-   */
-  agentBehaviors?: AgentBehaviorSettings;
+  paseoTools?: PaseoToolCatalog;
 }
 
 export interface AgentCreateSessionOptions {
@@ -1035,6 +645,22 @@ export interface AgentCreateSessionOptions {
    * Defaults to true. Providers that cannot honor false should no-op.
    */
   persistSession?: boolean;
+  /**
+   * Model ids added by provider configuration (`models` / `additionalModels`).
+   * Providers that validate against runtime-advertised models must accept these.
+   */
+  configuredModelIds?: readonly string[];
+}
+
+/** What a resumed session is for: driving the agent, or reading what it already did. */
+export type AgentResumePurpose = "interactive" | "history";
+
+/** Runtime-only intent for a persisted-session resume. Never persist this option. */
+export interface AgentResumeSessionOptions {
+  /** Defaults to interactive. History loading may be read-only for archived native sessions. */
+  purpose?: AgentResumePurpose;
+  /** See AgentCreateSessionOptions.configuredModelIds. */
+  configuredModelIds?: readonly string[];
 }
 
 /**
@@ -1045,11 +671,26 @@ export interface AgentPermissionResult {
   followUpPrompt?: AgentPromptInput;
 }
 
+export interface AgentUsageSession {
+  provider: string;
+  model?: string;
+  env: Record<string, string>;
+  sessionKey: string;
+}
+
 export interface AgentSession {
+  /** OTTO(observed-subagents): optional, exact live-provider task control. */
+  ottoStopObservedSubagent?(subagentId: string): Promise<void>;
+  usageSession?(): AgentUsageSession | null;
   readonly provider: AgentProvider;
   readonly id: string | null;
+  /** OTTO(context-management): active connection identity, independent of opaque persistence. */
+  readonly ottoContextSessionId?: string;
   readonly capabilities: AgentCapabilityFlags;
   readonly features?: AgentFeature[];
+  /** New provider-owned rows to commit on registration. streamHistory must also
+   * replay them at their original timestamps; restored sessions omit old rows. */
+  readonly initialTimeline?: ImportedTimelineEntry[];
   run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult>;
   startTurn(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<{ turnId: string }>;
   steerActiveTurn?(prompt: AgentPromptInput, options: SteerActiveTurnOptions): Promise<SteerResult>;
@@ -1071,64 +712,12 @@ export interface AgentSession {
    * still uncertain.
    */
   interrupt(): Promise<void>;
-  /**
-   * Stop a provider-managed subagent task by its provider task id (Claude:
-   * `query.stopTask`). Present only on providers that surface observed
-   * subagents. See .otto/knowledge/projects/observed-subagents.md.
-   */
-  stopTask?(taskId: string): Promise<void>;
-  /** Stop one provider-descriptor child without interrupting its parent. */
-  stopProviderSubagent?(subagentId: string): Promise<void>;
+  /** Release live runtime resources without archiving or deleting the durable native session. */
   close(): Promise<void>;
   listCommands?(): Promise<AgentSlashCommand[]>;
-  /**
-   * Per-category context window breakdown (system prompt, tools, messages, …).
-   * Resolves null when the provider has no live handle to report from.
-   */
-  getContextUsage?(): Promise<AgentContextUsage | null>;
-  /**
-   * The parts of the request Otto composes itself, as the text it will send:
-   * the provider preset, and the tool schemas offered under this session's
-   * current mode and workspace-access ceiling.
-   *
-   * Present only on adapters with `ownsContextPayload`. A CLI-backed provider
-   * builds both in its own process and has nothing to hand back, which is what
-   * Context Management discloses as `not_visible` rather than reporting zero.
-   */
-  describeContextPayload?(): { systemPromptText: string; mcpToolsText: string };
   setModel?(modelId: string | null): Promise<void>;
   setThinkingOption?(thinkingOptionId: string | null): Promise<void | AgentProviderNotice>;
   setFeature?(featureId: string, value: unknown): Promise<void>;
-  /**
-   * Live-switch the session's personality prompt fields (see
-   * AgentPersonalityUpdate). Present only on providers that can apply a new
-   * system prompt to a running conversation - Claude recreates its query on the
-   * next turn, openai-compat rebuilds its leading system message. Brain fields
-   * (model/mode/effort) are applied separately via the existing setters; the
-   * manager sequences both halves. Absence ⇒ the manager rejects
-   * agent.personality.set for this provider.
-   */
-  applyPersonality?(update: AgentPersonalityUpdate): Promise<void | AgentProviderNotice>;
-  /**
-   * Apply updated provider-level compaction defaults to a live session
-   * (providers whose conversation the daemon owns). Returns true when the
-   * effective settings changed so the manager knows to re-emit agent state.
-   */
-  applyCompactionConfig?(compaction: ProviderCompactionConfig | null): boolean;
-  /**
-   * Apply the updated provider-level max-tool-rounds override to a live session
-   * (providers whose tool loop the daemon owns). Returns true when the effective
-   * bound changed so the manager knows to re-emit agent state.
-   */
-  applyMaxToolRounds?(maxToolRounds: number | null): boolean;
-  /**
-   * Apply the updated provider-level action circuit-breaker settings to a live
-   * session (providers whose tool loop the daemon owns). The breaker stops a
-   * repeatedly-failing identical action and sends the model a repair prompt
-   * instead of re-executing it. Returns true when the effective settings
-   * changed so the manager knows to re-emit agent state.
-   */
-  applyActionBreaker?(config: ProviderActionBreakerConfig | null): boolean;
   revertConversation?(input: { messageId: string }): Promise<void>;
   revertFiles?(input: { messageId: string }): Promise<void>;
   revertBoth?(input: { messageId: string }): Promise<void>;
@@ -1145,40 +734,7 @@ export interface AgentSession {
   } | null;
 }
 
-/**
- * Input for a one-shot, tool-less text completion used by the internal
- * metadata-generation path (chat titles, branch/workspace names, commit/PR
- * text, voice cues, run summaries). The prompt is fully self-contained - it
- * carries its own contract and JSON-schema instructions and explicitly forbids
- * tool use - so this deliberately bypasses the full agent session: no Otto tool
- * catalog, no MCP mount, and (on Claude) no `claude_code` preset or
- * CLAUDE.md/settingSources. That is the whole point: a title costs a few
- * hundred tokens instead of the 15–25K a full spawn carries.
- */
-export interface AgentBareCompletionOptions {
-  cwd: string;
-  prompt: string;
-  model?: string;
-  thinkingOptionId?: string;
-  systemPrompt?: string;
-  signal?: AbortSignal;
-}
-
-/**
- * Result of a tool-less metadata generation (WP-G). `text` is the completion the
- * callers consume; `usage` is the spend the provider reported for the call, so
- * the manager can record it into the activity ledger under the "generations"
- * cost category - these bare completions bypass the turn path entirely (WP-B),
- * so without capturing usage here their spend is invisible to accounting.
- * Providers that cannot report usage omit it (tokens simply go uncounted, never
- * erroring).
- */
-export interface AgentBareCompletionResult {
-  text: string;
-  usage?: AgentUsage;
-}
-
-export type FetchCatalogOptions =
+export type FetchCatalogOptions = { providerOptions?: ProviderOptions } & (
   | {
       scope: "global";
       force: boolean;
@@ -1187,7 +743,8 @@ export type FetchCatalogOptions =
       scope: "workspace";
       cwd: string;
       force: boolean;
-    };
+    }
+);
 
 export interface ProviderRefreshContext {
   readonly signal: AbortSignal;
@@ -1201,11 +758,6 @@ export interface ProviderCatalog {
   defaultModeId?: string | null;
 }
 
-export interface AgentResumeSessionOptions {
-  /** Defaults to interactive. History loading may be read-only for archived native sessions. */
-  purpose?: "interactive" | "history";
-}
-
 export interface ResolveAgentDefaultModeInput {
   config: AgentSessionConfig;
   env?: Record<string, string>;
@@ -1213,16 +765,15 @@ export interface ResolveAgentDefaultModeInput {
 }
 
 export interface AgentClient {
-  /** Read persisted history without prompting, resuming a writer, or installing tools. */
-  readSearchHistory?(
-    handle: AgentPersistenceHandle,
-    cwd: string,
-    signal?: AbortSignal,
-  ): Promise<ImportedTimelineEntry[]>;
-  /** Cheap persisted-history revision, without starting a model or resuming a writer. */
-  getSearchHistoryRevision?(handle: AgentPersistenceHandle, cwd: string): Promise<string>;
   readonly provider: AgentProvider;
   readonly capabilities: AgentCapabilityFlags;
+  /** OTTO(context-generation): provider-owned text utility, with no chat registration or tool authority. */
+  ottoGenerateContextText?(input: {
+    cwd: string;
+    model?: string;
+    prompt: string;
+    signal: AbortSignal;
+  }): Promise<string>;
   createSession(
     config: AgentSessionConfig,
     launchContext?: AgentLaunchContext,
@@ -1253,15 +804,6 @@ export interface AgentClient {
   /** Apply provider-owned defaults to a model supplied through provider configuration. */
   resolveConfiguredModel?(model: AgentModelDefinition): AgentModelDefinition;
   resolveDefaultModeId?(input: ResolveAgentDefaultModeInput): Promise<string | undefined>;
-  /**
-   * One-shot, tool-less structured-text completion for internal metadata
-   * generation. Bypasses `createSession` entirely - no agent lifecycle, no tool
-   * catalog, no MCP, no `claude_code` preset/CLAUDE.md. Providers that cannot do
-   * a tool-less completion omit this; the generation fallback ladder then skips
-   * them without erroring (parity is preserved by falling through, not by
-   * forcing every provider to implement it). See AgentBareCompletionOptions.
-   */
-  generateBareCompletion?(options: AgentBareCompletionOptions): Promise<AgentBareCompletionResult>;
   resolveCreateConfig?(input: ResolveAgentCreateConfigInput): ResolveAgentCreateConfigResult;
   isCreateConfigUnattended?(input: AgentCreateConfigUnattendedInput): boolean;
   listCommands?(config: AgentSessionConfig): Promise<AgentSlashCommand[]>;
@@ -1279,18 +821,14 @@ export interface AgentClient {
    */
   isAvailable(signal?: AbortSignal, options?: FetchCatalogOptions): Promise<boolean>;
   getDiagnostic?(): Promise<{ diagnostic: string }>;
-  diagnoseDiscovery?(
-    options: import("@otto-code/protocol/provider-discovery").ProviderDiscoveryOptions,
-    imports: import("./import-session-metadata.js").DiscoveryImportContext,
-  ): Promise<import("@otto-code/protocol/provider-discovery").ProviderDiscoveryDiagnostic>;
   /**
-   * Archive a persisted session in the native provider (best-effort).
-   * Called when Otto archives an agent so the provider's own UI reflects the same state.
+   * Archive a durable native session (best-effort). Runtime release belongs to AgentSession.close().
+   * Called when Paseo archives an agent so the provider's own UI reflects the same state.
    */
   archiveNativeSession?(handle: AgentPersistenceHandle): Promise<void>;
   /**
-   * Unarchive a persisted session in the native provider.
-   * Called before Otto clears its archived flag so provider resume can succeed.
+   * Unarchive a durable native session in the provider.
+   * Called before Paseo clears its archived flag so provider resume can succeed.
    */
   unarchiveNativeSession?(handle: AgentPersistenceHandle): Promise<void>;
   /**

@@ -49,17 +49,6 @@ function assistantMessage(id: string): Extract<StreamItem, { kind: "assistant_me
   };
 }
 
-function assistantBlock(
-  id: string,
-  blockIndex: number,
-): Extract<StreamItem, { kind: "assistant_message" }> {
-  return {
-    ...assistantMessage(id),
-    blockGroupId: "response",
-    blockIndex,
-  };
-}
-
 function timingFor(assistantId: string): Map<string, TurnTiming> {
   return new Map([
     [
@@ -89,50 +78,24 @@ function layoutFor(input: { platform: "web" | "native"; isTurnActive: boolean })
 
 describe("turn footer spacing", () => {
   it.each(["web", "native"] as const)(
-    "keeps the last assistant rounded above the completed footer on %s",
+    "compacts the last assistant against the completed footer on %s",
     (platform) => {
       const { assistant, layout } = layoutFor({ platform, isTurnActive: false });
       const assistantLayout = layout.history.find((item) => item.item.id === assistant.id);
 
       expect(layout.auxiliaryTurnFooter?.itemId).toBe(assistant.id);
-      expect(assistantLayout?.assistantSpacing).toBe("default");
+      expect(assistantLayout?.assistantSpacing).toBe("compactBottom");
     },
   );
 
   it.each(["web", "native"] as const)(
-    "keeps the last assistant rounded while the footer is running on %s",
+    "keeps the same compact edge while the footer is running on %s",
     (platform) => {
       const { assistant, layout } = layoutFor({ platform, isTurnActive: true });
       const assistantLayout = layout.history.find((item) => item.item.id === assistant.id);
 
       expect(layout.auxiliaryTurnFooter).toBeNull();
-      expect(assistantLayout?.assistantSpacing).toBe("default");
-    },
-  );
-
-  it.each([
-    ["web", false],
-    ["web", true],
-    ["native", false],
-    ["native", true],
-  ] as const)(
-    "rounds the final split paragraph below the turn footer on %s when active=%s",
-    (platform, isTurnActive) => {
-      const strategy = strategyFor(platform);
-      const first = assistantBlock("first", 0);
-      const last = assistantBlock("last", 1);
-      const layout = layoutStream({
-        strategy,
-        isTurnActive,
-        history: strategy.orderTail([userMessage("user"), first]),
-        liveHead: strategy.orderHead([last]),
-        timingByAssistantId: timingFor(last.id),
-      });
-      const firstLayout = layout.history.find((item) => item.item.id === first.id);
-      const lastLayout = layout.liveHead.find((item) => item.item.id === last.id);
-
-      expect(firstLayout?.assistantSpacing).toBe("compactBottom");
-      expect(lastLayout?.assistantSpacing).toBe("compactTop");
+      expect(assistantLayout?.assistantSpacing).toBe("compactBottom");
     },
   );
 });

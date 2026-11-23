@@ -1,4 +1,4 @@
-import type { RpcInput } from "@otto-code/plugin";
+import type { RpcInput } from "@getpaseo/plugin";
 import { incrementRpc } from "../shared/increment";
 
 export function increment(input: RpcInput<typeof incrementRpc>) {

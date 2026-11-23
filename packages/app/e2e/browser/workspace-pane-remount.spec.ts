@@ -9,17 +9,12 @@ import { seedWorkspace } from "../support/helpers/seed-client";
 import { getServerId } from "../support/helpers/server-id";
 import { clickSettingsBackToWorkspace, openCompactSettings } from "../support/helpers/settings";
 import { openSettings } from "../support/helpers/app";
-import { openSettingsFromCommandCenter } from "../support/helpers/command-center";
-import { moneyShot } from "../support/helpers/evidence";
+import { runWorkspaceActionFromCommandCenter } from "../support/helpers/command-center-workspace-actions";
 import {
   clickFirstTerminalTab,
-  splitPaneFromCatalogMenu,
   waitForWorkspaceTabsVisible,
 } from "../support/helpers/workspace-tabs";
 import { expectTerminalSurfaceVisible } from "../support/helpers/terminal-perf";
-
-const WIDE_VIEWPORT = { width: 1280, height: 900 };
-const COMPACT_VIEWPORT = { width: 390, height: 844 };
 
 async function captureRenderedNode(locator: Locator) {
   await expect(locator).toBeVisible({ timeout: 30_000 });
@@ -42,6 +37,12 @@ async function expectSameRenderedNode(
 
 async function expectNodeConnected(node: Awaited<ReturnType<typeof captureRenderedNode>>) {
   expect(await node.evaluate((candidate) => candidate.isConnected)).toBe(true);
+}
+
+async function getSettingsShortcut(page: Page) {
+  return page.evaluate(() =>
+    navigator.platform.toLowerCase().includes("mac") ? "Meta+," : "Control+,",
+  );
 }
 
 async function waitForWorkspaceRoute(page: Page, route: string) {
@@ -76,42 +77,21 @@ test.describe("Workspace pane mounting", () => {
         .first()
         .elementHandle();
       expect(originalComposer).not.toBeNull();
+      await test.step("opening the first split pane preserves the composer", async () => {
+        const emptyPanesBeforeSplit = await page.getByTestId("workspace-new-tab-panel").count();
 
-      // Otto moved the split controls into the tab bar's catalog menu: the inline
-      // "Split pane right" button only renders when its tool is pinned.
-      await splitPaneFromCatalogMenu(page, "right");
-      await expect(page.getByTestId("message-input-root").filter({ visible: true })).toHaveCount(
-        2,
-        { timeout: 30_000 },
-      );
-
-      const originalStillConnected = await originalComposer!.evaluate((node) => node.isConnected);
-      expect(originalStillConnected).toBe(true);
-    } finally {
-      await workspace.cleanup();
-    }
-  });
-
-  test("opening Settings hides workspace overlays and keeps the agent composer mounted", async ({
-    page,
-  }) => {
-    test.setTimeout(90_000);
-    const serverId = getServerId();
-    const workspace = await seedWorkspace({ repoPrefix: "settings-pane-retention-" });
-
-    try {
-      const agent = await createIdleAgent(workspace.client, {
-        cwd: workspace.repoPath,
-        workspaceId: workspace.workspaceId,
-        title: `settings-pane-retention-${Date.now()}`,
+        await runWorkspaceActionFromCommandCenter(page, "Split pane right");
+        await expect(page.getByTestId("workspace-new-tab-panel")).toHaveCount(
+          emptyPanesBeforeSplit + 1,
+          { timeout: 30_000 },
+        );
+        await expect(page.getByTestId("message-input-root").filter({ visible: true })).toHaveCount(
+          1,
+        );
+        await expectNodeConnected(originalComposer!);
       });
 
-      await page.goto(buildHostAgentDetailRoute(serverId, agent.id, agent.workspaceId));
-      await waitForWorkspaceTabsVisible(page);
       const composer = page.getByTestId("message-input-root").filter({ visible: true }).first();
-      // The node as it is before Settings opens. The assertion at the end of
-      // the step is that Settings did not remount it.
-      const originalComposer = await captureRenderedNode(composer);
       await test.step("desktop Settings closes overlays and preserves the composer", async () => {
         const tab = page.getByTestId(`workspace-tab-agent_${agent.id}`).first();
         await tab.click({ button: "right" });
@@ -119,11 +99,12 @@ test.describe("Workspace pane mounting", () => {
         const renameInput = renameModalInput(page, `workspace-tab-rename-modal-agent-${agent.id}`);
         await expect(renameInput).toBeVisible();
 
-        await openSettingsFromCommandCenter(page);
-        await expect(page).toHaveURL(/\/settings$/);
+        const settingsShortcut = await getSettingsShortcut(page);
+        await page.keyboard.press(settingsShortcut);
+        await expect(page).toHaveURL(/\/settings\/general$/);
         await expect(renameInput).not.toBeVisible();
         await clickSettingsBackToWorkspace(page);
-        await expectSameRenderedNode(originalComposer, composer);
+        await expectSameRenderedNode(originalComposer!, composer);
       });
     } finally {
       await workspace.cleanup();
@@ -153,47 +134,9 @@ test.describe("Workspace pane mounting", () => {
 
       const workspaceRoute = buildHostWorkspaceRoute(serverId, workspace.workspaceId);
       await openCompactSettings(page, workspaceRoute);
-      await page.getByRole("button", { name: "Back", exact: true }).click();
+      await page.goBack();
       await waitForWorkspaceRoute(page, workspaceRoute);
       await expectSameRenderedNode(originalComposer, composer);
-    } finally {
-      await workspace.cleanup();
-    }
-  });
-
-  test("compact workspace keeps its header after reload and restores saved panes", async ({
-    page,
-  }) => {
-    test.setTimeout(90_000);
-    const workspace = await seedWorkspace({ repoPrefix: "compact-workspace-header-" });
-
-    try {
-      await page.setViewportSize(WIDE_VIEWPORT);
-      await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.workspaceId));
-      await waitForWorkspaceTabsVisible(page);
-      await splitPaneFromCatalogMenu(page, "right");
-      const visiblePanes = page
-        .locator('[data-testid^="workspace-pane-"]')
-        .filter({ visible: true });
-      await expect(visiblePanes).toHaveCount(2);
-
-      await page.setViewportSize(COMPACT_VIEWPORT);
-      await page.reload();
-      await expect(
-        page.getByTestId("workspace-header-title").filter({ visible: true }),
-      ).toBeVisible();
-      const menuButton = page.getByRole("button", { name: "Open menu", exact: true }).first();
-      await expect(menuButton).toBeVisible();
-      await menuButton.click();
-      await expect(page.getByTestId("sidebar-search")).toBeVisible();
-      await page.keyboard.press("Escape");
-
-      await page.setViewportSize(WIDE_VIEWPORT);
-      await expect(visiblePanes).toHaveCount(2);
-      await moneyShot(
-        page,
-        "compact reload preserves the workspace header and restores saved panes",
-      );
     } finally {
       await workspace.cleanup();
     }

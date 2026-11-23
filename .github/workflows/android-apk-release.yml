@@ -1,3 +1,4 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
 name: Android APK Release
 
 # Builds the sideloadable release APK ON THIS RUNNER (expo prebuild + gradle),
@@ -34,17 +35,37 @@ on:
         description: "Existing tag to build (e.g. v0.1.0)"
         required: true
         type: string
+      checkout_ref:
+        description: "Optional source ref for build verification."
+        required: false
+        default: ""
+        type: string
+      publish:
+        description: "Attach the APK to a GitHub release."
+        required: false
+        default: "true"
+        type: choice
+        options: ["true", "false"]
+      include_aab:
+        description: "Also build and retain a signed AAB for verification; does not submit to Play."
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: android-apk-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
   cancel-in-progress: false
 
 env:
+  SHOULD_PUBLISH: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
+  CHECKOUT_REF: ${{ github.event.inputs.checkout_ref || github.event.inputs.tag || github.ref }}
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
+  INCLUDE_AAB: ${{ github.event.inputs.include_aab || 'false' }}
 
 jobs:
   # Keep release creation/wait separate from the expensive APK build.
   ensure-release:
+    if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
     # On a `v*` tag Desktop Release creates the release and this job only waits
     # for it. On an `android-v*` retry tag Desktop Release does not run at all,
     # so this job is the creator instead.
@@ -64,7 +85,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           sparse-checkout: scripts
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          ref: ${{ env.CHECKOUT_REF }}
 
       - name: Resolve release tag
         shell: bash
@@ -92,6 +113,7 @@ jobs:
             "${prerelease_flag[@]}"
 
   publish-android-apk:
+    if: ${{ !cancelled() && (needs.ensure-release.result == 'success' || needs.ensure-release.result == 'skipped') }}
     needs: ensure-release
     permissions:
       contents: write
@@ -106,7 +128,7 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref }}
+          ref: ${{ env.CHECKOUT_REF }}
 
       # Native ABI compilation and the Hermes bytecode pass are the memory peak
       # of this build, and they land right after Metro finishes bundling. On EAS
@@ -173,7 +195,7 @@ jobs:
       # What EAS ran as eas-build-post-install. The webview bundles are generated
       # sources: the committed copies go stale, and prebuild does not rebuild them.
       - name: Build workspace deps and webview bundles
-        run: npm run eas-build-post-install --workspace=@otto-code/app
+        run: npm run eas-build-post-install --workspace=@getpaseo/app
 
       - name: Prebuild the Android project
         env:
@@ -314,7 +336,10 @@ jobs:
           sampler=$!
           trap 'kill "$sampler" 2>/dev/null || true' EXIT
 
-          ./gradlew :app:assembleRelease \
+          # OTTO(wake-word): native handoff fixtures run on the same release variant.
+          release_tasks=(:getpaseo-expo-two-way-audio:testReleaseUnitTest :app:assembleRelease)
+          if [ "$INCLUDE_AAB" = "true" ]; then release_tasks+=(:app:bundleRelease); fi
+          ./gradlew "${release_tasks[@]}" \
             --no-parallel --max-workers=1 \
             -x lint -x lintVitalAnalyzeRelease -x lintVitalRelease \
             -x generateReleaseLintModel -x generateReleaseLintVitalModel \
@@ -342,18 +367,9 @@ jobs:
             exit 1
           fi
 
-          apk_entries="$(unzip -Z1 "$apk")"
-          for required_entry in \
-            assets/wake-word/model.json \
-            assets/wake-word/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx \
-            assets/wake-word/keywords.txt \
-            assets/wake-word/LICENSE-APACHE-2.0.txt \
-            lib/arm64-v8a/libsherpa-onnx-jni.so; do
-            if ! grep -Fxq "$required_entry" <<< "$apk_entries"; then
-              echo "Android release is missing Hey Otto asset: $required_entry" >&2
-              exit 1
-            fi
-          done
+          # OTTO(wake-word): verify delivered assets/JNI, not only source definitions.
+          python scripts/otto/verify-wake-android.py "$apk" apk
+          unzip -Z1 "$apk" | grep -Fx AndroidManifest.xml
 
           # Fail loudly on a debug-signed APK: it would install for nobody who
           # already has Otto, and the failure is otherwise silent until a user
@@ -364,7 +380,11 @@ jobs:
             echo "APK is debug-signed; refusing to publish." >&2
             exit 1
           fi
-          "$build_tools/aapt2" dump badging "$apk" | head -n 1
+          badging="$("$build_tools/aapt2" dump badging "$apk")"
+          package_line="$(grep "^package:" <<< "$badging")"
+          expected=$(node -p "require('./packages/app/native-release-version').getNativeReleaseVersion('${RELEASE_VERSION}').androidVersionCode")
+          grep -F "name='me.ottocode.mobile'" <<< "$package_line"
+          grep -F "versionCode='$expected'" <<< "$package_line"
 
           asset_name="otto-${RELEASE_TAG}-android.apk"
           asset_path="$RUNNER_TEMP/$asset_name"
@@ -373,9 +393,47 @@ jobs:
           echo "asset_name=$asset_name" >> "$GITHUB_OUTPUT"
           echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
 
+      # OTTO(release): exercise Play's bundle format without EAS quota or a store write.
+      - name: Verify the optional Android App Bundle
+        id: bundle
+        if: env.INCLUDE_AAB == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          aab="$(find packages/app/android/app/build/outputs/bundle/release -name '*.aab' | head -n 1)"
+          test -n "$aab"
+          unzip -Z1 "$aab" | grep -Fx base/manifest/AndroidManifest.xml
+          python scripts/otto/verify-wake-android.py "$aab" aab # OTTO(wake-word)
+          jarsigner -verify -verbose "$aab" > "$RUNNER_TEMP/aab-signature.txt"
+          grep -F 'jar verified.' "$RUNNER_TEMP/aab-signature.txt"
+          keytool -printcert -jarfile "$aab" > "$RUNNER_TEMP/aab-certificate.txt"
+          node scripts/otto/verify-android-signing.mjs "$RUNNER_TEMP/signer.txt" "$RUNNER_TEMP/aab-certificate.txt"
+          asset_path="$RUNNER_TEMP/otto-${RELEASE_TAG}-android.aab"
+          cp "$aab" "$asset_path"
+          echo "asset_path=$asset_path" >> "$GITHUB_OUTPUT"
+
+      - name: Retain verification AAB as a workflow artifact
+        if: env.INCLUDE_AAB == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: otto-android-aab
+          path: ${{ steps.bundle.outputs.asset_path }}
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Upload APK to GitHub Release
+        if: env.SHOULD_PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           release_lookup="$(node scripts/github-release.mjs --repo "${{ github.repository }}" --tag "$RELEASE_TAG")"
           gh release upload "$release_lookup" "${{ steps.artifact.outputs.asset_path }}" --clobber --repo "${{ github.repository }}"
+
+      - name: Retain verification APK as a workflow artifact
+        if: env.SHOULD_PUBLISH != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: otto-android-apk
+          path: ${{ steps.artifact.outputs.asset_path }}
+          if-no-files-found: error
+          retention-days: 7

@@ -1,5 +1,5 @@
 /**
- * Output format types for the Otto CLI.
+ * Output format types for the Paseo CLI.
  *
  * This module defines the structured data types used by the output abstraction layer.
  * Commands return CommandResult<T> which contains both data and rendering metadata.
@@ -71,28 +71,11 @@ export type AnyCommandResult<T> = T extends unknown ? SingleResult<T> | ListResu
 export type CommandResult<T> = SingleResult<T> | ListResult<T>;
 
 /** Structured error for command failures */
-export interface CommandDiagnostic {
-  /** Stable category for filtering and recovery automation. */
-  code: string;
-  /** Whether this diagnostic prevents the requested operation. */
-  severity: "error" | "warning";
-  /** JSON Pointer or another source location, when available. */
-  path: string;
-  /** Human-readable explanation. */
-  message: string;
-  /** Concrete next action the caller can take. */
-  recovery: string;
-}
-
 export interface CommandError {
-  /** Known chat identity when a streaming operation fails after creation/resolution. */
-  agentId?: string;
   /** Machine-readable error code */
   code: string;
   /** Human-readable message */
   message: string;
   /** Additional context */
   details?: unknown;
-  /** Stable, source-located diagnostics for validation failures. */
-  diagnostics?: CommandDiagnostic[];
 }

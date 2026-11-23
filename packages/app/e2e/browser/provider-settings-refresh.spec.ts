@@ -23,7 +23,9 @@ async function openProviderSettingsFromModelSelector(page: Page) {
   await page.getByRole("button", { name: /Select model/ }).click();
   const configuration = page.getByTestId("agent-controls-model-sheet");
   await expect(configuration).toBeVisible({ timeout: 10_000 });
-  const modelBrowser = page.getByTestId("agent-controls-model-viewport");
+  await page.getByTestId("agent-controls-model").click();
+
+  const modelBrowser = page.getByTestId("agent-controls-model-browser-sheet");
   await expect(modelBrowser).toBeVisible({ timeout: 10_000 });
 
   await page.getByRole("button", { name: /Open .* settings/ }).click();
@@ -31,7 +33,7 @@ async function openProviderSettingsFromModelSelector(page: Page) {
 }
 
 async function expectModelBrowserVisible(page: Page) {
-  await expect(page.getByTestId("agent-controls-model-viewport")).toBeVisible({
+  await expect(page.getByTestId("agent-controls-model-browser-sheet")).toBeVisible({
     timeout: 10_000,
   });
   await expect(page.getByRole("button", { name: /Open .* settings/ })).toBeVisible();
@@ -114,6 +116,9 @@ async function exerciseProviderSettingsStack(page: Page) {
 
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await expectProviderSettingsVisible(page);
+  await expect(page.getByText("Updated just now", { exact: true })).toBeVisible({
+    timeout: 30_000,
+  });
 }
 
 test.describe("provider settings overlay stack", () => {
@@ -153,11 +158,15 @@ test.describe("provider settings overlay stack", () => {
       await expect(commandCenter).not.toBeVisible({ timeout: 10_000 });
       await expect(selector).toBeVisible();
 
-      // The command center's Add project used to open the Otto overlay, which
-      // made it another layer in this stack. Otto routes it to the New project
-      // page instead, so it navigates away from the selector entirely and can no
-      // longer take part here. `open-project-home-regression.spec.ts` covers
-      // where it lands.
+      await page.keyboard.press("ControlOrMeta+K");
+      await expect(commandCenter).toBeVisible({ timeout: 10_000 });
+      await commandCenter.getByTestId("command-center-input").fill("add project");
+      await commandCenter.getByText("Add project", { exact: true }).click();
+      const addProject = page.getByTestId("add-project-flow");
+      await expect(addProject).toBeVisible({ timeout: 10_000 });
+      await page.keyboard.press("Escape");
+      await expect(addProject).not.toBeVisible({ timeout: 10_000 });
+      await expect(selector).toBeVisible();
 
       const settingsButton = page.getByTestId("selector-header-settings-mock");
       await settingsButton.click();
@@ -194,9 +203,12 @@ test.describe("provider settings overlay stack", () => {
       await closeSheetByHeaderButton(page, "provider-settings-sheet");
 
       await expectModelBrowserVisible(page);
+      await closeTopSheet(page);
+      await expect(page.getByTestId("agent-controls-model-browser-sheet")).not.toBeVisible({
+        timeout: 10_000,
+      });
       await expect(page.getByTestId("agent-controls-settings-list")).toBeVisible();
       await closeTopSheet(page);
-      await expect(page.getByTestId("agent-controls-model-sheet")).not.toBeVisible();
     } finally {
       await session.cleanup();
     }

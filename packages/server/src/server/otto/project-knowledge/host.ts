@@ -1,0 +1,588 @@
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { z } from "zod";
+import {
+  readKnowledgeCatalog,
+  readKnowledgeSettings,
+  readKnowledgePage,
+  readKnowledgeRoot,
+  readKnowledgeLinkHealth,
+  mutateKnowledge,
+  setKnowledgeLocation,
+  waitKnowledgeChanges,
+  releaseKnowledgeChanges,
+  inspectKnowledgeFormat,
+  applyKnowledgeFormat,
+  readKnowledgeReviewSignals,
+  inspectKnowledgeWriteLock,
+  recoverKnowledgeWriteLock,
+  proposeKnowledgeRefinement,
+  type KnowledgeScope,
+  type KnowledgeCommand,
+  type KnowledgeGenerationSelection,
+} from "@getpaseo/plugin/otto/project-knowledge";
+import type { OttoProjectMetadata } from "../project-metadata.js";
+import { OttoProjectMetadataError } from "../project-metadata.js";
+import type { WorkspaceRegistry } from "../../workspace-registry.js";
+import {
+  KnowledgeService,
+  KnowledgeNotFoundError,
+  KnowledgePageInvalidError,
+  KnowledgePurgeIncompleteError,
+  knowledgeRoots,
+  type KnowledgeDocument,
+} from "./knowledge-service.js";
+import { KnowledgeStoreResolver } from "./store-resolver.js";
+import { KnowledgeHostSettings } from "./host-settings.js";
+import { KnowledgeHostDefaultsError } from "./host-defaults.js";
+import { KnowledgeStorageSetupService } from "./storage-setup.js";
+import { knowledgeProjectFields as projectFields } from "./project-fields.js";
+import { KnowledgeReviewUnavailableError } from "./review-signals.js";
+import { KnowledgeRefinementError, proposeKnowledgeBody } from "./refinement.js";
+import type { StructuredTextGeneration } from "../../session/checkout/git-metadata-generator.js";
+import {
+  inspectKnowledgeLock,
+  recoverKnowledgeLock,
+  KnowledgeLockRecoveryError,
+} from "./lock-recovery.js";
+import { KnowledgeBusyError, KnowledgeConflictError } from "./knowledge-files.js";
+import { KnowledgeRecordOperations, recordDetails } from "./record-operations.js";
+import { initializeKnowledgeRoots } from "./bootstrap.js";
+import { copyKnowledgeStore } from "./migration.js";
+import { assertSafeSegment, type KnowledgeStore } from "./store-resolver.js";
+import { KnowledgeObservations } from "./observation.js";
+import { knowledgeCatalogPrompt } from "./catalog-prompt.js";
+import { readKnowledgePolicy } from "./policy.js";
+import {
+  inspectKnowledgeFormat as inspectFormat,
+  applyKnowledgeFormat as applyFormat,
+  KnowledgeFormatIncompleteError,
+} from "./format-migration.js";
+type KnowledgeObservationPort = Pick<
+  KnowledgeObservations,
+  "notify" | "notifyAll" | "wait" | "release" | "releaseClient" | "close"
+>;
+
+class KnowledgeHostError extends Error {
+  constructor(
+    readonly code: "wrong_host" | "not_found" | "invalid",
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+function pageValue(page: KnowledgeDocument) {
+  const { metadata, revision, statement, timeline } = page;
+  return {
+    id: metadata.id,
+    kind: metadata.kind,
+    title: metadata.title,
+    status: metadata.status,
+    tags: metadata.tags,
+    updatedAt: metadata.updated_at,
+    revision,
+    statement,
+    timeline,
+    ...recordDetails(page),
+  };
+}
+
+/** One daemon/project identity boundary for plugin UI and provider-neutral MCP tools. */
+export class KnowledgeDaemonService {
+  readonly service: KnowledgeService;
+  readonly records: KnowledgeRecordOperations;
+  readonly resolver: KnowledgeStoreResolver;
+  readonly observations: KnowledgeObservationPort;
+  private readonly hostSettings: KnowledgeHostSettings;
+  private readonly storageSetup: KnowledgeStorageSetupService;
+  constructor(
+    private readonly ports: {
+      hostId: string;
+      home: string;
+      metadata: Pick<
+        OttoProjectMetadata,
+        "read" | "update" | "retainKnowledgeHostStores" | "knowledgeDirectoryBindings"
+      >;
+      workspaces: Pick<WorkspaceRegistry, "get">;
+      now?: () => Date;
+      observations?: KnowledgeObservationPort;
+      generation?: (selection?: KnowledgeGenerationSelection) => StructuredTextGeneration;
+    },
+  ) {
+    this.hostSettings = new KnowledgeHostSettings({
+      hostId: ports.hostId,
+      home: ports.home,
+      metadata: ports.metadata,
+      changed: () => this.observations.notifyAll(),
+    });
+    this.storageSetup = new KnowledgeStorageSetupService({
+      home: ports.home,
+      metadata: ports.metadata,
+      resolveProject: (scope) => this.resolveProject(scope),
+      defaults: () => this.hostSettings.defaults.read(),
+      changed: (projectId) => this.observations.notify(projectId),
+    });
+    this.resolver = new KnowledgeStoreResolver({
+      ottoHome: ports.home,
+      resolveProject: async (projectId) => {
+        const project = await ports.metadata.read(projectId);
+        return { projectId, rootPath: project.rootPath, ...projectFields.parse(project.record) };
+      },
+      defaultLocation: async () => (await this.hostSettings.defaults.read()).defaultStoreLocation,
+    });
+    this.service = new KnowledgeService({
+      resolver: this.resolver,
+      now: ports.now ?? (() => new Date()),
+    });
+    this.records = new KnowledgeRecordOperations(this.service);
+    this.observations =
+      ports.observations ??
+      new KnowledgeObservations({
+        resolve: (projectId) => this.resolver.resolve(projectId),
+      });
+  }
+
+  async resolveProject(scope: KnowledgeScope) {
+    if (scope.hostId !== this.ports.hostId)
+      throw new KnowledgeHostError("wrong_host", "Select the project's owning host.");
+    let projectId = scope.target.id;
+    if (scope.target.kind === "workspace") {
+      const workspace = await this.ports.workspaces.get(scope.target.id);
+      if (!workspace || workspace.archivedAt)
+        throw new KnowledgeHostError("not_found", "This workspace is no longer available.");
+      projectId = workspace.projectId;
+    }
+    return this.ports.metadata.read(projectId);
+  }
+
+  workspaceScope(workspaceId: string): KnowledgeScope {
+    return { hostId: this.ports.hostId, target: { kind: "workspace", id: workspaceId } };
+  }
+
+  async sessionPrompt(workspaceId: string): Promise<string> {
+    const project = await this.resolveProject(this.workspaceScope(workspaceId));
+    return knowledgeCatalogPrompt(this.service, await this.resolver.resolve(project.projectId));
+  }
+  async policy(scope: KnowledgeScope) {
+    const project = await this.resolveProject(scope);
+    return readKnowledgePolicy(await this.resolver.resolve(project.projectId));
+  }
+
+  async proposeRefinement(input: z.infer<typeof proposeKnowledgeRefinement.input>) {
+    const project = await this.resolveProject(input.scope);
+    const read = async () => {
+      const target = input.target;
+      if (target.type === "page") {
+        const page = await this.service.read({
+          projectId: project.projectId,
+          kind: target.kind,
+          id: target.id,
+        });
+        return { body: page.statement, revision: page.revision };
+      }
+      return this.service.readRoot({ projectId: project.projectId, slug: target.slug });
+    };
+    const current = await read();
+    if (!current || current.revision !== input.target.revision) throw new KnowledgeConflictError();
+    if (current.body.length > 80000)
+      throw new KnowledgeRefinementError("This article is too large to refine in one pass.");
+    const proposal = await proposeKnowledgeBody({
+      body: input.workingBody,
+      directives: input.directives,
+      cwd: project.rootPath,
+      generation: input.directives.some((item) => item.kind === "refine")
+        ? this.ports.generation?.(input.selection)
+        : undefined,
+    });
+    const latestProject = await this.resolveProject(input.scope);
+    const latest = await read();
+    if (
+      latestProject.projectId !== project.projectId ||
+      latestProject.revision !== project.revision ||
+      latest?.revision !== input.target.revision
+    )
+      throw new KnowledgeConflictError();
+    return { base: current.body, proposal };
+  }
+
+  async setLocation(input: z.infer<typeof setKnowledgeLocation.input>) {
+    const project = await this.resolveProject(input.scope);
+    if (project.revision !== input.expectedRevision) throw new KnowledgeConflictError();
+    const from = await this.resolver.resolve(project.projectId);
+    const fields = projectFields.parse(project.record);
+    const directoryName = fields.knowledgeDirectoryName ?? `project-${randomUUID()}`;
+    assertSafeSegment(directoryName);
+    let publication = project;
+    if (input.location === "host" && !fields.knowledgeDirectoryName)
+      publication = await this.ports.metadata.update({
+        projectId: project.projectId,
+        expectedRevision: project.revision,
+        patch: { knowledgeDirectoryName: directoryName },
+      });
+    const to: KnowledgeStore =
+      input.location === "repository"
+        ? {
+            ...from,
+            location: "repository",
+            boundary: project.rootPath,
+            base: path.join(project.rootPath, ".otto"),
+          }
+        : {
+            ...from,
+            location: "host",
+            boundary: this.ports.home,
+            base: path.join(this.ports.home, "project-knowledge", directoryName),
+          };
+    const result = await copyKnowledgeStore({
+      from,
+      to,
+      publish: async () => {
+        await this.ports.metadata.update({
+          projectId: project.projectId,
+          expectedRevision: publication.revision,
+          patch: { knowledgeLocation: input.location },
+        });
+      },
+    });
+    this.observations.notify(project.projectId);
+    return result;
+  }
+
+  // Settings do not depend on parsing any article or its append-only history.
+  async settings(scope: KnowledgeScope) {
+    const project = await this.resolveProject(scope);
+    const store = await this.resolver.resolve(project.projectId);
+    const fields = projectFields.parse(project.record);
+    return {
+      projectId: project.projectId,
+      label: String(project.record.customName ?? project.record.displayName ?? project.projectId),
+      revision: project.revision,
+      location: store.location,
+      override: fields.knowledgeLocation ?? null,
+      directoryName: fields.knowledgeDirectoryName ?? null,
+      path: store.base,
+    };
+  }
+
+  async catalog(input: z.infer<typeof readKnowledgeCatalog.input>) {
+    const settings = await this.settings(input.scope);
+    const project = { projectId: settings.projectId };
+    const query = input.query.trim().toLowerCase();
+    const pages = (await this.service.catalog(project.projectId, input.includeInactive))
+      .filter(
+        (page) =>
+          !query ||
+          `${page.title}\n${page.id}\n${page.tags.join(" ")}`.toLowerCase().includes(query),
+      )
+      .sort((a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id));
+    const roots = [];
+    for (const slug of knowledgeRoots) {
+      const root = await this.service.readRoot({ projectId: project.projectId, slug });
+      roots.push({ slug, revision: root?.revision ?? null });
+    }
+    return {
+      settings,
+      records: pages.slice(input.offset, input.offset + input.limit),
+      total: pages.length,
+      nextOffset: input.offset + input.limit < pages.length ? input.offset + input.limit : null,
+      roots,
+    };
+  }
+
+  async mutate(scope: KnowledgeScope, command: KnowledgeCommand) {
+    const project = await this.resolveProject(scope);
+    const input = { ...command, projectId: project.projectId };
+    switch (input.action) {
+      case "create":
+        await this.service.createDraft(input);
+        break;
+      case "truth":
+        await this.service.updateTruth(input);
+        break;
+      case "describe":
+        await this.records.describe(input);
+        break;
+      case "evidence":
+        await this.service.appendEvidence(input);
+        break;
+      case "review":
+        await this.records.review(input);
+        break;
+      case "delivery":
+        await this.records.delivery(input);
+        break;
+      case "reference":
+        await this.records.reference(input);
+        break;
+      case "root":
+        await this.service.writeRoot(input);
+        break;
+      case "initialize":
+        await initializeKnowledgeRoots({
+          service: this.service,
+          projectId: project.projectId,
+          projectRoot: project.rootPath,
+        });
+        break;
+      case "purge":
+        try {
+          await this.service.purge(input);
+        } finally {
+          this.observations.notify(project.projectId);
+        }
+        return { changed: true as const };
+    }
+    this.observations.notify(project.projectId);
+    return { changed: true as const };
+  }
+
+  invoke(method: string, value: unknown, clientId = ""): Promise<unknown> | undefined {
+    const hostOperation = this.hostSettings.invoke(method, value);
+    if (hostOperation) return this.guard(() => hostOperation);
+    const setupOperation = this.storageSetup.invoke(method, value);
+    if (setupOperation) return this.guard(() => setupOperation);
+    switch (method) {
+      case inspectKnowledgeWriteLock.name:
+        return this.guard(async () => {
+          const input = inspectKnowledgeWriteLock.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          const store = await this.resolver.resolve(project.projectId);
+          return inspectKnowledgeWriteLock.output.parse({
+            ok: true,
+            value: await inspectKnowledgeLock(store),
+          });
+        });
+      case recoverKnowledgeWriteLock.name:
+        return this.guard(async () => {
+          const input = recoverKnowledgeWriteLock.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          const store = await this.resolver.resolve(project.projectId);
+          const result = await recoverKnowledgeLock({
+            store,
+            expectedRevision: input.expectedRevision,
+            reason: input.reason,
+            userVerifiedNoActiveWriter: input.userVerifiedNoActiveWriter,
+          });
+          this.observations.notify(project.projectId);
+          return recoverKnowledgeWriteLock.output.parse({ ok: true, value: result });
+        });
+      case readKnowledgeReviewSignals.name:
+        return this.guard(async () => {
+          const input = readKnowledgeReviewSignals.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          return readKnowledgeReviewSignals.output.parse({
+            ok: true,
+            value: await this.service.reviewSignals({
+              projectId: project.projectId,
+              kind: input.kind,
+              id: input.id,
+              expectedRevision: input.expectedRevision,
+            }),
+          });
+        });
+      case proposeKnowledgeRefinement.name:
+        return this.guard(async () => {
+          const input = proposeKnowledgeRefinement.input.parse(value);
+          return proposeKnowledgeRefinement.output.parse({
+            ok: true,
+            value: await this.proposeRefinement(input),
+          });
+        });
+      case inspectKnowledgeFormat.name:
+        return this.guard(async () => {
+          const input = inspectKnowledgeFormat.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          return inspectKnowledgeFormat.output.parse({
+            ok: true,
+            value: await inspectFormat({
+              store: await this.resolver.resolve(project.projectId),
+              projectRevision: project.revision,
+            }),
+          });
+        });
+      case applyKnowledgeFormat.name:
+        return this.guard(async () => {
+          const input = applyKnowledgeFormat.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          try {
+            const result = await applyFormat({
+              context: async () => {
+                const current = await this.resolveProject(input.scope);
+                return {
+                  store: await this.resolver.resolve(current.projectId),
+                  projectRevision: current.revision,
+                };
+              },
+              expectedRevision: input.expectedRevision,
+              reason: input.reason,
+              now: this.ports.now ?? (() => new Date()),
+            });
+            return applyKnowledgeFormat.output.parse({ ok: true, value: result });
+          } finally {
+            this.observations.notify(project.projectId);
+          }
+        });
+      case readKnowledgeLinkHealth.name:
+        return this.guard(async () => {
+          const input = readKnowledgeLinkHealth.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          const issues = await this.service.linkHealth(project.projectId);
+          const end = input.offset + input.limit;
+          return readKnowledgeLinkHealth.output.parse({
+            ok: true,
+            value: {
+              issues: issues.slice(input.offset, end),
+              total: issues.length,
+              nextOffset: end < issues.length ? end : null,
+            },
+          });
+        });
+      case waitKnowledgeChanges.name:
+        return this.guard(async () => {
+          const input = waitKnowledgeChanges.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          return waitKnowledgeChanges.output.parse({
+            ok: true,
+            value: await this.observations.wait(
+              clientId,
+              input.leaseId,
+              project.projectId,
+              input.cursor,
+            ),
+          });
+        });
+      case releaseKnowledgeChanges.name:
+        return this.guard(async () => {
+          const input = releaseKnowledgeChanges.input.parse(value);
+          await this.observations.release(clientId, input.leaseId);
+          return releaseKnowledgeChanges.output.parse({ ok: true, value: { released: true } });
+        });
+      case readKnowledgeSettings.name:
+        return this.guard(async () => {
+          const input = readKnowledgeSettings.input.parse(value);
+          return readKnowledgeSettings.output.parse({
+            ok: true,
+            value: await this.settings(input.scope),
+          });
+        });
+      case readKnowledgeCatalog.name:
+        return this.guard(async () => {
+          const input = readKnowledgeCatalog.input.parse(value);
+          return readKnowledgeCatalog.output.parse({ ok: true, value: await this.catalog(input) });
+        });
+      case readKnowledgePage.name:
+        return this.guard(async () => {
+          const input = readKnowledgePage.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          return readKnowledgePage.output.parse({
+            ok: true,
+            value: pageValue(await this.service.read({ ...input, projectId: project.projectId })),
+          });
+        });
+      case readKnowledgeRoot.name:
+        return this.guard(async () => {
+          const input = readKnowledgeRoot.input.parse(value);
+          const project = await this.resolveProject(input.scope);
+          const root = await this.service.readRoot({ ...input, projectId: project.projectId });
+          return readKnowledgeRoot.output.parse({
+            ok: true,
+            value: root && { body: root.body, revision: root.revision },
+          });
+        });
+      case mutateKnowledge.name:
+        return this.guard(async () => {
+          const input = mutateKnowledge.input.parse(value);
+          return mutateKnowledge.output.parse({
+            ok: true,
+            value: await this.mutate(input.scope, input.command),
+          });
+        });
+      case setKnowledgeLocation.name:
+        return this.guard(async () => {
+          const input = setKnowledgeLocation.input.parse(value);
+          return setKnowledgeLocation.output.parse({
+            ok: true,
+            value: await this.setLocation(input),
+          });
+        });
+      default:
+        return undefined;
+    }
+  }
+
+  releaseClient(clientId: string): Promise<void> {
+    return this.observations.releaseClient(clientId);
+  }
+  close(): Promise<void> {
+    return this.observations.close();
+  }
+
+  private async guard(run: () => Promise<unknown>) {
+    try {
+      return await run();
+    } catch (error) {
+      if (error instanceof KnowledgePageInvalidError)
+        return { ok: false, error: { code: "invalid", message: error.message } };
+      if (error instanceof KnowledgeLockRecoveryError)
+        return { ok: false, error: { code: error.code, message: error.message } };
+      if (error instanceof KnowledgeReviewUnavailableError)
+        return { ok: false, error: { code: "unavailable", message: error.message } };
+      if (error instanceof KnowledgeRefinementError)
+        return { ok: false, error: { code: "invalid", message: error.message } };
+      if (error instanceof KnowledgeHostDefaultsError)
+        return { ok: false, error: { code: error.kind, message: error.message } };
+      if (
+        error instanceof KnowledgePurgeIncompleteError ||
+        error instanceof KnowledgeFormatIncompleteError
+      )
+        return { ok: false, error: { code: "conflict", message: error.message } };
+      if (error instanceof KnowledgeNotFoundError)
+        return { ok: false, error: { code: "not_found", message: error.message } };
+      if (error instanceof KnowledgeHostError)
+        return { ok: false, error: { code: error.code, message: error.message } };
+      if (
+        error instanceof KnowledgeConflictError ||
+        (error instanceof OttoProjectMetadataError && error.kind === "conflict")
+      )
+        return {
+          ok: false,
+          error: {
+            code: "conflict",
+            message: "Knowledge changed. Your draft is retained; reload before saving.",
+          },
+        };
+      if (error instanceof KnowledgeBusyError)
+        return {
+          ok: false,
+          error: {
+            code: "busy",
+            message:
+              "The Knowledge store has an active or abandoned write lock. Inspect its writer before recovery.",
+          },
+        };
+      if (error instanceof OttoProjectMetadataError && error.kind === "not_found")
+        return {
+          ok: false,
+          error: { code: "not_found", message: "Select an active project on this host." },
+        };
+      if (error instanceof z.ZodError)
+        return {
+          ok: false,
+          error: {
+            code: "invalid",
+            message:
+              "The Knowledge request or preserved data is invalid. Existing files were left unchanged.",
+          },
+        };
+      return {
+        ok: false,
+        error: {
+          code: "unavailable",
+          message:
+            "The owning host could not complete this Knowledge operation. Its outcome is unknown; reload before another explicit attempt. No automatic retry was performed.",
+        },
+      };
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { setImmediate as scheduleImmediate } from "node:timers";
+import pThrottle from "p-throttle";
 
 export interface GitProcessPolicy {
   maxProcessesPerSecond: number;
@@ -31,34 +32,34 @@ export function resolveGitProcessPolicy(input: {
 }): GitProcessPolicy {
   return {
     maxProcessesPerSecond:
-      parsePositiveInteger(input.env.OTTO_GIT_MAX_PROCESSES_PER_SECOND) ??
+      parsePositiveInteger(input.env.PASEO_GIT_MAX_PROCESSES_PER_SECOND) ??
       input.persisted?.maxProcessesPerSecond ??
       DEFAULT_GIT_PROCESS_POLICY.maxProcessesPerSecond,
     maxProcessConcurrency:
-      parsePositiveInteger(input.env.OTTO_GIT_MAX_PROCESS_CONCURRENCY) ??
+      parsePositiveInteger(input.env.PASEO_GIT_MAX_PROCESS_CONCURRENCY) ??
       // COMPAT(gitConcurrencyEnv): renamed in v0.2.6; remove after 2027-02-02.
-      parsePositiveInteger(input.env.OTTO_GIT_CONCURRENCY) ??
+      parsePositiveInteger(input.env.PASEO_GIT_CONCURRENCY) ??
       input.persisted?.maxProcessConcurrency ??
       DEFAULT_GIT_PROCESS_POLICY.maxProcessConcurrency,
   };
 }
 
 export class GitProcessScheduler {
+  private readonly startThrottled;
   private readonly highPriorityQueue: Array<() => void> = [];
   private readonly normalPriorityQueue: Array<() => void> = [];
-  private readonly refillIntervalMs: number;
-  private availableStarts: number;
-  private nextRefillAtMs: number;
   private admitted = 0;
   private running = 0;
   private waiting = 0;
-  private rateTimer: NodeJS.Timeout | null = null;
   private drainScheduled = false;
 
   constructor(readonly policy: GitProcessPolicy) {
-    this.availableStarts = policy.maxProcessesPerSecond;
-    this.refillIntervalMs = 1_000 / policy.maxProcessesPerSecond;
-    this.nextRefillAtMs = Date.now() + 1_000;
+    const throttle = pThrottle({
+      limit: policy.maxProcessesPerSecond,
+      interval: 1_000,
+      strict: true,
+    });
+    this.startThrottled = throttle((start: () => Promise<void>) => start());
   }
 
   get activeCount(): number {
@@ -76,7 +77,12 @@ export class GitProcessScheduler {
     this.waiting += 1;
     return new Promise<T>((resolve, reject) => {
       const admit = () => {
-        void this.execute(start, resolve, reject);
+        void this.startThrottled(() => this.execute(start, resolve, reject)).catch((error) => {
+          this.waiting = Math.max(0, this.waiting - 1);
+          this.admitted = Math.max(0, this.admitted - 1);
+          reject(error);
+          this.scheduleDrain();
+        });
       };
       const queue =
         options?.priority === "high" ? this.highPriorityQueue : this.normalPriorityQueue;
@@ -105,43 +111,15 @@ export class GitProcessScheduler {
     if (this.admitted >= this.policy.maxProcessConcurrency) {
       return;
     }
-    this.refillStarts();
-    if (this.availableStarts <= 0) {
-      this.scheduleRateDrain();
-      return;
-    }
     const admit = this.highPriorityQueue.shift() ?? this.normalPriorityQueue.shift();
     if (!admit) {
       return;
     }
     this.admitted += 1;
-    this.availableStarts -= 1;
     admit();
     // Spawning can be synchronous and expensive on a throttled host. Let timers,
     // sockets, and child exits run before admitting another Git process.
     this.scheduleDrain();
-  }
-
-  private refillStarts(now = Date.now()): void {
-    if (now < this.nextRefillAtMs) return;
-    const refills = Math.floor((now - this.nextRefillAtMs) / this.refillIntervalMs) + 1;
-    this.availableStarts = Math.min(
-      this.policy.maxProcessesPerSecond,
-      this.availableStarts + refills,
-    );
-    this.nextRefillAtMs += refills * this.refillIntervalMs;
-    if (this.availableStarts === this.policy.maxProcessesPerSecond) {
-      this.nextRefillAtMs = now + 1_000;
-    }
-  }
-
-  private scheduleRateDrain(): void {
-    if (this.rateTimer) return;
-    const delay = Math.max(1, Math.ceil(this.nextRefillAtMs - Date.now()));
-    this.rateTimer = setTimeout(() => {
-      this.rateTimer = null;
-      this.scheduleDrain();
-    }, delay);
   }
 
   private async execute<T>(

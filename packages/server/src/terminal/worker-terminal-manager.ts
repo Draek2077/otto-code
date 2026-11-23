@@ -2,12 +2,9 @@ import { fileURLToPath } from "node:url";
 import { fork } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { assertAbsolutePath, isSameOrDescendantPath } from "../server/path-utils.js";
-import type { TerminalState } from "@otto-code/protocol/messages";
-import type {
-  TerminalActivity,
-  TerminalActivityState,
-} from "@otto-code/protocol/terminal-activity";
-import { deriveTerminalActivityStatusBucket } from "@otto-code/protocol/terminal-activity";
+import type { TerminalState } from "@getpaseo/protocol/messages";
+import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
+import { deriveTerminalActivityStatusBucket } from "@getpaseo/protocol/terminal-activity";
 import type {
   ClientMessage,
   ServerMessage,
@@ -70,8 +67,7 @@ interface WorkerTerminalRecord {
   state: TerminalState;
   activity: TerminalActivity | null;
   // Cached input-mode preamble from the worker (the authoritative tracker lives
-  // in the worker process). Refreshed on every getTerminalState response and on
-  // the snapshotReady event that precedes a live-restore replay.
+  // in the worker process). Updated with streamed output and snapshot responses.
   replayPreamble: string;
   exitInfo: TerminalExitInfo | null;
   messageListeners: Set<(msg: ServerMessage) => void>;
@@ -93,6 +89,7 @@ interface TerminalWorkerProcess {
 }
 
 interface WorkerTerminalManagerOptions {
+  getOttoPreferences?: () => import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
   requestTimeoutMs?: number;
   forkWorker?: () => TerminalWorkerProcess;
   getTerminalActivityUrl?: () => string | null;
@@ -137,8 +134,6 @@ function cloneTerminalInfo(info: RequiredWorkerTerminalInfo): RequiredWorkerTerm
     name: info.name,
     cwd: info.cwd,
     workspaceId: info.workspaceId,
-    ...(info.presentation ? { presentation: info.presentation } : {}),
-    ...(info.presentationOwner ? { presentationOwner: info.presentationOwner } : {}),
     ...(info.title ? { title: info.title } : {}),
     activity: info.activity,
   };
@@ -161,6 +156,9 @@ export function createWorkerTerminalManager(
   const recordsById = new Map<string, WorkerTerminalRecord>();
   const terminalIdsByCwd = new Map<string, Set<string>>();
   const terminalActivityTokenById = new Map<string, string>();
+  // Creation owns a reference to the session independently of the live-terminal
+  // index. Only terminalCreated registers it; terminalExit removes it permanently.
+  const pendingCreationsById = new Map<string, { session: TerminalSession | null }>();
   const terminalsChangedListeners = new Set<TerminalsChangedListener>();
   const terminalActivityListeners = new Set<TerminalActivityListener>();
   const terminalWorkspaceContributionChangedListeners =
@@ -217,10 +215,6 @@ export function createWorkerTerminalManager(
         cwd: record.info.cwd,
         workspaceId: record.info.workspaceId,
         ...(record.info.title ? { title: record.info.title } : {}),
-        ...(record.info.presentation ? { presentation: record.info.presentation } : {}),
-        ...(record.info.presentationOwner
-          ? { presentationOwner: record.info.presentationOwner }
-          : {}),
         activity: record.activity,
       });
     }
@@ -264,12 +258,6 @@ export function createWorkerTerminalManager(
       },
       get workspaceId() {
         return record.info.workspaceId;
-      },
-      get presentation() {
-        return record.info.presentation;
-      },
-      get presentationOwner() {
-        return record.info.presentationOwner;
       },
       send(message: ClientMessage): void {
         if (message.type === "resize") {
@@ -368,11 +356,6 @@ export function createWorkerTerminalManager(
         };
       },
       getReplayPreamble(): string {
-        // Refreshed from every getTerminalState response, which the controller fetches
-        // before every snapshot replay (legacy + visible-snapshot restore). The one
-        // gap is restore.mode === "live", which replays without fetching state - there
-        // this can be stale/empty. No client sends "live" today; revisit (ship the
-        // preamble on the worker's snapshotReady) if one ever does.
         return record.replayPreamble;
       },
       getTitle(): string | undefined {
@@ -387,10 +370,6 @@ export function createWorkerTerminalManager(
         for (const listener of Array.from(record.titleChangeListeners)) {
           listener(manualTitle);
         }
-        sendBestEffortRequest({ type: "setTitle", terminalId: record.info.id, title: manualTitle });
-      },
-      clearTitle(): void {
-        sendBestEffortRequest({ type: "clearTitle", terminalId: record.info.id });
       },
       getExitInfo(): TerminalExitInfo | null {
         return record.exitInfo;
@@ -445,9 +424,7 @@ export function createWorkerTerminalManager(
     if (message.message.type === "snapshot") {
       record.state = message.message.state;
     }
-    if (message.message.type === "snapshotReady" && message.message.replayPreamble !== undefined) {
-      record.replayPreamble = message.message.replayPreamble;
-    }
+    record.replayPreamble = message.replayPreamble;
     for (const listener of Array.from(record.messageListeners)) {
       listener(message.message);
     }
@@ -561,10 +538,14 @@ export function createWorkerTerminalManager(
   function handleWorkerEvent(message: TerminalWorkerToParentMessage): void {
     switch (message.type) {
       case "terminalCreated": {
-        registerRecord({
+        const session = registerRecord({
           info: asRequiredWorkerTerminalInfo(message.terminal),
           state: message.state,
         });
+        const pendingCreation = pendingCreationsById.get(message.terminal.id);
+        if (pendingCreation) {
+          pendingCreation.session = session;
+        }
         emitTerminalsChanged({
           cwd: message.terminal.cwd,
           terminals: listTerminalItemsForCwd(message.terminal.cwd),
@@ -701,44 +682,33 @@ export function createWorkerTerminalManager(
     async createTerminal(
       options: WorkerCreateTerminalOptions & { workspaceId: string },
     ): Promise<TerminalSession> {
-      if (options.presentation === "embedded" && options.presentationOwner) {
-        const existing = Array.from(recordsById.values()).find(
-          (record) =>
-            record.info.workspaceId === options.workspaceId &&
-            record.info.presentation === "embedded" &&
-            record.info.presentationOwner === options.presentationOwner,
-        )?.session;
-        if (existing) {
-          return existing;
-        }
-      }
       const terminalId = options.id ?? randomUUID();
       const activityToken = createActivityToken();
       const terminalActivityUrl = managerOptions.getTerminalActivityUrl?.() ?? null;
       terminalActivityTokenById.set(terminalId, activityToken);
-      let result: {
-        terminal: RequiredWorkerTerminalInfo;
-        state: TerminalState;
-      };
+      const creation = { session: null as TerminalSession | null };
+      pendingCreationsById.set(terminalId, creation);
       try {
-        result = (await sendRequest({
+        await sendRequest({
           type: "createTerminal",
           options: {
             ...options,
+            ottoPreferences: managerOptions.getOttoPreferences?.(), // OTTO(terminal)
             id: terminalId,
             activityToken,
             activityUrl: terminalActivityUrl,
           },
-        })) as {
-          terminal: RequiredWorkerTerminalInfo;
-          state: TerminalState;
-        };
+        });
+        if (!creation.session) {
+          throw new Error("Terminal worker completed creation without a terminalCreated event");
+        }
+        return creation.session;
       } catch (error) {
         terminalActivityTokenById.delete(terminalId);
         throw error;
+      } finally {
+        pendingCreationsById.delete(terminalId);
       }
-      const session = registerRecord({ info: result.terminal, state: result.state });
-      return session;
     },
 
     registerCwdEnv(options: { cwd: string; env: Record<string, string> }): void {
@@ -788,13 +758,6 @@ export function createWorkerTerminalManager(
         return false;
       }
       session.setTitle(title);
-      return true;
-    },
-
-    clearTerminalTitle(id: string): boolean {
-      const session = recordsById.get(id)?.session;
-      if (!session) return false;
-      session.clearTitle();
       return true;
     },
 

@@ -604,9 +604,9 @@ describe("workspace message schemas", () => {
           scripts: [
             {
               scriptName: "web",
-              hostname: "web.otto.localhost",
+              hostname: "web.paseo.localhost",
               port: 3000,
-              proxyUrl: "http://web.otto.localhost:6868",
+              proxyUrl: "http://web.paseo.localhost:6767",
               lifecycle: "running",
               health: "healthy",
             },
@@ -623,9 +623,9 @@ describe("workspace message schemas", () => {
       {
         scriptName: "web",
         type: "service",
-        hostname: "web.otto.localhost",
+        hostname: "web.paseo.localhost",
         port: 3000,
-        proxyUrl: "http://web.otto.localhost:6868",
+        proxyUrl: "http://web.paseo.localhost:6767",
         lifecycle: "running",
         health: "healthy",
         exitCode: null,
@@ -662,13 +662,13 @@ describe("workspace message schemas", () => {
     expect(parsed.payload.workspace.worktreeSlug).toBeUndefined();
   });
 
-  test("preserves a Otto-owned worktree slug", () => {
+  test("preserves a Paseo-owned worktree slug", () => {
     const parsed = WorkspaceDescriptorPayloadSchema.parse({
       id: "owned-worktree",
       projectId: "project",
       projectDisplayName: "repo",
       projectRootPath: "/repo",
-      workspaceDirectory: "/otto/worktrees/project/feature/packages/app",
+      workspaceDirectory: "/paseo/worktrees/project/feature/packages/app",
       worktreeSlug: "feature",
       projectKind: "git",
       workspaceKind: "worktree",
@@ -751,7 +751,7 @@ describe("workspace message schemas", () => {
   test("preserves explicit statusEnteredAt: null for empty workspaces", () => {
     // The server emits `statusEnteredAt: null` for workspaces with no
     // contributing agents (the "done with no agents" case). The client must
-    // distinguish this from "field omitted" - both parse to null, but the
+    // distinguish this from "field omitted" — both parse to null, but the
     // round-trip must not lose the explicit null.
     const baseWorkspace = {
       id: "ws-status-entered",
@@ -824,7 +824,7 @@ describe("workspace message schemas", () => {
             type: "service",
             hostname: "web--repo.localhost",
             port: 3000,
-            proxyUrl: "http://web--repo.localhost:6868",
+            proxyUrl: "http://web--repo.localhost:6767",
             lifecycle: "running",
             health: "healthy",
             terminalId: "terminal-1",
@@ -846,7 +846,7 @@ describe("workspace message schemas", () => {
         scripts: [
           {
             scriptName: "web",
-            hostname: "web.otto.localhost",
+            hostname: "web.paseo.localhost",
             port: null,
             proxyUrl: null,
             lifecycle: "stopped",
@@ -870,14 +870,14 @@ describe("workspace message schemas", () => {
       type: "service",
       hostname: "web--repo.localhost",
       port: 3000,
-      proxyUrl: "http://web--repo.localhost:6868",
+      proxyUrl: "http://web--repo.localhost:6767",
       lifecycle: "running",
       health: "healthy",
     });
 
     expect(parsed.localProxyUrl).toBeUndefined();
     expect(parsed.publicProxyUrl).toBeUndefined();
-    expect(parsed.proxyUrl).toBe("http://web--repo.localhost:6868");
+    expect(parsed.proxyUrl).toBe("http://web--repo.localhost:6767");
   });
 
   test("parses workspace service payloads with split local and public proxy URLs", () => {
@@ -886,14 +886,14 @@ describe("workspace message schemas", () => {
       type: "service",
       hostname: "web--repo.localhost",
       port: 3000,
-      localProxyUrl: "http://web--repo.localhost:6868",
+      localProxyUrl: "http://web--repo.localhost:6767",
       publicProxyUrl: "https://web--repo.services.example.com",
       proxyUrl: "https://web--repo.services.example.com",
       lifecycle: "running",
       health: "healthy",
     });
 
-    expect(parsed.localProxyUrl).toBe("http://web--repo.localhost:6868");
+    expect(parsed.localProxyUrl).toBe("http://web--repo.localhost:6767");
     expect(parsed.publicProxyUrl).toBe("https://web--repo.services.example.com");
     expect(parsed.proxyUrl).toBe("https://web--repo.services.example.com");
   });
@@ -919,14 +919,14 @@ describe("workspace message schemas", () => {
         status: "completed",
         detail: {
           type: "worktree_setup",
-          worktreePath: "/repo/.otto/worktrees/feature-a",
+          worktreePath: "/repo/.paseo/worktrees/feature-a",
           branchName: "feature-a",
           log: "done",
           commands: [
             {
               index: 1,
               command: "npm install",
-              cwd: "/repo/.otto/worktrees/feature-a",
+              cwd: "/repo/.paseo/worktrees/feature-a",
               log: "done",
               status: "completed",
               exitCode: 0,
@@ -961,7 +961,7 @@ describe("workspace message schemas", () => {
           status: "completed",
           detail: {
             type: "worktree_setup",
-            worktreePath: "/repo/.otto/worktrees/feature-a",
+            worktreePath: "/repo/.paseo/worktrees/feature-a",
             branchName: "feature-a",
             log: "done",
             commands: [],
@@ -1007,7 +1007,7 @@ describe("workspace message schemas", () => {
             gitRuntime: {
               currentBranch: "main",
               remoteUrl: "https://github.com/acme/repo.git",
-              isOttoOwnedWorktree: false,
+              isPaseoOwnedWorktree: false,
               isDirty: true,
               aheadBehind: {
                 ahead: 2,
@@ -1070,7 +1070,7 @@ describe("workspace message schemas", () => {
             gitRuntime: {
               currentBranch: "main",
               remoteUrl: "https://github.com/acme/repo.git",
-              isOttoOwnedWorktree: false,
+              isPaseoOwnedWorktree: false,
               isDirty: false,
               aheadBehind: {
                 ahead: 0,
@@ -1186,7 +1186,7 @@ describe("workspace message schemas", () => {
                 isGit: true,
                 currentBranch: "main",
                 remoteUrl: "https://github.com/acme/repo.git",
-                isOttoOwnedWorktree: false,
+                isPaseoOwnedWorktree: false,
                 mainRepoRoot: null,
               },
             },
@@ -1289,46 +1289,4 @@ describe("workspace message schemas", () => {
     expect(newDirectory.type).toBe("workspace.create.request");
     expect(newDirectory.source.kind).toBe("directory");
   });
-});
-
-test("artifact membership is additive on workspace snapshots", () => {
-  const legacy = {
-    id: "workspace-1",
-    projectId: "project-1",
-    projectDisplayName: "Project",
-    projectRootPath: "/project",
-    workspaceDirectory: "/project",
-    projectKind: "git",
-    workspaceKind: "local_checkout",
-    name: "Main",
-    status: "done",
-    activityAt: null,
-  };
-  expect(WorkspaceDescriptorPayloadSchema.parse(legacy).artifactIds).toBeUndefined();
-  const current = { ...legacy, artifactIds: ["artifact-1", "artifact-2"] };
-  expect(WorkspaceDescriptorPayloadSchema.parse(current).artifactIds).toEqual([
-    "artifact-1",
-    "artifact-2",
-  ]);
-  const legacyParser = WorkspaceDescriptorPayloadSchema.in.omit({ artifactIds: true });
-  expect(legacyParser.parse(current)).toEqual(legacyParser.parse(legacy));
-  expect(
-    SessionInboundMessageSchema.parse({
-      type: "artifact.workspace.attach.request",
-      workspaceId: "workspace-1",
-      artifactId: "artifact-1",
-      requestId: "attach-1",
-    }).type,
-  ).toBe("artifact.workspace.attach.request");
-  expect(
-    SessionOutboundMessageSchema.parse({
-      type: "artifact.workspace.attach.response",
-      payload: {
-        workspaceId: "workspace-1",
-        artifactId: "artifact-1",
-        requestId: "attach-1",
-        success: true,
-      },
-    }).type,
-  ).toBe("artifact.workspace.attach.response");
 });

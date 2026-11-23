@@ -6,6 +6,8 @@ order: 33
 category: Orchestration
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Orchestration skills
 
 Otto ships orchestration skills that teach coding agents (Claude Code, Codex) how to use the Otto CLI to spawn, coordinate, and manage other agents. Skills are slash commands your agent can invoke, they provide the prompts, context, and workflows so agents know how to orchestrate without you writing boilerplate. Install them from host Settings or with the command below.

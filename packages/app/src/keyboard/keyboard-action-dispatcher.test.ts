@@ -5,19 +5,11 @@ import {
   type KeyboardActionDefinition,
 } from "./keyboard-action-dispatcher";
 
-// Settings persistence has its own tests. Supply the display-mode boundary here
-// so these dispatcher tests do not boot React Native storage and its Flow loader.
-const mode = vi.hoisted(() => ({ developer: true }));
-vi.mock("@/hooks/use-interface-mode", () => ({
-  getIsDeveloperModeSnapshot: () => mode.developer,
-}));
-
 describe("keyboard-action-dispatcher", () => {
   let dispatcher: ReturnType<typeof createKeyboardActionDispatcher>;
 
   beforeEach(() => {
     dispatcher = createKeyboardActionDispatcher();
-    mode.developer = true;
   });
 
   it("dispatches to the highest-priority active handler", () => {
@@ -224,45 +216,4 @@ describe("keyboard-action-dispatcher", () => {
     expect(replacementHandle).toHaveBeenCalledOnce();
     expect(oldHandle).not.toHaveBeenCalled();
   });
-
-  it("keeps Search available while User mode blocks the Git Explorer action", () => {
-    mode.developer = false;
-    const search = vi.fn(() => true);
-    const changes = vi.fn(() => true);
-    dispatcher.registerHandler({
-      handlerId: "search",
-      actions: ["sidebar.open.search"],
-      enabled: true,
-      priority: 100,
-      handle: search,
-    });
-    dispatcher.registerHandler({
-      handlerId: "changes",
-      actions: ["sidebar.open.changes"],
-      enabled: true,
-      priority: 100,
-      handle: changes,
-    });
-
-    expect(dispatcher.dispatch({ id: "sidebar.open.search", scope: "sidebar" })).toBe(true);
-    expect(dispatcher.dispatch({ id: "sidebar.open.changes", scope: "sidebar" })).toBe(false);
-    expect(search).toHaveBeenCalledOnce();
-    expect(changes).not.toHaveBeenCalled();
-  });
-  it.each(["workspace.pane.split.right", "workspace.pane.split.down"] as const)(
-    "allows %s in User mode",
-    (id) => {
-      mode.developer = false;
-      const handle = vi.fn(() => true);
-      dispatcher.registerHandler({
-        handlerId: "split",
-        actions: [id],
-        enabled: true,
-        priority: 100,
-        handle,
-      });
-      expect(dispatcher.dispatch({ id, scope: "workspace" })).toBe(true);
-      expect(handle).toHaveBeenCalledOnce();
-    },
-  );
 });

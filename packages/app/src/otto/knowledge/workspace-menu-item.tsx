@@ -1,0 +1,63 @@
+import { useCallback, useMemo } from "react";
+import { BookOpen, Layers } from "lucide-react-native";
+import { withUnistyles } from "react-native-unistyles";
+import type { Theme } from "@/styles/theme";
+import { ContextMenuItem } from "@/components/ui/context-menu";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { useInstalledPlugin } from "@/plugins/registry";
+import { createPluginNavigation } from "@/plugins/navigation";
+import { usePanelStore } from "@/stores/panel-store";
+import { useIsCompactFormFactor } from "@/constants/layout";
+const ThemedLayers = withUnistyles(Layers);
+const ThemedBook = withUnistyles(BookOpen);
+const color = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const contextLeading = <ThemedLayers size={14} uniProps={color} />;
+const leading = <ThemedBook size={14} uniProps={color} />;
+/** Bind the clicked row, including when a different workspace is currently active. */
+export function KnowledgeWorkspaceMenuItem({
+  serverId,
+  workspaceId,
+  surface,
+  context = false,
+}: {
+  serverId?: string;
+  workspaceId?: string;
+  surface: "context" | "dropdown";
+  context?: boolean;
+}) {
+  const plugin = useInstalledPlugin(serverId ?? "", "otto-project-knowledge");
+  const compact = useIsCompactFormFactor();
+  const navigation = useMemo(
+    () => createPluginNavigation({ serverId: serverId ?? "", workspaceId: workspaceId ?? null }),
+    [serverId, workspaceId],
+  );
+  const open = useCallback(() => {
+    if (compact) usePanelStore.getState().showMobileAgent();
+    navigation.openWorkspacePanel(
+      "otto-project-knowledge",
+      context ? "context-management" : "knowledge",
+      "workspace",
+    );
+  }, [navigation, compact, context]);
+  if (
+    !serverId ||
+    !workspaceId ||
+    !plugin?.workspacePanels.some(
+      (panel) =>
+        panel.id === (context ? "context-management" : "knowledge") &&
+        panel.context === "workspace",
+    )
+  )
+    return null;
+  if (surface === "context")
+    return (
+      <ContextMenuItem onSelect={open} leading={context ? contextLeading : leading}>
+        {context ? "Open Context" : "Open Knowledge"}
+      </ContextMenuItem>
+    );
+  return (
+    <DropdownMenuItem onSelect={open} leading={context ? contextLeading : leading}>
+      {context ? "Open Context" : "Open Knowledge"}
+    </DropdownMenuItem>
+  );
+}

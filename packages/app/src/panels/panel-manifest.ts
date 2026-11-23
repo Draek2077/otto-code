@@ -1,10 +1,38 @@
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 
-export type PaneHost = "main" | "explorer";
+/** Where a tab renders: a split pane, the Explorer dock, or the compact workspace sheet. */
+export type PaneHost = "main" | "explorer" | "sheet";
+
+/** How a target behaves while it is shown in the compact workspace sheet. */
+export interface CompactSheetPolicy {
+  /** The sheet offers Open as tab, which moves the same tab into the focused pane. */
+  openAsTab: boolean;
+}
+
+/** Facts about a target that live outside the layout, resolved lazily by the workspace. */
+export interface PanelTargetFacts {
+  isWorkspaceRootAgent(agentId: string): boolean;
+}
+
+type CompactSheetRule<K extends WorkspaceTabTarget["kind"]> =
+  | CompactSheetPolicy
+  | null
+  | ((
+      target: Extract<WorkspaceTabTarget, { kind: K }>,
+      facts: PanelTargetFacts,
+    ) => CompactSheetPolicy | null);
 
 export interface PanelManifest<K extends WorkspaceTabTarget["kind"] = WorkspaceTabTarget["kind"]> {
   kind: K;
-  supportedHosts: readonly PaneHost[];
+  /** The sheet is never listed: a kind renders there exactly when it has a `compactSheet` rule. */
+  supportedHosts: readonly Exclude<PaneHost, "sheet">[];
+  showCloseButton: boolean;
+  singleton: boolean;
+  /**
+   * On compact layouts, revealing this target opens it in the workspace sheet over the current
+   * tab instead of adding a tab. `null` keeps it in the tab strip.
+   */
+  compactSheet: CompactSheetRule<K>;
   resourceKey(target: Extract<WorkspaceTabTarget, { kind: K }>): string;
 }
 
@@ -16,67 +44,99 @@ const manifests = {
   new_tab: {
     kind: "new_tab",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
     resourceKey: () => "new_tab",
   },
   draft: {
     kind: "draft",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
     resourceKey: (target) => target.draftId,
   },
   agent: {
     kind: "agent",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: (target, facts) =>
+      facts.isWorkspaceRootAgent(target.agentId) ? null : { openAsTab: true },
     resourceKey: (target) => target.agentId,
   },
   provider_subagent: {
     kind: "provider_subagent",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: { openAsTab: false },
     resourceKey: (target) => `${target.parentAgentId}:${target.subagentId}`,
   },
   terminal: {
     kind: "terminal",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
     resourceKey: (target) => target.terminalId,
   },
   browser: {
     kind: "browser",
     supportedHosts: ["main"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
     resourceKey: (target) => target.browserId,
   },
   changes_tree: {
     kind: "changes_tree",
     supportedHosts: ["explorer"],
+    showCloseButton: false,
+    singleton: true,
+    compactSheet: null,
     resourceKey: () => "changes_tree",
   },
   files: {
     kind: "files",
     supportedHosts: ["explorer"],
+    showCloseButton: false,
+    singleton: true,
+    compactSheet: null,
     resourceKey: () => "files",
-  },
-  project_search: {
-    kind: "project_search",
-    supportedHosts: ["explorer"],
-    resourceKey: () => "project_search",
   },
   pull_request: {
     kind: "pull_request",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
     resourceKey: () => "pull_request",
   },
   file: {
     kind: "file",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: { openAsTab: false },
     resourceKey: (target) => target.path,
   },
   working_diff: {
     kind: "working_diff",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
     resourceKey: () => "working_diff",
   },
   plugin: {
     kind: "plugin",
     // Plugin targets are narrowed by the target-aware plugin panel capability resolver.
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
     resourceKey: (target) =>
       target.context === "agent"
         ? `${target.pluginId}:${target.panelId}:agent:${target.agentId}`
@@ -85,96 +145,28 @@ const manifests = {
   setup: {
     kind: "setup",
     supportedHosts: ["main"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
     resourceKey: (target) => target.workspaceId,
+  },
+  file_history: {
+    // OTTO(file-history)
+    kind: "file_history",
+    supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
+    resourceKey: (target) =>
+      JSON.stringify([target.path, target.range?.startLine, target.range?.endLine]),
   },
   commit_diff: {
     kind: "commit_diff",
     supportedHosts: ["main", "explorer"],
+    showCloseButton: true,
+    singleton: false,
+    compactSheet: null,
     resourceKey: (target) => target.sha,
-  },
-  // --- Otto tab kinds ---
-  artifact: {
-    kind: "artifact",
-    supportedHosts: ["main", "explorer"],
-    resourceKey: (target) => target.artifactId,
-  },
-  architecturalView: {
-    kind: "architecturalView",
-    supportedHosts: ["main", "explorer"],
-    resourceKey: (target) => target.viewId,
-  },
-  architecturalViewDraft: {
-    kind: "architecturalViewDraft",
-    supportedHosts: ["main", "explorer"],
-    // Keyed by draft, not view: two drafts of one view are two tabs.
-    resourceKey: (target) => target.draftId,
-  },
-  communicationsRoom: {
-    kind: "communicationsRoom",
-    supportedHosts: ["main", "explorer"],
-    resourceKey: (target) => `${target.providerId}:${target.conversationId}`,
-  },
-  gitLog: {
-    kind: "gitLog",
-    // One tab per operation.
-    supportedHosts: ["main", "explorer"],
-    resourceKey: (target) => target.operation,
-  },
-  visualizer: {
-    kind: "visualizer",
-    // One per workspace, plus one per run when a run is being visualized.
-    supportedHosts: ["main"],
-    resourceKey: (target) => target.runId ?? "workspace",
-  },
-  fileHistory: {
-    kind: "fileHistory",
-    // Investigating a selection is a different question from investigating the
-    // whole file, so the scoped tab lives beside the unscoped one.
-    supportedHosts: ["main", "explorer"],
-    resourceKey: (target) =>
-      target.startLine === undefined && target.endLine === undefined
-        ? target.path
-        : `${target.path}:${target.startLine ?? ""}-${target.endLine ?? ""}`,
-  },
-  codeReferences: {
-    kind: "codeReferences",
-    // One tab per call site, so a second search cannot evict the first.
-    supportedHosts: ["main", "explorer"],
-    resourceKey: (target) => `${target.path}:${target.line}:${target.column}`,
-  },
-  codeRename: {
-    kind: "codeRename",
-    supportedHosts: ["main", "explorer"],
-    resourceKey: (target) => `${target.path}:${target.line}:${target.column}`,
-  },
-  refine: {
-    kind: "refine",
-    // A refine job is identified by the set of files it was taken from.
-    supportedHosts: ["main", "explorer"],
-    resourceKey: (target) => [...target.paths].sort().join("|"),
-  },
-  contextManagement: {
-    kind: "contextManagement",
-    // One per workspace: the report is a property of the workspace.
-    supportedHosts: ["main", "explorer"],
-    resourceKey: () => "context_management",
-  },
-  projectKnowledge: {
-    kind: "projectKnowledge",
-    // One per workspace; the selection navigates within the open tab.
-    supportedHosts: ["main", "explorer"],
-    resourceKey: () => "project_knowledge",
-  },
-  orchestrationGraph: {
-    kind: "orchestrationGraph",
-    supportedHosts: ["main"],
-    resourceKey: (target) => target.graphId,
-  },
-  workflowRun: {
-    kind: "workflowRun",
-    // One tab per run.
-    supportedHosts: ["main"],
-    resourceKey: (target) => target.runId,
   },
 } satisfies PanelManifestByKind;
 
@@ -183,7 +175,24 @@ export function getPanelManifest<K extends WorkspaceTabTarget["kind"]>(kind: K):
 }
 
 export function panelSupportsHost(kind: WorkspaceTabTarget["kind"], host: PaneHost): boolean {
-  return getPanelManifest(kind).supportedHosts.includes(host);
+  const manifest = getPanelManifest(kind);
+  if (host === "sheet") return manifest.compactSheet !== null;
+  return manifest.supportedHosts.includes(host);
+}
+
+export function panelCompactSheetPolicy(
+  target: WorkspaceTabTarget,
+  facts: PanelTargetFacts,
+): CompactSheetPolicy | null {
+  const rule = getPanelManifest(target.kind).compactSheet as CompactSheetRule<typeof target.kind>;
+  return typeof rule === "function" ? rule(target as never, facts) : rule;
+}
+
+export function panelCanLaunchInPane(
+  kind: WorkspaceTabTarget["kind"],
+  panePanelKinds: readonly WorkspaceTabTarget["kind"][],
+): boolean {
+  return !getPanelManifest(kind).singleton || !panePanelKinds.includes(kind);
 }
 
 export function panelResourceKey(target: WorkspaceTabTarget): string {

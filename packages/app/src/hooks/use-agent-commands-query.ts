@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { agentCommandsQueryKey, type AgentCommandsDraftConfig } from "@/hooks/agent-commands-query";
@@ -16,6 +16,12 @@ export interface AgentSlashCommand {
 }
 
 export type DraftCommandConfig = AgentCommandsDraftConfig;
+
+/** What a draft composer can list commands for, before an agent exists. */
+export type DraftCommandTarget =
+  | { status: "ready"; config: DraftCommandConfig }
+  | { status: "needs-project" }
+  | { status: "needs-provider" };
 
 interface ListAgentCommandsOptions {
   agentId: string;

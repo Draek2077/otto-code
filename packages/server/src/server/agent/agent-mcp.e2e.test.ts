@@ -2,7 +2,7 @@ import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { describe, expect, test } from "vitest";
 import { experimental_createMCPClient } from "ai";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -10,10 +10,8 @@ import pino from "pino";
 
 import { withTimeout } from "../../utils/promise-timeout.js";
 import { hashDaemonPassword } from "../auth.js";
-import { createOttoDaemon, type OttoDaemonConfig } from "../bootstrap.js";
+import { createPaseoDaemon, type PaseoDaemonConfig } from "../bootstrap.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
-import { removeTempDirAsync } from "../../test-utils/remove-temp-dir.js";
-import { isPlatform } from "../../test-utils/platform.js";
 import type {
   AgentClient,
   AgentPersistenceHandle,
@@ -91,6 +89,75 @@ async function createMcpClient(url: string, authToken?: string): Promise<McpClie
   return { callTool: boundCallTool, close: () => rawClient.close() };
 }
 
+interface OfflineMcpDaemon {
+  client: McpClient;
+  stop: () => Promise<void>;
+}
+
+async function startOfflineMcpDaemon(): Promise<OfflineMcpDaemon> {
+  const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-home-"));
+  const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+  const removeDirectories = async () => {
+    await rm(paseoHome, { recursive: true, force: true });
+    await rm(staticDir, { recursive: true, force: true });
+  };
+  const port = await getAvailablePort();
+  const daemon = await createPaseoDaemon(
+    {
+      listen: `127.0.0.1:${port}`,
+      paseoHome,
+      corsAllowedOrigins: [],
+      hostnames: true,
+      mcpEnabled: true,
+      staticDir,
+      mcpDebug: false,
+      agentClients: createTestAgentClients(),
+      agentStoragePath: path.join(paseoHome, "agents"),
+    },
+    pino({ level: "silent" }),
+  ).catch(async (error: unknown) => {
+    await removeDirectories();
+    throw error;
+  });
+  try {
+    await daemon.start();
+    const client = await createMcpClient(`http://127.0.0.1:${port}/mcp/agents`);
+    return {
+      client,
+      stop: async () => {
+        await client.close();
+        await daemon.stop();
+        await removeDirectories();
+      },
+    };
+  } catch (error) {
+    await daemon.stop();
+    await removeDirectories();
+    throw error;
+  }
+}
+
+type WorkspaceCreation = { workspaceId: unknown } | { error: unknown };
+
+async function createLocalWorkspace(client: McpClient, cwd: string): Promise<WorkspaceCreation> {
+  const result = await client.callTool({
+    name: "create_workspace",
+    args: { isolation: "local", path: cwd },
+  });
+  if (result.isError) {
+    const content = result.content?.[0];
+    return { error: content && "text" in content ? content.text : undefined };
+  }
+  return { workspaceId: getStructuredContent(result)?.workspaceId };
+}
+
+async function listWorkspaces(client: McpClient): Promise<WorkspaceCreation[]> {
+  const result = await client.callTool({ name: "list_workspaces", args: {} });
+  const workspaces = getStructuredContent(result)?.workspaces;
+  if (!Array.isArray(workspaces)) return [];
+  return workspaces.map((workspace: StructuredContent) => ({ workspaceId: workspace.workspaceId }));
+}
+
 interface LaunchRecorder {
   recordedLaunches: AgentSessionConfig[];
 }
@@ -107,7 +174,7 @@ class RecordingAgentClient implements AgentClient {
     this.capabilities = {
       ...inner.capabilities,
       supportsMcpServers: true,
-      supportsNativeOttoTools: false,
+      supportsNativePaseoTools: false,
     };
   }
 
@@ -148,44 +215,41 @@ function createMcpRecordingAgentClients(recorder: LaunchRecorder) {
   };
 }
 
-async function assertAgentNotRunning(options: {
-  client: McpClient;
-  agentId: string;
-}): Promise<void> {
-  const statusResult = await options.client.callTool({
-    name: "get_chat_status",
-    args: { agentId: options.agentId },
-  });
-  const payload = getStructuredContent(statusResult);
-  if (!payload) {
-    throw new Error("get_chat_status returned no structured payload");
-  }
-  const status = payload.status;
-  if (status === "running" || status === "initializing") {
-    throw new Error(`Agent still running after blocking create_chat (status=${status})`);
-  }
+async function waitForAgentFinish(options: { client: McpClient; agentId: string }): Promise<void> {
+  await expect
+    .poll(
+      async () => {
+        const result = await options.client.callTool({
+          name: "get_agent_status",
+          args: { agentId: options.agentId },
+        });
+        return getStructuredContent(result)?.status;
+      },
+      { timeout: 10000 },
+    )
+    .toBe("idle");
 }
 
 describe("agent MCP end-to-end (offline)", () => {
-  test("create_chat runs initial prompt and affects filesystem", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-"));
+  test("create_agent runs initial prompt and affects filesystem", async () => {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-home-"));
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-agent-cwd-"));
     const port = await getAvailablePort();
 
-    const daemonConfig: OttoDaemonConfig = {
+    const daemonConfig: PaseoDaemonConfig = {
       listen: `127.0.0.1:${port}`,
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: true,
       staticDir,
       mcpDebug: false,
       agentClients: createTestAgentClients(),
-      agentStoragePath: path.join(ottoHome, "agents"),
+      agentStoragePath: path.join(paseoHome, "agents"),
     };
 
-    const daemon = await createOttoDaemon(daemonConfig, pino({ level: "silent" }));
+    const daemon = await createPaseoDaemon(daemonConfig, pino({ level: "silent" }));
     await daemon.start();
 
     const client = await createMcpClient(`http://127.0.0.1:${port}/mcp/agents`);
@@ -202,14 +266,13 @@ describe("agent MCP end-to-end (offline)", () => {
       ].join("\n");
 
       const result = await client.callTool({
-        name: "create_chat",
+        name: "create_agent",
         args: {
           cwd: agentCwd,
           title: "MCP e2e smoke",
           provider: "claude/claude-test-model",
           mode: "bypassPermissions",
           initialPrompt,
-          background: false,
         },
       });
 
@@ -217,7 +280,7 @@ describe("agent MCP end-to-end (offline)", () => {
       agentId = typeof payload?.agentId === "string" ? payload.agentId : null;
       expect(agentId).toBeTruthy();
 
-      await assertAgentNotRunning({ client, agentId: agentId! });
+      await waitForAgentFinish({ client, agentId: agentId! });
 
       if (existsSync(filePath)) {
         const contents = await readFile(filePath, "utf8");
@@ -227,36 +290,57 @@ describe("agent MCP end-to-end (offline)", () => {
       }
     } finally {
       if (agentId) {
-        await client.callTool({ name: "delete_chat", args: { agentId } });
+        await client.callTool({ name: "kill_agent", args: { agentId } });
       }
       await client.close();
       await daemon.stop();
-      await removeTempDirAsync(ottoHome);
-      await removeTempDirAsync(staticDir);
-      await removeTempDirAsync(agentCwd);
+      await rm(paseoHome, { recursive: true, force: true });
+      await rm(staticDir, { recursive: true, force: true });
+      await rm(agentCwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("create_workspace with local isolation adopts only an existing directory", async () => {
+    const daemon = await startOfflineMcpDaemon();
+    const root = await mkdtemp(path.join(os.tmpdir(), "paseo-local-workspace-"));
+    const missingPath = path.join(root, "does-not-exist");
+    const filePath = path.join(root, "regular-file");
+    await writeFile(filePath, "not a directory\n", "utf8");
+    try {
+      expect(await createLocalWorkspace(daemon.client, missingPath)).toEqual({
+        error: expect.stringContaining(`Directory not found: ${missingPath}`),
+      });
+      expect(await createLocalWorkspace(daemon.client, filePath)).toEqual({
+        error: expect.stringContaining(`Directory not found: ${filePath}`),
+      });
+      const created = await createLocalWorkspace(daemon.client, root);
+      expect(await listWorkspaces(daemon.client)).toEqual([created]);
+    } finally {
+      await daemon.stop();
+      await rm(root, { recursive: true, force: true });
     }
   }, 30_000);
 
   test("password-protected daemon authorizes the agent MCP via the capability token", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-"));
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-home-"));
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-agent-cwd-"));
     const port = await getAvailablePort();
 
-    const daemonConfig: OttoDaemonConfig = {
+    const daemonConfig: PaseoDaemonConfig = {
       listen: `127.0.0.1:${port}`,
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: true,
       staticDir,
       mcpDebug: false,
       agentClients: createTestAgentClients(),
-      agentStoragePath: path.join(ottoHome, "agents"),
+      agentStoragePath: path.join(paseoHome, "agents"),
       auth: { password: hashDaemonPassword("daemon-secret") },
     };
 
-    const daemon = await createOttoDaemon(daemonConfig, pino({ level: "silent" }));
+    const daemon = await createPaseoDaemon(daemonConfig, pino({ level: "silent" }));
     await daemon.start();
 
     const mcpUrl = `http://127.0.0.1:${port}/mcp/agents`;
@@ -282,14 +366,13 @@ describe("agent MCP end-to-end (offline)", () => {
       // runtime-mcp-config unit test.)
       client = await createMcpClient(mcpUrl, capabilityToken!);
       const result = await client.callTool({
-        name: "create_chat",
+        name: "create_agent",
         args: {
           cwd: agentCwd,
           title: "Password MCP",
           provider: "claude/claude-test-model",
           mode: "bypassPermissions",
           initialPrompt: "reply with done and stop",
-          background: true,
         },
       });
       const payload = getStructuredContent(result);
@@ -297,48 +380,48 @@ describe("agent MCP end-to-end (offline)", () => {
       expect(agentId).toBeTruthy();
     } finally {
       if (agentId) {
-        await client?.callTool({ name: "delete_chat", args: { agentId } });
+        await client?.callTool({ name: "kill_agent", args: { agentId } });
       }
       await client?.close();
       await daemon.stop();
-      await removeTempDirAsync(ottoHome);
-      await removeTempDirAsync(staticDir);
-      await removeTempDirAsync(agentCwd);
+      await rm(paseoHome, { recursive: true, force: true });
+      await rm(staticDir, { recursive: true, force: true });
+      await rm(agentCwd, { recursive: true, force: true });
     }
   }, 30_000);
 
-  test("create_chat auto-injects otto MCP by default and can be disabled", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-"));
+  test("create_agent auto-injects paseo MCP by default and can be disabled", async () => {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-home-"));
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-agent-cwd-"));
     const port = await getAvailablePort();
     const recorder: LaunchRecorder = { recordedLaunches: [] };
 
-    const daemonConfig: OttoDaemonConfig = {
+    const daemonConfig: PaseoDaemonConfig = {
       listen: `127.0.0.1:${port}`,
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: true,
       staticDir,
       mcpDebug: false,
       agentClients: createMcpRecordingAgentClients(recorder),
-      agentStoragePath: path.join(ottoHome, "agents"),
+      agentStoragePath: path.join(paseoHome, "agents"),
     };
 
-    const daemon = await createOttoDaemon(daemonConfig, pino({ level: "silent" }));
+    const daemon = await createPaseoDaemon(daemonConfig, pino({ level: "silent" }));
     await daemon.start();
 
     const client = await createMcpClient(`http://127.0.0.1:${port}/mcp/agents`);
 
-    const disabledOttoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-disabled-"));
-    const disabledStaticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-disabled-"));
-    const disabledAgentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-disabled-"));
+    const disabledPaseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-home-disabled-"));
+    const disabledStaticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-disabled-"));
+    const disabledAgentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-agent-cwd-disabled-"));
     const disabledPort = await getAvailablePort();
     const disabledRecorder: LaunchRecorder = { recordedLaunches: [] };
-    const disabledDaemonConfig: OttoDaemonConfig = {
+    const disabledDaemonConfig: PaseoDaemonConfig = {
       listen: `127.0.0.1:${disabledPort}`,
-      ottoHome: disabledOttoHome,
+      paseoHome: disabledPaseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: true,
@@ -346,9 +429,9 @@ describe("agent MCP end-to-end (offline)", () => {
       staticDir: disabledStaticDir,
       mcpDebug: false,
       agentClients: createMcpRecordingAgentClients(disabledRecorder),
-      agentStoragePath: path.join(disabledOttoHome, "agents"),
+      agentStoragePath: path.join(disabledPaseoHome, "agents"),
     };
-    const disabledDaemon = await createOttoDaemon(disabledDaemonConfig, pino({ level: "silent" }));
+    const disabledDaemon = await createPaseoDaemon(disabledDaemonConfig, pino({ level: "silent" }));
     await disabledDaemon.start();
 
     const disabledClient = await createMcpClient(`http://127.0.0.1:${disabledPort}/mcp/agents`);
@@ -357,14 +440,13 @@ describe("agent MCP end-to-end (offline)", () => {
     let disabledAgentId: string | null = null;
     try {
       const result = await client.callTool({
-        name: "create_chat",
+        name: "create_agent",
         args: {
           cwd: agentCwd,
           title: "Injected MCP",
           provider: "claude/claude-test-model",
           mode: "bypassPermissions",
           initialPrompt: "reply with done and stop",
-          background: true,
         },
       });
       const payload = getStructuredContent(result);
@@ -372,23 +454,22 @@ describe("agent MCP end-to-end (offline)", () => {
       expect(agentId).toBeTruthy();
 
       expect(recorder.recordedLaunches.at(-1)?.mcpServers).toMatchObject({
-        otto: {
+        paseo: {
           type: "http",
           url: `http://127.0.0.1:${port}/mcp/agents?callerAgentId=${agentId!}`,
         },
       });
       const injectedAgent = daemon.agentManager.getAgent(agentId!);
-      expect(injectedAgent?.config.mcpServers?.otto).toBeUndefined();
+      expect(injectedAgent?.config.mcpServers?.paseo).toBeUndefined();
 
       const disabledResult = await disabledClient.callTool({
-        name: "create_chat",
+        name: "create_agent",
         args: {
           cwd: disabledAgentCwd,
           title: "No injected MCP",
           provider: "claude/claude-test-model",
           mode: "bypassPermissions",
           initialPrompt: "reply with done and stop",
-          background: true,
         },
       });
       const disabledPayload = getStructuredContent(disabledResult);
@@ -396,49 +477,49 @@ describe("agent MCP end-to-end (offline)", () => {
         typeof disabledPayload?.agentId === "string" ? disabledPayload.agentId : null;
       expect(disabledAgentId).toBeTruthy();
 
-      expect(disabledRecorder.recordedLaunches.at(-1)?.mcpServers?.otto).toBeUndefined();
+      expect(disabledRecorder.recordedLaunches.at(-1)?.mcpServers?.paseo).toBeUndefined();
       const disabledAgent = disabledDaemon.agentManager.getAgent(disabledAgentId!);
-      expect(disabledAgent?.config.mcpServers?.otto).toBeUndefined();
+      expect(disabledAgent?.config.mcpServers?.paseo).toBeUndefined();
     } finally {
       if (agentId) {
-        await client.callTool({ name: "delete_chat", args: { agentId } });
+        await client.callTool({ name: "kill_agent", args: { agentId } });
       }
       if (disabledAgentId) {
-        await disabledClient.callTool({ name: "delete_chat", args: { agentId: disabledAgentId } });
+        await disabledClient.callTool({ name: "kill_agent", args: { agentId: disabledAgentId } });
       }
       await disabledClient.close();
       await disabledDaemon.stop();
-      await removeTempDirAsync(disabledOttoHome);
-      await removeTempDirAsync(disabledStaticDir);
-      await removeTempDirAsync(disabledAgentCwd);
+      await rm(disabledPaseoHome, { recursive: true, force: true });
+      await rm(disabledStaticDir, { recursive: true, force: true });
+      await rm(disabledAgentCwd, { recursive: true, force: true });
       await client.close();
       await daemon.stop();
-      await removeTempDirAsync(ottoHome);
-      await removeTempDirAsync(staticDir);
-      await removeTempDirAsync(agentCwd);
+      await rm(paseoHome, { recursive: true, force: true });
+      await rm(staticDir, { recursive: true, force: true });
+      await rm(agentCwd, { recursive: true, force: true });
     }
   }, 30_000);
 
-  test("create_chat injects a loopback MCP URL when the daemon listens on all interfaces", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-"));
+  test("create_agent injects a loopback MCP URL when the daemon listens on all interfaces", async () => {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-home-"));
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-agent-cwd-"));
     const port = await getAvailablePort();
     const recorder: LaunchRecorder = { recordedLaunches: [] };
 
-    const daemonConfig: OttoDaemonConfig = {
+    const daemonConfig: PaseoDaemonConfig = {
       listen: `0.0.0.0:${port}`,
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: true,
       staticDir,
       mcpDebug: false,
       agentClients: createMcpRecordingAgentClients(recorder),
-      agentStoragePath: path.join(ottoHome, "agents"),
+      agentStoragePath: path.join(paseoHome, "agents"),
     };
 
-    const daemon = await createOttoDaemon(daemonConfig, pino({ level: "silent" }));
+    const daemon = await createPaseoDaemon(daemonConfig, pino({ level: "silent" }));
     await daemon.start();
 
     const client = await createMcpClient(`http://127.0.0.1:${port}/mcp/agents`);
@@ -446,14 +527,13 @@ describe("agent MCP end-to-end (offline)", () => {
     let agentId: string | null = null;
     try {
       const result = await client.callTool({
-        name: "create_chat",
+        name: "create_agent",
         args: {
           cwd: agentCwd,
           title: "Wildcard MCP",
           provider: "claude/claude-test-model",
           mode: "bypassPermissions",
           initialPrompt: "reply with done and stop",
-          background: true,
         },
       });
       const payload = getStructuredContent(result);
@@ -461,44 +541,44 @@ describe("agent MCP end-to-end (offline)", () => {
       expect(agentId).toBeTruthy();
 
       expect(recorder.recordedLaunches.at(-1)?.mcpServers).toMatchObject({
-        otto: {
+        paseo: {
           type: "http",
           url: `http://127.0.0.1:${port}/mcp/agents?callerAgentId=${agentId!}`,
         },
       });
       const injectedAgent = daemon.agentManager.getAgent(agentId!);
-      expect(injectedAgent?.config.mcpServers?.otto).toBeUndefined();
+      expect(injectedAgent?.config.mcpServers?.paseo).toBeUndefined();
     } finally {
       if (agentId) {
-        await client.callTool({ name: "delete_chat", args: { agentId } });
+        await client.callTool({ name: "kill_agent", args: { agentId } });
       }
       await client.close();
       await daemon.stop();
-      await removeTempDirAsync(ottoHome);
-      await removeTempDirAsync(staticDir);
-      await removeTempDirAsync(agentCwd);
+      await rm(paseoHome, { recursive: true, force: true });
+      await rm(staticDir, { recursive: true, force: true });
+      await rm(agentCwd, { recursive: true, force: true });
     }
   }, 30_000);
 
-  test("create_chat with background initialPrompt reflects running state once the first turn starts", async () => {
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-"));
+  test("create_agent with background initialPrompt reflects running state once the first turn starts", async () => {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-home-"));
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-agent-cwd-"));
     const port = await getAvailablePort();
 
-    const daemonConfig: OttoDaemonConfig = {
+    const daemonConfig: PaseoDaemonConfig = {
       listen: `127.0.0.1:${port}`,
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: true,
       staticDir,
       mcpDebug: false,
       agentClients: createTestAgentClients(),
-      agentStoragePath: path.join(ottoHome, "agents"),
+      agentStoragePath: path.join(paseoHome, "agents"),
     };
 
-    const daemon = await createOttoDaemon(daemonConfig, pino({ level: "silent" }));
+    const daemon = await createPaseoDaemon(daemonConfig, pino({ level: "silent" }));
     await daemon.start();
 
     const client = await createMcpClient(`http://127.0.0.1:${port}/mcp/agents`);
@@ -506,14 +586,13 @@ describe("agent MCP end-to-end (offline)", () => {
     let agentId: string | null = null;
     try {
       const result = await client.callTool({
-        name: "create_chat",
+        name: "create_agent",
         args: {
           cwd: agentCwd,
           title: "MCP background create",
           provider: "codex/gpt-5.4-mini",
           mode: "full-access",
           initialPrompt: "Run exactly: sleep 30",
-          background: true,
         },
       });
 
@@ -523,24 +602,24 @@ describe("agent MCP end-to-end (offline)", () => {
       expect(payload?.status).toBe("running");
 
       const statusResult = await client.callTool({
-        name: "get_chat_status",
+        name: "get_agent_status",
         args: { agentId },
       });
       const statusPayload = getStructuredContent(statusResult);
       expect(statusPayload?.status).toBe("running");
     } finally {
       if (agentId) {
-        await client.callTool({ name: "delete_chat", args: { agentId } });
+        await client.callTool({ name: "kill_agent", args: { agentId } });
       }
       await client.close();
       await daemon.stop();
-      await removeTempDirAsync(ottoHome);
-      await removeTempDirAsync(staticDir);
-      await removeTempDirAsync(agentCwd);
+      await rm(paseoHome, { recursive: true, force: true });
+      await rm(staticDir, { recursive: true, force: true });
+      await rm(agentCwd, { recursive: true, force: true });
     }
   }, 30_000);
 
-  test("create_chat propagates initial-turn start failure instead of returning success", async () => {
+  test("create_agent propagates initial-turn start failure instead of returning success", async () => {
     class StartTurnFailureSession implements AgentSession {
       readonly provider = "codex" as const;
       readonly id = "mcp-start-turn-failure-session";
@@ -659,14 +738,14 @@ describe("agent MCP end-to-end (offline)", () => {
       }
     }
 
-    const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
-    const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "otto-agent-cwd-"));
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-home-"));
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    const agentCwd = await mkdtemp(path.join(os.tmpdir(), "paseo-agent-cwd-"));
     const port = await getAvailablePort();
 
-    const daemonConfig: OttoDaemonConfig = {
+    const daemonConfig: PaseoDaemonConfig = {
       listen: `127.0.0.1:${port}`,
-      ottoHome,
+      paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: true,
@@ -676,166 +755,138 @@ describe("agent MCP end-to-end (offline)", () => {
         ...createTestAgentClients(),
         codex: new StartTurnFailureClient(),
       },
-      agentStoragePath: path.join(ottoHome, "agents"),
+      agentStoragePath: path.join(paseoHome, "agents"),
     };
 
-    const daemon = await createOttoDaemon(daemonConfig, pino({ level: "silent" }));
+    const daemon = await createPaseoDaemon(daemonConfig, pino({ level: "silent" }));
     await daemon.start();
 
     const client = await createMcpClient(`http://127.0.0.1:${port}/mcp/agents`);
 
-    let agentId: string | null = null;
     try {
       const result = await client.callTool({
-        name: "create_chat",
+        name: "create_agent",
         args: {
           cwd: agentCwd,
           title: "MCP start failure",
           provider: "codex/gpt-5.4-mini",
           mode: "full-access",
           initialPrompt: "Run exactly: sleep 30",
-          background: true,
         },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result)).toContain("Initial turn failed to start");
+      expect(getStructuredContent(result)?.agentId).toBeUndefined();
+    } finally {
+      await client.close();
+      await daemon.stop();
+      await rm(paseoHome, { recursive: true, force: true });
+      await rm(staticDir, { recursive: true, force: true });
+      await rm(agentCwd, { recursive: true, force: true });
+    }
+  }, 30_000);
+
+  test("create_agent with worktree is async and boots terminals only after setup success", async () => {
+    const paseoHome = await mkdtemp(path.join(os.tmpdir(), "paseo-home-"));
+    const staticDir = await mkdtemp(path.join(os.tmpdir(), "paseo-static-"));
+    const repoRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-worktree-repo-"));
+    const port = await getAvailablePort();
+
+    const daemonConfig: PaseoDaemonConfig = {
+      listen: `127.0.0.1:${port}`,
+      paseoHome,
+      corsAllowedOrigins: [],
+      hostnames: true,
+      mcpEnabled: true,
+      staticDir,
+      mcpDebug: false,
+      agentClients: createTestAgentClients(),
+      agentStoragePath: path.join(paseoHome, "agents"),
+    };
+
+    const daemon = await createPaseoDaemon(daemonConfig, pino({ level: "silent" }));
+    await daemon.start();
+
+    const client = await createMcpClient(`http://127.0.0.1:${port}/mcp/agents`);
+
+    let agentId: string | null = null;
+    try {
+      const { execSync } = await import("node:child_process");
+      execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
+      execSync("git config user.email 'test@test.com'", { cwd: repoRoot, stdio: "pipe" });
+      execSync("git config user.name 'Test'", { cwd: repoRoot, stdio: "pipe" });
+      await writeFile(path.join(repoRoot, "file.txt"), "hello\n", "utf8");
+      execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
+      execSync("git -c commit.gpgsign=false commit -m 'initial'", { cwd: repoRoot, stdio: "pipe" });
+
+      const setupCommand =
+        'while [ ! -f "$PASEO_WORKTREE_PATH/allow-setup" ]; do sleep 0.05; done; echo "done" > "$PASEO_WORKTREE_PATH/setup-done.txt"';
+      await writeFile(
+        path.join(repoRoot, "paseo.json"),
+        JSON.stringify({
+          worktree: {
+            setup: [setupCommand],
+            terminals: [
+              {
+                name: "Dev Server",
+                command: 'echo "dev-server" > dev-terminal.txt; tail -f /dev/null',
+              },
+            ],
+          },
+        }),
+        "utf8",
+      );
+      execSync("git add paseo.json", { cwd: repoRoot, stdio: "pipe" });
+      execSync("git -c commit.gpgsign=false commit -m 'add worktree config'", {
+        cwd: repoRoot,
+        stdio: "pipe",
+      });
+
+      const result = await withTimeout({
+        promise: client.callTool({
+          name: "create_agent",
+          args: {
+            cwd: repoRoot,
+            title: "MCP worktree setup terminals",
+            provider: "claude/claude-test-model",
+            mode: "bypassPermissions",
+            initialPrompt: "say done and stop",
+            worktreeName: "mcp-worktree-setup-test",
+            baseBranch: "main",
+          },
+        }),
+        timeoutMs: 2500,
+        label: "create_agent should not block on setup",
       });
 
       const payload = getStructuredContent(result);
       agentId = typeof payload?.agentId === "string" ? payload.agentId : null;
       expect(agentId).toBeTruthy();
+      const worktreePath = typeof payload?.cwd === "string" ? payload.cwd : "";
+      expect(worktreePath).toContain(`${path.sep}worktrees${path.sep}`);
+      expect(existsSync(path.join(worktreePath, "setup-done.txt"))).toBe(false);
+      expect(existsSync(path.join(worktreePath, "dev-terminal.txt"))).toBe(false);
 
-      await assertAgentNotRunning({ client, agentId: agentId! });
-      const statusResult = await client.callTool({
-        name: "get_chat_status",
-        args: { agentId },
+      await writeFile(path.join(worktreePath, "allow-setup"), "ok\n", "utf8");
+
+      await waitForPathExists({
+        targetPath: path.join(worktreePath, "setup-done.txt"),
+        timeoutMs: 15000,
       });
-      const statusPayload = getStructuredContent(statusResult);
-      expect(statusPayload?.status).toBe("error");
-      const snapshot = statusPayload?.snapshot;
-      const lastError =
-        snapshot && typeof snapshot === "object" ? Reflect.get(snapshot, "lastError") : undefined;
-      expect(lastError).toContain("Initial turn failed to start");
+      await waitForPathExists({
+        targetPath: path.join(worktreePath, "dev-terminal.txt"),
+        timeoutMs: 30000,
+      });
     } finally {
       if (agentId) {
-        await client.callTool({ name: "delete_chat", args: { agentId } });
+        await client.callTool({ name: "kill_agent", args: { agentId } });
       }
       await client.close();
       await daemon.stop();
-      await removeTempDirAsync(ottoHome);
-      await removeTempDirAsync(staticDir);
-      await removeTempDirAsync(agentCwd);
+      await rm(paseoHome, { recursive: true, force: true });
+      await rm(staticDir, { recursive: true, force: true });
+      await rm(repoRoot, { recursive: true, force: true });
     }
-  }, 30_000);
-
-  // The otto.json fixture below is a POSIX shell script (`while [ ! -f ]`,
-  // `tail -f /dev/null`); the setup runner uses the platform shell, so cmd.exe
-  // cannot execute it.
-  test.skipIf(isPlatform("win32"))(
-    "create_chat with worktree is async and boots terminals only after setup success",
-    async () => {
-      const ottoHome = await mkdtemp(path.join(os.tmpdir(), "otto-home-"));
-      const staticDir = await mkdtemp(path.join(os.tmpdir(), "otto-static-"));
-      const repoRoot = await mkdtemp(path.join(os.tmpdir(), "otto-worktree-repo-"));
-      const port = await getAvailablePort();
-
-      const daemonConfig: OttoDaemonConfig = {
-        listen: `127.0.0.1:${port}`,
-        ottoHome,
-        corsAllowedOrigins: [],
-        hostnames: true,
-        mcpEnabled: true,
-        staticDir,
-        mcpDebug: false,
-        agentClients: createTestAgentClients(),
-        agentStoragePath: path.join(ottoHome, "agents"),
-      };
-
-      const daemon = await createOttoDaemon(daemonConfig, pino({ level: "silent" }));
-      await daemon.start();
-
-      const client = await createMcpClient(`http://127.0.0.1:${port}/mcp/agents`);
-
-      let agentId: string | null = null;
-      try {
-        const { execSync } = await import("node:child_process");
-        execSync("git init -b main", { cwd: repoRoot, stdio: "pipe" });
-        execSync('git config user.email "test@test.com"', { cwd: repoRoot, stdio: "pipe" });
-        execSync('git config user.name "Test"', { cwd: repoRoot, stdio: "pipe" });
-        await writeFile(path.join(repoRoot, "file.txt"), "hello\n", "utf8");
-        execSync("git add .", { cwd: repoRoot, stdio: "pipe" });
-        execSync('git -c commit.gpgsign=false commit -m "initial"', {
-          cwd: repoRoot,
-          stdio: "pipe",
-        });
-
-        const setupCommand =
-          'while [ ! -f "$OTTO_WORKTREE_PATH/allow-setup" ]; do sleep 0.05; done; echo "done" > "$OTTO_WORKTREE_PATH/setup-done.txt"';
-        await writeFile(
-          path.join(repoRoot, "otto.json"),
-          JSON.stringify({
-            worktree: {
-              setup: [setupCommand],
-              terminals: [
-                {
-                  name: "Dev Server",
-                  command: 'echo "dev-server" > dev-terminal.txt; tail -f /dev/null',
-                },
-              ],
-            },
-          }),
-          "utf8",
-        );
-        execSync("git add otto.json", { cwd: repoRoot, stdio: "pipe" });
-        execSync('git -c commit.gpgsign=false commit -m "add worktree config"', {
-          cwd: repoRoot,
-          stdio: "pipe",
-        });
-
-        const result = await withTimeout({
-          promise: client.callTool({
-            name: "create_chat",
-            args: {
-              cwd: repoRoot,
-              title: "MCP worktree setup terminals",
-              provider: "claude/claude-test-model",
-              mode: "bypassPermissions",
-              initialPrompt: "say done and stop",
-              worktreeName: "mcp-worktree-setup-test",
-              baseBranch: "main",
-              background: true,
-            },
-          }),
-          timeoutMs: 2500,
-          label: "create_chat should not block on setup",
-        });
-
-        const payload = getStructuredContent(result);
-        agentId = typeof payload?.agentId === "string" ? payload.agentId : null;
-        expect(agentId).toBeTruthy();
-        const worktreePath = typeof payload?.cwd === "string" ? payload.cwd : "";
-        expect(worktreePath).toContain(`${path.sep}worktrees${path.sep}`);
-        expect(existsSync(path.join(worktreePath, "setup-done.txt"))).toBe(false);
-        expect(existsSync(path.join(worktreePath, "dev-terminal.txt"))).toBe(false);
-
-        await writeFile(path.join(worktreePath, "allow-setup"), "ok\n", "utf8");
-
-        await waitForPathExists({
-          targetPath: path.join(worktreePath, "setup-done.txt"),
-          timeoutMs: 15000,
-        });
-        await waitForPathExists({
-          targetPath: path.join(worktreePath, "dev-terminal.txt"),
-          timeoutMs: 30000,
-        });
-      } finally {
-        if (agentId) {
-          await client.callTool({ name: "delete_chat", args: { agentId } });
-        }
-        await client.close();
-        await daemon.stop();
-        await removeTempDirAsync(ottoHome);
-        await removeTempDirAsync(staticDir);
-        await removeTempDirAsync(repoRoot);
-      }
-    },
-    60_000,
-  );
+  }, 60_000);
 });

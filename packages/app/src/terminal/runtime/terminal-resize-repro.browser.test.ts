@@ -1,15 +1,15 @@
 import { page } from "@vitest/browser/context";
 import { afterEach, describe, expect, it } from "vitest";
-import type { TerminalState } from "@otto-code/protocol/messages";
+import type { TerminalState } from "@getpaseo/protocol/messages";
 import { encodeTerminalOutput, TerminalEmulatorRuntime } from "./terminal-emulator-runtime";
 
-// Regression: "streaming pino log, resized the Otto terminal, old logs stayed
+// Regression: "streaming pino log, resized the Paseo terminal, old logs stayed
 // narrow and new logs drew on top of the old ones."
 //
 // A heavy stream overflows MAX_TERMINAL_OUTPUT_FRAME_BYTES, so the server sends a
 // SNAPSHOT mid-stream. The client restores it via renderTerminalSnapshotToAnsi.
 // When the snapshot carries per-row soft-wrap flags, restored long lines must
-// reflow on resize just like live output - not freeze at the snapshot width.
+// reflow on resize just like live output — not freeze at the snapshot width.
 
 interface Mounted {
   host: HTMLDivElement;
@@ -61,7 +61,7 @@ function mount(width: number, height: number): Mounted {
     scrollback: 10_000,
     theme: { background: "#0b0b0b", foreground: "#e6e6e6", cursor: "#e6e6e6" },
   });
-  const terminal = window.__ottoTerminal as InspectableTerminal | undefined;
+  const terminal = window.__paseoTerminal as InspectableTerminal | undefined;
   if (!terminal) {
     throw new Error("terminal did not mount");
   }
@@ -140,7 +140,7 @@ afterEach(() => {
   }
 });
 
-describe("terminal resize reflow repro (Otto terminal)", () => {
+describe("terminal resize reflow repro (Paseo terminal)", () => {
   it("snapshot-restored rows stay frozen at the snapshot width after the terminal grows", async () => {
     await page.viewport(1600, 700);
     const m = mount(560, 360); // ~70 cols
@@ -176,7 +176,7 @@ describe("terminal resize reflow repro (Otto terminal)", () => {
     // Post-snapshot streamed output reflows to fill the wide terminal.
     expect(streamedRowLen).toBeGreaterThan(narrowCols + 20);
     // Snapshot-restored content reflows too, instead of staying frozen at the
-    // snapshot width - the reported bug.
+    // snapshot width — the reported bug.
     expect(snapshotRowLen).toBeGreaterThan(narrowCols + 20);
   });
 });

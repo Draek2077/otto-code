@@ -1,3 +1,4 @@
+// OTTO(identity): test the installed Otto identity.
 import { describe, expect, it } from "vitest";
 import type { WorkspaceDescriptor } from "@/stores/session-store";
 import type { WorkspaceRecoveryModel } from "@/workspace-recovery/model";

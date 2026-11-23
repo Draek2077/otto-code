@@ -1,21 +1,22 @@
-import type { ComponentProps } from "react";
-import { View } from "react-native";
-import { GestureDetector } from "react-native-gesture-handler";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Pressable, View } from "react-native";
+import { GestureDetector, type GestureType } from "react-native-gesture-handler";
 import { StyleSheet } from "react-native-unistyles";
 import {
   resolveSidebarResizeHandleGeometry,
   type SidebarResizeEdge,
 } from "@/components/sidebar-resize-handle-layout";
-import { useResizeHandleHighlight } from "@/components/use-resize-handle-highlight";
 import { isWeb } from "@/constants/platform";
 import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 
 interface SidebarResizeHandleProps {
   edge: SidebarResizeEdge;
-  gesture: ComponentProps<typeof GestureDetector>["gesture"];
+  gesture: GestureType;
   pressed: boolean;
   testID: string;
 }
+
+const HIGHLIGHT_DELAY_MS = 100;
 
 const webResizeCursorStyle = isWeb
   ? ({
@@ -37,7 +38,8 @@ export function SidebarResizeHandle({ edge, gesture, pressed, testID }: SidebarR
 }
 
 function PointerResizeHandle({ edge, gesture, testID }: SidebarResizeHandleProps) {
-  const { highlighted, handleHoverIn, handleHoverOut } = useResizeHandleHighlight();
+  const [highlighted, setHighlighted] = useState(false);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const geometry = resolveSidebarResizeHandleGeometry(true);
   const hitAreaStyle = [
     styles.hitArea,
@@ -46,28 +48,39 @@ function PointerResizeHandle({ edge, gesture, testID }: SidebarResizeHandleProps
     webResizeCursorStyle,
   ];
 
-  // A plain View, not a Pressable: react-native-web renders Pressable as a
-  // tabIndex=0 div, and the global :focus-visible ring then outlines the whole
-  // full-height hit band instead of the 1px seam. The drag lives on the
-  // GestureDetector; this element only tracks hover, per docs/hover.md.
+  const cancelHighlightTimer = useCallback(() => {
+    if (highlightTimerRef.current === null) return;
+    clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = null;
+  }, []);
+
+  const handleHoverIn = useCallback(() => {
+    cancelHighlightTimer();
+    highlightTimerRef.current = setTimeout(() => {
+      highlightTimerRef.current = null;
+      setHighlighted(true);
+    }, HIGHLIGHT_DELAY_MS);
+  }, [cancelHighlightTimer]);
+
+  const handleHoverOut = useCallback(() => {
+    cancelHighlightTimer();
+    setHighlighted(false);
+  }, [cancelHighlightTimer]);
+
+  useEffect(() => cancelHighlightTimer, [cancelHighlightTimer]);
+
   return (
     <GestureDetector gesture={gesture}>
-      <View
+      <Pressable
         testID={testID}
-        role="separator"
-        aria-orientation="vertical"
         style={hitAreaStyle}
-        onPointerEnter={handleHoverIn}
-        onPointerLeave={handleHoverOut}
+        onHoverIn={handleHoverIn}
+        onHoverOut={handleHoverOut}
       >
         {highlighted ? (
-          <View
-            pointerEvents="none"
-            testID={`${testID}-highlight`}
-            style={[styles.highlight, edge === "left" ? styles.leftEdgeHighlight : null]}
-          />
+          <View pointerEvents="none" testID={`${testID}-highlight`} style={styles.highlight} />
         ) : null}
-      </View>
+      </Pressable>
     </GestureDetector>
   );
 }
@@ -121,14 +134,8 @@ const styles = StyleSheet.create((theme) => ({
     bottom: 0,
     left: 5,
     width: 1,
-    backgroundColor: theme.colors.accent,
-  },
-  // A left-side border occupies the first pixel of its parent. The pointer hit
-  // band starts from the padding box after that border, so its hover line must
-  // move one pixel left to occupy the exact same seam rather than jumping
-  // inward on hover.
-  leftEdgeHighlight: {
-    left: 4,
+    backgroundColor: theme.colors.foreground,
+    opacity: 0.25,
   },
   touchLayer: {
     position: "absolute",

@@ -1,18 +1,3 @@
-import { prunePreBranchDraftKeys } from "./otto/draft-keys";
-import { buildSearchNoteAttachmentSnapshot } from "./otto/search-note-attachment";
-export {
-  buildReviewDraftKey,
-  buildReviewDraftBranchKeyPrefix,
-  buildSearchNoteDraftKey,
-  prunePreBranchDraftKeys,
-  type BuildReviewDraftKeyInput,
-  type BuildReviewDraftBranchKeyPrefixInput,
-  type BuildSearchNoteDraftKeyInput,
-} from "./otto/draft-keys";
-export {
-  buildSearchNoteAttachmentSnapshot,
-  type BuildSearchNoteAttachmentSnapshotInput,
-} from "./otto/search-note-attachment";
 import { useMemo } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
@@ -22,41 +7,42 @@ import type { ParsedDiffFile } from "@/git/use-diff-query";
 import {
   addCommentToState,
   clearReviewInState,
-  clearReviewScopeInState,
   deleteCommentFromState,
   normalizePersistedState,
   type ReviewDraftComment,
-  type ReviewDraftScopeSummary,
   type ReviewDraftMode,
   type ReviewDraftSide,
   type ReviewDraftStoreState,
   serializeReviewDraftState,
   SerializedReviewDraftStateSchema,
-  summarizeReviewDraftsForPrefix,
   updateCommentInState,
 } from "@/review/state";
 import { generateMessageId } from "@/types/stream";
 import { buildNumberedDiffHunks, type NumberedDiffLine } from "@/utils/diff-layout";
-import type { AgentAttachment } from "@otto-code/protocol/messages";
+import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
-export type {
-  ReviewDraftComment,
-  ReviewDraftMode,
-  ReviewDraftScopeSummary,
-  ReviewDraftSide,
-} from "@/review/state";
+export type { ReviewDraftComment, ReviewDraftMode, ReviewDraftSide } from "@/review/state";
 
 // v2 dropped the legacy persisted activeModesByScope field.
-// v3 added branch scoping to draft keys; pre-branch drafts are pruned on migrate
-// because their branch can't be recovered (see prunePreBranchDraftKeys).
-const STORE_VERSION = 3;
+const STORE_VERSION = 2;
 const CONTEXT_RADIUS = 3;
 const EMPTY_REVIEW_DRAFT_COMMENTS: ReviewDraftComment[] = [];
 
 type ReviewAttachment = Extract<AgentAttachment, { type: "review" }>;
 type ReviewAttachmentContextLine = ReviewAttachment["comments"][number]["context"]["targetLine"];
 type ReviewComposerAttachment = Extract<ComposerAttachment, { kind: "review" }>;
+
+export interface BuildReviewDraftKeyInput {
+  serverId: string;
+  workspaceId?: string | null;
+  cwd: string;
+  mode: ReviewDraftMode;
+  baseRef?: string | null;
+  ignoreWhitespace: boolean;
+}
+
+type BuildReviewDraftScopeKeyInput = Omit<BuildReviewDraftKeyInput, "mode">;
 
 export interface BuildReviewAttachmentSnapshotInput {
   reviewDraftKey: string;
@@ -80,10 +66,49 @@ interface ReviewDraftStoreActions {
   }) => void;
   deleteComment: (input: { key: string; id: string }) => void;
   clearReview: (input: { key: string }) => void;
-  clearReviewScope: (input: { keyPrefix: string }) => void;
 }
 
 type ReviewDraftStore = ReviewDraftStoreState & ReviewDraftStoreActions;
+
+function encodeKeyPart(value: string): string {
+  return encodeURIComponent(value.trim());
+}
+
+function normalizeCwd(cwd: string): string {
+  const trimmed = cwd.trim();
+  if (trimmed === "/") {
+    return trimmed;
+  }
+  return trimmed.replace(/\/+$/, "");
+}
+
+function normalizeBaseRef(baseRef: string | null | undefined): string {
+  return baseRef?.trim() ?? "";
+}
+
+function buildReviewDraftScopeParts(input: BuildReviewDraftScopeKeyInput): string[] {
+  const workspaceId = input.workspaceId?.trim();
+  // workspaceId is opaque; do not parse this key back into a path.
+  const workspacePart = workspaceId
+    ? `workspace=${encodeKeyPart(workspaceId)}`
+    : `cwd=${encodeKeyPart(normalizeCwd(input.cwd))}`;
+
+  return [
+    "review",
+    `server=${encodeKeyPart(input.serverId)}`,
+    workspacePart,
+    `base=${encodeKeyPart(normalizeBaseRef(input.baseRef))}`,
+    `ignoreWhitespace=${input.ignoreWhitespace ? "true" : "false"}`,
+  ];
+}
+
+export function buildReviewDraftKey(input: BuildReviewDraftKeyInput): string {
+  const [prefix, serverPart, workspacePart, basePart, whitespacePart] =
+    buildReviewDraftScopeParts(input);
+  return [prefix, serverPart, workspacePart, `mode=${input.mode}`, basePart, whitespacePart].join(
+    ":",
+  );
+}
 
 function createDraftComment(input: ReviewDraftCommentInput): ReviewDraftComment {
   const now = new Date().toISOString();
@@ -123,16 +148,13 @@ export const useReviewDraftStore = create<ReviewDraftStore>()(
       clearReview: (input) => {
         set((state) => clearReviewInState(state, input));
       },
-      clearReviewScope: (input) => {
-        set((state) => clearReviewScopeInState(state, input));
-      },
     }),
     {
-      name: "@otto:review-draft-store",
+      name: "@paseo:review-draft-store",
       version: STORE_VERSION,
       storage: createValidatedPersistStorage(AsyncStorage, SerializedReviewDraftStateSchema),
       partialize: (state) => serializeReviewDraftState(state),
-      migrate: async (state) => prunePreBranchDraftKeys(normalizePersistedState(state)),
+      migrate: async (state) => normalizePersistedState(state),
     },
   ),
 );
@@ -224,10 +246,10 @@ export function buildReviewAttachmentSnapshot(
 
   const attachment: ReviewAttachment = {
     type: "review",
-    mimeType: "application/otto-review",
+    mimeType: "application/paseo-review",
     cwd: input.cwd,
     mode: input.mode,
-    baseRef: input.baseRef?.trim() || null,
+    baseRef: normalizeBaseRef(input.baseRef) || null,
     comments,
   };
 
@@ -243,30 +265,8 @@ export function useReviewDraftComments(key: string): ReviewDraftComment[] {
   return useReviewDraftStore((state) => state.drafts[key] ?? EMPTY_REVIEW_DRAFT_COMMENTS);
 }
 
-export function useSearchNoteAttachmentSnapshot(input: {
-  key: string;
-  cwd: string;
-  lineTextByTarget: ReadonlyMap<string, string>;
-}): ReviewComposerAttachment | null {
-  const comments = useReviewDraftComments(input.key);
-  return useMemo(
-    () =>
-      buildSearchNoteAttachmentSnapshot({
-        reviewDraftKey: input.key,
-        cwd: input.cwd,
-        comments,
-        lineTextByTarget: input.lineTextByTarget,
-      }),
-    [comments, input.cwd, input.key, input.lineTextByTarget],
-  );
-}
-
 export function useClearReviewDraft(): ReviewDraftStoreActions["clearReview"] {
   return useReviewDraftStore((state) => state.clearReview);
-}
-
-export function useClearReviewScope(): ReviewDraftStoreActions["clearReviewScope"] {
-  return useReviewDraftStore((state) => state.clearReviewScope);
 }
 
 export function addReviewDraftComment(input: {
@@ -299,16 +299,6 @@ export function useReviewCommentCount(key: string): number {
   return useReviewDraftStore((state) => state.drafts[key]?.length ?? 0);
 }
 
-/**
- * How many comments live under a key prefix, and how many files they touch.
- * Selects the stable `drafts` record and derives in a memo, so the returned
- * object identity only changes when the drafts themselves do.
- */
-export function useReviewDraftScopeSummary(keyPrefix: string): ReviewDraftScopeSummary {
-  const drafts = useReviewDraftStore((state) => state.drafts);
-  return useMemo(() => summarizeReviewDraftsForPrefix(drafts, keyPrefix), [drafts, keyPrefix]);
-}
-
 export function useReviewAttachmentSnapshot(input: {
   key: string;
   diffFiles: readonly ParsedDiffFile[];
@@ -329,4 +319,44 @@ export function useReviewAttachmentSnapshot(input: {
       }),
     [comments, input.key, input.cwd, input.mode, input.baseRef, input.diffFiles],
   );
+}
+
+/** Acknowledgement removes only the versions included in that submission. */
+export function clearSentReviewDraftComments(input: {
+  key: string;
+  comments: readonly ReviewDraftComment[];
+}): void {
+  const sentById = new Map(input.comments.map((comment) => [comment.id, comment]));
+  useReviewDraftStore.setState((state) => {
+    const current = state.drafts[input.key];
+    if (!current) return state;
+    const remaining = current.filter((comment) => {
+      const sent = sentById.get(comment.id);
+      return !sent || sent.updatedAt !== comment.updatedAt || sent.body !== comment.body;
+    });
+    if (remaining.length === current.length) return state;
+    return { drafts: { ...state.drafts, [input.key]: remaining } };
+  });
+}
+
+/** Acknowledgement can remove the original while the user still has an edit open. */
+export function saveReviewDraftComment(input: {
+  key: string;
+  id: string | null;
+  comment: Pick<ReviewDraftComment, "filePath" | "side" | "lineNumber" | "body">;
+}): void {
+  const store = useReviewDraftStore.getState();
+  if (input.id && store.drafts[input.key]?.some((comment) => comment.id === input.id)) {
+    store.updateComment({ key: input.key, id: input.id, updates: { body: input.comment.body } });
+  } else {
+    store.addComment({
+      key: input.key,
+      comment: {
+        filePath: input.comment.filePath,
+        side: input.comment.side,
+        lineNumber: input.comment.lineNumber,
+        body: input.comment.body,
+      },
+    });
+  }
 }

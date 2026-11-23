@@ -13,14 +13,14 @@ this example. The URL is a placeholder. The `company` entry replaces an existing
 Install on a daemon with plugins enabled:
 
 ```bash
-otto plugin install /absolute/path/to/plugin-examples/agent-configuration
+paseo plugin install /absolute/path/to/plugin-examples/agent-configuration
 ```
 
 The callback receives the request after earlier plugins have transformed it. The nested spreads
-preserve their settings; the explicit values replace only the named fields. Otto validates and saves
+preserve their settings; the explicit values replace only the named fields. Paseo validates and saves
 the resulting configuration before starting the agent. Existing agents are unchanged.
 
-See the [lifecycle reference](../../public-docs/plugins/v0.8/reference.md#lifecycle-hooks) for ordering
+See the [lifecycle reference](../../public-docs/plugins/reference.md#lifecycle-hooks) for ordering
 and callback shapes. [Lifecycle actions](../lifecycle-actions) demonstrates provider switching and
 environment injection. Its provider-switch callback clears provider options when changing Codex to
 Claude, so use these examples separately when trying the Codex-specific settings.

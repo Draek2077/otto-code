@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Mic, MicOff, Square } from "@/components/icons/material-icons";
+import { Mic, MicOff, Square } from "lucide-react-native";
 import { FOOTER_HEIGHT } from "@/constants/layout";
 import { useVoiceTelemetry } from "@/contexts/voice-context";
 import { VolumeMeter } from "./volume-meter";
@@ -62,9 +62,9 @@ export function RealtimeVoiceOverlay({
           style={muteButtonStyle}
         >
           {isMuted ? (
-            <MicOff size={theme.iconSize.lg} color={theme.colors.palette.white} />
+            <MicOff size={theme.iconSize.lg} color={theme.colors.palette.white} strokeWidth={2.5} />
           ) : (
-            <Mic size={theme.iconSize.lg} color={theme.colors.foreground} />
+            <Mic size={theme.iconSize.lg} color={theme.colors.foreground} strokeWidth={2.5} />
           )}
         </Pressable>
 
@@ -78,7 +78,12 @@ export function RealtimeVoiceOverlay({
           {isSwitching ? (
             <LoadingSpinner size="small" color={theme.colors.palette.white} />
           ) : (
-            <Square size={theme.iconSize.lg} color={theme.colors.palette.white} />
+            <Square
+              size={theme.iconSize.lg}
+              color={theme.colors.palette.white}
+              fill={theme.colors.palette.white}
+              strokeWidth={2.5}
+            />
           )}
         </Pressable>
       </View>
@@ -90,12 +95,9 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    // Match the MessageBox (inputWrapper) exactly: fill its full bounds (the
-    // overlay container is absolutely sized to the input) and use the same
-    // corner radius, so the box never reads as a different size/shape.
     width: "100%",
-    height: "100%",
-    borderRadius: theme.borderRadius.md,
+    height: FOOTER_HEIGHT,
+    borderRadius: theme.borderRadius["2xl"],
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: OVERLAY_VERTICAL_PADDING,

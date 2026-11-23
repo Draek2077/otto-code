@@ -3,17 +3,18 @@ import type {
   AgentStreamEventPayload,
   CreateAgentWorktreeTarget,
   HubExecutionControlAction,
-} from "@otto-code/protocol/messages";
-import type { ProviderOptions, ToolPolicy } from "@otto-code/protocol/agent-types";
+} from "@getpaseo/protocol/messages";
+import type { ProviderOptions, ToolPolicy } from "@getpaseo/protocol/agent-types";
 
 import type { AgentManager, AgentManagerEvent, ManagedAgent } from "../agent/agent-manager.js";
 import type { McpServerConfig } from "../agent/agent-sdk-types.js";
 import type { AgentStorage, StoredAgentRecord } from "../agent/agent-storage.js";
 import type { BoundCreateAgentCommand } from "../agent/create-agent/create.js";
-import type { CreateOttoWorktreeWorkflowResult } from "../worktree-session.js";
+import type { CreatePaseoWorktreeWorkflowResult } from "../worktree-session.js";
 import { buildStoredAgentPayload } from "../agent/agent-projections.js";
 import { serializeAgentSnapshot, serializeAgentStreamEvent } from "../messages.js";
 import { daemonExecutionKey, type DaemonAgentOwner } from "../agent/agent-owner.js";
+import { OTTO_MCP_SERVER_NAME } from "@getpaseo/protocol/otto/identity";
 
 export interface HubExecutionAgentCreateInput {
   executionId: string;
@@ -59,7 +60,7 @@ interface DaemonExecutionsOptions {
   interruptAgent: (agentId: string) => Promise<unknown>;
   archiveWorkspace: (workspaceId: string, requestId: string) => Promise<unknown>;
   cleanupFailedCreate?: (input: {
-    createdWorktree: CreateOttoWorktreeWorkflowResult | null;
+    createdWorktree: CreatePaseoWorktreeWorkflowResult | null;
     createdAgentId: string | null;
   }) => Promise<void>;
 }
@@ -180,7 +181,7 @@ export class DaemonExecutions implements HubExecutionAgents {
     requireHubMcpNamespace(input.mcpServers);
     requireToolPolicyServers(input.toolPolicy, input.mcpServers);
 
-    let createdWorktree: CreateOttoWorktreeWorkflowResult | null = null;
+    let createdWorktree: CreatePaseoWorktreeWorkflowResult | null = null;
     let createdAgentId: string | null = null;
     let result: Awaited<ReturnType<BoundCreateAgentCommand>>;
     try {
@@ -205,7 +206,6 @@ export class DaemonExecutions implements HubExecutionAgents {
             }
           : {}),
         worktree: toCreateAgentWorktree(input.worktree),
-        background: true,
         notifyOnFinish: false,
         owner,
         onWorktreeCreated: (worktree) => {
@@ -308,6 +308,7 @@ export class DaemonExecutions implements HubExecutionAgents {
     if (!this.isOwned(agent)) {
       return null;
     }
+    if (event.event.type === "prompt_suggestion") return null; // OTTO(prompt-suggestions): composer-only sideband.
     const serialized = serializeAgentStreamEvent(event.event);
     if (!serialized) {
       return null;
@@ -349,8 +350,11 @@ export class DaemonExecutions implements HubExecutionAgents {
 }
 
 function requireHubMcpNamespace(mcpServers: Record<string, McpServerConfig> | undefined): void {
-  if (mcpServers && Object.hasOwn(mcpServers, "otto")) {
-    throw new Error('Hub execution MCP server name "otto" is reserved by the daemon');
+  // OTTO(identity): reserve the daemon's actual MCP server name.
+  if (mcpServers && Object.hasOwn(mcpServers, OTTO_MCP_SERVER_NAME)) {
+    throw new Error(
+      `Hub execution MCP server name "${OTTO_MCP_SERVER_NAME}" is reserved by the daemon`,
+    );
   }
 }
 
@@ -370,8 +374,8 @@ function requireToolPolicyServers(
 }
 
 function ownedCreatedWorktree(
-  worktree: CreateOttoWorktreeWorkflowResult | null,
-): CreateOttoWorktreeWorkflowResult | null {
+  worktree: CreatePaseoWorktreeWorkflowResult | null,
+): CreatePaseoWorktreeWorkflowResult | null {
   return worktree?.created === true ? worktree : null;
 }
 

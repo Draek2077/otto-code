@@ -1,4 +1,4 @@
-import { detectLanguage, highlightCode, type HighlightToken } from "@otto-code/highlight";
+import { highlightCode, type HighlightToken } from "@getpaseo/highlight";
 
 // Shared, theme-independent tokenization + cache for syntax highlighting.
 // Used by markdown code blocks, file preview, and tool-call detail blocks
@@ -45,7 +45,7 @@ class LRUCache<K, V> {
 const tokenizationCache = new LRUCache<string, HighlightToken[][]>(200);
 
 // Tokenize `code` to per-line tokens, cached. Returns null when the language is
-// unsupported, the input is over the size cap, or parsing throws - callers then
+// unsupported, the input is over the size cap, or parsing throws — callers then
 // render plain text.
 export function tokenizeToLines(code: string, ext: string | null): HighlightToken[][] | null {
   if (!ext) return null;
@@ -78,17 +78,7 @@ export function highlightToKeyedLines(code: string, ext: string | null): KeyedLi
   return lines ? lines.map(toKeyedLine) : null;
 }
 
-// Resolve the grammar extension for a code block: the explicit fence language
-// when we have one, otherwise a best-effort guess from the content. Detection
-// only runs for untagged blocks (over the size cap it's skipped, matching the
-// highlighter's own ceiling), so tagged fences never pay for it.
-export function resolveExtension(explicitExt: string | null, code: string): string | null {
-  if (explicitExt) return explicitExt;
-  if (code.length > MAX_HIGHLIGHT_CHARS) return null;
-  return detectLanguage(code);
-}
-
-// Extension for grammar selection from a file path. We only need the suffix -
+// Extension for grammar selection from a file path. We only need the suffix —
 // absolute vs relative paths are equivalent here.
 export function extensionFromPath(filePath: string | null | undefined): string | null {
   if (!filePath) return null;

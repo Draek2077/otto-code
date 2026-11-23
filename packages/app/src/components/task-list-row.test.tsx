@@ -13,7 +13,6 @@ const { theme } = vi.hoisted(() => ({
       foreground: "#foreground",
       foregroundMuted: "#muted",
       foregroundExtraMuted: "#extra-muted",
-      // Otto's running dot rides the semantic status-dot token, not statusInfo.
       statusDotRunning: "#running",
     },
   },
@@ -47,14 +46,14 @@ vi.mock("react-native-unistyles", () => ({
     },
 }));
 
-// The row imports its glyphs from the Material Symbols barrel, so that is what gets mocked,
-// and the stub set is derived from the barrel's own exports rather than hand-listed - a named
-// mock goes stale the moment the row reaches for another icon.
-vi.mock("@/components/icons/material-icons", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
+vi.mock("lucide-react-native", () => {
   const createIcon = (name: string) => (props: Record<string, unknown>) =>
     React.createElement("span", { ...props, "data-icon": name });
-  return Object.fromEntries(Object.keys(actual).map((name) => [name, createIcon(name)]));
+  return {
+    Circle: createIcon("Circle"),
+    CircleCheck: createIcon("CircleCheck"),
+    CircleDot: createIcon("CircleDot"),
+  };
 });
 
 vi.stubGlobal("React", React);

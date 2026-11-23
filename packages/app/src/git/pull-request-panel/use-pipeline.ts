@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { CheckoutPipeline } from "@otto-code/protocol/messages";
+import type { CheckoutPipeline } from "@getpaseo/protocol/messages";
 import { useFetchQuery } from "@/data/query";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { prPanePipelineQueryKey } from "./query-keys";

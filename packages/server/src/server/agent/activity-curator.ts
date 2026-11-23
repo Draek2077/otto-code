@@ -1,45 +1,24 @@
 import type { AgentTimelineItem } from "./agent-sdk-types.js";
-import type { AgentAttachment } from "@otto-code/protocol/messages";
+import type { AgentMessage } from "@getpaseo/protocol/agent-message";
+import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import type { AgentTimelineRow } from "./agent-timeline-store-types.js";
-import { isLikelyExternalToolName } from "@otto-code/protocol/tool-name-normalization";
-import { buildToolCallDisplayModel } from "@otto-code/protocol/tool-call-display";
+import { isLikelyExternalToolName } from "@getpaseo/protocol/tool-name-normalization";
+import { buildAgentMessageDisplay } from "@getpaseo/protocol/paseo-tool-presentation/index";
+import { buildToolCallDisplayModel } from "@getpaseo/protocol/tool-call-display";
 import { projectTimelineRows } from "./timeline-projection.js";
-import { truncateHeadTail } from "../../utils/truncate-head-tail.js";
 
 const DEFAULT_MAX_ITEMS = 0;
 const MAX_TOOL_INPUT_CHARS = 400;
 const MAX_TOOL_SUMMARY_CHARS = 200;
-
-/**
- * Per-message size cap. Tool inputs and summaries were already capped, but
- * message text went in verbatim, so one long child answer (or one pasted file)
- * turned `get_agent_activity` into a full-transcript dump in the parent's
- * context. Head-heavy, with a tail so the message's conclusion survives.
- *
- * The fork-context path opts out (`maxMessageChars: 0`): it is a chat history
- * the user asked to carry forward, and it has its own outer body cap below.
- */
-const DEFAULT_MAX_MESSAGE_CHARS = 2_000;
-const MESSAGE_HEAD_SHARE = 0.8;
-
-/**
- * Size cap for a fork-context attachment. `buildAgentForkContextAttachment`
- * curates the *entire* parent timeline with untruncated message text, so a long
- * chat became an unbounded blob baked into the forked agent's first message.
- * Keep the head (how the conversation started) and a tail (the recent context
- * you're continuing from), eliding the middle with a marker - never drop
- * silently.
- */
-const FORK_CONTEXT_HEAD_CHARS = 48_000;
-const FORK_CONTEXT_TAIL_CHARS = 12_000;
+const MAX_FORK_CONTEXT_CHARS = 100_000;
+const MAX_FORK_METADATA_CHARS = 1_000;
+const FORK_HISTORY_OMITTED = "[Earlier chat history omitted]\n";
 
 interface ActivityCuratorOptions {
   maxItems?: number;
   labelAssistantMessages?: boolean;
   includeKinds?: readonly AgentTimelineItem["type"][];
   includeExternalToolInput?: boolean;
-  /** Per-message head/tail cap in characters. 0 disables it. */
-  maxMessageChars?: number;
 }
 
 interface ActivityEntry {
@@ -48,50 +27,20 @@ interface ActivityEntry {
 
 type TextAgentAttachment = Extract<AgentAttachment, { type: "text" }>;
 
-function appendText(buffer: string, text: string): string {
-  const normalized = text.trim();
-  if (!normalized) {
-    return buffer;
-  }
-  if (!buffer) {
-    return normalized;
-  }
-  return `${buffer}\n${normalized}`;
-}
-
 function activityEntry(text: string): ActivityEntry {
   return { text };
 }
 
-function capMessageText(text: string, options?: ActivityCuratorOptions): string {
-  const maxChars = options?.maxMessageChars ?? DEFAULT_MAX_MESSAGE_CHARS;
-  if (maxChars <= 0) {
-    return text;
-  }
-  const headChars = Math.ceil(maxChars * MESSAGE_HEAD_SHARE);
-  return truncateHeadTail({
-    text,
-    headChars,
-    tailChars: maxChars - headChars,
-    note: "open the agent's chat for the full message",
-  });
-}
-
-function flushBuffers(
+function appendTextEntry(
   entries: ActivityEntry[],
-  buffers: { message: string; thought: string },
+  item: Extract<AgentTimelineItem, { type: "assistant_message" | "reasoning" }>,
   options?: ActivityCuratorOptions,
 ) {
-  if (buffers.message.trim()) {
-    const text = capMessageText(buffers.message.trim(), options);
-    entries.push(activityEntry(options?.labelAssistantMessages ? `[Assistant] ${text}` : text));
-  }
-  if (buffers.thought.trim()) {
-    const text = capMessageText(buffers.thought.trim(), options);
-    entries.push(activityEntry(`[Thought] ${text}`));
-  }
-  buffers.message = "";
-  buffers.thought = "";
+  const text = item.text.trim();
+  if (!text) return;
+  let prefix = options?.labelAssistantMessages ? "[Assistant] " : "";
+  if (item.type === "reasoning") prefix = "[Thought] ";
+  entries.push(activityEntry(`${prefix}${text}`));
 }
 
 function formatToolInputJson(input: unknown): string | null {
@@ -172,6 +121,17 @@ function formatToolCallEntry(
   return activityEntry(summary ? `[${displayName}] ${summary}` : `[${displayName}]`);
 }
 
+function appendAgentMessageEntries(entries: ActivityEntry[], message: AgentMessage) {
+  const display = buildAgentMessageDisplay(message);
+  entries.push(
+    activityEntry(
+      display.summary ? `[${display.displayName}] ${display.summary}` : `[${display.displayName}]`,
+    ),
+  );
+  const body = message.text.trim();
+  if (body) entries.push(activityEntry(body));
+}
+
 function curateProjectedActivityEntries(
   items: readonly AgentTimelineItem[],
   options?: ActivityCuratorOptions,
@@ -184,7 +144,6 @@ function curateProjectedActivityEntries(
   const recentItems = maxItems > 0 && items.length > maxItems ? items.slice(-maxItems) : items;
 
   const entries: ActivityEntry[] = [];
-  const buffers = { message: "", thought: "" };
 
   for (const item of recentItems) {
     if (!shouldIncludeItem(item, options)) {
@@ -193,17 +152,17 @@ function curateProjectedActivityEntries(
 
     switch (item.type) {
       case "user_message":
-        flushBuffers(entries, buffers, options);
-        entries.push(activityEntry(`[User] ${capMessageText(item.text.trim(), options)}`));
+        entries.push(activityEntry(`[User] ${item.text.trim()}`));
         break;
       case "assistant_message":
-        buffers.message = appendText(buffers.message, item.text);
-        break;
       case "reasoning":
-        buffers.thought = appendText(buffers.thought, item.text);
+        appendTextEntry(entries, item, options);
         break;
       case "tool_call": {
-        flushBuffers(entries, buffers, options);
+        if (item.agentMessage) {
+          appendAgentMessageEntries(entries, item.agentMessage);
+          break;
+        }
         entries.push(formatToolCallEntry(item, options));
         if (item.detail.type === "sub_agent" && item.detail.log.trim()) {
           entries.push(activityEntry(item.detail.log.trim()));
@@ -211,7 +170,6 @@ function curateProjectedActivityEntries(
         break;
       }
       case "todo":
-        flushBuffers(entries, buffers, options);
         entries.push(activityEntry("[Tasks]"));
         for (const entry of item.items) {
           const checkbox = entry.completed ? "[x]" : "[ ]";
@@ -220,17 +178,13 @@ function curateProjectedActivityEntries(
         }
         break;
       case "error":
-        flushBuffers(entries, buffers, options);
         entries.push(activityEntry(`[Error] ${item.message}`));
         break;
       case "compaction":
-        flushBuffers(entries, buffers, options);
         entries.push(activityEntry("[Compacted]"));
         break;
     }
   }
-
-  flushBuffers(entries, buffers, options);
 
   return entries;
 }
@@ -270,12 +224,12 @@ function selectForkContextRows(input: {
   boundaryCursor: { epoch: string; seq: number } | null;
   boundaryMessageId: string | null;
 } {
+  const projectedRows = projectTimelineRows({ rows: input.rows, mode: "projected" });
   const boundaryCursor = input.cursorBoundary?.cursor ?? null;
   const boundaryMessageId = input.boundaryMessageId?.trim() || null;
   if (!boundaryCursor && !boundaryMessageId) {
-    const projected = projectTimelineRows({ rows: input.rows, mode: "projected" });
     return {
-      items: projected.map((entry) => entry.item),
+      items: projectedRows.map((entry) => entry.item),
       boundaryCursor: null,
       boundaryMessageId: null,
     };
@@ -288,8 +242,8 @@ function selectForkContextRows(input: {
     throw new Error("Selected timeline position is no longer available.");
   }
   const boundaryIndex = boundaryCursor
-    ? input.rows.findIndex((row) => row.seq === boundaryCursor.seq)
-    : input.rows.findLastIndex(
+    ? projectedRows.findIndex((row) => row.seqEnd === boundaryCursor.seq)
+    : projectedRows.findLastIndex(
         (row) => row.item.type === "assistant_message" && row.item.messageId === boundaryMessageId,
       );
   if (boundaryIndex < 0) {
@@ -299,8 +253,13 @@ function selectForkContextRows(input: {
         : "Selected assistant message is no longer available.",
     );
   }
-  const selectedRows = input.rows.slice(0, boundaryIndex + 1);
-  const projected = projectTimelineRows({ rows: selectedRows, mode: "projected" });
+  const boundarySeq = projectedRows[boundaryIndex].seqEnd;
+  if (projectedRows.some((row) => row.seqStart <= boundarySeq && row.seqEnd > boundarySeq)) {
+    throw new Error(
+      "This checkpoint changed after it was created. Fork from a later completed response instead.",
+    );
+  }
+  const projected = projectedRows.filter((row) => row.seqEnd <= boundarySeq);
 
   return {
     items: projected.map((entry) => entry.item),
@@ -311,7 +270,7 @@ function selectForkContextRows(input: {
 
 function trimContextMetadata(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
+  return trimmed ? trimmed.slice(0, MAX_FORK_METADATA_CHARS) : null;
 }
 
 function buildForkContextText(input: {
@@ -319,6 +278,7 @@ function buildForkContextText(input: {
   agentTitle?: string | null;
   cwd?: string | null;
 }): string {
+  // OTTO(identity)
   const header = ["Chat history from a previous Otto agent."];
   const agentTitle = trimContextMetadata(input.agentTitle);
   const cwd = trimContextMetadata(input.cwd);
@@ -331,16 +291,28 @@ function buildForkContextText(input: {
   return `<chat-history-summary>\n${header.join("\n")}\n\n${input.body}\n</chat-history-summary>`;
 }
 
-function capForkContextBody(body: string): string {
-  if (body.length <= FORK_CONTEXT_HEAD_CHARS + FORK_CONTEXT_TAIL_CHARS) {
-    return body;
+function fitForkContextEntries(entries: ActivityEntry[], budget: number): string {
+  const length = entries.reduce((total, entry) => total + entry.text.length + 1, -1);
+  if (length <= budget) return entries.map((entry) => entry.text).join("\n");
+
+  const selected: string[] = [];
+  let remaining = budget - FORK_HISTORY_OMITTED.length;
+  for (let index = entries.length - 1; index >= 0; index--) {
+    const text = entries[index]!.text;
+    const size = text.length + (selected.length > 0 ? 1 : 0);
+    if (size > remaining) {
+      if (selected.length === 0) {
+        const marker = "\n[Message truncated]\n";
+        const available = remaining - marker.length;
+        const head = Math.ceil(available / 2);
+        selected.push(text.slice(0, head) + marker + text.slice(-(available - head)));
+      }
+      break;
+    }
+    selected.push(text);
+    remaining -= size;
   }
-  const removed = body.length - FORK_CONTEXT_HEAD_CHARS - FORK_CONTEXT_TAIL_CHARS;
-  return (
-    `${body.slice(0, FORK_CONTEXT_HEAD_CHARS)}\n\n` +
-    `[... history truncated: ${removed} characters of earlier chat omitted ...]\n\n` +
-    body.slice(-FORK_CONTEXT_TAIL_CHARS)
-  );
+  return FORK_HISTORY_OMITTED + selected.toReversed().join("\n");
 }
 
 export function buildAgentForkContextAttachment(input: {
@@ -365,14 +337,11 @@ export function buildAgentForkContextAttachment(input: {
     labelAssistantMessages: true,
     includeKinds: ["user_message", "assistant_message", "tool_call"],
     includeExternalToolInput: false,
-    // A fork carries the conversation forward, so individual messages stay
-    // whole; `capForkContextBody` below is the bound that applies here.
-    maxMessageChars: 0,
   });
+  const metadata = { agentTitle: input.agentTitle, cwd: input.cwd };
+  const budget = MAX_FORK_CONTEXT_CHARS - buildForkContextText({ body: "", ...metadata }).length;
   const body =
-    entries.length > 0
-      ? capForkContextBody(entries.map((entry) => entry.text).join("\n"))
-      : "No chat history to display.";
+    entries.length > 0 ? fitForkContextEntries(entries, budget) : "No chat history to display.";
   return {
     attachment: {
       type: "text",

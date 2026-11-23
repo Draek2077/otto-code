@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { ScheduleCadenceSchema, ScheduleRunSchema, ScheduleTargetSchema } from "./types.js";
+import { ScheduleCadenceSchema } from "./types.js";
 
 describe("ScheduleCadenceSchema", () => {
   test("accepts existing UTC cron cadence without a time zone", () => {
@@ -22,96 +22,5 @@ describe("ScheduleCadenceSchema", () => {
       expression: "0 9 * * *",
       timezone: "America/New_York",
     });
-  });
-});
-
-describe("ScheduleTargetSchema", () => {
-  // COMPAT(flatProviderConfigFields): Zod strips unknown keys, so if these flat
-  // fields ever leave the schema again, a schedule persisted before v0.4.0
-  // silently loses its approval, sandbox, and network settings on rewrite.
-  test("keeps the flat provider fields a pre-v0.4.0 schedule persisted", () => {
-    const stored = {
-      type: "new-agent",
-      config: {
-        provider: "codex",
-        cwd: "/repo",
-        approvalPolicy: "never",
-        sandboxMode: "workspace-write",
-        networkAccess: false,
-        webSearch: true,
-        extra: { codex: { profile: "ci" } },
-      },
-    };
-
-    expect(ScheduleTargetSchema.parse(stored)).toEqual(stored);
-  });
-
-  test("accepts a saved Workflow by stable project-scoped identity only", () => {
-    expect(
-      ScheduleTargetSchema.parse({
-        type: "workflow",
-        definitionId: "graph-1",
-        projectRoot: "/repo",
-      }),
-    ).toEqual({ type: "workflow", definitionId: "graph-1", projectRoot: "/repo" });
-  });
-});
-
-describe("ScheduleRunSchema", () => {
-  test("accepts historical runs without a requested-target snapshot", () => {
-    expect(
-      ScheduleRunSchema.parse({
-        id: "run-1",
-        scheduledFor: "2026-01-01T00:00:00.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        endedAt: null,
-        status: "running",
-        agentId: null,
-        output: null,
-        error: null,
-      }),
-    ).not.toHaveProperty("target");
-  });
-
-  test("preserves the requested target snapshot for durable run audit", () => {
-    expect(
-      ScheduleRunSchema.parse({
-        id: "run-1",
-        scheduledFor: "2026-01-01T00:00:00.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        endedAt: null,
-        status: "running",
-        target: { type: "new-agent", config: { provider: "codex", cwd: "/repo" } },
-        agentId: null,
-        output: null,
-        error: null,
-      }),
-    ).toMatchObject({
-      target: { type: "new-agent", config: { provider: "codex", cwd: "/repo" } },
-    });
-  });
-
-  test("preserves immutable Workflow linkage without changing historical runs", () => {
-    expect(
-      ScheduleRunSchema.parse({
-        id: "run-1",
-        scheduledFor: "2026-01-01T00:00:00.000Z",
-        startedAt: "2026-01-01T00:00:00.000Z",
-        endedAt: "2026-01-01T00:00:01.000Z",
-        status: "succeeded",
-        target: { type: "workflow", definitionId: "graph-1", projectRoot: "/repo" },
-        workflow: {
-          definitionId: "graph-1",
-          title: "Nightly",
-          kind: "graph",
-          projectRoot: "/repo",
-          fingerprint: "a".repeat(64),
-          runId: "workflow-run-1",
-        },
-        agentId: null,
-        output: "Started",
-        error: null,
-      }),
-    ).toMatchObject({ workflow: { runId: "workflow-run-1", fingerprint: "a".repeat(64) } });
   });
 });

@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   parseDiff,
-  parseAndHighlightDiff,
   reconstructNewFile,
   reconstructOldFile,
   highlightDiffFromHunks,
@@ -144,7 +143,7 @@ index 1234567..abcdefg 100644
 --- a/config.yaml
 +++ b/config.yaml
 @@ -1,3 +1,3 @@
- app: otto
+ app: paseo
 -count: 1
 +count: 2
  enabled: true
@@ -191,6 +190,113 @@ index 1234567..abcdefg 100644
 `;
 
 describe("parseDiff", () => {
+  it.each(["-- comment", "++ marker"])(
+    "preserves hunk content resembling patch headers: %s",
+    (content) => {
+      const files = parseDiff(`diff --git a/example.txt b/example.txt
+index 1234567..abcdefg 100644
+--- a/example.txt
++++ b/example.txt
+@@ -1 +1 @@
+-${content} before
++${content} after
+`);
+
+      expect(files).toHaveLength(1);
+      expect(files[0]).toMatchObject({
+        path: "example.txt",
+        isNew: false,
+        isDeleted: false,
+        additions: 1,
+        deletions: 1,
+      });
+      expect(files[0].hunks[0].lines).toEqual([
+        { type: "header", content: "@@ -1 +1 @@" },
+        { type: "remove", content: `${content} before` },
+        { type: "add", content: `${content} after` },
+      ]);
+    },
+  );
+
+  it("decodes quoted Git patch paths before matching files", () => {
+    const files = parseDiff(
+      [
+        'diff --git "a/report \\"draft\\".txt" "b/report \\"draft\\".txt"',
+        "index 1234567..abcdefg 100644",
+        '--- "a/report \\"draft\\".txt"',
+        '+++ "b/report \\"draft\\".txt"',
+        "@@ -1 +1 @@",
+        "-before",
+        "+after",
+        "",
+      ].join("\n"),
+    );
+
+    expect(files).toEqual([
+      {
+        path: 'report "draft".txt',
+        isNew: false,
+        isDeleted: false,
+        additions: 1,
+        deletions: 1,
+        hunks: [
+          {
+            oldStart: 1,
+            oldCount: 1,
+            newStart: 1,
+            newCount: 1,
+            lines: [
+              { type: "header", content: "@@ -1 +1 @@" },
+              { type: "remove", content: "before" },
+              { type: "add", content: "after" },
+            ],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it.each([
+    ["tab\\tname.txt", "tab\tname.txt"],
+    ["line\\nname.txt", "line\nname.txt"],
+    ["back\\\\slash.txt", "back\\slash.txt"],
+    ["bell\\aname.txt", "bell\u0007name.txt"],
+    ["vertical\\vname.txt", "vertical\u000bname.txt"],
+    ["\\346\\265\\213\\350\\257\\225.txt", "测试.txt"],
+    ['测试 \\"draft\\".txt', '测试 "draft".txt'],
+  ])("decodes C-quoted path %s without changing its diff lines", (encoded, path) => {
+    const files = parseDiff(
+      [
+        'diff --git "a/' + encoded + '" "b/' + encoded + '"',
+        "index 1234567..abcdefg 100644",
+        '--- "a/' + encoded + '"',
+        '+++ "b/' + encoded + '"',
+        "@@ -1 +1 @@",
+        "-before",
+        "+after",
+        "",
+      ].join("\n"),
+    );
+
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatchObject({ path, additions: 1, deletions: 1 });
+    expect(files[0].hunks[0].lines).toEqual([
+      { type: "header", content: "@@ -1 +1 @@" },
+      { type: "remove", content: "before" },
+      { type: "add", content: "after" },
+    ]);
+  });
+
+  it.each([
+    ['"a/old \\"draft\\".txt" b/new with spaces.txt', "new with spaces.txt"],
+    ['a/old with spaces.txt "b/new \\"draft\\".txt"', 'new "draft".txt'],
+    ['"report \\"draft\\".txt" "report \\"draft\\".txt"', 'report "draft".txt'],
+  ])("reads quoted paths from header-only patches: %s", (header, path) => {
+    expect(parseDiff("diff --git " + header + "\nsimilarity index 100%\n")).toEqual([
+      { path, isNew: false, isDeleted: false, additions: 0, deletions: 0, hunks: [] },
+    ]);
+  });
+
   it("parses a simple diff with one hunk", () => {
     const files = parseDiff(SIMPLE_DIFF);
 
@@ -253,67 +359,6 @@ describe("parseDiff", () => {
 
     expect(files).toHaveLength(1);
     expect(files[0].path).toBe("file with space.ts");
-    expect(files[0].hunks).toHaveLength(1);
-  });
-
-  it("parses mnemonic-prefix git diff headers", () => {
-    const files = parseDiff(
-      SIMPLE_DIFF.replace("a/example.ts b/example.ts", "c/example.ts w/example.ts")
-        .replace("--- a/example.ts", "--- c/example.ts")
-        .replace("+++ b/example.ts", "+++ w/example.ts"),
-    );
-
-    expect(files).toHaveLength(1);
-    expect(files[0].path).toBe("example.ts");
-    expect(files[0].hunks).toHaveLength(1);
-  });
-
-  it("parses mnemonic-prefix paths with spaces", () => {
-    const files = parseDiff(
-      SIMPLE_DIFF.replaceAll("example.ts", "file with space.ts")
-        .replace(
-          "a/file with space.ts b/file with space.ts",
-          "i/file with space.ts w/file with space.ts",
-        )
-        .replace("--- a/file with space.ts", "--- i/file with space.ts")
-        .replace("+++ b/file with space.ts", "+++ w/file with space.ts"),
-    );
-
-    expect(files).toHaveLength(1);
-    expect(files[0].path).toBe("file with space.ts");
-    expect(files[0].hunks).toHaveLength(1);
-  });
-
-  it("parses custom src and dst prefix headers", () => {
-    const files = parseDiff(
-      SIMPLE_DIFF.replace("a/example.ts b/example.ts", "before/example.ts after/example.ts")
-        .replace("--- a/example.ts", "--- before/example.ts")
-        .replace("+++ b/example.ts", "+++ after/example.ts"),
-    );
-
-    expect(files).toHaveLength(1);
-    expect(files[0].path).toBe("example.ts");
-    expect(files[0].hunks).toHaveLength(1);
-  });
-
-  it("takes a renamed path from the prefix-free rename header", () => {
-    const files = parseDiff(
-      `diff --git c/src/old name.ts i/src/new name.ts
-similarity index 92%
-rename from src/old name.ts
-rename to src/new name.ts
-index 1234567..abcdefg 100644
---- c/src/old name.ts
-+++ i/src/new name.ts
-@@ -1,2 +1,2 @@
- const foo = 1;
--const bar = 2;
-+const bar = 3;
-`,
-    );
-
-    expect(files).toHaveLength(1);
-    expect(files[0].path).toBe("src/new name.ts");
     expect(files[0].hunks).toHaveLength(1);
   });
 
@@ -418,20 +463,6 @@ describe("reconstructOldFile", () => {
 
     expect(oldFile.get(1)).toBe("const legacy = true;");
     expect(oldFile.get(2)).toBe("export { legacy };");
-  });
-});
-
-describe("parseAndHighlightDiff", () => {
-  it("retains bounded complete snapshots for Structural consumers", async () => {
-    const beforeSource = ["const foo = 1;", "const bar = 2;", "const baz = foo + bar;"].join("\n");
-    const afterSource = ["const foo = 1;", "const bar = 3;", "const baz = foo + bar;"].join("\n");
-
-    const [file] = await parseAndHighlightDiff(SIMPLE_DIFF, "/tmp/unused", {
-      getOldFileContent: async () => beforeSource,
-      getNewFileContent: async () => afterSource,
-    });
-
-    expect(file).toMatchObject({ beforeSource, afterSource });
   });
 });
 
@@ -673,6 +704,28 @@ describe("highlightDiffFromHunks", () => {
 });
 
 describe("highlightDiffWithFileContent", () => {
+  it("renders an Astro diff with an empty expression and keeps surrounding highlighting", async () => {
+    const diff = ASTRO_DIFF.replace("{title}", "{title} {}");
+    const file = parseDiff(diff)[0];
+    const highlighted = await highlightDiffWithFileContent(file, ".", {
+      oldFileContent:
+        '---\nconst title = "Hello";\n---\n<main class="page">\n  <h1>{title} {}</h1>\n</main>',
+      newFileContent:
+        '---\nconst title = "Hello, Astro";\n---\n<main class="page">\n  <h1>{title} {}</h1>\n</main>',
+    });
+
+    expect(highlighted.hunks[0].lines.find((line) => line.type === "add")?.tokens).toContainEqual({
+      text: '"Hello, Astro"',
+      style: "string",
+    });
+    expect(highlighted.hunks[0].lines.map(({ content }) => content)).toEqual(
+      file.hunks[0].lines.map(({ content }) => content),
+    );
+    expect(
+      highlightDiffFromHunks(file).hunks[0].lines.find((line) => line.type === "add")?.tokens,
+    ).toContainEqual({ text: '"Hello, Astro"', style: "string" });
+  });
+
   it("leaves files with an oversized line unhighlighted", async () => {
     const oversizedLine = `const payload = "${"x".repeat(10_001)}";`;
     const [file] = parseDiff(
@@ -765,65 +818,21 @@ index 1111111..2222222 100644
       rmSync(cwd, { recursive: true, force: true });
     }
   });
+});
 
-  const COMMENT_CONTEXT_DIFF = `diff --git a/example.ts b/example.ts
-index 1111111..2222222 100644
---- a/example.ts
-+++ b/example.ts
-@@ -5,7 +5,7 @@
- comment line 4
- comment line 5
- comment line 6
--old comment line
-+new comment line
- comment line 8
- */
- const x = 1;
-`;
-
-  function buildCommentContextFile(marker: string, padLines: number): string {
-    const padding = Array.from({ length: padLines }, (_, i) => `const pad${i} = ${i};`).join("\n");
-    return `/*
-comment line 1
-comment line 2
-comment line 3
-comment line 4
-comment line 5
-comment line 6
-${marker}
-comment line 8
-*/
-const x = 1;
-${padding}
-`;
-  }
-
-  it("uses full-file context while the file stays under the highlight size gate", async () => {
-    const file = parseDiff(COMMENT_CONTEXT_DIFF)[0];
-
-    const highlighted = await highlightDiffWithFileContent(file, "/tmp/unused", {
-      oldFileContent: buildCommentContextFile("old comment line", 0),
-      newFileContent: buildCommentContextFile("new comment line", 0),
-    });
-
-    const removedLine = highlighted.hunks[0].lines.find((line) => line.type === "remove");
-    expect(removedLine?.tokens).toEqual([{ text: "old comment line", style: "comment" }]);
-    expect(highlighted).not.toEqual(highlightDiffFromHunks(file));
-  });
-
-  it("falls back to the hunk-based path once file content exceeds the size gate", async () => {
-    // ~20K padding lines puts each side well past the 256 KB cap while the hunk itself
-    // stays tiny, which is exactly the lockfile shape the gate exists for.
-    const oldFileContent = buildCommentContextFile("old comment line", 20_000);
-    const newFileContent = buildCommentContextFile("new comment line", 20_000);
-    expect(oldFileContent.length).toBeGreaterThan(256 * 1024);
-
-    const file = parseDiff(COMMENT_CONTEXT_DIFF)[0];
-    const highlighted = await highlightDiffWithFileContent(file, "/tmp/unused", {
-      oldFileContent,
+// OTTO(structural-diff): evidence belongs to the exact patch source revisions.
+it("attaches complete syntax evidence only when requested and equal to the patch coordinates", async () => {
+  const file = parseDiff(SIMPLE_DIFF.replace("\n\n export", "\n \n export"))[0]!;
+  const before =
+    "const foo = 1;\nconst bar = 2;\nconst baz = foo + bar;\n\nexport { foo, bar, baz };\n";
+  const after = before.replace("bar = 2", "bar = 3");
+  const read = (newFileContent: string, includeStructuralSource?: boolean) =>
+    highlightDiffWithFileContent(file, ".", {
+      oldFileContent: before,
       newFileContent,
+      includeStructuralSource,
     });
-
-    expect(highlighted).toEqual(highlightDiffFromHunks(file));
-  });
+  expect((await read(after)).structuralSource).toBeUndefined();
+  expect((await read(after, true)).structuralSource).toEqual({ before, after });
+  expect((await read(before, true)).structuralSource).toBeUndefined();
 });

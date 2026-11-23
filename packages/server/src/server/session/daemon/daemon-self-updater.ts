@@ -1,10 +1,11 @@
-import { getErrorMessage } from "@otto-code/protocol/error-utils";
+import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import {
   daemonInstallOriginRuntime,
+  resolveNpmGlobalPrefix,
   validateDaemonInstallOrigin,
   type DaemonInstallOriginRuntime,
 } from "./install-origin.js";
-import { npmGlobalOttoCli, type NpmGlobalOttoCli } from "./npm-global-cli.js";
+import { npmGlobalPaseoCli, type NpmGlobalPaseoCli } from "./npm-global-cli.js";
 
 export type DaemonSelfUpdatePhase = "starting" | "downloading" | "installing" | "complete";
 
@@ -27,7 +28,7 @@ export interface DaemonSelfUpdateLogger {
 }
 
 export interface DaemonSelfUpdateRuntime {
-  npm: NpmGlobalOttoCli;
+  npm: NpmGlobalPaseoCli;
   installOrigin: DaemonInstallOriginRuntime;
 }
 
@@ -39,11 +40,12 @@ export class DaemonSelfUpdateInProgressError extends Error {
 }
 
 const defaultRuntime: DaemonSelfUpdateRuntime = {
-  npm: npmGlobalOttoCli,
+  npm: npmGlobalPaseoCli,
   installOrigin: daemonInstallOriginRuntime,
 };
 
 const DESKTOP_MANAGED_UPDATE_ERROR =
+  // OTTO(identity)
   "This daemon is managed by Otto Desktop. Update Otto Desktop on the host.";
 
 export class DaemonSelfUpdater {
@@ -63,7 +65,12 @@ export class DaemonSelfUpdater {
     this.inProgress = true;
     try {
       input.onProgress("starting");
-      const install = await this.runtime.npm.inspect();
+      const npmOptions = {
+        prefix: resolveNpmGlobalPrefix(
+          this.runtime.installOrigin.resolveCurrentServerPackageRoot(),
+        ),
+      };
+      const install = await this.runtime.npm.inspect(npmOptions);
       const unsupportedReason = validateDaemonInstallOrigin(
         install,
         input.daemonVersion,
@@ -76,7 +83,7 @@ export class DaemonSelfUpdater {
       input.onProgress("downloading");
       input.onProgress("installing");
 
-      const result = await this.runtime.npm.installLatest();
+      const result = await this.runtime.npm.installLatest(npmOptions);
       if (result.exitCode !== 0) {
         const error =
           result.stderr.trim() || result.stdout.trim() || `npm exited with code ${result.exitCode}`;
@@ -87,7 +94,7 @@ export class DaemonSelfUpdater {
         return { success: false, error, newVersion: null };
       }
 
-      const updatedInstall = await this.runtime.npm.inspect().catch((error: unknown) => {
+      const updatedInstall = await this.runtime.npm.inspect(npmOptions).catch((error: unknown) => {
         input.logger.warn({ err: error }, "Unable to read updated npm package version");
         return null;
       });

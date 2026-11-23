@@ -1,10 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  resolveImmediateSendAction,
-  resolveSendButtonIcon,
   resolveSendTooltipLabel,
   resolveSubmitAccessibilityLabel,
-  resolveUsesAlternateSendAction,
   resolveVoiceAccessibilityLabel,
   resolveVoiceTooltipText,
 } from "./labels";
@@ -16,8 +13,6 @@ const translations: Record<string, string> = {
   "composer.input.sendAndSteer": "Send and steer",
   "composer.input.sendMessage": "Send message",
   "composer.input.queue": "Queue",
-  "composer.input.steer": "Steer",
-  "composer.input.interrupt": "Interrupt",
   "composer.input.send": "Send",
   "composer.voice.unmuteVoiceMode": "Unmute Voice mode",
   "composer.voice.muteVoiceMode": "Mute Voice mode",
@@ -31,21 +26,6 @@ const translations: Record<string, string> = {
 const t = ((key: string) => translations[key] ?? key) as never;
 
 describe("composer input labels", () => {
-  it("resolves immediate queue delivery to the active-turn action", () => {
-    expect(
-      resolveImmediateSendAction({ defaultSendBehavior: "queue", isAgentRunning: false }),
-    ).toBe("send");
-    expect(resolveImmediateSendAction({ defaultSendBehavior: "steer", isAgentRunning: true })).toBe(
-      "steer",
-    );
-    expect(resolveImmediateSendAction({ defaultSendBehavior: "queue", isAgentRunning: true })).toBe(
-      "interrupt",
-    );
-    expect(
-      resolveImmediateSendAction({ defaultSendBehavior: "interrupt", isAgentRunning: true }),
-    ).toBe("interrupt");
-  });
-
   it("resolves submit accessibility labels from translations", () => {
     expect(
       resolveSubmitAccessibilityLabel({
@@ -159,8 +139,6 @@ describe("composer input labels", () => {
       resolveSendTooltipLabel({
         submitButtonAccessibilityLabel: undefined,
         defaultActionQueues: true,
-        defaultSendBehavior: "steer",
-        isAgentRunning: true,
         t,
       }),
     ).toBe("Queue");
@@ -168,104 +146,8 @@ describe("composer input labels", () => {
       resolveSendTooltipLabel({
         submitButtonAccessibilityLabel: undefined,
         defaultActionQueues: false,
-        defaultSendBehavior: "interrupt",
-        isAgentRunning: false,
         t,
       }),
     ).toBe("Send");
-    expect(
-      resolveSendTooltipLabel({
-        submitButtonAccessibilityLabel: undefined,
-        defaultActionQueues: false,
-        defaultSendBehavior: "steer",
-        isAgentRunning: true,
-        t,
-      }),
-    ).toBe("Steer");
-    expect(
-      resolveSendTooltipLabel({
-        submitButtonAccessibilityLabel: undefined,
-        defaultActionQueues: false,
-        defaultSendBehavior: "interrupt",
-        isAgentRunning: true,
-        t,
-      }),
-    ).toBe("Interrupt");
-  });
-
-  it("distinguishes Queue, Steer, and Interrupt while an agent is running", () => {
-    expect(
-      resolveSendButtonIcon({
-        canPressLoadingButton: false,
-        defaultActionQueues: true,
-        alternateModifierHeld: false,
-        canUseAlternateAction: true,
-        isAgentRunning: true,
-        defaultSendBehavior: "queue",
-        submitIcon: "arrow",
-      }),
-    ).toBe("return");
-    expect(
-      resolveSendButtonIcon({
-        canPressLoadingButton: false,
-        defaultActionQueues: false,
-        alternateModifierHeld: false,
-        canUseAlternateAction: true,
-        isAgentRunning: true,
-        defaultSendBehavior: "interrupt",
-        submitIcon: "return",
-      }),
-    ).toBe("interrupt");
-    expect(
-      resolveSendButtonIcon({
-        canPressLoadingButton: false,
-        defaultActionQueues: false,
-        alternateModifierHeld: false,
-        canUseAlternateAction: true,
-        isAgentRunning: true,
-        defaultSendBehavior: "steer",
-        submitIcon: "arrow",
-      }),
-    ).toBe("steer");
-  });
-
-  it("previews the alternate Enter action while Ctrl or Cmd is held", () => {
-    expect(
-      resolveSendButtonIcon({
-        canPressLoadingButton: false,
-        defaultActionQueues: false,
-        alternateModifierHeld: true,
-        canUseAlternateAction: true,
-        isAgentRunning: true,
-        defaultSendBehavior: "steer",
-        submitIcon: "arrow",
-      }),
-    ).toBe("return");
-    expect(
-      resolveSendButtonIcon({
-        canPressLoadingButton: false,
-        defaultActionQueues: true,
-        alternateModifierHeld: true,
-        canUseAlternateAction: true,
-        isAgentRunning: true,
-        defaultSendBehavior: "queue",
-        submitIcon: "arrow",
-      }),
-    ).toBe("interrupt");
-  });
-
-  it("uses the same modifier condition for the button press and its preview", () => {
-    expect(
-      resolveUsesAlternateSendAction({
-        alternateModifierHeld: true,
-        canUseAlternateAction: true,
-      }),
-    ).toBe(true);
-    expect(
-      resolveUsesAlternateSendAction({
-        alternateModifierHeld: true,
-        canUseAlternateAction: false,
-      }),
-    ).toBe(false);
   });
 });

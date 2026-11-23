@@ -22,7 +22,7 @@ import type {
   FetchCatalogOptions,
 } from "../agent/agent-sdk-types.js";
 import type { AgentPermissionRequest, AgentPermissionResponse } from "../agent/agent-sdk-types.js";
-import { isLikelyExternalToolName } from "@otto-code/protocol/tool-name-normalization";
+import { isLikelyExternalToolName } from "@getpaseo/protocol/tool-name-normalization";
 
 const TEST_CAPABILITIES: AgentCapabilityFlags = {
   supportsStreaming: true,
@@ -58,33 +58,18 @@ interface FakeAgentSessionOptions {
   sessionId?: string;
   memoryMarker?: string | null;
   closeSession?: () => Promise<void>;
-  onStartTurn?: (prompt: AgentPromptInput) => void;
-  assistantOutcomeForPrompt?: (input: TestAgentPromptContext) => TestAgentPromptOutcome | undefined;
+  onStartTurn?: (prompt: AgentPromptInput, config: AgentSessionConfig) => void;
+  beforeTurnComplete?: (prompt: AgentPromptInput) => Promise<void>;
+  historyEvents?: readonly AgentStreamEvent[];
 }
-
-/**
- * Opt-in deterministic response seam for tests that need to model a sequence
- * of agent work without embedding response directives into production prompts.
- * Return undefined to use the normal FakeAgentClient behavior.
- */
-export interface TestAgentPromptContext {
-  provider: string;
-  prompt: string;
-  config: AgentSessionConfig;
-}
-
-/** A scripted fake-agent turn either delivers exact prose or fails explicitly. */
-export type TestAgentPromptOutcome =
-  | { type: "message"; text: string }
-  | { type: "failure"; error: string }
-  /** Keeps a streamed turn active until the daemon interrupts its session. */
-  | { type: "hold" };
 
 export interface TestAgentClientOptions {
+  beforeCreateSession?: (config: AgentSessionConfig) => Promise<void>;
   closeSession?: () => Promise<void>;
-  onStartTurn?: (prompt: AgentPromptInput) => void;
+  onStartTurn?: (prompt: AgentPromptInput, config: AgentSessionConfig) => void;
+  beforeTurnComplete?: (prompt: AgentPromptInput) => Promise<void>;
   supportsMcpServers?: boolean;
-  assistantOutcomeForPrompt?: (input: TestAgentPromptContext) => TestAgentPromptOutcome | undefined;
+  historyEvents?: readonly AgentStreamEvent[];
 }
 
 function createDeferred<T>(): Deferred<T> {
@@ -356,10 +341,9 @@ class FakeAgentSession implements AgentSession {
   private activeForegroundTurnId: string | null = null;
 
   private readonly closeSession: (() => Promise<void>) | undefined;
-  private readonly onStartTurn: ((prompt: AgentPromptInput) => void) | undefined;
-  private readonly assistantOutcomeForPrompt:
-    | ((input: TestAgentPromptContext) => TestAgentPromptOutcome | undefined)
-    | undefined;
+  private readonly onStartTurn: TestAgentClientOptions["onStartTurn"];
+  private readonly beforeTurnComplete: ((prompt: AgentPromptInput) => Promise<void>) | undefined;
+  private readonly historyEvents: readonly AgentStreamEvent[] | undefined;
 
   constructor(options: FakeAgentSessionOptions) {
     this.capabilities = {
@@ -372,10 +356,11 @@ class FakeAgentSession implements AgentSession {
     this.memoryMarker = options.memoryMarker ?? null;
     this.closeSession = options.closeSession;
     this.onStartTurn = options.onStartTurn;
-    this.assistantOutcomeForPrompt = options.assistantOutcomeForPrompt;
+    this.beforeTurnComplete = options.beforeTurnComplete;
+    this.historyEvents = options.historyEvents;
     this.historyPath = path.join(
       tmpdir(),
-      "otto-fake-provider-history",
+      "paseo-fake-provider-history",
       this.providerName,
       `${this.id}.jsonl`,
     );
@@ -450,14 +435,7 @@ class FakeAgentSession implements AgentSession {
     }
     const timeline: AgentRunResult["timeline"] = [];
     const textPrompt = typeof prompt === "string" ? prompt : JSON.stringify(prompt);
-    const scripted = this.scriptedOutcome(textPrompt);
-    if (scripted?.type === "failure") {
-      throw new Error(scripted.error);
-    }
-    if (scripted?.type === "hold") {
-      throw new Error("A held fake-agent outcome requires a streamed turn.");
-    }
-    const resultText = scripted?.text ?? this.buildAssistantText(textPrompt);
+    const resultText = this.buildAssistantText(textPrompt);
     timeline.push({ type: "assistant_message", text: resultText });
     const usage: AgentUsage | undefined = options ? { inputTokens: 1, outputTokens: 1 } : undefined;
     return { sessionId: this.id, finalText: resultText, timeline, usage };
@@ -470,7 +448,7 @@ class FakeAgentSession implements AgentSession {
 
     const turnId = `fake-turn-${this.nextTurnOrdinal++}`;
     this.activeForegroundTurnId = turnId;
-    this.onStartTurn?.(prompt);
+    this.onStartTurn?.(prompt, this.config);
 
     void this.emitTurnEvents(prompt);
 
@@ -768,46 +746,17 @@ class FakeAgentSession implements AgentSession {
       await this.appendHistoryEvent(turnStarted);
       this.notifySubscribers(turnStarted);
 
-      // Every real provider echoes the prompt back as a `user_message` before it
-      // answers (Claude from the SDK's user message, ACP from
-      // `user_message_chunk`), and the daemon has no echo of its own: what a
-      // client sees in the timeline is exactly what the provider reported. A
-      // fixture that skipped this made the daemon look like it drops the user's
-      // own turn, so anything asserting on a conversation and not just a reply
-      // could never pass against it.
-      const userEcho: AgentStreamEvent = {
-        type: "timeline",
-        provider: this.providerName,
-        item: { type: "user_message", text: textPrompt },
-      };
-      await this.appendHistoryEvent(userEcho);
-      this.notifySubscribers(userEcho);
-
-      const scripted = this.scriptedOutcome(textPrompt);
-      if (scripted?.type === "failure") {
-        const failed: AgentStreamEvent = {
-          type: "turn_failed",
+      if (textPrompt === "Emit a provider child") {
+        const child: AgentStreamEvent = {
+          type: "provider_subagent",
           provider: this.providerName,
-          error: scripted.error,
+          event: { type: "upsert", id: "fixture-child", title: "Fixture child", status: "running" },
         };
-        await this.appendHistoryEvent(failed);
-        this.notifySubscribers(failed);
-        return;
+        await this.appendHistoryEvent(child);
+        this.notifySubscribers(child);
       }
 
-      if (scripted?.type === "hold") {
-        await this.interruptSignal.promise;
-        const canceled: AgentStreamEvent = {
-          type: "turn_canceled",
-          provider: this.providerName,
-          reason: "Scripted fake-agent hold interrupted",
-        };
-        await this.appendHistoryEvent(canceled);
-        this.notifySubscribers(canceled);
-        return;
-      }
-
-      if (!scripted && textPrompt.toLowerCase().includes("emit a turn failure")) {
+      if (textPrompt.toLowerCase().includes("emit a turn failure")) {
         const failed: AgentStreamEvent = {
           type: "turn_failed",
           provider: this.providerName,
@@ -838,7 +787,7 @@ class FakeAgentSession implements AgentSession {
         }
       }
 
-      const assistantText = scripted?.text ?? this.buildAssistantText(textPrompt);
+      const assistantText = this.buildAssistantText(textPrompt);
       const assistantChunkA: AgentStreamEvent = {
         type: "timeline",
         provider: this.providerName,
@@ -858,6 +807,7 @@ class FakeAgentSession implements AgentSession {
         this.notifySubscribers(assistantChunkB);
       }
 
+      await this.beforeTurnComplete?.(prompt);
       const completed: AgentStreamEvent = {
         type: "turn_completed",
         provider: this.providerName,
@@ -871,6 +821,10 @@ class FakeAgentSession implements AgentSession {
   }
 
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+    if (this.historyEvents) {
+      yield* this.historyEvents;
+      return;
+    }
     let contents: string;
     try {
       contents = await readFile(this.historyPath, "utf8");
@@ -1019,15 +973,15 @@ class FakeAgentSession implements AgentSession {
     if (this.providerName === "codex" && fullName.startsWith("prompts:")) {
       const promptId = fullName.slice("prompts:".length);
       return {
-        text: `OTTO_OK ${args ?? ""}`.trim(),
-        timeline: [{ type: "assistant_message", text: `OTTO_OK ${promptId}` }],
+        text: `PASEO_OK ${args ?? ""}`.trim(),
+        timeline: [{ type: "assistant_message", text: `PASEO_OK ${promptId}` }],
         usage: { inputTokens: 1, outputTokens: 1 },
       };
     }
 
     return {
-      text: "OTTO_SKILL_OK",
-      timeline: [{ type: "assistant_message", text: "OTTO_SKILL_OK" }],
+      text: "PASEO_SKILL_OK",
+      timeline: [{ type: "assistant_message", text: "PASEO_SKILL_OK" }],
       usage: { inputTokens: 1, outputTokens: 1 },
     };
   }
@@ -1042,26 +996,29 @@ class FakeAgentSession implements AgentSession {
       return `CWD: ${cwd}`;
     }
 
-    const judge = orchestrationJudgeReply(prompt, lower);
-    if (judge !== null) {
-      return judge;
-    }
-
     const respondExactlyMatch =
       /respond with exactly:\s*([^\n\r]+)\s*$/i.exec(prompt) ??
       /respond with exactly:\s*([^\n\r]+)/i.exec(prompt);
     if (respondExactlyMatch) {
       return (respondExactlyMatch[1] ?? "").trim();
     }
-    return keywordReply(lower, this.memoryMarker ?? null) ?? "Hello world";
-  }
-
-  private scriptedOutcome(prompt: string): TestAgentPromptOutcome | undefined {
-    return this.assistantOutcomeForPrompt?.({
-      provider: this.providerName,
-      prompt,
-      config: this.config,
-    });
+    if (lower.includes("state saved")) return "state saved";
+    if (lower.includes("timeline test")) return "timeline test";
+    if (lower.includes("quick brown fox") && lower.includes("lazy dog")) {
+      return "The quick brown fox jumps over the lazy dog. Then the fox ran away.";
+    }
+    if (lower.includes("what did i ask you to say earlier"))
+      return "You asked me to say state saved.";
+    if (lower.includes("say 'timeline test'")) return "timeline test";
+    if (lower.includes("say 'state saved'")) return "state saved";
+    if (lower.includes("return schema-valid json") || lower.includes("schema-valid json")) {
+      return JSON.stringify({ ok: true });
+    }
+    if (lower.includes("what was the marker") || lower.includes("what was the project name")) {
+      return this.memoryMarker ?? "unknown";
+    }
+    if (lower.includes("stop")) return "Stopped.";
+    return "Hello world";
   }
 
   private async applyReadToolSideEffect(toolInput: Record<string, unknown>): Promise<void> {
@@ -1253,41 +1210,6 @@ class FakeAgentSession implements AgentSession {
   }
 }
 
-// Orchestration judge phases: buildJudgeTask hands the judger a prompt asking
-// for ONLY a verdict JSON. Grade pass/fail off a "PASS" marker in the prompt so
-// integration tests script outcomes deterministically. Called before the
-// "respond with exactly" branch because the judge prompt embeds the maker's task
-// (which may itself carry a "respond with exactly" directive).
-function orchestrationJudgeReply(prompt: string, lower: string): string | null {
-  if (lower.includes("return only a json object") && lower.includes("verdict")) {
-    const pass = prompt.includes("PASS");
-    return JSON.stringify({ verdict: pass ? "pass" : "fail", score: pass ? 1 : 0 });
-  }
-  return null;
-}
-
-// The keyword-driven fallback replies the fake produces for various test prompts.
-// Extracted from buildAssistantText to keep that method under the complexity cap.
-function keywordReply(lower: string, memoryMarker: string | null): string | null {
-  if (lower.includes("state saved")) return "state saved";
-  if (lower.includes("timeline test")) return "timeline test";
-  if (lower.includes("quick brown fox") && lower.includes("lazy dog")) {
-    return "The quick brown fox jumps over the lazy dog. Then the fox ran away.";
-  }
-  if (lower.includes("what did i ask you to say earlier"))
-    return "You asked me to say state saved.";
-  if (lower.includes("say 'timeline test'")) return "timeline test";
-  if (lower.includes("say 'state saved'")) return "state saved";
-  if (lower.includes("return schema-valid json") || lower.includes("schema-valid json")) {
-    return JSON.stringify({ ok: true });
-  }
-  if (lower.includes("what was the marker") || lower.includes("what was the project name")) {
-    return memoryMarker ?? "unknown";
-  }
-  if (lower.includes("stop")) return "Stopped.";
-  return null;
-}
-
 class FakeAgentClient implements AgentClient {
   readonly capabilities: AgentCapabilityFlags;
   constructor(
@@ -1304,13 +1226,15 @@ class FakeAgentClient implements AgentClient {
     config: AgentSessionConfig,
     _launchContext?: AgentLaunchContext,
   ): Promise<AgentSession> {
+    await this.options.beforeCreateSession?.(config);
     return new FakeAgentSession({
       providerName: this.provider,
       config: { ...config },
       supportsMcpServers: this.options.supportsMcpServers,
       closeSession: this.options.closeSession,
       onStartTurn: this.options.onStartTurn,
-      assistantOutcomeForPrompt: this.options.assistantOutcomeForPrompt,
+      beforeTurnComplete: this.options.beforeTurnComplete,
+      historyEvents: this.options.historyEvents,
     });
   }
 
@@ -1336,7 +1260,8 @@ class FakeAgentClient implements AgentClient {
       memoryMarker: typeof marker === "string" ? marker : null,
       closeSession: this.options.closeSession,
       onStartTurn: this.options.onStartTurn,
-      assistantOutcomeForPrompt: this.options.assistantOutcomeForPrompt,
+      beforeTurnComplete: this.options.beforeTurnComplete,
+      historyEvents: this.options.historyEvents,
     });
   }
 

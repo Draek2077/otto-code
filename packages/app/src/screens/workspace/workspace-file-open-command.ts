@@ -2,7 +2,6 @@ import {
   createWorkspaceFileTabTarget,
   normalizeWorkspaceFileLocation,
 } from "@/workspace/file-open";
-import { setFileViewModeFor } from "@/stores/file-view-store";
 import {
   FOCUSED_PANE_PLACEMENT,
   type WorkspaceTabPlacement,
@@ -11,10 +10,6 @@ import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 
 interface OpenWorkspaceFileFromExplorerInput {
   filePath: string;
-  /** Open the file tab in editor view instead of the read-only preview. */
-  edit?: boolean;
-  /** Preview view only: highlight and scroll to this 1-based line. */
-  lineStart?: number;
   persistenceKey: string | null;
   closeExplorerAfterOpen: boolean;
   showMobileAgent: () => void;
@@ -33,20 +28,9 @@ export function openWorkspaceFileFromExplorer(input: OpenWorkspaceFileFromExplor
   if (!input.persistenceKey) {
     return;
   }
-  const location = normalizeWorkspaceFileLocation({
-    path: input.filePath,
-    lineStart: input.lineStart,
-  });
+  const location = normalizeWorkspaceFileLocation({ path: input.filePath });
   if (!location) {
     return;
-  }
-  if (input.edit) {
-    // One tab per file: "Edit" opens the same file tab in editor view.
-    setFileViewModeFor({
-      persistenceKey: input.persistenceKey,
-      path: location.path,
-      mode: "editor",
-    });
   }
   const tabId = input.openWorkspaceTabInFocusedPane(
     input.persistenceKey,

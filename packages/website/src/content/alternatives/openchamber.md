@@ -5,6 +5,8 @@ nav: OpenChamber
 order: 52
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Otto vs OpenChamber
 
 OpenChamber is a macOS desktop app for OpenCode. Also available as a PWA. Open source under MIT.

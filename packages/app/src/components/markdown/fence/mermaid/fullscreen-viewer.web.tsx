@@ -1,19 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Modal, View } from "react-native";
-import { X } from "@/components/icons/material-icons";
+import { X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ZoomableViewport } from "@/components/zoomable-viewport";
 import { SPACING } from "@/styles/theme";
-import { WindowChromeRootRegion } from "@/utils/window-chrome";
+import { WindowChromeRootRegion } from "@/utils/desktop-window";
 import { MermaidIframeRuntime, type MermaidRenderedMessage } from "./iframe-runtime.web";
-import type { MermaidDiagramTheme } from "./theme";
+import type { DiagramColorScheme } from "./render-model";
 import { useMermaidRenderModel } from "./use-render-model";
 
 interface MermaidFullscreenViewerProps {
   source: string;
-  diagramTheme: MermaidDiagramTheme;
+  colorScheme: DiagramColorScheme;
   onClose: () => void;
 }
 
@@ -24,7 +24,7 @@ const VIEWER_FIT = { padding: SPACING[6] };
 
 export function MermaidFullscreenViewer({
   source,
-  diagramTheme,
+  colorScheme,
   onClose,
 }: MermaidFullscreenViewerProps) {
   const { t } = useTranslation();
@@ -32,14 +32,14 @@ export function MermaidFullscreenViewer({
   const { state, request, rendered, renderFailed } = useMermaidRenderModel({
     source,
     phase: "complete",
-    diagramTheme,
+    colorScheme,
   });
   const handleRendered = useCallback(
     (message: MermaidRenderedMessage) => {
       rendered({
         revision: message.revision,
         source: message.source,
-        themeKey: message.themeKey,
+        colorScheme: message.colorScheme,
         dimensions: { height: message.height, width: message.width },
       });
     },

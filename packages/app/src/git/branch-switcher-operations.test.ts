@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { createBranchSwitcherOperations } from "./branch-switcher-operations";
 
 function createRecordingClient() {
@@ -21,6 +21,10 @@ function createRecordingClient() {
       cwds.push(cwd);
       return { error: null };
     },
+    checkoutSwitchBranch: async (cwd: string) => {
+      cwds.push(cwd);
+      return { error: null };
+    },
   } as unknown as DaemonClient;
   return { client, cwds };
 }
@@ -33,11 +37,13 @@ describe("createBranchSwitcherOperations", () => {
 
     const operations = createBranchSwitcherOperations(client, workspaceDirectory);
     await operations.getBranchSuggestions(200);
-    await operations.listOttoStashes();
+    await operations.listPaseoStashes();
     await operations.saveStash("main");
     await operations.popStash(0);
+    await operations.switchBranch("feature");
 
     expect(cwds).toEqual([
+      workspaceDirectory,
       workspaceDirectory,
       workspaceDirectory,
       workspaceDirectory,

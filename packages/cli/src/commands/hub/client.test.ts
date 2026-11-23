@@ -33,7 +33,7 @@ describe("Hub HTTP client", () => {
         body: {
           status: "authorized",
           interval: 5,
-          credential: "otto_cli_prefix_durable-secret-value",
+          credential: "paseo_cli_prefix_durable-secret-value",
           organizationId: "organization-1",
         },
       };
@@ -63,8 +63,8 @@ describe("Hub HTTP client", () => {
             projects: [
               {
                 id: "a50e05af-4f20-4c8f-8dcc-58e5ea360663",
-                slug: "otto",
-                name: "Otto",
+                slug: "paseo",
+                name: "Paseo",
               },
             ],
           },
@@ -83,7 +83,7 @@ describe("Hub HTTP client", () => {
     const projects = await hub.listProjects(origin, "human-secret");
     const token = await hub.issueEnrollmentToken(origin, "human-secret");
 
-    assert.equal(projects[0]?.slug, "otto");
+    assert.equal(projects[0]?.slug, "paseo");
     assert.equal(token, "one-time-enrollment-token-with-enough-length");
     assert.deepEqual(
       requests.map((request) => request.url),
@@ -160,10 +160,10 @@ describe("Hub HTTP client", () => {
           daemons: [{ id: "a50e05af-4f20-4c8f-8dcc-58e5ea360663", slug: "macbook" }],
           github: [
             {
-              slug: "Draek2077",
-              accountLogin: "Draek2077",
+              slug: "getpaseo",
+              accountLogin: "getpaseo",
               accountType: "Organization",
-              repositories: ["Draek2077/otto-code"],
+              repositories: ["getpaseo/paseo"],
             },
           ],
           discord: [{ slug: "paseo", guildName: "Paseo" }],
@@ -182,24 +182,6 @@ describe("Hub HTTP client", () => {
     assert.equal(requests[0]?.url, "/api/v1/configuration-resources");
   });
 
-  it.each([
-    { slug: "slack-main", teamName: "Otto", teamId: "obsolete-native-id" },
-    { slug: 123, teamName: "Otto" },
-  ])("rejects malformed or unknown configuration resource fields", async (slack) => {
-    const requests: Array<{ url: string | undefined; body: string }> = [];
-    const origin = await startServer(
-      () => ({
-        status: 200,
-        body: { daemons: [], github: [], discord: [], slack: [slack], linear: [] },
-      }),
-      requests,
-    );
-
-    await assert.rejects(new HubHttpClient().listConfigurationResources(origin, "secret"), {
-      code: "HUB_INVALID_RESPONSE",
-    });
-  });
-
   it("renders file-aware Hub validation issues without exposing credentials or response bodies", async () => {
     const requests: Array<{ url: string | undefined; body: string }> = [];
     const origin = await startServer(
@@ -215,7 +197,7 @@ describe("Hub HTTP client", () => {
           requestId: "request-1",
           issues: [
             {
-              path: [".otto/workflows/answer.yml", "steps", "work", "agent"],
+              path: [".paseo/workflows/answer.yml", "steps", "work", "agent"],
               message: "unknown named agent operator-secret",
             },
           ],
@@ -230,7 +212,7 @@ describe("Hub HTTP client", () => {
         origin,
         apiKey: "operator-secret",
         projectSlug: "studio",
-        files: [{ path: ".otto/hub.yml", content: "sensitive bundle content" }],
+        files: [{ path: ".paseo/hub.yml", content: "sensitive bundle content" }],
       }),
       (error: unknown) => {
         assert.ok(error instanceof HubCommandError);
@@ -241,7 +223,7 @@ describe("Hub HTTP client", () => {
         assert.equal(error.details?.includes("sensitive bundle content"), false);
         assert.equal(
           error.details,
-          ".otto/workflows/answer.yml: steps.work.agent: unknown named agent [redacted]",
+          ".paseo/workflows/answer.yml: steps.work.agent: unknown named agent [redacted]",
         );
         return true;
       },

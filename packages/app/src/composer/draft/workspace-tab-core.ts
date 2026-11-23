@@ -1,91 +1,8 @@
 import { resolveSubmissionReadiness } from "@/provider-selection/provider-selection";
-import type { SelectorProfile } from "@/components/combined-model-selector";
 
 export interface WorkspaceDraftAutoSubmitConfig {
   provider: string;
   model: string | null;
-}
-
-export interface DraftAutoSubmitConfig {
-  provider: string;
-  modeId: string | null;
-  model: string | null;
-  thinkingOptionId: string | null;
-  featureValues: Record<string, unknown>;
-  personality: string | null;
-}
-
-export function resolveAutoSubmitConfig(
-  pending: {
-    provider: string;
-    modeId?: string | null;
-    model?: string | null;
-    thinkingOptionId?: string | null;
-    featureValues?: Record<string, unknown>;
-    personality?: string | null;
-  } | null,
-): DraftAutoSubmitConfig | null {
-  if (!pending) return null;
-  return {
-    provider: pending.provider,
-    modeId: pending.modeId ?? null,
-    model: pending.model ?? null,
-    thinkingOptionId: pending.thinkingOptionId ?? null,
-    featureValues: pending.featureValues ?? {},
-    personality: pending.personality ?? null,
-  };
-}
-
-/**
- * The personality id to send to createAgent. Prefers `spawnProfileId`,
- * because `selectedProfileId` is the synthetic "Team's <Role>" sentinel
- * whenever that slot is picked - an id no roster entry matches, which made the
- * daemon skip the personality entirely and spawn a bare agent on whatever model
- * the device last remembered.
- */
-export function resolveSpawnPersonalityId(
-  personality?: {
-    selectedProfileId?: string | null;
-    spawnProfileId?: string | null;
-  } | null,
-): string | null {
-  return personality?.spawnProfileId ?? personality?.selectedProfileId ?? null;
-}
-
-/**
- * Personality identity carried through the draft send. An auto-submit (e.g. a
- * brand-new workspace's first message, handed off from the new-workspace
- * composer) carries its personality id on the pending submission itself,
- * since that composer's own picker state isn't the one live here; otherwise it
- * comes straight from this tab's composer. Either way the daemon re-resolves
- * the id to the authoritative snapshot, but we also read the picker's spinner
- * colors here so the optimistic draft agent shows the personality's spinner
- * instantly, before the created-agent payload arrives.
- */
-export function resolveDraftPersonality(input: {
-  autoSubmitConfig: DraftAutoSubmitConfig | null;
-  agentControls: {
-    personality?: {
-      selectedProfileId?: string | null;
-      spawnProfileId?: string | null;
-      personalities?: SelectorProfile[];
-    } | null;
-  };
-}): { id: string; spinner: { glowA: string; glowB: string } | null } | null {
-  const id = input.autoSubmitConfig
-    ? input.autoSubmitConfig.personality
-    : resolveSpawnPersonalityId(input.agentControls.personality);
-  if (!id) {
-    return null;
-  }
-  const personality = input.agentControls.personality?.personalities?.find(
-    (entry) => entry.id === id,
-  );
-  const spinner =
-    personality?.glowA && personality.glowB
-      ? { glowA: personality.glowA, glowB: personality.glowB }
-      : null;
-  return { id, spinner };
 }
 
 export function shouldAllowEmptyDraftText(input: {
@@ -107,7 +24,7 @@ export function validateDraftSubmission(input: {
   };
   autoSubmitConfig: WorkspaceDraftAutoSubmitConfig | null;
   workspaceDirectory: string | null;
-  hasClient: boolean;
+  isConnected: boolean;
 }): string | null {
   const {
     text,
@@ -115,7 +32,7 @@ export function validateDraftSubmission(input: {
     composerState,
     autoSubmitConfig,
     workspaceDirectory,
-    hasClient,
+    isConnected,
   } = input;
   const readiness = resolveSubmissionReadiness({
     text,
@@ -129,7 +46,7 @@ export function validateDraftSubmission(input: {
     },
     autoSubmitConfig,
     workspaceDirectory,
-    hasClient,
+    isConnected,
   });
   return readiness.ok ? null : (readiness.reason ?? null);
 }

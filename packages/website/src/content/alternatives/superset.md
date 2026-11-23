@@ -5,6 +5,8 @@ nav: Superset
 order: 51
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Otto vs Superset
 
 Superset is a macOS desktop app for running CLI coding agents in parallel git worktrees. Source-available under the Elastic License 2.0.

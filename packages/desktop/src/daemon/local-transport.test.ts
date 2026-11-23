@@ -1,4 +1,3 @@
-import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import {
   buildSshArgs,
@@ -76,22 +75,6 @@ function createManagerHarness(
 }
 
 describe("Remote SSH desktop transport", () => {
-  it("tunnels to the existing Otto daemon by default without a remote startup command", () => {
-    expect(buildSshArgs({ transportType: "ssh", host: "build-box" })).toEqual([
-      "-T",
-      "-o",
-      "BatchMode=yes",
-      "-o",
-      "ConnectTimeout=10",
-      "-o",
-      "ClearAllForwardings=yes",
-      "-o",
-      "ExitOnForwardFailure=yes",
-      "-W",
-      "127.0.0.1:6868",
-      "build-box",
-    ]);
-  });
   it("builds a batch-mode SSH stdio tunnel with optional connection settings", () => {
     expect(
       buildSshArgs({
@@ -217,47 +200,5 @@ describe("local transport session lifecycle", () => {
     expect(endpoint.close).toHaveBeenCalledTimes(1);
     expect(createWebSocket).not.toHaveBeenCalled();
     expect(events).toEqual([]);
-  });
-  it("passes encrypted frame bytes unchanged and closes only the selected tunnel", async () => {
-    const firstEndpoint = createEndpoint();
-    const secondEndpoint = createEndpoint();
-    const makeSocket = () =>
-      Object.assign(new EventEmitter(), {
-        readyState: 1,
-        send: vi.fn((_data: string | Buffer, callback: (error?: Error) => void) => callback()),
-        close: vi.fn(),
-        terminate: vi.fn(),
-      });
-    const first = makeSocket();
-    const second = makeSocket();
-    const endpoints = [firstEndpoint, secondEndpoint];
-    const { manager, events } = createManagerHarness(
-      async () => endpoints.shift()!,
-      [first, second],
-    );
-    manager.open(SESSION_INPUT);
-    manager.open({ ...SESSION_INPUT, sessionId: "other-session" });
-    await Promise.resolve();
-    first.emit("open");
-    second.emit("open");
-    const frame = Buffer.from([0, 255, 128, 1, 42, 0, 13]);
-    await manager.send({
-      sessionId: SESSION_INPUT.sessionId,
-      binaryBase64: frame.toString("base64"),
-    });
-    expect(first.send.mock.calls[0]?.[0]).toEqual(frame);
-    first.emit("message", frame, true);
-    expect(events.at(-1)).toEqual({
-      sessionId: SESSION_INPUT.sessionId,
-      kind: "message",
-      binaryBase64: frame.toString("base64"),
-    });
-    manager.close(SESSION_INPUT.sessionId);
-    expect(firstEndpoint.close).toHaveBeenCalledOnce();
-    expect(secondEndpoint.close).not.toHaveBeenCalled();
-    await manager.send({ sessionId: "other-session", text: "still connected" });
-    expect(second.send.mock.calls[0]?.[0]).toBe("still connected");
-    manager.closeAll();
-    expect(secondEndpoint.close).toHaveBeenCalledOnce();
   });
 });

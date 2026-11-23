@@ -2,21 +2,22 @@ import { withUnistyles } from "react-native-unistyles";
 import {
   BookOpen,
   Boxes,
+  Brain,
   Bug,
   Cloud,
   Code,
+  Compass,
   Cpu,
   Database,
-  Explore,
   Eye,
   Feather,
   FileText,
   FlaskConical,
-  Gavel,
+  GitBranch,
   Globe,
+  Hammer,
   Layers,
   Microscope,
-  Neurology,
   Package,
   Palette,
   Pencil,
@@ -29,8 +30,7 @@ import {
   Terminal,
   TestTube,
   Wrench,
-} from "@/components/icons/material-icons";
-import { GitBranch } from "@/components/icons/lucide";
+} from "lucide-react-native";
 import { identityForeground } from "@/styles/identity-colors";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import {
@@ -40,21 +40,20 @@ import {
   type AgentProfileColor,
   type AgentProfileIconKey,
 } from "./profile-appearance";
-import type { IconSizeProp } from "@/components/icons/icon-size";
 
 /** Drawn when a profile names no icon, and as the "default" cell in the picker grid. */
 const ThemedDefaultIcon = withUnistyles(Star);
 
 /**
  * `withUnistyles` has to wrap each icon once at module scope, so the registry
- * stores the themed component rather than the raw icon.
+ * stores the themed component rather than the raw lucide one.
  */
 const THEMED_ICONS: Record<AgentProfileIconKey, typeof ThemedDefaultIcon> = {
   code: withUnistyles(Code),
   terminal: withUnistyles(Terminal),
   bug: withUnistyles(Bug),
   wrench: withUnistyles(Wrench),
-  hammer: withUnistyles(Gavel),
+  hammer: withUnistyles(Hammer),
 
   flask: withUnistyles(FlaskConical),
   testTube: withUnistyles(TestTube),
@@ -80,10 +79,8 @@ const THEMED_ICONS: Record<AgentProfileIconKey, typeof ThemedDefaultIcon> = {
   gitBranch: withUnistyles(GitBranch),
   layers: withUnistyles(Layers),
 
-  compass: withUnistyles(Explore),
-  // `neurology`, not the `network_intelligence` circuit brain: that glyph is
-  // reserved for Otto Brain and must not appear on an unrelated profile cell.
-  brain: withUnistyles(Neurology),
+  compass: withUnistyles(Compass),
+  brain: withUnistyles(Brain),
   sparkles: withUnistyles(Sparkles),
   shield: withUnistyles(Shield),
 };
@@ -122,7 +119,7 @@ export function AgentProfileGlyph({
 }: {
   icon?: string | undefined;
   color?: string | undefined;
-  size?: IconSizeProp;
+  size?: number;
 }) {
   const iconKey = resolveAgentProfileIconKey(icon);
   const mapping = COLOR_MAPPINGS[resolveAgentProfileColor(color)];

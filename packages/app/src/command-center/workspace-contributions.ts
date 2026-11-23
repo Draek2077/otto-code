@@ -1,4 +1,5 @@
 import type { GitAction, GitActions } from "@/git/policy";
+import { workspaceGitCommands } from "@/otto/workspace-git/commands"; // OTTO(git-fetch)
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import type {
   WorkspacePanelPlacement,
@@ -582,7 +583,8 @@ export function buildWorkspaceCommandCenterContributions(
   ];
 
   const primary = source.gitActions.primary;
-  for (const [index, action] of source.gitActions.secondary.entries()) {
+  // OTTO(git-fetch): add Fetch without widening Paseo's other menu-only commands.
+  for (const [index, action] of workspaceGitCommands(source.gitActions).entries()) {
     if (action.id === primary?.id) continue;
     contributions.push(buildGitContribution(source, action, 100 + index, "query"));
   }

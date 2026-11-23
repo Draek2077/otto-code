@@ -1,6 +1,6 @@
 import { generateMessageId } from "@/types/stream";
 import type { WorkspaceTab } from "@/workspace-tabs/model";
-import type { TerminalProfile } from "@otto-code/protocol/messages";
+import type { TerminalProfile } from "@getpaseo/protocol/messages";
 
 export type NewTabSelection =
   | { kind: "target"; target: WorkspaceTab["target"] }

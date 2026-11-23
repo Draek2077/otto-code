@@ -6,6 +6,8 @@ order: 55
 category: TypeScript SDK
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Provider options
 
 `config.options` passes settings straight through to the provider CLI. Otto validates the object against that provider's strict schema before starting the agent, so an unknown or misspelled key fails agent creation instead of silently doing nothing.

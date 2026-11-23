@@ -1,18 +1,26 @@
 import { describe, expect, it, vi } from "vitest";
+import { formatShortcut } from "@/utils/format-shortcut";
+import { keyboardEventToComboString } from "./shortcut-string";
 import {
-  buildEffectiveBindings,
   buildKeyboardShortcutHelpSections,
-  type ChordState,
+  buildEffectiveBindings,
+  normalizeCapturedShortcutCombo,
   getBindingIdForAction,
+  getDefaultKeysForAction,
   getWorkspaceIndexJumpModifierKey,
-  type KeyboardShortcutContext,
-  type ParsedShortcutBinding,
+  parseBindingChord,
   resolveKeyboardShortcut,
   resolveShortcutKeysForAction,
+  SHORTCUT_HELP_ROW_ORDER,
+  UNASSIGNED_COMBO,
+  type ChordState,
+  type KeyboardShortcutContext,
+  type KeyboardShortcutInput,
+  type ParsedShortcutBinding,
+  type ShortcutOverrides,
 } from "./keyboard-shortcuts";
-import { buildShortcutDiscoveryEntries } from "./shortcut-discovery";
 
-function keyboardEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
+function keyboardInput(overrides: Partial<KeyboardShortcutInput>): KeyboardShortcutInput {
   return {
     key: "",
     code: "",
@@ -22,7 +30,7 @@ function keyboardEvent(overrides: Partial<KeyboardEvent>): KeyboardEvent {
     shiftKey: false,
     repeat: false,
     ...overrides,
-  } as KeyboardEvent;
+  };
 }
 
 function shortcutContext(
@@ -46,14 +54,14 @@ function initialChordState(): ChordState {
 }
 
 function resolveShortcut(input: {
-  event: Partial<KeyboardEvent>;
+  event: Partial<KeyboardShortcutInput>;
   context?: Partial<KeyboardShortcutContext>;
   chordState?: ChordState;
   onChordReset?: () => void;
   bindings?: readonly ParsedShortcutBinding[];
 }) {
   return resolveKeyboardShortcut({
-    event: keyboardEvent(input.event),
+    event: keyboardInput(input.event),
     context: shortcutContext(input.context),
     chordState: input.chordState ?? initialChordState(),
     onChordReset: input.onChordReset ?? (() => undefined),
@@ -62,7 +70,7 @@ function resolveShortcut(input: {
 }
 
 function expectShortcutResolution(input: {
-  event: Partial<KeyboardEvent>;
+  event: Partial<KeyboardShortcutInput>;
   context?: Partial<KeyboardShortcutContext>;
   action: string;
   payload?: unknown;
@@ -75,7 +83,9 @@ function expectShortcutResolution(input: {
   });
 
   expect(result.match?.action).toBe(input.action);
-  expect(result.match?.payload).toEqual(input.payload ?? null);
+  if ("payload" in input) {
+    expect(result.match?.payload).toEqual(input.payload);
+  }
   expect(result.match?.preventDefault).toBe(input.preventDefault ?? true);
   expect(result.match?.stopPropagation).toBe(input.stopPropagation ?? true);
   expect(result.preventDefault).toBe(false);
@@ -83,7 +93,7 @@ function expectShortcutResolution(input: {
 }
 
 function expectNoShortcutResolution(input: {
-  event: Partial<KeyboardEvent>;
+  event: Partial<KeyboardShortcutInput>;
   context?: Partial<KeyboardShortcutContext>;
 }) {
   const result = resolveShortcut({
@@ -98,7 +108,7 @@ function expectNoShortcutResolution(input: {
 
 interface MatchingShortcutCase {
   name: string;
-  event: Partial<KeyboardEvent>;
+  event: Partial<KeyboardShortcutInput>;
   context?: Partial<KeyboardShortcutContext>;
   action: string;
   payload?: unknown;
@@ -108,7 +118,7 @@ interface MatchingShortcutCase {
 
 interface NonMatchingShortcutCase {
   name: string;
-  event: Partial<KeyboardEvent>;
+  event: Partial<KeyboardShortcutInput>;
   context?: Partial<KeyboardShortcutContext>;
 }
 
@@ -140,6 +150,18 @@ describe("keyboard-shortcuts", () => {
       event: { key: "n", code: "KeyN", ctrlKey: true },
       context: { isMac: false, commandCenterOpen: false, focusScope: "other" },
       action: "workspace.new",
+    },
+    {
+      name: "matches Cmd+P to search workspace files on mac",
+      event: { key: "p", code: "KeyP", metaKey: true },
+      context: { isMac: true, commandCenterOpen: false },
+      action: "command-center.files",
+    },
+    {
+      name: "matches Ctrl+P to search workspace files on non-mac",
+      event: { key: "p", code: "KeyP", ctrlKey: true },
+      context: { isMac: false, commandCenterOpen: false, focusScope: "other" },
+      action: "command-center.files",
     },
     {
       name: "matches question-mark shortcut to toggle the shortcuts dialog",
@@ -206,7 +228,7 @@ describe("keyboard-shortcuts", () => {
       name: "matches Mod+T to open new tab",
       event: { key: "t", code: "KeyT", metaKey: true },
       context: { isMac: true },
-      action: "workspace.tab.new",
+      action: "workspace.tab.menu.open",
     },
     {
       name: "matches Alt+Shift+W to close current tab on web",
@@ -251,18 +273,6 @@ describe("keyboard-shortcuts", () => {
       action: "workspace.pane.split.down",
     },
     {
-      name: "matches Ctrl+Backslash to split pane right on non-mac platforms",
-      event: { key: "\\", code: "Backslash", ctrlKey: true },
-      context: { isMac: false },
-      action: "workspace.pane.split.right",
-    },
-    {
-      name: "matches Ctrl+Shift+Backslash to split pane down on non-mac platforms",
-      event: { key: "|", code: "Backslash", ctrlKey: true, shiftKey: true },
-      context: { isMac: false },
-      action: "workspace.pane.split.down",
-    },
-    {
       name: "matches Cmd+Shift+ArrowRight to focus pane right on macOS",
       event: { key: "ArrowRight", code: "ArrowRight", metaKey: true, shiftKey: true },
       context: { isMac: true },
@@ -291,125 +301,6 @@ describe("keyboard-shortcuts", () => {
       event: { key: "b", code: "KeyB", metaKey: true },
       context: { isMac: true },
       action: "sidebar.toggle.left",
-    },
-    // Mod+B steps aside only for the file editor, not for text fields at large:
-    // the composer holds focus most of the time, and Mod+B means nothing there.
-    // Nothing on the sidebar binding says so - the editor's own Mod+B is
-    // focus-scoped and simply outranks it there. See the specificity block below.
-    {
-      name: "still toggles the left sidebar with Cmd+B from the composer",
-      event: { key: "b", code: "KeyB", metaKey: true },
-      context: { isMac: true, focusScope: "message-input" },
-      action: "sidebar.toggle.left",
-    },
-    {
-      name: "still toggles the left sidebar with Ctrl+B from a plain text field",
-      event: { key: "b", code: "KeyB", ctrlKey: true },
-      context: { isMac: false, focusScope: "editable" },
-      action: "sidebar.toggle.left",
-    },
-    {
-      name: "opens chat find with Ctrl+F from the composer",
-      event: { key: "f", code: "KeyF", ctrlKey: true },
-      context: { isMac: false, focusScope: "message-input" },
-      action: "chat.find",
-    },
-    {
-      name: "opens chat find with Ctrl+F from the active chat tab",
-      event: { key: "f", code: "KeyF", ctrlKey: true },
-      context: { isMac: false, focusScope: "other" },
-      action: "chat.find",
-    },
-    // --- File Editor section: the same combo, two owners, focus decides ---
-    {
-      name: "runs the editor's go-to-definition on Cmd+B while the editor is focused",
-      event: { key: "b", code: "KeyB", metaKey: true },
-      context: { isMac: true, focusScope: "code-editor" },
-      action: "editor.goToDefinition",
-    },
-    {
-      name: "runs the editor's find on Ctrl+F while the editor is focused",
-      event: { key: "f", code: "KeyF", ctrlKey: true },
-      context: { isMac: false, focusScope: "code-editor" },
-      action: "editor.find",
-    },
-    {
-      name: "runs the editor's save on Mod+S, a combo no general binding claims",
-      event: { key: "s", code: "KeyS", metaKey: true },
-      context: { isMac: true, focusScope: "code-editor" },
-      action: "editor.save",
-    },
-    {
-      name: "runs go-to-definition from the F12 alias too",
-      event: { key: "F12", code: "F12" },
-      context: { focusScope: "code-editor" },
-      action: "editor.goToDefinition",
-    },
-    {
-      name: "runs find references on Shift+F12",
-      event: { key: "F12", code: "F12", shiftKey: true },
-      context: { focusScope: "code-editor" },
-      action: "editor.findReferences",
-    },
-    {
-      name: "runs rename symbol on F2",
-      event: { key: "F2", code: "F2" },
-      context: { focusScope: "code-editor" },
-      action: "editor.renameSymbol",
-    },
-    // --- Markdown Editor: a narrower scope that INHERITS the one above ---
-    {
-      name: "runs markdown bold on Mod+B in a markdown file, not go-to-definition",
-      event: { key: "b", code: "KeyB", metaKey: true },
-      context: { isMac: true, focusScope: "markdown-editor" },
-      action: "editor.markdown.bold",
-    },
-    {
-      name: "keeps Save working in a markdown file, inherited from the File Editor scope",
-      event: { key: "s", code: "KeyS", metaKey: true },
-      context: { isMac: true, focusScope: "markdown-editor" },
-      action: "editor.save",
-    },
-    {
-      name: "keeps Find working in a markdown file, inherited the same way",
-      event: { key: "f", code: "KeyF", ctrlKey: true },
-      context: { isMac: false, focusScope: "markdown-editor" },
-      action: "editor.find",
-    },
-    {
-      name: "makes Mod+K a link in a markdown file",
-      event: { key: "k", code: "KeyK", metaKey: true },
-      context: { isMac: true, focusScope: "markdown-editor" },
-      action: "editor.markdown.link",
-    },
-    // The reason the markdown scope exists at all: claiming these combos at
-    // code-editor scope would take them away in every code file, where the
-    // markdown command declines and the key would simply die.
-    {
-      name: "leaves Mod+K as the command center in a code file",
-      event: { key: "k", code: "KeyK", metaKey: true },
-      context: { isMac: true, focusScope: "code-editor" },
-      action: "command-center.toggle",
-    },
-    {
-      name: "runs the editor's go-to-line on Mod+G, one combo across both platforms",
-      event: { key: "g", code: "KeyG", ctrlKey: true },
-      context: { isMac: false, focusScope: "code-editor" },
-      action: "editor.goToLine",
-    },
-    // Non-overlapping Otto shortcuts keep working in the editor - the override
-    // is per-combo, not a modal takeover of the whole keyboard.
-    {
-      name: "still opens the command center with Ctrl+K from the editor",
-      event: { key: "k", code: "KeyK", ctrlKey: true },
-      context: { isMac: false, focusScope: "code-editor" },
-      action: "command-center.toggle",
-    },
-    {
-      name: "still cycles the theme with Ctrl+Alt+T from the editor",
-      event: { key: "t", code: "KeyT", ctrlKey: true, altKey: true },
-      context: { isMac: false, focusScope: "code-editor" },
-      action: "theme.cycle",
     },
     {
       name: "routes Mod+. to toggle both sidebars on non-mac",
@@ -515,6 +406,13 @@ describe("keyboard-shortcuts", () => {
     },
   );
 
+  it("leaves Escape to an editable field", () => {
+    expectNoShortcutResolution({
+      event: { key: "Escape", code: "Escape" },
+      context: { focusScope: "editable" },
+    });
+  });
+
   const nonMatchingCases: NonMatchingShortcutCase[] = [
     {
       name: "does not keep old Mod+Alt+N binding",
@@ -540,30 +438,15 @@ describe("keyboard-shortcuts", () => {
       event: { key: "?", code: "Slash", shiftKey: true },
       context: { focusScope: "message-input" },
     },
-    // The file editor is also an editable surface, so editable:false bindings
-    // keep standing down there. (Mod+B and Mod+F resolving to the EDITOR's own
-    // actions in that scope is asserted in the matching cases above.)
     {
-      name: "keeps Cmd+Shift+ArrowUp available for selection inside the file editor",
-      event: { key: "ArrowUp", code: "ArrowUp", metaKey: true, shiftKey: true },
-      context: { isMac: true, focusScope: "code-editor" },
-    },
-    // The File Editor section is scoped to the editor and to nothing else: its
-    // bindings must not leak into the composer or a plain text field.
-    {
-      name: "does not run the editor's save from the composer",
-      event: { key: "s", code: "KeyS", ctrlKey: true },
-      context: { isMac: false, focusScope: "message-input" },
+      name: "does not switch project with Ctrl+P on non-mac while terminal is focused",
+      event: { key: "p", code: "KeyP", ctrlKey: true },
+      context: { isMac: false, focusScope: "terminal" },
     },
     {
-      name: "does not run rename symbol from outside the editor",
-      event: { key: "F2", code: "F2" },
-      context: { focusScope: "other" },
-    },
-    {
-      name: "does not run find references from a plain text field",
-      event: { key: "F12", code: "F12", shiftKey: true },
-      context: { focusScope: "editable" },
+      name: "does not switch project with Cmd+P while the command center is open",
+      event: { key: "p", code: "KeyP", metaKey: true },
+      context: { isMac: true, commandCenterOpen: true },
     },
     {
       name: "does not close tab with Ctrl+W on mac desktop (Cmd+W only)",
@@ -631,6 +514,11 @@ describe("keyboard-shortcuts", () => {
       context: { commandCenterOpen: true },
     },
     {
+      name: "does not bind pane shortcuts on non-mac platforms",
+      event: { key: "\\", code: "Backslash", ctrlKey: true },
+      context: { isMac: false },
+    },
+    {
       name: "keeps Cmd+Shift+ArrowRight available for message input selection",
       event: { key: "ArrowRight", code: "ArrowRight", metaKey: true, shiftKey: true },
       context: { isMac: true, focusScope: "message-input" },
@@ -651,7 +539,7 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: true, isDesktop: true, focusScope: "message-input" },
     },
     // Sanity: the macOS Option-substitution fallback must still respect
-    // modifier checks - pressing Option+T alone (no Cmd) must not trigger
+    // modifier checks — pressing Option+T alone (no Cmd) must not trigger
     // the Cmd+Alt+T theme-cycle binding.
     {
       name: "does not cycle theme on macOS when Cmd is missing (Alt+T alone)",
@@ -662,6 +550,36 @@ describe("keyboard-shortcuts", () => {
 
   it.each(nonMatchingCases)("$name", ({ event, context }) => {
     expectNoShortcutResolution({ event, context });
+  });
+
+  // A rebound pane-focus shortcut has to fire wherever the user is typing.
+  // Its default combo carries `editable: false` so that Cmd+Shift+Arrow keeps
+  // selecting text (the two cases above), and that guard describes the default
+  // combo rather than the action, so it must not survive the rebind.
+  describe("a rebound pane-focus shortcut", () => {
+    const PANE_FOCUS_DOWN_BINDING = "workspace-pane-focus-down-cmd-shift-down";
+    // macOS emits U+2206 for Option+J; the stored combo comes from the code.
+    const altJ = { key: "\u2206", code: "KeyJ", altKey: true };
+
+    it.each(["message-input", "editable"] as const)("fires with %s focused", (focusScope) => {
+      const result = resolveShortcut({
+        event: altJ,
+        context: { isMac: true, focusScope },
+        bindings: buildEffectiveBindings({ [PANE_FOCUS_DOWN_BINDING]: "Alt+J" }),
+      });
+
+      expect(result.match?.action).toBe("workspace.pane.focus.down");
+    });
+
+    it("still fires outside a text field", () => {
+      const result = resolveShortcut({
+        event: altJ,
+        context: { isMac: true, focusScope: "other" },
+        bindings: buildEffectiveBindings({ [PANE_FOCUS_DOWN_BINDING]: "Alt+J" }),
+      });
+
+      expect(result.match?.action).toBe("workspace.pane.focus.down");
+    });
   });
 
   it("prefers advancing chord candidates over single-combo matches on the same prefix", () => {
@@ -699,91 +617,48 @@ describe("keyboard-shortcuts", () => {
     expect(secondResult.nextChordState).toEqual(initialChordState());
   });
 
-  // The three cases the override mechanic has to get right, spelled out: which
-  // of two bindings on a shared combo wins where, and that a user override on
-  // EITHER side still beats the default.
-  describe("File Editor bindings override general ones while the editor is focused", () => {
-    it("gives the shared combo to the editor in the editor and to the app everywhere else", () => {
-      expect(
-        resolveShortcut({
-          event: { key: "b", code: "KeyB", ctrlKey: true },
-          context: { isMac: false, focusScope: "code-editor" },
-        }).match?.action,
-      ).toBe("editor.goToDefinition");
+  it("resolves a browser-origin shortcut with browser focus instead of host focus", () => {
+    expectShortcutResolution({
+      event: { key: "t", code: "KeyT", ctrlKey: true },
+      context: { isDesktop: true, focusScope: "browser" },
+      action: "workspace.tab.menu.open",
+    });
+  });
 
-      expect(
-        resolveShortcut({
-          event: { key: "b", code: "KeyB", ctrlKey: true },
-          context: { isMac: false, focusScope: "other" },
-        }).match?.action,
-      ).toBe("sidebar.toggle.left");
+  it("completes a chord whose second step carries a modifier", () => {
+    const bindings = buildEffectiveBindings({
+      "command-center-toggle-ctrl-k-non-mac": "Ctrl+K Ctrl+J",
     });
 
-    it("hands the combo back to the general binding once the editor is rebound off it", () => {
-      const bindings = buildEffectiveBindings({ "editor-go-to-definition-mod-b": "F4" });
+    // The browser emits a keydown for the bare Control key before every combo,
+    // so the stream for Ctrl+K, release, Ctrl+J is four keydowns, not two.
+    const firstModifier = resolveShortcut({
+      event: { key: "Control", code: "ControlLeft", ctrlKey: true },
+      context: { isMac: false, isDesktop: true },
+      bindings,
+    });
+    const firstStep = resolveShortcut({
+      event: { key: "k", code: "KeyK", ctrlKey: true },
+      context: { isMac: false, isDesktop: true },
+      chordState: firstModifier.nextChordState,
+      bindings,
+    });
+    expect(firstStep.nextChordState.step).toBe(1);
 
-      expect(
-        resolveShortcut({
-          event: { key: "b", code: "KeyB", ctrlKey: true },
-          context: { isMac: false, focusScope: "code-editor" },
-          bindings,
-        }).match?.action,
-      ).toBe("sidebar.toggle.left");
-
-      expect(
-        resolveShortcut({
-          event: { key: "F4", code: "F4" },
-          context: { isMac: false, focusScope: "code-editor" },
-          bindings,
-        }).match?.action,
-      ).toBe("editor.goToDefinition");
+    const secondModifier = resolveShortcut({
+      event: { key: "Control", code: "ControlLeft", ctrlKey: true },
+      context: { isMac: false, isDesktop: true },
+      chordState: firstStep.nextChordState,
+      bindings,
+    });
+    const secondStep = resolveShortcut({
+      event: { key: "j", code: "KeyJ", ctrlKey: true },
+      context: { isMac: false, isDesktop: true },
+      chordState: secondModifier.nextChordState,
+      bindings,
     });
 
-    it("lets an editor binding override a general one it did not previously share", () => {
-      // Mod+E is the right sidebar; rebinding the editor's find onto it must win
-      // inside the editor and leave the sidebar alone outside it.
-      const bindings = buildEffectiveBindings({ "editor-find-mod-f": "Ctrl+E" });
-
-      expect(
-        resolveShortcut({
-          event: { key: "e", code: "KeyE", ctrlKey: true },
-          context: { isMac: false, focusScope: "code-editor" },
-          bindings,
-        }).match?.action,
-      ).toBe("editor.find");
-
-      expect(
-        resolveShortcut({
-          event: { key: "e", code: "KeyE", ctrlKey: true },
-          context: { isMac: false, focusScope: "other" },
-          bindings,
-        }).match?.action,
-      ).toBe("sidebar.toggle.right");
-    });
-
-    it("keeps a rebound general binding out of the editor when the editor claims the combo", () => {
-      // The user moves the changes sidebar onto Mod+S. Save still wins in the
-      // editor, because specificity is decided per context, not per registry order.
-      const bindings = buildEffectiveBindings({
-        "sidebar-open-changes-ctrl-h-non-mac": "Ctrl+S",
-      });
-
-      expect(
-        resolveShortcut({
-          event: { key: "s", code: "KeyS", ctrlKey: true },
-          context: { isMac: false, focusScope: "code-editor" },
-          bindings,
-        }).match?.action,
-      ).toBe("editor.save");
-
-      expect(
-        resolveShortcut({
-          event: { key: "s", code: "KeyS", ctrlKey: true },
-          context: { isMac: false, focusScope: "other" },
-          bindings,
-        }).match?.action,
-      ).toBe("sidebar.open.changes");
-    });
+    expect(secondStep.match?.action).toBe("command-center.toggle");
   });
 
   it("schedules a chord reset timeout for advancing candidates", () => {
@@ -847,7 +722,11 @@ describe("keyboard-shortcut help sections", () => {
         "workspace-tab-new": ["mod", "T"],
         "workspace-jump-index": ["mod", "1-9"],
         "workspace-tab-jump-index": ["mod", "alt", "1-9"],
-        "workspace-tab-close-current": ["meta", "W"],
+        // Derived from `combo: "Cmd+W"`, so the token is `mod` where the row
+        // used to be hand-authored as `meta`. This binding is mac-only and
+        // `formatShortcut` renders both as ⌘, so the badge is unchanged — see
+        // the render assertion below.
+        "workspace-tab-close-current": ["mod", "W"],
         "workspace-pane-split-right": ["mod", "\\"],
         "workspace-pane-close": ["mod", "shift", "W"],
       },
@@ -858,16 +737,18 @@ describe("keyboard-shortcut help sections", () => {
       expectedKeys: {
         "workspace-tab-jump-index": ["alt", "1-9"],
         "workspace-tab-close-current": ["ctrl", "W"],
-        "workspace-pane-split-right": ["mod", "\\"],
-        "workspace-pane-split-down": ["mod", "shift", "\\"],
       },
     },
     {
-      name: "uses mod+b for the left sidebar and mod+period for both sidebars on non-mac",
+      name: "uses ctrl+b for the left sidebar and ctrl+period for both sidebars on non-mac",
       context: { isMac: false, isDesktop: false },
+      // Derived from `combo: "Ctrl+B"` / `"Ctrl+."`, so the token is `ctrl` where
+      // these rows used to be hand-authored as `mod`. Both bindings are non-mac
+      // only and `formatShortcut` labels either token "Ctrl" there, so the badge
+      // is unchanged — see the render assertion below.
       expectedKeys: {
-        "toggle-left-sidebar": ["mod", "B"],
-        "toggle-both-sidebars": ["mod", "."],
+        "toggle-left-sidebar": ["ctrl", "B"],
+        "toggle-both-sidebars": ["ctrl", "."],
       },
     },
   ];
@@ -876,19 +757,113 @@ describe("keyboard-shortcut help sections", () => {
     const sections = buildKeyboardShortcutHelpSections(context);
 
     for (const [id, keys] of Object.entries(expectedKeys)) {
-      expect(findRow(sections, id)?.keys).toEqual(keys);
+      expect(findRow(sections, id)?.chord).toEqual([keys]);
     }
+  });
+
+  describe("rows derive their keys from the binding that fires", () => {
+    const macDesktop = { isMac: true, isDesktop: true };
+    const NEW_WORKSPACE_BINDING = "workspace-new-cmd-n-mac";
+    const MAC_INDEX_BINDING = "workspace-navigate-index-cmd-digit-mac";
+    const PANE_FOCUS_LEFT_BINDING = "workspace-pane-focus-left-cmd-shift-left";
+    const SHOW_SHORTCUTS_BINDING = "shortcuts-dialog-toggle-question-mark";
+
+    function rowChord(overrides: ShortcutOverrides, id: string) {
+      const sections = buildKeyboardShortcutHelpSections(
+        macDesktop,
+        buildEffectiveBindings(overrides),
+      );
+      return findRow(sections, id)?.chord ?? null;
+    }
+
+    // The reported bug: the cheat sheet advertised the shipped default no matter
+    // what the user had rebound the shortcut to.
+    it("shows the override, not the shipped default", () => {
+      expect(rowChord({}, "new-workspace")).toEqual([["mod", "N"]]);
+      expect(rowChord({ [NEW_WORKSPACE_BINDING]: "Cmd+Shift+K" }, "new-workspace")).toEqual([
+        ["mod", "shift", "K"],
+      ]);
+    });
+
+    it("shows every step of a multi-step chord override", () => {
+      expect(rowChord({ [NEW_WORKSPACE_BINDING]: "Cmd+K Cmd+N" }, "new-workspace")).toEqual([
+        ["mod", "K"],
+        ["mod", "N"],
+      ]);
+    });
+
+    it("reports an unassigned row as having no keys at all", () => {
+      expect(rowChord({ [NEW_WORKSPACE_BINDING]: UNASSIGNED_COMBO }, "new-workspace")).toBeNull();
+    });
+
+    it("returns to the shipped default once the override is cleared", () => {
+      expect(rowChord({ [NEW_WORKSPACE_BINDING]: "Cmd+Shift+K" }, "new-workspace")).toEqual([
+        ["mod", "shift", "K"],
+      ]);
+      expect(rowChord({}, "new-workspace")).toEqual([["mod", "N"]]);
+    });
+
+    // An arrow override used to render as the raw `ARROWLEFT` code, because the
+    // display path uppercased key names past the table that maps them to arrows.
+    it("renders an arrow override as an arrow", () => {
+      const chord = rowChord(
+        { [PANE_FOCUS_LEFT_BINDING]: "Cmd+Alt+ArrowLeft" },
+        "workspace-pane-focus-left",
+      );
+      expect(chord).toEqual([["mod", "alt", "Left"]]);
+      expect(formatShortcut(chord?.[0] ?? [], "mac")).toBe("⌥⌘←");
+    });
+
+    // `1-9` and `?` are display-only tokens no combo string can spell, so these
+    // two rows opt out of default derivation via `help.defaultDisplayKeys`.
+    it("keeps the wildcard token on the index-jump row", () => {
+      expect(rowChord({}, "workspace-jump-index")).toEqual([["mod", "1-9"]]);
+    });
+
+    it("keeps the bare ? on the show-shortcuts row rather than deriving Shift+?", () => {
+      expect(rowChord({}, "show-shortcuts")).toEqual([["?"]]);
+    });
+
+    it("keeps the digit range readable when the index jump is rebound", () => {
+      expect(rowChord({ [MAC_INDEX_BINDING]: "Ctrl+Digit" }, "workspace-jump-index")).toEqual([
+        ["ctrl", "1-9"],
+      ]);
+    });
+
+    it("replaces the default-only ? when show shortcuts is rebound", () => {
+      expect(rowChord({ [SHOW_SHORTCUTS_BINDING]: "Cmd+K" }, "show-shortcuts")).toEqual([
+        ["mod", "K"],
+      ]);
+    });
+
+    // The authored row said `meta`, the derived row says `mod`. Both render ⌘ on
+    // mac and this binding is mac-only, so nothing the user sees moved.
+    it("still renders close-tab as ⌘W after switching to the derived token", () => {
+      const sections = buildKeyboardShortcutHelpSections(macDesktop);
+      const chord = findRow(sections, "workspace-tab-close-current")?.chord;
+      expect(formatShortcut(chord?.[0] ?? [], "mac")).toBe("⌘W");
+    });
+
+    // Same story on the other side: these rows said `mod`, the non-mac combos
+    // say `Ctrl`, and non-mac labels both as "Ctrl".
+    it("still renders the sidebar toggles as Ctrl+B and Ctrl+. on non-mac", () => {
+      const sections = buildKeyboardShortcutHelpSections({ isMac: false, isDesktop: false });
+      const left = findRow(sections, "toggle-left-sidebar")?.chord;
+      const both = findRow(sections, "toggle-both-sidebars")?.chord;
+      expect(formatShortcut(left?.[0] ?? [], "non-mac")).toBe("Ctrl+B");
+      expect(formatShortcut(both?.[0] ?? [], "non-mac")).toBe("Ctrl+.");
+    });
   });
 
   it("returns stable i18n keys for section titles and help rows", () => {
     const sections = buildKeyboardShortcutHelpSections({ isMac: true, isDesktop: true });
-    const projects = sections.find((section) => section.id === "projects");
+    const workspaces = sections.find((section) => section.id === "workspaces");
     const layout = sections.find((section) => section.id === "layout");
     const openProject = findRow(sections, "new-agent");
     const cycleAgentMode = findRow(sections, "cycle-agent-mode");
     const showShortcuts = findRow(sections, "show-shortcuts");
 
-    expect(projects?.titleKey).toBe("settings.shortcuts.sections.projects");
+    expect(workspaces?.titleKey).toBe("settings.shortcuts.sections.workspaces");
     expect(layout?.titleKey).toBe("settings.shortcuts.sections.layout");
     expect(openProject?.labelKey).toBe("settings.shortcuts.help.openProject");
     expect(openProject?.label).toBe("Open project");
@@ -896,48 +871,47 @@ describe("keyboard-shortcut help sections", () => {
     expect(showShortcuts?.noteKey).toBe("settings.shortcuts.helpNotes.showKeyboardShortcuts");
   });
 
-  it("lists the File Editor section, identically on every platform", () => {
-    for (const context of [
+  it("gives every help row an explicit place in its section's order", () => {
+    const platforms = [
       { isMac: true, isDesktop: true },
+      { isMac: false, isDesktop: true },
+      { isMac: true, isDesktop: false },
       { isMac: false, isDesktop: false },
-    ]) {
-      const sections = buildKeyboardShortcutHelpSections(context);
-      const editor = sections.find((section) => section.id === "editor");
-
-      expect(editor?.titleKey).toBe("settings.shortcuts.sections.editor");
-      expect(editor?.title).toBe("File Editor");
-      // The section is written as single Mod+ bindings, so the same rows and the
-      // same keys serve mac and non-mac; only the rendering differs.
-      expect(editor?.rows.map((row) => row.id)).toEqual([
-        "editor-save",
-        "editor-find",
-        "editor-go-to-line",
-        "editor-go-to-definition",
-        "editor-find-references",
-        "editor-rename-symbol",
-      ]);
-      expect(findRow(sections, "editor-save")?.keys).toEqual(["mod", "S"]);
-      expect(findRow(sections, "editor-rename-symbol")?.keys).toEqual(["F2"]);
-      expect(findRow(sections, "editor-save")?.labelKey).toBe("settings.shortcuts.help.editorSave");
+    ];
+    const unplaced: string[] = [];
+    for (const platform of platforms) {
+      for (const section of buildKeyboardShortcutHelpSections(platform)) {
+        for (const row of section.rows) {
+          if (SHORTCUT_HELP_ROW_ORDER[section.id].includes(row.id)) continue;
+          unplaced.push(`${section.id}:${row.id}`);
+        }
+      }
     }
+
+    expect(unplaced).toEqual([]);
   });
 
-  it("makes every File Editor row rebindable, and the F12 alias not a row of its own", () => {
-    const platform = { isMac: false, isDesktop: true };
-    for (const id of [
-      "editor-save",
-      "editor-find",
-      "editor-go-to-line",
-      "editor-go-to-definition",
-      "editor-find-references",
-      "editor-rename-symbol",
-    ]) {
-      expect(getBindingIdForAction(id, platform)).not.toBeNull();
-    }
-    // One feature, one row: F12 stays an alias with no row to rebind.
-    expect(getBindingIdForAction("editor-go-to-definition", platform)).toBe(
-      "editor-go-to-definition-mod-b",
+  it("leads the general section with the command center and file search", () => {
+    const sections = buildKeyboardShortcutHelpSections({ isMac: true, isDesktop: true });
+
+    expect(sections[0]?.id).toBe("general");
+    expect(sections[0]?.rows.slice(0, 2).map((row) => row.id)).toEqual([
+      "toggle-command-center",
+      "search-files",
+    ]);
+  });
+
+  it("reuses the project-picker binding ids for rebindable file search", () => {
+    expect(getBindingIdForAction("search-files", { isMac: true, isDesktop: true })).toBe(
+      "workspace-project-pick-cmd-p-mac",
     );
+    expect(getBindingIdForAction("search-files", { isMac: false, isDesktop: true })).toBe(
+      "workspace-project-pick-ctrl-p-non-mac",
+    );
+    expect(
+      findRow(buildKeyboardShortcutHelpSections({ isMac: true, isDesktop: true }), "search-files")
+        ?.chord,
+    ).not.toBeNull();
   });
 
   it("does not expose Enter send behavior as rebindable shortcut rows", () => {
@@ -954,165 +928,9 @@ describe("keyboard-shortcut help sections", () => {
   });
 });
 
-describe("contextual shortcut discovery", () => {
-  it("uses the focused editor binding rather than an app-wide binding on the same held prefix", () => {
-    const entries = buildShortcutDiscoveryEntries({
-      bindings: buildEffectiveBindings({}),
-      context: shortcutContext({ isMac: false, focusScope: "code-editor" }),
-      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
-    });
-
-    // Exactly B, not "contains B": Ctrl+Shift+B is a real further chord from
-    // this same prefix, and it is not the one this asserts on.
-    const modB = entries.find(
-      (entry) => entry.remainingKeys.length === 1 && entry.remainingKeys[0] === "B",
-    );
-    expect(modB?.action).toBe("editor.goToDefinition");
-    expect(modB?.label).toBe("Go to definition");
-  });
-
-  it("narrows a modifier-plus-shift chord to the final key once Shift is held", () => {
-    const entries = buildShortcutDiscoveryEntries({
-      bindings: buildEffectiveBindings({}),
-      context: shortcutContext({ isMac: false }),
-      heldModifiers: { alt: false, ctrl: true, meta: false, shift: true },
-    });
-
-    const newTerminal = entries.find((entry) => entry.label === "New terminal");
-    expect(newTerminal?.remainingKeys).toEqual(["T"]);
-    expect(newTerminal?.chord).toEqual([["ctrl", "shift", "T"]]);
-  });
-
-  it("reveals Shift-only commands when Shift is the first held modifier", () => {
-    const entries = buildShortcutDiscoveryEntries({
-      bindings: buildEffectiveBindings({}),
-      context: shortcutContext({ isMac: false, focusScope: "message-input" }),
-      heldModifiers: { alt: false, ctrl: false, meta: false, shift: true },
-    });
-
-    expect(
-      entries.find((entry) => entry.bindingId === "message-input-mode-cycle-shift-tab")
-        ?.remainingKeys,
-    ).toEqual(["Tab"]);
-  });
-
-  it("progressively reveals the focused Voice Mode command by its concrete binding", () => {
-    const options = {
-      bindings: buildEffectiveBindings({}),
-      context: shortcutContext({ isMac: false, focusScope: "message-input" }),
-    };
-
-    const firstPass = buildShortcutDiscoveryEntries({
-      ...options,
-      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
-    });
-    const secondPass = buildShortcutDiscoveryEntries({
-      ...options,
-      heldModifiers: { alt: false, ctrl: true, meta: false, shift: true },
-    });
-
-    expect(
-      firstPass.find(
-        (entry) => entry.bindingId === "message-input-voice-toggle-ctrl-shift-d-non-mac",
-      )?.remainingKeys,
-    ).toEqual(["shift", "D"]);
-    expect(
-      secondPass.find(
-        (entry) => entry.bindingId === "message-input-voice-toggle-ctrl-shift-d-non-mac",
-      )?.remainingKeys,
-    ).toEqual(["D"]);
-  });
-
-  it("keeps the focused Dictation command distinct from Voice Mode", () => {
-    const entries = buildShortcutDiscoveryEntries({
-      bindings: buildEffectiveBindings({}),
-      context: shortcutContext({ isMac: false, focusScope: "message-input" }),
-      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
-    });
-
-    expect(
-      entries.find((entry) => entry.bindingId === "message-input-dictation-toggle-ctrl-d-non-mac")
-        ?.remainingKeys,
-    ).toEqual(["D"]);
-    expect(
-      entries.find((entry) => entry.bindingId === "message-input-voice-toggle-ctrl-shift-d-non-mac")
-        ?.remainingKeys,
-    ).toEqual(["shift", "D"]);
-  });
-
-  it("keeps the message-input focus binding available for its input revealer", () => {
-    const entries = buildShortcutDiscoveryEntries({
-      bindings: buildEffectiveBindings({}),
-      context: shortcutContext({ isMac: false, focusScope: "other" }),
-      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
-    });
-
-    expect(
-      entries.find((entry) => entry.bindingId === "message-input-focus-ctrl-l-non-mac")
-        ?.remainingKeys,
-    ).toEqual(["L"]);
-  });
-
-  it("reveals the New Workspace project picker from its Ctrl/Cmd prefix", () => {
-    const entries = buildShortcutDiscoveryEntries({
-      bindings: buildEffectiveBindings({}),
-      context: shortcutContext({ isMac: false }),
-      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
-    });
-
-    expect(
-      entries.find((entry) => entry.bindingId === "workspace-project-pick-ctrl-p-non-mac")
-        ?.remainingKeys,
-    ).toEqual(["P"]);
-  });
-
-  it("reveals Open Project from its Ctrl/Cmd prefix", () => {
-    const entries = buildShortcutDiscoveryEntries({
-      bindings: buildEffectiveBindings({}),
-      context: shortcutContext({ isMac: false }),
-      heldModifiers: { alt: false, ctrl: true, meta: false, shift: false },
-    });
-
-    expect(
-      entries.find((entry) => entry.bindingId === "agent-new-ctrl-shift-o-non-mac")?.remainingKeys,
-    ).toEqual(["O"]);
-  });
-
-  it("uses Alt as the held prefix for web workspace navigation", () => {
-    const entries = buildShortcutDiscoveryEntries({
-      bindings: buildEffectiveBindings({}),
-      context: shortcutContext({ isDesktop: false }),
-      heldModifiers: { alt: true, ctrl: false, meta: false, shift: false },
-    });
-
-    expect(entries.some((entry) => entry.action === "workspace.navigate.index")).toBe(true);
-  });
-
-  it("progressively reveals web tab index navigation after Alt then Shift", () => {
-    const options = {
-      bindings: buildEffectiveBindings({}),
-      context: shortcutContext({ isDesktop: false }),
-    };
-
-    const firstPass = buildShortcutDiscoveryEntries({
-      ...options,
-      heldModifiers: { alt: true, ctrl: false, meta: false, shift: false },
-    });
-    const secondPass = buildShortcutDiscoveryEntries({
-      ...options,
-      heldModifiers: { alt: true, ctrl: false, meta: false, shift: true },
-    });
-
-    expect(
-      firstPass.find((entry) => entry.action === "workspace.tab.navigate.index")?.remainingKeys,
-    ).toEqual(["shift", "1-9"]);
-    expect(
-      secondPass.find((entry) => entry.action === "workspace.tab.navigate.index")?.remainingKeys,
-    ).toEqual(["1-9"]);
-  });
-});
-
 describe("getWorkspaceIndexJumpModifierKey", () => {
+  const MAC_INDEX_BINDING = "workspace-navigate-index-cmd-digit-mac";
+
   it("uses Alt on web, regardless of OS", () => {
     expect(getWorkspaceIndexJumpModifierKey({ isMac: true, isDesktop: false })).toBe("Alt");
     expect(getWorkspaceIndexJumpModifierKey({ isMac: false, isDesktop: false })).toBe("Alt");
@@ -1124,6 +942,351 @@ describe("getWorkspaceIndexJumpModifierKey", () => {
 
   it("uses Ctrl on desktop non-Mac, not Meta or Alt", () => {
     expect(getWorkspaceIndexJumpModifierKey({ isMac: false, isDesktop: true })).toBe("Control");
+  });
+
+  it("derives the modifier from the effective binding, not the platform", () => {
+    const bindings = buildEffectiveBindings({ [MAC_INDEX_BINDING]: "Alt+Digit" });
+    expect(getWorkspaceIndexJumpModifierKey({ isMac: true, isDesktop: true }, bindings)).toBe(
+      "Alt",
+    );
+  });
+
+  it("suppresses the badges when the jump shortcut is unassigned", () => {
+    const bindings = buildEffectiveBindings({ [MAC_INDEX_BINDING]: UNASSIGNED_COMBO });
+    expect(getWorkspaceIndexJumpModifierKey({ isMac: true, isDesktop: true }, bindings)).toBeNull();
+  });
+
+  it("suppresses the badges when the jump shortcut is rebound to one concrete digit", () => {
+    // Capture can only ever produce a concrete digit, never the 1-9 wildcard,
+    // so the badges would advertise eight workspaces that no longer respond.
+    const bindings = buildEffectiveBindings({ [MAC_INDEX_BINDING]: "Cmd+3" });
+    expect(getWorkspaceIndexJumpModifierKey({ isMac: true, isDesktop: true }, bindings)).toBeNull();
+  });
+
+  it("suppresses the badges for a multi-step chord", () => {
+    const bindings = buildEffectiveBindings({ [MAC_INDEX_BINDING]: "Cmd+K Cmd+Digit" });
+    expect(getWorkspaceIndexJumpModifierKey({ isMac: true, isDesktop: true }, bindings)).toBeNull();
+  });
+
+  it("suppresses the badges when the combo needs a second modifier", () => {
+    const bindings = buildEffectiveBindings({ [MAC_INDEX_BINDING]: "Cmd+Shift+Digit" });
+    expect(getWorkspaceIndexJumpModifierKey({ isMac: true, isDesktop: true }, bindings)).toBeNull();
+  });
+});
+
+function parseUnknownBindingChord() {
+  return parseBindingChord("Ctrl+Nonsense");
+}
+
+/**
+ * Effective bindings with one help row rewritten to ship without a default
+ * combo, standing in for a binding authored as `combo: ""`. `help.keys` is left
+ * as authored so the empty parsed chord is the only signal.
+ */
+function withoutDefaultCombo(helpId: string): ParsedShortcutBinding[] {
+  const bindings: ParsedShortcutBinding[] = [];
+  for (const binding of buildEffectiveBindings({})) {
+    if (binding.help?.id === helpId) {
+      bindings.push(Object.assign({}, binding, { combo: "", parsedChord: [] }));
+    } else {
+      bindings.push(binding);
+    }
+  }
+  return bindings;
+}
+
+describe("unassigned shortcuts", () => {
+  const TAB_NEW_BINDING = "workspace-tab-new-ctrl-t-non-mac";
+  const desktopNonMac = { isMac: false, isDesktop: true };
+
+  function findRow(sections: ReturnType<typeof buildKeyboardShortcutHelpSections>, id: string) {
+    for (const section of sections) {
+      const row = section.rows.find((candidate) => candidate.id === id);
+      if (row) {
+        return row;
+      }
+    }
+    return null;
+  }
+
+  describe("parseBindingChord", () => {
+    it("yields an empty chord for a binding that ships without a default combo", () => {
+      expect(parseBindingChord("")).toEqual([]);
+    });
+
+    it("parses a normal combo into one step", () => {
+      expect(parseBindingChord("Ctrl+T")).toHaveLength(1);
+    });
+
+    it("parses a chord into one step per combo", () => {
+      expect(parseBindingChord("Ctrl+W S")).toHaveLength(2);
+    });
+
+    it("still throws on an unparseable combo", () => {
+      expect(parseUnknownBindingChord).toThrow();
+    });
+  });
+
+  describe("matching", () => {
+    it("dispatches a captured Russian letter shortcut on the same key", () => {
+      const event = keyboardInput({ key: "и", code: "KeyB", ctrlKey: true });
+      const combo = keyboardEventToComboString(event as KeyboardEvent);
+      expect(combo).toBe("Ctrl+B");
+      const bindings = buildEffectiveBindings({
+        "sidebar-toggle-left-ctrl-period-non-mac": combo!,
+      });
+
+      expect(resolveShortcut({ event, context: desktopNonMac, bindings }).match?.action).toBe(
+        "sidebar.toggle.left",
+      );
+    });
+
+    it("dispatches a recorded dotted-uppercase letter with Shift held", () => {
+      const event = keyboardInput({ key: "İ", code: "KeyS", ctrlKey: true, shiftKey: true });
+      const combo = keyboardEventToComboString(event as KeyboardEvent);
+      expect(combo).toBe("Ctrl+Shift+S");
+      const bindings = buildEffectiveBindings({
+        "sidebar-toggle-left-ctrl-period-non-mac": combo!,
+      });
+      expect(resolveShortcut({ event, context: desktopNonMac, bindings }).match?.action).toBe(
+        "sidebar.toggle.left",
+      );
+    });
+
+    it.each(["и", "И", "β", "ش", "ב", "é"])(
+      "matches default and recorded letter bindings for unsupported letter %s",
+      (key) => {
+        const event = keyboardInput({ key, code: "KeyB", ctrlKey: true });
+        expectShortcutResolution({
+          event,
+          context: desktopNonMac,
+          action: "sidebar.toggle.left",
+        });
+        const combo = keyboardEventToComboString(event as KeyboardEvent);
+        expect(combo).toBe("Ctrl+B");
+        expect(
+          resolveShortcut({
+            event,
+            context: desktopNonMac,
+            bindings: buildEffectiveBindings({
+              "sidebar-toggle-left-ctrl-period-non-mac": combo!,
+            }),
+          }).match?.action,
+        ).toBe("sidebar.toggle.left");
+      },
+    );
+
+    it.each(["v", "†", "Dead", "Unidentified", ""])(
+      "does not match an unrelated character or named key %s by physical letter",
+      (key) => {
+        expectNoShortcutResolution({
+          event: { key, code: "KeyB", ctrlKey: true },
+          context: desktopNonMac,
+        });
+      },
+    );
+
+    it("does not match non-letter bindings by physical key for unsupported letters", () => {
+      expectNoShortcutResolution({
+        event: { key: "ю", code: "Period", ctrlKey: true },
+        context: desktopNonMac,
+      });
+    });
+
+    it("dispatches a captured Dvorak binding on the same logical key", () => {
+      const event = keyboardInput({ key: "b", code: "KeyN", metaKey: true });
+      const combo = keyboardEventToComboString(event as KeyboardEvent);
+      expect(combo).toBe("Cmd+B");
+      const bindings = buildEffectiveBindings({ "sidebar-toggle-left-mac-cmd-b": combo! });
+
+      expect(
+        resolveShortcut({ event, context: { isMac: true, isDesktop: true }, bindings }).match
+          ?.action,
+      ).toBe("sidebar.toggle.left");
+      expect(
+        resolveShortcut({
+          event: { key: "x", code: "KeyB", metaKey: true },
+          context: { isMac: true, isDesktop: true },
+          bindings,
+        }).match,
+      ).toBeNull();
+    });
+
+    it("stops matching a shortcut the user unassigned", () => {
+      const bindings = buildEffectiveBindings({ [TAB_NEW_BINDING]: UNASSIGNED_COMBO });
+
+      const result = resolveShortcut({
+        event: { key: "t", code: "KeyT", ctrlKey: true },
+        context: desktopNonMac,
+        bindings,
+      });
+
+      expect(result.match).toBeNull();
+    });
+
+    it("leaves other shortcuts firing when one is unassigned", () => {
+      const bindings = buildEffectiveBindings({ [TAB_NEW_BINDING]: UNASSIGNED_COMBO });
+
+      const result = resolveShortcut({
+        event: { key: "t", code: "KeyT", ctrlKey: true, shiftKey: true },
+        context: desktopNonMac,
+        bindings,
+      });
+
+      expect(result.match?.action).toBe("workspace.terminal.new");
+    });
+
+    it("restores the default when the override is removed", () => {
+      const bindings = buildEffectiveBindings({});
+
+      const result = resolveShortcut({
+        event: { key: "t", code: "KeyT", ctrlKey: true },
+        context: desktopNonMac,
+        bindings,
+      });
+
+      expect(result.match?.action).toBe("workspace.tab.menu.open");
+    });
+
+    it("treats a stored empty combo as unassigned too", () => {
+      const bindings = buildEffectiveBindings({ [TAB_NEW_BINDING]: "" });
+
+      const result = resolveShortcut({
+        event: { key: "t", code: "KeyT", ctrlKey: true },
+        context: desktopNonMac,
+        bindings,
+      });
+
+      expect(result.match).toBeNull();
+    });
+
+    it("keeps rebinding to a real combo working", () => {
+      const bindings = buildEffectiveBindings({ [TAB_NEW_BINDING]: "Ctrl+Y" });
+
+      expect(
+        resolveShortcut({
+          event: { key: "y", code: "KeyY", ctrlKey: true },
+          context: desktopNonMac,
+          bindings,
+        }).match?.action,
+      ).toBe("workspace.tab.menu.open");
+      expect(
+        resolveShortcut({
+          event: { key: "t", code: "KeyT", ctrlKey: true },
+          context: desktopNonMac,
+          bindings,
+        }).match,
+      ).toBeNull();
+    });
+
+    it("falls back to the default for a non-string stored value", () => {
+      // Storage is unvalidated JSON, so a corrupt value must not throw.
+      const overrides = { [TAB_NEW_BINDING]: 42 } as unknown as ShortcutOverrides;
+      const bindings = buildEffectiveBindings(overrides);
+
+      const result = resolveShortcut({
+        event: { key: "t", code: "KeyT", ctrlKey: true },
+        context: desktopNonMac,
+        bindings,
+      });
+
+      expect(result.match?.action).toBe("workspace.tab.menu.open");
+    });
+  });
+
+  describe("resolveShortcutKeysForAction", () => {
+    // `ctrl`, not `mod`: these keys are derived from the non-mac binding's
+    // `combo: "Ctrl+T"` rather than hand-authored. `formatShortcut` labels both
+    // tokens "Ctrl" off mac, and this binding is non-mac only.
+    it("returns the default keys when there is no override", () => {
+      expect(resolveShortcutKeysForAction("workspace-tab-new", {}, desktopNonMac)).toEqual([
+        ["ctrl", "T"],
+      ]);
+    });
+
+    it("returns null when the user unassigned the shortcut", () => {
+      expect(
+        resolveShortcutKeysForAction(
+          "workspace-tab-new",
+          { [TAB_NEW_BINDING]: UNASSIGNED_COMBO },
+          desktopNonMac,
+        ),
+      ).toBeNull();
+    });
+
+    it("returns the override keys when the shortcut is rebound", () => {
+      expect(
+        resolveShortcutKeysForAction(
+          "workspace-tab-new",
+          { [TAB_NEW_BINDING]: "Ctrl+Y" },
+          desktopNonMac,
+        ),
+      ).toEqual([["ctrl", "Y"]]);
+    });
+
+    it("falls back to the default keys for an unparseable override", () => {
+      // Matching falls back to the default here, so the display has to as well
+      // or it would advertise keys that do nothing.
+      expect(
+        resolveShortcutKeysForAction(
+          "workspace-tab-new",
+          { [TAB_NEW_BINDING]: "Ctrl+Nonsense" },
+          desktopNonMac,
+        ),
+      ).toEqual([["ctrl", "T"]]);
+    });
+
+    it("falls back to the default keys for a non-string stored value", () => {
+      const overrides = { [TAB_NEW_BINDING]: 42 } as unknown as ShortcutOverrides;
+      expect(resolveShortcutKeysForAction("workspace-tab-new", overrides, desktopNonMac)).toEqual([
+        ["ctrl", "T"],
+      ]);
+    });
+
+    it("returns null for an action with no binding on this platform", () => {
+      expect(resolveShortcutKeysForAction("message-input-send", {}, desktopNonMac)).toBeNull();
+    });
+  });
+
+  describe("help rows", () => {
+    it("lists no keys for an unassigned shortcut", () => {
+      const bindings = buildEffectiveBindings({ [TAB_NEW_BINDING]: UNASSIGNED_COMBO });
+      const sections = buildKeyboardShortcutHelpSections(desktopNonMac, bindings);
+
+      expect(findRow(sections, "workspace-tab-new")?.chord).toBeNull();
+    });
+
+    it("keeps the row so the shortcut stays rebindable", () => {
+      const bindings = buildEffectiveBindings({ [TAB_NEW_BINDING]: UNASSIGNED_COMBO });
+      const sections = buildKeyboardShortcutHelpSections(desktopNonMac, bindings);
+
+      expect(findRow(sections, "workspace-tab-new")).not.toBeNull();
+      expect(getBindingIdForAction("workspace-tab-new", desktopNonMac)).toBe(TAB_NEW_BINDING);
+    });
+
+    it("still lists the default keys when nothing is overridden", () => {
+      const sections = buildKeyboardShortcutHelpSections(desktopNonMac);
+
+      expect(findRow(sections, "workspace-tab-new")?.chord).toEqual([["ctrl", "T"]]);
+      expect(getDefaultKeysForAction("workspace-tab-new", desktopNonMac)).toEqual([["ctrl", "T"]]);
+    });
+
+    // A binding authored with `combo: ""` has no default. The settings row uses
+    // this to hide Reset, which would otherwise be a dead button landing on the
+    // same "Not set" state Clear already produced. The empty parsed chord is what
+    // marks the binding default-less.
+    it("reports no default keys for a binding that ships without a combo", () => {
+      const bindings = withoutDefaultCombo("workspace-tab-new");
+
+      expect(getDefaultKeysForAction("workspace-tab-new", desktopNonMac, bindings)).toBeNull();
+    });
+
+    it("lists no help keys for a binding that ships without a combo", () => {
+      const bindings = withoutDefaultCombo("workspace-tab-new");
+      const sections = buildKeyboardShortcutHelpSections(desktopNonMac, bindings);
+
+      expect(findRow(sections, "workspace-tab-new")?.chord).toBeNull();
+    });
   });
 });
 
@@ -1183,5 +1346,47 @@ describe("direct new-tab target shortcuts", () => {
     expect(
       resolveShortcutKeysForAction("workspace-tab-target-agent", overrides, desktopNonMac),
     ).toEqual([["ctrl", "shift", "H"]]);
+  });
+});
+
+describe("number-group shortcut capture", () => {
+  const tabBindingId = "workspace-tab-navigate-index-cmd-alt-digit-mac-desktop";
+  it.each([
+    { id: tabBindingId, action: "workspace.tab.navigate.index", row: "workspace-tab-jump-index" },
+    {
+      id: "workspace-navigate-index-cmd-digit-mac",
+      action: "workspace.navigate.index",
+      row: "workspace-jump-index",
+    },
+  ])("captures Ctrl+1 as the entire number group for $row", ({ id, action, row }) => {
+    const combo = normalizeCapturedShortcutCombo(id, "Ctrl+1");
+    expect(combo).toBe("Ctrl+Digit");
+    const overrides = { [id]: combo };
+    const bindings = buildEffectiveBindings(overrides);
+    for (let index = 1; index <= 9; index++) {
+      const result = resolveShortcut({
+        event: { key: String(index), code: `Digit${index}`, ctrlKey: true },
+        context: { isMac: true, isDesktop: true, focusScope: "message-input" },
+        bindings,
+      });
+      expect(result.match?.action).toBe(action);
+      expect(result.match?.payload).toEqual({ index });
+    }
+    expect(resolveShortcutKeysForAction(row, overrides, { isMac: true, isDesktop: true })).toEqual([
+      ["ctrl", "1-9"],
+    ]);
+    expect(
+      resolveShortcut({
+        event: { key: "0", code: "Digit0", ctrlKey: true },
+        context: { isMac: true, isDesktop: true },
+        bindings,
+      }).match,
+    ).toBeNull();
+  });
+  it("preserves literal numbers for non-index actions and existing nonnumeric combos", () => {
+    expect(normalizeCapturedShortcutCombo("show-shortcuts", "Ctrl+1")).toBe("Ctrl+1");
+    expect(normalizeCapturedShortcutCombo(tabBindingId, "Ctrl+K")).toBe("Ctrl+K");
+    expect(normalizeCapturedShortcutCombo(tabBindingId, "Ctrl+0")).toBe("Ctrl+0");
+    expect(normalizeCapturedShortcutCombo(tabBindingId, "Ctrl+9")).toBe("Ctrl+Digit");
   });
 });

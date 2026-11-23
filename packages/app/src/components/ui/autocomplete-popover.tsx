@@ -17,13 +17,12 @@ import Animated, {
 import { scheduleOnRN } from "react-native-worklets";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StyleSheet } from "react-native-unistyles";
-import { FLOATING_LAYER_NO_DRAG_STYLE } from "@/components/desktop/app-region";
 import { Autocomplete, type AutocompleteOption } from "@/components/ui/autocomplete";
 import {
   measureFloatingPanelPortalHost,
   useFloatingPanelPortalHostName,
 } from "@/components/ui/floating-panel-portal";
-import { useKeyboardShift } from "@/hooks/keyboard-shift-context";
+import { useKeyboardShift } from "@/keyboard/shift";
 import { SPACING } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
@@ -161,7 +160,7 @@ export function AutocompletePopover({
       <View style={styles.overlay} pointerEvents="box-none">
         <Animated.View
           testID="composer-autocomplete-popover"
-          style={[baseStyle, keyboardLayoutStyle, FLOATING_LAYER_NO_DRAG_STYLE]}
+          style={[baseStyle, keyboardLayoutStyle]}
         >
           <Autocomplete
             options={options}

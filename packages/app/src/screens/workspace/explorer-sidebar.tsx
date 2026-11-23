@@ -1,46 +1,53 @@
-import { useCallback, useMemo, type ComponentProps, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { RetainedPanel } from "@/components/retained-panel";
-import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
-import { SidebarSeamShadow } from "@/components/sidebar-seam-shadow";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import type { TabDropPreview } from "@/components/split-container-tab-drop-preview";
-import { ExplorerSidebarTabRail } from "@/screens/workspace/explorer-sidebar-tab-rail";
 import { WorkspacePanelHost } from "@/screens/workspace/workspace-panel-host";
 import { deriveWorkspacePaneState } from "@/screens/workspace/workspace-pane-state";
-import type { WorkspaceDesktopTabRowItem } from "@/screens/workspace/workspace-desktop-tabs-row";
+import {
+  WorkspaceDesktopTabsRow,
+  type WorkspaceDesktopTabRowItem,
+  type WorkspaceDesktopTabsRowProps,
+} from "@/screens/workspace/workspace-desktop-tabs-row";
 import type { WorkspacePaneContentModel } from "@/screens/workspace/workspace-pane-content";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import type { SplitPane } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab } from "@/workspace-tabs/model";
-import type { PaneHost } from "@/panels/panel-manifest";
-import { WindowChromeRegion, WindowChromeSafeArea } from "@/utils/window-chrome";
-import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
-import { filterExplorerSidebarTabs } from "@/workspace-tabs/explorer-sidebar";
+import { WindowChromeRegion, WindowChromeSafeArea } from "@/utils/desktop-window";
 
-interface ExplorerSidebarDockProps {
+interface ExplorerSidebarDockProps extends Pick<
+  WorkspaceDesktopTabsRowProps,
+  | "setHoveredCloseTabKey"
+  | "onCopyResumeCommand"
+  | "onCopyAgentId"
+  | "onCopyTerminalId"
+  | "onCopyFilePath"
+  | "onReloadAgent"
+  | "onRenameTab"
+  | "onCreateNewTab"
+  | "onExitFocusMode"
+> {
+  hoveredCloseTabKey: string | null;
+  onCloseTabsToLeft: (tabId: string, tabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
+  onCloseTabsToRight: (tabId: string, tabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
+  onCloseOtherTabs: (tabId: string, tabs: WorkspaceTabDescriptor[]) => Promise<void> | void;
   pane: SplitPane;
   uiTabs: WorkspaceTab[];
   normalizedServerId: string;
   normalizedWorkspaceId: string;
   isWorkspaceFocused: boolean;
-  hasPullRequest: boolean;
   closingTabIds: Set<string>;
   activeDragTabId: string | null;
   tabDropPreview: TabDropPreview | null;
   onSelectTab: (paneId: string, tabId: string) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
-  onCreateNewTab: () => void;
-  onMoveTabToMain: (tabId: string) => void;
   onReorderTabsInPane: (paneId: string, tabIds: string[]) => void;
   buildPaneContentModel: (input: {
     paneId: string;
     tab: WorkspaceTabDescriptor;
-    host?: PaneHost;
   }) => WorkspacePaneContentModel;
-  resizeGesture: ComponentProps<typeof SidebarResizeHandle>["gesture"];
-  resizePressed: boolean;
   headerAction?: ReactNode;
 }
 
@@ -51,29 +58,29 @@ export function ExplorerSidebarDock({
   normalizedServerId,
   normalizedWorkspaceId,
   isWorkspaceFocused,
-  hasPullRequest,
   closingTabIds,
   activeDragTabId,
   tabDropPreview,
   onSelectTab,
   onCloseTab,
   onCreateNewTab,
-  onMoveTabToMain,
+  hoveredCloseTabKey,
+  setHoveredCloseTabKey,
+  onCopyResumeCommand,
+  onCopyAgentId,
+  onCopyTerminalId,
+  onCopyFilePath,
+  onReloadAgent,
+  onRenameTab,
+  onCloseTabsToLeft,
+  onCloseTabsToRight,
+  onCloseOtherTabs,
+  onExitFocusMode,
   onReorderTabsInPane,
   buildPaneContentModel,
-  resizeGesture,
-  resizePressed,
   headerAction,
 }: ExplorerSidebarDockProps) {
-  const isDeveloperMode = useIsDeveloperMode();
-  const visibleTabs = useMemo(
-    () => filterExplorerSidebarTabs(uiTabs, isDeveloperMode, hasPullRequest),
-    [hasPullRequest, isDeveloperMode, uiTabs],
-  );
-  const paneState = useMemo(
-    () => deriveWorkspacePaneState({ pane, tabs: visibleTabs }),
-    [pane, visibleTabs],
-  );
+  const paneState = useMemo(() => deriveWorkspacePaneState({ pane, tabs: uiTabs }), [pane, uiTabs]);
   const tabs = useMemo(() => paneState.tabs.map((tab) => tab.descriptor), [paneState.tabs]);
   const activeTabId = paneState.activeTabId;
   const tabItems = useMemo<WorkspaceDesktopTabRowItem[]>(
@@ -81,10 +88,10 @@ export function ExplorerSidebarDock({
       tabs.map((tab) => ({
         tab,
         isActive: tab.tabId === activeTabId,
-        isCloseHovered: false,
+        isCloseHovered: hoveredCloseTabKey === tab.key,
         isClosingTab: closingTabIds.has(tab.tabId),
       })),
-    [activeTabId, closingTabIds, tabs],
+    [activeTabId, closingTabIds, hoveredCloseTabKey, tabs],
   );
   const handleSelectTab = useCallback(
     (tabId: string) => onSelectTab(pane.id, tabId),
@@ -99,10 +106,18 @@ export function ExplorerSidebarDock({
     },
     [onReorderTabsInPane, pane.id],
   );
-  const buildExplorerPaneContentModel = useCallback(
-    (input: { paneId: string; tab: WorkspaceTabDescriptor }) =>
-      buildPaneContentModel({ ...input, host: "explorer" }),
-    [buildPaneContentModel],
+
+  const handleCloseTabsToLeft = useCallback(
+    (tabId: string) => onCloseTabsToLeft(tabId, tabs),
+    [onCloseTabsToLeft, tabs],
+  );
+  const handleCloseTabsToRight = useCallback(
+    (tabId: string) => onCloseTabsToRight(tabId, tabs),
+    [onCloseTabsToRight, tabs],
+  );
+  const handleCloseOtherTabs = useCallback(
+    (tabId: string) => onCloseOtherTabs(tabId, tabs),
+    [onCloseOtherTabs, tabs],
   );
 
   return (
@@ -111,27 +126,44 @@ export function ExplorerSidebarDock({
         <View style={styles.dock} testID="workspace-explorer-sidebar">
           <WindowChromeSafeArea placement="inline" style={styles.tabRail}>
             <TitlebarDragRegion />
-            <ExplorerSidebarTabRail
-              paneId={pane.id}
-              tabs={tabItems}
-              normalizedServerId={normalizedServerId}
-              normalizedWorkspaceId={normalizedWorkspaceId}
-              activeDragTabId={activeDragTabId}
-              tabDropPreviewIndex={
-                tabDropPreview?.paneId === pane.id ? tabDropPreview.indicatorIndex : null
-              }
-              onNavigateTab={handleSelectTab}
-              onCloseTab={onCloseTab}
-              onCreateNewTab={onCreateNewTab}
-              onMoveTabToMain={onMoveTabToMain}
-              onReorderTabs={handleReorderTabs}
-              trailingAccessory={headerAction}
-            />
+            <View style={styles.tabRow}>
+              <WorkspaceDesktopTabsRow
+                host="explorer"
+                launchPurpose="supporting"
+                isFocused={isWorkspaceFocused}
+                ownsKeyboardShortcuts={false}
+                setHoveredCloseTabKey={setHoveredCloseTabKey}
+                onCopyResumeCommand={onCopyResumeCommand}
+                onCopyAgentId={onCopyAgentId}
+                onCopyTerminalId={onCopyTerminalId}
+                onCopyFilePath={onCopyFilePath}
+                onReloadAgent={onReloadAgent}
+                onRenameTab={onRenameTab}
+                onCloseTabsToLeft={handleCloseTabsToLeft}
+                onCloseTabsToRight={handleCloseTabsToRight}
+                onCloseOtherTabs={handleCloseOtherTabs}
+                focusModeEnabled={false}
+                onExitFocusMode={onExitFocusMode}
+                externalDndContext
+                paneId={pane.id}
+                tabs={tabItems}
+                normalizedServerId={normalizedServerId}
+                normalizedWorkspaceId={normalizedWorkspaceId}
+                activeDragTabId={activeDragTabId}
+                tabDropPreviewIndex={
+                  tabDropPreview?.paneId === pane.id ? tabDropPreview.indicatorIndex : null
+                }
+                onNavigateTab={handleSelectTab}
+                onCloseTab={onCloseTab}
+                onCreateNewTab={onCreateNewTab}
+                onReorderTabs={handleReorderTabs}
+              />
+            </View>
+            {headerAction ? <View style={styles.headerAction}>{headerAction}</View> : null}
             <View pointerEvents="none" style={styles.tabRailDivider} />
           </WindowChromeSafeArea>
           <View style={styles.content}>
             <WorkspacePanelHost
-              surface="explorer"
               paneId={pane.id}
               tabs={tabs}
               activeTabId={activeTabId}
@@ -139,16 +171,9 @@ export function ExplorerSidebarDock({
               normalizedWorkspaceId={normalizedWorkspaceId}
               isWorkspaceFocused={isWorkspaceFocused}
               isPaneFocused
-              buildPaneContentModel={buildExplorerPaneContentModel}
+              buildPaneContentModel={buildPaneContentModel}
             />
           </View>
-          <SidebarResizeHandle
-            edge="left"
-            gesture={resizeGesture}
-            pressed={resizePressed}
-            testID="workspace-explorer-sidebar-resize-handle"
-          />
-          <SidebarSeamShadow seam="left" />
         </View>
       </WindowChromeRegion>
     </RetainedPanel>
@@ -160,30 +185,33 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     minWidth: 0,
     minHeight: 0,
-    borderLeftWidth: 1,
-    borderLeftColor: theme.colors.border,
-    // Explorer shares the primary sidebar's deepest surface, including its tab
-    // rail, pane toolbars, and native caption strip.
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.surfaceSidebar,
   },
   tabRail: {
     position: "relative",
+    flexDirection: "row",
+    alignItems: "center",
     flexShrink: 0,
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.surfaceSidebar,
+  },
+  tabRow: {
+    flex: 1,
+    minWidth: 0,
+  },
+  headerAction: {
+    marginRight: theme.spacing[1],
   },
   tabRailDivider: {
     position: "absolute",
     right: 0,
     bottom: 0,
     left: 0,
-    // A literal 1px, not theme.borderWidth: structural hairlines must match
-    // the title bar separator (screen-header.tsx) at every theme scale.
-    height: 1,
+    height: theme.borderWidth[1],
     backgroundColor: theme.colors.border,
   },
   content: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.surfaceSidebar,
   },
 }));

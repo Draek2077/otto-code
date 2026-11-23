@@ -1,12 +1,17 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
-import { spawnProcess } from "@otto-code/server";
-import { buildAgentDeepLink, type AgentDeepLinkTarget } from "@otto-code/protocol/agent-deep-link";
+import { spawnProcess } from "@getpaseo/server/process";
+import { buildAgentDeepLink, type AgentDeepLinkTarget } from "@getpaseo/protocol/agent-deep-link";
+import { OTTO_PRODUCT_NAME, OTTO_RELEASES_URL } from "@getpaseo/protocol/otto/identity";
 
 function findDesktopApp(): string | null {
   if (process.platform === "darwin") {
-    const candidates = ["/Applications/Otto.app", path.join(homedir(), "Applications", "Otto.app")];
+    const candidates = [
+      // OTTO(identity): the installed desktop app is named Otto.
+      "/Applications/Otto.app",
+      path.join(homedir(), "Applications", "Otto.app"),
+    ];
 
     for (const candidate of candidates) {
       if (existsSync(candidate)) {
@@ -19,6 +24,7 @@ function findDesktopApp(): string | null {
 
   if (process.platform === "linux") {
     const candidates = [
+      // OTTO(identity): the installed desktop app is named Otto.
       "/usr/bin/Otto",
       "/opt/Otto/Otto",
       path.join(homedir(), "Applications", "Otto.AppImage"),
@@ -39,6 +45,7 @@ function findDesktopApp(): string | null {
       return null;
     }
 
+    // OTTO(identity)
     const candidate = path.join(localAppData, "Programs", "Otto", "Otto.exe");
     return existsSync(candidate) ? candidate : null;
   }
@@ -53,7 +60,7 @@ function cleanEnvForDesktopLaunch(): NodeJS.ProcessEnv {
   // desktop app would start as a bare Node process instead of Electron.
   delete env.ELECTRON_RUN_AS_NODE;
   delete env.ELECTRON_NO_ATTACH_CONSOLE;
-  delete env.OTTO_NODE_ENV;
+  delete env.PASEO_NODE_ENV;
   return env;
 }
 
@@ -66,14 +73,15 @@ function spawnDetached(command: string, args: string[]): void {
 }
 
 function launchDesktop(args: string[]): void {
-  if (process.env.OTTO_DESKTOP_CLI === "1") {
+  if (process.env.PASEO_DESKTOP_CLI === "1") {
+    // OTTO(identity)
     throw new Error("Cannot open Otto Desktop while running in desktop CLI passthrough mode.");
   }
 
   const desktopApp = findDesktopApp();
   if (!desktopApp) {
     throw new Error(
-      "Otto desktop app not found. Install it from https://github.com/Draek2077/otto-code/releases",
+      `${OTTO_PRODUCT_NAME} desktop app not found. Install it from ${OTTO_RELEASES_URL}` /* OTTO(identity) */,
     );
   }
 
@@ -92,6 +100,7 @@ export async function openDesktopWithProject(projectPath: string): Promise<void>
   try {
     launchDesktop([projectPath]);
   } catch (error) {
+    if (error && typeof error === "object" && "code" in error) throw error;
     const message = error instanceof Error ? error.message : String(error);
     process.stderr.write(`${message}\n`);
     process.exitCode = 1;

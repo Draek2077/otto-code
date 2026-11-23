@@ -6,6 +6,8 @@ order: 50
 category: TypeScript SDK
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # TypeScript SDK
 
 `@otto-code/client` is a TypeScript library that drives a Otto daemon from your own program. You pick a provider and model, give an agent a prompt and a directory, and wait for the answer.

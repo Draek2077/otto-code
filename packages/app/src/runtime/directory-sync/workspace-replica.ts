@@ -2,7 +2,7 @@ import equal from "fast-deep-equal";
 import type {
   ScriptStatusUpdateMessage,
   SessionOutboundMessage,
-} from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/messages";
 import {
   normalizeProjectDescriptor,
   normalizeWorkspaceDescriptor,
@@ -153,7 +153,6 @@ export class WorkspaceDirectoryReplica {
         projectDisplayName: project.projectDisplayName,
         projectCustomName: project.projectCustomName,
         projectCustomIconRevision: project.projectCustomIconRevision,
-        projectOffline: project.projectOffline ?? false,
         projectRootPath: project.projectRootPath,
         projectKind: project.projectKind,
       };

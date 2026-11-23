@@ -7,9 +7,15 @@ import {
 } from "../support/helpers/mock-agent";
 import { expectWorkspaceTabVisible, openSessions } from "../support/helpers/archive-tab";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
-import { openGlobalNewWorkspaceComposer } from "../support/helpers/new-workspace";
 import { getServerId } from "../support/helpers/server-id";
 import { switchWorkspaceViaSidebar } from "../support/helpers/workspace-ui";
+import {
+  closeMobileAgentSidebar,
+  expectMobileAgentSidebarHidden,
+  expectMobileAgentSidebarVisible,
+  openMobileAgentSidebar,
+} from "../support/helpers/sidebar";
+import { expectNewWorkspaceProjectSelected } from "../support/helpers/new-workspace";
 
 const TEST_COMMANDS = [
   {
@@ -95,16 +101,6 @@ interface PopoverFrameRecorderWindow extends Window {
   __stopComposerAutocompleteFrameRecorder?: () => void;
 }
 
-async function getTopTestIdAtPoint(page: Page, x: number, y: number) {
-  return page.evaluate(
-    ([pointX, pointY]) => {
-      const element = document.elementFromPoint(pointX, pointY);
-      return element?.closest("[data-testid]")?.getAttribute("data-testid") ?? null;
-    },
-    [x, y],
-  );
-}
-
 async function installListCommandsStub(page: Page): Promise<void> {
   await page.routeWebSocket(daemonWsRoutePattern(), (ws) => {
     const server = ws.connectToServer();
@@ -149,9 +145,14 @@ async function installListCommandsStub(page: Page): Promise<void> {
   });
 }
 
+async function openAppWideNewWorkspace(page: Page): Promise<void> {
+  await page.getByTestId("sidebar-global-new-workspace").first().click();
+  await page.waitForURL((url) => url.pathname === "/new", { timeout: 30_000 });
+}
+
 async function openSettingsThenBackToWorkspace(page: Page): Promise<void> {
   await page.getByTestId("sidebar-settings").filter({ visible: true }).first().click();
-  await expect(page).toHaveURL(/\/settings$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/settings\/general$/, { timeout: 30_000 });
   await page.getByTestId("settings-back-to-workspace").click();
   await page.waitForURL((url) => url.pathname.includes("/workspace/"), { timeout: 30_000 });
 }
@@ -333,6 +334,16 @@ function expectPopoverFramesStable(frames: PopoverFrame[]): void {
   ).toBeUndefined();
 }
 
+function recordCommandRequestsByAgentId(page: Page): string[] {
+  const requests: string[] = [];
+  const record = ({ payload }: { payload: string | Buffer }) => {
+    if (typeof payload !== "string" || !payload.includes("list_commands_request")) return;
+    if (!payload.includes("draftConfig")) requests.push(payload);
+  };
+  page.on("websocket", (socket) => socket.on("framesent", record));
+  return requests;
+}
+
 function expectPopoverDoesNotDisappearAfterFirstVisible(frames: PopoverFrame[]): void {
   const firstVisibleIndex = frames.findIndex(
     (frame) =>
@@ -354,6 +365,25 @@ function expectPopoverDoesNotDisappearAfterFirstVisible(frames: PopoverFrame[]):
 }
 
 test.describe("Composer autocomplete", () => {
+  test("keeps New workspace off the running-agent command list before a project is chosen", async ({
+    page,
+  }) => {
+    const commandRequestsByAgentId = recordCommandRequestsByAgentId(page);
+
+    await page.goto("/new");
+    await expectNewWorkspaceProjectSelected(page, "Choose project");
+    await composerLocator(page).fill("/");
+
+    const popover = page
+      .getByTestId("composer-autocomplete-popover")
+      .filter({ visible: true })
+      .first();
+    await expect(popover).toContainText("Choose a project to see commands", { timeout: 30_000 });
+    await expect(popover).not.toContainText("/clear");
+    await expect(popover).not.toContainText("/exit");
+    expect(commandRequestsByAgentId).toEqual([]);
+  });
+
   test("stays visible after returning from app-wide routes", async ({ page }) => {
     await installListCommandsStub(page);
     const serverId = getServerId();
@@ -384,7 +414,7 @@ test.describe("Composer autocomplete", () => {
       await openAgentRoute(page, first);
       await expectComposerVisible(page, { timeout: 30_000 });
 
-      await openGlobalNewWorkspaceComposer(page);
+      await openAppWideNewWorkspace(page);
       await switchWorkspaceViaSidebar({ page, serverId, workspaceId: second.workspaceId });
       await expectComposerVisible(page, { timeout: 30_000 });
       await expectSingleCurrentWorkspaceDeckEntry(page, {
@@ -410,7 +440,7 @@ test.describe("Composer autocomplete", () => {
         workspaceId: third.workspaceId,
       });
 
-      await openGlobalNewWorkspaceComposer(page);
+      await openAppWideNewWorkspace(page);
       await switchWorkspaceViaSidebar({ page, serverId, workspaceId: first.workspaceId });
       await expectComposerVisible(page, { timeout: 30_000 });
       await expectSingleCurrentWorkspaceDeckEntry(page, {
@@ -666,19 +696,15 @@ test.describe("Composer autocomplete", () => {
           timeout: 30_000,
         });
 
-        await page.getByRole("button", { name: "Open menu" }).click();
-        await expect(page.getByTestId("sidebar-sessions")).toBeInViewport({ timeout: 5_000 });
+        // The sidebar covers the composer, so the composer gives up its popover while the
+        // sidebar is open and brings it back once the sidebar closes.
+        await openMobileAgentSidebar(page);
+        await expectMobileAgentSidebarVisible(page);
+        await expect(popover).toHaveCount(0);
 
-        const popoverBox = await popover.boundingBox();
-        expect(popoverBox).not.toBeNull();
-
-        const topTestId = await getTopTestIdAtPoint(
-          page,
-          popoverBox!.x + popoverBox!.width / 2,
-          popoverBox!.y + popoverBox!.height / 2,
-        );
-
-        expect(topTestId).not.toBe("composer-autocomplete-popover");
+        await closeMobileAgentSidebar(page);
+        await expectMobileAgentSidebarHidden(page);
+        await expect(popover.getByText("/help", { exact: true }).first()).toBeVisible();
       } finally {
         await agent.cleanup();
       }

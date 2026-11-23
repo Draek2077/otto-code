@@ -1,20 +1,15 @@
+// OTTO(identity): fixture paths and labels follow Otto's persisted identity.
 import { chmod, readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test as base, type Page } from "../support/fixtures";
-import {
-  openExistingProjectFolder,
-  openNewProjectPage,
-} from "../support/helpers/project-picker-ui";
 import { connectSeedClient, seedWorkspace } from "../support/helpers/seed-client";
 import {
-  blockOttoConfigWrites,
-  bumpOttoConfigOnDisk,
+  blockPaseoConfigWrites,
+  bumpPaseoConfigOnDisk,
   chooseProjectIconImage,
   clickReloadProjectSettings,
-  clickRetryProjectSettingsSave,
-  clickSaveProjectSettings,
-  commitOttoConfig,
-  corruptOttoConfig,
+  commitPaseoConfig,
+  corruptPaseoConfig,
   editWorktreeSetup,
   expectEmptyScriptList,
   expectProjectHostContextHidden,
@@ -30,9 +25,7 @@ import {
   expectProjectSettingsFormVisible,
   expectProjectTitle,
   expectProjectSettingsHistoryRoundTrip,
-  expectSaveButtonDisabled,
   expectScriptRowCount,
-  expectWriteFailedCalloutActions,
   expectUncommittedSetupWarning,
   fillProjectIconUrl,
   fillProjectName,
@@ -43,14 +36,25 @@ import {
   openProjectSettings,
   openProjects,
   removeProjectScript,
-  restoreOttoConfig,
+  restorePaseoConfig,
   returnToProjectsList,
   saveProjectEdits,
-  unblockOttoConfigWrites,
+  unblockPaseoConfigWrites,
 } from "../support/helpers/project-settings";
 import { gotoAppShell } from "../support/helpers/app";
-import { moneyShot } from "../support/helpers/evidence";
+import { openCompactSettings } from "../support/helpers/settings";
+import {
+  addProjectFlowInput,
+  chooseAddProjectMethod,
+  openAddProjectFlow,
+} from "../support/helpers/add-project-flow";
 import { createTempGitRepo } from "../support/helpers/workspace";
+import {
+  buildOpenProjectRoute,
+  buildProjectsSettingsRoute,
+  buildSettingsRoute,
+} from "@/utils/host-routes";
+import { getServerId } from "../support/helpers/server-id";
 
 const updatedSetup = ["npm install", "npm run build"];
 
@@ -70,7 +74,7 @@ interface ProjectsSettingsFixtures {
   gitlabRemoteProject: ProjectsSettingsProject;
 }
 
-const initialOttoConfig = {
+const initialPaseoConfig = {
   worktree: {
     setup: ["echo initial setup"],
     teardown: "echo cleanup",
@@ -91,7 +95,7 @@ const test = base.extend<ProjectsSettingsFixtures>({
   editableProject: async ({ page: _page }, provide) => {
     const workspace = await seedWorkspace({
       repoPrefix: "projects-settings-",
-      repo: { ottoConfig: initialOttoConfig },
+      repo: { paseoConfig: initialPaseoConfig },
     });
 
     await provide({
@@ -108,7 +112,7 @@ const test = base.extend<ProjectsSettingsFixtures>({
     const workspace = await seedWorkspace({
       repoPrefix: "projects-settings-gitlab-",
       repo: {
-        ottoConfig: initialOttoConfig,
+        paseoConfig: initialPaseoConfig,
         originUrl: "https://gitlab.com/acme/app.git",
       },
     });
@@ -136,18 +140,18 @@ async function expectProjectConfigSaved(project: ProjectsSettingsProject): Promi
     .toMatchObject({
       worktree: {
         setup: updatedSetup,
-        teardown: initialOttoConfig.worktree.teardown,
-        customWorktreeField: initialOttoConfig.worktree.customWorktreeField,
+        teardown: initialPaseoConfig.worktree.teardown,
+        customWorktreeField: initialPaseoConfig.worktree.customWorktreeField,
       },
       scripts: {
         dev: {
-          command: initialOttoConfig.scripts.dev.command,
-          type: initialOttoConfig.scripts.dev.type,
-          port: initialOttoConfig.scripts.dev.port,
-          customScriptField: initialOttoConfig.scripts.dev.customScriptField,
+          command: initialPaseoConfig.scripts.dev.command,
+          type: initialPaseoConfig.scripts.dev.type,
+          port: initialPaseoConfig.scripts.dev.port,
+          customScriptField: initialPaseoConfig.scripts.dev.customScriptField,
         },
       },
-      customTopLevelField: initialOttoConfig.customTopLevelField,
+      customTopLevelField: initialPaseoConfig.customTopLevelField,
     });
 
   const savedConfig = await readProjectConfigFile(project);
@@ -158,9 +162,19 @@ async function readProjectConfigFile(project: ProjectsSettingsProject): Promise<
   return readFile(path.join(project.path, "otto.json"), "utf8");
 }
 
+async function expectScriptsRemoved(project: ProjectsSettingsProject): Promise<void> {
+  await expect
+    .poll(async () => JSON.parse(await readProjectConfigFile(project)).scripts)
+    .toBeUndefined();
+}
+
 async function addProjectFromSidebar(page: Page, projectPath: string): Promise<string> {
-  await openNewProjectPage(page, "sidebar-add-project");
-  await openExistingProjectFolder(page, projectPath);
+  await openAddProjectFlow(page);
+  await chooseAddProjectMethod(page, "directory-search");
+
+  const input = addProjectFlowInput(page);
+  await input.fill(projectPath);
+  await page.keyboard.press("Enter");
 
   const projectRow = page
     .locator('[data-testid^="sidebar-project-row-"]')
@@ -173,44 +187,21 @@ async function addProjectFromSidebar(page: Page, projectPath: string): Promise<s
   return testId!.replace("sidebar-project-row-", "");
 }
 
-async function openProjectSettingsFromSidebar(page: Page, projectKey: string): Promise<void> {
-  const projectRow = page.getByTestId(`sidebar-project-row-${projectKey}`);
+async function openProjectSettingsFromSidebar(page: Page, projectId: string): Promise<void> {
+  const projectRow = page.getByTestId(`sidebar-project-row-${projectId}`);
   await expect(projectRow).toBeVisible({ timeout: 30_000 });
   await projectRow.hover();
 
-  const kebab = page.getByTestId(`sidebar-project-kebab-${projectKey}`);
+  const kebab = page.getByTestId(`sidebar-project-kebab-${projectId}`);
   await expect(kebab).toBeVisible({ timeout: 10_000 });
   await kebab.click();
 
-  const openSettingsItem = page.getByTestId(`sidebar-project-menu-open-settings-${projectKey}`);
+  const openSettingsItem = page.getByTestId(`sidebar-project-menu-open-settings-${projectId}`);
   await expect(openSettingsItem).toBeVisible({ timeout: 10_000 });
   await openSettingsItem.click();
 }
 
 test.describe("Projects settings", () => {
-  /**
-   * R02-01: the root stack registered the obsolete one-segment project detail
-   * route, so Expo Router warned that the named layout child did not exist.
-   * The registration must match the real serverId/projectId filesystem route.
-   */
-  test("registers the project-settings detail route without a named-layout-child warning", async ({
-    page,
-    editableProject,
-  }) => {
-    const layoutWarnings: string[] = [];
-    page.on("console", (message) => {
-      if (message.text().includes("[Layout children]")) {
-        layoutWarnings.push(message.text());
-      }
-    });
-
-    await openProjects(page);
-    await openProjectSettings(page, editableProject.name);
-
-    await expect(layoutWarnings).toEqual([]);
-    await moneyShot(page, "Project settings detail opens with no named-layout-child warning.");
-  });
-
   test("freshly-added project with no workspace is editable from the sidebar without a reload", async ({
     page,
   }) => {
@@ -221,13 +212,8 @@ test.describe("Projects settings", () => {
     try {
       await gotoAppShell(page);
 
-      const projectKey = await addProjectFromSidebar(page, repo.path);
-      const registeredProject = (await client.listProjects()).projects.find(
-        (project) => project.projectRootPath === repo.path,
-      );
-      expect(registeredProject).toBeDefined();
-      projectId = registeredProject!.projectId;
-      await openProjectSettingsFromSidebar(page, projectKey);
+      projectId = await addProjectFromSidebar(page, repo.path);
+      await openProjectSettingsFromSidebar(page, projectId);
 
       await expectProjectSettingsFormVisible(page);
       await expect(page.getByTestId("project-settings-back-button")).not.toBeVisible();
@@ -240,54 +226,53 @@ test.describe("Projects settings", () => {
     }
   });
 
-  test("user edits worktree setup from the projects page", async ({ page, editableProject }) => {
+  test("edits worktree setup, navigates within the host, and removes a script", async ({
+    page,
+    editableProject,
+  }) => {
     await openProjects(page);
     await openProjectSettings(page, editableProject.name);
     await expectNoUncommittedSetupWarning(page);
     await editWorktreeSetup(page, updatedSetup);
-    await clickSaveProjectSettings(page);
+    // OTTO(settings): preference edits persist without a Save control.
+    await expect(page.getByTestId("save-button")).toHaveCount(0);
     await expectProjectConfigSaved(editableProject);
     await expectUncommittedSetupWarning(page);
 
-    commitOttoConfig(editableProject.path);
+    commitPaseoConfig(editableProject.path);
     await returnToProjectsList(page);
     await openProjectSettings(page, editableProject.name);
     await expectNoUncommittedSetupWarning(page);
-  });
 
-  test("project navigation stays inside the selected host", async ({ page, editableProject }) => {
-    await openProjects(page);
-    await openProjectSettings(page, editableProject.name);
-    await expectProjectHostContextHidden(page);
-    await returnToProjectsList(page);
-    await openProjectSettings(page, editableProject.name);
-    await expectProjectSettingsHistoryRoundTrip(page, editableProject.name);
+    await test.step("navigation stays inside the selected host", async () => {
+      await expectProjectHostContextHidden(page);
+      await returnToProjectsList(page);
+      await openProjectSettings(page, editableProject.name);
+      await expectProjectSettingsHistoryRoundTrip(page, editableProject.name);
+    });
+
+    await test.step("removing a script leaves the committed setup unchanged", async () => {
+      await expectScriptRowCount(page, 1);
+      await removeProjectScript(page, "dev");
+      await expectScriptRowCount(page, 0);
+      await expectEmptyScriptList(page);
+      await expectScriptsRemoved(editableProject);
+      await expectNoUncommittedSetupWarning(page);
+    });
   });
 
   test("user edits worktree setup on a non-GitHub remote project", async ({
     page,
     gitlabRemoteProject,
   }) => {
-    expect(gitlabRemoteProject.name).toBe("acme/app");
+    expect(gitlabRemoteProject.name).toBe(path.basename(gitlabRemoteProject.path));
     await openProjects(page);
     await openProjectSettings(page, gitlabRemoteProject.name);
     await editWorktreeSetup(page, updatedSetup);
-    await clickSaveProjectSettings(page);
     await expectProjectConfigSaved(gitlabRemoteProject);
   });
 
-  test("user renames a project from the edit sheet", async ({ page, editableProject }) => {
-    await openProjects(page);
-    await openProjectSettings(page, editableProject.name);
-    await openProjectEditSheet(page);
-    await fillProjectName(page, "Renamed project");
-    await saveProjectEdits(page);
-
-    await expectProjectEditSaved(page);
-    await expectProjectTitle(page, "Renamed project");
-  });
-
-  test("reopening the edit sheet seeds from the saved project", async ({
+  test("renames a project, reopens the saved edit sheet, and adds an icon", async ({
     page,
     editableProject,
   }) => {
@@ -296,26 +281,26 @@ test.describe("Projects settings", () => {
     await openProjectEditSheet(page);
     await fillProjectName(page, "Renamed project");
     await saveProjectEdits(page);
+
     await expectProjectEditSaved(page);
+    await expectProjectTitle(page, "Renamed project");
 
-    await openProjectEditSheet(page);
-
-    await expectProjectEditName(page, "Renamed project");
-    await expectProjectEditsSaveDisabled(page);
-  });
-
-  test("user picks a custom project icon from a file", async ({ page, editableProject }) => {
-    await openProjects(page);
-    await openProjectSettings(page, editableProject.name);
-    await openProjectEditSheet(page);
-    await chooseProjectIconImage(page, {
-      name: "logo.png",
-      mimeType: "image/png",
-      buffer: PNG_1X1,
+    await test.step("reopening seeds the saved name with no unsaved changes", async () => {
+      await openProjectEditSheet(page);
+      await expectProjectEditName(page, "Renamed project");
+      await expectProjectEditsSaveDisabled(page);
     });
-    await saveProjectEdits(page);
 
-    await expectProjectEditSaved(page);
+    await test.step("an icon can be saved without another name change", async () => {
+      await chooseProjectIconImage(page, {
+        name: "logo.png",
+        mimeType: "image/png",
+        buffer: PNG_1X1,
+      });
+      await saveProjectEdits(page);
+      await expectProjectEditSaved(page);
+      await expectProjectTitle(page, "Renamed project");
+    });
   });
 
   test("user sets a project name and icon in one save", async ({ page, editableProject }) => {
@@ -345,24 +330,48 @@ test.describe("Projects settings", () => {
   });
 });
 
-test.describe("Projects settings - error UX", () => {
-  test("stale-write callout appears on save, disables save, and reload clears it", async ({
+test.describe("Projects settings — compact navigation", () => {
+  test.use({ viewport: { width: 390, height: 844 } });
+
+  test("project Back returns through Projects and Settings without reopening the project", async ({
+    page,
+    editableProject,
+  }) => {
+    await gotoAppShell(page);
+    await openCompactSettings(page, buildOpenProjectRoute());
+    await page.getByRole("button", { name: "Projects", exact: true }).click();
+    await expect(page).toHaveURL(buildProjectsSettingsRoute(getServerId()));
+
+    await openProjectSettings(page, editableProject.name);
+    await expect(page.getByRole("button", { name: "Back", exact: true })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Back to projects", exact: true })).toHaveCount(
+      0,
+    );
+
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(page).toHaveURL(buildProjectsSettingsRoute(getServerId()));
+
+    await page.getByRole("button", { name: "Back", exact: true }).click();
+    await expect(page).toHaveURL(buildSettingsRoute());
+    await expect(page.getByTestId("settings-sidebar")).toBeVisible();
+  });
+});
+
+test.describe("Projects settings — error UX", () => {
+  test("stale autosave retains the draft and reload clears the conflict", async ({
     page,
     editableProject,
   }) => {
     await openProjects(page);
     await openProjectSettings(page, editableProject.name);
 
-    // Save is disabled until the form is dirty, so make an edit first.
+    // Bump the file on disk so the daemon detects a revision mismatch on save.
+    await bumpPaseoConfigOnDisk(editableProject.path);
+
     await editWorktreeSetup(page, updatedSetup);
 
-    // Bump the file on disk so the daemon detects a revision mismatch on save.
-    await bumpOttoConfigOnDisk(editableProject.path);
-
-    await clickSaveProjectSettings(page);
-
     await expectProjectSettingsError(page, "stale");
-    await expectSaveButtonDisabled(page);
+    await expect(page.getByTestId("save-button")).toHaveCount(0);
 
     await clickReloadProjectSettings(page);
 
@@ -374,7 +383,7 @@ test.describe("Projects settings - error UX", () => {
     page,
     editableProject,
   }) => {
-    await corruptOttoConfig(editableProject.path);
+    await corruptPaseoConfig(editableProject.path);
 
     await openProjects(page);
     await navigateToProjectSettings(page, editableProject.name);
@@ -383,7 +392,7 @@ test.describe("Projects settings - error UX", () => {
     await expectProjectSettingsFormHidden(page);
 
     // Restore a valid config so the reload succeeds.
-    await restoreOttoConfig(editableProject.path, initialOttoConfig);
+    await restorePaseoConfig(editableProject.path, initialPaseoConfig);
 
     await clickReloadProjectSettings(page);
 
@@ -391,27 +400,24 @@ test.describe("Projects settings - error UX", () => {
     await expectProjectSettingsFormVisible(page);
   });
 
-  test("write_failed callout appears on save with blocked directory, retry re-attempts, reload clears it", async ({
+  test("failed autosave retains the draft without retry, and confirmed reload recovers", async ({
     page,
     editableProject,
   }) => {
     await openProjects(page);
     await openProjectSettings(page, editableProject.name);
 
-    // Save is disabled until the form is dirty, so make an edit first.
+    await blockPaseoConfigWrites(editableProject.path);
+
     await editWorktreeSetup(page, updatedSetup);
 
-    await blockOttoConfigWrites(editableProject.path);
-
-    await clickSaveProjectSettings(page);
-
     await expectProjectSettingsError(page, "write_failed");
-    await expectWriteFailedCalloutActions(page);
+    await expect(page.getByTestId("write-failed-callout-action-1")).toHaveText("Reload");
+    await expect(page.getByRole("textbox", { name: "Worktree setup commands" })).toHaveValue(
+      updatedSetup.join("\n"),
+    );
 
-    await clickRetryProjectSettingsSave(page);
-    await expectProjectSettingsError(page, "write_failed");
-
-    await unblockOttoConfigWrites(editableProject.path);
+    await unblockPaseoConfigWrites(editableProject.path);
     await clickReloadProjectSettings(page);
     await expectNoProjectSettingsError(page, "write_failed");
     await expectProjectSettingsFormVisible(page);
@@ -454,32 +460,5 @@ test.describe("Projects settings - error UX", () => {
     await gate.drop();
 
     await expectNoEditableTarget(page);
-  });
-
-  test("project detail does not render a second host selector", async ({
-    page,
-    editableProject,
-  }) => {
-    await openProjects(page);
-    await openProjectSettings(page, editableProject.name);
-
-    await expectProjectHostContextHidden(page);
-  });
-
-  test("script removal via kebab menu removes the row from the form", async ({
-    page,
-    editableProject,
-  }) => {
-    await openProjects(page);
-    await openProjectSettings(page, editableProject.name);
-
-    await expectScriptRowCount(page, 1);
-
-    await removeProjectScript(page, "dev");
-
-    await expectScriptRowCount(page, 0);
-    await expectEmptyScriptList(page);
-    await clickSaveProjectSettings(page);
-    await expectNoUncommittedSetupWarning(page);
   });
 });

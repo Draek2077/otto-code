@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ViewStyle } from "react-native";
-import { useRetainedPanelActive } from "@/components/retained-panel";
 import { DomOverlayScrollbar } from "@/components/ui/overlay-scrollbar/dom-overlay-scrollbar";
 import {
   ContextMenu,
@@ -11,6 +10,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { useToast } from "@/contexts/toast-context";
+import { useStableEvent } from "@/hooks/use-stable-event";
 import { InlineReviewAddButton, InlineReviewThread } from "@/review";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import type { ReviewableDiffTarget } from "@/utils/diff-layout";
@@ -72,7 +72,6 @@ function emptyStickyHeaderCanvasSlot(): StickyHeaderCanvasSlot {
 
 export function DiffSurface(props: DiffSurfaceProps) {
   const { t } = useTranslation();
-  const isRetainedPanelActive = useRetainedPanelActive();
   const toast = useToast();
   const workspaceCache = useDiffDocumentWorkspaceCache();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -119,8 +118,8 @@ export function DiffSurface(props: DiffSurfaceProps) {
   const hasHoveredAffordanceRef = useRef(false);
   const family = props.displayPreferences.monoFontFamily.trim() || DEFAULT_MONO_STACK;
   useLayoutEffect(() => {
-    const stats = (window as typeof window & { __OTTO_DIFF_REACT_STATS__?: { commits: number } })
-      .__OTTO_DIFF_REACT_STATS__;
+    const stats = (window as typeof window & { __PASEO_DIFF_REACT_STATS__?: { commits: number } })
+      .__PASEO_DIFF_REACT_STATS__;
     if (stats) stats.commits += 1;
   });
   const desiredTypography = useMemo<DiffTypography>(
@@ -173,6 +172,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
       files: props.files,
       collapsedFilePaths: props.collapsedFilePaths,
       layout: props.displayPreferences.layout,
+      structural: props.displayPreferences.structural, // OTTO(structural-diff)
       wrapLines: props.displayPreferences.wrapLines,
       viewportWidth: viewport.width,
       typography: loadedTypography,
@@ -191,6 +191,7 @@ export function DiffSurface(props: DiffSurfaceProps) {
     measurement,
     props.collapsedFilePaths,
     props.displayPreferences.layout,
+    props.displayPreferences.structural, // OTTO(structural-diff)
     props.displayPreferences.wrapLines,
     props.files,
     props.palette,
@@ -354,14 +355,9 @@ export function DiffSurface(props: DiffSurfaceProps) {
   );
   useLayoutEffect(() => {
     const root = rootRef.current;
-    // The canvas must stay mounted while a retained tab is hidden. Removing it
-    // also removes its ResizeObserver, so a tab can return with a stale (or
-    // zero-width) document model until an unrelated resize happens to wake it.
-    // `retainDiffViewport` already ignores the hidden panel's zero geometry.
     if (!root) return;
-    const commitPendingViewport = () => {
+    const commitPendingViewport = () =>
       setViewport((current) => retainDiffViewport(current, pendingViewportRef.current));
-    };
     const clearResizeSettleTimer = () => {
       if (resizeSettleTimerRef.current === null) return;
       clearTimeout(resizeSettleTimerRef.current);
@@ -475,14 +471,6 @@ export function DiffSurface(props: DiffSurfaceProps) {
     },
     [],
   );
-  useLayoutEffect(() => {
-    if (!isRetainedPanelActive) {
-      if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-      return;
-    }
-    schedulePaint();
-  }, [isRetainedPanelActive, schedulePaint]);
   const mode = props.mode;
   const collapsedFilePaths = props.collapsedFilePaths;
   const onToggleFile = props.onToggleFile;
@@ -572,23 +560,26 @@ export function DiffSurface(props: DiffSurfaceProps) {
     (event: React.PointerEvent<HTMLDivElement>) => pointHitAt(event.clientX, event.clientY),
     [pointHitAt],
   );
-  const setSelection = useCallback(
-    (selection: DiffSelection | null) => {
-      selectionRef.current = selection;
-      const currentModel = modelRef.current;
-      setHasSelection(
-        Boolean(
-          selection && currentModel && selectedSourceText(currentModel, selection).length > 0,
-        ),
-      );
-      schedulePaint();
-    },
-    [schedulePaint],
-  );
+  const setSelection = useStableEvent((selection: DiffSelection | null) => {
+    selectionRef.current = selection;
+    const currentModel = modelRef.current;
+    setHasSelection(
+      Boolean(selection && currentModel && selectedSourceText(currentModel, selection).length > 0),
+    );
+    schedulePaint();
+  });
+  // Source and code-layout changes invalidate selection coordinates. A new
+  // repaint callback (header typography, palette, viewport height) does not.
   useEffect(() => {
     dragRef.current = null;
     setSelection(null);
-  }, [props.collapsedFilePaths, props.displayPreferences.layout, props.files, setSelection]);
+  }, [
+    props.collapsedFilePaths,
+    props.displayPreferences.layout,
+    props.files,
+    desiredTypography,
+    setSelection,
+  ]);
   const pointerDown = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (event.button !== 0) return;
@@ -783,9 +774,13 @@ export function DiffSurface(props: DiffSurfaceProps) {
     () => ({ ...ROOT_STYLE, background: props.palette.surface }),
     [props.palette.surface],
   );
+  const contentInsetBottom = props.contentInsetBottom ?? 0;
   const contentStyle = useMemo<React.CSSProperties>(
-    () => ({ ...CONTENT_STYLE, height: Math.max(model.height, viewport.height) }),
-    [model.height, viewport.height],
+    () => ({
+      ...CONTENT_STYLE,
+      height: Math.max(model.height, viewport.height) + contentInsetBottom,
+    }),
+    [contentInsetBottom, model.height, viewport.height],
   );
   const affordanceStyle = useMemo<ViewStyle>(
     () => ({

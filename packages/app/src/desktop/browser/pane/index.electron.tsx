@@ -1,8 +1,7 @@
-import { BrowserFindBar } from "./find-bar.electron";
-import { BrowserHistorySuggestions } from "./history-suggestions.electron";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -10,33 +9,36 @@ import {
   type ReactNode,
   createElement,
 } from "react";
-import { Pressable, Text, TextInput, View, type StyleProp, type ViewStyle } from "react-native";
-import { PaneOverlay } from "@/components/ui/pane-overlay";
+import { createPortal } from "react-dom";
+import { Pressable, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import {
-  AlertTriangle,
+  EditingTextInput as TextInput,
+  type EditingTextInputHandle,
+} from "@/components/ui/text-input";
+import {
   ArrowLeft,
+  ArrowRight,
   Camera,
   ChevronDown,
-  Devices,
+  Maximize,
   Monitor,
   MousePointer2,
   RotateCw,
   Smartphone,
-  Square,
   Tablet,
   Wrench,
-  MoreHorizontal,
-  Search,
-  ExternalLink,
   X,
-  type IconComponent,
-} from "@/components/icons/material-icons";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+  type LucideIcon,
+} from "lucide-react-native";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import * as Clipboard from "expo-clipboard";
 import { Button } from "@/components/ui/button";
-import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { useOttoBrowserActions } from "@/otto/browser/actions.electron"; // OTTO(browser-actions)
+import { useOttoBrowserHistory } from "@/otto/browser/history.electron"; // OTTO(browser-history)
+import { PreviewWorkspaceMenuItem } from "@/otto/preview/workspace-menu-item"; // OTTO(preview): add only to More; visible Paseo controls stay intact.
+import { OpenHostBrowserMenuItem } from "@/otto/browser/host/open-menu-item"; // OTTO(browser-host): explicit URL open; native cookies and controls stay on the desktop.
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/contexts/toast-context";
 import {
@@ -52,6 +54,8 @@ import {
 } from "@/attachments/workspace-attachments-store";
 import type { AttachmentMetadata, BrowserElementAttachment } from "@/attachments/types";
 import { persistAttachmentFromDataUrl } from "@/attachments/service";
+import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
+import { getOverlayRoot } from "@/lib/overlay-root";
 import {
   getDesktopHost,
   isElectronRuntime,
@@ -63,11 +67,9 @@ import {
   normalizeWorkspaceBrowserUrl,
   RESPONSIVE_BROWSER_VIEWPORT,
   useBrowserStore,
-  useBrowserStoreHydrated,
 } from "@/desktop/browser/store";
 import {
   applyInactiveBrowserWebviewViewport,
-  isResidentBrowserWebviewReady,
   prepareBrowserWebview,
   presentBrowserWebview,
   rememberBrowserWebviewSize,
@@ -75,13 +77,11 @@ import {
   removeResidentBrowserWebview,
   takeResidentBrowserWebview,
 } from "../resident-webviews";
-import { useAppSettings } from "@/hooks/use-settings";
-import { useSessionStore } from "@/stores/session-store";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
-import { BrowserPane as RemoteBrowserPane } from "./remote-browser-pane";
-import { convertBrowserRenderMode } from "./convert-browser-render-mode.electron";
-import { BrowserHostToggle } from "./browser-host-toggle";
-import { browserToolbarStyles } from "./toolbar-styles";
+import {
+  createElementSelectorController,
+  type BrowserElementSelection,
+  type ElementSelectorOutcome,
+} from "./element-selector.electron";
 
 type ElectronWebview = HTMLElement & {
   canGoBack?: () => boolean;
@@ -92,18 +92,11 @@ type ElectronWebview = HTMLElement & {
   stop?: () => void;
   loadURL?: (url: string) => Promise<void>;
   getURL?: () => string;
+  isLoading?: () => boolean;
   executeJavaScript?: (code: string) => Promise<unknown>;
   focus?: () => void;
   addEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
   removeEventListener: (type: string, listener: EventListenerOrEventListenerObject) => void;
-};
-
-type WebTextInput = TextInput & {
-  getNativeRef?: () => unknown;
-};
-
-type BrowserElementSelection = Omit<BrowserElementAttachment, "formatted" | "comment"> & {
-  attributes?: Record<string, string>;
 };
 
 interface BrowserElementAnnotation {
@@ -128,19 +121,19 @@ type DeviceSizeId =
 
 interface DeviceSizePreset {
   id: DeviceSizeId;
-  /** Display name (not translated - device names are proper nouns). */
+  /** Display name (not translated — device names are proper nouns). */
   name: string;
   /** Fixed CSS width, or null for "fill the available area". */
   width: number | null;
   height: number | null;
-  icon: IconComponent;
+  icon: LucideIcon;
 }
 
 // Viewport presets for the in-app browser. "responsive" fills the pane; the
 // others render a fixed-size, centered frame so the user can preview how a page
 // behaves at common device sizes. Content is centered (not left-aligned).
 const DEVICE_SIZE_PRESETS: readonly DeviceSizePreset[] = [
-  { id: "responsive", name: "Responsive", width: null, height: null, icon: Devices },
+  { id: "responsive", name: "Responsive", width: null, height: null, icon: Maximize },
   { id: "iphone-se", name: "iPhone SE", width: 375, height: 667, icon: Smartphone },
   { id: "iphone-14", name: "iPhone 14", width: 390, height: 844, icon: Smartphone },
   { id: "iphone-14-pro-max", name: "iPhone 14 Pro Max", width: 430, height: 932, icon: Smartphone },
@@ -169,54 +162,11 @@ function formatDevicePresetLabel(preset: DeviceSizePreset, responsiveLabel: stri
 const ERR_ABORTED = -3;
 const ALLOWED_BROWSER_PROTOCOLS = new Set(["http:", "https:"]);
 
-interface BrowserErrorLabels {
-  failedToLoad: string;
-  pageUnavailable: string;
-  siteNotFound: string;
-  connectionRefused: string;
-  connectionFailed: string;
-  certificateError: string;
-  invalidUrl: string;
-  unsupportedProtocol: (protocol: string) => string;
-}
-
-function isExpectedNavigationInterruption(value: string): boolean {
-  return value.includes("ERR_ABORTED") || value.includes("ERR_BLOCKED_BY_CLIENT");
-}
-
-function getBrowserNavigationErrorMessage(value: string, labels: BrowserErrorLabels): string {
-  // Electron exposes failures through both `did-fail-load` and a rejected
-  // webview.loadURL() promise. The latter can contain internal IPC errors
-  // (`GUEST_VIEW_MANAGER_CALL`), so translate every known network failure and
-  // keep the fallback generic rather than exposing Chromium internals.
-  if (value.includes("ERR_NAME_NOT_RESOLVED")) {
-    return labels.siteNotFound;
-  }
-  if (value.includes("ERR_CONNECTION_REFUSED")) {
-    return labels.connectionRefused;
-  }
-  if (
-    [
-      "ERR_CONNECTION_CLOSED",
-      "ERR_CONNECTION_RESET",
-      "ERR_CONNECTION_TIMED_OUT",
-      "ERR_ADDRESS_UNREACHABLE",
-      "ERR_INTERNET_DISCONNECTED",
-    ].some((code) => value.includes(code))
-  ) {
-    return labels.connectionFailed;
-  }
-  if (value.includes("ERR_CERT_") || value.includes("ERR_SSL_")) {
-    return labels.certificateError;
-  }
-  return labels.failedToLoad;
-}
-
 function truncateText(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength).trim()}...` : value;
 }
 
-function getWebviewLoadErrorMessage(event: Event, labels: BrowserErrorLabels): string | null {
+function getWebviewLoadErrorMessage(event: Event, failedToLoadLabel: string): string | null {
   const details = event as Event & {
     errorCode?: unknown;
     errorDescription?: unknown;
@@ -227,34 +177,37 @@ function getWebviewLoadErrorMessage(event: Event, labels: BrowserErrorLabels): s
     return null;
   }
 
-  const reportedDescription =
+  const description =
     typeof details.errorDescription === "string" && details.errorDescription.trim()
       ? details.errorDescription.trim()
-      : "";
-  return reportedDescription
-    ? getBrowserNavigationErrorMessage(reportedDescription, labels)
-    : labels.failedToLoad;
+      : failedToLoadLabel;
+  const url =
+    typeof details.validatedURL === "string" && details.validatedURL.trim()
+      ? details.validatedURL.trim()
+      : null;
+
+  return url ? `${description}: ${url}` : description;
 }
 
-function getLoadUrlRejectionMessage(error: unknown, labels: BrowserErrorLabels): string | null {
-  let message = "";
-  if (error instanceof Error) {
-    message = error.message.trim();
-  } else if (typeof error === "string") {
-    message = error.trim();
-  }
-  if (message) {
-    if (isExpectedNavigationInterruption(message)) {
+function getLoadUrlRejectionMessage(error: unknown, failedToLoadLabel: string): string | null {
+  if (error instanceof Error && error.message.trim()) {
+    if (error.message.includes("ERR_ABORTED") || error.message.includes("ERR_BLOCKED_BY_CLIENT")) {
       return null;
     }
-    return getBrowserNavigationErrorMessage(message, labels);
+    return error.message.trim();
   }
-  return labels.failedToLoad;
+  if (typeof error === "string" && error.trim()) {
+    if (error.includes("ERR_ABORTED") || error.includes("ERR_BLOCKED_BY_CLIENT")) {
+      return null;
+    }
+    return error.trim();
+  }
+  return failedToLoadLabel;
 }
 
 function getUnsafeNavigationMessage(
   url: string,
-  labels: Pick<BrowserErrorLabels, "invalidUrl" | "unsupportedProtocol">,
+  labels: { invalidUrl: string; unsupportedProtocol: (protocol: string) => string },
 ): string | null {
   try {
     const parsed = new URL(url);
@@ -370,20 +323,6 @@ function executeWebviewJavaScript(webview: ElectronWebview, code: string): Promi
 
 function ignoreWebviewJavaScriptError() {}
 
-function destroyWebviewSelector(webview: ElectronWebview): void {
-  void executeWebviewJavaScript(
-    webview,
-    "if(window.__ottoSelector) window.__ottoSelector.destroy();",
-  ).catch(ignoreWebviewJavaScriptError);
-}
-
-function clearWebviewSelector(webview: ElectronWebview): void {
-  void executeWebviewJavaScript(
-    webview,
-    "if(window.__ottoSelector) window.__ottoSelector.destroy(); window.__ottoSelectorResult = null;",
-  ).catch(ignoreWebviewJavaScriptError);
-}
-
 interface BrowserAnnotationMarker {
   index: number;
   selector: string;
@@ -400,7 +339,7 @@ function buildAnnotationMarkerScript(markers: readonly BrowserAnnotationMarker[]
   return `
     (function() {
       var markers = ${payload};
-      if (window.__ottoAnnotationMarkers) { window.__ottoAnnotationMarkers.update(markers); return true; }
+      if (window.__paseoAnnotationMarkers) { window.__paseoAnnotationMarkers.update(markers); return true; }
       var host = document.createElement('div');
       host.style.cssText = 'position:fixed;top:0;left:0;width:0;height:0;z-index:2147483646;pointer-events:none;';
       (document.body || document.documentElement).appendChild(host);
@@ -436,14 +375,14 @@ function buildAnnotationMarkerScript(markers: readonly BrowserAnnotationMarker[]
       }
       window.addEventListener('scroll', schedule, true);
       window.addEventListener('resize', schedule, true);
-      window.__ottoAnnotationMarkers = {
+      window.__paseoAnnotationMarkers = {
         update: function(next) { current = next; schedule(); },
         destroy: function() {
           window.removeEventListener('scroll', schedule, true);
           window.removeEventListener('resize', schedule, true);
           clearBadges();
           if (host.parentNode) host.parentNode.removeChild(host);
-          window.__ottoAnnotationMarkers = null;
+          window.__paseoAnnotationMarkers = null;
         }
       };
       reposition();
@@ -464,16 +403,18 @@ function applyAnnotationMarkers(
 function clearAnnotationMarkers(webview: ElectronWebview): void {
   void executeWebviewJavaScript(
     webview,
-    "if(window.__ottoAnnotationMarkers) window.__ottoAnnotationMarkers.destroy();",
+    "if(window.__paseoAnnotationMarkers) window.__paseoAnnotationMarkers.destroy();",
   ).catch(ignoreWebviewJavaScriptError);
 }
 
-function getTextInputNativeElement(current: WebTextInput | null): HTMLInputElement | null {
-  const native = current?.getNativeRef?.() ?? current;
+function getTextInputNativeElement(
+  current: EditingTextInputHandle | null,
+): HTMLInputElement | null {
+  const native = current?.getNativeRef();
   return native instanceof HTMLInputElement ? native : null;
 }
 
-function isBrowserShortcutKey(event: KeyboardEvent, key: "l" | "r" | "f"): boolean {
+function isBrowserShortcutKey(event: KeyboardEvent, key: "l" | "r"): boolean {
   if (event.altKey || event.shiftKey) {
     return false;
   }
@@ -489,39 +430,7 @@ function isDesktopBrowserShortcutEvent(payload: unknown): payload is DesktopBrow
     return false;
   }
   const event = payload as Partial<DesktopBrowserShortcutEvent>;
-  return event.action === "focus-url" || event.action === "find";
-}
-
-function startSelectorResultPolling(input: {
-  webview: ElectronWebview;
-  onSelection: (selection: BrowserElementSelection) => void;
-  onDone: () => void;
-}): number {
-  const { webview, onSelection, onDone } = input;
-  const poll = window.setInterval(() => {
-    void (async () => {
-      try {
-        const raw = await executeWebviewJavaScript(
-          webview,
-          "JSON.stringify(window.__ottoSelectorResult || null)",
-        );
-        const result = typeof raw === "string" ? JSON.parse(raw) : null;
-        if (!result) {
-          return;
-        }
-        window.clearInterval(poll);
-        onDone();
-        await executeWebviewJavaScript(webview, "window.__ottoSelectorResult = null;");
-        if (!result.__cancelled) {
-          onSelection(result as BrowserElementSelection);
-        }
-      } catch {
-        // Keep polling; cross-origin/webview timing can make this transient.
-      }
-    })();
-  }, 200);
-
-  return poll;
+  return event.action === "focus-url";
 }
 
 function ToolbarButton({
@@ -566,20 +475,7 @@ function ToolbarButton({
 
 // Lucide icons themed via withUnistyles so their color stays theme-reactive
 // without a banned useUnistyles() call.
-const ThemedArrowLeft = withUnistyles(ArrowLeft);
-const ThemedSquare = withUnistyles(Square);
-const ThemedRotateCw = withUnistyles(RotateCw);
-const ThemedMoreHorizontal = withUnistyles(MoreHorizontal);
-const ThemedExternalLink = withUnistyles(ExternalLink);
-const ThemedSearch = withUnistyles(Search);
-const ThemedWrench = withUnistyles(Wrench);
-const ThemedMousePointer2 = withUnistyles(MousePointer2);
-const ThemedCamera = withUnistyles(Camera);
-const ThemedAlertTriangle = withUnistyles(AlertTriangle);
-const dangerIconMapping = (theme: { colors: { statusDanger: string } }) => ({
-  color: theme.colors.statusDanger,
-});
-const ThemedDevices = withUnistyles(Devices);
+const ThemedMaximize = withUnistyles(Maximize);
 const ThemedSmartphone = withUnistyles(Smartphone);
 const ThemedTablet = withUnistyles(Tablet);
 const ThemedMonitor = withUnistyles(Monitor);
@@ -588,11 +484,11 @@ const deviceMutedIconMapping = (theme: { colors: { foregroundMuted: string } }) 
   color: theme.colors.foregroundMuted,
 });
 
-function resolveThemedDeviceIcon(icon: IconComponent): typeof ThemedDevices {
+function resolveThemedDeviceIcon(icon: LucideIcon): typeof ThemedMaximize {
   if (icon === Smartphone) return ThemedSmartphone;
   if (icon === Tablet) return ThemedTablet;
   if (icon === Monitor) return ThemedMonitor;
-  return ThemedDevices;
+  return ThemedMaximize;
 }
 
 function DeviceSizeMenuItem({
@@ -645,7 +541,7 @@ function DeviceSizeMenu({
       <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger accessibilityLabel={label} style={triggerStyle}>
-            <View style={browserToolbarStyles.deviceTrigger}>
+            <View style={styles.deviceTrigger}>
               <SelectedIcon size={16} uniProps={deviceMutedIconMapping} />
               <ThemedChevronDown size={12} uniProps={deviceMutedIconMapping} />
             </View>
@@ -686,98 +582,23 @@ function rememberResolvedBrowserWebviewSize(browserId: string, webview: HTMLElem
   rememberBrowserWebviewSize({ browserId, width: bounds.width, height: bounds.height });
 }
 
-interface BrowserPaneProps {
-  browserId: string;
-  serverId: string;
-  workspaceId: string;
-  cwd: string | null;
-  isInteractive?: boolean;
-  onFocusPane?: () => void;
-}
-
-export function BrowserPane(props: BrowserPaneProps) {
-  const hasHydratedBrowserStore = useBrowserStoreHydrated();
-  const browser = useBrowserStore((state) => state.browsersById[props.browserId] ?? null);
-  const hasBrowserRecord = Boolean(browser);
-  const renderMode = browser?.renderMode;
-  const supportsRemoteBrowser = useSessionStore(
-    (state) => state.sessions[props.serverId]?.serverInfo?.features?.remoteBrowser === true,
-  );
-  const [switching, setSwitching] = useState(false);
-  const toast = useToast();
-  const { t } = useTranslation();
-
-  const handleToggleHost = useCallback(() => {
-    if (switching || !browser || browser.isPreview) return;
-    if (browser.renderMode === "native" && !supportsRemoteBrowser) {
-      toast.error(t("workspace.browser.updateHost"));
-      return;
-    }
-    setSwitching(true);
-    void convertBrowserRenderMode({
-      browserId: props.browserId,
-      serverId: props.serverId,
-      workspaceId: props.workspaceId,
-      client: useSessionStore.getState().sessions[props.serverId]?.client ?? null,
-    })
-      .catch((error: unknown) => {
-        toast.error(`${t("workspace.browser.controls.switchFailed")} ${String(error)}`);
-      })
-      .finally(() => setSwitching(false));
-  }, [
-    browser,
-    props.browserId,
-    props.serverId,
-    props.workspaceId,
-    supportsRemoteBrowser,
-    switching,
-    t,
-    toast,
-  ]);
-
-  useEffect(() => {
-    if (hasHydratedBrowserStore && !hasBrowserRecord) {
-      useBrowserStore.getState().ensureBrowser(props.browserId);
-    }
-  }, [hasHydratedBrowserStore, hasBrowserRecord, props.browserId]);
-
-  if (!hasHydratedBrowserStore || !hasBrowserRecord) {
-    return (
-      <View style={styles.restoring}>
-        <LoadingSpinner />
-      </View>
-    );
-  }
-
-  if (renderMode === "hosted")
-    return (
-      <RemoteBrowserPane
-        {...props}
-        onToggleHostMode={browser?.isPreview ? undefined : handleToggleHost}
-        hostModeToggleDisabled={switching}
-      />
-    );
-
-  return (
-    <BrowserPaneContents
-      {...props}
-      onToggleHostMode={browser?.isPreview ? undefined : handleToggleHost}
-      hostModeToggleDisabled={switching}
-    />
-  );
-}
-
 // eslint-disable-next-line complexity
-function BrowserPaneContents({
+export function BrowserPane({
   browserId,
   serverId,
   workspaceId,
   cwd,
   isInteractive,
   onFocusPane,
-  onToggleHostMode,
-  hostModeToggleDisabled,
-}: BrowserPaneProps & { onToggleHostMode?: () => void; hostModeToggleDisabled: boolean }) {
+}: {
+  browserId: string;
+  serverId: string;
+  workspaceId: string;
+  cwd: string | null;
+  isInteractive?: boolean;
+  onFocusPane?: () => void;
+}) {
+  const { theme } = useUnistyles();
   const { t } = useTranslation();
   const browser = useBrowserStore((state) => state.browsersById[browserId] ?? null);
   const updateBrowser = useBrowserStore((state) => state.updateBrowser);
@@ -791,37 +612,22 @@ function BrowserPaneContents({
   const webviewRef = useRef<ElectronWebview | null>(null);
   const webviewHostRef = useRef<HTMLDivElement | null>(null);
   const webviewClipRef = useRef<HTMLElement | null>(null);
-  const urlInputRef = useRef<WebTextInput | null>(null);
-  const [findOpen, setFindOpen] = useState(false);
-  const [findFocusRequest, setFindFocusRequest] = useState(0);
-  const openFind = useCallback(() => {
-    setFindOpen(true);
-    setFindFocusRequest((value) => value + 1);
-  }, []);
-  const closeFind = useCallback(() => {
-    setFindOpen(false);
-    webviewRef.current?.focus?.();
-  }, []);
-  // A preview tab that isn't confirmed "ready" has no real page to show yet -
-  // point the webview at about:blank rather than navigating to a stale/default
-  // URL, so no ERR_CONNECTION_REFUSED can surface before the server is known-up.
-  const initialUrlRef = useRef(
-    browser?.isPreview && browser.previewStatus !== "ready"
-      ? "about:blank"
-      : (browser?.url ?? "https://example.com"),
-  );
+  const urlInputRef = useRef<EditingTextInputHandle | null>(null);
+  const initialUrlRef = useRef(browser?.url ?? "https://example.com");
   const browserIdRef = useRef(browserId);
   browserIdRef.current = browserId;
   const browserRef = useRef(browser);
   browserRef.current = browser;
   const pendingNavigationUrlRef = useRef<string | null>(null);
-  const navigationRequestRef = useRef(0);
   const annotationMarkersRef = useRef<BrowserAnnotationMarker[]>([]);
   const [selectorMode, setSelectorMode] = useState<"annotate" | "screenshot" | null>(null);
+  const selectorControllerRef = useRef<ReturnType<typeof createElementSelectorController> | null>(
+    null,
+  );
+  if (!selectorControllerRef.current) {
+    selectorControllerRef.current = createElementSelectorController();
+  }
   const selectorActive = selectorMode !== null;
-  // Which action the active selector performs on click: open the annotation card
-  // ("annotate") or copy a screenshot of the element to the clipboard ("screenshot").
-  const selectorModeRef = useRef<"annotate" | "screenshot">("annotate");
   const toast = useToast();
   const toastRef = useRef(toast);
   toastRef.current = toast;
@@ -838,14 +644,31 @@ function BrowserPaneContents({
   const setWorkspaceAttachments = useWorkspaceAttachmentsStore(
     (state) => state.setWorkspaceAttachments,
   );
+  const titleStyle = useMemo(
+    () => [styles.unavailableTitle, { color: theme.colors.foreground }],
+    [theme.colors.foreground],
+  );
+  const subtitleStyle = useMemo(
+    () => [styles.unavailableSubtitle, { color: theme.colors.foregroundMuted }],
+    [theme.colors.foregroundMuted],
+  );
+  const urlInputStyle = useMemo(
+    () => [
+      styles.urlInput,
+      {
+        color: theme.colors.foreground,
+        outlineStyle: "none",
+      } as object,
+    ],
+    [theme.colors.foreground],
+  );
+  const errorTextStyle = useMemo(
+    () => [styles.metaError, { color: theme.colors.palette.red[500] }],
+    [theme.colors.palette.red],
+  );
   const browserErrorLabels = useMemo(
     () => ({
       failedToLoad: t("workspace.browser.errors.failedToLoad"),
-      pageUnavailable: t("workspace.browser.errors.pageUnavailable"),
-      siteNotFound: t("workspace.browser.errors.siteNotFound"),
-      connectionRefused: t("workspace.browser.errors.connectionRefused"),
-      connectionFailed: t("workspace.browser.errors.connectionFailed"),
-      certificateError: t("workspace.browser.errors.certificateError"),
       invalidUrl: t("workspace.browser.errors.invalidUrl"),
       unsupportedProtocol: (protocol: string) =>
         t("workspace.browser.errors.unsupportedProtocol", { protocol }),
@@ -857,100 +680,12 @@ function BrowserPaneContents({
 
   useEffect(() => {
     const nextUrl = browser?.url ?? "https://example.com";
+    urlInputRef.current?.replaceText(nextUrl);
     setDraftUrl((current) => (current === nextUrl ? current : nextUrl));
   }, [browser?.url]);
 
   const updateBrowserRef = useRef(updateBrowser);
   updateBrowserRef.current = updateBrowser;
-
-  const { settings: appSettings } = useAppSettings();
-
-  // Shared by the restore-bootstrap effect below and the "Start preview
-  // server" / "Try again" overlay buttons - (re)starts the dev server for a
-  // preview tab and reuses previewStart's own "already running" short-circuit.
-  const startPreviewFlow = useCallback(
-    async (client: DaemonClient, previewCwd: string, previewServerName: string) => {
-      updateBrowserRef.current(browserIdRef.current, {
-        previewStatus: "starting",
-        lastError: null,
-      });
-      try {
-        const started = await client.previewStart(previewCwd, previewServerName);
-        if (!started.success || !started.server) {
-          updateBrowserRef.current(browserIdRef.current, {
-            previewStatus: "error",
-            lastError: started.error ?? browserErrorLabelsRef.current.failedToLoad,
-          });
-          return;
-        }
-        updateBrowserRef.current(browserIdRef.current, {
-          url: started.server.url,
-          previewServerId: started.server.serverId,
-          previewStatus: "ready",
-        });
-        await client
-          .previewBindTab(started.server.serverId, browserIdRef.current)
-          .catch(() => undefined);
-      } catch (error) {
-        updateBrowserRef.current(browserIdRef.current, {
-          previewStatus: "error",
-          lastError: error instanceof Error ? error.message : String(error),
-        });
-      }
-    },
-    [],
-  );
-
-  const handleStartPreviewPress = useCallback(() => {
-    const current = browserRef.current;
-    if (!current?.previewCwd || !current.previewServerName) {
-      return;
-    }
-    const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
-    if (!client) {
-      return;
-    }
-    void startPreviewFlow(client, current.previewCwd, current.previewServerName);
-  }, [serverId, startPreviewFlow]);
-
-  // Bootstraps a preview tab restored from persisted storage (previewStatus
-  // was forced back to "idle" on load - see sanitizeBrowsersForPersist). Only
-  // fires once per browserId, and only for tabs nobody has already kicked off
-  // a start for: a freshly-created tab from the Preview button is already
-  // "starting" by the time this component mounts, so this only matters for
-  // restored tabs.
-  const restoreBootstrappedRef = useRef(false);
-  useEffect(() => {
-    if (restoreBootstrappedRef.current) {
-      return;
-    }
-    if (!browser?.isPreview || browser.previewStatus !== "idle") {
-      return;
-    }
-    if (!browser.previewCwd || !browser.previewServerName) {
-      return;
-    }
-    const client = useSessionStore.getState().sessions[serverId]?.client ?? null;
-    if (!client) {
-      // Session/workspace not available - leave the tab inert rather than
-      // showing a watermark whose button can't do anything.
-      return;
-    }
-    restoreBootstrappedRef.current = true;
-    if (!appSettings.previewAutoStartOnRestore) {
-      updateBrowserRef.current(browserIdRef.current, { previewStatus: "needs-start" });
-      return;
-    }
-    void startPreviewFlow(client, browser.previewCwd, browser.previewServerName);
-  }, [
-    appSettings.previewAutoStartOnRestore,
-    browser?.isPreview,
-    browser?.previewCwd,
-    browser?.previewServerName,
-    browser?.previewStatus,
-    serverId,
-    startPreviewFlow,
-  ]);
 
   const selectUrlBar = useCallback(() => {
     window.setTimeout(() => {
@@ -969,7 +704,7 @@ function BrowserPaneContents({
 
   const syncNavigationState = useCallback((input?: { syncUrl?: boolean }) => {
     const webview = webviewRef.current;
-    if (!webview || !isResidentBrowserWebviewReady(webview)) {
+    if (!webview) {
       return;
     }
 
@@ -1010,7 +745,6 @@ function BrowserPaneContents({
     webviewRef.current = webview;
     if (!residentWebview) {
       prepareBrowserWebview(webview, {
-        serverId,
         browserId,
         workspaceId,
         initialUrl: initialUnsafeNavigationMessage ? "about:blank" : initialUrlRef.current,
@@ -1040,12 +774,16 @@ function BrowserPaneContents({
           });
 
     const handleStartLoading = () => {
+      selectorControllerRef.current?.stopForWebview(webview);
+      updateBrowser(browserId, { isLoading: true, lastError: null });
       syncNavigationState({ syncUrl: false });
     };
     const handleStopLoading = () => {
+      updateBrowser(browserId, { isLoading: false });
       syncNavigationState();
     };
     const handleNavigate = (event: Event) => {
+      if ((event as Event & { isMainFrame?: boolean }).isMainFrame === false) return; // OTTO(browser-history): iframe changes cannot become top-level visits or address-bar state.
       const nextUrl =
         typeof (event as Event & { url?: unknown }).url === "string"
           ? ((event as Event & { url?: string }).url ?? "")
@@ -1080,6 +818,13 @@ function BrowserPaneContents({
       });
       setDraftUrl((current) => (current === normalized ? current : normalized));
     };
+    const handleTitleUpdated = (event: Event) => {
+      const title =
+        typeof (event as Event & { title?: unknown }).title === "string"
+          ? ((event as Event & { title?: string }).title ?? "")
+          : "";
+      updateBrowserRef.current(browserIdRef.current, { title });
+    };
     const handleFaviconUpdated = (event: Event) => {
       const favicons = Array.isArray((event as Event & { favicons?: unknown[] }).favicons)
         ? ((event as Event & { favicons?: string[] }).favicons ?? [])
@@ -1087,7 +832,7 @@ function BrowserPaneContents({
       updateBrowserRef.current(browserIdRef.current, { faviconUrl: favicons[0] ?? null });
     };
     const handleLoadFailed = (event: Event) => {
-      const message = getWebviewLoadErrorMessage(event, browserErrorLabelsRef.current);
+      const message = getWebviewLoadErrorMessage(event, browserErrorLabelsRef.current.failedToLoad);
       if (!message) {
         return;
       }
@@ -1121,6 +866,7 @@ function BrowserPaneContents({
     webview.addEventListener("will-navigate", handleWillNavigate);
     webview.addEventListener("did-navigate", handleNavigate);
     webview.addEventListener("did-navigate-in-page", handleNavigate);
+    webview.addEventListener("page-title-updated", handleTitleUpdated);
     webview.addEventListener("page-favicon-updated", handleFaviconUpdated);
     webview.addEventListener("did-fail-load", handleLoadFailed);
     webview.addEventListener("dom-ready", handleDomReady);
@@ -1140,15 +886,13 @@ function BrowserPaneContents({
     }
 
     return () => {
-      // Invalidate the latest request, including one started after this effect mounted.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      ++navigationRequestRef.current;
       sizeObserver?.disconnect();
       webview.removeEventListener("did-start-loading", handleStartLoading);
       webview.removeEventListener("did-stop-loading", handleStopLoading);
       webview.removeEventListener("will-navigate", handleWillNavigate);
       webview.removeEventListener("did-navigate", handleNavigate);
       webview.removeEventListener("did-navigate-in-page", handleNavigate);
+      webview.removeEventListener("page-title-updated", handleTitleUpdated);
       webview.removeEventListener("page-favicon-updated", handleFaviconUpdated);
       webview.removeEventListener("did-fail-load", handleLoadFailed);
       webview.removeEventListener("dom-ready", handleDomReady);
@@ -1162,6 +906,7 @@ function BrowserPaneContents({
       } else {
         removeResidentBrowserWebview(browserIdRef.current);
       }
+      selectorControllerRef.current?.stopForWebview(webview);
       if (webviewRef.current === webview) {
         webviewRef.current = null;
       }
@@ -1196,7 +941,6 @@ function BrowserPaneContents({
 
   const navigate = useCallback(
     (nextUrl: string) => {
-      const request = ++navigationRequestRef.current;
       const normalizedUrl = normalizeWorkspaceBrowserUrl(nextUrl);
       const webview = webviewRef.current;
       const unsafeNavigationMessage = getUnsafeNavigationMessage(normalizedUrl, browserErrorLabels);
@@ -1216,53 +960,25 @@ function BrowserPaneContents({
         });
         return;
       }
-      const handleNavigationError = (error: unknown) => {
-        if (request !== navigationRequestRef.current) {
-          return;
-        }
-        const message = getLoadUrlRejectionMessage(error, browserErrorLabels);
-        if (!message) {
-          return;
-        }
-        updateBrowserRef.current(browserIdRef.current, {
-          isLoading: false,
-          lastError: message,
+      if (webview?.loadURL) {
+        void webview.loadURL(normalizedUrl).catch((error: unknown) => {
+          const message = getLoadUrlRejectionMessage(error, browserErrorLabels.failedToLoad);
+          if (!message) {
+            return;
+          }
+          updateBrowserRef.current(browserIdRef.current, {
+            isLoading: false,
+            lastError: message,
+          });
         });
-      };
-      try {
-        if (webview?.loadURL && isResidentBrowserWebviewReady(webview)) {
-          void webview.loadURL(normalizedUrl).catch(handleNavigationError);
-        } else if (webview) {
-          // Before the first DOM ready, src can replace even a stalled initial
-          // request. Waiting for that request to finish can strand the tab forever.
-          webview.setAttribute("src", normalizedUrl);
-        }
-      } catch (error) {
-        handleNavigationError(error);
+        return;
+      }
+      if (webview) {
+        webview.setAttribute("src", normalizedUrl);
       }
     },
     [browserErrorLabels],
   );
-
-  // Fires the actual (first, or retried) navigation once a preview tab's dev
-  // server is confirmed ready - the mount effect above pointed the webview at
-  // about:blank until now, which is what keeps a connection-refused flash from
-  // ever appearing during startup.
-  const previewNavigatedForStatusRef = useRef(false);
-  useEffect(() => {
-    if (!browser?.isPreview) {
-      return;
-    }
-    if (browser.previewStatus !== "ready") {
-      previewNavigatedForStatusRef.current = false;
-      return;
-    }
-    if (previewNavigatedForStatusRef.current) {
-      return;
-    }
-    previewNavigatedForStatusRef.current = true;
-    navigate(browser.url);
-  }, [browser?.isPreview, browser?.previewStatus, browser?.url, navigate]);
 
   const handleBack = useCallback(() => {
     webviewRef.current?.goBack?.();
@@ -1275,34 +991,13 @@ function BrowserPaneContents({
   }, [syncNavigationState]);
 
   const handleRefresh = useCallback(() => {
-    const webview = webviewRef.current;
-    if (!webview) {
+    if (browser?.isLoading) {
+      webviewRef.current?.stop?.();
+      updateBrowser(browserId, { isLoading: false });
       return;
     }
-    ++navigationRequestRef.current;
-    if (useBrowserStore.getState().browsersById[browserId]?.isLoading) {
-      pendingNavigationUrlRef.current = null;
-      try {
-        webview.stop?.();
-        updateBrowser(browserId, { isLoading: false });
-      } catch (error) {
-        updateBrowser(browserId, {
-          isLoading: false,
-          lastError: getLoadUrlRejectionMessage(error, browserErrorLabelsRef.current),
-        });
-      }
-      return;
-    }
-    updateBrowser(browserId, { isLoading: true, lastError: null });
-    try {
-      webview.reload?.();
-    } catch (error) {
-      updateBrowser(browserId, {
-        isLoading: false,
-        lastError: getLoadUrlRejectionMessage(error, browserErrorLabelsRef.current),
-      });
-    }
-  }, [browserId, updateBrowser]);
+    webviewRef.current?.reload?.();
+  }, [browser?.isLoading, browserId, updateBrowser]);
 
   useEffect(() => {
     if (!isElectronRuntime() || !isInteractive) {
@@ -1310,12 +1005,6 @@ function BrowserPaneContents({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (isBrowserShortcutKey(event, "f")) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        openFind();
-        return;
-      }
       if (isBrowserShortcutKey(event, "l")) {
         event.preventDefault();
         event.stopPropagation();
@@ -1335,7 +1024,7 @@ function BrowserPaneContents({
     return () => {
       window.removeEventListener("keydown", handleKeyDown, true);
     };
-  }, [focusUrlBar, handleRefresh, isInteractive, openFind]);
+  }, [focusUrlBar, handleRefresh, isInteractive]);
 
   useEffect(() => {
     if (!isElectronRuntime()) {
@@ -1349,15 +1038,13 @@ function BrowserPaneContents({
         if (payload.browserId !== browserIdRef.current) {
           return;
         }
-        if (payload.action === "find") openFind();
-        else focusUrlBar();
+        focusUrlBar();
         return;
       }
       if (!isInteractive) {
         return;
       }
-      if (payload.action === "find") openFind();
-      else focusUrlBar();
+      focusUrlBar();
     });
 
     if (typeof unsubscribe === "function") {
@@ -1366,7 +1053,7 @@ function BrowserPaneContents({
     return () => {
       void unsubscribe?.then((dispose) => dispose());
     };
-  }, [focusUrlBar, isInteractive, openFind]);
+  }, [focusUrlBar, isInteractive]);
 
   const handleNavigateDraftUrl = useCallback(() => {
     navigate(draftUrl);
@@ -1475,8 +1162,8 @@ function BrowserPaneContents({
   );
 
   const handleSelectorResult = useCallback(
-    (selection: BrowserElementSelection) => {
-      if (selectorModeRef.current === "screenshot") {
+    (selection: BrowserElementSelection, mode: "annotate" | "screenshot") => {
+      if (mode === "screenshot") {
         void screenshotElementToClipboard(selection);
         return;
       }
@@ -1509,271 +1196,62 @@ function BrowserPaneContents({
     setPendingSelection(null);
   }, []);
 
+  const showSelectorFailure = useCallback(
+    (reason: "loading" | "timeout" | "unavailable") => {
+      const message =
+        reason === "loading"
+          ? t("workspace.browser.controls.selectorLoading")
+          : t("workspace.browser.controls.selectorFailed");
+      toastRef.current?.error(message);
+    },
+    [t],
+  );
+
+  const handleElementSelectorOutcome = useCallback(
+    (outcome: ElementSelectorOutcome) => {
+      setSelectorMode(null);
+      if (outcome.type === "selected") {
+        handleSelectorResult(outcome.selection, outcome.mode);
+      } else if (outcome.type === "failed") {
+        showSelectorFailure(outcome.reason);
+      }
+    },
+    [handleSelectorResult, showSelectorFailure],
+  );
+
   const startElementSelector = useCallback(
     (mode: "annotate" | "screenshot") => {
+      if (mode === "annotate" && !workspaceAttachmentScopeKey) {
+        showSelectorFailure("unavailable");
+        return;
+      }
       const webview = webviewRef.current;
-      if (!webview || !isResidentBrowserWebviewReady(webview)) return;
-      // Annotate needs a workspace scope to attach to; screenshot only copies.
-      if (mode === "annotate" && !workspaceAttachmentScopeKey) return;
-      selectorModeRef.current = mode;
+      const controller = selectorControllerRef.current;
+      if (!webview || !controller) {
+        showSelectorFailure("unavailable");
+        return;
+      }
+
+      const startResult = controller.start({
+        webview,
+        mode,
+        onFinish: handleElementSelectorOutcome,
+      });
+      if (startResult !== "started") {
+        showSelectorFailure(startResult);
+        return;
+      }
+
       pendingScreenshotRef.current = undefined;
       setPendingSelection(null);
       setSelectorMode(mode);
-
-      const js = `
-      (function() {
-        if (window.__ottoSelector) { window.__ottoSelector.destroy(); }
-        var overlay = null;
-        var style = document.createElement('style');
-        style.textContent = [
-          '.__otto-hover { outline: 2px solid #3b82f6 !important; outline-offset: 2px !important; cursor: crosshair !important; }',
-          '.__otto-select-mode, .__otto-select-mode * { cursor: crosshair !important; pointer-events: auto !important; user-select: none !important; }',
-          '.__otto-select-mode *, .__otto-select-mode *::before, .__otto-select-mode *::after { animation: none !important; transition: none !important; }',
-          '.__otto-select-mode a, .__otto-select-mode button, .__otto-select-mode input, .__otto-select-mode select, .__otto-select-mode textarea, .__otto-select-mode [role="button"], .__otto-select-mode [onclick] { pointer-events: none !important; }',
-          '.__otto-select-mode iframe, .__otto-select-mode video, .__otto-select-mode audio { pointer-events: none !important; }',
-          '.__otto-hover-label { position: fixed; z-index: 2147483647; pointer-events: none; max-width: 360px; padding: 4px 8px; border-radius: 6px; background: rgba(24,24,27,0.96); color: #fff; font: 500 11px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; box-shadow: 0 2px 10px rgba(0,0,0,0.35); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
-          '.__otto-hover-label .__otto-tag { color: #93c5fd; }',
-          '.__otto-hover-label .__otto-id { color: #fca5a5; }',
-          '.__otto-hover-label .__otto-cls { color: #fcd34d; }',
-          '.__otto-hover-label .__otto-dim { color: #a1a1aa; margin-left: 6px; }',
-          '.__otto-hover-label .__otto-comp { color: #86efac; margin-left: 6px; }',
-        ].join('\\n');
-        document.head.appendChild(style);
-        document.documentElement.classList.add('__otto-select-mode');
-        var hoverLabel = document.createElement('div');
-        hoverLabel.className = '__otto-hover-label';
-        hoverLabel.style.display = 'none';
-        document.documentElement.appendChild(hoverLabel);
-        var last = null;
-        function escapeHtml(value) {
-          return String(value).replace(/[&<>"]/g, function(ch) {
-            return ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : '&quot;';
-          });
-        }
-        function describeElement(el) {
-          var tag = el.tagName ? el.tagName.toLowerCase() : 'node';
-          var parts = ['<span class="__otto-tag">' + escapeHtml(tag) + '</span>'];
-          if (el.id) {
-            parts.push('<span class="__otto-id">#' + escapeHtml(el.id) + '</span>');
-          }
-          if (el.classList && el.classList.length) {
-            var cls = Array.prototype.slice.call(el.classList, 0, 2)
-              .filter(function(c) { return c.indexOf('__otto') !== 0; })
-              .map(function(c) { return '.' + escapeHtml(c); })
-              .join('');
-            if (cls) parts.push('<span class="__otto-cls">' + cls + '</span>');
-          }
-          var comp = getReactSource(el);
-          if (comp && comp.componentName) {
-            parts.push('<span class="__otto-comp">&lt;' + escapeHtml(comp.componentName) + '&gt;</span>');
-          }
-          var rect = el.getBoundingClientRect();
-          parts.push('<span class="__otto-dim">' + Math.round(rect.width) + '×' + Math.round(rect.height) + '</span>');
-          return { html: parts.join(''), rect: rect };
-        }
-        function positionLabel(rect, e) {
-          var pad = 12;
-          var lw = hoverLabel.offsetWidth || 0;
-          var lh = hoverLabel.offsetHeight || 0;
-          var top = rect.top - lh - 6;
-          if (top < 4) top = rect.bottom + 6;
-          if (top + lh > window.innerHeight - 4) top = Math.max(4, e.clientY - lh - 6);
-          var left = rect.left;
-          if (left + lw > window.innerWidth - 4) left = Math.max(4, window.innerWidth - lw - 4);
-          if (left < 4) left = 4;
-          hoverLabel.style.top = Math.round(top) + 'px';
-          hoverLabel.style.left = Math.round(left) + 'px';
-        }
-        function onMove(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (last) last.classList.remove('__otto-hover');
-          var el = e.target;
-          el.classList.add('__otto-hover');
-          last = el;
-          try {
-            var info = describeElement(el);
-            hoverLabel.innerHTML = info.html;
-            hoverLabel.style.display = 'block';
-            positionLabel(info.rect, e);
-          } catch (err) {
-            hoverLabel.style.display = 'none';
-          }
-        }
-        function buildSelector(el) {
-          if (el.id) return '#' + el.id;
-          var path = [];
-          while (el && el.nodeType === 1) {
-            var seg = el.tagName.toLowerCase();
-            if (el.id) { path.unshift('#' + el.id); break; }
-            var sib = el, nth = 1;
-            while (sib = sib.previousElementSibling) { if (sib.tagName === el.tagName) nth++; }
-            if (nth > 1) seg += ':nth-of-type(' + nth + ')';
-            path.unshift(seg);
-            el = el.parentElement;
-          }
-          return path.join(' > ');
-        }
-        function getReactSource(el) {
-          var keys = Object.keys(el);
-          for (var i = 0; i < keys.length; i++) {
-            if (keys[i].startsWith('__reactFiber$') || keys[i].startsWith('__reactInternalInstance$')) {
-              var fiber = el[keys[i]];
-              while (fiber) {
-                if (fiber._debugSource) {
-                  return {
-                    fileName: fiber._debugSource.fileName || null,
-                    lineNumber: fiber._debugSource.lineNumber || null,
-                    columnNumber: fiber._debugSource.columnNumber || null,
-                    componentName: (fiber.type && (typeof fiber.type === 'string' ? fiber.type : fiber.type.displayName || fiber.type.name)) || null
-                  };
-                }
-                if (fiber._debugOwner) { fiber = fiber._debugOwner; }
-                else if (fiber.return) { fiber = fiber.return; }
-                else break;
-              }
-            }
-          }
-          return null;
-        }
-        function getParentChain(el, depth) {
-          var chain = [];
-          var cur = el.parentElement;
-          for (var i = 0; i < (depth || 5) && cur; i++) {
-            var desc = cur.tagName.toLowerCase();
-            if (cur.id) desc += '#' + cur.id;
-            if (cur.className && typeof cur.className === 'string') { var cls = cur.className.trim().replace(/  +/g, ' ').split(' ').slice(0,2).join('.'); if (cls) desc += '.' + cls; }
-            chain.push(desc);
-            cur = cur.parentElement;
-          }
-          return chain;
-        }
-        function getChildSummary(el, max) {
-          var kids = [];
-          for (var i = 0; i < Math.min(el.children.length, max || 8); i++) {
-            var c = el.children[i];
-            var desc = c.tagName.toLowerCase();
-            if (c.id) desc += '#' + c.id;
-            kids.push(desc);
-          }
-          if (el.children.length > (max || 8)) kids.push('...(' + el.children.length + ' total)');
-          return kids;
-        }
-        function getRelevantStyles(el) {
-          var cs = window.getComputedStyle(el);
-          var pick = ['display','position','width','height','color','background-color','font-size','font-family','padding','margin','border','flex','grid-template-columns','gap','overflow','opacity','z-index'];
-          var out = {};
-          pick.forEach(function(p) {
-            var v = cs.getPropertyValue(p);
-            if (v && v !== 'none' && v !== 'normal' && v !== 'auto' && v !== '0px' && v !== 'rgba(0, 0, 0, 0)') out[p] = v;
-          });
-          return out;
-        }
-        function onClick(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          var el = e.target;
-          if (last) last.classList.remove('__otto-hover');
-          hoverLabel.style.display = 'none';
-          var attrs = {};
-          for (var i = 0; i < el.attributes.length; i++) {
-            attrs[el.attributes[i].name] = el.attributes[i].value;
-          }
-          var rect = el.getBoundingClientRect();
-          var result = {
-            tag: el.tagName.toLowerCase(),
-            text: (el.innerText || '').substring(0, 500),
-            selector: buildSelector(el),
-            attributes: attrs,
-            url: location.href,
-            outerHTML: el.outerHTML.substring(0, 2000),
-            computedStyles: getRelevantStyles(el),
-            boundingRect: { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) },
-            reactSource: getReactSource(el),
-            parentChain: getParentChain(el, 5),
-            children: getChildSummary(el, 8)
-          };
-          destroy();
-          window.__ottoSelectorResult = result;
-        }
-        function onKey(e) {
-          if (e.key === 'Escape') { destroy(); window.__ottoSelectorResult = { __cancelled: true }; }
-        }
-        function blockEvent(e) {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-        }
-        function destroy() {
-          document.removeEventListener('mousemove', onMove, true);
-          document.removeEventListener('click', onClick, true);
-          document.removeEventListener('keydown', onKey, true);
-          document.removeEventListener('mousedown', blockEvent, true);
-          document.removeEventListener('mouseup', blockEvent, true);
-          document.removeEventListener('pointerdown', blockEvent, true);
-          document.removeEventListener('pointerup', blockEvent, true);
-          document.removeEventListener('touchstart', blockEvent, true);
-          document.removeEventListener('touchend', blockEvent, true);
-          document.removeEventListener('focus', blockEvent, true);
-          document.removeEventListener('submit', blockEvent, true);
-          document.documentElement.classList.remove('__otto-select-mode');
-          if (last) last.classList.remove('__otto-hover');
-          if (hoverLabel.parentNode) hoverLabel.parentNode.removeChild(hoverLabel);
-          style.remove();
-          window.__ottoSelector = null;
-        }
-        document.addEventListener('mousemove', onMove, true);
-        document.addEventListener('click', onClick, true);
-        document.addEventListener('keydown', onKey, true);
-        document.addEventListener('mousedown', blockEvent, true);
-        document.addEventListener('mouseup', blockEvent, true);
-        document.addEventListener('pointerdown', blockEvent, true);
-        document.addEventListener('pointerup', blockEvent, true);
-        document.addEventListener('touchstart', blockEvent, true);
-        document.addEventListener('touchend', blockEvent, true);
-        document.addEventListener('focus', blockEvent, true);
-        document.addEventListener('submit', blockEvent, true);
-        window.__ottoSelector = { destroy: destroy };
-      })()
-    `;
-
-      try {
-        void executeWebviewJavaScript(webview, js)
-          .then(() => {
-            const poll = startSelectorResultPolling({
-              webview,
-              onSelection: handleSelectorResult,
-              onDone: () => setSelectorMode(null),
-            });
-            window.setTimeout(() => {
-              window.clearInterval(poll);
-              setSelectorMode(null);
-              if (webviewRef.current !== webview || !isResidentBrowserWebviewReady(webview)) {
-                return;
-              }
-              destroyWebviewSelector(webview);
-            }, 30000);
-            return undefined;
-          })
-          .catch(() => {
-            setSelectorMode(null);
-          });
-      } catch {
-        setSelectorMode(null);
-      }
     },
-    [handleSelectorResult, workspaceAttachmentScopeKey],
+    [handleElementSelectorOutcome, showSelectorFailure, workspaceAttachmentScopeKey],
   );
 
   const cancelElementSelector = useCallback(() => {
-    const webview = webviewRef.current;
+    selectorControllerRef.current?.cancel();
     setSelectorMode(null);
-    if (webview && isResidentBrowserWebviewReady(webview)) {
-      try {
-        clearWebviewSelector(webview);
-      } catch {}
-    }
   }, []);
 
   const currentPageUrl = browser?.url ?? null;
@@ -1805,7 +1283,7 @@ function BrowserPaneContents({
       return;
     }
     const webview = webviewRef.current;
-    if (!webview || !isResidentBrowserWebviewReady(webview)) {
+    if (!webview) {
       return;
     }
     if (annotationMarkers.length === 0) {
@@ -1853,58 +1331,46 @@ function BrowserPaneContents({
       });
   }, []);
 
-  const menuIcons = useMemo(
-    () => ({
-      external: <ThemedExternalLink size={16} uniProps={deviceMutedIconMapping} />,
-      search: <ThemedSearch size={16} uniProps={deviceMutedIconMapping} />,
-      devTools: <ThemedWrench size={16} uniProps={deviceMutedIconMapping} />,
-      annotate: <ThemedMousePointer2 size={16} uniProps={deviceMutedIconMapping} />,
-      screenshot: <ThemedCamera size={16} uniProps={deviceMutedIconMapping} />,
-    }),
-    [],
-  );
-  const openExternal = useCallback(async () => {
-    const url = useBrowserStore.getState().browsersById[browserId]?.url;
-    const open = getDesktopHost()?.opener?.openUrl;
-    if (!url || !/^https?:\/\//i.test(url) || !open) return;
-    try {
-      await open(url);
-    } catch {
-      toast.error("Could not open the external browser.");
-    }
-  }, [browserId, toast]);
-
   const baseIconButtonStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      browserToolbarStyles.iconButton,
-      (hovered || pressed) && browserToolbarStyles.iconButtonHovered,
-    ],
-    [],
-  );
-  const deviceSizeButtonStyle = useCallback(
-    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      browserToolbarStyles.iconButton,
-      browserToolbarStyles.deviceSizeButton,
-      (hovered || pressed) && browserToolbarStyles.iconButtonHovered,
+      styles.iconButton,
+      (hovered || pressed) && styles.iconButtonHovered,
     ],
     [],
   );
   const backIconButtonStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      browserToolbarStyles.iconButton,
-      (hovered || pressed) && browserToolbarStyles.iconButtonHovered,
-      !browser?.canGoBack && browserToolbarStyles.iconButtonDisabled,
+      styles.iconButton,
+      (hovered || pressed) && styles.iconButtonHovered,
+      !browser?.canGoBack && styles.iconButtonDisabled,
     ],
     [browser?.canGoBack],
   );
   const forwardIconButtonStyle = useCallback(
     ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
-      browserToolbarStyles.iconButton,
-      (hovered || pressed) && browserToolbarStyles.iconButtonHovered,
-      !browser?.canGoForward && browserToolbarStyles.iconButtonDisabled,
+      styles.iconButton,
+      (hovered || pressed) && styles.iconButtonHovered,
+      !browser?.canGoForward && styles.iconButtonDisabled,
     ],
     [browser?.canGoForward],
   );
+  const annotateIconButtonStyle = useCallback(
+    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
+      styles.iconButton,
+      selectorMode === "annotate" && styles.selectorActiveButton,
+      (hovered || pressed) && styles.iconButtonHovered,
+    ],
+    [selectorMode],
+  );
+  const screenshotIconButtonStyle = useCallback(
+    ({ hovered, pressed }: { hovered?: boolean; pressed?: boolean }) => [
+      styles.iconButton,
+      selectorMode === "screenshot" && styles.selectorActiveButton,
+      (hovered || pressed) && styles.iconButtonHovered,
+    ],
+    [selectorMode],
+  );
+
   const selectedDeviceSizeId = useMemo(
     () => deviceSizeIdForViewport(browserViewport),
     [browserViewport],
@@ -1935,6 +1401,7 @@ function BrowserPaneContents({
             width: "100%",
             height: "100%",
             minHeight: 0,
+            background: theme.colors.surface0,
           }
         : {
             // Fixed-size device frame, centered within webviewWrap (see styles).
@@ -1942,9 +1409,10 @@ function BrowserPaneContents({
             width: browserViewport.width,
             height: browserViewport.height,
             minHeight: 0,
+            background: theme.colors.surface0,
             boxShadow: "0 2px 16px rgba(0,0,0,0.25)",
           },
-    [browserViewport, isResponsiveDevice],
+    [browserViewport, isResponsiveDevice, theme.colors.surface0],
   );
 
   const webviewWrapStyle = useMemo(
@@ -1960,28 +1428,63 @@ function BrowserPaneContents({
     webviewClipRef.current = node instanceof HTMLElement ? node : null;
   }, []);
 
+  // OTTO(browser-actions): missing actions use the existing pane's retained guest.
+  const history = useOttoBrowserHistory({
+    serverId,
+    workspaceId,
+    page: browser,
+    query: draftUrl,
+    inputRef: urlInputRef,
+    active: isPresented && Boolean(isInteractive),
+    onNavigate: navigate,
+  }); // OTTO(browser-history): native and SPA visits share the canonical browser state.
+  const ottoExtraActions = useMemo(
+    () => (
+      <>
+        {history.menuItem}
+        <OpenHostBrowserMenuItem
+          serverId={serverId}
+          workspaceId={workspaceId}
+          url={browser?.url ?? "about:blank"}
+        />
+        <PreviewWorkspaceMenuItem
+          surface="dropdown"
+          serverId={serverId}
+          workspaceId={workspaceId}
+        />
+      </>
+    ),
+    [history.menuItem, serverId, workspaceId, browser?.url],
+  ); // OTTO(preview)
+  const ottoActions = useOttoBrowserActions({
+    browserId,
+    pageUrl: browser?.url ?? null,
+    active: isPresented && Boolean(isInteractive),
+    guestRef: webviewRef,
+    triggerStyle: baseIconButtonStyle,
+    extraActions: ottoExtraActions, // OTTO(preview) // OTTO(browser-history)
+  });
+
   if (!isElectronRuntime()) {
     return (
       <View style={styles.unavailableState}>
-        <Text style={styles.unavailableTitle}>{t("workspace.browser.unavailable.title")}</Text>
-        <Text style={styles.unavailableSubtitle}>
-          {t("workspace.browser.unavailable.subtitle")}
-        </Text>
+        <Text style={titleStyle}>{t("workspace.browser.unavailable.title")}</Text>
+        <Text style={subtitleStyle}>{t("workspace.browser.unavailable.subtitle")}</Text>
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <View style={browserToolbarStyles.chromeRow}>
-        <View style={browserToolbarStyles.chromeLeft}>
+      <View style={styles.chromeRow}>
+        <View style={styles.chromeLeft}>
           <ToolbarButton
             label={t("workspace.browser.controls.back")}
             disabled={!browser?.canGoBack}
             onPress={handleBack}
             style={backIconButtonStyle}
           >
-            <ThemedArrowLeft size={16} uniProps={deviceMutedIconMapping} />
+            <ArrowLeft size={16} color={theme.colors.foregroundMuted} />
           </ToolbarButton>
           <ToolbarButton
             label={t("workspace.browser.controls.forward")}
@@ -1989,11 +1492,7 @@ function BrowserPaneContents({
             onPress={handleForward}
             style={forwardIconButtonStyle}
           >
-            <ThemedArrowLeft
-              size={16}
-              style={browserToolbarStyles.forwardArrow}
-              uniProps={deviceMutedIconMapping}
-            />
+            <ArrowRight size={16} color={theme.colors.foregroundMuted} />
           </ToolbarButton>
           <ToolbarButton
             label={
@@ -2004,15 +1503,11 @@ function BrowserPaneContents({
             onPress={handleRefresh}
             style={baseIconButtonStyle}
           >
-            {browser?.isLoading ? (
-              <ThemedSquare size={16} uniProps={deviceMutedIconMapping} />
-            ) : (
-              <ThemedRotateCw size={16} uniProps={deviceMutedIconMapping} />
-            )}
+            <RotateCw size={16} color={theme.colors.foregroundMuted} />
           </ToolbarButton>
         </View>
-        <View style={browserToolbarStyles.urlBarWrap}>
-          <ThemedAnnotationInput
+        <View style={styles.urlBarWrap}>
+          <TextInput
             accessibilityLabel={t("workspace.browser.controls.browserUrl")}
             autoCapitalize="none"
             autoCorrect={false}
@@ -2020,161 +1515,91 @@ function BrowserPaneContents({
             onFocus={handleUrlBarFocus}
             onSubmitEditing={handleNavigateDraftUrl}
             placeholder={t("workspace.browser.controls.enterUrl")}
-            uniProps={annotationInputMapping}
+            placeholderTextColor={theme.colors.foregroundMuted}
             ref={urlInputRef}
-            style={browserToolbarStyles.urlInput}
-            value={draftUrl}
+            style={urlInputStyle}
+            initialValue={draftUrl}
           />
+          {
+            history.suggestions /* OTTO(browser-history): existing address input, shared overlay primitives. */
+          }
         </View>
-        <View style={browserToolbarStyles.chromeRight}>
-          {onToggleHostMode ? (
-            <BrowserHostToggle
-              hosted={false}
-              disabled={hostModeToggleDisabled}
-              onPress={onToggleHostMode}
-            />
-          ) : null}
+        <View style={styles.chromeRight}>
           <DeviceSizeMenu
             selectedId={selectedDeviceSizeId}
             onSelect={handleSelectDeviceSize}
-            triggerStyle={deviceSizeButtonStyle}
+            triggerStyle={baseIconButtonStyle}
           />
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              accessibilityLabel="More browser tools"
-              style={baseIconButtonStyle}
-            >
-              <ThemedMoreHorizontal size={16} uniProps={deviceMutedIconMapping} />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent side="bottom" align="end">
-              <DropdownMenuItem
-                onSelect={openExternal}
-                leading={menuIcons.external}
-                disabled={!/^https?:\/\//i.test(browser?.url ?? "")}
-              >
-                Open in external browser
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={openFind} leading={menuIcons.search}>
-                Find in page
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleOpenDevTools} leading={menuIcons.devTools}>
-                {t("workspace.browser.controls.openDevTools")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={handleToggleElementSelector}
-                selected={selectorMode === "annotate"}
-                showSelectedCheck
-                leading={menuIcons.annotate}
-              >
-                {t("workspace.browser.controls.annotateElement")}
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onSelect={handleToggleScreenshot}
-                selected={selectorMode === "screenshot"}
-                showSelectedCheck
-                leading={menuIcons.screenshot}
-              >
-                {t("workspace.browser.controls.screenshotElement")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <ToolbarButton
+            label={t("workspace.browser.controls.openDevTools")}
+            onPress={handleOpenDevTools}
+            style={baseIconButtonStyle}
+          >
+            <Wrench size={16} color={theme.colors.foregroundMuted} />
+          </ToolbarButton>
+          <ToolbarButton
+            label={
+              selectorMode === "annotate"
+                ? t("workspace.browser.controls.cancelSelector")
+                : t("workspace.browser.controls.annotateElement")
+            }
+            active={selectorMode === "annotate"}
+            onPress={handleToggleElementSelector}
+            style={annotateIconButtonStyle}
+          >
+            <MousePointer2
+              size={16}
+              color={
+                selectorMode === "annotate" ? theme.colors.accent : theme.colors.foregroundMuted
+              }
+            />
+          </ToolbarButton>
+          <ToolbarButton
+            label={
+              selectorMode === "screenshot"
+                ? t("workspace.browser.controls.cancelSelector")
+                : t("workspace.browser.controls.screenshotElement")
+            }
+            active={selectorMode === "screenshot"}
+            onPress={handleToggleScreenshot}
+            style={screenshotIconButtonStyle}
+          >
+            <Camera
+              size={16}
+              color={
+                selectorMode === "screenshot" ? theme.colors.accent : theme.colors.foregroundMuted
+              }
+            />
+          </ToolbarButton>
+          {ottoActions.more}
         </View>
       </View>
-      <BrowserHistorySuggestions
-        serverId={serverId}
-        workspaceId={workspaceId}
-        inputRef={urlInputRef}
-        query={draftUrl}
-        onNavigate={navigate}
-        active={isPresented}
-      />
-      {findOpen && (
-        <BrowserFindBar guestRef={webviewRef} focusRequest={findFocusRequest} onClose={closeFind} />
-      )}
+      {ottoActions.findBar}
+      {ottoActions.error}
+      {history.feedback /* OTTO(browser-history) */}
+      {browser?.lastError ? (
+        <View style={styles.errorRow}>
+          <Text numberOfLines={1} style={errorTextStyle}>
+            {browser.lastError}
+          </Text>
+        </View>
+      ) : null}
       <View
         ref={setWebviewClipNode}
         style={webviewWrapStyle}
         testID={`browser-webview-clip-${browserId}`}
       >
-        <WebviewAnchor hostRef={setWebviewHostNode} style={webviewHostStyle} />
-        {(browser?.isPreview && browser.previewStatus !== "ready") ||
-        browser?.lastError ||
-        pendingSelection ? (
-          <PaneOverlay
-            pointerEvents={
-              browser?.lastError || (browser?.isPreview && browser.previewStatus !== "ready")
-                ? "auto"
-                : "none"
-            }
-            clip
-          >
-            {browser?.isPreview && browser.previewStatus !== "ready" ? (
-              <View style={styles.previewOverlay} pointerEvents="box-none">
-                <View style={styles.previewOverlayCard}>
-                  {browser.previewStatus === "starting" ? (
-                    <>
-                      <LoadingSpinner size="small" />
-                      <Text style={styles.previewOverlayTitle}>
-                        {t("workspace.browser.preview.starting")}
-                      </Text>
-                    </>
-                  ) : null}
-                  {browser.previewStatus === "error" ? (
-                    <>
-                      <Text style={styles.previewOverlayTitle}>
-                        {t("workspace.browser.preview.error.title")}
-                      </Text>
-                      {browser.lastError ? (
-                        <Text
-                          style={[styles.previewOverlayHint, styles.previewOverlayErrorHint]}
-                          numberOfLines={4}
-                        >
-                          {browser.lastError}
-                        </Text>
-                      ) : null}
-                      <Button variant="default" size="sm" onPress={handleStartPreviewPress}>
-                        {t("workspace.browser.preview.error.retry")}
-                      </Button>
-                    </>
-                  ) : null}
-                  {browser.previewStatus === "needs-start" ? (
-                    <>
-                      <Text style={styles.previewOverlayTitle}>
-                        {t("workspace.browser.preview.needsStart.title")}
-                      </Text>
-                      <Text style={styles.previewOverlayHint}>
-                        {t("workspace.browser.preview.needsStart.description")}
-                      </Text>
-                      <Button variant="default" size="sm" onPress={handleStartPreviewPress}>
-                        {t("workspace.browser.preview.needsStart.action")}
-                      </Button>
-                    </>
-                  ) : null}
-                </View>
-              </View>
-            ) : null}
-            {browser?.lastError && !(browser.isPreview && browser.previewStatus === "error") ? (
-              <View style={styles.browserErrorOverlay} pointerEvents="auto">
-                <View style={styles.browserErrorCard}>
-                  <ThemedAlertTriangle size={28} uniProps={dangerIconMapping} />
-                  <Text style={styles.previewOverlayTitle}>
-                    {browserErrorLabels.pageUnavailable}
-                  </Text>
-                  <Text style={styles.previewOverlayHint}>{browser.lastError}</Text>
-                  <Button variant="default" size="sm" onPress={handleRefresh}>
-                    {t("workspace.browser.controls.refresh")}
-                  </Button>
-                </View>
-              </View>
-            ) : null}
-            {pendingSelection ? (
-              <BrowserElementAnnotationCard
-                selection={pendingSelection}
-                onSubmit={submitAnnotation}
-                onCancel={cancelAnnotation}
-              />
-            ) : null}
-          </PaneOverlay>
+        {createElement("div", {
+          ref: setWebviewHostNode,
+          style: webviewHostStyle,
+        })}
+        {pendingSelection ? (
+          <BrowserElementAnnotationCard
+            anchor={webviewClipRef.current}
+            selection={pendingSelection}
+            onSubmit={submitAnnotation}
+            onCancel={cancelAnnotation}
+          />
         ) : null}
       </View>
     </View>
@@ -2182,15 +1607,18 @@ function BrowserPaneContents({
 }
 
 function BrowserElementAnnotationCard({
+  anchor,
   selection,
   onSubmit,
   onCancel,
 }: {
+  anchor: HTMLElement | null;
   selection: BrowserElementSelection;
   onSubmit: (annotation: BrowserElementAnnotation) => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  const bounds = useElementBounds(anchor);
   const [comment, setComment] = useState("");
   const commentRef = useRef(comment);
   commentRef.current = comment;
@@ -2222,8 +1650,12 @@ function BrowserElementAnnotationCard({
   const elementText = truncateText(selection.text.trim().replace(/\s+/g, " "), 60);
   const elementLabel = elementText ? `${selection.tag} · ${elementText}` : selection.tag;
 
-  return (
-    <View style={styles.annotationOverlay} pointerEvents="box-none">
+  if (!bounds) {
+    return null;
+  }
+
+  return createPortal(
+    <View style={[styles.annotationOverlay, bounds]} pointerEvents="box-none">
       <View style={styles.annotationCard}>
         <View style={styles.annotationHeader}>
           <Text numberOfLines={1} style={styles.annotationTitle}>
@@ -2249,7 +1681,7 @@ function BrowserElementAnnotationCard({
           placeholder={t("workspace.browser.annotate.placeholder")}
           style={styles.annotationInput}
           uniProps={annotationInputMapping}
-          value={comment}
+          initialValue={comment}
         />
         <View style={styles.annotationActions}>
           <Button variant="ghost" size="sm" onPress={onCancel}>
@@ -2260,21 +1692,34 @@ function BrowserElementAnnotationCard({
           </Button>
         </View>
       </View>
-    </View>
+    </View>,
+    getOverlayRoot(),
   );
 }
 
-function WebviewAnchor({
-  hostRef,
-  style,
-}: {
-  hostRef: (node: HTMLDivElement | null) => void;
-  style: CSSProperties;
-}) {
-  // The resident guest supplies its own white backing. Keep the geometry
-  // anchor transparent so it cannot flash as a white frame while the guest is
-  // parked or changing panes.
-  return createElement("div", { ref: hostRef, style: { ...style, background: "transparent" } });
+function useElementBounds(element: HTMLElement | null): ViewStyle | null {
+  const [bounds, setBounds] = useState<ViewStyle | null>(null);
+
+  useLayoutEffect(() => {
+    if (!element) {
+      setBounds(null);
+      return;
+    }
+    const update = () => {
+      const rect = element.getBoundingClientRect();
+      setBounds({ left: rect.left, top: rect.top, width: rect.width, height: rect.height });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, [element]);
+
+  return bounds;
 }
 
 const ThemedCloseIcon = withUnistyles(X);
@@ -2292,22 +1737,77 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     backgroundColor: theme.colors.surface0,
   },
-  restoring: {
-    flex: 1,
+  chromeRow: {
+    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface0,
+  },
+  chromeLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flexShrink: 0,
+  },
+  chromeRight: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flexShrink: 0,
+  },
+  iconButton: {
+    width: 28,
+    height: 28,
+    borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: theme.colors.surface0,
   },
   selectorActiveButton: {
     backgroundColor: `${String(theme.colors.accent)}20`,
+  },
+  iconButtonHovered: {
+    backgroundColor: theme.colors.surface2,
+  },
+  iconButtonDisabled: {
+    opacity: 0.45,
+  },
+  urlBarWrap: {
+    flex: 1,
+    minWidth: 0,
+    height: 28,
+    borderRadius: theme.borderRadius.md,
+    paddingHorizontal: theme.spacing[2],
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: theme.colors.surface1,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  urlInput: {
+    flex: 1,
+    minWidth: 0,
+    fontSize: theme.fontSize.base,
+    paddingVertical: 0,
+    paddingHorizontal: 0,
+  },
+  errorRow: {
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    borderBottomWidth: 1,
+    borderBottomColor: theme.colors.border,
+    backgroundColor: theme.colors.surface0,
+  },
+  metaError: {
+    fontSize: theme.fontSize.sm,
   },
   webviewWrap: {
     flex: 1,
     minHeight: 0,
     overflow: "hidden",
-    // Paint the immediate guest underlay explicitly so pane transitions cannot
-    // fall through to Electron's white window backing.
-    backgroundColor: theme.colors.surface0,
   },
   // When a fixed device size is active, center the framed webview both axes over
   // a muted backdrop instead of left-aligning it.
@@ -2317,62 +1817,21 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
     padding: theme.spacing[3],
   },
+  deviceTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
   toolbarTooltipText: {
-    fontSize: theme.fontSize.xs,
-    color: theme.colors.popoverForeground,
-  },
-  previewOverlay: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: theme.spacing[4],
-    backgroundColor: theme.colors.surface0,
-  },
-  previewOverlayCard: {
-    maxWidth: 420,
-    alignItems: "center",
-    gap: theme.spacing[2],
-  },
-  browserErrorOverlay: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    top: 0,
-    bottom: 0,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: theme.spacing[4],
-    backgroundColor: theme.colors.surface0,
-  },
-  browserErrorCard: {
-    maxWidth: 420,
-    alignItems: "center",
-    gap: theme.spacing[2],
-  },
-  previewOverlayTitle: {
-    color: theme.colors.foreground,
     fontSize: theme.fontSize.sm,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  previewOverlayErrorHint: { color: theme.colors.statusDanger },
-  previewOverlayHint: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
-    textAlign: "center",
+    color: theme.colors.popoverForeground,
   },
   annotationOverlay: {
     position: "absolute",
     zIndex: 1,
-    left: 0,
-    right: 0,
-    bottom: 0,
     padding: theme.spacing[3],
     alignItems: "center",
+    justifyContent: "flex-end",
   },
   annotationCard: {
     width: "100%",
@@ -2396,7 +1855,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   annotationTitle: {
     flex: 1,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: "600",
     color: theme.colors.foreground,
   },
@@ -2408,13 +1867,13 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
   },
   annotationElement: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     marginBottom: theme.spacing[2],
   },
   annotationInput: {
     minHeight: 64,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     color: theme.colors.foreground,
     borderRadius: theme.borderRadius.md,
     borderWidth: 1,
@@ -2437,12 +1896,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: 8,
   },
   unavailableTitle: {
-    color: theme.colors.foreground,
-    fontSize: 16,
+    fontSize: theme.fontSize.base,
     fontWeight: "600",
   },
   unavailableSubtitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: 12,
+    fontSize: theme.fontSize.sm,
   },
 }));

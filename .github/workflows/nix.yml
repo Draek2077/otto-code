@@ -1,27 +1,10 @@
+# OTTO(release): verify the existing Otto distribution identities.
 name: Nix
 
 on:
-  pull_request:
+  push:
     branches: [main]
-    paths:
-      - "nix/**"
-      - "flake.nix"
-      - "flake.lock"
-      - "package.json"
-      - "package-lock.json"
-      - "packages/app/**"
-      - "packages/expo-two-way-audio/**"
-      - "packages/highlight/**"
-      - "packages/plugin/**"
-      - "packages/protocol/**"
-      - "packages/client/**"
-      - "packages/server/**"
-      - "packages/relay/**"
-      - "packages/cli/**"
-      - "scripts/build-daemon-web-ui.mjs"
-      - "scripts/update-nix.sh"
-      - "scripts/fix-lockfile.mjs"
-      - ".github/workflows/nix.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -30,13 +13,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
           cache: "npm"
 
       - uses: cachix/install-nix-action@v31
@@ -46,29 +27,49 @@ jobs:
       - name: Update lockfile + Nix hash if stale
         run: ./scripts/update-nix.sh
 
+      - name: Retain evaluated dependency inputs
+        uses: actions/upload-artifact@v7
+        with:
+          name: nix-dependency-inputs
+          path: |
+            nix/npm-deps.hash
+            package-lock.json
+
+      - name: Verify existing Otto NixOS setup identity
+        run: |
+          nix eval --json --impure --expr 'let flake = builtins.getFlake (toString ./.); in import ./nix/otto/compatibility-check.nix { inherit flake; }'
+
       - name: Build Nix package
         run: nix build .#default -o result
+
+      # OTTO(browser-host): prove the installed modules and immutable browser runtime together.
+      - name: Smoke packaged Host Browser
+        timeout-minutes: 3
+        run: |
+          export OTTO_HOST_BROWSER_EXECUTABLE
+          OTTO_HOST_BROWSER_EXECUTABLE="$(nix eval --raw --impure --expr 'let flake = builtins.getFlake (toString ./.); in "${flake.inputs.nixpkgs.legacyPackages.x86_64-linux.chromium}/bin/chromium"')"
+          node scripts/otto/host-browser-smoke.mjs "$(realpath result)/lib/paseo/packages/server/dist/server"
 
       - name: Smoke Nix daemon
         run: |
           set -euo pipefail
 
-          export OTTO_HOME
-          OTTO_HOME="$(mktemp -d)"
-          export OTTO_LISTEN=127.0.0.1:6868
+          export PASEO_HOME
+          PASEO_HOME="$(mktemp -d)"
+          export PASEO_LISTEN=127.0.0.1:6767
 
-          WRAPPER_LOG="$OTTO_HOME/otto-server-wrapper.log"
+          WRAPPER_LOG="$PASEO_HOME/paseo-cli.log"
 
           cleanup() {
             if [[ -n "${DAEMON_PID:-}" ]] && kill -0 "$DAEMON_PID" 2>/dev/null; then
               kill "$DAEMON_PID"
               wait "$DAEMON_PID" || true
             fi
-            rm -rf "$OTTO_HOME"
+            rm -rf "$PASEO_HOME"
           }
           trap cleanup EXIT
 
-          OTTO_WEB_UI_ENABLED=true ./result/bin/otto-server --no-relay >"$WRAPPER_LOG" 2>&1 &
+          PASEO_WEB_UI_ENABLED=true PASEO_RELAY_ENABLED=false ./result/bin/otto daemon run >"$WRAPPER_LOG" 2>&1 &
           DAEMON_PID=$!
 
           deadline=$((SECONDS + 30))
@@ -76,9 +77,24 @@ jobs:
             if STATUS_JSON="$(./result/bin/otto daemon status --json)" \
               && jq -e '.connectedDaemon == "reachable"' <<<"$STATUS_JSON" >/dev/null; then
               echo "$STATUS_JSON"
-              curl --fail --silent --show-error http://127.0.0.1:6868/ >"$OTTO_HOME/web-ui.html"
-              [[ -s "$OTTO_HOME/web-ui.html" ]]
-              exit 0
+              curl --fail --silent --show-error http://127.0.0.1:6767/ >"$PASEO_HOME/web-ui.html"
+              [[ -s "$PASEO_HOME/web-ui.html" ]]
+              if ! TERMINAL_JSON="$(./result/bin/otto terminal create --cwd "$PASEO_HOME" --name nix-smoke --json)"; then
+                break
+              fi
+              TERMINAL_ID="$(jq -er '.id' <<<"$TERMINAL_JSON")"
+              ./result/bin/otto terminal send-keys "$TERMINAL_ID" 'PATH= "$PASEO_HOOK_CLI" --version && printf "nix-terminal-%s\n" ok' Enter
+              deadline=$((SECONDS + 15))
+              while (( SECONDS < deadline )); do
+                if ./result/bin/otto terminal capture "$TERMINAL_ID" --json \
+                  | jq -e '.lines | any(. == "nix-terminal-ok")' >/dev/null; then
+                  ./result/bin/otto terminal kill "$TERMINAL_ID"
+                  exit 0
+                fi
+                sleep 1
+              done
+              echo "Nix terminal did not execute the command."
+              break
             fi
 
             if ! kill -0 "$DAEMON_PID" 2>/dev/null; then
@@ -90,10 +106,10 @@ jobs:
           done
 
           echo "::group::daemon.log"
-          cat "$OTTO_HOME/daemon.log" 2>/dev/null || echo "<missing>"
+          cat "$PASEO_HOME/daemon.log" 2>/dev/null || echo "<missing>"
           echo "::endgroup::"
 
-          echo "::group::otto-server stdout/stderr"
+          echo "::group::otto daemon run stdout/stderr"
           cat "$WRAPPER_LOG" 2>/dev/null || echo "<missing>"
           echo "::endgroup::"
 
@@ -107,15 +123,13 @@ jobs:
         run: nix build .#desktop -o result-desktop
 
   build-desktop-darwin:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@v4
         with:
-          node-version: "24"
+          node-version: "22"
           cache: "npm"
 
       - uses: cachix/install-nix-action@v31

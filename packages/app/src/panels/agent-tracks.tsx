@@ -1,124 +1,155 @@
-import { memo, useCallback, type ReactElement } from "react";
+import { memo, useCallback, useEffect, type ReactElement } from "react";
+import {
+  ContextHealthPill,
+  useComposerContextHealth,
+} from "@/otto/context-management/health-track"; // OTTO(context-health): owned observer and pill, existing composer bar.
 import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
+import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import { AgentTaskList } from "@/composer/task-list";
 import { ComposerTrackBar } from "@/composer/tracks";
-import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
-import { useWorkspaceChangeIndicator } from "@/hooks/use-workspace-change-indicator";
-import { useAutoClearCompletedSubagentsSetting } from "@/hooks/use-auto-clear-completed-subagents";
-import { useSettings } from "@/hooks/use-settings";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { usePaneContext } from "@/panels/pane-context";
-import { PluginComposerPills, useHasPluginComposerPills } from "@/plugins";
+import { useSettings } from "@/hooks/use-settings";
+import { PluginComposerPills } from "@/plugins";
 import { useSessionStore } from "@/stores/session-store";
-import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
-import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
 import {
+  type ArchiveFinishedStatus,
   useArchiveSubagent,
-  useAutoClearCompletedSubagents,
-  useClearCompletedSubagents,
   useDetachSubagent,
-  useStopSubagent,
-  useSubagentsForParent,
+  useSubagentOpensInSheet,
+  type SubagentRow,
 } from "@/subagents";
-import { SubagentsPillTrack } from "@/subagents/pill-track";
+import { SubagentsTrack } from "@/subagents/track";
+import type { TodoEntry } from "@/types/stream";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
+import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
+import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
+import { openComposerChanges } from "@/workspace-tabs/open-supporting-view";
 
 /**
- * Paseo's composer-track renderer. It deliberately reads the ordinary Otto
- * subagent selector and calls the ordinary Otto actions: this is a view switch,
- * never a second provider-subagent store or ingestion path.
+ * The pane's ambient context — workspace changes, subagents, and tasks — as a row of pills above
+ * the composer.
+ *
+ * The row shares the composer's keyboard transform and owns the space between itself and the
+ * transcript. Each pill owns its action while tab placement stays behind the workspace boundary.
  */
 export const AgentTracks = memo(function AgentTracks({
   serverId,
   workspaceId,
   agentId,
+  cwd,
+  subagentRows,
+  tasks,
+  archiveFinishedStatus,
+  onArchiveFinished,
+  hasPluginComposerPills,
+  onContextHealthVisibility,
 }: {
   serverId: string;
   workspaceId: string;
   agentId: string;
+  cwd: string;
+  subagentRows: SubagentRow[];
+  tasks: TodoEntry[] | undefined;
+  archiveFinishedStatus: ArchiveFinishedStatus;
+  onArchiveFinished: () => void;
+  hasPluginComposerPills: boolean;
+  onContextHealthVisibility(visible: boolean): void; // OTTO(context-health): reserve transcript clearance only for a visible warning.
 }): ReactElement | null {
   const { tabId } = usePaneContext();
+  const health = useComposerContextHealth(serverId, workspaceId, agentId); // OTTO(context-health)
+  const hasHealth = health.warning !== null;
+  useEffect(() => {
+    onContextHealthVisibility(hasHealth);
+    return () => onContextHealthVisibility(false);
+  }, [hasHealth, onContextHealthVisibility]); // OTTO(context-health)
+  const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(serverId, workspaceId);
   const isCompact = useIsCompactFormFactor();
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
   const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
-  const rows = useSubagentsForParent({ serverId, parentAgentId: agentId });
-  const canDetach = useSessionStore(
+  const canDetachSubagents = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.agentDetach === true,
   );
   const archiveSubagent = useArchiveSubagent({ serverId });
-  const stopSubagent = useStopSubagent({ serverId });
-  const clearCompleted = useClearCompletedSubagents({ serverId, parentAgentId: agentId });
   const detachSubagent = useDetachSubagent({ serverId });
-  const autoClearCompleted = useAutoClearCompletedSubagentsSetting();
-  const workspaceChangeIndicator = useWorkspaceChangeIndicator();
-  useAutoClearCompletedSubagents({
-    serverId,
-    parentAgentId: agentId,
-    rows,
-    enabled: autoClearCompleted,
-  });
-  const hasDiff = useWorkspaceHasDiffStat(serverId, workspaceId, workspaceChangeIndicator);
-  const hasTasks = useSessionStore((state) =>
-    Boolean(state.sessions[serverId]?.agentTasks.get(agentId)?.length),
+  const openSubagentTarget = useCallback(
+    (target: WorkspaceTabTarget) => {
+      openPreferredWorkspaceTarget({
+        workspaceKey,
+        target,
+        source: "subagents",
+        preferences: openInSidePane,
+        parentTabId: tabId,
+      });
+    },
+    [openInSidePane, tabId, workspaceKey],
   );
-
-  const openSubagent = useCallback(
+  const handleOpenSubagent = useCallback(
     (subagentId: string) => {
       const session = useSessionStore.getState().sessions[serverId];
-      const subagent = session?.agents.get(subagentId) ?? session?.agentDetails.get(subagentId);
-      if (subagent?.workspaceId && subagent.workspaceId !== workspaceId) {
+      const agent = session?.agents.get(subagentId) ?? session?.agentDetails.get(subagentId);
+      // A subagent in another workspace lives in that workspace's tabs.
+      if (agent?.workspaceId && agent.workspaceId !== workspaceId) {
         navigateToAgent({ serverId, agentId: subagentId });
         return;
       }
-      openPreferredWorkspaceTarget({
-        isCompact,
-        workspaceKey,
-        target: { kind: "agent", agentId: subagentId },
-        source: "subagents",
-        preferences: openInSidePane,
-        parentTabId: tabId,
-      });
+      openSubagentTarget({ kind: "agent", agentId: subagentId });
     },
-    [isCompact, openInSidePane, serverId, tabId, workspaceId, workspaceKey],
+    [openSubagentTarget, serverId, workspaceId],
   );
-  const openProviderSubagent = useCallback(
+  const handleOpenProviderSubagent = useCallback(
     (parentAgentId: string, subagentId: string) => {
-      openPreferredWorkspaceTarget({
-        isCompact,
-        workspaceKey,
-        target: { kind: "provider_subagent", parentAgentId, subagentId },
-        source: "subagents",
-        preferences: openInSidePane,
-        parentTabId: tabId,
-      });
+      openSubagentTarget({ kind: "provider_subagent", parentAgentId, subagentId });
     },
-    [isCompact, openInSidePane, tabId, workspaceKey],
+    [openSubagentTarget],
   );
-  const openChanges = useCallback(() => {
-    openPreferredWorkspaceTarget({
+  const opensInSheet = useSubagentOpensInSheet(workspaceKey);
+  const handleOpenChanges = useCallback(() => {
+    if (!workspaceKey) {
+      return;
+    }
+    openComposerChanges({
       isCompact,
       workspaceKey,
-      target: { kind: "working_diff" },
-      source: "chatFiles",
+      checkout: { serverId, cwd, isGit: true },
       preferences: openInSidePane,
-      parentTabId: tabId,
     });
-  }, [isCompact, openInSidePane, tabId, workspaceKey]);
+  }, [cwd, isCompact, openInSidePane, serverId, workspaceKey]);
 
-  const hasPluginComposerPills = useHasPluginComposerPills(serverId, workspaceId, agentId);
-  if (!hasDiff && rows.length === 0 && !hasTasks && !hasPluginComposerPills) return null;
+  if (
+    !hasWorkspaceDiffStat &&
+    !hasHealth && // OTTO(context-health)
+    !hasAgentTracks({
+      subagentRows,
+      tasks,
+      archiveFinishedStatus,
+      hasPluginComposerPills,
+    })
+  ) {
+    return null;
+  }
+
   return (
     <ComposerTrackBar>
-      <AgentTaskList serverId={serverId} agentId={agentId} />
-      <SubagentsPillTrack
+      {health.warning ? (
+        <ContextHealthPill
+          serverId={serverId}
+          workspaceId={workspaceId}
+          warning={health.warning}
+          report={health.report}
+        />
+      ) : null}
+      <AgentTaskList tasks={tasks} />
+      <SubagentsTrack
         serverId={serverId}
-        rows={rows}
-        onOpenSubagent={openSubagent}
-        onOpenProviderSubagent={openProviderSubagent}
+        rows={subagentRows}
+        onOpenSubagent={handleOpenSubagent}
+        onOpenProviderSubagent={handleOpenProviderSubagent}
+        opensInSheet={opensInSheet}
         onArchiveSubagent={archiveSubagent}
-        onStopSubagent={stopSubagent}
-        onClearCompleted={clearCompleted}
-        onDetachSubagent={canDetach ? detachSubagent : undefined}
+        onArchiveFinished={onArchiveFinished}
+        archiveFinishedStatus={archiveFinishedStatus}
+        onDetachSubagent={canDetachSubagents ? detachSubagent : undefined}
       />
       <PluginComposerPills
         serverId={serverId}
@@ -129,9 +160,27 @@ export const AgentTracks = memo(function AgentTracks({
       <WorkspaceDiffStatPill
         serverId={serverId}
         workspaceId={workspaceId}
-        indicator={workspaceChangeIndicator}
-        onPress={openChanges}
+        onPress={handleOpenChanges}
       />
     </ComposerTrackBar>
   );
 });
+
+export function hasAgentTracks({
+  subagentRows,
+  tasks,
+  archiveFinishedStatus,
+  hasPluginComposerPills = false,
+}: {
+  subagentRows: readonly SubagentRow[];
+  tasks: readonly TodoEntry[] | undefined;
+  archiveFinishedStatus: ArchiveFinishedStatus;
+  hasPluginComposerPills?: boolean;
+}): boolean {
+  return (
+    subagentRows.length > 0 ||
+    Boolean(tasks?.length) ||
+    archiveFinishedStatus.kind !== "idle" ||
+    hasPluginComposerPills
+  );
+}

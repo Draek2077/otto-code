@@ -1,8 +1,8 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { useCallback, useEffect, useMemo } from "react";
-import { View, Text, type PressableStateCallbackType } from "react-native";
+import { useCallback, useMemo } from "react";
+import { View, Text, Pressable, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { ChevronDown, MoreVertical } from "@/components/icons/material-icons";
+import { ChevronDown, GitBranch, MoreVertical } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import {
   DropdownMenu,
@@ -11,29 +11,17 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import {
-  SplitButton,
-  SplitButtonMenuTrigger,
-  SplitButtonPrimary,
-} from "@/components/ui/split-button";
 import { Shortcut } from "@/components/ui/shortcut";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import { compactUp } from "@/styles/theme";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import type { GitAction, GitActions } from "@/git/policy";
 import { useGitActionRunner } from "@/git/use-actions";
+import { buttonControlHeight, HEADER_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
 
 interface GitActionsSplitButtonProps {
   gitActions: GitActions;
   hideLabels?: boolean;
-  // Stretch to fill the available width (content stays centered).
-  fill?: boolean;
-  /** Reports whether this workspace contributes a visible toolbar control. */
-  onAvailabilityChange?: (available: boolean) => void;
-  tooltipSide?: "top" | "bottom";
-  /** Upstream: compact surfaces render the actions as a menu with no split button. */
   menuOnly?: boolean;
 }
 
@@ -73,7 +61,6 @@ function GitActionMenuItem({
         }
         leading={action.icon}
         trailing={trailing}
-        description={action.unavailableMessage ?? action.description}
         disabled={action.disabled}
         muted={Boolean(action.unavailableMessage)}
         status={action.status}
@@ -91,16 +78,12 @@ function GitActionMenuItem({
 export function GitActionsSplitButton({
   gitActions,
   hideLabels,
-  fill,
-  onAvailabilityChange,
-  tooltipSide = "bottom",
+  menuOnly = false,
 }: GitActionsSplitButtonProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const runGitAction = useGitActionRunner();
   const archiveShortcutKeys = useShortcutKeys("archive-workspace");
-  const isAvailable = Boolean(gitActions.primary) || gitActions.menu.length > 0;
-  useEffect(() => onAvailabilityChange?.(isAvailable), [isAvailable, onAvailabilityChange]);
 
   const getActionDisplayLabel = useCallback((action: GitAction): string => {
     if (action.status === "pending") return action.pendingLabel;
@@ -115,108 +98,127 @@ export function GitActionsSplitButton({
     runGitAction(gitActions.primary);
   }, [gitActions.primary, runGitAction]);
 
-  const overflowMenuButtonStyle = useMemo(
-    () => [
-      styles.iconButton,
-      // The negative header-edge margin would spill into padded containers
-      // when the button stretches to fill them.
-      !fill && styles.overflowMenuButton,
-    ],
-    [fill],
-  );
+  const overflowMenuButtonStyle = useMemo(() => [styles.iconButton, styles.overflowMenuButton], []);
 
-  const rowStyle = useMemo(() => [styles.row, Boolean(fill) && styles.fillItem], [fill]);
   const primaryDisabled = gitActions.primary?.disabled;
   const primaryPressableStyle = useCallback(
     ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.splitButtonPrimary,
-      Boolean(fill) && styles.fillItem,
-      // The canonical hover wash matches `headerIconSlotStyle.slotHovered`, so every
-      // hoverable thing in the workspace header row lands on one backdrop. The
-      // sidebar-tools and mobile diff-toolbar copies of this button inherit it
-      // too - same control, same chrome.
       (Boolean(hovered) || pressed) &&
-        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceInteractiveHover }),
+        inlineUnistylesStyle({ backgroundColor: theme.colors.surface2 }),
       primaryDisabled && styles.splitButtonPrimaryDisabled,
     ],
-    [fill, primaryDisabled, theme.colors.surfaceInteractiveHover],
+    [primaryDisabled, theme.colors.surface2],
   );
 
   const caretTriggerStyle = useCallback(
     ({ hovered, pressed, open }: { hovered: boolean; pressed: boolean; open: boolean }) => [
       styles.splitButtonCaret,
       (hovered || pressed || open) &&
-        inlineUnistylesStyle({ backgroundColor: theme.colors.surfaceInteractiveHover }),
+        inlineUnistylesStyle({ backgroundColor: theme.colors.surface2 }),
     ],
-    [theme.colors.surfaceInteractiveHover],
+    [theme.colors.surface2],
   );
 
-  // With nothing to show, render nothing rather than an empty row. In the
-  // sidebar tools cluster every child carries `fill` (flexGrow: 1), so an empty
-  // View would still claim an equal share of the row and push a lone sibling
-  // (e.g. the "Open" button) off-center.
-  if (!isAvailable) {
+  const menuOnlyTriggerStyle = useCallback(
+    ({ hovered, pressed, open }: { hovered: boolean; pressed: boolean; open: boolean }) => [
+      styles.menuOnlyTrigger,
+      (hovered || pressed || open) &&
+        inlineUnistylesStyle({ backgroundColor: theme.colors.surface2 }),
+    ],
+    [theme.colors.surface2],
+  );
+
+  const menuOnlyActions = useMemo(
+    () => [
+      ...(gitActions.primary ? [gitActions.primary] : []),
+      ...gitActions.secondary,
+      ...gitActions.menu,
+    ],
+    [gitActions.menu, gitActions.primary, gitActions.secondary],
+  );
+
+  if (menuOnly) {
+    if (menuOnlyActions.length === 0) {
+      return null;
+    }
+
+    return (
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          testID="changes-actions-menu-trigger"
+          style={menuOnlyTriggerStyle}
+          accessibilityRole="button"
+          accessibilityLabel={t("workspace.header.actions.workspaceActions")}
+        >
+          <GitBranch size={16} color={theme.colors.foregroundMuted} />
+          <ChevronDown size={12} color={theme.colors.foregroundExtraMuted} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" testID="changes-primary-cta-menu">
+          {menuOnlyActions.map((action, index) => (
+            <GitActionMenuItem
+              key={action.id}
+              action={action}
+              onSelect={runGitAction}
+              archiveShortcutKeys={archiveShortcutKeys}
+              needsSeparator={action.startsGroup}
+              showSeparator={index > 0}
+              closeOnSelect={
+                action.status === "idle" &&
+                action.id === "pr" &&
+                action.label === action.pendingLabel &&
+                action.label === action.successLabel
+              }
+            />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  if (!gitActions.primary && gitActions.secondary.length === 0 && gitActions.menu.length === 0) {
     return null;
   }
 
   return (
-    <View style={rowStyle}>
+    <View style={styles.row}>
       {gitActions.primary ? (
-        <SplitButton
-          hasMenu={gitActions.secondary.length > 0}
-          style={Boolean(fill) && styles.fillItem}
-        >
-          <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
-            <TooltipTrigger asChild>
-              <SplitButtonPrimary
-                testID="changes-primary-cta"
-                style={primaryPressableStyle}
-                onPress={handlePrimaryPress}
-                disabled={gitActions.primary.disabled}
-                accessibilityRole="button"
-                accessibilityLabel={gitActions.primary.label}
-              >
-                {gitActions.primary.status === "pending" ? (
-                  <LoadingSpinner
-                    size="small"
-                    color={theme.colors.foreground}
-                    style={styles.splitButtonSpinnerOnly}
-                  />
-                ) : (
-                  <View style={styles.splitButtonContent}>
-                    {gitActions.primary.icon}
-                    {!hideLabels && (
-                      <Text style={styles.splitButtonText} numberOfLines={1}>
-                        {getActionDisplayLabel(gitActions.primary)}
-                      </Text>
-                    )}
-                  </View>
+        <View style={styles.splitButton}>
+          <Pressable
+            testID="changes-primary-cta"
+            style={primaryPressableStyle}
+            onPress={handlePrimaryPress}
+            disabled={gitActions.primary.disabled}
+            accessibilityRole="button"
+            accessibilityLabel={gitActions.primary.label}
+          >
+            {gitActions.primary.status === "pending" ? (
+              <LoadingSpinner
+                size="small"
+                color={theme.colors.foreground}
+                style={styles.splitButtonSpinnerOnly}
+              />
+            ) : (
+              <View style={styles.splitButtonContent}>
+                {gitActions.primary.icon}
+                {!hideLabels && (
+                  <Text style={styles.splitButtonText}>
+                    {getActionDisplayLabel(gitActions.primary)}
+                  </Text>
                 )}
-              </SplitButtonPrimary>
-            </TooltipTrigger>
-            <TooltipContent side={tooltipSide} align="center" offset={8}>
-              <Text style={styles.tooltipText}>
-                {gitActions.primary.unavailableMessage ?? getActionDisplayLabel(gitActions.primary)}
-              </Text>
-            </TooltipContent>
-          </Tooltip>
+              </View>
+            )}
+          </Pressable>
           {gitActions.secondary.length > 0 ? (
             <DropdownMenu>
-              <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
-                <TooltipTrigger asChild>
-                  <SplitButtonMenuTrigger
-                    testID="changes-primary-cta-caret"
-                    style={caretTriggerStyle}
-                    accessibilityRole="button"
-                    accessibilityLabel={t("workspace.git.actions.moreOptions")}
-                  >
-                    <ChevronDown size="md" color={theme.colors.foregroundMuted} />
-                  </SplitButtonMenuTrigger>
-                </TooltipTrigger>
-                <TooltipContent side={tooltipSide} align="center" offset={8}>
-                  <Text style={styles.tooltipText}>{t("workspace.git.actions.moreOptions")}</Text>
-                </TooltipContent>
-              </Tooltip>
+              <DropdownMenuTrigger
+                testID="changes-primary-cta-caret"
+                style={caretTriggerStyle}
+                accessibilityRole="button"
+                accessibilityLabel={t("workspace.git.actions.moreOptions")}
+              >
+                <ChevronDown size={16} color={theme.colors.foregroundExtraMuted} />
+              </DropdownMenuTrigger>
               <DropdownMenuContent align="end" testID="changes-primary-cta-menu">
                 {gitActions.secondary.map((action, index) => (
                   <GitActionMenuItem
@@ -237,7 +239,7 @@ export function GitActionsSplitButton({
               </DropdownMenuContent>
             </DropdownMenu>
           ) : null}
-        </SplitButton>
+        </View>
       ) : null}
       {gitActions.menu.length > 0 ? (
         <DropdownMenu>
@@ -248,7 +250,7 @@ export function GitActionsSplitButton({
             accessibilityRole="button"
             accessibilityLabel={t("workspace.git.actions.moreActions")}
           >
-            <MoreVertical size="md" color={theme.colors.foregroundMuted} />
+            <MoreVertical size={16} color={theme.colors.foregroundMuted} />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" width={220} testID="changes-overflow-content">
             {gitActions.menu.map((action) => (
@@ -273,53 +275,83 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
     flexShrink: 0,
   },
-  fillItem: {
-    flexGrow: 1,
-    flexShrink: 1,
-    minWidth: 0,
+  splitButton: {
+    height: {
+      xs: buttonControlHeight.xs,
+      md: HEADER_CONTROL_HEIGHT,
+    },
+    flexDirection: "row",
+    alignItems: "stretch",
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
+    overflow: "hidden",
   },
   splitButtonPrimary: {
-    paddingHorizontal: theme.spacing[3],
-    paddingVertical: theme.spacing[1],
+    paddingHorizontal: {
+      xs: theme.spacing[3],
+      md: theme.spacing[2],
+    },
     justifyContent: "center",
     position: "relative",
+  },
+  menuOnlyTrigger: {
+    width: {
+      xs: 48,
+      md: 42,
+    },
+    height: {
+      xs: buttonControlHeight.xs,
+      md: HEADER_CONTROL_HEIGHT,
+    },
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[1],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
   },
   splitButtonPrimaryDisabled: {
     opacity: 0.6,
   },
   splitButtonText: {
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.5,
+    fontSize: theme.fontSize.base,
+    lineHeight: theme.fontSize.base * 1.5,
     color: theme.colors.foreground,
     fontWeight: theme.fontWeight.normal,
-    flexShrink: 1,
-  },
-  tooltipText: {
-    color: theme.colors.popoverForeground,
-    fontSize: theme.fontSize.sm,
   },
   splitButtonContent: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    gap: theme.spacing[2],
-    // Icon-only content (16px) is shorter than the label's line height - pin
-    // the same minimum so all three workspace-tools split buttons match.
-    minHeight: theme.fontSize.sm * 1.5,
+    gap: {
+      xs: theme.spacing[2],
+      md: theme.spacing[1],
+    },
   },
   splitButtonSpinnerOnly: {
     transform: [{ scale: 0.8 }],
-    minHeight: theme.fontSize.sm * 1.5,
   },
   splitButtonCaret: {
-    // 1.5x on compact to wrap the caret icon's compact upscale.
-    width: compactUp(28, 1.5),
+    width: {
+      xs: buttonControlHeight.xs,
+      md: HEADER_CONTROL_HEIGHT,
+    },
     alignItems: "center",
     justifyContent: "center",
+    borderLeftWidth: theme.borderWidth[1],
+    borderLeftColor: theme.colors.borderAccent,
   },
   iconButton: {
-    width: compactUp(32, 1.5),
-    height: compactUp(32, 1.5),
+    width: {
+      xs: buttonControlHeight.xs,
+      md: HEADER_CONTROL_HEIGHT,
+    },
+    height: {
+      xs: buttonControlHeight.xs,
+      md: HEADER_CONTROL_HEIGHT,
+    },
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,

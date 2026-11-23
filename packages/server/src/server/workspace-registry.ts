@@ -3,7 +3,9 @@ import { promises as fs } from "node:fs";
 import type { Logger } from "pino";
 import { z } from "zod";
 
-import { writeJsonFileAtomic } from "./atomic-file.js";
+// OTTO(store-continuity): preserve Otto-only fields on disk, outside Paseo's runtime records.
+import { normalizeOttoWorkspaceRecord, writeOttoRegistry } from "./otto/store-continuity.js";
+import { OttoProjectMetadata } from "./otto/project-metadata.js"; // OTTO(feature-host): preserve owned project fields under the registry queue.
 import { areEquivalentPaths } from "../utils/path.js";
 import {
   generateProjectId,
@@ -22,8 +24,6 @@ const UntrustedWorkspaceSourceSchema = z.object({
 const PersistedProjectRecordSchema = z.object({
   projectId: z.string(),
   rootPath: z.string(),
-  // Otto-owned project availability; Offline never archives its workspaces.
-  offline: z.boolean().optional(),
   kind: z.enum(["git", "non_git"]),
   displayName: z.string(),
   // COMPAT(projectKey): added in v0.2.4 on 2026-07-28; remove optional after 2027-01-28.
@@ -35,82 +35,6 @@ const PersistedProjectRecordSchema = z.object({
   // User-set override layered over the derived displayName. Reconciliation
   // never touches this. Null means "use the derived name". Added for #987.
   customName: z
-    .string()
-    .nullable()
-    .optional()
-    .transform((value) => value ?? null),
-  // Which tracking board the Kanban screen shows for this project. Deliberately
-  // a pointer and never a credential: `boardId` is equivalent to a URL, so it
-  // is safe to persist in the project record alongside the display name.
-  // Credentials stay host-scoped (gh CLI for GitHub, the Atlassian account for
-  // Jira). A null `boardId` on the github adapter means "derive the boards from
-  // this project's git remote"; jira always needs an explicit board id.
-  // Reconciliation never touches this, same as customName.
-  // COMPAT(projectKanbanTarget): added in v0.8.11; remove optional after 2027-02-28.
-  kanban: z
-    .object({
-      adapter: z.enum(["github", "jira"]),
-      boardId: z
-        .string()
-        .nullable()
-        .optional()
-        .transform((value) => value ?? null),
-      // A GitHub Projects URL supplies the owner that makes a human-facing
-      // board number unambiguous. Old targets omitted it and retain the remote
-      // owner fallback in the session resolver.
-      // COMPAT(projectKanbanBoardOwner): added in v0.8.18; remove optional after 2027-02-28.
-      boardOwner: z.string().nullable().optional(),
-    })
-    .nullable()
-    .optional()
-    .transform((value) => value ?? null),
-  // Where this project keeps its Otto Knowledge store. Null means "inherit the
-  // host default"; an explicit value always wins over it. Like `kanban` this is
-  // a pointer and never a credential, and reconciliation never touches it.
-  // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18; remove optional after 2027-02-28.
-  knowledgeLocation: z
-    .enum(["repository", "host"])
-    .nullable()
-    .optional()
-    .transform((value) => value ?? null),
-  // The host store's directory under `$OTTO_HOME/project-knowledge`, allocated
-  // the first time this project resolves to a host store. Persisted rather than
-  // re-derived: the derivation reads the display name, so a rename would
-  // otherwise silently point the project at a different, empty store.
-  // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18; remove optional after 2027-02-28.
-  knowledgeDirectoryName: z
-    .string()
-    .nullable()
-    .optional()
-    .transform((value) => value ?? null),
-  // Artifact storage is deliberately independent from Knowledge. Null means
-  // inherit the Artifacts host default; it never means inherit Knowledge.
-  // COMPAT(artifactStoreLocation): added in v0.9.0, remove optional after 2027-02-28.
-  artifactLocation: z
-    .enum(["repository", "host"])
-    .nullable()
-    .optional()
-    .transform((value) => value ?? null),
-  // Persisted host directory identity, separate from Knowledge's. A project
-  // can legitimately keep Knowledge and Artifacts in different locations.
-  // COMPAT(artifactStoreLocation): added in v0.9.0, remove optional after 2027-02-28.
-  artifactDirectoryName: z
-    .string()
-    .nullable()
-    .optional()
-    .transform((value) => value ?? null),
-  // Workflow storage is category-owned: null means inherit the Workflow host
-  // default, never the selected Knowledge or Artifact location.
-  // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
-  workflowLocation: z
-    .enum(["repository", "host"])
-    .nullable()
-    .optional()
-    .transform((value) => value ?? null),
-  // Stable host-local identity for this category. Persisting it prevents a
-  // renamed project from resolving to a new empty Workflow library.
-  // COMPAT(categoryStorageResolver): added in v0.9.0, remove after 2027-02-28.
-  workflowDirectoryName: z
     .string()
     .nullable()
     .optional()
@@ -128,8 +52,6 @@ const PersistedProjectRecordSchema = z.object({
 
 const PersistedWorkspaceRecordSchema = z.object({
   workspaceId: z.string(),
-  // Shared membership; tab placement and dismissal remain client-owned.
-  artifactIds: z.array(z.string()).optional(),
   projectId: z.string(),
   cwd: z.string(),
   kind: z.enum(["local_checkout", "worktree", "directory"]),
@@ -155,22 +77,15 @@ const PersistedWorkspaceRecordSchema = z.object({
   // archive and recovery do not need the directory to still exist in order to
   // recover placement.
   worktreeRoot: z.string().nullable().default(null),
-  // The base branch the worktree was created from (normalized like worktree.json's
-  // baseRefName). Only worktree workspaces carry a base branch; checkout-branch
-  // worktrees and directory/local_checkout workspaces leave it null.
+  // Comparison base preserved across worktree deletion and restore. New branch-off
+  // workspaces store the resolved ref (e.g. refs/remotes/upstream/main); legacy and
+  // PR checkout records may contain a bare branch name. Ordinary checkouts use null.
   baseBranch: z
     .string()
     .nullable()
     .optional()
     .transform((value) => value ?? null),
-  // Server-internal visibility flag. A hidden workspace is withheld from every
-  // client (never listed, never emitted as an upsert) - the daemon behaves as if
-  // it does not exist for sidebar purposes. Used for transient schedule-run
-  // workspaces that stay invisible until the run finishes-and-is-kept or errors,
-  // at which point the daemon flips this to false and emits the workspace. Never
-  // crosses the wire as a field; it only gates what the wire carries.
-  hidden: z.boolean().optional(),
-  isOttoOwnedWorktree: z.boolean().default(false),
+  isPaseoOwnedWorktree: z.boolean().default(false),
   mainRepoRoot: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
@@ -189,6 +104,8 @@ const PersistedWorkspaceRecordSchema = z.object({
     .transform((value) => value ?? null),
   labels: z.array(z.string()).optional(),
   untrustedSource: UntrustedWorkspaceSourceSchema.optional(),
+  // Public discovery visibility. Contents retain their ordinary lifecycle.
+  background: z.boolean().optional().default(false),
 });
 
 export type PersistedProjectRecord = z.infer<typeof PersistedProjectRecordSchema>;
@@ -239,7 +156,6 @@ export interface ProjectRegistry {
 }
 
 export interface WorkspaceRegistry {
-  setMutationGuard?(guard: (record: PersistedWorkspaceRecord) => Promise<void>): void;
   initialize(): Promise<void>;
   existsOnDisk(): Promise<boolean>;
   list(): Promise<PersistedWorkspaceRecord[]>;
@@ -289,7 +205,10 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
       module: "workspace-registry",
       component: options.component,
     });
-    this.writeRecords = options.writeRecords ?? writeJsonFileAtomic;
+    this.writeRecords =
+      options.writeRecords ??
+      ((file, records) =>
+        writeOttoRegistry(file, records, (raw) => this.schema.parse(raw), this.getId)); // OTTO(store-continuity)
   }
 
   async initialize(): Promise<void> {
@@ -378,7 +297,11 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
     this.cache.clear();
     try {
       const raw = await fs.readFile(this.filePath, "utf8");
-      const parsed = z.array(this.schema).parse(JSON.parse(raw));
+      const decoded: unknown = JSON.parse(raw);
+      // OTTO(store-continuity): adopt Paseo's field names for earlier Otto workspace records.
+      const parsed = z
+        .array(this.schema)
+        .parse(Array.isArray(decoded) ? decoded.map(normalizeOttoWorkspaceRecord) : decoded);
       for (const record of parsed) {
         this.cache.set(this.getId(record), record);
       }
@@ -402,11 +325,6 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
       return parsed;
     });
   }
-
-  protected async validateMutation(
-    _before: ReadonlyMap<string, TRecord>,
-    _after: ReadonlyMap<string, TRecord>,
-  ): Promise<void> {}
 
   protected async mutateCache<TResult>(
     updater: (records: Map<string, TRecord>) => TResult,
@@ -432,7 +350,6 @@ class FileBackedRegistry<TRecord extends RegistryRecord> {
       const result = updater(staged);
       const recordsChanged = !mapsEqual(this.cache, staged);
       if (!recordsChanged && !hooks?.forcePersist?.(result)) return result;
-      await this.validateMutation(this.cache, staged);
       const records = Array.from(staged.values());
       await hooks?.beforeWrite?.(records);
       if (recordsChanged) await this.writeRecords(this.filePath, records);
@@ -465,6 +382,7 @@ export class FileBackedProjectRegistry
   extends FileBackedRegistry<PersistedProjectRecord>
   implements ProjectRegistry
 {
+  readonly ottoMetadata: OttoProjectMetadata; // OTTO(feature-host): daemon-only, never part of Paseo's project wire record.
   private allocationQueue: Promise<void> = Promise.resolve();
   private readonly projectIdFactory: () => string;
   private readonly mutationListeners = new Set<
@@ -495,6 +413,23 @@ export class FileBackedProjectRegistry
       writeRecords: options?.writeRecords,
     });
     this.projectIdFactory = options?.projectIdFactory ?? generateProjectId;
+    // OTTO(feature-host): feature writes serialize with project rename/archive/delete.
+    this.ottoMetadata = new OttoProjectMetadata({
+      file: filePath,
+      parse: (value) => PersistedProjectRecordSchema.parse(value),
+      exclusive: (run) => this.withOttoMetadata(run),
+    });
+  }
+
+  private async withOttoMetadata<T>(run: () => Promise<T>): Promise<T> {
+    let result!: T;
+    await this.mutateCache(() => undefined, {
+      forcePersist: () => true,
+      afterWrite: async () => {
+        result = await run();
+      },
+    });
+    return result;
   }
 
   async getOrCreateActiveByRoot(input: {
@@ -602,23 +537,6 @@ export class FileBackedWorkspaceRegistry
   extends FileBackedRegistry<PersistedWorkspaceRecord>
   implements WorkspaceRegistry
 {
-  private mutationGuard?: (record: PersistedWorkspaceRecord) => Promise<void>;
-  setMutationGuard(guard: (record: PersistedWorkspaceRecord) => Promise<void>): void {
-    this.mutationGuard = guard;
-  }
-  protected override async validateMutation(
-    before: ReadonlyMap<string, PersistedWorkspaceRecord>,
-    after: ReadonlyMap<string, PersistedWorkspaceRecord>,
-  ): Promise<void> {
-    if (!this.mutationGuard) return;
-    for (const [id, record] of before) {
-      if (after.get(id) !== record) await this.mutationGuard(record);
-    }
-    for (const [id, record] of after) {
-      if (before.get(id) !== record) await this.mutationGuard(record);
-    }
-  }
-
   private readonly mutationListeners = new Set<
     (mutation: WorkspaceMutation) => void | Promise<void>
   >();
@@ -786,8 +704,7 @@ export function createPersistedWorkspaceRecord(input: {
   branch?: string | null;
   worktreeRoot?: string | null;
   baseBranch?: string | null;
-  hidden?: boolean;
-  isOttoOwnedWorktree?: boolean;
+  isPaseoOwnedWorktree?: boolean;
   mainRepoRoot?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -796,15 +713,17 @@ export function createPersistedWorkspaceRecord(input: {
   pinnedAt?: string | null;
   labels?: string[];
   untrustedSource?: UntrustedWorkspaceSource;
+  background?: boolean;
 }): PersistedWorkspaceRecord {
+  const { background, ...rest } = input;
   return PersistedWorkspaceRecordSchema.parse({
-    ...input,
+    ...rest,
+    background: background ?? false,
     title: input.title ?? null,
     branch: input.branch ?? null,
     worktreeRoot: input.worktreeRoot ?? null,
     baseBranch: input.baseBranch ?? null,
-    hidden: input.hidden ?? false,
-    isOttoOwnedWorktree: input.isOttoOwnedWorktree ?? false,
+    isPaseoOwnedWorktree: input.isPaseoOwnedWorktree ?? false,
     mainRepoRoot: input.mainRepoRoot ?? null,
     archivedAt: input.archivedAt ?? null,
     autoArchivedChangeRequestUrl: input.autoArchivedChangeRequestUrl ?? null,

@@ -1,5 +1,5 @@
-import type { CreateOttoWorktreeInput } from "@otto-code/client/internal/daemon-client";
-import type { ForgeSearchItem } from "@otto-code/protocol/messages";
+import type { CreatePaseoWorktreeInput } from "@getpaseo/client/internal/daemon-client";
+import type { ForgeSearchItem } from "@getpaseo/protocol/messages";
 import type { ComboboxOptionModel } from "@/components/ui/combobox-options";
 import { getForgePresentation } from "@/git/forge";
 
@@ -27,7 +27,7 @@ export type PickerItem =
     };
 
 export type PickerCheckoutRequest = Pick<
-  CreateOttoWorktreeInput,
+  CreatePaseoWorktreeInput,
   "action" | "refName" | "checkoutSource" | "githubPrNumber"
 >;
 
@@ -179,16 +179,12 @@ export function defaultBasePickerItem(status: BaseRefCheckoutStatus): PickerItem
 }
 
 export function pickerItemToCheckoutRequest(
-  selectedItem: PickerItem | null,
-  defaultBaseItem: PickerItem | null = null,
+  item: PickerItem | null,
 ): PickerCheckoutRequest | undefined {
-  const item = selectedItem ?? defaultBaseItem;
   if (!item) return undefined;
   switch (item.kind) {
     case "branch":
-      // An explicit selection opens that branch. Only the implicit base creates
-      // a new branch named after the generated worktree directory.
-      return { action: selectedItem ? "checkout" : "branch-off", refName: item.refName };
+      return { action: "branch-off", refName: item.refName };
     case "github-pr": {
       const headRefName = item.item.headRefName?.trim();
       const forge = item.item.forge ?? "github";
@@ -268,7 +264,10 @@ export function buildPickerOptionData(input: {
     itemById.set(id, { kind: "github-pr", item: pr });
     const updatedAtMs = pr.updatedAt ? Date.parse(pr.updatedAt) : 0;
     const timestamp = Number.isNaN(updatedAtMs) ? 0 : Math.floor(updatedAtMs / 1000);
-    timedOptions.push({ option: { id, label: formatPrLabel(pr) }, timestamp });
+    timedOptions.push({
+      option: { id, label: formatPrLabel(pr), searchText: pr.body ?? undefined },
+      timestamp,
+    });
   }
 
   const baseItem = input.baseItem;
@@ -283,7 +282,13 @@ export function buildPickerOptionData(input: {
     const labeledItem = disambiguate(baseItem, timedOptions);
     itemById.set(selectedOptionId, labeledItem);
     timedOptions.push({
-      option: { id: selectedOptionId, label: pickerItemLabel(labeledItem) },
+      option: {
+        id: selectedOptionId,
+        label: pickerItemLabel(labeledItem),
+        ...(labeledItem.kind === "github-pr"
+          ? { searchText: labeledItem.item.body ?? undefined }
+          : {}),
+      },
       // The base sorts first: it is what a workspace is created from unless you pick something.
       timestamp: Number.POSITIVE_INFINITY,
     });

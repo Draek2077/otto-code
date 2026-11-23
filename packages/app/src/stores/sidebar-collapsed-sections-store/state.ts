@@ -9,6 +9,7 @@ export interface CollapsedProjectsState {
 export interface PersistedCollapsedProjects {
   collapsedProjectKeys?: string[];
   collapsedWorkspaceGroupKeys?: string[];
+  collapsedStatusGroupKeys?: string[];
   collapsedPinned?: boolean;
 }
 
@@ -16,6 +17,8 @@ export const PersistedCollapsedProjectsSchema: z.ZodType<PersistedCollapsedProje
   z.strictObject({
     collapsedProjectKeys: z.array(z.string()).optional(),
     collapsedWorkspaceGroupKeys: z.array(z.string()).optional(),
+    // COMPAT(sidebarWorkspaceGroupCollapse): added in v0.4.0, remove after 2027-02-14.
+    collapsedStatusGroupKeys: z.array(z.string()).optional(),
     collapsedPinned: z.boolean().optional(),
   });
 
@@ -63,48 +66,6 @@ export function setProjectCollapsed(
   return { ...state, collapsedProjectKeys: next };
 }
 
-export function setSectionsCollapsed(
-  state: CollapsedProjectsState,
-  input: {
-    projectKeys?: readonly string[];
-    workspaceGroupKeys?: readonly string[];
-    collapsed: boolean;
-  },
-): CollapsedProjectsState {
-  return {
-    ...state,
-    collapsedProjectKeys: applySectionsCollapsed(
-      state.collapsedProjectKeys,
-      input.projectKeys,
-      input.collapsed,
-    ),
-    collapsedWorkspaceGroupKeys: applySectionsCollapsed(
-      state.collapsedWorkspaceGroupKeys,
-      input.workspaceGroupKeys,
-      input.collapsed,
-    ),
-  };
-}
-
-function applySectionsCollapsed(
-  current: Set<string>,
-  keys: readonly string[] | undefined,
-  collapsed: boolean,
-): Set<string> {
-  if (!keys || keys.length === 0) {
-    return current;
-  }
-  const next = new Set(current);
-  for (const key of keys) {
-    if (collapsed) {
-      next.add(key);
-    } else {
-      next.delete(key);
-    }
-  }
-  return next;
-}
-
 export function serializeCollapsedProjects(state: CollapsedProjectsState): {
   collapsedProjectKeys: string[];
   collapsedWorkspaceGroupKeys: string[];
@@ -129,13 +90,15 @@ export function mergePersistedCollapsedProjects<S extends CollapsedProjectsState
   const restoredProjects = deserializeCollapsedKeys(
     persisted.collapsedProjectKeys ?? Array.from(current.collapsedProjectKeys),
   );
-  const restoredStatusGroups = deserializeCollapsedKeys(
-    persisted.collapsedWorkspaceGroupKeys ?? Array.from(current.collapsedWorkspaceGroupKeys),
+  const restoredWorkspaceGroups = deserializeCollapsedKeys(
+    persisted.collapsedWorkspaceGroupKeys ??
+      persisted.collapsedStatusGroupKeys ??
+      Array.from(current.collapsedWorkspaceGroupKeys),
   );
   const restoredPinned = persisted.collapsedPinned ?? current.collapsedPinned;
   if (
     areSetsEqual(current.collapsedProjectKeys, restoredProjects) &&
-    areSetsEqual(current.collapsedWorkspaceGroupKeys, restoredStatusGroups) &&
+    areSetsEqual(current.collapsedWorkspaceGroupKeys, restoredWorkspaceGroups) &&
     current.collapsedPinned === restoredPinned
   ) {
     return current;
@@ -143,7 +106,7 @@ export function mergePersistedCollapsedProjects<S extends CollapsedProjectsState
   return {
     ...current,
     collapsedProjectKeys: restoredProjects,
-    collapsedWorkspaceGroupKeys: restoredStatusGroups,
+    collapsedWorkspaceGroupKeys: restoredWorkspaceGroups,
     collapsedPinned: restoredPinned,
   };
 }

@@ -1,0 +1,782 @@
+import { z } from "zod";
+import { createRequire } from "node:module";
+import type { Locator, Page } from "@playwright/test";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import * as workflows from "@getpaseo/plugin/otto/workflows";
+import * as artifacts from "@getpaseo/plugin/otto/artifacts";
+import type { ScheduleRef } from "@getpaseo/plugin/otto/schedules";
+import { buildSchedulesRoute } from "../../src/utils/host-routes";
+import { test, expect } from "../support/helpers/otto-provider-settings";
+import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
+import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
+import { getServerId } from "../support/helpers/server-id";
+import { gotoAppShell } from "../support/helpers/app";
+import { waitForOttoSurface } from "../support/helpers/otto-surfaces";
+
+test.use({
+  trace: "retain-on-failure",
+  e2eInjectPaseoTools: true,
+  e2eDaemonConfig: {
+    pluginsEnabled: true,
+    agents: {
+      metadataGeneration: { providers: [{ provider: "openai-compatible", model: "fixture" }] },
+    },
+  },
+});
+type Client = Pick<DaemonClient, "connect" | "close" | "invokePluginRpc" | "scheduleCreate">;
+type ScheduleApi = Awaited<ReturnType<typeof scheduleApi>>;
+class ScheduleProbeError extends Error {
+  constructor(
+    readonly code: string,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+function scheduleApi(client: Client) {
+  // Load after the built daemon client initializes protocol ESM, using the same
+  // CommonJS mode as this file's Artifact/Workflow helpers. Playwright shares its
+  // transform cache with its ESM loader; mixing these modes loses named exports.
+  const rpc: typeof import("@getpaseo/plugin/otto/schedules") = createRequire(__filename)(
+    "@getpaseo/plugin/otto/schedules",
+  );
+  async function call<I extends z.ZodType, T>(
+    contract: {
+      name: string;
+      input: I;
+      output: {
+        parse(
+          value: unknown,
+        ): { ok: true; value: T } | { ok: false; error: { code: string; message: string } };
+      };
+    },
+    input: z.input<NoInfer<I>>,
+  ): Promise<T> {
+    const result = contract.output.parse(
+      await client.invokePluginRpc("otto-schedules", contract.name, contract.input.parse(input)),
+    );
+    if (!result.ok) throw new ScheduleProbeError(result.error.code, result.error.message);
+    rpc.assertScheduleAcknowledgement(contract.name, input, result.value);
+    return result.value;
+  }
+  return {
+    list: (input: z.input<typeof rpc.listSchedules.input>) => call(rpc.listSchedules, input),
+    read: (input: z.input<typeof rpc.readSchedule.input>) => call(rpc.readSchedule, input),
+    update: (input: z.input<typeof rpc.updateSchedule.input>) => call(rpc.updateSchedule, input),
+    control: (input: z.input<typeof rpc.controlSchedule.input>) => call(rpc.controlSchedule, input),
+    history: (input: z.input<typeof rpc.readScheduleHistory.input>) =>
+      call(rpc.readScheduleHistory, input),
+    storage: (input: z.input<typeof rpc.readScheduleStorage.input>) =>
+      call(rpc.readScheduleStorage, input),
+  };
+}
+const seat = { provider: "openai-compatible", model: "fixture", modeId: "bypassPermissions" };
+const seats = { conductor: seat, worker: seat, judge: seat };
+const template =
+  '<!doctype html><html><head><title>Schedule report</title></head><body><h1>Report</h1><script id="otto-artifact-data" type="application/json">{"value":1}</script></body></html>';
+const completion = z.object({ messages: z.array(z.object({ content: z.unknown().optional() })) });
+function reply(raw: unknown) {
+  const content = completion
+    .parse(raw)
+    .messages.flatMap((row) => (typeof row.content === "string" ? [row.content] : []))
+    .join("\n");
+  if (content.includes("Generate a title and a git branch name"))
+    return JSON.stringify({ title: "Schedule worker", branch: "schedule-worker" });
+  if (content.includes("Return a single self-contained interactive HTML document as JSON"))
+    return JSON.stringify({ html: template });
+  if (content.includes("Update only the supplied artifact data."))
+    return JSON.stringify({ json: '{"value":2}' });
+  return "Schedule worker completed. Human review remains required.";
+}
+function scope(workspace: SeededWorkspace) {
+  return { hostId: getServerId(), projectId: workspace.projectId };
+}
+async function confirm(page: Page, control: Locator, title: string) {
+  const waiting = page.waitForEvent("dialog"),
+    clicked = control.click();
+  const dialog = await waiting;
+  expect(dialog.type()).toBe("confirm");
+  expect(dialog.message()).toContain(title);
+  await dialog.accept();
+  await clicked;
+}
+async function chooseFixtureModel(page: Page, control: Locator) {
+  await control.click();
+  const picker = page.getByRole("dialog").filter({ visible: true }).last();
+  await expect(picker).toBeVisible();
+  const back = picker.getByRole("button", { name: "Back", exact: true });
+  // Paseo opens the selected provider's submenu when one is already selected.
+  // Return to the real cross-provider browser instead of searching another provider.
+  if (await back.count()) await back.click();
+  await picker.getByTestId("model-search-all-input").fill("fixture");
+  await picker.getByTestId("model-row-openai-compatible-fixture").click();
+}
+async function openSchedules(page: Page, workspace: SeededWorkspace) {
+  await gotoAppShell(page);
+  await page.goto(buildSchedulesRoute());
+  await waitForOttoSurface(page, "otto-schedules-page");
+  const surface = page.getByTestId("otto-schedules-page").filter({ visible: true });
+  await surface.getByTestId("schedule-scope-project").click();
+  await page
+    .getByText(`${workspace.projectDisplayName} ·`, { exact: false })
+    .filter({ visible: true })
+    .last()
+    .click();
+  await expect(surface.getByTestId("schedules-new-button")).toBeEnabled();
+  return surface;
+}
+async function begin(page: Page, surface: Locator, name: string, kind: string) {
+  await surface.getByTestId("schedules-new-button").click();
+  const editor = surface.getByTestId("schedule-editor");
+  await editor.getByTestId("schedule-name-input").fill(name);
+  await editor.getByTestId("schedule-prompt-input").fill("Scheduled acceptance proof");
+  // Keep automatic firing safely after the journey while bounding the existing
+  // minute-scanning cron preview to daily, rather than annual, matches.
+  const later = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  await editor
+    .getByTestId("cadence-cron-expression")
+    .fill(`${later.getUTCMinutes()} ${later.getUTCHours()} * * *`);
+  await editor.getByTestId("schedule-target-kind").click();
+  await page.getByText(kind, { exact: true }).filter({ visible: true }).last().click();
+  return editor;
+}
+async function reviewAndSave(editor: Locator) {
+  await editor.getByRole("button", { name: "Preview next runs", exact: true }).click();
+  await expect(editor.getByText("Next runs · UTC", { exact: true })).toBeVisible();
+  await editor.getByRole("button", { name: "Review target", exact: true }).click();
+  await expect(editor.getByTestId("schedule-approve-target")).toBeVisible();
+  await expect(editor.getByTestId("schedule-form-submit")).toBeDisabled();
+  await editor.getByTestId("schedule-approve-target").click();
+  await expect(editor.getByTestId("schedule-form-submit")).toBeEnabled();
+  await editor.getByTestId("schedule-form-submit").click();
+  await expect(editor).toHaveCount(0);
+}
+async function savedByName(api: ScheduleApi, workspace: SeededWorkspace, name: string) {
+  const rows = await api.list({ scope: scope(workspace), refresh: true });
+  const row = rows.items.find((item) => item.name === name);
+  if (!row) throw new Error(`Missing saved Schedule ${name}`);
+  return api.read(row.ref);
+}
+async function historyDuringSettlement(api: ScheduleApi, ref: ScheduleRef) {
+  try {
+    return await api.history({ ref, offset: 0 });
+  } catch (error) {
+    // Only a busy read observation may be polled again. No launch, approval,
+    // control, save or other mutation is replayed, and origin conflicts still fail.
+    if (error instanceof ScheduleProbeError && error.code === "busy") return null;
+    throw error;
+  }
+}
+async function terminal(api: ScheduleApi, ref: ScheduleRef) {
+  const observed: { history: Awaited<ReturnType<ScheduleApi["history"]>> | null } = {
+    history: null,
+  };
+  await expect
+    .poll(
+      async () => {
+        observed.history = await historyDuringSettlement(api, ref);
+        return observed.history?.runs[0]?.status;
+      },
+      { timeout: 60000 },
+    )
+    .toBe("succeeded");
+  const history = observed.history;
+  if (!history) throw new Error("Missing observed Schedule history");
+  expect(history.total).toBe(1);
+  return history.runs[0];
+}
+async function seedArtifact(client: Client, workspace: SeededWorkspace) {
+  const owner = {
+    hostId: getServerId(),
+    target: { kind: "project" as const, id: workspace.projectId },
+  };
+  const created = artifacts.createArtifact.output.parse(
+    await client.invokePluginRpc("otto-artifacts", artifacts.createArtifact.name, {
+      scope: owner,
+      name: "Schedule report",
+      description: "A report with refreshable JSON data",
+      selection: { provider: "openai-compatible", model: "fixture" },
+    }),
+  );
+  if (!created.ok) throw new Error(created.error.message);
+  const ref = { scope: owner, id: created.value.id, location: created.value.location };
+  const read = async () => {
+    const result = artifacts.readArtifact.output.parse(
+      await client.invokePluginRpc("otto-artifacts", artifacts.readArtifact.name, ref),
+    );
+    if (!result.ok) throw new Error(result.error.message);
+    return result.value;
+  };
+  await expect.poll(async () => (await read()).artifact.status, { timeout: 60000 }).toBe("ready");
+  return { ref, read };
+}
+async function workflowRead(client: Client, ref: workflows.WorkflowRef) {
+  const result = workflows.workflowRead.output.parse(
+    await client.invokePluginRpc("otto-workflows", workflows.workflowRead.name, ref),
+  );
+  // Atomic replacement conflicts are observations inside this bounded read poll.
+  // This does not retry any launch, approval, or other mutation.
+  if (!result.ok && result.error.code === "conflict") return null;
+  return workflows.unwrapWorkflowResult(result);
+}
+
+for (const compact of [false, true]) {
+  test(`Schedule Artifact editor, CAS recovery, ${compact ? "literal" : "instruction"} data-only execution and exact result (${compact ? "compact" : "wide"})`, async ({
+    page,
+    ottoProvider,
+  }, info) => {
+    test.setTimeout(120000);
+    if (compact) await page.setViewportSize({ width: 390, height: 844 });
+    const workspace = await seedWorkspace({
+      repoPrefix: "otto-schedule-artifact-",
+      git: false,
+      title: "Scheduled report",
+    });
+    const client = await connectDaemonClient<Client>({ clientIdPrefix: "schedule-artifact" }),
+      api = scheduleApi(client);
+    try {
+      ottoProvider.replyWith(reply);
+      await ottoProvider.refreshCatalog();
+      const artifact = await seedArtifact(client, workspace),
+        before = await artifact.read();
+      const surface = await openSchedules(page, workspace);
+      const editor = await begin(page, surface, "Report refresh", "Artifact update");
+      await editor.getByTestId("schedule-saved-target").click();
+      await page
+        .getByText(/^Schedule report ·/)
+        .filter({ visible: true })
+        .last()
+        .click();
+      if (compact) await editor.getByLabel("JSON data", { exact: true }).fill('{"value":2}');
+      else {
+        await editor
+          .getByRole("button", { name: "Update (Literal JSON data)", exact: true })
+          .click();
+        await page.getByTestId("schedule-choice-instruction").filter({ visible: true }).click();
+        await editor.getByLabel("Update instruction", { exact: true }).fill("Refresh values");
+        await chooseFixtureModel(page, editor.getByTestId("combined-model-selector"));
+      }
+      await reviewAndSave(editor);
+      const saved = await savedByName(api, workspace, "Report refresh");
+      expect(saved.schedule.target.type).toBe("artifact-update");
+      // A real second writer changes the origin revision. The visible draft must
+      // survive the rejection and cannot be blindly submitted a second time.
+      await surface.getByRole("button", { name: "Edit or repair target", exact: true }).click();
+      await editor.getByTestId("schedule-name-input").fill("Unsaved local title");
+      await api.update({
+        ref: saved.ref,
+        expectedRevision: saved.revision,
+        draft: {
+          name: "Peer title",
+          prompt: saved.schedule.prompt,
+          cadence: saved.schedule.cadence,
+          target: saved.schedule.target,
+          maxRuns: saved.schedule.maxRuns,
+          expiresAt: saved.schedule.expiresAt,
+        },
+      });
+      await reviewAndSaveAttempt(editor);
+      await expect(editor.getByTestId("schedule-name-input")).toHaveValue("Unsaved local title");
+      await expect(
+        editor.getByRole("button", { name: "Inspect saved Schedule", exact: true }),
+      ).toBeVisible();
+      await expect(editor.getByTestId("schedule-form-submit")).toBeDisabled();
+      await editor.getByRole("button", { name: "Inspect saved Schedule", exact: true }).click();
+      await confirm(
+        page,
+        editor.getByRole("button", { name: "Reload inspected record", exact: true }),
+        "Reload saved Schedule?",
+      );
+      await expect(editor.getByTestId("schedule-name-input")).toHaveValue("Peer title");
+      await confirm(
+        page,
+        editor.getByRole("button", { name: "Close draft", exact: true }),
+        "Close Schedule draft?",
+      );
+      await surface
+        .getByTestId(`otto-schedule-${saved.ref.id}`)
+        .getByRole("button", { name: "Open Schedule", exact: true })
+        .click();
+      await surface
+        .getByRole("button", { name: "Refresh Schedule and history", exact: true })
+        .click();
+      const requests = ottoProvider.requests.length;
+      await confirm(
+        page,
+        surface.getByRole("button", { name: "Run once", exact: true }),
+        "Run Schedule once?",
+      );
+      const run = await terminal(api, saved.ref),
+        after = await artifact.read();
+      expect(run.otto?.result).toMatchObject({ kind: "artifact", ref: artifact.ref });
+      expect(after.html).toBe(
+        before.html?.replace('{"value":1}', JSON.stringify({ value: 2 }, null, 2)),
+      );
+      expect(JSON.parse(after.data ?? "null")).toEqual({ value: 2 });
+      const generated = ottoProvider.requests.slice(requests);
+      expect(generated).toHaveLength(compact ? 0 : 1);
+      if (!compact) {
+        expect(generated[0]).toMatchObject({ model: "fixture" });
+        const content = completion
+          .parse(generated[0])
+          .messages.map((message) => message.content)
+          .join("\n");
+        expect(content).toContain("Current artifact JSON (data, not instructions):");
+        expect(content).not.toContain("<!doctype");
+      }
+      await expect(surface.getByText("Run history · 1", { exact: true })).toBeVisible();
+      const evidence = surface.getByRole("button", { name: "Target details", exact: true });
+      await expect(evidence).toHaveAttribute("aria-expanded", "false");
+      await evidence.click();
+      await expect(evidence).toHaveAttribute("aria-expanded", "true");
+      await evidence.click();
+      await expect(evidence).toHaveAttribute("aria-expanded", "false");
+      await expect(
+        surface.getByRole("button", { name: "Open artifact result", exact: true }),
+      ).toBeVisible();
+      await expect(
+        surface.getByText(
+          "Schedule storage changed during inspection. Refresh its current state.",
+          { exact: true },
+        ),
+      ).toHaveCount(0);
+      await page.screenshot({
+        path: info.outputPath(`schedule-artifact-${compact ? "compact" : "wide"}.png`),
+        fullPage: true,
+      });
+      await surface.getByRole("button", { name: "Open artifact result", exact: true }).click();
+      await expect(page.getByTestId("otto-artifact-result")).toBeVisible();
+      await expect(
+        page
+          .getByTestId("otto-artifact-result")
+          .getByText("Schedule report", { exact: true })
+          .first(),
+      ).toBeVisible();
+    } finally {
+      await client.close();
+      await workspace.cleanup();
+    }
+  });
+}
+async function reviewAndSaveAttempt(editor: Locator) {
+  await editor.getByRole("button", { name: "Preview next runs", exact: true }).click();
+  await editor.getByRole("button", { name: "Review target", exact: true }).click();
+  await editor.getByTestId("schedule-approve-target").click();
+  await editor.getByTestId("schedule-form-submit").click();
+}
+
+async function legacyNativeControls(input: {
+  page: Page;
+  surface: Locator;
+  client: Client;
+  api: ScheduleApi;
+  workspace: SeededWorkspace;
+  target: Parameters<Client["scheduleCreate"]>[0]["target"];
+}) {
+  const { page, surface, client, api, workspace, target } = input;
+  const later = new Date(Date.now() + 2 * 60 * 60 * 1000);
+  // Seed through Paseo's unchanged RPC, then control that exact host-global
+  // origin through Otto's visible detail. No implicit project transfer.
+  const created = await client.scheduleCreate({
+    name: "Legacy native proof",
+    prompt: "Preserve legacy native execution",
+    cadence: { type: "cron", expression: `${later.getUTCMinutes()} ${later.getUTCHours()} * * *` },
+    target,
+    runOnCreate: false,
+    maxRuns: 1,
+  });
+  if (!created.schedule) throw new Error(created.error ?? "Legacy Schedule creation failed");
+  const rows = await api.list({ scope: scope(workspace), includeLegacy: true, refresh: true });
+  const row = rows.items.find((item) => item.ref.id === created.schedule?.id);
+  if (!row) throw new Error("Missing legacy Schedule");
+  expect(row.ref).toMatchObject({ location: "legacy", scope: { projectId: null } });
+  await surface.getByRole("button", { name: "Refresh Schedules", exact: true }).click();
+  await surface
+    .getByTestId(`otto-schedule-${row.ref.id}`)
+    .getByRole("button", { name: "Open Schedule", exact: true })
+    .click();
+  await confirm(
+    page,
+    surface.getByRole("button", { name: "Pause", exact: true }),
+    "Pause Schedule?",
+  );
+  await confirm(
+    page,
+    surface.getByRole("button", { name: "Resume", exact: true }),
+    "Resume Schedule?",
+  );
+  await confirm(
+    page,
+    surface.getByRole("button", { name: "Run once", exact: true }),
+    "Run Schedule once?",
+  );
+  const run = await terminal(api, row.ref);
+  expect(run.agentId).toBeTruthy();
+  expect((await api.read(row.ref)).ref).toEqual(row.ref);
+}
+
+for (const kind of ["agent", "new-agent"] as const) {
+  test(`Project-owned ${kind} Schedule preserves native execution and explicit storage controls`, async ({
+    page,
+    ottoProvider,
+  }, info) => {
+    test.setTimeout(120000);
+    const workspace = await seedWorkspace({
+      repoPrefix: "otto-schedule-native-",
+      git: false,
+      title: "Native Schedule",
+    });
+    const client = await connectDaemonClient<Client>({ clientIdPrefix: "schedule-native" }),
+      api = scheduleApi(client);
+    try {
+      ottoProvider.replyWith(reply);
+      await ottoProvider.refreshCatalog();
+      const agent = await workspace.client.createAgent({
+        provider: "openai-compatible",
+        model: "fixture",
+        modeId: "bypassPermissions",
+        cwd: workspace.repoPath,
+        workspaceId: workspace.workspaceId,
+        title: "Existing Schedule target",
+      });
+      const surface = await openSchedules(page, workspace),
+        editor = await begin(
+          page,
+          surface,
+          "Native proof",
+          kind === "agent" ? "Existing agent" : "New agent",
+        );
+      if (kind === "agent") {
+        await editor.getByText("Select existing agent", { exact: true }).click();
+        await page
+          .getByText("Existing Schedule target", { exact: true })
+          .filter({ visible: true })
+          .last()
+          .click();
+      } else {
+        await chooseFixtureModel(page, editor.getByTestId("combined-model-selector"));
+      }
+      await reviewAndSave(editor);
+      const saved = await savedByName(api, workspace, "Native proof");
+      expect(saved.schedule.target.type).toBe(kind);
+      await confirm(
+        page,
+        surface.getByRole("button", { name: "Run once", exact: true }),
+        "Run Schedule once?",
+      );
+      const run = await terminal(api, saved.ref);
+      expect(run.otto?.result?.kind).toBe("chat");
+      if (kind === "agent") expect(run.agentId).toBe(agent.id);
+      await surface
+        .getByRole("button", { name: "Refresh Schedule and history", exact: true })
+        .click();
+      await confirm(
+        page,
+        surface.getByRole("button", { name: "Pause", exact: true }),
+        "Pause Schedule?",
+      );
+      await surface.getByRole("button", { name: "Copy or move", exact: true }).click();
+      await expect(surface.getByText("Schedule storage transfer", { exact: true })).toBeVisible();
+      await confirm(
+        page,
+        surface.getByRole("button", { name: "Transfer once", exact: true }),
+        "Copy Schedule settings?",
+      );
+      await expect(surface.getByText("Transfer receipt received.", { exact: false })).toBeVisible();
+      await expect(
+        surface.getByRole("button", { name: "Transfer once", exact: true }),
+      ).toBeDisabled();
+      const rows = await api.list({ scope: scope(workspace), refresh: true });
+      expect(rows.items).toHaveLength(2);
+      const copied = rows.items.find((row) => row.ref.id !== saved.ref.id);
+      if (!copied) throw new Error("Missing copied Schedule");
+      expect(copied).toMatchObject({ status: "paused", runCount: 0 });
+      expect((await api.history({ ref: saved.ref })).total).toBe(1);
+      await surface.getByRole("button", { name: "Storage", exact: true }).click();
+      await expect(surface.getByText("Schedules storage", { exact: true })).toBeVisible();
+      await surface
+        .getByRole("button", { name: "Save new schedules in: Use host default", exact: true })
+        .click();
+      await page.getByRole("menuitem", { name: "This host", exact: true }).click();
+      await expect(
+        surface.getByRole("button", { name: "Save project override", exact: true }),
+      ).toHaveCount(0);
+      await expect.poll(async () => (await api.storage(scope(workspace))).override).toBe("host");
+      const unchanged = await api.read(saved.ref);
+      expect(unchanged.ref).toEqual(saved.ref);
+      expect((await api.history({ ref: saved.ref })).total).toBe(1);
+      await page.screenshot({
+        path: info.outputPath(`schedule-${kind}-storage.png`),
+        fullPage: true,
+      });
+      await legacyNativeControls({
+        page,
+        surface,
+        client,
+        api,
+        workspace,
+        target:
+          kind === "agent"
+            ? { type: "agent", agentId: agent.id }
+            : {
+                type: "new-agent",
+                config: { ...seat, cwd: workspace.repoPath, archiveOnFinish: true },
+              },
+      });
+    } finally {
+      await client.close();
+      await workspace.cleanup();
+    }
+  });
+}
+
+for (const kind of ["graph", "ai"] as const) {
+  test(`Scheduled ${kind} Workflow waits for human approval and retains cancellation ownership`, async ({
+    page,
+    ottoProvider,
+  }, info) => {
+    test.setTimeout(120000);
+    const workspace = await seedWorkspace({
+      repoPrefix: `otto-schedule-${kind}-`,
+      git: false,
+      title: `Scheduled ${kind}`,
+    });
+    const client = await connectDaemonClient<Client>({ clientIdPrefix: `schedule-${kind}` }),
+      api = scheduleApi(client);
+    let scheduled: ScheduleRef | null = null;
+    try {
+      ottoProvider.replyWith(reply);
+      await ottoProvider.refreshCatalog();
+      const now = new Date().toISOString();
+      const document: workflows.WorkflowAuthoredDocument =
+        kind === "ai"
+          ? {
+              kind: "ai",
+              value: {
+                format: "otto.workflow.ai",
+                formatVersion: 1,
+                id: "scheduled-ai",
+                title: "Approval proof",
+                prompt: "Discuss this plan and wait for approval. Do not invoke start_workflow.",
+                seats,
+                limits: workflows.DEFAULT_WORKFLOW_LIMITS,
+                autopilot: false,
+                createdAt: now,
+                updatedAt: now,
+              },
+            }
+          : {
+              kind: "graph",
+              value: {
+                id: "scheduled-graph",
+                name: "Approval proof",
+                nodes: [
+                  { id: "root", kind: "orchestrator", title: "Conductor" },
+                  {
+                    id: "work",
+                    kind: "agent",
+                    title: "Worker",
+                    prompt: "SCHEDULE_WORKFLOW_PROOF: complete the work.",
+                  },
+                  {
+                    id: "approval",
+                    kind: "gate",
+                    title: "Human review",
+                    prompt: "Review before completion",
+                  },
+                ],
+                edges: [
+                  { from: "root", to: "work" },
+                  { from: "work", to: "approval" },
+                ],
+              },
+            };
+      const definition = workflows.unwrapWorkflowResult(
+        workflows.workflowSave.output.parse(
+          await client.invokePluginRpc("otto-workflows", workflows.workflowSave.name, {
+            scope: scope(workspace),
+            expectedRevision: null,
+            document,
+          }),
+        ),
+      );
+      const surface = await openSchedules(page, workspace),
+        editor = await begin(page, surface, `${kind} approval`, "Saved Workflow");
+      await editor.getByTestId("schedule-saved-target").click();
+      await page
+        .getByText(/^Approval proof ·/)
+        .filter({ visible: true })
+        .last()
+        .click();
+      await editor.getByText("Select execution workspace", { exact: true }).click();
+      await page
+        .getByTestId(`schedule-choice-${workspace.workspaceId}`)
+        .filter({ visible: true })
+        .click();
+      if (kind === "graph") {
+        for (const role of ["conductor", "worker", "judge"]) {
+          await chooseFixtureModel(
+            page,
+            editor.getByTestId(`schedule-seat-${role}`).getByTestId("combined-model-selector"),
+          );
+        }
+      }
+      await reviewAndSave(editor);
+      const saved = await savedByName(api, workspace, `${kind} approval`);
+      scheduled = saved.ref;
+      await confirm(
+        page,
+        surface.getByRole("button", { name: "Run once", exact: true }),
+        "Run Schedule once?",
+      );
+      await expect
+        .poll(
+          async () => (await historyDuringSettlement(api, saved.ref))?.runs[0]?.otto?.result?.kind,
+          {
+            timeout: 60000,
+          },
+        )
+        .toBe("workflow");
+      const history = await api.history({ ref: saved.ref }),
+        result = history.runs[0].otto?.result;
+      if (result?.kind !== "workflow") throw new Error("Expected exact Workflow run link");
+      expect(history.runs[0].status).toBe("running");
+      await expect
+        .poll(
+          async () => {
+            const run = await workflowRead(client, result.ref);
+            if (run?.document.kind !== "run") return null;
+            return kind === "graph"
+              ? run.document.value.phases?.find((phase) => phase.id === "approval")?.status
+              : run.document.value.status;
+          },
+          { timeout: 60000 },
+        )
+        .toBe(kind === "graph" ? "blocked" : "planning");
+      expect((await api.history({ ref: saved.ref })).runs[0].status).toBe("running");
+      expect(definition.ref.kind).toBe(kind);
+      await surface
+        .getByRole("button", { name: "Refresh Schedule and history", exact: true })
+        .click();
+      await page.screenshot({
+        path: info.outputPath(`schedule-${kind}-waiting.png`),
+        fullPage: true,
+      });
+      if (kind === "graph") {
+        await surface.getByRole("button", { name: "Open workflow result", exact: true }).click();
+        const runSurface = page.getByTestId("otto-workflows-page").filter({ visible: true });
+        await confirm(
+          page,
+          runSurface.getByRole("button", { name: "Approve gate", exact: true }),
+          "Workflow decision",
+        );
+        await terminal(api, saved.ref);
+      } else {
+        await confirm(
+          page,
+          surface.getByRole("button", { name: "Cancel run", exact: true }),
+          "Cancel Schedule run?",
+        );
+        await expect
+          .poll(
+            async () => (await historyDuringSettlement(api, saved.ref))?.runs[0]?.otto?.disposition,
+            {
+              timeout: 30000,
+            },
+          )
+          .toBe("canceled");
+        await expect(surface.getByText("canceled", { exact: true })).toBeVisible();
+      }
+      scheduled = null;
+    } finally {
+      if (scheduled) {
+        const current = await api.read(scheduled),
+          runs = await api.history({ ref: scheduled });
+        const running = runs.runs.find((run) => run.status === "running");
+        if (running)
+          await api.control({
+            ref: scheduled,
+            expectedRevision: current.revision,
+            command: { type: "cancel", runId: running.id },
+          });
+      }
+      await client.close();
+      await workspace.cleanup();
+    }
+  });
+}
+
+test("Profile parity: a reviewed Team Scheduler resolves the new member when fired", async ({
+  page,
+  ottoProvider,
+}) => {
+  test.setTimeout(150000);
+  const workspace = await seedWorkspace({
+    repoPrefix: "profile-parity-schedule-",
+    title: "Role schedule",
+    git: true,
+  });
+  const client = await connectDaemonClient<DaemonClient>({ clientIdPrefix: "profile-schedule" });
+  const { config } = await client.getDaemonConfig();
+  const first = {
+    id: "first-planner",
+    name: "First planner",
+    provider: "openai-compatible",
+    model: "fixture",
+    roles: ["scheduler"],
+    personalityPrompt: "FIRST_PROFILE_WORK",
+  };
+  const second = {
+    ...first,
+    id: "second-planner",
+    name: "Second planner",
+    personalityPrompt: "SECOND_PROFILE_WORK",
+  };
+  const teams = [
+    { id: "first", name: "First team", memberIds: [first.id] },
+    { id: "second", name: "Second team", memberIds: [second.id] },
+  ];
+  try {
+    await client.patchDaemonConfig({
+      agentProfiles: [first, second],
+      agentTeams: { activeTeamId: "first", teams },
+    });
+    await client.profileMemory({
+      kind: "add",
+      profileId: second.id,
+      scope: "project",
+      workspaceId: workspace.workspaceId,
+      text: "SECOND_SCHEDULER_PROJECT_LESSON",
+    });
+    ottoProvider.replyWith(() => "Finished the scheduled check.");
+    await ottoProvider.refreshCatalog();
+    const api = scheduleApi(client),
+      surface = await openSchedules(page, workspace),
+      editor = await begin(page, surface, "Profile scheduler", "New agent");
+    await expect(editor.getByTestId("combined-model-selector")).toContainText("Team’s Scheduler");
+    await reviewAndSave(editor);
+    const saved = await savedByName(api, workspace, "Profile scheduler");
+    expect(saved.schedule.target).toMatchObject({
+      type: "new-agent",
+      config: { agentProfile: "@team-scheduler" },
+    });
+    await client.patchDaemonConfig({ agentTeams: { activeTeamId: "second", teams } });
+    await confirm(
+      page,
+      surface.getByRole("button", { name: "Run once", exact: true }),
+      "Run Schedule once?",
+    );
+    const run = await terminal(api, saved.ref);
+    expect(run.status).toBe("succeeded");
+    expect(JSON.stringify(ottoProvider.requests)).toContain("SECOND_PROFILE_WORK");
+    expect(JSON.stringify(ottoProvider.requests)).toContain("SECOND_SCHEDULER_PROJECT_LESSON");
+    expect(JSON.stringify(ottoProvider.requests)).not.toContain("FIRST_PROFILE_WORK");
+  } finally {
+    await client.patchDaemonConfig({
+      agentProfiles: config.agentProfiles,
+      agentTeams: config.agentTeams,
+    });
+    await client.close();
+    await workspace.cleanup();
+  }
+});

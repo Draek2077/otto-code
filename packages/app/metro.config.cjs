@@ -1,23 +1,30 @@
 const { getDefaultConfig } = require("expo/metro-config");
 const { resolve } = require("metro-resolver");
-const fs = require("fs");
 const path = require("path");
+const { metroResourcePolicy } = require("./otto/metro-resource-policy.cjs"); // OTTO(metro-resources): bounded Windows work and preserved upstream exclusions.
 
 const projectRoot = __dirname;
 const appNodeModulesRoot = path.resolve(projectRoot, "node_modules");
 const appSrcRoot = path.resolve(projectRoot, "src");
-const relaySrcRoot = path.resolve(projectRoot, "../relay/src");
-const isFdroidBuild = process.env.OTTO_FDROID_BUILD === "1";
+const isFdroidBuild = process.env.PASEO_FDROID_BUILD === "1";
 const fdroidModuleOverrides = {
   "expo-camera": path.resolve(appSrcRoot, "fdroid/expo-camera.tsx"),
   "expo-notifications": path.resolve(appSrcRoot, "fdroid/expo-notifications.ts"),
 };
-const customWebPlatform = (process.env.OTTO_WEB_PLATFORM ?? "")
+const customWebPlatform = (process.env.PASEO_WEB_PLATFORM ?? "")
   .trim()
   .replace(/^\./, "")
   .toLowerCase();
 
 const config = getDefaultConfig(projectRoot);
+const resourcePolicy = metroResourcePolicy({
+  root: path.resolve(projectRoot, "../.."),
+  app: projectRoot,
+  platform: process.platform,
+  maxWorkers: config.maxWorkers,
+  blockList: config.resolver.blockList,
+}); // OTTO(metro-resources): generated output and runtime state never become watched source copies.
+config.maxWorkers = resourcePolicy.maxWorkers; // OTTO(metro-resources)
 const defaultResolveRequest = config.resolver.resolveRequest ?? resolve;
 
 // Keep app exports deterministic across dev machines and CI. Metro's Watchman
@@ -38,9 +45,12 @@ config.resolver.extraNodeModules = {
   "react/jsx-runtime": path.join(appNodeModulesRoot, "react/jsx-runtime"),
   "react/jsx-dev-runtime": path.join(appNodeModulesRoot, "react/jsx-dev-runtime"),
 };
-config.resolver.blockList = new RegExp(
-  `(^${escapedAppSrcRoot}${pathSeparatorPattern}.*\\.(test|spec)\\.(ts|tsx)$|${pathSeparatorPattern}__tests__${pathSeparatorPattern}.*)$`,
-);
+config.resolver.blockList = [
+  ...resourcePolicy.blockList,
+  new RegExp( // OTTO(metro-resources): extend, never replace, Expo's exclusions.
+    `(^${escapedAppSrcRoot}${pathSeparatorPattern}.*\\.(test|spec)\\.(ts|tsx)$|${pathSeparatorPattern}__tests__${pathSeparatorPattern}.*)$`,
+  ),
+];
 
 function isLocalModuleImport(moduleName) {
   return (
@@ -76,24 +86,26 @@ function resolveWithCustomWebOverlay(context, moduleName, platform) {
   return defaultResolveRequest(context, moduleName, platform);
 }
 
+// OTTO(storage): Paseo-named storage keys resolve to the names Otto 0.9 stored
+// data under; see src/otto/async-storage.ts. The wrapper itself gets the real module.
+const ASYNC_STORAGE_MODULE = "@react-native-async-storage/async-storage";
+const OTTO_ASYNC_STORAGE_MODULE = path.resolve(__dirname, "src/otto/async-storage.ts");
+
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (
+    moduleName === ASYNC_STORAGE_MODULE &&
+    path.resolve(context.originModulePath) !== OTTO_ASYNC_STORAGE_MODULE
+  ) {
+    return defaultResolveRequest(context, OTTO_ASYNC_STORAGE_MODULE, platform);
+  }
   if (isFdroidBuild && platform === "android" && fdroidModuleOverrides[moduleName]) {
     return resolveWithCustomWebOverlay(context, fdroidModuleOverrides[moduleName], platform);
-  }
-
-  const origin = context.originModulePath;
-  if (origin && origin.startsWith(relaySrcRoot) && moduleName.endsWith(".js")) {
-    const tsModuleName = moduleName.replace(/\.js$/, ".ts");
-    const candidatePath = path.resolve(path.dirname(origin), tsModuleName);
-    if (fs.existsSync(candidatePath)) {
-      return resolveWithCustomWebOverlay(context, tsModuleName, platform);
-    }
   }
 
   return resolveWithCustomWebOverlay(context, moduleName, platform);
 };
 
-if (process.env.OTTO_SERVE_SIM_PREVIEW === "1") {
+if (process.env.PASEO_SERVE_SIM_PREVIEW === "1") {
   const { simMiddleware } = require("serve-sim/middleware");
   const originalEnhanceMiddleware = config.server?.enhanceMiddleware;
   config.server = config.server ?? {};
@@ -103,7 +115,7 @@ if (process.env.OTTO_SERVE_SIM_PREVIEW === "1") {
       : metroMiddleware;
     const serveSimulator = simMiddleware({
       basePath: "/.sim",
-      device: process.env.OTTO_SERVE_SIM_DEVICE_UDID,
+      device: process.env.PASEO_SERVE_SIM_DEVICE_UDID,
     });
     return (req, res, next) => {
       serveSimulator(req, res, (error) => {

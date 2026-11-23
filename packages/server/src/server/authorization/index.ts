@@ -1,5 +1,5 @@
 import type { SessionInboundMessage, SessionOutboundMessage } from "../messages.js";
-import { DAEMON_PERMISSIONS, type DaemonPermission } from "@otto-code/protocol/messages";
+import { DAEMON_PERMISSIONS, type DaemonPermission } from "@getpaseo/protocol/messages";
 import {
   type PermissionRequirement,
   requiredPermissionForInbound,
@@ -61,6 +61,6 @@ const LEGACY_HUB_EXECUTION_SCOPE = "hub.execution.*";
 export function permissionsForLegacyHubScopes(
   scopes: readonly string[],
 ): readonly DaemonPermission[] {
-  // COMPAT(semanticHubPermissions): added in v0.7; remove after 2027-03-13 once Hub enrollment uses permissions.
+  // COMPAT(semanticHubPermissions): added in v0.7, remove after Hub enrollment uses permissions.
   return scopes.includes(LEGACY_HUB_EXECUTION_SCOPE) ? ["hub.execute"] : [];
 }

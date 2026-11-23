@@ -1,7 +1,6 @@
 import path from "node:path";
 import { readFileSync } from "node:fs";
-import type { TerminalActivity } from "@otto-code/protocol/terminal-activity";
-import type { DaemonClient as InternalDaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import { connectDaemonClient } from "./daemon-client-loader";
 import { withProjectOwnership } from "./project-ownership";
 import { createTempDirectory, createTempGitRepo } from "./workspace";
@@ -20,8 +19,6 @@ export interface SeedWorkspaceDescriptor {
 interface SeedProjectDescriptor {
   projectId: string;
   projectKey?: string;
-  /** Absolute directory the project is registered against. */
-  projectRootPath: string;
 }
 
 /**
@@ -30,10 +27,7 @@ interface SeedProjectDescriptor {
  * browser. Domain-specific helpers wrap it for their own flows; specs should
  * prefer those wrappers over reaching for this client directly.
  */
-export interface SeedDaemonClient extends Pick<
-  InternalDaemonClient,
-  "checkoutGitCommit" | "searchChatMessages" | "resolveChatSearchMessage"
-> {
+export interface SeedDaemonClient {
   connect(): Promise<void>;
   close(): Promise<void>;
   addProject(cwd: string): Promise<{
@@ -72,11 +66,10 @@ export interface SeedDaemonClient extends Pick<
           worktreeSlug?: string;
         };
     title?: string;
+    background?: boolean;
   }): Promise<{
     workspace: SeedWorkspaceDescriptor | null;
     error: string | null;
-    /** Machine-readable refusal, e.g. `workspace_directory_occupied`. */
-    errorCode?: string | null;
   }>;
   archiveWorkspace(workspaceId: string): Promise<{ error: string | null }>;
   /**
@@ -121,10 +114,7 @@ export interface SeedDaemonClient extends Pick<
     initialPrompt?: string;
     labels?: Record<string, string>;
   }): Promise<{ id: string; status: string }>;
-  // `page.limit` is capped at 200 by the protocol, so any caller that can exceed
-  // that (the perf corpus does) must follow `pageInfo.nextCursor` rather than
-  // trust one call to return everything.
-  fetchAgents(options?: { scope?: "active"; page?: { limit: number; cursor?: string } }): Promise<{
+  fetchAgents(options?: { scope?: "active" }): Promise<{
     entries: Array<{
       agent: {
         id: string;
@@ -137,7 +127,6 @@ export interface SeedDaemonClient extends Pick<
         title?: string | null;
       };
     }>;
-    pageInfo?: { nextCursor: string | null; prevCursor: string | null; hasMore: boolean };
   }>;
   fetchRecentProviderSessions(options: {
     cwd: string;
@@ -199,7 +188,7 @@ export interface SeedDaemonClient extends Pick<
 
 export async function connectSeedClient(options?: {
   port?: number;
-  /** Use only with a private host whose teardown removes its entire OTTO_HOME. */
+  /** Use only with a private host whose teardown removes its entire PASEO_HOME. */
   projectOwnership?: "client" | "host";
 }): Promise<SeedDaemonClient> {
   const client = await connectDaemonClient<SeedDaemonClient>({
@@ -235,9 +224,8 @@ export interface SeededWorkspace {
 export async function seedWorkspace(options: {
   repoPrefix: string;
   title?: string;
+  background?: boolean;
   port?: number;
-  /** Keep the project when this client's socket closes, for restart proofs. */
-  projectOwnership?: "client" | "host";
   /** Repo fixture options; only applies to git projects (the default). */
   repo?: Parameters<typeof createTempGitRepo>[1];
   /** Set to false to seed a plain non-git directory instead of a git repo. */
@@ -247,14 +235,12 @@ export async function seedWorkspace(options: {
     options.git === false
       ? await createTempDirectory(options.repoPrefix)
       : await createTempGitRepo(options.repoPrefix, options.repo);
-  const client = await connectSeedClient({
-    port: options.port,
-    ...(options.projectOwnership ? { projectOwnership: options.projectOwnership } : {}),
-  });
+  const client = await connectSeedClient({ port: options.port });
   try {
     const created = await client.createWorkspace({
       source: { kind: "directory", path: project.path },
       title: options.title,
+      background: options.background,
     });
     if (!created.workspace) {
       throw new Error(created.error ?? `Failed to create workspace ${project.path}`);

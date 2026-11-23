@@ -1,3 +1,4 @@
+// OTTO(speech): per-request speaker/speed cannot leak across shared worker calls.
 import { EventEmitter } from "node:events";
 import { once } from "node:events";
 import { fork, type ChildProcess } from "node:child_process";
@@ -175,6 +176,48 @@ describe("LocalSpeechWorkerClient", () => {
     }
     expect(result.format).toBe("pcm;rate=24000");
     expect(Buffer.concat(chunks)).toEqual(Buffer.from([1, 2, 3, 4]));
+  });
+
+  it("keeps a preview's voice and speed out of subsequent speech and recognition requests", async () => {
+    const { client, workers } = createClient();
+    const provider = new WorkerBackedTextToSpeechProvider(client);
+    const preview = provider.synthesizeSpeech("preview", {
+      voiceTtsModel: "kokoro-int8-multi-lang-v1_0",
+      voiceTtsSpeakerId: 3,
+      voiceTtsSpeed: 0.75,
+    });
+    const first = workers[0].sent[0];
+    expect(first).toMatchObject({
+      config: {
+        modelsDir: "/tmp/models",
+        voiceTtsModel: "kokoro-int8-multi-lang-v1_0",
+        voiceTtsSpeakerId: 3,
+        voiceTtsSpeed: 0.75,
+      },
+    });
+    workers[0].respond(first, {
+      audio: bufferToWorkerBytes(Buffer.from([1, 2])),
+      format: "pcm;rate=24000",
+    });
+    (await preview).stream.destroy();
+    const normal = provider.synthesizeSpeech("normal");
+    const second = workers[0].sent[1];
+    expect(second).toMatchObject({ config: { voiceTtsModel: "kokoro-en-v0_19" } });
+    expect(second).not.toMatchObject({ config: { voiceTtsSpeakerId: 3 } });
+    workers[0].respond(second, {
+      audio: bufferToWorkerBytes(Buffer.from([3, 4])),
+      format: "pcm;rate=24000",
+    });
+    (await normal).stream.destroy();
+    const transcription = client.transcribeVoice(Buffer.from([0, 0]), "pcm;rate=16000");
+    const third = workers[0].sent[2];
+    expect(third).toMatchObject({
+      type: "stt.transcribe",
+      config: { voiceTtsModel: "kokoro-en-v0_19" },
+    });
+    workers[0].respond(third, { text: "hello" });
+    await transcription;
+    client.shutdown();
   });
 
   it("forwards STT session audio and transcript events through IPC", async () => {

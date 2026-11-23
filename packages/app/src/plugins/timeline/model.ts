@@ -2,8 +2,8 @@ import type {
   PluginTimelineData,
   PluginTimelineItem,
   PluginTimelineTransformResult,
-} from "@otto-code/plugin";
-import type { AgentTimelineItem } from "@otto-code/protocol/agent-types";
+} from "@getpaseo/plugin";
+import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import type { InstalledPlugin } from "../types";
 
 export interface InstalledPluginTimelineItem extends PluginTimelineItem {

@@ -1,153 +1,160 @@
 import { describe, expect, it } from "vitest";
 import {
-  COMPOSER_CONTROL_STAGES,
-  COMPOSER_STAGE_HYSTERESIS,
   COMPOSER_TOOLBAR_GEOMETRY,
-  isComposerControlStageFullyCollapsed,
+  resolveComposerControlDensity,
   resolveComposerControlPresentation,
-  resolveNextComposerControlStage,
+  resolveComposerToolbarGlyphSize,
 } from "./layout";
 
-const NO_MEASUREMENTS: readonly (number | undefined)[] = [];
-
-describe("composer control stages", () => {
-  it("collapses exactly one control group per stage, least-consulted first", () => {
-    expect(COMPOSER_CONTROL_STAGES).toEqual([
-      "full",
-      "feature-icons",
-      "thinking-icon",
-      "mode-icon",
-      "model-icon",
-    ]);
-
+describe("composer control layout", () => {
+  it("removes labels in priority order as the toolbar narrows", () => {
     expect(resolveComposerControlPresentation("full")).toEqual({
-      showFeatureLabels: true,
+      showCarets: true,
       showThinkingLabel: true,
       showModeLabel: true,
-      showModelLabel: true,
+      aggregateFeatures: false,
     });
-    expect(resolveComposerControlPresentation("feature-icons")).toEqual({
-      showFeatureLabels: false,
-      showThinkingLabel: true,
-      showModeLabel: true,
-      showModelLabel: true,
-    });
-    expect(resolveComposerControlPresentation("thinking-icon")).toEqual({
-      showFeatureLabels: false,
+    expect(resolveComposerControlPresentation("condensed")).toEqual({
+      showCarets: false,
       showThinkingLabel: false,
       showModeLabel: true,
-      showModelLabel: true,
+      aggregateFeatures: true,
     });
-    expect(resolveComposerControlPresentation("mode-icon")).toEqual({
-      showFeatureLabels: false,
+    expect(resolveComposerControlPresentation("tight")).toEqual({
+      showCarets: false,
       showThinkingLabel: false,
       showModeLabel: false,
-      showModelLabel: true,
-    });
-    expect(resolveComposerControlPresentation("model-icon")).toEqual({
-      showFeatureLabels: false,
-      showThinkingLabel: false,
-      showModeLabel: false,
-      showModelLabel: false,
+      aggregateFeatures: true,
     });
   });
 
-  it("only reports fully collapsed once every label is gone, which is when scaling may start", () => {
-    expect(isComposerControlStageFullyCollapsed("full")).toBe(false);
-    expect(isComposerControlStageFullyCollapsed("feature-icons")).toBe(false);
-    expect(isComposerControlStageFullyCollapsed("thinking-icon")).toBe(false);
-    expect(isComposerControlStageFullyCollapsed("mode-icon")).toBe(false);
-    expect(isComposerControlStageFullyCollapsed("model-icon")).toBe(true);
+  it("uses local available width and hysteresis to avoid density churn", () => {
+    const controls = {
+      hasModel: true,
+      hasThinking: true,
+      hasMode: true,
+      features: [{ type: "toggle" as const }],
+      fontScale: 1,
+    };
+
+    expect(
+      resolveComposerControlDensity({
+        availableWidth: 420,
+        currentDensity: "full",
+        controls,
+      }),
+    ).toBe("full");
+    expect(
+      resolveComposerControlDensity({
+        availableWidth: 380,
+        currentDensity: "full",
+        controls,
+      }),
+    ).toBe("condensed");
+    expect(
+      resolveComposerControlDensity({
+        availableWidth: 290,
+        currentDensity: "condensed",
+        controls,
+      }),
+    ).toBe("condensed");
+    expect(
+      resolveComposerControlDensity({
+        availableWidth: 280,
+        currentDensity: "condensed",
+        controls,
+      }),
+    ).toBe("tight");
+    expect(
+      resolveComposerControlDensity({
+        availableWidth: 300,
+        currentDensity: "tight",
+        controls,
+      }),
+    ).toBe("tight");
+    expect(
+      resolveComposerControlDensity({
+        availableWidth: 312,
+        currentDensity: "tight",
+        controls,
+      }),
+    ).toBe("condensed");
   });
 
-  it("advances a single stage per measurement rather than collapsing the row at once", () => {
-    // A row far too narrow for its controls still only steps down one rung; the
-    // next pass re-measures at the new stage before deciding again.
+  it("budgets extra features and larger text before restoring full labels", () => {
+    const base = {
+      availableWidth: 430,
+      currentDensity: "condensed" as const,
+    };
+
     expect(
-      resolveNextComposerControlStage({
-        availableWidth: 120,
-        neededWidth: 900,
-        stageIndex: 0,
-        measuredNeededByStage: NO_MEASUREMENTS,
+      resolveComposerControlDensity({
+        ...base,
+        controls: {
+          hasModel: true,
+          hasThinking: true,
+          hasMode: true,
+          features: [{ type: "toggle" }],
+          fontScale: 1,
+        },
       }),
-    ).toBe(1);
+    ).toBe("full");
     expect(
-      resolveNextComposerControlStage({
-        availableWidth: 120,
-        neededWidth: 820,
-        stageIndex: 1,
-        measuredNeededByStage: NO_MEASUREMENTS,
+      resolveComposerControlDensity({
+        ...base,
+        controls: {
+          hasModel: true,
+          hasThinking: true,
+          hasMode: true,
+          features: [{ type: "toggle" }, { type: "select", label: "Tools" }],
+          fontScale: 1,
+        },
       }),
-    ).toBe(2);
+    ).toBe("condensed");
+    expect(
+      resolveComposerControlDensity({
+        ...base,
+        controls: {
+          hasModel: true,
+          hasThinking: true,
+          hasMode: true,
+          features: [{ type: "toggle" }],
+          fontScale: 1.25,
+        },
+      }),
+    ).toBe("condensed");
   });
 
-  it("stops at the last stage instead of stepping past it", () => {
-    const lastStage = COMPOSER_CONTROL_STAGES.length - 1;
+  it("condenses before a labeled feature would overflow", () => {
+    const base = {
+      availableWidth: 430,
+      currentDensity: "full" as const,
+      controls: {
+        hasModel: true,
+        hasThinking: true,
+        hasMode: true,
+        fontScale: 1,
+      },
+    };
+
     expect(
-      resolveNextComposerControlStage({
-        availableWidth: 120,
-        neededWidth: 900,
-        stageIndex: lastStage,
-        measuredNeededByStage: NO_MEASUREMENTS,
+      resolveComposerControlDensity({
+        ...base,
+        controls: { ...base.controls, features: [{ type: "toggle" }] },
       }),
-    ).toBe(lastStage);
+    ).toBe("full");
+    expect(
+      resolveComposerControlDensity({
+        ...base,
+        controls: {
+          ...base.controls,
+          features: [{ type: "select", label: "A much longer localized feature label" }],
+        },
+      }),
+    ).toBe("condensed");
   });
 
-  it("holds the current stage while the row fits", () => {
-    expect(
-      resolveNextComposerControlStage({
-        availableWidth: 600,
-        neededWidth: 420,
-        stageIndex: 2,
-        measuredNeededByStage: [800, 700, 420],
-      }),
-    ).toBe(2);
-  });
-
-  it("restores a label only when a measurement proves the roomier stage fits", () => {
-    // 500 is wider than the row needed at stage 1, by more than the hysteresis.
-    expect(
-      resolveNextComposerControlStage({
-        availableWidth: 500,
-        neededWidth: 420,
-        stageIndex: 2,
-        measuredNeededByStage: [800, 460, 420],
-      }),
-    ).toBe(1);
-    // Just inside the hysteresis band: stay put rather than flip-flop.
-    expect(
-      resolveNextComposerControlStage({
-        availableWidth: 460 + COMPOSER_STAGE_HYSTERESIS - 1,
-        neededWidth: 420,
-        stageIndex: 2,
-        measuredNeededByStage: [800, 460, 420],
-      }),
-    ).toBe(2);
-  });
-
-  it("never retreats on a stage it has not measured yet", () => {
-    expect(
-      resolveNextComposerControlStage({
-        availableWidth: 5000,
-        neededWidth: 420,
-        stageIndex: 2,
-        measuredNeededByStage: [800, undefined, 420],
-      }),
-    ).toBe(2);
-  });
-
-  it("does not act before the row reports a width", () => {
-    expect(
-      resolveNextComposerControlStage({
-        availableWidth: 0,
-        neededWidth: 420,
-        stageIndex: 1,
-        measuredNeededByStage: NO_MEASUREMENTS,
-      }),
-    ).toBe(1);
-  });
-
-  it("gives every toolbar control one shell", () => {
+  it("gives every toolbar control one shell and one platform glyph envelope", () => {
     expect(COMPOSER_TOOLBAR_GEOMETRY).toEqual({
       controlSize: 28,
       controlGap: 4,
@@ -155,5 +162,7 @@ describe("composer control stages", () => {
       labelPadding: 8,
       caretSize: 14,
     });
+    expect(resolveComposerToolbarGlyphSize("web")).toBe(16);
+    expect(resolveComposerToolbarGlyphSize("native")).toBe(20);
   });
 });

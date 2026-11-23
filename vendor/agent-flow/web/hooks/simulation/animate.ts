@@ -184,7 +184,6 @@ export function computeNextFrame(prev: SimulationState, deltaTime: number, newTi
           discoveries: newDiscoveries,
           maxTimeReached: maxT,
           retiredTokens: newRetiredTokens,
-        retiredCostUsd: newRetiredCostUsd,
           retiredCostUsd: newRetiredCostUsd,
           isPlaying: false,
         }

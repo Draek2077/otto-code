@@ -1,5 +1,6 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { expect, type Page } from "@playwright/test";
-import { parseConnectionOfferFromUrl } from "@otto-code/protocol/connection-offer";
+import { parseConnectionOfferFromUrl } from "@getpaseo/protocol/connection-offer";
 import type { LocalElixirRelay } from "./local-elixir-relay";
 import type { PackagedWebDaemon } from "./packaged-web-daemon";
 import { expectRunningAgentChrome } from "./agent-stream";
@@ -39,8 +40,8 @@ export async function connectDaemonWebAppOnlyThroughRelay(
     updatedAt: now,
   };
 
-  await page.route(/:(6868)\b/, (route) => route.abort());
-  await page.routeWebSocket(/:(6868)\b/, async (socket) => {
+  await page.route(/:(6767)\b/, (route) => route.abort());
+  await page.routeWebSocket(/:(6767)\b/, async (socket) => {
     await socket.close({ code: 1008, reason: "Blocked developer daemon during relay E2E" });
   });
   await page.route("**/*", async (route) => {
@@ -52,7 +53,7 @@ export async function connectDaemonWebAppOnlyThroughRelay(
     const html = await response.text();
     await route.fulfill({
       response,
-      body: html.replace(/<script>window\.__OTTO_INITIAL_DAEMON_CONNECTION__=.*?<\/script>/, ""),
+      body: html.replace(/<script>window\.__PASEO_INITIAL_DAEMON_CONNECTION__=.*?<\/script>/, ""),
     });
   });
   await page.addInitScript(
@@ -92,7 +93,7 @@ export async function measureRelayRestartDuringStream(input: {
   agentTitle: string;
 }): Promise<RelayDeploymentMeasurements> {
   const { page, relay, agentTitle } = input;
-  const toast = page.getByTestId("agent-reconnecting-toast");
+  const toast = page.getByRole("alert").filter({ hasText: "Reconnecting to host" });
   const beforeOutage = await latestAssistantText(page);
   await waitForAssistantTextToGrow(page, beforeOutage);
 

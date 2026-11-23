@@ -20,11 +20,8 @@ describe("Git metadata event rules", () => {
     ["worktree", "index", { kind: "owner", refreshBase: false }],
     ["worktree", "HEAD", { kind: "owner", refreshBase: true }],
     ["worktree", "config.worktree", { kind: "owner", refreshBase: true }],
+    // OTTO(identity): metadata changes refresh the Otto checkout's base.
     ["worktree", "otto/worktree.json", { kind: "owner", refreshBase: true }],
-    ["worktree", "otto/diff-base.json", { kind: "owner", refreshBase: true }],
-    ["common", "otto/worktree.json", { kind: "owner", refreshBase: true }],
-    ["common", "otto/diff-base.json", { kind: "owner", refreshBase: true }],
-    ["common", "otto/diff-base.json.lock", { kind: "ignore" }],
     ["worktree", "COMMIT_EDITMSG", { kind: "ignore" }],
     ["worktree", "ORIG_HEAD", { kind: "ignore" }],
     ["common", "index", { kind: "owner", refreshBase: false }],

@@ -1,14 +1,4 @@
-# Hub boundary and upstream relationship reference
-
-Hub is disabled in the shipped Otto composition. `bootstrap.ts` imports its relationship controller, remote and execution adapter from `server/hub-disabled.ts`; `session.ts` imports the inert execution controller; `cli.ts` imports `commands/hub-disabled.ts`. `otto hub` reports the disabled state and exits nonzero. This does not enable an Otto-hosted service, enrollment, sockets, execution or deployment. The retained modules are not claimed to be byte-identical to upstream.
-
-Ordinary agent creation/message receipts, timeline observation and workspace recovery remain usable shared daemon contracts. `server_info.features.hubAgentRpc` describes that RPC capability, not an enabled Hub connection. The session-grant and receipt sections below describe those reusable contracts; connection/enrollment and CLI instructions describe upstream Paseo or dormant source only.
-
-The dormant Otto CLI uses `.otto/triggers/` and `OTTO_HUB_*`; its configured default `https://hub.otto-code.me` is not evidence of an available service. Its provider selector accepts providers without modes, unlike the upstream starter reference below. Enabling a relationship would require an explicit product decision and a verified service origin, compatible trigger/provider schema, credentials, UI and runtime acceptance. Do not resolve those differences by narrowing Otto's provider capabilities.
-
-## Upstream reference
-
-The following relationship description is retained from Paseo v0.8.0. Upstream names and origins are intentional provenance.
+# Paseo Hub relationship
 
 Paseo Hub is an explicit opt-in connection from one Paseo daemon to one Hub. Running a daemon does
 not register it with a Hub. The relationship begins only when a user runs
@@ -38,11 +28,14 @@ manage their own relationship or permissions.
 ## Session grants and agent operations
 
 Hub uses the same authenticated, resumable Session protocol as other clients. Its persisted
-`hub.execute` permission authorizes ordinary agent creation, messaging, cancellation, archival,
-agent/workspace observation, timeline subscriptions, and workspace recovery. This authority is
+`hub.execute` permission authorizes ordinary agent creation, workspace titling, messaging,
+cancellation, archival, agent/workspace observation, timeline subscriptions, and workspace recovery. This authority is
 daemon-wide; it is not limited to agents created by that Hub. Daemon configuration, terminals,
 browser control, and permission management still require their own permissions. See
 [permissions.md](permissions.md).
+
+Creating an agent may create a directory workspace. The same `hub.execute` session can title that
+workspace through `workspace.title.set.request` without `workspace.manage`.
 
 Clients using this contract check `server_info.features.hubAgentRpc` and
 `server_info.features.agentRequestReceipts` once. An older host must be upgraded; do not silently
@@ -59,6 +52,10 @@ Provider controls remain provider-native; see [providers.md](providers.md).
 `send_agent_message_request` with a stable `messageId`. Request IDs correlate individual attempts;
 creation keys and message IDs identify the operation across attempts. A creation key is daemon-wide;
 a message ID is scoped to its agent. Reusing either with different arguments is a conflict.
+`workspace.create.request.idempotencyKey` provides the same creation guarantee for directory and
+worktree workspaces; check `server_info.features.workspaceRequestReceipts` before using it.
+Workspace creation keys and agent creation keys have separate namespaces. The app keeps these keys
+for the lifetime of a draft and reuses the first message ID after failures.
 
 The daemon journals the assigned agent ID before creation. Concurrent retries share one operation,
 and a retry after a lost acknowledgement or restart returns the durable agent without creating a
@@ -98,8 +95,9 @@ the daemon does not retry revocation in the background.
 
 ## Cross-repository compatibility
 
-The upstream reference identifies its consumer implementation as Paseo Cloud. Cloud owns its copy of the Hub wire schemas and
+The consumer implementation lives in Paseo Cloud. Cloud owns its copy of the Hub wire schemas and
 has no Paseo runtime or build dependency. Cross-repository end-to-end verification separately builds
 a Paseo source checkout and exercises the real daemon, CLI, direct WebSocket, Cloud service, and
 Postgres. That compatibility fixture is not a package dependency or fallback implementation.
-Those upstream cross-repository checks are not evidence that this Otto integration has been tested against a Hub service. Otto's provider-neutral tool and permission policies remain owned by its provider adapters and semantic authorization map; do not copy a fixture's provider limitation into product policy.
+Its `hub-e2e` ACP provider accepts only exact tool names on the injected `hub` MCP server. Other
+custom ACP providers remain unsupported for unattended preapproval.

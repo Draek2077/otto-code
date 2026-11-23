@@ -1,9 +1,9 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import type { Page } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 import { expectComposerVisible } from "../support/helpers/composer";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
-import { seedAppSettings } from "../support/helpers/settings";
 
 type WebSocketMessage = string | Buffer;
 
@@ -141,7 +141,9 @@ async function holdStreamAfterFirstCompletedToolCall(page: Page, agentId: string
 }
 
 async function configureOverviewToolCalls(page: Page): Promise<void> {
-  await seedAppSettings(page, { toolCallDetailLevel: "overview", groupConsecutiveActions: true });
+  await page.addInitScript(() => {
+    localStorage.setItem("@otto:app-settings", JSON.stringify({ toolCallDetailLevel: "overview" }));
+  });
 }
 
 async function createOverviewAgent(page: Page, title: string) {
@@ -262,14 +264,22 @@ test("keeps overview tool calls inline on desktop", async ({ page }) => {
   const agent = await createOverviewAgent(page, "Desktop overview tool calls");
 
   try {
+    const gate = await holdStreamAfterFirstCompletedToolCall(page, agent.agentId);
     await openOverviewAgent(page, agent);
     await agent.client.sendAgentMessage(agent.agentId, "Exercise desktop overview tool calls.");
+    await gate.waitForFirstCompleted();
     const group = page.getByTestId("tool-call-group").first();
     await expect(group).toBeVisible();
 
-    await group.click();
-    await expect(page.getByTestId("tool-call-group-sheet")).toHaveCount(0);
+    // Keep streaming layout changes out of the pointer-down/pointer-up interval.
+    const header = group.getByRole("button").first();
+    await header.click();
     await expect(group.getByTestId("tool-call-badge").first()).toBeVisible();
+    await expect(page.getByTestId("tool-call-group-sheet")).toHaveCount(0);
+
+    gate.release(1);
+    await expect.poll(() => group.getByTestId("tool-call-badge").count()).toBeGreaterThanOrEqual(2);
+    await expect(page.getByTestId("tool-call-group-sheet")).toHaveCount(0);
   } finally {
     await agent.cleanup();
   }

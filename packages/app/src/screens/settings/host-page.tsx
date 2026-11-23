@@ -1,5 +1,4 @@
-import { SettingsButton } from "@/screens/settings-search/controls";
-import { SettingsTargetText, SettingsTargetScope } from "@/screens/settings-search/target";
+import { TeamsSection } from "@/otto/agent-profiles/teams-section"; // OTTO(agent-teams)
 import {
   ArrowDown,
   ArrowUp,
@@ -12,40 +11,37 @@ import {
   RotateCw,
   SquareTerminal,
   Trash2,
-} from "@/components/icons/material-icons";
+} from "lucide-react-native";
 import type { TFunction } from "i18next";
+import { OttoTerminalSettings } from "@/otto/terminal/settings"; // OTTO(terminal)
+import { OttoGitFetchSettings } from "@/otto/workspace-git/settings"; // OTTO(git-fetch)
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
-import type { ServerInfoStatusPayload, TerminalProfile } from "@otto-code/protocol/messages";
+import type { TerminalProfile } from "@getpaseo/protocol/messages";
 import {
   getTerminalProfileIcon,
   DEFAULT_TERMINAL_PROFILES,
-} from "@otto-code/protocol/terminal-profiles";
+} from "@getpaseo/protocol/terminal-profiles";
+import { AgentProfilesSection } from "@/agent-profiles";
+import { AgentSkillsSection } from "@/agent-skills";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { SettingsTextAreaCard } from "@/components/settings-textarea";
+import { Alert as InlineAlert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { SettingsSelectField as SelectField } from "@/screens/settings-search/fields";
-import { type SelectFieldOption } from "@/components/ui/select-field";
+import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 import { Switch } from "@/components/ui/switch";
 import {
   ProfileDraft,
   TerminalProfileEditModal,
 } from "@/screens/settings/terminal-profile-edit-modal";
-import { getIsElectron } from "@/constants/platform";
-import {
-  getDesktopDaemonStatus,
-  restartDesktopDaemon,
-  startDesktopDaemon,
-  stopDesktopDaemon,
-} from "@/desktop/daemon/desktop-daemon";
+import { startDesktopDaemon, stopDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
 import { LocalDaemonSection } from "@/desktop/components/desktop-updates-section";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
-import { loadDesktopSettings, useDesktopSettings } from "@/desktop/settings/desktop-settings";
+import { useDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
-import { useHostFeature } from "@/runtime/host-features";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import {
   getHostRuntimeStore,
@@ -56,16 +52,10 @@ import {
   useHostRuntimeSnapshot,
   useHosts,
 } from "@/runtime/host-runtime";
-import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 import { ProvidersSection } from "@/screens/settings/providers-section";
-import { AgentPersonalitiesSection } from "@/screens/settings/agent-personalities-section";
-import { AgentTeamsSection } from "@/screens/settings/agent-teams-section";
-import { SpeechSettingsCards } from "@/screens/settings/speech-settings-cards";
-import { GitProvidersSettingsCards } from "@/screens/settings/git-providers-settings-cards";
-import { ProviderUsageSettingsSection } from "@/provider-usage/settings-section";
-import { useProviderUsage } from "@/provider-usage/use-provider-usage";
+import { HostUsageSection } from "@/usage";
 import { HostAppearanceSection } from "@/screens/settings/host-appearance-section";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { useSessionStore } from "@/stores/session-store";
 import { settingsStyles } from "@/styles/settings";
 import type { HostConnection, HostProfile } from "@/types/host-connection";
@@ -74,23 +64,20 @@ import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
 import { resolveAppVersion } from "@/utils/app-version";
 import { formatConnectionStatus, getConnectionStatusTone } from "@/utils/daemons";
 import { formatLatency } from "@/utils/latency";
-import { useIconSize } from "@/styles/theme";
+import { ICON_SIZE } from "@/styles/theme";
 import type { Theme } from "@/styles/theme";
-import { getProviderIcon } from "@/components/provider-icons";
-import {
-  AgentBehaviorRows,
-  BrowserToolsSection,
-  OttoToolsSection,
-  TodoReminderRows,
-  useTodoRemindersFeature,
-} from "@/screens/settings/otto-tools-section";
-import { ConnectorsSection } from "@/screens/settings/connectors-section";
-import { TerminalCompatibilitySection } from "@/screens/settings/terminal-compatibility-section";
-import { CodeIntelligenceSection } from "./code-intelligence-section";
-import { StorageSection } from "./storage-section";
-import { restartDaemonFromSettings } from "./daemon-restart";
-import { supportsWorkflowStorage } from "@/workflows/storage-presentation";
-import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
+import { useProviderIcon } from "@/components/provider-icons";
+import { BrowserToolsOptInCard } from "./browser-tools-card";
+import { restartDaemonFromSettings, updateDaemonFromSettings } from "./daemon-lifecycle";
+
+const ThemedRestart = withUnistyles(RotateCw);
+const ThemedUpdate = withUnistyles(ArrowUpToLine);
+const lifecycleIconProps = (theme: Theme) => ({
+  size: theme.iconSize.sm,
+  color: theme.colors.foreground,
+});
+const restartIcon = <ThemedRestart uniProps={lifecycleIconProps} />;
+const updateIcon = <ThemedUpdate uniProps={lifecycleIconProps} />;
 
 const ThemedArrowUp = withUnistyles(ArrowUp);
 const ThemedArrowDown = withUnistyles(ArrowDown);
@@ -106,30 +93,20 @@ interface DynamicProviderIconProps {
 }
 
 function DynamicProviderIcon({ iconKey, size, color = "" }: DynamicProviderIconProps) {
-  const Icon = getProviderIcon(iconKey);
+  const Icon = useProviderIcon(iconKey);
   return <Icon size={size} color={color} />;
 }
 
 const ThemedDynamicProviderIcon = withUnistyles(DynamicProviderIcon);
 
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-// These two module-level icon consts can't call `useIconSize()` (not components), so
-// `size` is folded into a dedicated mapping instead - repaints from the live,
-// compact-doubled `theme.iconSize` the same way `color` already does.
-const mutedIconSmMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-  size: theme.iconSize.sm,
-});
-const destructiveIconSmMapping = (theme: Theme) => ({
-  color: theme.colors.destructive,
-  size: theme.iconSize.sm,
-});
+const destructiveColorMapping = (theme: Theme) => ({ color: theme.colors.destructive });
 
-const moveUpIcon = <ThemedArrowUp uniProps={mutedIconSmMapping} />;
-const moveDownIcon = <ThemedArrowDown uniProps={mutedIconSmMapping} />;
-const editProfileIcon = <ThemedProfilePencil uniProps={mutedIconSmMapping} />;
-const removeProfileIcon = <ThemedTrash2 uniProps={destructiveIconSmMapping} />;
-const addProfileIcon = <ThemedPlus uniProps={mutedIconSmMapping} />;
+const moveUpIcon = <ThemedArrowUp size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
+const moveDownIcon = <ThemedArrowDown size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
+const editProfileIcon = <ThemedProfilePencil size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
+const removeProfileIcon = <ThemedTrash2 size={ICON_SIZE.sm} uniProps={destructiveColorMapping} />;
+const addProfileIcon = <ThemedPlus size={ICON_SIZE.sm} uniProps={mutedColorMapping} />;
 
 function formatHostConnectionLabel(connection: HostConnection, t: TFunction): string {
   if (connection.type === "relay") {
@@ -189,7 +166,7 @@ function HostNotFound() {
   const { t } = useTranslation();
   return (
     <View>
-      <View style={EMPTY_CARD_STYLE}>
+      <View style={[settingsStyles.card, styles.emptyCard]}>
         <Text style={styles.emptyText}>{t("settings.host.notFound")}</Text>
       </View>
     </View>
@@ -222,7 +199,6 @@ function HostStatusBadges({ serverId }: { serverId: string }) {
   }
   const connectionBadge = formatActiveConnectionBadge(activeConnection, theme, t);
   const versionBadgeText = formatDaemonVersionBadge(daemonVersion);
-
   const statusDotStyle = useMemo(
     () => [styles.statusDot, { backgroundColor: statusDotColor }],
     [statusDotColor],
@@ -252,12 +228,23 @@ function HostStatusBadges({ serverId }: { serverId: string }) {
 }
 
 function HostConnectionError({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
   const snapshot = useHostRuntimeSnapshot(serverId);
   const lastError = snapshot?.lastError ?? null;
   const connectionError =
     typeof lastError === "string" && lastError.trim().length > 0 ? lastError.trim() : null;
   if (!connectionError) return null;
-  return <Text style={styles.errorText}>{connectionError}</Text>;
+  return (
+    <View style={styles.connectionError}>
+      <InlineAlert
+        size="sm"
+        variant="error"
+        title={connectionError}
+        description={snapshot?.authFailureReason ? t("settings.host.password.guidance") : undefined}
+        testID="host-connection-error"
+      />
+    </View>
+  );
 }
 
 export function HostConnectionsPage({ serverId }: { serverId: string }) {
@@ -272,25 +259,6 @@ export function HostConnectionsPage({ serverId }: { serverId: string }) {
       <HostConnectionError serverId={serverId} />
       <ConnectionsSection host={host} />
     </View>
-  );
-}
-
-// The provider-agnostic task-list reminder toggles, grouped in their own titled
-// section so the two related switches read as one set. Self-hiding: an old daemon
-// without the todoReminders capability shows nothing rather than an empty card.
-// Title is raw English, matching the English-only convention for these host
-// toggle surfaces (see otto-tools-config.ts).
-function HostTaskListSection({ serverId }: { serverId: string }) {
-  const hasFeature = useTodoRemindersFeature(serverId);
-  if (!hasFeature) {
-    return null;
-  }
-  return (
-    <SettingsSection title="Task list">
-      <View style={settingsStyles.card}>
-        <TodoReminderRows serverId={serverId} />
-      </View>
-    </SettingsSection>
   );
 }
 
@@ -321,155 +289,19 @@ export function HostAgentsPage({ serverId }: { serverId: string }) {
   return (
     <View>
       {isConnected ? (
-        <>
-          <SettingsSection title={t("settings.hostSections.agents")}>
-            <View style={settingsStyles.card}>
-              <AppendSystemPromptCard serverId={serverId} />
-              <AgentBehaviorRows serverId={serverId} />
-            </View>
-          </SettingsSection>
-          <HostTaskListSection serverId={serverId} />
-          {/* Owns its own per-card sections (Dictation / Voice / OpenAI). */}
-          <SpeechSettingsCards serverId={serverId} />
-        </>
+        <SettingsSection title={t("settings.hostSections.agents")}>
+          <InjectPaseoToolsCard serverId={serverId} />
+          <BrowserToolsOptInCard serverId={serverId} />
+          <AppendSystemPromptCard serverId={serverId} />
+        </SettingsSection>
       ) : (
-        <View style={EMPTY_CARD_STYLE}>
+        <View style={[settingsStyles.card, styles.emptyCard]}>
           <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
         </View>
       )}
-    </View>
-  );
-}
-
-// Tools host section: Otto's own agent-facing tool surfaces (Otto tools +
-// browser tools) on their own sidebar section after Teams, rather than trailing
-// the Agents page where they read as a footnote.
-export function HostToolsPage({ serverId }: { serverId: string }) {
-  const { t } = useTranslation();
-  const host = useHostProfile(serverId);
-  const isConnected = useHostRuntimeIsConnected(serverId);
-
-  if (!host) {
-    return <HostNotFound />;
-  }
-
-  return (
-    <View>
-      {isConnected ? (
-        <>
-          <OttoToolsSection serverId={serverId} />
-          <BrowserToolsSection serverId={serverId} />
-        </>
-      ) : (
-        <View style={EMPTY_CARD_STYLE}>
-          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-// Connectors host section: third-party services whose MCP tools reach agents.
-// Split from Tools so Otto's built-in tool switches and the external service
-// catalog stay separate ownership boundaries.
-export function HostConnectorsPage({ serverId }: { serverId: string }) {
-  const { t } = useTranslation();
-  const host = useHostProfile(serverId);
-  const isConnected = useHostRuntimeIsConnected(serverId);
-
-  if (!host) {
-    return <HostNotFound />;
-  }
-
-  return (
-    <View>
-      {isConnected ? (
-        <ConnectorsSection serverId={serverId} />
-      ) : (
-        <View style={EMPTY_CARD_STYLE}>
-          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-// Teams host section: agent teams and the profiles they draw from - split out
-// of the Agents page onto their own sidebar section (after Agents) so each
-// stays a clean grouped card. Teams lead: a team is what you pick day to day,
-// and the profile list under it is the roster it composes from.
-export function HostTeamsPage({ serverId }: { serverId: string }) {
-  const { t } = useTranslation();
-  const host = useHostProfile(serverId);
-  const isConnected = useHostRuntimeIsConnected(serverId);
-
-  if (!host) {
-    return <HostNotFound />;
-  }
-
-  return (
-    <View>
-      {isConnected ? (
-        <>
-          <AgentTeamsSection serverId={serverId} />
-          <AgentPersonalitiesSection serverId={serverId} />
-        </>
-      ) : (
-        <View style={EMPTY_CARD_STYLE}>
-          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-// Git-provider settings are folded into the Workspaces page as a "Git" panel -
-// too few options to warrant their own sidebar category.
-// Daemon-side language servers. Its own section rather than a card under Tools:
-// the running-servers table needs the width, and the off-switch has to be findable.
-export function HostCodePage({ serverId }: { serverId: string }) {
-  const { t } = useTranslation();
-  const host = useHostProfile(serverId);
-  const isConnected = useHostRuntimeIsConnected(serverId);
-
-  if (!host) {
-    return <HostNotFound />;
-  }
-
-  return (
-    <View>
-      {isConnected ? (
-        <CodeIntelligenceSection serverId={serverId} />
-      ) : (
-        <View style={EMPTY_CARD_STYLE}>
-          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
-        </View>
-      )}
-    </View>
-  );
-}
-
-// Storage host section: what the agents on this host have accumulated on disk,
-// and the way to get it back. Its own section rather than a footnote under Code
-// or Workspaces - "where did my space go" is a question people arrive with.
-export function HostStoragePage({ serverId }: { serverId: string }) {
-  const { t } = useTranslation();
-  const host = useHostProfile(serverId);
-  const isConnected = useHostRuntimeIsConnected(serverId);
-
-  if (!host) {
-    return <HostNotFound />;
-  }
-
-  return (
-    <View>
-      {isConnected ? (
-        <StorageSection serverId={serverId} />
-      ) : (
-        <View style={EMPTY_CARD_STYLE}>
-          <Text style={styles.emptyText}>{t("settings.host.agents.unavailable")}</Text>
-        </View>
-      )}
+      <AgentSkillsSection serverId={serverId} />
+      <AgentProfilesSection serverId={serverId} />
+      <TeamsSection serverId={serverId} />
     </View>
   );
 }
@@ -478,8 +310,6 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const host = useHostProfile(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
-  // Git hosting is a developer feature family; hide its host-config card in User mode.
-  const isDeveloperMode = useIsDeveloperMode();
 
   if (!host) {
     return <HostNotFound />;
@@ -488,25 +318,13 @@ export function HostWorkspacesPage({ serverId }: { serverId: string }) {
   return (
     <View>
       {isConnected ? (
-        <>
-          <SettingsSection title={t("settings.hostSections.workspaces")}>
-            <View style={settingsStyles.card} testID="host-page-workspaces-card">
-              <AutoArchiveMergedWorkspacesCard serverId={serverId} />
-              <GitFetchCard serverId={serverId} />
-              <HideMergeIntoBaseActionCard serverId={serverId} />
-              <ProjectKnowledgeStoreLocationCard serverId={serverId} />
-              <ProjectArtifactStoreLocationCard serverId={serverId} />
-              <ProjectWorkflowStoreLocationCard serverId={serverId} />
-            </View>
-          </SettingsSection>
-          {isDeveloperMode ? (
-            <SettingsSection title={t("settings.hostSections.gitProviders")}>
-              <GitProvidersSettingsCards serverId={serverId} />
-            </SettingsSection>
-          ) : null}
-        </>
+        <SettingsSection title={t("settings.hostSections.workspaces")}>
+          <AutoArchiveMergedWorkspacesCard serverId={serverId} />
+          {/* OTTO(git-fetch): keep host preferences in the existing Workspaces settings frame. */}
+          <OttoGitFetchSettings serverId={serverId} />
+        </SettingsSection>
       ) : (
-        <View style={EMPTY_CARD_STYLE}>
+        <View style={[settingsStyles.card, styles.emptyCard]}>
           <Text style={styles.emptyText}>{t("settings.host.workspaces.unavailable")}</Text>
         </View>
       )}
@@ -530,10 +348,6 @@ export function HostProvidersPage({ serverId }: { serverId: string }) {
 
 export function HostUsagePage({ serverId }: { serverId: string }) {
   const host = useHostProfile(serverId);
-  const { view: providerUsageView, refresh: refreshProviderUsage } = useProviderUsage(serverId);
-  const handleRefresh = useCallback(() => {
-    void refreshProviderUsage();
-  }, [refreshProviderUsage]);
 
   if (!host) {
     return <HostNotFound />;
@@ -541,7 +355,7 @@ export function HostUsagePage({ serverId }: { serverId: string }) {
 
   return (
     <View>
-      <ProviderUsageSettingsSection view={providerUsageView} onRefresh={handleRefresh} />
+      <HostUsageSection serverId={serverId} />
     </View>
   );
 }
@@ -562,19 +376,14 @@ export function HostSettingsPage({
 
   return (
     <View>
-      <View style={styles.daemonHeader}>
-        <Text style={styles.daemonHeaderLabel} numberOfLines={1}>
-          {host.label}
-        </Text>
-      </View>
-
       <HostStatusBadges serverId={serverId} />
+      <HostConnectionError serverId={serverId} />
 
       <HostAppearanceSection host={host} />
 
       {isLocalDaemon ? <LocalDaemonSection /> : null}
 
-      {!isLocalDaemon ? <UpdateDaemonCard host={host} /> : null}
+      {!isLocalDaemon ? <UpdateDaemonCard key={host.serverId} host={host} /> : null}
 
       <RemoveHostSection host={host} isLocalDaemon={isLocalDaemon} onRemoved={onHostRemoved} />
     </View>
@@ -631,33 +440,6 @@ function ConnectionsSection({ host }: { host: HostProfile }) {
       .finally(() => setIsRemovingConnection(false));
   }, [pendingRemoveConnection, removeConnection, host.serverId, t]);
 
-  const removeConnectionFooter = useMemo(
-    () => (
-      <View style={styles.sheetFooterRow}>
-        <Button
-          variant="secondary"
-          size="sm"
-          style={FLEX_1_STYLE}
-          onPress={handleCancelConfirm}
-          disabled={isRemovingConnection}
-        >
-          {t("common.actions.cancel")}
-        </Button>
-        <Button
-          variant="destructive"
-          size="sm"
-          style={FLEX_1_STYLE}
-          onPress={handleConfirmRemove}
-          disabled={isRemovingConnection}
-          testID="remove-connection-confirm"
-        >
-          {t("settings.host.connections.removeAction")}
-        </Button>
-      </View>
-    ),
-    [handleCancelConfirm, handleConfirmRemove, isRemovingConnection, t],
-  );
-
   return (
     <SettingsSection title={t("settings.host.connections.title")}>
       <View style={settingsStyles.card} testID="host-page-connections-card">
@@ -682,7 +464,6 @@ function ConnectionsSection({ host }: { host: HostProfile }) {
           header={removeConnectionHeader}
           visible
           onClose={handleCloseConfirm}
-          footer={removeConnectionFooter}
           testID="remove-connection-confirm-modal"
         >
           <Text style={styles.confirmText}>
@@ -690,6 +471,27 @@ function ConnectionsSection({ host }: { host: HostProfile }) {
               name: pendingRemoveConnection.title,
             })}
           </Text>
+          <View style={styles.confirmActions}>
+            <Button
+              variant="secondary"
+              size="sm"
+              style={FLEX_1_STYLE}
+              onPress={handleCancelConfirm}
+              disabled={isRemovingConnection}
+            >
+              {t("common.actions.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              style={FLEX_1_STYLE}
+              onPress={handleConfirmRemove}
+              disabled={isRemovingConnection}
+              testID="remove-connection-confirm"
+            >
+              {t("settings.host.connections.removeAction")}
+            </Button>
+          </View>
         </AdaptiveModalSheet>
       ) : null}
     </SettingsSection>
@@ -719,7 +521,7 @@ function ConnectionRow({
     if (latencyLoading) return "...";
     if (latencyError) return t("settings.host.connections.timeout");
     if (latencyMs != null) return formatLatency(latencyMs);
-    return "-";
+    return "—";
   })();
   const latencyColor = latencyError ? theme.colors.palette.red[300] : theme.colors.foregroundMuted;
 
@@ -728,7 +530,7 @@ function ConnectionRow({
   }, [onRemove, connection]);
 
   const rowStyle = useMemo(
-    () => [settingsStyles.rowResponsive, showBorder && settingsStyles.rowBorder],
+    () => [settingsStyles.row, showBorder && settingsStyles.rowBorder],
     [showBorder],
   );
   const latencyTextStyle = useMemo(
@@ -743,38 +545,25 @@ function ConnectionRow({
   return (
     <View style={rowStyle}>
       <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="host-connections-connections-on-this-device-saved-connection"
-          style={settingsStyles.rowTitle}
-          numberOfLines={1}
-        >
+        <Text style={settingsStyles.rowTitle} numberOfLines={1}>
           {title}
-        </SettingsTargetText>
+        </Text>
       </View>
-      <View style={CONNECTION_TRAILING_STYLE}>
-        <Text style={latencyTextStyle}>{latencyText}</Text>
-        <SettingsButton
-          settingIds={["host-connections-connections-on-this-device-remove-connection"]}
-          variant="ghost"
-          size="sm"
-          textStyle={destructiveTextStyle}
-          onPress={handlePressRemove}
-        >
-          {t("settings.host.connections.removeAction")}
-        </SettingsButton>
-      </View>
+      <Text style={latencyTextStyle}>{latencyText}</Text>
+      <Button
+        variant="ghost"
+        size="sm"
+        textStyle={destructiveTextStyle}
+        onPress={handlePressRemove}
+      >
+        {t("settings.host.connections.removeAction")}
+      </Button>
     </View>
   );
 }
 
-const delay = (ms: number) =>
-  new Promise<void>((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
 function RestartDaemonCard({ host }: { host: HostProfile }) {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const daemonClient = useHostRuntimeClient(host.serverId);
   const isConnected = useHostRuntimeIsConnected(host.serverId);
   const runtime = getHostRuntimeStore();
@@ -792,68 +581,20 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
     [host.serverId, runtime],
   );
 
-  const waitForCondition = useCallback(
-    async (predicate: () => boolean, timeoutMs: number, intervalMs = 250) => {
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline) {
-        if (!isMountedRef.current) return false;
-        if (predicate()) return true;
-        await delay(intervalMs);
-      }
-      return predicate();
-    },
-    [],
-  );
-
   const waitForDaemonRestart = useCallback(
-    async (restartRequest: Promise<void>) => {
-      const disconnectTimeoutMs = 30000;
-      const reconnectTimeoutMs = 30000;
-      const requestFailureDisconnectGraceMs = 2000;
-      const disconnectedPromise = isHostConnected()
-        ? waitForCondition(() => !isHostConnected(), disconnectTimeoutMs)
-        : Promise.resolve(true);
-      const restartResult = await restartRequest.then(
-        () => ({ status: "accepted" as const }),
-        async (error) => ({
-          status: "rejected" as const,
-          error,
-          disconnectedAfterFailure: await waitForCondition(
-            () => !isHostConnected(),
-            requestFailureDisconnectGraceMs,
-            100,
-          ),
-        }),
-      );
-      if (!isMountedRef.current) return;
-
-      if (restartResult.status === "rejected" && !restartResult.disconnectedAfterFailure) {
-        console.error(`[HostPage] Failed to restart daemon ${host.label}`, restartResult.error);
-        setIsRestarting(false);
+    async (request: Promise<void>) => {
+      try {
+        await request;
+      } catch (error) {
         Alert.alert(
           t("settings.host.daemon.restart.requestFailedTitle"),
-          t("settings.host.daemon.restart.requestFailedMessage"),
+          error instanceof Error ? error.message : String(error),
         );
-        return;
-      }
-
-      const disconnected =
-        restartResult.status === "rejected"
-          ? restartResult.disconnectedAfterFailure
-          : await disconnectedPromise;
-      const reconnected =
-        disconnected && (await waitForCondition(() => isHostConnected(), reconnectTimeoutMs));
-      if (isMountedRef.current) {
-        setIsRestarting(false);
-        if (!reconnected) {
-          Alert.alert(
-            t("settings.host.daemon.restart.unableToReconnectTitle"),
-            t("settings.host.daemon.restart.unableToReconnectMessage", { name: host.label }),
-          );
-        }
+      } finally {
+        if (isMountedRef.current) setIsRestarting(false);
       }
     },
-    [host.label, isHostConnected, t, waitForCondition],
+    [t],
   );
 
   const handleRestart = useCallback(() => {
@@ -886,11 +627,12 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
           host.serverId,
           `settings_daemon_restart_${host.serverId}`,
           {
-            getIsElectron,
-            getDesktopDaemonStatus,
-            getDesktopSettings: loadDesktopSettings,
-            restartDesktopDaemon,
             restartServer: (reason) => daemonClient.restartServer(reason),
+            getStatus: async () => ({
+              ...(await daemonClient.getDaemonStatus()),
+              serverId: daemonClient.getLastServerInfoMessage()?.serverId ?? "",
+              version: daemonClient.getLastServerInfoMessage()?.version ?? null,
+            }),
           },
         );
         void waitForDaemonRestart(restartRequest);
@@ -905,21 +647,11 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
       });
   }, [daemonClient, host.label, host.serverId, isHostConnected, t, waitForDaemonRestart]);
 
-  const restartIcon = useMemo(
-    () => <RotateCw size={theme.iconSize.sm} color={theme.colors.foreground} />,
-    [theme.iconSize.sm, theme.colors.foreground],
-  );
-
   return (
     <View style={settingsStyles.card} testID="host-page-restart-card">
-      <View style={settingsStyles.rowResponsive}>
+      <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-host-danger-zone-restart-daemon"
-            style={settingsStyles.rowTitle}
-          >
-            {t("settings.host.daemon.restart.title")}
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>{t("settings.host.daemon.restart.title")}</Text>
           <Text style={settingsStyles.rowHint}>{t("settings.host.daemon.restart.hint")}</Text>
         </View>
         <Button
@@ -938,19 +670,19 @@ function RestartDaemonCard({ host }: { host: HostProfile }) {
     </View>
   );
 }
+
+type DaemonUpdateState =
+  | { status: "idle" }
+  | { status: "complete"; workerVersion: string }
+  | { status: "updating"; phase: string }
+  | { status: "failed"; title: string; message: string };
+
 function UpdateDaemonCard({ host }: { host: HostProfile }) {
   const { t } = useTranslation();
-  const { theme } = useUnistyles();
   const daemonClient = useHostRuntimeClient(host.serverId);
   const isConnected = useHostRuntimeIsConnected(host.serverId);
   const runtime = getHostRuntimeStore();
-  const [isUpdating, setIsUpdating] = useState(false);
-  const [progressPhase, setProgressPhase] = useState<string | null>(null);
-  // Keep failures on the card; React Native Web's Alert.alert displays nothing.
-  const [updateError, setUpdateError] = useState<{ title: string; message: string } | null>(null);
-  const reportUpdateError = useCallback((title: string, message: string) => {
-    setUpdateError({ title, message });
-  }, []);
+  const [updateState, setUpdateState] = useState<DaemonUpdateState>({ status: "idle" });
   const isMountedRef = useRef(true);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -978,68 +710,21 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
     () => isHostRuntimeConnected(runtime.getSnapshot(host.serverId)),
     [host.serverId, runtime],
   );
-  const hasReconnectedAfter = useCallback(
-    (startGeneration: number | null) => {
-      const snapshot = runtime.getSnapshot(host.serverId);
-      if (!snapshot || !isHostRuntimeConnected(snapshot)) return false;
-      return startGeneration === null || snapshot.clientGeneration !== startGeneration;
-    },
-    [host.serverId, runtime],
-  );
-
-  const waitForCondition = useCallback(
-    async (predicate: () => boolean, timeoutMs: number, intervalMs = 250) => {
-      const deadline = Date.now() + timeoutMs;
-      while (Date.now() < deadline) {
-        if (!isMountedRef.current) return false;
-        if (predicate()) return true;
-        await delay(intervalMs);
-      }
-      return predicate();
-    },
-    [],
-  );
-
-  const waitForDaemonRestart = useCallback(
-    async (startGeneration: number | null) => {
-      const disconnectTimeoutMs = 15000;
-      const reconnectTimeoutMs = 120000; // 2 minutes - npm update + restart can take a while
-      if (!hasReconnectedAfter(startGeneration) && isHostConnected()) {
-        await waitForCondition(
-          () => !isHostConnected() || hasReconnectedAfter(startGeneration),
-          disconnectTimeoutMs,
-        );
-      }
-      const reconnected =
-        hasReconnectedAfter(startGeneration) ||
-        (await waitForCondition(() => hasReconnectedAfter(startGeneration), reconnectTimeoutMs));
-      if (isMountedRef.current) {
-        setIsUpdating(false);
-        setProgressPhase(null);
-        if (!reconnected) {
-          reportUpdateError(
-            t("settings.host.daemon.update.unableToReconnectTitle"),
-            t("settings.host.daemon.update.unableToReconnectMessage", { name: host.label }),
-          );
-        }
-      }
-    },
-    [hasReconnectedAfter, host.label, isHostConnected, reportUpdateError, t, waitForCondition],
-  );
-
   const handleUpdate = useCallback(() => {
     if (!daemonClient) {
-      reportUpdateError(
-        t("settings.host.daemon.update.unavailableTitle"),
-        t("settings.host.daemon.update.unavailableMessage"),
-      );
+      setUpdateState({
+        status: "failed",
+        title: t("settings.host.daemon.update.unavailableTitle"),
+        message: t("settings.host.daemon.update.unavailableMessage"),
+      });
       return;
     }
     if (!isHostConnected()) {
-      reportUpdateError(
-        t("settings.host.daemon.update.offlineTitle"),
-        t("settings.host.daemon.update.offlineMessage"),
-      );
+      setUpdateState({
+        status: "failed",
+        title: t("settings.host.daemon.update.offlineTitle"),
+        message: t("settings.host.daemon.update.offlineMessage"),
+      });
       return;
     }
 
@@ -1051,11 +736,11 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
       destructive: false,
     })
       .then((confirmed) => {
-        if (!confirmed) return;
-        setUpdateError(null);
-        const startGeneration = runtime.getSnapshot(host.serverId)?.clientGeneration ?? null;
-        setIsUpdating(true);
-        setProgressPhase(t("settings.host.daemon.update.phaseStarting"));
+        if (!confirmed || !isMountedRef.current) return;
+        setUpdateState({
+          status: "updating",
+          phase: t("settings.host.daemon.update.phaseStarting"),
+        });
         const requestId = `settings_daemon_update_${host.serverId}`;
 
         const unsubscribe = daemonClient.on("daemon.update.progress", (message) => {
@@ -1063,35 +748,40 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
           if (!isMountedRef.current) return;
           const { phase } = message.payload;
           if (phase === "starting")
-            setProgressPhase(t("settings.host.daemon.update.phaseStarting"));
+            setUpdateState({
+              status: "updating",
+              phase: t("settings.host.daemon.update.phaseStarting"),
+            });
           else if (phase === "downloading")
-            setProgressPhase(t("settings.host.daemon.update.phaseDownloading"));
+            setUpdateState({
+              status: "updating",
+              phase: t("settings.host.daemon.update.phaseDownloading"),
+            });
           else if (phase === "installing")
-            setProgressPhase(t("settings.host.daemon.update.phaseInstalling"));
+            setUpdateState({
+              status: "updating",
+              phase: t("settings.host.daemon.update.phaseInstalling"),
+            });
           else if (phase === "complete")
-            setProgressPhase(t("settings.host.daemon.update.phaseComplete"));
+            setUpdateState({
+              status: "updating",
+              phase: t("settings.host.daemon.update.phaseComplete"),
+            });
         });
         unsubscribeRef.current = unsubscribe;
 
-        void daemonClient
-          .updateDaemon(requestId)
-          .then((response) => {
+        void updateDaemonFromSettings(host.serverId, {
+          updateDaemon: () => daemonClient.updateDaemon(requestId),
+          getStatus: async () => ({
+            ...(await daemonClient.getDaemonStatus()),
+            serverId: daemonClient.getLastServerInfoMessage()?.serverId ?? "",
+            version: daemonClient.getLastServerInfoMessage()?.version ?? null,
+          }),
+        })
+          .then(({ workerVersion }) => {
             unsubscribeRef.current = null;
             unsubscribe();
-            if (!response.success) {
-              if (!isMountedRef.current) return undefined;
-              setIsUpdating(false);
-              setProgressPhase(null);
-              reportUpdateError(
-                t("settings.host.daemon.update.requestFailedTitle"),
-                t("settings.host.daemon.update.requestFailedMessage", {
-                  error: response.error ?? "Unknown error",
-                }),
-              );
-              return undefined;
-            }
-            // Update succeeded - wait for daemon to restart and reconnect
-            void waitForDaemonRestart(startGeneration);
+            if (isMountedRef.current) setUpdateState({ status: "complete", workerVersion });
             return undefined;
           })
           .catch((error) => {
@@ -1099,66 +789,44 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
             unsubscribe();
             console.error(`[HostPage] Failed to update daemon ${host.label}`, error);
             if (!isMountedRef.current) return;
-            setIsUpdating(false);
-            setProgressPhase(null);
-            reportUpdateError(
-              t("settings.host.daemon.update.requestFailedTitle"),
-              t("settings.host.daemon.update.requestFailedMessage", {
+            setUpdateState({
+              status: "failed",
+              title: t("settings.host.daemon.update.requestFailedTitle"),
+              message: t("settings.host.daemon.update.requestFailedMessage", {
                 error: error instanceof Error ? error.message : "Unknown error",
               }),
-            );
+            });
           });
         return;
       })
       .catch((error) => {
         console.error(`[HostPage] Failed to open update confirmation for ${host.label}`, error);
-        reportUpdateError(
-          t("settings.host.daemon.update.requestFailedTitle"),
-          t("settings.host.daemon.update.dialogFailedMessage"),
-        );
+        if (!isMountedRef.current) return;
+        setUpdateState({
+          status: "failed",
+          title: t("settings.host.daemon.update.requestFailedTitle"),
+          message: t("settings.host.daemon.update.dialogFailedMessage"),
+        });
       });
-  }, [
-    daemonClient,
-    host.label,
-    host.serverId,
-    isHostConnected,
-    reportUpdateError,
-    runtime,
-    t,
-    waitForDaemonRestart,
-  ]);
+  }, [daemonClient, host.label, host.serverId, isHostConnected, t]);
 
-  const updateIcon = useMemo(
-    () => <ArrowUpToLine size={theme.iconSize.sm} color={theme.colors.foreground} />,
-    [theme.iconSize.sm, theme.colors.foreground],
-  );
-
-  // A desktop-managed host cannot self-update, but still needs to explain
-  // how to resolve its version mismatch.
-  if ((!supportsSelfUpdate && !desktopManaged) || !hasVersionMismatch) {
+  const shouldShowUpdate = hasVersionMismatch && (supportsSelfUpdate || desktopManaged);
+  if (!shouldShowUpdate && updateState.status !== "complete") {
     return null;
   }
 
-  const buttonLabel = isUpdating
-    ? (progressPhase ?? t("settings.host.daemon.update.updating"))
-    : t("settings.host.daemon.update.confirm");
+  const isUpdating = updateState.status === "updating";
+  const buttonLabel = isUpdating ? updateState.phase : t("settings.host.daemon.update.confirm");
 
   return (
     <View style={settingsStyles.card} testID="host-page-update-card">
-      <View style={settingsStyles.rowResponsive}>
+      <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-host-updates-update-daemon"
-            style={settingsStyles.rowTitle}
-          >
-            {t("settings.host.daemon.update.title")}
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>{t("settings.host.daemon.update.title")}</Text>
           <Text style={settingsStyles.rowHint}>
-            {t(
-              desktopManaged
-                ? "settings.host.daemon.update.desktopManagedHint"
-                : "settings.host.daemon.update.hint",
-            )}
+            {desktopManaged
+              ? t("settings.host.daemon.update.desktopManagedHint")
+              : t("settings.host.daemon.update.hint")}
           </Text>
         </View>
         <Button
@@ -1172,12 +840,66 @@ function UpdateDaemonCard({ host }: { host: HostProfile }) {
           {buttonLabel}
         </Button>
       </View>
-      {updateError ? (
-        <View testID="host-page-update-error" accessibilityRole="alert">
-          <Text style={styles.errorText}>{updateError.title}</Text>
-          <Text style={styles.errorText}>{updateError.message}</Text>
+      {updateState.status === "complete" ? (
+        <InlineAlert
+          size="sm"
+          variant="success"
+          title={t("desktop.daemon.lifecycle.workerUpdated", {
+            version: updateState.workerVersion,
+          })}
+          description={t("desktop.daemon.lifecycle.supervisorRefresh")}
+        />
+      ) : null}
+      {updateState.status === "failed" ? (
+        <View style={styles.updateFailure}>
+          <InlineAlert
+            size="sm"
+            variant="error"
+            title={updateState.title}
+            description={updateState.message}
+            testID="host-page-update-error"
+          />
         </View>
       ) : null}
+    </View>
+  );
+}
+
+function InjectPaseoToolsCard({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const isConnected = useHostRuntimeIsConnected(serverId);
+  const { config, patchConfig } = useDaemonConfig(serverId);
+
+  const handleValueChange = useCallback(
+    (next: boolean) => {
+      void patchConfig({
+        mcp: {
+          injectIntoAgents: next,
+        },
+      });
+    },
+    [patchConfig],
+  );
+
+  if (!isConnected) return null;
+
+  return (
+    <View style={settingsStyles.card} testID="host-page-inject-mcp-card">
+      <View style={settingsStyles.row}>
+        <View style={settingsStyles.rowContent}>
+          <Text style={settingsStyles.rowTitle}>
+            {t("settings.host.orchestration.enableTools.title")}
+          </Text>
+          <Text style={settingsStyles.rowHint}>
+            {t("settings.host.orchestration.enableTools.hint")}
+          </Text>
+        </View>
+        <Switch
+          value={config?.mcp.injectIntoAgents !== false}
+          onValueChange={handleValueChange}
+          accessibilityLabel={t("settings.host.orchestration.enableTools.accessibilityLabel")}
+        />
+      </View>
     </View>
   );
 }
@@ -1202,356 +924,22 @@ function AutoArchiveMergedWorkspacesCard({ serverId }: { serverId: string }) {
   if (!isConnected) return null;
 
   return (
-    <View style={settingsStyles.row} testID="host-page-auto-archive-merged-workspaces-card">
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="host-workspaces-workspaces-archive-merged-pr-workspaces"
-          style={settingsStyles.rowTitle}
-        >
-          Archive merged PR workspaces
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          Automatically archive clean Otto workspaces after their pull request is merged
-        </Text>
-      </View>
-      <Switch
-        value={config?.autoArchiveAfterMerge === true}
-        onValueChange={handleValueChange}
-        accessibilityLabel="Archive merged PR workspaces"
-        testID="host-page-auto-archive-merged-workspaces-switch"
-      />
-    </View>
-  );
-}
-
-const GIT_FETCH_INTERVAL_OPTIONS = [
-  { id: "one", value: 60, label: "Every minute" },
-  { id: "three", value: 180, label: "Every 3 minutes" },
-  { id: "five", value: 300, label: "Every 5 minutes" },
-  { id: "ten", value: 600, label: "Every 10 minutes" },
-  { id: "fifteen", value: 900, label: "Every 15 minutes" },
-  { id: "thirty", value: 1_800, label: "Every 30 minutes" },
-  { id: "sixty", value: 3_600, label: "Every hour" },
-] as const satisfies SelectFieldOption<60 | 180 | 300 | 600 | 900 | 1_800 | 3_600>[];
-
-const DEFAULT_GIT_FETCH_CONFIG = { enabled: true, intervalSeconds: 180 } as const;
-
-function GitFetchCard({ serverId }: { serverId: string }) {
-  const isConnected = useHostRuntimeIsConnected(serverId);
-  const { config, patchConfig } = useDaemonConfig(serverId);
-  // COMPAT(gitFetchControl): added in v0.8.11, drop the gate when daemon floor >= v0.8.11.
-  const isSupported = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.gitFetchControl === true,
-  );
-  const gitFetch = config?.gitFetch ?? DEFAULT_GIT_FETCH_CONFIG;
-
-  const patchGitFetch = useCallback(
-    (patch: Partial<typeof gitFetch>) => {
-      void patchConfig({ gitFetch: patch }).catch((error) => {
-        console.error("[HostPage] Failed to update Git fetch settings", error);
-        Alert.alert(
-          "Unable to update Git fetch settings",
-          error instanceof Error ? error.message : String(error),
-        );
-      });
-    },
-    [patchConfig],
-  );
-  const handleAutomaticFetchChange = useCallback(
-    (enabled: boolean) => patchGitFetch({ enabled }),
-    [patchGitFetch],
-  );
-  const handleFetchIntervalChange = useCallback(
-    (intervalSeconds: 60 | 180 | 300 | 600 | 900 | 1_800 | 3_600) =>
-      patchGitFetch({ intervalSeconds }),
-    [patchGitFetch],
-  );
-  const selectedFetchInterval = useMemo(
-    () => ({
-      label:
-        GIT_FETCH_INTERVAL_OPTIONS.find((option) => option.value === gitFetch.intervalSeconds)
-          ?.label ?? "Every 3 minutes",
-    }),
-    [gitFetch.intervalSeconds],
-  );
-
-  if (!isConnected || !isSupported) return null;
-
-  return (
-    <>
-      <View
-        style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}
-        testID="host-page-git-fetch-card"
-      >
+    <View style={settingsStyles.card} testID="host-page-auto-archive-merged-workspaces-card">
+      <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-workspaces-workspaces-fetch-active-workspaces-automatically"
-            style={settingsStyles.rowTitle}
-          >
-            Fetch active workspaces automatically
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>Archive merged PR workspaces</Text>
           <Text style={settingsStyles.rowHint}>
-            Fetch origin and prune removed remote branches while a workspace is active
+            {/* OTTO(identity) */}
+            Automatically archive clean Otto workspaces after their pull request is merged
           </Text>
         </View>
         <Switch
-          value={gitFetch.enabled}
-          onValueChange={handleAutomaticFetchChange}
-          accessibilityLabel="Fetch active workspaces automatically"
-          testID="host-page-git-fetch-switch"
+          value={config?.autoArchiveAfterMerge === true}
+          onValueChange={handleValueChange}
+          accessibilityLabel="Archive merged PR workspaces"
+          testID="host-page-auto-archive-merged-workspaces-switch"
         />
       </View>
-      {gitFetch.enabled ? (
-        <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
-          <View style={settingsStyles.rowContent}>
-            <SettingsTargetText
-              settingId="host-workspaces-workspaces-fetch-interval"
-              style={settingsStyles.rowTitle}
-            >
-              Fetch interval
-            </SettingsTargetText>
-            <Text style={settingsStyles.rowHint}>
-              Choose how often Otto checks active repositories.
-            </Text>
-          </View>
-          <SettingsTargetScope settingIds={["host-workspaces-workspaces-fetch-interval"]}>
-            <SelectField<60 | 180 | 300 | 600 | 900 | 1_800 | 3_600>
-              field={false}
-              size="sm"
-              label="Fetch interval"
-              value={gitFetch.intervalSeconds}
-              selectedDisplay={selectedFetchInterval}
-              options={GIT_FETCH_INTERVAL_OPTIONS}
-              onChange={handleFetchIntervalChange}
-              placeholder="Every 3 minutes"
-              emptyText="No fetch intervals available."
-              triggerStyle={styles.rowPickerTrigger}
-              triggerTestID="host-page-git-fetch-interval"
-            />
-          </SettingsTargetScope>
-        </View>
-      ) : null}
-    </>
-  );
-}
-
-/**
- * The host default for where a project's Knowledge store lives.
- *
- * Deliberately a default and nothing more. A project's own override wins over
- * it, and so does a repository store that already exists on disk, so flipping
- * this never moves anyone's pages. It decides where projects that have no store
- * yet will start.
- */
-function ProjectKnowledgeStoreLocationCard({ serverId }: { serverId: string }) {
-  const isConnected = useHostRuntimeIsConnected(serverId);
-  const { config, patchConfig } = useDaemonConfig(serverId);
-  // COMPAT(projectKnowledgeStoreLocation): added in v0.8.18, drop the gate when daemon floor >= v0.8.18.
-  const isSupported = useSessionStore(
-    (state) =>
-      state.sessions[serverId]?.serverInfo?.features?.projectKnowledgeStoreLocation === true,
-  );
-
-  const handleValueChange = useCallback(
-    (next: boolean) => {
-      void patchConfig({
-        projectKnowledge: { defaultStoreLocation: next ? "host" : "repository" },
-      }).catch((error) => {
-        console.error("[HostPage] Failed to update the knowledge store default", error);
-        Alert.alert(
-          "Unable to update Knowledge storage",
-          error instanceof Error ? error.message : String(error),
-        );
-      });
-    },
-    [patchConfig],
-  );
-
-  if (!isConnected || !isSupported) return null;
-
-  return (
-    <View
-      style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}
-      testID="host-page-project-knowledge-store-card"
-    >
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="host-workspaces-workspaces-store-project-knowledge-on-this-host"
-          style={settingsStyles.rowTitle}
-        >
-          Store project Knowledge on this host
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          Keep new projects&apos; Knowledge pages with the daemon instead of in an .otto folder in
-          the repository, so nothing has to be gitignored. Projects that already have Knowledge in
-          their repository are left alone, and any project can override this in Project Settings.
-        </Text>
-      </View>
-      <Switch
-        value={config?.projectKnowledge?.defaultStoreLocation === "host"}
-        onValueChange={handleValueChange}
-        accessibilityLabel="Store project Knowledge on this host"
-        testID="host-page-project-knowledge-store-switch"
-      />
-    </View>
-  );
-}
-
-/**
- * The independent host default for project Artifacts. Existing repository and
- * host-local stores stay discoverable, so this selects future writes without
- * moving or hiding an artifact.
- */
-function ProjectArtifactStoreLocationCard({ serverId }: { serverId: string }) {
-  const isConnected = useHostRuntimeIsConnected(serverId);
-  const { config, patchConfig } = useDaemonConfig(serverId);
-  // COMPAT(artifactStoreLocation): added in v0.9.0, remove after 2027-02-28.
-  const isSupported = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.artifactStoreLocation === true,
-  );
-
-  const handleValueChange = useCallback(
-    (next: boolean) => {
-      void patchConfig({
-        projectArtifacts: { defaultStoreLocation: next ? "host" : "repository" },
-      }).catch((error) => {
-        console.error("[HostPage] Failed to update the Artifact store default", error);
-        Alert.alert(
-          "Unable to update Artifact storage",
-          error instanceof Error ? error.message : String(error),
-        );
-      });
-    },
-    [patchConfig],
-  );
-
-  if (!isConnected || !isSupported) return null;
-
-  return (
-    <View
-      style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}
-      testID="host-page-project-artifact-store-card"
-    >
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="host-workspaces-workspaces-store-project-artifacts-on-this-host"
-          style={settingsStyles.rowTitle}
-        >
-          Store project Artifacts on this host
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          Keep future Artifacts with this daemon instead of in the project&apos;s .otto folder.
-          Existing Artifacts remain available wherever they were created.
-        </Text>
-      </View>
-      <Switch
-        value={config?.projectArtifacts?.defaultStoreLocation === "host"}
-        onValueChange={handleValueChange}
-        accessibilityLabel="Store project Artifacts on this host"
-        testID="host-page-project-artifact-store-switch"
-      />
-    </View>
-  );
-}
-
-/** The Workflow default is independent from Knowledge, Artifacts, and Schedules. */
-function ProjectWorkflowStoreLocationCard({ serverId }: { serverId: string }) {
-  const isConnected = useHostRuntimeIsConnected(serverId);
-  const { config, patchConfig } = useDaemonConfig(serverId);
-  const isSupported = useSessionStore((state) =>
-    supportsWorkflowStorage({
-      categoryStorageResolver:
-        state.sessions[serverId]?.serverInfo?.features?.categoryStorageResolver,
-    }),
-  );
-  const handleValueChange = useCallback(
-    (next: boolean) => {
-      void patchConfig({
-        projectWorkflows: { defaultStoreLocation: next ? "host" : "repository" },
-      }).catch((error) => {
-        console.error("[HostPage] Failed to update the Workflow store default", error);
-        Alert.alert(
-          "Unable to update Workflow storage",
-          error instanceof Error ? error.message : String(error),
-        );
-      });
-    },
-    [patchConfig],
-  );
-  if (!isConnected || !isSupported) return null;
-  return (
-    <View
-      style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}
-      testID="host-page-project-workflow-store-card"
-    >
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="host-workspaces-workspaces-store-project-workflows-on-this-host"
-          style={settingsStyles.rowTitle}
-        >
-          Store project Workflows on this host
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          Choose where new Workflow definitions, templates, and run snapshots are written. Existing
-          Workflow material stays available in its original location.
-        </Text>
-      </View>
-      <Switch
-        value={config?.projectWorkflows?.defaultStoreLocation === "host"}
-        onValueChange={handleValueChange}
-        accessibilityLabel="Store project Workflows on this host"
-        testID="host-page-project-workflow-store-switch"
-      />
-    </View>
-  );
-}
-
-function HideMergeIntoBaseActionCard({ serverId }: { serverId: string }) {
-  const isConnected = useHostRuntimeIsConnected(serverId);
-  const { config, patchConfig } = useDaemonConfig(serverId);
-  // COMPAT(hideMergeIntoBaseSetting): added in v0.6.7, drop the gate when daemon floor >= v0.6.7.
-  const isSupported = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.hideMergeIntoBaseSetting === true,
-  );
-
-  const handleValueChange = useCallback(
-    (next: boolean) => {
-      void patchConfig({ hideMergeIntoBaseAction: next }).catch((error) => {
-        console.error("[HostPage] Failed to update hide merge into base action", error);
-        Alert.alert(
-          "Unable to update workspaces",
-          error instanceof Error ? error.message : String(error),
-        );
-      });
-    },
-    [patchConfig],
-  );
-
-  if (!isConnected || !isSupported) return null;
-
-  return (
-    <View
-      style={[settingsStyles.row, settingsStyles.rowBorder]}
-      testID="host-page-hide-merge-into-base-action-card"
-    >
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="host-workspaces-workspaces-hide-merge-into-base-branch"
-          style={settingsStyles.rowTitle}
-        >
-          Hide merge into base branch
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          Remove the &quot;Merge into base&quot; action from the source control menu, for a
-          pull-request-only workflow
-        </Text>
-      </View>
-      <Switch
-        value={config?.hideMergeIntoBaseAction === true}
-        onValueChange={handleValueChange}
-        accessibilityLabel="Hide merge into base branch"
-        testID="host-page-hide-merge-into-base-action-switch"
-      />
     </View>
   );
 }
@@ -1579,12 +967,7 @@ function EnableTerminalAgentHooksCard({ serverId }: { serverId: string }) {
     <View style={settingsStyles.card} testID="host-page-terminal-agent-hooks-card">
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-terminals-terminal-agents-enable-terminal-agent-hooks"
-            style={settingsStyles.rowTitle}
-          >
-            Enable terminal agent hooks
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>Enable terminal agent hooks</Text>
           <Text style={settingsStyles.rowHint}>
             Get notifications and status from terminal agents. This installs hooks in your agent
             config files.
@@ -1648,58 +1031,29 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
     setDraft(persistedPrompt);
   }, [persistedPrompt]);
 
-  const appendPromptFooter = useMemo(
-    () => (
-      <View style={APPEND_PROMPT_FOOTER_STYLE}>
-        <Button
-          variant="ghost"
-          size="sm"
-          onPress={handleReset}
-          disabled={!hasChanges || isSaving}
-          testID="host-page-append-system-prompt-reset"
-        >
-          {t("settings.host.orchestration.systemPrompt.reset")}
-        </Button>
-        <Button
-          variant="default"
-          size="sm"
-          onPress={handleSave}
-          disabled={!hasChanges || isSaving}
-          testID="host-page-append-system-prompt-save"
-        >
-          {isSaving
-            ? t("settings.host.orchestration.systemPrompt.saving")
-            : t("settings.host.orchestration.systemPrompt.save")}
-        </Button>
-      </View>
-    ),
-    [handleReset, handleSave, hasChanges, isSaving, t],
-  );
-
   if (!isConnected) return null;
 
   return (
     <>
-      <View style={settingsStyles.rowResponsive} testID="host-page-append-system-prompt-card">
-        <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-agents-agents-system-prompt"
-            style={settingsStyles.rowTitle}
+      <View style={settingsStyles.card} testID="host-page-append-system-prompt-card">
+        <View style={settingsStyles.row}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>
+              {t("settings.host.orchestration.systemPrompt.title")}
+            </Text>
+            <Text style={settingsStyles.rowHint}>
+              {t("settings.host.orchestration.systemPrompt.hint")}
+            </Text>
+          </View>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={handleOpen}
+            testID="host-page-append-system-prompt-edit"
           >
-            {t("settings.host.orchestration.systemPrompt.title")}
-          </SettingsTargetText>
-          <Text style={settingsStyles.rowHint}>
-            {t("settings.host.orchestration.systemPrompt.hint")}
-          </Text>
+            {t("settings.host.orchestration.systemPrompt.edit")}
+          </Button>
         </View>
-        <Button
-          variant="outline"
-          size="sm"
-          onPress={handleOpen}
-          testID="host-page-append-system-prompt-edit"
-        >
-          {t("settings.host.orchestration.systemPrompt.edit")}
-        </Button>
       </View>
 
       {isEditing ? (
@@ -1707,7 +1061,6 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
           header={header}
           visible
           onClose={handleClose}
-          footer={appendPromptFooter}
           testID="host-page-append-system-prompt-sheet"
           desktopMaxWidth={560}
         >
@@ -1718,6 +1071,28 @@ function AppendSystemPromptCard({ serverId }: { serverId: string }) {
             onChangeText={setDraft}
             placeholder={t("settings.host.orchestration.systemPrompt.placeholder")}
           />
+          <View style={styles.appendPromptActions}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={handleReset}
+              disabled={!hasChanges || isSaving}
+              testID="host-page-append-system-prompt-reset"
+            >
+              {t("settings.host.orchestration.systemPrompt.reset")}
+            </Button>
+            <Button
+              variant="default"
+              size="sm"
+              onPress={handleSave}
+              disabled={!hasChanges || isSaving}
+              testID="host-page-append-system-prompt-save"
+            >
+              {isSaving
+                ? t("settings.host.orchestration.systemPrompt.saving")
+                : t("settings.host.orchestration.systemPrompt.save")}
+            </Button>
+          </View>
         </AdaptiveModalSheet>
       ) : null}
     </>
@@ -1741,12 +1116,7 @@ function PairDeviceRow({ serverId }: { serverId: string }) {
         testID="host-page-pair-device-row"
       >
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-pair-device-pair-a-device-pair-a-device"
-            style={settingsStyles.rowTitle}
-          >
-            {t("settings.host.pairDevices.rowTitle")}
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>{t("settings.host.pairDevices.rowTitle")}</Text>
           <Text style={settingsStyles.rowHint}>{t("settings.host.pairDevices.rowHint")}</Text>
         </View>
         <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
@@ -1779,13 +1149,14 @@ function RemoveHostSection({
   const [isConfirming, setIsConfirming] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const daemonStatus = daemonStatusData?.status ?? null;
+  const stopsOwnedDaemon = isLocalDaemon && daemonStatus?.ownedByDesktop === true;
   const removeHostHeader = useMemo<SheetHeader>(
     () => ({
-      title: isLocalDaemon
+      title: stopsOwnedDaemon
         ? t("settings.host.daemon.remove.localConfirmTitle")
         : t("settings.host.daemon.remove.title"),
     }),
-    [isLocalDaemon, t],
+    [stopsOwnedDaemon, t],
   );
 
   const destructiveTextStyle = useMemo(
@@ -1818,7 +1189,7 @@ function RemoveHostSection({
         try {
           await updateSettings({ daemon: { manageBuiltInDaemon: false } });
           didDisableDaemonManagement = true;
-          if (daemonStatus?.status === "running" && daemonStatus.desktopManaged) {
+          if (daemonStatus?.status === "running" && daemonStatus.ownedByDesktop) {
             setStatus(await stopDesktopDaemon("host_remove"));
             didStopDaemon = true;
           }
@@ -1870,33 +1241,6 @@ function RemoveHostSection({
     [theme.iconSize.sm, theme.colors.destructive],
   );
 
-  const removeHostFooter = useMemo(
-    () => (
-      <View style={styles.sheetFooterRow}>
-        <Button
-          variant="secondary"
-          size="sm"
-          style={FLEX_1_STYLE}
-          onPress={handleCancel}
-          disabled={isRemoving}
-        >
-          {t("common.actions.cancel")}
-        </Button>
-        <Button
-          variant="destructive"
-          size="sm"
-          style={FLEX_1_STYLE}
-          onPress={handleConfirmRemove}
-          disabled={isRemoving}
-          testID="remove-host-confirm"
-        >
-          {t("settings.host.connections.removeAction")}
-        </Button>
-      </View>
-    ),
-    [handleCancel, handleConfirmRemove, isRemoving, t],
-  );
-
   return (
     <SettingsSection
       title={t("settings.host.daemon.dangerZone")}
@@ -1905,7 +1249,7 @@ function RemoveHostSection({
       <RestartDaemonCard host={host} />
 
       <View style={settingsStyles.card}>
-        <View style={settingsStyles.rowResponsive}>
+        <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>
               {isLocalDaemon
@@ -1913,13 +1257,12 @@ function RemoveHostSection({
                 : t("settings.host.daemon.remove.title")}
             </Text>
             <Text style={settingsStyles.rowHint}>
-              {isLocalDaemon
+              {stopsOwnedDaemon
                 ? t("settings.host.daemon.remove.localHint")
                 : t("settings.host.daemon.remove.hint")}
             </Text>
           </View>
-          <SettingsButton
-            settingIds={["host-host-danger-zone-remove-host"]}
+          <Button
             variant="outline"
             size="sm"
             leftIcon={removeIcon}
@@ -1928,7 +1271,7 @@ function RemoveHostSection({
             testID="host-page-remove-host-button"
           >
             {t("settings.host.connections.removeAction")}
-          </SettingsButton>
+          </Button>
         </View>
       </View>
 
@@ -1937,14 +1280,34 @@ function RemoveHostSection({
           header={removeHostHeader}
           visible
           onClose={handleCloseConfirm}
-          footer={removeHostFooter}
           testID="remove-host-confirm-modal"
         >
           <Text style={styles.confirmText}>
-            {isLocalDaemon
+            {stopsOwnedDaemon
               ? t("settings.host.daemon.remove.localConfirmMessage")
               : t("settings.host.daemon.remove.confirmMessage", { name: host.label })}
           </Text>
+          <View style={styles.confirmActions}>
+            <Button
+              variant="secondary"
+              size="sm"
+              style={FLEX_1_STYLE}
+              onPress={handleCancel}
+              disabled={isRemoving}
+            >
+              {t("common.actions.cancel")}
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              style={FLEX_1_STYLE}
+              onPress={handleConfirmRemove}
+              disabled={isRemoving}
+              testID="remove-host-confirm"
+            >
+              {t("settings.host.connections.removeAction")}
+            </Button>
+          </View>
         </AdaptiveModalSheet>
       ) : null}
     </SettingsSection>
@@ -1990,7 +1353,6 @@ function TerminalProfileRow({
   onMoveDown,
 }: TerminalProfileRowProps) {
   const { t } = useTranslation();
-  const iconSize = useIconSize();
 
   const handleEdit = useCallback(() => onEdit(profile.id), [onEdit, profile.id]);
   const handleRemove = useCallback(() => onRemove(profile.id), [onRemove, profile.id]);
@@ -2003,11 +1365,7 @@ function TerminalProfileRow({
       : profile.command;
 
   const rowStyle = useMemo(
-    () => [
-      settingsStyles.rowResponsive,
-      !isFirst && settingsStyles.rowBorder,
-      terminalProfileStyles.row,
-    ],
+    () => [settingsStyles.row, !isFirst && settingsStyles.rowBorder, terminalProfileStyles.row],
     [isFirst],
   );
 
@@ -2015,26 +1373,24 @@ function TerminalProfileRow({
 
   return (
     <View style={rowStyle} testID={`terminal-profile-row-${profile.id}`}>
-      <View style={terminalProfileStyles.rowPrimary}>
-        <View style={terminalProfileStyles.iconWrapper}>
-          {icon ? (
-            <ThemedDynamicProviderIcon
-              iconKey={icon}
-              size={iconSize.md}
-              uniProps={mutedColorMapping}
-            />
-          ) : (
-            <ThemedProfileSquareTerminal size={iconSize.md} uniProps={mutedColorMapping} />
-          )}
-        </View>
-        <View style={settingsStyles.rowContent}>
-          <Text style={settingsStyles.rowTitle} numberOfLines={1}>
-            {profile.name}
-          </Text>
-          <Text style={settingsStyles.rowHint} numberOfLines={1}>
-            {commandText}
-          </Text>
-        </View>
+      <View style={terminalProfileStyles.iconWrapper}>
+        {icon ? (
+          <ThemedDynamicProviderIcon
+            iconKey={icon}
+            size={ICON_SIZE.md}
+            uniProps={mutedColorMapping}
+          />
+        ) : (
+          <ThemedProfileSquareTerminal size={ICON_SIZE.md} uniProps={mutedColorMapping} />
+        )}
+      </View>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+          {profile.name}
+        </Text>
+        <Text style={settingsStyles.rowHint} numberOfLines={1}>
+          {commandText}
+        </Text>
       </View>
       <View style={terminalProfileStyles.rowActions}>
         <Button
@@ -2055,8 +1411,7 @@ function TerminalProfileRow({
           accessibilityLabel={t("settings.host.terminalProfiles.moveDown")}
           testID={`terminal-profile-move-down-${profile.id}`}
         />
-        <SettingsButton
-          settingIds={["host-terminals-terminal-profiles-edit-profile"]}
+        <Button
           variant="ghost"
           size="sm"
           leftIcon={editProfileIcon}
@@ -2064,8 +1419,7 @@ function TerminalProfileRow({
           accessibilityLabel={t("settings.host.terminalProfiles.editProfile")}
           testID={`terminal-profile-edit-${profile.id}`}
         />
-        <SettingsButton
-          settingIds={["host-terminals-terminal-profiles-delete-profile"]}
+        <Button
           variant="ghost"
           size="sm"
           leftIcon={removeProfileIcon}
@@ -2231,8 +1585,7 @@ function TerminalProfilesSection({ serverId }: { serverId: string }) {
 
   const addButton = useMemo(
     () => (
-      <SettingsButton
-        settingIds={["host-terminals-terminal-profiles-add-profile"]}
+      <Button
         variant="ghost"
         size="sm"
         leftIcon={addProfileIcon}
@@ -2309,148 +1662,6 @@ function TerminalProfilesSection({ serverId }: { serverId: string }) {
   );
 }
 
-type WindowsTerminalShell = NonNullable<ServerInfoStatusPayload["terminalShells"]>[number];
-
-function WindowsTerminalShellSection({ serverId }: { serverId: string }) {
-  const { config, patchConfig } = useDaemonConfig(serverId);
-  const serverInfo = useSessionStore((state) => state.sessions[serverId]?.serverInfo ?? null);
-  const [isSaving, setIsSaving] = useState(false);
-  const platform = serverInfo?.platform;
-  const terminalShells = serverInfo?.terminalShells;
-  const shells = useMemo(
-    () => (platform === "win32" ? (terminalShells ?? []) : []),
-    [platform, terminalShells],
-  );
-  const selectedShell = config?.defaultTerminalShell;
-  const shellOptions = useMemo<SelectFieldOption<WindowsTerminalShell["id"]>[]>(
-    () => shells.map((shell) => ({ id: shell.id, value: shell.id, label: shell.label })),
-    [shells],
-  );
-  const selectedDisplay = useMemo(() => {
-    const shell = shells.find((candidate) => candidate.id === selectedShell);
-    return shell ? { label: shell.label } : { label: "System default" };
-  }, [selectedShell, shells]);
-
-  const selectShell = useCallback(
-    async (id: "command-prompt" | "windows-powershell" | "powershell-7") => {
-      if (isSaving || selectedShell === id) return;
-      setIsSaving(true);
-      try {
-        await patchConfig({ defaultTerminalShell: id });
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [isSaving, patchConfig, selectedShell],
-  );
-
-  if (shells.length === 0) return null;
-
-  return (
-    <SettingsSection title="Default terminal shell">
-      <View style={settingsStyles.card} testID="windows-terminal-shells-card">
-        <View style={settingsStyles.rowResponsive}>
-          <View style={settingsStyles.rowContent}>
-            <Text style={settingsStyles.rowTitle}>Shell</Text>
-            <Text style={settingsStyles.rowHint}>Used for new terminal sessions.</Text>
-          </View>
-          <SettingsTargetScope
-            settingIds={["host-terminals-default-terminal-shell-default-terminal-shell"]}
-          >
-            <SelectField<WindowsTerminalShell["id"]>
-              field={false}
-              size="sm"
-              label="Default terminal shell"
-              value={selectedShell ?? null}
-              selectedDisplay={selectedDisplay}
-              options={shellOptions}
-              onChange={selectShell}
-              placeholder="System default"
-              emptyText="No terminal shells detected."
-              disabled={isSaving}
-              triggerStyle={styles.rowPickerTrigger}
-              triggerTestID="windows-terminal-shell-select"
-            />
-          </SettingsTargetScope>
-        </View>
-      </View>
-    </SettingsSection>
-  );
-}
-
-function TerminalAppearanceSection({ serverId }: { serverId: string }) {
-  const { config, patchConfig } = useDaemonConfig(serverId);
-  const supported = useHostFeature(serverId, "terminalTitleSettings");
-  const [isSaving, setIsSaving] = useState(false);
-  const mode = config?.terminalTitleMode ?? "auto";
-  const includePaths = config?.terminalTitleIncludePaths ?? false;
-
-  const update = useCallback(
-    async (patch: {
-      terminalTitleMode?: "auto" | "default";
-      terminalTitleIncludePaths?: boolean;
-    }) => {
-      if (isSaving) return;
-      setIsSaving(true);
-      try {
-        await patchConfig(patch);
-      } finally {
-        setIsSaving(false);
-      }
-    },
-    [isSaving, patchConfig],
-  );
-  const setAutoTitle = useCallback(
-    (value: boolean) => void update({ terminalTitleMode: value ? "auto" : "default" }),
-    [update],
-  );
-  const setIncludePaths = useCallback(
-    (value: boolean) => void update({ terminalTitleIncludePaths: value }),
-    [update],
-  );
-  if (!supported) return null;
-
-  return (
-    <SettingsSection title="Terminal appearance">
-      <View style={settingsStyles.card} testID="terminal-title-settings-card">
-        <View style={settingsStyles.rowResponsive}>
-          <View style={settingsStyles.rowContent}>
-            <SettingsTargetText
-              settingId="host-terminals-terminal-appearance-auto-title"
-              style={settingsStyles.rowTitle}
-            >
-              Auto title
-            </SettingsTargetText>
-            <Text style={settingsStyles.rowHint}>
-              Show the active shell or command. Turn off to keep the stable default name.
-            </Text>
-          </View>
-          <Switch
-            value={mode === "auto"}
-            onValueChange={setAutoTitle}
-            disabled={isSaving}
-            accessibilityLabel="Auto title"
-          />
-        </View>
-        {mode === "auto" ? (
-          <View style={[settingsStyles.rowResponsive, settingsStyles.rowBorder]}>
-            <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="host-terminals-terminal-appearance-include-paths-in-executable-titles"
-                style={settingsStyles.rowTitle}
-              >
-                Include paths in executable titles
-              </SettingsTargetText>
-              <Text style={settingsStyles.rowHint}>Off keeps titles concise, such as cmd.exe.</Text>
-            </View>
-            <Switch value={includePaths} onValueChange={setIncludePaths} disabled={isSaving} />
-          </View>
-        ) : null}
-      </View>
-    </SettingsSection>
-  );
-}
-
 export function HostTerminalsPage({ serverId }: { serverId: string }) {
   const host = useHostProfile(serverId);
 
@@ -2463,36 +1674,22 @@ export function HostTerminalsPage({ serverId }: { serverId: string }) {
       <SettingsSection title="Terminal agents">
         <EnableTerminalAgentHooksCard serverId={serverId} />
       </SettingsSection>
-      <TerminalCompatibilitySection serverId={serverId} />
-      <TerminalAppearanceSection serverId={serverId} />
-      <WindowsTerminalShellSection serverId={serverId} />
       <TerminalProfilesSection serverId={serverId} />
+      <OttoTerminalSettings serverId={serverId} />{" "}
+      {/* OTTO(terminal): extend the canonical host page, without a duplicate settings screen. */}
     </View>
   );
 }
 
 const terminalProfileStyles = StyleSheet.create((theme) => ({
   row: {
-    minHeight: 56,
-  },
-  // Icon + label; the first line of a profile row. Fills inline at sm+, stays
-  // full-width above the centered action buttons when the row stacks. Uses an
-  // auto flex-basis so it keeps its height in the stacked column (a 0 basis would
-  // collapse it and overlap the buttons).
-  rowPrimary: {
-    flexDirection: "row",
-    alignItems: "center",
     gap: theme.spacing[2],
-    flexGrow: { xs: 0, sm: 1 },
-    flexShrink: 1,
-    flexBasis: "auto",
-    alignSelf: { xs: "stretch", sm: "auto" },
+    minHeight: 56,
   },
   iconWrapper: {
     width: theme.iconSize.md,
     alignItems: "center",
     justifyContent: "center",
-    paddingLeft: 5,
   },
   rowActions: {
     flexDirection: "row",
@@ -2511,24 +1708,9 @@ const terminalProfileStyles = StyleSheet.create((theme) => ({
 }));
 
 const styles = StyleSheet.create((theme) => ({
-  // A picker sitting as the trailing control of a settings row. The desktop
-  // popover never renders narrower than the trigger it was measured from, so
-  // the trigger has to be wide enough to read the longest option, not just the
-  // selected one.
-  rowPickerTrigger: {
-    minWidth: 180,
-  },
-  daemonHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
+  updateFailure: {
+    marginHorizontal: theme.spacing[4],
     marginBottom: theme.spacing[4],
-  },
-  daemonHeaderLabel: {
-    flexShrink: 1,
-    fontSize: theme.fontSize.base,
-    fontWeight: theme.fontWeight.medium,
-    color: theme.colors.foreground,
   },
   identityBadges: {
     flexDirection: "row",
@@ -2541,11 +1723,6 @@ const styles = StyleSheet.create((theme) => ({
     width: 6,
     height: 6,
     borderRadius: theme.borderRadius.full,
-  },
-  statusText: {
-    // Explicit compact bump (not left to the ambient theme-patch scale).
-    fontSize: theme.fontSize.xs,
-    fontWeight: theme.fontWeight.normal,
   },
   badgePill: {
     flexDirection: "row",
@@ -2560,41 +1737,32 @@ const styles = StyleSheet.create((theme) => ({
     maxWidth: 200,
   },
   badgeText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
   },
-  errorText: {
-    color: theme.colors.palette.red[300],
-    fontSize: theme.fontSize.sm,
-    marginBottom: theme.spacing[2],
+  connectionError: {
+    marginBottom: theme.spacing[6],
   },
   connectionLatency: {
     fontSize: theme.fontSize.base,
     marginRight: theme.spacing[2],
   },
-  connectionTrailing: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
   confirmText: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
   },
-  // Action row handed to a sheet's `footer` slot. The sheet's footer wrapper
-  // already owns the padding, top border, and outer alignment - this only
-  // lays the buttons out inside it.
-  sheetFooterRow: {
-    flex: 1,
+  confirmActions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[3],
+    gap: theme.spacing[2],
+    marginTop: theme.spacing[4],
   },
-  // Reset is a ghost button and Save is intrinsic-width, so this pair trails to
-  // the right rather than splitting the bar the way the flex:1 pairs do.
-  sheetFooterRowTrailing: {
+  appendPromptActions: {
+    flexDirection: "row",
     justifyContent: "flex-end",
+    gap: theme.spacing[2],
   },
   emptyCard: {
     padding: theme.spacing[4],
@@ -2607,9 +1775,3 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 const FLEX_1_STYLE = { flex: 1 };
-const EMPTY_CARD_STYLE = [settingsStyles.card, styles.emptyCard];
-// Latency + Remove group: stacks below the connection title and centers on the
-// narrowest widths, hugs the right edge inline at sm+.
-const CONNECTION_TRAILING_STYLE = [styles.connectionTrailing, settingsStyles.rowControlGroup];
-
-const APPEND_PROMPT_FOOTER_STYLE = [styles.sheetFooterRow, styles.sheetFooterRowTrailing];

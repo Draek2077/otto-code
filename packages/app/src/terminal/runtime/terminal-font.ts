@@ -1,18 +1,8 @@
+import { terminalFontStack } from "../../otto/terminal/fonts"; // OTTO(terminal-fonts)
 const DEFAULT_TERMINAL_FONT_SIZE = 13;
 
-/** The family registered by Expo when the application starts. */
-export const BUNDLED_TERMINAL_FONT_FAMILY = "JetBrainsMono_400Regular";
-
-/**
- * A compact symbol-only Nerd Font shipped with Otto.
- *
- * This must stay after the user's text font so it supplies only missing PUA
- * glyphs, without changing their terminal's ordinary text face.
- */
-export const BUNDLED_NERD_SYMBOLS_FONT_FAMILY = "OttoNerdSymbols";
-
-const SYSTEM_TERMINAL_FONT_FALLBACKS = [
-  // Prefer user-installed developer fonts after Otto's bundled fallback.
+export const DEFAULT_TERMINAL_FONT_FAMILY = [
+  // Prefer common developer fonts, with Nerd Font variants for prompt/TUI glyphs.
   "JetBrains Mono",
   "JetBrainsMono Nerd Font",
   "JetBrainsMono NF",
@@ -29,23 +19,11 @@ const SYSTEM_TERMINAL_FONT_FALLBACKS = [
   "Consolas",
   "'Liberation Mono'",
   "monospace",
-];
-
-export const DEFAULT_TERMINAL_FONT_FAMILY = [
-  BUNDLED_TERMINAL_FONT_FAMILY,
-  BUNDLED_NERD_SYMBOLS_FONT_FAMILY,
-  ...SYSTEM_TERMINAL_FONT_FALLBACKS,
 ].join(", ");
 
 export function resolveTerminalFontFamily(fontFamily: string | undefined): string {
   const trimmed = fontFamily?.trim();
-  if (!trimmed) {
-    return DEFAULT_TERMINAL_FONT_FAMILY;
-  }
-
-  // A custom code font is a visual preference, not an opt-out from the terminal
-  // being able to render the PUA symbols emitted by modern CLIs and TUIs.
-  return [trimmed, BUNDLED_NERD_SYMBOLS_FONT_FAMILY, ...SYSTEM_TERMINAL_FONT_FALLBACKS].join(", ");
+  return terminalFontStack(trimmed, DEFAULT_TERMINAL_FONT_FAMILY); // OTTO(terminal-fonts): custom text face stays first, bundled symbols fill missing glyphs.
 }
 
 export function resolveTerminalFontSize(fontSize: number | undefined): number {

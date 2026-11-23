@@ -5,7 +5,6 @@ import {
   useState,
   type ForwardedRef,
   type ReactNode,
-  type ComponentType,
 } from "react";
 import {
   Pressable,
@@ -14,7 +13,6 @@ import {
   View,
   type PressableStateCallbackType,
   type TextStyle,
-  type TextProps,
   type ViewStyle,
 } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -25,19 +23,17 @@ import {
   resolveControlInteractionStyles,
   type FieldControlSize,
 } from "@/components/ui/control-geometry";
-import { useControlStatePreview } from "@/components/ui/control-state-preview";
 
-export interface FieldProps {
-  /** A presentation owner may attach label semantics without changing field geometry. */
-  Label?: ComponentType<TextProps>;
+interface FieldProps {
   label: string;
   children: ReactNode;
+  trailing?: ReactNode;
   hint?: string;
   error?: string | null;
   testID?: string;
 }
 
-export function Field({ label, children, hint, error, testID, Label = Text }: FieldProps) {
+export function Field({ label, children, trailing, hint, error, testID }: FieldProps) {
   const hintTestID = useMemo(() => (testID ? `${testID}-hint` : undefined), [testID]);
   const errorTestID = useMemo(() => (testID ? `${testID}-error` : undefined), [testID]);
   const subtext = useMemo(() => {
@@ -60,7 +56,10 @@ export function Field({ label, children, hint, error, testID, Label = Text }: Fi
 
   return (
     <View style={styles.container} testID={testID}>
-      <Label style={styles.label}>{label}</Label>
+      <View style={styles.header}>
+        <Text style={styles.label}>{label}</Text>
+        {trailing}
+      </View>
       {children}
       {subtext}
     </View>
@@ -161,9 +160,7 @@ function assignTextInputRef(
 
 export const FormTextInput = forwardRef<EditingTextInputHandle, FormTextInputProps>(
   function FormTextInput({ size = "md", style, onFocus, onBlur, editable, ...props }, ref) {
-    const [eventFocused, setEventFocused] = useState(false);
-    const preview = useControlStatePreview();
-    const focused = preview?.focused ?? eventFocused;
+    const [focused, setFocused] = useState(false);
     const isDisabled = editable === false;
     const chromeSizeStyle = size === "sm" ? formInputStyles.chromeSm : formInputStyles.chromeMd;
     const inputSizeStyle = size === "sm" ? formInputStyles.inputSm : formInputStyles.inputMd;
@@ -176,14 +173,14 @@ export const FormTextInput = forwardRef<EditingTextInputHandle, FormTextInputPro
     );
     const handleFocus = useCallback<NonNullable<AdaptiveTextInputProps["onFocus"]>>(
       (event) => {
-        setEventFocused(true);
+        setFocused(true);
         onFocus?.(event);
       },
       [onFocus],
     );
     const handleBlur = useCallback<NonNullable<AdaptiveTextInputProps["onBlur"]>>(
       (event) => {
-        setEventFocused(false);
+        setFocused(false);
         onBlur?.(event);
       },
       [onBlur],
@@ -193,7 +190,7 @@ export const FormTextInput = forwardRef<EditingTextInputHandle, FormTextInputPro
       [inputSizeStyle, splitStyle.inputStyle],
     ) as AdaptiveTextInputProps["style"];
     const chromeStyle = useCallback(
-      ({ hovered: eventHovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
+      ({ hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
         formInputStyles.chrome,
         chromeSizeStyle,
         resolveControlInteractionStyles(
@@ -204,14 +201,14 @@ export const FormTextInput = forwardRef<EditingTextInputHandle, FormTextInputPro
             controlDisabled: formInputStyles.controlDisabled,
           },
           {
-            hovered: preview?.hovered ?? eventHovered,
+            hovered,
             focused,
             disabled: isDisabled,
           },
         ),
         splitStyle.chromeStyle,
       ],
-      [chromeSizeStyle, focused, isDisabled, preview, splitStyle.chromeStyle],
+      [chromeSizeStyle, focused, isDisabled, splitStyle.chromeStyle],
     );
 
     return (
@@ -233,7 +230,15 @@ const styles = StyleSheet.create((theme) => ({
   container: {
     gap: theme.spacing[2],
   },
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
+  },
   label: {
+    flexShrink: 1,
+    minWidth: 0,
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,

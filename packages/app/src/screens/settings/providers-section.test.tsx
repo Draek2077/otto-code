@@ -4,69 +4,48 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import type { MutableDaemonConfig } from "@otto-code/protocol/messages";
+import type { ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
+import type { MutableDaemonConfig } from "@getpaseo/protocol/messages";
+import { ToastApiProvider } from "@/contexts/toast-api-context";
 
 const { theme, snapshotState, configState, patchConfigMock, openProviderSettingsMock } = vi.hoisted(
-  () => {
-    // The values this screen actually renders are spelled out below. Everything
-    // else resolves to an empty stand-in: StyleSheet.create factories run for
-    // every module in the import graph (tooltip, dropdown-menu, ...), and a
-    // missing token throws at import time rather than where it is used. Style
-    // values are never asserted on, so a stand-in is harmless.
-    const permissive = (real: Record<string, unknown>): Record<string, unknown> =>
-      new Proxy(real, {
-        get: (target, key) => {
-          if (typeof key === "symbol") {
-            return target[key as unknown as string];
-          }
-          if (key in target) {
-            const value = target[key];
-            return value !== null && typeof value === "object"
-              ? permissive(value as Record<string, unknown>)
-              : value;
-          }
-          return permissive({});
-        },
-      });
-
-    return {
-      theme: permissive({
-        spacing: { 1: 4, "1.5": 6, 2: 8, 3: 12, 4: 16, 6: 24 },
-        iconSize: { sm: 14, md: 20 },
-        fontSize: { xs: 11, sm: 13, base: 15 },
-        fontWeight: { normal: "400" },
-        borderRadius: { lg: 8 },
-        opacity: { 50: 0.5 },
-        colors: {
-          surface1: "#111",
-          surface2: "#222",
-          surface3: "#333",
-          foreground: "#fff",
-          foregroundMuted: "#aaa",
-          border: "#555",
-          accent: "#0a84ff",
-          statusSuccess: "#00ff00",
-          statusWarning: "#ff9500",
-          statusDanger: "#ff0000",
-          palette: { red: { 300: "#ff6b6b" }, white: "#fff" },
-        },
-      }),
-      snapshotState: {
-        entries: undefined as ProviderSnapshotEntry[] | undefined,
-        isLoading: false,
-        isRefreshing: false,
+  () => ({
+    theme: {
+      spacing: { 1: 4, "1.5": 6, 2: 8, 3: 12, 4: 16, 6: 24 },
+      iconSize: { sm: 14, md: 20 },
+      fontSize: { xs: 11, sm: 13, base: 15 },
+      fontWeight: { normal: "400" },
+      borderRadius: { lg: 8 },
+      opacity: { 50: 0.5 },
+      colors: {
+        surface1: "#111",
+        surface2: "#222",
+        surface3: "#333",
+        foreground: "#fff",
+        foregroundMuted: "#aaa",
+        border: "#555",
+        accent: "#0a84ff",
+        statusSuccess: "#00ff00",
+        statusWarning: "#ff9500",
+        statusDanger: "#ff0000",
+        palette: { red: { 300: "#ff6b6b" }, white: "#fff" },
       },
-      configState: {
-        config: null as MutableDaemonConfig | null,
-      },
-      patchConfigMock: vi.fn(async () => undefined),
-      openProviderSettingsMock: vi.fn(),
-    };
-  },
+    },
+    snapshotState: {
+      entries: undefined as ProviderSnapshotEntry[] | undefined,
+      isLoading: false,
+      isRefreshing: false,
+    },
+    configState: {
+      config: null as MutableDaemonConfig | null,
+    },
+    patchConfigMock: vi.fn(async () => undefined),
+    openProviderSettingsMock: vi.fn(),
+  }),
 );
 
 vi.mock("react-native", () => ({
+  Platform: { OS: "web" },
   View: ({ children, testID }: { children?: React.ReactNode; testID?: string }) =>
     React.createElement("div", { "data-testid": testID }, children),
   Text: ({ children }: { children?: React.ReactNode }) =>
@@ -106,25 +85,6 @@ vi.mock("react-native", () => ({
       typeof children === "function" ? children({ pressed: false, hovered: false }) : children,
     ),
   ActivityIndicator: () => React.createElement("span", { "data-testid": "activity-indicator" }),
-  Platform: {
-    OS: "web",
-    select: (options: Record<string, unknown>) => options.web ?? options.default,
-  },
-  // Below here nothing is rendered by this screen. react-native-reanimated
-  // re-exports a slice of react-native at import time to build its Animated.*
-  // wrappers, and a missing binding fails the whole module graph rather than
-  // the line that uses it - so these exist purely to keep the import loading.
-  FlatList: () => null,
-  Image: () => null,
-  ScrollView: () => null,
-  TextInput: () => null,
-  StyleSheet: { create: (styles: unknown) => styles, flatten: (style: unknown) => style },
-  PixelRatio: { get: () => 1, getFontScale: () => 1, roundToNearestPixel: (n: number) => n },
-  I18nManager: { isRTL: false },
-  Dimensions: { get: () => ({ width: 1024, height: 768, scale: 1, fontScale: 1 }) },
-  Appearance: { getColorScheme: () => "light" },
-  processColor: (color: unknown) => color,
-  findNodeHandle: () => null,
 }));
 
 vi.mock("react-native-unistyles", () => ({
@@ -132,36 +92,46 @@ vi.mock("react-native-unistyles", () => ({
     create: (factory: unknown) =>
       typeof factory === "function" ? (factory as (t: typeof theme) => unknown)(theme) : factory,
   },
-  useUnistyles: () => ({ theme, rt: { breakpoint: "lg" } }),
-  withUnistyles: (component: unknown) => component,
+  useUnistyles: () => ({ theme, rt: { breakpoint: "md" } }),
 }));
 
-// Derived from the real export list rather than hand-listed: this module re-exports the
-// whole Material Symbols barrel, so a named mock goes stale as soon as the screen reaches
-// for another glyph.
-vi.mock("@/components/icons/material-icons", async (importOriginal) => {
-  const actual = (await importOriginal()) as Record<string, unknown>;
+vi.mock("lucide-react-native", () => {
   const icon = (name: string) => () => React.createElement("span", { "data-icon": name });
-  return Object.fromEntries(Object.keys(actual).map((name) => [name, icon(name)]));
+  return {
+    ChevronRight: icon("ChevronRight"),
+    MoreHorizontal: icon("MoreHorizontal"),
+    Trash2: icon("Trash2"),
+  };
 });
 
-vi.mock("react-i18next", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react-i18next")>()),
+vi.mock("react-i18next", () => ({
   useTranslation: () => ({
-    t: (key: string, values?: Record<string, string | number>) => {
-      if (key === "settings.providers.providerDetails") return `${values?.name} provider details`;
-      if (key === "settings.providers.enableProvider") return `Enable ${values?.name}`;
-      if (key === "settings.providers.statuses.disabled") return "Disabled";
-      if (key === "settings.providers.statuses.available") return "Available";
-      if (key === "settings.providers.statuses.loading") return "Loading";
-      if (key === "settings.providers.statuses.error") return "Error";
-      if (key === "settings.providers.statuses.notInstalled") return "Not installed";
-      if (key === "settings.providers.models.one") return "1 model";
-      if (key === "settings.providers.models.many") return `${values?.count} models`;
-      if (key === "settings.providers.addErrorTitle") return "Unable to add provider";
-      if (key === "settings.providers.updateErrorTitle") return "Unable to update provider";
-      return key;
-    },
+    t: (key: string, values?: Record<string, string | number>) =>
+      (
+        ({
+          "settings.providers.providerDetails": "{{name}} provider details",
+          "settings.providers.enableProvider": "Enable {{name}}",
+          "settings.providers.statuses.disabled": "Disabled",
+          "settings.providers.statuses.available": "Available",
+          "settings.providers.statuses.loading": "Loading",
+          "settings.providers.statuses.error": "Error",
+          "settings.providers.statuses.notInstalled": "Not installed",
+          "settings.providers.models.one": "1 model",
+          "settings.providers.models.many": "{{count}} models",
+          "settings.providers.addErrorTitle": "Unable to add provider",
+          "settings.providers.updateErrorTitle": "Unable to update provider",
+          "settings.providers.actions.menu": "{{name}} actions",
+          "settings.providers.actions.remove": "Remove provider",
+          "settings.providers.actions.removing": "Removing...",
+          "settings.providers.remove.confirmTitle": "Remove {{name}}?",
+          "settings.providers.remove.confirmMessage":
+            "This deletes the provider entry from config.json. It cannot be undone.",
+          "settings.providers.remove.confirm": "Remove",
+          "settings.providers.remove.errorTitle": "Unable to remove provider",
+        })[key] ?? key
+      )
+        .replaceAll("{{name}}", String(values?.name ?? ""))
+        .replaceAll("{{count}}", String(values?.count ?? "")),
   }),
 }));
 
@@ -197,12 +167,75 @@ vi.mock("@/components/ui/loading-spinner", () => ({
   LoadingSpinner: () => React.createElement("span", { "data-testid": "loading-spinner" }),
 }));
 
+vi.mock("@/components/settings/headings/settings-info-tip", () => ({
+  SettingsInfoTip: () => null,
+}));
+
+vi.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", null, children),
+  DropdownMenuTrigger: ({
+    children,
+    onPressIn,
+    accessibilityRole,
+    accessibilityLabel,
+    testID,
+  }: {
+    children?:
+      | React.ReactNode
+      | ((state: { pressed: boolean; hovered: boolean; open: boolean }) => React.ReactNode);
+    onPressIn?: (event: { stopPropagation: () => void }) => void;
+    accessibilityRole?: string;
+    accessibilityLabel?: string;
+    testID?: string;
+  }) =>
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        role: accessibilityRole,
+        "aria-label": accessibilityLabel,
+        "data-testid": testID,
+        onMouseDown: (event: React.MouseEvent) => onPressIn?.(event),
+        onClick: (event: React.MouseEvent) => event.stopPropagation(),
+      },
+      typeof children === "function"
+        ? children({ pressed: false, hovered: false, open: false })
+        : children,
+    ),
+  DropdownMenuContent: ({ children }: { children?: React.ReactNode }) =>
+    React.createElement("div", null, children),
+  DropdownMenuItem: ({
+    children,
+    onSelect,
+    status,
+    pendingLabel,
+    testID,
+  }: {
+    children?: React.ReactNode;
+    onSelect?: () => void;
+    status?: "idle" | "pending" | "success";
+    pendingLabel?: string;
+    testID?: string;
+  }) =>
+    React.createElement(
+      "button",
+      {
+        type: "button",
+        "data-testid": testID,
+        disabled: status === "pending" || status === "success",
+        onClick: (event: React.MouseEvent) => {
+          event.stopPropagation();
+          onSelect?.();
+        },
+      },
+      status === "pending" ? pendingLabel : children,
+    ),
+}));
+
 vi.mock("@/components/provider-icons", () => ({
-  getProviderIcon: (provider: string, serverId: string) => () =>
-    React.createElement("span", {
-      "data-icon": `provider-${provider}`,
-      "data-server-id": serverId,
-    }),
+  useProviderIcon: (provider: string) => () =>
+    React.createElement("span", { "data-icon": `provider-${provider}` }),
 }));
 
 vi.mock("@/stores/provider-settings-store", () => ({
@@ -239,7 +272,21 @@ vi.mock("@/runtime/host-runtime", () => ({
   useHostRuntimeIsConnected: () => true,
 }));
 
+vi.mock("@/runtime/host-features", () => ({
+  useHostFeature: () => false,
+}));
+
+vi.mock("@/utils/confirm-dialog", () => ({
+  confirmDialog: vi.fn(async () => true),
+}));
+
 import { ProvidersSection } from "./providers-section";
+
+function unexpectedToast(): never {
+  throw new Error("Provider row interactions should not display a toast");
+}
+
+const toastApi = { show: unexpectedToast, copied: unexpectedToast, error: unexpectedToast };
 
 const claudeEntry: ProviderSnapshotEntry = {
   provider: "claude",
@@ -271,61 +318,11 @@ function makeConfig(providers: MutableDaemonConfig["providers"] = {}): MutableDa
     relay: { enabled: false },
     mcp: { injectIntoAgents: false },
     browserTools: { enabled: false },
-    lsp: {
-      enabled: true,
-      languages: {},
-      maxRunningServers: 6,
-      idleMinutes: 10,
-      backgroundIdleMinutes: 2,
-    },
-    dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
     providers,
-    metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
-    savedProviderEndpoints: [],
-    modelVisibilityOverrides: [],
-    agentBehaviors: {
-      promptSuggestions: true,
-      agentProgressSummaries: true,
-      notifyOnFinishDefault: true,
-      todoNudge: true,
-      todoReconcileOnIdle: true,
-      stallGuardThreshold: 15,
-    },
-    agentPersonalities: { personalities: [] },
-    agentProfiles: [],
-    agentTeams: { teams: [] },
-    modelTierOverrides: [],
-    connectors: [],
+    metadataGeneration: { providers: [] },
     autoArchiveAfterMerge: false,
-    hideMergeIntoBaseAction: false,
-    attachmentImageMaxAgeDays: 30,
-    attachmentImageMaxTotalMb: 512,
     enableTerminalAgentHooks: false,
     appendSystemPrompt: "",
-    brain: {
-      enabled: false,
-      autoStart: false,
-      mode: "local",
-      remote: { host: "", port: 1234, secure: false, authToken: null, certFingerprint: null },
-      listen: { host: "127.0.0.1", port: 1234 },
-      defaultModel: null,
-      maxLoadedModels: 1,
-      lockedModels: [],
-      runtime: { source: "auto", path: null, logVerbosity: 3 },
-      lockModel: false,
-      allowRemoteConfig: false,
-      allowInsecureBind: false,
-      authMode: "none",
-      authToken: null,
-      tls: {
-        mode: "off",
-        certFile: null,
-        keyFile: null,
-        hostname: null,
-        certDir: null,
-        renewBeforeDays: 30,
-      },
-    },
   };
 }
 
@@ -376,7 +373,11 @@ describe("ProvidersSection", () => {
 
   function render(): void {
     act(() => {
-      root?.render(<ProvidersSection serverId="server-1" />);
+      root?.render(
+        <ToastApiProvider api={toastApi}>
+          <ProvidersSection serverId="server-1" />
+        </ToastApiProvider>,
+      );
     });
   }
 
@@ -427,7 +428,6 @@ describe("ProvidersSection", () => {
 
     expect(chevron).toBeGreaterThanOrEqual(0);
     expect(icon).toBeGreaterThan(chevron);
-    expect(nodes[icon].getAttribute("data-server-id")).toBe("server-1");
     expect(label).toBeGreaterThan(icon);
     expect(status).toBeGreaterThan(label);
     expect(modelCount).toBeGreaterThan(status);
@@ -451,7 +451,6 @@ describe("ProvidersSection", () => {
     expect(openProviderSettingsMock).toHaveBeenCalledWith({
       serverId: "server-1",
       provider: "codex",
-      settingId: null,
     });
   });
 

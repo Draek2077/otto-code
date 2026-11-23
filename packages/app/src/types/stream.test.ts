@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyStreamEvent,
-  buildOptimisticUserMessage,
   createUserMessage,
   handoffCreatedAgentUserMessageToStream,
   hydrateStreamState,
@@ -17,12 +16,57 @@ import {
   upsertUserMessage,
   upsertUserMessageAcrossStream,
 } from "./stream";
-import type { AgentProvider, ToolCallDetail } from "@otto-code/protocol/agent-types";
-import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
-import { buildToolCallDisplayModel } from "@otto-code/protocol/tool-call-display";
-import { timelineItemIdentity } from "@otto-code/protocol/timeline-identity";
+import type { AgentProvider, ToolCallDetail } from "@getpaseo/protocol/agent-types";
+import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
+import { buildToolCallDisplayModel } from "@getpaseo/protocol/tool-call-display";
+import { timelineItemIdentity } from "@getpaseo/protocol/timeline-identity";
 
 type CanonicalToolStatus = "running" | "completed" | "failed" | "canceled";
+
+it("updates a resolved Claude plan at its proposal position across a follow-up", () => {
+  const proposal = {
+    type: "timeline",
+    provider: "claude",
+    turnId: "turn-1",
+    item: {
+      type: "tool_call",
+      callId: "plan-1",
+      name: "ExitPlanMode",
+      status: "running",
+      error: null,
+      detail: { type: "plan", text: "Ship it" },
+    },
+  } satisfies AgentStreamEventPayload;
+  const pending = reduceStreamUpdate([], proposal, new Date(1));
+  const steered = reduceStreamUpdate(
+    pending,
+    {
+      type: "timeline",
+      provider: "claude",
+      turnId: "turn-1",
+      item: { type: "user_message", text: "What about tests?", messageId: "question" },
+    },
+    new Date(2),
+  );
+  const resolved = reduceStreamUpdate(
+    steered,
+    {
+      ...proposal,
+      item: {
+        ...proposal.item,
+        name: "plan_approval",
+        status: "completed",
+        metadata: { approved: false },
+      },
+    },
+    new Date(3),
+  );
+  expect(resolved.map((item) => item.kind)).toEqual(["tool_call", "user_message"]);
+  expect(resolved[0]?.id).toBe(pending[0]?.id);
+  expect(resolved[0]).toMatchObject({
+    payload: { data: { name: "plan_approval", metadata: { approved: false } } },
+  });
+});
 
 describe("plugin timeline rows", () => {
   it("uses the protocol identity format for stream tool and plugin rows", () => {
@@ -291,12 +335,10 @@ function assistantTimeline(
   text: string,
   provider: AgentProvider = "claude",
   messageId?: string,
-  turnId?: string,
 ): AgentStreamEventPayload {
   return {
     type: "timeline",
     provider,
-    ...(turnId ? { turnId } : {}),
     item: { type: "assistant_message", text, ...(messageId ? { messageId } : {}) },
   };
 }
@@ -841,7 +883,7 @@ describe("stream reducer canonical tool calls", () => {
     expect(new Set(messages.map((message) => message.id)).size).toBe(2);
   });
 
-  it("keeps every promoted block when an assistant message resumes after a tool", () => {
+  it("keeps whole messages when an assistant resumes after a tool", () => {
     const messageId = "msg-promoted-resume";
     let tail: StreamItem[] = [];
     let head: StreamItem[] = [];
@@ -884,15 +926,13 @@ describe("stream reducer canonical tool calls", () => {
         item.kind === "assistant_message",
     );
     expect(messages.map((message) => message.text)).toEqual([
-      "Before one.",
-      "Before two.",
-      "After one.",
-      "After two.",
+      "Before one.\n\nBefore two.",
+      "After one.\n\nAfter two.",
     ]);
     expect(new Set(messages.map((message) => message.id)).size).toBe(messages.length);
   });
 
-  it("keeps the timeline position on every promoted assistant block", () => {
+  it("keeps the timeline position on the whole assistant message", () => {
     const timelineCursor = { epoch: "epoch-1", seq: 42 };
     const result = applyStreamEvent({
       tail: [],
@@ -907,13 +947,9 @@ describe("stream reducer canonical tool calls", () => {
         item.kind === "assistant_message",
     );
     expect(messages.map((message) => message.text)).toEqual([
-      "First paragraph.",
-      "Second paragraph.",
+      "First paragraph.\n\nSecond paragraph.",
     ]);
-    expect(messages.map((message) => message.timelineCursor)).toEqual([
-      timelineCursor,
-      timelineCursor,
-    ]);
+    expect(messages.map((message) => message.timelineCursor)).toEqual([timelineCursor]);
   });
 
   it("preserves old assistant merge behavior when message ids are absent", () => {
@@ -1232,12 +1268,7 @@ describe("stream reducer canonical tool calls", () => {
     const state = hydrateStreamState([
       {
         event: todoTimeline([
-          {
-            text: "Outline",
-            completed: false,
-            status: "in_progress",
-            activeForm: "Outlining",
-          },
+          { text: "Outline", completed: false },
           { text: "Ship", completed: true },
         ]),
         timestamp: new Date("2025-01-01T10:50:00Z"),
@@ -1250,12 +1281,11 @@ describe("stream reducer canonical tool calls", () => {
 
     assert.ok(todos);
     assert.strictEqual(todos.items.length, 2);
-    assert.strictEqual(todos.items[0]?.activeForm, "Outlining");
     assert.strictEqual(todos.items[1]?.completed, true);
     assert.deepStrictEqual(todos.activity, { type: "created", count: 2 });
   });
 
-  it("keeps one evolving card and labels it with the latest change", () => {
+  it("turns task snapshots into semantic timeline activity", () => {
     const state = hydrateStreamState([
       {
         event: todoTimeline([
@@ -1287,73 +1317,12 @@ describe("stream reducer canonical tool calls", () => {
       },
     ]);
 
-    // One card, never a copy per update - the transcript must not stack
-    // full-size snapshots of the same live checklist beside the pinned overlay.
-    expect(state.filter((item) => item.kind === "todo_list")).toEqual([
-      expect.objectContaining({
-        activity: { type: "completed", task: "Ship fix" },
-        items: [
-          expect.objectContaining({ text: "Inspect provider", status: "completed" }),
-          expect.objectContaining({ text: "Ship fix", status: "completed" }),
-        ],
-      }),
-    ]);
-  });
-
-  it("reports the completion when one update finishes a task and starts the next", () => {
-    const state = hydrateStreamState([
-      {
-        event: todoTimeline([
-          { id: "a", text: "Inspect provider", completed: false, status: "in_progress" },
-          { id: "b", text: "Ship fix", completed: false, status: "pending" },
-        ]),
-        timestamp: new Date("2025-01-01T10:50:00Z"),
-      },
-      {
-        event: todoTimeline([
-          { id: "a", text: "Inspect provider", completed: true, status: "completed" },
-          { id: "b", text: "Ship fix", completed: false, status: "in_progress" },
-        ]),
-        timestamp: new Date("2025-01-01T10:50:01Z"),
-      },
-    ]);
-
-    const todos = state.filter((item) => item.kind === "todo_list");
-    assert.strictEqual(todos.length, 1);
-    expect(todos[0]).toMatchObject({
-      activity: { type: "completed", task: "Inspect provider" },
-    });
-  });
-
-  it("starts a new card for the checklist of a later turn", () => {
-    const state = hydrateStreamState([
-      {
-        event: todoTimeline([{ id: "a", text: "Inspect provider", completed: true }]),
-        timestamp: new Date("2025-01-01T10:50:00Z"),
-      },
-      {
-        event: {
-          type: "timeline",
-          provider: "codex",
-          item: { type: "user_message", text: "next thing please" },
-        },
-        timestamp: new Date("2025-01-01T10:51:00Z"),
-      },
-      {
-        event: todoTimeline([{ id: "c", text: "Write the doc", completed: false }]),
-        timestamp: new Date("2025-01-01T10:52:00Z"),
-      },
-    ]);
-
-    expect(state.filter((item) => item.kind === "todo_list")).toEqual([
-      expect.objectContaining({
-        activity: { type: "created", count: 1 },
-        items: [expect.objectContaining({ text: "Inspect provider" })],
-      }),
-      expect.objectContaining({
-        activity: { type: "created", count: 1 },
-        items: [expect.objectContaining({ text: "Write the doc" })],
-      }),
+    expect(state.flatMap((item) => (item.kind === "todo_list" ? [item.activity] : []))).toEqual([
+      { type: "created", count: 2 },
+      { type: "started", task: "Inspect provider" },
+      { type: "completed", task: "Inspect provider" },
+      { type: "started", task: "Ship fix" },
+      { type: "completed", task: "Ship fix" },
     ]);
   });
 
@@ -1375,16 +1344,9 @@ describe("stream reducer canonical tool calls", () => {
       },
     ]);
 
-    // Otto presents one evolving checklist per turn. Reused provider IDs still
-    // must not label unrelated new work as reopening the completed old tasks.
-    expect(state.filter((item) => item.kind === "todo_list")).toEqual([
-      expect.objectContaining({
-        activity: { type: "started", task: "Investigate unrelated bug" },
-        items: [
-          expect.objectContaining({ text: "Investigate unrelated bug", status: "in_progress" }),
-          expect.objectContaining({ text: "Write unrelated test", status: "pending" }),
-        ],
-      }),
+    expect(state.flatMap((item) => (item.kind === "todo_list" ? [item.activity] : []))).toEqual([
+      { type: "created", count: 2 },
+      { type: "started", task: "Investigate unrelated bug" },
     ]);
   });
 
@@ -1541,52 +1503,6 @@ describe("stream reducer canonical tool calls", () => {
     assert.strictEqual(message.timestamp.getTime(), submittedTimestamp.getTime());
   });
 
-  it("adds the daemon image reference when reconciling a submitted user image", () => {
-    const messageId = "msg-user-remote-image";
-    const remoteImages = [
-      {
-        path: "/otto/sent-attachments/image.png",
-        mimeType: "image/png",
-      },
-    ];
-    const state = reduceStreamUpdate(
-      [
-        {
-          kind: "user_message",
-          id: messageId,
-          clientMessageId: messageId,
-          text: "Analyze this image",
-          timestamp: new Date("2025-01-01T11:10:00Z"),
-          images: [
-            {
-              id: "att-submitted",
-              mimeType: "image/png",
-              storageType: "native-file",
-              storageKey: "/tmp/submitted.png",
-              createdAt: Date.now(),
-            },
-          ],
-        },
-      ],
-      {
-        type: "timeline",
-        provider: "claude",
-        item: {
-          type: "user_message",
-          text: "Analyze this image",
-          messageId,
-          clientMessageId: messageId,
-          images: remoteImages,
-        },
-      },
-      new Date("2025-01-01T11:10:01Z"),
-    );
-
-    const message = state.find((item) => item.kind === "user_message");
-    assert.ok(message);
-    assert.deepStrictEqual(message.remoteImages, remoteImages);
-  });
-
   it("keeps canonical assistant/user/assistant order during replay", () => {
     const state: StreamItem[] = [
       {
@@ -1667,85 +1583,6 @@ describe("stream reducer canonical tool calls", () => {
       next[0]?.kind === "assistant_message" ? next[0].text : null,
       "Saved that preference. Right. And it probably isn't.",
     );
-  });
-
-  it("keeps a late assistant segment before a queued follow-up from the next turn", () => {
-    const tail: StreamItem[] = [];
-    const head: StreamItem[] = [
-      {
-        kind: "assistant_message",
-        id: "assistant-first",
-        messageId: "assistant-first",
-        turnId: "turn-first",
-        text: "Done.",
-        timestamp: new Date("2025-01-01T11:22:00Z"),
-      },
-      {
-        kind: "user_message",
-        id: "user-follow-up",
-        clientMessageId: "user-follow-up",
-        turnId: "turn-second",
-        text: "One more thing.",
-        timestamp: new Date("2025-01-01T11:22:01Z"),
-      },
-    ];
-
-    const result = applyStreamEvent({
-      tail,
-      head,
-      event: assistantTimeline("Checks pass.", "claude", "assistant-final", "turn-first"),
-      timestamp: new Date("2025-01-01T11:22:02Z"),
-      source: "live",
-    });
-
-    expect(result.tail).toEqual([]);
-    expect(
-      result.head.map((item) => [item.kind, item.kind === "assistant_message" ? item.text : null]),
-    ).toEqual([
-      ["assistant_message", "Done."],
-      ["assistant_message", "Checks pass."],
-      ["user_message", null],
-    ]);
-    expect(result.head[1]).toMatchObject({
-      messageId: "assistant-final",
-      turnId: "turn-first",
-    });
-  });
-
-  it("does not mint an empty bubble when that late segment opens with whitespace", () => {
-    const head: StreamItem[] = [
-      {
-        kind: "assistant_message",
-        id: "assistant-first",
-        messageId: "assistant-first",
-        turnId: "turn-first",
-        text: "Done.",
-        timestamp: new Date("2025-01-01T11:22:00Z"),
-      },
-      {
-        kind: "user_message",
-        id: "user-follow-up",
-        clientMessageId: "user-follow-up",
-        turnId: "turn-second",
-        text: "One more thing.",
-        timestamp: new Date("2025-01-01T11:22:01Z"),
-      },
-    ];
-
-    // Providers routinely open a segment with a bare newline. That delta carries
-    // a fresh message id inside the same turn, so it reaches the insert-before-
-    // trailing-users path with nothing to say - it must be dropped, not turned
-    // into an empty assistant row ahead of the queued follow-up.
-    const result = applyStreamEvent({
-      tail: [],
-      head,
-      event: assistantTimeline("\n", "claude", "assistant-final", "turn-first"),
-      timestamp: new Date("2025-01-01T11:22:02Z"),
-      source: "live",
-    });
-
-    expect(result.head.map((item) => item.kind)).toEqual(["assistant_message", "user_message"]);
-    expect(result.head[0]).toMatchObject({ messageId: "assistant-first", text: "Done." });
   });
 });
 
@@ -2115,52 +1952,6 @@ describe("turn lifecycle events", () => {
     );
   });
 
-  it("hands an initial image prompt to its matching row after Codex bootstrap entries", () => {
-    const timestamp = new Date("2025-01-01T15:03:20Z");
-    const image = {
-      id: "image-bootstrap",
-      mimeType: "image/png",
-      storageType: "web-indexeddb" as const,
-      storageKey: "image-bootstrap",
-      createdAt: timestamp.getTime(),
-    };
-    const optimistic = buildOptimisticUserMessage({
-      id: "client-image-prompt",
-      text: "Please inspect these images",
-      timestamp,
-      images: [image],
-    });
-
-    const result = handoffCreatedAgentUserMessageToStream({
-      tail: [
-        {
-          kind: "user_message",
-          id: "codex-bootstrap",
-          text: "<environment_context>…</environment_context>",
-          timestamp: new Date("2025-01-01T15:03:19Z"),
-        },
-        {
-          kind: "user_message",
-          id: "codex-prompt",
-          text: "Please inspect these images",
-          timestamp: new Date("2025-01-01T15:03:21Z"),
-        },
-      ],
-      head: [],
-      message: optimistic,
-    });
-
-    const [bootstrap, prompt] = result.tail;
-    expect(bootstrap).toMatchObject({ id: "codex-bootstrap" });
-    expect(bootstrap).not.toHaveProperty("images");
-    expect(prompt).toMatchObject({
-      id: "codex-prompt",
-      text: optimistic.text,
-      timestamp: optimistic.timestamp,
-      images: [image],
-    });
-  });
-
   it("flushes an interrupted head when its submitted prompt becomes canonical", () => {
     const submitted: StreamItem = {
       kind: "user_message",
@@ -2513,4 +2304,29 @@ describe("notification timeline items", () => {
     ]);
     expect(new Set(state.map((item) => item.id)).size).toBe(state.length);
   });
+});
+
+it("retains agent-message provenance through live delivery and repeated history", () => {
+  const agentMessage = {
+    event: "finished" as const,
+    sender: { id: "remote::worker", title: "Reviewer" },
+    text: "Done",
+  };
+  const event = {
+    type: "timeline",
+    provider: "codex",
+    item: {
+      type: "tool_call",
+      callId: "delivery",
+      name: "agent_message",
+      status: "completed",
+      error: null,
+      detail: { type: "plain_text", text: "Done" },
+      agentMessage,
+    },
+  } satisfies AgentStreamEventPayload;
+  const live = reduceStreamUpdate([], event, new Date(1));
+  const replay = reduceStreamUpdate(live, event, new Date(2));
+  expect(replay).toHaveLength(1);
+  expect(replay[0]).toMatchObject({ payload: { data: { agentMessage } } });
 });

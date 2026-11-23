@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { OttoBrowserWebviewRegistry } from "../browser-webviews/registry.js";
+import { PaseoBrowserWebviewRegistry } from "../browser-webviews/registry.js";
 import { BrowserKeyboard } from "./index.js";
 
 interface SentMessage {
@@ -143,7 +143,7 @@ function electronInput(input: Partial<Electron.Input>): Electron.Input {
 }
 
 function createBrowserKeyboard() {
-  const registry = new OttoBrowserWebviewRegistry();
+  const registry = new PaseoBrowserWebviewRegistry();
   const keyboard = new BrowserKeyboard(registry);
 
   function attach(input: {
@@ -184,7 +184,7 @@ describe("BrowserKeyboard", () => {
 
     expect(host.sent).toEqual([
       {
-        channel: "otto:event:browser-shortcut-input",
+        channel: "paseo:event:browser-shortcut-input",
         payload: {
           alt: false,
           browserId: "browser-a",
@@ -248,15 +248,15 @@ describe("BrowserKeyboard", () => {
 
     expect(guest.sent).toEqual([
       {
-        channel: "otto:browser-keyboard-policy",
+        channel: "paseo:browser-keyboard-policy",
         payload: { ...initialPolicy, browserId: "browser-a" },
       },
       {
-        channel: "otto:browser-keyboard-policy",
+        channel: "paseo:browser-keyboard-policy",
         payload: { ...latestPolicy, browserId: "browser-a" },
       },
       {
-        channel: "otto:browser-keyboard-policy",
+        channel: "paseo:browser-keyboard-policy",
         payload: { ...latestPolicy, browserId: "browser-a" },
       },
     ]);
@@ -277,26 +277,10 @@ describe("BrowserKeyboard", () => {
 
     expect(guest.sent).toEqual([
       {
-        channel: "otto:browser-keyboard-policy",
+        channel: "paseo:browser-keyboard-policy",
         payload: { browserId: "browser-a", menuPrefixes: [], prefixes: [] },
       },
     ]);
-  });
-
-  test("routes Find from the focused guest to its own browser tab", () => {
-    const { attach } = createBrowserKeyboard();
-    const guest = new FakeBrowserContents(181);
-    const host = new FakeBrowserContents(182);
-    attach({ browserId: "find-browser", contents: guest, hostContents: host });
-    const command = process.platform === "darwin" ? { meta: true } : { control: true };
-    expect(guest.input(electronInput({ ...command, code: "KeyF", key: "f" }))).toBe(true);
-    expect(host.sent).toEqual([
-      {
-        channel: "otto:event:browser-shortcut",
-        payload: { action: "find", browserId: "find-browser" },
-      },
-    ]);
-    expect(guest.input(electronInput({ code: "KeyF", key: "f" }))).toBe(false);
   });
 
   test("owns browser chrome shortcuts and leaves customizable shortcuts to policy", () => {
@@ -307,19 +291,25 @@ describe("BrowserKeyboard", () => {
     const command = process.platform === "darwin" ? { meta: true } : { control: true };
 
     const reservedWasPrevented = guest.input(electronInput({ ...command, code: "KeyL", key: "l" }));
+    const findWasPrevented = guest.input(electronInput({ ...command, code: "KeyF", key: "f" })); // OTTO(browser-actions)
     const customizableWasPrevented = guest.input(
       electronInput({ ...command, code: "KeyT", key: "t" }),
     );
     const enterWasPrevented = guest.input(electronInput({ code: "Enter", key: "Enter" }));
 
     expect(reservedWasPrevented).toBe(true);
+    expect(findWasPrevented).toBe(true);
     expect(customizableWasPrevented).toBe(false);
     expect(enterWasPrevented).toBe(false);
-    expect(guest.ignoredMenuShortcuts).toEqual([false, false, true]);
+    expect(guest.ignoredMenuShortcuts).toEqual([false, false, false, true]);
     expect(host.sent).toEqual([
       {
-        channel: "otto:event:browser-shortcut",
+        channel: "paseo:event:browser-shortcut",
         payload: { action: "focus-url", browserId: "browser-a" },
+      },
+      {
+        channel: "paseo:event:browser-shortcut",
+        payload: { action: "find-in-page", browserId: "browser-a" },
       },
     ]);
   });

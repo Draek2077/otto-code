@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 export function HeroMockup() {
   return (
     <div className="overflow-hidden rounded-xl bg-mock-surface0 p-2 ring-1 ring-white/10 sm:rounded-2xl sm:p-3">

@@ -6,13 +6,13 @@ import { loadConfig } from "./config.js";
 
 const roots: string[] = [];
 
-async function createOttoHome(config: unknown): Promise<string> {
-  const root = await mkdtemp(path.join(os.tmpdir(), "otto-config-plugins-"));
+async function createPaseoHome(config: unknown): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "paseo-config-plugins-"));
   roots.push(root);
-  const ottoHome = path.join(root, ".otto");
-  await mkdir(ottoHome, { recursive: true });
-  await writeFile(path.join(ottoHome, "config.json"), JSON.stringify(config, null, 2));
-  return ottoHome;
+  const paseoHome = path.join(root, ".paseo");
+  await mkdir(paseoHome, { recursive: true });
+  await writeFile(path.join(paseoHome, "config.json"), JSON.stringify(config, null, 2));
+  return paseoHome;
 }
 
 describe("daemon plugin config", () => {
@@ -21,13 +21,13 @@ describe("daemon plugin config", () => {
   });
 
   test("defaults plugins off when config is absent", async () => {
-    const home = await createOttoHome({ version: 1 });
+    const home = await createPaseoHome({ version: 1 });
 
     expect(loadConfig(home, { env: {} }).pluginsEnabled).toBe(false);
   });
 
   test("loads the explicit plugin opt-in", async () => {
-    const home = await createOttoHome({ version: 1, pluginsEnabled: true });
+    const home = await createPaseoHome({ version: 1, pluginsEnabled: true });
 
     expect(loadConfig(home, { env: {} }).pluginsEnabled).toBe(true);
   });

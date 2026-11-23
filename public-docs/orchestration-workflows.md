@@ -6,6 +6,8 @@ order: 31
 category: Orchestration
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Common orchestration workflows
 
 [Enable Otto tools](/docs/orchestration#get-started), then ask your main agent for one of these workflows. Adapt the tasks to your project. [Personalities](/docs/personalities) let you save settings and describe which agent to use for each kind of work.

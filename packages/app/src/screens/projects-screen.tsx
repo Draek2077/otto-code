@@ -1,8 +1,7 @@
-import { useSettingsSearchRequest } from "@/screens/settings-search/target";
 import { useCallback, useMemo } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { ChevronRight } from "@/components/icons/material-icons";
+import { ChevronRight } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -24,7 +23,6 @@ interface HostProject {
 
 export default function ProjectsScreen({ serverId }: ProjectsScreenProps) {
   const { t } = useTranslation();
-  const settingId = useSettingsSearchRequest();
   const { projects, hostErrors, isLoading } = useProjects();
   const hostProjects = useMemo<HostProject[]>(
     () =>
@@ -74,7 +72,6 @@ export default function ProjectsScreen({ serverId }: ProjectsScreenProps) {
         {hostProjects.map(({ project, host }, index) => (
           <ProjectRow
             key={host.projectId}
-            settingId={settingId}
             project={project}
             host={host}
             isFirst={index === 0}
@@ -103,21 +100,20 @@ function HostErrorsBanner({ errors }: { errors: ProjectHostError[] }) {
 }
 
 interface ProjectRowProps {
-  settingId: string | null;
   project: ProjectSummary;
   host: ProjectHostEntry;
   isFirst: boolean;
   iconDataUri: string | null;
 }
 
-function ProjectRow({ project, host, isFirst, iconDataUri, settingId }: ProjectRowProps) {
+function ProjectRow({ project, host, isFirst, iconDataUri }: ProjectRowProps) {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
   const { viewKey } = project;
   const { projectName } = host;
   const handleNavigate = useCallback(() => {
-    openProjectSettings(host.serverId, host.projectId, settingId);
-  }, [host.projectId, host.serverId, settingId]);
+    openProjectSettings(host.serverId, host.projectId);
+  }, [host.projectId, host.serverId]);
 
   const rowStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -170,7 +166,7 @@ function ProjectRowIcon({
       iconDataUri={iconDataUri}
       initial={initial}
       projectViewKey={projectViewKey}
-      size="md"
+      size={16}
       textStyle={styles.iconFallbackText}
     />
   );
@@ -210,10 +206,10 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
   },
   rowHovered: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
+    backgroundColor: theme.colors.surface2,
   },
   rowPressed: {
-    backgroundColor: theme.colors.surfaceInteractivePressed,
+    backgroundColor: theme.colors.surface3,
   },
   leading: {
     width: 16,

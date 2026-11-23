@@ -6,19 +6,12 @@ import {
   type MermaidRenderInput,
   type MermaidRenderModel,
 } from "./render-model";
-import type { MermaidDiagramTheme } from "./theme";
-
-const DARK_THEME: MermaidDiagramTheme = {
-  colorScheme: "dark",
-  variables: { darkMode: "true" },
-  key: "dark test-palette",
-};
 
 function input(overrides: Partial<MermaidRenderInput> = {}): MermaidRenderInput {
   return {
     source: "flowchart TD\nA --> B",
     phase: "streaming",
-    diagramTheme: DARK_THEME,
+    colorScheme: "dark",
     rejected: false,
     cached: null,
     ...overrides,
@@ -30,7 +23,7 @@ function renderCurrent(state: MermaidRenderModel): MermaidRenderModel {
     type: "rendered",
     revision: state.revision,
     source: state.source,
-    themeKey: state.diagramTheme.key,
+    colorScheme: state.colorScheme,
     dimensions: { height: 120, width: 240 },
   });
 }
@@ -110,7 +103,7 @@ describe("Mermaid render model", () => {
       type: "rendered",
       revision: initial.revision,
       source: initial.source,
-      themeKey: initial.diagramTheme.key,
+      colorScheme: initial.colorScheme,
       dimensions: { height: 90, width: 180 },
     });
 
@@ -119,8 +112,6 @@ describe("Mermaid render model", () => {
       revision: newer.revision,
       source: "flowchart TD\nA --> C",
       colorScheme: "dark",
-      themeKey: DARK_THEME.key,
-      themeVariables: DARK_THEME.variables,
     });
   });
 
@@ -134,7 +125,7 @@ describe("Mermaid render model", () => {
       type: "rendered",
       revision: initial.revision,
       source: initial.source,
-      themeKey: initial.diagramTheme.key,
+      colorScheme: initial.colorScheme,
       dimensions: { height: 90, width: 180 },
     });
 

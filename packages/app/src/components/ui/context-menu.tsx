@@ -1,6 +1,5 @@
 import {
   useCallback,
-  useEffect,
   type ComponentProps,
   type PropsWithChildren,
   type ReactElement,
@@ -51,33 +50,9 @@ export type { ActionStatus } from "@/components/ui/menu";
  */
 export function ContextMenu({
   compactMode = "sheet",
-  anchor,
-  children,
   ...props
-}: ComponentProps<typeof MenuRoot> & {
-  /** Window-coordinate point for an imperatively opened context menu. */
-  anchor?: { x: number; y: number } | null;
-}): ReactElement {
-  return (
-    <MenuRoot {...props} compactMode={compactMode}>
-      <ContextMenuAnchor anchor={anchor} />
-      {children}
-    </MenuRoot>
-  );
-}
-
-function ContextMenuAnchor({ anchor }: { anchor?: { x: number; y: number } | null }) {
-  const { setAnchorRect } = useMenuContext("ContextMenuAnchor");
-  const anchorX = anchor?.x;
-  const anchorY = anchor?.y;
-  useEffect(() => {
-    setAnchorRect(
-      anchorX === undefined || anchorY === undefined
-        ? null
-        : { x: anchorX, y: anchorY, width: 0, height: 0 },
-    );
-  }, [anchorX, anchorY, setAnchorRect]);
-  return null;
+}: ComponentProps<typeof MenuRoot>): ReactElement {
+  return <MenuRoot {...props} compactMode={compactMode} />;
 }
 
 export function ContextMenuContent(props: MenuSurfaceProps): ReactElement | null {
@@ -109,33 +84,6 @@ function coerceEventPoint(event: unknown): { pageX: number; pageY: number } | nu
     return { pageX: clientX, pageY: clientY };
   }
   return null;
-}
-
-/** Whether the browser currently owns a non-empty text selection. */
-export function hasWebTextSelection(): boolean {
-  if (typeof window === "undefined") return false;
-  return (window.getSelection()?.toString().length ?? 0) > 0;
-}
-
-/**
- * Converts a web context-menu or native press event into the point anchor used by an
- * imperatively controlled context menu. Electron text inputs preserve the default
- * event so the main process can receive native spelling suggestions.
- */
-export function contextMenuAnchorFromEvent(
-  event: unknown,
-  { preserveNativeDefault = false }: { preserveNativeDefault?: boolean } = {},
-): { x: number; y: number } | null {
-  if (typeof event === "object" && event !== null) {
-    const preventDefault = Reflect.get(event, "preventDefault");
-    const stopPropagation = Reflect.get(event, "stopPropagation");
-    if (!preserveNativeDefault && isCallable(preventDefault)) preventDefault.call(event);
-    if (isCallable(stopPropagation)) stopPropagation.call(event);
-  }
-  const point = coerceEventPoint(event);
-  if (!point) return null;
-  const statusBarHeight = Platform.OS === "android" ? (StatusBar.currentHeight ?? 0) : 0;
-  return { x: point.pageX, y: point.pageY + statusBarHeight };
 }
 
 function assignRef<T>(ref: Ref<T> | undefined, value: T): void {
@@ -220,13 +168,7 @@ export function ContextMenuTrigger({
 
   const handleContextMenu = useCallback(
     (event: unknown) => {
-      if (!shouldEnableOnThisPlatform || disabled) return;
       if (isNative) return;
-      // Text selection is an app-wide capability. Let the root selection menu
-      // own it instead of turning a selected row label into unrelated row
-      // actions. A surface that genuinely needs both uses the explicit hybrid
-      // text-menu API and claims the event itself.
-      if (hasWebTextSelection()) return;
       if (typeof event === "object" && event !== null) {
         const preventDefault = Reflect.get(event, "preventDefault");
         const stopPropagation = Reflect.get(event, "stopPropagation");
@@ -236,7 +178,7 @@ export function ContextMenuTrigger({
       onContextMenu?.(event);
       openAtEvent(event);
     },
-    [disabled, onContextMenu, openAtEvent, shouldEnableOnThisPlatform],
+    [onContextMenu, openAtEvent],
   );
 
   const resolveDynamicStyle = useCallback(

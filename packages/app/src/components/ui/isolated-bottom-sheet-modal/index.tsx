@@ -1,16 +1,19 @@
 import {
   BottomSheetModal as GorhomBottomSheetModal,
   type BottomSheetModalProps,
+  type BottomSheetBackdropProps,
 } from "@gorhom/bottom-sheet";
 import React from "react";
-import { forwardRef, useCallback, useEffect, useMemo, useRef } from "react";
-import { FLOATING_LAYER_NO_DRAG_STYLE } from "@/components/desktop/app-region";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import type { ElementRef, ReactNode } from "react";
+import { systemBackPress } from "./back-press";
 import {
   type BottomSheetController,
   createBottomSheetVisibilityTracker,
 } from "./visibility-tracker";
 import { BottomSheetScope } from "@/components/ui/bottom-sheet-scope";
+import { SheetBackdrop } from "./sheet-backdrop";
+import { useVisualizerSheetLayer } from "@/otto/visualizer/sheet-layer"; // OTTO(visualizer): root web sheets stay above ambient PIP and swooped sidebars.
 
 type GorhomBottomSheetModalMethods = ElementRef<typeof GorhomBottomSheetModal>;
 
@@ -36,14 +39,23 @@ export type ContextBridge = (children: ReactNode) => ReactNode;
 
 type IsolatedBottomSheetModalProps = Omit<
   BottomSheetModalProps,
-  "enableDismissOnClose" | "stackBehavior" | "children"
+  "enableDismissOnClose" | "stackBehavior" | "children" | "backdropComponent"
 > & {
+  /**
+   * Whether closing (drag, backdrop, Back) also dismisses, which unmounts the content. Default
+   * true: the owner hears `onDismiss` and drops its state. Pass `false` for a sheet whose close the
+   * owner may veto: it parks at index -1 with its content mounted, the owner hears `onChange(-1)`,
+   * and either snaps it back or unmounts it, which dismisses it from the stack.
+   */
+  enableDismissOnClose?: boolean;
   /**
    * Nodes only. Gorhom also accepts a render function, but nothing here uses it and a bridge
    * would have to reach around it.
    */
   children?: ReactNode;
   presentation?: "push" | "replace";
+  /** Show a dismissible backdrop. Its interaction belongs to the modal stack. */
+  backdropOpacity?: number;
   /**
    * Required, and `null` is a real answer: a sheet that needs nothing from its call site should
    * have to say so. The failure it prevents is invisible until someone adds a `useContext` deep
@@ -58,33 +70,50 @@ export const IsolatedBottomSheetModal = forwardRef<
   IsolatedBottomSheetModalRef,
   IsolatedBottomSheetModalProps
 >(function IsolatedBottomSheetModal(props, ref) {
+  const sheetLayer = useVisualizerSheetLayer();
+  // Gorhom puts this ref into its provider queue and reads `.current` for stack operations.
+  // A callback ref accepts the handle but leaves that queue unable to dismiss or restore it.
+  const modalRef = useRef<GorhomBottomSheetModalMethods>(null);
+  useImperativeHandle(
+    ref,
+    () => ({
+      present: (...args) => modalRef.current?.present(...args),
+      dismiss: (...args) => modalRef.current?.dismiss(...args),
+      snapToIndex: (...args) => modalRef.current?.snapToIndex(...args),
+      snapToPosition: (...args) => modalRef.current?.snapToPosition(...args),
+      expand: (...args) => modalRef.current?.expand(...args),
+      collapse: (...args) => modalRef.current?.collapse(...args),
+      close: (...args) => modalRef.current?.close(...args),
+      forceClose: (...args) => modalRef.current?.forceClose(...args),
+    }),
+    [],
+  );
   const {
     children,
     presentation = "push",
-    containerStyle,
     contextBridge,
+    backdropOpacity,
+    enableDismissOnClose = true,
     ...bottomSheetProps
   } = props;
-  // Gorhom sheets render through @gorhom/portal INSIDE #root, outside both
-  // no-drag backstop rules in index.html - without this carve-out a presented
-  // sheet is click-dead wherever it overlaps an Electron drag rect (titlebar
-  // strips, the New Workspace screen's full-screen drag overlay). The hosting
-  // container is a full-screen view that exists only while the sheet is
-  // presented, so this can't punch persistent holes in the drag strip.
-  const resolvedContainerStyle = useMemo(
-    () =>
-      FLOATING_LAYER_NO_DRAG_STYLE
-        ? [containerStyle, FLOATING_LAYER_NO_DRAG_STYLE]
-        : containerStyle,
-    [containerStyle],
+  const renderBackdrop = useCallback(
+    (backdropProps: BottomSheetBackdropProps) => (
+      <SheetBackdrop
+        {...backdropProps}
+        opacity={backdropOpacity}
+        pressBehavior={enableDismissOnClose ? "dismiss" : "close"}
+      />
+    ),
+    [backdropOpacity, enableDismissOnClose],
   );
   const modal = (
     <GorhomBottomSheetModal
       {...bottomSheetProps}
-      ref={ref}
-      containerStyle={resolvedContainerStyle}
-      enableDismissOnClose
+      containerComponent={bottomSheetProps.containerComponent ?? sheetLayer}
+      ref={modalRef}
+      enableDismissOnClose={enableDismissOnClose}
       stackBehavior={presentation}
+      backdropComponent={backdropOpacity === undefined ? undefined : renderBackdrop}
     >
       <BottomSheetScope>{contextBridge ? contextBridge(children) : children}</BottomSheetScope>
     </GorhomBottomSheetModal>
@@ -106,7 +135,11 @@ export function useIsolatedBottomSheetVisibility({
   onCloseRef.current = onClose;
 
   const tracker = useMemo(
-    () => createBottomSheetVisibilityTracker({ onClose: () => onCloseRef.current() }),
+    () =>
+      createBottomSheetVisibilityTracker({
+        onClose: () => onCloseRef.current(),
+        backPress: systemBackPress,
+      }),
     [],
   );
 
@@ -134,3 +167,7 @@ export function useIsolatedBottomSheetVisibility({
     handleSheetDismiss,
   };
 }
+
+export { SheetVisibleFrame } from "./visible-frame";
+export { systemBackPress } from "./back-press";
+export { SheetHostScope } from "./host-scope";

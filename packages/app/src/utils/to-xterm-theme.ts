@@ -4,9 +4,9 @@ import type { Theme } from "@/styles/theme";
 
 type TerminalPalette = Theme["colors"]["terminal"];
 
-export function toXtermTheme(terminal: TerminalPalette, background = terminal.background): ITheme {
+export function toXtermTheme(terminal: TerminalPalette): ITheme {
   return {
-    background,
+    background: terminal.background,
     foreground: terminal.foreground,
     cursor: terminal.cursor,
     cursorAccent: terminal.cursorAccent,

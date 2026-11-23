@@ -1,3 +1,4 @@
+# OTTO(identity): expose the existing Otto flake entry point.
 {
   description = "Otto - self-hosted daemon for AI coding agents";
 
@@ -25,8 +26,8 @@
         system:
         let
           pkgs = pkgsFor system;
-          otto = pkgs.callPackage ./nix/package.nix { };
-          versionParts = pkgs.lib.splitString "." otto.version;
+          paseo = pkgs.callPackage ./nix/package.nix { };
+          versionParts = pkgs.lib.splitString "." paseo.version;
           sourceRevision = if self ? revCount && self.revCount != null then self.revCount else 0;
           buildRevision = sourceRevision - (sourceRevision / 10000) * 10000;
           desktopBuildVersion = pkgs.lib.concatStringsSep "." [
@@ -36,16 +37,18 @@
           ];
         in
         {
-          default = otto;
-          otto = otto;
+          default = paseo;
+          paseo = paseo;
+          otto = paseo;
           desktop = pkgs.callPackage ./nix/desktop-package.nix {
-            inherit otto;
+            inherit paseo;
             buildVersion = desktopBuildVersion;
           };
         }
       );
 
       nixosModules.default = self.nixosModules.otto;
+      nixosModules.paseo = self.nixosModules.otto;
       nixosModules.otto =
         { pkgs, lib, ... }:
         {
@@ -61,7 +64,7 @@
         {
           default = pkgs.mkShell {
             packages = [
-              pkgs.nodejs_24
+              pkgs.nodejs_22
               pkgs.python3
             ];
           };

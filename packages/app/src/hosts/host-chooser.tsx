@@ -12,7 +12,7 @@ import {
   type EditingTextInputHandle,
 } from "@/components/ui/text-input";
 import { router } from "expo-router";
-import { Server } from "@/components/icons/material-icons";
+import { Server } from "lucide-react-native";
 import { create } from "zustand";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { HostStatusDotSlot } from "@/components/hosts/host-picker";

@@ -21,6 +21,7 @@ import { OpenFileProvider } from "./tool-content-renderer"
 import { stopPropagationHandlers } from "./shared-ui"
 import { TimelineEvent, TIMING } from "@/lib/agent-types"
 import { COLORS } from "@/lib/colors"
+import { summarizeReportedCost } from "@/lib/reported-cost"
 
 import { MOCK_DURATION } from "@/lib/mock-scenario"
 import { TopBar } from "./top-bar"
@@ -364,30 +365,25 @@ export function AgentVisualizer() {
     for (const a of agents.values()) sum += a.cumulativeTokens ?? a.tokensUsed
     return sum
   }, [agents, retiredTokens])
+  const tokenCoverage = useMemo(() => {
+    let known = (retiredTokens ?? 0) > 0
+    let partial = false
+    for (const agent of agents.values()) {
+      if (agent.contextKnown === false) partial = true
+      else known = true
+    }
+    return { known, partial }
+  }, [agents, retiredTokens])
 
   // OTTO PATCH (OTTO-PATCHES.md): the graph's REAL cost — Σ of the per-agent
   // figures the host's provider reported, plus the banked cost of nodes already
   // cleaned up. Agents the provider could not price contribute nothing and mark
   // the sum PARTIAL, so it renders as a floor instead of a total. Never derived
   // from tokens × a rate; see draw-cost.ts.
-  const cost = useMemo(() => {
-    let sum = retiredCostUsd ?? 0
-    let priced = retiredCostUsd ? 1 : 0
-    let unpriced = 0
-    for (const a of agents.values()) {
-      const value = a.costUsd
-      if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-        sum += value
-        priced += 1
-      } else if ((a.cumulativeTokens ?? a.tokensUsed) > 0) {
-        unpriced += 1
-      }
-    }
-    return {
-      totalCostUsd: priced > 0 ? sum : null,
-      costIsPartial: priced > 0 && unpriced > 0,
-    }
-  }, [agents, retiredCostUsd])
+  const cost = useMemo(
+    () => summarizeReportedCost(agents.values(), retiredCostUsd),
+    [agents, retiredCostUsd],
+  )
 
   const selectedAgent = selection.selectedAgentId ? agents.get(selection.selectedAgentId) : null
 
@@ -628,6 +624,8 @@ export function AgentVisualizer() {
         <TopBar
           agentCount={agents.size}
           totalTokens={totalTokens}
+          tokensKnown={tokenCoverage.known}
+          tokensPartial={tokenCoverage.partial}
           totalCostUsd={cost.totalCostUsd}
           costIsPartial={cost.costIsPartial}
           compact={hudCompact}

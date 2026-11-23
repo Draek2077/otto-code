@@ -2,8 +2,9 @@ import type {
   AgentAttachment,
   ForgeSearchItem,
   UploadedFileAttachment,
-} from "@otto-code/protocol/messages";
-import { type PluginResourceComposerAttachment } from "@/plugins/attachments";
+} from "@getpaseo/protocol/messages";
+import type { PluginResourceComposerAttachment } from "@/plugins/attachments";
+import type { EditorContextAttachment } from "@/otto/editor/context-attachment"; // OTTO(editor): provider-neutral workspace source context.
 
 export type AttachmentStorageType = "web-indexeddb" | "desktop-file" | "native-file";
 
@@ -91,15 +92,6 @@ export interface ChatHistoryContextAttachment {
   };
 }
 
-/** A daemon-retained meeting transcript selected as context for the current chat. */
-export interface MeetingTranscriptContextAttachment {
-  kind: "meeting_transcript";
-  id: string;
-  title: string;
-  content: string;
-  occurredAt: string;
-}
-
 export const NEW_WORKSPACE_PICKER_ATTACHMENT_OWNER = "new-workspace-picker";
 
 export type WorkspaceFileSelection =
@@ -116,8 +108,6 @@ export type UserComposerAttachment =
   | { kind: "image"; metadata: AttachmentMetadata }
   | { kind: "file"; attachment: UploadedFileAttachment }
   | WorkspaceFileComposerAttachment
-  // `ForgeSearchItem` carries its own `forge` tag, which is what Otto's
-  // separate `provider` field used to record.
   | PluginResourceComposerAttachment
   | { kind: "forge_issue"; item: ForgeSearchItem }
   | { kind: "forge_change_request"; item: ForgeSearchItem }
@@ -131,101 +121,14 @@ export type UserComposerAttachment =
       owner?: typeof NEW_WORKSPACE_PICKER_ATTACHMENT_OWNER;
     };
 
-/**
- * A row:column span inside a file, as the editor reported it when the user
- * attached a selection.
- *
- * Both ends are 1-based and columns count UTF-16 code units, matching
- * `EditorSelection` and the editor status bar - the range on the pill is the
- * range the user was just looking at in the gutter.
- */
-export interface FileContextSelection {
-  startLine: number;
-  startColumn: number;
-  endLine: number;
-  endColumn: number;
-}
-
-/**
- * A workspace file, folder, specific line, or selected range the user attached
- * (from the file explorer, project search, the editor, or an `@` mention) as
- * prompt context. Distinct from {@link WorkspaceFileComposerAttachment}, which
- * is the composer-side pill.
- */
-export interface FileContextAttachment {
-  kind: "file_context";
-  /**
-   * Dedupe id within a scope: the path, `${path}:${lineStart}` for a line, or
-   * `${path}:${startLine}:${startColumn}-${endLine}:${endColumn}` for a
-   * selection. Build it with `buildFileContextAttachmentId` rather than by
-   * hand - five entry points now write these, and two spellings of one target
-   * would leave the user with duplicate pills that each need removing.
-   */
-  id: string;
-  path: string;
-  /** Whether the path is a file or a folder; absent means file. */
-  entryKind?: "file" | "directory";
-  /** 1-based line number, when this attachment targets a specific line rather than the whole file. */
-  lineStart?: number;
-  /**
-   * The selected range, when the user attached a selection rather than the
-   * whole file. Carried as a reference, not an excerpt: the agent reads the
-   * file itself, so the range costs one line of prompt instead of the text -
-   * and stays correct if the file changes before the turn runs.
-   */
-  selection?: FileContextSelection;
-}
-
-/**
- * A renderer-specific locator for an item that can be traced back to source.
- *
- * These are intentionally blocks, not pixel positions: the preview is allowed
- * to reflow while the source location remains durable and meaningful to an
- * agent reading the current workspace file.
- */
-export type RenderedDocumentLocator =
-  | {
-      kind: "heading";
-      level: number;
-      lineStart: number;
-      lineEnd: number;
-      text: string;
-    }
-  | {
-      kind: "paragraph" | "blockquote";
-      lineStart: number;
-      lineEnd: number;
-    }
-  | {
-      kind: "fence";
-      lineStart: number;
-      lineEnd: number;
-      language: string | null;
-    };
-
-/** A user annotation of a source-backed item in a rendered workspace document. */
-export interface RenderedDocumentContextAttachment {
-  kind: "rendered_document";
-  /** Stable within the current workspace attachment scope. */
-  id: string;
-  path: string;
-  locator: RenderedDocumentLocator;
-  /** The rendered item's source excerpt, retained so the prompt remains useful after edits. */
-  excerpt: string;
-  /** The user's reason for attaching the rendered item. */
-  comment: string;
-}
-
 export type WorkspaceComposerAttachment =
+  | EditorContextAttachment // OTTO(editor)
   | {
       kind: "browser_element";
       attachment: BrowserElementAttachment;
     }
   | PullRequestContextAttachment
   | ChatHistoryContextAttachment
-  | MeetingTranscriptContextAttachment
-  | FileContextAttachment
-  | RenderedDocumentContextAttachment
   | {
       kind: "review";
       attachment: Extract<AgentAttachment, { type: "review" }>;
@@ -270,31 +173,6 @@ export interface GarbageCollectInput {
 }
 
 /**
- * What the Storage settings section reports, split the way the lifecycle splits:
- * `preview` is the regenerable cache of images that live elsewhere, `other` is
- * everything the user attached to a message. See docs/attachment-lifecycle.md.
- */
-export interface AttachmentStoreUsage {
-  previewCount: number;
-  previewBytes: number;
-  otherCount: number;
-  otherBytes: number;
-}
-
-/** The empty reading, shared so "nothing stored" has one spelling. */
-export const EMPTY_ATTACHMENT_STORE_USAGE: AttachmentStoreUsage = Object.freeze({
-  previewCount: 0,
-  previewBytes: 0,
-  otherCount: 0,
-  otherBytes: 0,
-});
-
-export interface ClearPreviewAttachmentsResult {
-  deleted: number;
-  freedBytes: number;
-}
-
-/**
  * Async storage contract for attachment bytes.
  * Metadata is persisted in drafts/messages; bytes live in platform stores.
  */
@@ -306,11 +184,4 @@ export interface AttachmentStore {
   releasePreviewUrl?(input: ReleasePreviewUrlInput): Promise<void>;
   delete(input: DeleteAttachmentInput): Promise<void>;
   garbageCollect(input: GarbageCollectInput): Promise<void>;
-  /** Sizes the store for the Storage settings section. */
-  usage(): Promise<AttachmentStoreUsage>;
-  /**
-   * Drops every preview attachment. Safe by construction - each one is a copy of
-   * an image the daemon or the workspace still holds, so the next render refetches.
-   */
-  clearPreviews(): Promise<ClearPreviewAttachmentsResult>;
 }

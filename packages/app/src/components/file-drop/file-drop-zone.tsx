@@ -1,7 +1,7 @@
 import type { ReactNode, RefObject } from "react";
 import { useCallback, useMemo, useRef } from "react";
 import { View } from "react-native";
-import type { LayoutChangeEvent, StyleProp, ViewStyle } from "react-native";
+import type { StyleProp, ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useSharedValue } from "react-native-reanimated";
 import { isWeb } from "@/constants/platform";
@@ -16,24 +16,14 @@ interface FileDropZoneProps {
   disabled?: boolean;
   /** Styles the drop area (defaults to filling its parent). The backdrop fills this area. */
   style?: StyleProp<ViewStyle>;
-  /** Measures the drop area, for callers that use it as their outermost container. */
-  onLayout?: (event: LayoutChangeEvent) => void;
-  /** Replaces the default attachment feedback for a differently-purposed drop zone. */
-  feedbackLabel?: string;
 }
 
 /**
  * Defines a drag-and-drop area and renders its dim backdrop. Files are consumed by any
- * descendant calling `useFileDrop` - the drop area, the backdrop, and the consumer are
+ * descendant calling `useFileDrop` — the drop area, the backdrop, and the consumer are
  * decoupled, so a consumer's layout can never collapse the backdrop.
  */
-export function FileDropZone({
-  children,
-  disabled = false,
-  style,
-  onLayout,
-  feedbackLabel,
-}: FileDropZoneProps) {
+export function FileDropZone({ children, disabled = false, style }: FileDropZoneProps) {
   const isDragging = useSharedValue(false);
   const suppressed = useSharedValue(false);
   const hasSink = useSharedValue(false);
@@ -56,34 +46,28 @@ export function FileDropZone({
   const getSink = useCallback(() => activeGetSink.current?.() ?? null, []);
 
   const ctx = useMemo<FileDropContextValue>(
-    () => ({ isDragging, suppressed, hasSink, registerSink, feedbackLabel }),
-    [isDragging, suppressed, hasSink, registerSink, feedbackLabel],
+    () => ({ isDragging, suppressed, hasSink, registerSink }),
+    [isDragging, suppressed, hasSink, registerSink],
   );
 
   const containerRef = useDropListeners({ isDragging, suppressed, hasSink, getSink, disabled });
 
   const targetStyle = useMemo(() => [styles.target, style], [style]);
 
-  // On native there is no web drag-and-drop, so skip the listeners and the backdrop - but still
+  // On native there is no web drag-and-drop, so skip the listeners and the backdrop — but still
   // render the styled layout View (callers use FileDropZone as their container) and provide
   // context so useFileDrop no-ops safely.
   if (!isWeb) {
     return (
       <FileDropContext.Provider value={ctx}>
-        <View style={targetStyle} onLayout={onLayout}>
-          {children}
-        </View>
+        <View style={targetStyle}>{children}</View>
       </FileDropContext.Provider>
     );
   }
 
   return (
     <FileDropContext.Provider value={ctx}>
-      <View
-        ref={containerRef as unknown as RefObject<View>}
-        style={targetStyle}
-        onLayout={onLayout}
-      >
+      <View ref={containerRef as unknown as RefObject<View>} style={targetStyle}>
         {children}
         <FileDropBackdrop />
       </View>

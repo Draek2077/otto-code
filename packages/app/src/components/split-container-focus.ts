@@ -37,47 +37,6 @@ export function hasMultipleVisiblePanes(node: SplitNode): boolean {
   return visiblePaneCount > 1;
 }
 
-/**
- * Resolve a pane maximize button press together with the focus change needed
- * to make that projection stable. Pane chrome buttons are deliberately exempt
- * from ambient pane-focus handling, so maximizing an unfocused pane must claim
- * focus explicitly before the focus-mismatch restore rule runs.
- */
-export function resolvePaneMaximizeToggle(input: {
-  maximizedPaneId: string | null;
-  workspaceKey: string;
-  paneId: string;
-}): {
-  next: { workspaceKey: string; paneId: string } | null;
-  focusPaneId: string | null;
-} {
-  if (input.maximizedPaneId === input.paneId) {
-    return { next: null, focusPaneId: null };
-  }
-  return {
-    next: { workspaceKey: input.workspaceKey, paneId: input.paneId },
-    focusPaneId: input.paneId,
-  };
-}
-
-export function shouldClearMaximizedPane(input: {
-  maximizedPaneId: string | null;
-  focusedPaneId: string | null;
-  focusModeEnabled: boolean | undefined;
-  workspaceHasMultiplePanes: boolean;
-  root: SplitNode | null;
-}): boolean {
-  const paneId = input.maximizedPaneId;
-  return Boolean(
-    paneId &&
-    (input.focusModeEnabled ||
-      input.focusedPaneId !== paneId ||
-      !input.workspaceHasMultiplePanes ||
-      !input.root ||
-      !splitNodeContainsPane(input.root, paneId)),
-  );
-}
-
 function findPane(node: SplitNode, paneId: string): SplitPane | null {
   if (node.kind === "pane") return node.pane.id === paneId ? node.pane : null;
   for (const child of node.group.children) {

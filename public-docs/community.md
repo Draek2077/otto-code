@@ -9,6 +9,8 @@ order: 7
 category: Getting started
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Community projects
 
 Projects built by the Otto community. These **aren't official Otto projects** and aren't covered by Otto's support, but they're useful starting points, especially for self-hosting. Review the code before running anything that touches your machine or your agents.

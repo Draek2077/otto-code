@@ -1,0 +1,38 @@
+import { StyleSheet } from "react-native-unistyles";
+export const styles = StyleSheet.create((theme) => ({
+  page: { flex: 1, minHeight: 0 },
+  hidden: { display: "none" },
+  content: {
+    padding: theme.spacing[4],
+    paddingTop: theme.spacing[4],
+    paddingBottom: theme.spacing[8],
+    gap: theme.spacing[4],
+    width: "100%",
+    maxWidth: 1280,
+    alignSelf: "center",
+  },
+  desktop: { flex: 1, minHeight: 0 },
+  paneContent: { gap: theme.spacing[4], paddingBottom: theme.spacing[8] },
+  preview: { gap: theme.spacing[3] },
+  chooser: { paddingHorizontal: theme.spacing[4], paddingTop: theme.spacing[4] },
+  writeStatus: { paddingHorizontal: theme.spacing[4], gap: theme.spacing[2] },
+  readingSplit: { flex: 1, minHeight: 0, flexDirection: "row" },
+  readingSidebar: { flexShrink: 0, minHeight: 0, paddingRight: theme.spacing[3] },
+  readingSummary: { flexGrow: 0, flexShrink: 0, minHeight: 0 },
+  readingTreeContent: {
+    gap: theme.spacing[4],
+    paddingTop: theme.spacing[4],
+    paddingBottom: theme.spacing[8],
+  },
+  readingDetail: { flex: 1, minWidth: 0, minHeight: 0, paddingLeft: theme.spacing[3] },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing[2] },
+  caption: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  code: {
+    backgroundColor: theme.colors.terminal.background,
+    color: theme.colors.foreground,
+    fontFamily: theme.fontFamily.mono,
+    fontSize: theme.fontSize.sm,
+    padding: theme.spacing[4],
+    borderRadius: theme.borderRadius.md,
+  },
+}));

@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { type QueryClient } from "@tanstack/react-query";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
-import type { ListTerminalsResponse } from "@otto-code/protocol/messages";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { ListTerminalsResponse } from "@getpaseo/protocol/messages";
 import { useTranslation } from "react-i18next";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { useSessionStore } from "@/stores/session-store";
@@ -66,7 +66,6 @@ export function useWorkspaceTabRename(
         const result = await client.renameTerminal({
           terminalId: renamingTab.id,
           title: trimmed,
-          ...(trimmed.length === 0 ? { clear: true } : {}),
         });
         if (!result.success) {
           throw new Error(result.error ?? "Failed to rename terminal");
@@ -124,7 +123,6 @@ export function WorkspaceTabRenameModal({
       initialValue={initialValue}
       submitLabel={t("workspace.tabs.menu.rename")}
       maxLength={200}
-      allowEmpty={renamingTab?.kind === "terminal"}
       onClose={onClose}
       onSubmit={onSubmit}
       testID={testID}

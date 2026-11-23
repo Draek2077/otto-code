@@ -20,7 +20,7 @@ import type {
   CreateAgentWorktreeTarget,
   SessionOutboundMessage,
 } from "../../messages.js";
-import { createOttoDaemon, type OttoDaemon, type OttoDaemonConfig } from "../../bootstrap.js";
+import { createPaseoDaemon, type PaseoDaemon, type PaseoDaemonConfig } from "../../bootstrap.js";
 import type { WebSocketLike } from "../../websocket-server.js";
 import type {
   AgentClient,
@@ -425,7 +425,7 @@ class InMemoryHubRelationships implements HubRelationshipRemote {
   }
 }
 
-interface CliProcess {
+interface RelationshipOperation {
   result: Promise<Record<string, unknown>>;
 }
 
@@ -440,25 +440,21 @@ type AcceptedCreate = Omit<
 
 const providerCatalog = {
   async resolveCreateConfig(input) {
-    return {
-      modeId: input.requestedMode,
-      featureValues: input.featureValues,
-      unattended: input.unattended ?? false,
-    };
+    return { modeId: input.requestedMode, featureValues: input.featureValues };
   },
 } satisfies CreateAgentCommandDependencies["providerSnapshotManager"];
 
 export class HubRelationshipHarness {
   private readonly clock = new TestRelationshipClock();
   private readonly remote = new InMemoryHubRelationships(() => this.captureRelationship());
-  private daemon: OttoDaemon | null = null;
-  private config!: OttoDaemonConfig;
+  private daemon: PaseoDaemon | null = null;
+  private config!: PaseoDaemonConfig;
   private root = "";
-  private ottoHome = "";
+  private paseoHome = "";
   private host = "";
   private readonly logs: string[] = [];
   private readonly providerPrompts: AgentPromptInput[] = [];
-  private readonly cliProcesses = new Set<Promise<unknown>>();
+  private readonly operations = new Set<Promise<unknown>>();
   private readonly claimedCliSockets = new Set<WebSocket>();
   private readonly promptsToFail = new Set<string>();
   private failNextSessionClose = false;
@@ -518,42 +514,49 @@ export class HubRelationshipHarness {
     this.remote.holdEnrollment();
   }
 
-  beginConnect(token = "ceremony-token", hubUrl = HUB_ORIGIN, execute = true): CliProcess {
+  beginConnect(
+    token = "ceremony-token",
+    hubUrl = HUB_ORIGIN,
+    execute = true,
+  ): RelationshipOperation {
     return {
-      result: this.runCli([
-        "hub",
-        "connect",
-        hubUrl,
-        "--api-key",
-        `hub-contract-api-key:${token}`,
-        ...(execute ? ["--permission", "hub.execute"] : []),
-      ]),
+      result: this.withClient(
+        async (client) =>
+          (await client.connectHub(hubUrl, token, execute ? ["hub.execute"] : [])).status,
+      ),
     };
   }
 
   async status(): Promise<Record<string, unknown>> {
-    return this.runCli(["hub", "status"]);
+    return this.withClient(async (client) => (await client.getHubStatus()).status);
   }
 
   async disconnect(force = false): Promise<Record<string, unknown>> {
-    return this.runCli(["hub", "disconnect", ...(force ? ["--force"] : [])]);
+    return this.withClient(async (client) => {
+      const { status, warning } = await client.disconnectHub(force);
+      return { ...status, ...(warning ? { warning } : {}) };
+    });
   }
 
   async grantPermission(permission: string): Promise<Record<string, unknown>> {
-    return this.runCli(["hub", "permissions", "grant", permission]);
+    return this.withClient(
+      async (client) => (await client.updateHubPermissions({ grant: [permission] })).status,
+    );
   }
 
   async revokePermission(permission: string): Promise<Record<string, unknown>> {
-    return this.runCli(["hub", "permissions", "revoke", permission]);
+    return this.withClient(
+      async (client) => (await client.updateHubPermissions({ revoke: [permission] })).status,
+    );
   }
 
-  beginDisconnect(force = false): CliProcess {
-    return { result: this.runCli(["hub", "disconnect", ...(force ? ["--force"] : [])]) };
+  beginDisconnect(force = false): RelationshipOperation {
+    return { result: this.disconnect(force) };
   }
 
   async relationshipStateBecomes(expected: string | null): Promise<void> {
     const observed = deferred<void>();
-    const watcher = watch(this.ottoHome, () => {
+    const watcher = watch(this.paseoHome, () => {
       if ((this.relationshipFile()?.state ?? null) === expected) observed.resolve();
     });
     if ((this.relationshipFile()?.state ?? null) === expected) observed.resolve();
@@ -843,7 +846,10 @@ export class HubRelationshipHarness {
   }
 
   async durableOwnedAgentIdsOnDisk(): Promise<string[]> {
-    const storage = new AgentStorage(path.join(this.ottoHome, "agents"), pino({ level: "silent" }));
+    const storage = new AgentStorage(
+      path.join(this.paseoHome, "agents"),
+      pino({ level: "silent" }),
+    );
     return (await storage.list())
       .filter((record) => record.owner?.kind === "daemon")
       .map((record) => record.id);
@@ -910,7 +916,7 @@ export class HubRelationshipHarness {
   }
 
   async hubExecutionIntentFiles(): Promise<string[]> {
-    const directory = path.join(this.ottoHome, "hub-executions");
+    const directory = path.join(this.paseoHome, "hub-executions");
     return existsSync(directory) ? readdir(directory) : [];
   }
 
@@ -965,7 +971,7 @@ export class HubRelationshipHarness {
 
   private workspaceArchivedAt(workspaceId: string): string | null {
     const records = JSON.parse(
-      readFileSync(path.join(this.ottoHome, "projects", "workspaces.json"), "utf8"),
+      readFileSync(path.join(this.paseoHome, "projects", "workspaces.json"), "utf8"),
     ) as Array<{ workspaceId: string; archivedAt?: string | null }>;
     return records.find((workspace) => workspace.workspaceId === workspaceId)?.archivedAt ?? null;
   }
@@ -1064,17 +1070,15 @@ export class HubRelationshipHarness {
       .map((line) => line.slice("worktree ".length));
   }
 
-  // Spawns a second workspace on `cwd` through the agent path rather than
-  // workspace.create: explicit creation refuses a directory that already backs a
-  // live workspace ("open that one instead"), which is exactly the state this
-  // sets up. Agent spawns are allowed to share a directory, so this is the
-  // reachable way to get two workspaces onto one worktree.
   async createSiblingWorkspace(cwd: string): Promise<string> {
     const client = await this.trustedClient();
     try {
-      const agent = await client.createAgent({ provider: "codex", cwd });
-      if (!agent.workspaceId) throw new Error("Sibling agent did not receive a workspace");
-      return agent.workspaceId;
+      const result = await client.createWorkspace({
+        source: { kind: "directory", path: cwd },
+        title: "sibling",
+      });
+      if (!result.workspace) throw new Error(result.error ?? "Failed to create sibling workspace");
+      return result.workspace.id;
     } finally {
       await client.close();
     }
@@ -1257,7 +1261,10 @@ export class HubRelationshipHarness {
   }
 
   async reconstructAndReplay(executionId = "execution-1") {
-    const storage = new AgentStorage(path.join(this.ottoHome, "agents"), pino({ level: "silent" }));
+    const storage = new AgentStorage(
+      path.join(this.paseoHome, "agents"),
+      pino({ level: "silent" }),
+    );
     const manager = new AgentManager({
       clients: createTestAgentClients(),
       registry: storage,
@@ -1273,7 +1280,10 @@ export class HubRelationshipHarness {
 
   async removeOwnedAgent(agentId: string) {
     await this.daemon!.agentStorage.remove(agentId);
-    const storage = new AgentStorage(path.join(this.ottoHome, "agents"), pino({ level: "silent" }));
+    const storage = new AgentStorage(
+      path.join(this.paseoHome, "agents"),
+      pino({ level: "silent" }),
+    );
     return {
       durableAgentCount: (await storage.list()).filter((record) => record.owner?.kind === "daemon")
         .length,
@@ -1320,22 +1330,22 @@ export class HubRelationshipHarness {
   }
 
   relationshipFile(): PersistedRelationship | null {
-    const file = path.join(this.ottoHome, "hub-relationship.json");
+    const file = path.join(this.paseoHome, "hub-relationship.json");
     if (!existsSync(file)) return null;
     return JSON.parse(readFileSync(file, "utf8")) as PersistedRelationship;
   }
 
   relationshipFileMode(): number {
-    return statSync(path.join(this.ottoHome, "hub-relationship.json")).mode & 0o777;
+    return statSync(path.join(this.paseoHome, "hub-relationship.json")).mode & 0o777;
   }
 
   async corruptRelationshipFile(contents = "{not-json"): Promise<void> {
     await this.stopDaemon();
-    await writeFile(path.join(this.ottoHome, "hub-relationship.json"), contents, "utf8");
+    await writeFile(path.join(this.paseoHome, "hub-relationship.json"), contents, "utf8");
   }
 
   async quarantinedRelationshipFiles(): Promise<string[]> {
-    return (await readdir(this.ottoHome)).filter((file) =>
+    return (await readdir(this.paseoHome)).filter((file) =>
       file.startsWith("hub-relationship.invalid-"),
     );
   }
@@ -1369,7 +1379,7 @@ export class HubRelationshipHarness {
 
   async close(): Promise<void> {
     await this.stopDaemon();
-    await Promise.allSettled(this.cliProcesses);
+    await Promise.allSettled(this.operations);
     await Promise.all(
       [...this.claimedCliSockets].map((socket) => this.closeClaimedCliSocket(socket)),
     );
@@ -1377,10 +1387,10 @@ export class HubRelationshipHarness {
   }
 
   private async createHome(): Promise<void> {
-    this.root = await mkdtemp(path.join(tmpdir(), "otto-hub-relationship-"));
-    this.ottoHome = path.join(this.root, ".otto");
+    this.root = await mkdtemp(path.join(tmpdir(), "paseo-hub-relationship-"));
+    this.paseoHome = path.join(this.root, ".paseo");
     const staticDir = path.join(this.root, "static");
-    await Promise.all([mkdir(this.ottoHome, { recursive: true }), mkdir(staticDir)]);
+    await Promise.all([mkdir(this.paseoHome, { recursive: true }), mkdir(staticDir)]);
     execFileSync("git", ["init", "-b", "main", this.root], { stdio: "ignore" });
     execFileSync("git", ["-C", this.root, "config", "user.email", "hub@test.invalid"]);
     execFileSync("git", ["-C", this.root, "config", "user.name", "Hub Test"]);
@@ -1389,7 +1399,7 @@ export class HubRelationshipHarness {
     });
     this.config = {
       listen: "0.0.0.0:0",
-      ottoHome: this.ottoHome,
+      paseoHome: this.paseoHome,
       corsAllowedOrigins: [],
       hostnames: true,
       mcpEnabled: this.mcpEnabled,
@@ -1399,10 +1409,10 @@ export class HubRelationshipHarness {
         ...createTestAgentClients(),
         codex: this.codex,
       },
-      agentStoragePath: path.join(this.ottoHome, "agents"),
+      agentStoragePath: path.join(this.paseoHome, "agents"),
       relayEnabled: false,
-      relayEndpoint: "relay.otto-code.me:443",
-      appBaseUrl: "https://app.otto-code.me",
+      relayEndpoint: "relay.paseo.sh:443",
+      appBaseUrl: "https://app.paseo.sh",
     };
   }
 
@@ -1413,7 +1423,7 @@ export class HubRelationshipHarness {
         done();
       },
     });
-    this.daemon = await createOttoDaemon(this.config, pino({ level: "trace" }, destination), {
+    this.daemon = await createPaseoDaemon(this.config, pino({ level: "trace" }, destination), {
       hubRelationshipRemote: this.remote,
       hubRelationshipClock: this.clock,
       hubRelationshipRetryPolicy: this.clock,
@@ -1430,8 +1440,21 @@ export class HubRelationshipHarness {
     this.daemon = null;
   }
 
-  private runCli(args: string[]): Promise<Record<string, unknown>> {
-    return this.trackCli(this.executeCli(args));
+  private withClient<T>(action: (client: DaemonClient) => Promise<T>): Promise<T> {
+    return this.trackOperation(
+      (async () => {
+        const client = await this.trustedClient();
+        try {
+          return await action(client);
+        } finally {
+          await client.close();
+        }
+      })(),
+    );
+  }
+
+  runCli(args: string[]): Promise<Record<string, unknown>> {
+    return this.trackOperation(this.executeCli(args));
   }
 
   private async executeCli(args: string[]): Promise<Record<string, unknown>> {
@@ -1455,11 +1478,11 @@ export class HubRelationshipHarness {
     return parsed as Record<string, unknown>;
   }
 
-  private trackCli<T>(process: Promise<T>): Promise<T> {
-    this.cliProcesses.add(process);
+  private trackOperation<T>(process: Promise<T>): Promise<T> {
+    this.operations.add(process);
     void process.then(
-      () => this.cliProcesses.delete(process),
-      () => this.cliProcesses.delete(process),
+      () => this.operations.delete(process),
+      () => this.operations.delete(process),
     );
     return process;
   }
@@ -1579,7 +1602,6 @@ export class HubRelationshipHarness {
       appVersion: "0.1.106",
     });
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "hub-relationship-trusted" } });
     return client;
   }
 

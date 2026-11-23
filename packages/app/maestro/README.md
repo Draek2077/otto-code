@@ -1,3 +1,5 @@
+<!-- OTTO(identity): app ids are Otto's. -->
+
 # Maestro Flows
 
 This directory contains local mobile UI flows. Keep flows small enough that a
@@ -58,7 +60,7 @@ The reusable pieces live in `flows/`:
 Compose new workspace scenarios out of these primitives instead of copying the
 old full flow. The shell scripts render the top-level flows and every `flows/*.yaml`
 file into the same temp directory, so nested `runFlow: flows/...` paths keep
-working with `${OTTO_MAESTRO_*}` placeholders.
+working with `${PASEO_MAESTRO_*}` placeholders.
 
 The flow is intentionally strict. It must:
 
@@ -77,22 +79,9 @@ the wrong route. The header assertion and the `New workspace` negative assertion
 are what prove the redirect actually completed.
 
 The scripts assume a development build with package id `me.ottocode.mobile.debug`, an
-already-running local daemon, and a connected Android device or emulator. They
-call `adb reverse` for the daemon port; they do not restart the daemon.
-
-> **Their default endpoint is `127.0.0.1:6868`, which is the _installed_ app's
-> daemon over `~/.otto`.** The harness creates projects and workspaces, so
-> running it as-is writes test state into your real Otto. Point it at the dev
-> lane instead unless you specifically mean to target the installed app:
->
-> ```bash
-> OTTO_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6788 \
->   OTTO_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6788/ws \
->   bash packages/app/maestro/test-workspace-create-android-crash.sh
-> ```
->
-> `flows/land-in-chat.yaml` already uses 6788 for this reason. The shell
-> harnesses were written before that convention and still default the other way.
+already-running local daemon on `127.0.0.1:6767`, and a connected Android device
+or emulator. They call `adb reverse tcp:6767 tcp:6767`; they do not restart the
+daemon.
 
 ```bash
 bash packages/app/maestro/test-workspace-create-android-crash.sh
@@ -102,8 +91,8 @@ bash packages/app/maestro/record-workspace-create-android-focus.sh
 Optional environment:
 
 ```bash
-OTTO_MAESTRO_APP_ID=me.ottocode.mobile.debug
-OTTO_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6868
-OTTO_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6868/ws
-OTTO_MAESTRO_PROJECT_PATH=/path/to/git/repo
+PASEO_MAESTRO_APP_ID=me.ottocode.mobile.debug
+PASEO_MAESTRO_DIRECT_ENDPOINT=127.0.0.1:6767
+PASEO_MAESTRO_DAEMON_WS_URL=ws://127.0.0.1:6767/ws
+PASEO_MAESTRO_PROJECT_PATH=/path/to/git/repo
 ```

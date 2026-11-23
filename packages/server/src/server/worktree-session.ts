@@ -4,6 +4,7 @@ import { basename } from "node:path";
 import type { AgentSessionConfig } from "./agent/agent-sdk-types.js";
 import {
   type GitSetupOptions,
+  type CreateAgentWorktreeTarget,
   type FirstAgentContext,
   type ChangeRequestCheckoutSource,
   type SessionInboundMessage,
@@ -37,13 +38,16 @@ import {
   WorktreeSetupError,
 } from "../utils/worktree.js";
 import { toCheckoutError } from "./checkout-git-utils.js";
-import type { CreateOttoWorktreeInput, CreateOttoWorktreeResult } from "./otto-worktree-service.js";
+import type {
+  CreatePaseoWorktreeInput,
+  CreatePaseoWorktreeResult,
+} from "./paseo-worktree-service.js";
 import type { ArchiveDependencies } from "./workspace-archive-service.js";
 import { toWorktreeWireError } from "./worktree-errors.js";
 import {
   archiveCommand,
-  createOttoWorktreeCommand,
-  listOttoWorktreesCommand,
+  createPaseoWorktreeCommand,
+  listPaseoWorktreesCommand,
 } from "./worktree/commands.js";
 import type { WorkspaceSetupOperation } from "./workspace-setup-runtime.js";
 import {
@@ -78,17 +82,17 @@ type AgentWorktreeSetupTimelineWriter = (input: {
 }) => Promise<boolean>;
 
 interface BuildAgentSessionConfigDependencies {
-  ottoHome?: string;
+  paseoHome?: string;
   worktreesRoot?: string;
   sessionLogger: Logger;
   workspaceGitService?: WorkspaceGitService;
-  createOttoWorktree: (
-    input: CreateOttoWorktreeInput,
+  createPaseoWorktree: (
+    input: CreatePaseoWorktreeInput,
     options?: {
       resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
-      setupContinuation?: CreateOttoWorktreeSetupContinuationInput;
+      setupContinuation?: CreatePaseoWorktreeSetupContinuationInput;
     },
-  ) => Promise<CreateOttoWorktreeWorkflowResult>;
+  ) => Promise<CreatePaseoWorktreeWorkflowResult>;
   checkoutExistingBranch: (cwd: string, branch: string) => Promise<CheckoutExistingBranchResult>;
   createBranchFromBase: (params: {
     cwd: string;
@@ -97,15 +101,14 @@ interface BuildAgentSessionConfigDependencies {
   }) => Promise<void>;
 }
 
-interface CreateOttoWorktreeInBackgroundDependencies {
-  ottoHome?: string;
+interface CreatePaseoWorktreeInBackgroundDependencies {
+  paseoHome?: string;
   worktreesRoot?: string;
   emitWorkspaceUpdateForWorkspaceId: (workspaceId: string) => Promise<void>;
   cacheWorkspaceSetupSnapshot: (workspaceId: string, snapshot: WorkspaceSetupSnapshot) => void;
   emit: EmitSessionMessage;
   sessionLogger: Logger;
   terminalManager: TerminalManager | null;
-  archiveWorkspaceRecord: (workspaceId: string) => Promise<void>;
   serviceProxy: ServiceProxySubsystem | null;
   scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
   getDaemonTcpPort: (() => number | null) | null;
@@ -114,13 +117,13 @@ interface CreateOttoWorktreeInBackgroundDependencies {
   onScriptsChanged: ((workspaceId: string, workspaceDirectory: string) => void) | null;
 }
 
-interface CreateOttoWorktreeWorkflowDependencies extends CreateOttoWorktreeInBackgroundDependencies {
-  createOttoWorktree: (
-    input: CreateOttoWorktreeInput,
+interface CreatePaseoWorktreeWorkflowDependencies extends CreatePaseoWorktreeInBackgroundDependencies {
+  createPaseoWorktree: (
+    input: CreatePaseoWorktreeInput,
     options?: {
       resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
     },
-  ) => Promise<CreateOttoWorktreeResult>;
+  ) => Promise<CreatePaseoWorktreeResult>;
   warmWorkspaceGitData: (workspace: PersistedWorkspaceRecord) => Promise<void>;
   autoNameWorkspaceBranchForFirstAgent: (input: {
     workspace: PersistedWorkspaceRecord;
@@ -138,7 +141,7 @@ interface AgentWorktreeSetupContinuationInput {
   logger: Logger;
 }
 
-export type CreateOttoWorktreeSetupContinuationInput =
+export type CreatePaseoWorktreeSetupContinuationInput =
   | { kind: "workspace" }
   | AgentWorktreeSetupContinuationInput;
 
@@ -147,17 +150,17 @@ export interface AgentWorktreeSetupContinuation {
   startAfterAgentCreate: (input: { agentId: string }) => void;
 }
 
-export type CreateOttoWorktreeWorkflowResult = CreateOttoWorktreeResult & {
+export type CreatePaseoWorktreeWorkflowResult = CreatePaseoWorktreeResult & {
   setupContinuation?: AgentWorktreeSetupContinuation;
 };
 
-export type CreateOttoWorktreeWorkflowFn = (
-  input: CreateOttoWorktreeInput,
+export type CreatePaseoWorktreeWorkflowFn = (
+  input: CreatePaseoWorktreeInput,
   options?: {
     resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
-    setupContinuation?: CreateOttoWorktreeSetupContinuationInput;
+    setupContinuation?: CreatePaseoWorktreeSetupContinuationInput;
   },
-) => Promise<CreateOttoWorktreeWorkflowResult>;
+) => Promise<CreatePaseoWorktreeWorkflowResult>;
 
 interface HandleWorkspaceSetupStatusRequestDependencies {
   emit: EmitSessionMessage;
@@ -165,27 +168,27 @@ interface HandleWorkspaceSetupStatusRequestDependencies {
   getWorkspace: (workspaceId: string) => Promise<PersistedWorkspaceRecord | null>;
 }
 
-interface HandleWorkspaceSetupRunRequestDependencies extends CreateOttoWorktreeInBackgroundDependencies {
+interface HandleWorkspaceSetupRunRequestDependencies extends CreatePaseoWorktreeInBackgroundDependencies {
   getWorkspace: (workspaceId: string) => Promise<PersistedWorkspaceRecord | null>;
   clearAutomationBlock: (workspaceId: string) => Promise<boolean>;
   startWorkspaceSetup: (workspaceId: string, operation: WorkspaceSetupOperation) => void;
 }
 
-interface HandleCreateOttoWorktreeRequestDependencies {
-  ottoHome?: string;
+interface HandleCreatePaseoWorktreeRequestDependencies {
+  paseoHome?: string;
   worktreesRoot?: string;
   describeWorkspaceRecord: (
-    result: CreateOttoWorktreeResult,
+    result: CreatePaseoWorktreeResult,
   ) => Promise<WorkspaceDescriptorPayload>;
   emit: EmitSessionMessage;
   sessionLogger: Logger;
-  createOttoWorktreeWorkflow: (
-    input: CreateOttoWorktreeInput,
-  ) => Promise<CreateOttoWorktreeWorkflowResult>;
+  createPaseoWorktreeWorkflow: (
+    input: CreatePaseoWorktreeInput,
+  ) => Promise<CreatePaseoWorktreeWorkflowResult>;
 }
 
 function normalizeFirstAgentContext(
-  request: Extract<SessionInboundMessage, { type: "create_otto_worktree_request" }>,
+  request: Extract<SessionInboundMessage, { type: "create_paseo_worktree_request" }>,
 ): FirstAgentContext | undefined {
   if (request.firstAgentContext) {
     return request.firstAgentContext;
@@ -232,7 +235,7 @@ export async function buildAgentSessionConfig(
       "Creating worktree through createWorktreeCore",
     );
 
-    const createdWorktree = await dependencies.createOttoWorktree(
+    const createdWorktree = await dependencies.createPaseoWorktree(
       {
         cwd,
         worktreeSlug: normalized.worktreeSlug,
@@ -242,7 +245,7 @@ export async function buildAgentSessionConfig(
         githubPrNumber: normalized.githubPrNumber,
         firstAgentContext,
         runSetup: false,
-        ottoHome: dependencies.ottoHome,
+        paseoHome: dependencies.paseoHome,
         worktreesRoot: dependencies.worktreesRoot,
       },
       {
@@ -252,7 +255,7 @@ export async function buildAgentSessionConfig(
               resolveGitCreateBaseBranch(
                 repoRoot,
                 dependencies.workspaceGitService,
-                dependencies.ottoHome,
+                dependencies.paseoHome,
               ),
       },
     );
@@ -265,7 +268,7 @@ export async function buildAgentSessionConfig(
       (await resolveGitCreateBaseBranch(
         cwd,
         dependencies.workspaceGitService,
-        dependencies.ottoHome,
+        dependencies.paseoHome,
       ));
     await dependencies.createBranchFromBase({
       cwd,
@@ -318,7 +321,42 @@ function validateNormalizedGitOptions(input: ValidateNormalizedGitOptionsInput):
   }
 }
 
-export function normalizeGitOptions(
+export function normalizeAgentCreationGitOptions(
+  gitOptions?: GitSetupOptions,
+  legacyWorktreeName?: string,
+  worktree?: CreateAgentWorktreeTarget,
+): NormalizedGitOptions | null {
+  if (worktree && gitOptions) {
+    throw new Error("create_agent_request worktree cannot be combined with git options");
+  }
+  if (worktree) {
+    switch (worktree.mode) {
+      case "branch-off":
+        gitOptions = {
+          createWorktree: true,
+          createNewBranch: true,
+          newBranchName: worktree.newBranch,
+          baseBranch: worktree.base,
+          action: "branch-off",
+          refName: worktree.base,
+        };
+        break;
+      case "checkout-branch":
+        gitOptions = { createWorktree: true, action: "checkout", refName: worktree.branch };
+        break;
+      case "checkout-pr":
+        gitOptions = {
+          createWorktree: true,
+          action: "checkout",
+          githubPrNumber: worktree.prNumber,
+        };
+        break;
+    }
+  }
+  return normalizeGitOptions(gitOptions, legacyWorktreeName);
+}
+
+function normalizeGitOptions(
   gitOptions?: GitSetupOptions,
   legacyWorktreeName?: string,
 ): NormalizedGitOptions | null {
@@ -396,7 +434,7 @@ export function assertSafeGitRef(ref: string, label: string): void {
 export async function resolveGitCreateBaseBranch(
   cwd: string,
   workspaceGitService?: WorkspaceGitService,
-  _ottoHome?: string,
+  _paseoHome?: string,
 ): Promise<string> {
   if (!workspaceGitService) {
     throw new Error("WorkspaceGitService is required to resolve the repository root");
@@ -405,19 +443,19 @@ export async function resolveGitCreateBaseBranch(
   return workspaceGitService.resolveDefaultBranch(cwd);
 }
 
-export async function handleOttoWorktreeListRequest(
+export async function handlePaseoWorktreeListRequest(
   dependencies: {
     emit: EmitSessionMessage;
-    ottoHome?: string;
+    paseoHome?: string;
     workspaceGitService: WorkspaceGitService;
   },
-  msg: Extract<SessionInboundMessage, { type: "otto_worktree_list_request" }>,
+  msg: Extract<SessionInboundMessage, { type: "paseo_worktree_list_request" }>,
 ): Promise<void> {
   const { requestId } = msg;
   const cwd = msg.repoRoot ?? msg.cwd;
   if (!cwd) {
     dependencies.emit({
-      type: "otto_worktree_list_response",
+      type: "paseo_worktree_list_response",
       payload: {
         worktrees: [],
         error: { code: "UNKNOWN", message: "cwd or repoRoot is required" },
@@ -428,12 +466,12 @@ export async function handleOttoWorktreeListRequest(
   }
 
   try {
-    const worktrees = await listOttoWorktreesCommand(
+    const worktrees = await listPaseoWorktreesCommand(
       { workspaceGitService: dependencies.workspaceGitService },
       { cwd },
     );
     dependencies.emit({
-      type: "otto_worktree_list_response",
+      type: "paseo_worktree_list_response",
       payload: {
         worktrees: worktrees.map((entry) => ({
           worktreePath: entry.path,
@@ -447,7 +485,7 @@ export async function handleOttoWorktreeListRequest(
     });
   } catch (error) {
     dependencies.emit({
-      type: "otto_worktree_list_response",
+      type: "paseo_worktree_list_response",
       payload: {
         worktrees: [],
         error: toCheckoutError(error),
@@ -457,7 +495,7 @@ export async function handleOttoWorktreeListRequest(
   }
 }
 
-export async function handleOttoWorktreeArchiveRequest(
+export async function handlePaseoWorktreeArchiveRequest(
   dependencies: Omit<
     ArchiveDependencies,
     "emitWorkspaceUpdatesForWorkspaceIds" | "workspaceGitService"
@@ -465,11 +503,11 @@ export async function handleOttoWorktreeArchiveRequest(
     emit: EmitSessionMessage;
     workspaceGitService: Pick<
       WorkspaceGitService,
-      "getSnapshot" | "listWorktrees" | "invalidateAuxiliaryReads"
+      "getSnapshot" | "listWorktrees" | "invalidateWorktrees"
     >;
     emitWorkspaceUpdatesForWorkspaceIds: (workspaceIds: Iterable<string>) => Promise<void>;
   },
-  msg: Extract<SessionInboundMessage, { type: "otto_worktree_archive_request" }>,
+  msg: Extract<SessionInboundMessage, { type: "paseo_worktree_archive_request" }>,
 ): Promise<void> {
   const { requestId } = msg;
 
@@ -484,7 +522,7 @@ export async function handleOttoWorktreeArchiveRequest(
     });
     if (!result.ok) {
       dependencies.emit({
-        type: "otto_worktree_archive_response",
+        type: "paseo_worktree_archive_response",
         payload: {
           success: false,
           removedAgents: result.removedAgents,
@@ -499,7 +537,7 @@ export async function handleOttoWorktreeArchiveRequest(
     }
 
     dependencies.emit({
-      type: "otto_worktree_archive_response",
+      type: "paseo_worktree_archive_response",
       payload: {
         success: true,
         removedAgents: result.removedAgents,
@@ -509,7 +547,7 @@ export async function handleOttoWorktreeArchiveRequest(
     });
   } catch (error) {
     dependencies.emit({
-      type: "otto_worktree_archive_response",
+      type: "paseo_worktree_archive_response",
       payload: {
         success: false,
         removedAgents: [],
@@ -520,16 +558,16 @@ export async function handleOttoWorktreeArchiveRequest(
   }
 }
 
-export async function handleCreateOttoWorktreeRequest(
-  dependencies: HandleCreateOttoWorktreeRequestDependencies,
-  request: Extract<SessionInboundMessage, { type: "create_otto_worktree_request" }>,
+export async function handleCreatePaseoWorktreeRequest(
+  dependencies: HandleCreatePaseoWorktreeRequestDependencies,
+  request: Extract<SessionInboundMessage, { type: "create_paseo_worktree_request" }>,
 ): Promise<void> {
   try {
-    const commandResult = await createOttoWorktreeCommand(
+    const commandResult = await createPaseoWorktreeCommand(
       {
-        ottoHome: dependencies.ottoHome,
+        paseoHome: dependencies.paseoHome,
         worktreesRoot: dependencies.worktreesRoot,
-        createOttoWorktreeWorkflow: dependencies.createOttoWorktreeWorkflow,
+        createPaseoWorktreeWorkflow: dependencies.createPaseoWorktreeWorkflow,
       },
       {
         cwd: request.cwd,
@@ -549,7 +587,7 @@ export async function handleCreateOttoWorktreeRequest(
         "Failed to create worktree",
       );
       dependencies.emit({
-        type: "create_otto_worktree_response",
+        type: "create_paseo_worktree_response",
         payload: {
           workspace: null,
           error: commandResult.error.message,
@@ -564,7 +602,7 @@ export async function handleCreateOttoWorktreeRequest(
     const createdWorktree = commandResult.createdWorktree;
     const descriptor = await dependencies.describeWorkspaceRecord(createdWorktree);
     dependencies.emit({
-      type: "create_otto_worktree_response",
+      type: "create_paseo_worktree_response",
       payload: {
         workspace: descriptor,
         error: null,
@@ -593,7 +631,7 @@ export async function handleCreateOttoWorktreeRequest(
       "Failed to create worktree",
     );
     dependencies.emit({
-      type: "create_otto_worktree_response",
+      type: "create_paseo_worktree_response",
       payload: {
         workspace: null,
         error: wireError.message,
@@ -605,19 +643,19 @@ export async function handleCreateOttoWorktreeRequest(
   }
 }
 
-export async function createOttoWorktreeWorkflow(
-  dependencies: CreateOttoWorktreeWorkflowDependencies,
-  input: CreateOttoWorktreeInput,
+export async function createPaseoWorktreeWorkflow(
+  dependencies: CreatePaseoWorktreeWorkflowDependencies,
+  input: CreatePaseoWorktreeInput,
   options?: {
     resolveDefaultBranch?: (repoRoot: string) => Promise<string>;
-    setupContinuation?: CreateOttoWorktreeSetupContinuationInput;
+    setupContinuation?: CreatePaseoWorktreeSetupContinuationInput;
   },
-): Promise<CreateOttoWorktreeWorkflowResult> {
-  const createdWorktree = await dependencies.createOttoWorktree(
+): Promise<CreatePaseoWorktreeWorkflowResult> {
+  const createdWorktree = await dependencies.createPaseoWorktree(
     {
       ...input,
       runSetup: false,
-      ottoHome: input.ottoHome ?? dependencies.ottoHome,
+      paseoHome: input.paseoHome ?? dependencies.paseoHome,
       worktreesRoot: input.worktreesRoot ?? dependencies.worktreesRoot,
     },
     options?.resolveDefaultBranch
@@ -779,7 +817,6 @@ export async function handleWorkspaceSetupRunRequest(
             slug: basename(worktree.worktreePath),
             worktreePath: worktree.worktreePath,
             workspaceCwd: workspace.cwd,
-            runAutoTerminals: true,
           },
           signal,
         ),
@@ -809,7 +846,7 @@ export async function handleWorkspaceSetupRunRequest(
 }
 
 export async function runWorktreeSetupInBackground(
-  dependencies: CreateOttoWorktreeInBackgroundDependencies,
+  dependencies: CreatePaseoWorktreeInBackgroundDependencies,
   options: {
     requestCwd: string;
     repoRoot: string;
@@ -819,13 +856,11 @@ export async function runWorktreeSetupInBackground(
     slug: string;
     worktreePath: string;
     workspaceCwd?: string;
-    runAutoTerminals?: boolean;
   },
   signal?: AbortSignal,
 ): Promise<void> {
   let worktree: WorktreeConfig = options.worktree;
   let setupResults: WorktreeSetupCommandResult[] = [];
-  let setupStarted = false;
   const progressAccumulator = createWorktreeSetupProgressAccumulator();
   const workspaceId = options.workspaceId;
 
@@ -861,20 +896,18 @@ export async function runWorktreeSetupInBackground(
       } else {
         const workspaceCwd = options.workspaceCwd ?? worktree.worktreePath;
         const setupCommands = getWorktreeSetupCommands(workspaceCwd);
+        const runtimeEnv = await resolveWorktreeRuntimeEnv({
+          worktreePath: worktree.worktreePath,
+          branchName: worktree.branchName,
+          repoRootPath: options.repoRoot,
+        });
+        dependencies.terminalManager?.registerCwdEnv({
+          cwd: workspaceCwd,
+          env: runtimeEnv,
+        });
         if (setupCommands.length === 0) {
-          setupStarted = true;
           emitSetupProgress("completed", null);
         } else {
-          const runtimeEnv = await resolveWorktreeRuntimeEnv({
-            worktreePath: worktree.worktreePath,
-            branchName: worktree.branchName,
-            repoRootPath: options.repoRoot,
-          });
-          dependencies.terminalManager?.registerCwdEnv({
-            cwd: workspaceCwd,
-            env: runtimeEnv,
-          });
-          setupStarted = true;
           setupResults = await runWorktreeSetupCommands({
             worktreePath: workspaceCwd,
             branchName: worktree.branchName,
@@ -889,15 +922,14 @@ export async function runWorktreeSetupInBackground(
           });
           emitSetupProgress("completed", null);
         }
-        if (options.runAutoTerminals) {
-          await runWorktreeAutoTerminals({
-            workspaceId,
-            worktree,
-            workspaceCwd,
-            terminalManager: dependencies.terminalManager,
-            logger: dependencies.sessionLogger,
-          });
-        }
+        await runWorktreeAutoTerminals({
+          workspaceId,
+          worktree,
+          workspaceCwd,
+          runtimeEnv,
+          terminalManager: dependencies.terminalManager,
+          logger: dependencies.sessionLogger,
+        });
       }
     } catch (error) {
       if (error instanceof WorktreeSetupError) {
@@ -906,10 +938,6 @@ export async function runWorktreeSetupInBackground(
       const message = error instanceof Error ? error.message : String(error);
       emitSetupProgress("failed", message);
 
-      if (!setupStarted) {
-        await dependencies.archiveWorkspaceRecord(options.workspaceId);
-      }
-
       dependencies.sessionLogger.error(
         {
           err: error,
@@ -917,7 +945,6 @@ export async function runWorktreeSetupInBackground(
           repoRoot: options.repoRoot,
           worktreeSlug: worktree.branchName,
           worktreePath: worktree.worktreePath,
-          setupStarted,
         },
         "Background worktree setup failed",
       );

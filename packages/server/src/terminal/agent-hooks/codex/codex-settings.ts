@@ -40,7 +40,7 @@ export const codexHooksFormat: AgentHookConfigFormat<CodexHooksFile> = {
     const install = provider.install;
     const hooks = normalizeHooks(config.hooks);
     for (const event of provider.events) {
-      const userEntries = removeOttoHooks(hooks[event.event], install.hookMarker);
+      const userEntries = removePaseoHooks(hooks[event.event], install.hookMarker);
       hooks[event.event] = [
         ...userEntries,
         {
@@ -62,7 +62,7 @@ export const codexHooksFormat: AgentHookConfigFormat<CodexHooksFile> = {
     const install = provider.install;
     const hooks = normalizeHooks(config.hooks);
     for (const event of provider.events) {
-      const entries = removeOttoHooks(hooks[event.event], install.hookMarker);
+      const entries = removePaseoHooks(hooks[event.event], install.hookMarker);
       if (entries.length > 0) {
         hooks[event.event] = entries;
       } else {
@@ -77,7 +77,7 @@ export const codexHooksFormat: AgentHookConfigFormat<CodexHooksFile> = {
     return provider.events.every((event) =>
       normalizeMatchers(hooks[event.event]).some((entry) =>
         normalizeCommandHooks(entry.hooks).some((hook) =>
-          hasOttoCommands(hook, install.hookMarker),
+          hasPaseoCommands(hook, install.hookMarker),
         ),
       ),
     );
@@ -102,7 +102,7 @@ function normalizeCommandHooks(value: unknown): CodexCommandHook[] {
   return value.filter(isRecord);
 }
 
-function removeOttoHooks(value: unknown, marker: string): CodexMatcherGroup[] {
+function removePaseoHooks(value: unknown, marker: string): CodexMatcherGroup[] {
   const entries: CodexMatcherGroup[] = [];
   for (const entry of normalizeMatchers(value)) {
     const hooks = normalizeCommandHooks(entry.hooks).filter(
@@ -115,7 +115,7 @@ function removeOttoHooks(value: unknown, marker: string): CodexMatcherGroup[] {
   return entries;
 }
 
-function hasOttoCommands(hook: CodexCommandHook, marker: string): boolean {
+function hasPaseoCommands(hook: CodexCommandHook, marker: string): boolean {
   return (
     commandFieldContainsMarker(hook.command, marker) && windowsCommandContainsMarker(hook, marker)
   );
@@ -129,18 +129,9 @@ function commandContainsMarker(hook: CodexCommandHook, marker: string): boolean 
 
 function windowsCommandContainsMarker(hook: CodexCommandHook, marker: string): boolean {
   return (
-    windowsCommandFieldContainsMarker(hook.commandWindows, marker) ||
-    windowsCommandFieldContainsMarker(hook.command_windows, marker)
+    commandFieldContainsMarker(hook.commandWindows, marker) ||
+    commandFieldContainsMarker(hook.command_windows, marker)
   );
-}
-
-function windowsCommandFieldContainsMarker(value: unknown, marker: string): boolean {
-  if (commandFieldContainsMarker(value, marker)) return true;
-  if (typeof value !== "string") return false;
-  const encoded = value.match(
-    /^powershell\.exe -NoProfile -NonInteractive -EncodedCommand ([A-Za-z0-9+/=]+)$/,
-  )?.[1];
-  return encoded ? Buffer.from(encoded, "base64").toString("utf16le").includes(marker) : false;
 }
 
 function commandFieldContainsMarker(value: unknown, marker: string): boolean {

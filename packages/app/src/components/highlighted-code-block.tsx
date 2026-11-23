@@ -1,16 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
+import {
+  Pressable,
+  View,
+  Text,
+  type StyleProp,
+  type TextStyle,
+  type ViewStyle,
+} from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { MarkdownTextSpan } from "@/components/markdown-text";
 import * as Clipboard from "expo-clipboard";
-import { Check, Copy } from "@/components/icons/material-icons";
+import { Check, Copy } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import type { HighlightToken } from "@otto-code/highlight";
+import type { HighlightToken } from "@getpaseo/highlight";
 import { isNative, isWeb } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { syntaxTokenStyleFor } from "@/styles/syntax-token-styles";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
-import { highlightToKeyedLines, resolveExtension, type KeyedLine } from "@/utils/highlight-cache";
+import { highlightToKeyedLines, type KeyedLine } from "@/utils/highlight-cache";
 import {
   markdownCopyCodeBlockDataSet,
   markdownCopyDataSet,
@@ -22,14 +28,10 @@ interface HighlightedCodeBlockProps {
   language: string | null | undefined;
   inheritedStyles: TextStyle;
   textStyle: TextStyle;
-  // When true and no explicit language is given, guess the language from the
-  // code content. Enabled for markdown fences (agents routinely omit the tag);
-  // left off elsewhere so callers with a known-null language stay plain.
-  detectUntagged?: boolean;
 }
 
 // Fence info strings ("```ts", "```typescript", "```ts {1,3}") map to the
-// extension-based parser table in @otto-code/highlight. Aliases here only
+// extension-based parser table in @getpaseo/highlight. Aliases here only
 // cover names that don't already match an extension key in parsers.ts.
 const LANGUAGE_ALIASES: Record<string, string> = {
   typescript: "ts",
@@ -44,16 +46,6 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   "objective-c": "m",
   markdown: "md",
   elixir: "ex",
-  // Shell/SQL fence tags that don't already match a parser key in parsers.ts.
-  "shell-session": "sh",
-  console: "sh",
-  shellscript: "sh",
-  postgres: "sql",
-  postgresql: "sql",
-  psql: "sql",
-  mysql: "sql",
-  sqlite: "sql",
-  plsql: "sql",
 };
 
 function fenceLanguageToExtension(info: string | null | undefined): string | null {
@@ -73,7 +65,6 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
   language,
   inheritedStyles,
   textStyle,
-  detectUntagged = false,
 }: HighlightedCodeBlockProps) {
   // Box styles (bg / padding / border / radius / margin) go on the wrapper View
   // so the absolute copy button positions relative to the visible code area,
@@ -88,11 +79,10 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
     [language],
   );
 
-  const keyedLines = useMemo<KeyedLine[] | null>(() => {
-    let ext = fenceLanguageToExtension(language);
-    if (!ext && detectUntagged) ext = resolveExtension(null, renderedCode);
-    return highlightToKeyedLines(renderedCode, ext);
-  }, [renderedCode, language, detectUntagged]);
+  const keyedLines = useMemo<KeyedLine[] | null>(
+    () => highlightToKeyedLines(renderedCode, fenceLanguageToExtension(language)),
+    [renderedCode, language],
+  );
 
   const isCompact = useIsCompactFormFactor();
   const [isHovered, setIsHovered] = useState(false);
@@ -112,13 +102,13 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
       onPointerLeave={handlePointerLeave}
     >
       {keyedLines ? (
-        <MarkdownTextSpan style={innerTextStyle} copyTag="code">
+        <Text style={innerTextStyle} dataSet={markdownCopyDataSet.code}>
           {renderCodeSegments(keyedLines)}
-        </MarkdownTextSpan>
+        </Text>
       ) : (
-        <MarkdownTextSpan style={innerTextStyle} copyTag="code">
+        <Text style={innerTextStyle} dataSet={markdownCopyDataSet.code}>
           {renderedCode}
-        </MarkdownTextSpan>
+        </Text>
       )}
       <CopyButton getCode={getCode} visible={controlsVisible} />
     </View>
@@ -145,9 +135,7 @@ interface TokenSpanProps {
 
 const TokenSpan = React.memo(function TokenSpan({ token }: TokenSpanProps) {
   return (
-    <MarkdownTextSpan style={token.style ? syntaxTokenStyleFor(token.style) : undefined}>
-      {token.text}
-    </MarkdownTextSpan>
+    <Text style={token.style ? syntaxTokenStyleFor(token.style) : undefined}>{token.text}</Text>
   );
 });
 
@@ -156,7 +144,7 @@ interface CodeTextSpanProps {
 }
 
 const CodeTextSpan = React.memo(function CodeTextSpan({ text }: CodeTextSpanProps) {
-  return <MarkdownTextSpan>{text}</MarkdownTextSpan>;
+  return <Text>{text}</Text>;
 });
 
 interface SplitStyles {
@@ -234,9 +222,9 @@ const CopyButton = React.memo(function CopyButton({ getCode, visible }: CopyButt
           ? copyButtonStyles.iconHoveredColor.color
           : copyButtonStyles.iconColor.color;
         return copied ? (
-          <Check size="sm" color={iconColor} />
+          <Check size={14} color={iconColor} />
         ) : (
-          <Copy size="sm" color={iconColor} />
+          <Copy size={14} color={iconColor} />
         );
       }}
     </Pressable>

@@ -1,10 +1,11 @@
+// OTTO(identity): help menus link to Otto and show its product version.
 import { expect, test, type Page } from "../support/fixtures";
 import { gotoAppShell, openSettings } from "../support/helpers/app";
 import { openSettingsSection } from "../support/helpers/settings";
 import { openWhatsNew, release, serveChangelog } from "../support/helpers/changelog";
 
 const DISCORD_DESTINATION =
-  /^https:\/\/(?:discord\.gg\/Cwjm93KfK|discord\.com\/invite\/Cwjm93KfK)(?:[/?#]|$)/;
+  /^https:\/\/(?:discord\.gg\/jz8T2uahpH|discord\.com\/invite\/jz8T2uahpH)(?:[/?#]|$)/;
 const GITHUB_ISSUE_DESTINATION =
   /^https:\/\/github\.com\/(?:Draek2077\/otto-code\/issues\/new(?:\/choose)?(?:[/?#]|$)|login\?return_to=https%3A%2F%2Fgithub\.com%2FDraek2077%2Fotto-code%2Fissues%2Fnew$)/;
 const CHANGELOG_DESTINATION = /^https:\/\/otto-code\.me\/changelog(?:[/?#]|$)/;
@@ -15,32 +16,6 @@ const APP_VERSION = /^Otto\s*v\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-
 async function openHelpMenu(page: Page): Promise<void> {
   await page.getByTestId("sidebar-help").click();
   await expect(page.getByTestId("sidebar-help-menu")).toBeVisible();
-  try {
-    await expect(page.getByTestId("sidebar-help-menu")).toBeInViewport();
-  } catch (error) {
-    console.log(
-      "Help menu geometry",
-      await page.evaluate(() => {
-        const menu = document.querySelector('[data-testid="sidebar-help-menu"]');
-        const trigger = document.querySelector('[data-testid="sidebar-help"]');
-        const ancestors = [];
-        for (let node = menu; node; node = node.parentElement) {
-          const style = getComputedStyle(node);
-          ancestors.push({
-            tag: node.tagName,
-            id: node.id,
-            rect: node.getBoundingClientRect().toJSON(),
-            position: style.position,
-            top: style.top,
-            left: style.left,
-            transform: style.transform,
-          });
-        }
-        return { trigger: trigger?.getBoundingClientRect().toJSON(), ancestors };
-      }),
-    );
-    throw error;
-  }
 }
 
 async function expectDiagnosticReport(page: Page): Promise<void> {
@@ -181,6 +156,18 @@ test("keeps diagnostics available from Settings after globalizing the sheet", as
 test.describe("compact sidebar help", () => {
   test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
 
+  test("footer buttons provide finger-sized targets and accept taps beyond the glyph", async ({
+    page,
+  }) => {
+    await gotoAppShell(page);
+    await openCompactSidebar(page);
+    await expectFingerSizedFooterTargets(page);
+    await tapHelpNearTargetEdge(page);
+    await expect(page.getByTestId("sidebar-help-menu")).toBeVisible();
+    await page.getByTestId("sidebar-help-diagnostics").click();
+    await expectDiagnosticReport(page);
+  });
+
   test("offers diagnostics without advertising disabled keyboard shortcuts", async ({ page }) => {
     await gotoAppShell(page);
     await page.getByRole("button", { name: "Open menu", exact: true }).click();
@@ -191,3 +178,29 @@ test.describe("compact sidebar help", () => {
     await expectDiagnosticReport(page);
   });
 });
+
+async function openCompactSidebar(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Open menu", exact: true }).click();
+  await expect(page.getByTestId("sidebar-footer-bottom-line")).toBeVisible();
+}
+
+const MIN_TARGET_SIZE = 44;
+
+async function expectFingerSizedFooterTargets(page: Page): Promise<void> {
+  const buttons = page.getByTestId("sidebar-footer-bottom-line").getByRole("button");
+  await expect(buttons).toHaveCount(5);
+  for (const button of await buttons.all()) {
+    const bounds = await button.boundingBox();
+    // Layout can report a 44pt box as 43.99999, so compare at a hundredth of a point.
+    expect(bounds?.width).toBeGreaterThanOrEqual(MIN_TARGET_SIZE - 0.01);
+    expect(bounds?.height).toBeGreaterThanOrEqual(MIN_TARGET_SIZE - 0.01);
+    // Glyphs stay at the composer toolbar size (some optically smaller); only the target grows.
+    const glyphWidth = await button.locator("svg").first().getAttribute("width");
+    expect(Number(glyphWidth)).toBeLessThanOrEqual(20);
+  }
+}
+
+async function tapHelpNearTargetEdge(page: Page): Promise<void> {
+  const button = page.getByRole("button", { name: "Help and support", exact: true });
+  await button.tap({ position: { x: 40, y: 40 } });
+}

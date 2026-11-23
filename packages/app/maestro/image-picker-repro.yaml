@@ -1,4 +1,4 @@
-appId: me.ottocode.mobile
+appId: me.ottocode.mobile # OTTO(identity)
 ---
 - runFlow: flows/land-in-chat.yaml
 

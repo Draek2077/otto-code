@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Logger } from "pino";
 import type {
-  AgentBareCompletionOptions,
-  AgentBareCompletionResult,
   AgentCapabilityFlags,
   AgentClient,
   AgentFeature,
@@ -13,10 +11,8 @@ import type {
   AgentPermissionRequest,
   AgentPermissionResponse,
   AgentPermissionResult,
-  AgentPersonalityUpdate,
   AgentPromptInput,
   AgentProvider,
-  AgentRateLimitInfo,
   AgentRunOptions,
   AgentRunResult,
   AgentRuntimeInfo,
@@ -35,8 +31,7 @@ import type {
   ToolCallTimelineItem,
 } from "../agent-sdk-types.js";
 import { importSessionFromPersistence } from "../provider-session-import.js";
-import { generateSyntheticConversation } from "../synthetic-conversation.js";
-import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
+import { getAgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
 
 export const MOCK_LOAD_TEST_PROVIDER_ID = "mock";
 export const MOCK_LOAD_TEST_DEFAULT_MODEL_ID = "five-minute-stream";
@@ -59,15 +54,9 @@ const CAPABILITIES: AgentCapabilityFlags = {
   supportsMcpServers: false,
   supportsReasoningStream: true,
   supportsToolInvocations: true,
-  // The deterministic mock recognizes one explicit synthetic native-tool
-  // scenario. It exists to exercise daemon-owned Workflow tool lifecycles in
-  // browser E2E without contacting a provider.
-  supportsNativeOttoTools: true,
   supportsRewindConversation: true,
   supportsRewindFiles: true,
   supportsRewindBoth: true,
-  // The synthetic prompt-suggestion scenario emits `prompt_suggestion`.
-  supportsPromptSuggestions: true,
 };
 
 const MODELS: AgentModelDefinition[] = [
@@ -158,13 +147,14 @@ const MODELS: AgentModelDefinition[] = [
   },
   {
     provider: MOCK_LOAD_TEST_PROVIDER_ID,
-    id: "synthetic-history",
-    label: "Synthetic history (count-bounded)",
-    description:
-      "Emits a deterministic corpus of synthetic conversation items in one turn then finishes. Used to seed performance-test corpora - all content flows through generateSyntheticConversation so blocks are combinatorially unique.",
+    id: "max-only-thinking-stream",
+    label: "Max-only thinking stream",
+    description: "Fast realistic stream with one supported thinking level.",
+    thinkingOptions: [{ id: "max", label: "Max", isDefault: true }],
+    defaultThinkingOptionId: "max",
     metadata: {
-      itemCount: 300,
-      intervalMs: 0,
+      durationMs: 10_000,
+      intervalMs: 5,
     },
   },
   {
@@ -210,8 +200,6 @@ interface ActiveTurn {
   cycle: number;
   durationMs: number;
   intervalMs: number;
-  /** Non-null when this is a count-bounded synthetic-history turn. */
-  itemCount: number | null;
   timer: ReturnType<typeof setTimeout> | null;
   resolve: (result: AgentRunResult) => void;
   completed: Promise<AgentRunResult>;
@@ -244,6 +232,7 @@ type SteeringReplayShape = "claude" | "codex";
 interface MockQuestionOption {
   label: string;
   description?: string;
+  preview?: string;
 }
 
 interface MockQuestionPromptQuestion {
@@ -261,40 +250,13 @@ interface MockQuestionPromptRequest {
   questions: MockQuestionPromptQuestion[];
 }
 
-interface MockWorkflowGateScenario {
-  phaseTitle: string;
-}
-
-interface MockWorkflowFailureScenario {
-  phaseTitle: string;
-}
-
-// Script for a one-shot synthetic turn (see emitSyntheticTurn): optional
-// timeline items and assistant text, plus extra stream events emitted between
-// the assistant message and turn_completed.
-interface MockSyntheticTurnScript {
-  timeline?: AgentTimelineItem[];
-  assistantText?: string;
-  events?: AgentStreamEvent[];
-  finalText: string;
-}
-
 function shouldEmitPlanApprovalPrompt(prompt: AgentPromptInput): boolean {
   return /emit\s+(?:a\s+)?synthetic\s+plan\s+approval/i.test(promptToText(prompt));
-}
-
-function shouldEmitToolPermissionPrompt(prompt: AgentPromptInput): boolean {
-  return /emit\s+(?:a\s+)?synthetic\s+tool\s+permission/i.test(promptToText(prompt));
 }
 
 function shouldEmitTurnFailure(prompt: AgentPromptInput): boolean {
   return /emit\s+(?:a\s+)?synthetic\s+turn\s+failure/i.test(promptToText(prompt));
 }
-
-// Deterministic shell detail for the synthetic tool-permission scenario. E2E
-// specs assert on the command text, so keep it stable.
-const MOCK_TOOL_PERMISSION_COMMAND = "npm run build";
-const MOCK_TOOL_PERMISSION_CWD = "/tmp/otto-mock-load";
 
 function parseSteeringReplayShape(prompt: AgentPromptInput): SteeringReplayShape | null {
   const match = /replay a (claude|codex)-shaped foreground shell tool call/i.exec(
@@ -309,6 +271,16 @@ function parseSettledAssistantImageMarkdown(prompt: AgentPromptInput): string | 
   );
   return match?.[1] ?? null;
 }
+
+const ROLLOUT_FLAG_PREVIEW = [
+  "Ship it dark behind the new-surface flag, then turn it on for internal users before everyone else.",
+  "",
+  'if (flags.enabled("new-surface")) {',
+  "  render(<NewSurface />);",
+  "}",
+  ...Array.from({ length: 40 }, (_, i) => `// rollout step ${i + 1}`),
+  "// LAST PREVIEW LINE",
+].join("\n");
 
 function parseMockQuestionPrompt(prompt: AgentPromptInput): MockQuestionPromptRequest | null {
   const text = promptToText(prompt);
@@ -348,7 +320,10 @@ function parseMockQuestionPrompt(prompt: AgentPromptInput): MockQuestionPromptRe
       {
         question: "Which rollout should we use?",
         header: "rollout",
-        options: [{ label: "Immediately" }, { label: "Behind feature flag" }],
+        options: [
+          { label: "Immediately" },
+          { label: "Behind feature flag", preview: ROLLOUT_FLAG_PREVIEW },
+        ],
         multiSelect: false,
       },
       {
@@ -366,8 +341,6 @@ function resolveModelProfile(modelId: string | null | undefined): {
   modelId: string;
   durationMs: number;
   intervalMs: number;
-  /** Non-null when this model is count-bounded (emits exactly itemCount items then finishes). */
-  itemCount: number | null;
   burst: BurstProfile | null;
 } {
   const model = MODELS.find((entry) => entry.id === modelId) ?? MODELS[0];
@@ -382,8 +355,6 @@ function resolveModelProfile(modelId: string | null | undefined): {
       typeof metadata.durationMs === "number" ? metadata.durationMs : MOCK_LOAD_TEST_DURATION_MS,
     intervalMs:
       typeof metadata.intervalMs === "number" ? metadata.intervalMs : MOCK_LOAD_TEST_INTERVAL_MS,
-    itemCount:
-      typeof metadata.itemCount === "number" && metadata.itemCount > 0 ? metadata.itemCount : null,
     burst:
       burstMinTokens !== null && burstMaxTokens !== null
         ? {
@@ -468,47 +439,6 @@ function parseAgentStreamStressPrompt(prompt: AgentPromptInput): AgentStreamStre
   };
 }
 
-// Allow the caller to override itemCount per-turn via a prompt directive like
-// "synthetic-history: 30". This lets the seeder drive many small turns rather
-// than one giant one - important because findMountedWindowStart walks back from
-// the tail until it hits a user message, and a single huge turn with no user
-// messages in its timeline mounts the entire history.
-function parseSyntheticHistoryCountPrompt(prompt: AgentPromptInput): number | null {
-  const text = promptToText(prompt);
-  const match = /synthetic-history\s*:\s*(\d+)/i.exec(text);
-  if (!match) {
-    return null;
-  }
-  const count = Number(match[1]);
-  if (!Number.isFinite(count) || count <= 0) {
-    return null;
-  }
-  return Math.min(count, 5_000);
-}
-
-// Pin the generator seed for this turn via a directive like "synthetic-seed: 41".
-//
-// Without this the seed is hashString(turnId), and turnId is a fresh randomUUID
-// per turn - so the generator is deterministic but a *corpus* is not. Two seeding
-// runs would produce statistically similar, byte-different conversations, and any
-// before/after measurement taken across them would be comparing two different
-// corpora while reporting the difference as a code change. A seeder that pins the
-// seed gets the same corpus back every time.
-function parseSyntheticSeedPrompt(prompt: AgentPromptInput): number | null {
-  const text = promptToText(prompt);
-  const match = /synthetic-seed\s*:\s*(\d+)/i.exec(text);
-  if (!match) {
-    return null;
-  }
-  const seed = Number(match[1]);
-  if (!Number.isFinite(seed)) {
-    return null;
-  }
-  // The generator forces the seed unsigned anyway; keep it in range here so the
-  // directive and the PRNG agree on what "seed 4294967297" means.
-  return seed >>> 0;
-}
-
 function parseStructuredBranchNamePrompt(
   prompt: AgentPromptInput,
 ): { title: string; branch: string } | null {
@@ -551,117 +481,6 @@ function parseStructuredBranchNamePrompt(
       .slice(0, 100) || "mock-task";
 
   return { title: title || "Mock task", branch };
-}
-
-// Structured "chat title" generation (agent-title-generator.ts): the prompt
-// asks for JSON with a single `title` field. Deterministic derivation so E2E
-// specs can assert the exact AI title: first three words of the first
-// non-empty <user-prompt> line, clamped to the 40-char schema ceiling.
-function parseStructuredTitlePrompt(prompt: AgentPromptInput): { title: string } | null {
-  const text = promptToText(prompt);
-  const isTitleContract = text.includes(
-    "Generate an extremely short title (a chat name) for a coding-assistant conversation",
-  );
-  const isTitleOnlySchema =
-    text.includes("You must respond with JSON only that matches this JSON Schema") &&
-    text.includes('"title"') &&
-    !text.includes('"branch"');
-  if (!isTitleContract && !isTitleOnlySchema) {
-    return null;
-  }
-
-  const seed = text.match(/<user-prompt>\n([\s\S]*?)\n<\/user-prompt>/)?.[1]?.trim() ?? "";
-  const firstLine =
-    seed
-      .split("\n")
-      .find((line) => line.trim().length > 0)
-      ?.trim() ?? "";
-  const title = firstLine
-    .replace(/["'`]/g, "")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 3)
-    .join(" ")
-    .slice(0, 40)
-    .trim();
-  return { title: title || "Mock chat" };
-}
-
-// Synthetic composer ghost-text suggestion: `emit a synthetic prompt suggestion "..."`.
-function parseMockPromptSuggestionPrompt(prompt: AgentPromptInput): { suggestion: string } | null {
-  const match = /emit\s+(?:a\s+)?synthetic\s+prompt\s+suggestion\s+"([^"]+)"/i.exec(
-    promptToText(prompt),
-  );
-  return match?.[1] ? { suggestion: match[1] } : null;
-}
-
-// Synthetic plan rate-limit status: `emit a synthetic rate limit [allowed|warning|rejected]`.
-function parseMockRateLimitPrompt(prompt: AgentPromptInput): { info: AgentRateLimitInfo } | null {
-  const match = /emit\s+(?:a\s+)?synthetic\s+rate\s+limit(?:\s+(allowed|warning|rejected))?/i.exec(
-    promptToText(prompt),
-  );
-  if (!match) {
-    return null;
-  }
-  const status = (match[1]?.toLowerCase() ?? "warning") as AgentRateLimitInfo["status"];
-  if (status === "allowed") {
-    return { info: { status } };
-  }
-  return {
-    info: {
-      status,
-      // Deterministic percentages so specs can assert exact warning copy.
-      utilizationPercent: status === "rejected" ? 100 : 85,
-      limitType: "five_hour",
-      resetsAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
-    },
-  };
-}
-
-// Synthetic assistant message with caller-provided markdown: everything after
-// the `emit synthetic assistant markdown` marker line becomes the message body
-// (E2E uses this to render file links and other markdown deterministically).
-function parseMockAssistantMarkdownPrompt(prompt: AgentPromptInput): { markdown: string } | null {
-  const match = /emit\s+synthetic\s+assistant\s+markdown\s*\n([\s\S]+)/i.exec(promptToText(prompt));
-  const markdown = match?.[1]?.trim();
-  return markdown ? { markdown } : null;
-}
-
-// Synthetic tool call with a caller-chosen raw name and an `unknown` detail, so
-// the UI's tool display-name humanizer is what renders the label:
-// `emit a synthetic tool call named "mcp__otto__suggest_task"`.
-function parseMockNamedToolCallPrompt(prompt: AgentPromptInput): { name: string } | null {
-  const match = /emit\s+(?:a\s+)?synthetic\s+tool\s+call\s+named\s+"([^"]+)"/i.exec(
-    promptToText(prompt),
-  );
-  return match?.[1] ? { name: match[1] } : null;
-}
-
-/**
- * Test-only native Otto-tool scenario. The real provider adapters own their
- * own tool loops; this explicit prompt grammar lets the mock drive the same
- * catalog once so browser E2E can prove an attended AI Workflow gate for free.
- */
-function parseMockWorkflowGateScenario(prompt: AgentPromptInput): MockWorkflowGateScenario | null {
-  if (
-    !/emit\s+(?:a\s+)?synthetic\s+attended\s+(?:ai\s+)?workflow\s+gate/i.test(promptToText(prompt))
-  ) {
-    return null;
-  }
-  return { phaseTitle: "Review the AI plan" };
-}
-
-function parseMockWorkflowFailureScenario(
-  prompt: AgentPromptInput,
-): MockWorkflowFailureScenario | null {
-  if (
-    !/emit\s+(?:a\s+)?synthetic\s+(?:ai\s+)?workflow\s+provider\s+failure/i.test(
-      promptToText(prompt),
-    )
-  ) {
-    return null;
-  }
-  return { phaseTitle: "Synthetic provider failure" };
 }
 
 function buildRepeatedPayload(bytes: number, prefix: string): string {
@@ -716,7 +535,7 @@ function buildMidParagraph(): string {
     "- The threshold for 'near the bottom' is hardcoded at 80px, which feels too tight on dense content where headers and tool calls take up a lot of vertical space.",
     "- We rely on `onContentSizeChange` to detect new content, but that fires after layout, not as the streaming delta arrives, so we end up scrolling one frame late on fast streams.",
     "- The gesture handler does not pause scroll-to-bottom while the user is actively dragging, which means a drag in progress can be visually overridden mid-frame.",
-    "- Coalescing happens upstream, so the FlatList sees fewer updates than the wire - but each batch can still cause a relayout.",
+    "- Coalescing happens upstream, so the FlatList sees fewer updates than the wire — but each batch can still cause a relayout.",
     "",
     "Let me make a small adjustment to the threshold and add a flag for active gestures, then run a quick command to confirm the order of events when streaming is fast.",
   ].join("\n");
@@ -815,7 +634,7 @@ function buildCycleQueue(turnId: string, cycle: number): CycleEvent[] {
   const shellDetail: ToolCallDetail = {
     type: "shell",
     command: "node scripts/simulate-stream-burst.mjs",
-    cwd: "/tmp/otto-mock-load",
+    cwd: "/tmp/paseo-mock-load",
     output:
       "[burst] tick 1 userIsAtBottom=true\n[burst] tick 2 userIsAtBottom=true\n[burst] drag-start isDragging=true\n[burst] tick 3 suppressed\n[burst] drag-end isDragging=false\n",
     exitCode: 0,
@@ -831,68 +650,6 @@ function buildCycleQueue(turnId: string, cycle: number): CycleEvent[] {
   queue.push({ kind: "usage" });
 
   return queue;
-}
-
-// Build a single-shot queue from the deterministic synthetic conversation
-// generator. Unlike buildCycleQueue this is never refilled - the turn finishes
-// when the queue drains, so it exercises rendering paths with combinatorially
-// unique markdown blocks (avoiding the app's height cache).
-function buildSyntheticHistoryQueue(
-  _turnId: string,
-  seed: number,
-  itemCount: number,
-): CycleEvent[] {
-  const conversation = generateSyntheticConversation({ seed, itemCount });
-  const queue: CycleEvent[] = [];
-
-  for (const item of conversation) {
-    switch (item.type) {
-      case "assistant_message":
-        // Tokenize so the app sees incremental streaming.
-        for (const tok of tokenize(item.text)) {
-          queue.push({ kind: "assistant_token", text: tok });
-        }
-        break;
-      case "reasoning":
-        for (const tok of tokenize(item.text)) {
-          queue.push({ kind: "reasoning_token", text: tok });
-        }
-        break;
-      case "tool_call":
-        // Emit running then completed to exercise both timeline states.
-        queue.push({
-          kind: "tool_running",
-          callId: item.callId,
-          name: item.name,
-          detail: item.detail,
-        });
-        queue.push({
-          kind: "tool_completed",
-          callId: item.callId,
-          name: item.name,
-          detail: item.detail,
-        });
-        break;
-      case "user_message":
-        // Skip - the user prompt is the turn itself, not a timeline event.
-        break;
-      default:
-        // We don't emit todo/error/compaction from synthetic history (the corpus generator doesn't produce them).
-        break;
-    }
-  }
-
-  queue.push({ kind: "usage" });
-  return queue;
-}
-
-// Simple string hash for deriving a deterministic seed from a turn UUID.
-function hashString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) {
-    h = ((h << 5) - h + s.charCodeAt(i)) | 0;
-  }
-  return h >>> 0; // force unsigned
 }
 
 function buildBurstyStreamQueue(cycle: number): CycleEvent[] {
@@ -925,13 +682,12 @@ export class MockLoadTestAgentClient implements AgentClient {
 
   async createSession(
     config: AgentSessionConfig,
-    launchContext?: AgentLaunchContext,
+    _launchContext?: AgentLaunchContext,
   ): Promise<AgentSession> {
     return new MockLoadTestAgentSession({
       config,
       sessionId: randomUUID(),
       logger: this.logger,
-      launchContext,
     });
   }
 
@@ -950,7 +706,6 @@ export class MockLoadTestAgentClient implements AgentClient {
       },
       sessionId: handle.sessionId,
       logger: this.logger,
-      launchContext: _launchContext,
     });
   }
 
@@ -974,27 +729,6 @@ export class MockLoadTestAgentClient implements AgentClient {
     });
   }
 
-  /**
-   * Tool-less metadata generation (chat titles, branch names). The mock already
-   * answers these contracts deterministically through a normal turn, but the
-   * structured-generation ladder calls generateBareCompletion first and skips
-   * any provider that lacks it - so pinning metadataGeneration at the mock
-   * provider silently fell through to a real CLI, which is exactly what the
-   * pin exists to avoid. Same parsers as the turn path, answered directly.
-   */
-  async generateBareCompletion(
-    options: AgentBareCompletionOptions,
-  ): Promise<AgentBareCompletionResult> {
-    const structured =
-      parseStructuredBranchNamePrompt(options.prompt) ?? parseStructuredTitlePrompt(options.prompt);
-    if (!structured) {
-      throw new Error(
-        "Mock load-test provider only generates the structured title/branch metadata contracts.",
-      );
-    }
-    return { text: JSON.stringify(structured) };
-  }
-
   async isAvailable(): Promise<boolean> {
     return true;
   }
@@ -1006,11 +740,19 @@ export class MockLoadTestAgentClient implements AgentClient {
   }
 }
 
+function getConfiguredAssistantResponses(value: unknown): string[] {
+  return Array.isArray(value) && value.every((response) => typeof response === "string")
+    ? [...value]
+    : [];
+}
+
 export class MockLoadTestAgentSession implements AgentSession {
   readonly provider: AgentProvider = MOCK_LOAD_TEST_PROVIDER_ID;
   readonly capabilities = CAPABILITIES;
   readonly features: AgentFeature[] = [];
   readonly id: string;
+  private readonly usageSessionKey = randomUUID();
+
   private readonly listeners = new Set<(event: AgentStreamEvent) => void>();
   private readonly history: AgentStreamEvent[] = [];
   private readonly logger?: Logger;
@@ -1019,19 +761,14 @@ export class MockLoadTestAgentSession implements AgentSession {
   private modeId: string | null;
   private modelId: string | null;
   private readonly assistantResponse: string | null;
+  private readonly assistantResponses: string[];
   private readonly streamingAssistantResponse: string | null;
   private readonly streamingAssistantIntervalMs: number;
   private readonly rewindError: string | null;
-  private readonly ottoTools: AgentLaunchContext["ottoTools"];
   private remainingPromptRejections: number;
   private remainingSteerFailures: number;
 
-  constructor(options: {
-    config: AgentSessionConfig;
-    sessionId: string;
-    logger?: Logger;
-    launchContext?: AgentLaunchContext;
-  }) {
+  constructor(options: { config: AgentSessionConfig; sessionId: string; logger?: Logger }) {
     this.id = options.sessionId;
     this.logger = options.logger;
     this.modeId = options.config.modeId ?? MOCK_LOAD_TEST_MODE_ID;
@@ -1040,6 +777,9 @@ export class MockLoadTestAgentSession implements AgentSession {
       typeof options.config.featureValues?.mockAssistantResponse === "string"
         ? options.config.featureValues.mockAssistantResponse
         : null;
+    this.assistantResponses = getConfiguredAssistantResponses(
+      options.config.featureValues?.mockAssistantResponses,
+    );
     this.streamingAssistantResponse =
       typeof options.config.featureValues?.mockStreamingAssistantResponse === "string"
         ? options.config.featureValues.mockStreamingAssistantResponse
@@ -1056,7 +796,6 @@ export class MockLoadTestAgentSession implements AgentSession {
       typeof options.config.featureValues?.mockRewindError === "string"
         ? options.config.featureValues.mockRewindError
         : null;
-    this.ottoTools = options.launchContext?.ottoTools;
     const requestedPromptRejections = options.config.featureValues?.mockPromptRejections;
     this.remainingPromptRejections =
       typeof requestedPromptRejections === "number" &&
@@ -1067,6 +806,15 @@ export class MockLoadTestAgentSession implements AgentSession {
     this.remainingSteerFailures = getPositiveFeatureInteger(
       options.config.featureValues?.mockSteerAmbiguousFailures,
     );
+  }
+
+  usageSession() {
+    return {
+      provider: this.provider,
+      model: this.modelId ?? undefined,
+      env: {},
+      sessionKey: this.usageSessionKey,
+    };
   }
 
   async run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult> {
@@ -1097,23 +845,6 @@ export class MockLoadTestAgentSession implements AgentSession {
     const completed = new Promise<AgentRunResult>((promiseResolve) => {
       resolve = promiseResolve;
     });
-
-    // For a count-bounded turn, pre-build the whole queue from a seed derived from
-    // turnId, so the same turn always replays the same conversation.
-    //
-    // The prompt directive wins over the model's own metadata, which means it can also
-    // make a normally time-bounded model count-bounded for one turn. That is deliberate
-    // and opt-in: a seeder asking for `synthetic-history: 30` wants exactly that, and no
-    // model behaves differently unless a caller writes the directive.
-    let initialQueue: CycleEvent[] = [];
-    const resolvedItemCount = parseSyntheticHistoryCountPrompt(prompt) ?? profile.itemCount;
-    if (resolvedItemCount != null) {
-      // turnId is the default seed so an unpinned turn still varies; a caller
-      // building a corpus it wants to rebuild identically pins it instead.
-      const seed = parseSyntheticSeedPrompt(prompt) ?? hashString(turnId);
-      initialQueue = buildSyntheticHistoryQueue(turnId, seed, resolvedItemCount);
-    }
-
     const turn: ActiveTurn = {
       turnId,
       assistantMessageId,
@@ -1122,11 +853,10 @@ export class MockLoadTestAgentSession implements AgentSession {
       cycle: 0,
       durationMs: profile.durationMs,
       intervalMs: profile.intervalMs,
-      itemCount: resolvedItemCount,
       timer: null,
       resolve,
       completed,
-      queue: initialQueue,
+      queue: [],
       emittedTokens: 0,
       turnStarted: false,
       burst: profile.burst,
@@ -1137,13 +867,6 @@ export class MockLoadTestAgentSession implements AgentSession {
     const stress = parseAgentStreamStressPrompt(prompt);
     const questionPrompt = parseMockQuestionPrompt(prompt);
     const structuredBranchName = parseStructuredBranchNamePrompt(prompt);
-    const structuredTitle = parseStructuredTitlePrompt(prompt);
-    const promptSuggestion = parseMockPromptSuggestionPrompt(prompt);
-    const rateLimit = parseMockRateLimitPrompt(prompt);
-    const assistantMarkdown = parseMockAssistantMarkdownPrompt(prompt);
-    const namedToolCall = parseMockNamedToolCallPrompt(prompt);
-    const workflowGate = parseMockWorkflowGateScenario(prompt);
-    const workflowFailure = parseMockWorkflowFailureScenario(prompt);
     const settledAssistantImageMarkdown = parseSettledAssistantImageMarkdown(prompt);
     const steeringReplayShape = parseSteeringReplayShape(prompt);
     const scheduleTurn = () => {
@@ -1153,60 +876,19 @@ export class MockLoadTestAgentSession implements AgentSession {
         this.scheduleSteeringReplayTurn(turn, steeringReplayShape);
       } else if (this.streamingAssistantResponse !== null) {
         this.scheduleStreamingAssistantTurn(turn, this.streamingAssistantResponse);
-      } else if (this.assistantResponse !== null) {
-        this.scheduleSettledAssistantTurn(turn, this.assistantResponse);
+      } else if (this.assistantResponses.length > 0 || this.assistantResponse !== null) {
+        this.scheduleSettledAssistantTurn(
+          turn,
+          (this.assistantResponses.shift() ?? this.assistantResponse)!,
+        );
       } else if (structuredBranchName) {
         this.scheduleSettledAssistantTurn(turn, JSON.stringify(structuredBranchName));
-      } else if (structuredTitle) {
-        this.scheduleSettledAssistantTurn(turn, JSON.stringify(structuredTitle));
       } else if (settledAssistantImageMarkdown) {
         this.scheduleSettledAssistantTurn(turn, settledAssistantImageMarkdown);
       } else if (shouldEmitPlanApprovalPrompt(prompt)) {
         this.schedulePlanApprovalTurn(turn);
-      } else if (shouldEmitToolPermissionPrompt(prompt)) {
-        this.scheduleToolPermissionTurn(turn);
       } else if (questionPrompt) {
         this.scheduleQuestionPromptTurn(turn, questionPrompt);
-      } else if (promptSuggestion) {
-        this.scheduleSyntheticTurn(turn, {
-          assistantText: "Synthetic prompt suggestion emitted.",
-          events: [
-            {
-              type: "prompt_suggestion",
-              provider: this.provider,
-              suggestion: promptSuggestion.suggestion,
-            },
-          ],
-          finalText: "Synthetic prompt suggestion complete",
-        });
-      } else if (rateLimit) {
-        this.scheduleSyntheticTurn(turn, {
-          assistantText: "Synthetic rate limit emitted.",
-          events: [{ type: "rate_limit_updated", provider: this.provider, info: rateLimit.info }],
-          finalText: "Synthetic rate limit complete",
-        });
-      } else if (assistantMarkdown) {
-        this.scheduleSyntheticTurn(turn, {
-          assistantText: assistantMarkdown.markdown,
-          finalText: "Synthetic assistant markdown complete",
-        });
-      } else if (namedToolCall) {
-        this.scheduleSyntheticTurn(turn, {
-          timeline: [
-            createToolCall({
-              callId: `${turnId}:named-tool`,
-              name: namedToolCall.name,
-              status: "completed",
-              detail: { type: "unknown", input: {}, output: "ok" },
-            }),
-          ],
-          assistantText: "Synthetic tool call emitted.",
-          finalText: "Synthetic tool call complete",
-        });
-      } else if (workflowGate) {
-        this.scheduleWorkflowGateTurn(turn, workflowGate);
-      } else if (workflowFailure) {
-        this.scheduleWorkflowFailureTurn(turn, workflowFailure);
       } else if (largePayload) {
         this.scheduleLargePayloadTurn(turn, largePayload);
       } else if (stress) {
@@ -1345,16 +1027,12 @@ export class MockLoadTestAgentSession implements AgentSession {
     });
 
     if (turn) {
-      if (request.kind === "tool") {
-        this.finishToolPermissionTurn(turn, response);
-      } else {
-        this.finishTurnWithText(
-          turn,
-          request.kind === "question"
-            ? "Synthetic questions resolved"
-            : "Synthetic plan approval resolved",
-        );
-      }
+      this.finishTurnWithText(
+        turn,
+        request.kind === "question"
+          ? "Synthetic questions resolved"
+          : "Synthetic plan approval resolved",
+      );
     }
     return undefined;
   }
@@ -1432,12 +1110,6 @@ export class MockLoadTestAgentSession implements AgentSession {
     this.modelId = modelId ?? MOCK_LOAD_TEST_DEFAULT_MODEL_ID;
   }
 
-  // The mock provider has no real system prompt, so accepting the update is a
-  // no-op - but implementing it lets the daemon's live personality switch
-  // (agent.personality.set) run end-to-end against mock agents in dev and E2E.
-  // Brain fields (model/mode) still arrive through setModel/setMode as usual.
-  async applyPersonality(_update: AgentPersonalityUpdate): Promise<void> {}
-
   private schedule(turn: ActiveTurn, delayMs: number): void {
     turn.timer = setTimeout(() => {
       this.tick(turn);
@@ -1485,15 +1157,6 @@ export class MockLoadTestAgentSession implements AgentSession {
     turn.timer.unref?.();
   }
 
-  private scheduleStressTurn(turn: ActiveTurn, stress: AgentStreamStressRequest): void {
-    turn.timer = setTimeout(() => {
-      this.emitStressTurn(turn, stress);
-    }, 0);
-    turn.timer.unref?.();
-  }
-
-  // A turn that fails outright, with no assistant message in front of it: the
-  // shape a provider error takes when it lands before any content streams.
   private scheduleFailedTurn(turn: ActiveTurn): void {
     turn.timer = setTimeout(() => {
       if (this.activeTurn !== turn) {
@@ -1534,7 +1197,7 @@ export class MockLoadTestAgentSession implements AgentSession {
       const detail: ToolCallDetail = {
         type: "shell",
         command: "sleep 5",
-        cwd: "/tmp/otto-mock-load",
+        cwd: "/tmp/paseo-mock-load",
       };
       this.emitTimeline(
         turn.turnId,
@@ -1564,16 +1227,16 @@ export class MockLoadTestAgentSession implements AgentSession {
     turn.timer.unref?.();
   }
 
-  private schedulePlanApprovalTurn(turn: ActiveTurn): void {
+  private scheduleStressTurn(turn: ActiveTurn, stress: AgentStreamStressRequest): void {
     turn.timer = setTimeout(() => {
-      this.emitPlanApprovalTurn(turn);
+      this.emitStressTurn(turn, stress);
     }, 0);
     turn.timer.unref?.();
   }
 
-  private scheduleToolPermissionTurn(turn: ActiveTurn): void {
+  private schedulePlanApprovalTurn(turn: ActiveTurn): void {
     turn.timer = setTimeout(() => {
-      this.emitToolPermissionTurn(turn);
+      this.emitPlanApprovalTurn(turn);
     }, 0);
     turn.timer.unref?.();
   }
@@ -1593,218 +1256,6 @@ export class MockLoadTestAgentSession implements AgentSession {
       this.emitSettledAssistantTurn(turn, finalText);
     }, 0);
     turn.timer.unref?.();
-  }
-
-  private scheduleSyntheticTurn(turn: ActiveTurn, script: MockSyntheticTurnScript): void {
-    turn.timer = setTimeout(() => {
-      this.emitSyntheticTurn(turn, script);
-    }, 0);
-    turn.timer.unref?.();
-  }
-
-  private scheduleWorkflowGateTurn(turn: ActiveTurn, scenario: MockWorkflowGateScenario): void {
-    turn.timer = setTimeout(() => {
-      void this.emitWorkflowGateTurn(turn, scenario);
-    }, 0);
-    turn.timer.unref?.();
-  }
-
-  private scheduleWorkflowFailureTurn(
-    turn: ActiveTurn,
-    scenario: MockWorkflowFailureScenario,
-  ): void {
-    turn.timer = setTimeout(() => {
-      void this.emitWorkflowFailureTurn(turn, scenario);
-    }, 0);
-    turn.timer.unref?.();
-  }
-
-  private async emitWorkflowFailureTurn(
-    turn: ActiveTurn,
-    scenario: MockWorkflowFailureScenario,
-  ): Promise<void> {
-    if (this.activeTurn !== turn) {
-      return;
-    }
-    this.clearTurnTimer(turn);
-    this.emitTurnStarted(turn);
-    const catalog = this.ottoTools;
-    if (!catalog) {
-      this.finishTurnWithText(turn, "Mock Workflow provider-failure scenario could not start.");
-      return;
-    }
-
-    const callId = `${turn.turnId}:workflow-provider-failure`;
-    const input = {
-      title: "Synthetic AI Workflow provider failure",
-      phases: [
-        {
-          id: "provider-failure",
-          type: "research",
-          title: scenario.phaseTitle,
-          task: "Emit a synthetic turn failure.",
-        },
-      ],
-    };
-    this.emitTimeline(
-      turn.turnId,
-      createToolCall({
-        callId,
-        name: "start_workflow",
-        status: "running",
-        detail: { type: "unknown", input, output: null },
-      }),
-    );
-    try {
-      const result = await catalog.executeTool("start_workflow", input);
-      if (this.activeTurn !== turn) {
-        return;
-      }
-      const output = result.structuredContent ?? result.content;
-      this.emitTimeline(
-        turn.turnId,
-        createToolCall({
-          callId,
-          name: "start_workflow",
-          status: "completed",
-          detail: { type: "unknown", input, output },
-        }),
-      );
-      this.emitTimeline(turn.turnId, {
-        type: "assistant_message",
-        text: "The declared AI Workflow recorded its provider failure in Workflows.",
-        messageId: turn.assistantMessageId,
-      });
-      this.finishTurnWithText(turn, "Mock AI Workflow provider failure recorded.");
-    } catch (error) {
-      if (this.activeTurn !== turn) {
-        return;
-      }
-      this.emit({
-        type: "turn_failed",
-        provider: this.provider,
-        turnId: turn.turnId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      this.activeTurn = null;
-      turn.resolve({ sessionId: this.id, finalText: "", timeline: [], canceled: false });
-    }
-  }
-
-  private async emitWorkflowGateTurn(
-    turn: ActiveTurn,
-    scenario: MockWorkflowGateScenario,
-  ): Promise<void> {
-    if (this.activeTurn !== turn) {
-      return;
-    }
-    this.clearTurnTimer(turn);
-    this.emitTurnStarted(turn);
-    const catalog = this.ottoTools;
-    if (!catalog) {
-      this.emitTimeline(turn.turnId, {
-        type: "assistant_message",
-        text: "The mock native-tool scenario needs Otto tools enabled on this host.",
-        messageId: turn.assistantMessageId,
-      });
-      this.finishTurnWithText(turn, "Mock attended Workflow gate could not start.");
-      return;
-    }
-
-    const callId = `${turn.turnId}:workflow-gate`;
-    const input = {
-      title: "Synthetic attended Workflow gate",
-      phases: [
-        {
-          id: "approval",
-          type: "gate",
-          title: scenario.phaseTitle,
-          task: "Wait for the Workflow owner to approve or reject this AI plan.",
-        },
-      ],
-    };
-    this.emitTimeline(
-      turn.turnId,
-      createToolCall({
-        callId,
-        name: "start_workflow",
-        status: "running",
-        detail: { type: "unknown", input, output: null },
-      }),
-    );
-    try {
-      const result = await catalog.executeTool("start_workflow", input);
-      if (this.activeTurn !== turn) {
-        return;
-      }
-      const output = result.structuredContent ?? result.content;
-      this.emitTimeline(
-        turn.turnId,
-        createToolCall({
-          callId,
-          name: "start_workflow",
-          status: "completed",
-          detail: { type: "unknown", input, output },
-        }),
-      );
-      this.emitTimeline(turn.turnId, {
-        type: "assistant_message",
-        text: result.isError
-          ? "The attended AI Workflow gate could not start."
-          : "The AI Workflow is awaiting approval in Workflows.",
-        messageId: turn.assistantMessageId,
-      });
-      this.finishTurnWithText(
-        turn,
-        result.isError
-          ? "Mock attended Workflow gate failed."
-          : "Mock attended Workflow gate paused.",
-      );
-    } catch (error) {
-      if (this.activeTurn !== turn) {
-        return;
-      }
-      this.emit({
-        type: "turn_failed",
-        provider: this.provider,
-        turnId: turn.turnId,
-        error: error instanceof Error ? error.message : String(error),
-      });
-      this.activeTurn = null;
-      turn.resolve({ sessionId: this.id, finalText: "", timeline: [], canceled: false });
-    }
-  }
-
-  // One-shot scripted turn: timeline items, an optional assistant message, then
-  // extra stream events (prompt_suggestion / rate_limit_updated) before the
-  // turn completes. The E2E mock scenarios above all flow through here.
-  private emitSyntheticTurn(turn: ActiveTurn, script: MockSyntheticTurnScript): void {
-    if (this.activeTurn !== turn) {
-      return;
-    }
-
-    this.clearTurnTimer(turn);
-    this.emit({
-      type: "turn_started",
-      provider: this.provider,
-      turnId: turn.turnId,
-    });
-
-    for (const item of script.timeline ?? []) {
-      this.emitTimeline(turn.turnId, item);
-    }
-    if (script.assistantText) {
-      this.emitTimeline(turn.turnId, {
-        type: "assistant_message",
-        text: script.assistantText,
-        messageId: turn.assistantMessageId,
-      });
-    }
-    for (const event of script.events ?? []) {
-      this.emit(event);
-    }
-
-    this.finishTurnWithText(turn, script.finalText);
   }
 
   private scheduleStreamingAssistantTurn(turn: ActiveTurn, finalText: string): void {
@@ -1916,85 +1367,6 @@ export class MockLoadTestAgentSession implements AgentSession {
       request,
       turnId: turn.turnId,
     });
-  }
-
-  // "Emit synthetic tool permission." - a scripted tool approval prompt: the
-  // turn starts, requests permission for a shell command, and stays pending
-  // until respondToPermission (a user's answer, or the daemon deny-responder
-  // for unattended runs) finishes the turn with a distinct allow/deny surface.
-  private emitToolPermissionTurn(turn: ActiveTurn): void {
-    if (this.activeTurn !== turn) {
-      return;
-    }
-
-    this.clearTurnTimer(turn);
-    this.emit({
-      type: "turn_started",
-      provider: this.provider,
-      turnId: turn.turnId,
-    });
-
-    const request: AgentPermissionRequest = {
-      id: `mock-tool-${turn.turnId}`,
-      provider: this.provider,
-      name: "Bash",
-      kind: "tool",
-      title: "Bash",
-      description: "Run a shell command",
-      detail: {
-        type: "shell",
-        command: MOCK_TOOL_PERMISSION_COMMAND,
-        cwd: MOCK_TOOL_PERMISSION_CWD,
-      },
-      metadata: {
-        source: "mock_tool_permission",
-      },
-    };
-
-    this.pendingPermissions.set(request.id, request);
-    this.emit({
-      type: "permission_requested",
-      provider: this.provider,
-      request,
-      turnId: turn.turnId,
-    });
-  }
-
-  // Resolution of the synthetic tool permission. Allow runs the "tool" and
-  // completes; deny skips the tool and surfaces the denial (including the
-  // responder's message) in the timeline, so specs can tell the two apart.
-  private finishToolPermissionTurn(turn: ActiveTurn, response: AgentPermissionResponse): void {
-    if (response.behavior === "allow") {
-      this.emitTimeline(
-        turn.turnId,
-        createToolCall({
-          callId: `${turn.turnId}:tool-permission`,
-          name: "bash",
-          status: "completed",
-          detail: {
-            type: "shell",
-            command: MOCK_TOOL_PERMISSION_COMMAND,
-            cwd: MOCK_TOOL_PERMISSION_CWD,
-            output: "build ok\n",
-            exitCode: 0,
-          },
-        }),
-      );
-      this.emitTimeline(turn.turnId, {
-        type: "assistant_message",
-        text: "Synthetic tool approved; run complete.",
-        messageId: turn.assistantMessageId,
-      });
-      this.finishTurnWithText(turn, "Synthetic tool run complete");
-      return;
-    }
-    const reason = response.message ?? "Denied";
-    this.emitTimeline(turn.turnId, {
-      type: "assistant_message",
-      text: `Synthetic tool denied: ${reason}`,
-      messageId: turn.assistantMessageId,
-    });
-    this.finishTurnWithText(turn, "Synthetic tool denied");
   }
 
   private emitQuestionPromptTurn(
@@ -2160,14 +1532,10 @@ export class MockLoadTestAgentSession implements AgentSession {
     this.clearTurnTimer(turn);
     this.emitTurnStarted(turn);
 
-    // Time-bounded turns: stop when the duration expires. Count-bounded turns
-    // (synthetic-history) skip this check entirely - they finish on queue drain.
-    if (turn.itemCount == null) {
-      const elapsedMs = Date.now() - turn.startedAt;
-      if (elapsedMs >= turn.durationMs) {
-        this.finishTurn(turn);
-        return;
-      }
+    const elapsedMs = Date.now() - turn.startedAt;
+    if (elapsedMs >= turn.durationMs) {
+      this.finishTurn(turn);
+      return;
     }
 
     const eventsThisTick = turn.burst ? nextBurstSize(turn.burst, turn.burstIndex) : 1;
@@ -2175,10 +1543,6 @@ export class MockLoadTestAgentSession implements AgentSession {
 
     for (let emitted = 0; emitted < eventsThisTick; emitted += 1) {
       if (turn.queue.length === 0) {
-        if (turn.itemCount != null) {
-          this.finishTurn(turn);
-          return;
-        }
         turn.cycle += 1;
         turn.queue = turn.burst
           ? buildBurstyStreamQueue(turn.cycle)

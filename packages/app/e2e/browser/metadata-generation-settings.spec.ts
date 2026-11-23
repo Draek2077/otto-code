@@ -27,7 +27,6 @@ test("chooses a metadata model and can return to automatic selection", async ({
 }, testInfo) => {
   await openMetadataGenerationSettings(page);
 
-  await expect(page.getByTestId("metadata-generation-settings")).toBeVisible();
   // The section explains itself through the header's info tooltip, not a paragraph.
   await expect(page.getByTestId("metadata-generation-settings-info")).toHaveAccessibleName(
     "About Metadata generation",
@@ -111,23 +110,4 @@ test("replaces only the first configured metadata model", async ({ page }) => {
       await client.close().catch(() => undefined);
     }
   }
-});
-
-test.describe("compact layout", () => {
-  // Regression: the inline row gave the model picker priority over its label,
-  // collapsing the label into individual-character lines on a phone. The
-  // picker belongs beneath the complete label block at the xs breakpoint.
-  test("places the preferred model picker below its label", async ({ page }) => {
-    await openMetadataGenerationSettings(page);
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.getByRole("button", { name: "Manual", exact: true }).click();
-
-    const [labelBox, pickerBox] = await Promise.all([
-      page.getByText("Model", { exact: true }).boundingBox(),
-      page.getByTestId("combined-model-selector").boundingBox(),
-    ]);
-    expect(labelBox).not.toBeNull();
-    expect(pickerBox).not.toBeNull();
-    expect(pickerBox!.y).toBeGreaterThan(labelBox!.y + labelBox!.height);
-  });
 });

@@ -1,3 +1,8 @@
+// OTTO(identity): assertions follow Otto identity values.
+import type { AgentClient } from "../agent/agent-sdk-types.js";
+import { validateProviderOptions } from "../agent/provider-options.js";
+import { CodexProviderOptionsSchema } from "../agent/providers/codex/options.js";
+import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
 import { afterEach, expect, test } from "vitest";
 import { HubRelationshipHarness } from "./test-utils/relationship-harness.js";
 
@@ -8,8 +13,12 @@ afterEach(async () => {
   relationship = null;
 });
 
-async function launchRelationship(): Promise<HubRelationshipHarness> {
-  const launched = await HubRelationshipHarness.start();
+async function launchRelationship(
+  clients?: Record<string, AgentClient>,
+): Promise<HubRelationshipHarness> {
+  const launched = clients
+    ? await HubRelationshipHarness.startWithRealAgentClients(clients)
+    : await HubRelationshipHarness.start();
   await launched.beginConnect().result;
   launched.connectLatestSocket();
   relationship = launched;
@@ -27,7 +36,7 @@ test("sequential replay after reconstruction keeps one durable owned agent", asy
   expect(reconstructed.durableAgentCount).toBe(1);
 });
 
-test("Hub MCP configuration reaches the provider alongside Otto MCP without entering snapshots", async () => {
+test("Hub MCP configuration reaches the provider alongside Paseo MCP without entering snapshots", async () => {
   const hub = await HubRelationshipHarness.startWithAgentMcp();
   await hub.beginConnect().result;
   hub.connectLatestSocket();
@@ -127,8 +136,22 @@ test("Hub can preapprove only tools on MCP servers injected in the same request"
   expect(hub.providerCreations()).toBe(0);
 });
 
-test("Hub returns path-specific structured provider option feedback", async () => {
-  const hub = await launchRelationship();
+test("Hub returns path-specific feedback thrown by the provider", async () => {
+  const clients = createTestAgentClients();
+  const inner = clients.codex;
+  const provider: AgentClient = {
+    provider: inner.provider,
+    capabilities: inner.capabilities,
+    isAvailable: (signal, options) => inner.isAvailable(signal, options),
+    fetchCatalog: (options, context) => inner.fetchCatalog(options, context),
+    async createSession(config, launch, options) {
+      validateProviderOptions("codex", CodexProviderOptionsSchema, config.providerOptions);
+      return inner.createSession(config, launch, options);
+    },
+    resumeSession: (handle, overrides, launch, options) =>
+      inner.resumeSession(handle, overrides, launch, options),
+  };
+  const hub = await launchRelationship({ ...clients, codex: provider });
   hub.beginOwnedCreate("invalid-options", "invalid-options-execution", {
     providerOptions: {
       sandbox_workspace_write: { writable_roots: ["/tmp", 42] },
@@ -155,11 +178,11 @@ test("Hub returns path-specific structured provider option feedback", async () =
   });
 });
 
-test("new Hub executions cannot override the daemon-owned Otto MCP server", async () => {
+test("new Hub executions cannot override the daemon-owned Paseo MCP server", async () => {
   const hub = await launchRelationship();
   hub.beginOwnedCreate("reserved-mcp-create", "reserved-mcp-execution", {
     mcpServers: {
-      otto: { type: "http", url: "https://hub.test/replace-otto" },
+      otto: { type: "http", url: "https://hub.test/replace-paseo" },
     },
   });
 
@@ -179,7 +202,7 @@ test("new Hub executions cannot override the daemon-owned Otto MCP server", asyn
   expect(await hub.durableOwnedAgentIds()).toEqual([]);
 });
 
-test("reserved Otto MCP input does not invalidate replay of an owned execution", async () => {
+test("reserved Paseo MCP input does not invalidate replay of an owned execution", async () => {
   const hub = await launchRelationship();
   hub.beginOwnedCreate("original-create", "replayed-execution");
   const original = await hub.ownedCreateResult("original-create");
@@ -191,7 +214,7 @@ test("reserved Otto MCP input does not invalidate replay of an owned execution",
 
   hub.beginOwnedCreate("replay-create", "replayed-execution", {
     mcpServers: {
-      otto: { type: "http", url: "https://hub.test/replace-otto" },
+      otto: { type: "http", url: "https://hub.test/replace-paseo" },
     },
   });
   const replay = await hub.ownedCreateResult("replay-create");

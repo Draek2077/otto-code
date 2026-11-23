@@ -188,9 +188,9 @@ describe("opencode tool-call mapper", () => {
         toolName: "read",
         callId: "opencode-read-xml",
         status: "completed",
-        input: { filePath: "/workspaces/otto/docs/release.md" },
+        input: { filePath: "/workspaces/paseo/docs/release.md" },
         output: [
-          "<path>/workspaces/otto/docs/release.md</path>",
+          "<path>/workspaces/paseo/docs/release.md</path>",
           "<type>file</type>",
           "<content>",
           "1: # Release",
@@ -203,7 +203,7 @@ describe("opencode tool-call mapper", () => {
 
     expect(item.detail).toEqual({
       type: "read",
-      filePath: "/workspaces/otto/docs/release.md",
+      filePath: "/workspaces/paseo/docs/release.md",
       content: [
         "1: # Release",
         "2:",
@@ -282,7 +282,7 @@ describe("opencode tool-call mapper", () => {
         callId: "opencode-write-success-text",
         status: "completed",
         input: {
-          filePath: "/workspaces/otto/worktrees/cold-ladybug/dummy.txt",
+          filePath: "/workspaces/paseo/worktrees/cold-ladybug/dummy.txt",
           content: "hello world\n",
         },
         output: "Wrote file successfully.",
@@ -291,7 +291,7 @@ describe("opencode tool-call mapper", () => {
 
     expect(item.detail).toEqual({
       type: "write",
-      filePath: "/workspaces/otto/worktrees/cold-ladybug/dummy.txt",
+      filePath: "/workspaces/paseo/worktrees/cold-ladybug/dummy.txt",
       content: "hello world\n",
     });
   });
@@ -303,7 +303,7 @@ describe("opencode tool-call mapper", () => {
         callId: "opencode-edit-camel",
         status: "completed",
         input: {
-          filePath: "/workspaces/otto/packages/website/src/data/agent-pages.ts",
+          filePath: "/workspaces/paseo/packages/website/src/data/agent-pages.ts",
           oldString: 'metaTitle: "Agent page"',
           newString: 'metaTitle: "Updated agent page"',
         },
@@ -313,7 +313,7 @@ describe("opencode tool-call mapper", () => {
 
     expect(item.detail).toEqual({
       type: "edit",
-      filePath: "/workspaces/otto/packages/website/src/data/agent-pages.ts",
+      filePath: "/workspaces/paseo/packages/website/src/data/agent-pages.ts",
       oldString: 'metaTitle: "Agent page"',
       newString: 'metaTitle: "Updated agent page"',
     });
@@ -383,6 +383,34 @@ describe("opencode tool-call mapper", () => {
         "diff --git a//tmp/repo/src/App.tsx b//tmp/repo/src/App.tsx",
         "--- a//tmp/repo/src/App.tsx",
         "+++ /dev/null",
+      ].join("\n"),
+    });
+  });
+
+  it("maps OpenCode v2 patch payloads from GPT models into edit detail", () => {
+    const item = expectMapped(
+      mapOpencodeToolCall({
+        toolName: "patch",
+        callId: "opencode-v2-patch-1",
+        status: "completed",
+        input: {
+          patchText:
+            "*** Begin Patch\n*** Update File: patch.txt\n@@\n-north south\n+NORTH south\n*** End Patch",
+        },
+        output: "Success. Updated the following files:\nM patch.txt",
+      }),
+    );
+
+    expect(item.detail).toEqual({
+      type: "edit",
+      filePath: "patch.txt",
+      unifiedDiff: [
+        "diff --git a/patch.txt b/patch.txt",
+        "--- a/patch.txt",
+        "+++ b/patch.txt",
+        "@@",
+        "-north south",
+        "+NORTH south",
       ].join("\n"),
     });
   });
@@ -511,7 +539,7 @@ describe("opencode tool-call mapper", () => {
   it("does not apply cross-provider speak normalization in opencode mapper", () => {
     const item = expectMapped(
       mapOpencodeToolCall({
-        toolName: "otto_voice.speak",
+        toolName: "paseo_voice.speak",
         callId: "opencode-call-voice-1",
         status: "completed",
         input: { text: "Voice response from OpenCode." },
@@ -519,7 +547,7 @@ describe("opencode tool-call mapper", () => {
       }),
     );
 
-    expect(item.name).toBe("otto_voice.speak");
+    expect(item.name).toBe("paseo_voice.speak");
     expect(item.detail).toEqual({
       type: "unknown",
       input: { text: "Voice response from OpenCode." },

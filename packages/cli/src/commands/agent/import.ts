@@ -1,22 +1,25 @@
 import type { Command } from "commander";
-import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+import { connectToDaemon } from "../../utils/client.js";
 import { collectMultiple } from "../../utils/command-options.js";
 import type { CommandError, CommandOptions, SingleResult } from "../../output/index.js";
 import { agentRunSchema, type AgentRunResult } from "./run.js";
-import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
+import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
 
 export function addImportOptions(cmd: Command): Command {
-  return cmd
-    .description("Import an existing provider session as a Otto agent")
-    .argument("<id>", "Provider session/thread ID to import")
-    .requiredOption("--provider <provider>", "Agent provider id")
-    .option("--cwd <path>", "Working directory for providers that require it")
-    .option(
-      "--label <key=value>",
-      "Add label(s) to the agent (can be used multiple times)",
-      collectMultiple,
-      [],
-    );
+  return (
+    cmd
+      // OTTO(identity)
+      .description("Import an existing provider session as an Otto agent")
+      .argument("<id>", "Provider session/thread ID to import")
+      .requiredOption("--provider <provider>", "Agent provider id")
+      .option("--cwd <path>", "Working directory for providers that require it")
+      .option(
+        "--label <key=value>",
+        "Add label(s) to the agent (can be used multiple times)",
+        collectMultiple,
+        [],
+      )
+  );
 }
 
 export interface AgentImportOptions extends CommandOptions {
@@ -44,6 +47,7 @@ function parseImportProvider(provider: string | undefined): string {
     throw {
       code: "MISSING_PROVIDER",
       message: "Provider is required",
+      // OTTO(identity)
       details: "Usage: otto import --provider <provider> <id>",
     } satisfies CommandError;
   }
@@ -94,33 +98,17 @@ export function resolveImportCwd(explicitCwd: string | undefined, defaultCwd: st
   return cwd;
 }
 
-async function connectToDaemonOrThrow(
-  hostOption: string | undefined,
-  host: string,
-): Promise<Awaited<ReturnType<typeof connectToDaemon>>> {
-  try {
-    return await connectToDaemon({ host: hostOption });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw {
-      code: "DAEMON_NOT_RUNNING",
-      message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: "Start the daemon with: otto daemon start",
-    } satisfies CommandError;
-  }
-}
-
 export async function runImportCommand(
   sessionIdArg: string,
   options: AgentImportOptions,
   _command: Command,
 ): Promise<AgentImportCommandResult> {
-  const host = getDaemonHost({ host: options.host });
   const sessionId = sessionIdArg.trim();
   if (!sessionId) {
     throw {
       code: "MISSING_SESSION_ID",
       message: "Session ID is required",
+      // OTTO(identity)
       details: "Usage: otto import --provider <provider> <id>",
     } satisfies CommandError;
   }
@@ -129,7 +117,7 @@ export async function runImportCommand(
   const cwd = resolveImportCwd(options.cwd, process.cwd());
 
   const labels = parseImportLabels(options.label);
-  const client = await connectToDaemonOrThrow(options.host, host);
+  const client = await connectToDaemon({ target: options.daemonTarget });
 
   try {
     const agent = await client.importAgent({

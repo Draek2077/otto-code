@@ -1,23 +1,16 @@
+import type { OwnedSubscription, SubscriptionObserver } from "@getpaseo/client";
 import { QueryClient, QueryObserver, skipToken } from "@tanstack/react-query";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  BrainHostStatus,
-  MutableDaemonConfig,
-  SessionOutboundMessage,
-} from "@otto-code/protocol/messages";
-import { deriveBrainState } from "@/components/brain/brain-state";
-import { checkoutDiffQueryKey, checkoutStatusQueryKey } from "@/git/query-keys";
+import { describe, expect, it } from "vitest";
+import type { MutableDaemonConfig, SessionOutboundMessage } from "@getpaseo/protocol/messages";
+import { checkoutDiffQueryKey } from "@/git/query-keys";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
-import { brainStatusQueryKey } from "@/data/brain-status";
 import { daemonConfigQueryKey } from "@/data/daemon-config";
 import { daemonPairingOfferQueryKey } from "@/data/daemon-pairing";
 import { providersSnapshotQueryKey } from "@/data/providers-snapshot";
 import {
-  CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS,
   checkoutDiffPushRoute,
   invalidateServerDataQueriesAfterReconnect,
   mountServerDataPushRouter,
-  TERMINAL_SUBSCRIPTION_LINGER_MS,
   workspaceTerminalsPushRoute,
 } from "@/data/push-router";
 
@@ -32,32 +25,12 @@ type SubscribeCheckoutDiffResponseMessage = Extract<
 >;
 type StatusMessage = Extract<SessionOutboundMessage, { type: "status" }>;
 type TerminalsChangedMessage = Extract<SessionOutboundMessage, { type: "terminals_changed" }>;
-type RunsUpdatedNotificationMessage = Extract<
-  SessionOutboundMessage,
-  { type: "runs.updated.notification" }
->;
-type RunsClearedNotificationMessage = Extract<
-  SessionOutboundMessage,
-  { type: "runs.cleared.notification" }
->;
-type RunsGraphsChangedNotificationMessage = Extract<
-  SessionOutboundMessage,
-  { type: "runs.graphs.changed.notification" }
->;
-type RunsTemplatesChangedNotificationMessage = Extract<
-  SessionOutboundMessage,
-  { type: "runs.templates.changed.notification" }
->;
 type RouterMessage =
   | ProvidersSnapshotUpdateMessage
   | CheckoutDiffUpdateMessage
   | SubscribeCheckoutDiffResponseMessage
   | StatusMessage
-  | TerminalsChangedMessage
-  | RunsUpdatedNotificationMessage
-  | RunsClearedNotificationMessage
-  | RunsGraphsChangedNotificationMessage
-  | RunsTemplatesChangedNotificationMessage;
+  | TerminalsChangedMessage;
 type RouterMessageType = RouterMessage["type"];
 type RouterHandler = (message: RouterMessage) => void;
 type RouterClient = Parameters<typeof mountServerDataPushRouter>[0]["client"];
@@ -66,61 +39,11 @@ const daemonConfig: MutableDaemonConfig = {
   relay: { enabled: false },
   mcp: { injectIntoAgents: true },
   browserTools: { enabled: false },
-  lsp: {
-    enabled: true,
-    languages: {},
-    maxRunningServers: 6,
-    idleMinutes: 10,
-    backgroundIdleMinutes: 2,
-  },
-  dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
   providers: {},
-  metadataGeneration: { providers: [], enabled: true, preferWriterPersonalities: false },
-  savedProviderEndpoints: [],
-  agentBehaviors: {
-    promptSuggestions: true,
-    agentProgressSummaries: true,
-    notifyOnFinishDefault: true,
-    todoNudge: true,
-    todoReconcileOnIdle: true,
-    stallGuardThreshold: 15,
-  },
-  agentPersonalities: { personalities: [] },
-  agentProfiles: [],
-  agentTeams: { teams: [] },
-  modelTierOverrides: [],
-  modelVisibilityOverrides: [],
-  connectors: [],
+  metadataGeneration: { providers: [] },
   autoArchiveAfterMerge: false,
-  hideMergeIntoBaseAction: false,
-  attachmentImageMaxAgeDays: 30,
-  attachmentImageMaxTotalMb: 512,
   enableTerminalAgentHooks: false,
   appendSystemPrompt: "",
-  brain: {
-    enabled: false,
-    autoStart: false,
-    mode: "local",
-    remote: { host: "", port: 1234, secure: false, authToken: null, certFingerprint: null },
-    listen: { host: "127.0.0.1", port: 1234 },
-    defaultModel: null,
-    maxLoadedModels: 1,
-    lockedModels: [],
-    runtime: { source: "auto", path: null, logVerbosity: 3 },
-    lockModel: false,
-    allowRemoteConfig: false,
-    allowInsecureBind: false,
-    authMode: "none",
-    authToken: null,
-    tls: {
-      mode: "off",
-      certFile: null,
-      keyFile: null,
-      hostname: null,
-      certDir: null,
-      renewBeforeDays: 30,
-    },
-  },
 };
 
 function createFakeClient(config: { rejectCheckoutDiffSubscribe?: boolean } = {}): {
@@ -141,10 +64,6 @@ function createFakeClient(config: { rejectCheckoutDiffSubscribe?: boolean } = {}
     subscribe_checkout_diff_response: [],
     status: [],
     terminals_changed: [],
-    "runs.updated.notification": [],
-    "runs.cleared.notification": [],
-    "runs.graphs.changed.notification": [],
-    "runs.templates.changed.notification": [],
   };
   const subscribeCheckoutDiffCalls: Array<{
     cwd: string;
@@ -176,37 +95,89 @@ function createFakeClient(config: { rejectCheckoutDiffSubscribe?: boolean } = {}
     }
   }
 
+  function observe<T extends { subscriptionId: string }>(
+    snapshot: T,
+    types: RouterMessageType[],
+    released: () => void,
+    matches: (message: RouterMessage) => boolean = () => true,
+  ): OwnedSubscription<T> {
+    const observers = new Set<SubscriptionObserver<T>>();
+    let active = true;
+    const cleanups = types.map((type) =>
+      on(type, (message) => {
+        if (!matches(message)) return;
+        for (const observer of observers) {
+          if (message.type === "subscribe_checkout_diff_response")
+            observer.snapshot({ ...snapshot, ...message.payload });
+          else observer.update(message);
+        }
+      }),
+    );
+    return {
+      subscriptionId: snapshot.subscriptionId,
+      ready: Promise.resolve(snapshot),
+      subscribe: (observer) => {
+        observers.add(observer);
+        observer.snapshot(snapshot);
+        return () => {
+          observers.delete(observer);
+        };
+      },
+      release: async () => {
+        if (!active) return;
+        active = false;
+        cleanups.forEach((cleanup) => cleanup());
+        observers.clear();
+        released();
+      },
+    };
+  }
+
   return {
     client: {
       async getProvidersSnapshot() {
         throw new Error("Unexpected snapshot pull");
       },
-      on,
-      async subscribeCheckoutDiff(cwd, compare, requestOptions) {
-        subscribeCheckoutDiffCalls.push({
-          cwd,
-          compare,
-          subscriptionId: requestOptions.subscriptionId,
-        });
-        if (config.rejectCheckoutDiffSubscribe) {
-          throw new Error("subscribe failed");
-        }
+      observeEvents: () =>
+        observe(
+          { subscriptionId: "events", requestId: "events", events: [] },
+          ["status", "providers_snapshot_update"],
+          () => {},
+        ),
+      observeCheckoutDiff(cwd, compare) {
+        const subscriptionId = `server-diff-${subscribeCheckoutDiffCalls.length + 1}`;
+        subscribeCheckoutDiffCalls.push({ cwd, compare, subscriptionId });
+        const handle = observe(
+          { subscriptionId, cwd, files: [], error: null, requestId: "subscribe-checkout-diff" },
+          ["checkout_diff_update", "subscribe_checkout_diff_response"],
+          () => unsubscribeCheckoutDiffCalls.push(subscriptionId),
+          (message) =>
+            "subscriptionId" in message.payload &&
+            message.payload.subscriptionId === subscriptionId,
+        );
+        if (!config.rejectCheckoutDiffSubscribe) return handle;
         return {
-          subscriptionId: requestOptions.subscriptionId,
-          cwd,
-          files: [],
-          error: null,
-          requestId: requestOptions.requestId ?? "subscribe-checkout-diff",
+          ...handle,
+          subscribe: (observer) => {
+            queueMicrotask(() => observer.error?.(new Error("subscribe failed")));
+            return () => {};
+          },
         };
       },
-      unsubscribeCheckoutDiff(subscriptionId) {
-        unsubscribeCheckoutDiffCalls.push(subscriptionId);
-      },
-      subscribeTerminals(subscription) {
-        subscribeTerminalCalls.push(subscription);
-      },
-      unsubscribeTerminals(subscription) {
-        unsubscribeTerminalCalls.push(subscription);
+      observeTerminals(input) {
+        const { signal: _signal, ...query } = input;
+        subscribeTerminalCalls.push(query);
+        return observe(
+          {
+            ...query,
+            subscriptionId: `terminal-${subscribeTerminalCalls.length}`,
+            requestId: "terminals",
+            terminals: [],
+          },
+          ["terminals_changed"],
+          () => unsubscribeTerminalCalls.push(query),
+          (message) => message.type === "terminals_changed" && message.payload.cwd === query.cwd,
+        );
       },
     },
     emit,
@@ -215,10 +186,6 @@ function createFakeClient(config: { rejectCheckoutDiffSubscribe?: boolean } = {}
     subscribeTerminalCalls,
     unsubscribeTerminalCalls,
   };
-}
-
-function brainStatus(brain: BrainHostStatus): StatusMessage {
-  return { type: "status", payload: { status: "brain_status_changed", brain } };
 }
 
 function providerUpdate(generatedAt: string): ProvidersSnapshotUpdateMessage {
@@ -232,14 +199,69 @@ function providerUpdate(generatedAt: string): ProvidersSnapshotUpdateMessage {
 }
 
 describe("server data push router", () => {
-  // The terminal subscription lingers past its last observer, so every test in
-  // here drives that timer explicitly rather than waiting on wall time.
-  beforeEach(() => {
-    vi.useFakeTimers();
-  });
+  it("keeps a visible diff subscribed when a hidden panel switches to the same comparison", () => {
+    const queryClient = new QueryClient();
+    const fake = createFakeClient();
+    const serverId = "server-1";
+    const cwd = "/repo";
+    const options = (mode: "base" | "uncommitted", enabled: boolean) => {
+      const queryKey = checkoutDiffQueryKey(
+        serverId,
+        cwd,
+        mode,
+        mode === "base" ? "main" : undefined,
+      );
+      return {
+        queryKey,
+        queryFn: skipToken as typeof skipToken,
+        gcTime: Infinity,
+        meta: checkoutDiffPushRoute({
+          enabled,
+          serverId,
+          cwd,
+          subscriptionId: `checkoutDiff:${JSON.stringify(queryKey)}`,
+          compare: { mode, ...(mode === "base" ? { baseRef: "main" } : {}) },
+        }),
+      };
+    };
+    const visible = new QueryObserver(queryClient, options("base", true));
+    const hidden = new QueryObserver(queryClient, options("base", false));
+    const unsubscribeVisible = visible.subscribe(() => {});
+    const unsubscribeHidden = hidden.subscribe(() => {});
+    const unmount = mountServerDataPushRouter({ queryClient, client: fake.client, serverId });
+    try {
+      visible.setOptions(options("uncommitted", true));
+      hidden.setOptions(options("uncommitted", false));
+      const subscription = fake.subscribeCheckoutDiffCalls.findLast(
+        (call) => call.compare.mode === "uncommitted",
+      )!;
+      const files = [
+        {
+          path: "README.md",
+          isNew: false,
+          isDeleted: false,
+          additions: 1,
+          deletions: 0,
+          hunks: [],
+        },
+      ];
+      fake.emit({
+        type: "checkout_diff_update",
+        payload: { subscriptionId: subscription.subscriptionId, cwd, files, error: null },
+      });
+      expect(queryClient.getQueryData(options("uncommitted", true).queryKey)).toMatchObject({
+        files,
+      });
+      expect(fake.unsubscribeCheckoutDiffCalls).not.toContain(subscription.subscriptionId);
 
-  afterEach(() => {
-    vi.useRealTimers();
+      unsubscribeVisible();
+      expect(fake.unsubscribeCheckoutDiffCalls).toContain(subscription.subscriptionId);
+    } finally {
+      unsubscribeVisible();
+      unsubscribeHidden();
+      unmount();
+      queryClient.clear();
+    }
   });
 
   it("retains equal diff files without reconstructing changed file bodies", () => {
@@ -249,17 +271,18 @@ describe("server data push router", () => {
     const cwd = "/repo";
     const queryKey = checkoutDiffQueryKey(serverId, cwd, "uncommitted", undefined, false);
     const subscriptionId = "diff-sharing";
-    queryClient.getQueryCache().build(queryClient, {
+    const observer = new QueryObserver(queryClient, {
       queryKey,
       queryFn: skipToken,
       meta: checkoutDiffPushRoute({
-        enabled: false,
+        enabled: true,
         serverId,
         cwd,
         subscriptionId,
         compare: { mode: "uncommitted" },
       }),
     });
+    const unsubscribe = observer.subscribe(() => {});
     const unmount = mountServerDataPushRouter({ queryClient, client: fake.client, serverId });
     type Payload = SubscribeCheckoutDiffResponseMessage["payload"];
     const files: Payload["files"] = ["a.ts", "b.ts"].map((path) => ({
@@ -291,7 +314,13 @@ describe("server data push router", () => {
     const publish = (incomingFiles: Payload["files"], requestId: string) => {
       fake.emit({
         type: "subscribe_checkout_diff_response",
-        payload: { subscriptionId, cwd, files: incomingFiles, requestId, error: null },
+        payload: {
+          subscriptionId: fake.subscribeCheckoutDiffCalls[0]!.subscriptionId,
+          cwd,
+          files: incomingFiles,
+          requestId,
+          error: null,
+        },
       });
       return queryClient.getQueryData<Payload>(queryKey)!;
     };
@@ -308,6 +337,7 @@ describe("server data push router", () => {
       expect(next.files[0]!.hunks[0]!.lines[0]!.tokens![0]!.style).toBe("variable");
       expect(publish([], "deleted").files).toEqual([]);
     } finally {
+      unsubscribe();
       unmount();
       queryClient.clear();
     }
@@ -373,18 +403,19 @@ describe("server data push router", () => {
     const unsubscribeObserver = observer.subscribe(() => undefined);
     const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
 
+    const serverSubscriptionId = fake.subscribeCheckoutDiffCalls[0]!.subscriptionId;
     expect(fake.subscribeCheckoutDiffCalls).toEqual([
       {
         cwd,
         compare: { mode: "base", baseRef: "main", ignoreWhitespace: true },
-        subscriptionId,
+        subscriptionId: serverSubscriptionId,
       },
     ]);
 
     fake.emit({
       type: "subscribe_checkout_diff_response",
       payload: {
-        subscriptionId,
+        subscriptionId: serverSubscriptionId,
         cwd,
         files: [],
         error: null,
@@ -403,7 +434,13 @@ describe("server data push router", () => {
 
     fake.emit({
       type: "checkout_diff_update",
-      payload: { subscriptionId, cwd, files: [], error: null, diffTooLarge: true },
+      payload: {
+        subscriptionId: serverSubscriptionId,
+        cwd,
+        files: [],
+        error: null,
+        diffTooLarge: true,
+      },
     });
 
     expect(queryClient.getQueryData(queryKey)).toEqual({
@@ -411,162 +448,13 @@ describe("server data push router", () => {
       files: [],
       error: null,
       diffTooLarge: true,
-      requestId: `subscription:${subscriptionId}`,
+      requestId: `subscription:${serverSubscriptionId}`,
     });
 
     unsubscribeObserver();
 
-    // The teardown lingers, so a sidebar toggle can cancel it; it still fires
-    // once the window closes on a checkout genuinely left alone.
-    expect(fake.unsubscribeCheckoutDiffCalls).toEqual([]);
-    vi.advanceTimersByTime(CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS);
-    expect(fake.unsubscribeCheckoutDiffCalls).toEqual([subscriptionId]);
+    expect(fake.unsubscribeCheckoutDiffCalls).toEqual([serverSubscriptionId]);
 
-    unmount();
-  });
-
-  it("keeps the checkout diff subscription through an explorer sidebar toggle", () => {
-    const queryClient = new QueryClient();
-    const fake = createFakeClient();
-    const serverId = "server-1";
-    const cwd = "/repo";
-    const queryKey = checkoutDiffQueryKey(serverId, cwd, "base", "main", true);
-    const subscriptionId = `checkoutDiff:${JSON.stringify(queryKey)}`;
-    const observerOptions = {
-      queryKey,
-      queryFn: skipToken,
-      enabled: true,
-      gcTime: Infinity,
-      staleTime: Infinity,
-      meta: checkoutDiffPushRoute({
-        enabled: true,
-        serverId,
-        subscriptionId,
-        cwd,
-        compare: { mode: "base", baseRef: "main", ignoreWhitespace: true },
-      }),
-    } as const;
-
-    // Sidebar open: the Files tree's changed-path lookup mounts the diff query.
-    const opened = new QueryObserver(queryClient, observerOptions);
-    const unsubscribeOpened = opened.subscribe(() => undefined);
-    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
-    expect(fake.subscribeCheckoutDiffCalls).toHaveLength(1);
-
-    // Close the sidebar (the pane unmounts entirely), then reopen it.
-    unsubscribeOpened();
-    vi.advanceTimersByTime(CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS / 2);
-    const reopened = new QueryObserver(queryClient, observerOptions);
-    const unsubscribeReopened = reopened.subscribe(() => undefined);
-
-    // No teardown and no re-subscribe, so the daemon never re-ships the
-    // tokenized snapshot the reopen used to cost.
-    expect(fake.unsubscribeCheckoutDiffCalls).toEqual([]);
-    expect(fake.subscribeCheckoutDiffCalls).toHaveLength(1);
-
-    vi.advanceTimersByTime(CHECKOUT_DIFF_SUBSCRIPTION_LINGER_MS * 2);
-    expect(fake.unsubscribeCheckoutDiffCalls).toEqual([]);
-    expect(fake.subscribeCheckoutDiffCalls).toHaveLength(1);
-
-    unsubscribeReopened();
-    unmount();
-  });
-
-  it("publishes uncommitted diff data without taking over checkout status ownership", () => {
-    const queryClient = new QueryClient();
-    const fake = createFakeClient();
-    const serverId = "server-1";
-    const cwd = "/repo";
-    const queryKey = checkoutDiffQueryKey(serverId, cwd, "uncommitted", undefined, false);
-    const subscriptionId = `checkoutDiff:${JSON.stringify(queryKey)}`;
-    const observer = new QueryObserver(queryClient, {
-      queryKey,
-      queryFn: skipToken,
-      enabled: true,
-      gcTime: Infinity,
-      staleTime: Infinity,
-      meta: checkoutDiffPushRoute({
-        enabled: true,
-        serverId,
-        subscriptionId,
-        cwd,
-        compare: { mode: "uncommitted", ignoreWhitespace: false },
-      }),
-    });
-    const unsubscribeObserver = observer.subscribe(() => undefined);
-    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
-
-    const statusKey = checkoutStatusQueryKey(serverId, cwd);
-    queryClient.setQueryData(statusKey, { cwd, isGit: true, isDirty: false });
-
-    fake.emit({
-      type: "checkout_diff_update",
-      payload: {
-        subscriptionId,
-        cwd,
-        files: [
-          { path: "a.ts", isNew: false, isDeleted: false, additions: 1, deletions: 0, hunks: [] },
-        ],
-        error: null,
-      },
-    });
-
-    expect(queryClient.getQueryData(queryKey)).toMatchObject({
-      cwd,
-      files: [expect.objectContaining({ path: "a.ts", additions: 1 })],
-      error: null,
-    });
-    // Checkout status is published by its own subscription. The retired diff
-    // self-heal path must not add a second invalidation/request loop here.
-    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(false);
-    expect(queryClient.getQueryData(statusKey)).toEqual({ cwd, isGit: true, isDirty: false });
-
-    unsubscribeObserver();
-    unmount();
-  });
-
-  it("does not touch checkout status for a base-mode diff push", () => {
-    const queryClient = new QueryClient();
-    const fake = createFakeClient();
-    const serverId = "server-1";
-    const cwd = "/repo";
-    const queryKey = checkoutDiffQueryKey(serverId, cwd, "base", "main", true);
-    const subscriptionId = `checkoutDiff:${JSON.stringify(queryKey)}`;
-    const observer = new QueryObserver(queryClient, {
-      queryKey,
-      queryFn: skipToken,
-      enabled: true,
-      gcTime: Infinity,
-      staleTime: Infinity,
-      meta: checkoutDiffPushRoute({
-        enabled: true,
-        serverId,
-        subscriptionId,
-        cwd,
-        compare: { mode: "base", baseRef: "main", ignoreWhitespace: true },
-      }),
-    });
-    const unsubscribeObserver = observer.subscribe(() => undefined);
-    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
-
-    const statusKey = checkoutStatusQueryKey(serverId, cwd);
-    queryClient.setQueryData(statusKey, { cwd, isGit: true, isDirty: false });
-
-    fake.emit({
-      type: "checkout_diff_update",
-      payload: {
-        subscriptionId,
-        cwd,
-        files: [
-          { path: "a.ts", isNew: false, isDeleted: false, additions: 1, deletions: 0, hunks: [] },
-        ],
-        error: null,
-      },
-    });
-
-    expect(queryClient.getQueryState(statusKey)?.isInvalidated).toBe(false);
-
-    unsubscribeObserver();
     unmount();
   });
 
@@ -651,81 +539,12 @@ describe("server data push router", () => {
 
     unsubscribeObserver();
 
-    // The subscription lingers rather than tearing down the moment the last
-    // observer detaches - leaving a workspace and coming straight back is the
-    // common case, and each subscribe costs a full `terminals_changed` push.
-    expect(fake.unsubscribeTerminalCalls).toEqual([]);
-
-    vi.advanceTimersByTime(TERMINAL_SUBSCRIPTION_LINGER_MS);
     expect(fake.unsubscribeTerminalCalls).toEqual([{ cwd, workspaceId }]);
 
     unmount();
   });
 
-  it("a workspace revisited inside the linger window costs no subscription traffic", () => {
-    const queryClient = new QueryClient();
-    const fake = createFakeClient();
-    const serverId = "server-1";
-    const cwd = "/repo";
-    const workspaceId = "workspace-a";
-    const queryKey = buildTerminalsQueryKey(serverId, cwd, workspaceId);
-    const observerOptions = {
-      queryKey,
-      queryFn: skipToken,
-      enabled: true,
-      gcTime: Infinity,
-      staleTime: Infinity,
-      meta: workspaceTerminalsPushRoute({ enabled: true, serverId, cwd, workspaceId }),
-    } as const;
-
-    const first = new QueryObserver(queryClient, observerOptions);
-    const unsubscribeFirst = first.subscribe(() => undefined);
-    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
-    expect(fake.subscribeTerminalCalls).toEqual([{ cwd, workspaceId }]);
-
-    // Leave the workspace, then come back before the linger expires.
-    unsubscribeFirst();
-    vi.advanceTimersByTime(TERMINAL_SUBSCRIPTION_LINGER_MS / 2);
-    const second = new QueryObserver(queryClient, observerOptions);
-    const unsubscribeSecond = second.subscribe(() => undefined);
-
-    // No teardown, and no second subscribe - the round-trip is free.
-    expect(fake.unsubscribeTerminalCalls).toEqual([]);
-    expect(fake.subscribeTerminalCalls).toEqual([{ cwd, workspaceId }]);
-
-    // The cancelled unsubscribe must not fire later either.
-    vi.advanceTimersByTime(TERMINAL_SUBSCRIPTION_LINGER_MS * 2);
-    expect(fake.unsubscribeTerminalCalls).toEqual([]);
-
-    unsubscribeSecond();
-    unmount();
-  });
-
-  it("unmounting cancels a pending terminal unsubscribe instead of firing it twice", () => {
-    const queryClient = new QueryClient();
-    const fake = createFakeClient();
-    const serverId = "server-1";
-    const cwd = "/repo";
-    const workspaceId = "workspace-a";
-    const observer = new QueryObserver(queryClient, {
-      queryKey: buildTerminalsQueryKey(serverId, cwd, workspaceId),
-      queryFn: skipToken,
-      enabled: true,
-      gcTime: Infinity,
-      staleTime: Infinity,
-      meta: workspaceTerminalsPushRoute({ enabled: true, serverId, cwd, workspaceId }),
-    });
-    const unsubscribeObserver = observer.subscribe(() => undefined);
-    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
-
-    unsubscribeObserver();
-    unmount();
-    vi.advanceTimersByTime(TERMINAL_SUBSCRIPTION_LINGER_MS * 2);
-
-    expect(fake.unsubscribeTerminalCalls).toEqual([{ cwd, workspaceId }]);
-  });
-
-  it("re-sends active push subscriptions after reconnect", () => {
+  it("keeps stable handles while invalidating caches after reconnect", () => {
     const queryClient = new QueryClient();
     const fake = createFakeClient();
     const serverId = "server-1";
@@ -789,18 +608,10 @@ describe("server data push router", () => {
       {
         cwd,
         compare: { mode: "base", baseRef: "main", ignoreWhitespace: true },
-        subscriptionId: checkoutDiffSubscriptionId,
-      },
-      {
-        cwd,
-        compare: { mode: "base", baseRef: "main", ignoreWhitespace: true },
-        subscriptionId: checkoutDiffSubscriptionId,
+        subscriptionId: "server-diff-1",
       },
     ]);
-    expect(fake.subscribeTerminalCalls).toEqual([
-      { cwd, workspaceId },
-      { cwd, workspaceId },
-    ]);
+    expect(fake.subscribeTerminalCalls).toEqual([{ cwd, workspaceId }]);
 
     fake.emit({
       type: "terminals_changed",
@@ -893,71 +704,6 @@ describe("server data push router", () => {
     unmount();
   });
 
-  it("writes a pushed brain snapshot into the cache both Brain surfaces read", () => {
-    const queryClient = new QueryClient();
-    const fake = createFakeClient();
-    const serverId = "server-1";
-    const unmount = mountServerDataPushRouter({ client: fake.client, queryClient, serverId });
-
-    const brainKey = brainStatusQueryKey(serverId, false);
-    // Every Brain surface - the rail button, the workspace title button and the
-    // console's cheap status - observes this one entry. A pushed snapshot has to
-    // reach an existing observer with no fetch of its own.
-    const observer = new QueryObserver<BrainHostStatus>(queryClient, {
-      queryKey: brainKey,
-      queryFn: skipToken,
-      staleTime: Infinity,
-    });
-    const seen: (BrainHostStatus | undefined)[] = [];
-    const unsubscribeObserver = observer.subscribe((result) => seen.push(result.data));
-
-    fake.emit(brainStatus({ running: true, reachable: true, state: "starting" }));
-    expect(deriveBrainState(queryClient.getQueryData<BrainHostStatus>(brainKey))).toBe("loading");
-
-    fake.emit(brainStatus({ running: true, reachable: true, state: "ready" }));
-    expect(deriveBrainState(queryClient.getQueryData<BrainHostStatus>(brainKey))).toBe("idle");
-    expect(seen.map((status) => status?.state)).toEqual(
-      expect.arrayContaining(["starting", "ready"]),
-    );
-
-    // The resource variant is never pushed: it costs an `nvidia-smi` spawn on
-    // the brain host and stays a pull for the Overview tab.
-    expect(queryClient.getQueryData(brainStatusQueryKey(serverId, true))).toBeUndefined();
-
-    unsubscribeObserver();
-    unmount();
-  });
-
-  it("keeps one host's pushed brain snapshot out of another host's cache", () => {
-    const queryClient = new QueryClient();
-    const first = createFakeClient();
-    const second = createFakeClient();
-    const unmountFirst = mountServerDataPushRouter({
-      client: first.client,
-      queryClient,
-      serverId: "server-1",
-    });
-    const unmountSecond = mountServerDataPushRouter({
-      client: second.client,
-      queryClient,
-      serverId: "server-2",
-    });
-
-    first.emit(brainStatus({ running: true, reachable: true, state: "ready", model: "one" }));
-    second.emit(brainStatus({ running: false, reachable: false, state: "stopped" }));
-
-    expect(queryClient.getQueryData(brainStatusQueryKey("server-1", false))).toMatchObject({
-      state: "ready",
-      model: "one",
-    });
-    expect(queryClient.getQueryData(brainStatusQueryKey("server-2", false))).toMatchObject({
-      state: "stopped",
-    });
-
-    unmountFirst();
-    unmountSecond();
-  });
-
   it("invalidates only the reconnect-repair scopes for one server", () => {
     const queryClient = new QueryClient();
     const serverId = "server-1";
@@ -967,12 +713,8 @@ describe("server data push router", () => {
     const pairingOfferKey = daemonPairingOfferQueryKey(serverId);
     const diffKey = checkoutDiffQueryKey(serverId, "/repo", "uncommitted", undefined, false);
     const terminalKey = buildTerminalsQueryKey(serverId, "/repo", "workspace-a");
-    const brainKey = brainStatusQueryKey(serverId, false);
-    const brainResourcesKey = brainStatusQueryKey(serverId, true);
     const otherProviderKey = providersSnapshotQueryKey(otherServerId);
 
-    queryClient.setQueryData(brainKey, { running: true, reachable: true, state: "ready" });
-    queryClient.setQueryData(brainResourcesKey, { running: true, reachable: true, state: "ready" });
     queryClient.setQueryData(providerKey, { entries: [], generatedAt: "now", requestId: "p" });
     queryClient.setQueryData(daemonConfigKey, daemonConfig);
     queryClient.setQueryData(pairingOfferKey, { relayEnabled: false, url: "" });
@@ -991,11 +733,6 @@ describe("server data push router", () => {
     expect(queryClient.getQueryState(pairingOfferKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(diffKey)?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(terminalKey)?.isInvalidated).toBe(true);
-    // One fresh cheap read repairs the gap the dropped subscription left. The
-    // resource variant is deliberately left alone - re-fetching it would spawn
-    // `nvidia-smi` on every reconnect for a panel that may not even be open.
-    expect(queryClient.getQueryState(brainKey)?.isInvalidated).toBe(true);
-    expect(queryClient.getQueryState(brainResourcesKey)?.isInvalidated).toBe(false);
     expect(queryClient.getQueryState(otherProviderKey)?.isInvalidated).toBe(false);
   });
 });

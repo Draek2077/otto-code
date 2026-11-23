@@ -5,14 +5,16 @@ import {
   extractHostPortFromWebSocketUrl,
   normalizeHostPort,
   parseConnectionUri,
+  parseRelayConnectionUri,
+  serializeRelayConnectionUri,
   parseHostPort,
   serializeConnectionUri,
   serializeConnectionUriForStorage,
   shouldUseTlsForDefaultHostedRelay,
   type HostPortParts,
-} from "@otto-code/protocol/daemon-endpoints";
+} from "@getpaseo/protocol/daemon-endpoints";
 
-export { decodeOfferFragmentPayload } from "@otto-code/protocol/connection-offer";
+export { decodeOfferFragmentPayload } from "@getpaseo/protocol/connection-offer";
 
 export type { HostPortParts };
 
@@ -22,6 +24,8 @@ export {
   extractHostPortFromWebSocketUrl,
   normalizeHostPort,
   parseConnectionUri,
+  parseRelayConnectionUri,
+  serializeRelayConnectionUri,
   parseHostPort,
   serializeConnectionUri,
   serializeConnectionUriForStorage,

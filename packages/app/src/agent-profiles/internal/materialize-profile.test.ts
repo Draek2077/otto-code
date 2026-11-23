@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { AgentProfile } from "@otto-code/protocol/messages";
+// OTTO(chat-profile): explicit identity is captured separately from provider configuration.
+import type { AgentProfile } from "@getpaseo/protocol/messages";
 import {
   materializeAgentProfile,
   reconcileMaterializedProfileMode,
@@ -20,65 +21,30 @@ describe("materializeAgentProfile", () => {
     expect(
       materializeAgentProfile(
         profile({
-          icon: " cognition ",
-          color: " violet ",
           model: "claude-opus-5",
           modeId: "plan",
           thinkingOptionId: "think-hard",
-          effortLevel: "high",
           featureValues: { web_search: true },
-          notes: " UI specialist ",
-          personalityPrompt: "Inspect the rendered result.",
-          respectGlobalAppendPrompt: false,
-          roles: ["coder", "designer"],
-          spinner: { glowA: "violet", glowB: "blue" },
-          voice: { provider: "kokoro", model: "v1", name: "Sky" },
-          voiceCues: { thinking: ["Checking the pixels."] },
-          memoryEnabled: true,
         }),
       ),
     ).toEqual({
-      id: "ui-work",
-      name: "UI work",
-      icon: "cognition",
-      color: "violet",
+      chatProfile: { id: "ui-work", name: "UI work" },
       provider: "claude",
       modelId: "claude-opus-5",
       modeId: "plan",
       thinkingOptionId: "think-hard",
-      effortLevel: "high",
       featureValues: { web_search: true },
-      notes: "UI specialist",
-      personalityPrompt: "Inspect the rendered result.",
-      respectGlobalAppendPrompt: false,
-      roles: ["coder", "designer"],
-      spinner: { glowA: "violet", glowB: "blue" },
-      voice: { provider: "kokoro", model: "v1", name: "Sky" },
-      voiceCues: { thinking: ["Checking the pixels."] },
-      memoryEnabled: true,
     });
   });
 
   it("treats omitted and blank fields the same", () => {
     expect(materializeAgentProfile(profile({ model: "   ", modeId: "" }))).toEqual({
-      id: "ui-work",
-      name: "UI work",
-      icon: "",
-      color: "",
+      chatProfile: { id: "ui-work", name: "UI work" },
       provider: "claude",
       modelId: "",
       modeId: "",
       thinkingOptionId: "",
-      effortLevel: "",
       featureValues: {},
-      notes: "",
-      personalityPrompt: undefined,
-      respectGlobalAppendPrompt: undefined,
-      roles: [],
-      spinner: undefined,
-      voice: undefined,
-      voiceCues: undefined,
-      memoryEnabled: undefined,
     });
   });
 
@@ -127,22 +93,6 @@ describe("toAgentConfigApply", () => {
       toAgentConfigApply(materializeAgentProfile(profile({ model: "claude-opus-5" }))),
     ).not.toHaveProperty("provider");
   });
-
-  it("never carries creation-only profile identity into a running-agent config apply", () => {
-    const payload = toAgentConfigApply(
-      materializeAgentProfile(
-        profile({
-          personalityPrompt: "Stay focused.",
-          roles: ["coder"],
-          spinner: { glowA: "violet", glowB: "blue" },
-          memoryEnabled: true,
-        }),
-      ),
-    );
-    expect(payload).toEqual({});
-    expect(payload).not.toHaveProperty("id");
-    expect(payload).not.toHaveProperty("personalityPrompt");
-  });
 });
 
 describe("reconcileMaterializedProfileMode", () => {
@@ -158,7 +108,7 @@ describe("reconcileMaterializedProfileMode", () => {
         materializeAgentProfile(profile({ modeId: "removed-mode" })),
         ["plan", "default"],
       ),
-    ).toMatchObject({ id: "ui-work", personalityPrompt: undefined, modeId: "" });
+    ).toMatchObject({ modeId: "" });
   });
 
   it("preserves a profile mode still offered by the provider", () => {

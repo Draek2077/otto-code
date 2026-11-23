@@ -2,12 +2,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  CheckCircle2,
-  ChevronRight,
-  CircleAlert,
-  SquareTerminal,
-} from "@/components/icons/material-icons";
+import { CheckCircle2, ChevronRight, CircleAlert, SquareTerminal } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { Pressable, type PressableStateCallbackType, ScrollView, Text, View } from "react-native";
 import invariant from "tiny-invariant";
@@ -82,12 +77,12 @@ type CommandStatus = "running" | "completed" | "failed";
 
 function CommandStatusIcon({ status }: { status: CommandStatus }) {
   if (status === "running") {
-    return <ThemedLoadingSpinner size="sm" uniProps={foregroundColorMapping} />;
+    return <ThemedLoadingSpinner size={14} uniProps={foregroundColorMapping} />;
   }
   if (status === "completed") {
-    return <ThemedCheckCircle2 size="sm" uniProps={greenColorMapping} />;
+    return <ThemedCheckCircle2 size={14} uniProps={greenColorMapping} />;
   }
-  return <ThemedCircleAlert size="sm" uniProps={redColorMapping} />;
+  return <ThemedCircleAlert size={14} uniProps={redColorMapping} />;
 }
 
 function formatDuration(ms: number): string {
@@ -150,6 +145,7 @@ function BlockedSetupNotice({
   return (
     <>
       <Alert
+        size="sm"
         variant="warning"
         title={t("workspace.setup.blocked.title")}
         description={t("workspace.setup.blocked.description", {
@@ -163,7 +159,7 @@ function BlockedSetupNotice({
           </Button>
         ) : null}
       </Alert>
-      {runError ? <Alert variant="error" description={runError} /> : null}
+      {runError ? <Alert size="sm" variant="error" description={runError} /> : null}
     </>
   );
 }
@@ -242,7 +238,7 @@ function useWorkspaceSetupSnapshot(serverId: string, workspaceId: string) {
         return;
       })
       .catch(() => {
-        // Server may not support this yet - ignore
+        // Server may not support this yet — ignore.
       });
   }, [client, snapshot, serverId, upsertProgress, workspaceId]);
 
@@ -306,7 +302,7 @@ function SetupPanel() {
       contentContainerStyle={styles.contentContainer}
       testID="workspace-setup-panel"
     >
-      {/* Hidden element for status - preserves testID for E2E */}
+      {/* Hidden element for status — preserves testID for E2E */}
       <Text style={styles.hiddenStatus} testID="workspace-setup-status">
         {statusLabel}
       </Text>
@@ -510,7 +506,7 @@ function SetupCommandChevron({ showDetail }: { showDetail: boolean }) {
     [showDetail],
   );
   return (
-    <ThemedChevronRight size="sm" uniProps={foregroundMutedColorMapping} style={chevronStyle} />
+    <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} style={chevronStyle} />
   );
 }
 

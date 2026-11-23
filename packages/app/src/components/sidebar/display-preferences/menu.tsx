@@ -18,13 +18,14 @@ import {
   Diff,
   EyeOff,
   Folder,
+  GitBranch,
+  GitPullRequest,
   Globe,
   Server,
   Settings2,
   Tag,
   Type,
-} from "@/components/icons/material-icons";
-import { GitBranch, GitPullRequest } from "@/components/icons/lucide";
+} from "lucide-react-native";
 import {
   MenuItem,
   MenuRoot,
@@ -49,7 +50,7 @@ import {
   SIDEBAR_UNLABELLED_LABEL_KEY,
   type SidebarGroupMode,
 } from "@/stores/sidebar-view-store";
-import { workspaceLabelKey, type WorkspaceLabelColor } from "@otto-code/protocol/workspace-labels";
+import { workspaceLabelKey, type WorkspaceLabelColor } from "@getpaseo/protocol/workspace-labels";
 import type { WorkspaceTitleSource } from "@/hooks/use-settings";
 import { SIDEBAR_CHECKS_DISPLAYS, type SidebarChecksDisplay } from "./checks-display";
 import { useSidebarDisplayPreferences, type SidebarTrailingChoice } from "./model";
@@ -57,12 +58,8 @@ import { SIDEBAR_ROW_ITEMS, type SidebarRowItem } from "./row-items";
 import { useWorkspaceLabelProjection } from "@/workspace-labels";
 import { WorkspaceLabelDot } from "@/workspace-labels/swatch";
 import { WorkspaceLabelManagerModal } from "@/workspace-labels/manager-modal";
-import { compactUp } from "@/styles/theme";
 
-const mutedIconMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-  size: theme.iconSize.sm,
-});
+const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 const ThemedSettings2 = withUnistyles(Settings2);
 /** CI's mark: the subject of the checks row, and the shape the icon-only option leaves behind. */
@@ -295,7 +292,7 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
           accessibilityLabel={t("sidebar.display.trigger")}
           testID="sidebar-display-preferences-menu"
         >
-          <ThemedSettings2 uniProps={mutedIconMapping} />
+          <ThemedSettings2 size={14} uniProps={mutedIconMapping} />
         </MenuTrigger>
         <MenuSurface
           align="end"
@@ -362,6 +359,14 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
               </MenuSubTrigger>
             </>
           ) : null}
+          <MenuSeparator />
+          <MenuItem
+            selected={preferences.showBackground}
+            closeOnSelect={false}
+            onSelect={preferences.toggleBackground}
+          >
+            {t("sidebar.display.showBackground")}
+          </MenuItem>
         </MenuSurface>
       </MenuRoot>
       <WorkspaceLabelManagerModal visible={managerOpen} onClose={closeManager} />
@@ -758,8 +763,8 @@ function HostFilterItem({
 
 const styles = StyleSheet.create((theme) => ({
   trigger: {
-    width: compactUp(28),
-    height: compactUp(28),
+    width: 28,
+    height: 28,
     alignItems: "center",
     justifyContent: "center",
     borderRadius: theme.borderRadius.md,

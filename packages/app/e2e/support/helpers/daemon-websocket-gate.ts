@@ -21,6 +21,7 @@ interface ClientRequest {
   mode?: unknown;
   path?: unknown;
   agentId?: unknown;
+  messageId?: unknown;
   text?: unknown;
   activeTurnBehavior?: unknown;
 }
@@ -28,9 +29,13 @@ interface ClientRequest {
 interface ServerMessage {
   type?: unknown;
   payload?: {
-    path?: unknown;
-    ok?: unknown;
-    change?: unknown;
+    initial?: {
+      path?: unknown;
+    };
+    version?: {
+      status?: unknown;
+      path?: unknown;
+    };
   };
 }
 
@@ -289,10 +294,7 @@ function recordClientRequest(
   directoryStarts.total[directory] += 1;
 }
 
-export async function installDaemonWebSocketGate(
-  page: Page,
-  routePattern = daemonWsRoutePattern(),
-) {
+export async function installDaemonWebSocketGate(page: Page) {
   let acceptingConnections = true;
   let reconnectWithFreshClient = false;
   let suppressAgentStream = false;
@@ -344,14 +346,13 @@ export async function installDaemonWebSocketGate(
   let heldReadyFileUpdatePromise = Promise.resolve();
   const recordFileUpdate = (message: ServerMessage): void => {
     if (
-      message.type !== "file.watch.event" ||
-      typeof message.payload?.change !== "string" ||
-      typeof message.payload.path !== "string"
+      message.type !== "fs.file.update" ||
+      typeof message.payload?.version?.status !== "string" ||
+      typeof message.payload.version.path !== "string"
     ) {
       return;
     }
-    const status = message.payload.change === "deleted" ? "missing" : "ready";
-    const key = `${message.payload.path}:${status}`;
+    const key = `${message.payload.version.path}:${message.payload.version.status}`;
     observedFileUpdates.add(key);
     fileUpdateWaiters.get(key)?.();
     fileUpdateWaiters.delete(key);
@@ -374,11 +375,10 @@ export async function installDaemonWebSocketGate(
 
   const observeFileMessage = (message: ServerMessage | null): void => {
     if (
-      message?.type === "file.watch.subscribe.response" &&
-      message.payload?.ok === true &&
-      typeof message.payload.path === "string"
+      message?.type === "fs.file.subscribe.response" &&
+      typeof message.payload?.initial?.path === "string"
     ) {
-      const path = message.payload.path;
+      const path = message.payload.initial.path;
       subscribedFilePaths.add(path);
       fileSubscriptionWaiters.get(path)?.();
       fileSubscriptionWaiters.delete(path);
@@ -433,9 +433,9 @@ export async function installDaemonWebSocketGate(
     fileMessage: ServerMessage | null,
   ): boolean => {
     if (
-      fileMessage?.type !== "file.watch.event" ||
-      (fileMessage.payload?.change !== "changed" && fileMessage.payload?.change !== "recreated") ||
-      fileMessage.payload.path !== readyFileUpdatePathToHold ||
+      fileMessage?.type !== "fs.file.update" ||
+      fileMessage.payload?.version?.status !== "ready" ||
+      fileMessage.payload.version.path !== readyFileUpdatePathToHold ||
       heldReadyFileUpdate
     ) {
       return false;
@@ -445,7 +445,7 @@ export async function installDaemonWebSocketGate(
     return true;
   };
 
-  await page.routeWebSocket(routePattern, (ws) => {
+  await page.routeWebSocket(daemonWsRoutePattern(), (ws) => {
     if (!acceptingConnections) {
       blockedConnectionCount += 1;
       for (const resolve of blockedConnectionWaiters) resolve();
@@ -849,7 +849,12 @@ export async function installDaemonWebSocketGate(
     getClientRequests(type: string): ReadonlyArray<ClientRequest> {
       return [...(clientRequests.get(type) ?? [])];
     },
-    getTimelineRequestCount(direction: "tail" | "before" | "after"): number {
+    getTimelineRequestCount(direction: "tail" | "before" | "after", agentId?: string): number {
+      if (agentId) {
+        return (clientRequests.get("fetch_agent_timeline_request") ?? []).filter(
+          (request) => request.agentId === agentId && request.direction === direction,
+        ).length;
+      }
       return timelineRequestCounts.get(direction) ?? 0;
     },
     getAgentStreamItemCount(type: string): number {

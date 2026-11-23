@@ -5,6 +5,8 @@ nav: Codex App
 order: 54
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Otto vs Codex App
 
 Codex App is OpenAI's desktop app for working with Codex threads in parallel. It runs on macOS and Windows, with local, worktree, and cloud modes.

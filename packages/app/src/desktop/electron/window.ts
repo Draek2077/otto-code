@@ -52,18 +52,3 @@ export async function updateDesktopWindowChrome(update: DesktopWindowChromeUpdat
 
   await win.updateChrome(update);
 }
-
-// Tell main the first durable screen is ready so it can reveal the window.
-// Best-effort: off-desktop, or on a desktop shell without the handler, this is a
-// no-op - the reveal falls back to main's timeout, never a broken startup.
-export async function signalDesktopWindowReady(): Promise<void> {
-  const signal = getDesktopHost()?.window?.signalReady;
-  if (typeof signal !== "function") {
-    return;
-  }
-  try {
-    await signal();
-  } catch {
-    // A failed reveal signal must never break startup.
-  }
-}

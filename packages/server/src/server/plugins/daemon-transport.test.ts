@@ -23,14 +23,14 @@ describe("plugin daemon IPC transport", () => {
     const opened = new Promise<void>((resolve) => transport.onOpen(resolve));
 
     await opened;
-    receive?.({ type: "otto_frame", data: "first", isBinary: false });
-    receive?.({ type: "otto_frame", data: new Uint8Array([7, 8]), isBinary: true });
+    receive?.({ type: "paseo_frame", data: "first", isBinary: false });
+    receive?.({ type: "paseo_frame", data: new Uint8Array([7, 8]), isBinary: true });
     transport.send("outbound");
 
     expect(frames).toEqual([
       { data: "first", isBinary: false },
       { data: new Uint8Array([7, 8]), isBinary: true },
     ]);
-    expect(sent).toEqual([{ type: "otto_frame", data: "outbound", isBinary: false }]);
+    expect(sent).toEqual([{ type: "paseo_frame", data: "outbound", isBinary: false }]);
   });
 });

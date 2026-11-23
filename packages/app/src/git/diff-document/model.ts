@@ -2,13 +2,14 @@ import { lineNumberGutterWidth } from "@/components/code-insets";
 import { findClusterBreak } from "@marijn/find-cluster-break";
 import {
   buildSplitDiffRows,
+  buildStructuralSplitRows, // OTTO(structural-diff)
   buildUnifiedDiffLines,
   type ReviewableDiffTarget,
   type SplitDiffDisplayLine,
 } from "@/utils/diff-layout";
 import { compactHighlightTokens } from "@/utils/diff-rendering";
 import { getInlineReviewThreadState, getSplitInlineReviewThreadState } from "@/review/geometry";
-import { advancesFor } from "./text-measurement";
+import { advancesFor, requiresShaping } from "./text-measurement";
 import type {
   BuildDiffDocumentModelInput,
   DiffCell,
@@ -238,7 +239,7 @@ function appendNewFileRows(candidate: {
   }
 
   const lines = geometryLines(
-    lineSources(candidate.file, candidate.input.layout, false),
+    lineSources(candidate.file, candidate.input.layout, false, candidate.input.structural), // OTTO(structural-diff)
     candidate.input,
   );
   const fileBottom =
@@ -304,11 +305,11 @@ function materializeCells(
   return cells.map((cell) => {
     if (!cell || cell.fragments.length > 0) return cell;
     const sourceLine =
-      file.hunks[cell.sourceIdentity.hunkIndex]!.lines[cell.sourceIdentity.lineIndex]!;
+      file.hunks[cell.sourceIdentity.hunkIndex]?.lines[cell.sourceIdentity.lineIndex]; // OTTO(structural-diff): synthetic fallback headers carry no source.
     return measureCell({
       source: {
         ...cell,
-        tokenText: cell.type === "header" ? [] : compactHighlightTokens(sourceLine.tokens ?? []),
+        tokenText: cell.type === "header" ? [] : compactHighlightTokens(sourceLine?.tokens ?? []),
       },
       availableWidth,
       input,
@@ -360,14 +361,20 @@ function lineSources(
   file: BuildDiffDocumentModelInput["files"][number],
   layout: "unified" | "split",
   includeTokens: boolean,
+  structural?: boolean,
 ): Array<[CellSource] | [CellSource | null, CellSource | null]> {
   if (layout === "split") {
-    return buildSplitDiffRows(file).map((row) => {
+    // OTTO(structural-diff)
+    const plan = structural ? buildStructuralSplitRows(file) : null;
+    const rows = plan?.rows ?? buildSplitDiffRows(file);
+    const sources = rows.map((row): [CellSource] | [CellSource | null, CellSource | null] => {
       if (row.kind === "header") {
         return [headerSource(row.content, row.hunkIndex, row.lineIndex)];
       }
       return [cellSource(row.left, includeTokens), cellSource(row.right, includeTokens)];
     });
+    if (plan?.notice && rows.length > 0) sources.unshift([headerSource(plan.notice, -1, -1)]);
+    return sources;
   }
   return buildUnifiedDiffLines(file).map((entry) => [
     {
@@ -571,14 +578,31 @@ export function measureFragments(input: {
     return [createFragment(graphemes, 0, graphemes.length, 0, input.lineHeight, input.measureText)];
   }
   const fragments: DiffFragment[] = [];
+  const displayGraphemes = graphemes.map((grapheme) => grapheme.text);
+  const measureWidth =
+    input.measureText.measureWidth?.bind(input.measureText) ??
+    ((slice: readonly string[]) => advancesFor(input.measureText)(slice).at(-1) ?? 0);
+  // Joining/ligatures can make a longer prefix narrower. Preserve the existing
+  // search order for those runs; changing the probes can change their breaks.
+  const canBoundSearch = !requiresShaping(input.text);
   let graphemeIndex = 0;
   while (graphemeIndex < graphemes.length) {
     let low = graphemeIndex + 1;
-    let high = graphemes.length;
+    // A small first probe finishes short lines in one query. Grow it only when
+    // it fits, so narrow wrapping never repeatedly measures a huge line's tail.
+    let high = canBoundSearch ? Math.min(graphemes.length, graphemeIndex + 64) : graphemes.length;
     let fitting = low;
+    if (canBoundSearch) {
+      while (measureWidth(displayGraphemes.slice(graphemeIndex, high)) <= input.availableWidth) {
+        fitting = high;
+        low = high + 1;
+        if (high === graphemes.length) break;
+        high = Math.min(graphemes.length, graphemeIndex + (high - graphemeIndex) * 2);
+      }
+    }
     while (low <= high) {
       const middle = (low + high) >>> 1;
-      const width = measureGraphemeSlice(graphemes, graphemeIndex, middle, input.measureText).width;
+      const width = measureWidth(displayGraphemes.slice(graphemeIndex, middle));
       if (width <= input.availableWidth || middle === graphemeIndex + 1) {
         fitting = middle;
         low = middle + 1;

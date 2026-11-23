@@ -1,23 +1,37 @@
-Otto connects your Android device to coding agents running on your computer or server. Read chats, send prompts, and answer agent questions without sitting at your desk.
+Otto is a client for AI coding agents that run on your own machine. Your dev environment, in your pocket.
 
-<b>Work with your coding environment</b>
+Otto runs a local server called the daemon on your computer. It manages your coding agents and streams their output in real time. This app connects to that daemon directly or through an end-to-end encrypted relay. Model requests use the provider you configure.
+
+<b>Supported agents</b>
 
 <ul>
-<li>Open projects and workspaces, and follow several agent chats</li>
-<li>Review changes, browse files, and edit code</li>
-<li>Answer questions and permission requests</li>
-<li>Use a terminal on the connected host</li>
-<li>Dictate prompts with the host's configured speech service</li>
+<li>Claude Code</li>
+<li>Codex</li>
+<li>GitHub Copilot</li>
+<li>OpenCode</li>
+<li>Pi</li>
 </ul>
 
-<b>Your host, your providers</b>
+You bring your own provider credentials and use your existing subscriptions. Otto adds no markup and no inference costs of its own.
 
-Run the Otto daemon on your host and configure the providers you want to use. Otto supports coding agent CLIs and compatible cloud or local model endpoints. Available models and tools depend on that host's configuration.
+<b>What you can do</b>
 
-Connect directly to your host or use the optional end-to-end encrypted relay. Your selected model and speech providers determine where those requests are processed.
+<ul>
+<li>Start agents, watch them work, and answer their questions from your phone</li>
+<li>Run several agents in parallel across projects and git worktrees</li>
+<li>Review diffs, browse commit history, and edit files</li>
+<li>Work with pull requests from GitHub, GitLab, Gitea, Forgejo, and Codeberg</li>
+<li>Open a terminal in any workspace</li>
+<li>Dictate prompts or talk through a problem in voice mode</li>
+<li>Schedule agents to run on a recurring basis</li>
+</ul>
 
-Otto is a fork of Paseo with additional tools for cloud and local providers. The Android app is a client for the host; it does not install a coding agent or run a desktop development environment on your phone.
+<b>Privacy</b>
 
-Documentation: https://otto-code.me/docs
-Source and issues: https://github.com/Draek2077/otto-code
-Upstream Paseo: https://github.com/getpaseo/paseo
+No telemetry, no tracking, no account required. The app talks only to daemons you point it at. Remote access goes through an end-to-end encrypted relay that cannot read your traffic, or over your own network or VPN if you prefer.
+
+<b>You need a daemon to connect to</b>
+
+This app is not useful on its own. Install the Otto daemon on the computer where your code and agent CLIs live, then pair this app with it from Settings. The desktop app bundles the daemon, or you can run it from npm, Docker, or Nix.
+
+Setup instructions: https://otto-code.me

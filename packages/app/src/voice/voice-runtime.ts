@@ -1,17 +1,23 @@
 import { Buffer } from "buffer";
-import type { AgentStreamEventPayload, SessionOutboundMessage } from "@otto-code/protocol/messages";
+import type { AgentStreamEventPayload, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import type { DaemonServerInfo } from "@/stores/session-store";
-import type { AudioEngine } from "@/voice/audio-engine-types";
-import { formatToMimeType } from "@/voice/audio-format";
+import type { AudioEngine } from "@/audio";
 import {
   THINKING_TONE_NATIVE_PCM_BASE64,
   THINKING_TONE_NATIVE_PCM_DURATION_MS,
 } from "@/utils/thinking-tone.native-pcm";
 
 const PCM_MIME_TYPE = "audio/pcm;rate=16000;bits=16";
-const KEEP_AWAKE_TAG = "otto:voice";
+const KEEP_AWAKE_TAG = "paseo:voice";
 const THINKING_TONE_REPEAT_GAP_MS = 350;
+/**
+ * A reply is spoken as one TTS segment per sentence, and the daemon starts the next segment
+ * only once the current one has finished playing, so a reply in progress is punctuated by short
+ * silences. The cue is for a wait the user cannot otherwise explain, so it starts only once the
+ * silence has outlasted those gaps.
+ */
+const THINKING_TONE_MIN_SILENCE_MS = 1500;
 const DISPLAY_VOLUME_PUBLISH_INTERVAL_MS = 120;
 const DISPLAY_VOLUME_CHANGE_EPSILON = 0.02;
 const DISPLAY_VOLUME_ATTACK = 0.35;
@@ -56,18 +62,11 @@ export interface VoiceSessionAdapter {
 }
 
 export interface VoiceRuntimeDeps {
+  canPlayThinkingTone?(): boolean; // OTTO(speech): device preference, never microphone ownership.
   engine: AudioEngine;
   getServerInfo(serverId: string): DaemonServerInfo | null;
   activateKeepAwake(tag: string): Promise<void>;
   deactivateKeepAwake(tag: string): Promise<void>;
-  /** Device-local gate for the repeating thinking tone. Defaults to enabled. */
-  isThinkingToneEnabled?(): boolean;
-  /**
-   * Device-local level for the spoken-reply channel, 0..1. Read per play call
-   * (not captured once at start) so a slider move lands on the next chunk
-   * instead of the next voice session. Defaults to full.
-   */
-  getPlaybackGain?(): number;
 }
 
 interface RuntimeSessionState {
@@ -120,10 +119,8 @@ interface RuntimePlaybackState {
 }
 
 interface CueState {
-  active: boolean;
-  token: number;
+  controller: AbortController | null;
   timeout: ReturnType<typeof setTimeout> | null;
-  playing: boolean;
 }
 
 const INITIAL_SNAPSHOT: VoiceRuntimeSnapshot = {
@@ -212,10 +209,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     generation: 0,
   };
   const cue: CueState = {
-    active: false,
-    token: 0,
+    controller: null,
     timeout: null,
-    playing: false,
   };
   const cuePcm16 = Uint8Array.from(Buffer.from(THINKING_TONE_NATIVE_PCM_BASE64, "base64"));
   const cueSource = {
@@ -280,9 +275,14 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     bytes: Uint8Array,
     format: string,
   ): { arrayBuffer(): Promise<ArrayBuffer>; size: number; type: string } {
+    let mimeType: string;
+    if (format === "pcm") mimeType = "audio/pcm;rate=24000;bits=16";
+    else if (format === "mp3") mimeType = "audio/mpeg";
+    else mimeType = `audio/${format}`;
+
     return {
       size: bytes.byteLength,
-      type: formatToMimeType(format),
+      type: mimeType,
       async arrayBuffer() {
         return Uint8Array.from(bytes).buffer;
       },
@@ -374,7 +374,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
         try {
           if (group.shouldPlay) {
-            await deps.engine.play(nextChunk.source, { gain: deps.getPlaybackGain?.() ?? 1 });
+            await deps.engine.play(nextChunk.source);
           }
         } catch (error) {
           if (generation !== playback.generation) {
@@ -432,25 +432,19 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
   function canPlayCue(): boolean {
     return (
+      deps.canPlayThinkingTone?.() !== false && // OTTO(speech)
       state.snapshot.isVoiceMode &&
       state.snapshot.phase === "waiting" &&
-      !state.telemetry.isSpeaking &&
-      (deps.isThinkingToneEnabled?.() ?? true)
+      !state.telemetry.isSpeaking
     );
   }
 
   function stopCue(): void {
-    const hadActive = cue.active || cue.timeout !== null || cue.playing;
-    cue.active = false;
-    cue.token += 1;
+    cue.controller?.abort();
+    cue.controller = null;
     if (cue.timeout) {
       clearTimeout(cue.timeout);
       cue.timeout = null;
-    }
-    cue.playing = false;
-    if (hadActive) {
-      deps.engine.stop();
-      deps.engine.clearQueue();
     }
   }
 
@@ -465,38 +459,27 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       stopCue();
       return;
     }
-    if (cue.active) {
+    if (cue.controller) {
       return;
     }
-    cue.active = true;
-    cue.token += 1;
-    const token = cue.token;
+    const controller = new AbortController();
+    cue.controller = controller;
 
     const playNext = () => {
-      if (!cue.active || cue.token !== token) {
+      if (controller.signal.aborted || !canPlayCue()) {
+        // OTTO(speech): respect a preference changed while waiting.
         return;
       }
-      // The settings toggle has no phase transition to trigger reconcileCue,
-      // so re-check it on every repeat.
-      if (!(deps.isThinkingToneEnabled?.() ?? true)) {
-        stopCue();
-        return;
-      }
-      cue.playing = true;
       void deps.engine
-        // The thinking tone rides the spoken-reply channel: it is voice mode
-        // talking, and turning the reply down without turning the tone down
-        // leaves the tone the loudest thing in the conversation.
-        .play(cueSource, { gain: deps.getPlaybackGain?.() ?? 1 })
+        .play(cueSource, controller.signal)
         .catch((error) => {
-          if (cue.token !== token) {
+          if (controller.signal.aborted) {
             return;
           }
           console.warn(`[VoiceRuntime#${instanceId}] Cue playback failed:`, error);
         })
         .finally(() => {
-          cue.playing = false;
-          if (!cue.active || cue.token !== token) {
+          if (controller.signal.aborted) {
             return;
           }
           cue.timeout = setTimeout(
@@ -506,7 +489,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         });
     };
 
-    playNext();
+    cue.timeout = setTimeout(playNext, THINKING_TONE_MIN_SILENCE_MS);
   }
 
   const uploader: ContinuousVoiceUploader = {
@@ -927,10 +910,9 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       if (isSpeaking) {
         const shouldInterruptPlayback =
           state.snapshot.phase === "playing" || playback.groups.size > 0;
-        const hadCue = cue.active || cue.timeout !== null || cue.playing;
         resetPlaybackState();
         stopCue();
-        if (shouldInterruptPlayback && !hadCue) {
+        if (shouldInterruptPlayback) {
           deps.engine.stop();
           deps.engine.clearQueue();
         }

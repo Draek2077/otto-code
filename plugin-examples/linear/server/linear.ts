@@ -40,13 +40,13 @@ const ISSUE_FIELDS = `
 `;
 
 const EXACT_ISSUE_QUERY = `
-  query OttoLinearIssue($id: String!) {
+  query PaseoLinearIssue($id: String!) {
     issue(id: $id) { ${ISSUE_FIELDS} }
   }
 `;
 
 const SEARCH_ISSUES_QUERY = `
-  query OttoLinearIssues($filter: IssueFilter) {
+  query PaseoLinearIssues($filter: IssueFilter) {
     issues(first: 20, filter: $filter, orderBy: updatedAt) {
       nodes { ${ISSUE_FIELDS} }
     }

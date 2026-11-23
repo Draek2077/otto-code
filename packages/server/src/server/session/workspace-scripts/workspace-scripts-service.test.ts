@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pino } from "pino";
 import { afterEach, describe, expect, test } from "vitest";
-import type { SessionOutboundMessage, StartWorkspaceScriptRequest } from "../../messages.js";
+import type {
+  ScriptStatusUpdateMessage,
+  SessionOutboundMessage,
+  StartWorkspaceScriptRequest,
+} from "../../messages.js";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "../../service-proxy.js";
 import type { TerminalManager } from "../../../terminal/terminal-manager.js";
 import type {
@@ -54,7 +58,7 @@ function fakeGitService() {
     isGit: true,
     repoRoot: "/tmp/repo",
     currentBranch: "feature/scripts",
-    remoteUrl: "https://github.com/Draek2077/otto-code.git",
+    remoteUrl: "https://github.com/getpaseo/paseo.git",
     hasRemote: true,
   };
 
@@ -66,7 +70,7 @@ function fakeGitService() {
 }
 
 // The service only truthiness-checks terminalManager in its availability guard and then forwards it
-// opaquely to the injected spawnWorkspaceScript fake, which ignores it - an empty stand-in is enough.
+// opaquely to the injected spawnWorkspaceScript fake, which ignores it — an empty stand-in is enough.
 const availableTerminalManager = {} as unknown as TerminalManager;
 
 interface BuildOptions {
@@ -82,6 +86,7 @@ interface BuildOptions {
 
 function buildService(options: BuildOptions = {}) {
   const emitted: SessionOutboundMessage[] = [];
+  const published: ScriptStatusUpdateMessage[] = [];
   const spawnCalls: SpawnWorkspaceScriptOptions[] = [];
   const workspace =
     options.workspace === undefined
@@ -102,12 +107,13 @@ function buildService(options: BuildOptions = {}) {
     workspaceRegistry: fakeWorkspaceRegistry(workspace),
     projectRegistry: fakeProjectRegistry(options.project ?? null),
     workspaceGitService: options.gitService ?? fakeGitService(),
-    getDaemonTcpPort: () => 6868,
+    getDaemonTcpPort: () => 6767,
     getDaemonTcpHost: () => "127.0.0.1",
     serviceProxyPublicBaseUrl: null,
     resolveScriptHealth: null,
     logger,
     emit: (message) => emitted.push(message),
+    publishStatusUpdate: (message) => published.push(message),
     async spawnWorkspaceScript(spawnOptions): Promise<WorktreeScriptResult> {
       spawnCalls.push(spawnOptions);
       if (options.spawnThrows) {
@@ -126,7 +132,7 @@ function buildService(options: BuildOptions = {}) {
     },
   });
 
-  return { service, emitted, spawnCalls };
+  return { service, emitted, published, spawnCalls };
 }
 
 const request: StartWorkspaceScriptRequest = {
@@ -161,7 +167,7 @@ describe("buildSnapshot", () => {
     ).toEqual([]);
   });
 
-  test("returns no scripts for a workspace without a otto.json", async () => {
+  test("returns no scripts for a workspace without a paseo.json", async () => {
     const dir = mkdtempSync(join(tmpdir(), "workspace-scripts-"));
     tempDirs.push(dir);
     const { service } = buildService();
@@ -174,7 +180,7 @@ describe("buildSnapshot", () => {
     const directory = mkdtempSync(join(tmpdir(), "workspace-scripts-"));
     tempDirs.push(directory);
     writeFileSync(
-      join(directory, "otto.json"),
+      join(directory, "paseo.json"),
       JSON.stringify({ scripts: { app: { type: "service", command: "npm run app", port: 3000 } } }),
     );
     const project = {
@@ -206,7 +212,7 @@ describe("buildSnapshot", () => {
         projectSlug: deriveProjectServiceSlug(project),
         branchName: workspace.branch,
         scriptName: "app",
-        daemonPort: 6868,
+        daemonPort: 6767,
       }).hostname,
     );
     await service.start({ ...request, workspaceId: workspace.workspaceId });
@@ -215,10 +221,11 @@ describe("buildSnapshot", () => {
 });
 
 describe("emitStatusUpdate", () => {
-  test("emits one script_status_update carrying the snapshot", async () => {
-    const { service, emitted } = buildService();
+  test("publishes one script_status_update carrying the snapshot", async () => {
+    const { service, emitted, published } = buildService();
     await service.emitStatusUpdate("ws-1", "/tmp/repo");
-    expect(emitted).toEqual([
+    expect(emitted).toEqual([]);
+    expect(published).toEqual([
       { type: "script_status_update", payload: { workspaceId: "ws-1", scripts: [] } },
     ]);
   });
@@ -229,7 +236,7 @@ describe("stop", () => {
     const dir = mkdtempSync(join(tmpdir(), "workspace-scripts-"));
     tempDirs.push(dir);
     writeFileSync(
-      join(dir, "otto.json"),
+      join(dir, "paseo.json"),
       JSON.stringify({ scripts: { web: { type: "service", command: "npm run web", port: 3000 } } }),
     );
     const runtimeStore = new WorkspaceScriptRuntimeStore();
@@ -332,21 +339,20 @@ describe("start", () => {
   });
 
   test("spawns the script with resolved git metadata and reports success", async () => {
-    const { service, emitted, spawnCalls } = buildService();
+    const { service, emitted, published, spawnCalls } = buildService();
     await service.start(request);
 
     expect(spawnCalls).toHaveLength(1);
     expect(spawnCalls[0]).toMatchObject({
       repoRoot: "/tmp/repo",
       workspaceId: "ws-1",
-      // Derived from the fixture's remote (Draek2077/otto-code), not the cwd.
-      projectSlug: "otto-code",
+      projectSlug: "paseo",
       branchName: "feature/scripts",
       scriptName: "app",
-      daemonPort: 6868,
+      daemonPort: 6767,
       daemonListenHost: "127.0.0.1",
     });
-    expect(emitted).toContainEqual({
+    expect(published).toContainEqual({
       type: "script_status_update",
       payload: { workspaceId: "ws-1", scripts: [] },
     });
@@ -422,7 +428,7 @@ describe("start", () => {
     const directory = mkdtempSync(join(tmpdir(), "workspace-scripts-"));
     tempDirs.push(directory);
     writeFileSync(
-      join(directory, "otto.json"),
+      join(directory, "paseo.json"),
       JSON.stringify({ scripts: { app: { type: "service", command: "npm run app", port: 3000 } } }),
     );
     const project = {
@@ -472,125 +478,5 @@ describe("start", () => {
         },
       },
     ]);
-  });
-});
-
-describe("discovered scripts", () => {
-  function workspaceWithFiles(files: Record<string, string>) {
-    const directory = mkdtempSync(join(tmpdir(), "workspace-scripts-discovery-"));
-    tempDirs.push(directory);
-    for (const [name, contents] of Object.entries(files)) {
-      writeFileSync(join(directory, name), contents);
-    }
-    return { workspaceId: "ws-1", cwd: directory } as PersistedWorkspaceRecord;
-  }
-
-  test("list omits discovered scripts unless the caller asks for them", async () => {
-    const workspace = workspaceWithFiles({
-      "otto.json": JSON.stringify({ scripts: { app: { command: "node app.js" } } }),
-      "package.json": JSON.stringify({ scripts: { build: "tsc -b" } }),
-    });
-    const { service } = buildService({ workspace });
-
-    expect((await service.list({ workspaceId: "ws-1" })).map((s) => s.scriptName)).toEqual(["app"]);
-  });
-
-  test("appends discovered scripts after the declared ones, tagged with their source", async () => {
-    const workspace = workspaceWithFiles({
-      "otto.json": JSON.stringify({ scripts: { app: { command: "node app.js" } } }),
-      "package.json": JSON.stringify({ scripts: { build: "tsc -b" } }),
-    });
-    const { service } = buildService({ workspace });
-
-    const scripts = await service.list({ workspaceId: "ws-1", includeDiscovered: true });
-
-    expect(scripts.map((s) => s.scriptName)).toEqual(["app", "npm:build"]);
-    expect(scripts[0]).toMatchObject({ command: "node app.js" });
-    expect(scripts[0]?.source).toBeUndefined();
-    expect(scripts[1]).toMatchObject({
-      label: "build",
-      command: "npm run build",
-      type: "script",
-      lifecycle: "stopped",
-      source: { id: "npm", label: "npm", file: "package.json" },
-    });
-  });
-
-  test("a declared script suppresses the discovered one it wraps", async () => {
-    const workspace = workspaceWithFiles({
-      "otto.json": JSON.stringify({ scripts: { build: { command: "npm run build" } } }),
-      "package.json": JSON.stringify({ scripts: { build: "tsc -b", lint: "oxlint" } }),
-    });
-    const { service } = buildService({ workspace });
-
-    const scripts = await service.list({ workspaceId: "ws-1", includeDiscovered: true });
-
-    expect(scripts.map((s) => s.scriptName)).toEqual(["build", "npm:lint"]);
-  });
-
-  test("a running discovered script appears once, with its source intact", async () => {
-    const workspace = workspaceWithFiles({
-      "package.json": JSON.stringify({ scripts: { dev: "vite" } }),
-    });
-    const scriptRuntimeStore = new WorkspaceScriptRuntimeStore();
-    scriptRuntimeStore.set({
-      workspaceId: "ws-1",
-      scriptName: "npm:dev",
-      type: "script",
-      lifecycle: "running",
-      terminalId: "terminal-9",
-      exitCode: null,
-    });
-    const { service } = buildService({ workspace, scriptRuntimeStore });
-
-    const scripts = await service.list({ workspaceId: "ws-1", includeDiscovered: true });
-
-    expect(scripts).toHaveLength(1);
-    expect(scripts[0]).toMatchObject({
-      scriptName: "npm:dev",
-      label: "dev",
-      lifecycle: "running",
-      terminalId: "terminal-9",
-      source: { id: "npm", label: "npm" },
-    });
-  });
-
-  test("launching a discovered script hands the launcher its resolved command", async () => {
-    const workspace = workspaceWithFiles({
-      "package.json": JSON.stringify({ scripts: { dev: "vite" } }),
-    });
-    const { service, spawnCalls } = buildService({ workspace });
-
-    await service.start({ ...request, scriptName: "npm:dev" });
-
-    expect(spawnCalls[0]).toMatchObject({
-      scriptName: "npm:dev",
-      resolvedScript: { command: "npm run dev", cwd: null, displayName: "dev" },
-    });
-  });
-
-  test("launching a declared script passes no resolved command", async () => {
-    const workspace = workspaceWithFiles({
-      "otto.json": JSON.stringify({ scripts: { app: { command: "node app.js" } } }),
-      "package.json": JSON.stringify({ scripts: { dev: "vite" } }),
-    });
-    const { service, spawnCalls } = buildService({ workspace });
-
-    await service.start(request);
-
-    expect(spawnCalls[0]?.resolvedScript).toBeUndefined();
-  });
-
-  // Discovery re-runs at launch, so a script deleted from package.json since the
-  // menu opened resolves to nothing. The launcher then finds no otto.json entry
-  // either and refuses - the daemon never invents a command from a stale name.
-  test("launching a name no source still declares resolves to no command", async () => {
-    const workspace = workspaceWithFiles({
-      "package.json": JSON.stringify({ scripts: { dev: "vite" } }),
-    });
-    const { service, spawnCalls } = buildService({ workspace });
-
-    await expect(service.launch({ workspaceId: "ws-1", scriptName: "npm:gone" })).rejects.toThrow();
-    expect(spawnCalls[0]?.resolvedScript).toBeUndefined();
   });
 });

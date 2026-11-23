@@ -1,13 +1,6 @@
 import { type PermissionResponse } from "expo-modules-core";
 import ExpoTwoWayAudioModule from "./ExpoTwoWayAudioModule";
 
-export interface WakeWordCapabilities {
-  available: boolean;
-  safePhraseSupported: boolean;
-  /** Native model asset identifier, when a model-backed build is installed. */
-  modelVersion?: string;
-}
-
 export async function initialize() {
   return await ExpoTwoWayAudioModule.initialize();
 }
@@ -24,6 +17,16 @@ export function toggleRecording(val: boolean): boolean {
   return ExpoTwoWayAudioModule.toggleRecording(val);
 }
 
+/** Capture speech without treating another app's playback focus as a microphone failure. */
+export function startDictation(): boolean {
+  // COMPAT(dictationCapture): added after v0.11.2, remove after 2027-01-16 once
+  // the native binary floor includes startDictation. Older OTA clients retain legacy capture.
+  if (typeof ExpoTwoWayAudioModule.startDictation !== "function") {
+    return ExpoTwoWayAudioModule.toggleRecording(true);
+  }
+  return ExpoTwoWayAudioModule.startDictation();
+}
+
 export function isRecording(): boolean {
   return ExpoTwoWayAudioModule.isRecording();
 }
@@ -33,9 +36,9 @@ export function isRecording(): boolean {
  * so other apps' audio can resume. Safe to call when already released.
  */
 export function releaseAudioSession() {
-  // COMPAT(releaseAudioSession): added in v0.8.12 on 2026-08-21; remove after 2027-02-21
-  // once the native binary floor is >= v0.8.12. An OTA JS update can land on an older binary
-  // whose native module lacks this function, so probe the native object rather than this wrapper.
+  // COMPAT(releaseAudioSession): added in v0.2.6. An OTA JS update can land on an older
+  // binary whose native module lacks this function, so probe the native object rather than
+  // this wrapper (which always exists). Drop the guard once the binary floor is >= v0.2.6.
   if (typeof ExpoTwoWayAudioModule.releaseAudioSession !== "function") {
     return;
   }
@@ -80,26 +83,4 @@ export function pausePlayback() {
 
 export function resumePlayback() {
   return ExpoTwoWayAudioModule.resumePlayback();
-}
-
-/**
- * Keyword spotting is deliberately a separate native API from microphone PCM
- * events. A detector implementation may consume samples inside the native
- * module, but it must only emit detection events to JavaScript.
- */
-export function getWakeWordCapabilities(): WakeWordCapabilities {
-  return (
-    ExpoTwoWayAudioModule.getWakeWordCapabilities?.() ?? {
-      available: false,
-      safePhraseSupported: false,
-    }
-  );
-}
-
-export function startWakeWordDetection(phrase: string, sensitivity: number): Promise<void> {
-  return ExpoTwoWayAudioModule.startWakeWordDetection(phrase, sensitivity);
-}
-
-export function stopWakeWordDetection(): Promise<void> {
-  return ExpoTwoWayAudioModule.stopWakeWordDetection();
 }

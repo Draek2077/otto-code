@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { CheckoutCommitFile, ParsedDiffFile } from "@otto-code/protocol/messages";
+import type { CheckoutCommitFile, ParsedDiffFile } from "@getpaseo/protocol/messages";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useFetchQueries } from "@/data/query";
 import { commitFileDiffQueryOptions } from "./commit-file-diff-query";
@@ -16,6 +16,7 @@ export interface CommitDiffFilesContext {
   cwd: string;
   sha: string;
   enabled?: boolean;
+  includeStructuralSource?: boolean; // OTTO(structural-diff)
 }
 
 export interface CommitDiffFilesResult {
@@ -87,6 +88,7 @@ export function useCommitDiffFiles(ctx: CommitDiffFilesContext): CommitDiffFiles
         path: file.path,
         client,
         enabled: fileDiffsEnabled,
+        includeStructuralSource: ctx.includeStructuralSource,
       }),
     ),
   );

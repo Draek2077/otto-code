@@ -1,4 +1,4 @@
-import type { JsonValue } from "@otto-code/protocol/agent-types";
+import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import { useCallback, useMemo } from "react";
 import { z } from "zod";
 import { usePaneContext } from "@/panels/pane-context";

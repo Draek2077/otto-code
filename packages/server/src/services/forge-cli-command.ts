@@ -2,6 +2,7 @@ import { z } from "zod";
 import { findExecutable } from "../executable-resolution/executable-resolution.js";
 import { runGitCommand } from "../utils/run-git-command.js";
 import { execCommand } from "../utils/spawn.js";
+import { execForgeCommand } from "../utils/otto/forge-command.js"; // OTTO(forge-argv): native Windows CLIs bypass cmd.exe.
 
 /**
  * Timeout for the per-host CLI auth probe (`gh`/`glab`/`tea` auth status) used
@@ -103,7 +104,7 @@ export interface ForgeCliRunnerFactory {
  */
 export function createForgeCliRunner(options: CreateForgeCliRunnerOptions): ForgeCliRunnerFactory {
   const run: ForgeCliRunner = (args, runOptions) =>
-    execCommand(options.binary, args, {
+    execForgeCommand(options.binary, args, {
       cwd: runOptions.cwd,
       envOverlay: { ...options.envOverlay, ...runOptions.envOverlay },
       maxBuffer: 10 * 1024 * 1024,
@@ -168,10 +169,7 @@ export class ForgeCommandError extends Error {
   readonly stdout?: string;
 
   constructor(label: { brand: string; binary: string }, params: ForgeCommandFailureParams) {
-    // Workspace snapshots carry only Error.message to the Changes tab. Keep the
-    // failure reason there and retain command details in the structured fields.
-    const reason = params.stderr.trim() || `${label.binary} ${params.args.join(" ")}`;
-    super(`${label.brand} CLI command failed: ${reason}`);
+    super(`${label.brand} CLI command failed: ${label.binary} ${params.args.join(" ")}`);
     this.args = [...params.args];
     this.cwd = params.cwd;
     this.exitCode = params.exitCode;

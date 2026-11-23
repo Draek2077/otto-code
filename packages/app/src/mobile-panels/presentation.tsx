@@ -3,8 +3,9 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { GestureDetector, type GestureType } from "react-native-gesture-handler";
 import Animated, { useAnimatedStyle } from "react-native-reanimated";
 import { isWeb } from "@/constants/platform";
+import { visualizerSidebarLayer } from "@/otto/visualizer/sidebar-layer"; // OTTO(visualizer): transient web sidebars above ambient PIP; native gesture hosts stay intact.
+import { WindowChromeRootRegion } from "@/utils/desktop-window";
 import { usePanelStore, type MobilePanelView } from "@/stores/panel-store";
-import { WindowChromeRootRegion } from "@/utils/window-chrome";
 import { getMobilePanelFrame } from "./model";
 import { useIsMobilePanelActive, useMobilePanelsRuntime } from "./provider";
 
@@ -42,7 +43,15 @@ export function MobilePanelOverlay({
 
   const overlayAnimatedStyle = useAnimatedStyle(() => {
     const isVisible = isLeft ? position.value < 0 : position.value > 0;
-    return { display: isVisible ? ("flex" as const) : ("none" as const) };
+    if (isWeb) {
+      return { display: isVisible ? ("flex" as const) : ("none" as const) };
+    }
+    // Preserve native scroll ranges while hidden. Collapsing layout makes Android
+    // spring retained scroll offsets back to zero on touch cancellation or release.
+    return {
+      opacity: isVisible ? 1 : 0,
+      pointerEvents: isVisible ? ("box-none" as const) : ("none" as const),
+    };
   }, [isLeft]);
 
   const positionedPanelStyle = isLeft ? styles.leftPanel : styles.rightPanel;
@@ -67,7 +76,7 @@ export function MobilePanelOverlay({
     overlayPointerEvents = isOpen ? "auto" : "none";
   }
 
-  return (
+  return visualizerSidebarLayer(
     <GestureDetector gesture={closeGesture} touchAction="pan-y">
       {/* Fabric needs an always-mounted native host to attach the close handler while the
           retained panel content is hidden. nativeID keeps that host registered. */}
@@ -79,10 +88,7 @@ export function MobilePanelOverlay({
         pointerEvents={overlayPointerEvents}
         style={styles.overlay}
       >
-        <Animated.View
-          pointerEvents={overlayPointerEvents}
-          style={[styles.overlay, overlayAnimatedStyle]}
-        >
+        <Animated.View style={[styles.overlay, overlayAnimatedStyle]}>
           <Pressable
             accessible={false}
             accessibilityElementsHidden
@@ -100,7 +106,7 @@ export function MobilePanelOverlay({
           </Animated.View>
         </Animated.View>
       </View>
-    </GestureDetector>
+    </GestureDetector>,
   );
 }
 

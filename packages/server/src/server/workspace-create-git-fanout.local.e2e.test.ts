@@ -4,10 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, expect, test } from "vitest";
-import type { WorkspaceDescriptorPayload } from "@otto-code/protocol/messages";
+import type { WorkspaceDescriptorPayload } from "@getpaseo/protocol/messages";
 
 import { DaemonClient } from "./test-utils/daemon-client.js";
-import { createTestOttoDaemon, type TestOttoDaemon } from "./test-utils/otto-daemon.js";
+import { createTestPaseoDaemon, type TestPaseoDaemon } from "./test-utils/paseo-daemon.js";
 import { getWorkspaceGitSelfHealPhaseMs } from "./workspace-git-service.js";
 import {
   configureGitProcessPolicy,
@@ -21,9 +21,9 @@ import { resolveGitProcessPolicy } from "../utils/git-process-scheduler.js";
 
 const SIBLING_COUNT = 100;
 const CREATED_AT = "2026-08-07T00:00:00.000Z";
-const originalMaxProcessesPerSecond = process.env.OTTO_GIT_MAX_PROCESSES_PER_SECOND;
+const originalMaxProcessesPerSecond = process.env.PASEO_GIT_MAX_PROCESSES_PER_SECOND;
 
-let daemon: TestOttoDaemon | null = null;
+let daemon: TestPaseoDaemon | null = null;
 let client: DaemonClient | null = null;
 const cleanupPaths: string[] = [];
 
@@ -36,9 +36,9 @@ afterEach(async () => {
     rmSync(path, { recursive: true, force: true });
   }
   if (originalMaxProcessesPerSecond === undefined) {
-    delete process.env.OTTO_GIT_MAX_PROCESSES_PER_SECOND;
+    delete process.env.PASEO_GIT_MAX_PROCESSES_PER_SECOND;
   } else {
-    process.env.OTTO_GIT_MAX_PROCESSES_PER_SECOND = originalMaxProcessesPerSecond;
+    process.env.PASEO_GIT_MAX_PROCESSES_PER_SECOND = originalMaxProcessesPerSecond;
   }
   configureGitProcessPolicy(resolveGitProcessPolicy({ env: process.env }));
 });
@@ -57,16 +57,16 @@ function git(cwd: string, ...args: string[]): string {
 
 function seedFixture(siblingCount = SIBLING_COUNT): {
   repoRoot: string;
-  ottoHomeRoot: string;
+  paseoHomeRoot: string;
   projectId: string;
   siblingWorktrees: string[];
 } {
-  const fixtureRoot = mkdtempSync(join(tmpdir(), "otto-workspace-create-fanout-"));
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "paseo-workspace-create-fanout-"));
   cleanupPaths.push(fixtureRoot);
   const repoRoot = join(fixtureRoot, "repo");
   const worktreesRoot = join(fixtureRoot, "siblings");
-  const ottoHomeRoot = join(fixtureRoot, "home");
-  const projectsDir = join(ottoHomeRoot, ".otto", "projects");
+  const paseoHomeRoot = join(fixtureRoot, "home");
+  const projectsDir = join(paseoHomeRoot, ".paseo", "projects");
   mkdirSync(repoRoot, { recursive: true });
   mkdirSync(worktreesRoot, { recursive: true });
   mkdirSync(projectsDir, { recursive: true });
@@ -102,7 +102,7 @@ function seedFixture(siblingCount = SIBLING_COUNT): {
       branch,
       worktreeRoot: cwd,
       baseBranch: "main",
-      isOttoOwnedWorktree: false,
+      isPaseoOwnedWorktree: false,
       mainRepoRoot: repoRoot,
       createdAt: CREATED_AT,
       updatedAt: CREATED_AT,
@@ -130,13 +130,13 @@ function seedFixture(siblingCount = SIBLING_COUNT): {
     ]),
   );
   writeFileSync(join(projectsDir, "workspaces.json"), JSON.stringify(workspaces));
-  return { repoRoot, ottoHomeRoot, projectId, siblingWorktrees };
+  return { repoRoot, paseoHomeRoot, projectId, siblingWorktrees };
 }
 
 async function startObservedFixture(siblingCount: number): Promise<ReturnType<typeof seedFixture>> {
   const fixture = seedFixture(siblingCount);
-  daemon = await createTestOttoDaemon({
-    ottoHomeRoot: fixture.ottoHomeRoot,
+  daemon = await createTestPaseoDaemon({
+    paseoHomeRoot: fixture.paseoHomeRoot,
     cleanup: false,
     mcpEnabled: false,
   });
@@ -145,10 +145,10 @@ async function startObservedFixture(siblingCount: number): Promise<ReturnType<ty
     appVersion: "0.3.0-beta.2",
   });
   await client.connect();
-  await client.fetchAgents({ subscribe: { subscriptionId: "agents" } });
+  await client.fetchAgents({ subscribe: {} });
   await client.fetchWorkspaces({
     page: { limit: 200 },
-    subscribe: { subscriptionId: "workspaces" },
+    subscribe: {},
   });
   return fixture;
 }
@@ -327,11 +327,10 @@ test.each([false, true])(
     stopGitCommandMetrics();
 
     if (hasBaseDiffSubscription) {
-      await client?.subscribeCheckoutDiff(
-        fixture.siblingWorktrees[0] ?? "",
-        { mode: "base", baseRef: "main" },
-        { subscriptionId: "base-diff" },
-      );
+      await client?.observeCheckoutDiff(fixture.siblingWorktrees[0] ?? "", {
+        mode: "base",
+        baseRef: "main",
+      }).ready;
       startGitCommandMetrics();
       await waitForGitCommandMetricsIdle({ quietMs: 1_500, timeoutMs: 30_000 });
       stopGitCommandMetrics();
@@ -427,12 +426,12 @@ test("refreshes every workspace that depends on a changed shared base ref", asyn
   await waitForGitCommandMetricsIdle({ quietMs: 1_500, timeoutMs: 30_000 });
   stopGitCommandMetrics();
 
-  const subscriptionId = "shared-base-ref-diff";
-  const initial = await client?.subscribeCheckoutDiff(
-    changedWorktree,
-    { mode: "base", baseRef: "main" },
-    { subscriptionId },
-  );
+  const subscription = client!.observeCheckoutDiff(changedWorktree, {
+    mode: "base",
+    baseRef: "main",
+  });
+  const initial = await subscription.ready;
+  const subscriptionId = initial.subscriptionId;
   expect(initial?.files.map((file) => file.path)).toEqual(["README.md"]);
   startGitCommandMetrics();
   await waitForGitCommandMetricsIdle({ quietMs: 1_500, timeoutMs: 30_000 });
@@ -460,7 +459,7 @@ test("refreshes every workspace that depends on a changed shared base ref", asyn
     status: 2,
     "symbolic-ref": 3,
   });
-  client?.unsubscribeCheckoutDiff(subscriptionId);
+  await subscription.release();
 }, 120_000);
 
 test("records the Git command ledger for repository metadata business rules", async () => {
@@ -617,8 +616,8 @@ test("records the Git command ledger for repository metadata business rules", as
 test("workspace archive is admitted while 52 sibling observations hydrate", async () => {
   configureGitProcessPolicy({ maxProcessConcurrency: 8, maxProcessesPerSecond: 64 });
   const fixture = seedFixture(52);
-  daemon = await createTestOttoDaemon({
-    ottoHomeRoot: fixture.ottoHomeRoot,
+  daemon = await createTestPaseoDaemon({
+    paseoHomeRoot: fixture.paseoHomeRoot,
     cleanup: false,
     mcpEnabled: false,
   });
@@ -627,7 +626,7 @@ test("workspace archive is admitted while 52 sibling observations hydrate", asyn
     appVersion: "0.3.0-beta.2",
   });
   await client.connect();
-  await client.fetchAgents({ subscribe: { subscriptionId: "agents" } });
+  await client.fetchAgents({ subscribe: {} });
   const created = await client.createWorkspace({
     source: {
       kind: "worktree",
@@ -644,7 +643,7 @@ test("workspace archive is admitted while 52 sibling observations hydrate", asyn
 
   await client.fetchWorkspaces({
     page: { limit: 200 },
-    subscribe: { subscriptionId: "workspaces" },
+    subscribe: {},
   });
   expect(snapshotGitCommandRuntimeMetrics().pending).toBeGreaterThan(0);
   const archiveStartedAt = Date.now();
@@ -656,11 +655,11 @@ test("workspace archive is admitted while 52 sibling observations hydrate", asyn
 }, 180_000);
 
 test("workspace create is admitted while 100 sibling observations hydrate", async () => {
-  process.env.OTTO_GIT_MAX_PROCESSES_PER_SECOND = "64";
+  process.env.PASEO_GIT_MAX_PROCESSES_PER_SECOND = "64";
   configureGitProcessPolicy({ maxProcessConcurrency: 8, maxProcessesPerSecond: 64 });
   const fixture = seedFixture();
-  daemon = await createTestOttoDaemon({
-    ottoHomeRoot: fixture.ottoHomeRoot,
+  daemon = await createTestPaseoDaemon({
+    paseoHomeRoot: fixture.paseoHomeRoot,
     cleanup: false,
     mcpEnabled: false,
   });
@@ -670,10 +669,10 @@ test("workspace create is admitted while 100 sibling observations hydrate", asyn
     appVersion: "0.3.0-beta.2",
   });
   await client.connect();
-  await client.fetchAgents({ subscribe: { subscriptionId: "agents" } });
+  await client.fetchAgents({ subscribe: {} });
   const snapshot = await client.fetchWorkspaces({
     page: { limit: 200 },
-    subscribe: { subscriptionId: "workspaces" },
+    subscribe: {},
   });
   expect(snapshot.entries).toHaveLength(SIBLING_COUNT);
   expect(snapshotGitCommandRuntimeMetrics().pending).toBeGreaterThan(0);

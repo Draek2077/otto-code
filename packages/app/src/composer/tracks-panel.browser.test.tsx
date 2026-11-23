@@ -1,11 +1,22 @@
-import React, { act, type ReactNode } from "react";
+import React, { act, useCallback, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { Pressable, Text } from "react-native";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RetainedPanelActivity } from "@/components/retained-panel";
 import { ComposerTrackPill, ComposerTrackRow, type ComposerTrackPillSegment } from "./tracks";
 
 const SUBAGENT_SEGMENTS: ComposerTrackPillSegment[] = [{ bucket: null, text: "3 subagents" }];
+
+// OTTO(chat-identity): inspect the real gradient artwork in the Chromium DOM.
+vi.mock("react-native-svg", async (original) => ({
+  ...(await original<typeof import("react-native-svg")>()),
+  default: "svg",
+  Circle: "circle",
+  Defs: "defs",
+  G: "g",
+  RadialGradient: "radialGradient",
+  Stop: "stop",
+}));
 
 // App sources compile against the classic JSX runtime, which expects React on the global.
 beforeEach(() => vi.stubGlobal("React", React));
@@ -23,14 +34,11 @@ interface Mounted {
 
 const mounted: Mounted[] = [];
 
-// The menu overlay reads the animations preference through app settings, which
-// is a react-query read; without a provider the surface throws on mount.
 function mount(node: ReactNode): HTMLDivElement {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  act(() => root.render(<QueryClientProvider client={queryClient}>{node}</QueryClientProvider>));
+  act(() => root.render(node));
   mounted.push({ root, container });
   return container;
 }
@@ -113,6 +121,43 @@ describe("composer track panel", () => {
     expect(row("row")).not.toBeNull();
   });
 
+  it("closes for good when the panel it belongs to leaves the screen", () => {
+    const onPress = vi.fn();
+    function Harness() {
+      const [active, setActive] = useState(true);
+      const hide = useCallback(() => setActive(false), []);
+      const show = useCallback(() => setActive(true), []);
+      return (
+        <>
+          <Pressable accessibilityRole="button" testID="hide" onPress={hide} />
+          <Pressable accessibilityRole="button" testID="show" onPress={show} />
+          <RetainedPanelActivity active={active}>
+            <ComposerTrackPill testID="pill" segments={SUBAGENT_SEGMENTS} panelTitle="Subagents">
+              <ComposerTrackRow
+                accessibilityLabel="Subagent one"
+                testID="row"
+                closeOnSelect={false}
+                onPress={onPress}
+              >
+                <Text>Subagent one</Text>
+              </ComposerTrackRow>
+            </ComposerTrackPill>
+          </RetainedPanelActivity>
+        </>
+      );
+    }
+    mount(<Harness />);
+
+    openPanel();
+    expect(isPanelOpen()).toBe(true);
+
+    click(row("hide") as Element);
+    click(row("show") as Element);
+
+    expect(isPanelOpen()).toBe(false);
+    expect(row("row")).toBeNull();
+  });
+
   it("leaves the panel alone when a row's own action button is pressed", () => {
     const onPress = vi.fn();
     const onAction = vi.fn();
@@ -156,18 +201,17 @@ describe("composer track pill status mark", () => {
     return { mark: segment.firstElementChild, body };
   }
 
-  it("mounts the shared status ring while a child is running", () => {
+  it("spins the shared ring while a child is running", () => {
     const { mark } = mountMark("running");
-    // The ring is the shared StatusRing frame (a ring layer around a center
-    // dot), not a dot of its own. Its motion is the plasma spinner's, which
-    // is not a DOM animation this harness can count, so presence and shape
-    // are what is asserted here.
-    const frame = mark.firstElementChild;
-    if (!(frame instanceof HTMLElement)) {
-      throw new Error("running mark did not render the status ring frame");
-    }
-    expect(frame.childElementCount).toBeGreaterThanOrEqual(2);
-    expect(mark.querySelector("[data-testid='track-status-dot']")).toBeNull();
+    const animated = [...mark.querySelectorAll("*")].filter(
+      (element) => element.getAnimations().length > 0,
+    );
+
+    expect(animated).toHaveLength(3);
+    const colors = [...mark.querySelectorAll("radialGradient stop:first-child")].map(
+      (stop) => getComputedStyle(stop).stopColor,
+    );
+    expect(colors).toEqual(["rgb(2, 132, 199)", "rgb(2, 132, 199)"]);
   });
 
   it("draws a still dot for every other state", () => {
@@ -177,7 +221,6 @@ describe("composer track pill status mark", () => {
     );
 
     expect(animated).toHaveLength(0);
-    // Semantic danger, the same token the sidebar status dots use.
     expect(getComputedStyle(mark).backgroundColor).toBe("rgb(185, 28, 28)");
   });
 
@@ -187,8 +230,7 @@ describe("composer track pill status mark", () => {
     // looking correctly centred in the box nobody can see.
     for (const bucket of ["running", "failed"] as const) {
       const { mark, body } = mountMark(bucket);
-      // The dot is its own box; the ring is drawn by the rotator inside the frame's halo.
-      const glyph = bucket === "failed" ? mark : mark.firstElementChild?.firstElementChild;
+      const glyph = bucket === "failed" ? mark : mark.firstElementChild;
       if (!(glyph instanceof HTMLElement)) {
         throw new Error(`${bucket} mark did not render a glyph`);
       }
@@ -197,10 +239,7 @@ describe("composer track pill status mark", () => {
       const edge = Number.parseFloat(style.paddingLeft) + Number.parseFloat(style.borderLeftWidth);
       const inset = glyph.getBoundingClientRect().left - body.getBoundingClientRect().left;
 
-      // The ring keeps a one-pixel halo (STATUS_RING_HALO_INSET) that the
-      // mark trims with a negative margin; the visible circle may sit one
-      // pixel either side of the padding edge, never more.
-      expect(Math.abs(inset - edge)).toBeLessThanOrEqual(1);
+      expect(inset).toBeCloseTo(edge, 1);
     }
   });
 
@@ -220,12 +259,8 @@ describe("composer track pill status mark", () => {
 
     const segments = [...container.querySelectorAll('[data-testid^="pill-segment-"]')];
     expect(segments.map((segment) => segment.textContent)).toEqual(["1 failed", "1 working"]);
-    // The running segment carries the shared ring frame (ring layer plus center
-    // dot) where the failed one carries a bare dot, so the frame's presence
-    // proves the second state survived.
-    const runningMark = segments[1]?.firstElementChild?.firstElementChild;
-    expect(runningMark instanceof HTMLElement && runningMark.childElementCount >= 2).toBe(true);
-    const failedMark = segments[0]?.firstElementChild;
-    expect(failedMark instanceof HTMLElement && failedMark.childElementCount).toBe(0);
+    // The ring is the only mark that animates, so its presence proves the second state survived.
+    const animated = segments[1]?.querySelectorAll("*") ?? [];
+    expect([...animated].filter((element) => element.getAnimations().length > 0)).toHaveLength(3);
   });
 });

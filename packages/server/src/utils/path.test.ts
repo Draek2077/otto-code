@@ -13,7 +13,7 @@ import {
 describe("path equivalence", () => {
   test.each([
     ["C:/Users/Administrator/GhostFactory", "C:\\Users\\Administrator\\GhostFactory"],
-    ["d:\\Projects\\otto", "D:\\Projects\\otto"],
+    ["d:\\Projects\\paseo", "D:\\Projects\\paseo"],
     ["C:\\Users\\Administrator\\GhostFactory\\", "C:\\Users\\Administrator\\GhostFactory"],
     [String.raw`\\?\C:\Users\Administrator\GhostFactory`, "C:\\Users\\Administrator\\GhostFactory"],
     [String.raw`\\?\UNC\server\share\GhostFactory`, String.raw`\\server\share\GhostFactory`],
@@ -29,15 +29,46 @@ describe("path equivalence", () => {
   });
 
   test("checks POSIX root containment without prefix false positives", () => {
-    expect(isPathInsideRoot("/opt/otto", "/opt/otto/node_modules/@otto-code/server")).toBe(true);
-    expect(isPathInsideRoot("/opt/otto", "/opt/otto-other")).toBe(false);
+    expect(isPathInsideRoot("/opt/paseo", "/opt/paseo/node_modules/@getpaseo/server")).toBe(true);
+    expect(isPathInsideRoot("/opt/paseo", "/opt/paseo-other")).toBe(false);
   });
 
   test("checks Windows root containment case-insensitively", () => {
     expect(
-      isPathInsideRoot("C:\\Otto\\node_modules", "c:/otto/node_modules/@otto-code/server"),
+      isPathInsideRoot("C:\\Paseo\\node_modules", "c:/paseo/node_modules/@getpaseo/server"),
     ).toBe(true);
-    expect(isPathInsideRoot("C:\\Otto\\node_modules", "C:\\Otto\\node_modules-other")).toBe(false);
+    expect(isPathInsideRoot("C:\\Paseo\\node_modules", "C:\\Paseo\\node_modules-other")).toBe(
+      false,
+    );
+  });
+
+  test.each([
+    { root: "/repo", candidate: "/repo/..notes.txt", inside: true },
+    { root: "/repo", candidate: "/repo/..drafts/notes.md", inside: true },
+    { root: "/repo", candidate: "/repo/...drafts/notes.md", inside: true },
+    { root: "/repo", candidate: "/repo/docs/..notes.txt", inside: true },
+    { root: "/repo", candidate: "/repo", inside: true },
+    { root: "/repo", candidate: "/repo/../sibling/notes.md", inside: false },
+    { root: "/repo", candidate: "/repo/..drafts/../../outside.txt", inside: false },
+    { root: "/repo", candidate: "/repo-other/notes.md", inside: false },
+    { root: "C:\\Repo", candidate: "c:/repo/..notes.txt", inside: true },
+    { root: "C:\\Repo", candidate: "C:\\Repo\\..drafts\\notes.md", inside: true },
+    { root: "C:\\Repo", candidate: "C:\\Repo\\...drafts\\notes.md", inside: true },
+    { root: "C:\\Repo", candidate: "C:\\Repo\\..\\sibling\\notes.md", inside: false },
+    { root: "C:\\Repo", candidate: "C:\\Repo-other\\notes.md", inside: false },
+    { root: "C:\\Repo", candidate: "D:\\Repo\\..notes.txt", inside: false },
+    {
+      root: String.raw`\\server\share\repo`,
+      candidate: String.raw`\\server\share\repo\..drafts\notes.md`,
+      inside: true,
+    },
+    {
+      root: String.raw`\\?\C:\Repo`,
+      candidate: "C:\\Repo\\..notes.txt",
+      inside: true,
+    },
+  ])("checks named path containment for $candidate", ({ root, candidate, inside }) => {
+    expect(isPathInsideRoot(root, candidate)).toBe(inside);
   });
 
   test("preserves the casing of Windows relative suffixes", () => {

@@ -4,6 +4,7 @@ import {
   collectAllPanes,
   DEFAULT_PANE_ID,
   findPaneById,
+  findPaneContainingTab,
   useWorkspaceLayoutStore,
   type WorkspaceTabPlacement,
 } from "@/stores/workspace-layout-store";
@@ -14,22 +15,6 @@ import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 export type OpenInSidePaneSource = keyof OpenInSidePanePreferences;
 export type WorkspaceTargetOpenLocation = "main" | "side";
 
-function isChatTarget(target: WorkspaceTabTarget): boolean {
-  return target.kind === "agent" || target.kind === "draft" || target.kind === "provider_subagent";
-}
-
-/**
- * A chat's supporting surfaces follow one placement preference. Opening
- * another chat keeps the normal chat-tab behavior, and the empty New Tab
- * launcher is not supporting content yet.
- */
-export function usesChatPanelOpenPreference(
-  sourceTarget: WorkspaceTabTarget,
-  nextTarget: WorkspaceTabTarget,
-): boolean {
-  return isChatTarget(sourceTarget) && !isChatTarget(nextTarget) && nextTarget.kind !== "new_tab";
-}
-
 interface OpenWorkspaceTargetInput {
   workspaceKey: string | null;
   target: WorkspaceTabTarget;
@@ -37,13 +22,11 @@ interface OpenWorkspaceTargetInput {
 }
 
 export interface OpenPreferredWorkspaceTargetInput extends OpenWorkspaceTargetInput {
-  isCompact: boolean;
   source: OpenInSidePaneSource;
   preferences: OpenInSidePanePreferences;
 }
 
 interface OpenWorkspaceTargetAtLocationInput extends OpenWorkspaceTargetInput {
-  isCompact: boolean;
   location: WorkspaceTargetOpenLocation;
 }
 
@@ -52,11 +35,11 @@ interface OpenPreferredWorkspacePreviewInput extends OpenPreferredWorkspaceTarge
   workspaceId: string;
   explorerSidebarPaneId: string | null;
   lastMainPaneId: string | null;
-  /**
-   * An explicit default for a new implicit target. Existing tabs remain where
-   * the user moved them, matching the `prefer` placement contract.
-   */
-  defaultPaneId?: string;
+}
+
+/** A side pane exists only where the workspace renders split panes. */
+function canOpenBeside(): boolean {
+  return useWorkspaceLayoutStore.getState().layoutMode === "split-panes";
 }
 
 function resolveMainPane(input: {
@@ -106,7 +89,6 @@ export function openPreferredWorkspaceTarget(
   input: OpenPreferredWorkspaceTargetInput,
 ): string | null {
   return openWorkspaceTargetAtLocation({
-    isCompact: input.isCompact,
     workspaceKey: input.workspaceKey,
     target: input.target,
     location: input.preferences[input.source] ? "side" : "main",
@@ -125,11 +107,15 @@ export function openWorkspaceTargetAtLocation(
     layout &&
     collectAllTabs(layout.root).some((tab) => workspaceTabTargetsEqual(tab.target, input.target)),
   );
-  const shouldOpenBeside = !input.isCompact && input.location === "side";
+  const shouldOpenBeside = canOpenBeside() && input.location === "side";
   let placement: WorkspaceTabPlacement | undefined;
   if (shouldOpenBeside && !targetAlreadyExists) {
     const paneId = store.ensureSidePane(input.workspaceKey);
     placement = paneId ? { mode: "prefer", paneId } : undefined;
+  } else if (!shouldOpenBeside && layout && input.parentTabId) {
+    // A target opened from a tab belongs in that tab's pane, whichever pane has focus.
+    const parentPane = findPaneContainingTab(layout.root, input.parentTabId);
+    placement = parentPane ? { mode: "prefer", paneId: parentPane.id } : undefined;
   }
   return store.openTab({
     workspaceKey: input.workspaceKey,
@@ -151,16 +137,12 @@ export function openPreferredWorkspacePreview(
   const existing = collectAllTabs(layout.root).some((tab) =>
     workspaceTabTargetsEqual(tab.target, input.target),
   );
-  const defaultPane = input.defaultPaneId ? findPaneById(layout.root, input.defaultPaneId) : null;
-  if (existing) {
-    if (!defaultPane) return openPreferredWorkspaceTarget(input);
-    return store.openTab({
-      workspaceKey: input.workspaceKey,
-      target: input.target,
-      intent: "reveal",
-      placement: { mode: "prefer", paneId: defaultPane.id },
-      parentTabId: input.parentTabId ?? undefined,
-    });
+  // The sheet is already a single replaceable slot, so it needs no preview tab.
+  if (
+    existing ||
+    store.opensInSheet({ workspaceKey: input.workspaceKey, target: input.target, intent: "reveal" })
+  ) {
+    return openPreferredWorkspaceTarget(input);
   }
 
   const mainPane = resolveMainPane({
@@ -169,10 +151,9 @@ export function openPreferredWorkspacePreview(
     lastMainPaneId: input.lastMainPaneId,
   });
   const destinationPaneId =
-    defaultPane?.id ??
-    (!input.isCompact && input.preferences[input.source]
+    canOpenBeside() && input.preferences[input.source]
       ? store.ensureSidePane(input.workspaceKey)
-      : mainPane?.id);
+      : mainPane?.id;
   if (!destinationPaneId) return null;
   const nextLayout = useWorkspaceLayoutStore.getState().layoutByWorkspace[input.workspaceKey];
   const destinationPane = nextLayout ? findPaneById(nextLayout.root, destinationPaneId) : null;
@@ -200,9 +181,15 @@ export function openPreferredWorkspacePreview(
   });
 }
 
-/** Explicit Open to Side: creates the side pane and places the target there. */
+/**
+ * Explicit Open to Side: creates the side pane and places the target there. Without split panes
+ * the target opens like any other.
+ */
 export function openWorkspaceTargetBeside(input: OpenWorkspaceTargetInput): string | null {
   if (!input.workspaceKey) return null;
+  if (!canOpenBeside()) {
+    return openWorkspaceTargetAtLocation({ ...input, location: "main" });
+  }
   const store = useWorkspaceLayoutStore.getState();
   const paneId = store.ensureSidePane(input.workspaceKey);
   return store.openTab({

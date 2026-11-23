@@ -54,7 +54,7 @@ test.describe("Workspace setup runtime authority", () => {
       // Create workspace via daemon API since the new workspace screen
       // no longer has a standalone terminal button
       const worktreeSlug = `setup-terminal-${Date.now()}`;
-      const result = await client.createOttoWorktree({
+      const result = await client.createPaseoWorktree({
         cwd: repo.path,
         worktreeSlug,
       });

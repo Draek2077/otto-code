@@ -1,29 +1,28 @@
-import { createAgentRequestsStub } from "./test-utils/session-stubs.js";
-import { mkdtempSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
+// OTTO(identity): expect Otto-facing product text.
+import {
+  createMessageReceiptsStub,
+  createTestCreationService,
+} from "./test-utils/session-stubs.js";
 import pino from "pino";
 import { z } from "zod";
 import { describe, expect, test } from "vitest";
 
-import { CLIENT_CAPS } from "@otto-code/protocol/client-capabilities";
+import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import {
-  type AgentSnapshotPayload,
   AgentTimelineItemPayloadSchema,
   FetchAgentTimelineResponseMessageSchema,
   SessionInboundMessageSchema,
   SessionOutboundMessageSchema,
   type SessionOutboundMessage,
-} from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/messages";
 import { Session, type SessionOptions } from "./session.js";
-import { toObservedSubagentPayload } from "./agent/agent-projections.js";
 import { OWNER_PERMISSIONS } from "./authorization/index.js";
 import { DirectorySyncService } from "./directory-sync/index.js";
 import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
 import type { AgentTimelineRow } from "./agent/agent-manager.js";
 import { InMemoryAgentTimelineStore } from "./agent/agent-timeline-store.js";
 import type { AgentTimelineFetchOptions } from "./agent/agent-timeline-store-types.js";
-import { handleCreateOttoWorktreeRequest } from "./worktree-session.js";
+import { handleCreatePaseoWorktreeRequest } from "./worktree-session.js";
 import { createPersistedProjectRecord } from "./workspace-registry.js";
 
 const LegacyTimelineEntryPayloadSchema = z.object({
@@ -56,17 +55,12 @@ interface SessionInternals {
       { type: "fetch_agent_timeline_request" }
     >,
   ) => Promise<void>;
-  handleFetchAgent: (agentIdOrIdentifier: string, requestId: string) => Promise<void>;
-  handleArchiveAgentRequest: (agentId: string, requestId: string) => Promise<void>;
 }
 
 class InMemoryAgentManager {
   private readonly timeline = new InMemoryAgentTimelineStore();
 
-  constructor(
-    rows: AgentTimelineRow[],
-    private readonly observedPayloads: Map<string, AgentSnapshotPayload> = new Map(),
-  ) {
+  constructor(rows: AgentTimelineRow[]) {
     this.timeline.initialize("agent-1", {
       epoch: "epoch-1",
       rows,
@@ -74,16 +68,7 @@ class InMemoryAgentManager {
     });
   }
 
-  currentSuggestedTasksFor() {
-    return [];
-  }
-
-  getAgent(id?: string) {
-    // Only the live root agent resolves as a ManagedAgent; observed subagents
-    // deliberately have none so the fetch path falls through to the registry.
-    if (id !== undefined && id !== "agent-1") {
-      return undefined;
-    }
+  getAgent() {
     return {
       id: "agent-1",
       provider: "codex",
@@ -123,39 +108,12 @@ class InMemoryAgentManager {
       unsubscribeSession: null,
       session: null,
       activeForegroundTurnId: null,
-      steerQueue: [],
       labels: {},
     };
   }
 
   fetchTimeline(_agentId: string, options?: AgentTimelineFetchOptions) {
     return this.timeline.fetch("agent-1", options);
-  }
-
-  async getTimelineRows(_agentId: string) {
-    return this.timeline.getRows("agent-1");
-  }
-
-  getObservedSubagentPayload(id: string) {
-    return this.observedPayloads.get(id) ?? null;
-  }
-
-  async ensureRetainedTranscriptLoaded() {
-    return false;
-  }
-
-  async getRetainedTranscriptPayload() {
-    return null;
-  }
-
-  readonly archivedObservedIds: string[] = [];
-
-  async archiveObservedSubagent(id: string) {
-    if (!this.observedPayloads.has(id)) {
-      throw new Error(`Observed subagent not found: ${id}`);
-    }
-    this.archivedObservedIds.push(id);
-    return { archivedAt: "2026-05-02T01:23:45.000Z" };
   }
 
   listAgents() {
@@ -231,10 +189,8 @@ function createSessionForWireCompatTest(options?: {
   clientCapabilities?: Record<string, unknown> | null;
   directorySync?: DirectorySyncService;
   messages?: SessionOutboundMessage[];
-  observedPayloads?: Map<string, AgentSnapshotPayload>;
   onMessageToSource?: SessionOptions["onMessageToSource"];
   rows?: AgentTimelineRow[];
-  scopes?: string[];
 }): Session {
   const messages = options?.messages ?? [];
   const rows: AgentTimelineRow[] = [
@@ -256,20 +212,19 @@ function createSessionForWireCompatTest(options?: {
   ];
 
   const session = new Session({
-    agentRequests: createAgentRequestsStub(),
+    messageReceipts: createMessageReceiptsStub(),
+    creationService: createTestCreationService(),
     clientId: "wire-compat-client",
-    scopes: options?.scopes ?? ["*"],
     permissions: OWNER_PERMISSIONS,
     clientCapabilities: options?.clientCapabilities ?? null,
     onMessage: (message) => messages.push(message),
-    onMessageToSource: options?.onMessageToSource,
+    onMessageToSource: options?.onMessageToSource ?? ((_source, message) => messages.push(message)),
     logger: pino({ level: "silent" }),
     downloadTokenStore: {} as SessionOptions["downloadTokenStore"],
     pushNotifications: {} as SessionOptions["pushNotifications"],
-    ottoHome: "/tmp/otto-home",
+    paseoHome: "/tmp/paseo-home",
     agentManager: new InMemoryAgentManager(
       options?.rows ?? rows,
-      options?.observedPayloads,
     ) as unknown as SessionOptions["agentManager"],
     agentStorage: new EmptyAgentStorage() as unknown as SessionOptions["agentStorage"],
     projectRegistry: new EmptyProjectRegistry() as unknown as SessionOptions["projectRegistry"],
@@ -327,6 +282,7 @@ function createSessionForWireCompatTest(options?: {
     terminalManager: null,
   });
 
+  session.updateClientCapabilities(options?.clientCapabilities ?? null, {});
   return session;
 }
 
@@ -363,12 +319,9 @@ async function emitTimelineResponse(options?: {
 
 describe("wire compatibility", () => {
   test("sends project updates only to clients that declare support", async () => {
-    // A real root: a missing one reads as an Offline project (project-availability.ts),
-    // which carries no icon revision.
-    const rootPath = mkdtempSync(path.join(tmpdir(), "wire-compat-project-"));
     const project = createPersistedProjectRecord({
       projectId: "project-1",
-      rootPath,
+      rootPath: "/tmp/project",
       kind: "git",
       displayName: "project",
       customName: "Favorite project",
@@ -383,22 +336,20 @@ describe("wire compatibility", () => {
       messages: capableMessages,
     });
 
-    try {
-      await Promise.all([
-        legacy.emitProjectUpdate({ kind: "upsert", project }),
-        legacy.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
-        capable.emitProjectUpdate({ kind: "upsert", project }),
-        capable.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
-      ]);
-    } finally {
-      rmSync(rootPath, { recursive: true, force: true });
-    }
+    await Promise.all([
+      legacy.emitProjectUpdate({ kind: "upsert", project }),
+      legacy.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
+      capable.emitProjectUpdate({ kind: "upsert", project }),
+      capable.emitProjectUpdate({ kind: "remove", projectId: project.projectId }),
+    ]);
 
     expect(legacyMessages).toEqual([]);
     expect(capableMessages.map((message) => SessionOutboundMessageSchema.parse(message))).toEqual([
       {
         type: "project.update",
         payload: {
+          generation: expect.any(String),
+          seq: 1,
           kind: "upsert",
           project: {
             projectId: "project-1",
@@ -406,20 +357,14 @@ describe("wire compatibility", () => {
             projectCustomName: "Favorite project",
             projectCustomIconRevision: null,
             projectIconRevision: "automatic:none:v1",
-            projectOffline: false,
-            projectRootPath: rootPath,
+            projectRootPath: "/tmp/project",
             projectKind: "git",
-            // COMPAT(projectKanbanTarget): emitted as null for legacy project records.
-            projectKanban: null,
-            projectKnowledgeLocation: null,
-            projectArtifactLocation: null,
-            projectWorkflowLocation: null,
           },
         },
       },
       {
         type: "project.update",
-        payload: { kind: "remove", projectId: "project-1" },
+        payload: { kind: "remove", projectId: "project-1", generation: expect.any(String), seq: 2 },
       },
     ]);
   });
@@ -487,45 +432,6 @@ describe("wire compatibility", () => {
     expect(currentParsed.payload.entries[0]?.collapsed).toContain("reasoning_merge");
   });
 
-  test("includes the compact prompt index only when the timeline request asks for it", async () => {
-    const rows = [
-      {
-        seq: 1,
-        timestamp: "2026-05-02T00:00:00.000Z",
-        item: { type: "user_message" as const, text: "First prompt", clientMessageId: "message-1" },
-      },
-      {
-        seq: 2,
-        timestamp: "2026-05-02T00:00:01.000Z",
-        item: { type: "assistant_message" as const, text: "Done" },
-      },
-      {
-        seq: 3,
-        timestamp: "2026-05-02T00:00:02.000Z",
-        item: {
-          type: "user_message" as const,
-          text: "Second prompt",
-          clientMessageId: "message-2",
-        },
-      },
-    ];
-
-    const withoutIndex = await emitTimelineResponse({ rows });
-    expect(withoutIndex.payload.promptIndex).toBeUndefined();
-
-    const withIndex = await emitTimelineResponse({
-      rows,
-      request: { includePromptIndex: true },
-    });
-    expect(withIndex.payload.promptIndex).toEqual({
-      epoch: expect.any(String),
-      prompts: [
-        expect.objectContaining({ seq: 1, preview: "First prompt" }),
-        expect.objectContaining({ seq: 3, preview: "Second prompt" }),
-      ],
-    });
-  });
-
   test("carries canonical turn IDs to new clients while legacy schemas ignore them", async () => {
     const response = await emitTimelineResponse({
       rows: [
@@ -556,7 +462,7 @@ describe("wire compatibility", () => {
     const workflow = new InMemoryWorktreeWorkflow();
 
     const dependencies = {
-      ottoHome: "/tmp/otto-home",
+      paseoHome: "/tmp/paseo-home",
       describeWorkspaceRecord: async () =>
         ({
           id: "ws-1",
@@ -573,11 +479,11 @@ describe("wire compatibility", () => {
         }) as never,
       emit() {},
       sessionLogger: pino({ level: "silent" }),
-      createOttoWorktreeWorkflow: workflow.create.bind(workflow),
+      createPaseoWorktreeWorkflow: workflow.create.bind(workflow),
     };
 
     const legacyRequest = SessionInboundMessageSchema.parse({
-      type: "create_otto_worktree_request",
+      type: "create_paseo_worktree_request",
       requestId: "req-legacy",
       cwd: "/tmp/repo",
       worktreeSlug: "legacy-worktree",
@@ -588,13 +494,13 @@ describe("wire compatibility", () => {
           mimeType: "application/github-issue",
           number: 55,
           title: "Improve startup error details",
-          url: "https://github.com/otto-code-ai/otto-code/issues/55",
+          url: "https://github.com/getpaseo/paseo/issues/55",
         },
       ],
     });
 
     const newRequest = SessionInboundMessageSchema.parse({
-      type: "create_otto_worktree_request",
+      type: "create_paseo_worktree_request",
       requestId: "req-new",
       cwd: "/tmp/repo",
       worktreeSlug: "legacy-worktree",
@@ -606,21 +512,21 @@ describe("wire compatibility", () => {
             mimeType: "application/github-issue",
             number: 55,
             title: "Improve startup error details",
-            url: "https://github.com/otto-code-ai/otto-code/issues/55",
+            url: "https://github.com/getpaseo/paseo/issues/55",
           },
         ],
       },
     });
 
-    if (legacyRequest.type !== "create_otto_worktree_request") {
+    if (legacyRequest.type !== "create_paseo_worktree_request") {
       throw new Error("Expected legacy worktree request");
     }
-    if (newRequest.type !== "create_otto_worktree_request") {
+    if (newRequest.type !== "create_paseo_worktree_request") {
       throw new Error("Expected new worktree request");
     }
 
-    await handleCreateOttoWorktreeRequest(dependencies, legacyRequest);
-    await handleCreateOttoWorktreeRequest(dependencies, newRequest);
+    await handleCreatePaseoWorktreeRequest(dependencies, legacyRequest);
+    await handleCreatePaseoWorktreeRequest(dependencies, newRequest);
 
     expect(workflow.capturedInputs).toHaveLength(2);
     expect(workflow.capturedInputs[0]).toEqual(workflow.capturedInputs[1]);
@@ -635,7 +541,7 @@ describe("wire compatibility", () => {
             mimeType: "application/github-issue",
             number: 55,
             title: "Improve startup error details",
-            url: "https://github.com/otto-code-ai/otto-code/issues/55",
+            url: "https://github.com/getpaseo/paseo/issues/55",
           },
         ],
       },
@@ -643,145 +549,48 @@ describe("wire compatibility", () => {
       action: undefined,
       githubPrNumber: undefined,
       runSetup: false,
-      ottoHome: "/tmp/otto-home",
+      paseoHome: "/tmp/paseo-home",
     });
-  });
-
-  test("fetch_agent resolves an observed subagent from the registry projection", async () => {
-    // An observed subagent (Claude Task / ultracode fan-out) has no live
-    // ManagedAgent and is never persisted, so the fetch must fall through to
-    // the registry - otherwise a still-visible track row 404s.
-    // See docs/agent-lifecycle.md (Item 1).
-    const observedId = "agent-1::sub::task-42";
-    const observedPayload = toObservedSubagentPayload({
-      id: observedId,
-      parentAgentId: "agent-1",
-      provider: "claude",
-      cwd: "/tmp/project",
-      createdAt: "2026-05-02T00:00:00.000Z",
-      title: "code-explorer",
-      update: {
-        key: "task-42",
-        status: "running",
-        subAgentType: "code-explorer",
-        description: "Explore the auth flow",
-      },
-    });
-
-    const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForWireCompatTest({
-      messages,
-      observedPayloads: new Map([[observedId, observedPayload]]),
-    });
-    const internals = session as unknown as SessionInternals;
-
-    await internals.handleFetchAgent(observedId, "req-observed");
-
-    const response = messages.find((message) => message.type === "fetch_agent_response");
-    expect(response?.type).toBe("fetch_agent_response");
-    if (!response || response.type !== "fetch_agent_response") {
-      throw new Error("Expected fetch_agent_response");
-    }
-    expect(response.payload.error).toBeNull();
-    expect(response.payload.agent?.id).toBe(observedId);
-    expect(response.payload.agent?.attend).toBe("observed");
-  });
-
-  test("archive_agent resolves an observed subagent through the registry archive path", async () => {
-    // Observed subagents have no ManagedAgent and no stored record, so the
-    // normal archive command would throw "Agent not found" - the session must
-    // route them to AgentManager.archiveObservedSubagent instead. This is the
-    // path behind the terminal-row Archive action and "Clear all completed".
-    // See docs/agent-lifecycle.md (Items 2 + 6).
-    const observedId = "agent-1::sub::task-42";
-    const observedPayload = toObservedSubagentPayload({
-      id: observedId,
-      parentAgentId: "agent-1",
-      provider: "claude",
-      cwd: "/tmp/project",
-      createdAt: "2026-05-02T00:00:00.000Z",
-      title: "code-explorer",
-      update: { key: "task-42", status: "idle", subAgentType: "code-explorer" },
-    });
-
-    const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForWireCompatTest({
-      messages,
-      observedPayloads: new Map([[observedId, observedPayload]]),
-    });
-    const internals = session as unknown as SessionInternals;
-
-    await internals.handleArchiveAgentRequest(observedId, "req-archive-observed");
-
-    const response = messages.find((message) => message.type === "agent_archived");
-    if (!response || response.type !== "agent_archived") {
-      throw new Error("Expected agent_archived");
-    }
-    expect(response.payload.agentId).toBe(observedId);
-    // This timestamp can only come from archiveObservedSubagent's stub - proof
-    // the observed branch handled it rather than the stored-record command.
-    expect(response.payload.archivedAt).toBe("2026-05-02T01:23:45.000Z");
-  });
-
-  test("archive_agent still rejects a genuinely-missing agent", async () => {
-    const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForWireCompatTest({ messages });
-    const internals = session as unknown as SessionInternals;
-
-    await expect(
-      internals.handleArchiveAgentRequest("agent-1::sub::gone", "req-archive-missing"),
-    ).rejects.toThrow("not found");
-    expect(messages.find((message) => message.type === "agent_archived")).toBeUndefined();
-  });
-
-  test("fetch_agent still reports genuinely-missing agents as not found", async () => {
-    const messages: SessionOutboundMessage[] = [];
-    const session = createSessionForWireCompatTest({ messages });
-    const internals = session as unknown as SessionInternals;
-
-    await internals.handleFetchAgent("agent-1::sub::gone", "req-missing");
-
-    const response = messages.find((message) => message.type === "fetch_agent_response");
-    if (!response || response.type !== "fetch_agent_response") {
-      throw new Error("Expected fetch_agent_response");
-    }
-    expect(response.payload.agent).toBeNull();
-    expect(response.payload.error).toContain("not found");
-  });
-
-  test("a denied profile-named request stops being tracked for aliasing", async () => {
-    const messages: SessionOutboundMessage[] = [];
-    // Scoped away from the personality RPCs, so the request is denied before it
-    // ever reaches a handler and is answered with rpc_error.
-    const session = createSessionForWireCompatTest({ messages, scopes: ["workspace.*"] });
-    const tracked = (session as unknown as { aliasedProfileRpcRequestIds: Set<string> })
-      .aliasedProfileRpcRequestIds;
-
-    await session.handleMessage({
-      type: "agent.profile.set.request",
-      requestId: "req-denied-alias",
-      payload: { agentId: "agent-1", personalityId: "p-dash" },
-    } as never);
-
-    const error = messages.find((message) => message.type === "rpc_error");
-    expect(error).toBeDefined();
-    // rpc_error has no profile-named twin, so nothing is rewritten - but the id
-    // still has to drain here. Leaving it behind grows the Set for the life of
-    // the session and keeps emit()'s alias lookup permanently switched on.
-    expect(tracked.size).toBe(0);
   });
 });
 
 test("setup progress is adapted per socket without changing the canonical snapshot", async () => {
   const legacy = {};
   const capable = {};
+  const modern = {};
+  const modernCapable = {};
   const delivered = new Map<object, SessionOutboundMessage[]>();
   const session = createSessionForWireCompatTest({
     onMessageToSource: (source, message) =>
       delivered.set(source, [...(delivered.get(source) ?? []), message]),
   });
-  session.updateClientCapabilities({}, legacy);
-  session.updateClientCapabilities({ workspace_setup_blocked: true }, capable);
+  for (const [source, blocked, owned] of [
+    [legacy, false, false],
+    [capable, true, false],
+    [modern, false, true],
+    [modernCapable, true, true],
+  ] as const) {
+    session.updateClientCapabilities(
+      {
+        explicit_event_subscriptions: true,
+        owned_subscriptions: owned,
+        workspace_setup_blocked: blocked,
+      },
+      source,
+    );
+    await session.handleMessage(
+      {
+        type: "session.events.set_subscription.request",
+        requestId: "setup",
+        events: ["workspace_setup_progress"],
+      },
+      source,
+    );
+    expect(delivered.get(source)).toContainEqual(
+      expect.objectContaining({ type: "session.events.set_subscription.response" }),
+    );
+  }
+  delivered.clear();
   const message = {
     type: "workspace_setup_progress" as const,
     payload: {
@@ -813,6 +622,20 @@ test("setup progress is adapted per socket without changing the canonical snapsh
         status: "failed",
         error:
           "Workspace setup is blocked pending approval of code from a fork pull request. Update Otto to review and run setup.",
+      },
+    },
+  ]);
+  expect(delivered.get(modernCapable)).toEqual([
+    { ...message, payload: { ...message.payload, subscriptionId: expect.any(String) } },
+  ]);
+  expect(delivered.get(modern)).toEqual([
+    {
+      ...message,
+      payload: {
+        ...message.payload,
+        status: "failed",
+        error: expect.stringContaining("Update Otto"),
+        subscriptionId: expect.any(String),
       },
     },
   ]);

@@ -14,7 +14,6 @@ function projectFromWorkspace(workspace: WorkspaceDescriptor): ProjectDescriptor
     projectKey: workspace.projectId,
     projectDisplayName: workspace.projectDisplayName,
     projectCustomName: workspace.projectCustomName ?? null,
-    projectKanban: null,
     projectRootPath: workspace.projectRootPath,
     projectKind: workspace.projectKind,
   };

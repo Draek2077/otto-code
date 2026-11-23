@@ -1,17 +1,30 @@
 import type { ActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 
-interface PruneMountedWorkspaceSelectionsInput {
-  currentSelections: ActiveWorkspaceSelection[];
+export const WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES = 10;
+export const WORKSPACE_DECK_INACTIVE_TTL_MS = 10 * 60 * 1000;
+
+export interface RetainedWorkspaceSelection {
+  selection: ActiveWorkspaceSelection;
+  inactiveSince: number | null;
+}
+
+export function resolveWorkspaceDeckRetentionLimit(input: { isNative: boolean }): number {
+  return input.isNative ? 1 : WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES;
+}
+
+interface ReconcileRetainedWorkspaceSelectionsInput {
+  currentEntries: RetainedWorkspaceSelection[];
   activeSelection: ActiveWorkspaceSelection | null;
-  /**
-   * How many workspace trees stay mounted - the user's `mountedWorkspaceLimit`.
-   * Required, and this module deliberately holds no default of its own: the
-   * limit is a user setting now, and a fallback constant here would be a second
-   * cap that can silently disagree with the one in Settings. Keeping the module
-   * free of the settings import also keeps it pure, which is what lets it be
-   * unit-tested without the app's module graph.
-   */
-  maxMountedWorkspaces: number;
+  now: number;
+  maxMountedWorkspaces?: number;
+  inactiveTtlMs?: number;
+}
+
+interface GetNextWorkspaceDeckExpirationDelayInput {
+  entries: RetainedWorkspaceSelection[];
+  activeSelection: ActiveWorkspaceSelection | null;
+  now: number;
+  inactiveTtlMs?: number;
 }
 
 interface WorkspaceDeckEntryMountInput {
@@ -36,53 +49,92 @@ export function areWorkspaceSelectionsEqual(
   return left?.serverId === right?.serverId && left?.workspaceId === right?.workspaceId;
 }
 
-export function areWorkspaceSelectionListsEqual(
-  left: ActiveWorkspaceSelection[],
-  right: ActiveWorkspaceSelection[],
+export function areRetainedWorkspaceSelectionListsEqual(
+  left: RetainedWorkspaceSelection[],
+  right: RetainedWorkspaceSelection[],
 ): boolean {
   if (left.length !== right.length) {
     return false;
   }
-  return left.every((selection, index) =>
-    areWorkspaceSelectionsEqual(selection, right[index] ?? null),
-  );
+  return left.every((entry, index) => {
+    const otherEntry = right[index];
+    return (
+      otherEntry !== undefined &&
+      entry.inactiveSince === otherEntry.inactiveSince &&
+      areWorkspaceSelectionsEqual(entry.selection, otherEntry.selection)
+    );
+  });
 }
 
-export function pruneMountedWorkspaceSelections({
-  currentSelections,
+export function reconcileRetainedWorkspaceSelections({
+  currentEntries,
   activeSelection,
-  maxMountedWorkspaces,
-}: PruneMountedWorkspaceSelectionsInput): ActiveWorkspaceSelection[] {
-  if (!activeSelection) {
-    return currentSelections;
-  }
-
-  const maxSelections = Math.max(1, maxMountedWorkspaces);
-  const nextSelections: ActiveWorkspaceSelection[] = [];
+  now,
+  maxMountedWorkspaces = WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES,
+  inactiveTtlMs = WORKSPACE_DECK_INACTIVE_TTL_MS,
+}: ReconcileRetainedWorkspaceSelectionsInput): RetainedWorkspaceSelection[] {
+  const maxSelections = activeSelection
+    ? Math.max(1, maxMountedWorkspaces)
+    : Math.max(0, maxMountedWorkspaces);
+  const nextEntries: RetainedWorkspaceSelection[] = [];
   const seenSelectionKeys = new Set<string>();
 
-  function appendSelection(selection: ActiveWorkspaceSelection): void {
-    if (nextSelections.length >= maxSelections) {
+  function appendEntry(entry: RetainedWorkspaceSelection): void {
+    if (nextEntries.length >= maxSelections) {
       return;
     }
-    const selectionKey = getWorkspaceSelectionKey(selection);
+    const selectionKey = getWorkspaceSelectionKey(entry.selection);
     if (seenSelectionKeys.has(selectionKey)) {
       return;
     }
     seenSelectionKeys.add(selectionKey);
-    nextSelections.push(selection);
+    nextEntries.push(entry);
   }
 
-  appendSelection(activeSelection);
+  if (activeSelection) {
+    appendEntry({ selection: activeSelection, inactiveSince: null });
+  }
 
-  for (const selection of currentSelections) {
-    if (areWorkspaceSelectionsEqual(selection, activeSelection)) {
+  for (const entry of currentEntries) {
+    if (areWorkspaceSelectionsEqual(entry.selection, activeSelection)) {
       continue;
     }
-    appendSelection(selection);
+    const inactiveSince = entry.inactiveSince ?? now;
+    if (now - inactiveSince >= inactiveTtlMs) {
+      continue;
+    }
+    appendEntry({ selection: entry.selection, inactiveSince });
   }
 
-  return nextSelections;
+  if (areRetainedWorkspaceSelectionListsEqual(currentEntries, nextEntries)) {
+    return currentEntries;
+  }
+  return nextEntries;
+}
+
+export function getNextWorkspaceDeckExpirationDelay({
+  entries,
+  activeSelection,
+  now,
+  inactiveTtlMs = WORKSPACE_DECK_INACTIVE_TTL_MS,
+}: GetNextWorkspaceDeckExpirationDelayInput): number | null {
+  let nextExpirationDelay: number | null = null;
+
+  for (const entry of entries) {
+    if (
+      areWorkspaceSelectionsEqual(entry.selection, activeSelection) ||
+      entry.inactiveSince === null
+    ) {
+      continue;
+    }
+    const expirationDelay = Math.max(0, entry.inactiveSince + inactiveTtlMs - now);
+    nextExpirationDelay =
+      nextExpirationDelay === null
+        ? expirationDelay
+        : Math.min(nextExpirationDelay, expirationDelay);
+  }
+
+  return nextExpirationDelay;
 }
 
 export function orderWorkspaceSelectionsForStableRender(
@@ -118,54 +170,4 @@ export function shouldKeepWorkspaceDeckEntryMounted({
     return true;
   }
   return workspaceExists;
-}
-
-export const WORKSPACE_DECK_MAX_MOUNTED_WORKSPACES = 10;
-
-// A hidden workspace that has not been shown for this long is unmounted, as
-// upstream Paseo does. Without it the deck held up to `mountedWorkspaceLimit`
-// full workspace trees all day, each still re-rendering on every store write.
-export const WORKSPACE_DECK_INACTIVE_TTL_MS = 10 * 60 * 1000;
-
-interface ResolveWorkspaceDeckExpiryInput {
-  selections: ActiveWorkspaceSelection[];
-  activeSelection: ActiveWorkspaceSelection | null;
-  /** When each selection last stopped being active, by selection key. */
-  inactiveSince: ReadonlyMap<string, number>;
-  now: number;
-  ttlMs: number;
-  /** Pinned entries hold state that unmounting would destroy; they never expire. */
-  isPinned: (selectionKey: string) => boolean;
-}
-
-export function resolveWorkspaceDeckExpiry({
-  selections,
-  activeSelection,
-  inactiveSince,
-  now,
-  ttlMs,
-  isPinned,
-}: ResolveWorkspaceDeckExpiryInput): {
-  expired: ActiveWorkspaceSelection[];
-  nextDelayMs: number | null;
-} {
-  const expired: ActiveWorkspaceSelection[] = [];
-  let nextDelayMs: number | null = null;
-  for (const selection of selections) {
-    if (areWorkspaceSelectionsEqual(selection, activeSelection)) {
-      continue;
-    }
-    const key = getWorkspaceSelectionKey(selection);
-    const since = inactiveSince.get(key);
-    if (since === undefined || isPinned(key)) {
-      continue;
-    }
-    const remaining = since + ttlMs - now;
-    if (remaining <= 0) {
-      expired.push(selection);
-    } else if (nextDelayMs === null || remaining < nextDelayMs) {
-      nextDelayMs = remaining;
-    }
-  }
-  return { expired, nextDelayMs };
 }

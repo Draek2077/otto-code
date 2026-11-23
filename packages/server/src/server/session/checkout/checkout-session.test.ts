@@ -1,3 +1,4 @@
+import { SessionDelivery } from "../owned-subscriptions/index.js";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -5,13 +6,14 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import pino from "pino";
 import {
-  type BusyWorkspaceAgent,
   type CheckoutDiffSubscriber,
   CheckoutSession,
   type CheckoutSessionHost,
 } from "./checkout-session.js";
 import type { GitMutationService } from "../git-mutation/git-mutation-service.js";
-import { createGitHubService, type GitHubService } from "../../../services/github-service.js";
+import { createGitHubService } from "../../../services/github-service.js";
+import { ForgeCliMissingError } from "../../../services/forge-cli-command.js";
+import type { ForgeService } from "../../../services/forge-service.js";
 import type { SessionOutboundMessage } from "../../messages.js";
 import type {
   CheckoutDiffCompareInput,
@@ -25,19 +27,22 @@ import {
   createNoGitWorkspaceRuntimeSnapshot,
   createNoopWorkspaceGitService,
 } from "../../test-utils/workspace-git-service-stub.js";
+import { createWorktree, deletePaseoWorktree } from "../../../utils/worktree.js";
 import { expandTilde } from "../../../utils/path.js";
 import type { GitMetadataGenerator } from "./git-metadata-generator.js";
-import { GitOperationLogService } from "../../git-operation-log.js";
-import type { GitOperationLogEntry } from "../../messages.js";
 
-function isLoggedGitCommitCommand(entry: GitOperationLogEntry): boolean {
-  return entry.level === "info" && /^\$ git .*commit/.test(entry.text);
+function isCheckDetailsResponse(msg: SessionOutboundMessage): boolean {
+  return msg.type === "checkout.forge.get_check_details.response";
+}
+
+function isTimelineResponse(msg: SessionOutboundMessage): boolean {
+  return msg.type === "pull_request_timeline_response";
 }
 
 interface FakeDiffSubscription {
   cwd: string;
   compare: CheckoutDiffCompareInput;
-  listener: (snapshot: CheckoutDiffSnapshotPayload) => void;
+  emit(snapshot: CheckoutDiffSnapshotPayload): void;
   unsubscribeCalls: number;
 }
 
@@ -45,19 +50,31 @@ function createFakeDiffSubscriber(initial: CheckoutDiffSnapshotPayload) {
   const subscriptions: FakeDiffSubscription[] = [];
   const refreshedCwds: string[] = [];
   const subscriber: CheckoutDiffSubscriber = {
+    read: async (params) => ({ ...initial, cwd: params.cwd }),
     subscribe: async (params, listener) => {
+      let isSubscribed = true;
       const subscription: FakeDiffSubscription = {
         cwd: params.cwd,
         compare: params.compare,
-        listener,
         unsubscribeCalls: 0,
+        emit: (snapshot) => {
+          if (isSubscribed) {
+            listener(snapshot);
+          }
+        },
       };
+      const unsubscribe = () => {
+        if (!isSubscribed) {
+          return;
+        }
+        isSubscribed = false;
+        subscription.unsubscribeCalls += 1;
+      };
+      params.signal?.addEventListener("abort", unsubscribe, { once: true });
       subscriptions.push(subscription);
       return {
         initial: { ...initial, cwd: params.cwd },
-        unsubscribe: () => {
-          subscription.unsubscribeCalls += 1;
-        },
+        unsubscribe,
       };
     },
     scheduleRefreshForCwd: (cwd) => {
@@ -90,13 +107,13 @@ interface RecordedGeneratorCalls {
 }
 
 function makeCheckoutSession(options?: {
+  paseoHome?: string;
   git?: Partial<WorkspaceGitService>;
   diff?: CheckoutDiffSubscriber;
-  github?: Partial<GitHubService>;
+  github?: Partial<ForgeService>;
   host?: Partial<CheckoutSessionHost>;
   gitMutation?: Partial<GitMutationFake>;
   gitMetadataGenerator?: Partial<GitMetadataGenerator>;
-  busyAgents?: BusyWorkspaceAgent[];
 }) {
   const emitted: SessionOutboundMessage[] = [];
   const hostCalls: RecordedHostCalls = {
@@ -145,47 +162,58 @@ function makeCheckoutSession(options?: {
       generatorCalls.generatePullRequestText.push({ cwd, baseRef });
       return { title: "", body: "" };
     },
-    resolveCommitMessageAgent: async () => ({ kind: "none" }),
     ...options?.gitMetadataGenerator,
   };
-  const github: GitHubService = { ...createGitHubService(), ...options?.github };
-  const gitOperationLog = new GitOperationLogService();
+  const github: ForgeService = { ...createGitHubService(), ...options?.github };
   const checkout = new CheckoutSession({
     host,
     gitMutation,
-    listBusyAgentsForCwd: () => options?.busyAgents ?? [],
-    gitOperationLog,
     workspaceGitService: createNoopWorkspaceGitService(options?.git),
     github,
     checkoutDiffManager:
       options?.diff ?? createFakeDiffSubscriber({ cwd: "", files: [], error: null }).subscriber,
     gitMetadataGenerator,
-    ottoHome: "/tmp/otto-home",
+    paseoHome: options?.paseoHome ?? "/tmp/paseo-home",
     worktreesRoot: undefined,
     logger: pino({ level: "silent" }),
   });
-  return { checkout, emitted, hostCalls, gitMutationCalls, generatorCalls, gitOperationLog };
+  const delivery = new SessionDelivery((_source, message) => emitted.push(message));
+  return {
+    checkout,
+    emitted,
+    hostCalls,
+    gitMutationCalls,
+    generatorCalls,
+    subscribe: (request: Parameters<CheckoutSession["handleSubscribeDiffRequest"]>[0]) =>
+      delivery.request(undefined, request, () =>
+        checkout.handleSubscribeDiffRequest(request, delivery),
+      ),
+    unsubscribe: (request: Parameters<CheckoutSession["handleUnsubscribeDiffRequest"]>[0]) =>
+      delivery.request(undefined, request, () =>
+        checkout.handleUnsubscribeDiffRequest(request, delivery),
+      ),
+    close: () => delivery.close(),
+  };
 }
 
 function createGitSnapshot(
   cwd: string,
   currentBranch: string,
-  overrides?: { isDirty?: boolean; gitLoadedAtMs?: number; aheadOfOrigin?: number },
+  overrides?: { isDirty?: boolean },
 ): WorkspaceGitRuntimeSnapshot {
   return {
     cwd,
-    ...(overrides?.gitLoadedAtMs === undefined ? {} : { gitLoadedAtMs: overrides.gitLoadedAtMs }),
     git: {
       isGit: true,
       repoRoot: cwd,
       mainRepoRoot: cwd,
       currentBranch,
       remoteUrl: null,
-      isOttoOwnedWorktree: false,
+      isPaseoOwnedWorktree: false,
       isDirty: overrides?.isDirty ?? false,
       baseRef: null,
       aheadBehind: null,
-      aheadOfOrigin: overrides?.aheadOfOrigin ?? null,
+      aheadOfOrigin: null,
       behindOfOrigin: null,
       hasRemote: false,
       diffStat: null,
@@ -524,9 +552,9 @@ describe("CheckoutSession", () => {
         files: [],
         error: null,
       });
-      const { checkout, emitted } = makeCheckoutSession({ diff: subscriber });
+      const { subscribe, unsubscribe, emitted } = makeCheckoutSession({ diff: subscriber });
 
-      await checkout.handleSubscribeDiffRequest({
+      await subscribe({
         type: "subscribe_checkout_diff_request",
         subscriptionId: "s1",
         cwd: "/repo",
@@ -542,7 +570,7 @@ describe("CheckoutSession", () => {
       ]);
       expect(subscriptions).toHaveLength(1);
 
-      subscriptions[0].listener({
+      subscriptions[0].emit({
         cwd: "/repo",
         files: [],
         error: { code: "UNKNOWN", message: "transient" },
@@ -558,7 +586,7 @@ describe("CheckoutSession", () => {
         },
       });
 
-      checkout.handleUnsubscribeDiffRequest({
+      await unsubscribe({
         type: "unsubscribe_checkout_diff_request",
         subscriptionId: "s1",
       });
@@ -566,22 +594,22 @@ describe("CheckoutSession", () => {
       expect(subscriptions[0].unsubscribeCalls).toBe(1);
     });
 
-    it("replaces an existing subscription when the same id subscribes again", async () => {
+    it("preserves legacy replacement when an existing id when the same id subscribes again", async () => {
       const { subscriber, subscriptions } = createFakeDiffSubscriber({
         cwd: "/repo",
         files: [],
         error: null,
       });
-      const { checkout } = makeCheckoutSession({ diff: subscriber });
+      const { subscribe } = makeCheckoutSession({ diff: subscriber });
 
-      await checkout.handleSubscribeDiffRequest({
+      await subscribe({
         type: "subscribe_checkout_diff_request",
         subscriptionId: "s1",
         cwd: "/repo",
         compare: { mode: "uncommitted" },
         requestId: "first",
       });
-      await checkout.handleSubscribeDiffRequest({
+      await subscribe({
         type: "subscribe_checkout_diff_request",
         subscriptionId: "s1",
         cwd: "/repo",
@@ -600,16 +628,16 @@ describe("CheckoutSession", () => {
         files: [],
         error: null,
       });
-      const { checkout } = makeCheckoutSession({ diff: subscriber });
+      const { subscribe, close } = makeCheckoutSession({ diff: subscriber });
 
-      await checkout.handleSubscribeDiffRequest({
+      await subscribe({
         type: "subscribe_checkout_diff_request",
         subscriptionId: "s1",
         cwd: "/repo",
         compare: { mode: "uncommitted" },
         requestId: "r",
       });
-      await checkout.handleSubscribeDiffRequest({
+      await subscribe({
         type: "subscribe_checkout_diff_request",
         subscriptionId: "s2",
         cwd: "/repo",
@@ -617,7 +645,7 @@ describe("CheckoutSession", () => {
         requestId: "r",
       });
 
-      checkout.cleanup();
+      await close();
 
       expect(subscriptions[0].unsubscribeCalls).toBe(1);
       expect(subscriptions[1].unsubscribeCalls).toBe(1);
@@ -633,42 +661,9 @@ describe("CheckoutSession", () => {
       expect(emitted).toEqual([
         {
           type: "checkout_status_update",
-          payload: expect.objectContaining({
-            cwd: "/repo",
-            currentBranch: "main",
-            prStatusOnly: false,
-          }),
+          payload: expect.objectContaining({ cwd: "/repo", currentBranch: "main" }),
         },
       ]);
-    });
-
-    it("stamps the update with when the git block was measured", () => {
-      const { checkout, emitted } = makeCheckoutSession();
-
-      checkout.emitStatusUpdate(
-        "/repo",
-        createGitSnapshot("/repo", "main", { gitLoadedAtMs: 1_700_000_000_000 }),
-      );
-
-      expect(emitted[0]).toMatchObject({
-        payload: { gitStateAt: 1_700_000_000_000 },
-      });
-    });
-
-    // The PR-status poll refreshes no git state. Tagging its re-broadcast is what
-    // stops a pre-commit aheadOfOrigin from landing on top of a fresh commit and
-    // muting Push (batch-07-24 #2).
-    it("marks a PR-status-only emission so clients keep their own git state", () => {
-      const { checkout, emitted } = makeCheckoutSession();
-
-      checkout.emitStatusUpdate("/repo", createGitSnapshot("/repo", "main", { aheadOfOrigin: 0 }), {
-        prStatusOnly: true,
-      });
-
-      expect(emitted[0]).toMatchObject({
-        type: "checkout_status_update",
-        payload: { prStatusOnly: true, aheadOfOrigin: 0 },
-      });
     });
 
     it("does not emit the same checkout status twice", () => {
@@ -838,233 +833,6 @@ describe("CheckoutSession", () => {
     });
   });
 
-  describe("git commit (checkout.git.commit)", () => {
-    function initCommitRepo(): string {
-      const repoDir = realpathSync.native(mkdtempSync(join(tmpdir(), "checkout-session-commit-")));
-      execFileSync("git", ["init", "-b", "main"], { cwd: repoDir });
-      execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: repoDir });
-      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir });
-      execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd: repoDir });
-      writeFileSync(join(repoDir, "seed.txt"), "seed\n");
-      execFileSync("git", ["add", "."], { cwd: repoDir });
-      execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir });
-      return repoDir;
-    }
-
-    it("refuses while agents are busy in the cwd", async () => {
-      const busyAgents = [{ id: "agent-1", title: "Refactor auth" }];
-      const { checkout, emitted, gitMutationCalls } = makeCheckoutSession({ busyAgents });
-
-      await checkout.handleCheckoutGitCommitRequest({
-        type: "checkout.git.commit.request",
-        cwd: "/repo",
-        message: "wip",
-        paths: ["a.txt"],
-        requestId: "gc1",
-      });
-
-      expect(gitMutationCalls.notifyGitMutation).toEqual([]);
-      expect(emitted).toEqual([
-        {
-          type: "checkout.git.commit.response",
-          payload: {
-            cwd: "/repo",
-            success: false,
-            commitSha: null,
-            error: { kind: "agents_running", agents: busyAgents },
-            requestId: "gc1",
-          },
-        },
-      ]);
-    });
-
-    it("commits selected paths after the user confirms despite busy agents", async () => {
-      const repoDir = initCommitRepo();
-      try {
-        writeFileSync(join(repoDir, "seed.txt"), "changed\n");
-        const { subscriber, refreshedCwds } = createFakeDiffSubscriber({
-          cwd: "",
-          files: [],
-          error: null,
-        });
-        const { checkout, emitted, gitMutationCalls } = makeCheckoutSession({
-          busyAgents: [{ id: "agent-1", title: null }],
-          diff: subscriber,
-        });
-
-        await checkout.handleCheckoutGitCommitRequest({
-          type: "checkout.git.commit.request",
-          cwd: repoDir,
-          message: "confirmed commit",
-          paths: ["seed.txt"],
-          allowWithRunningAgents: true,
-          requestId: "gc2",
-        });
-
-        const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: repoDir }).toString().trim();
-        expect(gitMutationCalls.notifyGitMutation).toEqual([
-          { cwd: repoDir, reason: "commit-changes", options: undefined },
-        ]);
-        expect(refreshedCwds).toEqual([repoDir]);
-        expect(emitted).toEqual([
-          {
-            type: "checkout.git.commit.response",
-            payload: {
-              cwd: repoDir,
-              success: true,
-              commitSha: sha,
-              error: null,
-              requestId: "gc2",
-            },
-          },
-        ]);
-      } finally {
-        rmSync(repoDir, { recursive: true, force: true });
-      }
-    });
-
-    it("records the operation log and serves it via get_operation_log", async () => {
-      const repoDir = initCommitRepo();
-      try {
-        writeFileSync(join(repoDir, "seed.txt"), "changed\n");
-        const { checkout, emitted, gitOperationLog } = makeCheckoutSession();
-
-        await checkout.handleCheckoutGitCommitRequest({
-          type: "checkout.git.commit.request",
-          cwd: repoDir,
-          message: "log me",
-          paths: ["seed.txt"],
-          requestId: "gl1",
-        });
-
-        const entries = gitOperationLog.getEntries(repoDir, "commit");
-        expect(entries[0]?.text).toBe("── git commit");
-        expect(entries.filter(isLoggedGitCommitCommand).length).toBeGreaterThan(0);
-        expect(entries.at(-1)?.text).toMatch(/^created commit [0-9a-f]{40}$/);
-
-        emitted.length = 0;
-        await checkout.handleCheckoutGitGetOperationLogRequest({
-          type: "checkout.git.get_operation_log.request",
-          cwd: repoDir,
-          operation: "commit",
-          requestId: "gl2",
-        });
-        expect(emitted).toEqual([
-          {
-            type: "checkout.git.get_operation_log.response",
-            payload: { cwd: repoDir, operation: "commit", entries, requestId: "gl2" },
-          },
-        ]);
-      } finally {
-        rmSync(repoDir, { recursive: true, force: true });
-      }
-    });
-
-    it("fails with git_failed when the message is blank", async () => {
-      const { checkout, emitted } = makeCheckoutSession();
-
-      await checkout.handleCheckoutGitCommitRequest({
-        type: "checkout.git.commit.request",
-        cwd: "/repo",
-        message: "   ",
-        paths: ["a.txt"],
-        requestId: "gc3",
-      });
-
-      expect(emitted).toEqual([
-        {
-          type: "checkout.git.commit.response",
-          payload: {
-            cwd: "/repo",
-            success: false,
-            commitSha: null,
-            error: { kind: "git_failed", detail: "Commit message is required" },
-            requestId: "gc3",
-          },
-        },
-      ]);
-    });
-  });
-
-  describe("git rollback (checkout.git.rollback)", () => {
-    function initRollbackRepo(): string {
-      const repoDir = realpathSync.native(mkdtempSync(join(tmpdir(), "checkout-rollback-")));
-      execFileSync("git", ["init", "-b", "main"], { cwd: repoDir });
-      execFileSync("git", ["config", "user.email", "test@test.dev"], { cwd: repoDir });
-      execFileSync("git", ["config", "user.name", "Test"], { cwd: repoDir });
-      writeFileSync(join(repoDir, "seed.txt"), "seed\n");
-      execFileSync("git", ["add", "."], { cwd: repoDir });
-      execFileSync("git", ["commit", "-m", "initial"], { cwd: repoDir });
-      return repoDir;
-    }
-
-    it("refuses while agents are busy in the cwd", async () => {
-      const busyAgents = [{ id: "agent-1", title: "Refactor auth" }];
-      const { checkout, emitted, gitMutationCalls } = makeCheckoutSession({ busyAgents });
-
-      await checkout.handleCheckoutGitRollbackRequest({
-        type: "checkout.git.rollback.request",
-        cwd: "/repo",
-        paths: ["a.txt"],
-        requestId: "gr1",
-      });
-
-      expect(gitMutationCalls.notifyGitMutation).toEqual([]);
-      expect(emitted).toEqual([
-        {
-          type: "checkout.git.rollback.response",
-          payload: {
-            cwd: "/repo",
-            success: false,
-            rolledBackPaths: [],
-            error: { kind: "agents_running", agents: busyAgents },
-            requestId: "gr1",
-          },
-        },
-      ]);
-    });
-
-    it("rolls back selected paths after the user confirms despite busy agents", async () => {
-      const repoDir = initRollbackRepo();
-      try {
-        writeFileSync(join(repoDir, "seed.txt"), "changed\n");
-        const { subscriber } = createFakeDiffSubscriber({ cwd: "", files: [], error: null });
-        const { checkout, emitted, gitMutationCalls } = makeCheckoutSession({
-          busyAgents: [{ id: "agent-1", title: null }],
-          diff: subscriber,
-        });
-
-        await checkout.handleCheckoutGitRollbackRequest({
-          type: "checkout.git.rollback.request",
-          cwd: repoDir,
-          paths: ["seed.txt"],
-          allowWithRunningAgents: true,
-          requestId: "gr2",
-        });
-
-        expect(gitMutationCalls.notifyGitMutation).toEqual([
-          { cwd: repoDir, reason: "rollback-changes", options: undefined },
-        ]);
-        // Line-ending tolerant: git may restore with CRLF under autocrlf on Windows.
-        expect(readFileSync(join(repoDir, "seed.txt"), "utf8").trim()).toBe("seed");
-        expect(emitted).toEqual([
-          {
-            type: "checkout.git.rollback.response",
-            payload: {
-              cwd: repoDir,
-              success: true,
-              rolledBackPaths: ["seed.txt"],
-              error: null,
-              requestId: "gr2",
-            },
-          },
-        ]);
-      } finally {
-        rmSync(repoDir, { recursive: true, force: true });
-      }
-    });
-  });
-
   describe("merge preflight", () => {
     it("fails when the target is not a git repository", async () => {
       const { checkout, emitted } = makeCheckoutSession({
@@ -1139,7 +907,7 @@ describe("CheckoutSession", () => {
             success: false,
             error: {
               code: "UNKNOWN",
-              message: "Unable to determine GitHub pull request number for merge",
+              message: "Unable to determine current change request number for merge",
             },
             requestId: "pm1",
           },
@@ -1148,13 +916,500 @@ describe("CheckoutSession", () => {
     });
   });
 
+  describe("auto-merge routing", () => {
+    function createGitLabPrSnapshot(
+      cwd: string,
+      mergeWhenPipelineSucceeds: boolean,
+    ): WorkspaceGitRuntimeSnapshot {
+      return {
+        ...createGitSnapshot(cwd, "feature/gitlab-auto-merge"),
+        forge: {
+          featuresEnabled: true,
+          error: null,
+          pullRequest: {
+            number: 14,
+            url: "https://gitlab.example.com/g/r/-/merge_requests/14",
+            title: "GitLab MR",
+            state: "open",
+            baseRefName: "main",
+            headRefName: "feature/gitlab-auto-merge",
+            isMerged: false,
+            isDraft: false,
+            mergeable: "UNKNOWN",
+            checks: [],
+            checksStatus: "pending",
+            reviewDecision: null,
+            forgeSpecific: {
+              forge: "gitlab",
+              detailedMergeStatus: "ci_still_running",
+              hasConflicts: false,
+              blockingDiscussionsResolved: true,
+              approvalsRequired: 0,
+              approvalsGiven: 0,
+              pipelineStatus: "running",
+              pipelineId: 306,
+              pipelineUrl: "https://gitlab.example.com/g/r/-/pipelines/306",
+              mergeWhenPipelineSucceeds,
+            },
+          },
+        },
+      };
+    }
+
+    it("routes GitLab set-auto-merge enable and disable through the resolved adapter", async () => {
+      const githubCalls: string[] = [];
+      const gitlabCalls: Array<{ operation: "enable" | "disable"; prNumber: number }> = [];
+      const gitlabService: Partial<ForgeService> = {
+        async enablePullRequestAutoMerge(input) {
+          gitlabCalls.push({ operation: "enable", prNumber: input.prNumber });
+          return { success: true };
+        },
+        async disablePullRequestAutoMerge(input) {
+          gitlabCalls.push({ operation: "disable", prNumber: input.prNumber });
+          return { success: true };
+        },
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        github: {
+          async enablePullRequestAutoMerge() {
+            githubCalls.push("enable");
+            throw new Error("github adapter should not be reached for a gitlab cwd");
+          },
+          async disablePullRequestAutoMerge() {
+            githubCalls.push("disable");
+            throw new Error("github adapter should not be reached for a gitlab cwd");
+          },
+        },
+        git: {
+          getSnapshot: async (cwd) => createGitLabPrSnapshot(cwd, false),
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: gitlabService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handleCheckoutForgeSetAutoMergeRequest({
+        type: "checkout.forge.set_auto_merge.request",
+        cwd: "/repo",
+        enabled: true,
+        mergeMethod: "squash",
+        requestId: "am-enable",
+      });
+      await checkout.handleCheckoutForgeSetAutoMergeRequest({
+        type: "checkout.forge.set_auto_merge.request",
+        cwd: "/repo",
+        enabled: false,
+        requestId: "am-disable",
+      });
+
+      expect(githubCalls).toEqual([]);
+      expect(gitlabCalls).toEqual([
+        { operation: "enable", prNumber: 14 },
+        { operation: "disable", prNumber: 14 },
+      ]);
+      expect(emitted).toEqual([
+        {
+          type: "checkout.forge.set_auto_merge.response",
+          payload: {
+            cwd: "/repo",
+            enabled: true,
+            success: true,
+            error: null,
+            requestId: "am-enable",
+          },
+        },
+        {
+          type: "checkout.forge.set_auto_merge.response",
+          payload: {
+            cwd: "/repo",
+            enabled: false,
+            success: true,
+            error: null,
+            requestId: "am-disable",
+          },
+        },
+      ]);
+    });
+  });
+
+  describe("check details routing", () => {
+    it("routes get-check-details through the resolved GitLab adapter", async () => {
+      const githubCalls: number[] = [];
+      const gitlabCalls: Array<{ cwd: string; checkRunId: number }> = [];
+      const gitlabService: Partial<ForgeService> = {
+        async getCheckDetails(input) {
+          gitlabCalls.push({ cwd: input.cwd, checkRunId: input.checkRunId });
+          return {
+            checkRunId: input.checkRunId,
+            name: "Pipeline (feat/x)",
+            annotations: [],
+            failedJobs: [],
+            truncated: false,
+            pipeline: {
+              id: input.checkRunId,
+              status: "success",
+              rawStatus: "success",
+              url: "https://gitlab.example.com/g/r/-/pipelines/306",
+              ref: "feat/x",
+              sha: "abc",
+              stages: [
+                {
+                  name: "test",
+                  status: "success",
+                  jobs: [
+                    {
+                      id: 1,
+                      name: "unit",
+                      stage: "test",
+                      status: "success",
+                      rawStatus: "success",
+                      url: null,
+                      allowFailure: false,
+                      durationSeconds: 4,
+                    },
+                  ],
+                },
+              ],
+            },
+          };
+        },
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        github: {
+          async getCheckDetails(input) {
+            githubCalls.push(input.checkRunId);
+            throw new Error("github adapter should not be reached for a gitlab cwd");
+          },
+        },
+        git: {
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: gitlabService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handleCheckoutForgeGetCheckDetailsRequest({
+        type: "checkout.forge.get_check_details.request",
+        cwd: "/repo",
+        checkRunId: 306,
+        requestId: "cd1",
+      });
+
+      expect(githubCalls).toEqual([]);
+      expect(gitlabCalls).toEqual([{ cwd: "/repo", checkRunId: 306 }]);
+      const response = emitted.find(isCheckDetailsResponse);
+      expect(response).toMatchObject({
+        payload: {
+          success: true,
+          details: { pipeline: { id: 306, stages: [{ name: "test" }] } },
+        },
+      });
+    });
+  });
+
+  describe("timeline routing", () => {
+    it("routes the timeline request through the resolved GitLab adapter", async () => {
+      const gitlabCalls: Array<{ cwd: string; prNumber: number }> = [];
+      const gitlabService: Partial<ForgeService> = {
+        async isAuthenticated() {
+          return true;
+        },
+        async getPullRequestTimeline(input) {
+          gitlabCalls.push({ cwd: input.cwd, prNumber: input.prNumber });
+          return {
+            prNumber: input.prNumber,
+            repoOwner: input.repoOwner,
+            repoName: input.repoName,
+            items: [
+              {
+                kind: "comment",
+                id: "401",
+                author: "reviewer-a",
+                authorUrl: "https://gl/reviewer-a",
+                avatarUrl: null,
+                body: "Looks good",
+                createdAt: 1710000000000,
+                url: "https://gl/g/r/-/merge_requests/14#note_401",
+              },
+            ],
+            truncated: false,
+            error: null,
+          };
+        },
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        github: {
+          async isAuthenticated() {
+            throw new Error("github adapter should not be reached for a gitlab cwd");
+          },
+          async getPullRequestTimeline() {
+            throw new Error("github adapter should not be reached for a gitlab cwd");
+          },
+        },
+        git: {
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: gitlabService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handlePullRequestTimelineRequest({
+        type: "pull_request_timeline_request",
+        cwd: "/repo",
+        prNumber: 14,
+        repoOwner: "g",
+        repoName: "r",
+        requestId: "tl1",
+      });
+
+      expect(gitlabCalls).toEqual([{ cwd: "/repo", prNumber: 14 }]);
+      const response = emitted.find(isTimelineResponse);
+      expect(response).toMatchObject({
+        payload: {
+          prNumber: 14,
+          items: [{ id: "401", kind: "comment", author: "reviewer-a" }],
+          githubFeaturesEnabled: true,
+          error: null,
+        },
+      });
+    });
+
+    it("routes the timeline request through the resolved Gitea adapter", async () => {
+      const giteaCalls: Array<{ cwd: string; prNumber: number }> = [];
+      const giteaService: Partial<ForgeService> = {
+        async isAuthenticated() {
+          return true;
+        },
+        async getPullRequestTimeline(input) {
+          giteaCalls.push({ cwd: input.cwd, prNumber: input.prNumber });
+          return {
+            prNumber: input.prNumber,
+            repoOwner: input.repoOwner,
+            repoName: input.repoName,
+            items: [
+              {
+                kind: "review",
+                id: "2001",
+                author: "reviewer-a",
+                authorUrl: "https://gitea.com/reviewer-a",
+                avatarUrl: null,
+                body: "Approved",
+                createdAt: 1710000000000,
+                url: "https://gitea.com/g/r/pulls/12#issuecomment-2001",
+                reviewState: "approved",
+              },
+            ],
+            truncated: false,
+            error: null,
+          };
+        },
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        github: {
+          async isAuthenticated() {
+            throw new Error("github adapter should not be reached for a gitea cwd");
+          },
+          async getPullRequestTimeline() {
+            throw new Error("github adapter should not be reached for a gitea cwd");
+          },
+        },
+        git: {
+          resolveForge: async () => ({
+            forge: "gitea",
+            host: "gitea.com",
+            service: giteaService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handlePullRequestTimelineRequest({
+        type: "pull_request_timeline_request",
+        cwd: "/repo",
+        prNumber: 12,
+        repoOwner: "g",
+        repoName: "r",
+        requestId: "tl-gitea",
+      });
+
+      expect(giteaCalls).toEqual([{ cwd: "/repo", prNumber: 12 }]);
+      const response = emitted.find(isTimelineResponse);
+      expect(response).toMatchObject({
+        payload: {
+          prNumber: 12,
+          items: [{ id: "2001", kind: "review", author: "reviewer-a" }],
+          githubFeaturesEnabled: true,
+          error: null,
+        },
+      });
+    });
+
+    it("derives the unauthenticated timeline error label from the forge brand for GitLab", async () => {
+      const gitlabService: Partial<ForgeService> = {
+        async isAuthenticated() {
+          return false;
+        },
+        async getPullRequestTimeline() {
+          throw new Error("timeline fetch should not run while unauthenticated");
+        },
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        git: {
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: gitlabService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handlePullRequestTimelineRequest({
+        type: "pull_request_timeline_request",
+        cwd: "/repo",
+        prNumber: 14,
+        repoOwner: "g",
+        repoName: "r",
+        requestId: "tl2",
+      });
+
+      const unauthenticatedResponse = emitted.find(isTimelineResponse);
+      expect(unauthenticatedResponse).toMatchObject({
+        payload: {
+          githubFeaturesEnabled: false,
+          error: {
+            kind: "unknown",
+            message: "GitLab CLI is unavailable or not authenticated",
+          },
+        },
+      });
+      expect(unauthenticatedResponse?.payload).not.toHaveProperty("authState");
+    });
+
+    it("carries the precise authState when the auth probe throws a classified error", async () => {
+      const githubService: Partial<ForgeService> = {
+        async isAuthenticated() {
+          throw new ForgeCliMissingError("gh not found");
+        },
+        async getPullRequestTimeline() {
+          throw new Error("timeline fetch should not run while unauthenticated");
+        },
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        git: {
+          resolveForge: async () => ({
+            forge: "github",
+            host: "github.com",
+            service: githubService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handlePullRequestTimelineRequest({
+        type: "pull_request_timeline_request",
+        cwd: "/repo",
+        prNumber: 14,
+        repoOwner: "g",
+        repoName: "r",
+        requestId: "tl-cli-missing",
+      });
+
+      expect(emitted.find(isTimelineResponse)).toMatchObject({
+        payload: {
+          githubFeaturesEnabled: false,
+          authState: "cli_missing",
+        },
+      });
+    });
+
+    it("keeps features enabled when the timeline fetch fails for non-auth reasons", async () => {
+      const gitlabService: Partial<ForgeService> = {
+        async isAuthenticated() {
+          return true;
+        },
+        async getPullRequestTimeline() {
+          throw new Error("glab timed out");
+        },
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        git: {
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: gitlabService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handlePullRequestTimelineRequest({
+        type: "pull_request_timeline_request",
+        cwd: "/repo",
+        prNumber: 14,
+        repoOwner: "g",
+        repoName: "r",
+        requestId: "tl-error",
+      });
+
+      expect(emitted.find(isTimelineResponse)).toMatchObject({
+        payload: {
+          githubFeaturesEnabled: true,
+          error: {
+            kind: "unknown",
+            message: "glab timed out",
+          },
+          authState: "error",
+        },
+      });
+    });
+
+    it("reports features disabled with the precise authState when the timeline fetch hits an auth error", async () => {
+      const gitlabService: Partial<ForgeService> = {
+        async isAuthenticated() {
+          return true;
+        },
+        async getPullRequestTimeline() {
+          throw new ForgeCliMissingError("glab not found");
+        },
+      };
+      const { checkout, emitted } = makeCheckoutSession({
+        git: {
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: gitlabService as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handlePullRequestTimelineRequest({
+        type: "pull_request_timeline_request",
+        cwd: "/repo",
+        prNumber: 14,
+        repoOwner: "g",
+        repoName: "r",
+        requestId: "tl-fetch-auth-error",
+      });
+
+      expect(emitted.find(isTimelineResponse)).toMatchObject({
+        payload: {
+          githubFeaturesEnabled: false,
+          authState: "cli_missing",
+        },
+      });
+    });
+  });
+
   describe("stash list", () => {
-    it("returns stash entries scoped to otto stashes by default", async () => {
-      const listStashesCalls: Array<{ cwd: string; ottoOnly: boolean | undefined }> = [];
+    it("returns stash entries scoped to paseo stashes by default", async () => {
+      const listStashesCalls: Array<{ cwd: string; paseoOnly: boolean | undefined }> = [];
       const { checkout, emitted } = makeCheckoutSession({
         git: {
           listStashes: async (cwd, opts) => {
-            listStashesCalls.push({ cwd, ottoOnly: opts?.ottoOnly });
+            listStashesCalls.push({ cwd, paseoOnly: opts?.paseoOnly });
             return [];
           },
         },
@@ -1166,7 +1421,7 @@ describe("CheckoutSession", () => {
         requestId: "sl1",
       });
 
-      expect(listStashesCalls).toEqual([{ cwd: "/repo", ottoOnly: true }]);
+      expect(listStashesCalls).toEqual([{ cwd: "/repo", paseoOnly: true }]);
       expect(emitted).toEqual([
         {
           type: "stash_list_response",
@@ -1195,13 +1450,78 @@ describe("CheckoutSession", () => {
         },
       ]);
     });
+
+    it("reports non-auth status errors as errors instead of sign-in setup", async () => {
+      const { checkout, emitted } = makeCheckoutSession({
+        git: {
+          getSnapshot: async () => {
+            throw new Error("glab returned invalid JSON");
+          },
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.example.com",
+            service: {} as ForgeService,
+          }),
+        },
+      });
+
+      await checkout.handleCheckoutPrStatusRequest({
+        type: "checkout_pr_status_request",
+        cwd: "/repo",
+        requestId: "ps-error",
+      });
+
+      expect(emitted).toEqual([
+        {
+          type: "checkout_pr_status_response",
+          payload: expect.objectContaining({
+            cwd: "/repo",
+            status: null,
+            githubFeaturesEnabled: true,
+            authState: "error",
+            forge: "gitlab",
+            requestId: "ps-error",
+            error: expect.objectContaining({ message: "glab returned invalid JSON" }),
+          }),
+        },
+      ]);
+    });
+
+    it("resolves the forge once when reporting a non-auth status error", async () => {
+      let resolveForgeCalls = 0;
+      const resolveForge: WorkspaceGitService["resolveForge"] = async () => {
+        resolveForgeCalls += 1;
+        return { forge: "gitlab", host: "gitlab.example.com", service: {} as ForgeService };
+      };
+      const { checkout } = makeCheckoutSession({
+        git: {
+          getSnapshot: async () => {
+            throw new Error("glab returned invalid JSON");
+          },
+          resolveForge,
+        },
+      });
+
+      await checkout.handleCheckoutPrStatusRequest({
+        type: "checkout_pr_status_request",
+        cwd: "/repo",
+        requestId: "ps-error-2",
+      });
+
+      expect(resolveForgeCalls).toBe(1);
+    });
   });
 
-  describe("forge search", () => {
-    it("returns search results and the github-features flag on the legacy channel", async () => {
+  describe("github search", () => {
+    it("returns search results and the github-features flag", async () => {
       const { checkout, emitted } = makeCheckoutSession({
         github: {
-          searchIssuesAndPrs: async () => ({ items: [], githubFeaturesEnabled: false }),
+          searchIssuesAndPrs: async () => ({
+            items: [],
+            featuresEnabled: false,
+            authState: "unauthenticated",
+            githubFeaturesEnabled: false,
+          }),
         },
       });
 
@@ -1215,33 +1535,51 @@ describe("CheckoutSession", () => {
       expect(emitted).toEqual([
         {
           type: "github_search_response",
-          payload: expect.objectContaining({
+          payload: {
             items: [],
             featuresEnabled: false,
+            authState: "unauthenticated",
             githubFeaturesEnabled: false,
             error: null,
             requestId: "gs1",
-          }),
+          },
         },
       ]);
     });
 
-    it("relabels change requests as prs for the legacy channel only", async () => {
-      const item = {
-        kind: "change_request" as const,
-        number: 12,
-        title: "Fix",
-        url: "https://example.invalid/12",
-        state: "open",
-        body: null,
-        labels: [],
-      };
+    it("converts neutral change-request items for the legacy github search response", async () => {
       const { checkout, emitted } = makeCheckoutSession({
         github: {
           searchIssuesAndPrs: async () => ({
-            items: [item],
+            items: [
+              {
+                kind: "change_request",
+                number: 17,
+                title: "Fix search",
+                url: "https://github.com/acme/repo/pull/17",
+                state: "open",
+                body: null,
+                labels: ["bug"],
+                baseRefName: "main",
+                headRefName: "fix-search",
+                updatedAt: "2026-06-28T10:00:00.000Z",
+              },
+              {
+                kind: "issue",
+                number: 22,
+                title: "Track search",
+                url: "https://github.com/acme/repo/issues/22",
+                state: "open",
+                body: null,
+                labels: ["triage"],
+                baseRefName: null,
+                headRefName: null,
+                updatedAt: "2026-06-28T11:00:00.000Z",
+              },
+            ],
             featuresEnabled: true,
             authState: "authenticated",
+            githubFeaturesEnabled: true,
           }),
         },
       });
@@ -1250,30 +1588,95 @@ describe("CheckoutSession", () => {
         type: "github_search_request",
         cwd: "/repo",
         query: "fix",
-        requestId: "gs2",
+        requestId: "gs-legacy-items",
       });
 
-      expect(emitted[0]).toMatchObject({
-        type: "github_search_response",
-        payload: { items: [{ ...item, kind: "pr" }] },
-      });
+      expect(emitted).toEqual([
+        {
+          type: "github_search_response",
+          payload: {
+            items: [
+              {
+                kind: "pr",
+                forge: "github",
+                number: 17,
+                title: "Fix search",
+                url: "https://github.com/acme/repo/pull/17",
+                state: "open",
+                body: null,
+                labels: ["bug"],
+                baseRefName: "main",
+                headRefName: "fix-search",
+                updatedAt: "2026-06-28T10:00:00.000Z",
+              },
+              {
+                kind: "issue",
+                forge: "github",
+                number: 22,
+                title: "Track search",
+                url: "https://github.com/acme/repo/issues/22",
+                state: "open",
+                body: null,
+                labels: ["triage"],
+                baseRefName: null,
+                headRefName: null,
+                updatedAt: "2026-06-28T11:00:00.000Z",
+              },
+            ],
+            featuresEnabled: true,
+            authState: "authenticated",
+            githubFeaturesEnabled: true,
+            error: null,
+            requestId: "gs-legacy-items",
+          },
+        },
+      ]);
     });
 
-    // The daemon advertises `forgeSearch`, so this is the path the app takes.
-    it("answers a forge search request on the forge channel", async () => {
-      // forge.search resolves the cwd's forge (the legacy github twin alone is
-      // GitHub by definition), so the cwd has to resolve to the GitHub adapter.
-      const github: GitHubService = {
-        ...createGitHubService(),
-        searchIssuesAndPrs: async () => ({
-          items: [],
-          featuresEnabled: true,
-          authState: "authenticated",
-        }),
-      };
+    it("routes search through the resolved GitLab service without running gh", async () => {
+      let githubCalled = false;
+      const gitlabSearches: unknown[] = [];
       const { checkout, emitted } = makeCheckoutSession({
+        github: {
+          searchIssuesAndPrs: async () => {
+            githubCalled = true;
+            return {
+              items: [],
+              featuresEnabled: true,
+              authState: "authenticated",
+              githubFeaturesEnabled: true,
+            };
+          },
+        },
         git: {
-          resolveForge: async () => ({ forge: "github", host: "github.com", service: github }),
+          resolveForge: async () => ({
+            forge: "gitlab",
+            host: "gitlab.com",
+            service: {
+              searchIssuesAndPrs: async (input) => {
+                gitlabSearches.push(input);
+                return {
+                  items: [
+                    {
+                      kind: "change_request",
+                      number: 17,
+                      title: "GitLab result",
+                      url: "https://gitlab.com/acme/repo/-/merge_requests/17",
+                      state: "opened",
+                      body: null,
+                      labels: [],
+                      baseRefName: "main",
+                      headRefName: "feature",
+                      updatedAt: "2026-06-28T10:00:00.000Z",
+                    },
+                  ],
+                  featuresEnabled: true,
+                  authState: "authenticated",
+                  githubFeaturesEnabled: true,
+                };
+              },
+            } as never,
+          }),
         },
       });
 
@@ -1281,64 +1684,131 @@ describe("CheckoutSession", () => {
         type: "forge.search.request",
         cwd: "/repo",
         query: "fix",
-        requestId: "fs1",
+        requestId: "gs2",
       });
 
+      expect(githubCalled).toBe(false);
+      expect(gitlabSearches).toEqual([
+        {
+          cwd: "/repo",
+          query: "fix",
+          limit: undefined,
+          kinds: undefined,
+        },
+      ]);
       expect(emitted).toEqual([
         {
           type: "forge.search.response",
           payload: {
-            items: [],
+            items: [
+              {
+                kind: "change_request",
+                forge: "gitlab",
+                number: 17,
+                title: "GitLab result",
+                url: "https://gitlab.com/acme/repo/-/merge_requests/17",
+                state: "opened",
+                body: null,
+                labels: [],
+                baseRefName: "main",
+                headRefName: "feature",
+                updatedAt: "2026-06-28T10:00:00.000Z",
+              },
+            ],
             authState: "authenticated",
             error: null,
-            requestId: "fs1",
+            requestId: "gs2",
           },
         },
       ]);
     });
   });
+});
 
-  describe("forge check details", () => {
-    // The daemon advertises `forgeCheckDetails`, so this is the path the app
-    // takes; answering on the github channel hangs the client until timeout.
-    it("answers a forge check-details request on the forge channel", async () => {
-      const { checkout, emitted } = makeCheckoutSession({
-        github: {
-          getCheckDetails: async () => null,
-        },
-      });
-
-      await checkout.handleCheckoutForgeGetCheckDetailsRequest({
-        type: "checkout.forge.get_check_details.request",
-        cwd: "/repo",
-        checkRunId: 5,
-        requestId: "cd1",
-      });
-
-      expect(emitted[0]).toMatchObject({
-        type: "checkout.forge.get_check_details.response",
-        payload: { cwd: "/repo", success: true, requestId: "cd1" },
-      });
+it("creates a PR from a restored exact base using the host metadata and a forge branch name", async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "paseo-restored-pr-")));
+  const repo = join(root, "repo");
+  const remote = join(root, "remote.git");
+  const paseoHome = join(root, "home");
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", args, { cwd, encoding: "utf8", stdio: "pipe" }).trim();
+  try {
+    git(root, "init", "-b", "main", repo);
+    git(repo, "config", "user.name", "Test");
+    git(repo, "config", "user.email", "test@example.com");
+    git(repo, "commit", "--allow-empty", "-m", "base");
+    git(root, "init", "--bare", remote);
+    git(repo, "remote", "add", "origin", remote);
+    git(repo, "push", "-u", "origin", "main");
+    const baseRef = "refs/remotes/origin/main";
+    const created = await createWorktree({
+      cwd: repo,
+      paseoHome,
+      worktreeSlug: "restored-pr",
+      source: { kind: "branch-off", baseBranch: baseRef, branchName: "restored-pr" },
+      runSetup: false,
     });
-
-    it("answers the legacy github request on the github channel", async () => {
-      const { checkout, emitted } = makeCheckoutSession({
-        github: {
-          getCheckDetails: async () => null,
-        },
-      });
-
-      await checkout.handleCheckoutForgeGetCheckDetailsRequest({
-        type: "checkout.github.get_check_details.request",
-        cwd: "/repo",
-        checkRunId: 5,
-        requestId: "cd2",
-      });
-
-      expect(emitted[0]).toMatchObject({
-        type: "checkout.github.get_check_details.response",
-        payload: { cwd: "/repo", success: true, requestId: "cd2" },
-      });
+    writeFileSync(join(created.worktreePath, "feature.txt"), "feature\n");
+    git(created.worktreePath, "add", ".");
+    git(created.worktreePath, "commit", "-m", "feature");
+    await deletePaseoWorktree({ cwd: repo, paseoHome, worktreePath: created.worktreePath });
+    const restored = await createWorktree({
+      cwd: repo,
+      paseoHome,
+      worktreeSlug: "restored-pr",
+      source: { kind: "restore", branchName: created.branchName, baseRef },
+      runSetup: false,
     });
-  });
+    const requests: Array<Parameters<ForgeService["createPullRequest"]>[0]> = [];
+    const service: ForgeService = {
+      ...createGitHubService(),
+      createPullRequest: async (input) => {
+        requests.push(input);
+        return { url: "https://example.com/pull/1", number: 1 };
+      },
+    };
+    const { checkout, emitted } = makeCheckoutSession({
+      paseoHome,
+      git: { resolveForge: async () => ({ forge: "github", host: "github.com", service }) },
+    });
+    await checkout.handleCheckoutPrCreateRequest({
+      type: "checkout_pr_create_request",
+      cwd: restored.worktreePath,
+      baseRef: "refs/heads/main",
+      title: "Feature",
+      body: "Description",
+      requestId: "wrong-base",
+    });
+    expect(emitted.at(-1)).toMatchObject({
+      type: "checkout_pr_create_response",
+      payload: { error: { message: expect.stringContaining("Base ref mismatch") } },
+    });
+    expect(requests).toHaveLength(0);
+    await checkout.handleCheckoutPrCreateRequest({
+      type: "checkout_pr_create_request",
+      cwd: restored.worktreePath,
+      baseRef: "main",
+      title: "Feature",
+      body: "Description",
+      requestId: "right-base",
+    });
+    expect(emitted.at(-1)).toMatchObject({
+      type: "checkout_pr_create_response",
+      payload: { error: null, number: 1 },
+    });
+    expect(requests).toEqual([
+      {
+        cwd: restored.worktreePath,
+        base: "main",
+        head: created.branchName,
+        title: "Feature",
+        body: "Description",
+      },
+    ]);
+    expect(git(remote, "rev-parse", `refs/heads/${created.branchName}`)).toBe(
+      git(restored.worktreePath, "rev-parse", "HEAD"),
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

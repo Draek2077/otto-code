@@ -5,7 +5,7 @@ import {
   createWorktree,
   slugify,
   validateBranchSlug,
-  type WorktreeConfig,
+  type CreatedWorktree,
 } from "../utils/worktree.js";
 import {
   resolveWorktreeCreationIntent,
@@ -13,7 +13,7 @@ import {
   UnsupportedForgeCheckoutTargetError,
   type WorktreeCreationIntent,
 } from "./resolve-worktree-creation-intent.js";
-import type { ChangeRequestCheckoutSource, FirstAgentContext } from "@otto-code/protocol/messages";
+import type { ChangeRequestCheckoutSource, FirstAgentContext } from "@getpaseo/protocol/messages";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
 import { runWithGitCommandPriority } from "../utils/run-git-command.js";
 
@@ -26,13 +26,9 @@ export interface CreateWorktreeCoreInput {
   checkoutSource?: ChangeRequestCheckoutSource;
   githubPrNumber?: number;
   firstAgentContext?: FirstAgentContext;
-  ottoHome?: string;
+  paseoHome?: string;
   worktreesRoot?: string;
   runSetup?: boolean;
-  // When true, the created workspace record is persisted hidden (withheld from
-  // clients). Used by schedule runs so the transient worktree never flashes into
-  // the sidebar; the owning service reveals it on finish-and-keep or error.
-  hidden?: boolean;
 }
 
 export interface CreateWorktreeCoreDeps {
@@ -45,7 +41,7 @@ export interface CreateWorktreeCoreDeps {
 }
 
 export interface CreateWorktreeCoreResult {
-  worktree: WorktreeConfig;
+  worktree: CreatedWorktree;
   intent: WorktreeCreationIntent;
   repoRoot: string;
   created: boolean;
@@ -125,7 +121,7 @@ async function createWorktreeCoreWithPriority(
       worktreeSlug: normalizedSlug,
       source: intent,
       runSetup: input.runSetup ?? true,
-      ottoHome: input.ottoHome,
+      paseoHome: input.paseoHome,
       worktreesRoot: input.worktreesRoot,
     }),
     intent,
@@ -164,7 +160,7 @@ async function resolveDefaultBranch(
 }
 
 export async function resolveWorktreeRepoRoot(
-  input: Pick<CreateWorktreeCoreInput, "cwd" | "ottoHome">,
+  input: Pick<CreateWorktreeCoreInput, "cwd" | "paseoHome">,
   workspaceGitService?: Pick<WorkspaceGitService, "resolveRepoRoot">,
 ): Promise<string> {
   if (!workspaceGitService) {

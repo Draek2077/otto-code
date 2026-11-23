@@ -3,12 +3,10 @@ import type {
   ScriptStatusUpdateMessage,
   SessionOutboundMessage,
   WorkspaceScriptPayload,
-} from "@otto-code/protocol/messages";
-import type { OttoConfig } from "@otto-code/protocol/otto-config-schema";
-import { getScriptConfigs, isServiceScript, readOttoConfig } from "../utils/worktree.js";
+} from "@getpaseo/protocol/messages";
+import type { PaseoConfig } from "@getpaseo/protocol/paseo-config-schema";
+import { getScriptConfigs, isServiceScript, readPaseoConfig } from "../utils/worktree.js";
 import { deriveProjectSlug } from "./workspace-git-metadata.js";
-import { resolveScriptSourceFromName } from "./session/workspace-scripts/script-discovery.js";
-import { parseQualifiedScriptName } from "./session/workspace-scripts/script-provider.js";
 import type { ScriptHealthEntry, ScriptHealthState } from "./script-health-monitor.js";
 import type {
   ServiceProxySubsystem,
@@ -23,7 +21,7 @@ interface SessionEmitter {
 interface BuildWorkspaceScriptPayloadsOptions {
   workspaceId: string;
   workspaceDirectory: string;
-  ottoConfig: OttoConfig | null;
+  paseoConfig: PaseoConfig | null;
   serviceProxy: ServiceProxySubsystem;
   runtimeStore: WorkspaceScriptRuntimeStore;
   daemonPort: number | null;
@@ -35,17 +33,17 @@ interface BuildWorkspaceScriptPayloadsOptions {
   resolveHealth?: (hostname: string) => ScriptHealthState | null;
 }
 
-export function readOttoConfigForProjection(
+export function readPaseoConfigForProjection(
   workspaceDirectory: string,
   logger: Logger,
-): OttoConfig | null {
-  const result = readOttoConfig(workspaceDirectory);
+): PaseoConfig | null {
+  const result = readPaseoConfig(workspaceDirectory);
   if (result.ok) {
     return result.config;
   }
   logger.warn(
     { configPath: result.configPath, workspaceDirectory, err: result.error },
-    "Failed to parse otto.json; treating workspace as having no scripts",
+    "Failed to parse paseo.json; treating workspace as having no scripts",
   );
   return null;
 }
@@ -100,12 +98,10 @@ function projectWorkspaceServiceState(params: {
 
 function buildConfiguredPlainScriptPayload(
   scriptName: string,
-  command: string,
   runtimeEntry: RuntimeEntry | null,
 ): WorkspaceScriptPayload {
   return {
     scriptName,
-    command,
     type: "script",
     hostname: scriptName,
     port: null,
@@ -126,7 +122,7 @@ function buildConfiguredScriptPayload(
 ): WorkspaceScriptPayload {
   const configIsService = isServiceScript(config);
   if (!configIsService) {
-    return buildConfiguredPlainScriptPayload(scriptName, config.command, runtimeEntry);
+    return buildConfiguredPlainScriptPayload(scriptName, runtimeEntry);
   }
 
   const type = "service";
@@ -154,7 +150,6 @@ function buildConfiguredScriptPayload(
 
   return {
     scriptName,
-    command: config.command,
     type,
     hostname,
     port: serviceState?.port ?? configuredPort,
@@ -197,15 +192,8 @@ function buildOrphanRuntimePayload(
       publicBaseUrl: ctx.serviceProxyPublicBaseUrl,
     });
 
-  // A running discovered script reaches the descriptor only through this path -
-  // discovery itself is on-demand and never rides in the descriptor. Recovering
-  // its source from the qualified name keeps "npm:dev" from leaking into the
-  // sidebar as a script name.
-  const source = resolveScriptSourceFromName(runtimeEntry.scriptName);
-
   return {
     scriptName: runtimeEntry.scriptName,
-    ...(source ? { label: parseQualifiedScriptName(runtimeEntry.scriptName)?.name, source } : {}),
     type,
     hostname,
     port: type === "service" ? (serviceState?.port ?? null) : null,
@@ -230,7 +218,7 @@ export function buildWorkspaceScriptPayloads(
   const workspaceDirectory = options.workspaceDirectory;
   const projectSlug = options.gitMetadata?.projectSlug ?? deriveProjectSlug(workspaceDirectory);
   const branchName = options.gitMetadata?.currentBranch ?? null;
-  const scriptConfigs = getScriptConfigs(options.ottoConfig);
+  const scriptConfigs = getScriptConfigs(options.paseoConfig);
   const runtimeEntries = new Map(
     options.runtimeStore
       .listForWorkspace(workspaceId)
@@ -316,7 +304,7 @@ export function createScriptStatusEmitter({
       const projected = buildWorkspaceScriptPayloads({
         workspaceId,
         workspaceDirectory,
-        ottoConfig: readOttoConfigForProjection(workspaceDirectory, logger),
+        paseoConfig: readPaseoConfigForProjection(workspaceDirectory, logger),
         serviceProxy,
         runtimeStore,
         daemonPort: resolvedDaemonPort,

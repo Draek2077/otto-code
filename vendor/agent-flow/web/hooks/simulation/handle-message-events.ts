@@ -51,7 +51,10 @@ export function handleMessage(
     }
   }
 
-  appendConversation(state.conversations, agentName, { type: msgType, content, timestamp: currentTime })
+  // OTTO PATCH: Paseo projects mutable canonical message rows. A streamed
+  // revision replaces that row, rather than appending its entire text again.
+  const id = typeof payload.messageId === 'string' ? payload.messageId : undefined
+  appendConversation(state.conversations, agentName, { id, type: msgType, content, timestamp: currentTime })
 }
 
 export function handleContextUpdate(
@@ -112,6 +115,7 @@ export function handleContextUpdate(
       ...(cumulativeTokens !== undefined ? { cumulativeTokens } : {}),
       ...(costUsd !== undefined ? { costUsd } : {}),
       tokensMax: tokensMaxOverride ?? agent.tokensMax,
+      ...(typeof payload.contextKnown === 'boolean' ? { contextKnown: payload.contextKnown } : {}),
       contextBreakdown: breakdown || agent.contextBreakdown,
     })
   }

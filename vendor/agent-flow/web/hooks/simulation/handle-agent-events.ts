@@ -122,6 +122,7 @@ export function handleAgentSpawn(
     id: name, name, state: 'idle',
     parentId: parentId || null,
     tokensUsed: 0, tokensMax: ctx.getContextWindowSize(model),
+    contextKnown: typeof payload.contextKnown === 'boolean' ? payload.contextKnown : undefined,
     contextBreakdown: emptyContextBreakdown(),
     toolCalls: 0, timeAlive: 0,
     x, y, vx: 0, vy: 0,
@@ -243,6 +244,15 @@ export function handleAgentIdle(
   const idleName = asString(payload.name)
   const idleAgent = state.agents.get(idleName)
   if (!idleAgent || idleAgent.state === 'complete') {
+    return
+  }
+  // OTTO PATCH: explicit canonical turn state, without fabricating a message.
+  if (payload.error === true) {
+    state.agents.set(idleName, { ...idleAgent, state: 'error', currentTool: undefined })
+    return
+  }
+  if (payload.working === true && idleAgent.state !== 'tool_calling') {
+    state.agents.set(idleName, { ...idleAgent, state: 'thinking', currentTool: undefined })
     return
   }
   // OTTO PATCH (see OTTO-PATCHES.md): `resting: true` marks a real turn end —

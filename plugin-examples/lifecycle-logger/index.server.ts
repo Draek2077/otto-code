@@ -1,4 +1,4 @@
-import type { PluginServerContext } from "@otto-code/plugin/server";
+import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { logHook } from "./server/log";
 
 export default function contribute(server: PluginServerContext) {
@@ -27,6 +27,10 @@ export default function contribute(server: PluginServerContext) {
 
   server.on("agent.created", (event) => {
     logHook("agent.created", event);
+  });
+
+  server.on("agent.closed", (event) => {
+    logHook("agent.closed", event);
   });
 
   server.on("agent.turn_started", (event) => {

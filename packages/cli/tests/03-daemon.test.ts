@@ -1,9 +1,11 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): restart hints use the Otto command.
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 
 /**
  * Phase 2: Daemon Command Tests
  *
- * Tests daemon commands with an isolated OTTO_HOME.
+ * Tests daemon commands with an isolated PASEO_HOME.
  *
  * Tests:
  * - daemon --help shows subcommands
@@ -11,7 +13,7 @@
  * - daemon status reports stopped when daemon not running
  * - daemon status --json outputs valid JSON
  * - daemon stop handles daemon not running gracefully
- * - daemon restart starts the daemon and can be cleaned up
+ * - daemon restart refuses to start a stopped daemon
  * - daemon status probes the live relay state over local IPC
  */
 
@@ -24,17 +26,17 @@ import { mkdtemp, readFile, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
 import { dirname, join } from "path";
 import YAML from "yaml";
-import { runLocalOtto } from "./helpers/local-cli.ts";
+import { runLocalPaseo } from "./helpers/local-cli.ts";
 
 console.log("=== Daemon Commands ===\n");
 
-// Keep restart off default 6868 to avoid collisions with any existing daemon.
+// Keep restart off default 6767 to avoid collisions with any existing daemon.
 const port = 10000 + Math.floor(Math.random() * 50000);
-const ottoHome = await mkdtemp(join(tmpdir(), "otto-test-home-"));
+const paseoHome = await mkdtemp(join(tmpdir(), "paseo-test-home-"));
 const require = createRequire(import.meta.url);
 
 function daemonCommand(args: string[]) {
-  return runLocalOtto(["daemon", ...args], { OTTO_HOME: ottoHome });
+  return runLocalPaseo(["daemon", ...args], { PASEO_HOME: paseoHome });
 }
 
 async function stopChildProcess(child: ChildProcess): Promise<void> {
@@ -51,13 +53,13 @@ async function stopChildProcess(child: ChildProcess): Promise<void> {
 }
 
 function resolveDaemonWorkerEntry(): string {
-  let currentDir = dirname(require.resolve("@otto-code/server"));
+  let currentDir = dirname(require.resolve("@getpaseo/server"));
 
   while (true) {
     const packageJsonPath = join(currentDir, "package.json");
     if (existsSync(packageJsonPath)) {
       const packageJson = JSON.parse(readFileSync(packageJsonPath, "utf-8"));
-      if (packageJson.name === "@otto-code/server") {
+      if (packageJson.name === "@getpaseo/server") {
         const candidates = [
           join(currentDir, "dist", "server", "server", "daemon-worker.js"),
           join(currentDir, "src", "server", "daemon-worker.ts"),
@@ -73,12 +75,12 @@ function resolveDaemonWorkerEntry(): string {
     currentDir = parentDir;
   }
 
-  throw new Error("Unable to resolve @otto-code/server package root");
+  throw new Error("Unable to resolve @getpaseo/server package root");
 }
 
 async function tailDaemonLog(): Promise<string> {
   try {
-    const log = await readFile(join(ottoHome, "daemon.log"), "utf-8");
+    const log = await readFile(join(paseoHome, "daemon.log"), "utf-8");
     return log.split("\n").slice(-30).join("\n");
   } catch {
     return "<daemon log unavailable>";
@@ -111,7 +113,7 @@ try {
   // Test 1: daemon --help shows subcommands
   {
     console.log("Test 1: daemon --help shows subcommands");
-    const result = await runLocalOtto(["daemon", "--help"]);
+    const result = await runLocalPaseo(["daemon", "--help"]);
     assert.strictEqual(result.exitCode, 0, "daemon --help should exit 0");
     assert(result.stdout.includes("start"), "help should mention start");
     assert(result.stdout.includes("status"), "help should mention status");
@@ -140,7 +142,7 @@ try {
     const result = await daemonCommand(["status"]);
     assert.strictEqual(result.exitCode, 0, "status should succeed when daemon is stopped");
     const output = result.stdout.toLowerCase();
-    assert(output.includes("local daemon"), "status table should include Local Daemon row");
+    assert(output.includes("localdaemon"), "status table should include Local Daemon row");
     assert(output.includes("stopped"), "status should report stopped");
     console.log("✓ daemon status reports stopped when not running\n");
   }
@@ -164,9 +166,9 @@ try {
     const result = await daemonCommand(["status", "--json"]);
     assert.strictEqual(result.exitCode, 0, "--json status should succeed");
     const status = JSON.parse(result.stdout);
-    assert.strictEqual(typeof status.serverId, "string", "json status should include serverId");
+    assert.strictEqual(status.serverId, undefined, "stopped observation must not invent identity");
     assert.strictEqual(status.localDaemon, "stopped", "json status should report stopped");
-    assert.strictEqual(status.home, ottoHome, "json status should reflect the isolated home");
+    assert.strictEqual(status.home, paseoHome, "json status should reflect the isolated home");
     assert.strictEqual(
       status.hostname,
       null,
@@ -175,20 +177,12 @@ try {
     console.log("✓ daemon status --json outputs valid JSON\n");
   }
 
-  // Global hosts do not change local daemon lifecycle commands.
   {
-    console.log("Test 5b: daemon status ignores a global --host");
-    const result = await runLocalOtto(["--host", "localhost:1", "daemon", "status", "--json"], {
-      OTTO_HOME: ottoHome,
+    const result = await runLocalPaseo(["--host", "127.0.0.1:1", "daemon", "status", "--json"], {
+      PASEO_HOME: paseoHome,
     });
-    assert.strictEqual(result.exitCode, 0, `daemon status should stay local: ${result.stderr}`);
-    const parsed = JSON.parse(result.stdout);
-    assert.strictEqual(
-      parsed.localDaemon,
-      "stopped",
-      "daemon should report the local stopped state",
-    );
-    console.log("✓ daemon status ignores a global --host\n");
+    assert.strictEqual(result.exitCode, 1, "an explicit endpoint must not report local status");
+    assert.match(result.stderr, /127.0.0.1:1/);
   }
 
   // Test 6: daemon stop handles daemon not running gracefully
@@ -205,16 +199,12 @@ try {
     console.log("✓ daemon stop succeeds gracefully when daemon not running\n");
   }
 
-  // Test 7: daemon restart starts daemon and can be stopped
   {
-    console.log("Test 7: daemon restart starts daemon and can be stopped");
-    const result = await daemonCommand(["restart", "--port", String(port)]);
-    assert.strictEqual(result.exitCode, 0, "restart should succeed even when previously stopped");
-    assert(result.stdout.toLowerCase().includes("restarted"), "output should report restart");
-
-    const cleanup = await daemonCommand(["stop", "--force"]);
-    assert.strictEqual(cleanup.exitCode, 0, "cleanup stop should succeed after restart");
-    console.log("✓ daemon restart starts and stop cleanup succeeds\n");
+    const result = await daemonCommand(["restart", "--json"]);
+    assert.strictEqual(result.exitCode, 1, "restart must not start a stopped daemon");
+    assert.match(result.stderr, /DAEMON_NOT_RUNNING/);
+    const configured = await daemonCommand(["config", "set", "daemon.listen", `127.0.0.1:${port}`]);
+    assert.strictEqual(configured.exitCode, 0, configured.stderr);
   }
 
   // Test 8: status uses the running daemon as relay authority over local IPC
@@ -222,9 +212,9 @@ try {
     console.log("Test 8: daemon status probes live relay state over local IPC");
     const listen =
       process.platform === "win32"
-        ? `\\\\.\\pipe\\otto-status-${process.pid}-${Date.now()}`
-        : join(ottoHome, "status.sock");
-    const configPath = join(ottoHome, "config.json");
+        ? `\\\\.\\pipe\\paseo-status-${process.pid}-${Date.now()}`
+        : join(paseoHome, "status.sock");
+    const configPath = join(paseoHome, "config.json");
     const config = JSON.parse(await readFile(configPath, "utf-8"));
     config.daemon = {
       ...config.daemon,
@@ -232,7 +222,7 @@ try {
       relay: { ...config.daemon?.relay, enabled: false },
     };
     await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
-    // A supervised daemon owns and heartbeats otto.pid. Launch the worker
+    // A supervised daemon owns and heartbeats paseo.pid. Launch the worker
     // directly so this fixture naturally has a reachable daemon without a PID file.
     const workerEntry = resolveDaemonWorkerEntry();
     const workerArgs = workerEntry.endsWith(".ts")
@@ -242,11 +232,11 @@ try {
       cwd: join(import.meta.dirname, ".."),
       env: {
         ...process.env,
-        OTTO_HOME: ottoHome,
-        OTTO_LISTEN: listen,
-        OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0",
-        OTTO_DICTATION_ENABLED: "0",
-        OTTO_VOICE_MODE_ENABLED: "0",
+        PASEO_HOME: paseoHome,
+        PASEO_LISTEN: listen,
+        PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: "0",
+        PASEO_DICTATION_ENABLED: "0",
+        PASEO_VOICE_MODE_ENABLED: "0",
         CI: "true",
       },
       stdio: "ignore",
@@ -256,10 +246,10 @@ try {
       const relayProbe = await retryWhileWorkerRuns(
         worker,
         async () => {
-          const statusResult = await daemonCommand(["status", "--json"]);
+          const statusResult = await daemonCommand(["status", "--host", listen, "--json"]);
           const statusPayload =
             statusResult.exitCode === 0 ? JSON.parse(statusResult.stdout) : null;
-          const pairingResult = await daemonCommand(["pair", "--json"]);
+          const pairingResult = await daemonCommand(["pair", "--host", listen, "--json"]);
           return { statusResult, statusPayload, pairingResult };
         },
         (result) =>
@@ -280,8 +270,8 @@ try {
       assert.strictEqual(payload.connectedDaemon, "reachable", "IPC daemon should be reachable");
       assert.strictEqual(
         payload.localDaemon,
-        "stopped",
-        "missing PID should report stopped locally",
+        undefined,
+        "endpoint status must not invent local PID state",
       );
       assert.notStrictEqual(payload.relay, "disabled", "status should use live relay state");
       assert.strictEqual(
@@ -303,6 +293,7 @@ try {
       const nestedReload = await daemonCommand(["reload", "--host", listen, "--json"]);
       assert.strictEqual(nestedReload.exitCode, 0, nestedReload.stderr);
       assert.deepStrictEqual(JSON.parse(nestedReload.stdout), {
+        restartCommand: `otto daemon restart --host ${JSON.stringify(listen)}`,
         appliedPaths: ["daemon.browserTools.enabled"],
         restartRequiredPaths: [],
         overrideControlledPaths: ["daemon.listen"],
@@ -310,11 +301,12 @@ try {
 
       reloadConfig.daemon.browserTools.enabled = false;
       await writeFile(configPath, `${JSON.stringify(reloadConfig, null, 2)}\n`, "utf-8");
-      const aliasReload = await runLocalOtto(["reload", "--host", listen, "--json"], {
-        OTTO_HOME: ottoHome,
+      const aliasReload = await runLocalPaseo(["reload", "--host", listen, "--json"], {
+        PASEO_HOME: paseoHome,
       });
       assert.strictEqual(aliasReload.exitCode, 0, aliasReload.stderr);
       assert.deepStrictEqual(JSON.parse(aliasReload.stdout), {
+        restartCommand: `otto daemon restart --host ${JSON.stringify(listen)}`,
         appliedPaths: ["daemon.browserTools.enabled"],
         restartRequiredPaths: [],
         overrideControlledPaths: [],
@@ -323,6 +315,7 @@ try {
       const yamlReload = await daemonCommand(["reload", "--host", listen, "--format", "yaml"]);
       assert.strictEqual(yamlReload.exitCode, 0, yamlReload.stderr);
       assert.deepStrictEqual(YAML.parse(yamlReload.stdout), {
+        restartCommand: `otto daemon restart --host ${JSON.stringify(listen)}`,
         appliedPaths: [],
         restartRequiredPaths: [],
         overrideControlledPaths: [],
@@ -331,35 +324,20 @@ try {
       const humanReload = await daemonCommand(["reload", "--host", listen]);
       assert.match(humanReload.stdout, /Configuration reloaded\./);
 
-      const foreignHome = await mkdtemp(join(tmpdir(), "otto-test-foreign-home-"));
+      const foreignHome = await mkdtemp(join(tmpdir(), "paseo-test-foreign-home-"));
       try {
         await writeFile(
           join(foreignHome, "config.json"),
-          `${JSON.stringify({ daemon: { listen } }, null, 2)}\n`,
+          `${JSON.stringify({ daemon: { listen, relay: { enabled: false } } }, null, 2)}\n`,
           "utf-8",
         );
-        const foreignPairing = await retryWhileWorkerRuns(
-          worker,
-          () =>
-            runLocalOtto(["daemon", "pair", "--home", foreignHome, "--json"], {
-              OTTO_HOME: foreignHome,
-            }),
-          (result) => result.stderr.includes("different Otto home"),
-          (result) => `Pairing did not report the daemon identity mismatch: ${result.stderr}`,
+        const foreignPairing = await runLocalPaseo(
+          ["daemon", "pair", "--home", foreignHome, "--json"],
+          { PASEO_HOME: foreignHome },
         );
-        assert.notStrictEqual(
-          foreignPairing.exitCode,
-          0,
-          "pairing should reject a daemon owned by another home",
-        );
-        assert(
-          foreignPairing.stderr.includes("different Otto home"),
-          "pairing should explain the daemon identity mismatch",
-        );
-        assert(
-          !foreignPairing.stdout.includes("#offer="),
-          "pairing should not expose another offer",
-        );
+        assert.strictEqual(foreignPairing.exitCode, 1);
+        assert.match(foreignPairing.stderr, /RELAY_DISABLED/);
+        assert(!foreignPairing.stdout.includes("#offer="));
       } finally {
         await rm(foreignHome, { recursive: true, force: true });
       }
@@ -369,14 +347,14 @@ try {
     console.log("✓ daemon status probes live relay state over local IPC\n");
   }
 
-  // Test 9: --relay accepts an already-enabled persisted relay while stopped
+  // Test 9: explicit offline relay consent persists for subsequent pairing
   {
-    console.log("Test 9: daemon pair --relay accepts persisted relay while stopped");
-    const configPath = join(ottoHome, "config.json");
+    console.log("Test 9: daemon pair --relay persists offline relay consent");
+    const configPath = join(paseoHome, "config.json");
     const config = JSON.parse(await readFile(configPath, "utf-8"));
     config.daemon = {
       ...config.daemon,
-      relay: { ...config.daemon?.relay, enabled: true },
+      relay: { ...config.daemon?.relay, enabled: false },
     };
     await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf-8");
 
@@ -390,13 +368,19 @@ try {
     const payload = JSON.parse(pairing.stdout);
     assert.strictEqual(payload.relayEnabled, true, "pairing should preserve persisted relay state");
     assert.match(payload.url, /#offer=/, "pairing should include the offline offer");
-    console.log("✓ daemon pair --relay accepts persisted relay while stopped\n");
+    const persistedRelay = await daemonCommand(["config", "get", "daemon.relay.enabled", "--json"]);
+    assert.strictEqual(persistedRelay.exitCode, 0, persistedRelay.stderr);
+    assert.strictEqual(JSON.parse(persistedRelay.stdout).value, true);
+    const subsequentPairing = await daemonCommand(["pair", "--json"]);
+    assert.strictEqual(subsequentPairing.exitCode, 0, subsequentPairing.stderr);
+    assert.match(JSON.parse(subsequentPairing.stdout).url, /#offer=/);
+    console.log("✓ daemon pair --relay persists offline consent for subsequent pairing\n");
   }
 } finally {
   // Best-effort daemon cleanup in case assertions fail before explicit stop.
   await daemonCommand(["stop", "--force"]);
   // Clean up temp directory
-  await rm(ottoHome, { recursive: true, force: true });
+  await rm(paseoHome, { recursive: true, force: true });
 }
 
 console.log("=== All daemon tests passed ===");

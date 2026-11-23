@@ -1,16 +1,13 @@
-import { settingsTargetIdsForPersistence } from "@/screens/settings-search-catalog";
-import { SettingsTargetText } from "@/screens/settings-search/target";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, type PressableStateCallbackType } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
-import { MoreHorizontal, Pencil, Undo2, X } from "@/components/icons/material-icons";
+import { MoreHorizontal, Pencil, Undo2, X } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import { settingsStyles } from "@/styles/settings";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { Button } from "@/components/ui/button";
-import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,11 +15,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Shortcut } from "@/components/ui/shortcut";
-import { useAppSettings, type AppSettings } from "@/hooks/use-settings";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import {
   buildKeyboardShortcutHelpSections,
   getBindingIdForAction,
+  normalizeCapturedShortcutCombo,
   getDefaultKeysForAction,
   resolveShortcutKeysForAction,
   type KeyboardShortcutHelpRow,
@@ -41,46 +38,6 @@ import { getDesktopHost } from "@/desktop/host";
 
 const EMPTY_CAPTURED_COMBOS: string[] = [];
 
-const SHORTCUT_OVERLAY_OPTIONS: SegmentedControlOption<AppSettings["shortcutOverlayMode"]>[] = [
-  { value: "off", label: "Off", testID: "shortcut-overlay-mode-off" },
-  { value: "workspaces", label: "Workspaces", testID: "shortcut-overlay-mode-workspaces" },
-  { value: "on-screen", label: "On-Screen", testID: "shortcut-overlay-mode-on-screen" },
-  { value: "full", label: "Full", testID: "shortcut-overlay-mode-full" },
-];
-
-function ShortcutOverlayModeRow({
-  value,
-  onChange,
-}: {
-  value: AppSettings["shortcutOverlayMode"];
-  onChange: (value: AppSettings["shortcutOverlayMode"]) => void;
-}) {
-  return (
-    <View style={settingsStyles.rowResponsive}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="app-shortcuts-shortcut-overlays-shortcut-overlays"
-          style={settingsStyles.rowTitle}
-        >
-          Shortcut overlays
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          Choose what appears while holding shortcut keys. Full adds unanchored commands in the
-          center of the view.
-        </Text>
-      </View>
-      <SegmentedControl
-        size="sm"
-        wrap
-        value={value}
-        onValueChange={onChange}
-        options={SHORTCUT_OVERLAY_OPTIONS}
-        testID="settings-shortcut-overlay-mode"
-      />
-    </View>
-  );
-}
-
 const ThemedMoreHorizontal = withUnistyles(MoreHorizontal);
 const ThemedPencil = withUnistyles(Pencil);
 const ThemedUndo2 = withUnistyles(Undo2);
@@ -89,9 +46,9 @@ const ThemedX = withUnistyles(X);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-const bindLeadingIcon = <ThemedPencil size="sm" uniProps={foregroundMutedColorMapping} />;
-const clearLeadingIcon = <ThemedX size="sm" uniProps={foregroundMutedColorMapping} />;
-const resetLeadingIcon = <ThemedUndo2 size="sm" uniProps={foregroundMutedColorMapping} />;
+const bindLeadingIcon = <ThemedPencil size={14} uniProps={foregroundMutedColorMapping} />;
+const clearLeadingIcon = <ThemedX size={14} uniProps={foregroundMutedColorMapping} />;
+const resetLeadingIcon = <ThemedUndo2 size={14} uniProps={foregroundMutedColorMapping} />;
 
 function ShortcutSequence({
   chord,
@@ -242,7 +199,7 @@ function ShortcutActionsMenu({
       >
         {({ hovered, open }) => (
           <ThemedMoreHorizontal
-            size="sm"
+            size={14}
             uniProps={hovered || open ? foregroundColorMapping : foregroundMutedColorMapping}
           />
         )}
@@ -322,12 +279,7 @@ function ShortcutRow({
 
   return (
     <View style={rowStyle}>
-      <SettingsTargetText
-        settingId={settingsTargetIdsForPersistence("shortcuts", `keyboard override: ${row.id}`)}
-        style={styles.rowLabel}
-      >
-        {t(row.labelKey)}
-      </SettingsTargetText>
+      <Text style={styles.rowLabel}>{t(row.labelKey)}</Text>
       <View style={styles.rowActions}>
         <View style={styles.rowKeys}>
           <ShortcutRowKeys
@@ -379,7 +331,6 @@ export function KeyboardShortcutsSection() {
   const [heldModifiers, setHeldModifiers] = useState<string | null>(null);
   const { overrides, hasOverrides, setOverride, clearOverride, removeOverride, resetAll } =
     useKeyboardShortcutOverrides();
-  const { settings, updateSettings } = useAppSettings();
   const setCapturingShortcut = useKeyboardShortcutsStore((s) => s.setCapturingShortcut);
   const capturing = useKeyboardShortcutsStore((s) => s.capturingShortcut);
 
@@ -427,8 +378,7 @@ export function KeyboardShortcutsSection() {
       event.preventDefault();
       event.stopPropagation();
 
-      const key = event.key ?? "";
-      if (key === "Backspace") {
+      if (event.code === "Backspace" && heldModifiersFromEvent(event) === null) {
         setCapturedCombos((current) => (current.length > 0 ? current.slice(0, -1) : current));
         return;
       }
@@ -440,7 +390,8 @@ export function KeyboardShortcutsSection() {
       }
 
       setHeldModifiers(null);
-      setCapturedCombos((current) => [...current, comboString]);
+      const capturedCombo = normalizeCapturedShortcutCombo(capturingBindingId!, comboString);
+      setCapturedCombos((current) => [...current, capturedCombo]);
     }
 
     window.addEventListener("keydown", handleKeyDown, true);
@@ -475,12 +426,6 @@ export function KeyboardShortcutsSection() {
     (bindingId: string) => void removeOverride(bindingId),
     [removeOverride],
   );
-  const handleShortcutOverlayModeChange = useCallback(
-    (shortcutOverlayMode: AppSettings["shortcutOverlayMode"]) => {
-      void updateSettings({ shortcutOverlayMode });
-    },
-    [updateSettings],
-  );
 
   if (isNative) {
     return (
@@ -500,15 +445,6 @@ export function KeyboardShortcutsSection() {
 
   return (
     <>
-      {/* i18n: English-only pending a translation pass (contextual shortcuts). */}
-      <SettingsSection title="Shortcut overlays">
-        <View style={settingsStyles.card}>
-          <ShortcutOverlayModeRow
-            value={settings.shortcutOverlayMode}
-            onChange={handleShortcutOverlayModeChange}
-          />
-        </View>
-      </SettingsSection>
       {sections.map(function (section, sectionIndex) {
         return (
           <SettingsSection

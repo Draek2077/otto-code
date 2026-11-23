@@ -1,7 +1,5 @@
 import { defineLanguageFacet, Language, StreamLanguage } from "@codemirror/language";
 import { dart } from "@codemirror/legacy-modes/mode/clike";
-import { shell } from "@codemirror/legacy-modes/mode/shell";
-import { standardSQL } from "@codemirror/legacy-modes/mode/sql";
 import { swift } from "@codemirror/legacy-modes/mode/swift";
 import { parser as jsParser } from "@lezer/javascript";
 import { parser as jsonParser } from "@lezer/json";
@@ -20,6 +18,7 @@ import { parser as elixirParser } from "lezer-elixir";
 import type { Parser } from "@lezer/common";
 import { csharpLanguage } from "./csharp/language.js";
 import { astroParser } from "./astro/parser.js";
+import { vueParser } from "./vue/parser.js";
 import { nixLanguage } from "./nix/language.js";
 import { parser as svelteBaseParser } from "./svelte/parser.js";
 import { configureNesting, defaultNesting } from "./svelte/nesting.js";
@@ -27,9 +26,6 @@ import { configureNesting, defaultNesting } from "./svelte/nesting.js";
 function language(parser: Parser): Language {
   return new Language(defineLanguageFacet(), parser);
 }
-
-// Shared instance so the four shell fence aliases don't each build a grammar.
-const shellLanguage = StreamLanguage.define(shell);
 
 const languagesByExtension: Record<string, Language> = {
   // JavaScript/TypeScript
@@ -61,6 +57,8 @@ const languagesByExtension: Record<string, Language> = {
   svelte: language(svelteBaseParser.configure({ wrap: configureNesting(defaultNesting) })),
   // Astro
   astro: language(astroParser),
+  // Vue
+  vue: language(vueParser),
   // XML
   xml: language(xmlParser),
   // Java
@@ -90,18 +88,6 @@ const languagesByExtension: Record<string, Language> = {
   // Markdown
   md: language(markdownParser),
   mdx: language(markdownParser),
-  // Shell. `detect.ts` has scored shell since it was written and can return
-  // "sh", so without these rows we classified a snippet as shell and then had
-  // nothing to colour it with. Lost in the Otto v0.2.5 merge when this table
-  // took upstream's shape; see projects/otto-v025-merge/audit-findings.md.
-  // All four fence tags (sh/bash/zsh/shell) map here.
-  sh: shellLanguage,
-  bash: shellLanguage,
-  zsh: shellLanguage,
-  shell: shellLanguage,
-  // SQL. Same story: "sql" is a detect.ts verdict. `standardSQL` is the dialect
-  // -neutral mode, which is the right default for snippets of unknown origin.
-  sql: StreamLanguage.define(standardSQL),
 };
 
 export function getLanguageForFile(filename: string): Language | null {

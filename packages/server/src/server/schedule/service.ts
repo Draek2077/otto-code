@@ -1,37 +1,22 @@
-import { findProfileByRef } from "@otto-code/protocol/agent-profiles";
+import { presentationLabel } from "@getpaseo/protocol/otto/agent-teams"; // OTTO(schedule-profiles)
+import { scheduleProfile, type ResolveRole } from "../otto/agent-profiles/role-selection.js"; // OTTO(schedule-profiles)
+import { formatSystemNotificationPrompt } from "../agent/agent-messages/index.js";
 import { randomUUID } from "node:crypto";
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
 import type { Logger } from "pino";
 import type { AgentManager } from "../agent/agent-manager.js";
-import type { AgentSessionConfig, ProviderSnapshotEntry } from "../agent/agent-sdk-types.js";
-import type { AgentStorage, StoredAgentRecord } from "../agent/agent-storage.js";
-import type { ActivityIncrementFn } from "../activity-stats/activity-stats-store.js";
-import { resolveProfile, type ResolvedProfileSnapshot } from "../agent/agent-profiles.js";
-import {
-  composeTeamAndPersonalityPrompt,
-  resolveTeamSchedulerSnapshot,
-  resolveTeamSnapshotForPersonality,
-  type ResolvedTeamSnapshot,
-} from "../agent/agent-teams.js";
-import {
-  TEAM_SCHEDULER_PERSONALITY_SENTINEL,
-  type AgentTeamsConfigView,
-} from "@otto-code/protocol/agent-teams";
-import { SCHEDULE_ID_LABEL, SCHEDULE_RUN_ID_LABEL } from "@otto-code/protocol/agent-labels";
+import type { AgentSessionConfig } from "../agent/agent-sdk-types.js";
+import type { AgentStorage } from "../agent/agent-storage.js";
 import { curateAgentActivity } from "../agent/activity-curator.js";
 import { ensureAgentLoaded } from "../agent/agent-loading.js";
-import {
-  formatSystemNotificationPrompt,
-  startAgentRun,
-  type AgentRunController,
-} from "../agent/agent-prompt.js";
+import { startAgentRun, type AgentRunController } from "../agent/agent-prompt.js";
 import { resolveCreateAgentTitles } from "../agent/create-agent-title.js";
 import { type BoundCreateAgentCommand, formatProviderModel } from "../agent/create-agent/create.js";
 import type { PersistedWorkspaceRecord } from "../workspace-registry.js";
-import type { CreateOttoWorktreeWorkflowResult } from "../worktree-session.js";
+import type { CreatePaseoWorktreeWorkflowResult } from "../worktree-session.js";
 import { ScheduleStore } from "./store.js";
-import { computeNextRunAt, computeNextRunAtOrNull, validateScheduleCadence } from "./cron.js";
+import { computeNextRunAt, validateScheduleCadence } from "./cron.js";
 import type {
   CreateScheduleInput,
   ScheduleExecutionResult,
@@ -39,36 +24,31 @@ import type {
   ScheduleTarget,
   StoredSchedule,
   UpdateScheduleInput,
+} from "../otto/schedules/types.js"; // OTTO(schedules): internal targets; old wire schemas stay unchanged.
+import type {
   UpdateScheduleNewAgentConfig,
-} from "@otto-code/protocol/schedule/types";
-import type { AgentProfile, FirstAgentContext } from "@otto-code/protocol/messages";
-import { truncateHeadTail } from "../../utils/truncate-head-tail.js";
+  StoredSchedule as PaseoSchedule,
+  ScheduleExecutionResult as PaseoExecutionResult,
+} from "@getpaseo/protocol/schedule/types";
+import type {
+  ScheduleStorePort,
+  ScheduleRuntimeHooks,
+  ScheduleMutation,
+  ScheduleSettlement,
+  ScheduleAdmission,
+  ScheduleTurnFactory,
+} from "../otto/schedules/types.js";
+import { requirePaseoSchedule } from "../otto/schedules/legacy.js"; // OTTO(schedules): preserve the legacy runner contract.
+import {
+  stampScheduleRun,
+  recoverScheduleTarget,
+  settleScheduleTarget,
+  sameScheduleTarget,
+} from "../otto/schedules/lifecycle.js"; // OTTO(schedules): target audit/recovery logic stays owned.
+import type { FirstAgentContext } from "@getpaseo/protocol/messages";
+import { scheduleNativeResult } from "../otto/schedules/native-result.js"; // OTTO(schedules): exact-turn result, not a later chat's state.
 
 const SCHEDULE_TICK_INTERVAL_MS = 1000;
-
-// Ticks overlap while runs are in flight (each tick awaits its runs but new
-// ticks keep firing every second), so an unbounded due backlog could start one
-// new run per second. Cap the in-flight fan-out; due schedules over the cap
-// simply wait for a later tick.
-const MAX_CONCURRENT_SCHEDULE_RUNS = 5;
-
-// Run history is persisted whole and returned whole by `schedule_logs`, so an
-// open-ended schedule (a daily cron with no maxRuns) grew one output-bearing
-// record per fire, forever: a 90-day daily schedule was tens of thousands of
-// tokens in a single tool result. Keep a recent window instead.
-//
-// The floor is `maxRuns` when one is set, because `countCompletedRuns` decides
-// completion by counting the retained array - pruning below `maxRuns` would
-// make such a schedule never complete. A schedule with `maxRuns` is already
-// bounded by the user's own cap, so nothing is unbounded either way.
-const MAX_RETAINED_SCHEDULE_RUNS = 50;
-
-// A run's output is model-written text (a final message or a curated timeline),
-// replayed in full on every `schedule_logs` call and every run-history render.
-// Head-heavy so the "what did it do" opening survives, with a tail so a closing
-// verdict is not lost.
-const RUN_OUTPUT_HEAD_CHARS = 1_600;
-const RUN_OUTPUT_TAIL_CHARS = 400;
 
 // A run failed because its target no longer exists: the agent was deleted or
 // archived, or a new-agent cwd was removed. These are permanent, so the schedule
@@ -80,18 +60,31 @@ export class ScheduleTargetGoneError extends Error {
   }
 }
 
-/** A saved Workflow cannot be launched on this host until the user repairs it. */
-export class ScheduleWorkflowTargetError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "ScheduleWorkflowTargetError";
+export class ScheduleNotFoundError extends Error {
+  constructor(id: string) {
+    super(`Schedule not found: ${id}`);
+    this.name = "ScheduleNotFoundError";
   }
 }
 
-export type ScheduleWorkflowRunner = (input: {
-  schedule: StoredSchedule;
-  runId: string;
-}) => Promise<ScheduleExecutionResult>;
+export class ScheduleStateConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ScheduleStateConflictError";
+  }
+}
+
+function advanceNextRunAtPast(
+  cadence: StoredSchedule["cadence"],
+  nextRunAt: Date,
+  now: Date,
+): Date {
+  let next = nextRunAt;
+  while (next.getTime() <= now.getTime()) {
+    next = computeNextRunAt(cadence, next);
+  }
+  return next;
+}
 
 function trimOptionalName(value: string | null | undefined): string | null {
   if (typeof value !== "string") {
@@ -116,35 +109,17 @@ function normalizePrompt(prompt: string): string {
   return trimmed;
 }
 
-/**
- * COMPAT(agentProfileFields): either spelling patches the binding, and both keys
- * are written so a daemon that predates the rename still finds it after a
- * downgrade. normalizeTargetProfileBinding resolves the value to a stable id
- * afterwards.
- */
-function applyProfileBindingPatch(
-  config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
-  patch: UpdateScheduleNewAgentConfig,
-): void {
-  if (patch.agentProfile === undefined && patch.personality === undefined) {
-    return;
-  }
-  const requested = patch.agentProfile !== undefined ? patch.agentProfile : patch.personality;
-  const trimmed = requested?.trim();
-  if (trimmed) {
-    config.personality = trimmed;
-    config.agentProfile = trimmed;
-    return;
-  }
-  delete config.personality;
-  delete config.agentProfile;
-}
-
 function applyNewAgentConfig(
   target: Extract<ScheduleTarget, { type: "new-agent" }>,
   patch: UpdateScheduleNewAgentConfig,
 ): Extract<ScheduleTarget, { type: "new-agent" }> {
   const config = { ...target.config };
+  if (patch.agentProfile !== undefined) {
+    // OTTO(schedule-profiles)
+    delete config.personality;
+    if (patch.agentProfile) config.agentProfile = patch.agentProfile;
+    else delete config.agentProfile;
+  }
   if (patch.provider !== undefined) {
     const trimmed = patch.provider.trim();
     if (!trimmed) {
@@ -159,7 +134,6 @@ function applyNewAgentConfig(
     }
     config.cwd = trimmed;
   }
-  applyProfileBindingPatch(config, patch);
   if (patch.model !== undefined) {
     const trimmed = patch.model?.trim();
     if (trimmed) {
@@ -204,7 +178,10 @@ function normalizeMaxRuns(value: number | null | undefined): number | null {
 }
 
 function countCompletedRuns(schedule: StoredSchedule): number {
-  return schedule.runs.filter((run) => run.status !== "running").length;
+  return (
+    (schedule.otto?.history?.count ?? 0) +
+    schedule.runs.filter((run) => run.status !== "running").length
+  ); // OTTO(schedules): archived terminal attempts still consume the lifetime run limit.
 }
 
 function shouldArchiveScheduleRunWorkspace(input: {
@@ -226,27 +203,9 @@ function shouldCompleteSchedule(schedule: StoredSchedule, now: Date): boolean {
 
 function requireSchedule(schedule: StoredSchedule | null, id: string): StoredSchedule {
   if (!schedule) {
-    throw new Error(`Schedule not found: ${id}`);
+    throw new ScheduleNotFoundError(id);
   }
   return schedule;
-}
-
-// A persisted cadence that can no longer produce a future run (an unsatisfiable
-// cron stored before creation-time validation existed). Pause the schedule
-// instead of throwing so run records still close and the tick stops re-firing.
-function pauseUnsatisfiableSchedule(schedule: StoredSchedule, now: Date): StoredSchedule {
-  const expression =
-    schedule.cadence.type === "cron"
-      ? schedule.cadence.expression
-      : `${schedule.cadence.everyMs}ms`;
-  return {
-    ...schedule,
-    status: "paused",
-    nextRunAt: null,
-    pausedAt: now.toISOString(),
-    lastRunError: `Schedule paused: cron expression has no matching run time within the next year: ${expression}`,
-    updatedAt: now.toISOString(),
-  };
 }
 
 function completeSchedule(schedule: StoredSchedule, now: Date): StoredSchedule {
@@ -277,20 +236,6 @@ function mergeScheduleCadenceTimezone(
   return next;
 }
 
-// Every source below is unbounded model text (a final message, a curated
-// timeline). The cap lands in `finishRun`, the one place a run's output is
-// written, so an injected runner is bounded the same way this one is.
-function truncateRunOutput(output: string | null): string | null {
-  return output === null
-    ? null
-    : truncateHeadTail({
-        text: output,
-        headChars: RUN_OUTPUT_HEAD_CHARS,
-        tailChars: RUN_OUTPUT_TAIL_CHARS,
-        note: "open the run's chat for the full transcript",
-      });
-}
-
 function buildRunOutput(params: {
   output: string | null;
   timelineText: string;
@@ -308,38 +253,18 @@ function buildRunOutput(params: {
   return null;
 }
 
-/**
- * Drop the oldest finished runs once the history exceeds the retention window.
- * Still-running runs are always kept: dropping one would orphan the `finishRun`
- * update that closes it.
- */
-export function pruneScheduleRuns(schedule: StoredSchedule): StoredSchedule {
-  const retention = Math.max(MAX_RETAINED_SCHEDULE_RUNS, schedule.maxRuns ?? 0);
-  if (schedule.runs.length <= retention) {
-    return schedule;
-  }
-  const runningIds = new Set(
-    schedule.runs.filter((run) => run.status === "running").map((run) => run.id),
-  );
-  const finished = schedule.runs.filter((run) => run.status !== "running");
-  // `slice(-0)` returns the whole array, so an empty budget is its own case.
-  const keepFinished = Math.max(0, retention - runningIds.size);
-  const keptFinished = keepFinished > 0 ? finished.slice(-keepFinished) : [];
-  const keptIds = new Set([...runningIds, ...keptFinished.map((run) => run.id)]);
-  return {
-    ...schedule,
-    runs: schedule.runs.filter((run) => keptIds.has(run.id)),
-  };
-}
-
-type ScheduleAgentManager = AgentRunController &
+type ScheduleAgentManager = Pick<
+  AgentRunController,
+  | "getAgent"
+  | "reloadAgentSession"
+  | "tryRunOutOfBand"
+  | "hasInFlightRun"
+  | "replaceAgentRun"
+  | "steerOrReplaceActiveTurn"
+  | "streamAgent"
+> &
   Pick<
     AgentManager,
-    // Otto's retained-transcript capture and teardown: a schedule run keeps its
-    // transcript after the agent closes (docs/safe-unattended.md).
-    | "captureRetainedTranscript"
-    | "closeAgent"
-    | "deleteRetainedTranscriptsForOwner"
     | "createAgent"
     | "getRegisteredProviderIds"
     | "hydrateTimelineFromProvider"
@@ -352,108 +277,83 @@ type ScheduleAgentManager = AgentRunController &
 interface ScheduleWorkspaceCreateInput {
   cwd: string;
   firstAgentContext: FirstAgentContext;
-  // Schedule runs always create their workspace hidden (withheld from clients).
-  // The host honors this by persisting the workspace record with `hidden: true`;
-  // the run reveals it later only on finish-and-keep or error.
-  hidden: boolean;
-}
-
-/** Narrow provider-snapshot surface the run path needs for personality resolution. */
-export interface ScheduleProviderLister {
-  listProviders(input: {
-    cwd?: string | null;
-    wait?: boolean;
-  }): Promise<readonly ProviderSnapshotEntry[]>;
 }
 
 export interface ScheduleServiceOptions {
-  ottoHome: string;
+  resolveRole?: ResolveRole; // OTTO(schedule-profiles)
+  paseoHome: string;
   logger: Logger;
   agentManager: ScheduleAgentManager;
   agentStorage: AgentStorage;
   createAgent: BoundCreateAgentCommand;
-  /** Optional - enables personality-bound schedules (run-time resolution). */
-  providerSnapshotManager?: ScheduleProviderLister;
-  /** Optional - reads the live personality roster for personality-bound schedules. */
-  readAgentProfiles?: () => AgentProfile[];
-  /**
-   * Optional - reads the live Agent Teams section. A schedule resolves the
-   * ACTIVE team at run time (the active team is "how this host operates right
-   * now"): a run under Team B carries Team B's frame iff the bound personality
-   * is a member; otherwise it runs teamless - never a hard-fail, unlike
-   * personality unavailability, because teamlessness is a valid state.
-   */
-  readAgentTeams?: () => AgentTeamsConfigView | undefined;
-  createLocalCheckoutWorkspace: (
+  createDirectoryWorkspace: (
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<PersistedWorkspaceRecord>;
-  createOttoWorktreeWorkspace: (
+  createPaseoWorktreeWorkspace: (
     input: ScheduleWorkspaceCreateInput,
-  ) => Promise<CreateOttoWorktreeWorkflowResult>;
-  archiveWorkspace: (workspaceId: string, repoRoot: string) => Promise<void>;
-  // Flip a hidden schedule-run workspace to visible and emit a workspace_update
-  // so it appears in every client's sidebar. Called on finish-and-keep and on
-  // error (never on archive-on-finish success - that path stays invisible).
-  revealWorkspace: (workspaceId: string) => Promise<void>;
+  ) => Promise<CreatePaseoWorktreeWorkflowResult>;
+  archiveWorkspace: (workspaceId: string) => Promise<void>;
   now?: () => Date;
-  runner?: (schedule: StoredSchedule, runId: string) => Promise<ScheduleExecutionResult>;
-  /** Installed after Workflow services initialize; absent hosts fail closed. */
-  workflowRunner?: ScheduleWorkflowRunner;
-  onActivity?: ActivityIncrementFn;
+  runner?: (schedule: PaseoSchedule, runId: string) => Promise<PaseoExecutionResult>;
+  store?: ScheduleStorePort; // OTTO(schedules): trusted internal storage adapter.
+  onRunStarted?: () => void; // OTTO(activity)
+  otto?: ScheduleRuntimeHooks; // OTTO(schedules): target adapters share this scheduler's lifecycle.
 }
 
 export class ScheduleService {
-  private readonly store: ScheduleStore;
+  private readonly store: ScheduleStorePort; // OTTO(schedules): injected project/legacy registry, same lifecycle.
+  private readonly otto?: ScheduleRuntimeHooks; // OTTO(schedules)
   private readonly logger: Logger;
   private readonly agentManager: ScheduleAgentManager;
   private readonly agentStorage: AgentStorage;
   private readonly createAgent: BoundCreateAgentCommand;
-  private readonly createLocalCheckoutWorkspace: (
+  private readonly createDirectoryWorkspace: (
     input: ScheduleWorkspaceCreateInput,
   ) => Promise<PersistedWorkspaceRecord>;
-  private readonly createOttoWorktreeWorkspace: (
+  private readonly createPaseoWorktreeWorkspace: (
     input: ScheduleWorkspaceCreateInput,
-  ) => Promise<CreateOttoWorktreeWorkflowResult>;
-  private readonly archiveWorkspace: (workspaceId: string, repoRoot: string) => Promise<void>;
-  private readonly revealWorkspace: (workspaceId: string) => Promise<void>;
-  private readonly providerSnapshotManager: ScheduleProviderLister | null;
-  private readonly readAgentProfiles: (() => AgentProfile[]) | null;
-  private readonly readAgentTeams: (() => AgentTeamsConfigView | undefined) | null;
+  ) => Promise<CreatePaseoWorktreeWorkflowResult>;
+  private readonly archiveWorkspace: (workspaceId: string) => Promise<void>;
   private readonly now: () => Date;
   private readonly runner: (
     schedule: StoredSchedule,
     runId: string,
   ) => Promise<ScheduleExecutionResult>;
-  private workflowRunner: ScheduleWorkflowRunner | null;
   private readonly runningScheduleIds = new Set<string>();
-  private readonly onActivity: ActivityIncrementFn | undefined;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
 
+  private readonly onRunStarted?: () => void; // OTTO(activity)
+  private readonly resolveRole?: ResolveRole; // OTTO(schedule-profiles)
   constructor(options: ScheduleServiceOptions) {
-    this.store = new ScheduleStore(join(options.ottoHome, "schedules"));
     this.logger = options.logger.child({ module: "schedule-service" });
+    this.store =
+      options.store ?? new ScheduleStore(join(options.paseoHome, "schedules"), this.logger); // OTTO(schedules)
+    this.onRunStarted = options.onRunStarted; // OTTO(activity)
+    this.resolveRole = options.resolveRole; // OTTO(schedule-profiles)
+    this.otto = options.otto; // OTTO(schedules)
     this.agentManager = options.agentManager;
     this.agentStorage = options.agentStorage;
     this.createAgent = options.createAgent;
-    this.createLocalCheckoutWorkspace = options.createLocalCheckoutWorkspace;
-    this.createOttoWorktreeWorkspace = options.createOttoWorktreeWorkspace;
+    this.createDirectoryWorkspace = options.createDirectoryWorkspace;
+    this.createPaseoWorktreeWorkspace = options.createPaseoWorktreeWorkspace;
     this.archiveWorkspace = options.archiveWorkspace;
-    this.revealWorkspace = options.revealWorkspace;
-    this.providerSnapshotManager = options.providerSnapshotManager ?? null;
-    this.readAgentProfiles = options.readAgentProfiles ?? null;
-    this.readAgentTeams = options.readAgentTeams ?? null;
     this.now = options.now ?? (() => new Date());
-    this.runner = options.runner ?? ((schedule, runId) => this.executeSchedule(schedule, runId));
-    this.workflowRunner = options.workflowRunner ?? null;
-    this.onActivity = options.onActivity;
-  }
-
-  setWorkflowRunner(runner: ScheduleWorkflowRunner): void {
-    this.workflowRunner = runner;
+    const legacyRunner = options.runner; // OTTO(schedules): no extended target enters a legacy fixture runner.
+    this.runner = legacyRunner
+      ? (schedule, runId) => legacyRunner(requirePaseoSchedule(schedule), runId)
+      : (schedule, runId) =>
+          this.otto
+            ? this.otto.execute({
+                // OTTO(schedules): target dispatch reuses this scheduler's durable claim/finish.
+                schedule,
+                runId,
+                legacy: (turnOptions) => this.executeSchedule(schedule, runId, turnOptions), // OTTO(schedules): a private turn capability, never provider configuration.
+                stamp: (audit) => stampScheduleRun(this.store, schedule.id, runId, audit, this.now),
+              })
+            : this.executeSchedule(schedule, runId);
   }
 
   async start(): Promise<void> {
-    await this.migrateProfileBindingsToIds();
     await this.recoverInterruptedRuns();
     await this.sweepOrphanedSchedules();
     if (this.tickTimer) {
@@ -473,6 +373,7 @@ export class ScheduleService {
       clearInterval(this.tickTimer);
       this.tickTimer = null;
     }
+    await this.otto?.stop(); // OTTO(schedules): revoke owned target work after stopping the single clock.
   }
 
   async create(input: CreateScheduleInput): Promise<StoredSchedule> {
@@ -492,62 +393,6 @@ export class ScheduleService {
     return this.store.create(this.buildScheduleRecord(input, fields));
   }
 
-  /**
-   * Rewrite a target's Personality binding onto the stable id.
-   *
-   * Renaming a Personality must not break a schedule (see
-   * docs/agent-profiles.md), so the binding persists as the id even though
-   * both the MCP tool and the app's schedule form accept a display name. The
-   * dynamic team sentinel is not a roster entry and passes through untouched, as
-   * does a binding naming nothing on this host: that stays the run-time failure
-   * it already was, rather than becoming a silent create-time one.
-   */
-  private normalizeTargetProfileBinding(target: ScheduleTarget): ScheduleTarget {
-    if (target.type !== "new-agent") {
-      return target;
-    }
-    // COMPAT(agentProfileFields): read the current spelling first, fall back to
-    // the pre-rename one, and write both so a downgrade still finds the binding.
-    const binding = (target.config.agentProfile ?? target.config.personality)?.trim();
-    if (!binding || binding === TEAM_SCHEDULER_PERSONALITY_SENTINEL) {
-      return target;
-    }
-    const match = findProfileByRef(this.readAgentProfiles?.() ?? [], binding);
-    const resolved = match?.id ?? binding;
-    if (target.config.agentProfile === resolved && target.config.personality === resolved) {
-      return target;
-    }
-    return {
-      ...target,
-      config: { ...target.config, personality: resolved, agentProfile: resolved },
-    };
-  }
-
-  /**
-   * COMPAT(scheduleProfileBinding): added in v0.8.13, remove after 2027-02-22.
-   * One pass at startup moving name-bound schedules onto ids, so a rename stops
-   * breaking schedules authored before the binding changed. A binding that no
-   * longer resolves is left alone: it is the user's data, and rewriting it would
-   * destroy the only record of what they meant.
-   */
-  private async migrateProfileBindingsToIds(): Promise<void> {
-    if (!this.readAgentProfiles) {
-      return;
-    }
-    let migrated = 0;
-    for (const schedule of await this.store.list()) {
-      const normalized = this.normalizeTargetProfileBinding(schedule.target);
-      if (normalized === schedule.target) {
-        continue;
-      }
-      await this.store.update(schedule.id, (current) => ({ ...current, target: normalized }));
-      migrated += 1;
-    }
-    if (migrated > 0) {
-      this.logger.info({ migrated }, "Migrated schedule Personality bindings onto stable ids");
-    }
-  }
-
   private buildScheduleRecord(
     input: CreateScheduleInput,
     fields: { name: string | null; prompt: string; target: ScheduleTarget },
@@ -559,18 +404,17 @@ export class ScheduleService {
       name: fields.name,
       prompt: fields.prompt,
       cadence: input.cadence,
-      target: this.normalizeTargetProfileBinding(fields.target),
+      target: fields.target,
       status: "active",
       createdAt: now.toISOString(),
       updatedAt: now.toISOString(),
       nextRunAt: nextRunAt.toISOString(),
       lastRunAt: null,
-      lastRunStatus: null,
-      lastRunError: null,
       pausedAt: null,
       expiresAt: input.expiresAt ?? null,
       maxRuns: normalizeMaxRuns(input.maxRuns),
       runs: [],
+      ...(input.otto ? { otto: input.otto } : {}), // OTTO(schedules): trusted resolved store context.
     };
   }
 
@@ -585,9 +429,7 @@ export class ScheduleService {
       return this.createScheduleRecord(input, { name, prompt, target: input.target });
     }
 
-    // Normalized once so the identity match and both write branches agree on
-    // the binding they are comparing and storing.
-    const inputTarget = this.normalizeTargetProfileBinding(input.target);
+    const inputTarget = input.target;
     return this.store.upsertByNameAndTarget(name, inputTarget, {
       create: async () => {
         return this.buildScheduleRecord(input, { name, prompt, target: inputTarget });
@@ -620,10 +462,7 @@ export class ScheduleService {
 
   async inspect(id: string): Promise<StoredSchedule> {
     const schedule = await this.store.get(id);
-    if (!schedule) {
-      throw new Error(`Schedule not found: ${id}`);
-    }
-    return schedule;
+    return requireSchedule(schedule, id);
   }
 
   async logs(id: string): Promise<ScheduleRun[]> {
@@ -631,98 +470,112 @@ export class ScheduleService {
     return [...schedule.runs].sort((left, right) => left.startedAt.localeCompare(right.startedAt));
   }
 
-  async pause(id: string): Promise<StoredSchedule> {
-    const paused = await this.store.update(id, (schedule) => {
-      if (schedule.status === "completed") {
-        throw new Error(`Schedule ${id} is already completed`);
-      }
-      if (schedule.status === "paused") {
-        return schedule;
-      }
-      const now = this.now();
-      return {
-        ...schedule,
-        status: "paused" as const,
-        nextRunAt: null,
-        pausedAt: now.toISOString(),
-        updatedAt: now.toISOString(),
-      };
-    });
+  async pause(id: string, mutation?: ScheduleMutation): Promise<StoredSchedule> {
+    // OTTO(schedules)
+    const paused = await this.store.update(
+      id,
+      (schedule) => {
+        if (schedule.status === "completed") {
+          throw new ScheduleStateConflictError(`Schedule ${id} is already completed`);
+        }
+        if (schedule.status === "paused") {
+          return schedule;
+        }
+        const now = this.now();
+        return {
+          ...schedule,
+          status: "paused" as const,
+          nextRunAt: null,
+          pausedAt: now.toISOString(),
+          updatedAt: now.toISOString(),
+        };
+      },
+      mutation,
+    );
     return requireSchedule(paused, id);
   }
 
-  async resume(id: string): Promise<StoredSchedule> {
-    const resumed = await this.store.update(id, (schedule) => {
-      if (schedule.status === "completed") {
-        throw new Error(`Schedule ${id} is already completed`);
-      }
-      if (schedule.status === "active") {
-        return schedule;
-      }
-      const now = this.now();
-      return {
-        ...schedule,
-        status: "active" as const,
-        pausedAt: null,
-        nextRunAt: computeNextRunAt(schedule.cadence, now).toISOString(),
-        updatedAt: now.toISOString(),
-      };
-    });
+  async resume(id: string, mutation?: ScheduleMutation): Promise<StoredSchedule> {
+    // OTTO(schedules)
+    const resumed = await this.store.update(
+      id,
+      (schedule) => {
+        if (schedule.status === "completed") {
+          throw new ScheduleStateConflictError(`Schedule ${id} is already completed`);
+        }
+        if (schedule.status === "active") {
+          return schedule;
+        }
+        const now = this.now();
+        return {
+          ...schedule,
+          status: "active" as const,
+          pausedAt: null,
+          nextRunAt: computeNextRunAt(schedule.cadence, now).toISOString(),
+          updatedAt: now.toISOString(),
+        };
+      },
+      mutation,
+    );
     return requireSchedule(resumed, id);
   }
 
   async update(input: UpdateScheduleInput): Promise<StoredSchedule> {
-    const next = await this.store.update(input.id, async (schedule) => {
-      const now = this.now();
-      let updated: StoredSchedule = schedule;
+    const next = await this.store.update(
+      input.id,
+      async (schedule) => {
+        const now = this.now();
+        let updated: StoredSchedule = schedule;
 
-      if (input.prompt !== undefined) {
-        updated = { ...updated, prompt: normalizePrompt(input.prompt) };
-      }
-
-      if (input.name !== undefined) {
-        updated = { ...updated, name: trimOptionalName(input.name) };
-      }
-
-      if (input.cadence !== undefined) {
-        const cadence = mergeScheduleCadenceTimezone(updated.cadence, input.cadence);
-        validateScheduleCadence(cadence);
-        const nextRunAt =
-          updated.status === "active" ? computeNextRunAt(cadence, now).toISOString() : null;
-        updated = { ...updated, cadence, nextRunAt };
-      }
-
-      if (input.newAgentConfig !== undefined) {
-        if (updated.target.type !== "new-agent") {
-          throw new Error("new-agent config updates are only valid for new-agent target schedules");
+        if (input.prompt !== undefined) {
+          updated = { ...updated, prompt: normalizePrompt(input.prompt) };
         }
-        const patchedTarget = this.normalizeTargetProfileBinding(
-          applyNewAgentConfig(updated.target, input.newAgentConfig),
-        );
-        updated = {
-          ...updated,
-          target: patchedTarget,
-        };
-      }
 
-      if (input.maxRuns !== undefined) {
-        updated = { ...updated, maxRuns: normalizeMaxRuns(input.maxRuns) };
-      }
+        if (input.name !== undefined) {
+          updated = { ...updated, name: trimOptionalName(input.name) };
+        }
 
-      if (input.expiresAt !== undefined) {
-        updated = { ...updated, expiresAt: input.expiresAt };
-      }
+        if (input.cadence !== undefined) {
+          const cadence = mergeScheduleCadenceTimezone(updated.cadence, input.cadence);
+          validateScheduleCadence(cadence);
+          const nextRunAt =
+            updated.status === "active" ? computeNextRunAt(cadence, now).toISOString() : null;
+          updated = { ...updated, cadence, nextRunAt };
+        }
 
-      return { ...updated, updatedAt: now.toISOString() };
-    });
+        if (input.newAgentConfig !== undefined) {
+          if (updated.target.type !== "new-agent") {
+            throw new Error(
+              "new-agent config updates are only valid for new-agent target schedules",
+            );
+          }
+          const patchedTarget = applyNewAgentConfig(updated.target, input.newAgentConfig);
+          updated = {
+            ...updated,
+            target: patchedTarget,
+          };
+        }
+
+        if (input.target !== undefined) updated = { ...updated, target: input.target }; // OTTO(schedules): explicit target repair, never inferred from prompt.
+
+        if (input.maxRuns !== undefined) {
+          updated = { ...updated, maxRuns: normalizeMaxRuns(input.maxRuns) };
+        }
+
+        if (input.expiresAt !== undefined) {
+          updated = { ...updated, expiresAt: input.expiresAt };
+        }
+
+        return { ...updated, updatedAt: now.toISOString() };
+      },
+      input.mutation,
+    );
     return requireSchedule(next, input.id);
   }
 
-  async delete(id: string): Promise<void> {
-    await this.store.delete(id);
-    // Cascade: drop every retained run transcript this schedule produced so its
-    // chats don't outlive it.
-    await this.agentManager.deleteRetainedTranscriptsForOwner({ kind: "schedule", id });
+  async delete(id: string, mutation?: ScheduleMutation): Promise<void> {
+    // OTTO(schedules)
+    await this.store.delete(id, mutation);
   }
 
   async completeForAgent(agentId: string): Promise<number> {
@@ -776,15 +629,20 @@ export class ScheduleService {
     return completed;
   }
 
-  async runOnce(id: string): Promise<StoredSchedule> {
+  async runOnce(
+    id: string,
+    mutation?: ScheduleMutation,
+    admitted?: ScheduleAdmission,
+  ): Promise<StoredSchedule> {
+    // OTTO(schedules)
     const schedule = await this.inspect(id);
     if (schedule.status === "completed") {
-      throw new Error(`Schedule ${id} is already completed`);
+      throw new ScheduleStateConflictError(`Schedule ${id} is already completed`);
     }
     if (this.runningScheduleIds.has(id)) {
-      throw new Error(`Schedule ${id} is already running`);
+      throw new ScheduleStateConflictError(`Schedule ${id} is already running`);
     }
-    await this.runSchedule(schedule, this.now(), { manual: true });
+    await this.runSchedule(schedule, this.now(), { manual: true, mutation, admitted }); // OTTO(schedules): owned UI can acknowledge admission while a Workflow waits for approval.
     return this.inspect(id);
   }
 
@@ -795,7 +653,10 @@ export class ScheduleService {
       if (schedule.status !== "active" || !schedule.nextRunAt) {
         continue;
       }
-      if (this.runningScheduleIds.has(schedule.id)) {
+      if (
+        this.runningScheduleIds.has(schedule.id) ||
+        (this.otto && schedule.runs.some((run) => run.status === "running")) // OTTO(schedules): a retained claim may have an unpersisted outcome; never replay it.
+      ) {
         continue;
       }
       if (shouldCompleteSchedule(schedule, now)) {
@@ -805,24 +666,7 @@ export class ScheduleService {
       if (new Date(schedule.nextRunAt).getTime() > now.getTime()) {
         continue;
       }
-      if (this.runningScheduleIds.size >= MAX_CONCURRENT_SCHEDULE_RUNS) {
-        continue;
-      }
-      // The snapshot goes stale while earlier entries' runs are awaited: an
-      // overlapping tick may have already run this schedule and advanced its
-      // nextRunAt. Re-read before claiming; re-checking the claim set after the
-      // read's await is sound because runSchedule claims synchronously.
-      const fresh = await this.store.get(schedule.id);
-      if (
-        !fresh ||
-        fresh.status !== "active" ||
-        !fresh.nextRunAt ||
-        new Date(fresh.nextRunAt).getTime() > now.getTime() ||
-        this.runningScheduleIds.has(fresh.id)
-      ) {
-        continue;
-      }
-      await this.runSchedule(fresh, now);
+      await this.runSchedule(schedule, now);
     }
   }
 
@@ -851,15 +695,9 @@ export class ScheduleService {
   private async recoverInterruptedSchedule(scheduleId: string, now: Date): Promise<void> {
     const interruptedWorkspaces: Array<{
       workspaceId: string;
-      repoRoot: string;
       agentId: string | null;
       runId: string;
     }> = [];
-    // Interrupted runs that we do NOT archive must be revealed: they were created
-    // hidden, so without reveal a kept-run (archiveOnFinish=false) workspace would
-    // be orphaned hidden forever. A daemon restart mid-run is a failure the user
-    // should see.
-    const revealWorkspaceIds: string[] = [];
     await this.store.update(scheduleId, (current) => {
       let updated = { ...current };
       let dirty = false;
@@ -868,22 +706,19 @@ export class ScheduleService {
       if (runningIndex !== -1) {
         const runs = [...updated.runs];
         const runningRun = runs[runningIndex];
-        if (updated.target.type === "new-agent" && runningRun.workspaceId) {
-          if (
-            shouldArchiveScheduleRunWorkspace({
-              agentId: runningRun.agentId,
-              archiveOnFinish: updated.target.config.archiveOnFinish,
-            })
-          ) {
-            interruptedWorkspaces.push({
-              workspaceId: runningRun.workspaceId,
-              repoRoot: updated.target.config.cwd,
-              agentId: runningRun.agentId,
-              runId: runningRun.id,
-            });
-          } else {
-            revealWorkspaceIds.push(runningRun.workspaceId);
-          }
+        if (
+          updated.target.type === "new-agent" &&
+          runningRun.workspaceId &&
+          shouldArchiveScheduleRunWorkspace({
+            agentId: runningRun.agentId,
+            archiveOnFinish: updated.target.config.archiveOnFinish,
+          })
+        ) {
+          interruptedWorkspaces.push({
+            workspaceId: runningRun.workspaceId,
+            agentId: runningRun.agentId,
+            runId: runningRun.id,
+          });
         }
         runs[runningIndex] = {
           ...runningRun,
@@ -892,6 +727,9 @@ export class ScheduleService {
           error: "Daemon restarted before the scheduled run completed",
         };
         updated = { ...updated, runs };
+        if (shouldCompleteSchedule(updated, now)) {
+          updated = completeSchedule(updated, now);
+        }
         dirty = true;
       }
 
@@ -900,40 +738,27 @@ export class ScheduleService {
         updated.nextRunAt &&
         new Date(updated.nextRunAt).getTime() <= now.getTime()
       ) {
-        let nextRunAt = computeNextRunAtOrNull(updated.cadence, new Date(updated.nextRunAt));
-        while (nextRunAt !== null && nextRunAt.getTime() <= now.getTime()) {
-          nextRunAt = computeNextRunAtOrNull(updated.cadence, nextRunAt);
+        let nextRunAt = computeNextRunAt(updated.cadence, new Date(updated.nextRunAt));
+        while (nextRunAt.getTime() <= now.getTime()) {
+          nextRunAt = computeNextRunAt(updated.cadence, nextRunAt);
         }
-        // A null next run means the cadence is unsatisfiable: pause instead of
-        // throwing, or daemon startup would fail on the poisoned schedule.
-        updated =
-          nextRunAt === null
-            ? pauseUnsatisfiableSchedule(updated, now)
-            : { ...updated, nextRunAt: nextRunAt.toISOString() };
+        updated = { ...updated, nextRunAt: nextRunAt.toISOString() };
         dirty = true;
       }
 
+      if (this.otto && runningIndex !== -1)
+        updated = recoverScheduleTarget(updated, runningIndex, this.otto, now.toISOString()); // OTTO(schedules): preserve repair even after expiry/max-run handling.
       if (dirty) {
         return { ...updated, updatedAt: now.toISOString() };
       }
       return current;
     });
-    for (const workspaceId of revealWorkspaceIds) {
-      try {
-        await this.revealWorkspace(workspaceId);
-      } catch (error) {
-        this.logger.warn(
-          { err: error, workspaceId, scheduleId },
-          "Failed to reveal interrupted scheduled workspace after daemon restart",
-        );
-      }
-    }
     const interruptedWorkspace = interruptedWorkspaces[0];
     if (!interruptedWorkspace) {
       return;
     }
     try {
-      await this.archiveWorkspace(interruptedWorkspace.workspaceId, interruptedWorkspace.repoRoot);
+      await this.archiveWorkspace(interruptedWorkspace.workspaceId);
     } catch (error) {
       this.logger.warn(
         {
@@ -973,69 +798,169 @@ export class ScheduleService {
   private async runSchedule(
     schedule: StoredSchedule,
     now: Date,
-    options?: { manual?: boolean },
+    options?: { manual?: boolean; mutation?: ScheduleMutation; admitted?: ScheduleAdmission }, // OTTO(schedules)
   ): Promise<void> {
     const manual = options?.manual === true;
+    // Reserve before store I/O; persisted history cannot prove a run is still alive.
     this.runningScheduleIds.add(schedule.id);
-    this.onActivity?.("schedulesExecuted");
-    const runId = randomUUID();
-    const runningRun: ScheduleRun = {
-      id: runId,
-      scheduledFor: manual ? now.toISOString() : (schedule.nextRunAt ?? now.toISOString()),
-      startedAt: now.toISOString(),
-      endedAt: null,
-      status: "running",
-      // Record the requested target before resolving or executing it. A later
-      // schedule edit must never make an old run look as though it targeted
-      // something else.
-      target: structuredClone(schedule.target),
-      agentId: null,
-      output: null,
-      error: null,
-    };
-    const scheduleWithRun = await this.appendRunningRun(schedule.id, runningRun);
-
+    let release: (() => void) | null = null; // OTTO(schedules)
     try {
-      const result = await this.runner(scheduleWithRun, runId);
-      await this.finishRun({
-        scheduleId: schedule.id,
-        runId,
-        status: "succeeded",
-        agentId: result.agentId,
-        output: result.output,
-        workflow: result.workflow,
-        error: null,
-        targetGone: false,
-        targetRepair: false,
-        manual,
-      });
-    } catch (error) {
-      await this.finishRun({
-        scheduleId: schedule.id,
-        runId,
-        status: "failed",
-        agentId: null,
-        output: null,
-        workflow: undefined,
-        error: error instanceof Error ? error.message : String(error),
-        targetGone: error instanceof ScheduleTargetGoneError,
-        targetRepair: error instanceof ScheduleWorkflowTargetError,
-        manual,
-      });
+      if (this.otto) {
+        // OTTO(schedules): bounded target admission before a durable claim/effect.
+        release = this.otto.acquire(schedule);
+        if (!release) {
+          if (manual) throw new ScheduleStateConflictError("Schedule execution capacity is full.");
+          return;
+        }
+      }
+      let runId: string;
+      let scheduleWithRun: StoredSchedule;
+      if (manual) {
+        runId = randomUUID();
+        const runningRun: ScheduleRun = {
+          id: runId,
+          scheduledFor: now.toISOString(),
+          startedAt: now.toISOString(),
+          endedAt: null,
+          status: "running",
+          agentId: null,
+          output: null,
+          error: null,
+        };
+        scheduleWithRun = await this.appendRunningRun(
+          schedule.id,
+          runningRun,
+          schedule.target,
+          options?.mutation,
+        ); // OTTO(schedules)
+      } else {
+        const claimed = await this.claimDueRun(schedule.id, now, schedule.target); // OTTO(schedules): bind admission to the target claimed under the store queue.
+        if (!claimed) {
+          return;
+        }
+        ({ schedule: scheduleWithRun, runId } = claimed);
+      }
+
+      try {
+        options?.admitted?.(scheduleWithRun, runId); // OTTO(schedules): durable run exists; no target effect has started.
+        this.onRunStarted?.(); // OTTO(activity): both manual and due attempts have a durable claim.
+        const result = await this.runner(scheduleWithRun, runId);
+        await this.finishRun({
+          scheduleId: schedule.id,
+          runId,
+          status: "succeeded",
+          agentId: result.agentId,
+          output: result.output,
+          error: null,
+          targetGone: false,
+          manual,
+          outcome: { result }, // OTTO(schedules)
+        });
+      } catch (error) {
+        await this.finishRun({
+          scheduleId: schedule.id,
+          runId,
+          status: "failed",
+          agentId: null,
+          output: null,
+          error: error instanceof Error ? error.message : String(error),
+          targetGone: error instanceof ScheduleTargetGoneError,
+          manual,
+          outcome: { error }, // OTTO(schedules)
+        });
+      }
     } finally {
+      release?.(); // OTTO(schedules)
       this.runningScheduleIds.delete(schedule.id);
     }
+  }
+
+  private async claimDueRun(
+    scheduleId: string,
+    now: Date,
+    admittedTarget: ScheduleTarget, // OTTO(schedules)
+  ): Promise<{ schedule: StoredSchedule; runId: string } | null> {
+    let claimed: { schedule: StoredSchedule; runId: string } | null = null;
+    const updatedSchedule = await this.store.update(scheduleId, (schedule) => {
+      if (
+        (this.otto && !sameScheduleTarget(schedule.target, admittedTarget)) || // OTTO(schedules): retargeting cannot bypass the appropriate executor's admission.
+        (this.otto && schedule.runs.some((run) => run.status === "running")) || // OTTO(schedules): recheck durable claims inside the store queue.
+        schedule.status !== "active" ||
+        !schedule.nextRunAt ||
+        shouldCompleteSchedule(schedule, now) ||
+        new Date(schedule.nextRunAt).getTime() > now.getTime()
+      ) {
+        return schedule;
+      }
+
+      const scheduledFor = schedule.nextRunAt;
+      const isFinalRun =
+        schedule.maxRuns !== null && countCompletedRuns(schedule) + 1 >= schedule.maxRuns;
+      const nextRunAt = isFinalRun
+        ? null
+        : advanceNextRunAtPast(
+            schedule.cadence,
+            computeNextRunAt(schedule.cadence, new Date(scheduledFor)),
+            now,
+          ).toISOString();
+
+      // Claim the due slot and advance its cursor in the same serialized update.
+      // A tick can hold a stale list while another tick finishes this schedule.
+      const runId = randomUUID();
+      const runningRun: ScheduleRun = {
+        id: runId,
+        scheduledFor,
+        startedAt: now.toISOString(),
+        endedAt: null,
+        status: "running",
+        agentId: null,
+        output: null,
+        error: null,
+        ...(this.otto ? { otto: this.otto.requested(schedule) } : {}), // OTTO(schedules): snapshot before target resolution.
+      };
+      const updated: StoredSchedule = {
+        ...schedule,
+        nextRunAt,
+        updatedAt: now.toISOString(),
+        runs: [...schedule.runs, runningRun],
+      };
+      claimed = { schedule: updated, runId };
+      return updated;
+    });
+    requireSchedule(updatedSchedule, scheduleId);
+    return claimed;
   }
 
   private async appendRunningRun(
     scheduleId: string,
     runningRun: ScheduleRun,
+    admittedTarget: ScheduleTarget, // OTTO(schedules)
+    mutation?: ScheduleMutation, // OTTO(schedules)
   ): Promise<StoredSchedule> {
-    const updated = await this.store.update(scheduleId, (schedule) => ({
-      ...schedule,
-      updatedAt: runningRun.startedAt,
-      runs: [...schedule.runs, runningRun],
-    }));
+    const updated = await this.store.update(
+      scheduleId,
+      (schedule) => {
+        // OTTO(schedules): memory ownership can end before a failed settlement
+        // publication is repaired. A new manual run cannot bypass that claim.
+        if (this.otto && schedule.runs.some((run) => run.status === "running"))
+          throw new ScheduleStateConflictError(
+            "Inspect and settle the retained Schedule attempt before starting another run.",
+          );
+        if (this.otto && !sameScheduleTarget(schedule.target, admittedTarget))
+          throw new ScheduleStateConflictError(
+            "Schedule target changed before admission. Refresh and review this run.",
+          ); // OTTO(schedules)
+        return {
+          ...schedule,
+          updatedAt: runningRun.startedAt,
+          runs: [
+            ...schedule.runs,
+            { ...runningRun, ...(this.otto ? { otto: this.otto.requested(schedule) } : {}) },
+          ], // OTTO(schedules): capture the current target inside the claim queue.
+        };
+      },
+      mutation,
+    );
     return requireSchedule(updated, scheduleId);
   }
 
@@ -1045,11 +970,10 @@ export class ScheduleService {
     status: "succeeded" | "failed";
     agentId: string | null;
     output: string | null;
-    workflow: ScheduleExecutionResult["workflow"] | undefined;
     error: string | null;
     targetGone: boolean;
-    targetRepair: boolean;
     manual: boolean;
+    outcome?: ScheduleSettlement; // OTTO(schedules)
   }): Promise<void> {
     const updatedSchedule = await this.store.update(params.scheduleId, (schedule) => {
       const now = this.now();
@@ -1060,9 +984,8 @@ export class ScheduleService {
               status: params.status,
               endedAt: now.toISOString(),
               agentId: params.agentId ?? run.agentId,
-              output: truncateRunOutput(params.output),
+              output: params.output,
               error: params.error,
-              ...(params.workflow ? { workflow: params.workflow } : {}),
             }
           : run,
       );
@@ -1070,8 +993,6 @@ export class ScheduleService {
         ...schedule,
         runs: completedRuns,
         lastRunAt: now.toISOString(),
-        lastRunStatus: params.status,
-        lastRunError: params.error,
         updatedAt: now.toISOString(),
       };
 
@@ -1079,14 +1000,9 @@ export class ScheduleService {
         // The target is permanently gone; retrying only burns the schedule down to
         // its expiry, so complete it now regardless of manual/scheduled origin.
         updated = completeSchedule(updated, now);
-      } else if (params.targetRepair) {
-        // A Workflow definition may be restored or deliberately reselected;
-        // preserve both the schedule and its failed run, then stop automatic
-        // retries until the owner reviews that repair boundary.
-        updated = { ...updated, status: "paused", pausedAt: now.toISOString(), nextRunAt: null };
       } else if (updated.status === "completed") {
         // Completed concurrently (e.g. the target agent was archived mid-run);
-        // record the run outcome but leave the schedule terminal - don't advance.
+        // record the run outcome but leave the schedule terminal — don't advance.
       } else if (params.manual) {
         // Manual one-shot runs do not advance the cadence or recompute completion.
       } else if (shouldCompleteSchedule(updated, now)) {
@@ -1097,56 +1013,30 @@ export class ScheduleService {
           nextRunAt: null,
         };
       } else {
-        const after = new Date(schedule.nextRunAt ?? now.toISOString());
-        let nextRunAt = computeNextRunAtOrNull(updated.cadence, after);
-        while (nextRunAt !== null && nextRunAt.getTime() <= now.getTime()) {
-          nextRunAt = computeNextRunAtOrNull(updated.cadence, nextRunAt);
-        }
-        // A null next run means the cadence is unsatisfiable. Pausing (instead
-        // of throwing) still closes the run record above; a throw here would
-        // abort the store update, leave the run open and nextRunAt unadvanced,
-        // and re-fire the schedule on every following tick.
-        updated =
-          nextRunAt === null
-            ? pauseUnsatisfiableSchedule(updated, now)
-            : { ...updated, nextRunAt: nextRunAt.toISOString() };
+        // A final slot has no successor until its run limit is raised or cleared.
+        // Every runner invocation has a recorded run with this id.
+        const finishedRun = completedRuns.find((run) => run.id === params.runId)!;
+        const nextRunAt = updated.nextRunAt
+          ? new Date(updated.nextRunAt)
+          : computeNextRunAt(updated.cadence, new Date(finishedRun.scheduledFor));
+        // Move an overdue cursor past a long run without advancing a future one twice.
+        updated = {
+          ...updated,
+          nextRunAt: advanceNextRunAtPast(updated.cadence, nextRunAt, now).toISOString(),
+        };
       }
 
-      // Last, so every decision above (maxRuns completion in particular) still
-      // sees the full run history for this fire.
-      return pruneScheduleRuns(updated);
+      if (this.otto && params.outcome)
+        updated = settleScheduleTarget(
+          updated,
+          params.runId,
+          this.otto,
+          params.outcome,
+          now.toISOString(),
+        ); // OTTO(schedules): target repair decisions follow ordinary cadence bookkeeping.
+      return updated;
     });
     requireSchedule(updatedSchedule, params.scheduleId);
-  }
-
-  // Stamp the run's executor (personality/provider/model) onto the still-running
-  // run and mirror it to the schedule's lastRun* summary fields, so the card can
-  // show "who ran it last" without loading the run history. Called at run start
-  // so a later failure still records who was executing.
-  private async recordRunExecutor(params: {
-    scheduleId: string;
-    runId: string;
-    executor: ScheduleRunExecutor;
-  }): Promise<void> {
-    const { scheduleId, runId, executor } = params;
-    const updated = await this.store.update(scheduleId, (schedule) => ({
-      ...schedule,
-      updatedAt: this.now().toISOString(),
-      lastRunPersonalityName: executor.personalityName,
-      lastRunProvider: executor.provider,
-      lastRunModel: executor.model,
-      runs: schedule.runs.map((run) =>
-        run.id === runId && run.status === "running"
-          ? {
-              ...run,
-              personalityName: executor.personalityName,
-              provider: executor.provider,
-              model: executor.model,
-            }
-          : run,
-      ),
-    }));
-    requireSchedule(updated, scheduleId);
   }
 
   private async recordRunWorkspace(params: {
@@ -1171,95 +1061,78 @@ export class ScheduleService {
     requireSchedule(updatedSchedule, params.scheduleId);
   }
 
-  /**
-   * Fires a schedule whose target is an agent that already exists.
-   *
-   * The agent has to be present, unarchived, and idle: a schedule that lands on
-   * an archived or busy agent fails loudly rather than queueing behind whatever
-   * the user is doing in that chat.
-   */
-  private async executeExistingAgentSchedule(
-    schedule: StoredSchedule,
-    runId: string,
-    agentId: string,
-  ): Promise<ScheduleExecutionResult> {
-    const wrappedPrompt = formatSystemNotificationPrompt(buildScheduleFireBody(schedule, runId));
-    const record = await this.agentStorage.get(agentId);
-    if (!record) {
-      throw new ScheduleTargetGoneError(`Agent ${agentId} no longer exists`);
-    }
-    if (record.archivedAt) {
-      throw new ScheduleTargetGoneError(`Agent ${agentId} is archived`);
-    }
-
-    const agent = await ensureAgentLoaded(agentId, {
-      agentManager: this.agentManager,
-      agentStorage: this.agentStorage,
-      logger: this.logger,
-    });
-    if (this.agentManager.hasInFlightRun(agent.id)) {
-      throw new Error(`Agent ${agent.id} already has an active run`);
-    }
-    // Stamp who actually ran this: the existing agent's personality (if any),
-    // provider, and model. Recorded before the run so a failure still keeps
-    // the executor on the run + lastRun* summary fields.
-    await this.recordRunExecutor({
-      scheduleId: schedule.id,
-      runId,
-      executor: resolveAgentTargetExecutor(record),
-    });
-    await startAgentRun(this.agentManager, agent.id, wrappedPrompt, this.logger, {
-      replaceRunning: true,
-      activeTurnBehavior: "steer",
-    });
-    const waitResult = await this.agentManager.waitForAgentEvent(agent.id, {
-      waitForActive: true,
-    });
-    if (waitResult.permission) {
-      throw new Error(`Scheduled agent ${agent.id} is waiting for permission`);
-    }
-    if (waitResult.status === "error") {
-      throw new Error(waitResult.lastMessage ?? `Scheduled agent ${agent.id} failed`);
-    }
-    return {
-      agentId: agent.id,
-      output: buildRunOutput({
-        output: null,
-        timelineText: "",
-        finalText: waitResult.lastMessage ?? "",
-      }),
-    };
-  }
-
   private async executeSchedule(
     schedule: StoredSchedule,
     runId: string,
+    turnOptions?: ScheduleTurnFactory, // OTTO(schedules)
   ): Promise<ScheduleExecutionResult> {
-    if (schedule.target.type === "workflow") {
-      if (!this.workflowRunner) {
-        throw new ScheduleWorkflowTargetError(
-          "Saved Workflow schedules are not supported by this host. Update or reconnect to the host that owns the Workflow.",
-        );
-      }
-      return this.workflowRunner({ schedule, runId });
-    }
-
     if (schedule.target.type === "agent") {
-      return this.executeExistingAgentSchedule(schedule, runId, schedule.target.agentId);
+      const wrappedPrompt = formatSystemNotificationPrompt(buildScheduleFireBody(schedule, runId));
+      const record = await this.agentStorage.get(schedule.target.agentId);
+      if (!record) {
+        throw new ScheduleTargetGoneError(`Agent ${schedule.target.agentId} no longer exists`);
+      }
+      if (record.archivedAt) {
+        throw new ScheduleTargetGoneError(`Agent ${schedule.target.agentId} is archived`);
+      }
+
+      const agent = await ensureAgentLoaded(schedule.target.agentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.logger,
+      });
+      if (!turnOptions && this.agentManager.hasInFlightRun(agent.id)) {
+        throw new Error(`Agent ${agent.id} already has an active run`);
+      }
+      if (turnOptions) {
+        // OTTO(schedules): streamAgent's atomic idle admission cannot steer/replace a manual turn arriving after the precheck.
+        const result = await this.agentManager.runAgent(
+          agent.id,
+          wrappedPrompt,
+          await turnOptions(agent.id),
+        );
+        return scheduleNativeResult(agent.id, result);
+      }
+      await startAgentRun(this.agentManager, agent.id, wrappedPrompt, this.logger, {
+        replaceRunning: true,
+        activeTurnBehavior: "steer",
+      });
+      const waitResult = await this.agentManager.waitForAgentEvent(agent.id, {
+        waitForActive: true,
+      });
+      if (waitResult.permission) {
+        throw new Error(`Scheduled agent ${agent.id} is waiting for permission`);
+      }
+      if (waitResult.status === "error") {
+        throw new Error(waitResult.lastMessage ?? `Scheduled agent ${agent.id} failed`);
+      }
+      return {
+        agentId: agent.id,
+        output: buildRunOutput({
+          output: null,
+          timelineText: "",
+          finalText: waitResult.lastMessage ?? "",
+        }),
+      };
     }
 
-    const config = schedule.target.type === "new-agent" ? schedule.target.config : null;
-    if (!config) {
+    return this.executeNewAgentSchedule(schedule, runId, turnOptions); // OTTO(schedules): keep provisioning in Paseo's existing owner.
+  }
+
+  // OTTO(schedules): extraction preserves the original provision/archive path; only the optional private turn admission differs.
+  private async executeNewAgentSchedule(
+    schedule: StoredSchedule,
+    runId: string,
+    turnOptions?: ScheduleTurnFactory,
+  ): Promise<ScheduleExecutionResult> {
+    const stored = schedule.target.type === "new-agent" ? schedule.target.config : null;
+    if (!stored) {
       throw new Error(`Schedule ${schedule.id} target changed during execution`);
     }
+    const { config, binding } = await scheduleProfile(stored, this.resolveRole); // OTTO(schedule-profiles): capture once before provisioning.
     await this.assertNewAgentCwdDirectory(config.cwd);
     let workspace: PersistedWorkspaceRecord | null = null;
     let agentId: string | null = null;
-    let succeeded = false;
-    // Whether the run produced any chat content (assistant/tool activity). Drives
-    // "reveal a failed run's workspace only if there's something to see" - a run
-    // that failed before doing anything leaves no empty workspace behind.
-    let hasContent = false;
     try {
       workspace = await this.createScheduleRunWorkspace(config, schedule.prompt);
       await this.recordRunWorkspace({
@@ -1269,50 +1142,23 @@ export class ScheduleService {
         agentId: null,
       });
       const runConfig = { ...config, cwd: workspace.cwd };
-      // A personality-bound schedule re-resolves its personality against THIS
-      // run's cwd and hard-fails the run if it's unavailable (surfaced via the
-      // run's failure path) - no silent fallback.
-      const brain = await this.resolveSchedulePersonalityBrain(runConfig);
-      // Stamp who is running this: the resolved personality (if bound), else the
-      // configured provider/model. Recorded before the agent spawns so even a
-      // spawn/prompt failure keeps the executor on the run + lastRun* fields.
-      await this.recordRunExecutor({
-        scheduleId: schedule.id,
-        runId,
-        executor: resolveNewAgentExecutor(brain, config),
-      });
-      const spawn = applyScheduleBrain({
-        brain,
-        baseAgentConfig: buildScheduleAgentConfig(runConfig),
-        fallbackProviderModel: formatScheduleProviderModel(runConfig),
-        configModeId: config.modeId,
-        configThinkingOptionId: config.thinkingOptionId,
-      });
       const created = await this.createAgent({
         kind: "mcp",
-        provider: spawn.provider,
-        config: spawn.config,
+        provider: formatScheduleProviderModel(runConfig),
+        config: { ...buildScheduleAgentConfig(runConfig), ottoProfile: binding }, // OTTO(schedule-profiles)
         cwd: workspace.cwd,
         workspaceId: workspace.workspaceId,
         title: resolveScheduleAgentTitle(config, schedule.prompt),
         labels: {
-          [SCHEDULE_ID_LABEL]: schedule.id,
-          [SCHEDULE_RUN_ID_LABEL]: runId,
+          ...(binding ? { "otto.profile": presentationLabel(binding) } : {}), // OTTO(schedule-profiles)
+          "paseo.schedule-id": schedule.id,
+          "paseo.schedule-run": runId,
         },
-        mode: spawn.mode,
-        thinking: spawn.thinking,
+        mode: config.modeId,
+        thinking: config.thinkingOptionId,
         features: config.featureValues,
         unattended: true,
-        // Schedule-run agents are internal like artifact-generator agents: this
-        // suppresses agent-level attention broadcasts (agent-manager skips
-        // internal agents), so a clean run is fully silent. Problems surface
-        // through the schedule service's own error detection (waitResult.status
-        // === "error"), which reveals the hidden workspace. Whether these agents
-        // should instead stay listed/persisted is a deferred decision - see the
-        // safe-unattended charter's Open questions.
-        internal: true,
         promptFailure: "return-error",
-        background: true,
         notifyOnFinish: false,
       });
       const agent = created.snapshot;
@@ -1326,7 +1172,15 @@ export class ScheduleService {
       if (created.initialPromptError) {
         throw created.initialPromptError;
       }
-      const result = await this.agentManager.runAgent(agent.id, schedule.prompt);
+      const result = await this.agentManager.runAgent(
+        agent.id,
+        schedule.prompt,
+        await turnOptions?.(agent.id),
+      ); // OTTO(schedules): revoked late provisioning cannot admit a turn.
+      if (turnOptions) {
+        // OTTO(schedules): this result belongs to the captured foreground turn; do not wait on a later manual turn.
+        return scheduleNativeResult(agent.id, result);
+      }
       const waitResult = await this.agentManager.waitForAgentEvent(agent.id, {
         waitForActive: true,
       });
@@ -1340,7 +1194,6 @@ export class ScheduleService {
         throw new Error(waitResult.lastMessage ?? `Scheduled agent ${agent.id} failed`);
       }
       const timelineText = curateAgentActivity(result.timeline);
-      succeeded = true;
       return {
         agentId: agent.id,
         output: buildRunOutput({
@@ -1350,108 +1203,25 @@ export class ScheduleService {
         }),
       };
     } finally {
-      // Schedule-run agents are internal (ephemeral), so archive-by-workspace
-      // can't see them - close the agent directly, mirroring how the artifact
-      // generator tears down its internal agent. Without this the finished agent
-      // would leak in-memory (internal agents are never persisted or listed).
-      if (agentId) {
-        // Snapshot the run's chat before teardown so it can be reopened
-        // read-only from the schedule run's "…" menu, and learn whether the run
-        // produced any content to gate the workspace reveal below. Internal
-        // agents are never persisted, so this is the only place the transcript
-        // survives. See docs/safe-unattended.md.
+      if (
+        workspace &&
+        shouldArchiveScheduleRunWorkspace({ agentId, archiveOnFinish: config.archiveOnFinish })
+      ) {
         try {
-          const captured = await this.agentManager.captureRetainedTranscript(agentId, {
-            kind: "schedule",
-            id: schedule.id,
-          });
-          hasContent = captured.hasContent;
+          await this.archiveWorkspace(workspace.workspaceId);
         } catch (error) {
           this.logger.warn(
-            { err: error, agentId, scheduleId: schedule.id, runId },
-            "Failed to capture scheduled run transcript",
-          );
-        }
-        try {
-          await this.agentManager.closeAgent(agentId);
-        } catch (error) {
-          this.logger.warn(
-            { err: error, agentId, scheduleId: schedule.id, runId },
-            "Failed to close scheduled agent after run",
+            {
+              err: error,
+              agentId,
+              workspaceId: workspace.workspaceId,
+              scheduleId: schedule.id,
+              runId,
+            },
+            "Failed to archive scheduled workspace after run",
           );
         }
       }
-      if (workspace) {
-        await this.disposeScheduleRunWorkspace({
-          workspace,
-          agentId,
-          succeeded,
-          hasContent,
-          archiveOnFinish: config.archiveOnFinish,
-          repoRoot: config.cwd,
-          scheduleId: schedule.id,
-          runId,
-        });
-      }
-    }
-  }
-
-  // Disposition of a schedule-run workspace once the run settles. The workspace
-  // was created hidden, so exactly one of these happens:
-  //   - error WITH content (run did work, then threw): REVEAL and never archive
-  //     - the failure has substance the user can inspect (the checkout state and
-  //     the retained transcript).
-  //   - error WITHOUT content (run failed before doing anything - spawn error,
-  //     personality unavailable, immediate provider error): ARCHIVE the hidden
-  //     workspace. Revealing it would leave an empty workspace in the sidebar
-  //     with nothing to see; the failure still surfaces on the schedule card
-  //     (lastRunError) and in the run's retained (if any) transcript.
-  //   - success + archiveOnFinish: archive as before - it was never revealed, so
-  //     the user never sees the transient workspace.
-  //   - success + keep (archiveOnFinish=false): REVEAL so the kept result shows.
-  private async disposeScheduleRunWorkspace(params: {
-    workspace: PersistedWorkspaceRecord;
-    agentId: string | null;
-    succeeded: boolean;
-    hasContent: boolean;
-    archiveOnFinish?: boolean;
-    repoRoot: string;
-    scheduleId: string;
-    runId: string;
-  }): Promise<void> {
-    const {
-      workspace,
-      agentId,
-      succeeded,
-      hasContent,
-      archiveOnFinish,
-      repoRoot,
-      scheduleId,
-      runId,
-    } = params;
-    // A failed run only earns a visible workspace when it actually produced
-    // content; otherwise it's an empty shell and we archive it like a clean run.
-    const archive = succeeded
-      ? shouldArchiveScheduleRunWorkspace({ agentId, archiveOnFinish })
-      : !hasContent;
-    if (archive) {
-      try {
-        await this.archiveWorkspace(workspace.workspaceId, repoRoot);
-      } catch (error) {
-        this.logger.warn(
-          { err: error, agentId, workspaceId: workspace.workspaceId, scheduleId, runId },
-          "Failed to archive scheduled workspace after run",
-        );
-      }
-      return;
-    }
-    try {
-      await this.revealWorkspace(workspace.workspaceId);
-    } catch (error) {
-      this.logger.warn(
-        { err: error, agentId, workspaceId: workspace.workspaceId, scheduleId, runId, succeeded },
-        "Failed to reveal scheduled workspace after run",
-      );
     }
   }
 
@@ -1460,23 +1230,12 @@ export class ScheduleService {
     prompt: string,
   ): Promise<PersistedWorkspaceRecord> {
     const firstAgentContext = { prompt };
-    // Schedule runs are invisible until they finish-and-keep or error: create the
-    // backing workspace hidden so it never flashes into any client's sidebar.
     switch (config.isolation ?? "local") {
       case "local":
-        return this.createLocalCheckoutWorkspace({
-          cwd: config.cwd,
-          firstAgentContext,
-          hidden: true,
-        });
+        return this.createDirectoryWorkspace({ cwd: config.cwd, firstAgentContext });
       case "worktree":
-        return (
-          await this.createOttoWorktreeWorkspace({
-            cwd: config.cwd,
-            firstAgentContext,
-            hidden: true,
-          })
-        ).workspace;
+        return (await this.createPaseoWorktreeWorkspace({ cwd: config.cwd, firstAgentContext }))
+          .workspace;
     }
   }
 
@@ -1493,177 +1252,12 @@ export class ScheduleService {
       throw error;
     }
   }
-
-  // Resolve a schedule's optional personality binding against the run cwd, or
-  // undefined when unbound. Throws (failing the run) when the personality is
-  // named but missing/unavailable, or when personality resolution isn't wired.
-  private async resolveSchedulePersonalityBrain(config: {
-    personality?: string;
-    agentProfile?: string;
-    cwd: string;
-  }): Promise<ScheduleBrain | undefined> {
-    // COMPAT(agentProfileFields): current spelling first, pre-rename fallback.
-    const name = (config.agentProfile ?? config.personality)?.trim();
-    if (!name) {
-      return undefined;
-    }
-    if (!this.providerSnapshotManager || !this.readAgentProfiles) {
-      throw new Error(
-        `Schedule binds personality "${name}", but personality resolution is not configured on this host.`,
-      );
-    }
-    const roster = this.readAgentProfiles();
-    const entries = await this.providerSnapshotManager.listProviders({
-      cwd: config.cwd,
-      wait: true,
-    });
-
-    // The dynamic "Team's Scheduler" binding resolves the active team's
-    // Scheduler at RUN time - the schedule follows whoever holds the role in
-    // the operating team when it fires.
-    if (name === TEAM_SCHEDULER_PERSONALITY_SENTINEL) {
-      return this.buildScheduleBrain(
-        resolveTeamSchedulerSnapshot({
-          agentTeams: this.readAgentTeams?.(),
-          roster,
-          entries,
-        }),
-      );
-    }
-
-    // COMPAT(scheduleProfileBinding): added in v0.8.13, remove after 2027-02-22.
-    // Bindings are stored as the stable id; schedules written before that stored
-    // the display name, and findProfileByRef accepts either. The startup
-    // migration rewrites the legacy ones, so this only covers a host that has
-    // not restarted since upgrading.
-    const personality = findProfileByRef(roster, name);
-    if (!personality) {
-      throw new Error(`Personality "${name}" not found; the scheduled run cannot proceed.`);
-    }
-    const resolution = resolveProfile(personality, entries);
-    if (resolution.status === "unavailable") {
-      throw new Error(`Personality "${personality.name}" is unavailable: ${resolution.reason}`);
-    }
-    return this.buildScheduleBrain(resolution.snapshot);
-  }
-
-  // Shared tail for both binding kinds: run-time team framing (iff the resolved
-  // personality is a member of the team active NOW - teamless runs are valid,
-  // never an error) plus the concrete brain fields.
-  private buildScheduleBrain(snapshot: ResolvedProfileSnapshot): ScheduleBrain {
-    const teamSnapshot = resolveTeamSnapshotForPersonality(
-      this.readAgentTeams?.(),
-      snapshot.profileId,
-    );
-    const composedPrompt = composeTeamAndPersonalityPrompt(
-      teamSnapshot,
-      snapshot.systemPrompt,
-      snapshot.roles,
-    );
-    return {
-      providerModel: snapshot.model ? `${snapshot.provider}/${snapshot.model}` : snapshot.provider,
-      ...(snapshot.modeId !== undefined ? { modeId: snapshot.modeId } : {}),
-      ...(snapshot.thinkingOptionId !== undefined
-        ? { thinkingOptionId: snapshot.thinkingOptionId }
-        : {}),
-      ...(composedPrompt !== undefined ? { systemPrompt: composedPrompt } : {}),
-      snapshot,
-      ...(teamSnapshot ? { teamSnapshot } : {}),
-    };
-  }
-}
-
-interface ScheduleRunExecutor {
-  personalityName: string | null;
-  provider: string | null;
-  model: string | null;
-}
-
-// The executor of an agent-target run: the existing agent's snapshotted
-// personality (if any), plus its live-or-configured provider/model.
-function resolveAgentTargetExecutor(record: StoredAgentRecord): ScheduleRunExecutor {
-  return {
-    personalityName: record.config?.profileSnapshot?.name ?? null,
-    provider: record.runtimeInfo?.provider ?? record.provider,
-    model: record.runtimeInfo?.model ?? record.config?.model ?? null,
-  };
-}
-
-// The executor of a new-agent run: the resolved personality when the schedule
-// binds one, otherwise the configured provider/model.
-function resolveNewAgentExecutor(
-  brain: ScheduleBrain | undefined,
-  config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
-): ScheduleRunExecutor {
-  if (brain) {
-    return {
-      personalityName: brain.snapshot.name,
-      provider: brain.snapshot.provider,
-      model: brain.snapshot.model ?? null,
-    };
-  }
-  return { personalityName: null, provider: config.provider, model: config.model ?? null };
-}
-
-interface ScheduleBrain {
-  providerModel: string;
-  modeId?: string;
-  thinkingOptionId?: string;
-  systemPrompt?: string;
-  snapshot: ResolvedProfileSnapshot;
-  teamSnapshot?: ResolvedTeamSnapshot;
-}
-
-// Fold a resolved personality brain (or its absence) into the createAgent
-// provider/config/mode/thinking. Extracted so executeSchedule stays under the
-// complexity budget.
-function applyScheduleBrain(input: {
-  brain: ScheduleBrain | undefined;
-  baseAgentConfig: AgentSessionConfig;
-  fallbackProviderModel: string;
-  configModeId?: string;
-  configThinkingOptionId?: string;
-}): {
-  provider: string;
-  config: AgentSessionConfig;
-  mode: string | undefined;
-  thinking: string | undefined;
-} {
-  const { brain, baseAgentConfig, fallbackProviderModel, configModeId, configThinkingOptionId } =
-    input;
-  if (!brain) {
-    return {
-      provider: fallbackProviderModel,
-      config: baseAgentConfig,
-      mode: configModeId,
-      thinking: configThinkingOptionId,
-    };
-  }
-  const config: AgentSessionConfig = { ...baseAgentConfig, profileSnapshot: brain.snapshot };
-  if (brain.teamSnapshot !== undefined) {
-    config.teamSnapshot = brain.teamSnapshot;
-  }
-  if (brain.systemPrompt !== undefined) {
-    config.systemPrompt = brain.systemPrompt;
-  }
-  return {
-    provider: brain.providerModel,
-    config,
-    mode: brain.modeId ?? configModeId,
-    thinking: brain.thinkingOptionId ?? configThinkingOptionId,
-  };
 }
 
 function buildScheduleAgentConfig(
   config: Extract<ScheduleTarget, { type: "new-agent" }>["config"],
 ): AgentSessionConfig {
   return {
-    // Schedule agents are internal (see the createAgent call) but observable, like
-    // the artifact generator: they stay out of listings/sidebar, yet their live
-    // stream still forwards to a client that opens their timeline - so a revealed
-    // (errored or kept) run can be watched. Without observable the daemon's global
-    // subscription drops the stream events.
-    observable: true,
     provider: config.provider,
     cwd: config.cwd,
     modeId: config.modeId,
@@ -1671,14 +1265,6 @@ function buildScheduleAgentConfig(
     thinkingOptionId: config.thinkingOptionId,
     title: config.title,
     providerOptions: config.providerOptions,
-    // COMPAT(flatProviderConfigFields): schedules persisted before v0.4.0 carry
-    // these flat provider fields instead of providerOptions; the provider
-    // adapters still honor them on AgentSessionConfig, so forward them as-is.
-    approvalPolicy: config.approvalPolicy,
-    sandboxMode: config.sandboxMode,
-    networkAccess: config.networkAccess,
-    webSearch: config.webSearch,
-    extra: config.extra,
     featureValues: config.featureValues,
     systemPrompt: config.systemPrompt,
     mcpServers: config.mcpServers as AgentSessionConfig["mcpServers"],

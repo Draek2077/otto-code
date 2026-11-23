@@ -3,12 +3,12 @@ import type {
   AgentPermissionResponse,
   AgentTimelineItem,
   AgentSessionConfig,
-} from "@otto-code/protocol/agent-types";
-import type { OttoApi } from "@otto-code/client";
-import type { WorkspaceCreateRequest } from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/agent-types";
+import type { PaseoApi } from "@getpaseo/client";
+import type { WorkspaceCreateRequest } from "@getpaseo/protocol/messages";
 
 export interface PluginHookContext {
-  otto: OttoApi;
+  paseo: PaseoApi;
   signal: AbortSignal;
 }
 
@@ -60,6 +60,7 @@ export interface PluginLifecycleEvents {
   };
   "agent.archived": { agent: PluginHookAgent; archivedAt: string };
   "agent.created": { agent: PluginHookAgent };
+  "agent.closed": { agent: PluginHookAgent };
   "workspace.created": { workspace: PluginHookWorkspace };
   "workspace.archived": { workspace: PluginHookWorkspace };
 }

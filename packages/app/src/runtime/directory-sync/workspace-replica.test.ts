@@ -1,9 +1,6 @@
 import { expect, it } from "vitest";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
-import type {
-  WorkspaceDescriptorPayload,
-  WorkspaceScriptPayload,
-} from "@otto-code/protocol/messages";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { WorkspaceDescriptorPayload } from "@getpaseo/protocol/messages";
 import {
   normalizeProjectDescriptor,
   normalizeWorkspaceDescriptor,
@@ -34,119 +31,6 @@ function workspace(id: string, projectId = "project"): WorkspaceDescriptorPayloa
     scripts: [],
   };
 }
-
-it("projects Offline and explicit reconnection through live workspace and cache updates", () => {
-  const serverId = "offline-project-reconnection";
-  const store = useSessionStore.getState();
-  store.initializeSession(serverId, null as unknown as DaemonClient);
-  const replica = new WorkspaceDirectoryReplica(serverId);
-  const original = normalizeWorkspaceDescriptor(workspace("kept"));
-  const unrelated = normalizeWorkspaceDescriptor(workspace("other", "other-project"));
-  replica.commitSnapshot(
-    {
-      workspaces: new Map([
-        [original.id, original],
-        [unrelated.id, unrelated],
-      ]),
-      projects: new Map(),
-    },
-    [],
-  );
-  const project = {
-    projectId: "project",
-    projectDisplayName: "Project",
-    projectRootPath: "/repo/project",
-    projectKind: "git" as const,
-  };
-  const offline = replica.applyDelta({
-    kind: "upsert",
-    project: { ...project, projectOffline: true },
-  });
-  expect(useSessionStore.getState().sessions[serverId]?.workspaces.get(original.id)).toMatchObject({
-    id: original.id,
-    projectOffline: true,
-    workspaceDirectory: original.workspaceDirectory,
-  });
-  expect(offline).toContainEqual({
-    kind: "workspace",
-    type: "upsert",
-    id: original.id,
-    value: expect.objectContaining({ projectOffline: true }),
-  });
-  const reconnected = replica.applyDelta({
-    kind: "upsert",
-    project: { ...project, projectOffline: false, projectRootPath: "/moved/project" },
-  });
-  expect(useSessionStore.getState().sessions[serverId]?.workspaces.get(original.id)).toMatchObject({
-    id: original.id,
-    projectOffline: false,
-    projectRootPath: "/moved/project",
-  });
-  expect(reconnected).toContainEqual({
-    kind: "workspace",
-    type: "upsert",
-    id: original.id,
-    value: expect.objectContaining({ projectOffline: false }),
-  });
-  expect(replica.snapshot().workspaces.get(unrelated.id)).toBe(unrelated);
-  store.clearSession(serverId);
-});
-
-it("projects script updates into the matching workspace and cache mutation", () => {
-  const serverId = "workspace-scripts";
-  const store = useSessionStore.getState();
-  store.initializeSession(serverId, null as unknown as DaemonClient);
-  const replica = new WorkspaceDirectoryReplica(serverId);
-  const main = normalizeWorkspaceDescriptor(workspace("main"));
-  const other = normalizeWorkspaceDescriptor(workspace("other"));
-  replica.commitSnapshot(
-    {
-      workspaces: new Map([
-        [main.id, main],
-        [other.id, other],
-      ]),
-      projects: new Map(),
-    },
-    [],
-  );
-  const script: WorkspaceScriptPayload = {
-    scriptName: "web",
-    type: "service",
-    hostname: "web.otto.localhost",
-    port: 3000,
-    proxyUrl: "http://web.otto.localhost:6788",
-    lifecycle: "running",
-    health: "healthy",
-    exitCode: null,
-    terminalId: null,
-  };
-  const mutations = replica.applyDelta({
-    kind: "script_status",
-    update: { workspaceId: main.id, scripts: [script] },
-  });
-  const updated = replica.snapshot().workspaces.get(main.id);
-  expect(updated?.scripts).toEqual([script]);
-  expect(useSessionStore.getState().sessions[serverId]?.workspaces.get(main.id)?.scripts).toEqual([
-    script,
-  ]);
-  expect(replica.snapshot().workspaces.get(other.id)).toBe(other);
-  expect(mutations).toEqual([{ kind: "workspace", type: "upsert", id: main.id, value: updated }]);
-  expect(
-    replica.applyDelta({
-      kind: "script_status",
-      update: { workspaceId: main.id, scripts: [{ ...script }] },
-    }),
-  ).toEqual([]);
-  expect(replica.snapshot().workspaces.get(main.id)).toBe(updated);
-  expect(
-    replica.applyDelta({
-      kind: "script_status",
-      update: { workspaceId: "missing", scripts: [script] },
-    }),
-  ).toEqual([]);
-  expect(replica.snapshot().workspaces.has("missing")).toBe(false);
-  store.clearSession(serverId);
-});
 
 it("commits workspace and project-parent state with filtered removals", () => {
   const serverId = "workspace-replica";

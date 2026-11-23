@@ -1,17 +1,15 @@
-name = "otto-relay"
-account_id = "3910072adb29ec7ee1bdcc37d532765d"
+name = "paseo-relay"
+account_id = "10ed39a1dbf316e30abd0c409bed40d6"
 main = "src/cloudflare-adapter.ts"
 compatibility_date = "2024-12-01"
 
-routes = [{ pattern = "relay.otto-code.me", custom_domain = true }]
+routes = [{ pattern = "relay.paseo.sh", custom_domain = true }]
 
 [observability]
 enabled = true
-head_sampling_rate = 0.01
 
-# OTTO_RELAY_UPSTREAM remains an explicit opt-in cutover switch for a future
-# protocol-compatible relay host. Production deliberately leaves it unset so
-# the current public endpoint serves this Durable Object implementation.
+[vars]
+PASEO_RELAY_UPSTREAM = "https://paseo-relay-next.fly.dev"
 
 [[durable_objects.bindings]]
 name = "RELAY"

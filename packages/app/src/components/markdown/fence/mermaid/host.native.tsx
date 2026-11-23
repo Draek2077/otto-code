@@ -9,12 +9,12 @@ import {
   type ViewStyle,
 } from "react-native";
 import { WebView, type WebViewMessageEvent } from "react-native-webview";
-import { Code, Workflow, X } from "@/components/icons/material-icons";
+import { Code, Workflow, X } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import type { Theme } from "@/styles/theme";
-import type { MarkdownFenceRendererProps } from "../types";
+import type { MarkdownFenceRendererProps } from "./types";
 import type { MermaidRenderRequest } from "./render-model";
 import { mermaidRuntimeHtml } from "./runtime/html.gen";
 import {
@@ -23,12 +23,11 @@ import {
   type MermaidRuntimeRenderMessage,
 } from "./runtime/messages";
 import { MermaidRuntimeRequestDriver } from "./runtime/request-driver";
-import { buildMermaidDiagramTheme, type MermaidDiagramTheme } from "./theme";
 import { useMermaidRenderModel } from "./use-render-model";
 import { getDiagramBoxStyle } from "./presentation";
 
 interface MermaidFenceHostImplProps extends MarkdownFenceRendererProps {
-  diagramTheme: MermaidDiagramTheme;
+  colorScheme?: "light" | "dark";
 }
 
 const WEBVIEW_SOURCE = { html: mermaidRuntimeHtml };
@@ -41,7 +40,7 @@ interface MermaidWebViewProps {
   onRendered: (message: {
     revision: number;
     source: string;
-    themeKey: string;
+    colorScheme: "light" | "dark";
     height: number;
     width: number;
   }) => void;
@@ -70,13 +69,11 @@ function MermaidWebView({
         revision: current.revision,
         source: current.source,
         colorScheme: current.colorScheme,
-        themeVariables: current.themeVariables,
-        themeKey: current.themeKey,
         interactive,
       };
       const payload = serializeMermaidRuntimeRenderMessage(message);
       webViewRef.current.injectJavaScript(
-        `window.__OTTO_MERMAID_RUNTIME_RECEIVE__ && window.__OTTO_MERMAID_RUNTIME_RECEIVE__(${payload}); true;`,
+        `window.__PASEO_MERMAID_RUNTIME_RECEIVE__ && window.__PASEO_MERMAID_RUNTIME_RECEIVE__(${payload}); true;`,
       );
     },
     [interactive],
@@ -141,7 +138,7 @@ const webViewStyles = RNStyleSheet.create({
 
 interface MermaidDiagramViewerProps {
   code: string;
-  diagramTheme: MermaidDiagramTheme;
+  colorScheme: "light" | "dark";
   onClose: () => void;
   inheritedStyles: TextStyle;
   textStyle: TextStyle;
@@ -149,7 +146,7 @@ interface MermaidDiagramViewerProps {
 
 function MermaidDiagramViewer({
   code,
-  diagramTheme,
+  colorScheme,
   onClose,
   inheritedStyles,
   textStyle,
@@ -160,20 +157,20 @@ function MermaidDiagramViewer({
   const { request, rendered, renderFailed } = useMermaidRenderModel({
     source: code,
     phase: "complete",
-    diagramTheme,
+    colorScheme,
   });
   const handleRendered = useCallback(
     (message: {
       revision: number;
       source: string;
-      themeKey: string;
+      colorScheme: "light" | "dark";
       height: number;
       width: number;
     }) => {
       rendered({
         revision: message.revision,
         source: message.source,
-        themeKey: message.themeKey,
+        colorScheme: message.colorScheme,
         dimensions: { height: message.height, width: message.width },
       });
     },
@@ -216,9 +213,9 @@ function MermaidDiagramViewer({
             hitSlop={12}
           >
             {showSource ? (
-              <ThemedDiagramIcon size="lg" uniProps={closeIconColor} />
+              <ThemedDiagramIcon size={20} uniProps={closeIconColor} />
             ) : (
-              <ThemedSourceIcon size="lg" uniProps={closeIconColor} />
+              <ThemedSourceIcon size={20} uniProps={closeIconColor} />
             )}
           </Pressable>
           <Pressable
@@ -228,7 +225,7 @@ function MermaidDiagramViewer({
             accessibilityLabel={t("common.actions.close")}
             hitSlop={12}
           >
-            <ThemedCloseIcon size="lg" uniProps={closeIconColor} />
+            <ThemedCloseIcon size={20} uniProps={closeIconColor} />
           </Pressable>
         </View>
       </View>
@@ -278,20 +275,20 @@ function MermaidFenceHostImpl({
   phase,
   inheritedStyles,
   textStyle,
-  diagramTheme,
+  colorScheme = "dark",
 }: MermaidFenceHostImplProps) {
   const { t } = useTranslation();
   const { state, request, rendered, renderFailed } = useMermaidRenderModel({
     source: code,
     phase,
-    diagramTheme,
+    colorScheme,
   });
   const [hasRuntimeContent, setHasRuntimeContent] = useState(false);
   const handleRendered = useCallback(
     (message: {
       revision: number;
       source: string;
-      themeKey: string;
+      colorScheme: "light" | "dark";
       height: number;
       width: number;
     }) => {
@@ -299,7 +296,7 @@ function MermaidFenceHostImpl({
       rendered({
         revision: message.revision,
         source: message.source,
-        themeKey: message.themeKey,
+        colorScheme: message.colorScheme,
         dimensions: { height: message.height, width: message.width },
       });
     },
@@ -352,7 +349,7 @@ function MermaidFenceHostImpl({
       {viewerOpen && canShowDiagram && visible ? (
         <MermaidDiagramViewer
           code={visible.source}
-          diagramTheme={diagramTheme}
+          colorScheme={visible.colorScheme}
           onClose={closeViewer}
           inheritedStyles={inheritedStyles}
           textStyle={textStyle}
@@ -374,9 +371,9 @@ const previewStyles = RNStyleSheet.create({
   preview: { overflow: "hidden" },
 });
 
-const mapDiagramTheme = (theme: Theme) => ({ diagramTheme: buildMermaidDiagramTheme(theme) });
+const mapColorScheme = (theme: Theme) => ({ colorScheme: theme.colorScheme });
 const ThemedMermaidFenceHost = withUnistyles(MermaidFenceHostImpl);
 
 export function MermaidFenceHost(props: MarkdownFenceRendererProps) {
-  return <ThemedMermaidFenceHost {...props} uniProps={mapDiagramTheme} />;
+  return <ThemedMermaidFenceHost {...props} uniProps={mapColorScheme} />;
 }

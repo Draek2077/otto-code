@@ -11,6 +11,13 @@ function findProvider(id: string) {
 }
 
 describe("ACP provider catalog", () => {
+  it.each(["devin", "hermes", "kiro"])(
+    "#7087: %s supplies its provider mark to the catalog picker",
+    (provider) => {
+      expect(findProvider(provider).iconSvg).toContain("<svg");
+    },
+  );
+
   it("vendors provider entries with unique ids and concrete commands", () => {
     const ids = new Set<string>();
 
@@ -20,26 +27,9 @@ describe("ACP provider catalog", () => {
       expect(entry.title).not.toBe("");
       expect(entry.description).not.toBe("");
       expect(entry.installLink).toMatch(/^https:\/\//);
-      if (entry.extends === "acp") {
-        expect(entry.command).toBeDefined();
-        expect(entry.command?.length).toBeGreaterThan(0);
-        expect(entry.command?.[0]).not.toBe("");
-      } else {
-        // Endpoint presets need env routing (base URL) instead of a command.
-        expect(entry.env).toBeDefined();
-      }
+      expect(entry.command.length).toBeGreaterThan(0);
+      expect(entry.command[0]).not.toBe("");
     }
-  });
-
-  it("lists featured entries before the rest of the catalog", () => {
-    const firstNonFeaturedIndex = ACP_PROVIDER_CATALOG.findIndex((entry) => !entry.featured);
-    const lastFeaturedIndex = ACP_PROVIDER_CATALOG.map((entry) => entry.featured).lastIndexOf(true);
-
-    expect(ACP_PROVIDER_CATALOG.some((entry) => entry.featured)).toBe(true);
-    expect(lastFeaturedIndex).toBeLessThan(firstNonFeaturedIndex);
-    expect(ACP_PROVIDER_CATALOG.filter((entry) => entry.featured)).toContainEqual(
-      expect.objectContaining({ id: "openai-compatible" }),
-    );
   });
 
   it("bundles SVG icons for catalog entries that declare an icon", () => {
@@ -61,6 +51,7 @@ describe("ACP provider catalog", () => {
     expect(findProvider("codewhale").command).toEqual(["codewhale", "serve", "--acp"]);
     expect(findProvider("devin").command).toEqual(["devin", "acp"]);
     expect(findProvider("goose").command).toEqual(["goose", "acp"]);
+    expect(findProvider("hoplite").command).toEqual(["hoplite", "acp"]);
     expect(findProvider("junie").command).toEqual(["junie", "--acp", "true"]);
     expect(findProvider("kiro").command).toEqual(["kiro-cli", "acp"]);
     expect(findProvider("poolside").command).toEqual(["pool", "acp"]);
@@ -68,16 +59,39 @@ describe("ACP provider catalog", () => {
   });
 
   it("offers MiniMax Code through its pinned public ACP package", () => {
-    // The pin moves on every `acp:version-drift:update`, so assert that the
-    // command is pinned to the listed version rather than to a literal one.
-    const provider = findProvider("minimax-code");
-    expect(provider.version).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(provider).toMatchObject({
+    expect(findProvider("minimax-code")).toMatchObject({
       title: "MiniMax Code",
-      command: ["npx", "-y", `@minimax-ai/code@${provider.version}`, "acp"],
+      version: "0.1.2",
+      command: ["npx", "-y", "@minimax-ai/code@0.1.2", "acp"],
     });
     expect(findProvider("minimax-code").iconSvg).toContain("<svg");
   });
+
+  it("offers Hoplite through its local ACP bridge with the Hoplite mark", () => {
+    expect(findProvider("hoplite")).toMatchObject({
+      title: "Hoplite",
+      command: ["hoplite", "acp"],
+      installLink: "https://hoplite.sh/docs/cli#install",
+    });
+    expect(buildAcpProviderConfigPatch(findProvider("hoplite"), true)).toEqual({
+      providers: {
+        hoplite: { enabled: true },
+      },
+    });
+    const ids = getAcpProviderCatalog().map((entry) => entry.id);
+    expect(ids.indexOf("hermes")).toBeLessThan(ids.indexOf("hoplite"));
+    expect(ids.indexOf("hoplite")).toBeLessThan(ids.indexOf("junie"));
+    expect(findProvider("hoplite").iconSvg).toContain('fill="currentColor"');
+  });
+
+  it.each([undefined, false])(
+    "rejects unsupported bundled Hoplite before producing a patch (%s)",
+    (supported) => {
+      expect(() => buildAcpProviderConfigPatch(findProvider("hoplite"), supported)).toThrow(
+        "Update the host to add Hoplite.",
+      );
+    },
+  );
 
   it("maps a catalog entry to the daemon provider config patch", () => {
     expect(buildAcpProviderConfigPatch(findProvider("amp-acp"))).toEqual({
@@ -98,18 +112,6 @@ describe("ACP provider catalog", () => {
 
     expect(patch.providers?.auggie?.env).toEqual({
       AUGMENT_DISABLE_AUTO_UPDATE: "1",
-    });
-  });
-
-  it("maps the OpenAI Compatible preset to a native openai-compatible provider config patch", () => {
-    const patch = buildAcpProviderConfigPatch(findProvider("openai-compatible"));
-    const openaiCompatible = patch.providers?.["openai-compatible"];
-
-    expect(openaiCompatible?.extends).toBe("openai-compatible");
-    expect(openaiCompatible?.command).toBeUndefined();
-    expect(openaiCompatible?.models).toBeUndefined();
-    expect(openaiCompatible?.env).toEqual({
-      OPENAI_BASE_URL: "http://localhost:1234/v1",
     });
   });
 

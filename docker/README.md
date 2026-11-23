@@ -1,3 +1,5 @@
+<!-- OTTO(identity): Otto container names, paths, configuration, and registry. -->
+
 # Otto Docker Image
 
 This directory contains the official Otto daemon image.

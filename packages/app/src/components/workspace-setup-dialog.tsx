@@ -1,16 +1,18 @@
+import { KeyboardTranslateView } from "@/keyboard/shift";
+import type { CreateWorkspaceRequestOptions } from "@getpaseo/client/internal/daemon-client";
+import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { createNameId } from "mnemonic-id";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { Composer } from "@/composer";
 import { ProjectIconView } from "@/components/project-icon-view";
+import { ICON_SIZE } from "@/styles/theme";
 import { useToast } from "@/contexts/toast-context";
 import { useAgentInputDraft } from "@/composer/draft/input-draft";
-import { handoffCreatedAgentMessageSubmission } from "@/composer/submission/writer";
 import { useProjectIcon } from "@/projects/icons";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import {
@@ -18,7 +20,6 @@ import {
   useSessionStore,
   type WorkspaceDescriptor,
 } from "@/stores/session-store";
-import { createUserMessage, generateMessageId } from "@/types/stream";
 import { useWorkspaceSetupStore } from "@/stores/workspace-setup-store";
 import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
@@ -28,10 +29,11 @@ import {
   resolveComposerAttachmentSubmitFormat,
   splitComposerAttachmentsForSubmit,
 } from "@/composer/attachments/submit";
-import { buildWorkspaceSetupCreateAgentOptions } from "@/components/workspace-setup-agent-options";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type {
+  CreateAgentRequestOptions,
+  DaemonClient,
+} from "@getpaseo/client/internal/daemon-client";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
-import { requireWorkspaceDirectory } from "@/utils/workspace-directory";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import type { MessagePayload } from "@/composer/types";
@@ -84,20 +86,23 @@ function buildChatDraftComposerArgs({
 async function callWorkspaceCreation({
   creationMethod,
   connectedClient,
+  creationId,
+  worktreeSlug,
   input,
 }: {
   creationMethod: "create_worktree" | "open_project";
   connectedClient: DaemonClient;
-  input: { cwd: string };
+  creationId: string;
+  worktreeSlug: string;
+  input: { cwd: string; agent?: CreateWorkspaceRequestOptions["agent"] };
 }) {
-  if (creationMethod === "create_worktree") {
-    return connectedClient.createOttoWorktree({
-      cwd: input.cwd,
-      worktreeSlug: createNameId(),
-    });
-  }
   return connectedClient.createWorkspace({
-    source: { kind: "directory", path: input.cwd },
+    idempotencyKey: creationId,
+    agent: input.agent,
+    source:
+      creationMethod === "create_worktree"
+        ? { kind: "worktree", cwd: input.cwd, worktreeSlug }
+        : { kind: "directory", path: input.cwd },
   });
 }
 
@@ -108,6 +113,42 @@ function failureMessageForCreationMethod(
   return method === "create_worktree"
     ? t("workspaceSetup.errors.failedCreateWorktree")
     : t("workspaceSetup.errors.failedOpenProject");
+}
+
+function buildCreateAgentOptions({
+  composerState,
+  text,
+  attachments,
+  encodedImages,
+  workspaceDirectory,
+  workspaceId,
+  provider,
+}: {
+  composerState: {
+    effectiveModeId: string;
+    effectiveModelId: string | null;
+    effectiveThinkingOptionId: string | null;
+  };
+  text: string;
+  attachments: NonNullable<CreateAgentRequestOptions["attachments"]>;
+  encodedImages: NonNullable<CreateAgentRequestOptions["images"]> | null;
+  workspaceDirectory: string;
+  workspaceId: string;
+  provider: CreateAgentRequestOptions["provider"];
+}): CreateAgentRequestOptions {
+  return {
+    provider,
+    cwd: workspaceDirectory,
+    workspaceId,
+    ...(composerState.effectiveModeId ? { modeId: composerState.effectiveModeId } : {}),
+    ...(composerState.effectiveModelId ? { model: composerState.effectiveModelId } : {}),
+    ...(composerState.effectiveThinkingOptionId
+      ? { thinkingOptionId: composerState.effectiveThinkingOptionId }
+      : {}),
+    ...(text.trim() ? { initialPrompt: text.trim() } : {}),
+    ...(encodedImages && encodedImages.length > 0 ? { images: encodedImages } : {}),
+    ...(attachments.length > 0 ? { attachments } : {}),
+  };
 }
 
 export function WorkspaceSetupDialog() {
@@ -161,7 +202,7 @@ export function WorkspaceSetupDialog() {
     setErrorMessage(null);
     setCreatedWorkspace(null);
     setPendingAction(null);
-  }, [pendingWorkspaceSetup?.creationMethod, serverId, sourceDirectory]);
+  }, [pendingWorkspaceSetup?.creationId]);
 
   const handleClose = useCallback(() => {
     clearWorkspaceSetup();
@@ -202,18 +243,25 @@ export function WorkspaceSetupDialog() {
   }, [client, isConnected, t]);
 
   const ensureWorkspace = useCallback(
-    async (input: { cwd: string; attachments: MessagePayload["attachments"] }) => {
+    async (input: {
+      cwd: string;
+      attachments: MessagePayload["attachments"];
+      agent?: CreateWorkspaceRequestOptions["agent"];
+      onAgentCreated?: (agent: AgentSnapshotPayload) => void;
+    }) => {
       if (!pendingWorkspaceSetup) {
         throw new Error(t("workspaceSetup.errors.pendingRequired"));
       }
 
-      if (createdWorkspace) {
+      if (createdWorkspace && !input.agent) {
         return createdWorkspace;
       }
 
       const connectedClient = withConnectedClient();
       const payload = await callWorkspaceCreation({
         creationMethod: pendingWorkspaceSetup.creationMethod,
+        creationId: pendingWorkspaceSetup.creationId,
+        worktreeSlug: pendingWorkspaceSetup.worktreeSlug,
         connectedClient,
         input,
       });
@@ -224,6 +272,7 @@ export function WorkspaceSetupDialog() {
         );
       }
 
+      if (payload.agent) input.onAgentCreated?.(payload.agent);
       const normalizedWorkspace = normalizeWorkspaceDescriptor(payload.workspace);
       mergeWorkspaces(pendingWorkspaceSetup.serverId, [normalizedWorkspace]);
       if (pendingWorkspaceSetup.creationMethod === "open_project") {
@@ -260,8 +309,7 @@ export function WorkspaceSetupDialog() {
       try {
         setPendingAction("chat");
         setErrorMessage(null);
-        const ensuredWorkspace = await ensureWorkspace({ cwd, attachments });
-        const connectedClient = withConnectedClient();
+
         if (!composerState) {
           throw new Error(t("workspaceSetup.errors.composerStateRequired"));
         }
@@ -274,30 +322,31 @@ export function WorkspaceSetupDialog() {
             supportsForgeAttachments: supportsForgeSearch,
           }),
         });
-        const initialMessageText = text.trim();
-        const hasInitialMessage =
-          initialMessageText.length > 0 ||
-          wirePayload.images.length > 0 ||
-          wirePayload.attachments.length > 0;
-        const clientMessageId = hasInitialMessage ? generateMessageId() : undefined;
-        const submittedAt = new Date();
         const encodedImages = await encodeImages(wirePayload.images);
-        const workspaceDirectory = requireWorkspaceDirectory({
-          workspaceId: ensuredWorkspace.id,
-          workspaceDirectory: ensuredWorkspace.workspaceDirectory,
+        if (!pendingWorkspaceSetup) throw new Error(t("workspaceSetup.errors.pendingRequired"));
+        let createdAgent: AgentSnapshotPayload | undefined;
+        const { workspaceId: _workspaceId, ...agentInput } = buildCreateAgentOptions({
+          composerState,
+          text,
+          attachments: wirePayload.attachments,
+          encodedImages: encodedImages ?? null,
+          workspaceDirectory: cwd,
+          workspaceId: "",
+          provider: composerState.selectedProvider,
         });
-        const agent = await connectedClient.createAgent(
-          buildWorkspaceSetupCreateAgentOptions({
-            composerState,
-            text,
-            attachments: wirePayload.attachments,
-            encodedImages: encodedImages ?? null,
-            workspaceDirectory,
-            workspaceId: ensuredWorkspace.id,
-            provider: composerState.selectedProvider,
-            clientMessageId,
-          }),
-        );
+        const ensuredWorkspace = await ensureWorkspace({
+          cwd,
+          attachments,
+          agent: {
+            ...agentInput,
+            clientMessageId: `${pendingWorkspaceSetup.creationId}:initial-message`,
+          },
+          onAgentCreated: (value) => {
+            createdAgent = value;
+          },
+        });
+        if (!createdAgent) throw new Error("The daemon did not create the requested agent");
+        const agent = createdAgent;
 
         if (!getIsStillActive()) {
           return;
@@ -310,19 +359,6 @@ export function WorkspaceSetupDialog() {
             agent: normalizeAgentSnapshot(agent, serverId),
           }),
         );
-        if (clientMessageId) {
-          handoffCreatedAgentMessageSubmission(
-            serverId,
-            agent.id,
-            createUserMessage({
-              clientMessageId,
-              text: initialMessageText,
-              timestamp: submittedAt,
-              images: wirePayload.images,
-              attachments: wirePayload.attachments,
-            }),
-          );
-        }
         navigateAfterCreation(ensuredWorkspace.id, { kind: "agent", agentId: agent.id });
       } catch (error) {
         const message = toErrorMessage(error);
@@ -336,13 +372,13 @@ export function WorkspaceSetupDialog() {
     },
     [
       composerState,
+      pendingWorkspaceSetup,
       getIsStillActive,
       navigateAfterCreation,
       serverId,
       ensureWorkspace,
       t,
       toast,
-      withConnectedClient,
       supportsForgeSearch,
     ],
   );
@@ -370,7 +406,7 @@ export function WorkspaceSetupDialog() {
           iconDataUri={iconDataUri}
           initial={placeholderInitial}
           projectViewKey={sourceDirectory}
-          size="md"
+          size={ICON_SIZE.md}
           textStyle={styles.projectIconFallbackText}
         />
         <Text style={styles.projectTitle} numberOfLines={1}>
@@ -400,25 +436,27 @@ export function WorkspaceSetupDialog() {
       desktopMaxWidth={640}
     >
       <FileDropZone style={styles.section}>
-        <Composer
-          agentId={`workspace-setup:${serverId}:${sourceDirectory}`}
-          serverId={serverId}
-          isPaneFocused={true}
-          onSubmitMessage={handleCreateChatAgent}
-          isSubmitLoading={pendingAction === "chat"}
-          blurOnSubmit={true}
-          value={chatDraft.text}
-          onChangeText={chatDraft.editText}
-          textReplacement={chatDraft.textReplacement}
-          attachments={chatDraft.attachments}
-          onChangeAttachments={chatDraft.setAttachments}
-          cwd={sourceDirectory}
-          clearDraft={chatDraft.clear}
-          autoFocus
-          commandDraftConfig={composerState?.commandDraftConfig}
-          agentControls={agentControlsWithDisabled}
-          inputWrapperStyle={styles.composerInputWrapper}
-        />
+        <KeyboardTranslateView>
+          <Composer
+            agentId={`workspace-setup:${serverId}:${sourceDirectory}`}
+            serverId={serverId}
+            isPaneFocused={true}
+            onSubmitMessage={handleCreateChatAgent}
+            isSubmitLoading={pendingAction === "chat"}
+            blurOnSubmit={true}
+            textSource={chatDraft.textSource}
+            onChangeText={chatDraft.editText}
+            textReplacement={chatDraft.textReplacement}
+            attachments={chatDraft.attachments}
+            onChangeAttachments={chatDraft.setAttachments}
+            cwd={sourceDirectory}
+            clearDraft={chatDraft.clear}
+            autoFocus
+            commandDraft={composerState?.commandDraft}
+            agentControls={agentControlsWithDisabled}
+            inputWrapperStyle={styles.composerInputWrapper}
+          />
+        </KeyboardTranslateView>
       </FileDropZone>
 
       {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}

@@ -1,3 +1,7 @@
+import { execFileSync } from "node:child_process";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   GitHubAuthenticationError,
@@ -10,22 +14,18 @@ import {
   type GitHubCommandRunner,
   type GitHubCommandRunnerOptions,
   type CurrentPullRequestStatus,
+  type GitHubPullRequestStatusFacts,
 } from "./github-service.js";
-import type {
-  GitHubForgeSpecificStatusFacts,
-  GitHubPullRequestStatusFacts,
-} from "./github-facts.js";
-import type { ForgeSpecificStatusFacts } from "./forge-service.js";
-import { resolveGitHubRemote } from "../utils/github-remote.js";
-import { CheckoutPrStatusResponseSchema } from "@otto-code/protocol/messages";
+import { isPlatform } from "../test-utils/platform.js";
+import { CheckoutPrStatusResponseSchema } from "@getpaseo/protocol/messages";
 
 const EXPECTED_GITHUB_FAST_POLL_MS = 20_000;
 const EXPECTED_GITHUB_SLOW_POLL_MS = 120_000;
 const EXPECTED_GITHUB_ERROR_BACKOFF_CAP_MS = 300_000;
-// Mirrors GITHUB_CURRENT_PR_STATUS_BASE_FIELDS in github-service.ts.
 const CURRENT_PR_STATUS_BASE_FIELDS =
-  "number,url,title,state,isDraft,baseRefName,headRefName,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
+  "number,url,title,state,isDraft,baseRefName,headRefName,headRefOid,mergedAt,reviewDecision,mergeable,headRepositoryOwner";
 const CURRENT_PR_STATUS_FIELDS = `${CURRENT_PR_STATUS_BASE_FIELDS},statusCheckRollup`;
+const FORK_PR_QUERY = "state=all&per_page=100&head=forkOwner%3Afeature%2Ffork";
 
 interface RunnerCall {
   args: string[];
@@ -108,21 +108,97 @@ function createDeferredRunner(): TestRunner {
   };
 }
 
-/**
- * Waits until the deferred runner actually has a call in flight. A fixed number
- * of microtask ticks is not enough: Otto awaits gh-path resolution before it
- * ever reaches the runner, so how many ticks it takes is an implementation
- * detail this file should not encode.
- */
-async function waitForPendingRunnerCall(runner: TestRunner, expected = 1): Promise<void> {
-  // Advances the fake clock rather than only draining microtasks: the path from
-  // call to runner crosses real async work, so a microtask drain alone can spin
-  // 100 times without the runner ever being reached.
-  for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (runner.calls.length >= expected) return;
-    await vi.advanceTimersByTimeAsync(1);
-  }
-  throw new Error(`Runner never reached ${expected} call(s); saw ${runner.calls.length}`);
+interface FakeGitHubCliFixture {
+  cwd: string;
+  logPath: string;
+  dispose: () => void;
+}
+
+function createFakeGitHubCliFixture(input: {
+  remoteUrl: string;
+  authStatusSucceeds?: boolean;
+  authStatusMode?: "success" | "unauthenticated" | "transient-once";
+}): FakeGitHubCliFixture {
+  const previousPath = process.env.PATH;
+  const previousLog = process.env.GH_TEST_LOG;
+  const tempDir = mkdtempSync(join(tmpdir(), "github-service-gh-host-"));
+  const repoDir = join(tempDir, "repo");
+  const binDir = join(tempDir, "bin");
+  const logPath = join(tempDir, "gh.log");
+  const authStatusMode =
+    input.authStatusMode ?? (input.authStatusSucceeds === true ? "success" : "unauthenticated");
+  const authStatusStatePath = join(tempDir, "auth-status-state");
+  execFileSync("git", ["init", repoDir], { stdio: "pipe" });
+  execFileSync("git", ["-C", repoDir, "remote", "add", "origin", input.remoteUrl], {
+    stdio: "pipe",
+  });
+  mkdirSync(binDir, { recursive: true });
+  const ghPath = join(binDir, "gh");
+  writeFileSync(
+    ghPath,
+    `#!/bin/sh
+AUTH_STATUS_MODE=${JSON.stringify(authStatusMode)}
+AUTH_STATUS_STATE=${JSON.stringify(authStatusStatePath)}
+printf '%s|%s\\n' "$*" "\${GH_HOST:-}" >> "$GH_TEST_LOG"
+if [ "$1" = "--version" ]; then
+  echo "gh version test"
+  exit 0
+fi
+if [ "$1" = "auth" ] && [ "$2" = "status" ] && [ "$3" = "--hostname" ]; then
+  case "$AUTH_STATUS_MODE" in
+    success)
+      exit 0
+      ;;
+    transient-once)
+      if [ ! -f "$AUTH_STATUS_STATE" ]; then
+        touch "$AUTH_STATUS_STATE"
+        echo "request timed out" >&2
+        exit 2
+      fi
+      exit 0
+      ;;
+    *)
+      echo "gh auth login required" >&2
+      exit 1
+      ;;
+  esac
+fi
+if [ "$1" = "repo" ] && [ "$2" = "view" ]; then
+  echo '{"owner":{"login":"acme"},"name":"repo"}'
+  exit 0
+fi
+if [ "$1" = "api" ]; then
+  echo '{"url":"https://github.acme.internal/acme/repo/pull/7","number":7}'
+  exit 0
+fi
+echo "unexpected gh args: $*" >&2
+exit 1
+`,
+  );
+  chmodSync(ghPath, 0o755);
+  process.env.PATH = [binDir, previousPath].filter(Boolean).join(delimiter);
+  process.env.GH_TEST_LOG = logPath;
+  return {
+    cwd: repoDir,
+    logPath,
+    dispose: () => {
+      if (previousPath === undefined) {
+        delete process.env.PATH;
+      } else {
+        process.env.PATH = previousPath;
+      }
+      if (previousLog === undefined) {
+        delete process.env.GH_TEST_LOG;
+      } else {
+        process.env.GH_TEST_LOG = previousLog;
+      }
+      rmSync(tempDir, { recursive: true, force: true });
+    },
+  };
+}
+
+function readFakeGitHubCliLog(logPath: string): string[] {
+  return readFileSync(logPath, "utf8").trim().split("\n").filter(Boolean);
 }
 
 function currentPullRequestJson(overrides: Record<string, unknown> = {}): string {
@@ -134,6 +210,7 @@ function currentPullRequestJson(overrides: Record<string, unknown> = {}): string
     isDraft: false,
     baseRefName: "main",
     headRefName: "feature/fork",
+    headRefOid: "1111111111111111111111111111111111111111",
     mergedAt: null,
     statusCheckRollup: [],
     reviewDecision: "REVIEW_REQUIRED",
@@ -236,31 +313,9 @@ function batchPollStatusWithRateLimitJson(input: {
   });
 }
 
-function currentPullRequestHeadShaJson(headRefOid: string): string {
-  return JSON.stringify({
-    data: {
-      repository: {
-        pullRequest: { headRefOid },
-      },
-    },
-  });
-}
-
-/**
- * `github` is accepted as an alias for `forgeSpecific`. Otto's forge layer keeps
- * per-forge facts in one neutral envelope on the status rather than a
- * GitHub-named field, so Bitbucket and friends have somewhere to put theirs;
- * the merge guards read `forgeSpecific`. Every call site here is describing
- * GitHub facts, so the alias keeps them readable without pretending the
- * GitHub-named field still exists.
- */
 function createCurrentPullRequestStatus(
-  overrides: Partial<CurrentPullRequestStatus> & {
-    github?: ForgeSpecificStatusFacts;
-  } = {},
+  overrides: Partial<CurrentPullRequestStatus> = {},
 ): CurrentPullRequestStatus {
-  const { github, ...rest } = overrides;
-  const forgeSpecific = rest.forgeSpecific ?? github;
   return {
     number: 42,
     repoOwner: "acme",
@@ -276,18 +331,14 @@ function createCurrentPullRequestStatus(
     checks: [],
     checksStatus: "none",
     reviewDecision: null,
-    ...rest,
-    ...(forgeSpecific ? { forgeSpecific } : {}),
+    ...overrides,
   };
 }
 
 function githubStatusFacts(
   overrides: Partial<GitHubPullRequestStatusFacts> = {},
-): GitHubForgeSpecificStatusFacts {
+): GitHubPullRequestStatusFacts & { forge: "github" } {
   return {
-    // The discriminant isGitHubPullRequestStatusFacts keys on. Without it the
-    // envelope is just unknown forge facts and every merge guard reports the
-    // facts as unavailable.
     forge: "github",
     mergeStateStatus: "CLEAN",
     autoMergeRequest: null,
@@ -368,8 +419,8 @@ function pullRequestCheckoutTargetJson(): string {
           isCrossRepository: true,
           headRepositoryOwner: { login: "therainisme" },
           headRepository: {
-            sshUrl: "git@github.com:therainisme/otto.git",
-            url: "https://github.com/therainisme/otto",
+            sshUrl: "git@github.com:therainisme/paseo.git",
+            url: "https://github.com/therainisme/paseo",
           },
         },
       },
@@ -379,8 +430,8 @@ function pullRequestCheckoutTargetJson(): string {
 
 function repoViewJson(): string {
   return JSON.stringify({
-    owner: { login: "otto-code-ai" },
-    name: "otto",
+    owner: { login: "getpaseo" },
+    name: "paseo",
     parent: null,
   });
 }
@@ -472,7 +523,7 @@ function pullRequestTimelineJson(overrides: Record<string, unknown> = {}): strin
   });
 }
 
-describe("GitHubService", () => {
+describe("ForgeService", () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -497,7 +548,7 @@ describe("GitHubService", () => {
         prNumber: 42,
         mergeMethod,
         status: createCurrentPullRequestStatus({
-          github: githubStatusFacts(),
+          forgeSpecific: githubStatusFacts(),
         }),
       }),
     ).resolves.toEqual({ success: true });
@@ -543,7 +594,7 @@ describe("GitHubService", () => {
           prNumber: 42,
           mergeMethod: "squash",
           status: createCurrentPullRequestStatus({
-            github: githubStatusFacts({ mergeStateStatus }),
+            forgeSpecific: githubStatusFacts({ mergeStateStatus }),
           }),
         }),
       ).rejects.toThrow("ready for direct merge");
@@ -567,7 +618,7 @@ describe("GitHubService", () => {
         prNumber: 42,
         mergeMethod: "squash",
         status: createCurrentPullRequestStatus({
-          github: githubStatusFacts(overrides),
+          forgeSpecific: githubStatusFacts(overrides),
         }),
       }),
     ).rejects.toThrow("merge queue");
@@ -587,7 +638,7 @@ describe("GitHubService", () => {
         prNumber: 42,
         mergeMethod: "squash",
         status: createCurrentPullRequestStatus({
-          github: githubStatusFacts({
+          forgeSpecific: githubStatusFacts({
             autoMergeRequest: {
               enabledAt: "2026-05-13T12:00:00Z",
               mergeMethod: "SQUASH",
@@ -613,7 +664,7 @@ describe("GitHubService", () => {
         prNumber: 42,
         mergeMethod: "squash",
         status: createCurrentPullRequestStatus({
-          github: githubStatusFacts({
+          forgeSpecific: githubStatusFacts({
             repository: {
               autoMergeAllowed: true,
               mergeCommitAllowed: true,
@@ -645,7 +696,7 @@ describe("GitHubService", () => {
         prNumber: 42,
         mergeMethod,
         status: createCurrentPullRequestStatus({
-          github: githubStatusFacts({
+          forgeSpecific: githubStatusFacts({
             mergeStateStatus: "BLOCKED",
             viewerCanEnableAutoMerge: true,
             repository: {
@@ -680,7 +731,7 @@ describe("GitHubService", () => {
         cwd: "/tmp/repo",
         prNumber: 42,
         status: createCurrentPullRequestStatus({
-          github: githubStatusFacts({
+          forgeSpecific: githubStatusFacts({
             autoMergeRequest: {
               enabledAt: "2026-05-13T12:00:00Z",
               mergeMethod: "SQUASH",
@@ -738,18 +789,15 @@ describe("GitHubService", () => {
       number: 526,
       baseRefName: "main",
       headRefName: "main",
-      // Otto resolves the fetchable refs up front so the checkout does not have
-      // to know GitHub's refs/pull/N/head convention. Neutral by design: each
-      // forge adapter reports its own ref layout here. Both remotes are listed
-      // because a cross-repository PR can be fetched from either.
       checkoutRefs: [
         { remoteName: "origin", remoteRef: "refs/pull/526/head" },
         { remoteName: "upstream", remoteRef: "refs/pull/526/head" },
       ],
       headOwnerLogin: "therainisme",
-      headRepositorySshUrl: "git@github.com:therainisme/otto.git",
-      headRepositoryUrl: "https://github.com/therainisme/otto",
+      headRepositorySshUrl: "git@github.com:therainisme/paseo.git",
+      headRepositoryUrl: "https://github.com/therainisme/paseo",
       isCrossRepository: true,
+      headRefKind: "branch",
     });
 
     expect(runner.calls).toHaveLength(2);
@@ -759,9 +807,31 @@ describe("GitHubService", () => {
     });
     expect(runner.calls[1]?.cwd).toBe("/repo");
     expect(runner.calls[1]?.args.slice(0, 3)).toEqual(["api", "graphql", "-f"]);
-    expect(runner.calls[1]?.args).toContain("owner=otto-code-ai");
-    expect(runner.calls[1]?.args).toContain("name=otto");
+    expect(runner.calls[1]?.args).toContain("owner=getpaseo");
+    expect(runner.calls[1]?.args).toContain("name=paseo");
     expect(runner.calls[1]?.args).toContain("number=526");
+  });
+
+  it("populates repoOwner/repoName from a GitHub Enterprise PR URL", async () => {
+    const runner = createRunner([
+      currentPullRequestJson({ url: "https://github.acme.internal/acme/repo/pull/42" }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 0,
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "feature/fork",
+    });
+
+    expect(status).toMatchObject({
+      repoOwner: "acme",
+      repoName: "repo",
+      url: "https://github.acme.internal/acme/repo/pull/42",
+    });
   });
 
   it("polls PR status at fast cadence while checks are pending", async () => {
@@ -1825,7 +1895,6 @@ describe("GitHubService", () => {
       prNumber: 42,
       repoOwner: "parentOwner",
       repoName: "parentRepo",
-      commentReactionsSupported: true,
       truncated: false,
       error: null,
       items: [
@@ -1863,34 +1932,6 @@ describe("GitHubService", () => {
         },
       ],
     });
-  });
-
-  it("mutates review-thread resolution and comment reactions through GraphQL", async () => {
-    const runner = createRunner([JSON.stringify({ data: {} }), JSON.stringify({ data: {} })]);
-    const service = createGitHubService({
-      runner: runner.runner,
-      resolveGhPath: async () => "/usr/bin/gh",
-      now: () => 100,
-    });
-
-    await service.setPullRequestThreadResolved?.({
-      cwd: "/repo",
-      prNumber: 42,
-      threadId: "PRRT_1",
-      resolved: true,
-    });
-    await service.setPullRequestCommentReaction?.({
-      cwd: "/repo",
-      prNumber: 42,
-      commentId: "PRRC_1",
-      content: "HEART",
-      reacted: true,
-    });
-
-    expect(runner.calls[0]?.args.join(" ")).toContain("resolveReviewThread");
-    expect(runner.calls[0]?.args).toContain("threadId=PRRT_1");
-    expect(runner.calls[1]?.args.join(" ")).toContain("addReaction");
-    expect(runner.calls[1]?.args).toContain("content=HEART");
   });
 
   it("rewrites GitHub attachment image URLs in timeline comments", async () => {
@@ -2012,7 +2053,7 @@ describe("GitHubService", () => {
           nodes: [
             {
               id: "IC_badge",
-              body: "![build](https://img.shields.io/github/actions/workflow/status/otto-code-ai/otto-code/ci.yml)",
+              body: "![build](https://img.shields.io/github/actions/workflow/status/getpaseo/paseo/ci.yml)",
               bodyHTML:
                 '<p><img alt="build" src="https://camo.githubusercontent.com/badge-signature" /></p>',
               url: "https://github.com/parentOwner/parentRepo/pull/42#issuecomment-5",
@@ -2040,7 +2081,7 @@ describe("GitHubService", () => {
     expect(timeline.items[0]).toMatchObject({
       kind: "comment",
       id: "IC_badge",
-      body: "![build](https://img.shields.io/github/actions/workflow/status/otto-code-ai/otto-code/ci.yml)",
+      body: "![build](https://img.shields.io/github/actions/workflow/status/getpaseo/paseo/ci.yml)",
     });
   });
 
@@ -2608,6 +2649,7 @@ describe("GitHubService", () => {
       ttlMs: 1_000,
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
       now: () => 100,
     });
     const request = {
@@ -2618,7 +2660,7 @@ describe("GitHubService", () => {
     };
 
     const staleRequest = service.getPullRequestTimeline(request);
-    await waitForPendingRunnerCall(runner);
+    await flushMicrotasks();
     expect(runner.calls).toHaveLength(1);
 
     service.invalidate({ cwd: "/repo" });
@@ -2642,7 +2684,7 @@ describe("GitHubService", () => {
     expect(stale.items.at(-1)?.body).toBe("Stale pre-invalidation result");
 
     const freshRequest = service.getPullRequestTimeline(request);
-    await waitForPendingRunnerCall(runner, 2);
+    await flushMicrotasks();
     expect(runner.calls).toHaveLength(2);
     runner.resolveNext(
       pullRequestTimelineJson({
@@ -3090,27 +3132,11 @@ describe("GitHubService", () => {
     expect(status?.mergeable).toBe("UNKNOWN");
   });
 
-  it("uses only GitHub CLI fields available to older gh releases for current PR status", async () => {
-    const runner = createRunner([currentPullRequestJson()]);
-    const service = createGitHubService({
-      runner: runner.runner,
-      resolveGhPath: async () => "/usr/bin/gh",
-    });
-
-    await service.getCurrentPullRequestStatus({
-      cwd: "/repo",
-      headRef: "feature/fork",
-    });
-
-    expect(runner.calls[0]?.args).toEqual(["pr", "view", "--json", CURRENT_PR_STATUS_FIELDS]);
-    expect(CURRENT_PR_STATUS_FIELDS).not.toContain("headRefOid");
-  });
-
-  it("resolves a merged PR against the checkout SHA through GraphQL", async () => {
-    const headSha = "2222222222222222222222222222222222222222";
+  it("keeps an open PR when its remote head SHA differs from the checkout HEAD", async () => {
     const runner = createRunner([
-      currentPullRequestJson({ state: "MERGED", mergedAt: "2026-08-01T12:00:00Z" }),
-      currentPullRequestHeadShaJson(headSha),
+      currentPullRequestJson({
+        headRefOid: "1111111111111111111111111111111111111111",
+      }),
     ]);
     const service = createGitHubService({
       runner: runner.runner,
@@ -3120,21 +3146,17 @@ describe("GitHubService", () => {
     const status = await service.getCurrentPullRequestStatus({
       cwd: "/repo",
       headRef: "feature/fork",
-      headSha,
+      headSha: "2222222222222222222222222222222222222222",
     });
 
-    expect(status?.number).toBe(42);
-    expect(runner.calls.slice(0, 2).map((call) => call.args.slice(0, 2))).toEqual([
-      ["pr", "view"],
-      ["api", "graphql"],
-    ]);
+    expect(status).toMatchObject({ number: 42, state: "open" });
   });
 
   it("loads GitHub merge, auto-merge, permission, policy, and queue facts for PR 993 shape", async () => {
     const runner = createScriptedRunner([
       currentPullRequestJson({
         number: 993,
-        url: "https://github.com/otto-code-ai/otto-code/pull/993",
+        url: "https://github.com/getpaseo/paseo/pull/993",
         title: "Auto-merge UX",
         headRefName: "github-pr-auto-merge-ux",
         mergeable: "MERGEABLE",
@@ -3146,7 +3168,7 @@ describe("GitHubService", () => {
             workflowName: "CI",
             status: "IN_PROGRESS",
             conclusion: null,
-            detailsUrl: "https://github.com/otto-code-ai/otto-code/actions/runs/993",
+            detailsUrl: "https://github.com/getpaseo/paseo/actions/runs/993",
           },
         ],
       }),
@@ -3171,13 +3193,11 @@ describe("GitHubService", () => {
         {
           name: "server tests",
           status: "pending",
-          url: "https://github.com/otto-code-ai/otto-code/actions/runs/993",
+          url: "https://github.com/getpaseo/paseo/actions/runs/993",
           workflow: "CI",
         },
       ],
       checksStatus: "pending",
-      // Per-forge facts ride in the neutral forgeSpecific envelope, tagged with
-      // the forge that produced them, rather than a GitHub-named field.
       forgeSpecific: {
         forge: "github",
         mergeStateStatus: "BLOCKED",
@@ -3199,6 +3219,100 @@ describe("GitHubService", () => {
     });
   });
 
+  it("keeps a merged PR only when headRefOid matches the checkout HEAD", async () => {
+    const headSha = "2222222222222222222222222222222222222222";
+    const runner = createRunner([
+      currentPullRequestJson({
+        state: "MERGED",
+        mergedAt: "2026-07-17T12:00:00Z",
+        headRefOid: headSha,
+      }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "feature/fork",
+      headSha,
+    });
+
+    expect(status?.number).toBe(42);
+    expect(status?.state).toBe("merged");
+  });
+
+  it("does not attach a stale merged PR after a same-name branch advances", async () => {
+    const stale = currentPullRequestJson({
+      state: "MERGED",
+      mergedAt: "2026-07-17T12:00:00Z",
+      headRefOid: "1111111111111111111111111111111111111111",
+    });
+    const runner = createScriptedRunner([
+      stale,
+      JSON.stringify({ owner: { login: "parentOwner" }, name: "parentRepo", parent: null }),
+      JSON.stringify([JSON.parse(stale)]),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+    });
+
+    await expect(
+      service.getCurrentPullRequestStatus({
+        cwd: "/repo",
+        headRef: "feature/fork",
+        headSha: "2222222222222222222222222222222222222222",
+      }),
+    ).resolves.toBeNull();
+    expect(runner.calls.some((call) => call.args[0] === "pr" && call.args[1] === "list")).toBe(
+      true,
+    );
+  });
+
+  it("prefers an open PR over an exact-SHA merged PR for the same head", async () => {
+    const checkoutSha = "2222222222222222222222222222222222222222";
+    const owner = { login: "forkOwner" };
+    const staleView = currentPullRequestJson({
+      state: "MERGED",
+      mergedAt: "2026-07-15T12:00:00Z",
+      headRefOid: "0000000000000000000000000000000000000000",
+      headRepositoryOwner: owner,
+    });
+    const open = JSON.parse(
+      currentPullRequestJson({
+        number: 43,
+        state: "OPEN",
+        headRefOid: "3333333333333333333333333333333333333333",
+        headRepositoryOwner: owner,
+      }),
+    );
+    const exactMerged = JSON.parse(
+      currentPullRequestJson({
+        number: 42,
+        state: "MERGED",
+        mergedAt: "2026-07-16T12:00:00Z",
+        headRefOid: checkoutSha,
+        headRepositoryOwner: owner,
+      }),
+    );
+    const runner = createScriptedRunner([staleView, JSON.stringify([exactMerged, open])]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "feature/fork",
+      headSha: checkoutSha,
+      headRepositoryOwner: "forkOwner",
+    });
+
+    expect(status).toMatchObject({ number: 43, state: "open" });
+  });
+
   it("resolves fork PR heads to the parent repository when gh pr view returns a stale branch match", async () => {
     const runner = createScriptedRunner([
       currentPullRequestJson({
@@ -3212,34 +3326,33 @@ describe("GitHubService", () => {
         name: "parentRepo",
         parent: { owner: { login: "parentOwner" }, name: "parentRepo" },
       }),
-      JSON.stringify([
-        {
-          number: 41,
-          url: "https://github.com/parentOwner/parentRepo/pull/41",
-          title: "Wrong fork owner",
-          state: "OPEN",
-          isDraft: false,
-          baseRefName: "main",
-          headRefName: "feature/fork",
-          mergedAt: null,
-          statusCheckRollup: [],
-          reviewDecision: "REVIEW_REQUIRED",
-          headRepositoryOwner: { login: "otherFork" },
-        },
-        {
-          number: 42,
-          url: "https://github.com/parentOwner/parentRepo/pull/42",
-          title: "Real fork PR",
-          state: "OPEN",
-          isDraft: false,
-          baseRefName: "main",
-          headRefName: "feature/fork",
-          mergedAt: null,
-          statusCheckRollup: [],
-          reviewDecision: "REVIEW_REQUIRED",
-          headRepositoryOwner: { login: "forkOwner" },
-        },
-      ]),
+      JSON.stringify([{ number: 41 }, { number: 42 }]),
+      JSON.stringify({
+        number: 41,
+        url: "https://github.com/parentOwner/parentRepo/pull/41",
+        title: "Wrong fork owner",
+        state: "OPEN",
+        isDraft: false,
+        baseRefName: "main",
+        headRefName: "feature/fork",
+        mergedAt: null,
+        statusCheckRollup: [],
+        reviewDecision: "REVIEW_REQUIRED",
+        headRepositoryOwner: { login: "otherFork" },
+      }),
+      JSON.stringify({
+        number: 42,
+        url: "https://github.com/parentOwner/parentRepo/pull/42",
+        title: "Real fork PR",
+        state: "OPEN",
+        isDraft: false,
+        baseRefName: "main",
+        headRefName: "feature/fork",
+        mergedAt: null,
+        statusCheckRollup: [],
+        reviewDecision: "REVIEW_REQUIRED",
+        headRepositoryOwner: { login: "forkOwner" },
+      }),
     ]);
     const service = createGitHubService({
       runner: runner.runner,
@@ -3259,27 +3372,182 @@ describe("GitHubService", () => {
       title: "Real fork PR",
       headRefName: "feature/fork",
     });
-    expect(runner.calls.slice(0, 3).map((call) => call.args)).toEqual([
+    expect(runner.calls.slice(0, 5).map((call) => call.args)).toEqual([
       ["pr", "view", "--json", CURRENT_PR_STATUS_FIELDS],
       ["repo", "view", "--json", "owner,name,parent"],
-      [
-        "pr",
-        "list",
-        "--repo",
-        "parentOwner/parentRepo",
-        "--state",
-        "all",
-        "--head",
-        "forkOwner:feature/fork",
-        "--limit",
-        "10",
-        "--json",
-        CURRENT_PR_STATUS_FIELDS,
-      ],
+      ["api", `repos/parentOwner/parentRepo/pulls?${FORK_PR_QUERY}`],
+      ["pr", "view", "41", "--repo", "parentOwner/parentRepo", "--json", CURRENT_PR_STATUS_FIELDS],
+      ["pr", "view", "42", "--repo", "parentOwner/parentRepo", "--json", CURRENT_PR_STATUS_FIELDS],
     ]);
   });
 
-  it("retries scoped PR list without statusCheckRollup when token permissions are insufficient", async () => {
+  it("reads the fork PR carrying the checked-out commit past newer attempts on the branch", async () => {
+    const checkoutSha = "3333333333333333333333333333333333333333";
+    const viewed: number[] = [];
+    const runner: GitHubCommandRunner = async (args) => {
+      if (args[0] === "repo" && args[1] === "view") {
+        return {
+          stdout: JSON.stringify({
+            owner: { login: "forkOwner" },
+            name: "parentRepo",
+            parent: { owner: { login: "parentOwner" }, name: "parentRepo" },
+          }),
+          stderr: "",
+        };
+      }
+      if (args[0] === "api") {
+        // Newest first, and the checkout is sitting on the oldest attempt.
+        return {
+          stdout: JSON.stringify([
+            { number: 50, head: { sha: "5".repeat(40) } },
+            { number: 49, head: { sha: "4".repeat(40) } },
+            { number: 48, head: { sha: "8".repeat(40) } },
+            { number: 47, head: { sha: checkoutSha } },
+          ]),
+          stderr: "",
+        };
+      }
+      if (args[0] === "pr" && args[1] === "view" && /^\d+$/.test(args[2] ?? "")) {
+        const number = Number(args[2]);
+        viewed.push(number);
+        return {
+          stdout: currentPullRequestJson({
+            number,
+            url: `https://github.com/parentOwner/parentRepo/pull/${number}`,
+            state: "CLOSED",
+            headRefOid: number === 47 ? checkoutSha : `${number}`.repeat(20),
+            headRepositoryOwner: { login: "forkOwner" },
+          }),
+          stderr: "",
+        };
+      }
+      throw noPullRequestError(args);
+    };
+    const service = createGitHubService({
+      runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "feature/fork",
+      headSha: checkoutSha,
+    });
+
+    expect(status).toMatchObject({
+      number: 47,
+      repoOwner: "parentOwner",
+      repoName: "parentRepo",
+    });
+    expect(viewed).toContain(47);
+    expect(viewed).toHaveLength(3);
+  });
+
+  it("propagates a failed fork PR lookup instead of reporting no pull request", async () => {
+    const rateLimitError = new GitHubCommandError({
+      args: ["api", "repos/parentOwner/parentRepo/pulls"],
+      cwd: "/repo",
+      exitCode: 1,
+      stderr: "API rate limit exceeded",
+    });
+    const runner = createScriptedRunner([
+      { error: noPullRequestError() },
+      JSON.stringify({
+        owner: { login: "forkOwner" },
+        name: "parentRepo",
+        parent: { owner: { login: "parentOwner" }, name: "parentRepo" },
+      }),
+      { error: rateLimitError },
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    await expect(
+      service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" }),
+    ).rejects.toThrow(GitHubCommandError);
+  });
+
+  it("resolves a fork PR whose branch name is crowded in the parent repository", async () => {
+    // Mirrors what `gh` really does: `pr list --head` matches the string
+    // against headRefName, so an "owner:branch" head never matches, and a
+    // popular branch name fills the candidate page with other forks' PRs.
+    const calls: RunnerCall[] = [];
+    function parentRepoPullRequest(
+      number: number,
+      headRepositoryOwner: string,
+    ): Record<string, unknown> {
+      return {
+        number,
+        url: `https://github.com/parentOwner/parentRepo/pull/${number}`,
+        title: `PR ${number}`,
+        state: "OPEN",
+        isDraft: false,
+        baseRefName: "main",
+        headRefName: "main",
+        headRefOid: `${number}`.padStart(40, "0"),
+        mergedAt: null,
+        statusCheckRollup: [],
+        reviewDecision: "REVIEW_REQUIRED",
+        headRepositoryOwner: { login: headRepositoryOwner },
+      };
+    }
+    const crowd = Array.from({ length: 10 }, (_, index) =>
+      parentRepoPullRequest(100 + index, `otherFork${index}`),
+    );
+    const runner: GitHubCommandRunner = async (args, options) => {
+      calls.push({ args, cwd: options.cwd });
+      if (args[0] === "repo" && args[1] === "view") {
+        return {
+          stdout: JSON.stringify({
+            owner: { login: "forkOwner" },
+            name: "parentRepo",
+            parent: { owner: { login: "parentOwner" }, name: "parentRepo" },
+          }),
+          stderr: "",
+        };
+      }
+      if (args[0] === "pr" && args[1] === "view" && args[2] === "4984") {
+        return { stdout: JSON.stringify(parentRepoPullRequest(4984, "forkOwner")), stderr: "" };
+      }
+      if (args[0] === "pr" && args[1] === "view") {
+        throw noPullRequestError(args);
+      }
+      if (args[0] === "pr" && args[1] === "list") {
+        const headRef = args[args.indexOf("--head") + 1];
+        const limit = Number(args[args.indexOf("--limit") + 1]);
+        const matching = crowd.filter((candidate) => candidate.headRefName === headRef);
+        return { stdout: JSON.stringify(matching.slice(0, limit)), stderr: "" };
+      }
+      if (args[0] === "api" && args[1]?.startsWith("repos/")) {
+        expect(args[1]).toContain("head=forkOwner%3Amain");
+        return { stdout: JSON.stringify([{ number: 4984 }]), stderr: "" };
+      }
+      return { stdout: "{}", stderr: "" };
+    };
+    const service = createGitHubService({
+      runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    const status = await service.getCurrentPullRequestStatus({
+      cwd: "/repo",
+      headRef: "main",
+    });
+
+    expect(status).toMatchObject({
+      number: 4984,
+      repoOwner: "parentOwner",
+      repoName: "parentRepo",
+      headRefName: "main",
+    });
+  });
+
+  it("retries the fork PR view without statusCheckRollup when token permissions are insufficient", async () => {
     const runner = createScriptedRunner([
       currentPullRequestJson({
         number: 7,
@@ -3292,36 +3560,30 @@ describe("GitHubService", () => {
         name: "parentRepo",
         parent: { owner: { login: "parentOwner" }, name: "parentRepo" },
       }),
+      JSON.stringify([{ number: 42 }]),
       {
         error: statusCheckRollupPermissionError([
           "pr",
-          "list",
+          "view",
+          "42",
           "--repo",
           "parentOwner/parentRepo",
-          "--state",
-          "all",
-          "--head",
-          "forkOwner:feature/fork",
           "--json",
           CURRENT_PR_STATUS_FIELDS,
-          "--limit",
-          "10",
         ]),
       },
-      JSON.stringify([
-        {
-          number: 42,
-          url: "https://github.com/parentOwner/parentRepo/pull/42",
-          title: "Real fork PR",
-          state: "OPEN",
-          isDraft: false,
-          baseRefName: "main",
-          headRefName: "feature/fork",
-          mergedAt: null,
-          reviewDecision: "REVIEW_REQUIRED",
-          headRepositoryOwner: { login: "forkOwner" },
-        },
-      ]),
+      JSON.stringify({
+        number: 42,
+        url: "https://github.com/parentOwner/parentRepo/pull/42",
+        title: "Real fork PR",
+        state: "OPEN",
+        isDraft: false,
+        baseRefName: "main",
+        headRefName: "feature/fork",
+        mergedAt: null,
+        reviewDecision: "REVIEW_REQUIRED",
+        headRepositoryOwner: { login: "forkOwner" },
+      }),
     ]);
     const service = createGitHubService({
       runner: runner.runner,
@@ -3342,34 +3604,17 @@ describe("GitHubService", () => {
       checks: [],
       checksStatus: "none",
     });
-    expect(runner.calls.slice(0, 4).map((call) => call.args)).toEqual([
+    expect(runner.calls.slice(0, 5).map((call) => call.args)).toEqual([
       ["pr", "view", "--json", CURRENT_PR_STATUS_FIELDS],
       ["repo", "view", "--json", "owner,name,parent"],
+      ["api", `repos/parentOwner/parentRepo/pulls?${FORK_PR_QUERY}`],
+      ["pr", "view", "42", "--repo", "parentOwner/parentRepo", "--json", CURRENT_PR_STATUS_FIELDS],
       [
         "pr",
-        "list",
+        "view",
+        "42",
         "--repo",
         "parentOwner/parentRepo",
-        "--state",
-        "all",
-        "--head",
-        "forkOwner:feature/fork",
-        "--limit",
-        "10",
-        "--json",
-        CURRENT_PR_STATUS_FIELDS,
-      ],
-      [
-        "pr",
-        "list",
-        "--repo",
-        "parentOwner/parentRepo",
-        "--state",
-        "all",
-        "--head",
-        "forkOwner:feature/fork",
-        "--limit",
-        "10",
         "--json",
         CURRENT_PR_STATUS_BASE_FIELDS,
       ],
@@ -3424,10 +3669,6 @@ describe("GitHubService", () => {
         headRef: "main",
       }),
     ).resolves.toBeNull();
-    // The third call is Otto's scoped fallback: having rejected the fork
-    // owner's PR, it asks explicitly for PRs whose head is this branch before
-    // concluding there is none. The answer is still null, which is the
-    // behaviour this test is really pinning.
     expect(calls.map((call) => call.args)).toEqual([
       ["pr", "view", "--json", CURRENT_PR_STATUS_FIELDS],
       ["repo", "view", "--json", "owner,name,parent"],
@@ -3521,21 +3762,20 @@ describe("GitHubService", () => {
         name: "repo",
         parent: { owner: { login: "parentOwner" }, name: "repo" },
       }),
-      JSON.stringify([
-        {
-          number: 88,
-          url: "https://github.com/parentOwner/repo/pull/88",
-          title: "Fork-only PR",
-          state: "OPEN",
-          isDraft: false,
-          baseRefName: "main",
-          headRefName: "feature/fork",
-          mergedAt: null,
-          statusCheckRollup: [],
-          reviewDecision: null,
-          headRepositoryOwner: { login: "forkOwner" },
-        },
-      ]),
+      JSON.stringify([{ number: 88 }]),
+      JSON.stringify({
+        number: 88,
+        url: "https://github.com/parentOwner/repo/pull/88",
+        title: "Fork-only PR",
+        state: "OPEN",
+        isDraft: false,
+        baseRefName: "main",
+        headRefName: "feature/fork",
+        mergedAt: null,
+        statusCheckRollup: [],
+        reviewDecision: null,
+        headRepositoryOwner: { login: "forkOwner" },
+      }),
     ]);
     const service = createGitHubService({
       runner: runner.runner,
@@ -3554,7 +3794,7 @@ describe("GitHubService", () => {
       repoName: "repo",
       headRefName: "feature/fork",
     });
-    expect(runner.calls[2]?.args).toContain("forkOwner:feature/fork");
+    expect(runner.calls[2]?.args).toEqual(["api", `repos/parentOwner/repo/pulls?${FORK_PR_QUERY}`]);
   });
 
   it("propagates DNS errors while resolving the current PR view", async () => {
@@ -3659,6 +3899,7 @@ describe("GitHubService", () => {
           headRefName: "feature",
           isMerged: false,
         },
+        featuresEnabled: true,
         githubFeaturesEnabled: true,
         error: null,
         requestId: "req-old",
@@ -3697,6 +3938,7 @@ describe("GitHubService", () => {
           checksStatus: "success",
           reviewDecision: "pending",
         },
+        featuresEnabled: true,
         githubFeaturesEnabled: true,
         error: null,
         requestId: "req-new",
@@ -3704,7 +3946,6 @@ describe("GitHubService", () => {
     });
 
     expect(newDaemonResponse.payload.status).toEqual({
-      // The neutral layer stamps which forge produced the status.
       forge: "github",
       number: 42,
       url: "https://github.com/acme/repo/pull/42",
@@ -3774,12 +4015,13 @@ describe("GitHubService", () => {
       ttlMs: 1_000,
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
       now: () => 100,
     });
 
     const first = service.listPullRequests({ cwd: "/repo", query: "bug", limit: 10 });
     const second = service.listPullRequests({ cwd: "/repo", query: "bug", limit: 10 });
-    await waitForPendingRunnerCall(runner);
+    await flushMicrotasks();
     runner.resolveNext(pullRequestJson("Shared result"));
 
     await expect(Promise.all([first, second])).resolves.toEqual([
@@ -3891,6 +4133,32 @@ describe("GitHubService", () => {
     });
   });
 
+  it("throws a typed command error for malformed JSON output", async () => {
+    const runner = createRunner(["not-json"]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => 100,
+    });
+
+    await expect(service.listPullRequests({ cwd: "/repo" })).rejects.toMatchObject({
+      kind: "command-error",
+      args: [
+        "pr",
+        "list",
+        "--search",
+        "",
+        "--json",
+        "number,title,url,state,body,labels,baseRefName,headRefName,updatedAt",
+        "--limit",
+        "20",
+      ],
+      cwd: "/repo",
+      exitCode: null,
+      stderr: "gh did not return valid JSON (8 bytes)",
+    });
+  });
+
   it("searches GitHub issues and PRs", async () => {
     const runner = createRunner([issueJson("Issue title"), searchPullRequestJson("PR title")]);
     const service = createGitHubService({
@@ -3902,15 +4170,11 @@ describe("GitHubService", () => {
     await expect(
       service.searchIssuesAndPrs({ cwd: "/repo", query: "cache", limit: 5 }),
     ).resolves.toEqual({
-      // The neutral trio: authState is the reason, featuresEnabled the neutral
-      // verdict, githubFeaturesEnabled the back-compat mirror kept in sync.
-      authState: "authenticated",
       featuresEnabled: true,
+      authState: "authenticated",
       githubFeaturesEnabled: true,
       items: [
         {
-          // Neutral across forges: GitLab calls these merge requests, so the
-          // shared kind is change_request rather than the GitHub spelling.
           kind: "change_request",
           number: 123,
           title: "PR title",
@@ -3977,7 +4241,85 @@ describe("GitHubService", () => {
 
     await service.searchIssuesAndPrs({
       cwd: "/repo",
-      query: "https://github.com/otto-code-ai/otto-code/pull/793",
+      query: "https://github.com/getpaseo/paseo/pull/793",
+      limit: 5,
+    });
+
+    expect(runner.calls.map((call) => call.args)).toEqual([
+      [
+        "issue",
+        "list",
+        "--search",
+        "793",
+        "--json",
+        "number,title,url,state,body,labels,updatedAt",
+        "--limit",
+        "5",
+      ],
+      [
+        "pr",
+        "list",
+        "--search",
+        "793",
+        "--json",
+        "number,title,url,state,body,labels,baseRefName,headRefName,updatedAt",
+        "--limit",
+        "5",
+      ],
+    ]);
+  });
+
+  it("does not treat an unrelated tracker URL as a GitHub issue/PR number", async () => {
+    const runner = createRunner([issueJson("Issue title"), searchPullRequestJson("PR title")]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
+      now: () => 100,
+    });
+
+    await service.searchIssuesAndPrs({
+      cwd: "/repo",
+      query: "https://gitlab.com/getpaseo/paseo/issues/793",
+      limit: 5,
+    });
+
+    expect(runner.calls.map((call) => call.args)).toEqual([
+      [
+        "issue",
+        "list",
+        "--search",
+        "https://gitlab.com/getpaseo/paseo/issues/793",
+        "--json",
+        "number,title,url,state,body,labels,updatedAt",
+        "--limit",
+        "5",
+      ],
+      [
+        "pr",
+        "list",
+        "--search",
+        "https://gitlab.com/getpaseo/paseo/issues/793",
+        "--json",
+        "number,title,url,state,body,labels,baseRefName,headRefName,updatedAt",
+        "--limit",
+        "5",
+      ],
+    ]);
+  });
+
+  it("treats a GitHub Enterprise issue/PR URL as a search for that number", async () => {
+    const runner = createRunner([issueJson("Issue title"), searchPullRequestJson("PR title")]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => "github.acme.internal",
+      now: () => 100,
+    });
+
+    await service.searchIssuesAndPrs({
+      cwd: "/repo",
+      query: "https://github.acme.internal/getpaseo/paseo/pull/793",
       limit: 5,
     });
 
@@ -4021,15 +4363,11 @@ describe("GitHubService", () => {
         kinds: ["github-pr"],
       }),
     ).resolves.toEqual({
-      // The neutral trio: authState is the reason, featuresEnabled the neutral
-      // verdict, githubFeaturesEnabled the back-compat mirror kept in sync.
-      authState: "authenticated",
       featuresEnabled: true,
+      authState: "authenticated",
       githubFeaturesEnabled: true,
       items: [
         {
-          // Neutral across forges: GitLab calls these merge requests, so the
-          // shared kind is change_request rather than the GitHub spelling.
           kind: "change_request",
           number: 123,
           title: "PR title",
@@ -4115,12 +4453,13 @@ describe("GitHubService", () => {
     const service = createGitHubService({
       runner: runner.runner,
       resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => null,
       now: () => 100,
     });
 
     const first = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
     const second = service.getCurrentPullRequestStatus({ cwd: "/repo", headRef: "feature/fork" });
-    await waitForPendingRunnerCall(runner);
+    await flushMicrotasks();
 
     expect(currentPullRequestStatusCalls(runner.calls)).toHaveLength(1);
     runner.resolveNext(currentPullRequestJson());
@@ -4161,18 +4500,286 @@ describe("GitHubService", () => {
     expect(valid.reason).toBe("test");
   });
 
-  // Otto resolves the identity from the remote URL rather than from a cwd:
-  // reading origin belongs to the git layer, and the forge layer only needs the
-  // parse. Same resolution, one fewer subprocess.
-  it("resolves GitHub repos from the origin remote URL", async () => {
-    vi.useRealTimers();
+  it("resolves the repo slug from the workspace when creating a pull request", async () => {
+    const runner = createRunner([
+      JSON.stringify({ owner: { login: "acme" }, name: "repo" }),
+      JSON.stringify({ url: "https://github.com/acme/repo/pull/7", number: 7 }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveRepoHost: async () => null,
+    });
 
     await expect(
-      resolveGitHubRemote({ remoteUrl: "git@github.com:otto-code-ai/otto-code.git" }),
-    ).resolves.toEqual({
-      owner: "otto-code-ai",
-      name: "otto-code",
-      repo: "otto-code-ai/otto-code",
+      service.createPullRequest({
+        cwd: "/tmp/repo",
+        title: "Add thing",
+        head: "feature",
+        base: "main",
+      }),
+    ).resolves.toEqual({ url: "https://github.com/acme/repo/pull/7", number: 7 });
+
+    expect(runner.calls[0]?.args).toEqual(["repo", "view", "--json", "owner,name,parent"]);
+    expect(runner.calls[1]?.args).toEqual([
+      "api",
+      "-X",
+      "POST",
+      "repos/acme/repo/pulls",
+      "-f",
+      "title=Add thing",
+      "-f",
+      "head=feature",
+      "-f",
+      "base=main",
+    ]);
+  });
+
+  it("routes gh calls to the resolved GitHub Enterprise host via GH_HOST", async () => {
+    const runner = createRunner([
+      JSON.stringify({ owner: { login: "acme" }, name: "repo" }),
+      JSON.stringify({ url: "https://github.acme.internal/acme/repo/pull/7", number: 7 }),
+    ]);
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveRepoHost: async () => "github.acme.internal",
     });
+
+    await expect(
+      service.createPullRequest({
+        cwd: "/tmp/repo",
+        title: "Add thing",
+        head: "feature",
+        base: "main",
+      }),
+    ).resolves.toEqual({ url: "https://github.acme.internal/acme/repo/pull/7", number: 7 });
+
+    expect(runner.calls[1]?.args).toEqual([
+      "api",
+      "-X",
+      "POST",
+      "repos/acme/repo/pulls",
+      "-f",
+      "title=Add thing",
+      "-f",
+      "head=feature",
+      "-f",
+      "base=main",
+    ]);
+    // GH_HOST is injected on every gh call (the slug lookup and the POST alike).
+    expect(runner.calls[0]?.envOverlay).toMatchObject({ GH_HOST: "github.acme.internal" });
+    expect(runner.calls[1]?.envOverlay).toMatchObject({ GH_HOST: "github.acme.internal" });
+  });
+
+  it.skipIf(isPlatform("win32"))(
+    "routes default gh calls to GitHub Enterprise only after host auth succeeds",
+    async () => {
+      vi.useRealTimers();
+      const fixture = createFakeGitHubCliFixture({
+        remoteUrl: "https://github.acme.internal/acme/repo.git",
+        authStatusSucceeds: true,
+      });
+      try {
+        const service = createGitHubService();
+
+        await expect(
+          service.createPullRequest({
+            cwd: fixture.cwd,
+            title: "Add thing",
+            head: "feature",
+            base: "main",
+          }),
+        ).resolves.toEqual({ url: "https://github.acme.internal/acme/repo/pull/7", number: 7 });
+
+        expect(readFakeGitHubCliLog(fixture.logPath)).toEqual(
+          expect.arrayContaining([
+            "auth status --hostname github.acme.internal|",
+            "repo view --json owner,name,parent|github.acme.internal",
+            "api -X POST repos/acme/repo/pulls -f title=Add thing -f head=feature -f base=main|github.acme.internal",
+          ]),
+        );
+      } finally {
+        fixture.dispose();
+      }
+    },
+  );
+
+  it.skipIf(isPlatform("win32"))(
+    "retries GitHub Enterprise host probing after a transient auth-status failure",
+    async () => {
+      vi.useRealTimers();
+      const fixture = createFakeGitHubCliFixture({
+        remoteUrl: "https://github.acme.internal/acme/repo.git",
+        authStatusMode: "transient-once",
+      });
+      try {
+        const service = createGitHubService();
+
+        await expect(
+          service.createPullRequest({
+            cwd: fixture.cwd,
+            title: "Add thing",
+            head: "feature",
+            base: "main",
+          }),
+        ).rejects.toThrow("Unable to verify GitHub Enterprise host github.acme.internal");
+
+        await expect(
+          service.createPullRequest({
+            cwd: fixture.cwd,
+            title: "Add thing",
+            head: "feature",
+            base: "main",
+          }),
+        ).resolves.toEqual({ url: "https://github.acme.internal/acme/repo/pull/7", number: 7 });
+
+        const log = readFakeGitHubCliLog(fixture.logPath);
+        expect(
+          log.filter((line) => line === "auth status --hostname github.acme.internal|"),
+        ).toHaveLength(2);
+        expect(log).toEqual(
+          expect.arrayContaining([
+            "repo view --json owner,name,parent|github.acme.internal",
+            "api -X POST repos/acme/repo/pulls -f title=Add thing -f head=feature -f base=main|github.acme.internal",
+          ]),
+        );
+      } finally {
+        fixture.dispose();
+      }
+    },
+  );
+
+  it.skipIf(isPlatform("win32"))(
+    "fails instead of routing gh calls to github.com for an unauthenticated Enterprise host",
+    async () => {
+      vi.useRealTimers();
+      const fixture = createFakeGitHubCliFixture({
+        remoteUrl: "https://github.acme.internal/acme/repo.git",
+        authStatusSucceeds: false,
+      });
+      try {
+        const service = createGitHubService();
+
+        // An unauthenticated Enterprise host must fail, not silently proceed
+        // against github.com (the default when GH_HOST is unset).
+        await expect(
+          service.createPullRequest({
+            cwd: fixture.cwd,
+            title: "Add thing",
+            head: "feature",
+            base: "main",
+          }),
+        ).rejects.toThrow(/authentication failed/i);
+
+        const log = readFakeGitHubCliLog(fixture.logPath);
+        expect(log).toContain("auth status --hostname github.acme.internal|");
+        // It threw at host resolution, before running any api/graphql call.
+        expect(log.some((line) => line.startsWith("api ") || line.startsWith("graphql"))).toBe(
+          false,
+        );
+      } finally {
+        fixture.dispose();
+      }
+    },
+  );
+
+  it.skipIf(isPlatform("win32"))("does not probe or route github.com through GH_HOST", async () => {
+    vi.useRealTimers();
+    const fixture = createFakeGitHubCliFixture({
+      remoteUrl: "https://github.com/acme/repo.git",
+      authStatusSucceeds: false,
+    });
+    try {
+      const service = createGitHubService();
+
+      await expect(
+        service.createPullRequest({
+          cwd: fixture.cwd,
+          title: "Add thing",
+          head: "feature",
+          base: "main",
+        }),
+      ).resolves.toEqual({ url: "https://github.acme.internal/acme/repo/pull/7", number: 7 });
+
+      const log = readFakeGitHubCliLog(fixture.logPath);
+      expect(log.some((line) => line.startsWith("auth status --hostname "))).toBe(false);
+      expect(log.every((line) => line.endsWith("|"))).toBe(true);
+    } finally {
+      fixture.dispose();
+    }
+  });
+
+  it("caches definitive null repo host resolutions", async () => {
+    const runner = createRunner(["[]", "[]"]);
+    let hostResolutions = 0;
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => {
+        hostResolutions += 1;
+        return null;
+      },
+    });
+
+    await service.listPullRequests({ cwd: "/repo", query: "one", limit: 1 });
+    await service.listPullRequests({ cwd: "/repo", query: "two", limit: 1 });
+
+    expect(hostResolutions).toBe(1);
+    expect(runner.calls.every((call) => call.envOverlay?.GH_HOST === undefined)).toBe(true);
+  });
+
+  it("re-resolves a null repo host after the TTL expires", async () => {
+    const runner = createRunner(["[]", "[]"]);
+    let hostResolutions = 0;
+    let nowMs = 0;
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      now: () => nowMs,
+      resolveRepoHost: async () => {
+        hostResolutions += 1;
+        return hostResolutions === 1 ? null : "ghe.example.com";
+      },
+    });
+
+    await service.listPullRequests({ cwd: "/repo", query: "one", limit: 1 });
+    expect(runner.calls[0]?.envOverlay?.GH_HOST).toBeUndefined();
+
+    nowMs = 60_001;
+    await service.listPullRequests({ cwd: "/repo", query: "two", limit: 1 });
+
+    expect(hostResolutions).toBe(2);
+    expect(runner.calls[1]?.envOverlay).toMatchObject({ GH_HOST: "ghe.example.com" });
+  });
+
+  it("re-resolves the host after invalidation when the remote changes", async () => {
+    const runner = createRunner([]);
+    let hostCall = 0;
+    const service = createGitHubService({
+      runner: runner.runner,
+      resolveGhPath: async () => "/usr/bin/gh",
+      resolveRepoHost: async () => (hostCall++ === 0 ? "host-a.internal" : "host-b.internal"),
+    });
+
+    await service.listPullRequests({ cwd: "/repo", query: "x", limit: 1 });
+    expect(runner.calls[0]?.envOverlay).toMatchObject({ GH_HOST: "host-a.internal" });
+
+    service.invalidate({ cwd: "/repo" });
+
+    await service.listPullRequests({ cwd: "/repo", query: "x", limit: 1 });
+    expect(runner.calls[1]?.envOverlay).toMatchObject({ GH_HOST: "host-b.internal" });
+  });
+
+  it("throws when the workspace repository cannot be resolved for pull request creation", async () => {
+    const runner = createRunner([JSON.stringify({})]);
+    const service = createGitHubService({ runner: runner.runner });
+
+    await expect(
+      service.createPullRequest({
+        cwd: "/tmp/repo",
+        title: "Add thing",
+        head: "feature",
+        base: "main",
+      }),
+    ).rejects.toThrow("Unable to resolve GitHub repository for pull request creation");
   });
 });

@@ -4,6 +4,8 @@ import { View, Text, type GestureResponderEvent } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { HostBadgeModel } from "@/hosts/appearance";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
+import { density } from "@/styles/density";
+import type { SidebarSurfaceBackdrop } from "@/styles/surface-backdrop";
 import type { DraggableListDragHandleProps } from "@/components/draggable-list.types";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import { WorkspaceRenameModal } from "@/components/workspace-rename-modal";
@@ -35,7 +37,6 @@ import { getSidebarRowBackdrop } from "@/components/sidebar/sidebar-row-backdrop
 import { selectWorkspaceServiceSummary } from "@/components/sidebar/workspace-meta-row";
 import {
   SidebarWorkspaceTrailingContent,
-  useWorkspaceChangeIndicator,
   useSidebarWorkspaceTrailing,
   type SidebarWorkspaceTrailing,
 } from "@/components/sidebar/workspace-trailing";
@@ -232,10 +233,10 @@ function WorkspaceRowBody({
   onMarkAsUnread,
   archiveShortcutKeys,
 }: WorkspaceRowBodyProps) {
-  const isTouchPlatform = platformIsNative;
+  const isCompact = useIsCompactFormFactor();
+  const isTouchPlatform = platformIsNative || isCompact;
   const [isPressed, setIsPressed] = useState(false);
   const trailing = useSidebarWorkspaceTrailing();
-  const indicator = useWorkspaceChangeIndicator();
   const draggable = Boolean(drag);
   const interaction = useLongPressDragInteraction({
     drag: drag ?? noop,
@@ -280,6 +281,7 @@ function WorkspaceRowBody({
           selected,
           isHovered,
         });
+        const backdrop = getSidebarRowBackdrop({ isDragging, isPressed, selected, isHovered });
         return (
           <View
             {...(draggable ? dragAttributes : {})}
@@ -301,8 +303,6 @@ function WorkspaceRowBody({
               onCopyBranchName={onCopyBranchName}
               onRename={onRename}
               onMarkAsRead={onMarkAsRead}
-              serverId={workspace.serverId}
-              workspaceId={workspace.workspaceId}
               onMarkAsUnread={onMarkAsUnread}
               onArchive={onArchive}
               archiveLabel={archiveLabel}
@@ -326,17 +326,17 @@ function WorkspaceRowBody({
                 workspace={workspace}
                 hostBadge={hostBadge}
                 serviceSummary={serviceSummary}
-                backdrop={getSidebarRowBackdrop({ isDragging, isPressed, selected, isHovered })}
+                backdrop={backdrop}
                 isHovered={isHovered}
-                isSelected={selected}
+                isLoading={isArchiving || isCreating}
                 isCreating={isCreating}
                 shortcutNumber={shortcutNumber}
                 showShortcutBadge={showShortcutBadge}
               >
                 <WorkspaceRowTrailingActions
                   workspace={workspace}
+                  backdrop={backdrop}
                   trailing={trailing}
-                  indicator={indicator}
                   isHovered={isHovered}
                   isTouchPlatform={isTouchPlatform}
                   isCreating={isCreating}
@@ -364,8 +364,8 @@ function WorkspaceRowBody({
 
 function WorkspaceRowTrailingActions({
   workspace,
+  backdrop,
   trailing,
-  indicator,
   isHovered,
   isTouchPlatform,
   isCreating,
@@ -383,8 +383,8 @@ function WorkspaceRowTrailingActions({
   onRename,
 }: {
   workspace: SidebarWorkspaceEntry;
+  backdrop: SidebarSurfaceBackdrop;
   trailing: SidebarWorkspaceTrailing;
-  indicator: import("@/hooks/use-settings/otto-settings").WorkspaceChangeIndicator;
   isHovered: boolean;
   isTouchPlatform: boolean;
   isCreating: boolean;
@@ -402,20 +402,19 @@ function WorkspaceRowTrailingActions({
   onRename?: () => void;
 }) {
   const { t } = useTranslation();
-  const isCompact = useIsCompactFormFactor();
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
   const {
-    showTrailing,
+    trailingPresentation,
     showKebab: showKebabInSlot,
+    showScrim,
     renderSlot,
+    reserveSlotWidth,
   } = resolveTrailingActionVisibility({
     workspace,
     trailing,
-    indicator,
     hasArchiveAction: Boolean(onArchive),
     isHovered,
     isTouchPlatform,
-    isCompact,
     showShortcut,
   });
   const kebab = useOpenKebabMenuVisibility(showKebabInSlot);
@@ -426,26 +425,25 @@ function WorkspaceRowTrailingActions({
         <Text style={styles.workspaceCreatingText}>{t("sidebar.workspace.status.creating")}</Text>
       ) : null}
       {renderSlot ? (
-        <SidebarWorkspaceTrailingActionSlot reserveWidth={kebab.showKebab}>
-          <SidebarWorkspaceTrailingActionBase visible={showTrailing}>
-            <SidebarWorkspaceTrailingContent
-              workspace={workspace}
-              trailing={trailing}
-              indicator={indicator}
-            />
+        <SidebarWorkspaceTrailingActionSlot reserveWidth={reserveSlotWidth}>
+          <SidebarWorkspaceTrailingActionBase presentation={trailingPresentation}>
+            <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
           </SidebarWorkspaceTrailingActionBase>
-          <SidebarWorkspaceTrailingActionOverlay visible={kebab.showKebab}>
+          <SidebarWorkspaceTrailingActionOverlay
+            visible={kebab.showKebab}
+            scrimBackdrop={showScrim ? backdrop : undefined}
+          >
             {onArchive ? (
               <SidebarWorkspaceMenu
                 {...kebab.menuProps}
                 workspaceKey={workspace.workspaceKey}
+                serverId={workspace.serverId}
+                workspaceId={workspace.workspaceId}
+                workspaceLabels={workspace.labels}
                 onCopyPath={onCopyPath}
                 onCopyBranchName={onCopyBranchName}
                 onRename={onRename}
                 onMarkAsRead={onMarkAsRead}
-                serverId={workspace.serverId}
-                workspaceId={workspace.workspaceId}
-                workspaceLabels={workspace.labels}
                 onMarkAsUnread={onMarkAsUnread}
                 onArchive={onArchive}
                 archiveLabel={archiveLabel}
@@ -474,8 +472,8 @@ function getWorkspaceRowStyle({
 }) {
   return [
     styles.workspaceRow,
-    selected && styles.sidebarRowSelected,
     isHovered && styles.workspaceRowHovered,
+    selected && styles.sidebarRowSelected,
     isDragging && styles.workspaceRowDragging,
     isPressed && styles.workspaceRowPressed,
   ];
@@ -488,13 +486,11 @@ const styles = StyleSheet.create((theme) => ({
     position: "relative",
   },
   workspaceRow: {
-    minHeight: 36,
+    minHeight: density.rowHeight,
     marginBottom: theme.spacing[1],
     paddingVertical: theme.spacing[2],
     paddingLeft: theme.spacing[2],
-    // Compact drops the extra right inset to match the vertical padding, so the doubled kebab
-    // target sits in an even gutter instead of being pushed off-centre by a wider right edge.
-    paddingRight: { xs: theme.spacing[2], md: theme.spacing[3] },
+    paddingRight: theme.spacing[3],
     borderRadius: theme.borderRadius.lg,
     flexDirection: "column",
     alignItems: "stretch",
@@ -503,7 +499,7 @@ const styles = StyleSheet.create((theme) => ({
     userSelect: "none",
   },
   workspaceRowHovered: {
-    backgroundColor: theme.colors.surfaceInteractiveHover,
+    backgroundColor: theme.colors.surfaceSidebarHover,
   },
   workspaceRowPressed: {
     backgroundColor: theme.colors.surface2,
@@ -517,11 +513,11 @@ const styles = StyleSheet.create((theme) => ({
     ...theme.shadow.md,
   },
   sidebarRowSelected: {
-    backgroundColor: theme.colors.surfaceInteractiveSelected,
+    backgroundColor: theme.colors.surfaceSidebarSelected,
   },
   workspaceCreatingText: {
     color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     flexShrink: 0,
   },
 }));

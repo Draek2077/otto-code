@@ -1,20 +1,14 @@
+import type { AgentMessage } from "@getpaseo/protocol/agent-message";
 import type {
   AgentProvider,
-  AgentUsage,
   AgentTimelineItem,
   JsonValue,
   ToolCallDetail,
-} from "@otto-code/protocol/agent-types";
-import { timelineItemIdentity } from "@otto-code/protocol/timeline-identity";
-import type { AgentAttachment, AgentStreamEventPayload } from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/agent-types";
+import { timelineItemIdentity } from "@getpaseo/protocol/timeline-identity";
+import type { AgentAttachment, AgentStreamEventPayload } from "@getpaseo/protocol/messages";
 import type { AttachmentMetadata } from "@/attachments/types";
-import {
-  extractTaskEntriesFromToolCall,
-  extractTaskListOperation,
-  isChecklistTaskTool,
-  type TaskListOperation,
-} from "../utils/tool-call-parsers";
-import { splitMarkdownBlocks } from "@/utils/split-markdown-blocks";
+import { extractTaskEntriesFromToolCall } from "../utils/tool-call-parsers";
 
 /**
  * Simple hash function for deterministic ID generation
@@ -89,19 +83,12 @@ export type StreamItem =
   | AssistantMessageItem
   | ThoughtItem
   | ToolCallItem
-  | ActionGroupItem
   | TodoListItem
   | NotificationItem
   | CompactionItem
   | PluginTimelineStreamItem;
 
 export type UserMessageImageAttachment = AttachmentMetadata;
-
-/** A daemon-owned prompt image that this device retrieves only when it renders. */
-export interface RemoteUserMessageImageAttachment {
-  path: string;
-  mimeType: string;
-}
 
 export interface UserMessageItem {
   kind: "user_message";
@@ -112,9 +99,7 @@ export interface UserMessageItem {
   timelineCursor?: TimelinePosition;
   text: string;
   timestamp: Date;
-  optimistic?: true;
   images?: UserMessageImageAttachment[];
-  remoteImages?: RemoteUserMessageImageAttachment[];
   attachments?: AgentAttachment[];
 }
 
@@ -127,7 +112,6 @@ export interface UserMessageInput {
   text: string;
   timestamp: Date;
   images?: UserMessageImageAttachment[];
-  remoteImages?: RemoteUserMessageImageAttachment[];
   attachments?: AgentAttachment[];
 }
 
@@ -146,9 +130,6 @@ export function createUserMessage(input: UserMessageInput): UserMessageItem {
     text: input.text,
     timestamp: input.timestamp,
     ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
-    ...(input.remoteImages && input.remoteImages.length > 0
-      ? { remoteImages: input.remoteImages }
-      : {}),
     ...(input.attachments && input.attachments.length > 0
       ? { attachments: input.attachments }
       : {}),
@@ -200,6 +181,11 @@ export function removeSubmittedUserMessage(input: {
   return { tail: remove(input.tail), head: remove(input.head) };
 }
 
+// COMPAT(userMessageClientId): added in v0.2.0, remove after 2027-01-20 once the
+// supported daemon floor emits clientMessageId on submitted user messages. Until then a
+// locally submitted row (clientMessageId, no messageId) and its canonical twin from an
+// old daemon (messageId, no clientMessageId) share no identifier, so canonical ingestion
+// may match an explicit local candidate by the id supplied over the wire or by text.
 function matchesLegacyCanonicalUserMessage(
   submitted: UserMessageItem,
   canonical: UserMessageItem,
@@ -210,7 +196,6 @@ function matchesLegacyCanonicalUserMessage(
 }
 
 type UserMessageMatchPolicy = "canonical-incoming" | "handoff";
-type UserMessagePresentationPolicy = "existing" | "incoming";
 
 function matchesUserMessage(
   existing: UserMessageItem,
@@ -227,60 +212,21 @@ function matchesUserMessage(
   return policy === "handoff" && matchesLegacyCanonicalUserMessage(incoming, existing);
 }
 
-function findUserMessageIndex(
+export function upsertUserMessage(
   items: StreamItem[],
   incoming: UserMessageItem,
-  policy: UserMessageMatchPolicy,
-): { index: number; matchedByHandoffFallback: boolean } {
-  const exactIndex = items.findIndex(
-    (item) => item.kind === "user_message" && matchesUserMessage(item, incoming, policy),
-  );
-  if (exactIndex >= 0 || policy !== "handoff") {
-    return { index: exactIndex, matchedByHandoffFallback: false };
-  }
-
-  const candidates = items.flatMap((item, index) =>
-    item.kind === "user_message" && !item.optimistic ? [index] : [],
-  );
-  const fallbackIndex =
-    candidates.find((index) => {
-      const item = items[index];
-      return item?.kind === "user_message" && item.clientMessageId === incoming.id;
-    }) ??
-    candidates.find((index) => items[index]?.id === incoming.id) ??
-    (incoming.text.length > 0
-      ? candidates.findLast((index) => {
-          const item = items[index];
-          return item?.kind === "user_message" && item.text === incoming.text;
-        })
-      : undefined) ??
-    candidates.at(-1) ??
-    -1;
-  return { index: fallbackIndex, matchedByHandoffFallback: fallbackIndex >= 0 };
+  insertAt = items.length,
+): StreamItem[] {
+  return produceUserMessage(items, incoming, insertAt, "existing").items;
 }
+
+type UserMessagePresentationPolicy = "existing" | "incoming";
 
 interface UserMessageProductionResult {
   items: StreamItem[];
   index: number;
   message: UserMessageItem;
   matched: boolean;
-}
-
-function hasSameUserMessagePresentation(
-  existing: UserMessageItem,
-  merged: UserMessageItem,
-): boolean {
-  return (
-    existing.id === merged.id &&
-    existing.clientMessageId === merged.clientMessageId &&
-    existing.messageId === merged.messageId &&
-    existing.timelineCursor === merged.timelineCursor &&
-    existing.text === merged.text &&
-    existing.timestamp === merged.timestamp &&
-    existing.images === merged.images &&
-    existing.remoteImages === merged.remoteImages &&
-    existing.attachments === merged.attachments
-  );
 }
 
 function produceUserMessage(
@@ -290,9 +236,13 @@ function produceUserMessage(
   presentationPolicy: UserMessagePresentationPolicy,
   matchPolicy: UserMessageMatchPolicy = "canonical-incoming",
 ): UserMessageProductionResult {
-  const { index, matchedByHandoffFallback } = findUserMessageIndex(items, incoming, matchPolicy);
+  const index = items.findIndex(
+    (item) => item.kind === "user_message" && matchesUserMessage(item, incoming, matchPolicy),
+  );
   if (index < 0) {
-    if (insertAt === null) return { items, index: -1, message: incoming, matched: false };
+    if (insertAt === null) {
+      return { items, index: -1, message: incoming, matched: false };
+    }
     return {
       items: [...items.slice(0, insertAt), incoming, ...items.slice(insertAt)],
       index: insertAt,
@@ -300,6 +250,7 @@ function produceUserMessage(
       matched: false,
     };
   }
+
   const existing = items[index];
   if (!existing || existing.kind !== "user_message") {
     throw new Error("User message upsert matched a non-user row");
@@ -307,27 +258,25 @@ function produceUserMessage(
   const presentation = presentationPolicy === "incoming" ? incoming : existing;
   const merged = createUserMessage({
     ...presentation,
-    id: matchedByHandoffFallback ? existing.id : presentation.id,
     clientMessageId: incoming.clientMessageId ?? existing.clientMessageId,
     messageId: incoming.messageId ?? existing.messageId,
-    turnId: incoming.turnId ?? existing.turnId,
     timelineCursor: incoming.timelineCursor ?? existing.timelineCursor,
-    remoteImages: incoming.remoteImages ?? existing.remoteImages,
   });
-  if (hasSameUserMessagePresentation(existing, merged)) {
+  if (
+    existing.id === merged.id &&
+    existing.clientMessageId === merged.clientMessageId &&
+    existing.messageId === merged.messageId &&
+    existing.timelineCursor === merged.timelineCursor &&
+    existing.text === merged.text &&
+    existing.timestamp === merged.timestamp &&
+    existing.images === merged.images &&
+    existing.attachments === merged.attachments
+  ) {
     return { items, index, message: existing, matched: true };
   }
   const next = [...items];
   next[index] = merged;
   return { items: next, index, message: merged, matched: true };
-}
-
-export function upsertUserMessage(
-  items: StreamItem[],
-  incoming: UserMessageItem,
-  insertAt = items.length,
-): StreamItem[] {
-  return produceUserMessage(items, incoming, insertAt, "existing").items;
 }
 
 export interface UserMessageStreamUpsertInput {
@@ -402,22 +351,45 @@ export function upsertUserMessageAcrossStream(
       location: null,
     };
   }
-  const lane = input.insert === "head" ? "head" : "tail";
-  const items = lane === "head" ? input.head : input.tail;
-  const insertAt = input.insert === "prepend-tail" ? 0 : items.length;
+  if (input.insert === "head") {
+    const inserted = produceUserMessage(
+      input.head,
+      input.message,
+      input.head.length,
+      input.presentation,
+      input.matchPolicy,
+    );
+    return {
+      tail: input.tail,
+      head: inserted.items,
+      changedTail: false,
+      changedHead: true,
+      location: {
+        lane: "head",
+        index: inserted.index,
+        message: inserted.message,
+        matched: false,
+      },
+    };
+  }
   const inserted = produceUserMessage(
-    items,
+    input.tail,
     input.message,
-    insertAt,
+    input.insert === "prepend-tail" ? 0 : input.tail.length,
     input.presentation,
     input.matchPolicy,
   );
   return {
-    tail: lane === "tail" ? inserted.items : input.tail,
-    head: lane === "head" ? inserted.items : input.head,
-    changedTail: lane === "tail",
-    changedHead: lane === "head",
-    location: { lane, index: inserted.index, message: inserted.message, matched: false },
+    tail: inserted.items,
+    head: input.head,
+    changedTail: true,
+    changedHead: false,
+    location: {
+      lane: "tail",
+      index: inserted.index,
+      message: inserted.message,
+      matched: false,
+    },
   };
 }
 
@@ -427,7 +399,9 @@ function placeCanonicalUserMessageAtTail(
   insertWhenUnmatched: boolean,
 ): Pick<UserMessageProductionResult, "items" | "message" | "matched"> {
   const produced = produceUserMessage(tail, message, null, "existing");
-  if (!produced.matched && !insertWhenUnmatched) return produced;
+  if (!produced.matched && !insertWhenUnmatched) {
+    return produced;
+  }
   const preceding = produced.matched
     ? [...produced.items.slice(0, produced.index), ...produced.items.slice(produced.index + 1)]
     : produced.items;
@@ -643,12 +617,9 @@ function preserveReplacementHead(
     return { tail: reconciledTail, head: unreconciledHead, acknowledgedClientMessageIds: [] };
   }
 
-  const hasFollowingUserMessage = unreconciledHead
-    .slice(liveAssistantIndex + 1)
-    .some((item) => item.kind === "user_message");
   const head = [
     ...unreconciledHead.slice(0, liveAssistantIndex),
-    hasFollowingUserMessage ? { ...liveAssistant, text: tailAssistant.text } : liveAssistant,
+    { ...liveAssistant, text: tailAssistant.text },
     ...unreconciledHead.slice(liveAssistantIndex + 1),
   ];
   return {
@@ -732,17 +703,6 @@ export function replaceWithCanonicalStream(
   };
 }
 
-export interface OptimisticUserMessageInput {
-  id: string;
-  text: string;
-  timestamp: Date;
-  images?: UserMessageImageAttachment[];
-  remoteImages?: RemoteUserMessageImageAttachment[];
-  attachments?: AgentAttachment[];
-}
-
-export type OptimisticUserMessagePlacement = "tail" | "active-head";
-
 export interface AssistantMessageItem {
   kind: "assistant_message";
   id: string;
@@ -751,15 +711,7 @@ export interface AssistantMessageItem {
   timelineCursor?: TimelinePosition;
   text: string;
   timestamp: Date;
-  blockGroupId?: string;
-  blockIndex?: number;
-  /**
-   * Per-turn token usage stamped onto the turn's last assistant message when a
-   * live turn_completed event carries usage. Canonical timeline backfill has no
-   * usage, so turns hydrated from history (and tails rebuilt by a canonical
-   * replace) simply lack this field - the footer omits the token segment then.
-   */
-  turnUsage?: AgentUsage;
+  /** Display-only fields, assigned after source-item plugin transforms. */
 }
 
 export interface TimelinePosition {
@@ -792,6 +744,7 @@ interface OrchestratorToolCallData {
 }
 
 export interface AgentToolCallData {
+  agentMessage?: AgentMessage;
   provider: AgentProvider;
   callId: string;
   name: string;
@@ -818,23 +771,6 @@ export type AgentToolCallItem = ToolCallItem & {
   payload: { source: "agent"; data: AgentToolCallData };
 };
 
-export type ActionGroupMemberItem = ToolCallItem | ThoughtItem;
-
-/**
- * Render-only synthetic item: a run of consecutive actions folded into one
- * collapsed, expandable row. Never produced by the stream reducers and never
- * persisted - see agent-stream/action-grouping.ts.
- */
-export interface ActionGroupItem {
-  /** Upstream turn identity: which canonical turn this item belongs to. */
-  turnId?: string;
-  kind: "action_group";
-  id: string;
-  timelineCursor?: TimelinePosition;
-  timestamp: Date;
-  items: ActionGroupMemberItem[];
-}
-
 export function isAgentToolCallItem(item: StreamItem): item is AgentToolCallItem {
   return item.kind === "tool_call" && item.payload.source === "agent";
 }
@@ -850,7 +786,6 @@ export interface NotificationItem {
   timestamp: Date;
   level: NotificationLevel;
   message: string;
-  details?: string[];
 }
 
 export interface CompactionItem {
@@ -859,16 +794,16 @@ export interface CompactionItem {
   timelineCursor?: TimelinePosition;
   turnId?: string;
   timestamp: Date;
-  status: "loading" | "completed" | "failed";
+  status: "loading" | "completed";
   trigger?: "auto" | "manual";
   preTokens?: number;
 }
 
-export type TodoEntryStatus = "pending" | "in_progress" | "completed";
-
 export interface PluginTimelineStreamItem {
   kind: "plugin";
   id: string;
+  /** The id of the stream item a timeline transformer replaced; set only by projection. */
+  sourceId?: string;
   timelineCursor?: TimelinePosition;
   turnId?: string;
   timestamp: Date;
@@ -880,27 +815,16 @@ export interface PluginTimelineStreamItem {
 }
 
 export interface TodoEntry {
-  /**
-   * Stable identity for incremental checklist tools (TaskCreate/TaskUpdate),
-   * where later calls mutate a task by the id the SDK assigned. Absent for
-   * full-snapshot providers (TodoWrite/update_plan), which resend the whole
-   * list each time and need no identity to reconcile against.
-   */
-  id?: string;
   text: string;
   completed: boolean;
-  /**
-   * Three-state progress mirroring the provider's own task status. `completed`
-   * is kept as a derived convenience (`status === "completed"`); `in_progress`
-   * is what lets the UI highlight the task the agent is actively working on -
-   * the signal that makes the list read as live progress. Providers that only
-   * report done/not-done (the wire `todo` timeline item) collapse to
-   * pending/completed.
-   */
-  status?: TodoEntryStatus;
-  /** Provider-supplied present-tense label while this task is in progress. */
+  id?: string;
+  status?: "pending" | "in_progress" | "completed";
   activeForm?: string;
 }
+
+export type TaskActivity =
+  | { type: "created"; count: number }
+  | { type: "added" | "started" | "completed"; task: string };
 
 export interface TodoListItem {
   kind: "todo_list";
@@ -912,10 +836,6 @@ export interface TodoListItem {
   items: TodoEntry[];
   activity: TaskActivity;
 }
-
-export type TaskActivity =
-  | { type: "created"; count: number }
-  | { type: "added" | "started" | "completed"; task: string };
 
 export type StreamUpdateSource = "live" | "canonical";
 
@@ -950,51 +870,6 @@ function markThoughtReady(item: ThoughtItem): ThoughtItem {
   };
 }
 
-export function buildOptimisticUserMessage(input: OptimisticUserMessageInput): UserMessageItem {
-  return {
-    kind: "user_message",
-    id: input.id,
-    text: input.text,
-    timestamp: input.timestamp,
-    optimistic: true,
-    ...(input.images && input.images.length > 0 ? { images: input.images } : {}),
-    ...(input.remoteImages && input.remoteImages.length > 0
-      ? { remoteImages: input.remoteImages }
-      : {}),
-    ...(input.attachments && input.attachments.length > 0
-      ? { attachments: input.attachments }
-      : {}),
-  };
-}
-
-export function appendOptimisticUserMessageToStream(params: {
-  tail: StreamItem[];
-  head: StreamItem[];
-  message: UserMessageItem;
-  placement: OptimisticUserMessagePlacement;
-}): ApplyStreamEventResult {
-  const { tail, head, message, placement } = params;
-  if (tail.some((item) => item.id === message.id) || head.some((item) => item.id === message.id)) {
-    return { tail, head, changedTail: false, changedHead: false };
-  }
-
-  if (placement === "active-head" && head.length > 0) {
-    return {
-      tail,
-      head: [...head, message],
-      changedTail: false,
-      changedHead: true,
-    };
-  }
-
-  return {
-    tail: [...tail, message],
-    head,
-    changedTail: true,
-    changedHead: false,
-  };
-}
-
 export function handoffCreatedAgentUserMessageToStream(params: {
   tail: StreamItem[];
   head: StreamItem[];
@@ -1012,153 +887,28 @@ function appendUserMessage(
   state: StreamItem[],
   text: string,
   timestamp: Date,
-  source: StreamUpdateSource,
+  _source: StreamUpdateSource,
   messageId?: string,
   clientMessageId?: string,
   timelineCursor?: TimelinePosition,
   turnId?: string,
-  remoteImages?: RemoteUserMessageImageAttachment[],
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!hasContent) {
     return state;
   }
 
-  const optimisticIndex = state.findIndex(
-    (entry) =>
-      entry.kind === "user_message" &&
-      entry.optimistic &&
-      (clientMessageId !== undefined
-        ? entry.id === clientMessageId
-        : source === "live" || entry.id === messageId || entry.text === chunk),
-  );
-  const optimistic = optimisticIndex >= 0 ? (state[optimisticIndex] as UserMessageItem) : null;
-  const incoming = createUserMessage({
-    id: messageId ?? createUniqueTimelineId(state, "user", chunk.trim() || chunk, timestamp),
-    messageId,
+  const chunkSeed = chunk.trim() || chunk;
+  const nextItem = createUserMessage({
+    id: messageId ?? createUniqueTimelineId(state, "user", chunkSeed, timestamp),
     clientMessageId,
+    messageId,
     timelineCursor,
     turnId,
     text: chunk,
     timestamp,
-    remoteImages,
   });
-  if (optimistic) {
-    const next = [...state];
-    next[optimisticIndex] = createUserMessage({
-      ...optimistic,
-      messageId,
-      clientMessageId: clientMessageId ?? optimistic.clientMessageId,
-      timelineCursor,
-      ...(remoteImages && remoteImages.length > 0 ? { remoteImages } : {}),
-    });
-    return next;
-  }
-  return upsertUserMessage(state, incoming);
-}
-
-export function clearOptimisticUserMessages(state: StreamItem[]): StreamItem[] {
-  const next = state.filter((item) => item.kind !== "user_message" || !item.optimistic);
-  return next.length === state.length ? state : next;
-}
-
-function findTrailingUserStart(state: StreamItem[]): number {
-  let trailingUserStart = state.length;
-  while (trailingUserStart > 0 && state[trailingUserStart - 1]?.kind === "user_message") {
-    trailingUserStart -= 1;
-  }
-  return trailingUserStart;
-}
-
-function assistantChunkMatches(input: {
-  assistant: AssistantMessageItem;
-  messageId?: string;
-  turnId?: string;
-}): boolean {
-  const messageMatches =
-    input.messageId === undefined || input.assistant.messageId === input.messageId;
-  const turnMatches =
-    input.turnId === undefined ||
-    input.assistant.turnId === undefined ||
-    input.assistant.turnId === input.turnId;
-  return messageMatches && turnMatches;
-}
-
-function extendAssistantMessage(input: {
-  assistant: AssistantMessageItem;
-  chunk: string;
-  timestamp: Date;
-  timelineCursor?: TimelinePosition;
-  turnId?: string;
-}): AssistantMessageItem {
-  return {
-    ...input.assistant,
-    text: `${input.assistant.text}${input.chunk}`,
-    timestamp: input.timestamp,
-    ...(input.timelineCursor ? { timelineCursor: input.timelineCursor } : {}),
-    ...(input.turnId ? { turnId: input.turnId } : {}),
-  };
-}
-
-interface AssistantMessageChunkInput {
-  state: StreamItem[];
-  chunk: string;
-  timestamp: Date;
-  messageId?: string;
-  reservedItemIds?: ReadonlySet<string>;
-  timelineCursor?: TimelinePosition;
-  turnId?: string;
-}
-
-function createAssistantMessageItem(input: AssistantMessageChunkInput): AssistantMessageItem {
-  return {
-    kind: "assistant_message",
-    id: createAssistantItemId(
-      input.state,
-      input.messageId,
-      input.chunk.trim() || input.chunk,
-      input.timestamp,
-      input.reservedItemIds,
-    ),
-    ...(input.messageId ? { messageId: input.messageId } : {}),
-    ...(input.turnId ? { turnId: input.turnId } : {}),
-    ...(input.timelineCursor ? { timelineCursor: input.timelineCursor } : {}),
-    text: input.chunk,
-    timestamp: input.timestamp,
-  };
-}
-
-function appendAssistantBeforeTrailingUsers(
-  input: AssistantMessageChunkInput & { source: StreamUpdateSource; hasContent: boolean },
-): StreamItem[] | null {
-  if (input.source !== "live") return null;
-  const trailingUserStart = findTrailingUserStart(input.state);
-  if (trailingUserStart === input.state.length) return null;
-
-  const precedingAssistant = input.state[trailingUserStart - 1];
-  if (precedingAssistant?.kind !== "assistant_message") return null;
-  const belongsToPrecedingTurn =
-    input.turnId !== undefined && precedingAssistant.turnId === input.turnId;
-  if (
-    !assistantChunkMatches({ assistant: precedingAssistant, ...input }) &&
-    !belongsToPrecedingTurn
-  ) {
-    return null;
-  }
-
-  const messageMatches =
-    input.messageId === undefined || precedingAssistant.messageId === input.messageId;
-  // A whitespace-only delta may EXTEND a bubble that already exists, but it must
-  // never mint one. Providers routinely open a segment with a bare newline, so a
-  // fresh message id inside the same turn would otherwise insert an empty
-  // assistant bubble ahead of the trailing user rows. Declining here hands the
-  // chunk back to the caller's !hasContent guard, which drops it.
-  if (!messageMatches && !input.hasContent) return null;
-  const assistant = messageMatches
-    ? extendAssistantMessage({ assistant: precedingAssistant, ...input })
-    : createAssistantMessageItem(input);
-  const prefixEnd = messageMatches ? trailingUserStart - 1 : trailingUserStart;
-  return [...input.state.slice(0, prefixEnd), assistant, ...input.state.slice(trailingUserStart)];
+  return upsertUserMessage(state, nextItem);
 }
 
 function appendAssistantMessage(
@@ -1169,55 +919,60 @@ function appendAssistantMessage(
   messageId?: string,
   reservedItemIds?: ReadonlySet<string>,
   timelineCursor?: TimelinePosition,
-  turnId?: string,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
-  if (!chunk) return state;
-
-  const last = state[state.length - 1];
-  if (
-    last?.kind === "assistant_message" &&
-    assistantChunkMatches({ assistant: last, messageId, turnId })
-  ) {
-    return [
-      ...state.slice(0, -1),
-      extendAssistantMessage({ assistant: last, chunk, timestamp, timelineCursor, turnId }),
-    ];
+  if (!chunk) {
+    return state;
   }
 
-  // Submitted follow-up rows can already trail the active assistant. A final
-  // provider segment from the older turn must remain before those rows, even
-  // when the provider gives that segment a fresh message id. Otherwise the
-  // turn footer lands between assistant blocks on an inverted native list.
-  const insertedBeforeUsers = appendAssistantBeforeTrailingUsers({
-    state,
-    chunk,
-    hasContent,
-    timestamp,
-    source,
-    messageId,
-    reservedItemIds,
-    timelineCursor,
-    turnId,
-  });
-  if (insertedBeforeUsers) return insertedBeforeUsers;
+  const last = state[state.length - 1];
+  const shouldAppendToLast =
+    last &&
+    last.kind === "assistant_message" &&
+    (messageId === undefined || last.messageId === messageId);
+  if (shouldAppendToLast) {
+    const updated: AssistantMessageItem = {
+      ...last,
+      text: `${last.text}${chunk}`,
+      timestamp,
+      ...(timelineCursor ? { timelineCursor } : {}),
+    };
+    return [...state.slice(0, -1), updated];
+  }
+
+  // A submitted user row can follow the streaming assistant during interrupt.
+  // In that case, look one row further back for the assistant to extend.
+  const secondLast = state[state.length - 2];
+  if (
+    source === "live" &&
+    last?.kind === "user_message" &&
+    secondLast?.kind === "assistant_message" &&
+    (messageId === undefined || secondLast.messageId === messageId)
+  ) {
+    const updated: AssistantMessageItem = {
+      ...secondLast,
+      text: `${secondLast.text}${chunk}`,
+      timestamp,
+      ...(timelineCursor ? { timelineCursor } : {}),
+    };
+    return [...state.slice(0, -2), updated, last];
+  }
 
   if (!hasContent) {
     return state;
   }
 
-  return [
-    ...state,
-    createAssistantMessageItem({
-      state,
-      chunk,
-      timestamp,
-      messageId,
-      reservedItemIds,
-      timelineCursor,
-      turnId,
-    }),
-  ];
+  const idSeed = chunk.trim() || chunk;
+  const entryId = createAssistantItemId(state, messageId, idSeed, timestamp, reservedItemIds);
+  const item: AssistantMessageItem = {
+    kind: "assistant_message",
+    id: entryId,
+    ...(messageId ? { messageId } : {}),
+    ...(timelineCursor ? { timelineCursor } : {}),
+    text: chunk,
+    timestamp,
+  };
+  return [...state, item];
 }
 
 function appendThought(
@@ -1235,9 +990,9 @@ function appendThought(
   if (last && last.kind === "thought") {
     const updated: ThoughtItem = {
       ...last,
+      ...(timelineCursor ? { timelineCursor } : {}),
       text: `${last.text}${chunk}`,
       timestamp,
-      ...(timelineCursor ? { timelineCursor } : {}),
       status: "loading",
     };
     return [...state.slice(0, -1), updated];
@@ -1251,8 +1006,8 @@ function appendThought(
   const item: ThoughtItem = {
     kind: "thought",
     id: createUniqueTimelineId(state, "thought", idSeed, timestamp),
-    text: chunk,
     ...(timelineCursor ? { timelineCursor } : {}),
+    text: chunk,
     timestamp,
     status: "loading",
   };
@@ -1378,10 +1133,6 @@ export function mergeToolCallDetail(
 
 function inputFromUnknownDetail(detail: ToolCallDetail): unknown {
   return detail.type === "unknown" ? detail.input : null;
-}
-
-function outputFromUnknownDetail(detail: ToolCallDetail): unknown {
-  return detail.type === "unknown" ? detail.output : null;
 }
 
 function mergeAgentToolCallStatus(
@@ -1536,111 +1287,72 @@ function appendTodoList(
   timestamp: Date,
   timelineCursor?: TimelinePosition,
 ): StreamItem[] {
-  const normalizedItems: TodoEntry[] = items.map((item) => ({
-    ...(item.id ? { id: item.id } : {}),
+  const normalizedItems = items.map((item) => ({
     text: item.text,
     completed: item.completed,
+    ...(item.id ? { id: item.id } : {}),
     ...(item.status ? { status: item.status } : {}),
     ...(item.activeForm ? { activeForm: item.activeForm } : {}),
   }));
-  // One evolving card per checklist, never a snapshot per update: the card the
-  // agent is working through updates in place, and the header carries the most
-  // recent thing that happened to it. A snapshot-per-activity timeline stacks
-  // full-size copies of the same live list in the transcript - and because the
-  // pinned overlay only suppresses the inline copy of the list it is showing,
-  // every earlier copy stays on screen next to it.
-  const previousIndex = findActiveChecklistIndex(state, provider);
-  const previous = previousIndex >= 0 ? state[previousIndex] : undefined;
+
+  const previousIndex = state.findLastIndex(
+    (item) => item.kind === "todo_list" && item.provider === provider,
+  );
+  const previous = state[previousIndex];
   const previousItems = previous?.kind === "todo_list" ? previous.items : [];
   const activities = deriveTaskActivities(previousItems, normalizedItems);
-  if (!previous || previous.kind !== "todo_list") {
-    const activity = activities[0];
-    if (!activity) {
-      return state;
-    }
-    return [
-      ...state,
-      {
-        kind: "todo_list",
-        id: createUniqueTimelineId(
-          state,
-          "todo",
-          `${provider}:${JSON.stringify(activity)}:${JSON.stringify(normalizedItems)}`,
-          timestamp,
-        ),
-        ...(timelineCursor ? { timelineCursor } : {}),
-        timestamp,
-        provider,
-        items: normalizedItems,
-        activity,
-      },
-    ];
+
+  if (activities.length === 0) {
+    if (!previous || previous.kind !== "todo_list") return state;
+    const next = [...state];
+    next[previousIndex] = {
+      ...previous,
+      ...(timelineCursor ? { timelineCursor } : {}),
+      items: normalizedItems,
+      timestamp,
+    };
+    return next;
   }
-  // An empty snapshot is not a checklist the user can read - keep the rows that
-  // are already on screen rather than hollowing the card out to "No tasks".
-  if (normalizedItems.length === 0) {
-    return state;
+
+  const lastItem = state[state.length - 1];
+  if (
+    activities.length === 1 &&
+    activities[0]?.type === "added" &&
+    lastItem?.kind === "todo_list" &&
+    lastItem.provider === provider &&
+    lastItem.activity.type === "created" &&
+    normalizedItems.every((item) => taskStatus(item) === "pending")
+  ) {
+    const next = [...state];
+    next[next.length - 1] = {
+      ...lastItem,
+      ...(timelineCursor ? { timelineCursor } : {}),
+      items: normalizedItems,
+      activity: { type: "created", count: normalizedItems.length },
+      timestamp,
+    };
+    return next;
   }
+
   const next = [...state];
-  next[previousIndex] = {
-    ...previous,
-    ...(timelineCursor ? { timelineCursor } : {}),
-    items: normalizedItems,
-    activity: resolveChecklistActivity(previous.activity, activities, normalizedItems),
-    timestamp,
-  };
+  for (const activity of activities) {
+    const idSeed = `${provider}:${JSON.stringify(activity)}:${JSON.stringify(normalizedItems)}`;
+    next.push({
+      kind: "todo_list",
+      id: createUniqueTimelineId(next, "todo", idSeed, timestamp),
+      ...(timelineCursor ? { timelineCursor } : {}),
+      timestamp,
+      provider,
+      items: normalizedItems,
+      activity,
+    });
+  }
   return next;
 }
 
-/**
- * The label the evolving card carries after an update. Tasks appended while the
- * list is still untouched keep reading as one creation - agents commonly build
- * the list in several calls. Otherwise the update's most consequential change
- * wins: a completion over a start, because the started task already reads as
- * in flight from its own row.
- */
-function resolveChecklistActivity(
-  current: TaskActivity,
-  activities: readonly TaskActivity[],
-  items: readonly TodoEntry[],
-): TaskActivity {
-  if (activities.length === 0) {
-    return current;
-  }
-  if (
-    current.type === "created" &&
-    activities.every((activity) => activity.type === "added") &&
-    items.every((item) => resolveTodoEntryStatus(item) === "pending")
-  ) {
-    return { type: "created", count: items.length };
-  }
-  let best = activities[0] ?? current;
-  for (const activity of activities) {
-    // `>=` so the last change of equal weight wins: two completions in one
-    // update read best as the furthest one down the list.
-    if (CHECKLIST_ACTIVITY_RANK[activity.type] >= CHECKLIST_ACTIVITY_RANK[best.type]) {
-      best = activity;
-    }
-  }
-  return best;
-}
-
-const CHECKLIST_ACTIVITY_RANK: Record<TaskActivity["type"], number> = {
-  created: 4,
-  completed: 3,
-  added: 1,
-  started: 0,
-};
-
-export function resolveTodoEntryStatus(task: TodoEntry): TodoEntryStatus {
+function taskStatus(task: TodoEntry): NonNullable<TodoEntry["status"]> {
   if (task.completed || task.status === "completed") return "completed";
   return task.status === "in_progress" ? "in_progress" : "pending";
-}
-
-export function resolveTodoEntryText(task: TodoEntry): string {
-  return resolveTodoEntryStatus(task) === "in_progress" && task.activeForm
-    ? task.activeForm
-    : task.text;
 }
 
 function taskKey(task: TodoEntry, index: number): string {
@@ -1654,6 +1366,7 @@ function deriveTaskActivities(
   if (previous.length === 0) {
     return current.length > 0 ? [{ type: "created", count: current.length }] : [];
   }
+
   const previousByKey = new Map(previous.map((task, index) => [taskKey(task, index), task]));
   const activities: TaskActivity[] = [];
   for (const [index, task] of current.entries()) {
@@ -1662,111 +1375,16 @@ function deriveTaskActivities(
       activities.push({ type: "added", task: task.text });
       continue;
     }
-    const before = resolveTodoEntryStatus(prior);
-    const after = resolveTodoEntryStatus(task);
+    const before = taskStatus(prior);
+    const after = taskStatus(task);
     if (before === after) continue;
-    if (after === "completed") activities.push({ type: "completed", task: task.text });
-    else if (after === "in_progress") activities.push({ type: "started", task: task.text });
+    if (after === "completed") {
+      activities.push({ type: "completed", task: task.text });
+    } else if (after === "in_progress") {
+      activities.push({ type: "started", task: task.text });
+    }
   }
   return activities;
-}
-
-// The running checklist spans the whole assistant turn - narration and other
-// tool calls sit between task ops - so we accumulate across everything back to
-// the last user message, which marks where a new checklist would begin.
-function findActiveChecklistIndex(state: StreamItem[], provider: AgentProvider): number {
-  for (let index = state.length - 1; index >= 0; index -= 1) {
-    const candidate = state[index];
-    if (!candidate) {
-      continue;
-    }
-    if (candidate.kind === "user_message") {
-      return -1;
-    }
-    if (candidate.kind === "todo_list") {
-      return candidate.provider === provider ? index : -1;
-    }
-  }
-  return -1;
-}
-
-function applyChecklistOp(items: TodoEntry[], op: TaskListOperation): TodoEntry[] {
-  if (op.kind === "sync") {
-    // TaskList is authoritative - rebuild the set from the snapshot.
-    return op.tasks.map((task) => ({
-      id: task.id,
-      text: task.text,
-      completed: task.status === "completed",
-      status: task.status,
-    }));
-  }
-
-  if (op.kind === "create") {
-    // Prefer the SDK-assigned id (from tool output); fall back to creation order
-    // so updates keyed by "1","2",... still line up if the output is missing.
-    const id = op.id ?? String(items.length + 1);
-    if (items.some((item) => item.id === id)) {
-      return items.map((item) => (item.id === id ? { ...item, text: op.text } : item));
-    }
-    return [...items, { id, text: op.text, completed: false, status: "pending" }];
-  }
-
-  if (op.deleted) {
-    return items.filter((item) => item.id !== op.id);
-  }
-
-  return items.map((item) => {
-    if (item.id !== op.id) {
-      return item;
-    }
-    const status = op.status ?? item.status;
-    return {
-      ...item,
-      status,
-      completed: status === "completed",
-      text: op.text ?? item.text,
-    };
-  });
-}
-
-function applyTaskListOperation(
-  state: StreamItem[],
-  provider: AgentProvider,
-  op: TaskListOperation,
-  timestamp: Date,
-  timelineCursor?: TimelinePosition,
-): StreamItem[] {
-  const index = findActiveChecklistIndex(state, provider);
-  const existing =
-    index >= 0 && state[index]?.kind === "todo_list" ? (state[index] as TodoListItem) : null;
-  const nextItems = applyChecklistOp(existing ? existing.items : [], op);
-
-  if (existing && index >= 0) {
-    const next = [...state];
-    next[index] = {
-      ...existing,
-      ...(timelineCursor ? { timelineCursor } : {}),
-      items: nextItems,
-      timestamp,
-    };
-    return next;
-  }
-
-  // An update/delete that lands before any create has nothing to show yet.
-  if (nextItems.length === 0) {
-    return state;
-  }
-
-  const entry: TodoListItem = {
-    kind: "todo_list",
-    id: createUniqueTimelineId(state, "todo", `${provider}:checklist`, timestamp),
-    ...(timelineCursor ? { timelineCursor } : {}),
-    timestamp,
-    provider,
-    items: nextItems,
-    activity: { type: "created", count: nextItems.length },
-  };
-  return [...state, entry];
 }
 
 function reduceTimelineToolCall(
@@ -1783,28 +1401,6 @@ function reduceTimelineToolCall(
     .trim()
     .replace(/[.\s-]+/g, "_")
     .toLowerCase();
-  if (event.provider === "claude" && normalizedToolName === "exitplanmode") {
-    return state;
-  }
-
-  // Incremental checklist tools (TaskCreate/TaskUpdate/TaskList). Suppress the
-  // per-call tool badge and fold the call into one evolving task list. We settle
-  // on completion, when TaskCreate's output carries the id updates key off of.
-  if (isChecklistTaskTool(item.name)) {
-    if (item.status !== "completed") {
-      return state;
-    }
-    const op = extractTaskListOperation(
-      item.name,
-      inputFromUnknownDetail(item.detail),
-      outputFromUnknownDetail(item.detail),
-    );
-    if (!op) {
-      return state;
-    }
-    return applyTaskListOperation(state, event.provider, op, timestamp, timelineCursor);
-  }
-
   if (
     event.provider === "claude" &&
     (normalizedToolName === "todowrite" || normalizedToolName === "todo_write")
@@ -1816,14 +1412,19 @@ function reduceTimelineToolCall(
     return appendTodoList(
       state,
       event.provider,
-      tasks.map((entry) => ({
-        text: entry.text,
-        completed: entry.completed,
-        status: entry.status,
-      })),
+      tasks.map((entry) => ({ text: entry.text, completed: entry.completed })),
       timestamp,
       timelineCursor,
     );
+  }
+
+  if (
+    event.provider === "claude" &&
+    (normalizedToolName === "taskcreate" ||
+      normalizedToolName === "taskupdate" ||
+      normalizedToolName === "tasklist")
+  ) {
+    return state;
   }
 
   const tasks = extractTaskEntriesFromToolCall(item.name, inputFromUnknownDetail(item.detail));
@@ -1831,11 +1432,7 @@ function reduceTimelineToolCall(
     return appendTodoList(
       state,
       event.provider,
-      tasks.map((entry) => ({
-        text: entry.text,
-        completed: entry.completed,
-        status: entry.status,
-      })),
+      tasks.map((entry) => ({ text: entry.text, completed: entry.completed })),
       timestamp,
       timelineCursor,
     );
@@ -1851,6 +1448,7 @@ function reduceTimelineToolCall(
       error: item.error,
       detail: item.detail,
       metadata: item.metadata,
+      ...(item.agentMessage ? { agentMessage: item.agentMessage } : {}),
     },
     timestamp,
     timelineCursor,
@@ -1867,15 +1465,14 @@ function reduceTimelineCompaction(
   timestamp: Date,
   timelineCursor?: TimelinePosition,
 ): StreamItem[] {
-  // Both terminal statuses settle the in-flight loading row in place.
-  if (item.status === "completed" || item.status === "failed") {
+  if (item.status === "completed") {
     const loadingIdx = state.findIndex((s) => s.kind === "compaction" && s.status === "loading");
     const existing = loadingIdx >= 0 ? state[loadingIdx] : undefined;
     if (loadingIdx >= 0 && existing && existing.kind === "compaction") {
       const updated: CompactionItem = {
         ...existing,
         ...(timelineCursor ? { timelineCursor } : {}),
-        status: item.status,
+        status: "completed",
         trigger: item.trigger ?? existing.trigger,
         preTokens: item.preTokens ?? existing.preTokens,
       };
@@ -1918,7 +1515,6 @@ function reduceTimelineEvent(
           item.clientMessageId,
           timelineCursor,
           event.turnId,
-          item.images,
         ),
       );
     case "assistant_message":
@@ -1931,7 +1527,6 @@ function reduceTimelineEvent(
           item.messageId,
           reservedItemIds,
           timelineCursor,
-          readTimelineTurnId(event),
         ),
       );
     case "reasoning":
@@ -1942,9 +1537,9 @@ function reduceTimelineEvent(
       );
     case "todo": {
       const items: TodoEntry[] = (item.items ?? []).map((todo) => ({
-        id: todo.id,
         text: todo.text,
         completed: todo.completed,
+        id: todo.id,
         status: todo.status,
         activeForm: todo.activeForm,
       }));
@@ -1961,7 +1556,6 @@ function reduceTimelineEvent(
         timestamp,
         level: "error",
         message: item.message ?? "Unknown error",
-        details: item.details,
       };
       return finalizeActiveThoughts(appendNotification(state, notification));
     }
@@ -1991,29 +1585,6 @@ function reduceTimelineEvent(
 }
 
 /**
- * Stamp the completed turn's usage onto its last assistant message so the
- * turn footer can render token counts. Walks back from the end of the turn,
- * skipping optimistic user messages queued for the next turn.
- */
-function stampTurnUsageOnLastAssistant(state: StreamItem[], usage: AgentUsage): StreamItem[] {
-  for (let index = state.length - 1; index >= 0; index -= 1) {
-    const item = state[index];
-    if (!item) {
-      continue;
-    }
-    if (item.kind === "user_message" && !item.optimistic) {
-      return state;
-    }
-    if (item.kind === "assistant_message") {
-      const next = [...state];
-      next[index] = { ...item, turnUsage: usage };
-      return next;
-    }
-  }
-  return state;
-}
-
-/**
  * Reduce a single AgentManager stream event into the UI timeline
  */
 export function reduceStreamUpdate(
@@ -2036,12 +1607,9 @@ export function reduceStreamUpdate(
         ),
         event,
       );
-    case "turn_completed": {
-      const finalized = finalizeActiveThoughts(state);
-      return event.usage ? stampTurnUsageOnLastAssistant(finalized, event.usage) : finalized;
-    }
     case "thread_started":
     case "turn_started":
+    case "turn_completed":
     case "turn_failed":
     case "turn_canceled":
     case "permission_requested":
@@ -2188,25 +1756,8 @@ function finalizeHeadItems(head: StreamItem[]): StreamItem[] {
     if (item.kind === "thought" && item.status !== "ready") {
       return markThoughtReady(item);
     }
-    if (item.kind === "assistant_message" && item.blockGroupId) {
-      return {
-        ...item,
-        id: createAssistantBlockId({
-          groupId: item.blockGroupId,
-          blockIndex: item.blockIndex ?? 0,
-        }),
-      };
-    }
     return item;
   });
-}
-
-function createAssistantBlockId(params: { groupId: string; blockIndex: number }): string {
-  return `${params.groupId}:block:${params.blockIndex}`;
-}
-
-function getTrailingNewlineSuffix(text: string): string {
-  return /\n+$/.exec(text)?.[0] ?? "";
 }
 
 function getActiveAssistantHeadIndex(head: StreamItem[]): number {
@@ -2237,73 +1788,6 @@ function getTailAssistantToResume(params: {
   return params.tailAssistant;
 }
 
-function promoteCompletedAssistantBlocks(params: { tail: StreamItem[]; head: StreamItem[] }): {
-  tail: StreamItem[];
-  head: StreamItem[];
-  changedTail: boolean;
-  changedHead: boolean;
-} {
-  const assistantIndex = getActiveAssistantHeadIndex(params.head);
-  const activeItem = params.head[assistantIndex];
-  if (assistantIndex < 0 || !activeItem || activeItem.kind !== "assistant_message") {
-    return {
-      tail: params.tail,
-      head: params.head,
-      changedTail: false,
-      changedHead: false,
-    };
-  }
-
-  const blocks = splitMarkdownBlocks(activeItem.text);
-  if (blocks.length < 2) {
-    return {
-      tail: params.tail,
-      head: params.head,
-      changedTail: false,
-      changedHead: false,
-    };
-  }
-
-  const blockGroupId = activeItem.blockGroupId ?? activeItem.id;
-  const firstBlockIndex = activeItem.blockIndex ?? 0;
-  const completedBlocks = blocks.slice(0, -1);
-  const liveBlock = `${blocks[blocks.length - 1] ?? ""}${getTrailingNewlineSuffix(activeItem.text)}`;
-  const promotedItems = completedBlocks.map<AssistantMessageItem>((block, offset) => ({
-    ...activeItem,
-    id: createAssistantBlockId({
-      groupId: blockGroupId,
-      blockIndex: firstBlockIndex + offset,
-    }),
-    blockGroupId,
-    blockIndex: firstBlockIndex + offset,
-    text: block,
-  }));
-
-  const nextTail = flushHeadToTail(params.tail, promotedItems);
-  const liveItem: AssistantMessageItem = {
-    ...activeItem,
-    id: createAssistantBlockId({
-      groupId: blockGroupId,
-      blockIndex: firstBlockIndex + completedBlocks.length,
-    }),
-    blockGroupId,
-    blockIndex: firstBlockIndex + completedBlocks.length,
-    text: liveBlock,
-  };
-  const nextHead = [
-    ...params.head.slice(0, assistantIndex),
-    liveItem,
-    ...params.head.slice(assistantIndex + 1),
-  ];
-
-  return {
-    tail: nextTail,
-    head: nextHead,
-    changedTail: nextTail !== params.tail,
-    changedHead: true,
-  };
-}
-
 /**
  * Flush head items to tail, avoiding duplicates.
  */
@@ -2319,7 +1803,6 @@ export function flushHeadToTail(tail: StreamItem[], head: StreamItem[]): StreamI
   if (newItems.length === 0) {
     return tail;
   }
-
   return [...tail, ...newItems];
 }
 
@@ -2327,33 +1810,6 @@ export function flushHeadToTail(tail: StreamItem[], head: StreamItem[]): StreamI
  * Determine if the head should be flushed based on incoming event kind.
  * Flush when a different streamable lane starts, including a new identified assistant message.
  */
-/**
- * Whether a timeline event carries text a reader would actually see. Mirrors
- * `normalizeChunk().hasContent`, which is what decides whether the item is kept.
- */
-function incomingTextIsVisible(event: AgentStreamEventPayload): boolean {
-  if (event.type !== "timeline" || !("text" in event.item) || typeof event.item.text !== "string") {
-    return true;
-  }
-  return normalizeChunk(event.item.text).hasContent;
-}
-
-function incomingAssistantBelongsBeforeTrailingUsers(
-  head: StreamItem[],
-  event: AgentStreamEventPayload,
-): boolean {
-  if (event.type !== "timeline" || event.item.type !== "assistant_message") return false;
-  const incomingTurnId = readTimelineTurnId(event);
-  if (!incomingTurnId) return false;
-  const trailingUserStart = findTrailingUserStart(head);
-  const precedingAssistant = head[trailingUserStart - 1];
-  return (
-    trailingUserStart < head.length &&
-    precedingAssistant?.kind === "assistant_message" &&
-    precedingAssistant.turnId === incomingTurnId
-  );
-}
-
 function shouldFlushHead(input: {
   head: StreamItem[];
   incomingKind: StreamItem["kind"] | null;
@@ -2374,8 +1830,7 @@ function shouldFlushHead(input: {
     return true;
   }
 
-  // Find the last streamable item in head (skip trailing non-streamable
-  // items like an optimistic user_message appended during interrupt).
+  // Find the last streamable item in head (skip trailing non-streamable items).
   let lastStreamable: StreamItem | undefined;
   for (let i = head.length - 1; i >= 0; i--) {
     if (isStreamableKind(head[i].kind)) {
@@ -2388,24 +1843,6 @@ function shouldFlushHead(input: {
     return true;
   }
 
-  // An assistant chunk that carries no visible text is about to be DROPPED by
-  // appendAssistantMessage (its `!hasContent` guard) unless it can extend an
-  // assistant message already in head. Flushing for an item that never arrives
-  // is what splits a thought in two: the head commits to tail, the whitespace
-  // evaporates, and the next reasoning delta finds an empty head and opens a
-  // second Thinking block mid-sentence with nothing rendered between them.
-  // Providers emit exactly this: the first thing after a closing think tag is
-  // almost always a blank line, so the two rules have to agree about what counts
-  // as an item. See appendAssistantMessage; changing the drop rule there means
-  // changing this.
-  if (
-    incomingKind === "assistant_message" &&
-    lastStreamable.kind !== "assistant_message" &&
-    !incomingTextIsVisible(event)
-  ) {
-    return false;
-  }
-
   // If incoming kind is different from current head's streamable kind, flush
   if (lastStreamable.kind !== incomingKind) {
     return true;
@@ -2413,9 +1850,6 @@ function shouldFlushHead(input: {
 
   if (incomingKind === "assistant_message" && lastStreamable.kind === "assistant_message") {
     const incomingMessageId = getIncomingAssistantMessageId(event);
-    if (incomingAssistantBelongsBeforeTrailingUsers(head, event)) {
-      return false;
-    }
     return incomingMessageId !== undefined && lastStreamable.messageId !== incomingMessageId;
   }
 
@@ -2430,22 +1864,6 @@ export interface ApplyStreamEventResult {
   acknowledgedClientMessageIds?: string[];
 }
 
-function deriveAcknowledgedClientMessageIds(
-  matched: boolean,
-  message: UserMessageItem | undefined,
-): string[] {
-  return matched && message?.clientMessageId ? [message.clientMessageId] : [];
-}
-
-function readTimelineTurnId(
-  event: Extract<AgentStreamEventPayload, { type: "timeline" }>,
-): string | undefined {
-  // The runtime event union carries turn identity on timeline entries, but the
-  // generated payload declaration can lag that optional field during a rolling
-  // protocol build. Keep the app-side reconciliation structural and lossless.
-  return "turnId" in event && typeof event.turnId === "string" ? event.turnId : undefined;
-}
-
 function applyCanonicalUserMessageEvent(params: {
   tail: StreamItem[];
   head: StreamItem[];
@@ -2456,22 +1874,21 @@ function applyCanonicalUserMessageEvent(params: {
 }): ApplyStreamEventResult | null {
   const { tail, head, event, timestamp, timelineCursor, unmatchedInsert = "tail" } = params;
   if (event.type !== "timeline" || event.item.type !== "user_message") return null;
-  const turnId = readTimelineTurnId(event);
   const normalized = normalizeChunk(event.item.text);
+
+  const flushedTail = head.length > 0 ? flushHeadToTail(tail, head) : tail;
+  const flushedHead = head.length > 0 ? [] : head;
   const canonical = createUserMessage({
     id:
       event.item.messageId ??
-      event.item.clientMessageId ??
       createUniqueTimelineId([...tail, ...head], "user", normalized.chunk.trim(), timestamp),
     messageId: event.item.messageId,
     clientMessageId: event.item.clientMessageId,
-    turnId,
+    turnId: event.turnId,
     timelineCursor,
     text: normalized.chunk,
     timestamp,
-    remoteImages: event.item.images,
   });
-
   if (unmatchedInsert === "head") {
     const reconciled = upsertUserMessageAcrossStream({
       tail,
@@ -2481,38 +1898,47 @@ function applyCanonicalUserMessageEvent(params: {
       presentation: "existing",
     });
     const reconciledTail = canonical.clientMessageId
-      ? reconcileCanonicalUserTurnMembership(reconciled.tail, canonical.clientMessageId, turnId)
+      ? reconcileCanonicalUserTurnMembership(
+          reconciled.tail,
+          canonical.clientMessageId,
+          event.turnId,
+        )
       : reconciled.tail;
     const reconciledHead = canonical.clientMessageId
-      ? reconcileCanonicalUserTurnMembership(reconciled.head, canonical.clientMessageId, turnId)
+      ? reconcileCanonicalUserTurnMembership(
+          reconciled.head,
+          canonical.clientMessageId,
+          event.turnId,
+        )
       : reconciled.head;
     return {
       tail: reconciledTail,
       head: reconciledHead,
       changedTail: reconciled.changedTail || reconciledTail !== reconciled.tail,
       changedHead: reconciled.changedHead || reconciledHead !== reconciled.head,
-      acknowledgedClientMessageIds: deriveAcknowledgedClientMessageIds(
-        reconciled.location?.matched === true,
-        reconciled.location?.message,
-      ),
+      acknowledgedClientMessageIds:
+        reconciled.location?.matched && reconciled.location.message.clientMessageId
+          ? [reconciled.location.message.clientMessageId]
+          : [],
     };
   }
-
-  const flushedTail = head.length > 0 ? flushHeadToTail(tail, head) : tail;
-  const flushedHead = head.length > 0 ? [] : head;
   const reconciled = placeCanonicalUserMessageAtTail(flushedTail, canonical, normalized.hasContent);
   const reconciledTail = canonical.clientMessageId
-    ? reconcileCanonicalUserTurnMembership(reconciled.items, canonical.clientMessageId, turnId)
+    ? reconcileCanonicalUserTurnMembership(
+        reconciled.items,
+        canonical.clientMessageId,
+        event.turnId,
+      )
     : reconciled.items;
   return {
     tail: reconciledTail,
     head: flushedHead,
     changedTail: flushedTail !== tail || reconciledTail !== flushedTail,
     changedHead: flushedHead !== head,
-    acknowledgedClientMessageIds: deriveAcknowledgedClientMessageIds(
-      reconciled.matched,
-      reconciled.message,
-    ),
+    acknowledgedClientMessageIds:
+      reconciled.matched && reconciled.message.clientMessageId
+        ? [reconciled.message.clientMessageId]
+        : [],
   };
 }
 
@@ -2551,7 +1977,6 @@ export function applyStreamEvent(params: {
   let nextHead = head;
   let changedTail = false;
   let changedHead = false;
-
   const flushHead = () => {
     if (nextHead.length === 0) {
       return;
@@ -2606,13 +2031,7 @@ export function applyStreamEvent(params: {
   if (incomingKind !== null && isStreamableKind(incomingKind)) {
     const reservedItemIds =
       incomingKind === "assistant_message" && getActiveAssistantHeadIndex(nextHead) < 0
-        ? new Set(
-            nextTail.flatMap((item) =>
-              item.kind === "assistant_message" && item.blockGroupId
-                ? [item.id, item.blockGroupId]
-                : [item.id],
-            ),
-          )
+        ? new Set(nextTail.map((item) => item.id))
         : undefined;
     const reduced = reduceStreamUpdate(nextHead, event, timestamp, {
       source,
@@ -2622,16 +2041,6 @@ export function applyStreamEvent(params: {
     if (reduced !== nextHead) {
       nextHead = reduced;
       changedHead = true;
-    }
-    if (incomingKind === "assistant_message") {
-      const promoted = promoteCompletedAssistantBlocks({
-        tail: nextTail,
-        head: nextHead,
-      });
-      nextTail = promoted.tail;
-      nextHead = promoted.head;
-      changedTail = changedTail || promoted.changedTail;
-      changedHead = changedHead || promoted.changedHead;
     }
     return { tail: nextTail, head: nextHead, changedTail, changedHead };
   }

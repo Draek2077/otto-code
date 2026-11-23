@@ -2,7 +2,7 @@ import { StyleSheet } from "react-native-unistyles";
 
 // Per-token color styles for syntax-highlighted code. Each value reads a
 // theme path so the Unistyles Babel plugin tracks the dependency and updates
-// native style values on theme changes - no React re-render of consumers.
+// native style values on theme changes — no React re-render of consumers.
 // Used by message code blocks (hot path), file preview, and the diff viewer.
 export const syntaxTokenStyles = StyleSheet.create((theme) => ({
   base: { color: theme.colors.foreground },
@@ -31,7 +31,7 @@ export const syntaxTokenStyles = StyleSheet.create((theme) => ({
 type SyntaxTokenStyleValue = (typeof syntaxTokenStyles)["base"];
 
 // Accepts a plain string so diff tokens (server-typed `string | null`) and
-// @otto-code/highlight tokens (typed `HighlightStyle | null`) share one path.
+// @getpaseo/highlight tokens (typed `HighlightStyle | null`) share one path.
 // Unknown styles fall back to the base color.
 export function syntaxTokenStyleFor(style: string | null | undefined): SyntaxTokenStyleValue {
   if (!style) return syntaxTokenStyles.base;

@@ -1,5 +1,5 @@
 import { replaceEqualDeep } from "@tanstack/react-query";
-import type { ParsedDiffFile, SubscribeCheckoutDiffResponse } from "@otto-code/protocol/messages";
+import type { ParsedDiffFile, SubscribeCheckoutDiffResponse } from "@getpaseo/protocol/messages";
 
 type DiffPayload = Omit<SubscribeCheckoutDiffResponse["payload"], "subscriptionId">;
 
@@ -53,13 +53,12 @@ function equalFile(left: ParsedDiffFile, right: ParsedDiffFile): boolean {
     left.path !== right.path ||
     left.oldPath !== right.oldPath ||
     left.status !== right.status ||
-    left.beforeSource !== right.beforeSource ||
-    left.afterSource !== right.afterSource ||
     left.isNew !== right.isNew ||
     left.isDeleted !== right.isDeleted ||
     left.additions !== right.additions ||
     left.deletions !== right.deletions ||
-    left.hunks.length !== right.hunks.length
+    left.hunks.length !== right.hunks.length ||
+    !equalStructuralSources(left.structuralSource, right.structuralSource) // OTTO(structural-diff)
   )
     return false;
   for (let h = 0; h < left.hunks.length; h++) {
@@ -77,6 +76,15 @@ function equalFile(left: ParsedDiffFile, right: ParsedDiffFile): boolean {
     if (!equalLines(a.lines, b.lines)) return false;
   }
   return true;
+}
+
+// OTTO(structural-diff): unchanged hunks can still refer to new syntax evidence.
+function equalStructuralSources(
+  left: ParsedDiffFile["structuralSource"],
+  right: ParsedDiffFile["structuralSource"],
+) {
+  if (left === right) return true;
+  return !!left && !!right && left.before === right.before && left.after === right.after;
 }
 
 function equalLines(

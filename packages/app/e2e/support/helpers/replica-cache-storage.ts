@@ -1,3 +1,4 @@
+// OTTO(identity): fixture paths and labels follow Otto's persisted identity.
 import { expect, type Page } from "@playwright/test";
 
 const DATABASE_NAME = "otto-replica-row-store";

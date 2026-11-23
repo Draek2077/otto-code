@@ -5,8 +5,6 @@ import { JSDOM } from "jsdom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { AttachmentLightbox, type ImageLightboxSource } from "./attachment-lightbox";
-import { ChatImagePreview } from "./chat-image-preview";
-import { dispatchTopWebOverlayKeyDown } from "@/lib/overlay-root";
 
 const { theme, imageMetadata, useAttachmentPreviewUrlMock } = vi.hoisted(() => {
   const hoistedTheme = {
@@ -54,10 +52,7 @@ vi.mock("react-native-unistyles", () => ({
   StyleSheet: {
     create: (factory: unknown) => (typeof factory === "function" ? factory(theme) : factory),
   },
-  withUnistyles:
-    (Component: React.ComponentType<Record<string, unknown>>) =>
-    ({ uniProps, ...props }: { uniProps: (value: typeof theme) => Record<string, unknown> }) =>
-      React.createElement(Component, { ...props, ...uniProps(theme) }),
+  useUnistyles: () => ({ theme }),
 }));
 
 vi.mock("@/constants/platform", () => ({
@@ -72,7 +67,6 @@ vi.mock("react-i18next", () => ({
         "message.attachments.closeImage": "Close image",
         "message.attachments.dismissImage": "Dismiss image",
         "message.attachments.imageLoadFailed": "Couldn't load image",
-        "composer.attachments.openImage": "Open image attachment",
       })[key] ?? key,
   }),
 }));
@@ -86,7 +80,7 @@ vi.mock("react-native-gesture-handler", () => ({
     React.createElement("div", { "data-testid": "gesture-handler-root" }, children),
 }));
 
-vi.mock("@/components/icons/material-icons", () => {
+vi.mock("lucide-react-native", () => {
   const createIcon = (name: string) => (props: Record<string, unknown>) =>
     React.createElement("span", { ...props, "data-icon": name });
   return {
@@ -186,32 +180,6 @@ function queryByTestId(testID: string): HTMLElement | null {
 }
 
 describe("AttachmentLightbox", () => {
-  it.each([
-    "blob:screenshot",
-    "https://example.com/screenshot.png",
-    "file:///cache/screenshot.png",
-  ])("opens and reopens a chat thumbnail using its resolved URI: %s", (uri) => {
-    useAttachmentPreviewUrlMock.mockReturnValue(null);
-    render(
-      <ChatImagePreview uri={uri}>
-        <span>Screenshot thumbnail</span>
-      </ChatImagePreview>,
-    );
-    expect(queryByTestId("attachment-lightbox-image")).toBeNull();
-
-    const thumbnail = document.querySelector('[aria-label="Open image attachment"]')!;
-    click(thumbnail);
-    expect(queryByTestId("attachment-lightbox-image")?.getAttribute("data-source")).toBe(uri);
-    expect(document.body.textContent).toContain("Screenshot thumbnail");
-
-    click(queryByTestId("attachment-lightbox-close")!);
-    expect(queryByTestId("attachment-lightbox-image")).toBeNull();
-    click(thumbnail);
-    expect(queryByTestId("attachment-lightbox-image")?.getAttribute("data-source")).toBe(uri);
-    click(queryByTestId("attachment-lightbox-backdrop")!);
-    expect(queryByTestId("attachment-lightbox-image")).toBeNull();
-  });
-
   it("renders nothing when the source is null", () => {
     render(<AttachmentLightbox source={null} onClose={vi.fn()} />);
 
@@ -267,36 +235,14 @@ describe("AttachmentLightbox", () => {
     expect(document.body.textContent ?? "").toContain("Couldn't load image");
   });
 
-  it("closes through overlay first refusal before an earlier app shortcut listener can interrupt", () => {
+  it("closes on Escape key on web", () => {
     const onClose = vi.fn();
-    const interrupt = vi.fn();
-    const appShortcut = (event: KeyboardEvent) => {
-      if (dispatchTopWebOverlayKeyDown(event)) return;
-      if (event.key === "Escape") interrupt();
-    };
-    // The app listener predates mounting the modal, as it does in the real shell.
-    window.addEventListener("keydown", appShortcut, true);
     render(<AttachmentLightbox source={attachmentSource} onClose={onClose} />);
-    const event = new window.KeyboardEvent("keydown", {
-      key: "Escape",
-      bubbles: true,
-      cancelable: true,
-    });
-    act(() => {
-      window.dispatchEvent(event);
-    });
-    expect(event.defaultPrevented).toBe(true);
-    expect(onClose).toHaveBeenCalledTimes(1);
-    expect(interrupt).not.toHaveBeenCalled();
-    window.removeEventListener("keydown", appShortcut, true);
-  });
 
-  it("releases overlay first refusal once closed", () => {
-    const onClose = vi.fn();
-    render(<AttachmentLightbox source={attachmentSource} onClose={onClose} />);
-    render(<AttachmentLightbox source={null} onClose={onClose} />);
-    const event = new window.KeyboardEvent("keydown", { key: "Escape", cancelable: true });
-    expect(dispatchTopWebOverlayKeyDown(event)).toBe(false);
-    expect(onClose).not.toHaveBeenCalled();
+    act(() => {
+      window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape" }));
+    });
+
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

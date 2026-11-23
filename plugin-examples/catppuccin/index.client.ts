@@ -1,4 +1,4 @@
-import type { PluginClientContext } from "@otto-code/plugin/client";
+import type { PluginClientContext } from "@getpaseo/plugin/client";
 
 export default function contribute(client: PluginClientContext) {
   client.addTheme({

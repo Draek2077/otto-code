@@ -1,29 +1,45 @@
-import { SettingsTargetText, SettingsTargetScope } from "@/screens/settings-search/target";
-import { PluginSettingsLinks } from "@/plugins/settings";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { OttoProviderSettingsMenu } from "@/otto/provider-settings-menu"; // OTTO(provider-settings)
+import { BrainSettingsEntry } from "@/otto/brain/integration/settings-entry"; // OTTO(brain-ui): built-in settings entry.
+import { IntegrationSettingsEntry } from "@/otto/integrations/settings-entry"; // OTTO(integration): shared host authorization.
+import { SpeechSettingsEntry } from "@/otto/speech/settings-entry"; // OTTO(speech)
+import { KnowledgeSettingsEntry } from "@/otto/knowledge/settings-entry"; // OTTO(knowledge): built-in settings entry.
+import { formatPluginInstallation } from "@getpaseo/protocol/plugin-source-reference";
+import { PluginSettingsMenuItems } from "@/plugins/settings";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useMutation } from "@tanstack/react-query";
-import type { PluginListItem, PluginLogEntry } from "@otto-code/protocol/messages";
+import type { PluginListItem, PluginLogEntry } from "@getpaseo/protocol/messages";
+import { MoreHorizontal, Trash2 } from "lucide-react-native";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { SettingsCard, SettingsRow } from "@/components/settings";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { SettingsField as Field } from "@/screens/settings-search/fields";
-import { FormTextInput } from "@/components/ui/form-field";
+import { ExternalLink } from "@/components/ui/external-link";
+import { Field, FormTextInput } from "@/components/ui/form-field";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { Switch } from "@/components/ui/switch";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useFetchQuery } from "@/data/query";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { resolvePluginPageState } from "@/screens/settings/plugins-page-state";
+import { openPluginInstallForm } from "@/screens/settings/plugin-install-form-model";
 import { pluginRegistry, useInstalledPlugins } from "@/plugins/registry";
 import { settingsStyles } from "@/styles/settings";
 import { confirmDialog } from "@/utils/confirm-dialog";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 const pluginQueryKey = (serverId: string) => ["plugins", serverId] as const;
+const PLUGIN_SOURCE_DOCS_URL = `${OTTO_WEBSITE_URL}/docs/plugins/reference#plugin-sources`; // OTTO(identity)
 type PluginRowAction = "reload" | "enable" | "disable" | "remove";
 
 function errorMessage(error: unknown): string {
@@ -35,6 +51,71 @@ function pluginRowAction(action: string | undefined): PluginRowAction | undefine
     return action;
   }
   return undefined;
+}
+
+function PluginActionsMenu({
+  plugin,
+  serverId,
+  pending,
+  pendingAction,
+  onAction,
+  onOpenLogs,
+  supportsLogs,
+}: {
+  plugin: PluginListItem;
+  serverId: string;
+  pending: boolean;
+  pendingAction?: PluginRowAction;
+  onAction(action: PluginRowAction, plugin: PluginListItem): void;
+  onOpenLogs(pluginId: string): void;
+  supportsLogs: boolean;
+}) {
+  const { t } = useTranslation();
+  const reload = useCallback(() => onAction("reload", plugin), [onAction, plugin]);
+  const remove = useCallback(() => onAction("remove", plugin), [onAction, plugin]);
+  const openLogs = useCallback(() => onOpenLogs(plugin.id), [onOpenLogs, plugin.id]);
+  const removeIcon = useMemo(() => <Trash2 size={16} color={styles.dangerIcon.color} />, []);
+  const menuLabel = t("settings.plugins.actions.menu", { id: plugin.id });
+
+  return (
+    <DropdownMenu compactMode="sheet">
+      <DropdownMenuTrigger
+        accessibilityRole="button"
+        accessibilityLabel={menuLabel}
+        disabled={pending}
+        hitSlop={8}
+        style={styles.menuButton}
+      >
+        <MoreHorizontal size={18} color={styles.menuIcon.color} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" width={220} sheetTitle={menuLabel}>
+        <PluginSettingsMenuItems serverId={serverId} pluginId={plugin.id} disabled={pending} />
+        {supportsLogs ? (
+          <DropdownMenuItem onSelect={openLogs} disabled={pending}>
+            {t("settings.plugins.logs.action")}
+          </DropdownMenuItem>
+        ) : null}
+        <DropdownMenuItem
+          onSelect={reload}
+          disabled={pending || !plugin.enabled}
+          status={pendingAction === "reload" ? "pending" : "idle"}
+          pendingLabel={t("settings.plugins.actions.reloading")}
+        >
+          {t("settings.plugins.actions.reload")}
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          destructive
+          leading={removeIcon}
+          onSelect={remove}
+          disabled={pending}
+          status={pendingAction === "remove" ? "pending" : "idle"}
+          pendingLabel={t("settings.plugins.actions.removing")}
+        >
+          {t("settings.plugins.actions.remove")}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function PluginRow({
@@ -57,69 +138,62 @@ function PluginRow({
   supportsLogs: boolean;
 }) {
   const { t } = useTranslation();
-  const reload = useCallback(() => onAction("reload", plugin), [onAction, plugin]);
   const toggle = useCallback(
-    () => onAction(plugin.enabled ? "disable" : "enable", plugin),
+    (enabled: boolean) => onAction(enabled ? "enable" : "disable", plugin),
     [onAction, plugin],
   );
-  const remove = useCallback(() => onAction("remove", plugin), [onAction, plugin]);
-  const openLogs = useCallback(() => onOpenLogs(plugin.id), [onOpenLogs, plugin.id]);
   const status = clientError ? "failed" : plugin.status;
   let badgeVariant: "success" | "error" | "muted" = "muted";
   if (status === "running") badgeVariant = "success";
   else if (status === "failed") badgeVariant = "error";
   const statusLabel = t(`settings.plugins.status.${status}`);
-  let toggleLabel = t(
-    plugin.enabled ? "settings.plugins.actions.disable" : "settings.plugins.actions.enable",
+  const statusBadge = useMemo(
+    () => <StatusBadge label={statusLabel} variant={badgeVariant} />,
+    [badgeVariant, statusLabel],
   );
-  if (pendingAction === "enable") toggleLabel = t("settings.plugins.actions.enabling");
-  else if (pendingAction === "disable") toggleLabel = t("settings.plugins.actions.disabling");
+  const hint = useMemo(
+    () =>
+      plugin.description || plugin.installation ? (
+        <View>
+          {plugin.description ? (
+            <Text style={styles.pluginDescription}>{plugin.description}</Text>
+          ) : null}
+          {plugin.installation ? (
+            <Text style={styles.pluginSource}>{formatPluginInstallation(plugin.installation)}</Text>
+          ) : null}
+        </View>
+      ) : undefined,
+    [plugin.description, plugin.installation],
+  );
+  const toggleLabel = `${plugin.id}: ${t(
+    plugin.enabled ? "settings.plugins.actions.disable" : "settings.plugins.actions.enable",
+  )}`;
   return (
-    <View>
-      <View style={styles.pluginRow} accessibilityLabel={`${plugin.id} ${statusLabel}`}>
-        <View style={settingsStyles.rowContent}>
-          <View style={styles.pluginTitle}>
-            <SettingsTargetText
-              settingId="host-plugins-plugin-lifecycle-configured-plugin"
-              style={settingsStyles.rowTitle}
-            >
-              {plugin.id}
-            </SettingsTargetText>
-            <StatusBadge label={statusLabel} variant={badgeVariant} />
-          </View>
-          <Text style={settingsStyles.rowHint}>{plugin.path}</Text>
-          {clientError || plugin.error ? (
-            <Text style={styles.error}>{clientError ?? plugin.error}</Text>
-          ) : null}
-        </View>
-        <View style={styles.actions}>
-          {supportsLogs ? (
-            <Button variant="outline" size="sm" onPress={openLogs} disabled={pending}>
-              {t("settings.plugins.logs.action")}
-            </Button>
-          ) : null}
-          <Button
-            variant="outline"
-            size="sm"
-            onPress={reload}
-            disabled={pending || !plugin.enabled}
-          >
-            {pendingAction === "reload"
-              ? t("settings.plugins.actions.reloading")
-              : t("settings.plugins.actions.reload")}
-          </Button>
-          <Button variant="outline" size="sm" onPress={toggle} disabled={pending}>
-            {toggleLabel}
-          </Button>
-          <Button variant="outline" size="sm" onPress={remove} disabled={pending}>
-            {pendingAction === "remove"
-              ? t("settings.plugins.actions.removing")
-              : t("settings.plugins.actions.remove")}
-          </Button>
-        </View>
+    <SettingsRow
+      label={plugin.id}
+      labelAccessory={statusBadge}
+      hint={hint}
+      error={clientError ?? plugin.error}
+      testID={`plugin-row-${plugin.id}`}
+    >
+      <View style={styles.pluginControls} accessibilityLabel={`${plugin.id} ${statusLabel}`}>
+        <Switch
+          value={plugin.enabled}
+          onValueChange={toggle}
+          disabled={pending}
+          accessibilityLabel={toggleLabel}
+        />
+        <PluginActionsMenu
+          plugin={plugin}
+          serverId={serverId}
+          pending={pending}
+          pendingAction={pendingAction}
+          onAction={onAction}
+          onOpenLogs={onOpenLogs}
+          supportsLogs={supportsLogs}
+        />
       </View>
-      <PluginSettingsLinks serverId={serverId} pluginId={plugin.id} />
-    </View>
+    </SettingsRow>
   );
 }
 
@@ -162,6 +236,7 @@ function PluginLogsSheet({
   if (logs.isError) {
     content = (
       <Alert
+        size="sm"
         variant="error"
         title={t("settings.plugins.logs.errorTitle")}
         description={errorMessage(logs.error)}
@@ -200,16 +275,30 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
   const client = useHostRuntimeClient(serverId);
   const connected = useHostRuntimeIsConnected(serverId);
   const supported = useHostFeature(serverId, "pluginManagement");
+  // COMPAT(pluginSourceInstallation): added in v0.8.0; remove gate after 2027-03-16 once daemon floor supports source identifiers.
+  const sourceInstallSupported = useHostFeature(serverId, "pluginSourceInstallation");
   // COMPAT(pluginLogs): added in v0.4.0, remove gate after 2027-08-16.
   const logsSupported = useHostFeature(serverId, "pluginLogs");
   const { config, patchConfig } = useDaemonConfig(serverId);
   const refreshQueue = useRef(Promise.resolve());
   useInstalledPlugins();
   const queryKey = useMemo(() => pluginQueryKey(serverId), [serverId]);
-  const [directory, setDirectory] = useState("");
-  const [pluginId, setPluginId] = useState("");
-  const [directoryResetKey, setDirectoryResetKey] = useState(0);
-  const [pluginIdResetKey, setPluginIdResetKey] = useState(0);
+  const [installForm] = useState(openPluginInstallForm);
+  const installState = useSyncExternalStore(
+    installForm.subscribe,
+    installForm.getState,
+    installForm.getState,
+  );
+  const sourceDocsLink = useMemo(
+    () => (
+      <ExternalLink
+        href={PLUGIN_SOURCE_DOCS_URL}
+        label={t("settings.plugins.docs")}
+        testID="plugin-source-docs-link"
+      />
+    ),
+    [t],
+  );
   const [logsPluginId, setLogsPluginId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ kind: "success" | "error"; message: string } | null>(
     null,
@@ -234,11 +323,24 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
     await refreshQueue.current;
   }, [client, refetchPlugins]);
   useEffect(() => {
-    if (!client) return;
-    return client.on("status", (message) => {
-      if (message.payload.status === "plugin_catalog_changed") void refresh();
+    return () => installForm.close();
+  }, [installForm]);
+  useEffect(() => {
+    if (!client || !connected || !supported) return;
+    const observation = client.observeEvents(["status.plugin_catalog_changed"]);
+    observation.subscribe({
+      snapshot: () => {},
+      update: (message) => {
+        if (message.type === "status" && message.payload.status === "plugin_catalog_changed")
+          void refresh();
+      },
     });
-  }, [client, refresh]);
+    return () => {
+      void observation
+        .release()
+        .catch((error) => console.warn("[Plugins] Failed to release settings feed", error));
+    };
+  }, [client, connected, supported, refresh]);
   const mutation = useMutation({
     mutationFn: async (operation: {
       action: string;
@@ -252,33 +354,18 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
     onError: (error) => setFeedback({ kind: "error", message: errorMessage(error) }),
   });
   const install = useCallback(() => {
-    const path = directory.trim();
-    if (!client || !path) return;
+    if (!client || !sourceInstallSupported || !installState.canSubmit) return;
+    const input = installForm.getSubmission();
     setFeedback(null);
     mutation.mutate({
       action: "install",
       run: async () => {
-        const installed = await client.installDirectoryPlugin(path, pluginId.trim() || undefined);
-        setDirectory("");
-        setPluginId("");
-        setDirectoryResetKey((key) => key + 1);
-        setPluginIdResetKey((key) => key + 1);
+        const installed = await client.installPluginSource(input);
+        installForm.reset();
         return t("settings.plugins.feedback.installed", { id: installed.id });
       },
     });
-  }, [client, directory, mutation, pluginId, t]);
-  const prefillManifestId = useCallback(() => {
-    const path = directory.trim();
-    if (!client || !path || pluginId.trim()) return;
-    void client
-      .inspectDirectoryPlugin(path)
-      .then(({ id }) => {
-        setPluginId(id);
-        setPluginIdResetKey((key) => key + 1);
-        return undefined;
-      })
-      .catch(() => undefined);
-  }, [client, directory, pluginId]);
+  }, [client, installForm, installState.canSubmit, mutation, sourceInstallSupported, t]);
   const action = useCallback(
     (name: PluginRowAction, plugin: PluginListItem) => {
       if (!client) return;
@@ -332,6 +419,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
   if (pageState === "offline") {
     return (
       <Alert
+        size="md"
         variant="warning"
         title={t("settings.plugins.states.offlineTitle")}
         description={t("settings.plugins.states.offlineDescription")}
@@ -339,13 +427,14 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
     );
   }
   if (pageState === "unsupported") {
-    return <Alert variant="warning" title={t("settings.plugins.states.updateTitle")} />;
+    return <Alert size="md" variant="warning" title={t("settings.plugins.states.updateTitle")} />;
   }
 
-  let catalogContent = <Alert title={t("settings.plugins.states.loading")} />;
+  let catalogContent = <Alert size="sm" title={t("settings.plugins.states.loading")} />;
   if (pageState === "error") {
     catalogContent = (
       <Alert
+        size="sm"
         variant="error"
         title={t("settings.plugins.states.errorTitle")}
         description={errorMessage(plugins.error)}
@@ -357,7 +446,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
     );
   } else if (pageState !== "loading") {
     catalogContent = (
-      <View style={settingsStyles.card}>
+      <SettingsCard>
         {plugins.data?.length ? (
           plugins.data.map((plugin) => {
             const clientError = pluginRegistry.getEvaluationError(serverId, plugin.id);
@@ -381,7 +470,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
             <Text style={settingsStyles.rowHint}>{t("settings.plugins.states.empty")}</Text>
           </View>
         )}
-      </View>
+      </SettingsCard>
     );
   }
 
@@ -389,6 +478,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
     <View>
       <SettingsSection title={t("settings.plugins.title")}>
         <Alert
+          size="sm"
           variant="warning"
           title={t("settings.plugins.trustedTitle")}
           description={t("settings.plugins.trustedDescription")}
@@ -396,12 +486,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
         <View style={settingsStyles.card}>
           <View style={settingsStyles.row}>
             <View style={settingsStyles.rowContent}>
-              <SettingsTargetText
-                settingId="host-plugins-plugin-lifecycle-enable-plugins"
-                style={settingsStyles.rowTitle}
-              >
-                {t("settings.plugins.globalTitle")}
-              </SettingsTargetText>
+              <Text style={settingsStyles.rowTitle}>{t("settings.plugins.globalTitle")}</Text>
               <Text style={settingsStyles.rowHint}>{t("settings.plugins.globalHint")}</Text>
             </View>
             <Switch
@@ -412,52 +497,47 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
             />
           </View>
         </View>
-        <View style={[settingsStyles.card, styles.install]}>
-          <SettingsTargetScope settingIds={["host-plugins-plugin-lifecycle-plugin-directory"]}>
-            <Field label={t("settings.plugins.directoryLabel")}>
+        {sourceInstallSupported ? (
+          <View style={[settingsStyles.card, styles.install]}>
+            <Field label={t("settings.plugins.sourceLabel")} trailing={sourceDocsLink}>
               <FormTextInput
                 initialValue=""
-                resetKey={directoryResetKey}
-                onChangeText={setDirectory}
-                onBlur={prefillManifestId}
-                placeholder={t("settings.plugins.directoryPlaceholder")}
+                resetKey={installState.resetKey}
+                onChangeText={installForm.setSource}
+                placeholder={t("settings.plugins.sourcePlaceholder")}
                 autoCapitalize="none"
                 autoCorrect={false}
                 editable={!mutation.isPending}
-                accessibilityLabel={t("settings.plugins.directoryLabel")}
+                accessibilityLabel={t("settings.plugins.sourceLabel")}
               />
             </Field>
-          </SettingsTargetScope>
-          <SettingsTargetScope
-            settingIds={["host-plugins-plugin-lifecycle-plugin-installation-id"]}
-          >
-            <Field label={t("settings.plugins.idLabel")} hint={t("settings.plugins.idHint")}>
-              <FormTextInput
-                initialValue={pluginId}
-                resetKey={pluginIdResetKey}
-                onChangeText={setPluginId}
-                placeholder={t("settings.plugins.idPlaceholder")}
-                autoCapitalize="none"
-                autoCorrect={false}
-                editable={!mutation.isPending}
-                accessibilityLabel={t("settings.plugins.idLabel")}
-              />
-            </Field>
-          </SettingsTargetScope>
-          <Button onPress={install} disabled={!directory.trim() || mutation.isPending}>
-            {mutation.isPending && mutation.variables?.action === "install"
-              ? t("settings.plugins.installing")
-              : t("settings.plugins.install")}
-          </Button>
-        </View>
+            <Button onPress={install} disabled={!installState.canSubmit || mutation.isPending}>
+              {mutation.isPending && mutation.variables?.action === "install"
+                ? t("settings.plugins.installing")
+                : t("settings.plugins.install")}
+            </Button>
+          </View>
+        ) : (
+          <Alert
+            size="sm"
+            variant="warning"
+            title={t("settings.plugins.states.sourceUpdateTitle")}
+          />
+        )}
         {feedback ? (
           <Alert
+            size="sm"
             variant={feedback.kind}
             title={feedback.message}
             testID="plugin-management-feedback"
           />
         ) : null}
         {catalogContent}
+        <OttoProviderSettingsMenu serverId={serverId} /> {/* OTTO(provider-settings) */}
+        <BrainSettingsEntry serverId={serverId} /> {/* OTTO(brain-ui) */}
+        <IntegrationSettingsEntry serverId={serverId} /> {/* OTTO(integration) */}
+        <SpeechSettingsEntry serverId={serverId} /> {/* OTTO(speech) */}
+        <KnowledgeSettingsEntry serverId={serverId} /> {/* OTTO(knowledge) */}
       </SettingsSection>
       {client && logsPluginId ? (
         <PluginLogsSheet
@@ -472,16 +552,21 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
 }
 
 const styles = StyleSheet.create((theme) => ({
-  install: { padding: theme.spacing[4], gap: theme.spacing[3] },
-  pluginRow: {
-    padding: theme.spacing[4],
-    gap: theme.spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+  pluginDescription: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.base,
+    marginTop: theme.spacing[1],
   },
-  pluginTitle: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
-  actions: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing[2] },
-  error: { color: theme.colors.statusDanger, fontSize: theme.fontSize.sm },
+  pluginSource: {
+    color: theme.colors.foregroundExtraMuted,
+    fontSize: theme.fontSize.sm,
+    marginTop: theme.spacing[1],
+  },
+  install: { padding: theme.spacing[4], gap: theme.spacing[3] },
+  pluginControls: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
+  menuButton: { padding: theme.spacing[1], borderRadius: theme.borderRadius.sm },
+  menuIcon: { color: theme.colors.foregroundMuted },
+  dangerIcon: { color: theme.colors.statusDanger },
   empty: { padding: theme.spacing[4], alignItems: "center" },
   logsState: {
     color: theme.colors.foregroundMuted,

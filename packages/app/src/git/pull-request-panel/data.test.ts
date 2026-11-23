@@ -3,18 +3,19 @@ import type {
   CheckoutPipelineJob,
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
-} from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/messages";
 import {
   countGitlabPipelineJobs,
   isPipelineActiveStatus,
   mapPipelineStatus,
 } from "@/git/forges/gitlab";
+import { i18n } from "@/i18n/i18next";
 import { IDENTITY_COLOR_NAMES, identityColor } from "@/styles/identity-colors";
 import {
   deriveAvatarColor,
   formatAge,
-  getActivityVerb,
-  getStateLabel,
+  getActivityVerbKey,
+  getStateLabelKey,
   mapPrPaneData,
 } from "./data";
 
@@ -42,7 +43,7 @@ const githubStatus: CheckoutPrStatus["github"] = {
 const baseStatus: CheckoutPrStatus = {
   forge: "github",
   number: 42,
-  url: "https://github.com/Draek2077/otto-code/pull/42",
+  url: "https://github.com/getpaseo/paseo/pull/42",
   title: "Wire PR pane data",
   state: "open",
   baseRefName: "main",
@@ -82,7 +83,7 @@ describe("mapPrPaneData", () => {
     const data = mapPrPaneData(
       status({
         number: undefined,
-        url: "https://github.com/Draek2077/otto-code/pull/1284",
+        url: "https://github.com/getpaseo/paseo/pull/1284",
       }),
       timeline({ prNumber: 1284 }),
     );
@@ -92,10 +93,7 @@ describe("mapPrPaneData", () => {
 
   it("returns null when status has no number and no parseable PR URL", () => {
     expect(
-      mapPrPaneData(
-        status({ number: undefined, url: "https://github.com/Draek2077/otto-code" }),
-        null,
-      ),
+      mapPrPaneData(status({ number: undefined, url: "https://github.com/getpaseo/paseo" }), null),
     ).toBeNull();
   });
 
@@ -138,7 +136,7 @@ describe("mapPrPaneData", () => {
         provider: "github",
         name: "legacy status",
         status: "pending",
-        url: "https://github.com/Draek2077/otto-code/pull/42",
+        url: "https://github.com/getpaseo/paseo/pull/42",
       },
     ]);
   });
@@ -236,7 +234,7 @@ describe("mapPrPaneData", () => {
           {
             name: "server-tests",
             status: "failure",
-            url: "https://github.com/Draek2077/otto-code/actions/runs/456/job/789",
+            url: "https://github.com/getpaseo/paseo/actions/runs/456/job/789",
             checkRunId: 12345,
             workflowRunId: 456,
           },
@@ -250,7 +248,7 @@ describe("mapPrPaneData", () => {
         provider: "github",
         name: "server-tests",
         status: "failure",
-        url: "https://github.com/Draek2077/otto-code/actions/runs/456/job/789",
+        url: "https://github.com/getpaseo/paseo/actions/runs/456/job/789",
         detailRef: { checkRunId: 12345, workflowRunId: 456 },
       },
     ]);
@@ -319,7 +317,7 @@ describe("mapPrPaneData", () => {
             avatarUrl: "https://avatars.githubusercontent.com/u/3?v=4",
             body: "This should include line context.",
             createdAt: Date.UTC(2026, 0, 1, 11, 0, 0),
-            url: "https://github.com/Draek2077/otto-code/pull/42#discussion_r1",
+            url: "https://github.com/getpaseo/paseo/pull/42#discussion_r1",
             location: {
               path: "packages/app/src/git/pull-request-panel/data.ts",
               line: 24,
@@ -344,9 +342,8 @@ describe("mapPrPaneData", () => {
         avatarColor: deriveAvatarColor("inline-reviewer"),
         avatarUrl: "https://avatars.githubusercontent.com/u/3?v=4",
         body: "This should include line context.",
-        createdAt: Date.UTC(2026, 0, 1, 11, 0, 0),
         age: "1h ago",
-        url: "https://github.com/Draek2077/otto-code/pull/42#discussion_r1",
+        url: "https://github.com/getpaseo/paseo/pull/42#discussion_r1",
         location: {
           path: "packages/app/src/git/pull-request-panel/data.ts",
           line: 24,
@@ -783,37 +780,34 @@ describe("formatAge", () => {
   });
 });
 
-describe("getStateLabel", () => {
+const english = i18n.getFixedT("en");
+const french = i18n.getFixedT("fr");
+
+describe("getStateLabelKey", () => {
   it.each([
-    ["open", "Open"],
-    ["draft", "Draft"],
-    ["merged", "Merged"],
-    ["closed", "Closed"],
-  ] as const)("maps %s → %s", (state, expected) => {
-    expect(getStateLabel(state)).toBe(expected);
+    ["open", "Open", "Ouverte"],
+    ["draft", "Draft", "Brouillon"],
+    ["merged", "Merged", "Fusionnée"],
+    ["closed", "Closed", "Fermée"],
+  ] as const)("labels %s as %s, and %s in French", (state, englishLabel, frenchLabel) => {
+    expect(english(getStateLabelKey(state))).toBe(englishLabel);
+    expect(french(getStateLabelKey(state))).toBe(frenchLabel);
   });
 });
 
-describe("getActivityVerb", () => {
-  it("returns Commented for comment kind", () => {
-    expect(getActivityVerb({ kind: "comment" })).toBe("Commented");
-  });
-
-  it("returns Approved for approved review", () => {
-    expect(getActivityVerb({ kind: "review", reviewState: "approved" })).toBe("Approved");
-  });
-
-  it("returns Requested changes for changes_requested review", () => {
-    expect(getActivityVerb({ kind: "review", reviewState: "changes_requested" })).toBe(
+describe("getActivityVerbKey", () => {
+  it.each([
+    [{ kind: "comment" }, "Commented", "A commenté"],
+    [{ kind: "review", reviewState: "approved" }, "Approved", "A approuvé"],
+    [
+      { kind: "review", reviewState: "changes_requested" },
       "Requested changes",
-    );
-  });
-
-  it("returns Reviewed for a commented review with body (generic case)", () => {
-    expect(getActivityVerb({ kind: "review", reviewState: "commented" })).toBe("Reviewed");
-  });
-
-  it("returns Reviewed when reviewState is undefined", () => {
-    expect(getActivityVerb({ kind: "review" })).toBe("Reviewed");
+      "A demandé des modifications",
+    ],
+    [{ kind: "review", reviewState: "commented" }, "Reviewed", "A relu"],
+    [{ kind: "review" }, "Reviewed", "A relu"],
+  ] as const)("labels %o as %s, and %s in French", (item, englishVerb, frenchVerb) => {
+    expect(english(getActivityVerbKey(item))).toBe(englishVerb);
+    expect(french(getActivityVerbKey(item))).toBe(frenchVerb);
   });
 });

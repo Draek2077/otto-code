@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useSyncExternalStore } from "react";
 import { usePaneContext } from "@/panels/pane-context";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 
 export interface PanelInstanceIdentity {
   serverId: string;
@@ -10,6 +11,7 @@ export interface PanelInstanceIdentity {
 export interface PanelInstanceAttributes {
   modified: boolean;
   suspendPendingSave?: () => () => void;
+  beforeClose?: () => Promise<boolean>; // OTTO(editor): a file-owned PTY can hold an unsaved terminal buffer.
 }
 
 const DEFAULT_ATTRIBUTES: PanelInstanceAttributes = { modified: false };
@@ -18,8 +20,20 @@ const listenersByPanel = new Map<string, Set<() => void>>();
 const allListeners = new Set<() => void>();
 let attributesRevision = 0;
 
+function buildWorkspacePanelKey(workspaceKey: string, tabId: string): string {
+  return `${workspaceKey}:${tabId}`;
+}
+
 export function buildPanelInstanceKey(identity: PanelInstanceIdentity): string {
-  return `${identity.serverId}:${identity.workspaceId}:${identity.tabId}`;
+  return buildWorkspacePanelKey(buildWorkspaceTabPersistenceKey(identity) ?? "", identity.tabId);
+}
+
+/** Looks a panel up by the workspace key the layout store uses. */
+export function getWorkspacePanelAttributes(
+  workspaceKey: string,
+  tabId: string,
+): PanelInstanceAttributes {
+  return attributesByPanel.get(buildWorkspacePanelKey(workspaceKey, tabId)) ?? DEFAULT_ATTRIBUTES;
 }
 
 export function getPanelInstanceAttributes(
@@ -36,11 +50,12 @@ export function setPanelInstanceAttributes(
   const previous = attributesByPanel.get(key) ?? DEFAULT_ATTRIBUTES;
   if (
     previous.modified === attributes.modified &&
-    previous.suspendPendingSave === attributes.suspendPendingSave
+    previous.suspendPendingSave === attributes.suspendPendingSave &&
+    previous.beforeClose === attributes.beforeClose
   ) {
     return;
   }
-  if (attributes.modified) attributesByPanel.set(key, attributes);
+  if (attributes.modified || attributes.beforeClose) attributesByPanel.set(key, attributes);
   else attributesByPanel.delete(key);
   attributesRevision += 1;
   for (const listener of listenersByPanel.get(key) ?? []) listener();
@@ -110,9 +125,10 @@ export function usePublishPanelInstanceAttributes(attributes: PanelInstanceAttri
   const { serverId, workspaceId, tabId } = usePaneContext();
   const modified = attributes.modified;
   const suspendPendingSave = attributes.suspendPendingSave;
+  const beforeClose = attributes.beforeClose; // OTTO(editor)
   useEffect(() => {
     const identity = { serverId, workspaceId, tabId };
-    setPanelInstanceAttributes(identity, { modified, suspendPendingSave });
+    setPanelInstanceAttributes(identity, { modified, suspendPendingSave, beforeClose });
     return () => setPanelInstanceAttributes(identity, DEFAULT_ATTRIBUTES);
-  }, [modified, serverId, suspendPendingSave, tabId, workspaceId]);
+  }, [modified, serverId, suspendPendingSave, beforeClose, tabId, workspaceId]);
 }

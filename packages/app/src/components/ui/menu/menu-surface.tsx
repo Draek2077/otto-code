@@ -5,32 +5,51 @@ import {
   useEffect,
   useMemo,
   useRef,
-  type ComponentProps,
   type ReactElement,
   type ReactNode,
-  type Ref,
 } from "react";
-import { View, type ScrollView, type ScrollViewProps } from "react-native";
-import { BottomSheetBackdrop, BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { useTranslation } from "react-i18next";
+import { Pressable, Text, View, useWindowDimensions } from "react-native";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { ChevronLeft } from "lucide-react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  IsolatedBottomSheetModal,
   useIsolatedBottomSheetVisibility,
   type ContextBridge,
 } from "@/components/ui/isolated-bottom-sheet-modal";
-import { SPACING } from "@/styles/theme";
-import { SheetSurfaceModal } from "@/components/ui/sheet-chrome";
-import { SheetHeaderView } from "@/components/adaptive-modal-sheet";
+import { SPACING, type Theme } from "@/styles/theme";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useMenuContext, MenuContextProvider } from "./menu-context";
 import { MenuPage } from "./menu-item";
 import { currentPageId, isSubPageOpen } from "./menu-navigation";
 import { AnchoredSurface, MenuOverlay } from "./menu-overlay";
 import { getMenuSheetBottomPadding } from "./menu-sheet-layout";
-import type { Alignment, Placement } from "./menu-anchor";
+import type { Alignment, Placement } from "../anchor";
 import type { KeyboardFocusScope } from "@/keyboard/actions";
+
+const ThemedChevronLeft = withUnistyles(ChevronLeft);
+const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 // `backgroundStyle` and `handleIndicatorStyle` are style-shaped props the Babel plugin does not
 // track, so the sheet is wrapped rather than reading the theme through a hook.
 // See docs/unistyles.md.
+const ThemedBottomSheetModal = withUnistyles(IsolatedBottomSheetModal, (theme) => ({
+  backgroundStyle: {
+    borderTopLeftRadius: theme.borderRadius.xl,
+    borderTopRightRadius: theme.borderRadius.xl,
+    borderWidth: 1,
+    backgroundColor: theme.colors.surface0,
+    borderColor: theme.colors.border,
+  },
+  handleIndicatorStyle: {
+    width: 36,
+    height: 4,
+    backgroundColor: theme.colors.surface2,
+  },
+}));
+
 /** How long the pointer must rest on a submenu row before its flyout opens. */
 const HOVER_OPEN_DELAY_MS = 90;
 /**
@@ -85,6 +104,8 @@ export interface MenuSurfaceProps {
   pages?: readonly MenuPageDefinition[];
   /** Title shown on the sheet's root page. Sheets always have a header; popovers never do. */
   sheetTitle?: string;
+  /** Controls on the right of the sheet's root title. */
+  sheetTrailing?: ReactNode;
   side?: Placement;
   align?: Alignment;
   offset?: number;
@@ -95,12 +116,6 @@ export interface MenuSurfaceProps {
   fullWidth?: boolean;
   horizontalPadding?: number;
   scrollable?: boolean;
-  /** Content pinned above the popover or sheet scroll viewport. */
-  stickyHeader?: ReactNode;
-  /** Lets a caller retain and restore the menu reader's scroll position. */
-  scrollViewRef?: Ref<ScrollView>;
-  onScroll?: ScrollViewProps["onScroll"];
-  onContentSizeChange?: ScrollViewProps["onContentSizeChange"];
   testID?: string;
   /** Limits ordinary app shortcuts to the time this menu owns keyboard focus. */
   keyboardFocusScope?: KeyboardFocusScope;
@@ -111,7 +126,17 @@ export interface MenuSurfaceProps {
  * popover (plus one flyout per open submenu) or a bottom sheet showing one page at a time.
  */
 export function MenuSurface(props: MenuSurfaceProps): ReactElement | null {
-  const { presentation } = useMenuContext("MenuSurface");
+  const { presentation, open, setOpen } = useMenuContext("MenuSurface");
+  const active = useRetainedPanelActive();
+  // A menu belongs to the panel that opened it. When that panel leaves the screen the menu closes
+  // for good, rather than waiting hidden to reappear with the panel: a row that opened a sheet
+  // and promoted it to a tab, say, would otherwise bring the list back on the next tab switch.
+  useEffect(() => {
+    if (!active && open) setOpen(false);
+  }, [active, open, setOpen]);
+  // Portals escape the hidden panel. Remove the surface in its inactive commit,
+  // before freezing can suspend an async menu action's closing update.
+  if (!active) return null;
   if (presentation === "sheet") {
     return <MenuSheetSurface {...props} />;
   }
@@ -186,10 +211,6 @@ function MenuPopoverSurface({
   fullWidth = false,
   horizontalPadding = 16,
   scrollable = false,
-  stickyHeader,
-  scrollViewRef,
-  onScroll,
-  onContentSizeChange,
   testID,
   keyboardFocusScope,
 }: MenuSurfaceProps): ReactElement | null {
@@ -246,10 +267,6 @@ function MenuPopoverSurface({
             fullWidth={fullWidth}
             horizontalPadding={horizontalPadding}
             scrollable={scrollable}
-            stickyHeader={stickyHeader}
-            scrollViewRef={scrollViewRef}
-            onScroll={onScroll}
-            onContentSizeChange={onContentSizeChange}
             testID={testID}
             keyboardFocusScope={keyboardFocusScope}
           >
@@ -302,6 +319,7 @@ function MenuFlyout({
 
   if (!anchorRef) return null;
 
+  // OTTO(menu-geometry): live content measurements own flyout geometry, including page changes.
   return (
     <AnchoredSurface
       open
@@ -328,13 +346,11 @@ function MenuSheetSurface({
   children,
   pages = [],
   sheetTitle,
-  stickyHeader,
-  scrollViewRef,
-  onScroll,
-  onContentSizeChange,
+  sheetTrailing,
   testID,
   keyboardFocusScope,
 }: MenuSurfaceProps): ReactElement | null {
+  const { height: windowHeight } = useWindowDimensions();
   const menu = useMenuContext("MenuSurface");
   const { value: surfaceValue } = useSubAnchors();
   const safeAreaInsets = useSafeAreaInsets();
@@ -360,18 +376,6 @@ function MenuSheetSurface({
     onClose: handleClose,
   });
 
-  const renderBackdrop = useCallback(
-    (backdropProps: ComponentProps<typeof BottomSheetBackdrop>) => (
-      <BottomSheetBackdrop
-        {...backdropProps}
-        appearsOnIndex={0}
-        disappearsOnIndex={-1}
-        opacity={0.45}
-      />
-    ),
-    [],
-  );
-
   const openPageId = currentPageId(menu.path);
   const openPage = openPageId ? pages.find((page) => page.id === openPageId) : null;
   const depth = menu.path.length;
@@ -389,15 +393,16 @@ function MenuSheetSurface({
   );
 
   return (
-    <SheetSurfaceModal
+    <ThemedBottomSheetModal
       ref={sheetRef}
       contextBridge={contextBridge}
       // Content-sized rather than fixed snap points: a pushed page is rarely the same height
       // as the page it replaced, and a fixed sheet would either clip it or leave dead space.
       enableDynamicSizing
+      maxDynamicContentSize={windowHeight * 0.8}
       onChange={handleSheetChange}
       onDismiss={handleSheetDismiss}
-      backdropComponent={renderBackdrop}
+      backdropOpacity={0.45}
       enablePanDownToClose
       // `interactive` rather than `extend`, which is what every other sheet in the app uses.
       // `extend` grows the sheet to its largest snap point, and with `enableDynamicSizing` that
@@ -407,15 +412,11 @@ function MenuSheetSurface({
       keyboardBehavior="interactive"
       keyboardBlurBehavior="restore"
     >
-      {!openPage && stickyHeader ? stickyHeader : null}
       <BottomSheetScrollView
-        ref={scrollViewRef}
         dataSet={sheetDataSet}
         contentContainerStyle={sheetScrollContentStyle}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-        onScroll={onScroll}
-        onContentSizeChange={onContentSizeChange}
         testID={testID ? `${testID}-content` : undefined}
       >
         {openPage ? (
@@ -425,41 +426,75 @@ function MenuSheetSurface({
           </>
         ) : (
           <>
-            {sheetTitle ? <MenuSheetHeader title={sheetTitle} onBack={null} /> : null}
+            {sheetTitle ? (
+              <MenuSheetHeader title={sheetTitle} onBack={null} trailing={sheetTrailing} />
+            ) : null}
             <MenuPage depth={0}>{children}</MenuPage>
           </>
         )}
       </BottomSheetScrollView>
-    </SheetSurfaceModal>
+    </ThemedBottomSheetModal>
   );
 }
 
-/**
- * The sheet header, which is the one every other sheet uses. A menu sheet passes no `onClose`
- * work of its own: it closes by choosing a row, dragging down, or tapping the backdrop, so it
- * asks for no close button - see the sheet frame contract in docs/floating-panels.md.
- */
 function MenuSheetHeader({
   title,
   onBack,
+  trailing = null,
 }: {
   title: string;
   onBack: (() => void) | null;
+  trailing?: ReactNode;
 }): ReactElement {
-  const header = useMemo(
-    () => (onBack ? { title, back: { onPress: onBack } } : { title }),
-    [onBack, title],
-  );
+  const { t } = useTranslation();
   return (
-    <SheetHeaderView
-      header={header}
-      onClose={noop}
-      showCloseButton={false}
-      testID="menu-sheet-header"
-    />
+    <View style={styles.sheetHeader}>
+      {onBack ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t("common.back")}
+          hitSlop={8}
+          onPress={onBack}
+          style={styles.sheetBackButton}
+          testID="menu-sheet-back"
+        >
+          <ThemedChevronLeft size={18} uniProps={mutedIconMapping} />
+        </Pressable>
+      ) : null}
+      <Text style={styles.sheetTitle} numberOfLines={1}>
+        {title}
+      </Text>
+      {trailing ? <View style={styles.sheetTrailing}>{trailing}</View> : null}
+    </View>
   );
 }
 
-function noop() {}
+const styles = StyleSheet.create((theme) => ({
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    paddingTop: theme.spacing[1],
+    paddingBottom: theme.spacing[3],
+  },
+  sheetTrailing: {
+    flex: 1,
+    flexDirection: "row",
+    justifyContent: "flex-end",
+  },
+  sheetBackButton: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sheetTitle: {
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.medium,
+    color: theme.colors.foreground,
+    flexShrink: 1,
+  },
+}));
 
 export { isSubPageOpen };

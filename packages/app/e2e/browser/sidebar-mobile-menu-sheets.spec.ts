@@ -21,6 +21,20 @@ test("project and workspace kebabs open action sheets on compact layouts", async
     await page.getByRole("button", { name: "Open menu", exact: true }).click();
     await waitForSidebarHydration(page);
 
+    await page.getByTestId("sidebar-display-preferences-menu").click();
+    // OTTO(fixture-contracts): MenuSheetSurface appends -content to its caller's testID.
+    const preferences = page.getByTestId("sidebar-display-preferences-content-content");
+    await expect(preferences).toBeVisible();
+    // OTTO(fixture-contracts): Host/Project/Label filter rows depend on the live
+    // catalog. Verify this sheet's required actions without assuming no other project exists.
+    await expect(preferences.getByTestId("sidebar-display-grouping")).toHaveText(/^Grouping/);
+    await expect(preferences.getByTestId("sidebar-display-title-source")).toHaveText(/^Title/);
+    await expect(preferences.getByTestId("sidebar-display-show")).toHaveText("Show");
+    await expect(
+      preferences.getByRole("menuitem", { name: "Show background", exact: true }),
+    ).toBeVisible();
+    await closeMenuSheet(page);
+
     await page
       .getByTestId(`sidebar-project-kebab-${projectEquivalenceViewKey(seeded.projectKey)}`)
       .click();

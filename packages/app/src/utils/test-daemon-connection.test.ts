@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { DaemonClientConfig } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClientConfig } from "@getpaseo/client/internal/daemon-client";
+import { DaemonAuthenticationError } from "@getpaseo/client/internal/daemon-client";
 import type { DaemonConnectionDependencies, DaemonProbeClient } from "./test-daemon-connection";
 
 class FakeDaemonClient implements DaemonProbeClient {
@@ -46,9 +47,9 @@ class FakeDaemonProbe {
     createDesktopTransportFactory: () => null,
     buildDesktopTransportUrl: (target) => {
       if (target.transportType === "ssh") {
-        return `otto+desktop://ssh?host=${encodeURIComponent(target.host)}`;
+        return `paseo+desktop://ssh?host=${encodeURIComponent(target.host)}`;
       }
-      return `otto+desktop://${target.transportType}?path=${encodeURIComponent(target.transportPath)}`;
+      return `paseo+desktop://${target.transportType}?path=${encodeURIComponent(target.transportPath)}`;
     },
     createClient: (config) => {
       const client = new FakeDaemonClient(this, config);
@@ -79,9 +80,9 @@ describe("test-daemon-connection connectToDaemon", () => {
     const { connectToDaemon } = await import("./test-daemon-connection");
     const first = await connectToDaemon(
       {
-        id: "direct:lan:6868",
+        id: "direct:lan:6767",
         type: "directTcp",
-        endpoint: "lan:6868",
+        endpoint: "lan:6767",
       },
       undefined,
       probe.deps,
@@ -90,9 +91,9 @@ describe("test-daemon-connection connectToDaemon", () => {
 
     const second = await connectToDaemon(
       {
-        id: "direct:lan:6868",
+        id: "direct:lan:6767",
         type: "directTcp",
-        endpoint: "lan:6868",
+        endpoint: "lan:6767",
       },
       undefined,
       probe.deps,
@@ -132,16 +133,16 @@ describe("test-daemon-connection connectToDaemon", () => {
     const { connectToDaemon } = await import("./test-daemon-connection");
     const result = await connectToDaemon(
       {
-        id: "socket:/tmp/otto.sock",
+        id: "socket:/tmp/paseo.sock",
         type: "directSocket",
-        path: "/tmp/otto.sock",
+        path: "/tmp/paseo.sock",
       },
       undefined,
       probe.deps,
     );
     await result.client.close();
 
-    expect(probe.createdConfigs()[0]?.url).toBe("otto+desktop://socket?path=%2Ftmp%2Fotto.sock");
+    expect(probe.createdConfigs()[0]?.url).toBe("paseo+desktop://socket?path=%2Ftmp%2Fpaseo.sock");
   });
 
   it("uses the desktop transport for Remote SSH connections", async () => {
@@ -164,21 +165,20 @@ describe("test-daemon-connection connectToDaemon", () => {
     await result.client.close();
 
     expect(probe.createdConfigs()[0]).toMatchObject({
-      url: "otto+desktop://ssh?host=deploy%40example.com",
+      url: "paseo+desktop://ssh?host=deploy%40example.com",
       transportFactory,
     });
   });
 
-  it("passes direct TCP connection passwords into the client config", async () => {
+  it("passes the host password into the client config", async () => {
     const { connectToDaemon } = await import("./test-daemon-connection");
     const result = await connectToDaemon(
       {
-        id: "direct:lan:6868",
+        id: "direct:lan:6767",
         type: "directTcp",
-        endpoint: "lan:6868",
-        password: "shared-secret",
+        endpoint: "lan:6767",
       },
-      undefined,
+      { password: "shared-secret" },
       probe.deps,
     );
     await result.client.close();
@@ -224,9 +224,9 @@ describe("test-daemon-connection connectToDaemon", () => {
 
     const plainResult = await connectToDaemon(
       {
-        id: "relay:relay.otto-code.me:443",
+        id: "relay:relay.paseo.sh:443",
         type: "relay",
-        relayEndpoint: "relay.otto-code.me:443",
+        relayEndpoint: "relay.paseo.sh:443",
         useTls: false,
         daemonPublicKeyB64: "pubkey",
       },
@@ -236,29 +236,29 @@ describe("test-daemon-connection connectToDaemon", () => {
     await plainResult.client.close();
 
     expect(probe.createdConfigs()[0]?.url).toMatch(/^wss:\/\/\[::1\]\/ws\?/);
-    expect(probe.createdConfigs()[1]?.url).toMatch(/^ws:\/\/relay\.otto-code\.me:443\/ws\?/);
+    expect(probe.createdConfigs()[1]?.url).toMatch(/^ws:\/\/relay\.paseo\.sh:443\/ws\?/);
   });
 
   it("surfaces auth rejection as an incorrect password", async () => {
     const { connectToDaemon } = await import("./test-daemon-connection");
     probe.failNextConnection(
-      new Error("Transport closed (code 4001)"),
+      new DaemonAuthenticationError("incorrect_password"),
       "Transport closed (code 4001)",
     );
 
     await expect(
       connectToDaemon(
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
-          password: "wrong-secret",
+          endpoint: "lan:6767",
         },
-        undefined,
+        { password: "wrong-secret" },
         probe.deps,
       ),
     ).rejects.toMatchObject({
       message: "Incorrect password",
+      authFailureReason: "incorrect_password",
     });
   });
 
@@ -269,12 +269,11 @@ describe("test-daemon-connection connectToDaemon", () => {
     await expect(
       connectToDaemon(
         {
-          id: "direct:lan:6868",
+          id: "direct:lan:6767",
           type: "directTcp",
-          endpoint: "lan:6868",
-          password: "shared-secret",
+          endpoint: "lan:6767",
         },
-        undefined,
+        { password: "shared-secret" },
         probe.deps,
       ),
     ).rejects.toMatchObject({

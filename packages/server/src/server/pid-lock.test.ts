@@ -1,4 +1,5 @@
-import { mkdtemp, open, rm, utimes, writeFile } from "node:fs/promises";
+// OTTO(identity): fixtures use Otto's daemon lock filename.
+import { mkdtemp, open, readFile, rm, stat, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -15,7 +16,8 @@ import {
 
 describe("pid-lock ownership", () => {
   test("writes and releases lock for explicit owner pid", async () => {
-    const ottoHome = await mkdtemp(join(tmpdir(), "otto-pid-lock-owner-"));
+    const parent = await mkdtemp(join(tmpdir(), "paseo-pid-lock-owner-"));
+    const paseoHome = join(parent, "home");
     const ownerPid = process.pid + 10_000;
 
     try {
@@ -25,9 +27,12 @@ describe("pid-lock ownership", () => {
           sockPath: string | null,
           options: { ownerPid: number },
         ) => Promise<void>
-      )(ottoHome, null, { ownerPid });
+      )(paseoHome, null, { ownerPid });
 
-      const lock = await getPidLockInfo(ottoHome);
+      if (process.platform !== "win32") {
+        expect((await stat(paseoHome)).mode & 0o777).toBe(0o700);
+      }
+      const lock = await getPidLockInfo(paseoHome);
       expect(lock?.pid).toBe(ownerPid);
       expect(lock?.listen).toBeNull();
       expect(lock?.heartbeat).toBe(true);
@@ -38,41 +43,41 @@ describe("pid-lock ownership", () => {
           patch: { listen: string },
           options: { ownerPid: number },
         ) => Promise<void>
-      )(ottoHome, { listen: "127.0.0.1:6868" }, { ownerPid });
+      )(paseoHome, { listen: "127.0.0.1:6767" }, { ownerPid });
 
-      const updatedLock = await getPidLockInfo(ottoHome);
-      expect(updatedLock?.listen).toBe("127.0.0.1:6868");
+      const updatedLock = await getPidLockInfo(paseoHome);
+      expect(updatedLock?.listen).toBe("127.0.0.1:6767");
 
       await (
         releasePidLock as unknown as (home: string, options: { ownerPid: number }) => Promise<void>
-      )(ottoHome, { ownerPid: ownerPid + 1 });
-      const lockAfterWrongOwnerRelease = await getPidLockInfo(ottoHome);
+      )(paseoHome, { ownerPid: ownerPid + 1 });
+      const lockAfterWrongOwnerRelease = await getPidLockInfo(paseoHome);
       expect(lockAfterWrongOwnerRelease?.pid).toBe(ownerPid);
 
       await (
         releasePidLock as unknown as (home: string, options: { ownerPid: number }) => Promise<void>
-      )(ottoHome, { ownerPid });
-      const lockAfterOwnerRelease = await getPidLockInfo(ottoHome);
+      )(paseoHome, { ownerPid });
+      const lockAfterOwnerRelease = await getPidLockInfo(paseoHome);
       expect(lockAfterOwnerRelease).toBeNull();
     } finally {
-      await rm(ottoHome, { recursive: true, force: true });
+      await rm(parent, { recursive: true, force: true });
     }
   });
 
   test("keeps a stale heartbeat lock when the recorded pid is alive without a reachability check", async () => {
-    const ottoHome = await mkdtemp(join(tmpdir(), "otto-pid-lock-stale-heartbeat-"));
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-stale-heartbeat-"));
     const replacementOwnerPid = process.pid + 10_000;
 
     try {
-      const pidPath = join(ottoHome, "otto.pid");
+      const pidPath = join(paseoHome, "otto.pid");
       await writeFile(
         pidPath,
         JSON.stringify({
           pid: process.pid,
-          startedAt: "2026-01-01T00:00:00.000Z",
+          startedAt: new Date().toISOString(),
           hostname: "old-host",
           uid: process.getuid?.() ?? 0,
-          listen: "127.0.0.1:6868",
+          listen: "127.0.0.1:6767",
           desktopManaged: true,
           heartbeat: true,
         }),
@@ -80,32 +85,32 @@ describe("pid-lock ownership", () => {
       const staleTime = new Date(Date.now() - 10 * 60_000);
       await utimes(pidPath, staleTime, staleTime);
 
-      await expect(isLocked(ottoHome)).resolves.toMatchObject({ locked: true });
+      await expect(isLocked(paseoHome)).resolves.toMatchObject({ locked: true });
       await expect(
-        acquirePidLock(ottoHome, null, { ownerPid: replacementOwnerPid }),
+        acquirePidLock(paseoHome, null, { ownerPid: replacementOwnerPid }),
       ).rejects.toThrow("Another Otto daemon is already running");
 
-      const lock = await getPidLockInfo(ottoHome);
+      const lock = await getPidLockInfo(paseoHome);
       expect(lock?.pid).toBe(process.pid);
     } finally {
-      await rm(ottoHome, { recursive: true, force: true });
+      await rm(paseoHome, { recursive: true, force: true });
     }
   });
 
-  test("reclaims a stale desktop heartbeat lock after desktop confirms the daemon is unreachable", async () => {
-    const ottoHome = await mkdtemp(join(tmpdir(), "otto-pid-lock-stale-desktop-heartbeat-"));
+  test("preserves a stale live desktop heartbeat lock", async () => {
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-stale-desktop-heartbeat-"));
     const replacementOwnerPid = process.pid + 10_000;
 
     try {
-      const pidPath = join(ottoHome, "otto.pid");
+      const pidPath = join(paseoHome, "otto.pid");
       await writeFile(
         pidPath,
         JSON.stringify({
           pid: process.pid,
-          startedAt: "2026-01-01T00:00:00.000Z",
+          startedAt: new Date().toISOString(),
           hostname: "old-host",
           uid: process.getuid?.() ?? 0,
-          listen: "127.0.0.1:6868",
+          listen: "127.0.0.1:6767",
           desktopManaged: true,
           heartbeat: true,
         }),
@@ -113,32 +118,31 @@ describe("pid-lock ownership", () => {
       const staleTime = new Date(Date.now() - 10 * 60_000);
       await utimes(pidPath, staleTime, staleTime);
 
-      await acquirePidLock(ottoHome, null, {
-        ownerPid: replacementOwnerPid,
-        reclaimStaleDesktopLock: true,
-      });
+      await expect(
+        acquirePidLock(paseoHome, null, { ownerPid: replacementOwnerPid }),
+      ).rejects.toThrow("Another Otto daemon is already running");
 
-      const lock = await getPidLockInfo(ottoHome);
-      expect(lock?.pid).toBe(replacementOwnerPid);
-      expect(lock?.listen).toBeNull();
+      const lock = await getPidLockInfo(paseoHome);
+      expect(lock?.pid).toBe(process.pid);
+      expect(lock?.listen).toBe("127.0.0.1:6767");
     } finally {
-      await rm(ottoHome, { recursive: true, force: true });
+      await rm(paseoHome, { recursive: true, force: true });
     }
   });
 
   test("keeps a stale live lock written by a pre-heartbeat daemon", async () => {
-    const ottoHome = await mkdtemp(join(tmpdir(), "otto-pid-lock-legacy-live-"));
-    const pidPath = join(ottoHome, "otto.pid");
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-legacy-live-"));
+    const pidPath = join(paseoHome, "otto.pid");
 
     try {
       await writeFile(
         pidPath,
         JSON.stringify({
           pid: process.pid,
-          startedAt: "2026-01-01T00:00:00.000Z",
+          startedAt: new Date().toISOString(),
           hostname: "old-host",
           uid: process.getuid?.() ?? 0,
-          listen: "127.0.0.1:6868",
+          listen: "127.0.0.1:6767",
           desktopManaged: true,
         }),
       );
@@ -146,112 +150,145 @@ describe("pid-lock ownership", () => {
       await utimes(pidPath, staleTime, staleTime);
 
       await expect(
-        acquirePidLock(ottoHome, null, { ownerPid: process.pid + 10_000 }),
+        acquirePidLock(paseoHome, null, { ownerPid: process.pid + 10_000 }),
       ).rejects.toThrow("Another Otto daemon is already running");
 
-      const lock = await getPidLockInfo(ottoHome);
+      const lock = await getPidLockInfo(paseoHome);
       expect(lock?.pid).toBe(process.pid);
     } finally {
-      await rm(ottoHome, { recursive: true, force: true });
+      await rm(paseoHome, { recursive: true, force: true });
     }
   });
 
-  test("reclaims a stale legacy desktop lock after desktop confirms the daemon is unreachable", async () => {
-    const ottoHome = await mkdtemp(join(tmpdir(), "otto-pid-lock-legacy-desktop-"));
+  test("preserves a stale live legacy desktop lock", async () => {
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-legacy-desktop-"));
     const replacementOwnerPid = process.pid + 10_000;
-    const pidPath = join(ottoHome, "otto.pid");
+    const pidPath = join(paseoHome, "otto.pid");
 
     try {
       await writeFile(
         pidPath,
         JSON.stringify({
           pid: process.pid,
-          startedAt: "2026-01-01T00:00:00.000Z",
+          startedAt: new Date().toISOString(),
           hostname: "old-host",
           uid: process.getuid?.() ?? 0,
-          listen: "127.0.0.1:6868",
+          listen: "127.0.0.1:6767",
           desktopManaged: true,
         }),
       );
       const staleTime = new Date(Date.now() - 10 * 60_000);
       await utimes(pidPath, staleTime, staleTime);
 
-      await acquirePidLock(ottoHome, null, {
-        ownerPid: replacementOwnerPid,
-        reclaimStaleDesktopLock: true,
-      });
+      await expect(
+        acquirePidLock(paseoHome, null, { ownerPid: replacementOwnerPid }),
+      ).rejects.toThrow("Another Otto daemon is already running");
 
-      const lock = await getPidLockInfo(ottoHome);
-      expect(lock?.pid).toBe(replacementOwnerPid);
-      expect(lock?.heartbeat).toBe(true);
+      const lock = await getPidLockInfo(paseoHome);
+      expect(lock?.pid).toBe(process.pid);
+      expect(lock?.heartbeat).toBeUndefined();
     } finally {
-      await rm(ottoHome, { recursive: true, force: true });
+      await rm(paseoHome, { recursive: true, force: true });
     }
   });
 
   test("rejects a heartbeat refresh after another supervisor takes ownership", async () => {
-    const ottoHome = await mkdtemp(join(tmpdir(), "otto-pid-lock-refresh-owner-"));
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-refresh-owner-"));
 
     try {
-      await acquirePidLock(ottoHome, null, { ownerPid: process.pid + 10_000 });
+      await acquirePidLock(paseoHome, null, { ownerPid: process.pid + 10_000 });
 
-      await expect(refreshPidLock(ottoHome, { ownerPid: process.pid })).rejects.toBeInstanceOf(
+      await expect(refreshPidLock(paseoHome, { ownerPid: process.pid })).rejects.toBeInstanceOf(
         PidLockError,
       );
     } finally {
-      await rm(ottoHome, { recursive: true, force: true });
+      await rm(paseoHome, { recursive: true, force: true });
     }
   });
 
   test("retries a heartbeat refresh while its owner is rewriting the lock", async () => {
-    const ottoHome = await mkdtemp(join(tmpdir(), "otto-pid-lock-refresh-rewrite-"));
-    const pidPath = join(ottoHome, "otto.pid");
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-refresh-rewrite-"));
+    const pidPath = join(paseoHome, "otto.pid");
 
     try {
-      await acquirePidLock(ottoHome, null, { ownerPid: process.pid });
-      const lock = await getPidLockInfo(ottoHome);
+      await acquirePidLock(paseoHome, null, { ownerPid: process.pid });
+      const lock = await getPidLockInfo(paseoHome);
       expect(lock).not.toBeNull();
 
       const rewriteHandle = await open(pidPath, "r+");
       await rewriteHandle.truncate(0);
 
-      const refresh = refreshPidLock(ottoHome, { ownerPid: process.pid });
+      const refresh = refreshPidLock(paseoHome, { ownerPid: process.pid });
       await new Promise((resolve) => setTimeout(resolve, 250));
       await rewriteHandle.writeFile(JSON.stringify(lock));
       await rewriteHandle.close();
 
       await expect(refresh).resolves.toBeUndefined();
     } finally {
-      await rm(ottoHome, { recursive: true, force: true });
+      await rm(paseoHome, { recursive: true, force: true });
     }
   });
 
   test("keeps a fresh lock when the recorded pid is alive", async () => {
-    const ottoHome = await mkdtemp(join(tmpdir(), "otto-pid-lock-fresh-heartbeat-"));
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-fresh-heartbeat-"));
 
     try {
       await writeFile(
-        join(ottoHome, "otto.pid"),
+        join(paseoHome, "otto.pid"),
         JSON.stringify({
           pid: process.pid,
           startedAt: new Date().toISOString(),
           hostname: "current-host",
           uid: process.getuid?.() ?? 0,
-          listen: "127.0.0.1:6868",
+          listen: "127.0.0.1:6767",
           desktopManaged: true,
           heartbeat: true,
         }),
       );
 
       await expect(
-        acquirePidLock(ottoHome, null, { ownerPid: process.pid + 10_000 }),
+        acquirePidLock(paseoHome, null, { ownerPid: process.pid + 10_000 }),
       ).rejects.toThrow("Another Otto daemon is already running");
 
-      const lock = await getPidLockInfo(ottoHome);
+      const lock = await getPidLockInfo(paseoHome);
       expect(lock?.pid).toBe(process.pid);
-      expect(lock?.listen).toBe("127.0.0.1:6868");
+      expect(lock?.listen).toBe("127.0.0.1:6767");
     } finally {
-      await rm(ottoHome, { recursive: true, force: true });
+      await rm(paseoHome, { recursive: true, force: true });
+    }
+  });
+
+  test("starts over an empty lock file left by a supervisor killed before writing it", async () => {
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-empty-"));
+    const ownerPid = process.pid + 10_000;
+
+    try {
+      await writeFile(join(paseoHome, "otto.pid"), "");
+
+      await expect(getPidLockInfo(paseoHome)).resolves.toBeNull();
+      await acquirePidLock(paseoHome, null, { ownerPid });
+
+      const lock = await getPidLockInfo(paseoHome);
+      expect(lock?.pid).toBe(ownerPid);
+    } finally {
+      await rm(paseoHome, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps a lock file whose contents cannot be read as a lock", async () => {
+    const paseoHome = await mkdtemp(join(tmpdir(), "paseo-pid-lock-unparseable-"));
+    const pidPath = join(paseoHome, "otto.pid");
+
+    try {
+      await writeFile(pidPath, JSON.stringify({ pid: "unknown" }));
+
+      await expect(
+        acquirePidLock(paseoHome, null, { ownerPid: process.pid + 10_000 }),
+      ).rejects.toThrow("Cannot read daemon state");
+
+      await expect(readFile(pidPath, "utf-8")).resolves.toBe(JSON.stringify({ pid: "unknown" }));
+    } finally {
+      await rm(paseoHome, { recursive: true, force: true });
     }
   });
 });

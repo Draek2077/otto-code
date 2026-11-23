@@ -1,16 +1,30 @@
-import { useMemo } from "react";
+import { MarkdownRenderer } from "@/components/markdown/renderer";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import { useMemo, type ComponentProps } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { MarkdownRenderer } from "@/components/markdown/renderer";
-import { MAX_CONTENT_WIDTH } from "@/constants/layout";
 import { parseMarkdownPreviewDocument } from "./document";
 
-export function FileMarkdownPreview({ source }: { source: string }) {
+export function FileMarkdownPreview({
+  source,
+  filePath,
+  workspaceRoot,
+  client,
+  serverId,
+  contextMenuItems, // OTTO(editor): source-backed native selection commands, absent elsewhere.
+}: {
+  source: string;
+  filePath: string;
+  workspaceRoot?: string;
+  client?: DaemonClient | null;
+  serverId?: string;
+  contextMenuItems?: ComponentProps<typeof MarkdownRenderer>["contextMenuItems"]; // OTTO(editor)
+}) {
   const document = useMemo(() => parseMarkdownPreviewDocument(source), [source]);
 
   return (
     <View style={styles.outerGutter}>
-      <View style={styles.readingFrame}>
+      <View style={styles.readingFrame} testID="markdown-preview-frame">
         {document.frontMatter.length > 0 ? (
           <View style={styles.frontMatterTable} testID="markdown-front-matter">
             {document.frontMatter.map((row, index) => (
@@ -32,7 +46,14 @@ export function FileMarkdownPreview({ source }: { source: string }) {
             ))}
           </View>
         ) : null}
-        <MarkdownRenderer text={document.body} />
+        <MarkdownRenderer
+          text={document.body}
+          filePath={filePath}
+          workspaceRoot={workspaceRoot}
+          client={client}
+          serverId={serverId}
+          contextMenuItems={contextMenuItems} // OTTO(editor)
+        />
       </View>
     </View>
   );
@@ -49,7 +70,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   readingFrame: {
     width: "100%",
-    maxWidth: MAX_CONTENT_WIDTH,
+    maxWidth: theme.contentMaxWidth,
     alignSelf: "center",
     paddingHorizontal: theme.spacing[2],
   },

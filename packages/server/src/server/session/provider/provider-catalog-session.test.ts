@@ -14,8 +14,7 @@ import {
   type ProviderSnapshotTransition,
 } from "../../agent/provider-snapshot-manager.js";
 import type { ProviderSnapshotEntry } from "../../agent/agent-sdk-types.js";
-import { ProviderUsageService } from "../../../services/quota-fetcher/service.js";
-import { expandProviderSnapshot } from "@otto-code/protocol/provider-snapshot-codec";
+import { expandProviderSnapshot } from "@getpaseo/protocol/provider-snapshot-codec";
 
 type SnapshotChangeHandler = (transition: ProviderSnapshotTransition) => void;
 
@@ -24,7 +23,6 @@ interface MakeOptions {
   supportsCustomModeIcons?: boolean;
   supportsCompactProviderSnapshots?: boolean;
   snapshot?: Partial<ProviderSnapshotManager>;
-  usage?: { [K in keyof ProviderUsageService]?: unknown };
   host?: Partial<ProviderCatalogSessionHost>;
 }
 
@@ -54,7 +52,10 @@ function makeSubsystem(options: MakeOptions = {}) {
     isProviderVisibleToClient: (provider) => visible.has(provider),
     supportsCustomModeIcons: () => options.supportsCustomModeIcons ?? false,
     supportsProviderSnapshotReferences: () => false,
-    wantsSnapshotChanges: () => true,
+    publishSnapshot: (project) => {
+      const message = project();
+      if (message) emitted.push(message);
+    },
     supportsCompactProviderSnapshots: () => options.supportsCompactProviderSnapshots ?? false,
     listProviderAvailability: async () => [],
     listDraftFeatures: async () => [],
@@ -70,7 +71,6 @@ function makeSubsystem(options: MakeOptions = {}) {
   const subsystem = new ProviderCatalogSession({
     host,
     providerSnapshotManager,
-    providerUsageService: createStub<ProviderUsageService>(options.usage ?? {}),
     logger: pino({ level: "silent" }),
   });
   function pushSnapshotChange(
@@ -84,59 +84,6 @@ function makeSubsystem(options: MakeOptions = {}) {
 }
 
 describe("ProviderCatalogSession", () => {
-  it("dispatches legacy diagnostics with their existing text-only payload", async () => {
-    const getProviderDiagnostic = vi.fn(async () => ({
-      provider: "codex",
-      diagnostic: "existing",
-    }));
-    const { subsystem, emitted } = makeSubsystem({ snapshot: { getProviderDiagnostic } });
-    await subsystem.dispatch({
-      type: "provider_diagnostic_request",
-      provider: "codex",
-      requestId: "r",
-    });
-    expect(emitted).toEqual([
-      {
-        type: "provider_diagnostic_response",
-        payload: { provider: "codex", requestId: "r", diagnostic: "existing" },
-      },
-    ]);
-  });
-  it("routes opt-in discovery to the configured diagnostic and hides raw failures", async () => {
-    const getProviderDiagnostic = vi.fn();
-    const getProviderDiscoveryDiagnostic = vi.fn(async () => {
-      throw new Error("PRIVATE_PROVIDER_RESPONSE");
-    });
-    const imports = { knownImportedSessionCount: 16, isImported: () => false };
-    const readDiscoveryImports = vi.fn(async () => imports);
-    const { subsystem, emitted } = makeSubsystem({
-      host: { readDiscoveryImports },
-      snapshot: { getProviderDiagnostic, getProviderDiscoveryDiagnostic },
-    });
-    const discovery = { threadId: "01a14152-e1ac-72f4-9565-0978e4520014" };
-    await subsystem.dispatch({
-      type: "provider_diagnostic_request",
-      provider: "my-codex",
-      requestId: "r",
-      discovery,
-    });
-    expect(readDiscoveryImports).toHaveBeenCalledWith("my-codex");
-    expect(getProviderDiscoveryDiagnostic).toHaveBeenCalledWith("my-codex", discovery, imports);
-    expect(getProviderDiagnostic).not.toHaveBeenCalled();
-    expect(emitted).toEqual([
-      {
-        type: "rpc_error",
-        payload: {
-          requestId: "r",
-          requestType: "provider_diagnostic_request",
-          code: "provider_discovery_failed",
-          error:
-            "Discovery diagnostic unavailable; requires an enabled Codex provider with diagnostic support.",
-        },
-      },
-    ]);
-    expect(JSON.stringify(emitted)).not.toContain("PRIVATE_PROVIDER_RESPONSE");
-  });
   it("PUSH gates invisible providers and downgrades unknown mode icons for legacy clients", () => {
     const { subsystem, emitted, pushSnapshotChange } = makeSubsystem({
       visibleProviders: new Set(["codex"]),
@@ -349,25 +296,6 @@ describe("ProviderCatalogSession", () => {
     });
   });
 
-  it("surfaces a usage-list failure as an rpc_error envelope", async () => {
-    const { subsystem, emitted } = makeSubsystem({
-      usage: {
-        listUsage: async () => {
-          throw new Error("quota service down");
-        },
-      },
-    });
-
-    await subsystem.handleProviderUsageListRequest({
-      type: "provider.usage.list.request",
-      requestId: "u1",
-    });
-
-    const err = findByType(emitted, "rpc_error");
-    expect(err?.payload.code).toBe("provider_usage_list_failed");
-    expect(err?.payload.requestId).toBe("u1");
-  });
-
   it("surfaces a feature-list failure inline, not as an rpc_error", async () => {
     const { subsystem, emitted } = makeSubsystem({
       host: {
@@ -398,7 +326,7 @@ it("announces shared content without retransmitting models or hashing discovery 
   const manager = new Manager({
     logger: pino({ level: "silent" }),
     providerOverrides: Object.fromEntries(
-      ["codex", "claude", "pi", "opencode", "copilot", "omp", "otto-brain"].map((provider) => [
+      ["codex", "claude", "pi", "opencode", "copilot", "omp"].map((provider) => [
         provider,
         { enabled: provider === "codex" },
       ]),
@@ -438,10 +366,6 @@ it("announces shared content without retransmitting models or hashing discovery 
     new ProviderCatalogSession({
       providerSnapshotManager: manager,
       logger: pino({ level: "silent" }),
-      providerUsageService: new ProviderUsageService({
-        logger: pino({ level: "silent" }),
-        fetchers: [],
-      }),
       host: {
         emit(message) {
           emitted.push(message);
@@ -449,7 +373,10 @@ it("announces shared content without retransmitting models or hashing discovery 
         isProviderVisibleToClient: () => true,
         supportsCustomModeIcons: () => true,
         supportsCompactProviderSnapshots: () => true,
-        wantsSnapshotChanges: () => true,
+        publishSnapshot: (project) => {
+          const message = project();
+          if (message) emitted.push(message);
+        },
         supportsProviderSnapshotReferences: () => references,
         listProviderAvailability: async () => [],
         listDraftFeatures: async () => [],

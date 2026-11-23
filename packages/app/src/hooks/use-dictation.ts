@@ -3,20 +3,18 @@ import { useTranslation } from "react-i18next";
 
 import { DictationStreamSender } from "@/dictation/dictation-stream-sender";
 import { useDictationAudioSource } from "@/hooks/use-dictation-audio-source";
+import { useSpeechDictationPriority } from "@/otto/speech/dictation-priority"; // OTTO(speech): microphone capture has priority over readout/cues.
+import type { WakeDictationStart } from "@/otto/speech/wake/dictation-session"; // OTTO(wake-word)
 import { generateMessageId } from "@/types/stream";
 import { AttemptGuard } from "@/utils/attempt-guard";
 import {
   DURATION_TICK_MS,
   PCM_DICTATION_FORMAT,
   toError,
-  type DictationStartOptions,
   type DictationStatus,
   type UseDictationOptions,
   type UseDictationResult,
-  cleanDictationText,
 } from "./use-dictation.shared";
-
-const DEFAULT_VOICE_ACTIVITY_SILENCE_MS = 1100;
 
 export function useDictation(options: UseDictationOptions): UseDictationResult {
   const { t } = useTranslation();
@@ -29,8 +27,6 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     canStart,
     canConfirm,
     enableDuration = false,
-    silenceTimeoutMs = DEFAULT_VOICE_ACTIVITY_SILENCE_MS,
-    cleanUp = false,
   } = options;
 
   const [isRecording, setIsRecording] = useState(false);
@@ -40,20 +36,10 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<DictationStatus>("idle");
   const latestPartialTranscriptRef = useRef("");
-  const cleanUpRef = useRef(cleanUp);
-  useEffect(() => {
-    cleanUpRef.current = cleanUp;
-  }, [cleanUp]);
-  const speechDetectedRef = useRef(false);
-  const finishOnSilenceRef = useRef(false);
-  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // The web/Electron capture volume is RMS * 2. Typical speech from laptop
-  // microphones is around 0.05-0.07 here, while the observed room-noise floor
-  // is below 0.01. Keep the threshold between those bands so voice-activated
-  // dictation can arm its silence timer without changing manual PTT behavior.
-  const VOICE_ACTIVITY_THRESHOLD = 0.04;
 
   const onTranscriptRef = useRef(onTranscript);
+  const onCaptureEndRef = useRef(options.ottoOnCaptureEnd); // OTTO(wake-word)
+  onCaptureEndRef.current = options.ottoOnCaptureEnd; // OTTO(wake-word)
   useEffect(() => {
     onTranscriptRef.current = onTranscript;
   }, [onTranscript]);
@@ -217,12 +203,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       if (!transcriptText) {
         return;
       }
-      onTranscriptRef.current?.(
-        cleanUpRef.current ? cleanDictationText(transcriptText) : transcriptText,
-        {
-          requestId,
-        },
-      );
+      onTranscriptRef.current?.(transcriptText, { requestId });
     },
     [clearStreamingState],
   );
@@ -249,14 +230,10 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     [reportError, stopDurationTracking],
   );
 
-  const audio = useDictationAudioSource({
+  const captureSource = useDictationAudioSource({
     onPcmSegment: (audioData) => {
-      // Stopping capture flushes its final partial chunk. Cancellation has
-      // already closed the stream, so that tail must not start another one.
-      if (actionGateRef.current.cancelling) {
-        return;
-      }
       senderRef.current?.enqueueSegment(audioData);
+      options.ottoOnPcmSegment?.(audioData); // OTTO(wake-word): observe only active dictation for silence.
     },
     onError: (err) => {
       onErrorRef.current?.(err);
@@ -270,13 +247,14 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       handleDictationFailure(new Error("Dictation was interrupted by another audio source."));
     },
   });
+  const audio = useSpeechDictationPriority(captureSource); // OTTO(speech)
   const audioStopRef = useRef(audio.stop);
   useEffect(() => {
     audioStopRef.current = audio.stop;
   }, [audio.stop]);
 
   const startDictation = useCallback(
-    async (startOptions: DictationStartOptions = {}) => {
+    async (initial?: WakeDictationStart) => {
       if (
         actionGateRef.current.starting ||
         actionGateRef.current.confirming ||
@@ -298,12 +276,11 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       setDuration(0);
       setIsProcessing(false);
       setStatus("recording");
-      finishOnSilenceRef.current = startOptions.finishOnSilence === true;
-      speechDetectedRef.current = startOptions.speechAlreadyDetected === true;
       clearStreamingState();
 
       try {
-        await audio.start();
+        if (initial?.initialPcm) senderRef.current?.enqueueSegment(initial.initialPcm); // OTTO(wake-word): command prefix precedes live samples.
+        await audio.start(initial); // OTTO(wake-word): preserve native handoff identity.
         isRecordingRef.current = true;
         setIsRecording(true);
         if (enableDuration) {
@@ -312,14 +289,9 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
         if (client?.isConnected) {
           await startNewStream("start");
         }
-        if (startOptions.preRollPcm) {
-          senderRef.current?.enqueueSegment(startOptions.preRollPcm);
-        }
       } catch (err) {
         await audio.stop().catch(() => undefined);
         stopDurationTracking();
-        finishOnSilenceRef.current = false;
-        speechDetectedRef.current = false;
         isRecordingRef.current = false;
         setIsRecording(false);
         setStatus("idle");
@@ -350,9 +322,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       return;
     }
     actionGateRef.current.cancelling = true;
+    onCaptureEndRef.current?.(); // OTTO(wake-word): explicit cancellation wins over the silence timer.
     stopDurationTracking();
-    finishOnSilenceRef.current = false;
-    speechDetectedRef.current = false;
     setDuration(0);
     setError(null);
 
@@ -389,8 +360,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     }
 
     actionGateRef.current.confirming = true;
-    finishOnSilenceRef.current = false;
-    speechDetectedRef.current = false;
+    onCaptureEndRef.current?.(); // OTTO(wake-word): manual insert/send cannot be overridden during transcription.
     setError(null);
     stopDurationTracking();
     setIsProcessing(true);
@@ -431,41 +401,6 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     stopDurationTracking,
     ensureFinalTranscript,
   ]);
-
-  useEffect(() => {
-    if (!finishOnSilenceRef.current || !isRecording) {
-      if (silenceTimerRef.current) {
-        clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = null;
-      }
-      return undefined;
-    }
-    if (audio.volume >= VOICE_ACTIVITY_THRESHOLD) {
-      speechDetectedRef.current = true;
-      if (silenceTimerRef.current) {
-        clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = null;
-      }
-      return;
-    }
-    if (!speechDetectedRef.current || silenceTimerRef.current) return undefined;
-    silenceTimerRef.current = setTimeout(
-      () => {
-        silenceTimerRef.current = null;
-        if (isRecordingRef.current && !isProcessingRef.current) void confirmDictation();
-      },
-      Math.max(300, Math.min(5000, silenceTimeoutMs)),
-    );
-  }, [audio.volume, confirmDictation, isRecording, silenceTimeoutMs]);
-
-  useEffect(() => {
-    return () => {
-      if (silenceTimerRef.current) {
-        clearTimeout(silenceTimerRef.current);
-        silenceTimerRef.current = null;
-      }
-    };
-  }, []);
 
   const retryFailedDictation = useCallback(async () => {
     if (!senderRef.current?.hasSegments()) {
@@ -510,8 +445,6 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   const reset = useCallback(() => {
     setIsRecording(false);
     isRecordingRef.current = false;
-    finishOnSilenceRef.current = false;
-    speechDetectedRef.current = false;
     setIsProcessing(false);
     isProcessingRef.current = false;
     stopDurationTracking();
@@ -540,7 +473,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     volume: audio.volume,
     duration,
     error,
-    status,
+    status: status === "recording" && audio.isPaused ? "paused" : status,
     startDictation,
     cancelDictation,
     confirmDictation,
@@ -551,7 +484,6 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
 }
 
 export type {
-  DictationStartOptions,
   DictationStatus,
   UseDictationOptions,
   UseDictationResult,

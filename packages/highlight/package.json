@@ -1,12 +1,6 @@
 {
-  "name": "@otto-code/highlight",
+  "name": "@getpaseo/highlight",
   "version": "0.9.35",
-  "license": "AGPL-3.0-or-later",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Draek2077/otto-code.git",
-    "directory": "packages/highlight"
-  },
   "files": [
     "dist",
     "!dist/**/*.map",
@@ -16,10 +10,20 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
+    "./otto/symbols": {
+      "types": "./dist/otto/symbols.d.ts",
+      "source": "./src/otto/symbols.ts",
+      "default": "./dist/otto/symbols.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "source": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./otto/headings": {
+      "types": "./dist/otto/headings.d.ts",
+      "source": "./src/otto/headings.ts",
+      "default": "./dist/otto/headings.js"
     }
   },
   "publishConfig": {
@@ -56,6 +60,6 @@
   },
   "devDependencies": {
     "typescript": "^5.9.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.6"
   }
 }

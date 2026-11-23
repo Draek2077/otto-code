@@ -1,6 +1,6 @@
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { router } from "expo-router";
-import type { WorkspaceProjectDescriptorPayload } from "@otto-code/protocol/messages";
+import type { WorkspaceProjectDescriptorPayload } from "@getpaseo/protocol/messages";
 import {
   ArrowLeft,
   Folder,
@@ -10,8 +10,7 @@ import {
   Plus,
   Search,
   Server,
-} from "@/components/icons/material-icons";
-import { Github } from "@/components/icons/lucide";
+} from "lucide-react-native";
 import {
   createElement,
   useCallback,
@@ -20,6 +19,7 @@ import {
   useRef,
   useState,
   type ComponentType,
+  type RefObject,
 } from "react";
 import {
   Modal,
@@ -34,13 +34,12 @@ import {
   type EditingTextInputHandle,
 } from "@/components/ui/text-input";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { GitHubIcon } from "@/components/icons/github-icon";
 import {
-  applyAvailableAddProjectHosts,
   backAddProjectPage,
   chooseAddProjectHost,
   currentAddProjectPage,
   moveAddProjectSelection,
-  openAddProjectFlow,
   openDirectorySearchPage,
   openGithubLocationPage,
   openGithubSearchPage,
@@ -71,6 +70,7 @@ import {
   type ProjectPickerOption,
 } from "@/components/project-picker-options";
 import { Shortcut } from "@/components/ui/shortcut";
+import { useRevealActiveItem } from "@/components/ui/scroll-reveal";
 import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
 import { getIsElectronRuntime } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
@@ -96,7 +96,7 @@ import type { AddProjectFlowRequest } from "@/stores/add-project-flow-store";
 import type { Theme } from "@/styles/theme";
 import { shortenPath } from "@/utils/shorten-path";
 import { buildNewWorkspaceRoute, buildSettingsAddHostRoute } from "@/utils/host-routes";
-import type { IconSizeProp } from "@/components/icons/icon-size";
+import { createBitbucketCloneInitializer } from "@/otto/bitbucket/clone"; // OTTO(bitbucket): one initializer seam, all cloning stays in the existing flow.
 
 interface AddProjectFlowProps {
   request: AddProjectFlowRequest;
@@ -107,7 +107,7 @@ interface FlowRowOption {
   id: string;
   title: string;
   subtitle: string | null;
-  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
+  icon: ComponentType<{ size?: number; color?: string }>;
   disabled?: boolean;
   testID: string;
   select: () => void;
@@ -116,8 +116,8 @@ interface FlowRowOption {
 type GithubLocationPage = Extract<AddProjectPage, { kind: "github-location" }>;
 
 interface FlowIconProps {
-  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
-  size?: IconSizeProp;
+  icon: ComponentType<{ size?: number; color?: string }>;
+  size?: number;
   color?: string;
 }
 
@@ -154,7 +154,7 @@ function FlowBackButton({ onPress }: { onPress: () => void }) {
     >
       {({ hovered, pressed }) => (
         <ThemedArrowLeft
-          size="mdPlus"
+          size={18}
           uniProps={hovered || pressed ? foregroundColorMapping : foregroundMutedColorMapping}
         />
       )}
@@ -163,7 +163,7 @@ function FlowBackButton({ onPress }: { onPress: () => void }) {
 }
 
 function methodIcon(method: AddProjectMethodId): FlowRowOption["icon"] {
-  if (method === "github") return Github;
+  if (method === "github") return GitHubIcon;
   if (method === "browse") return FolderOpen;
   if (method === "new-directory") return FolderPlus;
   return Search;
@@ -253,7 +253,17 @@ function pathTestId(path: string): string {
   return `add-project-flow-path-${encodeURIComponent(path)}`;
 }
 
-function FlowRow({ option, active }: { option: FlowRowOption; active: boolean }) {
+function FlowRow({
+  option,
+  active,
+  activeItemRef,
+  onRowLayout,
+}: {
+  option: FlowRowOption;
+  active: boolean;
+  activeItemRef: RefObject<View | null>;
+  onRowLayout: () => void;
+}) {
   const accessibilityState = useMemo(
     () => ({ disabled: option.disabled === true, selected: active }),
     [active, option.disabled],
@@ -271,12 +281,14 @@ function FlowRow({ option, active }: { option: FlowRowOption; active: boolean })
       accessibilityRole="button"
       accessibilityState={accessibilityState}
       disabled={option.disabled}
+      ref={active ? activeItemRef : undefined}
+      onLayout={active ? onRowLayout : undefined}
       onPress={option.select}
       style={rowStyle}
       testID={option.testID}
     >
       <View style={styles.iconSlot}>
-        <MutedFlowIcon icon={option.icon} size="md" />
+        <MutedFlowIcon icon={option.icon} size={16} />
       </View>
       <View style={styles.rowText}>
         <Text style={styles.rowTitle} numberOfLines={1}>
@@ -360,12 +372,10 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
       stableProjectIdentityByHost,
     ],
   );
-  const [state, setState] = useState(() =>
-    openAddProjectFlow({
-      hosts: availableHosts,
-      ...(request.preferredHostId ? { preferredHostId: request.preferredHostId } : {}),
-    }),
-  );
+  const [cloneInitializer] = useState(() =>
+    createBitbucketCloneInitializer(request.preferredHostId, request.repository),
+  ); // OTTO(bitbucket)
+  const [state, setState] = useState(() => cloneInitializer.open(availableHosts)); // OTTO(bitbucket)
   const page = currentAddProjectPage(state);
   const hostId = pageHostId(page);
   const host = hostId ? state.hosts.find((candidate) => candidate.serverId === hostId) : null;
@@ -385,6 +395,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   );
   const setHasHydratedWorkspaces = useSessionStore((store) => store.setHasHydratedWorkspaces);
   const inputRef = useRef<EditingTextInputHandle>(null);
+  const resultsRef = useRef<ScrollView>(null);
   const submissionInFlightRef = useRef(false);
   const browseInFlightRef = useRef(false);
   const query = page.kind === "new-directory-name" || page.kind === "method" ? "" : page.query;
@@ -393,10 +404,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const [debouncedQuery, setDebouncedQuery] = useState(query);
 
   useEffect(() => {
-    setState((current) =>
-      applyAvailableAddProjectHosts(current, availableHosts, request.preferredHostId),
-    );
-  }, [availableHosts, request.preferredHostId]);
+    setState((current) => cloneInitializer.apply(current, availableHosts)); // OTTO(bitbucket): consume a pending clone once, without replacing an edited destination.
+  }, [availableHosts, cloneInitializer]);
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedQuery(query), 250);
@@ -657,7 +666,7 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
           ? `${repository.nameWithOwner} via ${repository.cloneProtocol.toUpperCase()}`
           : repository.nameWithOwner,
         subtitle: repository.description,
-        icon: Github,
+        icon: GitHubIcon,
         testID: `add-project-flow-repository-${repository.id}`,
         select: () =>
           setState((current) => openGithubLocationPage(current, page.hostId, repository)),
@@ -716,6 +725,13 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   ]);
 
   const activeIndex = rows.length === 0 ? 0 : Math.min(page.activeIndex, rows.length - 1);
+  const rowListKey = useMemo(() => rows.map((row) => row.id).join("\u0000"), [rows]);
+  const { activeItemRef, contentRef, onItemLayout, onViewportLayout, onScroll } =
+    useRevealActiveItem({
+      activeIndex,
+      listKey: rowListKey,
+      scrollRef: resultsRef,
+    });
   const createDirectory = useCallback(async () => {
     if (page.kind !== "new-directory-name" || !client) return;
     const name = page.name.trim();
@@ -906,53 +922,64 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
             ) : null}
           </View>
           <ScrollView
+            ref={resultsRef}
             style={styles.results}
-            contentContainerStyle={styles.resultsContent}
             keyboardShouldPersistTaps="always"
+            onLayout={onViewportLayout}
+            onScroll={onScroll}
+            scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
             testID="add-project-flow-results"
           >
-            {preview ? (
-              <Text style={styles.preview} testID="add-project-flow-path-preview">
-                {shortenPath(preview)}
-              </Text>
-            ) : null}
-            {isSubmitting ? (
-              <Text style={styles.stateText} testID="add-project-flow-progress">
-                {progressText(page)}
-              </Text>
-            ) : null}
-            {!isSubmitting && page.error ? (
-              <Text style={styles.errorText} testID="add-project-flow-error">
-                {page.error}
-              </Text>
-            ) : null}
-            {!isSubmitting && queryError ? (
-              <Text style={styles.errorText} testID="add-project-flow-query-error">
-                {queryError}
-              </Text>
-            ) : null}
-            {!isSubmitting && loading ? (
-              <Text style={styles.stateText} testID="add-project-flow-loading">
-                Loading...
-              </Text>
-            ) : null}
-            {!isSubmitting &&
-            (!loading || page.kind === "github-search") &&
-            (!queryError || page.kind === "github-search")
-              ? rows.map((option, index) => (
-                  <FlowRow key={option.id} option={option} active={index === activeIndex} />
-                ))
-              : null}
-            {!isSubmitting &&
-            !loading &&
-            !queryError &&
-            rows.length === 0 &&
-            page.kind !== "new-directory-name" ? (
-              <Text style={styles.stateText} testID="add-project-flow-empty">
-                {emptyText(page, host ?? null)}
-              </Text>
-            ) : null}
+            <View ref={contentRef} collapsable={false} style={styles.resultsContent}>
+              {preview ? (
+                <Text style={styles.preview} testID="add-project-flow-path-preview">
+                  {shortenPath(preview)}
+                </Text>
+              ) : null}
+              {isSubmitting ? (
+                <Text style={styles.stateText} testID="add-project-flow-progress">
+                  {progressText(page)}
+                </Text>
+              ) : null}
+              {!isSubmitting && page.error ? (
+                <Text style={styles.errorText} testID="add-project-flow-error">
+                  {page.error}
+                </Text>
+              ) : null}
+              {!isSubmitting && queryError ? (
+                <Text style={styles.errorText} testID="add-project-flow-query-error">
+                  {queryError}
+                </Text>
+              ) : null}
+              {!isSubmitting && loading ? (
+                <Text style={styles.stateText} testID="add-project-flow-loading">
+                  Loading...
+                </Text>
+              ) : null}
+              {!isSubmitting &&
+              (!loading || page.kind === "github-search") &&
+              (!queryError || page.kind === "github-search")
+                ? rows.map((option, index) => (
+                    <FlowRow
+                      key={option.id}
+                      option={option}
+                      activeItemRef={activeItemRef}
+                      active={index === activeIndex}
+                      onRowLayout={onItemLayout}
+                    />
+                  ))
+                : null}
+              {!isSubmitting &&
+              !loading &&
+              !queryError &&
+              rows.length === 0 &&
+              page.kind !== "new-directory-name" ? (
+                <Text style={styles.stateText} testID="add-project-flow-empty">
+                  {emptyText(page, host ?? null)}
+                </Text>
+              ) : null}
+            </View>
           </ScrollView>
           <View style={styles.footer} testID="add-project-flow-footer">
             <FlowHint keys={NAVIGATION_HINT_KEYS} action="Navigate" />

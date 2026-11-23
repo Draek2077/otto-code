@@ -1,14 +1,15 @@
-import type { GitHostingProviderId } from "@otto-code/protocol/messages";
-import { GitHostingIcon } from "@/components/icons/git-hosting-icon";
+import { getForgeIconComponent } from "@/git/forge-icon";
+import { getForgePresentation, type Forge } from "@/git/forge";
 
 export function PullRequestTabIcon({
+  forge,
   size,
   color,
-  provider,
 }: {
+  forge: Forge;
   size: number;
   color: string;
-  provider?: GitHostingProviderId | null;
 }) {
-  return <GitHostingIcon provider={provider} size={size} color={color} />;
+  const Icon = getForgeIconComponent(getForgePresentation(forge).icon);
+  return <Icon size={size} color={color} />;
 }

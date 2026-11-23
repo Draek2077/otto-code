@@ -1,26 +1,5 @@
 import type { DesktopSettingsStore } from "../settings/desktop-settings.js";
 
-// Set as soon as 'before-quit' fires, before any window gets a chance to close.
-// The tray's close-to-tray interception reads this to tell a real quit apart from
-// the user just clicking the window's close button.
-let appIsQuitting = false;
-
-export function markAppQuitting(): void {
-  appIsQuitting = true;
-}
-
-// Called when a "warn before quitting" confirmation is cancelled, so a declined
-// quit doesn't permanently wedge isAppQuitting() true for the rest of the
-// process's life - which would otherwise disable close-to-tray and the
-// close-handler's own quit confirmation for every later window close.
-export function unmarkAppQuitting(): void {
-  appIsQuitting = false;
-}
-
-export function isAppQuitting(): boolean {
-  return appIsQuitting;
-}
-
 interface QuitLifecycleSettings {
   daemon: {
     keepRunningAfterQuit: boolean;
@@ -38,6 +17,17 @@ interface BeforeQuitApp {
 interface ExternalQuitSignalSource {
   on(signal: NodeJS.Signals, listener: () => void): unknown;
 }
+
+interface QuitLifecycle {
+  handleBeforeQuit(event: BeforeQuitEvent): void;
+  handleBeforeQuitForUpdate(): void;
+}
+
+interface DeferredUpdateQuit {
+  promise: Promise<boolean>;
+  resolve(): void;
+}
+
 export interface StopOnQuitDeps {
   settingsStore: Pick<DesktopSettingsStore, "get">;
   isDesktopManagedDaemonRunning: () => boolean;
@@ -83,16 +73,6 @@ export async function stopDesktopManagedDaemonOnQuitIfNeeded(
   return true;
 }
 
-interface QuitLifecycle {
-  handleBeforeQuit(event: BeforeQuitEvent): void;
-  handleBeforeQuitForUpdate(): void;
-}
-
-interface DeferredUpdateQuit {
-  promise: Promise<boolean>;
-  resolve(): void;
-}
-
 function waitForUpdateDeadline(signal: AbortSignal): Promise<boolean> {
   if (signal.aborted) {
     return Promise.resolve(false);
@@ -114,61 +94,28 @@ function createDeferredUpdateQuit(): DeferredUpdateQuit {
 export function createQuitLifecycle({
   app,
   closeTransportSessions,
-  confirmQuitIfNeeded,
   stopDesktopManagedDaemonIfNeeded,
-  shutdownDesktopFeatures = async () => undefined,
   installAppUpdateOnQuit,
   createUpdateDeadlineSignal,
-  deferDaemonStopUntilUpdateHandoff = false,
-  isUpdateInstalling = () => false,
   onStopError,
-  onShutdownError = () => undefined,
   onUpdateError,
 }: {
   app: BeforeQuitApp;
   closeTransportSessions: () => void;
-  // Resolves false to abort the quit (user cancelled a "warn before quitting"
-  // confirmation). Resolves true when no confirmation was needed or the user
-  // confirmed.
-  confirmQuitIfNeeded: () => Promise<boolean>;
   stopDesktopManagedDaemonIfNeeded: () => Promise<boolean>;
-  // Host-local feature cleanup is distinct from daemon shutdown. It must be
-  // bounded by its implementation: Electron's before-quit event cannot await
-  // a listener that was merely fire-and-forget.
-  shutdownDesktopFeatures?: () => Promise<void>;
-  // Resolves true once a downloaded update has been revalidated and handed to
-  // the installer, which re-fires the quit itself.
   installAppUpdateOnQuit: (signal: AbortSignal) => Promise<boolean>;
   createUpdateDeadlineSignal: () => AbortSignal;
-  deferDaemonStopUntilUpdateHandoff?: boolean;
-  isUpdateInstalling?: () => boolean;
   onStopError: (error: unknown) => void;
-  onShutdownError?: (error: unknown) => void;
   onUpdateError: (error: unknown) => void;
 }): QuitLifecycle {
-  // We always preventDefault on first quit so we can run the async stop
-  // decision, then call app.exit(0) - which bypasses Electron's
-  // close → window-all-closed → will-quit chain. The window-all-closed
-  // listener is a darwin no-op (macOS convention) and would otherwise
-  // veto a re-fired app.quit().
-  //
-  // The exception is a pending update. `autoInstallOnAppQuit` is off (see
-  // features/auto-updater.ts - Otto revalidates the manifest rather than
-  // installing a download a newer release has superseded), so the install only
-  // happens if this runs it. Exiting hard before the installer has taken over
-  // is what left downloaded updates permanently uninstalled.
+  // The first quit waits for daemon shutdown and update revalidation. A validated
+  // update re-fires app.quit(); otherwise app.exit(0) bypasses Electron's macOS
+  // window-all-closed handler, which would veto that second quit.
   let quitting = false;
   let quittingForUpdate = false;
   const updateQuit = createDeferredUpdateQuit();
 
   function handleBeforeQuit(event: BeforeQuitEvent): void {
-    // The asynchronous Debian installer owns the handoff. A concurrent user
-    // quit must not run the quit deadline or tear down its authorization session.
-    if (!quittingForUpdate && isUpdateInstalling()) {
-      event.preventDefault();
-      unmarkAppQuitting();
-      return;
-    }
     closeTransportSessions();
     if (quittingForUpdate) return;
     if (quitting) {
@@ -181,28 +128,13 @@ export function createQuitLifecycle({
     event.preventDefault();
 
     void (async () => {
-      // Never block quitting on a confirmation-plumbing failure.
-      const confirmed = await confirmQuitIfNeeded().catch(() => true);
-      if (!confirmed) {
-        quitting = false;
-        unmarkAppQuitting();
-        return;
-      }
-
       try {
-        await shutdownDesktopFeatures();
+        await stopDesktopManagedDaemonIfNeeded();
       } catch (error) {
-        onShutdownError(error);
+        onStopError(error);
       }
 
       const signal = createUpdateDeadlineSignal();
-      if (!deferDaemonStopUntilUpdateHandoff) {
-        try {
-          await stopDesktopManagedDaemonIfNeeded();
-        } catch (error) {
-          onStopError(error);
-        }
-      }
       const updateInstallation = installAppUpdateOnQuit(signal).catch((error) => {
         onUpdateError(error);
         return false;
@@ -218,14 +150,6 @@ export function createQuitLifecycle({
         ]);
         if (handoffStarted) {
           return;
-        }
-      }
-
-      if (deferDaemonStopUntilUpdateHandoff) {
-        try {
-          await stopDesktopManagedDaemonIfNeeded();
-        } catch (error) {
-          onStopError(error);
         }
       }
 

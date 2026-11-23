@@ -1,4 +1,4 @@
-import type { AgentProviderNotice } from "@otto-code/protocol/agent-types";
+import type { AgentProviderNotice } from "@getpaseo/protocol/agent-types";
 import type { ToastApi } from "@/components/toast-host";
 
 export function showProviderNoticeToast(
@@ -13,9 +13,7 @@ export function showProviderNoticeToast(
     return;
   }
   toast.show(notice.message, {
-    // ToastVariant has no info/warning tier; both render on the default surface,
-    // with warnings held longer.
-    variant: "default",
+    variant: notice.type,
     durationMs: notice.type === "warning" ? 5000 : undefined,
   });
 }

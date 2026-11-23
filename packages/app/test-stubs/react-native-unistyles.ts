@@ -1,49 +1,84 @@
-import { baseColors, daylightColors, lightShadow } from "@/styles/theme-palettes";
-
-// Colors come from the real light palette. `theme-palettes.ts` has no imports at
-// all, so pulling it in here cannot cycle back through this stub - which is
-// exactly why the theme itself (`@/styles/theme`) is not imported: it reaches
-// `@/constants/layout`, which imports `react-native-unistyles`, i.e. this file.
-//
-// The scale ladders below are the one part that has to be restated. Keeping them
-// as a hand-written literal is how this stub went stale before: a component read
-// `theme.iconSize.chromeMd`, the literal had no `iconSize` at all, and the
-// failure surfaced as "Cannot read properties of undefined (reading 'md')"
-// inside a test that had nothing to do with icons. So every scale is served
-// through `numericScale`, which answers any key - a ladder gaining a step is not
-// a reason for an unrelated test to fail. Tests that assert on a specific token
-// should assert against the real theme (`src/styles/theme.test.ts`), not here.
-function numericScale(
-  fallback: number,
-  known: Record<string, number> = {},
-): Record<string, number> {
-  return new Proxy(known, {
-    get: (target, key) =>
-      typeof key === "string" && key in target ? target[key] : (fallback as unknown),
-  }) as Record<string, number>;
-}
+import { createElement, type ComponentType } from "react";
 
 const testTheme = {
   colorScheme: "light",
   colors: {
-    ...daylightColors,
-    palette: baseColors,
-    // Syntax colors live in the @otto-code/highlight workspace package. Nothing
-    // under test asserts on them, and reaching for a built workspace dependency
-    // from a stub is how test setup starts needing a build step.
-    syntax: new Proxy({}, { get: () => "#000000" }) as Record<string, string>,
+    foreground: "#111111",
+    foregroundMuted: "#666666",
+    statusSuccess: "#15803d",
+    statusDanger: "#b91c1c",
+    statusWarning: "#d97706",
+    statusMerged: "#7c3aed",
+    // Same rule as the real theme: the status color at 12%.
+    statusSuccessTint: "#15803d1f",
+    statusDangerTint: "#b91c1c1f",
+    statusWarningTint: "#d977061f",
+    // The light band's values, so a test can name the colour it expects.
+    statusDotSuccess: "#299f51",
+    statusDotDanger: "#f12e2f",
+    statusDotWarning: "#b37824",
+    statusDotRunning: "#268ae0",
+    accent: "#2563eb",
+    accentForeground: "#ffffff",
+    destructive: "#dc2626",
+    destructiveForeground: "#ffffff",
+    surface1: "#fafafa",
+    surface2: "#f4f4f5",
+    surface3: "#e4e4e7",
+    border: "#e4e4e7",
+    borderAccent: "#a1a1aa",
+    palette: {
+      amber: { 500: "#f59e0b" },
+      blue: { 300: "#93c5fd" },
+      green: { 500: "#22c55e" },
+      red: { 300: "#fca5a5" },
+      white: "#ffffff",
+    },
   },
-  shadow: lightShadow,
-  spacing: numericScale(8, { 0: 0, 1: 4, 2: 8, 3: 12, 4: 16, 5: 20, 6: 24, 7: 28, 8: 32 }),
-  fontSize: numericScale(14),
-  fontFamily: { ui: "System", mono: "monospace" },
-  lineHeight: numericScale(20),
-  iconSize: numericScale(16),
-  fontWeight: { normal: "400", medium: "500", semibold: "600", bold: "700" },
-  borderRadius: numericScale(6, { none: 0, sm: 2, base: 4, md: 6, lg: 8, xl: 12, full: 9999 }),
-  borderWidth: numericScale(1, { none: 0, hairline: 1, thin: 1, base: 1, thick: 2 }),
-  opacity: numericScale(1, { disabled: 0.5, muted: 0.6, subtle: 0.8, full: 1 }),
-  layout: { chatMaxWidth: undefined as number | undefined },
+  borderWidth: { 1: 1 },
+  spacing: [0, 4, 8, 12, 16, 20, 24, 28, 32],
+  fontSize: {
+    xs: 12,
+    sm: 14,
+    base: 16,
+  },
+  fontFamily: {
+    ui: "sans-serif",
+    mono: "monospace",
+  },
+  fontWeight: {
+    normal: "400",
+    medium: "500",
+  },
+  borderRadius: {
+    base: 4,
+    md: 6,
+    lg: 8,
+    xl: 12,
+    full: 9999,
+  },
+  iconSize: { sm: 16, md: 20 },
+  opacity: { 50: 0.5 },
+  shadow: {
+    sm: {
+      shadowColor: "rgba(0, 0, 0, 0.02)",
+      shadowOffset: { width: 0, height: 2 },
+      shadowRadius: 8,
+      elevation: 2,
+    },
+    md: {
+      shadowColor: "rgba(0, 0, 0, 0.04)",
+      shadowOffset: { width: 0, height: 4 },
+      shadowRadius: 16,
+      elevation: 4,
+    },
+    lg: {
+      shadowColor: "rgba(0, 0, 0, 0.08)",
+      shadowOffset: { width: 0, height: 8 },
+      shadowRadius: 24,
+      elevation: 8,
+    },
+  },
 };
 
 type StyleFactory<T> = (theme: typeof testTheme) => T;
@@ -57,7 +92,20 @@ export const StyleSheet = {
     isStyleFactory(styles) ? styles(testTheme) : styles,
 };
 
-export const withUnistyles = <T>(Component: T): T => Component;
+// OTTO(chat-identity): resolve per-instance theme colors for activity glyphs under test.
+type ThemeProps = (
+  theme: typeof testTheme,
+  runtime: { themeName: string },
+) => Record<string, unknown>;
+const runtime = { themeName: "light" };
+export function withUnistyles(Component: ComponentType<Record<string, unknown>>, map?: ThemeProps) {
+  return ({ uniProps, ...props }: Record<string, unknown> & { uniProps?: ThemeProps }) =>
+    createElement(Component, {
+      ...map?.(testTheme, runtime),
+      ...props,
+      ...uniProps?.(testTheme, runtime),
+    });
+}
 
 export const useUnistyles = () => ({
   theme: testTheme,

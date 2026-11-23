@@ -6,6 +6,8 @@ order: 40
 category: Configuration
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Configuration
 
 Otto loads configuration from a single JSON file in your Otto home directory, with optional environment variable and CLI overrides.

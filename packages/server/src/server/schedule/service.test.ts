@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
@@ -21,11 +21,9 @@ import type {
   AgentStreamEvent,
 } from "../agent/agent-sdk-types.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
-import { validateProviderOptions } from "../agent/provider-options.js";
-import { ClaudeProviderOptionsSchema } from "../agent/providers/claude/options.js";
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import type { ProviderSnapshotManager } from "../agent/provider-snapshot-manager.js";
-import { createLocalCheckoutWorkspace } from "../otto-worktree-service.js";
+import { createWorkspaceProvisioningService } from "../session/workspace-provisioning/workspace-provisioning-service.js";
 import { resolveWorkspaceIdForPath } from "../resolve-workspace-id-for-path.js";
 import { createNoopWorkspaceGitService } from "../test-utils/workspace-git-service-stub.js";
 import {
@@ -37,20 +35,61 @@ import { archiveByScope, type ActiveWorkspaceRef } from "../workspace-archive-se
 import {
   ScheduleService,
   ScheduleTargetGoneError,
-  ScheduleWorkflowTargetError,
-  pruneScheduleRuns,
   type ScheduleServiceOptions,
 } from "./service.js";
 import { ScheduleStore } from "./store.js";
-import { findProfileByRef } from "@otto-code/protocol/agent-profiles";
-import type {
-  ScheduleExecutionResult,
-  ScheduleRun,
-  StoredSchedule,
-} from "@otto-code/protocol/schedule/types";
+import type { ScheduleExecutionResult, StoredSchedule } from "@getpaseo/protocol/schedule/types";
+import type { ScheduleRuntimeHooks } from "../otto/schedules/types.js"; // OTTO(schedules): injected lifecycle coverage, no provider processes.
 
 interface ScheduleServiceInternals {
   executeSchedule(schedule: StoredSchedule, runId: string): Promise<ScheduleExecutionResult>;
+}
+
+// OTTO(schedules): injected storage failure retains the real persisted claim.
+function rejectSettlementUpdates(store: ScheduleStore): ScheduleStore["update"] {
+  const update = store.update.bind(store);
+  return (id, updater, mutation) =>
+    update(
+      id,
+      async (current) => {
+        const next = await updater(current);
+        if (next.runs.some((run) => run.status !== "running"))
+          throw new Error("Settlement publication unavailable");
+        return next;
+      },
+      mutation,
+    );
+}
+
+class OverlappingTickRunner {
+  private resolveFirstRunStarted: () => void = () => {};
+  private resolveFirstRunBlocked: () => void = () => {};
+  private laterScheduleRunCount = 0;
+
+  readonly firstRunStarted = new Promise<void>((resolve) => {
+    this.resolveFirstRunStarted = resolve;
+  });
+  private readonly firstRunBlocked = new Promise<void>((resolve) => {
+    this.resolveFirstRunBlocked = resolve;
+  });
+
+  async run(schedule: StoredSchedule): Promise<ScheduleExecutionResult> {
+    if (schedule.prompt === "block the first tick") {
+      this.resolveFirstRunStarted();
+      await this.firstRunBlocked;
+    } else {
+      this.laterScheduleRunCount += 1;
+    }
+    return { agentId: null, output: "ok" };
+  }
+
+  unblockFirstRun(): void {
+    this.resolveFirstRunBlocked();
+  }
+
+  get laterScheduleRuns(): number {
+    return this.laterScheduleRunCount;
+  }
 }
 
 const SCHEDULE_TEST_CAPABILITIES: AgentCapabilityFlags = {
@@ -73,38 +112,27 @@ const NO_UNATTENDED_SCHEDULE_POLICY: Pick<ProviderSnapshotManager, "resolveCreat
 
 const TEST_CLAUDE_PROVIDER_DEFINITION = {
   enabled: true,
-  validateOptions: (options: AgentSessionConfig["providerOptions"]) =>
-    validateProviderOptions("claude", ClaudeProviderOptionsSchema, options),
-  applyOptions: (config: AgentSessionConfig, options: AgentSessionConfig["providerOptions"]) => ({
-    ...config,
-    ...(options ? { providerOptions: options } : {}),
-  }),
 };
 
 let workspaceArchiveInProgress = false;
 
 type TestScheduleServiceOptions = Omit<
   ScheduleServiceOptions,
-  | "createAgent"
-  | "createLocalCheckoutWorkspace"
-  | "createOttoWorktreeWorkspace"
-  | "archiveWorkspace"
-  | "revealWorkspace"
+  "createAgent" | "createDirectoryWorkspace" | "createPaseoWorktreeWorkspace" | "archiveWorkspace"
 > & {
   agentManager: AgentManager;
   providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig">;
   createAgent?: ScheduleServiceOptions["createAgent"];
-  createLocalCheckoutWorkspace?: ScheduleServiceOptions["createLocalCheckoutWorkspace"];
-  createOttoWorktreeWorkspace?: ScheduleServiceOptions["createOttoWorktreeWorkspace"];
+  createDirectoryWorkspace?: ScheduleServiceOptions["createDirectoryWorkspace"];
+  createPaseoWorktreeWorkspace?: ScheduleServiceOptions["createPaseoWorktreeWorkspace"];
   archiveWorkspace?: ScheduleServiceOptions["archiveWorkspace"];
-  revealWorkspace?: ScheduleServiceOptions["revealWorkspace"];
 };
 
 function createScheduleService(options: TestScheduleServiceOptions): ScheduleService {
   let workspaceCounter = 0;
   const workspaces = new Map<string, PersistedWorkspaceRecord>();
   const workspaceGitService = createNoopWorkspaceGitService();
-  const createDefaultWorkspace: ScheduleServiceOptions["createLocalCheckoutWorkspace"] = async (
+  const createDefaultWorkspace: ScheduleServiceOptions["createDirectoryWorkspace"] = async (
     input,
   ) => {
     const timestamp = new Date().toISOString();
@@ -118,21 +146,12 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
       title: input.firstAgentContext.prompt,
       branch: null,
       baseBranch: null,
-      // Mirror the host: schedule runs pass hidden:true, so the created record is
-      // hidden until the run reveals it.
-      hidden: input.hidden,
       createdAt: timestamp,
       updatedAt: timestamp,
       archivedAt: null,
     };
     workspaces.set(workspaceId, workspace);
     return workspace;
-  };
-  const revealDefaultWorkspace: ScheduleServiceOptions["revealWorkspace"] = async (workspaceId) => {
-    const workspace = workspaces.get(workspaceId);
-    if (workspace) {
-      workspaces.set(workspaceId, { ...workspace, hidden: false });
-    }
   };
   const listActiveWorkspaces = async (): Promise<ActiveWorkspaceRef[]> =>
     Array.from(workspaces.values())
@@ -171,7 +190,6 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
         },
         {
           scope: { kind: "workspace", workspaceId },
-          repoRoot: null,
           requestId: "schedule-service-test",
         },
       );
@@ -193,9 +211,9 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
           },
           input,
         )),
-    createLocalCheckoutWorkspace: options.createLocalCheckoutWorkspace ?? createDefaultWorkspace,
-    createOttoWorktreeWorkspace:
-      options.createOttoWorktreeWorkspace ??
+    createDirectoryWorkspace: options.createDirectoryWorkspace ?? createDefaultWorkspace,
+    createPaseoWorktreeWorkspace:
+      options.createPaseoWorktreeWorkspace ??
       (async (input) => {
         const workspace = await createDefaultWorkspace(input);
         return {
@@ -207,14 +225,12 @@ function createScheduleService(options: TestScheduleServiceOptions): ScheduleSer
         };
       }),
     archiveWorkspace: options.archiveWorkspace ?? archiveDefaultWorkspace,
-    revealWorkspace: options.revealWorkspace ?? revealDefaultWorkspace,
   });
 }
 
 async function createRegistryBackedScheduleWorkspaceDeps(rootDir: string): Promise<{
   workspaceRegistry: FileBackedWorkspaceRegistry;
-  createLocalCheckoutWorkspace: ScheduleServiceOptions["createLocalCheckoutWorkspace"];
-  revealWorkspace: ScheduleServiceOptions["revealWorkspace"];
+  createDirectoryWorkspace: ScheduleServiceOptions["createDirectoryWorkspace"];
   createArchiveWorkspace: (input: {
     agentManager: AgentManager;
     agentStorage: AgentStorage;
@@ -232,24 +248,19 @@ async function createRegistryBackedScheduleWorkspaceDeps(rootDir: string): Promi
   await workspaceRegistry.initialize();
   await projectRegistry.initialize();
   const workspaceGitService = createNoopWorkspaceGitService();
+  const workspaceProvisioning = createWorkspaceProvisioningService({
+    projectRegistry,
+    workspaceRegistry,
+    workspaceGitService,
+    isDirectory: async () => true,
+  });
   return {
     workspaceRegistry,
-    createLocalCheckoutWorkspace: async (input) => {
-      return createLocalCheckoutWorkspace(
-        { cwd: input.cwd, title: input.firstAgentContext.prompt, hidden: input.hidden },
-        { projectRegistry, workspaceRegistry, workspaceGitService },
+    createDirectoryWorkspace: async (input) => {
+      return workspaceProvisioning.createWorkspaceForDirectory(
+        input.cwd,
+        input.firstAgentContext.prompt,
       );
-    },
-    revealWorkspace: async (workspaceId) => {
-      const existing = await workspaceRegistry.get(workspaceId);
-      if (!existing || !existing.hidden || existing.archivedAt) {
-        return;
-      }
-      await workspaceRegistry.upsert({
-        ...existing,
-        hidden: false,
-        updatedAt: new Date().toISOString(),
-      });
     },
     createArchiveWorkspace:
       ({ agentManager, agentStorage, logger = createTestLogger() }) =>
@@ -283,7 +294,6 @@ async function createRegistryBackedScheduleWorkspaceDeps(rootDir: string): Promi
             },
             {
               scope: { kind: "workspace", workspaceId },
-              repoRoot: null,
               requestId: "schedule-service-test",
             },
           );
@@ -292,110 +302,6 @@ async function createRegistryBackedScheduleWorkspaceDeps(rootDir: string): Promi
         }
       },
   };
-}
-
-// Builds a schedule service with fully stubbed agent + workspace deps that
-// record what the run did, so the finish-time outcome matrix (hidden create,
-// archive vs reveal, internal agent) can be asserted directly. `outcome`
-// controls whether the run's wait result is a clean idle or an error.
-function buildOutcomeRecordingScheduleService(params: {
-  agentStorage: AgentStorage;
-  tempDir: string;
-  now: () => Date;
-  outcome: "success" | "error";
-  // Whether the run captured any transcript content. Drives the "reveal a
-  // failed run's workspace only if there's something to see" branch. Defaults
-  // to false (a run that failed before producing anything).
-  hasContent?: boolean;
-}): {
-  service: ScheduleService;
-  createAgentInputs: Parameters<ScheduleServiceOptions["createAgent"]>[0][];
-  workspaceCreateInputs: Parameters<ScheduleServiceOptions["createLocalCheckoutWorkspace"]>[0][];
-  archiveCalls: string[];
-  revealCalls: string[];
-} {
-  const manager = new AgentManager({
-    logger: createTestLogger(),
-    clients: createTestAgentClients(),
-    registry: params.agentStorage,
-  });
-  manager.runAgent = async () => ({
-    sessionId: "stub-outcome-session",
-    finalText: "done",
-    timeline: [{ type: "assistant_message", text: "done" }],
-  });
-  manager.waitForAgentEvent = async () =>
-    params.outcome === "error"
-      ? { status: "error", permission: null, lastMessage: "boom" }
-      : { status: "idle", permission: null, lastMessage: "ok" };
-  // The stubbed createAgent never registers the agent in this manager, so the
-  // real capture path can't read a timeline - stub the outcome directly.
-  manager.captureRetainedTranscript = async () => ({ hasContent: params.hasContent ?? false });
-  const createAgentInputs: Parameters<ScheduleServiceOptions["createAgent"]>[0][] = [];
-  const workspaceCreateInputs: Parameters<
-    ScheduleServiceOptions["createLocalCheckoutWorkspace"]
-  >[0][] = [];
-  const archiveCalls: string[] = [];
-  const revealCalls: string[] = [];
-  let workspaceCounter = 0;
-  const service = createScheduleService({
-    ottoHome: params.tempDir,
-    logger: createTestLogger(),
-    agentManager: manager,
-    agentStorage: params.agentStorage,
-    providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-    createAgent: async (input) => {
-      createAgentInputs.push(input);
-      const timestamp = params.now().toISOString();
-      const snapshot = {
-        id: `00000000-0000-4000-8000-00000000000${++workspaceCounter}`,
-        provider: "claude",
-        cwd: input.cwd ?? params.tempDir,
-        workspaceId: input.workspaceId,
-        status: "idle",
-        lifecycle: "idle",
-        updatedAt: timestamp,
-      };
-      return {
-        snapshot: snapshot as Awaited<
-          ReturnType<ScheduleServiceOptions["createAgent"]>
-        >["snapshot"],
-        liveSnapshot: snapshot as Awaited<
-          ReturnType<ScheduleServiceOptions["createAgent"]>
-        >["liveSnapshot"],
-        background: true,
-        initialPromptStarted: true,
-        initialPromptError: null,
-      };
-    },
-    createLocalCheckoutWorkspace: async (input) => {
-      workspaceCreateInputs.push(input);
-      const timestamp = params.now().toISOString();
-      const workspace: PersistedWorkspaceRecord = {
-        workspaceId: `wks_outcome_${++workspaceCounter}`,
-        projectId: "test-project",
-        cwd: input.cwd,
-        kind: "directory",
-        displayName: "test-project",
-        title: input.firstAgentContext.prompt,
-        branch: null,
-        baseBranch: null,
-        hidden: input.hidden,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        archivedAt: null,
-      };
-      return workspace;
-    },
-    archiveWorkspace: async (workspaceId) => {
-      archiveCalls.push(workspaceId);
-    },
-    revealWorkspace: async (workspaceId) => {
-      revealCalls.push(workspaceId);
-    },
-    now: params.now,
-  });
-  return { service, createAgentInputs, workspaceCreateInputs, archiveCalls, revealCalls };
 }
 
 function buildAgentRecord(params: {
@@ -448,9 +354,56 @@ describe("ScheduleService", () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
+  test("owned run-once admission is acknowledged from durable history before target settlement", async () => {
+    const held = Promise.withResolvers<void>();
+    const admitted = Promise.withResolvers<string>();
+    const runner = vi.fn(async () => {
+      await held.promise;
+      return { agentId: null, output: "Finished after approval" };
+    });
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner,
+    });
+    const created = await service.create({
+      prompt: "Run once",
+      cadence: { type: "every", everyMs: 60000 },
+      runOnCreate: false,
+      target: { type: "agent", agentId: "00000000-0000-4000-8000-000000000001" },
+    });
+    const pending = service.runOnce(created.id, undefined, (snapshot, runId) => {
+      expect(snapshot.runs.at(-1)).toMatchObject({ id: runId, status: "running" });
+      expect(runner).not.toHaveBeenCalled();
+      admitted.resolve(runId);
+    });
+    try {
+      const runId = await Promise.race([
+        admitted.promise,
+        pending.then(() => {
+          throw new Error("Run settled without its admission notification");
+        }),
+      ]);
+      expect((await service.inspect(created.id)).runs.at(-1)).toMatchObject({
+        id: runId,
+        status: "running",
+      });
+      await expect(service.runOnce(created.id)).rejects.toThrow("already running");
+      expect(runner).toHaveBeenCalledTimes(1);
+    } finally {
+      held.resolve();
+      await pending;
+    }
+    expect((await service.inspect(created.id)).runs.at(-1)?.status).toBe("succeeded");
+  });
+
   test("ticks due schedules and records run history on disk", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -481,45 +434,489 @@ describe("ScheduleService", () => {
     expect(inspected.runs).toHaveLength(1);
     expect(inspected.runs[0]).toMatchObject({
       status: "succeeded",
-      target: {
-        type: "new-agent",
-        config: { provider: "claude", cwd: tempDir },
-      },
       agentId: "00000000-0000-0000-0000-000000000001",
       output: "ran:Review new PRs",
     });
     expect(inspected.nextRunAt).toBe("2026-01-01T00:02:00.000Z");
   });
 
-  test("finishRun persists lastRunStatus and lastRunError when a run fails", async () => {
+  // OTTO(schedules): extended executors must share the durable claim/finish path.
+  test("a failed settlement publication fences later automatic and manual runs", async () => {
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
+    const execute = vi.fn(async () => ({ agentId: null, output: "Effect completed" }));
+    const hooks: ScheduleRuntimeHooks = {
+      requested: (schedule) => ({ requestedTarget: schedule.target }),
+      acquire: () => () => {},
+      execute,
+      settle: (_schedule, run) => ({ run }),
+      recover: (_schedule, run) => ({ run }),
+      stop: async () => {},
+    };
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      store,
+      otto: hooks,
+    });
+    const created = await service.create({
+      prompt: "One effect",
+      cadence: { type: "every", everyMs: 60000 },
+      target: { type: "agent", agentId: "00000000-0000-4000-8000-000000000001" },
+    });
+    const rejectSettlement = rejectSettlementUpdates(store);
+    vi.spyOn(store, "update").mockImplementation(rejectSettlement);
+    now = new Date("2026-01-01T00:01:00.000Z");
+    await expect(service.tick()).rejects.toThrow("Settlement publication unavailable");
+    const retained = await service.inspect(created.id);
+    expect(retained.runs).toHaveLength(1);
+    expect(retained.runs[0].status).toBe("running");
+    now = new Date("2026-01-01T00:03:00.000Z");
+    await service.tick();
+    await expect(service.runOnce(created.id)).rejects.toThrow("retained Schedule attempt");
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect((await service.inspect(created.id)).runs).toEqual(retained.runs);
+  });
+
+  test("retargeting between list and claim cannot bypass target admission", async () => {
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
+    const execute = vi.fn(async () => ({ agentId: null, output: "Completed" }));
+    const hooks: ScheduleRuntimeHooks = {
+      requested: (schedule) => ({ requestedTarget: schedule.target }),
+      acquire: () => () => {},
+      execute,
+      settle: (_schedule, run) => ({ run }),
+      recover: (_schedule, run) => ({ run }),
+      stop: async () => {},
+    };
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      store,
+      otto: hooks,
+    });
+    const created = await service.create({
+      prompt: "Refresh",
+      cadence: { type: "every", everyMs: 60000 },
+      target: { type: "agent", agentId: "00000000-0000-4000-8000-000000000001" },
+    });
+    const list = store.list.bind(store);
+    const retarget: Parameters<ScheduleStore["update"]>[1] = (row) => ({
+      ...row,
+      target: {
+        type: "artifact-update",
+        source: {
+          scope: { hostId: "host", target: { kind: "project", id: "project" } },
+          id: "artifact",
+          location: "repository",
+        },
+        designFingerprint: "a".repeat(64),
+        update: { type: "data", json: "{}" },
+      },
+    });
+    vi.spyOn(store, "list").mockImplementationOnce(async () => {
+      const snapshot = await list();
+      await store.update(created.id, retarget);
+      return snapshot;
+    });
+    await service.tick();
+    expect(execute).not.toHaveBeenCalled();
+    expect((await service.inspect(created.id)).runs).toEqual([]);
+    await service.tick();
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect((await service.inspect(created.id)).runs[0].otto?.requestedTarget.type).toBe(
+      "artifact-update",
+    );
+  });
+
+  test("stamps resolved target before effects and preserves repair after the final run", async () => {
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
+    const release = vi.fn();
+    const hooks: ScheduleRuntimeHooks = {
+      requested: (schedule) => ({ requestedTarget: schedule.target }),
+      acquire: () => release,
+      execute: async (input) => {
+        expect((await store.get(input.schedule.id))?.runs[0].otto?.requestedTarget).toEqual(
+          input.schedule.target,
+        );
+        await input.stamp({
+          resolved: { kind: "artifact", id: "artifact", title: "Report", revision: "a".repeat(64) },
+        });
+        expect((await store.get(input.schedule.id))?.runs[0].otto?.resolved?.revision).toBe(
+          "a".repeat(64),
+        );
+        throw new Error("Reviewed design changed");
+      },
+      settle: (_schedule, run, outcome) => {
+        expect(outcome.error).toBeInstanceOf(Error);
+        return {
+          run: {
+            ...run,
+            otto: { requestedTarget: run.otto!.requestedTarget, disposition: "repair_required" },
+          },
+          pauseReason: "Review the design",
+        };
+      },
+      recover: (_schedule, run) => ({ run }),
+      stop: async () => {},
+    };
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      store,
+      otto: hooks,
+    });
+    const created = await service.create({
+      prompt: "Update report data",
+      cadence: { type: "every", everyMs: 60000 },
+      maxRuns: 1,
+      target: {
+        type: "artifact-update",
+        source: {
+          scope: { hostId: "host", target: { kind: "project", id: "project" } },
+          id: "artifact",
+          location: "repository",
+        },
+        designFingerprint: "a".repeat(64),
+        update: { type: "data", json: "{}" },
+      },
+      otto: {
+        version: 1,
+        scope: { hostId: "host", projectId: "project" },
+        location: "repository",
+        storeKey: "store",
+      },
+    });
+    now = new Date("2026-01-01T00:01:00.000Z");
+    await service.tick();
+    const inspected = await service.inspect(created.id);
+    expect(inspected.status).toBe("paused");
+    expect(inspected.nextRunAt).toBeNull();
+    expect(inspected.otto?.repairReason).toBe("Review the design");
+    expect(inspected.runs[0]).toMatchObject({
+      status: "failed",
+      error: "Reviewed design changed",
+      otto: { disposition: "repair_required" },
+    });
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  test("recovery hook pauses interrupted extended work without replaying effects", async () => {
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
+    const execute = vi.fn(async () => ({ agentId: null, output: "must not run" }));
+    const hooks: ScheduleRuntimeHooks = {
+      requested: (schedule) => ({ requestedTarget: schedule.target }),
+      acquire: () => () => {},
+      execute,
+      settle: (_schedule, run) => ({ run }),
+      recover: (_schedule, run) => ({
+        run: {
+          ...run,
+          otto: { requestedTarget: run.otto!.requestedTarget, disposition: "unknown" },
+        },
+        pauseReason: "Inspect the interrupted run",
+      }),
+      stop: async () => {},
+    };
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      store,
+      otto: hooks,
+    });
+    const created = await service.create({
+      prompt: "Review",
+      cadence: { type: "every", everyMs: 60000 },
+      maxRuns: 1,
+      target: {
+        type: "artifact-update",
+        source: {
+          scope: { hostId: "host", target: { kind: "project", id: "project" } },
+          id: "artifact",
+          location: "repository",
+        },
+        designFingerprint: "a".repeat(64),
+        update: { type: "data", json: "{}" },
+      },
+    });
+    await store.update(created.id, (row) => ({
+      ...row,
+      runs: [
+        {
+          id: "interrupted",
+          scheduledFor: now.toISOString(),
+          startedAt: now.toISOString(),
+          endedAt: null,
+          status: "running",
+          agentId: null,
+          output: null,
+          error: null,
+          otto: { requestedTarget: row.target },
+        },
+      ],
+    }));
+    await service.start();
+    await service.stop();
+    await service.tick();
+    const inspected = await service.inspect(created.id);
+    expect(inspected.status).toBe("paused");
+    expect(inspected.runs[0]).toMatchObject({ status: "failed", otto: { disposition: "unknown" } });
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  test.each(["new-agent", "agent", "maxRuns: 1"] as const)(
+    "dispatches a shared cron slot only once for %s after an earlier tick resumes",
+    async (targetKind) => {
+      const runner = new OverlappingTickRunner();
+      const service = createScheduleService({
+        paseoHome: tempDir,
+        logger: createTestLogger(),
+        agentManager: new AgentManager({ logger: createTestLogger() }),
+        agentStorage,
+        providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+        now: () => now,
+        runner: (schedule) => runner.run(schedule),
+      });
+      const cadence = { type: "cron" as const, expression: "0 6 * * 1", timezone: "Europe/Prague" };
+      await service.create({
+        prompt: "block the first tick",
+        cadence,
+        target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+      });
+      // Give the later schedule a distinct creation time so file ordering cannot affect the race.
+      now = new Date("2026-01-01T00:00:01.000Z");
+      const agentId = "00000000-0000-0000-0000-000000000001";
+      await agentStorage.upsert(
+        buildAgentRecord({ id: agentId, cwd: tempDir, iso: now.toISOString() }),
+      );
+      const later = await service.create({
+        prompt: "later due schedule",
+        cadence,
+        target:
+          targetKind === "agent"
+            ? { type: "agent", agentId }
+            : { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+        maxRuns: targetKind === "maxRuns: 1" ? 1 : undefined,
+      });
+      now = new Date("2026-01-05T05:00:00.000Z");
+      const delayedTick = service.tick();
+      await runner.firstRunStarted;
+      try {
+        now = new Date("2026-01-05T05:00:01.000Z");
+        await service.tick();
+      } finally {
+        runner.unblockFirstRun();
+        await delayedTick;
+      }
+      const result = await service.inspect(later.id);
+      expect.soft(runner.laterScheduleRuns).toBe(1);
+      expect.soft(result.runs).toHaveLength(1);
+      expect.soft(result.runs.map((run) => run.scheduledFor)).toEqual(["2026-01-05T05:00:00.000Z"]);
+      expect(result.nextRunAt).toBe(
+        targetKind === "maxRuns: 1" ? null : "2026-01-12T05:00:00.000Z",
+      );
+      expect(result.status).toBe(targetKind === "maxRuns: 1" ? "completed" : "active");
+    },
+  );
+
+  test("advances the next scheduled slot past a run that crosses a cadence boundary", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
       now: () => now,
       runner: async () => {
-        throw new Error("boom");
+        now = new Date("2026-01-01T00:02:00.000Z");
+        return { agentId: null, output: "ok" };
       },
     });
+
     const created = await service.create({
-      prompt: "p",
+      prompt: "long-running task",
       cadence: { type: "every", everyMs: 60_000 },
       target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
     });
-    expect(created.lastRunStatus).toBeNull();
-    expect(created.lastRunError).toBeNull();
+
     now = new Date("2026-01-01T00:01:00.000Z");
     await service.tick();
-    const after = await service.inspect(created.id);
-    expect(after.lastRunStatus).toBe("failed");
-    expect(after.lastRunError).toBe("boom");
+
+    expect((await service.inspect(created.id)).nextRunAt).toBe("2026-01-01T00:03:00.000Z");
   });
+
+  test("runs the final allowed cron slot without requiring another occurrence", async () => {
+    let dispatches = 0;
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => {
+        dispatches += 1;
+        return { agentId: null, output: "done" };
+      },
+    });
+    const created = await service.create({
+      prompt: "Run once on January 5 when it is Monday",
+      cadence: { type: "cron", expression: "0 6 5 1 1" },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+      maxRuns: 1,
+    });
+    now = new Date("2026-01-05T06:00:00.000Z");
+    await service.tick();
+    const result = await service.inspect(created.id);
+    expect(dispatches).toBe(1);
+    expect(result.status).toBe("completed");
+    expect(result.nextRunAt).toBeNull();
+    expect(result.runs).toHaveLength(1);
+    expect(result.runs[0].status).toBe("succeeded");
+  });
+
+  test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "keeps firing future slots after an outcome could not be saved",
+    async () => {
+      const schedulesDir = join(tempDir, "schedules");
+      let dispatches = 0;
+      const failOutcomeWrite = async (): Promise<ScheduleExecutionResult> => {
+        dispatches += 1;
+        if (dispatches === 1) {
+          await chmod(schedulesDir, 0o555);
+        }
+        return { agentId: null, output: "done" };
+      };
+      const service = createScheduleService({
+        paseoHome: tempDir,
+        logger: createTestLogger(),
+        agentManager: new AgentManager({ logger: createTestLogger() }),
+        agentStorage,
+        providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+        now: () => now,
+        runner: failOutcomeWrite,
+      });
+      const created = await service.create({
+        prompt: "Check status each minute",
+        runOnCreate: false,
+        cadence: { type: "every", everyMs: 60_000 },
+        target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+      });
+      now = new Date("2026-01-01T00:01:00.000Z");
+      try {
+        await expect(service.tick()).rejects.toThrow();
+      } finally {
+        await chmod(schedulesDir, 0o755);
+      }
+      expect((await service.inspect(created.id)).runs[0].status).toBe("running");
+      now = new Date("2026-01-01T00:02:00.000Z");
+      await service.tick();
+      const result = await service.inspect(created.id);
+      expect(dispatches).toBe(2);
+      expect(result.runs.map((run) => run.scheduledFor)).toEqual([
+        "2026-01-01T00:01:00.000Z",
+        "2026-01-01T00:02:00.000Z",
+      ]);
+      expect(result.nextRunAt).toBe("2026-01-01T00:03:00.000Z");
+    },
+  );
+
+  test("completes an interrupted final slot during restart recovery", async () => {
+    const service = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: "done" }),
+    });
+    const created = await service.create({
+      prompt: "Run once",
+      cadence: { type: "cron", expression: "0 6 5 1 1" },
+      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+      maxRuns: 1,
+    });
+    now = new Date("2026-01-05T06:00:00.000Z");
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
+    await store.update(created.id, (schedule) => ({
+      ...schedule,
+      nextRunAt: null,
+      runs: [
+        {
+          id: "interrupted-final-slot",
+          scheduledFor: now.toISOString(),
+          startedAt: now.toISOString(),
+          endedAt: null,
+          status: "running",
+          agentId: null,
+          output: null,
+          error: null,
+        },
+      ],
+    }));
+    now = new Date("2026-01-05T06:01:00.000Z");
+    await service.start();
+    try {
+      const result = await service.inspect(created.id);
+      expect(result.status).toBe("completed");
+      expect(result.nextRunAt).toBeNull();
+      expect(result.runs).toHaveLength(1);
+      expect(result.runs[0].status).toBe("failed");
+    } finally {
+      await service.stop();
+    }
+  });
+
+  test.each([2, null])(
+    "keeps a next slot when the final run's limit changes to %s",
+    async (maxRuns) => {
+      const service = createScheduleService({
+        paseoHome: tempDir,
+        logger: createTestLogger(),
+        agentManager: new AgentManager({ logger: createTestLogger() }),
+        agentStorage,
+        providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+        now: () => now,
+        runner: async (schedule) => {
+          await service.update({ id: schedule.id, maxRuns });
+          return { agentId: null, output: "done" };
+        },
+      });
+      const created = await service.create({
+        prompt: "Allow more runs during execution",
+        runOnCreate: false,
+        cadence: { type: "every", everyMs: 60_000 },
+        target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
+        maxRuns: 1,
+      });
+      now = new Date("2026-01-01T00:01:30.000Z");
+      await service.tick();
+      const result = await service.inspect(created.id);
+      expect(result.status).toBe("active");
+      expect(result.nextRunAt).toBe("2026-01-01T00:02:00.000Z");
+      expect(result.runs).toHaveLength(1);
+    },
+  );
 
   test("pause and resume update persisted schedule state", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -555,7 +952,7 @@ describe("ScheduleService", () => {
 
   test("completes schedules when max runs is reached", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -595,7 +992,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -628,50 +1025,38 @@ describe("ScheduleService", () => {
     );
   });
 
-  test("records the run executor (provider/model, no personality) on run and lastRun fields", async () => {
+  test("delivers agent-target schedules through the steer-or-interrupt path", async () => {
     const manager = new AgentManager({
       logger: createTestLogger(),
       clients: createTestAgentClients(),
       registry: agentStorage,
     });
+    const agent = await manager.createAgent({ provider: "claude", cwd: tempDir }, undefined, {
+      workspaceId: undefined,
+    });
+    const steerOrReplace = vi.spyOn(manager, "steerOrReplaceActiveTurn");
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
       now: () => now,
     });
-
-    const created = await service.create({
-      prompt: "Respond with exactly hello",
+    const schedule = await service.create({
+      prompt: "Check scheduled work",
       cadence: { type: "every", everyMs: 60_000 },
-      target: {
-        type: "new-agent",
-        config: {
-          provider: "claude",
-          model: "test-model",
-          cwd: tempDir,
-          approvalPolicy: "never",
-        },
-      },
-      maxRuns: 1,
+      target: { type: "agent", agentId: agent.id },
     });
 
-    now = new Date("2026-01-01T00:01:00.000Z");
-    await service.tick();
+    await service.runOnce(schedule.id);
 
-    const inspected = await service.inspect(created.id);
-    // No personality bound → provider/model recorded, personality null.
-    expect(inspected.runs[0]).toMatchObject({
-      provider: "claude",
-      model: "test-model",
-      personalityName: null,
-    });
-    // Summary lastRun* mirror the run so the card reads them without run history.
-    expect(inspected.lastRunProvider).toBe("claude");
-    expect(inspected.lastRunModel).toBe("test-model");
-    expect(inspected.lastRunPersonalityName).toBeNull();
+    expect(steerOrReplace).toHaveBeenCalledTimes(1);
+    expect(steerOrReplace.mock.calls[0]).toEqual([
+      agent.id,
+      expect.stringContaining(`Schedule fired (id=${schedule.id}, run=`),
+      undefined,
+    ]);
   });
 
   test("titles scheduled new agents from the schedule prompt", async () => {
@@ -680,36 +1065,12 @@ describe("ScheduleService", () => {
       clients: createTestAgentClients(),
       registry: agentStorage,
     });
-    // Schedule agents are internal (ephemeral, never persisted), so the title is
-    // asserted on the createAgent input rather than a persisted record.
-    const createdInputs: Parameters<ScheduleServiceOptions["createAgent"]>[0][] = [];
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      createAgent: async (input) => {
-        createdInputs.push(input);
-        const out = await createAgentCommand(
-          {
-            agentManager: manager,
-            agentStorage,
-            logger: createTestLogger(),
-            providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY as ProviderSnapshotManager,
-          },
-          input,
-        );
-        console.log(
-          "CREATED",
-          JSON.stringify({
-            inputInitialPrompt: (input as { initialPrompt?: string }).initialPrompt,
-            started: out.initialPromptStarted,
-            lifecycle: out.liveSnapshot?.lifecycle,
-          }),
-        );
-        return out;
-      },
       now: () => now,
     });
 
@@ -730,24 +1091,23 @@ describe("ScheduleService", () => {
     now = new Date("2026-01-01T00:01:00.000Z");
     await service.tick();
 
-    expect((await service.inspect(created.id)).runs[0]?.status).toBe("succeeded");
-    expect(createdInputs).toHaveLength(1);
-    expect(createdInputs[0]).toMatchObject({
-      title: "Audit flaky checkout flow",
-      internal: true,
-    });
+    const inspected = await service.inspect(created.id);
+    const agentId = inspected.runs[0]?.agentId;
+    expect(agentId).toMatch(/^[0-9a-f-]{36}$/);
+    const storedAgent = await agentStorage.get(agentId!);
+    expect(storedAgent?.title).toBe("Audit flaky checkout flow");
   });
 
   test("new-agent schedule records create no workspace until run time", async () => {
-    const { workspaceRegistry, createLocalCheckoutWorkspace: createScheduleLocalWorkspace } =
+    const { workspaceRegistry, createDirectoryWorkspace: createScheduleDirectoryWorkspace } =
       await createRegistryBackedScheduleWorkspaceDeps(tempDir);
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
+      createDirectoryWorkspace: createScheduleDirectoryWorkspace,
       now: () => now,
       runner: async () => ({ agentId: null, output: "ok" }),
     });
@@ -777,8 +1137,7 @@ describe("ScheduleService", () => {
   test("archiveOnFinish=false local runs create one active workspace per run", async () => {
     const {
       workspaceRegistry,
-      createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
-      revealWorkspace,
+      createDirectoryWorkspace: createScheduleDirectoryWorkspace,
       createArchiveWorkspace,
     } = await createRegistryBackedScheduleWorkspaceDeps(tempDir);
     const manager = new AgentManager({
@@ -787,13 +1146,12 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
-      revealWorkspace,
+      createDirectoryWorkspace: createScheduleDirectoryWorkspace,
       archiveWorkspace: createArchiveWorkspace({
         agentManager: manager,
         agentStorage,
@@ -823,27 +1181,23 @@ describe("ScheduleService", () => {
 
     const inspected = await service.inspect(created.id);
     expect(inspected.runs).toHaveLength(2);
-    // Schedule agents are internal (ephemeral, unpersisted); the run's own record
-    // carries the per-run workspace, which is what "kept" preserves.
-    const firstWorkspaceId = inspected.runs[0]!.workspaceId;
-    const secondWorkspaceId = inspected.runs[1]!.workspaceId;
-    expect(firstWorkspaceId).toMatch(/^wks_/);
-    expect(secondWorkspaceId).toMatch(/^wks_/);
-    expect(firstWorkspaceId).not.toBe(secondWorkspaceId);
-    // Kept runs (archiveOnFinish=false) are revealed at finish: not archived and
-    // no longer hidden, so the user sees the result in the sidebar.
+    const firstAgent = await agentStorage.get(inspected.runs[0]!.agentId!);
+    const secondAgent = await agentStorage.get(inspected.runs[1]!.agentId!);
+    expect(firstAgent?.workspaceId).toMatch(/^wks_/);
+    expect(secondAgent?.workspaceId).toMatch(/^wks_/);
+    expect(firstAgent?.workspaceId).not.toBe(secondAgent?.workspaceId);
+    expect(firstAgent?.archivedAt ?? null).toBeNull();
+    expect(secondAgent?.archivedAt ?? null).toBeNull();
     expect(await workspaceRegistry.list()).toEqual([
       expect.objectContaining({
-        workspaceId: firstWorkspaceId,
+        workspaceId: firstAgent?.workspaceId,
         cwd: tempDir,
         archivedAt: null,
-        hidden: false,
       }),
       expect.objectContaining({
-        workspaceId: secondWorkspaceId,
+        workspaceId: secondAgent?.workspaceId,
         cwd: tempDir,
         archivedAt: null,
-        hidden: false,
       }),
     ]);
   });
@@ -851,7 +1205,7 @@ describe("ScheduleService", () => {
   test("archiveOnFinish=true archives the run workspace through workspace archive", async () => {
     const {
       workspaceRegistry,
-      createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
+      createDirectoryWorkspace: createScheduleDirectoryWorkspace,
       createArchiveWorkspace,
     } = await createRegistryBackedScheduleWorkspaceDeps(tempDir);
     const manager = new AgentManager({
@@ -867,12 +1221,12 @@ describe("ScheduleService", () => {
       return archiveAgent(agentId);
     };
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
+      createDirectoryWorkspace: createScheduleDirectoryWorkspace,
       archiveWorkspace: createArchiveWorkspace({
         agentManager: manager,
         agentStorage,
@@ -899,24 +1253,23 @@ describe("ScheduleService", () => {
 
     const inspected = await service.inspect(created.id);
     expect(inspected.runs[0]?.status).toBe("succeeded");
-    // The schedule agent is internal/ephemeral (closed after the run, never
-    // persisted); a successful archiveOnFinish run archives the workspace RECORD
-    // through the workspace-archive path.
-    const workspaceId = inspected.runs[0]?.workspaceId;
-    expect(workspaceId).toMatch(/^wks_/);
-    expect(await workspaceRegistry.get(workspaceId!)).toEqual(
+    const agentId = inspected.runs[0]?.agentId;
+    expect(agentId).toMatch(/^[0-9a-f-]{36}$/);
+    const storedAgent = await agentStorage.get(agentId!);
+    expect(storedAgent?.workspaceId).toMatch(/^wks_/);
+    expect(storedAgent?.archivedAt).toEqual(expect.any(String));
+    expect(await workspaceRegistry.get(storedAgent!.workspaceId!)).toEqual(
       expect.objectContaining({
-        workspaceId,
+        workspaceId: storedAgent?.workspaceId,
         archivedAt: expect.any(String),
       }),
     );
   });
 
-  test("archives (never reveals) the run workspace when scheduled agent creation fails, leaving no empty workspace", async () => {
+  test("archives the run workspace when scheduled agent creation fails before archive opt-out can preserve an agent", async () => {
     const {
       workspaceRegistry,
-      createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
-      revealWorkspace,
+      createDirectoryWorkspace: createScheduleDirectoryWorkspace,
       createArchiveWorkspace,
     } = await createRegistryBackedScheduleWorkspaceDeps(tempDir);
     const manager = new AgentManager({
@@ -925,20 +1278,17 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const createError = new Error("provider misconfigured");
-    const archiveCalls: string[] = [];
-    const archive = createArchiveWorkspace({ agentManager: manager, agentStorage });
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      createLocalCheckoutWorkspace: createScheduleLocalWorkspace,
-      revealWorkspace,
-      archiveWorkspace: async (workspaceId, repoRoot) => {
-        archiveCalls.push(workspaceId);
-        await archive(workspaceId, repoRoot);
-      },
+      createDirectoryWorkspace: createScheduleDirectoryWorkspace,
+      archiveWorkspace: createArchiveWorkspace({
+        agentManager: manager,
+        agentStorage,
+      }),
       createAgent: async () => {
         throw createError;
       },
@@ -965,11 +1315,6 @@ describe("ScheduleService", () => {
       (service as unknown as ScheduleServiceInternals).executeSchedule(created, "run-create-fails"),
     ).rejects.toThrow("provider misconfigured");
 
-    // The run failed before an agent (and any transcript) ever existed, so there
-    // is nothing to see - archive the hidden workspace instead of revealing an
-    // empty shell into the sidebar. The failure still surfaces on the schedule
-    // card (lastRunError). See docs/safe-unattended.md.
-    expect(archiveCalls).toHaveLength(1);
     expect(await workspaceRegistry.list()).toEqual([
       expect.objectContaining({
         cwd: tempDir,
@@ -978,161 +1323,9 @@ describe("ScheduleService", () => {
     ]);
   });
 
-  test("schedule runs create their workspace hidden and their agent internal + unattended", async () => {
-    const { service, createAgentInputs, workspaceCreateInputs } =
-      buildOutcomeRecordingScheduleService({
-        agentStorage,
-        tempDir,
-        now: () => now,
-        outcome: "success",
-      });
-
-    const created = await service.create({
-      prompt: "quiet nightly run",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-      maxRuns: 1,
-    });
-    await service.tick();
-
-    expect((await service.inspect(created.id)).runs[0]?.status).toBe("succeeded");
-    // (a) the workspace is created hidden - it never flashes into the sidebar.
-    expect(workspaceCreateInputs).toHaveLength(1);
-    expect(workspaceCreateInputs[0].hidden).toBe(true);
-    // (e) the agent is internal (no attention broadcasts, clean run fully
-    // silent), observable (its stream is watchable once revealed), unattended.
-    expect(createAgentInputs).toHaveLength(1);
-    expect(createAgentInputs[0]).toMatchObject({
-      internal: true,
-      unattended: true,
-      notifyOnFinish: false,
-    });
-    expect(
-      (createAgentInputs[0] as Extract<(typeof createAgentInputs)[0], { kind: "mcp" }>).config
-        ?.observable,
-    ).toBe(true);
-  });
-
-  test("success + archiveOnFinish archives the hidden workspace and never reveals it", async () => {
-    const { service, archiveCalls, revealCalls, workspaceCreateInputs } =
-      buildOutcomeRecordingScheduleService({
-        agentStorage,
-        tempDir,
-        now: () => now,
-        outcome: "success",
-      });
-
-    const created = await service.create({
-      prompt: "archive on finish",
-      cadence: { type: "every", everyMs: 60_000 },
-      // archiveOnFinish defaults to true; state it explicitly for the matrix.
-      target: {
-        type: "new-agent",
-        config: { provider: "claude", cwd: tempDir, archiveOnFinish: true },
-      },
-      maxRuns: 1,
-    });
-    await service.tick();
-
-    expect((await service.inspect(created.id)).runs[0]?.status).toBe("succeeded");
-    expect(workspaceCreateInputs[0].hidden).toBe(true);
-    // (b) archived while still hidden - the user never sees the transient row.
-    expect(archiveCalls).toHaveLength(1);
-    expect(revealCalls).toEqual([]);
-  });
-
-  test("success + archiveOnFinish=false reveals the workspace at finish", async () => {
-    const { service, archiveCalls, revealCalls } = buildOutcomeRecordingScheduleService({
-      agentStorage,
-      tempDir,
-      now: () => now,
-      outcome: "success",
-    });
-
-    const created = await service.create({
-      prompt: "keep the result",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: {
-        type: "new-agent",
-        config: { provider: "claude", cwd: tempDir, archiveOnFinish: false },
-      },
-      maxRuns: 1,
-    });
-    await service.tick();
-
-    expect((await service.inspect(created.id)).runs[0]?.status).toBe("succeeded");
-    // (c) kept run: revealed so the user gets the result, never archived.
-    expect(revealCalls).toHaveLength(1);
-    expect(archiveCalls).toEqual([]);
-  });
-
-  test("errored run WITHOUT content archives its workspace instead of leaving an empty one", async () => {
-    const { service, archiveCalls, revealCalls } = buildOutcomeRecordingScheduleService({
-      agentStorage,
-      tempDir,
-      now: () => now,
-      outcome: "error",
-      hasContent: false,
-    });
-
-    const created = await service.create({
-      prompt: "this run errors with nothing to show",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: {
-        type: "new-agent",
-        config: { provider: "claude", cwd: tempDir, archiveOnFinish: true },
-      },
-      maxRuns: 1,
-    });
-    await service.tick();
-
-    const inspected = await service.inspect(created.id);
-    // The run failed but produced no transcript content, so revealing its
-    // workspace would leave an empty shell in the sidebar - archive it instead.
-    // The failure still surfaces on the schedule card. See docs/safe-unattended.md.
-    expect(inspected.runs[0]).toMatchObject({
-      status: "failed",
-      error: "boom",
-    });
-    expect(archiveCalls).toHaveLength(1);
-    expect(revealCalls).toEqual([]);
-  });
-
-  test("errored run WITH content reveals the workspace and never archives it, even with archiveOnFinish=true", async () => {
-    const { service, archiveCalls, revealCalls } = buildOutcomeRecordingScheduleService({
-      agentStorage,
-      tempDir,
-      now: () => now,
-      outcome: "error",
-      hasContent: true,
-    });
-
-    const created = await service.create({
-      prompt: "this run does work, then errors",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: {
-        type: "new-agent",
-        config: { provider: "claude", cwd: tempDir, archiveOnFinish: true },
-      },
-      maxRuns: 1,
-    });
-    await service.tick();
-
-    const inspected = await service.inspect(created.id);
-    // The run did real work before failing, so its workspace has substance to
-    // inspect - promote it to the sidebar (revealed) and never archive, even
-    // though archiveOnFinish would archive a clean run.
-    expect(inspected.runs[0]).toMatchObject({
-      status: "failed",
-      error: "boom",
-    });
-    expect(revealCalls).toHaveLength(1);
-    expect(archiveCalls).toEqual([]);
-  });
-
   test("new-agent cwd existence is checked at run time, not when editing the schedule", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1171,7 +1364,7 @@ describe("ScheduleService", () => {
     const runStarted = new Promise<void>((resolve) => {
       releaseRun = resolve;
     });
-    const store = new ScheduleStore(join(tempDir, "schedules"));
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
     const legacy = await store.create({
       name: null,
       prompt: "finish/update race",
@@ -1195,7 +1388,7 @@ describe("ScheduleService", () => {
       runs: [],
     });
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -1258,7 +1451,7 @@ describe("ScheduleService", () => {
     });
     manager.archiveAgent = async () => {};
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -1280,7 +1473,6 @@ describe("ScheduleService", () => {
           liveSnapshot: snapshot as Awaited<
             ReturnType<ScheduleServiceOptions["createAgent"]>
           >["liveSnapshot"],
-          background: true,
           initialPromptStarted: false,
           initialPromptError: null,
         };
@@ -1334,7 +1526,7 @@ describe("ScheduleService", () => {
     });
     manager.archiveAgent = async () => {};
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -1358,7 +1550,6 @@ describe("ScheduleService", () => {
           liveSnapshot: snapshot as Awaited<
             ReturnType<ScheduleServiceOptions["createAgent"]>
           >["liveSnapshot"],
-          background: true,
           initialPromptStarted: false,
           initialPromptError: null,
         };
@@ -1407,7 +1598,7 @@ describe("ScheduleService", () => {
     });
     manager.archiveAgent = async () => {};
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -1428,7 +1619,6 @@ describe("ScheduleService", () => {
           liveSnapshot: snapshot as Awaited<
             ReturnType<ScheduleServiceOptions["createAgent"]>
           >["liveSnapshot"],
-          background: true,
           initialPromptStarted: false,
           initialPromptError: null,
         };
@@ -1451,15 +1641,12 @@ describe("ScheduleService", () => {
     });
   });
 
-  test("failed new-agent run keeps run error when workspace reveal also fails", async () => {
+  test("failed new-agent run keeps run error when workspace archive also fails", async () => {
     const logger = createTestLogger();
     const warn = vi.fn();
     logger.warn = warn as typeof logger.warn;
     logger.child = (() => logger) as typeof logger.child;
-    // A failed run reveals (never archives) its hidden workspace so the failure
-    // surfaces. If that reveal cleanup itself fails, the run's own error must
-    // still stand.
-    const revealError = new Error("reveal exploded");
+    const archiveError = new Error("archive exploded");
     const manager = new AgentManager({
       logger: createTestLogger(),
       clients: createTestAgentClients(),
@@ -1468,13 +1655,9 @@ describe("ScheduleService", () => {
     manager.runAgent = async () => {
       throw new Error("run exploded");
     };
-    // The run did work before throwing, so its workspace is worth revealing -
-    // which lets this test exercise the reveal-failure path below.
-    manager.captureRetainedTranscript = async () => ({ hasContent: true });
     const agentId = "00000000-0000-0000-0000-000000000326";
-    const archiveCalls: string[] = [];
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger,
       agentManager: manager,
       agentStorage,
@@ -1495,16 +1678,12 @@ describe("ScheduleService", () => {
           liveSnapshot: snapshot as Awaited<
             ReturnType<ScheduleServiceOptions["createAgent"]>
           >["liveSnapshot"],
-          background: true,
           initialPromptStarted: false,
           initialPromptError: null,
         };
       },
-      archiveWorkspace: async (workspaceId) => {
-        archiveCalls.push(workspaceId);
-      },
-      revealWorkspace: async () => {
-        throw revealError;
+      archiveWorkspace: async () => {
+        throw archiveError;
       },
       now: () => now,
     });
@@ -1523,18 +1702,15 @@ describe("ScheduleService", () => {
       error: "run exploded",
       agentId,
     });
-    // An errored run must never archive - that would hide the problem.
-    expect(archiveCalls).toEqual([]);
     expect(warn).toHaveBeenCalledWith(
       expect.objectContaining({
-        err: revealError,
+        err: archiveError,
         agentId,
         workspaceId: expect.stringMatching(/^wks_/),
         scheduleId: created.id,
         runId: expect.any(String),
-        succeeded: false,
       }),
-      expect.stringContaining("Failed to reveal scheduled workspace"),
+      expect.stringContaining("Failed to archive scheduled workspace"),
     );
   });
 
@@ -1684,7 +1860,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -1868,7 +2044,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -1897,14 +2073,13 @@ describe("ScheduleService", () => {
     const agentId = inspected.runs[0]?.agentId;
     expect(agentId).toBeTruthy();
     expect(client.sessions).toHaveLength(1);
-    // The internal schedule agent is torn down (session closed, removed from the
-    // manager) and - being internal - was never persisted.
     expect(client.sessions[0]?.closed).toBe(true);
     expect(manager.getAgent(agentId!)).toBeNull();
-    expect(await agentStorage.get(agentId!)).toBeNull();
+    const storedAgent = await agentStorage.get(agentId!);
+    expect(storedAgent?.archivedAt).toBeTruthy();
   });
 
-  test("records prompt-start failures as failed and tears down the scheduled agent", async () => {
+  test("records prompt-start failures as failed and archives the scheduled agent", async () => {
     class StartFailureScheduleSession implements AgentSession {
       readonly provider = "claude";
       readonly capabilities = SCHEDULE_TEST_CAPABILITIES;
@@ -1980,7 +2155,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -2011,10 +2186,12 @@ describe("ScheduleService", () => {
       agentId: expect.any(String),
       error: expect.stringContaining("start turn exploded"),
     });
-    // The schedule agent is internal, so nothing is persisted; the failure is
-    // recorded on the run and the ephemeral agent is torn down.
-    expect(await agentStorage.list()).toEqual([]);
-    expect(manager.getAgent(inspected.runs[0]!.agentId!)).toBeNull();
+    const storedAgents = await agentStorage.list();
+    expect(storedAgents).toHaveLength(1);
+    expect(inspected.runs[0]?.agentId).toBe(storedAgents[0]?.id);
+    expect(storedAgents[0]).toMatchObject({
+      archivedAt: expect.any(String),
+    });
   });
 
   test("defaults new-agent modeId to provider's unattended mode", async () => {
@@ -2023,40 +2200,23 @@ describe("ScheduleService", () => {
       clients: createTestAgentClients(),
       registry: agentStorage,
     });
-    const providerSnapshotManager: Pick<ProviderSnapshotManager, "resolveCreateConfig"> = {
-      async resolveCreateConfig(input) {
-        expect(input).toMatchObject({
-          parent: null,
-          unattended: true,
-          requestedMode: undefined,
-        });
-        return {
-          modeId: input.unattended ? "bypassPermissions" : "interactive",
-          featureValues: input.featureValues,
-        };
-      },
-    };
-    // Schedule agents are internal (never persisted), so the resolved mode is
-    // captured from the created agent snapshot rather than a stored record.
-    const createdModes: (string | undefined)[] = [];
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
-      providerSnapshotManager,
-      createAgent: async (input) => {
-        const result = await createAgentCommand(
-          {
-            agentManager: manager,
-            agentStorage,
-            logger: createTestLogger(),
-            providerSnapshotManager: providerSnapshotManager as ProviderSnapshotManager,
-          },
-          input,
-        );
-        createdModes.push(result.snapshot.config.modeId);
-        return result;
+      providerSnapshotManager: {
+        async resolveCreateConfig(input) {
+          expect(input).toMatchObject({
+            parent: null,
+            unattended: true,
+            requestedMode: undefined,
+          });
+          return {
+            modeId: input.unattended ? "bypassPermissions" : "interactive",
+            featureValues: input.featureValues,
+          };
+        },
       },
       now: () => now,
     });
@@ -2079,8 +2239,11 @@ describe("ScheduleService", () => {
     await service.tick();
 
     const inspected = await service.inspect(created.id);
-    expect(inspected.runs[0]?.status).toBe("succeeded");
-    expect(createdModes).toEqual(["bypassPermissions"]);
+    const agentId = inspected.runs[0]?.agentId;
+    expect(agentId).toBeTruthy();
+    const agent = await agentStorage.get(agentId!);
+    expect(agent?.lastModeId).toBe("bypassPermissions");
+    expect(agent?.archivedAt).toBeTruthy();
   });
 
   test("defaults OpenCode new-agent schedules to build plus auto accept", async () => {
@@ -2107,7 +2270,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -2179,7 +2342,7 @@ describe("ScheduleService", () => {
       registry: agentStorage,
     });
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -2256,7 +2419,7 @@ describe("ScheduleService", () => {
 
   test("advances stale nextRunAt on daemon restart", async () => {
     const service1 = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2281,7 +2444,7 @@ describe("ScheduleService", () => {
     // Simulate daemon restart 10 minutes later
     now = new Date("2026-01-01T00:10:00.000Z");
     const service2 = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2296,9 +2459,54 @@ describe("ScheduleService", () => {
     await service2.stop();
   });
 
+  test("starts with the valid schedules when the schedules directory holds files that are not schedules", async () => {
+    const service1 = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: "ok" }),
+    });
+    const created = await service1.create({
+      prompt: "Still scheduled",
+      cadence: { type: "every", everyMs: 60_000 },
+      target: {
+        type: "new-agent",
+        config: { provider: "claude", cwd: tempDir },
+      },
+      runOnCreate: false,
+    });
+    await service1.stop();
+
+    const schedulesDir = join(tempDir, "schedules");
+    await writeFile(join(schedulesDir, "notes.json"), JSON.stringify({ hello: "world" }));
+    const { lastRunAt: _omitted, ...withoutLastRunAt } = created;
+    await writeFile(
+      join(schedulesDir, "deadbeef.json"),
+      JSON.stringify({ ...withoutLastRunAt, id: "deadbeef" }),
+    );
+    await writeFile(join(schedulesDir, "broken.json"), "{ not json");
+
+    const service2 = createScheduleService({
+      paseoHome: tempDir,
+      logger: createTestLogger(),
+      agentManager: new AgentManager({ logger: createTestLogger() }),
+      agentStorage,
+      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+      now: () => now,
+      runner: async () => ({ agentId: null, output: "ok" }),
+    });
+    await service2.start();
+
+    expect((await service2.list()).map((schedule) => schedule.id)).toEqual([created.id]);
+    await service2.stop();
+  });
+
   test("startup recovery archives an interrupted run workspace with an associated agent", async () => {
     const service1 = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2320,7 +2528,7 @@ describe("ScheduleService", () => {
     const interruptedAt = now.toISOString();
     const associatedAgentId = "11111111-1111-4111-8111-111111111111";
     const workspaceId = "wks_interrupted_with_agent";
-    const store = new ScheduleStore(join(tempDir, "schedules"));
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
     await store.update(created.id, (schedule) => ({
       ...schedule,
       runs: [
@@ -2339,23 +2547,23 @@ describe("ScheduleService", () => {
       ],
     }));
 
-    const archiveCalls: Array<{ workspaceId: string; repoRoot: string }> = [];
+    const archiveCalls: string[] = [];
     now = new Date("2026-01-01T00:10:00.000Z");
     const service2 = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
       now: () => now,
       runner: async () => ({ agentId: null, output: "ok" }),
-      archiveWorkspace: async (archivedWorkspaceId, repoRoot) => {
-        archiveCalls.push({ workspaceId: archivedWorkspaceId, repoRoot });
+      archiveWorkspace: async (archivedWorkspaceId) => {
+        archiveCalls.push(archivedWorkspaceId);
       },
     });
     await service2.start();
 
-    expect(archiveCalls).toEqual([{ workspaceId, repoRoot: tempDir }]);
+    expect(archiveCalls).toEqual([workspaceId]);
     const inspected = await service2.inspect(created.id);
     expect(inspected.runs[0]).toMatchObject({
       status: "failed",
@@ -2367,7 +2575,7 @@ describe("ScheduleService", () => {
 
   test("startup recovery archives an interrupted run workspace even before agent association", async () => {
     const service1 = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2388,7 +2596,7 @@ describe("ScheduleService", () => {
 
     const interruptedAt = now.toISOString();
     const workspaceId = "wks_interrupted_without_agent";
-    const store = new ScheduleStore(join(tempDir, "schedules"));
+    const store = new ScheduleStore(join(tempDir, "schedules"), createTestLogger());
     await store.update(created.id, (schedule) => ({
       ...schedule,
       runs: [
@@ -2407,23 +2615,23 @@ describe("ScheduleService", () => {
       ],
     }));
 
-    const archiveCalls: Array<{ workspaceId: string; repoRoot: string }> = [];
+    const archiveCalls: string[] = [];
     now = new Date("2026-01-01T00:10:00.000Z");
     const service2 = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
       providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
       now: () => now,
       runner: async () => ({ agentId: null, output: "ok" }),
-      archiveWorkspace: async (archivedWorkspaceId, repoRoot) => {
-        archiveCalls.push({ workspaceId: archivedWorkspaceId, repoRoot });
+      archiveWorkspace: async (archivedWorkspaceId) => {
+        archiveCalls.push(archivedWorkspaceId);
       },
     });
     await service2.start();
 
-    expect(archiveCalls).toEqual([{ workspaceId, repoRoot: tempDir }]);
+    expect(archiveCalls).toEqual([workspaceId]);
     const inspected = await service2.inspect(created.id);
     expect(inspected.runs[0]).toMatchObject({
       status: "failed",
@@ -2431,245 +2639,6 @@ describe("ScheduleService", () => {
       error: "Daemon restarted before the scheduled run completed",
     });
     await service2.stop();
-  });
-
-  test("rejects an unsatisfiable cron expression at creation even with runOnCreate", async () => {
-    const service = createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      now: () => now,
-      runner: async () => ({ agentId: null, output: "ok" }),
-    });
-
-    await expect(
-      service.create({
-        prompt: "Never fires",
-        cadence: { type: "cron", expression: "0 0 31 4 *" },
-        target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-        runOnCreate: true,
-      }),
-    ).rejects.toThrow("Cron expression has no matching run time within the next year: 0 0 31 4 *");
-    expect(await service.list()).toHaveLength(0);
-  });
-
-  test("pauses a persisted unsatisfiable cron schedule after its run instead of re-firing", async () => {
-    let runCount = 0;
-    const service = createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      now: () => now,
-      runner: async () => {
-        runCount += 1;
-        return { agentId: null, output: "ok" };
-      },
-    });
-    // Seed directly through the store, bypassing creation-time validation, to
-    // model a schedule persisted before the satisfiability probe existed.
-    const store = new ScheduleStore(join(tempDir, "schedules"));
-    const seeded = await store.create({
-      name: null,
-      prompt: "Poisoned cadence",
-      cadence: { type: "cron", expression: "0 0 31 4 *" },
-      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-      status: "active",
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-      nextRunAt: now.toISOString(),
-      lastRunAt: null,
-      lastRunStatus: null,
-      lastRunError: null,
-      pausedAt: null,
-      expiresAt: null,
-      maxRuns: null,
-      runs: [],
-    });
-
-    await service.tick();
-
-    const afterFirstTick = await service.inspect(seeded.id);
-    expect(runCount).toBe(1);
-    expect(afterFirstTick.runs).toHaveLength(1);
-    expect(afterFirstTick.runs[0].status).toBe("succeeded");
-    expect(afterFirstTick.runs[0].endedAt).not.toBeNull();
-    expect(afterFirstTick.status).toBe("paused");
-    expect(afterFirstTick.nextRunAt).toBeNull();
-    expect(afterFirstTick.lastRunError).toBe(
-      "Schedule paused: cron expression has no matching run time within the next year: 0 0 31 4 *",
-    );
-
-    now = new Date("2026-01-01T00:01:00.000Z");
-    await service.tick();
-    expect(runCount).toBe(1);
-    expect((await service.inspect(seeded.id)).runs).toHaveLength(1);
-  });
-
-  test("startup pauses a persisted unsatisfiable cron schedule instead of failing to boot", async () => {
-    const store = new ScheduleStore(join(tempDir, "schedules"));
-    const seeded = await store.create({
-      name: null,
-      prompt: "Poisoned cadence at boot",
-      cadence: { type: "cron", expression: "0 0 31 4 *" },
-      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-      status: "active",
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-      nextRunAt: now.toISOString(),
-      lastRunAt: null,
-      lastRunStatus: null,
-      lastRunError: null,
-      pausedAt: null,
-      expiresAt: null,
-      maxRuns: null,
-      runs: [
-        {
-          id: "run-poisoned-interrupted",
-          scheduledFor: now.toISOString(),
-          startedAt: now.toISOString(),
-          endedAt: null,
-          status: "running",
-          agentId: null,
-          output: null,
-          error: null,
-        },
-      ],
-    });
-
-    now = new Date("2026-01-01T00:10:00.000Z");
-    const service = createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      now: () => now,
-      runner: async () => ({ agentId: null, output: "ok" }),
-    });
-    await service.start();
-
-    const inspected = await service.inspect(seeded.id);
-    expect(inspected.status).toBe("paused");
-    expect(inspected.nextRunAt).toBeNull();
-    expect(inspected.runs[0]).toMatchObject({
-      status: "failed",
-      error: "Daemon restarted before the scheduled run completed",
-    });
-    await service.stop();
-  });
-
-  test("caps how many schedule runs may be in flight across overlapping ticks", async () => {
-    let releaseRuns: (() => void) | null = null;
-    const gate = new Promise<void>((resolve) => {
-      releaseRuns = resolve;
-    });
-    let started = 0;
-    let notifyStart: (() => void) | null = null;
-    const service = createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      now: () => now,
-      runner: async () => {
-        started += 1;
-        notifyStart?.();
-        await gate;
-        return { agentId: null, output: "ok" };
-      },
-    });
-    for (let index = 0; index < 6; index += 1) {
-      await service.create({
-        prompt: `due schedule ${index}`,
-        cadence: { type: "every", everyMs: 60_000 },
-        target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-      });
-    }
-
-    // Each tick starts the first due-and-not-running schedule and blocks on its
-    // runner; waiting for the start signal before the next tick makes the
-    // in-flight count deterministic.
-    const blockedTicks: Promise<void>[] = [];
-    for (let index = 0; index < 5; index += 1) {
-      const runStarted = new Promise<void>((resolve) => {
-        notifyStart = resolve;
-      });
-      blockedTicks.push(service.tick());
-      await runStarted;
-    }
-    expect(started).toBe(5);
-
-    // The sixth schedule is due, but the cap keeps this tick from starting it.
-    await service.tick();
-    expect(started).toBe(5);
-
-    releaseRuns?.();
-    await Promise.all(blockedTicks);
-  });
-
-  test("does not restart a schedule an overlapping tick already ran from a stale snapshot", async () => {
-    let releaseSlowRun: (() => void) | null = null;
-    const slowRunGate = new Promise<void>((resolve) => {
-      releaseSlowRun = resolve;
-    });
-    let notifySlowRunStarted: (() => void) | null = null;
-    const slowRunStarted = new Promise<void>((resolve) => {
-      notifySlowRunStarted = resolve;
-    });
-    let fastRuns = 0;
-    const service = createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      now: () => now,
-      runner: async (schedule) => {
-        if (schedule.prompt === "slow") {
-          notifySlowRunStarted?.();
-          await slowRunGate;
-          return { agentId: null, output: "ok" };
-        }
-        fastRuns += 1;
-        return { agentId: null, output: "ok" };
-      },
-    });
-    const slow = await service.create({
-      prompt: "slow",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-    });
-    // A later createdAt sorts the fast schedule after the slow one, so the
-    // first tick's snapshot processes slow first and holds fast's stale entry.
-    now = new Date("2026-01-01T00:00:00.001Z");
-    const fast = await service.create({
-      prompt: "fast",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-    });
-
-    // The first tick snapshots [slow, fast] and blocks awaiting slow's run.
-    now = new Date("2026-01-01T00:01:00.000Z");
-    const blockedTick = service.tick();
-    await slowRunStarted;
-
-    // An overlapping tick skips the claimed slow schedule and runs fast to
-    // completion, advancing its nextRunAt past the blocked tick's snapshot.
-    await service.tick();
-    expect(fastRuns).toBe(1);
-
-    // When the blocked tick resumes, its snapshot entry for fast is stale and
-    // still looks due; the pre-start re-read must keep it from running again.
-    releaseSlowRun?.();
-    await blockedTick;
-    expect(fastRuns).toBe(1);
-    expect((await service.inspect(fast.id)).runs).toHaveLength(1);
-    expect((await service.inspect(slow.id)).runs).toHaveLength(1);
   });
 
   test("keeps schedules paused when an in-flight run finishes after pause", async () => {
@@ -2683,7 +2652,7 @@ describe("ScheduleService", () => {
     });
 
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2732,7 +2701,7 @@ describe("ScheduleService", () => {
   test("rejects archived target agents before loading them", async () => {
     const manager = new AgentManager({ logger: createTestLogger() });
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: manager,
       agentStorage,
@@ -2793,7 +2762,7 @@ describe("ScheduleService", () => {
 
   test("defaults --every schedules to fire immediately on creation", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2816,7 +2785,7 @@ describe("ScheduleService", () => {
 
   test("--every with runOnCreate=false waits the full interval", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2840,7 +2809,7 @@ describe("ScheduleService", () => {
 
   test("--cron defaults to the next cron slot", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2863,7 +2832,7 @@ describe("ScheduleService", () => {
 
   test("--cron with runOnCreate=true fires immediately on creation", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2887,7 +2856,7 @@ describe("ScheduleService", () => {
 
   test("runOnce records a run without changing nextRunAt or completing the schedule", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2923,7 +2892,7 @@ describe("ScheduleService", () => {
 
   test("update mutates cadence, prompt, name, and target fields in place", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -2984,7 +2953,7 @@ describe("ScheduleService", () => {
 
   test("update switches between every and cron cadences and recomputes nextRunAt", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3017,7 +2986,7 @@ describe("ScheduleService", () => {
 
   test("update preserves a cron cadence timezone when the new cadence omits it", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3050,7 +3019,7 @@ describe("ScheduleService", () => {
 
   test("update preserves nextRunAt and run history when cadence is unchanged", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3082,7 +3051,7 @@ describe("ScheduleService", () => {
 
   test("update clears the schedule name when given an empty string", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3108,7 +3077,7 @@ describe("ScheduleService", () => {
 
   test("update rejects new-agent fields on agent-target schedules", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3133,7 +3102,7 @@ describe("ScheduleService", () => {
 
   test("update changes individual new-agent fields independently", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3178,7 +3147,7 @@ describe("ScheduleService", () => {
 
   test("update returns a schedule that round-trips through the store", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3213,7 +3182,7 @@ describe("ScheduleService", () => {
 
   test("runOnce rejects completed schedules", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3239,7 +3208,7 @@ describe("ScheduleService", () => {
 
   test("completeForAgent completes only schedules targeting that agent", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3306,7 +3275,7 @@ describe("ScheduleService", () => {
     );
 
     const service1 = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3350,7 +3319,7 @@ describe("ScheduleService", () => {
 
     now = new Date("2026-01-01T00:10:00.000Z");
     const service2 = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3373,7 +3342,7 @@ describe("ScheduleService", () => {
 
   test("completes the schedule when a scheduled run reports the target is gone", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3405,7 +3374,7 @@ describe("ScheduleService", () => {
     const agentId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
     let service!: ScheduleService;
     service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3436,7 +3405,7 @@ describe("ScheduleService", () => {
 
   test("keeps the schedule active when a run fails for a transient reason", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3463,9 +3432,47 @@ describe("ScheduleService", () => {
     expect(inspected.runs[0]?.error).toBe("network blip");
   });
 
+  // chmod cannot make a directory unwritable on Windows or for root.
+  test.skipIf(process.platform === "win32" || process.getuid?.() === 0)(
+    "fires again after a tick whose run could not be recorded",
+    async () => {
+      const service = createScheduleService({
+        paseoHome: tempDir,
+        logger: createTestLogger(),
+        agentManager: new AgentManager({ logger: createTestLogger() }),
+        agentStorage,
+        providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
+        now: () => now,
+        runner: async () => ({ agentId: null, output: "ran" }),
+      });
+
+      const created = await service.create({
+        prompt: "ping target",
+        cadence: { type: "every", everyMs: 60_000 },
+        target: { type: "agent", agentId: "88888888-8888-4888-8888-888888888888" },
+      });
+
+      const schedulesDir = join(tempDir, "schedules");
+      now = new Date("2026-01-01T00:01:00.000Z");
+      await chmod(schedulesDir, 0o555);
+      try {
+        await expect(service.tick()).rejects.toThrow();
+      } finally {
+        await chmod(schedulesDir, 0o755);
+      }
+
+      await service.tick();
+
+      const inspected = await service.inspect(created.id);
+      expect(inspected.runs).toHaveLength(1);
+      expect(inspected.runs[0]?.status).toBe("succeeded");
+      expect(inspected.nextRunAt).toBe("2026-01-01T00:02:00.000Z");
+    },
+  );
+
   test("completes the schedule when a scheduled run targets an archived agent", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3501,7 +3508,7 @@ describe("ScheduleService", () => {
 
   test("completes the schedule when a scheduled run targets a missing agent", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3526,7 +3533,7 @@ describe("ScheduleService", () => {
 
   test("completes the schedule when a new-agent run's cwd no longer exists", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3564,7 +3571,7 @@ describe("ScheduleService", () => {
     // No providers registered: the agent exists and is live, but loading it fails
     // with a plain error (not ScheduleTargetGoneError), so the schedule must retry.
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3595,7 +3602,7 @@ describe("ScheduleService", () => {
 
   test("runOnce completes the schedule when the target is gone", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3616,41 +3623,9 @@ describe("ScheduleService", () => {
     expect(after.runs[0]?.status).toBe("failed");
   });
 
-  test("pauses a saved Workflow schedule for repair and preserves the failed history record", async () => {
-    const service = createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      now: () => now,
-      workflowRunner: async () => {
-        throw new ScheduleWorkflowTargetError(
-          "Saved Workflow graph-a is missing. Select a replacement.",
-        );
-      },
-    });
-    const created = await service.create({
-      prompt: "Start saved Workflow",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: { type: "workflow", definitionId: "graph-a", projectRoot: "/repo/a" },
-    });
-
-    const after = await service.runOnce(created.id);
-
-    expect(after.status).toBe("paused");
-    expect(after.nextRunAt).toBeNull();
-    expect(after.runs).toHaveLength(1);
-    expect(after.runs[0]).toMatchObject({
-      status: "failed",
-      target: { type: "workflow", definitionId: "graph-a", projectRoot: "/repo/a" },
-      error: expect.stringContaining("is missing"),
-    });
-  });
-
   test("createOrReplace updates the matching schedule in place instead of duplicating", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3692,7 +3667,7 @@ describe("ScheduleService", () => {
 
   test("createOrReplace preserves an existing cron timezone when replacement omits timezone", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3727,7 +3702,7 @@ describe("ScheduleService", () => {
 
   test("createOrReplace creates a sibling when name, target, or completion differ", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3782,7 +3757,7 @@ describe("ScheduleService", () => {
 
   test("createOrReplace never dedups anonymous schedules", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3808,7 +3783,7 @@ describe("ScheduleService", () => {
 
   test("createOrReplace matches new-agent targets by config", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3846,7 +3821,7 @@ describe("ScheduleService", () => {
 
   test("concurrent createOrReplace first creates share one schedule", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3876,7 +3851,7 @@ describe("ScheduleService", () => {
 
   test("createOrReplace dedups new-agent targets regardless of config key order", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3922,7 +3897,7 @@ describe("ScheduleService", () => {
 
   test("completeForAgent skips schedules that are already completed", async () => {
     const service = createScheduleService({
-      ottoHome: tempDir,
+      paseoHome: tempDir,
       logger: createTestLogger(),
       agentManager: new AgentManager({ logger: createTestLogger() }),
       agentStorage,
@@ -3942,425 +3917,5 @@ describe("ScheduleService", () => {
     now = new Date("2026-01-01T00:01:00.000Z");
     expect(await service.completeForAgent(agentId)).toBe(1);
     expect(await service.completeForAgent(agentId)).toBe(0);
-  });
-
-  // Run history is persisted whole and replayed whole by `schedule_logs`, so
-  // both the record count and each record's output are token-economy surfaces.
-  test("prunes run history to the retention window, keeping the newest runs", async () => {
-    const service = createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      now: () => now,
-      runner: async () => ({ agentId: null, output: `ran-at-${now.toISOString()}` }),
-    });
-
-    const created = await service.create({
-      prompt: "open ended",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-    });
-
-    for (let minute = 1; minute <= 60; minute++) {
-      now = new Date(Date.UTC(2026, 0, 1, 0, minute, 0));
-      await service.tick();
-    }
-
-    const inspected = await service.inspect(created.id);
-    expect(inspected.runs).toHaveLength(50);
-    // Oldest dropped, newest kept.
-    expect(inspected.runs[0]?.output).toBe("ran-at-2026-01-01T00:11:00.000Z");
-    expect(inspected.runs.at(-1)?.output).toBe("ran-at-2026-01-01T01:00:00.000Z");
-  });
-
-  test("a maxRuns above the retention window still completes", async () => {
-    const service = createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      now: () => now,
-      runner: async () => ({ agentId: null, output: "ok" }),
-    });
-
-    const created = await service.create({
-      prompt: "bounded",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-      maxRuns: 55,
-    });
-
-    for (let minute = 1; minute <= 60; minute++) {
-      now = new Date(Date.UTC(2026, 0, 1, 0, minute, 0));
-      await service.tick();
-    }
-
-    const inspected = await service.inspect(created.id);
-    // Completion counts the retained array, so retention never prunes below
-    // maxRuns - otherwise this schedule would run forever.
-    expect(inspected.runs).toHaveLength(55);
-    expect(inspected.status).toBe("completed");
-  });
-
-  test("truncates a long run output head/tail with a marker", async () => {
-    const service = createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      now: () => now,
-      runner: async () => ({
-        agentId: null,
-        output: `${"H".repeat(2_000)}${"M".repeat(50_000)}${"T".repeat(2_000)}`,
-      }),
-    });
-
-    const created = await service.create({
-      prompt: "verbose",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-    });
-
-    now = new Date("2026-01-01T00:01:00.000Z");
-    await service.tick();
-
-    const output = (await service.inspect(created.id)).runs[0]?.output ?? "";
-    expect(output.length).toBeLessThan(2_500);
-    expect(output.startsWith("H".repeat(1_600))).toBe(true);
-    expect(output.endsWith("T".repeat(400))).toBe(true);
-    expect(output).toContain("characters truncated");
-    expect(output).toContain("open the run's chat for the full transcript");
-  });
-
-  test("a short run output is stored verbatim", async () => {
-    const service = createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      now: () => now,
-      runner: async () => ({ agentId: null, output: "all green" }),
-    });
-
-    const created = await service.create({
-      prompt: "terse",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: { type: "new-agent", config: { provider: "claude", cwd: tempDir } },
-    });
-
-    now = new Date("2026-01-01T00:01:00.000Z");
-    await service.tick();
-
-    expect((await service.inspect(created.id)).runs[0]?.output).toBe("all green");
-  });
-});
-
-describe("pruneScheduleRuns", () => {
-  function scheduleWithRuns(input: {
-    runs: ScheduleRun[];
-    maxRuns?: number | null;
-  }): StoredSchedule {
-    return {
-      id: "sched-1",
-      name: null,
-      prompt: "p",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: { type: "new-agent", config: { provider: "claude", cwd: "/tmp" } },
-      status: "active",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-      nextRunAt: null,
-      lastRunAt: null,
-      pausedAt: null,
-      expiresAt: null,
-      maxRuns: input.maxRuns ?? null,
-      runs: input.runs,
-    };
-  }
-
-  function run(index: number, status: ScheduleRun["status"]): ScheduleRun {
-    return {
-      id: `run-${index}`,
-      scheduledFor: "2026-01-01T00:00:00.000Z",
-      startedAt: `2026-01-01T00:00:${String(index).padStart(2, "0")}.000Z`,
-      endedAt: status === "running" ? null : "2026-01-01T00:01:00.000Z",
-      status,
-      agentId: null,
-      output: null,
-      error: null,
-    };
-  }
-
-  test("leaves a history inside the window untouched", () => {
-    const schedule = scheduleWithRuns({
-      runs: Array.from({ length: 50 }, (_, index) => run(index, "succeeded")),
-    });
-    expect(pruneScheduleRuns(schedule)).toBe(schedule);
-  });
-
-  test("keeps every still-running run even when the window is full", () => {
-    // Dropping a running run would orphan the finishRun update that closes it.
-    const runs = [
-      ...Array.from({ length: 60 }, (_, index) => run(index, "succeeded")),
-      run(99, "running"),
-    ];
-    const pruned = pruneScheduleRuns(scheduleWithRuns({ runs }));
-
-    expect(pruned.runs).toHaveLength(50);
-    expect(pruned.runs.some((entry) => entry.id === "run-99")).toBe(true);
-    expect(pruned.runs.filter((entry) => entry.status !== "running")).toHaveLength(49);
-  });
-});
-
-// COMPAT(scheduleProfileBinding): added in v0.8.13, remove after 2027-02-22.
-// A schedule's Personality binding persists as the stable id so a rename cannot
-// break it (docs/agent-profiles.md, "Identity is the id, never the name").
-// Both entry points still accept a display name, so every case here is about
-// what actually lands on disk.
-describe("schedule Personality bindings", () => {
-  let tempDir: string;
-  let agentStorage: AgentStorage;
-
-  const ROSTER = [
-    { id: "p-sage-01", name: "Sage", provider: "claude", roles: ["scheduler"] },
-    { id: "p-atlas-02", name: "Atlas", provider: "claude", roles: ["scheduler"] },
-  ] as never;
-
-  function build(readAgentProfiles?: () => never) {
-    return createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      ...(readAgentProfiles ? { readAgentProfiles } : {}),
-      runner: async () => ({ agentId: "00000000-0000-0000-0000-000000000001", output: "ok" }),
-    });
-  }
-
-  function newAgentTarget(personality?: string) {
-    return {
-      type: "new-agent" as const,
-      config: {
-        provider: "claude",
-        cwd: tempDir,
-        ...(personality ? { personality } : {}),
-      },
-    };
-  }
-
-  function boundPersonality(schedule: StoredSchedule): string | undefined {
-    return schedule.target.type === "new-agent" ? schedule.target.config.personality : undefined;
-  }
-
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "otto-schedule-binding-"));
-    await mkdir(join(tempDir, "agents"), { recursive: true });
-    agentStorage = new AgentStorage(tempDir, createTestLogger());
-  });
-
-  afterEach(async () => {
-    await agentStorage.flush();
-    await rm(tempDir, { recursive: true, force: true });
-  });
-
-  test("stores the id when created with a display name", async () => {
-    const service = build(() => ROSTER);
-    const created = await service.create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: newAgentTarget("Sage"),
-    });
-    expect(boundPersonality(created)).toBe("p-sage-01");
-  });
-
-  test("matches a display name case-insensitively", async () => {
-    const service = build(() => ROSTER);
-    const created = await service.create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: newAgentTarget("sAgE"),
-    });
-    expect(boundPersonality(created)).toBe("p-sage-01");
-  });
-
-  test("leaves an id alone", async () => {
-    const service = build(() => ROSTER);
-    const created = await service.create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: newAgentTarget("p-atlas-02"),
-    });
-    expect(boundPersonality(created)).toBe("p-atlas-02");
-  });
-
-  test("keeps a binding that names nothing on this host", async () => {
-    // Still the user's data, and still the run-time failure it already was.
-    // Rewriting or dropping it would destroy the only record of what they meant.
-    const service = build(() => ROSTER);
-    const created = await service.create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: newAgentTarget("Ghost"),
-    });
-    expect(boundPersonality(created)).toBe("Ghost");
-  });
-
-  test("rewrites a name-bound schedule onto its id at startup", async () => {
-    const nameBound = await build().create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: newAgentTarget("Sage"),
-    });
-    // No roster wired on that first service, so the name survived to disk.
-    expect(boundPersonality(nameBound)).toBe("Sage");
-
-    const migrated = build(() => ROSTER);
-    await migrated.start();
-    await migrated.stop();
-
-    expect(boundPersonality(await migrated.inspect(nameBound.id))).toBe("p-sage-01");
-  });
-
-  test("startup migration is a no-op the second time", async () => {
-    const seeded = await build().create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: newAgentTarget("Sage"),
-    });
-    const service = build(() => ROSTER);
-    await service.start();
-    await service.stop();
-    const once = await service.inspect(seeded.id);
-    await service.start();
-    await service.stop();
-    const twice = await service.inspect(seeded.id);
-
-    expect(boundPersonality(twice)).toBe("p-sage-01");
-    expect(twice.updatedAt).toBe(once.updatedAt);
-  });
-
-  test("an update by name lands as the id", async () => {
-    const service = build(() => ROSTER);
-    const created = await service.create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: newAgentTarget("Sage"),
-    });
-    const updated = await service.update({
-      id: created.id,
-      newAgentConfig: { personality: "Atlas" },
-    });
-    expect(boundPersonality(updated)).toBe("p-atlas-02");
-  });
-
-  test("a rename no longer breaks the binding", async () => {
-    // The whole point: the roster entry keeps its id and changes its name.
-    const service = build(() => ROSTER);
-    const created = await service.create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: newAgentTarget("Sage"),
-    });
-    const renamed = [
-      { id: "p-sage-01", name: "Sage the Second", provider: "claude", roles: ["scheduler"] },
-    ] as never;
-    const afterRename = build(() => renamed);
-
-    expect(
-      findProfileByRef(renamed, boundPersonality(await afterRename.inspect(created.id)) ?? ""),
-    ).toMatchObject({ id: "p-sage-01" });
-  });
-});
-
-// COMPAT(agentProfileFields): added in v0.8.13, remove after 2027-02-22.
-// The binding key was renamed, and schedules live on disk, so both spellings are
-// written and either is accepted. These cases are about a downgrade still
-// finding the binding after a newer daemon has touched the file.
-describe("schedule Agent Profile binding key", () => {
-  let tempDir: string;
-  let agentStorage: AgentStorage;
-
-  const ROSTER = [
-    { id: "p-sage-01", name: "Sage", provider: "claude", roles: ["scheduler"] },
-  ] as never;
-
-  function build(readAgentProfiles?: () => never) {
-    return createScheduleService({
-      ottoHome: tempDir,
-      logger: createTestLogger(),
-      agentManager: new AgentManager({ logger: createTestLogger() }),
-      agentStorage,
-      providerSnapshotManager: NO_UNATTENDED_SCHEDULE_POLICY,
-      ...(readAgentProfiles ? { readAgentProfiles } : {}),
-      runner: async () => ({ agentId: "00000000-0000-0000-0000-000000000001", output: "ok" }),
-    });
-  }
-
-  function config(schedule: StoredSchedule) {
-    if (schedule.target.type !== "new-agent") throw new Error("expected a new-agent target");
-    return schedule.target.config;
-  }
-
-  beforeEach(async () => {
-    tempDir = await mkdtemp(join(tmpdir(), "otto-schedule-binding-key-"));
-    await mkdir(join(tempDir, "agents"), { recursive: true });
-    agentStorage = new AgentStorage(tempDir, createTestLogger());
-  });
-
-  afterEach(async () => {
-    await agentStorage.flush();
-    await rm(tempDir, { recursive: true, force: true });
-  });
-
-  test("writes both spellings so a downgrade still finds the binding", async () => {
-    const created = await build(() => ROSTER).create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: {
-        type: "new-agent",
-        config: { provider: "claude", cwd: tempDir, agentProfile: "Sage" },
-      },
-    });
-
-    expect(config(created).agentProfile).toBe("p-sage-01");
-    expect(config(created).personality).toBe("p-sage-01");
-  });
-
-  test("accepts a schedule written before the rename", async () => {
-    const legacy = await build(() => ROSTER).create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: {
-        type: "new-agent",
-        config: { provider: "claude", cwd: tempDir, personality: "Sage" },
-      },
-    });
-
-    expect(config(legacy).agentProfile).toBe("p-sage-01");
-    expect(config(legacy).personality).toBe("p-sage-01");
-  });
-
-  test("the current spelling wins when the two disagree", async () => {
-    const created = await build(() => ROSTER).create({
-      prompt: "Review new PRs",
-      cadence: { type: "every", everyMs: 60_000 },
-      target: {
-        type: "new-agent",
-        config: {
-          provider: "claude",
-          cwd: tempDir,
-          agentProfile: "Sage",
-          personality: "Ghost",
-        },
-      },
-    });
-
-    expect(config(created).personality).toBe("p-sage-01");
   });
 });

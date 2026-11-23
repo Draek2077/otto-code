@@ -25,23 +25,6 @@ type RelayProtocolVersion = "1" | "2";
 const LEGACY_RELAY_VERSION: RelayProtocolVersion = "1";
 const CURRENT_RELAY_VERSION: RelayProtocolVersion = "2";
 
-// Client frames are buffered while no daemon data socket is attached. Cloudflare caps a single
-// WebSocket message at 1 MiB, so a count-only trim still admits ~200 MiB per connectionId - past
-// the Durable Object's 128 MB memory limit. Legitimate buffered traffic is only a client's
-// pre-attach opening frames (the E2EE handshake init, well under a kilobyte); large payloads such
-// as screenshots or file content flow only after the server data socket exists and are never
-// buffered here. So the byte caps sit far above the legitimate case while keeping the DO's worst
-// case small.
-const MAX_PENDING_FRAMES_PER_CONNECTION = 200;
-const MAX_PENDING_BYTES_PER_CONNECTION = 1024 * 1024; // fits one max-size (1 MiB) frame
-const MAX_PENDING_BYTES_TOTAL = 16 * 1024 * 1024; // across all connectionIds in this DO
-const MAX_ROUTE_KEY_BYTES = 256;
-const MAX_CLIENT_SOCKETS_PER_SESSION = 4;
-const DATA_MESSAGE_WINDOW_MS = 10_000;
-const MAX_DATA_MESSAGES_PER_WINDOW = 200;
-const CONTROL_MESSAGE_WINDOW_MS = 60_000;
-const MAX_CONTROL_MESSAGES_PER_WINDOW = 6;
-
 function resolveRelayVersion(rawValue: string | null): RelayProtocolVersion | null {
   if (rawValue == null) return LEGACY_RELAY_VERSION;
   const value = rawValue.trim();
@@ -103,15 +86,6 @@ function getString(record: Record<string, unknown>, key: string): string | undef
   return typeof value === "string" ? value : undefined;
 }
 
-function getFiniteNumber(record: Record<string, unknown>, key: string): number | undefined {
-  const value = record[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
-}
-
-function utf8ByteLength(value: string): number {
-  return new TextEncoder().encode(value).byteLength;
-}
-
 function getGlobalWebSocketPair(): (new () => WebSocketPair) | undefined {
   // Access WebSocketPair from global scope (Cloudflare Workers runtime)
   // Use Reflect to access global property without type assertions
@@ -124,7 +98,7 @@ function getGlobalWebSocketPair(): (new () => WebSocketPair) | undefined {
 
 interface Env {
   RELAY: DurableObjectNamespace;
-  OTTO_RELAY_UPSTREAM?: string;
+  PASEO_RELAY_UPSTREAM?: string;
 }
 
 interface DurableObjectNamespace {
@@ -159,8 +133,6 @@ interface CFResponseInit extends ResponseInit {
 export class RelayDurableObject {
   private state: DurableObjectState;
   private pendingFrames = new Map<string, Array<string | ArrayBuffer>>();
-  private pendingFrameBytes = new Map<string, number>();
-  private totalPendingFrameBytes = 0;
 
   constructor(state: DurableObjectState) {
     this.state = state;
@@ -222,63 +194,6 @@ export class RelayDurableObject {
     }
   }
 
-  private hasClientCapacity(): boolean {
-    return this.state.getWebSockets("client").length < MAX_CLIENT_SOCKETS_PER_SESSION;
-  }
-
-  private validateV2Admission(
-    role: ConnectionRole,
-    resolvedConnectionId: string,
-  ): Response | undefined {
-    // A real daemon only opens a v2 data socket after the client socket has
-    // connected and its control notification has been delivered. Refusing an
-    // orphan data socket eliminates an otherwise unbounded fake-socket shape.
-    if (role === "server" && resolvedConnectionId && !this.hasClientSocket(resolvedConnectionId)) {
-      return new Response("No matching client connection", { status: 409 });
-    }
-
-    if (role === "client" && !this.hasClientCapacity()) {
-      return new Response("Relay session client capacity reached", { status: 429 });
-    }
-
-    return undefined;
-  }
-
-  /**
-   * Count opaque frames without inspecting them. The counter is part of the
-   * hibernatable socket attachment so a wake/sleep cycle cannot reset a flood.
-   */
-  private consumeMessageAllowance(ws: WebSocket, attachment: Record<string, unknown>): boolean {
-    const connectionId = getString(attachment, "connectionId");
-    const version = getString(attachment, "version") ?? LEGACY_RELAY_VERSION;
-    // v1 has no separate control channel: both roles carry opaque relay data.
-    const isControl =
-      version === CURRENT_RELAY_VERSION && attachment.role === "server" && !connectionId;
-    const windowMs = isControl ? CONTROL_MESSAGE_WINDOW_MS : DATA_MESSAGE_WINDOW_MS;
-    const maxMessages = isControl ? MAX_CONTROL_MESSAGES_PER_WINDOW : MAX_DATA_MESSAGES_PER_WINDOW;
-    const now = Date.now();
-    const windowStartedAt = Math.floor(now / windowMs) * windowMs;
-    const previousWindowStartedAt = getFiniteNumber(attachment, "rateWindowStartedAt");
-    const previousCount = getFiniteNumber(attachment, "rateWindowMessageCount") ?? 0;
-    const count = previousWindowStartedAt === windowStartedAt ? previousCount : 0;
-
-    if (count >= maxMessages) {
-      try {
-        ws.close(1013, "Relay message rate exceeded");
-      } catch {
-        // ignore
-      }
-      return false;
-    }
-
-    serializeAttachment(ws, {
-      ...attachment,
-      rateWindowStartedAt: windowStartedAt,
-      rateWindowMessageCount: count + 1,
-    });
-    return true;
-  }
-
   // COMPAT(relay-json-ping): Old daemons (< v0.1.76) send JSON {type:"ping"} on the control
   // socket and rely on a JSON {type:"pong"} reply to keep controlLastSeenAt fresh. New daemons
   // use WebSocket protocol pings (auto-answered at the edge, DO stays hibernated). Remove this
@@ -334,53 +249,20 @@ export class RelayDurableObject {
     }, initialDelayMs);
   }
 
-  private frameByteSize(message: string | ArrayBuffer): number {
-    // For strings this counts UTF-16 code units, not UTF-8 bytes (off by at most 3x) - close
-    // enough for a resource cap.
-    return typeof message === "string" ? message.length : message.byteLength;
-  }
-
-  private dropPendingFrames(connectionId: string): void {
-    this.pendingFrames.delete(connectionId);
-    const bytes = this.pendingFrameBytes.get(connectionId) ?? 0;
-    this.pendingFrameBytes.delete(connectionId);
-    this.totalPendingFrameBytes -= bytes;
-  }
-
-  /** Returns false when a byte cap refuses the frame; the caller decides what to do with the sender. */
-  private bufferFrame(connectionId: string, message: string | ArrayBuffer): boolean {
-    const size = this.frameByteSize(message);
-    const connectionBytes = this.pendingFrameBytes.get(connectionId) ?? 0;
-    if (
-      connectionBytes + size > MAX_PENDING_BYTES_PER_CONNECTION ||
-      this.totalPendingFrameBytes + size > MAX_PENDING_BYTES_TOTAL
-    ) {
-      return false;
-    }
+  private bufferFrame(connectionId: string, message: string | ArrayBuffer): void {
     const existing = this.pendingFrames.get(connectionId) ?? [];
     existing.push(message);
-    let newConnectionBytes = connectionBytes + size;
-    this.totalPendingFrameBytes += size;
     // Prevent unbounded memory growth if a daemon never connects.
-    if (existing.length > MAX_PENDING_FRAMES_PER_CONNECTION) {
-      for (const dropped of existing.splice(
-        0,
-        existing.length - MAX_PENDING_FRAMES_PER_CONNECTION,
-      )) {
-        const droppedSize = this.frameByteSize(dropped);
-        newConnectionBytes -= droppedSize;
-        this.totalPendingFrameBytes -= droppedSize;
-      }
+    if (existing.length > 200) {
+      existing.splice(0, existing.length - 200);
     }
     this.pendingFrames.set(connectionId, existing);
-    this.pendingFrameBytes.set(connectionId, newConnectionBytes);
-    return true;
   }
 
   private flushFrames(connectionId: string, serverWs: WebSocket): void {
     const frames = this.pendingFrames.get(connectionId);
     if (!frames || frames.length === 0) return;
-    this.dropPendingFrames(connectionId);
+    this.pendingFrames.delete(connectionId);
     for (const frame of frames) {
       try {
         serverWs.send(frame);
@@ -470,9 +352,6 @@ export class RelayDurableObject {
 
     const isServerControl = role === "server" && !resolvedConnectionId;
     const isServerData = role === "server" && !!resolvedConnectionId;
-
-    const admissionError = this.validateV2Admission(role, resolvedConnectionId);
-    if (admissionError) return admissionError;
 
     // Close any existing server-side connection with the same identity.
     // - server-control: single per serverId
@@ -574,10 +453,6 @@ export class RelayDurableObject {
     }
     const attachment = attachmentRaw;
 
-    if (!this.consumeMessageAllowance(ws, attachment)) {
-      return;
-    }
-
     const version = getString(attachment, "version") ?? LEGACY_RELAY_VERSION;
 
     if (version === LEGACY_RELAY_VERSION) {
@@ -606,15 +481,7 @@ export class RelayDurableObject {
     if (role === "client") {
       const servers = this.state.getWebSockets(`server:${connectionId}`);
       if (servers.length === 0) {
-        if (!this.bufferFrame(connectionId, message)) {
-          // Cut the sender off rather than silently dropping its frames: a client whose frames
-          // vanish is in a worse state than one that knows it was disconnected.
-          try {
-            ws.close(1009, "Relay buffer full");
-          } catch {
-            // ignore
-          }
-        }
+        this.bufferFrame(connectionId, message);
         return;
       }
       for (const target of servers) {
@@ -666,7 +533,7 @@ export class RelayDurableObject {
         return;
       }
 
-      this.dropPendingFrames(connectionId);
+      this.pendingFrames.delete(connectionId);
       // Last socket for this session closed: now clean up matching server-data socket.
       for (const serverWs of this.state.getWebSockets(`server:${connectionId}`)) {
         try {
@@ -707,8 +574,8 @@ export class RelayDurableObject {
  */
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    if (env.OTTO_RELAY_UPSTREAM) {
-      return createCutoverProxy(env.OTTO_RELAY_UPSTREAM).fetch(request);
+    if (env.PASEO_RELAY_UPSTREAM) {
+      return createCutoverProxy(env.PASEO_RELAY_UPSTREAM).fetch(request);
     }
 
     const url = new URL(request.url);
@@ -725,25 +592,6 @@ export default {
       const serverId = url.searchParams.get("serverId");
       if (!serverId) {
         return new Response("Missing serverId parameter", { status: 400 });
-      }
-
-      if (utf8ByteLength(serverId) > MAX_ROUTE_KEY_BYTES) {
-        return new Response("serverId is too long", { status: 400 });
-      }
-
-      const connectionId = url.searchParams.get("connectionId");
-      if (connectionId !== null && utf8ByteLength(connectionId) > MAX_ROUTE_KEY_BYTES) {
-        return new Response("connectionId is too long", { status: 400 });
-      }
-
-      const role = url.searchParams.get("role");
-      if (role !== "server" && role !== "client") {
-        return new Response("Missing or invalid role parameter", { status: 400 });
-      }
-
-      const upgradeHeader = request.headers.get("Upgrade");
-      if (!upgradeHeader || upgradeHeader.toLowerCase() !== "websocket") {
-        return new Response("Expected WebSocket upgrade", { status: 426 });
       }
 
       const version = resolveRelayVersion(url.searchParams.get("v"));

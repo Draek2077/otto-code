@@ -27,8 +27,10 @@ export function registerEditorTargetHandlers(
   const ipc = options.ipc ?? ipcMain;
   const runtime = options.runtime ?? createEditorTargetRuntime();
 
-  ipc.handle("otto:editor:listTargets", () => listAvailableEditorTargets(runtime, options.targets));
-  ipc.handle("otto:editor:openTarget", async (_event, payload: unknown) => {
+  ipc.handle("paseo:editor:listTargets", () =>
+    listAvailableEditorTargets(runtime, options.targets),
+  );
+  ipc.handle("paseo:editor:openTarget", async (_event, payload: unknown) => {
     const input = EditorTargetLaunchInputSchema.parse(payload);
     await openEditorTarget(input, runtime, options.targets);
   });

@@ -1,25 +1,26 @@
 #!/usr/bin/env node
+// OTTO(dev-isolation): seed the same checkout-local home every launcher uses.
 import { cpSync, existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 // Worktree setup runs through a stable script shell: bash on macOS/Linux, but PowerShell
 // on Windows. POSIX-only command strings (`VAR=1 cmd` env prefixes, `$VAR` expansion, `cp`,
-// `./scripts/*.sh`) cannot express this step portably, so the seeding lives in Node - the
-// one interpreter every Otto checkout already depends on.
+// `./scripts/*.sh`) cannot express this step portably, so the seeding lives in Node — the
+// one interpreter every Paseo checkout already depends on.
 
-const sourceRoot = process.env.OTTO_SOURCE_CHECKOUT_PATH;
-const targetRoot = process.env.OTTO_WORKTREE_PATH || process.cwd();
+const sourceRoot = process.env.PASEO_SOURCE_CHECKOUT_PATH;
+const targetRoot = process.env.PASEO_WORKTREE_PATH || process.cwd();
 
 if (!sourceRoot || sourceRoot === targetRoot) {
   process.exit(0);
 }
 
-seedOttoHome();
+seedPaseoHome();
 copyServerEnv();
 
-function seedOttoHome() {
+function seedPaseoHome() {
   const source =
-    process.env.OTTO_DEV_SEED_HOME || join(sourceRoot, "packages/desktop/.dev/otto-home");
+    process.env.PASEO_DEV_SEED_HOME || join(sourceRoot, "packages/desktop/.dev/otto-home");
   const target = join(targetRoot, "packages/desktop/.dev/otto-home");
 
   if (!existsSync(source)) {
@@ -32,7 +33,7 @@ function seedOttoHome() {
     return;
   }
 
-  if (process.env.OTTO_DEV_RESET_HOME === "1") {
+  if (process.env.PASEO_DEV_RESET_HOME === "1") {
     rmSync(target, { recursive: true, force: true });
   } else if (hasEntries(target)) {
     console.log(`  Seed:    skipped (${target} already has data)`);

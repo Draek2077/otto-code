@@ -40,11 +40,24 @@ export interface StreamEdgeSlotProps {
   ListFooterComponentStyle?: StyleProp<ViewStyle>;
 }
 
+/**
+ * A caller that landed on one occurrence inside the message owns where the viewport
+ * settles. It resolved the occurrence against a specific row already, so it takes no
+ * row here and returns null once that row is gone.
+ */
+export interface ScrollToMessageOccurrence {
+  signal: AbortSignal;
+  targetTop(): number | null;
+}
+
 export interface StreamViewportHandle {
+  /** Give keyboard navigation back to the scrolling surface on web. */
+  focus?: () => void;
   scrollToBottom: (reason?: BottomAnchorLocalRequest["reason"]) => void;
   prepareForViewportChange: () => void;
-  // Explicit message navigation, shared by Global Search and the Chat outline.
-  scrollToMessage?: (itemId: string) => void;
+  // OTTO(action-groups): an explicit detail-reading action relinquishes bottom follow without scrolling.
+  holdReadingPosition?: () => void;
+  scrollToMessage?: (messageId: string, occurrence?: ScrollToMessageOccurrence) => void;
 }
 
 export interface StreamSegmentRenderers {
@@ -75,9 +88,6 @@ export interface StreamRenderInput {
   // The history row under the top of the viewport, for surfaces that mark where the reader
   // is in the transcript. Only the web viewport measures it today.
   onReadingPositionChange?: (rowId: string | null) => void;
-  // Returns whether a load actually started. The web viewport's pagination state machine
-  // abandons its in-flight request when this reports anything other than `true`, so a
-  // handler that cannot answer will have every older-history page marked abandoned.
   onNearHistoryStart: () => boolean | Promise<boolean>;
   isLoadingOlderHistory: boolean;
   hasOlderHistory: boolean;
@@ -86,6 +96,8 @@ export interface StreamRenderInput {
   listStyle: StyleProp<ViewStyle>;
   baseListContentContainerStyle: StyleProp<ViewStyle>;
   forwardListContentContainerStyle: StyleProp<ViewStyle>;
+  // The chat column's max width. The web viewport estimates unmeasured row heights with it.
+  contentMaxWidth: number;
 }
 
 export interface ResolveStreamRenderStrategyInput {
@@ -336,12 +348,4 @@ export function getFrameChildOrderForStreamRenderStrategy(params: {
   strategy: StreamStrategy;
 }): StreamFrameChildOrder {
   return params.strategy.getFrameChildOrder();
-}
-
-export function collectAssistantTurnContentForStreamRenderStrategy(params: {
-  strategy: StreamStrategy;
-  items: StreamItem[];
-  startIndex: number;
-}): string {
-  return params.strategy.collectAssistantResponseContent(params.items, params.startIndex);
 }

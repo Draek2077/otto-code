@@ -2,7 +2,7 @@ import { execSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { Page } from "@playwright/test";
+import type { Dialog, Page } from "@playwright/test";
 import { expect, test } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import {
@@ -61,27 +61,25 @@ async function seedRiskyWorktree(
   }
 }
 
-// The archive confirmation renders through the in-app ConfirmDialogHost (not a
-// native window.confirm), so the warning copy and buttons are regular DOM.
+// The archive confirmation is a synchronous web `window.confirm()`. The click that
+// opens it does not resolve until the dialog is answered, so the handler must
+// accept/dismiss inline — awaiting the dialog only *after* the click deadlocks, as
+// the click waits for an answer that is gated behind that same click.
 async function clickArchiveAndAnswerWarning(
   page: Page,
-  input: {
-    workspaceId: string;
-    workspaceName: string;
-    answer: "accept" | "dismiss";
-  },
-): Promise<void> {
-  await clickArchiveWorkspaceMenuItem(page, input.workspaceId);
-
-  await expect(page.getByText(`Archive "${input.workspaceName}"?`)).toBeVisible({
-    timeout: 10_000,
+  workspaceId: string,
+  answer: "accept" | "dismiss",
+): Promise<Dialog> {
+  let warning: Dialog | undefined;
+  page.once("dialog", (dialog) => {
+    warning = dialog;
+    void (answer === "accept" ? dialog.accept() : dialog.dismiss());
   });
-  await expect(page.getByText("Uncommitted changes").first()).toBeVisible();
-  await expect(page.getByText("1 unpushed commit")).toBeVisible();
-
-  await page
-    .getByTestId(input.answer === "accept" ? "confirm-dialog-confirm" : "confirm-dialog-cancel")
-    .click();
+  await clickArchiveWorkspaceMenuItem(page, workspaceId);
+  if (!warning) {
+    throw new Error("Expected an archive confirmation dialog, but none was shown.");
+  }
+  return warning;
 }
 
 test.describe("Workspace archive risk warning for worktree backing", () => {
@@ -123,22 +121,20 @@ test.describe("Workspace archive risk warning for worktree backing", () => {
     await waitForSidebarHydration(page);
     await waitForWorkspaceInSidebar(page, { serverId, workspaceId: worktree.workspaceId });
 
-    await clickArchiveAndAnswerWarning(page, {
-      workspaceId: worktree.workspaceId,
-      workspaceName: worktree.workspaceName,
-      answer: "dismiss",
-    });
+    const firstWarning = await clickArchiveAndAnswerWarning(page, worktree.workspaceId, "dismiss");
+    expect(firstWarning.type()).toBe("confirm");
+    expect(firstWarning.message()).toContain(`Archive "${worktree.workspaceName}"?`);
+    expect(firstWarning.message()).toContain("Uncommitted changes");
+    expect(firstWarning.message()).toContain("1 unpushed commit");
 
     await expect(
       page.getByTestId(`sidebar-workspace-row-${serverId}:${worktree.workspaceId}`),
     ).toBeVisible({ timeout: 10_000 });
     expect(existsSync(worktree.workspaceDirectory)).toBe(true);
 
-    await clickArchiveAndAnswerWarning(page, {
-      workspaceId: worktree.workspaceId,
-      workspaceName: worktree.workspaceName,
-      answer: "accept",
-    });
+    const secondWarning = await clickArchiveAndAnswerWarning(page, worktree.workspaceId, "accept");
+    expect(secondWarning.message()).toContain("Uncommitted changes");
+    expect(secondWarning.message()).toContain("1 unpushed commit");
 
     await expectWorkspaceAbsentFromSidebar(page, worktree.workspaceId);
     await expect

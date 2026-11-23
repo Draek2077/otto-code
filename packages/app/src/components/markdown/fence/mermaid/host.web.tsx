@@ -1,20 +1,19 @@
 import { useCallback, useMemo, useState } from "react";
-import { Pressable, View, type TextStyle, type ViewStyle } from "react-native";
-import { Code, Maximize as Maximize2, Workflow } from "@/components/icons/material-icons";
+import { Pressable, View, type ViewStyle } from "react-native";
+import { Code, Maximize2, Workflow } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { HighlightedCodeBlock } from "@/components/highlighted-code-block";
 import { ZoomableViewport } from "@/components/zoomable-viewport";
 import type { Theme } from "@/styles/theme";
-import type { MarkdownFenceRendererProps } from "../types";
+import type { MarkdownFenceRendererProps } from "./types";
 import { MermaidFullscreenViewer } from "./fullscreen-viewer.web";
 import { MermaidIframeRuntime, type MermaidRenderedMessage } from "./iframe-runtime.web";
 import { useMermaidRenderModel } from "./use-render-model";
 import { getDiagramBoxStyle } from "./presentation";
-import { buildMermaidDiagramTheme, type MermaidDiagramTheme } from "./theme";
 
 interface MermaidFenceHostImplProps extends MarkdownFenceRendererProps {
-  diagramTheme: MermaidDiagramTheme;
+  colorScheme?: "light" | "dark";
 }
 
 function MermaidFenceHostImpl({
@@ -22,13 +21,13 @@ function MermaidFenceHostImpl({
   phase,
   inheritedStyles,
   textStyle,
-  diagramTheme,
+  colorScheme = "dark",
 }: MermaidFenceHostImplProps) {
   const { t } = useTranslation();
   const { state, request, rendered, renderFailed } = useMermaidRenderModel({
     source: code,
     phase,
-    diagramTheme,
+    colorScheme,
   });
   const [hasRuntimeContent, setHasRuntimeContent] = useState(false);
   const [showSource, setShowSource] = useState(false);
@@ -43,7 +42,7 @@ function MermaidFenceHostImpl({
       rendered({
         revision: message.revision,
         source: message.source,
-        themeKey: message.themeKey,
+        colorScheme: message.colorScheme,
         dimensions: { height: message.height, width: message.width },
       });
     },
@@ -69,15 +68,6 @@ function MermaidFenceHostImpl({
     ],
     [openFullscreen, showSourcePress, t],
   );
-  const sourceView = useMemo(() => {
-    const { marginTop, marginBottom, marginVertical, ...sourceTextStyle } = textStyle;
-    const margins: ViewStyle = {
-      marginTop: marginTop ?? marginVertical,
-      marginBottom: marginBottom ?? marginVertical,
-    };
-    const text: TextStyle = sourceTextStyle;
-    return { container: [margins, sourceContainerStyle], text };
-  }, [textStyle]);
   const diagramStyle = useMemo(
     () => [
       getDiagramBoxStyle(textStyle),
@@ -91,19 +81,17 @@ function MermaidFenceHostImpl({
     [visible],
   );
   const sourceVisible = !diagramVisible;
-  const sourceContainer = showSource ? sourceView.container : sourceContainerStyle;
-  const sourceTextStyle = showSource ? sourceView.text : textStyle;
   const viewportStyle = diagramVisible ? diagramStyle : measuringStyle;
 
   return (
     <>
       {sourceVisible ? (
-        <View style={sourceContainer}>
+        <View style={sourceContainerStyle}>
           <HighlightedCodeBlock
             code={code}
             language="mermaid"
             inheritedStyles={inheritedStyles}
-            textStyle={sourceTextStyle}
+            textStyle={textStyle}
           />
           {showSource && canShowDiagram ? (
             <Pressable
@@ -115,7 +103,7 @@ function MermaidFenceHostImpl({
             >
               {({ hovered }) => (
                 <Workflow
-                  size="sm"
+                  size={14}
                   color={hovered ? controlStyles.iconHovered.color : controlStyles.icon.color}
                 />
               )}
@@ -140,7 +128,7 @@ function MermaidFenceHostImpl({
       {isFullscreen && visible ? (
         <MermaidFullscreenViewer
           source={visible.source}
-          diagramTheme={diagramTheme}
+          colorScheme={visible.colorScheme}
           onClose={closeFullscreen}
         />
       ) : null}
@@ -186,9 +174,9 @@ const controlStyles = StyleSheet.create((theme) => ({
   icon: { color: theme.colors.foregroundMuted },
   iconHovered: { color: theme.colors.foreground },
 }));
-const mapDiagramTheme = (theme: Theme) => ({ diagramTheme: buildMermaidDiagramTheme(theme) });
+const mapColorScheme = (theme: Theme) => ({ colorScheme: theme.colorScheme });
 const ThemedMermaidFenceHost = withUnistyles(MermaidFenceHostImpl);
 
 export function MermaidFenceHost(props: MarkdownFenceRendererProps) {
-  return <ThemedMermaidFenceHost {...props} uniProps={mapDiagramTheme} />;
+  return <ThemedMermaidFenceHost {...props} uniProps={mapColorScheme} />;
 }

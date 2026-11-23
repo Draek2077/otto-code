@@ -1,12 +1,14 @@
 import { isAbsolute, relative, resolve as resolvePath } from "node:path";
-import {
+
+import type {
   BrowserAutomationCommand,
   BrowserAutomationConsoleLogEntry,
   BrowserAutomationDialogEvent,
+  BrowserAutomationErrorCode,
   BrowserAutomationExecuteResponse,
   BrowserAutomationExecuteRequest,
   BrowserAutomationNetworkLogEntry,
-} from "@otto-code/protocol/browser-automation/rpc-schemas";
+} from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import { waitForActionableTarget, type ActionabilityResult } from "./actionability.js";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
 import {
@@ -15,31 +17,9 @@ import {
   dispatchTrustedHover,
   dispatchTrustedKey,
   dispatchTrustedScroll,
-  dispatchTrustedText,
   type ClickInputOptions,
   type IsolatedKeyboardInputEvent,
 } from "./trusted-input.js";
-import {
-  SCREENSHOT_MAX_LONG_EDGE,
-  SCREENSHOT_MAX_PIXELS,
-  capEvaluateErrorMessage,
-  evaluateErrorMessage,
-  executeInspect,
-  executeNetwork,
-  executePageText,
-  executeSetColorScheme,
-  fail,
-  normalizeViewportImage,
-  readCssViewportSize,
-  readNumber,
-  resolveTabTarget,
-  roundScale,
-  screenshotFitScale,
-  staleRefFailure,
-  tabInfoWithoutContents,
-  withDialogCapture,
-  type TabInfo,
-} from "./otto-automation-commands.js";
 
 export interface TabContents {
   readonly id: number;
@@ -54,48 +34,23 @@ export interface TabContents {
   goBack(): void;
   goForward(): void;
   reload(): void;
-  capturePage(options?: TabCapturePageOptions): Promise<TabImage>;
+  captureFrame(signal: AbortSignal): Promise<TabImage>;
   invalidate(): void;
+  withFrameProduction<T>(capture: () => Promise<T>): Promise<T>;
   sendInputEvent(event: IsolatedKeyboardInputEvent): void;
+  // Commits text into this tab's focused element. CDP Input.insertText would
+  // commit into whichever element has focus in the Paseo window instead.
+  insertText(text: string): Promise<void>;
   getConsoleMessages?(): BrowserAutomationConsoleLogEntry[];
   captureDialogs?<T>(
     task: () => Promise<T>,
   ): Promise<{ result: T; dialogs: BrowserAutomationDialogEvent[] }>;
   sendDebugCommand?(command: string, params?: Record<string, unknown>): Promise<unknown>;
-  /** Begin (or ensure) CDP network capture for this tab. Idempotent. */
-  startNetworkCapture?(): Promise<void>;
-  getNetworkRequests?(): CapturedNetworkRequest[];
-  getNetworkResponseBody?(
-    requestId: string,
-  ): Promise<{ body: string; base64Encoded: boolean } | null>;
-}
-
-/** One captured CDP network exchange, accumulated across Network.* events. */
-export interface CapturedNetworkRequest {
-  requestId: string;
-  url: string;
-  method: string;
-  resourceType?: string;
-  status?: number;
-  statusText?: string;
-  mimeType?: string;
-  encodedDataLength?: number;
-  failed?: string;
-  finished: boolean;
 }
 
 export interface TabImage {
   toPNG(): Uint8Array;
   getSize(): { width: number; height: number };
-  /**
-   * Optional downscale support - Electron's NativeImage provides this natively,
-   * so the adapter needs no wrapper. When absent, captures are returned as-is.
-   */
-  resize?(options: { width: number; height: number }): TabImage;
-}
-
-export interface TabCapturePageOptions {
-  stayHidden?: boolean;
 }
 
 export interface BrowserRegistry {
@@ -107,39 +62,46 @@ export interface BrowserRegistry {
 }
 
 export type AutomationCommandPayload = BrowserAutomationExecuteResponse["payload"];
-
 type FailurePayload = Extract<AutomationCommandPayload, { ok: false }>;
 
 const defaultSnapshotEngine = new BrowserSnapshotEngine();
-
 const DEFAULT_WAIT_TIMEOUT_MS = 5_000;
-
 const WAIT_POLL_INTERVAL_MS = 25;
-
 const PIXEL_CAPTURE_TIMEOUT_MS = 5_000;
-
 const PIXEL_CAPTURE_RETRY_INTERVAL_MS = 200;
-
 const SCREENSHOT_NO_FRAME_MESSAGE = "The tab has not painted yet. Retry the screenshot.";
-
 const ALLOWED_PAGE_URL_PROTOCOLS = new Set(["http:", "https:"]);
-
-/** Element captures re-render through CDP at up to this scale for crisp small text. */
-const ELEMENT_CAPTURE_MAX_SCALE = 3;
-
-const ELEMENT_CAPTURE_PADDING_PX = 8;
-
-/**
- * The ~30K-char cap every other model-visible result path uses. An evaluate
- * result is spent verbatim into the transcript and replayed on every later
- * round, so the old 80K outlier bought a fuller dump at nearly 3x the standing
- * token cost. The preview length keeps 1K of headroom for JSON escaping.
- */
-const MAX_EVALUATE_RESULT_JSON_LENGTH = 30_000;
-
-const MAX_EVALUATE_RESULT_PREVIEW_LENGTH = 29_000;
-
+const MAX_EVALUATE_RESULT_JSON_LENGTH = 80_000;
+const MAX_EVALUATE_RESULT_PREVIEW_LENGTH = 79_000;
+const MAX_EVALUATE_ERROR_MESSAGE_LENGTH = 2_000;
 let pixelCaptureQueue: Promise<void> = Promise.resolve();
+
+function fail(
+  requestId: string,
+  code: BrowserAutomationErrorCode,
+  message: string,
+  retryable = false,
+): FailurePayload {
+  return { requestId, ok: false, error: { code, message, retryable } };
+}
+
+async function withDialogCapture(
+  contents: TabContents,
+  task: () => Promise<AutomationCommandPayload>,
+): Promise<AutomationCommandPayload> {
+  if (!contents.captureDialogs) {
+    return task();
+  }
+  const { result, dialogs } = await contents.captureDialogs(task);
+  return dialogs.length > 0 ? { ...result, dialogs } : result;
+}
+
+export class BrowserTabClosedError extends Error {
+  public constructor() {
+    super("Browser tab has been closed");
+    this.name = "BrowserTabClosedError";
+  }
+}
 
 class ScreenshotNoFrameError extends Error {
   public constructor(message = SCREENSHOT_NO_FRAME_MESSAGE) {
@@ -205,8 +167,8 @@ async function runSerializedPixelCapture<T>(capture: () => Promise<T>): Promise<
 async function capturePixelFrameWithRetry<T>(
   contents: TabContents,
   capture: () => Promise<T>,
+  deadline: number,
 ): Promise<T> {
-  const deadline = Date.now() + PIXEL_CAPTURE_TIMEOUT_MS;
   while (Date.now() < deadline) {
     try {
       contents.invalidate();
@@ -233,15 +195,47 @@ function isKnownNoFrameCaptureError(error: unknown): boolean {
   );
 }
 
+async function waitForPaint(contents: TabContents, deadline: number): Promise<void> {
+  // A hidden page may have unpainted DOM updates. The first animation callback
+  // precedes paint; the next frame ensures capture cannot reuse the old surface.
+  await withPixelCaptureTimeout(
+    contents.executeJavaScript(
+      "new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))",
+    ),
+    deadline - Date.now(),
+  );
+}
+
 async function runPaintedPixelCapture<T>(
   contents: TabContents,
   capture: () => Promise<T>,
 ): Promise<T> {
-  return runSerializedPixelCapture(() => capturePixelFrameWithRetry(contents, capture));
+  return runSerializedPixelCapture(() =>
+    contents.withFrameProduction(async () => {
+      const deadline = Date.now() + PIXEL_CAPTURE_TIMEOUT_MS;
+      await waitForPaint(contents, deadline);
+      return capturePixelFrameWithRetry(contents, capture, deadline);
+    }),
+  );
 }
 
 async function capturePaintedViewport(contents: TabContents): Promise<TabImage> {
-  return runPaintedPixelCapture(contents, () => contents.capturePage({ stayHidden: false }));
+  return runSerializedPixelCapture(() =>
+    contents.withFrameProduction(async () => {
+      const deadline = Date.now() + PIXEL_CAPTURE_TIMEOUT_MS;
+      const controller = new AbortController();
+      try {
+        await waitForPaint(contents, deadline);
+        contents.invalidate();
+        return await withPixelCaptureTimeout(
+          contents.captureFrame(controller.signal),
+          deadline - Date.now(),
+        );
+      } finally {
+        controller.abort();
+      }
+    }),
+  );
 }
 
 function tabInfoFromContents(
@@ -249,7 +243,7 @@ function tabInfoFromContents(
   contents: TabContents,
   activeBrowserId: string | null,
   workspaceId: string | null,
-): TabInfo {
+) {
   return {
     browserId,
     ...(workspaceId ? { workspaceId } : {}),
@@ -259,7 +253,6 @@ function tabInfoFromContents(
     isLoading: contents.isLoading(),
     canGoBack: contents.canGoBack(),
     canGoForward: contents.canGoForward(),
-    status: "ready",
   };
 }
 
@@ -496,14 +489,6 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
       snapshotEngine,
     );
   },
-  inspect: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
-    const inspectCommand = command as Extract<BrowserAutomationCommand, { command: "inspect" }>;
-    return executeInspect(requestId, workspaceId, inspectCommand.args, registry, snapshotEngine);
-  },
-  network: ({ command, requestId, workspaceId, registry }) => {
-    const networkCommand = command as Extract<BrowserAutomationCommand, { command: "network" }>;
-    return executeNetwork(requestId, workspaceId, networkCommand.args, registry);
-  },
   scroll: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
     const scrollCommand = command as Extract<BrowserAutomationCommand, { command: "scroll" }>;
     return executeScroll(
@@ -521,46 +506,12 @@ const commandHandlers: Record<BrowserAutomationCommand["command"], CommandHandle
     fail(requestId, "browser_unsupported", "browser_resize is handled by the app runtime."),
   close_tab: ({ requestId }) =>
     fail(requestId, "browser_unsupported", "browser_close_tab is handled by the app runtime."),
-  focus_tab: ({ requestId }) =>
-    fail(requestId, "browser_unsupported", "browser_focus_tab is handled by the app runtime."),
-  page_text: ({ command, requestId, workspaceId, registry }) => {
-    const pageTextCommand = command as Extract<BrowserAutomationCommand, { command: "page_text" }>;
-    return executePageText(
-      requestId,
-      workspaceId,
-      pageTextCommand.args.browserId,
-      pageTextCommand.args.maxChars,
-      registry,
-    );
-  },
-  set_color_scheme: ({ command, requestId, workspaceId, registry }) => {
-    const colorSchemeCommand = command as Extract<
-      BrowserAutomationCommand,
-      { command: "set_color_scheme" }
-    >;
-    return executeSetColorScheme(
-      requestId,
-      workspaceId,
-      colorSchemeCommand.args.browserId,
-      colorSchemeCommand.args.colorScheme,
-      registry,
-    );
-  },
-  screenshot_element: ({ command, requestId, workspaceId, registry, snapshotEngine }) => {
-    const elementCommand = command as Extract<
-      BrowserAutomationCommand,
-      { command: "screenshot_element" }
-    >;
-    return executeScreenshotElement(
-      requestId,
-      workspaceId,
-      elementCommand.args.browserId,
-      elementCommand.args.ref,
-      registry,
-      snapshotEngine,
-    );
-  },
 };
+
+interface ResolvedTabTarget {
+  browserId: string;
+  contents: TabContents;
+}
 
 function executeListTabs(
   requestId: string,
@@ -571,24 +522,20 @@ function executeListTabs(
     ? registry.listRegisteredBrowserIdsForWorkspace(workspaceId)
     : registry.listRegisteredBrowserIds();
   const activeBrowserId = workspaceId ? registry.getWorkspaceActiveBrowserId(workspaceId) : null;
-  const tabs: TabInfo[] = [];
+  const tabs: Array<ReturnType<typeof tabInfoFromContents>> = [];
 
-  // Every registered tab gets a row, always. A tab whose contents are missing or
-  // destroyed is reported with a status rather than omitted: silently dropping
-  // it made an on-screen tab indistinguishable from one that never existed, and
-  // callers (preview_start, agents) reacted by opening another one.
   for (const browserId of browserIds) {
-    const tabWorkspaceId = registry.getBrowserWorkspaceId(browserId);
     const contents = registry.getTabContents(browserId);
-    if (!contents) {
-      tabs.push(tabInfoWithoutContents(browserId, activeBrowserId, tabWorkspaceId, "starting"));
-      continue;
+    if (contents && !contents.isDestroyed()) {
+      tabs.push(
+        tabInfoFromContents(
+          browserId,
+          contents,
+          activeBrowserId,
+          registry.getBrowserWorkspaceId(browserId),
+        ),
+      );
     }
-    if (contents.isDestroyed()) {
-      tabs.push(tabInfoWithoutContents(browserId, activeBrowserId, tabWorkspaceId, "detached"));
-      continue;
-    }
-    tabs.push(tabInfoFromContents(browserId, contents, activeBrowserId, tabWorkspaceId));
   }
 
   return { requestId, ok: true, result: { command: "list_tabs", tabs } };
@@ -1008,6 +955,14 @@ async function readViewportCenter(contents: TabContents): Promise<{ x: number; y
   };
 }
 
+function staleRefFailure(requestId: string, ref: string): FailurePayload {
+  return fail(
+    requestId,
+    "browser_stale_ref",
+    `Browser element reference ${ref} is stale. Take a new snapshot and try again.`,
+  );
+}
+
 function actionabilityFailure(
   requestId: string,
   ref: string,
@@ -1123,7 +1078,7 @@ async function executeType(
       }
       await dispatchTrustedClick(cdpSender(target.contents), actionable.target.point);
     }
-    await dispatchTrustedText(cdpSender(target.contents), text);
+    await target.contents.insertText(text);
     return {
       requestId,
       ok: true,
@@ -1278,18 +1233,19 @@ async function executeScreenshot(
     return target;
   }
   return withDialogCapture(target.contents, async () => {
-    const cssViewport = await readCssViewportSize(target.contents);
     let image: TabImage;
     try {
       image = await capturePaintedViewport(target.contents);
     } catch (error) {
+      if (error instanceof BrowserTabClosedError) {
+        return fail(requestId, "browser_tab_closed", `Browser tab ${browserId} has been closed`);
+      }
       if (isScreenshotNoFrameError(error)) {
         return screenshotNoFrameFailure(requestId, error);
       }
       throw error;
     }
-    const normalized = normalizeViewportImage(image, cssViewport);
-    const size = normalized.image.getSize();
+    const size = image.getSize();
     return {
       requestId,
       ok: true,
@@ -1297,10 +1253,9 @@ async function executeScreenshot(
         command: "screenshot",
         browserId: target.browserId,
         mimeType: "image/png",
-        dataBase64: Buffer.from(normalized.image.toPNG()).toString("base64"),
+        dataBase64: Buffer.from(image.toPNG()).toString("base64"),
         width: size.width,
         height: size.height,
-        ...(normalized.scale !== undefined ? { scale: normalized.scale } : {}),
       },
     };
   });
@@ -1382,27 +1337,15 @@ async function executeFullPageScreenshot(
     let screenshot: CdpCaptureScreenshotResult;
     let width = 0;
     let height = 0;
-    let fit = 1;
     try {
       screenshot = await runPaintedPixelCapture(target.contents, async () => {
         const metrics = await getCdpLayoutMetrics(target.contents);
-        // Fit the whole page into the legibility budget by rendering the CDP
-        // clip at reduced scale - cheaper and sharper than downscaling a huge
-        // capture after the fact. Very tall pages still end up unreadable;
-        // the daemon warns the agent based on the reported scale.
-        fit = screenshotFitScale(metrics.contentWidth, metrics.contentHeight);
-        width = Math.max(1, Math.round(metrics.contentWidth * fit));
-        height = Math.max(1, Math.round(metrics.contentHeight * fit));
+        width = metrics.contentWidth;
+        height = metrics.contentHeight;
         return (await sendDebugCommand("Page.captureScreenshot", {
           format: "png",
           captureBeyondViewport: true,
-          clip: {
-            x: 0,
-            y: 0,
-            width: metrics.contentWidth,
-            height: metrics.contentHeight,
-            scale: fit,
-          },
+          clip: { x: 0, y: 0, width, height, scale: 1 },
         })) as CdpCaptureScreenshotResult;
       });
     } catch (error) {
@@ -1424,142 +1367,6 @@ async function executeFullPageScreenshot(
         dataBase64: screenshot.data,
         width,
         height,
-        ...(fit < 1 ? { scale: roundScale(fit) } : {}),
-      },
-    };
-  });
-}
-
-interface ElementCaptureRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-function buildElementRectScript(elementExpression: string): string {
-  return String.raw`(() => {
-    const __OTTO_ELEMENT_RECT__ = true;
-    const element = ${elementExpression};
-    if (!element) {
-      return { staleRef: true };
-    }
-    const rect = element.getBoundingClientRect();
-    return {
-      x: rect.x + window.scrollX,
-      y: rect.y + window.scrollY,
-      width: rect.width,
-      height: rect.height,
-    };
-  })()`;
-}
-
-function parseElementRectResult(raw: unknown): ElementCaptureRect | "stale_ref" | null {
-  if (!raw || typeof raw !== "object") {
-    return null;
-  }
-  const record = raw as Record<string, unknown>;
-  if (record.staleRef === true) {
-    return "stale_ref";
-  }
-  const x = readNumber(record.x);
-  const y = readNumber(record.y);
-  const width = readNumber(record.width);
-  const height = readNumber(record.height);
-  if (x === null || y === null || width === null || height === null) {
-    return null;
-  }
-  return { x, y, width, height };
-}
-
-async function executeScreenshotElement(
-  requestId: string,
-  workspaceId: string | undefined,
-  browserId: string,
-  ref: string,
-  registry: BrowserRegistry,
-  snapshotEngine: BrowserSnapshotEngine,
-): Promise<AutomationCommandPayload> {
-  const target = resolveTabTarget({ requestId, workspaceId, browserId, registry });
-  if ("ok" in target) {
-    return target;
-  }
-  return withDialogCapture(target.contents, async () => {
-    if (!target.contents.sendDebugCommand) {
-      return fail(requestId, "browser_unsupported", "Element screenshots require CDP.");
-    }
-    const elementExpression = snapshotEngine.runtimeElementExpression({
-      browserId: target.browserId,
-      ref,
-    });
-    if (typeof elementExpression !== "string") {
-      return staleRefFailure(requestId, ref);
-    }
-
-    let rawRect: unknown;
-    try {
-      rawRect = await target.contents.executeJavaScript(buildElementRectScript(elementExpression));
-    } catch (error) {
-      return fail(requestId, "browser_unknown_error", evaluateErrorMessage(error));
-    }
-    const rect = parseElementRectResult(rawRect);
-    if (rect === "stale_ref") {
-      return staleRefFailure(requestId, ref);
-    }
-    if (!rect || rect.width <= 0 || rect.height <= 0) {
-      return fail(
-        requestId,
-        "browser_element_not_found",
-        `Element ${ref} has no visible box to capture.`,
-      );
-    }
-
-    const clip = {
-      x: Math.max(0, rect.x - ELEMENT_CAPTURE_PADDING_PX),
-      y: Math.max(0, rect.y - ELEMENT_CAPTURE_PADDING_PX),
-      width: rect.width + ELEMENT_CAPTURE_PADDING_PX * 2,
-      height: rect.height + ELEMENT_CAPTURE_PADDING_PX * 2,
-    };
-    // Re-render the clip zoomed in until it fills the legibility budget (or
-    // hits the zoom cap). Unlike magnifying captured pixels, the CDP scale
-    // re-renders vector content - small text comes out crisp.
-    const rawFit = Math.min(
-      SCREENSHOT_MAX_LONG_EDGE / Math.max(clip.width, clip.height),
-      Math.sqrt(SCREENSHOT_MAX_PIXELS / (clip.width * clip.height)),
-    );
-    const scale = Math.min(rawFit, ELEMENT_CAPTURE_MAX_SCALE);
-
-    const sendDebugCommand = target.contents.sendDebugCommand.bind(target.contents);
-    let screenshot: CdpCaptureScreenshotResult;
-    try {
-      screenshot = await runPaintedPixelCapture(target.contents, async () => {
-        return (await sendDebugCommand("Page.captureScreenshot", {
-          format: "png",
-          captureBeyondViewport: true,
-          clip: { ...clip, scale },
-        })) as CdpCaptureScreenshotResult;
-      });
-    } catch (error) {
-      if (isScreenshotNoFrameError(error)) {
-        return screenshotNoFrameFailure(requestId, error);
-      }
-      throw error;
-    }
-    if (!screenshot.data) {
-      return fail(requestId, "browser_unsupported", "Element screenshot returned no data.");
-    }
-    return {
-      requestId,
-      ok: true,
-      result: {
-        command: "screenshot_element",
-        browserId: target.browserId,
-        ref,
-        mimeType: "image/png",
-        dataBase64: screenshot.data,
-        width: Math.max(1, Math.round(clip.width * scale)),
-        height: Math.max(1, Math.round(clip.height * scale)),
-        scale: roundScale(scale),
       },
     };
   });
@@ -1599,7 +1406,7 @@ async function executeUpload(
     }
     const evaluated = (await target.contents.sendDebugCommand("Runtime.evaluate", {
       expression,
-      objectGroup: "otto-browser-automation",
+      objectGroup: "paseo-browser-automation",
       returnByValue: false,
     })) as CdpRuntimeEvaluateResult;
     const objectId = evaluated.result?.objectId;
@@ -1732,12 +1539,23 @@ function capEvaluateResultJson(resultJson: string): { resultJson: string; trunca
   };
 }
 
+function evaluateErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return capEvaluateErrorMessage(message);
+}
+
+function capEvaluateErrorMessage(message: string): string {
+  return message.length <= MAX_EVALUATE_ERROR_MESSAGE_LENGTH
+    ? message
+    : message.slice(0, MAX_EVALUATE_ERROR_MESSAGE_LENGTH);
+}
+
 function buildEvaluateScript(
   functionSource: string,
   elementExpression: string | undefined,
 ): string {
   return String.raw`(async () => {
-    const __OTTO_BROWSER_EVALUATE__ = true;
+    const __PASEO_BROWSER_EVALUATE__ = true;
     try {
       const userFunction = (0, eval)(${JSON.stringify(`(${functionSource})`)});
       if (typeof userFunction !== 'function') {
@@ -1798,6 +1616,10 @@ function readString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+function readNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 const NETWORK_PERFORMANCE_SCRIPT = String.raw`(() => {
   const entries = performance.getEntriesByType('resource')
     .concat(performance.getEntriesByType('navigation'))
@@ -1812,3 +1634,26 @@ const NETWORK_PERFORMANCE_SCRIPT = String.raw`(() => {
     }));
   return JSON.stringify(entries);
 })()`;
+
+function resolveTabTarget(input: {
+  requestId: string;
+  workspaceId: string | undefined;
+  browserId: string;
+  registry: BrowserRegistry;
+}): ResolvedTabTarget | FailurePayload {
+  const { requestId, workspaceId, browserId, registry } = input;
+  if (workspaceId && registry.getBrowserWorkspaceId(browserId) !== workspaceId) {
+    return fail(requestId, "browser_tab_not_found", `No browser tab found for ID: ${browserId}`);
+  }
+
+  const contents = registry.getTabContents(browserId);
+  if (!contents) {
+    return fail(requestId, "browser_tab_not_found", `No browser tab found for ID: ${browserId}`);
+  }
+
+  if (contents.isDestroyed()) {
+    return fail(requestId, "browser_tab_closed", `Browser tab ${browserId} has been closed`);
+  }
+
+  return { browserId, contents };
+}

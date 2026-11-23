@@ -184,6 +184,7 @@ function buildBootstrap(widgetId: string): string {
   scheduleMeasure();
 
   window.sendPrompt = function (text) {
+    if (!navigator.userActivation?.isActive) return;
     if (typeof text !== "string") { return; }
     var trimmed = text.trim();
     if (!trimmed) { return; }
@@ -191,6 +192,7 @@ function buildBootstrap(widgetId: string): string {
   };
 
   window.openLink = function (url) {
+    if (!navigator.userActivation?.isActive) return;
     if (typeof url !== "string" || !url) { return; }
     post({ channel: CHANNEL, widgetId: WIDGET_ID, type: "open_link", url: url });
   };

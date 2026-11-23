@@ -6,6 +6,8 @@ order: 56
 category: TypeScript SDK
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # SDK events
 
 Subscriptions report changes after they happen. Fetch an initial snapshot first, then apply updates to it.

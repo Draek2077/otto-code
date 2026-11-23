@@ -3,13 +3,9 @@ import {
   getFeatureHighlightColor,
   getFeatureTooltip,
   getAgentControlHintKey,
-  getModeTierColor,
-  hexColorWithAlpha,
-  isFeatureToggleActive,
+  isFeatureActive,
   normalizeModelId,
   resolveAgentModelSelection,
-  resolveRuntimeModelFact,
-  type ModeTierColors,
 } from "./utils";
 
 describe("getAgentControlHintKey", () => {
@@ -38,70 +34,33 @@ describe("feature metadata helpers", () => {
     ).toBe("Custom");
   });
 
-  it("shows the provider's unavailability reason instead of the tooltip", () => {
-    expect(
-      getFeatureTooltip({
-        label: "Fast",
-        tooltip: "Toggle fast mode",
-        unavailableReason: "Fast mode is not active: usage credits are off.",
-      }),
-    ).toBe("Fast mode is not active: usage credits are off.");
-  });
-
-  it("treats an enabled toggle with an unavailability reason as inactive", () => {
-    expect(isFeatureToggleActive({ value: true })).toBe(true);
-    expect(isFeatureToggleActive({ value: true, unavailableReason: "blocked" })).toBe(false);
-    expect(isFeatureToggleActive({ value: false })).toBe(false);
-  });
-
   it("maps feature highlight colors by feature id", () => {
     expect(getFeatureHighlightColor("fast_mode")).toBe("yellow");
+    expect(getFeatureHighlightColor("service_tier")).toBe("yellow");
     expect(getFeatureHighlightColor("plan_mode")).toBe("blue");
     expect(getFeatureHighlightColor("other")).toBe("default");
   });
-});
 
-describe("getModeTierColor", () => {
-  const palette: ModeTierColors = {
-    safe: "green",
-    moderate: "yellow",
-    dangerous: "red",
-    planning: "blue",
-  };
-
-  it("maps named tiers to their palette colors", () => {
-    expect(getModeTierColor("safe", palette)).toBe("green");
-    expect(getModeTierColor("moderate", palette)).toBe("yellow");
-    expect(getModeTierColor("dangerous", palette)).toBe("red");
-    expect(getModeTierColor("planning", palette)).toBe("blue");
-  });
-
-  it("passes hex tiers through unchanged", () => {
-    expect(getModeTierColor("#ff6b6b", palette)).toBe("#ff6b6b");
-  });
-
-  it("returns undefined for neutral, unknown, and missing tiers", () => {
-    expect(getModeTierColor("neutral", palette)).toBeUndefined();
-    expect(getModeTierColor("mystery", palette)).toBeUndefined();
-    expect(getModeTierColor(undefined, palette)).toBeUndefined();
-  });
-});
-
-describe("hexColorWithAlpha", () => {
-  it("appends the alpha channel to 6-digit hex colors", () => {
-    expect(hexColorWithAlpha("#dc2626", 0.5)).toBe("#dc262680");
-    expect(hexColorWithAlpha("#38BDF8", 1)).toBe("#38BDF8ff");
-    expect(hexColorWithAlpha("#38bdf8", 0)).toBe("#38bdf800");
-  });
-
-  it("expands 3-digit hex colors before appending alpha", () => {
-    expect(hexColorWithAlpha("#f00", 0.5)).toBe("#ff000080");
-  });
-
-  it("returns undefined for non-hex colors", () => {
-    expect(hexColorWithAlpha("red", 0.5)).toBeUndefined();
-    expect(hexColorWithAlpha("rgba(0,0,0,1)", 0.5)).toBeUndefined();
-    expect(hexColorWithAlpha("#dc26", 0.5)).toBeUndefined();
+  it("treats a select feature as active when a non-default option is selected", () => {
+    const speed = {
+      type: "select" as const,
+      id: "service_tier",
+      label: "Speed",
+      options: [
+        { id: "default", label: "Normal", isDefault: true },
+        { id: "fast", label: "Fast" },
+      ],
+    };
+    expect(isFeatureActive({ ...speed, value: "default" })).toBe(false);
+    expect(isFeatureActive({ ...speed, value: "fast" })).toBe(true);
+    expect(
+      isFeatureActive({
+        type: "toggle",
+        id: "fast_mode",
+        label: "Fast",
+        value: true,
+      }),
+    ).toBe(true);
   });
 });
 
@@ -132,6 +91,7 @@ describe("resolveAgentModelSelection", () => {
       ],
       runtimeModelId: null,
       configuredModelId: "claude-fable-5[1m]",
+      runtimeThinkingOptionId: null,
       explicitThinkingOptionId: null,
     });
 
@@ -139,123 +99,8 @@ describe("resolveAgentModelSelection", () => {
     expect(selection.displayModel).toBe("Fable 5");
     expect(selection.selectedThinkingId).toBe("high");
   });
-});
 
-describe("resolveRuntimeModelFact", () => {
-  const models = [
-    { id: "claude-opus-5", provider: "claude" as const, label: "Opus 5" },
-    { id: "claude-fable-5", provider: "claude" as const, label: "Fable 5" },
-  ];
-
-  // The Auto case: the picker shows the configured Fable, the CLI ran Opus, and
-  // this is now the only place that says so.
-  it("names the model that ran when it differs from the selection", () => {
-    expect(
-      resolveRuntimeModelFact({
-        models,
-        runtimeModelId: "claude-opus-5",
-        selectedModelId: "claude-fable-5",
-      }),
-    ).toBe("Opus 5");
-  });
-
-  it("says nothing when the runtime model is the selection", () => {
-    expect(
-      resolveRuntimeModelFact({
-        models,
-        runtimeModelId: "claude-fable-5",
-        selectedModelId: "claude-fable-5",
-      }),
-    ).toBeNull();
-  });
-
-  it("says nothing before a turn has run", () => {
-    expect(
-      resolveRuntimeModelFact({
-        models,
-        runtimeModelId: null,
-        selectedModelId: "claude-fable-5",
-      }),
-    ).toBeNull();
-  });
-
-  // A raw dated id is usually the same model under another name, so naming it
-  // would report a difference that isn't one.
-  it("says nothing when the runtime model is not in the catalog", () => {
-    expect(
-      resolveRuntimeModelFact({
-        models,
-        runtimeModelId: "claude-opus-5-20260101",
-        selectedModelId: "claude-fable-5",
-      }),
-    ).toBeNull();
-  });
-
-  it("returns a label, never an id, so it can never be fed back as a selection", () => {
-    const fact = resolveRuntimeModelFact({
-      models,
-      runtimeModelId: "claude-opus-5",
-      selectedModelId: "claude-fable-5",
-    });
-
-    expect(fact).toBe("Opus 5");
-    expect(models.some((model) => model.id === fact)).toBe(false);
-  });
-});
-
-describe("resolveAgentModelSelection", () => {
-  // The reported bug: switch Opus -> Fable mid-chat, and the picker slides back
-  // to Opus on the next turn. The daemon keeps the choice in config.model, but
-  // the provider goes on reporting the model it actually ran (Claude's Auto mode
-  // names the CLI's per-turn pick, and any provider lags until its query
-  // restarts). The user's explicit selection has to win the display.
-  it("keeps the configured model when the runtime model reports a different one", () => {
-    const models = [
-      {
-        id: "claude-opus-5",
-        provider: "claude" as const,
-        label: "Opus 5",
-        thinkingOptions: [{ id: "high", label: "High" }],
-      },
-      {
-        id: "claude-fable-5",
-        provider: "claude" as const,
-        label: "Fable 5",
-        thinkingOptions: [{ id: "high", label: "High" }],
-      },
-    ];
-
-    const selection = resolveAgentModelSelection({
-      models,
-      runtimeModelId: "claude-opus-5",
-      configuredModelId: "claude-fable-5",
-      explicitThinkingOptionId: null,
-    });
-
-    expect(selection.activeModelId).toBe("claude-fable-5");
-    expect(selection.displayModel).toBe("Fable 5");
-  });
-
-  it("falls back to the runtime model when nothing is configured", () => {
-    const selection = resolveAgentModelSelection({
-      models: [
-        {
-          id: "claude-opus-5",
-          provider: "claude",
-          label: "Opus 5",
-          thinkingOptions: [{ id: "high", label: "High" }],
-        },
-      ],
-      runtimeModelId: "claude-opus-5",
-      configuredModelId: null,
-      explicitThinkingOptionId: null,
-    });
-
-    expect(selection.activeModelId).toBe("claude-opus-5");
-    expect(selection.displayModel).toBe("Opus 5");
-  });
-
-  it("prefers runtime model over a configured model absent from the catalog", () => {
+  it("prefers runtime model over configured model", () => {
     const selection = resolveAgentModelSelection({
       models: [
         {
@@ -268,6 +113,7 @@ describe("resolveAgentModelSelection", () => {
       ],
       runtimeModelId: "a",
       configuredModelId: "b",
+      runtimeThinkingOptionId: null,
       explicitThinkingOptionId: null,
     });
 
@@ -292,11 +138,60 @@ describe("resolveAgentModelSelection", () => {
       ],
       runtimeModelId: "a",
       configuredModelId: null,
+      runtimeThinkingOptionId: null,
       explicitThinkingOptionId: "high",
     });
 
     expect(selection.selectedThinkingId).toBe("high");
     expect(selection.displayThinking).toBe("High");
+  });
+
+  it("shows the thinking level the agent runs on when none was chosen", () => {
+    const selection = resolveAgentModelSelection({
+      models: [
+        {
+          id: "openrouter/google/gemini-3.6-flash",
+          provider: "pi",
+          label: "Gemini 3.6 Flash",
+          thinkingOptions: [
+            { id: "low", label: "Low" },
+            { id: "medium", label: "Medium", isDefault: true },
+            { id: "high", label: "High" },
+          ],
+          defaultThinkingOptionId: "medium",
+        },
+      ],
+      runtimeModelId: "openrouter/google/gemini-3.6-flash",
+      configuredModelId: null,
+      runtimeThinkingOptionId: "high",
+      explicitThinkingOptionId: null,
+    });
+
+    expect(selection.selectedThinkingId).toBe("high");
+    expect(selection.displayThinking).toBe("High");
+  });
+
+  it("falls back to the chosen thinking level when the runtime level is not a model option", () => {
+    const selection = resolveAgentModelSelection({
+      models: [
+        {
+          id: "a",
+          provider: "codex",
+          label: "Model A",
+          thinkingOptions: [
+            { id: "low", label: "Low" },
+            { id: "high", label: "High" },
+          ],
+          defaultThinkingOptionId: "low",
+        },
+      ],
+      runtimeModelId: "a",
+      configuredModelId: null,
+      runtimeThinkingOptionId: "xhigh",
+      explicitThinkingOptionId: "high",
+    });
+
+    expect(selection.selectedThinkingId).toBe("high");
   });
 
   it("formats raw thinking labels in the selected model display", () => {
@@ -314,6 +209,7 @@ describe("resolveAgentModelSelection", () => {
       ],
       runtimeModelId: "a",
       configuredModelId: null,
+      runtimeThinkingOptionId: null,
       explicitThinkingOptionId: "xhigh",
     });
 
@@ -335,6 +231,7 @@ describe("resolveAgentModelSelection", () => {
       ],
       runtimeModelId: null,
       configuredModelId: null,
+      runtimeThinkingOptionId: null,
       explicitThinkingOptionId: null,
     });
 
@@ -358,6 +255,7 @@ describe("resolveAgentModelSelection", () => {
       ],
       runtimeModelId: "claude-sonnet-4-6-20260101",
       configuredModelId: "default",
+      runtimeThinkingOptionId: null,
       explicitThinkingOptionId: null,
     });
 
@@ -365,5 +263,32 @@ describe("resolveAgentModelSelection", () => {
     expect(selection.displayModel).toBe("Default (Sonnet 4.6)");
     expect(selection.selectedThinkingId).toBe("low");
     expect(selection.displayThinking).toBe("Low");
+  });
+
+  it("shows the agent's own model when the catalog does not list it", () => {
+    const selection = resolveAgentModelSelection({
+      models: [
+        {
+          id: "gpt-6-sol",
+          provider: "codex",
+          label: "GPT-6-Sol",
+          isDefault: true,
+          thinkingOptions: [
+            { id: "medium", label: "medium" },
+            { id: "max", label: "max" },
+          ],
+          defaultThinkingOptionId: "medium",
+        },
+      ],
+      runtimeModelId: "gpt-6.1-sol",
+      configuredModelId: "gpt-6.1-sol",
+      runtimeThinkingOptionId: null,
+      explicitThinkingOptionId: "max",
+    });
+
+    expect(selection.selectedModel).toBeNull();
+    expect(selection.activeModelId).toBe("gpt-6.1-sol");
+    expect(selection.displayModel).toBe("gpt-6.1-sol");
+    expect(selection.displayThinking).toBe("Max");
   });
 });

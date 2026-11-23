@@ -1,5 +1,6 @@
 import type { KeyboardShortcutPayload, MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
+import { EDITOR_SHORTCUT_COMMANDS } from "@/otto/editor/shortcuts/definitions"; // OTTO(editor)
 import { buildSettingsRoute, parseHostWorkspaceRouteFromPathname } from "@/utils/host-routes";
 import {
   getRelativeSidebarShortcutTarget,
@@ -40,8 +41,6 @@ const NONE: ShortcutAction = { kind: "none" };
 // Action ids whose routing is a no-payload pass-through to the dispatcher.
 const PASSTHROUGH_DISPATCH: Record<string, KeyboardActionDefinition> = {
   "agent.interrupt": { id: "agent.interrupt", scope: "global" },
-  "chat.find": { id: "chat.find", scope: "workspace" },
-  "workspace.tab.new": { id: "workspace.tab.new", scope: "workspace" },
   "workspace.tab.menu.open": { id: "workspace.tab.menu.open", scope: "workspace" },
   "workspace.tab.target.agent": { id: "workspace.tab.target.agent", scope: "workspace" },
   "workspace.tab.target.browser": { id: "workspace.tab.target.browser", scope: "workspace" },
@@ -55,9 +54,6 @@ const PASSTHROUGH_DISPATCH: Record<string, KeyboardActionDefinition> = {
   "workspace.terminal.new": { id: "workspace.terminal.new", scope: "workspace" },
   "workspace.tab.close.current": { id: "workspace.tab.close-current", scope: "workspace" },
   "sidebar.toggle.right": { id: "sidebar.toggle.right", scope: "sidebar" },
-  "sidebar.open.files": { id: "sidebar.open.files", scope: "sidebar" },
-  "sidebar.open.search": { id: "sidebar.open.search", scope: "sidebar" },
-  "sidebar.open.changes": { id: "sidebar.open.changes", scope: "sidebar" },
   "workspace.pane.split.right": { id: "workspace.pane.split.right", scope: "workspace" },
   "workspace.pane.split.down": { id: "workspace.pane.split.down", scope: "workspace" },
   "workspace.pane.focus.left": { id: "workspace.pane.focus.left", scope: "workspace" },
@@ -176,28 +172,13 @@ function routeSettingsToggle(ctx: ShortcutRoutingContext): ShortcutAction {
   return { kind: "router-back" };
 }
 
-/**
- * The File Editor section routes NOWHERE, and that is the design rather than a
- * gap. Its bindings exist in the registry so they are listed and rebindable, and
- * so that being focus-scoped they outrank the general binding on the same combo
- * while the editor has focus. The keystroke itself is executed by CodeMirror,
- * whose keymap is built out of those same bindings (editor/editor-key-bindings.ts)
- * - matching here and returning `none` is precisely what makes the shadowed
- * general action stand down while leaving the event to reach the editor: the
- * caller only calls `preventDefault` on an action it actually performed.
- */
-function isEditorAction(action: string): boolean {
-  return action.startsWith("editor.");
-}
-
 export function routeKeyboardShortcut(
   input: ShortcutRoutingInput,
   ctx: ShortcutRoutingContext,
 ): ShortcutAction {
-  if (isEditorAction(input.action)) {
-    return NONE;
-  }
-
+  const editorCommand = EDITOR_SHORTCUT_COMMANDS[input.action]; // OTTO(editor)
+  if (editorCommand)
+    return dispatch({ id: "editor.execute", scope: "editor", command: editorCommand }); // OTTO(editor)
   const passthrough = PASSTHROUGH_DISPATCH[input.action];
   if (passthrough) {
     if (

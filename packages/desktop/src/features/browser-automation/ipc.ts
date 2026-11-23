@@ -1,13 +1,12 @@
-import type { Rectangle } from "electron";
 import { ipcMain } from "electron";
-import { BrowserAutomationExecuteRequestSchema } from "@otto-code/protocol/browser-automation/rpc-schemas";
+import { BrowserAutomationExecuteRequestSchema } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import type {
   BrowserAutomationConsoleLogEntry,
   BrowserAutomationDialogEvent,
-} from "@otto-code/protocol/browser-automation/rpc-schemas";
-import type { TabContents, BrowserRegistry, TabImage, CapturedNetworkRequest } from "./service.js";
+} from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import type { TabContents, BrowserRegistry, TabImage } from "./service.js";
+import type { IsolatedKeyboardInputEvent } from "./trusted-input.js";
 import { CdpSessionQueue } from "./cdp-session-queue.js";
-import { withBrowserAutomationInput } from "./input-ownership.js";
 import {
   dialogAcceptValue,
   handledDialogEvent,
@@ -16,25 +15,17 @@ import {
   promptShimInstallScript,
   promptShimRestoreScript,
 } from "./dialog-handling.js";
-import { executeAutomationCommand } from "./service.js";
+import { BrowserTabClosedError, executeAutomationCommand } from "./service.js";
 import { BrowserSnapshotEngine } from "./snapshot-engine.js";
-import type { IsolatedKeyboardInputEvent } from "./trusted-input.js";
 import {
-  listRegisteredOttoBrowserIds,
-  listRegisteredOttoBrowserIdsForWorkspace,
-  getOttoBrowserWebContentsForHostWindow,
-  getWorkspaceActiveOttoBrowserIdForHostWindow,
-  getOttoBrowserWorkspaceId,
+  listRegisteredPaseoBrowserIds,
+  listRegisteredPaseoBrowserIdsForWorkspace,
+  getPaseoBrowserWebContentsForHostWindow,
+  getWorkspaceActivePaseoBrowserIdForHostWindow,
+  getPaseoBrowserWorkspaceId,
 } from "../browser-webviews/index.js";
 
 const MAX_CONSOLE_MESSAGES_PER_TAB = 200;
-/**
- * Per-message length cap. The tab retains up to 200 entries, but a single
- * console line (a serialized object, a stack trace, a data URL) can be huge and
- * enters an agent's transcript verbatim via browser_logs. Truncate with a
- * marker so the head is kept and nothing is silently dropped.
- */
-const MAX_CONSOLE_MESSAGE_CHARS = 2_000;
 const consoleMessagesByContentsId = new Map<number, BrowserAutomationConsoleLogEntry[]>();
 const cdpQueuesByContentsId = new Map<number, CdpSessionQueue>();
 const dialogMonitorsByContentsId = new Map<number, DialogMonitor>();
@@ -49,12 +40,6 @@ interface HostWebContents {
   once(event: "destroyed", listener: () => void): void;
 }
 
-/**
- * One snapshot engine per host window. Snapshot refs are small integers handed
- * back to the model ("ref3"), so a single shared engine would let two windows
- * mint the same ref for different elements and act on each other's page. The
- * entry is dropped when the host window is destroyed so refs do not outlive it.
- */
 export class HostSnapshotEngineRegistry {
   private readonly entries = new Map<
     number,
@@ -91,22 +76,22 @@ interface WebContentsDebugger {
   on?(event: "detach", listener: () => void): void;
 }
 
-// Electron 32+ delivers the message details on the event object itself; the
-// old positional (level, message, line, sourceId) args are deprecated and log
-// a warning when the listener declares them.
-interface ConsoleMessageEvent {
-  level: unknown;
-  message: unknown;
-  lineNumber: unknown;
-  sourceId: unknown;
-}
-
 interface ConsoleMessageEmitter {
-  on(event: "console-message", listener: (event: ConsoleMessageEvent) => void): void;
+  on(
+    event: "console-message",
+    listener: (
+      event: unknown,
+      level: unknown,
+      message: unknown,
+      line: unknown,
+      sourceId: unknown,
+    ) => void,
+  ): void;
   once(event: "destroyed", listener: () => void): void;
 }
 
 interface BrowserAutomationWebContents extends ConsoleMessageEmitter {
+  removeListener(event: "destroyed", listener: () => void): void;
   readonly id: number;
   readonly debugger: WebContentsDebugger;
   getURL(): string;
@@ -120,18 +105,20 @@ interface BrowserAutomationWebContents extends ConsoleMessageEmitter {
   goBack(): void;
   goForward(): void;
   reload(): void;
-  capturePage(rect?: Rectangle, options?: { stayHidden?: boolean }): Promise<TabImage>;
-  sendInputEvent(event: IsolatedKeyboardInputEvent): void;
+  beginFrameSubscription(onlyDirty: boolean, callback: (image: TabImage) => void): void;
+  endFrameSubscription(): void;
   invalidate(): void;
+  getBackgroundThrottling(): boolean;
+  setBackgroundThrottling(allowed: boolean): void;
+  sendInputEvent(event: IsolatedKeyboardInputEvent): void;
+  insertText(text: string): Promise<void>;
 }
 
 export function adaptWebContents(contents: BrowserAutomationWebContents): TabContents {
-  // Read once: webContents.id throws after the guest is destroyed, and the
-  // closures below outlive it.
   const contentsId = contents.id;
   observeConsoleMessages(contents, contentsId);
   const cdpQueue = getCdpQueue(contentsId);
-  const dialogMonitor = getDialogMonitor(contents, cdpQueue);
+  const dialogMonitor = getDialogMonitor(contents, contentsId, cdpQueue);
   return {
     id: contentsId,
     getURL: () => contents.getURL(),
@@ -145,9 +132,19 @@ export function adaptWebContents(contents: BrowserAutomationWebContents): TabCon
     goBack: () => contents.goBack(),
     goForward: () => contents.goForward(),
     reload: () => contents.reload(),
-    capturePage: (captureOptions) => contents.capturePage(undefined, captureOptions),
+    captureFrame: (signal) => captureViewportFrame(contents, signal),
     invalidate: () => contents.invalidate(),
+    withFrameProduction: async (capture) => {
+      const previous = contents.getBackgroundThrottling();
+      contents.setBackgroundThrottling(false);
+      try {
+        return await capture();
+      } finally {
+        if (!contents.isDestroyed()) contents.setBackgroundThrottling(previous);
+      }
+    },
     sendInputEvent: (event) => contents.sendInputEvent(event),
+    insertText: (text) => contents.insertText(text),
     getConsoleMessages: () => consoleMessagesByContentsId.get(contentsId) ?? [],
     captureDialogs: (task) => dialogMonitor.capture(task),
     sendDebugCommand: (command: string, params?: Record<string, unknown>) =>
@@ -155,145 +152,44 @@ export function adaptWebContents(contents: BrowserAutomationWebContents): TabCon
         if (!contents.debugger.isAttached()) {
           contents.debugger.attach("1.3");
         }
-        return command.startsWith("Input.")
-          ? withBrowserAutomationInput(contentsId, () =>
-              contents.debugger.sendCommand(command, params ?? {}),
-            )
-          : contents.debugger.sendCommand(command, params ?? {});
+        return contents.debugger.sendCommand(command, params ?? {});
       }),
-    startNetworkCapture: async () => {
-      observeNetworkEvents(contents);
-      if (networkCaptureEnabledContentsIds.has(contentsId)) {
-        return;
-      }
-      await cdpQueue.run(async () => {
-        if (!contents.debugger.isAttached()) {
-          contents.debugger.attach("1.3");
-        }
-        await contents.debugger.sendCommand("Network.enable", {});
-      });
-      networkCaptureEnabledContentsIds.add(contentsId);
-    },
-    getNetworkRequests: () => [...getNetworkLog(contentsId).values()],
-    getNetworkResponseBody: async (requestId: string) => {
-      if (!getNetworkLog(contentsId).has(requestId)) {
-        return null;
-      }
-      const raw = (await cdpQueue.run(async () => {
-        if (!contents.debugger.isAttached()) {
-          contents.debugger.attach("1.3");
-        }
-        return contents.debugger.sendCommand("Network.getResponseBody", { requestId });
-      })) as { body?: unknown; base64Encoded?: unknown } | null;
-      if (!raw || typeof raw.body !== "string") {
-        return null;
-      }
-      return { body: raw.body, base64Encoded: raw.base64Encoded === true };
-    },
   };
 }
 
-const MAX_NETWORK_ENTRIES_PER_TAB = 500;
-const networkLogByContentsId = new Map<number, Map<string, CapturedNetworkRequest>>();
-const networkCaptureEnabledContentsIds = new Set<number>();
-const networkObservedContentsIds = new Set<number>();
-
-function getNetworkLog(contentsId: number): Map<string, CapturedNetworkRequest> {
-  const existing = networkLogByContentsId.get(contentsId);
-  if (existing) {
-    return existing;
-  }
-  const log = new Map<string, CapturedNetworkRequest>();
-  networkLogByContentsId.set(contentsId, log);
-  return log;
-}
-
-function observeNetworkEvents(contents: BrowserAutomationWebContents): void {
-  if (networkObservedContentsIds.has(contents.id)) {
-    return;
-  }
-  networkObservedContentsIds.add(contents.id);
-  contents.debugger.on?.("message", (_event, method, params) => {
-    if (!method.startsWith("Network.")) {
-      return;
+function captureViewportFrame(
+  contents: BrowserAutomationWebContents,
+  signal: AbortSignal,
+): Promise<TabImage> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const stop = () => {
+      signal.removeEventListener("abort", abort);
+      contents.removeListener("destroyed", destroyed);
+      if (!contents.isDestroyed()) contents.endFrameSubscription();
+    };
+    const abort = () => {
+      stop();
+      reject(signal.reason);
+    };
+    const destroyed = () => {
+      stop();
+      reject(new BrowserTabClosedError());
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    contents.once("destroyed", destroyed);
+    try {
+      // A resized resident guest can paint while capturePage's surface-copy
+      // request remains pending. Subscribe to its rendered frames instead.
+      contents.beginFrameSubscription(false, (image) => {
+        stop();
+        resolve(image);
+      });
+    } catch (error) {
+      stop();
+      reject(error);
     }
-    applyNetworkEvent(getNetworkLog(contents.id), method, params ?? {});
   });
-}
-
-function applyNetworkEvent(
-  log: Map<string, CapturedNetworkRequest>,
-  method: string,
-  params: Record<string, unknown>,
-): void {
-  const requestId = typeof params.requestId === "string" ? params.requestId : null;
-  if (!requestId) {
-    return;
-  }
-  if (method === "Network.requestWillBeSent") {
-    recordRequestStart(log, requestId, params);
-    return;
-  }
-  const entry = log.get(requestId);
-  if (!entry) {
-    return;
-  }
-  if (method === "Network.responseReceived") {
-    recordResponse(entry, params);
-    return;
-  }
-  if (method === "Network.loadingFinished") {
-    entry.finished = true;
-    if (typeof params.encodedDataLength === "number") {
-      entry.encodedDataLength = params.encodedDataLength;
-    }
-    return;
-  }
-  if (method === "Network.loadingFailed") {
-    entry.finished = true;
-    entry.failed = typeof params.errorText === "string" ? params.errorText : "failed";
-  }
-}
-
-function recordRequestStart(
-  log: Map<string, CapturedNetworkRequest>,
-  requestId: string,
-  params: Record<string, unknown>,
-): void {
-  const request =
-    params.request && typeof params.request === "object"
-      ? (params.request as Record<string, unknown>)
-      : {};
-  log.set(requestId, {
-    requestId,
-    url: typeof request.url === "string" ? request.url : "",
-    method: typeof request.method === "string" ? request.method : "GET",
-    ...(typeof params.type === "string" ? { resourceType: params.type } : {}),
-    finished: false,
-  });
-  while (log.size > MAX_NETWORK_ENTRIES_PER_TAB) {
-    const oldestKey = log.keys().next().value;
-    if (oldestKey === undefined) {
-      return;
-    }
-    log.delete(oldestKey);
-  }
-}
-
-function recordResponse(entry: CapturedNetworkRequest, params: Record<string, unknown>): void {
-  const response =
-    params.response && typeof params.response === "object"
-      ? (params.response as Record<string, unknown>)
-      : {};
-  if (typeof response.status === "number") {
-    entry.status = response.status;
-  }
-  if (typeof response.statusText === "string") {
-    entry.statusText = response.statusText;
-  }
-  if (typeof response.mimeType === "string") {
-    entry.mimeType = response.mimeType;
-  }
 }
 
 function getCdpQueue(contentsId: number): CdpSessionQueue {
@@ -306,17 +202,13 @@ function getCdpQueue(contentsId: number): CdpSessionQueue {
   return queue;
 }
 
-// contentsId is captured up front rather than read off `contents` inside the
-// listeners: Electron's webContents.id throws "Object has been destroyed" once
-// the guest is gone, which is exactly when the destroyed handler runs. Reading
-// it there throws out of the handler and leaks every map below.
 function observeConsoleMessages(contents: BrowserAutomationWebContents, contentsId: number): void {
   if (observedContentsIds.has(contentsId)) {
     return;
   }
   observedContentsIds.add(contentsId);
-  contents.on("console-message", (event) => {
-    const entry = normalizeConsoleMessage(event);
+  contents.on("console-message", (_event, level, message, line, sourceId) => {
+    const entry = normalizeConsoleMessage({ level, message, line, sourceId });
     const messages = consoleMessagesByContentsId.get(contentsId) ?? [];
     messages.push(entry);
     consoleMessagesByContentsId.set(contentsId, messages.slice(-MAX_CONSOLE_MESSAGES_PER_TAB));
@@ -326,22 +218,20 @@ function observeConsoleMessages(contents: BrowserAutomationWebContents, contents
     consoleMessagesByContentsId.delete(contentsId);
     cdpQueuesByContentsId.delete(contentsId);
     dialogMonitorsByContentsId.delete(contentsId);
-    networkLogByContentsId.delete(contentsId);
-    networkCaptureEnabledContentsIds.delete(contentsId);
-    networkObservedContentsIds.delete(contentsId);
   });
 }
 
 function getDialogMonitor(
   contents: BrowserAutomationWebContents,
+  contentsId: number,
   cdpQueue: CdpSessionQueue,
 ): DialogMonitor {
-  const existing = dialogMonitorsByContentsId.get(contents.id);
+  const existing = dialogMonitorsByContentsId.get(contentsId);
   if (existing) {
     return existing;
   }
-  const monitor = new DialogMonitor(contents, cdpQueue);
-  dialogMonitorsByContentsId.set(contents.id, monitor);
+  const monitor = new DialogMonitor(contents, contentsId, cdpQueue);
+  dialogMonitorsByContentsId.set(contentsId, monitor);
   return monitor;
 }
 
@@ -353,6 +243,7 @@ class DialogMonitor {
 
   public constructor(
     private readonly contents: BrowserAutomationWebContents,
+    private readonly contentsId: number,
     private readonly cdpQueue: CdpSessionQueue,
   ) {}
 
@@ -369,7 +260,7 @@ class DialogMonitor {
         throw error;
       }
       console.warn("[browser-automation] Dialog capture unavailable; running command without it", {
-        contentsId: this.contents.id,
+        contentsId: this.contentsId,
         error,
       });
       return { result: await task(), dialogs: [] };
@@ -525,48 +416,42 @@ function parsePromptShimDialogs(value: unknown): BrowserAutomationDialogEvent[] 
   });
 }
 
-function capConsoleMessage(message: string): string {
-  if (message.length <= MAX_CONSOLE_MESSAGE_CHARS) {
-    return message;
-  }
-  const removed = message.length - MAX_CONSOLE_MESSAGE_CHARS;
-  return `${message.slice(0, MAX_CONSOLE_MESSAGE_CHARS)} [... ${removed} characters truncated ...]`;
-}
-
-function normalizeConsoleMessage(input: ConsoleMessageEvent): BrowserAutomationConsoleLogEntry {
+function normalizeConsoleMessage(input: {
+  level: unknown;
+  message: unknown;
+  line: unknown;
+  sourceId: unknown;
+}): BrowserAutomationConsoleLogEntry {
   return {
     level: typeof input.level === "string" ? input.level : String(input.level ?? "log"),
-    message: capConsoleMessage(
-      typeof input.message === "string" ? input.message : String(input.message ?? ""),
-    ),
+    message: typeof input.message === "string" ? input.message : String(input.message ?? ""),
     ...(typeof input.sourceId === "string" && input.sourceId.length > 0
       ? { source: input.sourceId }
       : {}),
-    ...(typeof input.lineNumber === "number" ? { line: input.lineNumber } : {}),
+    ...(typeof input.line === "number" ? { line: input.line } : {}),
     timestamp: Date.now(),
   };
 }
 
 function createRegistry(hostWebContentsId: number): BrowserRegistry {
   return {
-    listRegisteredBrowserIds: listRegisteredOttoBrowserIds,
-    listRegisteredBrowserIdsForWorkspace: listRegisteredOttoBrowserIdsForWorkspace,
+    listRegisteredBrowserIds: listRegisteredPaseoBrowserIds,
+    listRegisteredBrowserIdsForWorkspace: listRegisteredPaseoBrowserIdsForWorkspace,
     getTabContents(browserId: string): TabContents | null {
-      const contents = getOttoBrowserWebContentsForHostWindow(browserId, hostWebContentsId);
+      const contents = getPaseoBrowserWebContentsForHostWindow(browserId, hostWebContentsId);
       return contents ? adaptWebContents(contents) : null;
     },
-    getBrowserWorkspaceId: getOttoBrowserWorkspaceId,
+    getBrowserWorkspaceId: getPaseoBrowserWorkspaceId,
     getWorkspaceActiveBrowserId(workspaceId: string): string | null {
-      return getWorkspaceActiveOttoBrowserIdForHostWindow(workspaceId, hostWebContentsId);
+      return getWorkspaceActivePaseoBrowserIdForHostWindow(workspaceId, hostWebContentsId);
     },
   };
 }
 
 export function registerBrowserAutomationIpc(options?: { ipc?: IpcHandlerRegistry }): void {
   const ipc = options?.ipc ?? ipcMain;
-  ipc.handle("otto:browser:execute-automation-command", async (event, rawRequest: unknown) => {
-    // Automation is answered by the window that asked: a browser id only
-    // resolves inside its own host window now.
+
+  ipc.handle("paseo:browser:execute-automation-command", async (event, rawRequest: unknown) => {
     const hostContents = (event as { sender?: HostWebContents }).sender;
     const hostWebContentsId = hostContents?.id;
     if (!hostContents || typeof hostWebContentsId !== "number") {
@@ -576,7 +461,6 @@ export function registerBrowserAutomationIpc(options?: { ipc?: IpcHandlerRegistr
         error: {
           code: "browser_unsupported" as const,
           message: "Browser automation requires a host window.",
-          retryable: false,
         },
       };
     }

@@ -9,6 +9,8 @@ import {
   expectProjectWorkspaceCountForHost,
   expectSeparateProjects,
   openGroupedProjectSettings,
+  openGroupedProjectWorkspace,
+  expectWorkspaceHost,
   openProjectsForSettingsHost,
   openProjectDirectory,
   openProjectDirectoryWithHosts,
@@ -20,7 +22,6 @@ import {
   startIsolatedHostDaemon,
 } from "../support/helpers/isolated-host-daemon";
 import { connectSeedClient, type SeedDaemonClient } from "../support/helpers/seed-client";
-import { selectWorkspaceIsolation } from "../support/helpers/new-workspace";
 import { getServerId } from "../support/helpers/server-id";
 import { createTempGitRepo } from "../support/helpers/workspace";
 
@@ -28,8 +29,8 @@ const PRIMARY_HOST_LABEL = "Primary Host";
 const SECONDARY_HOST_LABEL = "Secondary Host";
 const LEGACY_PRIMARY_HOST_LABEL = "Legacy Primary Host";
 const LEGACY_SECONDARY_HOST_LABEL = "Legacy Secondary Host";
-const GROUPED_PROJECT_NAME = "otto-e2e/grouped-project";
-const SHARED_REMOTE_URL = "https://github.com/otto-e2e/grouped-project.git";
+const GROUPED_PROJECT_NAME = "paseo-e2e/grouped-project";
+const SHARED_REMOTE_URL = "https://github.com/paseo-e2e/grouped-project.git";
 const SUBDIRECTORY = path.join("packages", "app");
 const REPO_FILES = [{ path: path.join(SUBDIRECTORY, "package.json"), content: "{}\n" }];
 
@@ -71,7 +72,7 @@ async function createProject(
 }
 
 async function removePersistedProjectKeys(host: IsolatedHostDaemon): Promise<void> {
-  const projectsPath = path.join(host.ottoHome, "projects", "projects.json");
+  const projectsPath = path.join(host.paseoHome, "projects", "projects.json");
   const projects = JSON.parse(await readFile(projectsPath, "utf8")) as Array<
     Record<string, unknown>
   >;
@@ -412,11 +413,35 @@ test.describe("Sidebar project grouping", () => {
     await openScenario(page, crossHostProject);
     await beginWorkspaceFromProject(page, GROUPED_PROJECT_NAME);
     await selectWorkspaceHost(page, SECONDARY_HOST_LABEL);
-    await selectWorkspaceIsolation(page, "worktree");
     await createWorkspaceWithoutAgent(page);
     await expectProjectWorkspaceCountForHost(page, {
       projectName: GROUPED_PROJECT_NAME,
-      serverId: crossHostProject.hosts[0]!.serverId,
+      hostName: SECONDARY_HOST_LABEL,
+      count: 2,
+    });
+  });
+  test("creates grouped project workspaces on the active workspace host", async ({
+    page,
+    crossHostProject,
+  }) => {
+    await openScenario(page, crossHostProject);
+    await openGroupedProjectWorkspace(page, GROUPED_PROJECT_NAME, "Secondary workspace");
+    await beginWorkspaceFromProject(page, GROUPED_PROJECT_NAME);
+    await expectWorkspaceHost(page, SECONDARY_HOST_LABEL);
+    await createWorkspaceWithoutAgent(page);
+    await expectProjectWorkspaceCountForHost(page, {
+      projectName: GROUPED_PROJECT_NAME,
+      hostName: SECONDARY_HOST_LABEL,
+      count: 2,
+    });
+
+    await openGroupedProjectWorkspace(page, GROUPED_PROJECT_NAME, "Primary workspace");
+    await beginWorkspaceFromProject(page, GROUPED_PROJECT_NAME);
+    await expectWorkspaceHost(page, PRIMARY_HOST_LABEL);
+    await createWorkspaceWithoutAgent(page);
+    await expectProjectWorkspaceCountForHost(page, {
+      projectName: GROUPED_PROJECT_NAME,
+      hostName: PRIMARY_HOST_LABEL,
       count: 2,
     });
   });

@@ -1,13 +1,7 @@
 {
-  "name": "@otto-code/client",
+  "name": "@getpaseo/client",
   "version": "0.9.35",
-  "description": "Otto client SDK package",
-  "license": "AGPL-3.0-or-later",
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/Draek2077/otto-code.git",
-    "directory": "packages/client"
-  },
+  "description": "Paseo client SDK package",
   "files": [
     "dist",
     "!dist/**/*.map",
@@ -37,7 +31,7 @@
   },
   "scripts": {
     "clean": "node ../../scripts/clean-package-dist.mjs",
-    "build": "npm run build --workspace=@otto-code/protocol && tsc -p tsconfig.json --incremental false",
+    "build": "npm run build --workspace=@getpaseo/protocol && npm run build --workspace=@getpaseo/relay && tsc -p tsconfig.json --incremental false",
     "build:clean": "npm run clean && npm run build",
     "prepack": "npm run build:clean",
     "typecheck": "tsgo --noEmit",
@@ -45,13 +39,13 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@otto-code/protocol": "0.9.35",
-    "@otto-code/relay": "0.9.35",
+    "@getpaseo/protocol": "0.9.35",
+    "@getpaseo/relay": "0.9.35",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20.9.0",
     "typescript": "^5.2.2",
-    "vitest": "^4.1.11"
+    "vitest": "^4.1.6"
   }
 }

@@ -2,15 +2,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useMemo } from "react";
 import { View, Text, Pressable } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import {
-  X,
-  ArrowUp,
-  RefreshCcw,
-  Check,
-  Mic,
-  Pencil,
-  WandStars,
-} from "@/components/icons/material-icons";
+import { X, ArrowUp, RefreshCcw, Check, Mic, Pencil } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { VolumeMeter } from "./volume-meter";
 import { FOOTER_HEIGHT } from "@/constants/layout";
@@ -29,8 +21,6 @@ interface DictationControlsProps {
   onAcceptAndSend: () => void;
   onRetry?: () => void;
   onDiscard?: () => void;
-  cleanUp?: boolean;
-  onToggleCleanUp?: () => void;
   disabled?: boolean;
 }
 
@@ -52,8 +42,6 @@ export function DictationControls({
   onAcceptAndSend,
   onRetry,
   onDiscard,
-  cleanUp = false,
-  onToggleCleanUp,
   disabled = false,
 }: DictationControlsProps) {
   const { theme } = useUnistyles();
@@ -99,7 +87,9 @@ export function DictationControls({
       <View style={styles.meterWrapper}>
         <VolumeMeter volume={volume} isMuted={false} isSpeaking={false} orientation="horizontal" />
       </View>
-      <Text style={timerTextStyle}>{formatDuration(duration)}</Text>
+      <Text style={timerTextStyle}>
+        {status === "paused" ? t("message.dictation.paused") : formatDuration(duration)}
+      </Text>
       <View style={styles.actionGroup}>
         <Pressable
           onPress={handleCancel}
@@ -125,13 +115,6 @@ export function DictationControls({
         ) : null}
         {!actionsDisabled && !isFailed ? (
           <>
-            <Pressable
-              onPress={onToggleCleanUp}
-              accessibilityLabel={t("message.dictation.cleanUp")}
-              style={[styles.actionButton, cleanUp && styles.actionButtonSelected]}
-            >
-              <WandStars size={theme.iconSize.sm} color={theme.colors.foreground} />
-            </Pressable>
             <Pressable
               onPress={onAccept}
               accessibilityLabel={t("message.dictation.insert")}
@@ -169,8 +152,6 @@ export function DictationOverlay({
   onAcceptAndSend,
   onRetry,
   onDiscard,
-  cleanUp = false,
-  onToggleCleanUp,
 }: Omit<DictationControlsProps, "onStart" | "disabled" | "transcript"> & { errorText?: string }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -217,7 +198,7 @@ export function DictationOverlay({
         accessibilityLabel={t("message.dictation.cancel")}
         style={overlayCancelButtonStyle}
       >
-        <X size={theme.iconSize.lg} color={theme.colors.accentForeground} />
+        <X size={theme.iconSize.lg} color={theme.colors.accentForeground} strokeWidth={2.5} />
       </Pressable>
 
       <View style={overlayStyles.centerContainer}>
@@ -231,6 +212,11 @@ export function DictationOverlay({
           />
           <Text style={overlayTimerTextStyle}>{formatDuration(duration)}</Text>
         </View>
+        {status === "paused" ? (
+          <Text numberOfLines={2} style={overlayTranscriptTextStyle}>
+            {t("message.dictation.paused")}
+          </Text>
+        ) : null}
         {isFailed ? (
           <Text numberOfLines={2} style={overlayTranscriptTextStyle}>
             {errorText
@@ -253,26 +239,22 @@ export function DictationOverlay({
             accessibilityLabel={t("message.dictation.retry")}
             style={overlayRetryButtonStyle}
           >
-            <RefreshCcw size={theme.iconSize.lg} color={theme.colors.accent} />
+            <RefreshCcw size={theme.iconSize.lg} color={theme.colors.accent} strokeWidth={2.5} />
           </Pressable>
         ) : null}
         {!actionsDisabled && !isFailed ? (
           <>
-            <Pressable
-              onPress={onToggleCleanUp}
-              accessibilityRole="button"
-              accessibilityLabel={t("message.dictation.cleanUp")}
-              style={[overlayStyles.actionButton, cleanUp && overlayStyles.actionButtonSelected]}
-            >
-              <WandStars size={theme.iconSize.lg} color={theme.colors.accentForeground} />
-            </Pressable>
             <Pressable
               onPress={onAccept}
               accessibilityRole="button"
               accessibilityLabel={t("message.dictation.insert")}
               style={[overlayStyles.actionButton, OVERLAY_ACCEPT_BUTTON_BG]}
             >
-              <Pencil size={theme.iconSize.lg} color={theme.colors.accentForeground} />
+              <Pencil
+                size={theme.iconSize.lg}
+                color={theme.colors.accentForeground}
+                strokeWidth={2.5}
+              />
             </Pressable>
             <Pressable
               onPress={onAcceptAndSend}
@@ -280,7 +262,7 @@ export function DictationOverlay({
               accessibilityLabel={t("message.dictation.insertAndSend")}
               style={overlayConfirmButtonStyle}
             >
-              <ArrowUp size={theme.iconSize.lg} color={theme.colors.accent} />
+              <ArrowUp size={theme.iconSize.lg} color={theme.colors.accent} strokeWidth={2.5} />
             </Pressable>
           </>
         ) : null}
@@ -337,9 +319,6 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface0,
   },
-  actionButtonSelected: {
-    backgroundColor: theme.colors.surface2,
-  },
   actionButtonConfirm: {
     borderColor: theme.colors.foreground,
     backgroundColor: theme.colors.foreground,
@@ -366,15 +345,12 @@ const overlayStyles = StyleSheet.create((theme) => ({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    // Match the MessageBox (inputWrapper) exactly: fill its full bounds (the
-    // overlay container is absolutely sized to the input) and use the same
-    // corner radius, so the box never reads as a different size/shape.
     width: "100%",
-    height: "100%",
-    borderRadius: theme.borderRadius.md,
+    borderRadius: theme.borderRadius["2xl"],
     justifyContent: "space-between",
     paddingHorizontal: theme.spacing[4],
     paddingVertical: OVERLAY_VERTICAL_PADDING,
+    height: FOOTER_HEIGHT,
   },
   cancelButton: {
     width: OVERLAY_BUTTON_SIZE,
@@ -420,9 +396,6 @@ const overlayStyles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.full,
     alignItems: "center",
     justifyContent: "center",
-  },
-  actionButtonSelected: {
-    backgroundColor: "rgba(255, 255, 255, 0.4)",
   },
   buttonDisabled: {
     opacity: 0.5,

@@ -68,11 +68,11 @@ afterEach(async () => {
 githubTest(
   "shows but does not archive an already-merged PR checked out in another workspace",
   async () => {
-    const repository = realpathSync(mkdtempSync(path.join(tmpdir(), "otto-github-merge-")));
+    const repository = realpathSync(mkdtempSync(path.join(tmpdir(), "paseo-github-merge-")));
     cleanupPaths.add(repository);
     run(repository, "git", ["init", "-b", "main"]);
-    run(repository, "git", ["config", "user.email", "otto-test@example.com"]);
-    run(repository, "git", ["config", "user.name", "Otto Test"]);
+    run(repository, "git", ["config", "user.email", "paseo-test@example.com"]);
+    run(repository, "git", ["config", "user.name", "Paseo Test"]);
     writeFileSync(path.join(repository, "README.md"), "producer repro\n");
     run(repository, "git", ["add", "README.md"]);
     run(repository, "git", ["-c", "commit.gpgsign=false", "commit", "-m", "initial"]);
@@ -107,14 +107,14 @@ githubTest(
       worktreeSlug: "merged-feature",
       source: { kind: "branch-off", baseBranch: "main", branchName: "merged-feature" },
       runSetup: false,
-      ottoHome: context.daemon.ottoHome,
+      paseoHome: context.daemon.paseoHome,
     });
     const unrelated = await createWorktree({
       cwd: repository,
       worktreeSlug: "never-pushed-unrelated",
       source: { kind: "branch-off", baseBranch: "main", branchName: "never-pushed-unrelated" },
       runSetup: false,
-      ottoHome: context.daemon.ottoHome,
+      paseoHome: context.daemon.paseoHome,
     });
     const mergedWorkspace = await context.client.createWorkspace({
       source: { kind: "directory", path: merged.worktreePath },
@@ -126,7 +126,7 @@ githubTest(
       throw new Error("Failed to register both worktrees");
     }
     await context.client.fetchWorkspaces({
-      subscribe: { subscriptionId: "real-unrelated-merge" },
+      subscribe: {},
     });
 
     writeFileSync(path.join(merged.worktreePath, "feature.txt"), "merged\n");

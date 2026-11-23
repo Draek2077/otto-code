@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createTerminalLocalFileLinkProvider } from "./terminal-local-link-provider";
 
 describe("createTerminalLocalFileLinkProvider", () => {
-  it("exposes parsed links without resolving them", async () => {
+  it("resolves before exposing a local file link", async () => {
     const terminal = createTerminal(["file.ts:42"]);
     const resolveLink = vi.fn(async () => ({ path: "/repo/src/file.ts", lineStart: 42 }));
     const openLink = vi.fn();
@@ -11,7 +11,11 @@ describe("createTerminalLocalFileLinkProvider", () => {
 
     const links = await provideLinks(provider, 1);
 
-    expect(resolveLink).not.toHaveBeenCalled();
+    expect(resolveLink).toHaveBeenCalledWith({
+      text: "file.ts:42",
+      path: "file.ts",
+      lineStart: 42,
+    });
     expect(links).toHaveLength(1);
     expect(links?.[0]?.text).toBe("file.ts:42");
   });
@@ -42,24 +46,18 @@ describe("createTerminalLocalFileLinkProvider", () => {
 
     const [link] = (await provideLinks(provider, 1)) ?? [];
     link?.activate({ preventDefault: vi.fn(), ctrlKey: true } as unknown as MouseEvent, link.text);
-    await Promise.resolve();
 
     expect(openLink).toHaveBeenCalledWith(target, "side", expect.anything());
   });
 
-  it("resolves candidates only after activation", async () => {
+  it("does not expose unresolved candidates as links", async () => {
     const terminal = createTerminal(["missing.ts:42"]);
-    const resolveLink = vi.fn(async () => null);
     const provider = createTerminalLocalFileLinkProvider(terminal, {
-      resolveLink,
+      resolveLink: vi.fn(async () => null),
       openLink: vi.fn(),
     });
 
-    const links = await provideLinks(provider, 1);
-    expect(links).toHaveLength(1);
-    links?.[0]?.activate({ preventDefault: vi.fn() } as unknown as MouseEvent, links[0].text);
-    await Promise.resolve();
-    expect(resolveLink).toHaveBeenCalledTimes(1);
+    await expect(provideLinks(provider, 1)).resolves.toBeUndefined();
   });
 });
 

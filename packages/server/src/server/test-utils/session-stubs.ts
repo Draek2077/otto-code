@@ -1,7 +1,12 @@
+import pino from "pino";
 import { randomUUID } from "node:crypto";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
+import { rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { CreationService } from "../creation/index.js";
 
-import { getAgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
+import { getAgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
 
 import type { ProviderSnapshotEntry } from "../agent/agent-sdk-types.js";
 import type { ProviderSnapshot } from "../agent/provider-snapshot-manager.js";
@@ -10,11 +15,11 @@ import {
   ProviderSnapshotManager,
 } from "../agent/provider-snapshot-manager.js";
 import type { SessionOptions } from "../session.js";
-import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import { asInternals, createStub } from "./class-mocks.js";
 
 // ---------------------------------------------------------------------------
-// Typed stub wrappers - unsafe cast is in createStub (class-mocks.ts), never
+// Typed stub wrappers — unsafe cast is in createStub (class-mocks.ts), never
 // directly in test files. Wrapper signatures narrow the accepted key set so
 // callers get compile-time feedback on typos in method names.
 // ---------------------------------------------------------------------------
@@ -28,7 +33,11 @@ export function asSessionLogger(stub: {
 export function asAgentManager(stub: {
   [K in keyof SessionOptions["agentManager"]]?: unknown;
 }): SessionOptions["agentManager"] {
-  return createStub<SessionOptions["agentManager"]>(stub);
+  return createStub<SessionOptions["agentManager"]>({
+    listProviderSubagentActivity: () => [],
+    getRetiredInternalAgent: () => null,
+    ...stub,
+  });
 }
 
 export function asAgentStorage(stub: {
@@ -69,40 +78,6 @@ export function asDaemonConfigStore(stub: {
   return createStub<SessionOptions["daemonConfigStore"]>(stub);
 }
 
-/**
- * What a WebSocket-server test needs to get through construction. `get()` is not
- * optional: the server reads `lsp` up front to seed the language-server pool's policy,
- * so a store that only stubs `onChange` throws before the test starts.
- */
-export function createDaemonConfigStoreStub(): {
-  onApply: () => () => void;
-  onChange: () => () => void;
-  onFieldChange: () => () => void;
-  get: () => { lsp: Record<string, unknown>; dotnetSolutionManagement: Record<string, unknown> };
-} {
-  return {
-    // Otto applies config changes to live subsystems, so the server subscribes to
-    // both the write and the apply. A stub missing this one leaks an unsubscribe
-    // call onto undefined at teardown.
-    onApply: vi.fn(() => () => {}),
-    onChange: vi.fn(() => () => {}),
-    // The LSP pool re-reads its settings through a field subscription.
-    onFieldChange: vi.fn(() => () => {}),
-    get: vi.fn(() => ({
-      lsp: {
-        enabled: true,
-        languages: {},
-        maxRunningServers: 6,
-        idleMinutes: 10,
-        backgroundIdleMinutes: 2,
-      },
-      // Off, matching the shipped default - a harness must not accidentally exercise a feature
-      // that spawns a .NET process.
-      dotnetSolutionManagement: { enabled: false, maxRunningProbes: 2, idleMinutes: 10 },
-    })),
-  };
-}
-
 export function asTerminalManager(stub: {
   [K in keyof NonNullable<SessionOptions["terminalManager"]>]?: unknown;
 }): NonNullable<SessionOptions["terminalManager"]> {
@@ -137,13 +112,13 @@ export function asWorkspaceScriptRuntimeStore(stub: {
 }
 
 // ---------------------------------------------------------------------------
-// Private session access - delegates to asInternals so test files need no cast
+// Private session access — delegates to asInternals so test files need no cast
 // ---------------------------------------------------------------------------
 
 export { asInternals as asSessionInternals };
 
 // ---------------------------------------------------------------------------
-// Type guard for SessionOutboundMessage - avoids casting unknown in test emit overrides
+// Type guard for SessionOutboundMessage — avoids casting unknown in test emit overrides
 // ---------------------------------------------------------------------------
 
 export function isSessionOutboundMessage(m: unknown): m is SessionOutboundMessage {
@@ -151,7 +126,7 @@ export function isSessionOutboundMessage(m: unknown): m is SessionOutboundMessag
 }
 
 // ---------------------------------------------------------------------------
-// Message helpers - type-safe filtering without casts in test files
+// Message helpers — type-safe filtering without casts in test files
 // ---------------------------------------------------------------------------
 
 export function filterByType<T extends SessionOutboundMessage["type"]>(
@@ -169,7 +144,7 @@ export function findByType<T extends SessionOutboundMessage["type"]>(
 }
 
 // ---------------------------------------------------------------------------
-// ProviderSnapshotManager stub - returns spies separately to avoid
+// ProviderSnapshotManager stub — returns spies separately to avoid
 // unbound-method lint errors when using expect(spy).toHaveBeenCalled()
 // ---------------------------------------------------------------------------
 
@@ -248,7 +223,6 @@ export function createProviderSnapshotManagerStub(): {
   const resolveCreateConfig = vi.fn<ProviderSnapshotManager["resolveCreateConfig"]>(async () => ({
     modeId: undefined,
     featureValues: undefined,
-    unattended: false,
   }));
   const resolveDefaultModel = vi.fn<ProviderSnapshotManager["resolveDefaultModel"]>(
     async () => undefined,
@@ -266,6 +240,7 @@ export function createProviderSnapshotManagerStub(): {
   const off = vi.fn();
   const destroy = vi.fn<ProviderSnapshotManager["destroy"]>();
   const stub = {
+    supportsConfigRequiredProvider: () => false,
     getSnapshot,
     refreshSnapshotForCwd,
     refreshSettingsSnapshot,
@@ -313,14 +288,9 @@ export function createProviderSnapshotManagerStub(): {
   };
 }
 
-export function createAgentRequestsStub(): SessionOptions["agentRequests"] {
+export function createMessageReceiptsStub(): SessionOptions["messageReceipts"] {
   return {
-    async create(input) {
-      const agentId = randomUUID();
-      await input.create(agentId);
-      return agentId;
-    },
-    send: async (input) => (await input.send()) || undefined,
+    send: (input) => input.send(),
   };
 }
 
@@ -335,4 +305,18 @@ export function createProviderSnapshot(
       return { entry, contentHash: JSON.stringify(content) };
     }),
   };
+}
+
+const creationDirectories: string[] = [];
+afterEach(async () => {
+  await Promise.all(
+    creationDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
+export function createTestCreationService(): SessionOptions["creationService"] {
+  const directory = join(tmpdir(), `session-creation-${randomUUID()}`);
+  creationDirectories.push(directory);
+  return new CreationService(directory, pino({ level: "silent" }));
 }

@@ -8,16 +8,13 @@ import {
   type ReactNode,
 } from "react";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
-import { queryClient } from "@/data/query-client";
-import {
-  APP_SETTINGS_QUERY_KEY,
-  DEFAULT_CLIENT_SETTINGS,
-  type AppSettings,
-} from "@/hooks/use-settings/storage";
 import { useSessionStore } from "@/stores/session-store";
-import { createAudioEngine } from "@/voice/audio-engine";
-import type { AudioEngine } from "@/voice/audio-engine-types";
-import { readVoicePlaybackGain } from "@/voice/voice-playback-gain";
+import { createAudioEngine } from "@/audio";
+import type { AudioEngine } from "@/audio";
+import { SpeechPlaybackProvider } from "@/otto/speech/playback-context"; // OTTO(speech): shared device output and background read-aloud.
+import { speechGain } from "@/otto/speech/gain"; // OTTO(speech)
+import { speechDevicePreferences } from "@/otto/speech/device"; // OTTO(speech)
+import { wakeAwareAudioEngine } from "@/otto/speech/wake/capture-ownership"; // OTTO(wake-word)
 import {
   createVoiceRuntime,
   type VoiceRuntime,
@@ -125,7 +122,7 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
 
   if (!engineRef.current) {
     let runtime: VoiceRuntime | null = null;
-    const engine = createAudioEngine({
+    const captureEngine = createAudioEngine({
       onCaptureData: (pcm) => {
         runtime?.handleCapturePcm(pcm);
       },
@@ -142,8 +139,19 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       },
     });
 
+    const engine = wakeAwareAudioEngine(captureEngine); // OTTO(wake-word): release idle detection before live capture.
+    // OTTO(speech): live voice PCM uses the existing device volume; file previews and cues apply their own channel gain.
+    const play = engine.play;
+    engine.play = async (source, signal) =>
+      play(
+        source.type.startsWith("audio/pcm")
+          ? await speechGain(source, speechDevicePreferences().voicePlaybackVolume)
+          : source,
+        signal,
+      );
     runtime = createVoiceRuntime({
       engine,
+      canPlayThinkingTone: () => speechDevicePreferences().voiceThinkingTone, // OTTO(speech)
       getServerInfo: (serverId) =>
         useSessionStore.getState().getSession(serverId)?.serverInfo ?? null,
       activateKeepAwake: async (tag) => {
@@ -152,10 +160,6 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       deactivateKeepAwake: async (tag) => {
         await deactivateKeepAwake(tag);
       },
-      isThinkingToneEnabled: () =>
-        queryClient.getQueryData<AppSettings>(APP_SETTINGS_QUERY_KEY)?.voiceThinkingTone ??
-        DEFAULT_CLIENT_SETTINGS.voiceThinkingTone,
-      getPlaybackGain: readVoicePlaybackGain,
     });
 
     engineRef.current = engine;
@@ -175,7 +179,11 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
 
   return (
     <VoiceAudioEngineContext.Provider value={engine}>
-      <VoiceRuntimeContext.Provider value={runtime}>{children}</VoiceRuntimeContext.Provider>
+      <VoiceRuntimeContext.Provider value={runtime}>
+        <SpeechPlaybackProvider engine={engine} runtime={runtime}>
+          {children}
+        </SpeechPlaybackProvider>
+      </VoiceRuntimeContext.Provider>
     </VoiceAudioEngineContext.Provider>
   );
 }

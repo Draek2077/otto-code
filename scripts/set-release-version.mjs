@@ -61,19 +61,17 @@ if (args.print) {
   process.exit(0);
 }
 
-// Invoke npm via its own JS entry point (npm sets npm_execpath for any script it
-// runs) instead of the "npm"/"npm.cmd" binary name. This sidesteps Windows shell
-// quoting entirely: process.execPath is a real executable, so args with shell
-// metacharacters (the "--message" value below contains parens) pass through
-// unmodified instead of being re-parsed by cmd.exe.
+// OTTO(release): invoke npm through its own JS entry point (npm sets
+// npm_execpath for any script it runs) instead of "npm"/"npm.cmd". On Windows
+// the "--message" value's parens would otherwise be re-parsed by cmd.exe.
 const npmExecPath = process.env.npm_execpath;
-const [command, prefixArgs] =
+const [npmCommand, npmPrefixArgs] =
   npmExecPath && process.platform === "win32" ? [process.execPath, [npmExecPath]] : ["npm", []];
 
 execFileSync(
-  command,
+  npmCommand,
   [
-    ...prefixArgs,
+    ...npmPrefixArgs,
     "version",
     nextVersion,
     "--include-workspace-root",

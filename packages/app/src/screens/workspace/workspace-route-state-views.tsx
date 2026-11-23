@@ -1,5 +1,5 @@
 import { Text, View } from "react-native";
-import { ArrowLeftToLine, RotateCw, Settings } from "@/components/icons/material-icons";
+import { ArrowLeftToLine, RotateCw, Settings } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
@@ -126,15 +126,21 @@ function ArchivedWorkspaceRecovery({
   if (recovery.phase === "failed") {
     actionLabel = t("common.actions.retry");
   }
-  const description =
-    recovery.recovery.action === "restore"
-      ? t("workspace.route.recovery.restoreDescription", {
-          workspaceName: recovery.recovery.workspaceName,
-          branch: recovery.recovery.branch,
-        })
-      : t("workspace.route.recovery.unarchiveDescription", {
-          workspaceName: recovery.recovery.workspaceName,
-        });
+  let description: string;
+  if (recovery.recovery.action === "restore" && recovery.recovery.branch) {
+    description = t("workspace.route.recovery.restoreDescription", {
+      workspaceName: recovery.recovery.workspaceName,
+      branch: recovery.recovery.branch,
+    });
+  } else if (recovery.recovery.action === "restore") {
+    description = t("workspace.route.recovery.restoreWithoutBranchDescription", {
+      workspaceName: recovery.recovery.workspaceName,
+    });
+  } else {
+    description = t("workspace.route.recovery.unarchiveDescription", {
+      workspaceName: recovery.recovery.workspaceName,
+    });
+  }
 
   return (
     <View style={styles.emptyState}>

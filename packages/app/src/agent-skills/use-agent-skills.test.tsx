@@ -46,7 +46,7 @@ describe("host agent skills", () => {
       getAgentSkillsStatus: vi.fn(async () => ({
         state: "not-installed",
         ops: [],
-        available: ["otto"],
+        available: ["paseo"],
         installed: [],
         selection: { mode: "all" },
       })),
@@ -55,7 +55,7 @@ describe("host agent skills", () => {
     runtime.clients.set("remote", remote);
 
     const { result } = renderHook(() => useAgentSkills("remote"), { wrapper });
-    await waitFor(() => expect(result.current.status?.available).toEqual(["otto"]));
+    await waitFor(() => expect(result.current.status?.available).toEqual(["paseo"]));
     expect(remote.getAgentSkillsStatus).toHaveBeenCalledOnce();
     expect(local.getAgentSkillsStatus).not.toHaveBeenCalled();
   });

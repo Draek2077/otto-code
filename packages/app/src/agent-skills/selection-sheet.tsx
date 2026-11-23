@@ -1,11 +1,9 @@
-import { SettingsTargetText } from "@/screens/settings-search/target";
-import { SettingsAdaptiveModalSheet as AdaptiveModalSheet } from "@/screens/settings-search/sheets";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Check } from "@/components/icons/material-icons";
-import { type SheetHeader } from "@/components/adaptive-modal-sheet";
+import { Check } from "lucide-react-native";
+import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
@@ -15,7 +13,7 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import type {
   AgentSkillSelection as SkillSelection,
   AgentSkillsSaveResult as SkillsSaveResult,
-} from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/messages";
 
 const ThemedCheck = withUnistyles(Check);
 const checkedIconMapping = (theme: Theme) => ({ color: theme.colors.accentForeground });
@@ -247,12 +245,7 @@ function SkillCheckboxRow({
       <View style={boxStyle}>
         {checked ? <ThemedCheck size={14} uniProps={checkedIconMapping} /> : null}
       </View>
-      <SettingsTargetText
-        settingId="app-integrations-orchestration-skills-individual-skill"
-        style={settingsStyles.rowTitle}
-      >
-        {name}
-      </SettingsTargetText>
+      <Text style={settingsStyles.rowTitle}>{name}</Text>
     </Pressable>
   );
 }

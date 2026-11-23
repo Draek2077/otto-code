@@ -1,12 +1,13 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, readFile, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import {
-  StoredScheduleSchema,
-  type ScheduleTarget,
-  type StoredSchedule,
-} from "@otto-code/protocol/schedule/types";
-import { writeJsonFileAtomic } from "../atomic-file.js";
+import type { Logger } from "pino";
+// OTTO(schedules): internal extended records never change the legacy wire target union.
+import { OttoStoredSchedule as StoredScheduleSchema } from "@getpaseo/plugin/otto/schedules";
+import type { ScheduleTarget, StoredSchedule, ScheduleMutation } from "../otto/schedules/types.js";
+import { assertScheduleMutation } from "../otto/schedules/legacy.js";
+// OTTO(store-continuity): preserve dormant schedule fields and skip unsupported saved targets.
+import { parseOttoStoredSchedule, writeOttoStoredSchedule } from "../otto/schedule-continuity.js";
 
 function generateScheduleId(): string {
   return randomBytes(4).toString("hex");
@@ -58,13 +59,8 @@ function targetIdentity(target: ScheduleTarget): unknown {
     };
   }
 
-  if (target.type === "workflow") {
-    return {
-      type: target.type,
-      definitionId: target.definitionId,
-      projectRoot: target.projectRoot,
-    };
-  }
+  // OTTO(schedules): keep each explicit non-agent target's complete identity.
+  if (target.type !== "new-agent") return target;
 
   return {
     type: target.type,
@@ -72,7 +68,8 @@ function targetIdentity(target: ScheduleTarget): unknown {
   };
 }
 
-function nameTargetIdentityKey(name: string, target: ScheduleTarget): string {
+export function nameTargetIdentityKey(name: string, target: ScheduleTarget): string {
+  // OTTO(schedules): share Paseo's existing upsert identity with the project registry.
   return JSON.stringify(
     canonicalize({
       name: normalizeScheduleName(name),
@@ -95,11 +92,27 @@ function matchesNameAndTarget(
   );
 }
 
+function parseStoredSchedule(
+  content: string,
+): { success: true; data: StoredSchedule } | { success: false; error: unknown } {
+  let json: unknown;
+  try {
+    json = JSON.parse(content);
+    return { success: true, data: parseOttoStoredSchedule(json) };
+  } catch (error) {
+    return { success: false, error };
+  }
+}
+
 export class ScheduleStore {
   private readonly scheduleMutations = new Map<string, Promise<unknown>>();
   private readonly identityMutations = new Map<string, Promise<unknown>>();
+  private reportedInvalidFiles = new Set<string>();
 
-  constructor(private readonly dir: string) {}
+  constructor(
+    private readonly dir: string,
+    private readonly logger: Logger,
+  ) {}
 
   private filePath(id: string): string {
     return join(this.dir, `${id}.json`);
@@ -109,17 +122,32 @@ export class ScheduleStore {
     await mkdir(this.dir, { recursive: true });
   }
 
+  // The service lists schedules on every tick, so a file that is not a valid schedule is
+  // reported when it first appears rather than once per second.
   async list(): Promise<StoredSchedule[]> {
     await this.ensureDir();
     const entries = await readdir(this.dir, { withFileTypes: true });
-    const schedules = await Promise.all(
+    const files = await Promise.all(
       entries
         .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
         .map(async (entry) => {
-          const content = await readFile(join(this.dir, entry.name), "utf-8");
-          return StoredScheduleSchema.parse(JSON.parse(content));
+          const filePath = join(this.dir, entry.name);
+          return { filePath, parsed: parseStoredSchedule(await readFile(filePath, "utf-8")) };
         }),
     );
+    const schedules: StoredSchedule[] = [];
+    const invalidFiles = new Set<string>();
+    for (const { filePath, parsed } of files) {
+      if (parsed.success) {
+        schedules.push(parsed.data);
+        continue;
+      }
+      invalidFiles.add(filePath);
+      if (!this.reportedInvalidFiles.has(filePath)) {
+        this.logger.error({ err: parsed.error, filePath }, "Skipping invalid schedule file");
+      }
+    }
+    this.reportedInvalidFiles = invalidFiles;
     return schedules.sort((left, right) => left.createdAt.localeCompare(right.createdAt));
   }
 
@@ -127,7 +155,7 @@ export class ScheduleStore {
     await this.ensureDir();
     try {
       const content = await readFile(this.filePath(id), "utf-8");
-      return StoredScheduleSchema.parse(JSON.parse(content));
+      return parseOttoStoredSchedule(JSON.parse(content)); // OTTO(store-continuity)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return null;
@@ -142,12 +170,18 @@ export class ScheduleStore {
     return created;
   }
 
-  async update(id: string, updater: ScheduleUpdater): Promise<StoredSchedule | null> {
+  async update(
+    id: string,
+    updater: ScheduleUpdater,
+    mutation?: ScheduleMutation,
+  ): Promise<StoredSchedule | null> {
+    // OTTO(schedules): optional revision/legacy-bound mutation.
     return this.serializeScheduleMutation(id, async () => {
       const current = await this.get(id);
       if (!current) {
         return null;
       }
+      assertScheduleMutation(current, mutation); // OTTO(schedules)
       const next = await updater(current);
       if (next === current) {
         return current;
@@ -194,11 +228,18 @@ export class ScheduleStore {
 
   private async write(schedule: StoredSchedule): Promise<void> {
     await this.ensureDir();
-    await writeJsonFileAtomic(this.filePath(schedule.id), schedule);
+    await writeOttoStoredSchedule(this.filePath(schedule.id), schedule); // OTTO(store-continuity)
   }
 
-  async delete(id: string): Promise<void> {
+  async delete(id: string, mutation?: ScheduleMutation): Promise<void> {
+    // OTTO(schedules)
     await this.serializeScheduleMutation(id, async () => {
+      if (mutation) {
+        // OTTO(schedules): guard before deleting; no extra read on the original path.
+        const current = await this.get(id);
+        if (!current) throw new Error("Schedule no longer exists.");
+        assertScheduleMutation(current, mutation);
+      }
       await this.ensureDir();
       await rm(this.filePath(id), { force: true });
     });

@@ -1,10 +1,10 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
 
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestOttoDaemon, type TestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon, type TestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
 const CREATED_AT = "2026-06-29T11:12:42.000Z";
 const HEALTHY_UPDATED_AT = "2026-06-29T11:40:00.000Z";
@@ -16,17 +16,17 @@ interface StaleAgentFixture {
   orphanWorkspaceId: string;
   healthyAgentId: string;
   orphanAgentId: string;
-  ottoHomeRoot: string;
+  paseoHomeRoot: string;
   cleanupPaths: string[];
 }
 
 test("agent fetch RPCs tolerate an agent whose workspace project record is gone", async () => {
   const fixture = seedStaleAgentFixture();
-  let daemon: TestOttoDaemon | null = null;
+  let daemon: TestPaseoDaemon | null = null;
   let client: DaemonClient | null = null;
 
   try {
-    daemon = await createTestOttoDaemon({ ottoHomeRoot: fixture.ottoHomeRoot, cleanup: false });
+    daemon = await createTestPaseoDaemon({ paseoHomeRoot: fixture.paseoHomeRoot, cleanup: false });
     client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
     await client.connect();
 
@@ -74,16 +74,59 @@ test("agent fetch RPCs tolerate an agent whose workspace project record is gone"
   }
 });
 
+test("history search filters before pagination and keeps newest matches first", async () => {
+  const fixture = seedStaleAgentFixture();
+  let daemon: TestPaseoDaemon | null = null;
+  let client: DaemonClient | null = null;
+  try {
+    const agentsDir = path.join(fixture.paseoHomeRoot, ".paseo", "agents");
+    const template = JSON.parse(
+      readFileSync(path.join(agentsDir, `${fixture.healthyAgentId}.json`), "utf8"),
+    );
+    for (const [id, title, updatedAt] of [
+      ["newer-partial", "Unbilled usage", "2026-06-29T13:00:00.000Z"],
+      ["unrelated", "Terminal resizing", "2026-06-29T12:00:00.000Z"],
+      ["older-exact", "bill", "2026-06-28T12:00:00.000Z"],
+    ]) {
+      writeJson(path.join(agentsDir, `${id}.json`), {
+        ...template,
+        id,
+        title,
+        updatedAt,
+        lastActivityAt: updatedAt,
+      });
+    }
+    daemon = await createTestPaseoDaemon({ paseoHomeRoot: fixture.paseoHomeRoot, cleanup: false });
+    client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws` });
+    await client.connect();
+    const first = await client.fetchAgentHistory({ search: "bill", page: { limit: 1 } });
+    expect(first.entries.map((entry) => entry.agent.id)).toEqual(["newer-partial"]);
+    expect(first.pageInfo.hasMore).toBe(true);
+    expect(first.pageInfo.nextCursor).toBeTypeOf("string");
+    const second = await client.fetchAgentHistory({
+      search: "bill",
+      page: { limit: 1, cursor: first.pageInfo.nextCursor! },
+    });
+    expect(second.entries.map((entry) => entry.agent.id)).toEqual(["older-exact"]);
+    expect(second.pageInfo.hasMore).toBe(false);
+    expect(second.entries[0].searchMatches).toBeUndefined();
+  } finally {
+    await client?.close().catch(() => undefined);
+    await daemon?.close().catch(() => undefined);
+    for (const target of fixture.cleanupPaths) rmSync(target, { recursive: true, force: true });
+  }
+});
+
 function seedStaleAgentFixture(): StaleAgentFixture {
-  const healthyCwd = mkdtempSync(path.join(os.tmpdir(), "otto-healthy-agent-"));
-  const orphanCwd = mkdtempSync(path.join(os.tmpdir(), "otto-orphan-agent-"));
-  const ottoHomeRoot = mkdtempSync(path.join(os.tmpdir(), "otto-orphan-agent-home-"));
-  const ottoHome = path.join(ottoHomeRoot, ".otto");
-  const projectsDir = path.join(ottoHome, "projects");
-  const agentsDir = path.join(ottoHome, "agents");
+  const healthyCwd = mkdtempSync(path.join(os.tmpdir(), "paseo-healthy-agent-"));
+  const orphanCwd = mkdtempSync(path.join(os.tmpdir(), "paseo-orphan-agent-"));
+  const paseoHomeRoot = mkdtempSync(path.join(os.tmpdir(), "paseo-orphan-agent-home-"));
+  const paseoHome = path.join(paseoHomeRoot, ".paseo");
+  const projectsDir = path.join(paseoHome, "projects");
+  const agentsDir = path.join(paseoHome, "agents");
   const healthyProjectId = "proj-healthy-agent-rpc";
   const healthyWorkspaceId = "ws-healthy-agent-rpc";
-  const orphanWorkspaceId = "c:\\Users\\otto\\stale-project";
+  const orphanWorkspaceId = "c:\\Users\\paseo\\stale-project";
   const orphanProjectId = "proj-removed-agent-rpc";
   const healthyAgentId = "agent-healthy-rpc";
   const orphanAgentId = "agent-orphan-rpc";
@@ -170,8 +213,8 @@ function seedStaleAgentFixture(): StaleAgentFixture {
     orphanWorkspaceId,
     healthyAgentId,
     orphanAgentId,
-    ottoHomeRoot,
-    cleanupPaths: [healthyCwd, orphanCwd, ottoHomeRoot],
+    paseoHomeRoot,
+    cleanupPaths: [healthyCwd, orphanCwd, paseoHomeRoot],
   };
 }
 

@@ -1,7 +1,6 @@
 import { test, expect, beforeEach, afterEach } from "vitest";
 import { execSync } from "child_process";
-import { mkdtempSync, mkdirSync, writeFileSync } from "fs";
-import { removeTempDir } from "../../test-utils/remove-temp-dir.js";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import path from "path";
 import { createDaemonTestContext, type DaemonTestContext } from "../test-utils/index.js";
@@ -18,15 +17,15 @@ function tmpCwd(): string {
 
 function initGitRepo(cwd: string): void {
   execSync("git init -b main", { cwd, stdio: "pipe" });
-  execSync('git config user.email "test@test.com"', { cwd, stdio: "pipe" });
-  execSync('git config user.name "Test"', { cwd, stdio: "pipe" });
+  execSync("git config user.email 'test@test.com'", { cwd, stdio: "pipe" });
+  execSync("git config user.name 'Test'", { cwd, stdio: "pipe" });
 }
 
 function commitFile(cwd: string, fileName: string, content: string): void {
   const filePath = path.join(cwd, fileName);
   writeFileSync(filePath, content);
   execSync(`git add "${fileName}"`, { cwd, stdio: "pipe" });
-  execSync('git -c commit.gpgsign=false commit -m "Initial commit"', {
+  execSync("git -c commit.gpgsign=false commit -m 'Initial commit'", {
     cwd,
     stdio: "pipe",
   });
@@ -78,12 +77,9 @@ test("pushes file-level checkout diff updates with deterministic path order", as
     initGitRepo(cwd);
     commitFile(cwd, "base.txt", "base\n");
 
-    const subscriptionId = "checkout-diff-e2e-subscription";
-    const initial = await ctx.client.subscribeCheckoutDiff(
-      cwd,
-      { mode: "uncommitted" },
-      { subscriptionId },
-    );
+    const subscription = ctx.client.observeCheckoutDiff(cwd, { mode: "uncommitted" });
+    const initial = await subscription.ready;
+    const subscriptionId = initial.subscriptionId;
 
     expect(initial.error).toBeNull();
     expect(initial.files).toEqual([]);
@@ -99,9 +95,9 @@ test("pushes file-level checkout diff updates with deterministic path order", as
     expect(update.error).toBeNull();
     expect(update.files.map((file) => file.path)).toEqual(["alpha.txt", "zeta.txt"]);
 
-    ctx.client.unsubscribeCheckoutDiff(subscriptionId);
+    await subscription.release();
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 60000);
 
@@ -115,12 +111,9 @@ test("pushes updates when subscribed from a subdirectory and files change outsid
     const nestedDir = path.join(cwd, "nested", "dir");
     mkdirSync(nestedDir, { recursive: true });
 
-    const subscriptionId = "checkout-diff-subdir-e2e-subscription";
-    const initial = await ctx.client.subscribeCheckoutDiff(
-      nestedDir,
-      { mode: "uncommitted" },
-      { subscriptionId },
-    );
+    const subscription = ctx.client.observeCheckoutDiff(nestedDir, { mode: "uncommitted" });
+    const initial = await subscription.ready;
+    const subscriptionId = initial.subscriptionId;
 
     expect(initial.error).toBeNull();
     expect(initial.files).toEqual([]);
@@ -134,64 +127,39 @@ test("pushes updates when subscribed from a subdirectory and files change outsid
     expect(update.error).toBeNull();
     expect(update.files.some((file) => file.path === "outside-subdir.txt")).toBe(true);
 
-    ctx.client.unsubscribeCheckoutDiff(subscriptionId);
+    await subscription.release();
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 60000);
 
-// Regression guard for a silent merge drop. The server-side producer for
-// `diffTooLarge` was lost by the v0.2.5 merge (5e3cc1def), which took the
-// pre-#2488 checkout-git.ts wholesale. The consumer (checkout-diff-manager.ts),
-// the protocol field, and the whole app UI (diff-too-large-state.tsx plus 8
-// locales) all survived, so nothing failed to compile and the feature went
-// dead in silence. Only an assertion on the producer catches that class of
-// loss; keep this test pointed at the daemon's own output.
 test("keeps the socket usable after rejecting an oversized structured diff", async () => {
   const cwd = tmpCwd();
 
   try {
     initGitRepo(cwd);
-    // The rejection is keyed off TOTAL_DIFF_MAX_BYTES (2MB) with a separate 1MB
-    // per-file cap, so the fixture has to clear 2MB in aggregate while keeping
-    // every file under 1MB. Two ~900KB files totalled ~1.8MB and sat UNDER the
-    // limit, so this asserted the too-large branch while never reaching it.
-    // Four files leaves the margin on the correct side of both caps.
-    const largeFiles = ["large-a.js", "large-b.js", "large-c.js", "large-d.js"];
-    for (const file of largeFiles) {
-      commitFile(cwd, file, "const value = 0;\n");
-    }
-    const denseExpression = `const value = ${"a+".repeat(450_000)}a;\n`;
-    for (const file of largeFiles) {
-      writeFileSync(path.join(cwd, file), denseExpression);
-    }
+    commitFile(cwd, "large-a.js", "const value = 0;\n");
+    commitFile(cwd, "large-b.js", "const value = 0;\n");
+    // Short lines stay eligible for highlighting; a giant single line is skipped
+    // before token expansion and cannot exercise the structured-payload limit.
+    const denseExpression = `const value = ${"a+".repeat(100)}a;\n`.repeat(4_000);
+    writeFileSync(path.join(cwd, "large-a.js"), denseExpression);
+    writeFileSync(path.join(cwd, "large-b.js"), denseExpression);
 
-    const initial = await ctx.client.subscribeCheckoutDiff(
-      cwd,
-      { mode: "uncommitted" },
-      { subscriptionId: "oversized-checkout-diff" },
-    );
+    const subscription = ctx.client.observeCheckoutDiff(cwd, { mode: "uncommitted" });
+    const initial = await subscription.ready;
 
-    // Assert on a small projection, never on `initial` itself. When this
-    // expectation fails the daemon has just built the very payload the guard
-    // exists to prevent, and letting the matcher pretty-print it dumped ~934k
-    // lines (26MB of "[Object],", one per highlight token) into the run log,
-    // which is 99% of the file and buries every other failure in the suite.
-    expect({
-      cwd: initial.cwd,
-      fileCount: initial.files.length,
-      diffTooLarge: initial.diffTooLarge,
-      errorCode: initial.error?.code ?? null,
-    }).toEqual({
+    expect(initial).toMatchObject({
       cwd,
-      fileCount: 0,
+      files: [],
       diffTooLarge: true,
-      errorCode: "UNKNOWN",
+      error: { code: "UNKNOWN" },
     });
 
     const status = await ctx.client.getCheckoutStatus(cwd);
     expect(status).toMatchObject({ cwd, isGit: true });
+    await subscription.release();
   } finally {
-    removeTempDir(cwd);
+    rmSync(cwd, { recursive: true, force: true });
   }
 }, 120000);

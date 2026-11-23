@@ -6,6 +6,8 @@ order: 58
 category: TypeScript SDK
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # SDK API reference
 
 Import every supported runtime value and TypeScript type from `@otto-code/client`.

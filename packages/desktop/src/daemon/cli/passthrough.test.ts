@@ -1,13 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  launchPassthroughCli,
   parsePassthroughCliArgs,
   parsePassthroughCliArgsFromArgv,
   runPassthroughCli,
 } from "./passthrough";
 
 const originalDefaultApp = process.defaultApp;
-const originalDesktopCli = process.env.OTTO_DESKTOP_CLI;
+const originalDesktopCli = process.env.PASEO_DESKTOP_CLI;
 
 function setDefaultApp(value: boolean): void {
   Object.defineProperty(process, "defaultApp", {
@@ -20,16 +19,16 @@ describe("passthrough CLI", () => {
   afterEach(() => {
     setDefaultApp(originalDefaultApp);
     if (originalDesktopCli === undefined) {
-      delete process.env.OTTO_DESKTOP_CLI;
+      delete process.env.PASEO_DESKTOP_CLI;
     } else {
-      process.env.OTTO_DESKTOP_CLI = originalDesktopCli;
+      process.env.PASEO_DESKTOP_CLI = originalDesktopCli;
     }
   });
 
   it("returns null when no CLI args are provided", () => {
     expect(
       parsePassthroughCliArgs({
-        argv: ["/Applications/Otto.app/Contents/MacOS/Otto"],
+        argv: ["/Applications/Paseo.app/Contents/MacOS/Paseo"],
         isDefaultApp: false,
         forceCli: false,
       }),
@@ -39,7 +38,7 @@ describe("passthrough CLI", () => {
   it("ignores macOS GUI launch arguments", () => {
     expect(
       parsePassthroughCliArgs({
-        argv: ["/Applications/Otto.app/Contents/MacOS/Otto", "-psn_0_12345"],
+        argv: ["/Applications/Paseo.app/Contents/MacOS/Paseo", "-psn_0_12345"],
         isDefaultApp: false,
         forceCli: false,
       }),
@@ -49,7 +48,7 @@ describe("passthrough CLI", () => {
   it("ignores --no-sandbox injected by Linux wrapper", () => {
     expect(
       parsePassthroughCliArgs({
-        argv: ["/usr/bin/Otto", "--no-sandbox", "status"],
+        argv: ["/usr/bin/Paseo", "--no-sandbox", "status"],
         isDefaultApp: false,
         forceCli: false,
       }),
@@ -59,7 +58,7 @@ describe("passthrough CLI", () => {
   it("returns null when only --no-sandbox is present", () => {
     expect(
       parsePassthroughCliArgs({
-        argv: ["/usr/bin/Otto", "--no-sandbox"],
+        argv: ["/usr/bin/Paseo", "--no-sandbox"],
         isDefaultApp: false,
         forceCli: false,
       }),
@@ -86,32 +85,7 @@ describe("passthrough CLI", () => {
   it("ignores Electron remote debugging switches", () => {
     expect(
       parsePassthroughCliArgs({
-        argv: ["/usr/bin/Otto", "--remote-debugging-port=9233"],
-        isDefaultApp: false,
-        forceCli: false,
-      }),
-    ).toBeNull();
-  });
-
-  it("ignores GPU rendering escape-hatch switches", () => {
-    expect(
-      parsePassthroughCliArgs({
-        argv: [
-          "/usr/bin/Otto",
-          "--ozone-platform=x11",
-          "--use-gl=angle",
-          "--use-angle=swiftshader",
-        ],
-        isDefaultApp: false,
-        forceCli: false,
-      }),
-    ).toBeNull();
-  });
-
-  it("ignores --updated from the Windows installer's post-install relaunch", () => {
-    expect(
-      parsePassthroughCliArgs({
-        argv: ["C:\\Users\\me\\AppData\\Local\\Programs\\Otto\\Otto.exe", "--updated"],
+        argv: ["/usr/bin/Paseo", "--remote-debugging-port=9233"],
         isDefaultApp: false,
         forceCli: false,
       }),
@@ -121,7 +95,7 @@ describe("passthrough CLI", () => {
   it("preserves CLI flags for direct app invocations", () => {
     expect(
       parsePassthroughCliArgs({
-        argv: ["/Applications/Otto.app/Contents/MacOS/Otto", "--version"],
+        argv: ["/Applications/Paseo.app/Contents/MacOS/Paseo", "--version"],
         isDefaultApp: false,
         forceCli: false,
       }),
@@ -131,7 +105,7 @@ describe("passthrough CLI", () => {
   it("passes --open-project through as a normal CLI arg", () => {
     expect(
       parsePassthroughCliArgs({
-        argv: ["/Applications/Otto.app/Contents/MacOS/Otto", "--open-project", "/tmp/project"],
+        argv: ["/Applications/Paseo.app/Contents/MacOS/Paseo", "--open-project", "/tmp/project"],
         isDefaultApp: false,
         forceCli: false,
       }),
@@ -141,7 +115,7 @@ describe("passthrough CLI", () => {
   it("forces CLI mode for shim launches even without args", () => {
     expect(
       parsePassthroughCliArgs({
-        argv: ["/Applications/Otto.app/Contents/MacOS/Otto"],
+        argv: ["/Applications/Paseo.app/Contents/MacOS/Paseo"],
         isDefaultApp: false,
         forceCli: true,
       }),
@@ -150,46 +124,22 @@ describe("passthrough CLI", () => {
 
   it("parses terminal args for direct app CLI passthrough", () => {
     setDefaultApp(false);
-    delete process.env.OTTO_DESKTOP_CLI;
+    delete process.env.PASEO_DESKTOP_CLI;
 
     expect(
       parsePassthroughCliArgsFromArgv([
-        "/Applications/Otto.app/Contents/MacOS/Otto",
+        "/Applications/Paseo.app/Contents/MacOS/Paseo",
         "daemon",
         "set-password",
       ]),
     ).toEqual(["daemon", "set-password"]);
   });
 
-  it("runs passthrough CLI as a child process and reports its exit code", async () => {
-    const invocation = {
-      command: "/opt/Otto/Otto",
-      args: ["--disable-warning=DEP0040", "/runner.js", "node-script", "/cli.js", "daemon"],
-      env: { ELECTRON_RUN_AS_NODE: "1" },
-    };
-    const build = vi.fn(() => invocation);
-    const launch = vi.fn(async () => 7);
+  it("runs passthrough CLI through the programmatic entrypoint", async () => {
+    const runCli = vi.fn(async () => 7);
 
-    await expect(runPassthroughCli(["daemon", "set-password"], { build, launch })).resolves.toBe(7);
+    await expect(runPassthroughCli(["daemon", "set-password"], { runCli })).resolves.toBe(7);
 
-    expect(build).toHaveBeenCalledWith(["daemon", "set-password"]);
-    expect(launch).toHaveBeenCalledWith(invocation);
-  });
-
-  // The bug this replaced: the CLI ran inside the Electron main process, which
-  // quits as soon as the command's promise resolves and never waits on open
-  // handles - so `otto brain serve` printed "ready" and died seconds later.
-  it("stays with a child that holds an open handle until it exits", async () => {
-    const code = await launchPassthroughCli({
-      command: process.execPath,
-      args: [
-        "-e",
-        "const s = require('net').createServer().listen(0);" +
-          "setTimeout(() => { s.close(); process.exit(4); }, 150);",
-      ],
-      env: process.env,
-    });
-
-    expect(code).toBe(4);
+    expect(runCli).toHaveBeenCalledWith(["daemon", "set-password"]);
   });
 });

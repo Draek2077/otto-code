@@ -1,13 +1,13 @@
 import { describe, expect, test } from "vitest";
-import { OTTO_BROWSER_PROFILE_PARTITION } from "../browser-profile.js";
+import { PASEO_BROWSER_PROFILE_PARTITION } from "../browser-profile.js";
 import {
-  getOttoBrowserIdForWebContents,
-  getOttoBrowserWorkspaceId,
-  isOttoBrowserWebviewAttach,
-  prepareOttoBrowserWebContents,
-  registerAttachedOttoBrowser,
-  unregisterOttoBrowser,
-  unregisterOttoBrowserFromHost,
+  getPaseoBrowserIdForWebContents,
+  getPaseoBrowserWorkspaceId,
+  isPaseoBrowserWebviewAttach,
+  preparePaseoBrowserWebContents,
+  registerAttachedPaseoBrowser,
+  unregisterPaseoBrowser,
+  unregisterPaseoBrowserFromHost,
 } from "./index.js";
 
 class FakeRenderer {
@@ -16,12 +16,9 @@ class FakeRenderer {
   public isDestroyed(): boolean {
     return false;
   }
-
-  public send(): void {}
 }
 
 class FakeBrowserGuest {
-  public readonly backgroundThrottlingCalls: boolean[] = [];
   private destroyedListener: (() => void) | null = null;
   private destroyed = false;
 
@@ -34,12 +31,6 @@ class FakeBrowserGuest {
   public isDestroyed(): boolean {
     return this.destroyed;
   }
-
-  public setBackgroundThrottling(allowed: boolean): void {
-    this.backgroundThrottlingCalls.push(allowed);
-  }
-
-  public on(): void {}
 
   public once(event: "destroyed", listener: () => void): void {
     expect(event).toBe("destroyed");
@@ -55,19 +46,19 @@ class FakeBrowserGuest {
 describe("browser webview attachment", () => {
   test("accepts only allowed URLs on the shared profile partition", () => {
     expect(
-      isOttoBrowserWebviewAttach({
+      isPaseoBrowserWebviewAttach({
         src: "https://example.com",
-        partition: OTTO_BROWSER_PROFILE_PARTITION,
+        partition: PASEO_BROWSER_PROFILE_PARTITION,
       }),
     ).toBe(true);
     expect(
-      isOttoBrowserWebviewAttach({
+      isPaseoBrowserWebviewAttach({
         src: "https://example.com",
-        partition: "persist:otto-browser-tab-a",
+        partition: "persist:paseo-browser-tab-a",
       }),
     ).toBe(false);
     expect(
-      isOttoBrowserWebviewAttach({ src: "https://example.com", partition: "persist:foreign" }),
+      isPaseoBrowserWebviewAttach({ src: "https://example.com", partition: "persist:foreign" }),
     ).toBe(false);
   });
 
@@ -76,19 +67,19 @@ describe("browser webview attachment", () => {
     const renderer = new FakeRenderer(1);
     const guest = new FakeBrowserGuest(101, renderer, profileSession);
 
-    const registered = registerAttachedOttoBrowser({
+    const registered = registerAttachedPaseoBrowser({
       browserId: "browser-a",
       workspaceId: "workspace-a",
       webContentsId: guest.id,
       sender: renderer,
-      allowedGuestSessions: [profileSession],
+      profileSession,
       findWebContents: () => guest,
     });
 
     expect(registered).toBe(true);
-    expect(getOttoBrowserIdForWebContents(guest)).toBe("browser-a");
-    expect(getOttoBrowserWorkspaceId("browser-a")).toBe("workspace-a");
-    unregisterOttoBrowser("browser-a");
+    expect(getPaseoBrowserIdForWebContents(guest)).toBe("browser-a");
+    expect(getPaseoBrowserWorkspaceId("browser-a")).toBe("workspace-a");
+    unregisterPaseoBrowser("browser-a");
   });
 
   test("rejects a guest hosted by another renderer", () => {
@@ -97,17 +88,17 @@ describe("browser webview attachment", () => {
     const claimant = new FakeRenderer(2);
     const guest = new FakeBrowserGuest(201, owner, profileSession);
 
-    const registered = registerAttachedOttoBrowser({
+    const registered = registerAttachedPaseoBrowser({
       browserId: "browser-rejected-owner",
       workspaceId: "workspace-a",
       webContentsId: guest.id,
       sender: claimant,
-      allowedGuestSessions: [profileSession],
+      profileSession,
       findWebContents: () => guest,
     });
 
     expect(registered).toBe(false);
-    expect(getOttoBrowserIdForWebContents(guest)).toBeNull();
+    expect(getPaseoBrowserIdForWebContents(guest)).toBeNull();
   });
 
   test("rejects a guest outside the shared profile", () => {
@@ -115,37 +106,17 @@ describe("browser webview attachment", () => {
     const renderer = new FakeRenderer(1);
     const guest = new FakeBrowserGuest(301, renderer, {});
 
-    const registered = registerAttachedOttoBrowser({
+    const registered = registerAttachedPaseoBrowser({
       browserId: "browser-rejected-profile",
       workspaceId: "workspace-a",
       webContentsId: guest.id,
       sender: renderer,
-      allowedGuestSessions: [profileSession],
+      profileSession,
       findWebContents: () => guest,
     });
 
     expect(registered).toBe(false);
-    expect(getOttoBrowserIdForWebContents(guest)).toBeNull();
-  });
-
-  test("accepts a separately hardened document session when explicitly allowed", () => {
-    const profileSession = {};
-    const documentSession = {};
-    const renderer = new FakeRenderer(1);
-    const guest = new FakeBrowserGuest(351, renderer, documentSession);
-
-    const registered = registerAttachedOttoBrowser({
-      browserId: "architectural-view-a",
-      workspaceId: "workspace-a",
-      webContentsId: guest.id,
-      sender: renderer,
-      allowedGuestSessions: [profileSession, documentSession],
-      findWebContents: () => guest,
-    });
-
-    expect(registered).toBe(true);
-    expect(getOttoBrowserIdForWebContents(guest)).toBe("architectural-view-a");
-    unregisterOttoBrowser("architectural-view-a");
+    expect(getPaseoBrowserIdForWebContents(guest)).toBeNull();
   });
 
   test("concurrent windows cannot swap browser identities", () => {
@@ -159,27 +130,27 @@ describe("browser webview attachment", () => {
       [secondGuest.id, secondGuest],
     ]);
 
-    registerAttachedOttoBrowser({
+    registerAttachedPaseoBrowser({
       browserId: "browser-second",
       workspaceId: "workspace-second",
       webContentsId: secondGuest.id,
       sender: secondRenderer,
-      allowedGuestSessions: [profileSession],
+      profileSession,
       findWebContents: (id) => guests.get(id) ?? null,
     });
-    registerAttachedOttoBrowser({
+    registerAttachedPaseoBrowser({
       browserId: "browser-first",
       workspaceId: "workspace-first",
       webContentsId: firstGuest.id,
       sender: firstRenderer,
-      allowedGuestSessions: [profileSession],
+      profileSession,
       findWebContents: (id) => guests.get(id) ?? null,
     });
 
-    expect(getOttoBrowserIdForWebContents(firstGuest)).toBe("browser-first");
-    expect(getOttoBrowserIdForWebContents(secondGuest)).toBe("browser-second");
-    unregisterOttoBrowser("browser-first");
-    unregisterOttoBrowser("browser-second");
+    expect(getPaseoBrowserIdForWebContents(firstGuest)).toBe("browser-first");
+    expect(getPaseoBrowserIdForWebContents(secondGuest)).toBe("browser-second");
+    unregisterPaseoBrowser("browser-first");
+    unregisterPaseoBrowser("browser-second");
   });
 
   test("unregisters the same browser only from its requesting host", () => {
@@ -193,44 +164,42 @@ describe("browser webview attachment", () => {
       [firstRenderer, firstGuest],
       [secondRenderer, secondGuest],
     ] as const) {
-      registerAttachedOttoBrowser({
+      registerAttachedPaseoBrowser({
         browserId: "browser-shared-hosts",
         workspaceId: "workspace-shared",
         webContentsId: guest.id,
         sender: renderer,
-        allowedGuestSessions: [profileSession],
+        profileSession,
         findWebContents: () => guest,
       });
     }
 
-    unregisterOttoBrowserFromHost(firstRenderer.id, "browser-shared-hosts");
+    unregisterPaseoBrowserFromHost(firstRenderer.id, "browser-shared-hosts");
 
-    expect(getOttoBrowserIdForWebContents(firstGuest)).toBeNull();
-    expect(getOttoBrowserIdForWebContents(secondGuest)).toBe("browser-shared-hosts");
-    expect(getOttoBrowserWorkspaceId("browser-shared-hosts")).toBe("workspace-shared");
-    unregisterOttoBrowser("browser-shared-hosts");
+    expect(getPaseoBrowserIdForWebContents(firstGuest)).toBeNull();
+    expect(getPaseoBrowserIdForWebContents(secondGuest)).toBe("browser-shared-hosts");
+    expect(getPaseoBrowserWorkspaceId("browser-shared-hosts")).toBe("workspace-shared");
+    unregisterPaseoBrowser("browser-shared-hosts");
   });
 
-  test("prepares throttling once and removes registration when the guest is destroyed", () => {
+  test("removes registration when the guest is destroyed", () => {
     const profileSession = {};
     const renderer = new FakeRenderer(31);
     const guest = new FakeBrowserGuest(601, renderer, profileSession);
-    prepareOttoBrowserWebContents(guest);
-    registerAttachedOttoBrowser({
+    preparePaseoBrowserWebContents(guest);
+    registerAttachedPaseoBrowser({
       browserId: "browser-cleanup",
       workspaceId: "workspace-cleanup",
       webContentsId: guest.id,
       sender: renderer,
-      allowedGuestSessions: [profileSession],
+      profileSession,
       findWebContents: () => guest,
     });
 
-    expect(guest.backgroundThrottlingCalls).toEqual([false]);
-    expect(getOttoBrowserIdForWebContents(guest)).toBe("browser-cleanup");
+    expect(getPaseoBrowserIdForWebContents(guest)).toBe("browser-cleanup");
 
     guest.destroy();
 
-    expect(getOttoBrowserIdForWebContents(guest)).toBeNull();
-    expect(guest.backgroundThrottlingCalls).toEqual([false]);
+    expect(getPaseoBrowserIdForWebContents(guest)).toBeNull();
   });
 });

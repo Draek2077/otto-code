@@ -5,11 +5,11 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "vitest";
 import { DaemonClient } from "../test-utils/daemon-client.js";
 import { createTestAgentClient } from "../test-utils/fake-agent-client.js";
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
 test("the configuration example adds MCP servers and overrides Codex options while preserving other configuration", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "otto-config-example-"));
-  const daemon = await createTestOttoDaemon({
+  const directory = await mkdtemp(path.join(tmpdir(), "paseo-config-example-"));
+  const daemon = await createTestPaseoDaemon({
     daemonVersion: "0.8.0",
     agentClients: { codex: createTestAgentClient("codex", { supportsMcpServers: true }) },
     mcpEnabled: false,
@@ -17,7 +17,7 @@ test("the configuration example adds MCP servers and overrides Codex options whi
   const client = new DaemonClient({ url: `ws://127.0.0.1:${daemon.port}/ws`, appVersion: "0.8.0" });
   try {
     await client.connect();
-    await client.fetchAgents({ subscribe: { subscriptionId: "configuration-example" } });
+    await client.fetchAgents({ subscribe: {} });
     await client.patchDaemonConfig({ pluginsEnabled: true });
     await client.installDirectoryPlugin(
       fileURLToPath(new URL("../../../../../plugin-examples/agent-configuration", import.meta.url)),

@@ -121,17 +121,5 @@ export function reduceTurnLiveness(
 
   const activeTurn = transition.type === "snapshot" ? transition.activeTurn : transition.turn;
   if (!activeTurn) return TURN_LIVENESS_IDLE;
-  // COMPAT(agentTurnIdentity): added in v0.2.6, remove after 2027-01-31 once daemon floor >= v0.2.6.
-  // A legacy running snapshot has no identity to supersede a turn observed on
-  // the stream. Explicit null still closes above; an identified snapshot may
-  // replace the turn below. Keep this normalization shared by all consumers.
-  if (
-    transition.type === "snapshot" &&
-    activeTurn.turnId === null &&
-    current.phase === "open" &&
-    current.turnId !== null
-  ) {
-    return current;
-  }
   return openTurn(current, activeTurn);
 }

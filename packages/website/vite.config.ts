@@ -1,3 +1,4 @@
+// OTTO(website): retain Otto's public site on the clean Paseo base.
 import fs from "node:fs";
 import path from "node:path";
 import { defineConfig, type UserConfig } from "vite";

@@ -1,7 +1,0 @@
-bin/
-obj/
-
-# Visual Studio / Rider local state
-.vs/
-.idea/
-*.user

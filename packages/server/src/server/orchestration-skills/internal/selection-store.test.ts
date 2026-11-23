@@ -13,7 +13,7 @@ afterEach(async () => {
 });
 
 async function createStore() {
-  const root = await mkdtemp(path.join(os.tmpdir(), "otto-agent-skills-config-"));
+  const root = await mkdtemp(path.join(os.tmpdir(), "paseo-agent-skills-config-"));
   roots.push(root);
   const config = new DaemonConfigStore(root, {
     mcp: { injectIntoAgents: false },
@@ -37,16 +37,16 @@ describe("daemon agent skill selection", () => {
 
   it("persists a normalized custom selection under agents.skills.selection", async () => {
     const { root, store } = await createStore();
-    await store.set({ mode: "custom", skills: ["otto-loop", "otto", "otto"] });
+    await store.set({ mode: "custom", skills: ["paseo-loop", "paseo", "paseo"] });
     expect(loadPersistedConfig(root).agents?.skills?.selection).toEqual({
       mode: "custom",
-      skills: ["otto", "otto-loop"],
+      skills: ["paseo", "paseo-loop"],
     });
   });
 
   it("replaces a custom selection with all without retaining custom skill names", async () => {
     const { config, root, store } = await createStore();
-    await store.set({ mode: "custom", skills: ["otto"] });
+    await store.set({ mode: "custom", skills: ["paseo"] });
 
     await store.set({ mode: "all" });
 
@@ -58,7 +58,7 @@ describe("daemon agent skill selection", () => {
     const { config, root, store } = await createStore();
 
     config.patch({
-      skills: { selection: { mode: "custom", skills: ["otto"] } },
+      skills: { selection: { mode: "custom", skills: ["paseo"] } },
     } as MutableDaemonConfigPatch);
 
     expect(await store.isSet()).toBe(false);

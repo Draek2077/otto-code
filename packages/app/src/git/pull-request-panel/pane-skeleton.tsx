@@ -1,9 +1,8 @@
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { SkeletonPulse, useSkeletonPulse } from "@/components/ui/skeleton-pulse";
-import { PrActivitySkeleton } from "./activity-skeleton";
 import { PaneContentToolbar } from "@/components/ui/pane-content-toolbar";
+import { PrActivitySkeleton, SkeletonPulse, useSkeletonPulse } from "./activity-skeleton";
 
 const CHECK_ROW_KEYS = [0, 1, 2].map((i) => `pr-pane-skeleton-check-${i}`);
 
@@ -46,7 +45,7 @@ const styles = StyleSheet.create((theme) => ({
   root: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.surfaceSidebar,
   },
   header: {
     gap: theme.spacing[2],

@@ -1,9 +1,12 @@
 import { i18n } from "@/i18n/i18next";
+import type { WakeDictationStart } from "@/otto/speech/wake/dictation-session"; // OTTO(wake-word)
 
-export type DictationStatus = "idle" | "recording" | "uploading" | "failed";
+export type DictationStatus = "idle" | "recording" | "paused" | "uploading" | "failed";
 
 export interface UseDictationOptions {
-  client: import("@otto-code/client/internal/daemon-client").DaemonClient | null;
+  ottoOnPcmSegment?: (pcm: string) => void; // OTTO(wake-word): active-command silence only; idle detector audio stays native.
+  ottoOnCaptureEnd?: () => void; // OTTO(wake-word): revoke the automatic clock before an explicit confirm/cancel.
+  client: import("@getpaseo/client/internal/daemon-client").DaemonClient | null;
   onTranscript: (text: string, meta: { requestId: string }) => void;
   onPartialTranscript?: (text: string, meta: { requestId: string }) => void;
   onError?: (error: Error) => void;
@@ -11,19 +14,6 @@ export interface UseDictationOptions {
   canStart?: () => boolean;
   canConfirm?: () => boolean;
   enableDuration?: boolean;
-  /** Silence budget used by automatic voice-activated completion. */
-  silenceTimeoutMs?: number;
-  /** Apply conservative local punctuation/filler cleanup before delivery. */
-  cleanUp?: boolean;
-}
-
-export interface DictationStartOptions {
-  /** PCM retained during the wake-word handoff. */
-  preRollPcm?: string;
-  /** Finish this recording after speech is followed by sustained silence. */
-  finishOnSilence?: boolean;
-  /** The handoff PCM already contains command speech. */
-  speechAlreadyDetected?: boolean;
 }
 
 export interface UseDictationResult {
@@ -35,7 +25,7 @@ export interface UseDictationResult {
   duration: number;
   error: string | null;
   status: DictationStatus;
-  startDictation: (options?: DictationStartOptions) => Promise<void>;
+  startDictation: (initial?: WakeDictationStart) => Promise<void>; // OTTO(wake-word): bounded post-detection command handoff.
   cancelDictation: () => Promise<void>;
   confirmDictation: () => Promise<void>;
   retryFailedDictation: () => Promise<void>;
@@ -45,22 +35,6 @@ export interface UseDictationResult {
 
 export const DURATION_TICK_MS = 1000;
 export const PCM_DICTATION_FORMAT = "audio/pcm;rate=16000;bits=16";
-
-/**
- * Make a transcript read like written input without asking a model to rewrite
- * it. This intentionally avoids changing words, which matters for code and
- * other technical prompts.
- */
-export function cleanDictationText(text: string): string {
-  return text
-    .replace(/\b(?:um|uh|erm|hmm)\b[\s,]*/gi, "")
-    .replace(/\s+([,.!?;:])/g, "$1")
-    .replace(/[ \t]+/g, " ")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim()
-    .replace(/^[a-z]/, (value) => value.toUpperCase())
-    .replace(/[^.!?)}]$/, "$&.");
-}
 
 export const toError = (error: unknown): Error => {
   if (error instanceof Error) {

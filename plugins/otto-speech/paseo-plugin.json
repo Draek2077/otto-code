@@ -1,0 +1,5 @@
+{
+  "id": "otto-speech",
+  "name": "Otto Speech",
+  "requirements": { "paseo": ">=0.12.0" }
+}

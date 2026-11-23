@@ -1,9 +1,8 @@
 import { it, expect, afterEach } from "vitest";
 import { isPlatform } from "../test-utils/platform.js";
-import { removeTempDir } from "../test-utils/remove-temp-dir.js";
 import { createTerminalManager, type TerminalManager } from "./terminal-manager.js";
 import type { TerminalWorkspaceContributionChangedEvent } from "./terminal-manager.js";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
@@ -43,9 +42,13 @@ afterEach(async () => {
   while (temporaryDirs.length > 0) {
     const dir = temporaryDirs.pop();
     if (dir) {
-      // The killed PTYs can still hold their cwd open for a moment, which
-      // Windows reports as EPERM rather than the EBUSY this used to expect.
-      removeTempDir(dir);
+      try {
+        rmSync(dir, { recursive: true, force: true });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "EBUSY") {
+          throw error;
+        }
+      }
     }
   }
 });
@@ -137,26 +140,6 @@ it("creates additional terminal with auto-incrementing name", async () => {
   expect(terminals.length).toBe(2);
 });
 
-it("reuses an embedded terminal with the same stable owner in one workspace", async () => {
-  manager = createTerminalManager();
-  const cwd = realpathSync(tmpdir());
-  const first = await manager.createTerminal({
-    cwd,
-    workspaceId: "ws-test",
-    presentation: "embedded",
-    presentationOwner: "otto.file-editor:ws-test:file.ts",
-  });
-  const adopted = await manager.createTerminal({
-    cwd,
-    workspaceId: "ws-test",
-    presentation: "embedded",
-    presentationOwner: "otto.file-editor:ws-test:file.ts",
-  });
-
-  expect(adopted.id).toBe(first.id);
-  expect(await manager.getTerminals(cwd, { workspaceId: "ws-test" })).toHaveLength(1);
-});
-
 it("uses custom name when provided", async () => {
   manager = createTerminalManager();
   const session = await manager.createTerminal({
@@ -207,7 +190,7 @@ it("inherits registered env for the worktree root cwd", async () => {
 
   manager.registerCwdEnv({
     cwd,
-    env: { OTTO_WORKTREE_PORT: "45678" },
+    env: { PASEO_WORKTREE_PORT: "45678" },
   });
   await manager.createTerminal({
     workspaceId: "ws-test",
@@ -215,7 +198,7 @@ it("inherits registered env for the worktree root cwd", async () => {
     command: process.execPath,
     args: [
       "-e",
-      `require('fs').writeFileSync(${JSON.stringify(markerPath)}, process.env.OTTO_WORKTREE_PORT ?? '')`,
+      `require('fs').writeFileSync(${JSON.stringify(markerPath)}, process.env.PASEO_WORKTREE_PORT ?? '')`,
     ],
   });
 
@@ -236,7 +219,7 @@ it("inherits registered env for subdirectories within the worktree", async () =>
 
   manager.registerCwdEnv({
     cwd: rootCwd,
-    env: { OTTO_WORKTREE_PORT: "45679" },
+    env: { PASEO_WORKTREE_PORT: "45679" },
   });
   await manager.createTerminal({
     workspaceId: "ws-test",
@@ -244,7 +227,7 @@ it("inherits registered env for subdirectories within the worktree", async () =>
     command: process.execPath,
     args: [
       "-e",
-      `require('fs').writeFileSync(${JSON.stringify(markerPath)}, process.env.OTTO_WORKTREE_PORT ?? '')`,
+      `require('fs').writeFileSync(${JSON.stringify(markerPath)}, process.env.PASEO_WORKTREE_PORT ?? '')`,
     ],
   });
 

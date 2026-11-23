@@ -1,3 +1,4 @@
+// OTTO(storage): browser fixtures seed the physical Otto storage keys.
 import { randomUUID } from "node:crypto";
 import type { ChildProcess } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -5,7 +6,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
 import { expect, type Page } from "@playwright/test";
-import { buildHostWorkspaceRoute } from "@/utils/host-routes";
+import { buildHostWorkspaceRoute, decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
 import type { FormPreferences } from "@/create-agent-preferences/preferences";
 import { metroTest as test } from "../support/fixtures";
 import { buildSeededHost } from "../support/helpers/daemon-registry";
@@ -15,12 +16,18 @@ import {
   type NodeWebSocketFactory,
 } from "../support/helpers/node-ws-factory";
 import { withDisabledE2ESpeechEnv } from "../support/helpers/speech-env";
+import {
+  expectNewWorkspaceProjectSelected,
+  openGlobalNewWorkspaceComposer,
+  selectNewWorkspaceProject,
+  submitNewWorkspaceEmpty,
+} from "../support/helpers/new-workspace";
 import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
 import { killProcessTree, spawnTsx } from "../support/helpers/spawn-node";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
 import { getVisibleWorkspaceAgentTabIds } from "../support/helpers/workspace-tabs";
 
-const LEGACY_AGENT_ID = "legacy-cwd-only-agent";
+const LEGACY_AGENT_ID = "10000000-0000-4000-8000-000000000001";
 const SERVER_ID = `srv_restart_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
 
 interface RestartDaemonClient {
@@ -32,7 +39,11 @@ interface RestartDaemonClient {
       name: string;
       status: string;
       workspaceDirectory: string;
+      projectId: string;
     }>;
+  }>;
+  listProjects(): Promise<{
+    projects: Array<{ projectId: string; projectKey?: string }>;
   }>;
   fetchAgents(options?: { scope?: "active" }): Promise<{
     entries: Array<{
@@ -54,7 +65,7 @@ interface RestartDaemonClientConfig {
 }
 
 interface SeededRestartHome {
-  ottoHome: string;
+  paseoHome: string;
   cwd: string;
   projectId: string;
   projectDisplayName: string;
@@ -73,10 +84,10 @@ function nowIso(): string {
 }
 
 async function seedRestartHome(): Promise<SeededRestartHome> {
-  const ottoHome = mkdtempSync(path.join(tmpdir(), "otto-playwright-restart-home-"));
-  const cwd = mkdtempSync(path.join(tmpdir(), "otto-playwright-restart-cwd-"));
-  const projectsDir = path.join(ottoHome, "projects");
-  const agentDir = path.join(ottoHome, "agents", projectDirNameFromCwd(cwd));
+  const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-playwright-restart-home-"));
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-playwright-restart-cwd-"));
+  const projectsDir = path.join(paseoHome, "projects");
+  const agentDir = path.join(paseoHome, "agents", projectDirNameFromCwd(cwd));
   mkdirSync(projectsDir, { recursive: true });
   mkdirSync(agentDir, { recursive: true });
 
@@ -143,14 +154,14 @@ async function seedRestartHome(): Promise<SeededRestartHome> {
   );
 
   return {
-    ottoHome,
+    paseoHome,
     cwd,
     projectId: project.projectId,
     projectDisplayName,
     workspaceA: workspaceA.workspaceId,
     workspaceB: workspaceB.workspaceId,
     cleanup: () => {
-      rmSync(ottoHome, { recursive: true, force: true });
+      rmSync(paseoHome, { recursive: true, force: true });
       rmSync(cwd, { recursive: true, force: true });
     },
   };
@@ -219,11 +230,11 @@ async function waitForServer(port: number, child: ChildProcess): Promise<void> {
 }
 
 async function startRestartDaemon(input: {
-  ottoHome: string;
+  paseoHome: string;
   origin: string;
 }): Promise<StartedDaemon> {
   const port = await getAvailablePort();
-  if (port === 6868 || String(port) === process.env.E2E_DAEMON_PORT) {
+  if (port === 6767 || String(port) === process.env.E2E_DAEMON_PORT) {
     return startRestartDaemon(input);
   }
 
@@ -232,12 +243,12 @@ async function startRestartDaemon(input: {
     cwd: serverDir,
     env: withDisabledE2ESpeechEnv({
       ...process.env,
-      OTTO_HOME: input.ottoHome,
-      OTTO_SERVER_ID: SERVER_ID,
-      OTTO_LISTEN: `127.0.0.1:${port}`,
-      OTTO_CORS_ORIGINS: input.origin,
-      OTTO_RELAY_ENABLED: "0",
-      OTTO_NODE_ENV: "development",
+      PASEO_HOME: input.paseoHome,
+      PASEO_SERVER_ID: SERVER_ID,
+      PASEO_LISTEN: `127.0.0.1:${port}`,
+      PASEO_CORS_ORIGINS: input.origin,
+      PASEO_RELAY_ENABLED: "0",
+      PASEO_NODE_ENV: "development",
       NODE_ENV: "development",
     }),
     stdio: ["ignore", "ignore", "pipe"],
@@ -292,9 +303,9 @@ function loadAppVersion(): string {
 }
 
 async function seedBrowserForDaemon(page: Page, input: { serverId: string; port: number }) {
-  await page.route(/:(6868)\b/, (route) => route.abort());
-  await page.routeWebSocket(/:(6868)\b/, async (ws) => {
-    await ws.close({ code: 1008, reason: "Blocked connection to localhost:6868 during e2e." });
+  await page.route(/:(6767)\b/, (route) => route.abort());
+  await page.routeWebSocket(/:(6767)\b/, async (ws) => {
+    await ws.close({ code: 1008, reason: "Blocked connection to localhost:6767 during e2e." });
   });
   await page.route(
     "**/*",
@@ -335,6 +346,15 @@ async function seedBrowserForDaemon(page: Page, input: { serverId: string; port:
       } satisfies FormPreferences,
     },
   );
+}
+
+function parseWorkspaceIdFromPageUrl(page: Page, serverId: string): string | null {
+  const pathname = new URL(page.url()).pathname;
+  const match = pathname.match(
+    new RegExp(`^/h/${serverId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/workspace/([^/?#]+)`),
+  );
+  if (!match?.[1]) return null;
+  return decodeWorkspaceIdFromPathSegment(match[1]);
 }
 
 async function expectWorkspaceRowDoesNotShowIndicator(
@@ -385,14 +405,14 @@ async function fetchWorkspaceStatuses(
 }
 
 test.describe("Workspace model restart regressions", () => {
-  test("seeded same-cwd workspaces preserve restarted agent status and tab ownership", async ({
+  test("browser-created same-cwd workspace preserves restarted agent status and migrated tab ownership", async ({
     page,
     baseURL,
   }) => {
     test.setTimeout(90_000);
     const seeded = await seedRestartHome();
     const origin = new URL(baseURL ?? "http://localhost").origin;
-    const daemon = await startRestartDaemon({ ottoHome: seeded.ottoHome, origin });
+    const daemon = await startRestartDaemon({ paseoHome: seeded.paseoHome, origin });
     const serverId = SERVER_ID;
     const client = await connectRestartDaemonClient(daemon.port);
 
@@ -418,16 +438,43 @@ test.describe("Workspace model restart regressions", () => {
         .poll(() => getVisibleWorkspaceAgentTabIds(page), { timeout: 30_000 })
         .toContain(`workspace-tab-agent_${LEGACY_AGENT_ID}`);
 
-      // `seedRestartHome` writes workspaceA and workspaceB onto the same cwd directly in the
-      // registry - the shape a pre-guard install still has on disk, and the one this test is
-      // about. It used to mint a THIRD same-cwd workspace through the New Workspace form; that
-      // path is now refused outright (docs/workspace-lifecycle.md, occupied-directory guard), so
-      // the assertions below cover the two seeded siblings only.
+      const reconciledProjectKey = (await client.listProjects()).projects.find(
+        (project) => project.projectId === seeded.projectId,
+      );
+      if (!reconciledProjectKey?.projectKey) {
+        throw new Error(`Workspace ${seeded.workspaceA} was not reconciled with a project key`);
+      }
+
+      await openGlobalNewWorkspaceComposer(page);
+      await selectNewWorkspaceProject(page, {
+        projectKey: reconciledProjectKey.projectKey,
+        projectDisplayName: seeded.projectDisplayName,
+      });
+      await expectNewWorkspaceProjectSelected(page, seeded.projectDisplayName);
+      await submitNewWorkspaceEmpty(page);
+
       await expect
-        .poll(() => fetchWorkspaceStatuses(client, [seeded.workspaceA, seeded.workspaceB]))
-        .toEqual({
-          [seeded.workspaceA]: "running",
+        .poll(() => {
+          const workspaceId = parseWorkspaceIdFromPageUrl(page, serverId);
+          return workspaceId && workspaceId !== seeded.workspaceA ? workspaceId : null;
+        })
+        .not.toBeNull();
+      const createdWorkspaceId = parseWorkspaceIdFromPageUrl(page, serverId);
+      if (!createdWorkspaceId) {
+        throw new Error(`Expected browser to navigate to created workspace, got ${page.url()}`);
+      }
+
+      await expect
+        .poll(() =>
+          fetchWorkspaceStatuses(client, [
+            seeded.workspaceA,
+            seeded.workspaceB,
+            createdWorkspaceId,
+          ]),
+        )
+        .toMatchObject({
           [seeded.workspaceB]: "done",
+          [createdWorkspaceId]: "done",
         });
 
       // The restarted provider session may settle while the browser creates the sibling. Its
@@ -440,13 +487,21 @@ test.describe("Workspace model restart regressions", () => {
         workspaceId: seeded.workspaceB,
         indicator: "running",
       });
+      await expectWorkspaceRowDoesNotShowIndicator(page, {
+        serverId,
+        workspaceId: createdWorkspaceId,
+        indicator: "running",
+      });
       await expectWorkspaceRowInStatusBucket(page, {
         serverId,
         workspaceId: seeded.workspaceB,
         bucket: "done",
       });
-
-      await page.goto(buildHostWorkspaceRoute(serverId, seeded.workspaceB));
+      await expectWorkspaceRowInStatusBucket(page, {
+        serverId,
+        workspaceId: createdWorkspaceId,
+        bucket: "done",
+      });
       await expect
         .poll(() => getVisibleWorkspaceAgentTabIds(page), { timeout: 30_000 })
         .toEqual([]);

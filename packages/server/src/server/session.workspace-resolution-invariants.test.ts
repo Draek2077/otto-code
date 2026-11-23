@@ -1,17 +1,20 @@
-import { createAgentRequestsStub } from "./test-utils/session-stubs.js";
+import {
+  createMessageReceiptsStub,
+  createTestCreationService,
+} from "./test-utils/session-stubs.js";
 // Invariant tests for cwd → workspace resolution on the open_project_request path.
 // Each test encodes a default behavior we want from `findOrCreateWorkspaceForDirectory`.
 // Run to see which invariants the current code already satisfies (green) and which
 // it violates (red).
 
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, expect, test, vi } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { Session, type SessionOptions } from "./session.js";
 import { OWNER_PERMISSIONS } from "./authorization/index.js";
-import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
 import { asInternals, createStub } from "./test-utils/class-mocks.js";
 import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
@@ -61,7 +64,7 @@ function createHarness(input: {
           currentBranch: null,
           remoteUrl: null,
           worktreeRoot: null,
-          isOttoOwnedWorktree: false,
+          isPaseoOwnedWorktree: false,
           mainRepoRoot: null,
         };
       }
@@ -71,7 +74,7 @@ function createHarness(input: {
         currentBranch: "main",
         remoteUrl: null,
         worktreeRoot: root,
-        isOttoOwnedWorktree: false,
+        isPaseoOwnedWorktree: false,
         mainRepoRoot: null,
       };
     },
@@ -89,7 +92,8 @@ function createHarness(input: {
   };
 
   const session = new Session({
-    agentRequests: createAgentRequestsStub(),
+    messageReceipts: createMessageReceiptsStub(),
+    creationService: createTestCreationService(),
     clientId: "test",
     permissions: OWNER_PERMISSIONS,
     appVersion: null,
@@ -97,7 +101,7 @@ function createHarness(input: {
     logger: createStub<SessionOptions["logger"]>(logger),
     downloadTokenStore: createStub<SessionOptions["downloadTokenStore"]>({}),
     pushNotifications: createStub<SessionOptions["pushNotifications"]>({}),
-    ottoHome: mkdtempSync(path.join(tmpdir(), "otto-invariant-test-")),
+    paseoHome: mkdtempSync(path.join(tmpdir(), "paseo-invariant-test-")),
     agentManager: createStub<SessionOptions["agentManager"]>({
       subscribe: () => () => {},
       listAgents: () => [],
@@ -171,7 +175,6 @@ function createHarness(input: {
       scheduleRefreshForCwd: () => {},
       onWorkspaceStateMayHaveChanged: () => {},
       invalidateForge: () => {},
-      invalidateAuxiliaryReads: () => {},
       getMetrics: () => ({
         checkoutDiffTargetCount: 0,
         checkoutDiffSubscriptionCount: 0,
@@ -212,29 +215,18 @@ function getOpenResponse(emitted: SessionOutboundMessage[], requestId: string) {
 }
 
 const T0 = "2026-01-01T00:00:00.000Z";
-// Every fixture path is a real directory: a registered project whose root is
-// missing reads Offline, and open requests beneath it are refused.
-const FIXTURE_ROOT = realpathSync(mkdtempSync(path.join(tmpdir(), "otto-resolution-invariants-")));
-function fixtureDir(...segments: string[]): string {
-  const dir = path.join(FIXTURE_ROOT, ...segments);
-  mkdirSync(dir, { recursive: true });
-  return dir;
-}
-afterAll(() => {
-  rmSync(FIXTURE_ROOT, { recursive: true, force: true });
-});
-const FOO = fixtureDir("foo");
-const FOO_SUB = fixtureDir("foo", "sub");
-const BAR = fixtureDir("bar");
-const BAR_BAZ = fixtureDir("bar", "baz");
-const TOOLBOX = fixtureDir("toolbox");
-const TOOLBOX_FLOMO = fixtureDir("toolbox", "flomo-cli");
-const USERS_DEVELOPER = fixtureDir("Users", "me", "Developer");
-const USERS_PROJECT = fixtureDir("Users", "me", "Developer", "projects", "foo");
-const PROJECTS = fixtureDir("projects");
-const SOME_GIT_REPO = fixtureDir("projects", "some-git-repo");
-const PARENT = fixtureDir("parent");
-const PARENT_CHILD = fixtureDir("parent", "child");
+const FOO = path.resolve("/foo");
+const FOO_SUB = path.join(FOO, "sub");
+const BAR = path.resolve("/bar");
+const BAR_BAZ = path.join(BAR, "baz");
+const TOOLBOX = path.resolve("/toolbox");
+const TOOLBOX_FLOMO = path.join(TOOLBOX, "flomo-cli");
+const USERS_DEVELOPER = path.resolve("/Users/me/Developer");
+const USERS_PROJECT = path.join(USERS_DEVELOPER, "projects", "foo");
+const PROJECTS = path.resolve("/projects");
+const SOME_GIT_REPO = path.join(PROJECTS, "some-git-repo");
+const PARENT = path.resolve("/parent");
+const PARENT_CHILD = path.join(PARENT, "child");
 
 function gitWorkspace(rootPath: string, archivedAt: string | null = null) {
   return createPersistedWorkspaceRecord({
@@ -411,7 +403,7 @@ test("S7: open nested git repo (own .git) creates a SEPARATE workspace at the in
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// S8. Open a child of an archived NON-GIT ancestor: I4 - ancestor doesn't claim
+// S8. Open a child of an archived NON-GIT ancestor: I4 — ancestor doesn't claim
 //     subtree. Fresh workspace at child path. Archived ancestor untouched.
 //     This is the vfonic case from issue #564.
 // ─────────────────────────────────────────────────────────────────────────────

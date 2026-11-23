@@ -1,13 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { getIsElectronRuntimeMac } from "@/constants/layout";
-import { useAgentDirectoryDemand } from "./use-aggregated-agents";
-import { useSessionStore, type SessionState } from "@/stores/session-store";
-import { getDesktopHost, isElectronRuntime } from "@/desktop/host";
+import { useAggregatedAgents } from "./use-aggregated-agents";
+import { getDesktopHost } from "@/desktop/host";
 import { useWorkspaceStatusesForBadges } from "@/stores/session-store-hooks";
-import {
-  deriveMacDockBadgeCountFromWorkspaceStatuses,
-  selectDesktopAttentionSnapshots,
-} from "@/utils/desktop-badge-state";
+import { deriveMacDockBadgeCountFromWorkspaceStatuses } from "@/utils/desktop-badge-state";
 import { isNative } from "@/constants/platform";
 
 type FaviconStatus = "none" | "running" | "attention";
@@ -28,22 +24,19 @@ const FAVICON_IMAGES: Record<ColorScheme, Record<FaviconStatus, { uri: string } 
 };
 /* eslint-enable @typescript-eslint/no-require-imports */
 
-// Selected as a primitive so the hook re-renders only when the status flips, not on every
-// streamed agent update. Archived agents are skipped, matching the aggregated agent list.
-function deriveFaviconStatus(sessions: Record<string, SessionState>): FaviconStatus {
-  let hasAttention = false;
-  for (const session of Object.values(sessions)) {
-    for (const agent of session.agents.values()) {
-      if (agent.archivedAt) continue;
-      if (agent.status === "running") {
-        return "running";
-      }
-      if (agent.requiresAttention || agent.pendingPermissions.length > 0) {
-        hasAttention = true;
-      }
-    }
+function deriveFaviconStatus(
+  agents: ReturnType<typeof useAggregatedAgents>["agents"],
+): FaviconStatus {
+  const hasRunning = agents.some((agent) => agent.status === "running");
+  if (hasRunning) {
+    return "running";
   }
-  return hasAttention ? "attention" : "none";
+  const hasAttention = agents.some((agent) => agent.requiresAttention);
+  const hasNeedsInput = agents.some((agent) => (agent.pendingPermissionCount ?? 0) > 0);
+  if (hasAttention || hasNeedsInput) {
+    return "attention";
+  }
+  return "none";
 }
 
 function getFaviconUri(status: FaviconStatus, colorScheme: ColorScheme): string {
@@ -73,9 +66,7 @@ function updateFavicon(status: FaviconStatus, colorScheme: ColorScheme) {
   if (!link) return;
 
   const newHref = getFaviconUri(status, colorScheme);
-  // `link.href` reads back as an absolute URL, so compare against the resolved form; comparing to
-  // a relative path never matches and rewrites the favicon on every call.
-  if (link.href !== new URL(newHref, document.baseURI).href) {
+  if (link.href !== newHref) {
     link.href = newHref;
   }
 }
@@ -102,35 +93,11 @@ async function updateMacDockBadge(count?: number) {
   }
 }
 
-// The tray icon (all desktop platforms, not just mac) swaps to the amber wink
-// variant when something needs the user's attention - see packages/desktop/src/features/tray.ts.
-async function updateTrayAttention(status: FaviconStatus) {
-  if (isNative || !isElectronRuntime()) return;
-
-  const desktopWindow = getDesktopHost()?.window?.getCurrentWindow?.();
-  if (!desktopWindow || typeof desktopWindow.setTrayAttention !== "function") {
-    return;
-  }
-
-  try {
-    await desktopWindow.setTrayAttention(status === "attention");
-  } catch (error) {
-    console.warn("[useFaviconStatus] Failed to update tray attention state", error);
-  }
-}
-
 export function useFaviconStatus() {
-  useAgentDirectoryDemand(!isNative);
-  const status = useSessionStore((state) =>
-    isNative ? "none" : deriveFaviconStatus(state.sessions),
-  );
+  const { agents } = useAggregatedAgents({ demand: !isNative });
   const workspaceStatuses = useWorkspaceStatusesForBadges();
-  const attentionSnapshotsKey = useSessionStore((state) =>
-    JSON.stringify(selectDesktopAttentionSnapshots(state.sessions)),
-  );
   const [colorScheme, setColorScheme] = useState<ColorScheme>(getSystemColorScheme);
   const lastDockBadgeCountRef = useRef<number | undefined>(undefined);
-  const lastTrayAttentionRef = useRef<boolean | undefined>(undefined);
 
   // Listen for system color scheme changes
   useEffect(() => {
@@ -149,6 +116,7 @@ export function useFaviconStatus() {
   useEffect(() => {
     if (isNative) return;
 
+    const status = deriveFaviconStatus(agents);
     updateFavicon(status, colorScheme);
 
     const dockBadgeCount = deriveMacDockBadgeCountFromWorkspaceStatuses(workspaceStatuses);
@@ -156,25 +124,5 @@ export function useFaviconStatus() {
       lastDockBadgeCountRef.current = dockBadgeCount;
       void updateMacDockBadge(dockBadgeCount);
     }
-
-    const trayAttention = status === "attention";
-    if (trayAttention !== lastTrayAttentionRef.current) {
-      lastTrayAttentionRef.current = trayAttention;
-      void updateTrayAttention(status);
-    }
-  }, [status, colorScheme, workspaceStatuses]);
-
-  useEffect(() => {
-    const desktop = getDesktopHost();
-    if (desktop?.platform !== "linux") return;
-    const reconcile = desktop.notification?.reconcile;
-    if (!reconcile) return;
-    for (const snapshot of JSON.parse(attentionSnapshotsKey) as ReturnType<
-      typeof selectDesktopAttentionSnapshots
-    >) {
-      void reconcile(snapshot).catch((error) => {
-        console.warn("[useFaviconStatus] Failed to reconcile desktop notifications", error);
-      });
-    }
-  }, [attentionSnapshotsKey]);
+  }, [agents, colorScheme, workspaceStatuses]);
 }

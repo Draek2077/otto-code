@@ -6,6 +6,8 @@ order: 20
 category: Providers
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Providers
 
 Otto can launch and supervise **existing CLIs you've already installed and authenticated**, including Claude Code, Codex, OpenCode, Cursor, and Gemini. It also provides its own agent loop for model servers, described below. Your subscriptions, your config, your skills, your MCP servers all stay intact. Otto adds the assistant environment on top: a UI, a CLI, a relay, orchestration, browser-verified previews, and artifacts, the same tooling for every provider, cloud or local.

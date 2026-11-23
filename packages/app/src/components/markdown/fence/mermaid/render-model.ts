@@ -1,5 +1,4 @@
-import type { MarkdownPhase } from "../types";
-import type { MermaidDiagramTheme } from "./theme";
+import type { MarkdownPhase } from "./types";
 
 export type DiagramColorScheme = "light" | "dark";
 
@@ -10,14 +9,13 @@ export interface DiagramDimensions {
 
 export interface RenderedDiagram extends DiagramDimensions {
   source: string;
-  /** The palette the render was produced under - see MermaidDiagramTheme.key. */
-  themeKey: string;
+  colorScheme: DiagramColorScheme;
 }
 
 export interface MermaidRenderInput {
   source: string;
   phase: MarkdownPhase;
-  diagramTheme: MermaidDiagramTheme;
+  colorScheme: DiagramColorScheme;
   rejected: boolean;
   cached: RenderedDiagram | null;
 }
@@ -26,15 +24,13 @@ export interface MermaidRenderRequest {
   revision: number;
   source: string;
   colorScheme: DiagramColorScheme;
-  themeKey: string;
-  themeVariables: Record<string, string>;
 }
 
 export interface MermaidRenderModel {
   revision: number;
   source: string;
   phase: MarkdownPhase;
-  diagramTheme: MermaidDiagramTheme;
+  colorScheme: DiagramColorScheme;
   status: "pending" | "rendered" | "failed" | "rejected";
   visible: RenderedDiagram | null;
 }
@@ -45,7 +41,7 @@ export type MermaidRenderAction =
       type: "rendered";
       revision: number;
       source: string;
-      themeKey: string;
+      colorScheme: DiagramColorScheme;
       dimensions: DiagramDimensions;
     }
   | { type: "renderFailed"; revision: number };
@@ -54,7 +50,7 @@ function reduceRendered(
   state: MermaidRenderModel,
   action: Extract<MermaidRenderAction, { type: "rendered" }>,
 ): MermaidRenderModel {
-  if (action.themeKey !== state.diagramTheme.key) {
+  if (action.colorScheme !== state.colorScheme) {
     return state;
   }
   if (action.revision !== state.revision || action.source !== state.source) {
@@ -71,7 +67,7 @@ function reduceRendered(
       ...state,
       visible: {
         source: action.source,
-        themeKey: action.themeKey,
+        colorScheme: action.colorScheme,
         ...action.dimensions,
       },
     };
@@ -81,7 +77,7 @@ function reduceRendered(
     status: "rendered",
     visible: {
       source: action.source,
-      themeKey: action.themeKey,
+      colorScheme: action.colorScheme,
       ...action.dimensions,
     },
   };
@@ -93,7 +89,7 @@ export function createMermaidRenderModel(input: MermaidRenderInput): MermaidRend
       revision: 1,
       source: input.source,
       phase: input.phase,
-      diagramTheme: input.diagramTheme,
+      colorScheme: input.colorScheme,
       status: "rejected",
       visible: input.phase === "complete" ? null : input.cached,
     };
@@ -102,7 +98,7 @@ export function createMermaidRenderModel(input: MermaidRenderInput): MermaidRend
     revision: 1,
     source: input.source,
     phase: input.phase,
-    diagramTheme: input.diagramTheme,
+    colorScheme: input.colorScheme,
     status: "pending",
     visible: input.cached,
   };
@@ -128,8 +124,7 @@ export function reduceMermaidRenderModel(
   }
 
   const { input } = action;
-  const isSameRender =
-    input.source === state.source && input.diagramTheme.key === state.diagramTheme.key;
+  const isSameRender = input.source === state.source && input.colorScheme === state.colorScheme;
   if (isSameRender) {
     if (input.phase === state.phase) {
       return state;
@@ -147,7 +142,7 @@ export function reduceMermaidRenderModel(
       revision: state.revision + 1,
       source: input.source,
       phase: input.phase,
-      diagramTheme: input.diagramTheme,
+      colorScheme: input.colorScheme,
       status: "rejected",
       visible: input.phase === "complete" ? null : (input.cached ?? state.visible),
     };
@@ -157,7 +152,7 @@ export function reduceMermaidRenderModel(
     revision: state.revision + 1,
     source: input.source,
     phase: input.phase,
-    diagramTheme: input.diagramTheme,
+    colorScheme: input.colorScheme,
     status: "pending",
     visible: input.cached ?? state.visible,
   };
@@ -170,8 +165,6 @@ export function getMermaidRenderRequest(state: MermaidRenderModel): MermaidRende
   return {
     revision: state.revision,
     source: state.source,
-    colorScheme: state.diagramTheme.colorScheme,
-    themeKey: state.diagramTheme.key,
-    themeVariables: state.diagramTheme.variables,
+    colorScheme: state.colorScheme,
   };
 }

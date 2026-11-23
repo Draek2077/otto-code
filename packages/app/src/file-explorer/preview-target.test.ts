@@ -29,24 +29,24 @@ describe("resolveFilePreviewReadTarget", () => {
   it("uses the filesystem root for absolute paths outside the workspace", () => {
     expect(
       resolveFilePreviewReadTarget({
-        path: "/tmp/otto-preview.txt",
+        path: "/tmp/paseo-preview.txt",
         workspaceRoot: "/Users/test/project",
       }),
     ).toEqual({
       cwd: "/",
-      path: "/tmp/otto-preview.txt",
+      path: "/tmp/paseo-preview.txt",
     });
   });
 
   it("uses the home root for tilde paths", () => {
     expect(
       resolveFilePreviewReadTarget({
-        path: "~/.otto/plans/file-preview.md",
+        path: "~/.paseo/plans/file-preview.md",
         workspaceRoot: "/Users/test/project",
       }),
     ).toEqual({
       cwd: "~",
-      path: "~/.otto/plans/file-preview.md",
+      path: "~/.paseo/plans/file-preview.md",
     });
   });
 

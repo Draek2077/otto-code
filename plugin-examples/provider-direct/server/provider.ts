@@ -8,7 +8,7 @@ import {
   type ProviderPersistence,
   type ProviderRegistration,
   type ProviderSessionConfig,
-} from "@otto-code/plugin/server/provider";
+} from "@getpaseo/plugin/server/provider";
 import { randomUUID } from "node:crypto";
 import { providerResultKind } from "../shared/provider-result.js";
 
@@ -36,7 +36,7 @@ export function createDirectExampleProvider(): ProviderRegistration {
   return {
     id: "direct-example",
     label: "Direct provider example",
-    description: "A complete provider implemented directly against Otto's provider boundary",
+    description: "A complete provider implemented directly against Paseo's provider boundary",
     icon: "icon.svg",
     async connect(request) {
       if (!request.versions.includes(1)) throw new Error("Provider protocol version 1 is required");
@@ -314,7 +314,6 @@ function promptSession(
 
 function publishChild(parentSessionId: string, turn: number, state: ExampleState): void {
   const sessionId = randomUUID();
-  const turnId = randomUUID();
   state.emit({
     type: "session.opened",
     sessionId,
@@ -324,7 +323,6 @@ function publishChild(parentSessionId: string, turn: number, state: ExampleState
     title: "Example child",
     cwd: requireSession(state, parentSessionId).config.cwd,
   });
-  state.emit({ type: "session.turn", sessionId, turnId, state: "started" });
   state.emit({
     type: "timeline.item",
     sessionId,
@@ -337,7 +335,6 @@ function publishChild(parentSessionId: string, turn: number, state: ExampleState
       data: { label: "Child result", detail: "Completed" },
     },
   });
-  state.emit({ type: "session.turn", sessionId, turnId, state: "completed" });
   state.emit({ type: "session.ready", sessionId });
 }
 

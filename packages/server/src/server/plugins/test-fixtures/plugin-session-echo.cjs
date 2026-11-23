@@ -1,4 +1,4 @@
 process.on("message", (message) => {
-  if (message?.type !== "otto_frame") return;
+  if (message?.type !== "paseo_frame") return;
   process.send?.(message);
 });

@@ -1,127 +1,108 @@
 import { UnistylesRuntime } from "react-native-unistyles";
-import { resolveSyntaxColors, type SyntaxThemeId } from "@otto-code/highlight";
+import { resolveSyntaxColors, type SyntaxThemeId } from "@getpaseo/highlight";
 import {
-  DEFAULT_MONO_FONT_STACK,
   DEFAULT_UI_FONT_STACK,
+  DEFAULT_MONO_FONT_STACK,
   FONT_SIZE,
-  ICON_SIZE,
-  ICON_SIZE_COMPACT,
   REGISTERED_THEMES,
   type Theme,
 } from "@/styles/theme";
-import { resolveChatMaxWidth, type ChatWidth } from "@/constants/layout";
 import { applyRootUiFont } from "./apply-root-font";
 
 const ALL_THEME_KEYS = Object.keys(REGISTERED_THEMES) as (keyof typeof REGISTERED_THEMES)[];
-export const COMPACT_FONT_SIZE_BUMP = 2;
-
-/** Resolves a configured font size for the current form factor. */
-export function resolveCompactFontSize(size: number, isCompact: boolean): number {
-  return size + (isCompact ? COMPACT_FONT_SIZE_BUMP : 0);
-}
 
 export interface AppearanceInput {
-  uiFontFamily: string;
-  monoFontFamily: string;
-  uiFontSize: number;
-  contentFontSize: number;
-  codeFontSize: number;
+  uiFontFamily: string; // "" -> default stack
+  monoFontFamily: string; // "" -> default stack
+  uiBaseFontSize: number; // already clamped
+  contentFontSize: number; // already clamped
+  codeFontSize: number; // already clamped
+  contentMaxWidth: number; // already clamped, default resolved
   syntaxTheme: SyntaxThemeId;
-  chatWidth: ChatWidth;
-  isCompact: boolean;
 }
 
+/**
+ * Build the font-size ramp from the canonical `FONT_SIZE` ramp, scaled
+ * proportionally from the requested base size so the type hierarchy is preserved
+ * sizes. Deriving from the authored ramp — NOT the live (possibly already-scaled)
+ * theme — makes `applyAppearance` idempotent: repeated applies never compound, and a
+ * code-size change (base size unchanged) leaves the UI ramp at its authored values.
+ * `code` is set absolutely to `codeSize`, never scaled by the UI factor — a separate
+ * control on a separate semantic axis (mono/diff text).
+ */
 function scaleFontSize(
-  uiSize: number,
+  uiBaseSize: number,
   contentSize: number,
   codeSize: number,
-  isCompact: boolean,
 ): Theme["fontSize"] {
-  const effectiveUiSize = resolveCompactFontSize(uiSize, isCompact);
-  const scale = effectiveUiSize / FONT_SIZE.base;
+  const r = uiBaseSize / FONT_SIZE.base;
   return {
-    xs: Math.round(FONT_SIZE.xs * scale),
-    sm: Math.round(FONT_SIZE.sm * scale),
-    base: Math.round(FONT_SIZE.base * scale),
-    content: resolveCompactFontSize(contentSize, isCompact),
-    lg: Math.round(FONT_SIZE.lg * scale),
-    xl: Math.round(FONT_SIZE.xl * scale),
-    "2xl": Math.round(FONT_SIZE["2xl"] * scale),
-    "3xl": Math.round(FONT_SIZE["3xl"] * scale),
-    "4xl": Math.round(FONT_SIZE["4xl"] * scale),
-    code: resolveCompactFontSize(codeSize, isCompact),
+    sm: Math.round(FONT_SIZE.sm * r),
+    base: Math.round(FONT_SIZE.base * r),
+    lg: Math.round(FONT_SIZE.lg * r),
+    xl: Math.round(FONT_SIZE.xl * r),
+    "2xl": Math.round(FONT_SIZE["2xl"] * r),
+    "3xl": Math.round(FONT_SIZE["3xl"] * r),
+    "4xl": Math.round(FONT_SIZE["4xl"] * r),
+    content: contentSize, // absolute, NOT scaled
+    code: codeSize, // absolute, NOT scaled
   };
 }
 
 /**
- * Icon size is a form-factor concern, not a call-site concern. A named token
- * resolves to the thumb-sized ladder on compact screens while explicit numeric
- * sizes remain intentionally fixed for artwork and other non-chrome graphics.
- */
-function resolveIconSize(isCompact: boolean): Theme["iconSize"] {
-  return isCompact ? ICON_SIZE_COMPACT : ICON_SIZE;
-}
-
-/**
- * Applies Paseo's persisted font and syntax controls to every runtime key.
- * Compact typography is resolved once here, so screen styles consume semantic
- * theme roles instead of carrying their own phone-only point adjustments.
+ * Patch every registered Unistyles theme with the user's appearance choices.
+ * All keys in `ALL_THEME_KEYS` are patched because the active theme can change
+ * and adaptive mode can flip light/dark — patching all keys keeps the active key
+ * always current and makes ordering vs `setTheme`/`setAdaptiveThemes` irrelevant.
+ *
+ * The updater preserves the active theme wholesale (surfaces, accents,
+ * terminal) and only patches the font ramp, content width, and syntax palette.
+ * `updateTheme` replaces the stored theme rather than merging, so we spread
+ * `...t` first.
  */
 export function applyAppearance(input: AppearanceInput): void {
   const ui = input.uiFontFamily.trim() || DEFAULT_UI_FONT_STACK;
   const mono = input.monoFontFamily.trim() || DEFAULT_MONO_FONT_STACK;
-  const iconSize = resolveIconSize(input.isCompact);
+  const diffLineHeight = Math.round(input.codeFontSize * 1.5); // couple to code size
   const activeTheme = UnistylesRuntime.themeName;
+  // Unistyles web emits after each registry patch. Updating the mounted theme
+  // first ensures subscribers receive its new numeric tokens in this render;
+  // updating it last makes Pure black appear one committed value behind.
   const themeKeys = activeTheme
     ? [activeTheme, ...ALL_THEME_KEYS.filter((key) => key !== activeTheme)]
     : ALL_THEME_KEYS;
 
   for (const key of themeKeys) {
-    UnistylesRuntime.updateTheme(key, (theme) => {
-      // Narrow before spreading: Unistyles stores a discriminated theme union.
-      if (theme.colorScheme === "light") {
+    UnistylesRuntime.updateTheme(key, (t) => {
+      const fontFamily = { ui, mono };
+      const fontSize = scaleFontSize(
+        input.uiBaseFontSize,
+        input.contentFontSize,
+        input.codeFontSize,
+      );
+      const lineHeight = { ...t.lineHeight, diff: diffLineHeight };
+      if (t.colorScheme === "light") {
         return {
-          ...theme,
-          fontFamily: { ui, mono },
-          fontSize: scaleFontSize(
-            input.uiFontSize,
-            input.contentFontSize,
-            input.codeFontSize,
-            input.isCompact,
-          ),
-          iconSize,
-          lineHeight: {
-            ...theme.lineHeight,
-            diff: Math.round(resolveCompactFontSize(input.codeFontSize, input.isCompact) * 1.5),
-          },
-          layout: { ...theme.layout, chatMaxWidth: resolveChatMaxWidth(input.chatWidth) },
-          colors: {
-            ...theme.colors,
-            syntax: resolveSyntaxColors(input.syntaxTheme, theme.colorScheme),
-          },
+          ...t,
+          fontFamily,
+          fontSize,
+          lineHeight,
+          contentMaxWidth: input.contentMaxWidth,
+          colors: { ...t.colors, syntax: resolveSyntaxColors(input.syntaxTheme, t.colorScheme) },
         };
       }
       return {
-        ...theme,
-        fontFamily: { ui, mono },
-        fontSize: scaleFontSize(
-          input.uiFontSize,
-          input.contentFontSize,
-          input.codeFontSize,
-          input.isCompact,
-        ),
-        iconSize,
-        lineHeight: {
-          ...theme.lineHeight,
-          diff: Math.round(resolveCompactFontSize(input.codeFontSize, input.isCompact) * 1.5),
-        },
-        layout: { ...theme.layout, chatMaxWidth: resolveChatMaxWidth(input.chatWidth) },
-        colors: {
-          ...theme.colors,
-          syntax: resolveSyntaxColors(input.syntaxTheme, theme.colorScheme),
-        },
+        ...t,
+        fontFamily,
+        fontSize,
+        lineHeight,
+        contentMaxWidth: input.contentMaxWidth,
+        colors: { ...t.colors, syntax: resolveSyntaxColors(input.syntaxTheme, t.colorScheme) },
       };
     });
   }
+
+  // Web: apply the UI font app-wide (RN-web stamps a default font on every text
+  // element, so it can't be done through the theme alone). No-op on native.
   applyRootUiFont(ui);
 }

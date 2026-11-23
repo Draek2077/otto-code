@@ -16,7 +16,7 @@ describe("Hub deployment bundle discovery", () => {
   it("discovers the canonical bundle in deterministic path order", async () => {
     const cwd = await canonicalProject();
     await writeFile(
-      path.join(cwd, ".otto", "workflows", "z-last.yml"),
+      path.join(cwd, ".paseo", "workflows", "z-last.yml"),
       workflow("z-last", "codex-safe"),
     );
 
@@ -24,16 +24,16 @@ describe("Hub deployment bundle discovery", () => {
       projectSlug: "studio-api",
       workflowCount: 2,
       files: [
-        { path: ".otto/hub.yml", content: hubResource },
+        { path: ".paseo/hub.yml", content: hubResource },
         {
-          path: ".otto/workflows/answer.yml",
-          content: workflow("answer", "${{ otto.inputs.agent }}", true),
+          path: ".paseo/workflows/answer.yml",
+          content: workflow("answer", "${{ paseo.inputs.agent }}", true),
         },
         {
-          path: ".otto/workflows/partials/safety.md",
-          content: "Keep the request in otto.prompt and evidence in otto.context.\n",
+          path: ".paseo/workflows/partials/safety.md",
+          content: "Keep the request in paseo.prompt and evidence in paseo.context.\n",
         },
-        { path: ".otto/workflows/z-last.yml", content: workflow("z-last", "codex-safe") },
+        { path: ".paseo/workflows/z-last.yml", content: workflow("z-last", "codex-safe") },
       ],
     });
   });
@@ -42,38 +42,38 @@ describe("Hub deployment bundle discovery", () => {
     {
       name: "missing hub.yml",
       arrange: async (cwd: string) => {
-        await mkdir(path.join(cwd, ".otto", "workflows"), { recursive: true });
+        await mkdir(path.join(cwd, ".paseo", "workflows"), { recursive: true });
       },
       code: "HUB_RESOURCE_MISSING",
-      message: ".otto/hub.yml does not exist",
+      message: ".paseo/hub.yml does not exist",
     },
     {
       name: "missing workflow directory",
       arrange: async (cwd: string) => {
-        await mkdir(path.join(cwd, ".otto"), { recursive: true });
-        await writeFile(path.join(cwd, ".otto", "hub.yml"), hubResource);
+        await mkdir(path.join(cwd, ".paseo"), { recursive: true });
+        await writeFile(path.join(cwd, ".paseo", "hub.yml"), hubResource);
       },
       code: "HUB_WORKFLOW_DIRECTORY_MISSING",
-      message: ".otto/workflows does not exist",
+      message: ".paseo/workflows does not exist",
     },
     {
       name: "empty workflow directory",
       arrange: async (cwd: string) => {
-        await mkdir(path.join(cwd, ".otto", "workflows"), { recursive: true });
-        await writeFile(path.join(cwd, ".otto", "hub.yml"), hubResource);
+        await mkdir(path.join(cwd, ".paseo", "workflows"), { recursive: true });
+        await writeFile(path.join(cwd, ".paseo", "hub.yml"), hubResource);
       },
       code: "HUB_WORKFLOW_MISSING",
-      message: ".otto/workflows must contain at least one direct-child .yml workflow",
+      message: ".paseo/workflows must contain at least one direct-child .yml workflow",
     },
     {
       name: "unsupported workflow extension",
       arrange: async (cwd: string) => {
-        await mkdir(path.join(cwd, ".otto", "workflows"), { recursive: true });
-        await writeFile(path.join(cwd, ".otto", "hub.yml"), hubResource);
-        await writeFile(path.join(cwd, ".otto", "workflows", "answer.yaml"), "name: answer\n");
+        await mkdir(path.join(cwd, ".paseo", "workflows"), { recursive: true });
+        await writeFile(path.join(cwd, ".paseo", "hub.yml"), hubResource);
+        await writeFile(path.join(cwd, ".paseo", "workflows", "answer.yaml"), "name: answer\n");
       },
       code: "HUB_WORKFLOW_EXTENSION_UNSUPPORTED",
-      message: ".otto/workflows/answer.yaml must use the .yml extension",
+      message: ".paseo/workflows/answer.yaml must use the .yml extension",
     },
   ])("rejects $name before contacting Hub", async ({ arrange, code, message }) => {
     const cwd = await temporaryDirectory();
@@ -88,46 +88,46 @@ describe("Hub deployment bundle discovery", () => {
   it("rejects prompt partial traversal with a path-specific diagnostic", async () => {
     const cwd = await canonicalProject();
     await writeFile(
-      path.join(cwd, ".otto", "workflows", "answer.yml"),
+      path.join(cwd, ".paseo", "workflows", "answer.yml"),
       workflow("answer", "codex-safe").replace(
-        "      - text: ${{ otto.prompt }}",
+        "      - text: ${{ paseo.prompt }}",
         "      - include: ../secret.md",
       ),
     );
 
     await expect(discoverHubBundle({ cwd, project: "studio-api" })).rejects.toMatchObject({
       code: "HUB_PARTIAL_PATH_INVALID",
-      message: expect.stringContaining(".otto/workflows/answer.yml"),
+      message: expect.stringContaining(".paseo/workflows/answer.yml"),
     });
   });
 
   it("reports a referenced partial that is missing from the bundle", async () => {
     const cwd = await canonicalProject();
     await writeFile(
-      path.join(cwd, ".otto", "workflows", "answer.yml"),
+      path.join(cwd, ".paseo", "workflows", "answer.yml"),
       workflow("answer", "codex-safe").replace(
-        "      - text: ${{ otto.prompt }}",
+        "      - text: ${{ paseo.prompt }}",
         "      - include: partials/missing.md",
       ),
     );
 
     await expect(discoverHubBundle({ cwd, project: "studio-api" })).rejects.toMatchObject({
       code: "HUB_BUNDLE_FILE_MISSING",
-      message: expect.stringContaining(".otto/workflows/partials/missing.md"),
+      message: expect.stringContaining(".paseo/workflows/partials/missing.md"),
     });
   });
 
   it("rejects nested workflow files instead of discovering a second layout", async () => {
     const cwd = await canonicalProject();
-    await mkdir(path.join(cwd, ".otto", "workflows", "nested"));
+    await mkdir(path.join(cwd, ".paseo", "workflows", "nested"));
     await writeFile(
-      path.join(cwd, ".otto", "workflows", "nested", "other.yml"),
+      path.join(cwd, ".paseo", "workflows", "nested", "other.yml"),
       workflow("other", "codex-safe"),
     );
 
     await expect(discoverHubBundle({ cwd, project: "studio-api" })).rejects.toMatchObject({
       code: "HUB_WORKFLOW_PATH_UNSUPPORTED",
-      message: expect.stringContaining(".otto/workflows/nested"),
+      message: expect.stringContaining(".paseo/workflows/nested"),
     });
   });
 
@@ -135,11 +135,11 @@ describe("Hub deployment bundle discovery", () => {
     const cwd = await canonicalProject();
     const outside = path.join(cwd, "outside.yml");
     await writeFile(outside, workflow("linked", "codex-safe"));
-    await symlink(outside, path.join(cwd, ".otto", "workflows", "linked.yml"));
+    await symlink(outside, path.join(cwd, ".paseo", "workflows", "linked.yml"));
 
     await expect(discoverHubBundle({ cwd, project: "studio-api" })).rejects.toMatchObject({
       code: "HUB_BUNDLE_UNSAFE_PATH",
-      message: expect.stringContaining(".otto/workflows/linked.yml"),
+      message: expect.stringContaining(".paseo/workflows/linked.yml"),
     });
   });
 
@@ -181,7 +181,7 @@ function workflow(name: string, agent: string, include = false): string {
     `name: ${name}`,
     "on: manual.run",
     "max_runtime: 1h",
-    ...(agent.includes("otto.inputs")
+    ...(agent.includes("paseo.inputs")
       ? ["inputs:", "  agent:", "    type: string", "    choices: [codex-safe, claude]"]
       : []),
     "steps:",
@@ -192,29 +192,29 @@ function workflow(name: string, agent: string, include = false): string {
     `    agent: ${agent}`,
     "    prompt:",
     ...(include ? ["      - include: partials/safety.md"] : []),
-    "      - text: ${{ otto.prompt }}",
+    "      - text: ${{ paseo.prompt }}",
     "",
   ].join("\n");
 }
 
 async function canonicalProject(): Promise<string> {
   const cwd = await temporaryDirectory();
-  const workflows = path.join(cwd, ".otto", "workflows");
+  const workflows = path.join(cwd, ".paseo", "workflows");
   await mkdir(path.join(workflows, "partials"), { recursive: true });
-  await writeFile(path.join(cwd, ".otto", "hub.yml"), hubResource);
+  await writeFile(path.join(cwd, ".paseo", "hub.yml"), hubResource);
   await writeFile(
     path.join(workflows, "answer.yml"),
-    workflow("answer", "${{ otto.inputs.agent }}", true),
+    workflow("answer", "${{ paseo.inputs.agent }}", true),
   );
   await writeFile(
     path.join(workflows, "partials", "safety.md"),
-    "Keep the request in otto.prompt and evidence in otto.context.\n",
+    "Keep the request in paseo.prompt and evidence in paseo.context.\n",
   );
   return cwd;
 }
 
 async function temporaryDirectory(): Promise<string> {
-  const directory = await mkdtemp(path.join(tmpdir(), "otto-hub-bundle-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "paseo-hub-bundle-"));
   temporaryDirectories.push(directory);
   return directory;
 }

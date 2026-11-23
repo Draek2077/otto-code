@@ -2,16 +2,14 @@ import { test, expect, type Page } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
 import { gotoWorkspace, clickNewTerminal } from "../support/helpers/launcher";
 import { seedWorkspace, type SeededWorkspace } from "../support/helpers/seed-client";
-import { createTempDirectory, createTempGitRepo } from "../support/helpers/workspace";
 import { seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 import { getServerId } from "../support/helpers/server-id";
 import { projectEquivalenceViewKey } from "../support/helpers/project-view-key";
 import { selectSidebarStatusGrouping } from "../support/helpers/sidebar";
 import { waitForSidebarHydration } from "../support/helpers/workspace-ui";
-import { getVisibleWorkspaceAgentTabIds } from "../support/helpers/workspace-tabs";
 
-// Model B sidebar shape: every project - git or non-git, single- or
-// multi-workspace - renders as the same expandable parent, the deepest sidebar
+// Model B sidebar shape: every project — git or non-git, single- or
+// multi-workspace — renders as the same expandable parent, the deepest sidebar
 // level is the workspace row, and tabs/agents/terminals NEVER appear in the
 // sidebar. These specs prove all three invariants end to end.
 
@@ -27,43 +25,15 @@ function projectNewWorktreeIcon(page: Page, projectKey: string) {
   return page.getByTestId(`sidebar-project-new-worktree-${projectEquivalenceViewKey(projectKey)}`);
 }
 
-interface SecondWorkspace {
-  workspaceId: string;
-  cleanup: () => Promise<void>;
-}
-
-/**
- * Attach a second workspace to an existing project.
- *
- * It gets its **own** directory on purpose. One directory backs exactly one
- * visible workspace (WorkspaceDirectoryOccupiedError / wire
- * `workspace_directory_occupied`): a directory is one physical checkout, so two
- * workspaces sharing it could never be independent - branch, diff and status
- * all fan out across them. Re-using `seeded.repoPath` here used to be accepted
- * and now fails the create outright, which read as a sidebar bug rather than a
- * rejected fixture.
- */
-async function seedSecondWorkspace(
-  seeded: SeededWorkspace,
-  title: string,
-  options: { git: boolean },
-): Promise<SecondWorkspace> {
-  const directory = options.git
-    ? await createTempGitRepo("model-b-second-")
-    : await createTempDirectory("model-b-second-");
-  try {
-    const created = await seeded.client.createWorkspace({
-      source: { kind: "directory", path: directory.path, projectId: seeded.projectId },
-      title,
-    });
-    if (!created.workspace) {
-      throw new Error(created.error ?? `Failed to create second workspace for ${seeded.projectId}`);
-    }
-    return { workspaceId: created.workspace.id, cleanup: directory.cleanup };
-  } catch (error) {
-    await directory.cleanup().catch(() => undefined);
-    throw error;
+async function seedSecondWorkspace(seeded: SeededWorkspace, title: string): Promise<string> {
+  const created = await seeded.client.createWorkspace({
+    source: { kind: "directory", path: seeded.repoPath, projectId: seeded.projectId },
+    title,
+  });
+  if (!created.workspace) {
+    throw new Error(created.error ?? `Failed to create second workspace for ${seeded.projectId}`);
   }
+  return created.workspace.id;
 }
 
 test.describe("Model B sidebar shape", () => {
@@ -75,18 +45,14 @@ test.describe("Model B sidebar shape", () => {
     const gitProject = await seedWorkspace({ repoPrefix: "model-b-git-" });
     const nonGitProject = await seedWorkspace({ repoPrefix: "model-b-nongit-", git: false });
 
-    let gitSecond: SecondWorkspace | null = null;
-    let nonGitSecond: SecondWorkspace | null = null;
     try {
-      gitSecond = await seedSecondWorkspace(gitProject, "Git second", { git: true });
-      nonGitSecond = await seedSecondWorkspace(nonGitProject, "Non-git second", { git: false });
-      const gitSecondId = gitSecond.workspaceId;
-      const nonGitSecondId = nonGitSecond.workspaceId;
+      const gitSecondId = await seedSecondWorkspace(gitProject, "Git second");
+      const nonGitSecondId = await seedSecondWorkspace(nonGitProject, "Non-git second");
 
       await gotoAppShell(page);
       await waitForSidebarHydration(page);
 
-      // Both projects are expandable parents - the non-git one is NOT flattened
+      // Both projects are expandable parents — the non-git one is NOT flattened
       // into a bare workspace link.
       await expect(projectRow(page, gitProject.projectKey)).toBeVisible({ timeout: 30_000 });
       await expect(projectRow(page, nonGitProject.projectKey)).toBeVisible({ timeout: 30_000 });
@@ -109,14 +75,12 @@ test.describe("Model B sidebar shape", () => {
         timeout: 30_000,
       });
 
-      // Command Center's "New workspace" action is the universal entry - present
-      // for both kinds regardless of their per-row affordance.
-      await expect(page.getByTestId("sidebar-search")).toBeVisible({
+      // The global new-workspace button is the universal entry — present for both
+      // kinds regardless of their per-row affordance.
+      await expect(page.getByTestId("sidebar-global-new-workspace")).toBeVisible({
         timeout: 30_000,
       });
     } finally {
-      await gitSecond?.cleanup().catch(() => undefined);
-      await nonGitSecond?.cleanup().catch(() => undefined);
       await gitProject.cleanup();
       await nonGitProject.cleanup();
     }
@@ -131,8 +95,9 @@ test.describe("Model B sidebar shape", () => {
     try {
       // Open the workspace and materialize both an agent tab and a terminal tab.
       await gotoWorkspace(page, mock.workspaceId);
-      const agentTabs = await getVisibleWorkspaceAgentTabIds(page);
-      expect(agentTabs).toContain(`workspace-tab-agent_${mock.agentId}`);
+      await expect(
+        page.getByTestId(`workspace-tab-agent_${mock.agentId}`).filter({ visible: true }),
+      ).toBeVisible();
 
       await clickNewTerminal(page);
       await expect(
@@ -191,7 +156,7 @@ test.describe("Model B sidebar shape", () => {
         /Working$/,
       );
 
-      // Only workspace rows are shown - no tab/agent/terminal leaves leak into
+      // Only workspace rows are shown — no tab/agent/terminal leaves leak into
       // the status view.
       await expect(sidebar.locator('[data-testid^="workspace-tab-"]')).toHaveCount(0);
 
@@ -213,7 +178,7 @@ test.describe("Model B sidebar shape", () => {
       await expect(
         doneRows.getByTestId(`sidebar-workspace-row-${getServerId()}:${idleProject.workspaceId}`),
       ).toBeVisible({ timeout: 30_000 });
-      // The busy workspace is NOT also sitting in the Done bucket - only its own
+      // The busy workspace is NOT also sitting in the Done bucket — only its own
       // row moved.
       await expect(
         doneRows.getByTestId(`sidebar-workspace-row-${getServerId()}:${activeMock.workspaceId}`),

@@ -1,8 +1,8 @@
 import type {
   DaemonTransport,
   DaemonTransportFactory,
-} from "@otto-code/client/internal/daemon-client";
-import { validatePort, validateSshHost } from "@otto-code/protocol/ssh-transport";
+} from "@getpaseo/client/internal/daemon-client";
+import { validatePort, validateSshHost } from "@getpaseo/protocol/ssh-transport";
 import type { DesktopDaemonTransportTarget } from "./desktop-daemon";
 import {
   defaultLocalDaemonTransportRpc,
@@ -10,7 +10,7 @@ import {
   type LocalDaemonTransportRpc,
 } from "./local-daemon-transport-rpc";
 
-const DESKTOP_TRANSPORT_SCHEME = "otto+desktop:";
+const DESKTOP_TRANSPORT_SCHEME = "paseo+desktop:";
 
 function encodeBinaryToBase64(data: Uint8Array | ArrayBuffer): string {
   const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : data;
@@ -48,12 +48,7 @@ export function buildDesktopDaemonTransportUrl(target: DesktopDaemonTransportTar
 
 function parseDesktopDaemonTransportUrl(url: string): DesktopDaemonTransportTarget {
   const parsed = new URL(url);
-  // COMPAT(localTransportUrl): added in v0.9.10; remove legacy scheme 2027-03-13.
-  // Existing local URLs remain accepted only for local pipe/socket targets.
-  const legacyLocal =
-    parsed.protocol === "otto+local:" &&
-    (parsed.hostname === "pipe" || parsed.hostname === "socket");
-  if (parsed.protocol !== DESKTOP_TRANSPORT_SCHEME && !legacyLocal) {
+  if (parsed.protocol !== DESKTOP_TRANSPORT_SCHEME) {
     throw new Error(`Unsupported desktop transport URL: ${url}`);
   }
   const transportType = parsed.hostname;
@@ -174,7 +169,7 @@ export function createDesktopDaemonTransportFactory(
 
     const transport: DaemonTransport = {
       send: (data) => {
-        if (disposed || !didEmitOpen) {
+        if (!didEmitOpen) {
           return;
         }
         if (typeof data === "string") {

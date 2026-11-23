@@ -1,3 +1,5 @@
+import { OTTO_APP_BASE_URL, OTTO_DEFAULT_LISTEN } from "@getpaseo/protocol/otto/identity";
+import { PluginRegistriesSchema } from "@getpaseo/protocol/plugin-registry";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { z } from "zod";
@@ -9,18 +11,13 @@ import {
 } from "./agent/provider-launch-config.js";
 import type { AgentProviderRuntimeSettingsMap } from "./agent/provider-launch-config.js";
 import { ensurePrivateFile, writePrivateFileAtomicSync } from "./private-files.js";
-import { ConnectorConfigSchema, OTTO_TOOL_GROUPS } from "@otto-code/protocol/provider-config";
-import {
-  AgentProfileSchema,
-  AgentSkillSelectionSchema,
-  MutableProjectArtifactsConfigSchema,
-  MutableProjectKnowledgeConfigSchema,
-  MutableProjectWorkflowsConfigSchema,
-  PluginIdSchema,
-  PluginSourceSchema,
-  TerminalProfileSchema,
-} from "@otto-code/protocol/messages";
-import { OttoServicePortAllocationSchema } from "@otto-code/protocol/otto-config-schema";
+import { migrateOttoConfig } from "./otto/config-migration.js";
+import { ensureOttoHomeSnapshot } from "./otto/home-snapshot.js";
+import { AgentTeams } from "@getpaseo/protocol/otto/agent-teams"; // OTTO(agent-teams)
+import { AgentProfileSchema, AgentSkillSelectionSchema } from "@getpaseo/protocol/agent-profile";
+import { PluginIdSchema, PluginSourceSchema } from "@getpaseo/protocol/plugin-config";
+import { TerminalProfileSchema } from "@getpaseo/protocol/terminal-profile";
+import { PaseoServicePortAllocationSchema } from "@getpaseo/protocol/paseo-config-schema";
 
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
@@ -88,7 +85,7 @@ const ProvidersSchema = z
 const WorktreesConfigSchema = z
   .object({
     root: z.string().min(1).optional(),
-    servicePorts: OttoServicePortAllocationSchema.optional(),
+    servicePorts: PaseoServicePortAllocationSchema.optional(),
   })
   .strict();
 
@@ -151,21 +148,8 @@ const FeatureVoiceModeSchema = z
       .object({
         provider: SpeechProviderIdSchema.optional(),
         model: z.string().min(1).optional(),
-        voice: z
-          .enum([
-            "alloy",
-            "ash",
-            "ballad",
-            "coral",
-            "echo",
-            "fable",
-            "nova",
-            "onyx",
-            "sage",
-            "shimmer",
-            "verse",
-          ])
-          .optional(),
+        // Free-form: self-hosted OpenAI-compatible servers expose their own voice names.
+        voice: z.string().trim().min(1).optional(),
         speakerId: z.number().int().optional(),
         speed: z.number().optional(),
       })
@@ -191,132 +175,10 @@ const StructuredGenerationProviderConfigSchema = z
 
 const AgentMetadataGenerationSchema = z
   .object({
+    preferWriterProfiles: z.boolean().optional(), // OTTO(agent-teams)
     providers: z.array(StructuredGenerationProviderConfigSchema).optional(),
-    // Master switch for daemon-side metadata generation. Absent = enabled
-    // (today's implicit default). Read by the generation path (WP-B).
-    enabled: z.boolean().optional(),
-    // Prefer a role-matched Writer personality over the cheap default tier for
-    // metadata generation. Absent = false (cheap-tier default). Read by WP-B.
-    preferWriterPersonalities: z.boolean().optional(),
   })
   .strict();
-
-// Persisted shape of an agent personality. Mirrors AgentPersonalitySchema on the
-// wire; effort/roles stay plain strings (validated against the daemon catalog at
-// use time). Passthrough so a config written by a newer daemon round-trips
-// unknown fields instead of dropping them.
-const AgentPersonalitySpinnerConfigSchema = z
-  .object({
-    glowA: z.string().min(1),
-    glowB: z.string().min(1),
-  })
-  .passthrough();
-
-const AgentPersonalityVoiceConfigSchema = z
-  .object({
-    provider: z.string().min(1),
-    model: z.string().min(1),
-    name: z.string().min(1),
-  })
-  .passthrough();
-
-export const AgentPersonalityConfigSchema = z
-  .object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    provider: z.string().min(1),
-    model: z.string().min(1),
-    effortLevel: z.string().min(1).optional(),
-    modeId: z.string().min(1).optional(),
-    personalityPrompt: z.string().optional(),
-    respectGlobalAppendPrompt: z.boolean().optional(),
-    roles: z.array(z.string().min(1)).optional(),
-    spinner: AgentPersonalitySpinnerConfigSchema.optional(),
-    voice: AgentPersonalityVoiceConfigSchema.optional(),
-  })
-  .passthrough();
-
-export type PersistedAgentPersonality = z.infer<typeof AgentPersonalityConfigSchema>;
-
-// Passthrough like every other persisted level: a sibling key written by a
-// newer daemon must survive a rollback (strict would fail the whole config
-// load and keep the daemon from booting).
-const AgentPersonalitiesSchema = z
-  .object({
-    personalities: z.array(AgentPersonalityConfigSchema).optional(),
-  })
-  .passthrough();
-
-// Persisted shape of an agent team. Mirrors AgentTeamSchema on the wire;
-// member ids are validated against the roster at use time, not here, so a
-// dangling id never blocks config load.
-const AgentTeamAvatarConfigSchema = z
-  .object({
-    color: z.string().min(1).optional(),
-    imageId: z.string().min(1).optional(),
-  })
-  .passthrough();
-
-export const AgentTeamConfigSchema = z
-  .object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    avatar: AgentTeamAvatarConfigSchema.optional(),
-    teamPrompt: z.string().optional(),
-    memberIds: z.array(z.string().min(1)).optional(),
-  })
-  .passthrough();
-
-export type PersistedAgentTeam = z.infer<typeof AgentTeamConfigSchema>;
-
-const AgentTeamsSchema = z
-  .object({
-    teams: z.array(AgentTeamConfigSchema).optional(),
-    activeTeamId: z.string().nullable().optional(),
-    projectDefaults: z.record(z.string(), z.string()).optional(),
-  })
-  .passthrough();
-
-// Persisted user per-model tier tags. Mirrors ModelTierOverrideSchema on the
-// wire; an entry for a model/provider that no longer exists is simply inert.
-const ModelTierOverrideConfigSchema = z
-  .object({
-    provider: z.string().min(1),
-    modelId: z.string().min(1),
-    tier: z.enum(["deep", "standard", "fast"]),
-  })
-  .passthrough();
-
-export type PersistedModelTierOverride = z.infer<typeof ModelTierOverrideConfigSchema>;
-
-const ModelVisibilityOverrideConfigSchema = z
-  .object({
-    provider: z.string().min(1),
-    modelId: z.string().min(1),
-    visible: z.boolean(),
-  })
-  .passthrough();
-
-export type PersistedModelVisibilityOverride = z.infer<typeof ModelVisibilityOverrideConfigSchema>;
-
-// Persisted remembered provider endpoints. Mirrors SavedProviderEndpointSchema
-// on the wire. The credential is stored in the clear, exactly like the live
-// `agents.providers.<id>.env.OPENAI_API_KEY` it was copied from - this is a
-// convenience list over values config.json already holds, not a new secret
-// store.
-const SavedProviderEndpointConfigSchema = z
-  .object({
-    id: z.string().min(1),
-    baseUrlKey: z.string().min(1),
-    apiKeyKey: z.string().min(1),
-    baseUrl: z.string().min(1),
-    apiKey: z.string().optional(),
-    label: z.string().optional(),
-    savedAt: z.number().optional(),
-  })
-  .passthrough();
-
-export type PersistedSavedProviderEndpoint = z.infer<typeof SavedProviderEndpointConfigSchema>;
 
 const BUILTIN_PROVIDER_IDS = ["claude", "codex", "copilot", "opencode", "pi", "omp"] as const;
 
@@ -381,50 +243,22 @@ export const PersistedConfigSchema = z
         listen: z.string().optional(),
         hostnames: z.union([z.literal(true), z.array(z.string())]).optional(),
         allowedHosts: z.union([z.literal(true), z.array(z.string())]).optional(),
-        trustedProxies: z.union([z.literal(true), z.array(z.string())]).optional(),
+        trustedProxies: z
+          .union([z.literal(true), z.array(z.string())])
+          .optional()
+          .describe(
+            'Express trusted proxy setting for X-Forwarded-* headers. Defaults to ["loopback"]. Use true only when the final trusted proxy overwrites client-supplied forwarded headers.',
+          ),
         mcp: z
           .object({
             enabled: z.boolean().optional(),
             injectIntoAgents: z.boolean().optional(),
-            // Otto tool-group allowlist for the MCP (Claude) path. Absent = all
-            // groups enabled (mirrors openai-compat's per-provider semantics).
-            toolGroups: z.array(z.enum(OTTO_TOOL_GROUPS)).optional(),
           })
           .passthrough()
           .optional(),
         browserTools: z
           .object({
             enabled: z.boolean().optional(),
-          })
-          .passthrough()
-          .optional(),
-        // Daemon-wide agent behavior toggles (Claude-tier capabilities). Absent
-        // fields read as their implicit default (all enabled).
-        agentBehaviors: z
-          .object({
-            promptSuggestions: z.boolean().optional(),
-            agentProgressSummaries: z.boolean().optional(),
-            notifyOnFinishDefault: z.boolean().optional(),
-            defaultSendBehavior: z.enum(["interrupt", "steer", "queue"]).optional(),
-            todoNudge: z.boolean().optional(),
-            todoReconcileOnIdle: z.boolean().optional(),
-            // Tool-emission stall guard: consecutive assistant messages with no
-            // tool call and no handback before the run is interrupted. 0 = off.
-            stallGuardThreshold: z.number().int().min(0).optional(),
-          })
-          .passthrough()
-          .optional(),
-        // Code-intelligence policy. This is deliberately a persisted shape
-        // with no defaults: absent leaves keep the registry's current shipped
-        // defaults, while a patch writes only the exact user intent.
-        lsp: z
-          .object({
-            enabled: z.boolean().optional(),
-            languages: z.record(z.string(), z.boolean()).optional(),
-            csharpProjectScope: z.enum(["solution", "allProjects"]).optional(),
-            maxRunningServers: z.number().int().positive().optional(),
-            idleMinutes: z.number().int().positive().optional(),
-            backgroundIdleMinutes: z.number().int().positive().optional(),
           })
           .passthrough()
           .optional(),
@@ -436,54 +270,12 @@ export const PersistedConfigSchema = z
           .strict()
           .optional(),
         autoArchiveAfterMerge: z.boolean().optional(),
-        gitFetch: z
-          .object({
-            enabled: z.boolean().optional(),
-            intervalSeconds: z
-              .union([
-                z.literal(60),
-                z.literal(180),
-                z.literal(300),
-                z.literal(600),
-                z.literal(900),
-                z.literal(1_800),
-                z.literal(3_600),
-              ])
-              .optional(),
-          })
-          .passthrough()
-          .optional(),
-        hideMergeIntoBaseAction: z.boolean().optional(),
-        // Retention for the materialized image store; see
-        // docs/attachment-lifecycle.md. Absent reads as the shipped defaults.
-        attachmentImageMaxAgeDays: z.number().int().min(0).optional(),
-        attachmentImageMaxTotalMb: z.number().int().min(0).optional(),
-        // "Microsoft .NET Solution Management" - the Solution view's switch. Persisted so the
-        // opt-in survives a daemon restart; absent reads as off, which is the default.
-        dotnetSolutionManagement: z
-          .object({
-            enabled: z.boolean().optional(),
-          })
-          .passthrough()
-          .optional(),
         enableTerminalAgentHooks: z.boolean().optional(),
-        // Terminal tab title preferences. Both fields are optional so existing
-        // configs retain the current automatic-title behavior.
-        terminalTitleMode: z.enum(["auto", "default"]).optional(),
-        terminalTitleIncludePaths: z.boolean().optional(),
-        // Windows-only preference for ordinary interactive terminals.
-        defaultTerminalShell: z
-          .enum(["command-prompt", "windows-powershell", "powershell-7"])
-          .optional(),
         appendSystemPrompt: z.string().optional(),
         terminalProfiles: z.array(TerminalProfileSchema).optional(),
+        ottoProfilesImported: z.boolean().optional(), // OTTO(agent-teams): one-time legacy roster import.
+        agentTeams: AgentTeams.optional(), // OTTO(agent-teams)
         agentProfiles: z.array(AgentProfileSchema).optional(),
-        // COMPAT(agentPersonalities): added in v0.8.13, remove after 2027-02-22.
-        // Set once, when a host's legacy `agents.agentPersonalities` roster is
-        // imported into `agentProfiles`. Its presence (not the roster's) is what
-        // makes the import one-shot, so deleting every imported profile sticks
-        // instead of the roster reappearing on the next start.
-        agentProfilesImportedPersonalities: z.boolean().optional(),
         cors: z
           .object({
             allowedOrigins: z.array(z.string()).optional(),
@@ -505,68 +297,26 @@ export const PersistedConfigSchema = z
             // COMPAT(serviceProxyEnabled): added 2026-06-02, remove after 2026-12-02.
             // Parsed only to suppress optional public/listen layers for old configs;
             // localhost service proxying remains always enabled.
-            enabled: z.boolean().optional(),
-            listen: z.string().optional(),
-            publicBaseUrl: z.url().optional(),
+            enabled: z
+              .boolean()
+              .optional()
+              .describe(
+                "Compatibility shim. false suppresses optional service proxy listen/public layers only; localhost proxying remains enabled.",
+              ),
+            listen: z
+              .string()
+              .optional()
+              .describe(
+                "Optional service-only listener address. Presence enables the standalone service proxy listener.",
+              ),
+            publicBaseUrl: z
+              .url()
+              .optional()
+              .describe("Optional public base URL for service host aliases."),
           })
           .strict()
           .optional(),
         auth: DaemonAuthSchema.optional(),
-        // Local AI host (otto-brain) editable projection. The brain's own
-        // $OTTO_HOME/otto-brain/config.json is the source of truth on disk; this
-        // block round-trips config.json ⇄ mutable config so the settings screen
-        // survives a restart. Passthrough at every level so a field written by a
-        // newer daemon is never dropped on the next save.
-        brain: z
-          .object({
-            enabled: z.boolean().optional(),
-            autoStart: z.boolean().optional(),
-            listen: z
-              .object({
-                host: z.string().optional(),
-                port: z.number().int().optional(),
-              })
-              .passthrough()
-              .optional(),
-            defaultModel: z.string().nullable().optional(),
-            runtime: z
-              .object({
-                source: z.enum(["auto", "managed", "lmstudio"]).optional(),
-                path: z.string().nullable().optional(),
-                logVerbosity: z.number().int().min(0).max(5).optional(),
-              })
-              .passthrough()
-              .optional(),
-            authMode: z.enum(["none", "token"]).optional(),
-            authToken: z.string().nullable().optional(),
-            tls: z
-              .object({
-                mode: z.enum(["off", "files", "self-signed", "tailscale"]).optional(),
-                certFile: z.string().nullable().optional(),
-                keyFile: z.string().nullable().optional(),
-                hostname: z.string().nullable().optional(),
-                certDir: z.string().nullable().optional(),
-                renewBeforeDays: z.number().int().optional(),
-              })
-              .passthrough()
-              .optional(),
-          })
-          .passthrough()
-          .optional(),
-        // Host-wide connector registry: MCP servers surfaced as named,
-        // toggle-able integrations with per-tool disable. Secret-bearing
-        // (transport headers/env), so it persists here in $OTTO_HOME/config.json,
-        // never in a repo's otto.json.
-        connectors: z.array(ConnectorConfigSchema).optional(),
-        // Host default for where a project's Knowledge store lives. Not
-        // secret-bearing, but host-scoped rather than repo-scoped by nature:
-        // the whole point of the host location is to keep a working tree clean,
-        // so the preference cannot itself live in the repo.
-        projectKnowledge: MutableProjectKnowledgeConfigSchema.optional(),
-        // Artifacts has its own host default. It is intentionally not nested
-        // under projectKnowledge because the user may choose differently.
-        projectArtifacts: MutableProjectArtifactsConfigSchema.optional(),
-        projectWorkflows: MutableProjectWorkflowsConfigSchema.optional(),
       })
       .strict()
       .transform(({ allowedHosts, ...daemon }) => {
@@ -583,6 +333,7 @@ export const PersistedConfigSchema = z
       .optional(),
 
     providers: ProvidersSchema.optional(),
+    pluginRegistries: PluginRegistriesSchema.optional(),
     pluginsEnabled: z.boolean().optional(),
     plugins: z.record(PluginIdSchema, PluginSourceSchema).optional(),
     worktrees: WorktreesConfigSchema.optional(),
@@ -591,11 +342,6 @@ export const PersistedConfigSchema = z
         providers: z.preprocess(normalizeAgentProviders, ProviderOverridesSchema).optional(),
         catalogRefreshTimeoutMs: z.number().int().positive().max(2_147_483_647).optional(),
         metadataGeneration: AgentMetadataGenerationSchema.optional(),
-        agentPersonalities: AgentPersonalitiesSchema.optional(),
-        agentTeams: AgentTeamsSchema.optional(),
-        modelTierOverrides: z.array(ModelTierOverrideConfigSchema).optional(),
-        modelVisibilityOverrides: z.array(ModelVisibilityOverrideConfigSchema).optional(),
-        savedProviderEndpoints: z.array(SavedProviderEndpointConfigSchema).optional(),
         skills: z.object({ selection: AgentSkillSelectionSchema.optional() }).strict().optional(),
       })
       .strict()
@@ -605,26 +351,6 @@ export const PersistedConfigSchema = z
         dictation: FeatureDictationSchema.optional(),
         voiceMode: FeatureVoiceModeSchema.optional(),
         webUi: FeatureWebUiSchema.optional(),
-      })
-      .strict()
-      .optional(),
-
-    // Host-level git hosting credentials, one set per provider. This is the
-    // ONLY place hosting tokens persist - never in a repo's otto.json.
-    gitHosting: z
-      .object({
-        providers: z
-          .object({
-            bitbucketCloud: z
-              .object({
-                email: z.string().optional(),
-                apiToken: z.string().optional(),
-              })
-              .strict()
-              .optional(),
-          })
-          .strict()
-          .optional(),
       })
       .strict()
       .optional(),
@@ -642,21 +368,19 @@ export type PersistedConfig = Omit<PersistedConfigSchemaOutput, "agents"> & {
 };
 
 const CONFIG_FILENAME = "config.json";
-// `daemon.listen` is deliberately left unset here so a fresh install's
-// config.json doesn't freeze in a value - config.ts computes the effective
-// default at runtime (127.0.0.1, or 0.0.0.0 when it detects WSL) every start.
 const DEFAULT_PERSISTED_CONFIG = PersistedConfigSchema.parse({
   version: 1,
   daemon: {
+    listen: OTTO_DEFAULT_LISTEN, // OTTO(identity)
     cors: {
-      allowedOrigins: ["https://app.otto-code.me"],
+      allowedOrigins: [OTTO_APP_BASE_URL], // OTTO(identity)
     },
     relay: {
       enabled: false,
     },
   },
   app: {
-    baseUrl: "https://app.otto-code.me",
+    baseUrl: OTTO_APP_BASE_URL, // OTTO(identity)
   },
 }) as PersistedConfig;
 
@@ -665,8 +389,8 @@ interface LoggerLike {
   info(...args: unknown[]): void;
 }
 
-function getConfigPath(ottoHome: string): string {
-  return path.join(ottoHome, CONFIG_FILENAME);
+function getConfigPath(paseoHome: string): string {
+  return path.join(paseoHome, CONFIG_FILENAME);
 }
 
 function getLogger(logger: LoggerLike | undefined): LoggerLike | undefined {
@@ -675,7 +399,7 @@ function getLogger(logger: LoggerLike | undefined): LoggerLike | undefined {
 
 // Removed config fields are stripped before parsing so the strict schema does not
 // reject a config written by an older release. The stripped values are discarded,
-// not migrated - there is no back-compat for the removed `providers.openai.voice`
+// not migrated — there is no back-compat for the removed `providers.openai.voice`
 // block (use `providers.openai.stt` / `providers.openai.tts`).
 function stripRemovedConfigFields(parsed: unknown): unknown {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -702,7 +426,7 @@ function stripRemovedConfigFields(parsed: unknown): unknown {
     const openaiRecord = { ...(openai as Record<string, unknown>) };
     // COMPAT(openaiVoiceConfig): added 2026-06-30, remove after 2026-12-30.
     // Drop a `providers.openai.voice` block left by an older release so the strict
-    // schema doesn't reject it. The value is discarded, not migrated - there is no
+    // schema doesn't reject it. The value is discarded, not migrated — there is no
     // back-compat; configure `providers.openai.stt` / `providers.openai.tts` instead.
     delete openaiRecord.voice;
     providersRecord.openai = openaiRecord;
@@ -712,9 +436,11 @@ function stripRemovedConfigFields(parsed: unknown): unknown {
   return root;
 }
 
-export function loadPersistedConfig(ottoHome: string, logger?: LoggerLike): PersistedConfig {
+export function loadPersistedConfig(paseoHome: string, logger?: LoggerLike): PersistedConfig {
   const log = getLogger(logger);
-  const configPath = getConfigPath(ottoHome);
+  // OTTO(config-migration): keep an untouched copy of an earlier Otto home first.
+  ensureOttoHomeSnapshot(paseoHome);
+  const configPath = getConfigPath(paseoHome);
 
   if (!existsSync(configPath)) {
     try {
@@ -740,9 +466,37 @@ export function loadPersistedConfig(ottoHome: string, logger?: LoggerLike): Pers
     });
   }
 
+  const config = parseConfigFile(configPath, raw, true); // OTTO(config-migration): startup may persist the migration.
+  log?.info(`Loaded from ${configPath}`);
+  return config;
+}
+
+/** Observe the file without initializing a home, identity, or default configuration. */
+export function readPersistedConfig(
+  paseoHome: string,
+  options: { defaultsIfMissing?: boolean } = {},
+): PersistedConfig {
+  const configPath = getConfigPath(paseoHome);
+  let raw: string;
+  try {
+    raw = readFileSync(configPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT")
+      return options.defaultsIfMissing ? structuredClone(DEFAULT_PERSISTED_CONFIG) : {};
+    throw error;
+  }
+  return parseConfigFile(configPath, raw);
+}
+
+function parseConfigFile(
+  configPath: string,
+  raw: string,
+  persistOttoMigration = false,
+): PersistedConfig {
+  // OTTO(config-migration)
   let parsed: unknown;
   try {
-    parsed = JSON.parse(raw);
+    parsed = parseConfigText(raw);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new Error(`[Config] Invalid JSON in ${configPath}: ${message}`, {
@@ -750,26 +504,99 @@ export function loadPersistedConfig(ottoHome: string, logger?: LoggerLike): Pers
     });
   }
 
-  const migrated = stripRemovedConfigFields(parsed);
-  const result = PersistedConfigSchema.safeParse(migrated);
+  // OTTO(config-migration): move Otto 0.9 settings out of config.json before Paseo's
+  // strict schema sees them; they are kept in otto-config.json.
+  const result = PersistedConfigSchema.safeParse(
+    migrateOttoConfig(
+      configPath,
+      stripRemovedConfigFields(parsed),
+      PersistedConfigSchema,
+      persistOttoMigration,
+    ),
+  );
   if (!result.success) {
     const issues = result.error.issues
       .map((i) => `  - ${i.path.join(".")}: ${i.message}`)
       .join("\n");
     throw new Error(`[Config] Invalid config in ${configPath}:\n${issues}`);
   }
-
-  log?.info(`Loaded from ${configPath}`);
   return result.data as PersistedConfig;
 }
 
+/** Editors such as Windows Notepad save UTF-8 with a byte order mark, which JSON.parse rejects. */
+function parseConfigText(raw: string): unknown {
+  return JSON.parse(raw.replace(/^\uFEFF/, ""));
+}
+
+function configPathParts(field: string): string[] {
+  const parts = field.split(".");
+  let schema: z.ZodType = PersistedConfigSchema;
+  for (const part of parts) {
+    if (!part || ["__proto__", "prototype", "constructor"].includes(part)) {
+      throw new Error(`Invalid configuration path: ${field}`);
+    }
+    while (
+      schema instanceof z.ZodOptional ||
+      schema instanceof z.ZodDefault ||
+      schema instanceof z.ZodPipe
+    )
+      schema = (schema instanceof z.ZodPipe ? schema.in : schema.unwrap()) as z.ZodType;
+    if (!(schema instanceof z.ZodObject) || !Object.hasOwn(schema.shape, part)) {
+      throw new Error(
+        `Unknown configuration path: ${field}. Replace its containing object with JSON for dynamic keys.`,
+      );
+    }
+    schema = schema.shape[part];
+  }
+  return parts;
+}
+
+export function getPersistedConfigValue(config: PersistedConfig, field: string): unknown {
+  return configPathParts(field).reduce<unknown>(
+    (value, part) =>
+      value && typeof value === "object" ? (value as Record<string, unknown>)[part] : undefined,
+    config,
+  );
+}
+
+export function editPersistedConfig(
+  paseoHome: string,
+  field: string,
+  edit: { value: unknown } | { unset: true },
+): PersistedConfig {
+  const parts = configPathParts(field);
+  if (field === "daemon.auth" || field.startsWith("daemon.auth.")) {
+    throw new Error("Use daemon set-password to change the daemon password.");
+  }
+  const config = readPersistedConfig(paseoHome, { defaultsIfMissing: true });
+  let object = config as Record<string, unknown>;
+  for (const part of parts.slice(0, -1)) {
+    object[part] ??= {};
+    object = object[part] as Record<string, unknown>;
+  }
+  const key = parts.at(-1)!;
+  if (field === "daemon") {
+    const previousAuth = config.daemon?.auth;
+    const nextAuth =
+      "value" in edit && edit.value && typeof edit.value === "object"
+        ? (edit.value as Record<string, unknown>).auth
+        : undefined;
+    if (JSON.stringify(previousAuth) !== JSON.stringify(nextAuth))
+      throw new Error("Use daemon set-password to change the daemon password.");
+  }
+  if ("unset" in edit) delete object[key];
+  else object[key] = edit.value;
+  savePersistedConfig(paseoHome, config);
+  return config;
+}
+
 export function savePersistedConfig(
-  ottoHome: string,
+  paseoHome: string,
   config: PersistedConfig,
   logger?: LoggerLike,
 ): void {
   const log = getLogger(logger);
-  const configPath = getConfigPath(ottoHome);
+  const configPath = getConfigPath(paseoHome);
 
   const result = PersistedConfigSchema.safeParse(config);
   if (!result.success) {
@@ -780,6 +607,8 @@ export function savePersistedConfig(
   }
 
   try {
+    // OTTO(config-migration): keep old settings before a CLI/editor save can replace them.
+    if (existsSync(configPath)) loadPersistedConfig(paseoHome);
     writePrivateFileAtomicSync(configPath, JSON.stringify(result.data, null, 2) + "\n");
     log?.info(`Saved to ${configPath}`);
   } catch (err) {

@@ -1,4 +1,4 @@
-const LEGACY_DATABASE_NAME = "otto-replica-cache";
+const LEGACY_DATABASE_NAME = "paseo-replica-cache";
 
 export function clearLegacyReplicaCache(): Promise<void> {
   return new Promise((resolve, reject) => {

@@ -1,7 +1,8 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 import { mkdtemp, rename, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { test, expect } from "../support/fixtures";
 import { seedModelProvider } from "../support/helpers/agent-profiles";
 import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
@@ -22,6 +23,9 @@ import {
   expectCreatedModelAgents,
   expectRememberedModel,
 } from "../support/helpers/model-memory";
+
+// OTTO(agent-teams): exercise ordinary provider preferences on a host without a Chatter override.
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 const PROVIDER = "model-memory-diagnostic";
 const MODEL = "pi-profile-model";

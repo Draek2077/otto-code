@@ -67,10 +67,6 @@ export function buildDraftWorkspaceAttachmentScopeKey(draftId: string): string {
   return ["workspace-attachments", `draft=${encodeScopePart(draftId)}`].join(":");
 }
 
-export function buildAgentWorkspaceAttachmentScopeKey(agentId: string): string {
-  return ["workspace-attachments", `agent=${encodeScopePart(agentId)}`].join(":");
-}
-
 function areWorkspaceAttachmentsEqual(
   left: readonly WorkspaceComposerAttachment[],
   right: readonly WorkspaceComposerAttachment[],
@@ -86,10 +82,8 @@ function areWorkspaceAttachmentsEqual(
 
 function getContextAttachmentKey(attachment: WorkspaceComposerAttachment): string | null {
   if (
+    attachment.kind !== "editor_context" && // OTTO(editor): replace only this source-context identity.
     attachment.kind !== "chat_history" &&
-    attachment.kind !== "meeting_transcript" &&
-    attachment.kind !== "file_context" &&
-    attachment.kind !== "rendered_document" &&
     attachment.kind !== "forge.change_request_comment" &&
     attachment.kind !== "forge.change_request_review" &&
     attachment.kind !== "forge.change_request_check" &&

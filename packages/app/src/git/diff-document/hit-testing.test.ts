@@ -1,4 +1,4 @@
-import type { ParsedDiffFile } from "@otto-code/protocol/messages";
+import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import { describe, expect, it } from "vitest";
 import {
   characterOffsetAtPoint,
@@ -315,6 +315,7 @@ function reviewActionsForFirstAddition(): NonNullable<
     commentsByTarget: new Map(),
     editor: { target, commentId: null, body: "" },
     onStartComment() {},
+    onChangeEditorBody() {},
     onCancelEditor() {},
     onSaveEditor() {},
     onEditComment() {},

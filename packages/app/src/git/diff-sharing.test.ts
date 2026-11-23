@@ -1,4 +1,4 @@
-import type { ParsedDiffFile } from "@otto-code/protocol/messages";
+import type { ParsedDiffFile } from "@getpaseo/protocol/messages";
 import { describe, expect, it } from "vitest";
 import { retainDiffFiles, shareCheckoutDiff, shareCommitFileDiff } from "./diff-sharing";
 
@@ -41,6 +41,10 @@ const fileChanges = {
   status: (value) => {
     value.status = "binary";
   },
+  structuralSource: (value) => {
+    // OTTO(structural-diff): evidence participates in sharing.
+    value.structuralSource = { before: "const a = 1;", after: "const a = 2;" };
+  },
   isNew: (value) => {
     value.isNew = true;
   },
@@ -52,12 +56,6 @@ const fileChanges = {
   },
   deletions: (value) => {
     value.deletions = 2;
-  },
-  beforeSource: (value) => {
-    value.beforeSource = "original whole document";
-  },
-  afterSource: (value) => {
-    value.afterSource = "changed whole document";
   },
   hunks: (value) => {
     value.hunks = [];

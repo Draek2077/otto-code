@@ -1,23 +1,28 @@
-import { SettingsTargetText } from "@/screens/settings-search/target";
+import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, { type ReactElement, useCallback, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Text, View } from "react-native";
+import { Alert, Text, View } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
-import { ArrowUpRight, Copy, FileText, Activity } from "@/components/icons/material-icons";
+import { ArrowUpRight, Copy, FileText, Activity } from "lucide-react-native";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { openLink } from "@/utils/open-link";
+import { openExternalUrl } from "@/utils/open-external-url";
 import { isVersionMismatch } from "@/desktop/updates/desktop-updates";
-import { getCliDaemonStatus, shouldUseDesktopDaemon } from "@/desktop/daemon/desktop-daemon";
+import {
+  getCliDaemonStatus,
+  shouldUseDesktopDaemon,
+  confirmAndStopDesktopDaemon,
+} from "@/desktop/daemon/desktop-daemon";
 import { useBuiltInDaemonManagement } from "@/desktop/hooks/use-built-in-daemon-management";
 import { useDaemonStatus } from "@/desktop/hooks/use-daemon-status";
 import { useDesktopSettings, type DesktopSettings } from "@/desktop/settings/desktop-settings";
 import { resolveAppVersion } from "@/utils/app-version";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 type DesktopDaemonSettings = DesktopSettings["daemon"];
 
@@ -170,20 +175,6 @@ function DaemonCliStatusModal({
     [t],
   );
 
-  const footer = useMemo(
-    () => (
-      <View style={styles.modalFooter}>
-        <Button style={styles.modalFooterButton} variant="outline" size="sm" onPress={onClose}>
-          {t("common.actions.close")}
-        </Button>
-        <Button style={styles.modalFooterButton} size="sm" onPress={onCopy}>
-          {t("common.actions.copy")}
-        </Button>
-      </View>
-    ),
-    [onClose, onCopy, t],
-  );
-
   return (
     <AdaptiveModalSheet
       visible={visible}
@@ -191,12 +182,19 @@ function DaemonCliStatusModal({
       header={header}
       testID="daemon-cli-status-dialog"
       snapPoints={CLI_STATUS_MODAL_SNAP_POINTS}
-      footer={footer}
     >
       <View style={styles.modalBody}>
         <Text style={styles.logOutput} selectable dataSet={CODE_SURFACE_DATASET}>
           {cliStatusOutput ?? ""}
         </Text>
+        <View style={styles.modalActions}>
+          <Button variant="outline" size="sm" onPress={onClose}>
+            {t("common.actions.close")}
+          </Button>
+          <Button size="sm" onPress={onCopy}>
+            {t("common.actions.copy")}
+          </Button>
+        </View>
       </View>
     </AdaptiveModalSheet>
   );
@@ -246,12 +244,7 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
     <View style={settingsStyles.card}>
       <View style={settingsStyles.row}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-host-local-daemon-status"
-            style={settingsStyles.rowTitle}
-          >
-            {t("desktop.daemon.status.title")}
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.status.title")}</Text>
           <Text style={settingsStyles.rowHint}>{t("desktop.daemon.status.builtInOnly")}</Text>
         </View>
         <View style={styles.statusValueGroup}>
@@ -259,14 +252,9 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
           <Text style={styles.valueSubtext}>{daemonStatusDetailText}</Text>
         </View>
       </View>
-      <View style={ROW_WITH_BORDER_STYLE}>
+      <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-host-local-daemon-manage-built-in-daemon"
-            style={settingsStyles.rowTitle}
-          >
-            {t("desktop.daemon.management.title")}
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.management.title")}</Text>
           <Text style={settingsStyles.rowHint}>{t("desktop.daemon.management.hint")}</Text>
         </View>
         <Switch
@@ -276,14 +264,9 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
           accessibilityLabel={t("desktop.daemon.management.title")}
         />
       </View>
-      <View style={ROW_WITH_BORDER_STYLE}>
+      <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-host-local-daemon-keep-daemon-running-after-quit"
-            style={settingsStyles.rowTitle}
-          >
-            {t("desktop.daemon.keepRunning.title")}
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.keepRunning.title")}</Text>
           <Text style={settingsStyles.rowHint}>{t("desktop.daemon.keepRunning.hint")}</Text>
         </View>
         <Switch
@@ -293,19 +276,14 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
           accessibilityLabel={t("desktop.daemon.keepRunning.title")}
         />
       </View>
-      <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+      <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-host-local-daemon-log-file"
-            style={settingsStyles.rowTitle}
-          >
-            {t("desktop.daemon.logs.title")}
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.logs.title")}</Text>
           <Text style={settingsStyles.rowHint}>
             {daemonLogs?.logPath ?? t("desktop.daemon.logs.unavailable")}
           </Text>
         </View>
-        <View style={LOGS_ACTION_GROUP_STYLE}>
+        <View style={styles.actionGroup}>
           {daemonLogs?.logPath ? (
             <Button variant="outline" size="sm" leftIcon={copyIcon} onPress={handleCopyLogPath}>
               {t("desktop.daemon.logs.copyPath")}
@@ -322,14 +300,9 @@ function DaemonInfoCard(props: DaemonInfoCardProps) {
           </Button>
         </View>
       </View>
-      <View style={ROW_RESPONSIVE_WITH_BORDER_STYLE}>
+      <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
         <View style={settingsStyles.rowContent}>
-          <SettingsTargetText
-            settingId="host-host-local-daemon-full-status"
-            style={settingsStyles.rowTitle}
-          >
-            {t("desktop.daemon.fullStatus.title")}
-          </SettingsTargetText>
+          <Text style={settingsStyles.rowTitle}>{t("desktop.daemon.fullStatus.title")}</Text>
           <Text style={settingsStyles.rowHint}>{t("desktop.daemon.fullStatus.hint")}</Text>
         </View>
         <Button
@@ -362,6 +335,17 @@ export function LocalDaemonSection() {
   const daemonStatus = data?.status ?? null;
   const daemonLogs = data?.logs ?? null;
   const daemonVersion = daemonStatus?.version ?? null;
+  const [isStopping, setIsStopping] = useState(false);
+  const handleStop = useCallback(() => {
+    setIsStopping(true);
+    void confirmAndStopDesktopDaemon()
+      .then((status) => {
+        if (status) setStatus(status);
+        return undefined;
+      })
+      .catch((error) => Alert.alert(t("desktop.daemon.lifecycle.stopFailed"), String(error)))
+      .finally(() => setIsStopping(false));
+  }, [setStatus, t]);
 
   const daemonVersionMismatch = isVersionMismatch(appVersion, daemonVersion);
   const daemonStatusStateText =
@@ -370,7 +354,7 @@ export function LocalDaemonSection() {
       ? t("desktop.daemon.status.running")
       : t("desktop.daemon.status.notRunning"));
   const daemonStatusDetailText = t("desktop.daemon.status.pid", {
-    pid: daemonStatus?.pid ? daemonStatus.pid : "-",
+    pid: daemonStatus?.pid ? daemonStatus.pid : "—",
   });
   const isDaemonManagementPaused = !daemonSettings.manageBuiltInDaemon;
 
@@ -404,7 +388,7 @@ export function LocalDaemonSection() {
   }, [handleOpenCliStatus]);
 
   const handleOpenAdvancedSettings = useCallback(
-    () => void openLink(ADVANCED_DAEMON_SETTINGS_URL),
+    () => void openExternalUrl(ADVANCED_DAEMON_SETTINGS_URL),
     [],
   );
 
@@ -453,8 +437,8 @@ export function LocalDaemonSection() {
       testID="host-page-daemon-lifecycle-card"
     >
       {isLoading || isLoadingSettings ? (
-        <View style={LOADING_CARD_STYLE}>
-          <ActivityIndicator size="small" color={theme.colors.foregroundMuted} />
+        <View style={[settingsStyles.card, styles.loadingCard]}>
+          <LoadingSpinner size="small" color={theme.colors.foregroundMuted} />
         </View>
       ) : (
         <>
@@ -476,6 +460,26 @@ export function LocalDaemonSection() {
             handleRunCliStatus={handleRunCliStatus}
             isLoadingCliStatus={isLoadingCliStatus}
           />
+
+          {daemonStatus?.pid ? (
+            <View style={settingsStyles.card}>
+              <View style={settingsStyles.row}>
+                <View style={settingsStyles.rowContent}>
+                  <Text style={settingsStyles.rowTitle}>
+                    {daemonStatus.ownedByDesktop
+                      ? t("desktop.daemon.lifecycle.owned")
+                      : t("desktop.daemon.lifecycle.attached")}
+                  </Text>
+                  <Text style={settingsStyles.rowHint}>{daemonStatus.home}</Text>
+                </View>
+                <Button variant="outline" size="sm" onPress={handleStop} disabled={isStopping}>
+                  {isStopping
+                    ? t("desktop.daemon.lifecycle.stopping")
+                    : t("desktop.daemon.lifecycle.stop")}
+                </Button>
+              </View>
+            </View>
+          ) : null}
 
           {daemonVersionMismatch ? (
             <View style={styles.warningCard}>
@@ -501,12 +505,14 @@ export function LocalDaemonSection() {
   );
 }
 
-const ADVANCED_DAEMON_SETTINGS_URL = "https://otto-code.me/docs/configuration";
+const ADVANCED_DAEMON_SETTINGS_URL = `${OTTO_WEBSITE_URL}/docs/configuration`; // OTTO(identity)
 
 const styles = StyleSheet.create((theme) => ({
   actionGroup: {
     flexDirection: "row",
     gap: theme.spacing[2],
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
   },
   loadingCard: {
     alignItems: "center",
@@ -548,22 +554,12 @@ const styles = StyleSheet.create((theme) => ({
     fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
     lineHeight: 18,
   },
-  // Row handed to AdaptiveModalSheet's `footer` - the sheet's own wrapper
-  // already supplies padding, the top border, and the row alignment.
-  modalFooter: {
-    flex: 1,
+  modalActions: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[3],
-  },
-  modalFooterButton: {
-    flex: 1,
+    justifyContent: "flex-end",
+    gap: theme.spacing[2],
   },
 }));
 
-const LOADING_CARD_STYLE = [settingsStyles.card, styles.loadingCard];
-const ROW_WITH_BORDER_STYLE = [settingsStyles.row, settingsStyles.rowBorder];
-const ROW_RESPONSIVE_WITH_BORDER_STYLE = [settingsStyles.rowResponsive, settingsStyles.rowBorder];
-const LOGS_ACTION_GROUP_STYLE = [styles.actionGroup, settingsStyles.rowControlGroup];
 const LOGS_MODAL_SNAP_POINTS = ["70%", "92%"];
 const CLI_STATUS_MODAL_SNAP_POINTS = ["60%", "85%"];

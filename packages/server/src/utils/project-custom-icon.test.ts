@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { ProjectIconSource } from "@otto-code/protocol/messages";
+import type { ProjectIconSource } from "@getpaseo/protocol/messages";
 import {
   createPersistedProjectRecord,
   type PersistedProjectRecord,
@@ -37,8 +37,8 @@ async function tempDir(prefix: string): Promise<string> {
 
 /** A project whose root holds no discoverable icon, over an in-memory registry. */
 async function project() {
-  const rootPath = await tempDir("otto-project-root-");
-  const ottoHome = await tempDir("otto-home-");
+  const rootPath = await tempDir("paseo-project-root-");
+  const paseoHome = await tempDir("paseo-home-");
   let record = createPersistedProjectRecord({
     projectId: "project-a",
     rootPath,
@@ -54,19 +54,19 @@ async function project() {
       return record;
     },
   } as unknown as ProjectRegistry;
-  const reader = new ProjectIconReader(ottoHome);
+  const reader = new ProjectIconReader(paseoHome);
 
   return {
-    ottoHome,
+    paseoHome,
     rootPath,
     set: (source: ProjectIconSource) =>
-      setProjectCustomIcon({ ottoHome, projectId: "project-a", source, projects }),
-    read: () => readProjectIcon({ ottoHome, project: record }),
-    snapshot: () => readProjectIconSnapshot({ ottoHome, project: record }),
+      setProjectCustomIcon({ paseoHome, projectId: "project-a", source, projects }),
+    read: () => readProjectIcon({ paseoHome, project: record }),
+    snapshot: () => readProjectIconSnapshot({ paseoHome, project: record }),
     advertisedSnapshot: () => reader.snapshot(record),
     readAdvertised: () => reader.read(record),
     revision: () => record.customIconRevision,
-    remove: () => removeProjectCustomIcon({ ottoHome, projectId: "project-a" }),
+    remove: () => removeProjectCustomIcon({ paseoHome, projectId: "project-a" }),
   };
 }
 
@@ -145,7 +145,7 @@ describe("project custom icon", () => {
     await target.remove();
 
     await expect(
-      readProjectIcon({ ottoHome: target.ottoHome, project: stored }),
+      readProjectIcon({ paseoHome: target.paseoHome, project: stored }),
     ).resolves.toBeNull();
   });
 

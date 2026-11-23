@@ -1,3 +1,4 @@
+# OTTO(identity): preserve the existing NixOS service, user, home, port and options.
 {
   config,
   lib,
@@ -94,14 +95,14 @@ in
         description = ''
           How the daemon reaches the relay when `relay.enable = true`:
 
-          - `"hosted"` (default): use the upstream `app.otto-code.me` relay.
+          - `"hosted"` (default): use the upstream `relay.paseo.sh` relay.
             Preserves the current behavior; no extra options needed.
           - `"remote"`: connect to a self-hosted relay at
             `relay.host:relay.port`. Sets `OTTO_RELAY_ENDPOINT` and
             `OTTO_RELAY_USE_TLS` for the daemon.
 
           A `"local"` mode (running a relay on the same host as a systemd
-          unit) is not yet implemented - the relay package currently only
+          unit) is not yet implemented — the relay package currently only
           ships a Cloudflare Workers adapter. Tracked separately.
         '';
       };
@@ -159,7 +160,7 @@ in
       default = { };
       example = lib.literalExpression ''
         {
-          OTTO_RELAY_ENDPOINT = "relay.otto-code.me:443";
+          OTTO_RELAY_ENDPOINT = "relay.paseo.sh:443";
         }
       '';
       description = "Extra environment variables for the Otto daemon.";
@@ -186,7 +187,7 @@ in
         Runtime mutations to `config.json` (e.g. via `otto daemon set-password`
         or the mobile app toggling MCP injection / provider overrides) are
         overwritten on the next restart. Pick one: manage via this option, or
-        manage via the CLI - not both.
+        manage via the CLI — not both.
 
         The full schema is defined by `PersistedConfigSchema` in
         `packages/server/src/server/persisted-config.ts`.

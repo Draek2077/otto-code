@@ -3,7 +3,7 @@ import type {
   AgentCapabilityFlags,
   AgentFeature,
   AgentProvider,
-} from "@otto-code/protocol/agent-types";
+} from "@getpaseo/protocol/agent-types";
 import type { ViewedTimelineStatus } from "@/timeline/viewed-timeline-sync";
 
 export interface AgentScreenAgent {
@@ -24,10 +24,6 @@ export interface AgentScreenAgent {
   } | null;
   features?: readonly AgentFeature[];
   lastError?: string | null;
-  /** Spinner colors from the agent's personality; null ⇒ theme default spinner. */
-  personalitySpinner?: { glowA: string; glowB: string } | null;
-  /** Stable id of the bound Agent Personality - what a fork inherits. */
-  personalityId?: string | null;
   projectPlacement?: {
     projectKey?: string;
     projectName?: string;
@@ -86,7 +82,7 @@ export type AgentScreenReadySyncState =
   | { status: "reconnecting" }
   | {
       status: "catching_up";
-      ui: "overlay" | "silent";
+      ui: "overlay" | "status" | "silent";
     }
   | { status: "sync_error"; isRetrying: boolean };
 
@@ -166,9 +162,9 @@ function resolveCatchingUpUi(args: {
   isVisibilityCatchUpPending: boolean;
   hasHydratedHistoryBefore: boolean;
   hadInitialSyncFailure: boolean;
-}): "overlay" | "silent" {
+}): "overlay" | "status" | "silent" {
   if (args.hasOptimisticCreateContinuity) return "silent";
-  if (args.hasHydratedHistoryBefore) return "silent";
+  if (args.hasHydratedHistoryBefore) return "status";
   if (args.isVisibilityCatchUpPending) return "overlay";
   if (args.hadInitialSyncFailure) return "silent";
   return "overlay";

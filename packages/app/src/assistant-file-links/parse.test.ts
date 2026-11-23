@@ -310,19 +310,6 @@ describe("parseAssistantFileLink", () => {
     });
   });
 
-  it("normalizes browser-serialized Windows paths with a leading slash", () => {
-    expect(
-      parseAssistantFileLink("/C:/repo/src/app.tsx#L12", {
-        workspaceRoot: "C:/repo",
-      }),
-    ).toEqual({
-      raw: "/C:/repo/src/app.tsx#L12",
-      path: "C:/repo/src/app.tsx",
-      lineStart: 12,
-      lineEnd: undefined,
-    });
-  });
-
   it("parses absolute Windows hrefs with VS Code-style line suffixes inside the active workspace", () => {
     expect(
       parseAssistantFileLink("C:/repo/src/app.tsx:12-20", {
@@ -364,32 +351,32 @@ describe("parseAssistantFileLink", () => {
 
   it("keeps tilde hrefs as direct home-relative file targets", () => {
     expect(
-      parseAssistantFileLink("~/.otto/plans/file-preview.md", {
+      parseAssistantFileLink("~/.paseo/plans/file-preview.md", {
         workspaceRoot: "/Users/test/project",
       }),
     ).toEqual({
-      raw: "~/.otto/plans/file-preview.md",
-      path: "~/.otto/plans/file-preview.md",
+      raw: "~/.paseo/plans/file-preview.md",
+      path: "~/.paseo/plans/file-preview.md",
       lineStart: undefined,
       lineEnd: undefined,
     });
     expect(
-      parseAssistantFileLink("~/.otto/plans/file-preview.md:12", {
+      parseAssistantFileLink("~/.paseo/plans/file-preview.md:12", {
         workspaceRoot: "/Users/test/project",
       }),
     ).toEqual({
-      raw: "~/.otto/plans/file-preview.md:12",
-      path: "~/.otto/plans/file-preview.md",
+      raw: "~/.paseo/plans/file-preview.md:12",
+      path: "~/.paseo/plans/file-preview.md",
       lineStart: 12,
       lineEnd: undefined,
     });
     expect(
-      parseAssistantFileLink("~\\.otto\\plans\\file-preview.md", {
+      parseAssistantFileLink("~\\.paseo\\plans\\file-preview.md", {
         workspaceRoot: "/Users/test/project",
       }),
     ).toEqual({
-      raw: "~\\.otto\\plans\\file-preview.md",
-      path: "~/.otto/plans/file-preview.md",
+      raw: "~\\.paseo\\plans\\file-preview.md",
+      path: "~/.paseo/plans/file-preview.md",
       lineStart: undefined,
       lineEnd: undefined,
     });
@@ -430,6 +417,128 @@ describe("parseAssistantFileLink", () => {
     }
     expect(() => parseFileProtocolUrl("file:///tmp/100% packet loss")).not.toThrow();
   });
+
+  it("decodes percent-encoded relative markdown hrefs", () => {
+    // markdown-it percent-encodes non-ASCII characters in hrefs, so a link
+    // written as [x](docs/reports/开户赠金.md) arrives here percent-encoded.
+    expect(
+      parseAssistantFileLink("docs/reports/%E5%BC%80%E6%88%B7%E8%B5%A0%E9%87%91.md", {
+        workspaceRoot: "/Users/test/project",
+        decodeHref: true,
+      }),
+    ).toEqual({
+      raw: "docs/reports/%E5%BC%80%E6%88%B7%E8%B5%A0%E9%87%91.md",
+      path: "/Users/test/project/docs/reports/开户赠金.md",
+      lineStart: undefined,
+      lineEnd: undefined,
+    });
+  });
+
+  it("decodes percent-encoded spaces in relative markdown hrefs", () => {
+    expect(
+      parseAssistantFileLink("docs/my%20file.md#L5", {
+        workspaceRoot: "/Users/test/project",
+        decodeHref: true,
+      }),
+    ).toEqual({
+      raw: "docs/my%20file.md#L5",
+      path: "/Users/test/project/docs/my file.md",
+      lineStart: 5,
+      lineEnd: undefined,
+    });
+  });
+
+  it("decodes percent-encoded absolute hrefs with line suffixes", () => {
+    expect(
+      parseAssistantFileLink("/tmp/%E5%BC%80%E6%88%B7.md:3", {
+        workspaceRoot: "/Users/test/project",
+        decodeHref: true,
+      }),
+    ).toEqual({
+      raw: "/tmp/%E5%BC%80%E6%88%B7.md:3",
+      path: "/tmp/开户.md",
+      lineStart: 3,
+      lineEnd: undefined,
+    });
+  });
+
+  it("decodes percent-encoded home-relative hrefs", () => {
+    expect(
+      parseAssistantFileLink("~/notes/%E5%BC%80%E6%88%B7.md", {
+        workspaceRoot: "/Users/test/project",
+        decodeHref: true,
+      }),
+    ).toEqual({
+      raw: "~/notes/%E5%BC%80%E6%88%B7.md",
+      path: "~/notes/开户.md",
+      lineStart: undefined,
+      lineEnd: undefined,
+    });
+  });
+
+  it("decodes percent-encoded Windows hrefs", () => {
+    expect(
+      parseAssistantFileLink("C:/repo/my%20dir/app.tsx#L8", {
+        workspaceRoot: "C:/repo",
+        decodeHref: true,
+      }),
+    ).toEqual({
+      raw: "C:/repo/my%20dir/app.tsx#L8",
+      path: "C:/repo/my dir/app.tsx",
+      lineStart: 8,
+      lineEnd: undefined,
+    });
+  });
+
+  it("keeps literal percent signs in raw paths that are not hrefs", () => {
+    // Inline-code and linkified tokens are raw file paths: a real file named
+    // "my%20file.md" must not be decoded into "my file.md".
+    expect(
+      parseAssistantFileLink("docs/my%20file.md", {
+        workspaceRoot: "/Users/test/project",
+      }),
+    ).toEqual({
+      raw: "docs/my%20file.md",
+      path: "/Users/test/project/docs/my%20file.md",
+      lineStart: undefined,
+      lineEnd: undefined,
+    });
+    expect(
+      parseAssistantFileLink("/tmp/my%20file.md:3", {
+        workspaceRoot: "/Users/test/project",
+      }),
+    ).toEqual({
+      raw: "/tmp/my%20file.md:3",
+      path: "/tmp/my%20file.md",
+      lineStart: 3,
+      lineEnd: undefined,
+    });
+  });
+
+  it("keeps non-ASCII characters in raw absolute paths", () => {
+    // `new URL` percent-encodes non-ASCII, so raw paths must not be routed
+    // through URL parsing — `/tmp/开户.md` must round-trip unchanged.
+    expect(
+      parseAssistantFileLink("/tmp/开户.md", {
+        workspaceRoot: "/Users/test/project",
+      }),
+    ).toEqual({
+      raw: "/tmp/开户.md",
+      path: "/tmp/开户.md",
+      lineStart: undefined,
+      lineEnd: undefined,
+    });
+    expect(
+      parseAssistantFileLink("/tmp/开户.md#L4", {
+        workspaceRoot: "/Users/test/project",
+      }),
+    ).toEqual({
+      raw: "/tmp/开户.md#L4",
+      path: "/tmp/开户.md",
+      lineStart: 4,
+      lineEnd: undefined,
+    });
+  });
 });
 
 describe("normalizeInlinePathTarget", () => {
@@ -461,10 +570,10 @@ describe("normalizeInlinePathTarget", () => {
 
   it("keeps tilde paths as home-relative file targets", () => {
     expect(
-      normalizeInlinePathTarget("~/.otto/plans/file-preview.md", "/Users/test/project"),
+      normalizeInlinePathTarget("~/.paseo/plans/file-preview.md", "/Users/test/project"),
     ).toEqual({
-      directory: "~/.otto/plans",
-      file: "~/.otto/plans/file-preview.md",
+      directory: "~/.paseo/plans",
+      file: "~/.paseo/plans/file-preview.md",
     });
   });
 
@@ -481,4 +590,24 @@ describe("normalizeInlinePathTarget", () => {
       directory: "packages/app",
     });
   });
+});
+
+describe("encoded filename line markers", () => {
+  it.each(["docs/report.md%3A12", "docs/report.md%2812%2C4%29"])(
+    "keeps encoded line syntax in the filename %s",
+    (href) => {
+      expect(
+        parseAssistantFileLink(href, {
+          workspaceRoot: "/workspace",
+          decodeHref: true,
+        }),
+      ).toMatchObject({ path: `/workspace/${decodeURIComponent(href)}` });
+      expect(
+        parseAssistantFileLink(href, {
+          workspaceRoot: "/workspace",
+          decodeHref: true,
+        })?.lineStart,
+      ).toBeUndefined();
+    },
+  );
 });

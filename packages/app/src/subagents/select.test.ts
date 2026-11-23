@@ -1,11 +1,11 @@
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  hasRunningObservedSubagent,
-  selectProviderSubagentIdsShadowedByObservedAgents,
+  createSubagentsForParentSelector,
   selectProviderSubagentsForParent,
   selectSubagentsForParent,
 } from "./select";
+import { createWorkspaceAgentVisibilitySelector } from "@/workspace-tabs/agent-visibility";
 import { useProviderSubagentStore } from "./provider-store";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 
@@ -53,14 +53,7 @@ const AGENT_DEFAULTS: Agent = {
 };
 
 function makeAgent(input: Partial<Agent> & Pick<Agent, "id">): Agent {
-  return {
-    ...AGENT_DEFAULTS,
-    turn:
-      input.status === "running"
-        ? { phase: "open", turnId: null, startedAt: null, cancellationRequestId: null }
-        : AGENT_DEFAULTS.turn,
-    ...input,
-  };
+  return { ...AGENT_DEFAULTS, ...input };
 }
 
 function setAgents(agents: Agent[]): void {
@@ -72,35 +65,14 @@ function setAgents(agents: Agent[]): void {
 
 afterEach(() => {
   useSessionStore.getState().clearSession(SERVER_ID);
-  useProviderSubagentStore.getState().replaceList(SERVER_ID, "parent", []);
+  useProviderSubagentStore.setState({
+    descriptors: new Map(),
+    timelines: new Map(),
+    hiddenFromTrack: new Set(),
+  });
 });
 
 describe("selectSubagentsForParent", () => {
-  it("hides host-archived provider rows even when a late update says running", () => {
-    useProviderSubagentStore.getState().applyUpdate(SERVER_ID, {
-      kind: "upsert",
-      subagent: {
-        id: "archived-provider-child",
-        parentAgentId: "parent",
-        provider: "codex",
-        title: "Noop",
-        description: null,
-        status: "running",
-        toolCallId: "call",
-        createdAt: "2026-09-12T10:00:00Z",
-        updatedAt: "2026-09-12T10:01:00Z",
-        archivedAt: "2026-09-12T10:00:30Z",
-        stopScope: "child",
-      },
-    });
-    expect(
-      selectProviderSubagentsForParent(
-        useProviderSubagentStore.getState(),
-        { serverId: SERVER_ID, parentAgentId: "parent" },
-        true,
-      ),
-    ).toEqual([]);
-  });
   it("hides cached provider children when the host does not support them", () => {
     useProviderSubagentStore.getState().applyUpdate(SERVER_ID, {
       kind: "upsert",
@@ -282,38 +254,6 @@ describe("selectSubagentsForParent", () => {
     expect(childRows.map((row) => row.id)).toEqual(["grandchild"]);
   });
 
-  it("includes nested fan-out reached through observed intermediates only", () => {
-    setAgents([
-      makeAgent({ id: "chat" }),
-      // Observed branch under the chat, with its own observed leaf: the whole
-      // tree is this chat's doing, so the leaf shows in the chat's track.
-      makeAgent({ id: "chat::sub::branch", parentAgentId: "chat", attend: "observed" }),
-      makeAgent({
-        id: "chat::sub::leaf",
-        parentAgentId: "chat::sub::branch",
-        attend: "observed",
-      }),
-      // Attended child = its own chat with its own track; ITS child stays out.
-      makeAgent({ id: "attended-child", parentAgentId: "chat" }),
-      makeAgent({ id: "attended-grandchild", parentAgentId: "attended-child" }),
-    ]);
-
-    const rows = selectSubagentsForParent(
-      useSessionStore.getState(),
-      {
-        serverId: SERVER_ID,
-        parentAgentId: "chat",
-      },
-      EMPTY_PENDING_ARCHIVE_IDS,
-    );
-
-    expect(rows.map((row) => row.id).sort()).toEqual([
-      "attended-child",
-      "chat::sub::branch",
-      "chat::sub::leaf",
-    ]);
-  });
-
   it("sorts by createdAt ascending", () => {
     setAgents([
       makeAgent({ id: "parent" }),
@@ -358,7 +298,6 @@ describe("selectSubagentsForParent", () => {
         status: "running",
         requiresAttention: true,
         createdAt,
-        attend: "observed",
         model: "should-not-leak",
         cwd: "/private/project",
       }),
@@ -375,49 +314,29 @@ describe("selectSubagentsForParent", () => {
 
     expect(rows).toEqual([
       {
+        kind: "paseo",
         id: "child",
         provider: "claude",
         title: "Review child",
         description: null,
         subtitle: null,
         status: "running",
-        turn: { phase: "open", turnId: null, startedAt: null, cancellationRequestId: null },
+        turn: { phase: "idle", cancellationRequestId: null },
         requiresAttention: true,
         createdAt,
-        updatedAt: AGENT_TIMESTAMP,
-        attend: "observed",
-        backgrounded: undefined,
-        cumulativeTokens: undefined,
-        cumulativeUsage: undefined,
-        currentTool: undefined,
-        // Rows are a union tagged on `kind`: "otto" for agents Otto owns,
-        // "provider" for provider-reported children. See docs/upstream-merges.md.
-        kind: "otto",
-        personalityName: undefined,
-        personalitySpinner: undefined,
-        toolUseCount: undefined,
       },
     ]);
     expect(Object.keys(rows[0] ?? {}).sort()).toEqual([
-      "attend",
-      "backgrounded",
       "createdAt",
-      "cumulativeTokens",
-      "cumulativeUsage",
-      "currentTool",
       "description",
       "id",
       "kind",
-      "personalityName",
-      "personalitySpinner",
       "provider",
       "requiresAttention",
       "status",
       "subtitle",
       "title",
-      "toolUseCount",
       "turn",
-      "updatedAt",
     ]);
     expect(rows[0]).not.toHaveProperty("onOpen");
     expect(rows[0]).not.toHaveProperty("model");
@@ -522,216 +441,159 @@ describe("selectSubagentsForParent", () => {
   });
 });
 
-describe("provider and observed subagent reconciliation", () => {
-  it("keeps one row when Claude reports the same Task through both projections", () => {
-    setAgents([
-      makeAgent({ id: "parent" }),
-      makeAgent({
-        id: "parent::sub::task-call-1",
-        parentAgentId: "parent",
-        provider: "claude",
-        attend: "observed",
-        title: "Resolve i18n merge conflicts",
-      }),
-      makeAgent({
-        id: "parent::sub::task-call-2",
-        parentAgentId: "parent",
-        provider: "claude",
-        attend: "observed",
-        title: "Resolve test and e2e merge conflicts",
-      }),
-      makeAgent({
-        id: "parent::sub::task-call-archived",
-        parentAgentId: "parent",
-        provider: "claude",
-        attend: "observed",
-        title: "Archived task",
-        archivedAt: new Date("2026-03-08T12:00:00.000Z"),
-      }),
-    ]);
-    useProviderSubagentStore.getState().replaceList(SERVER_ID, "parent", [
-      {
-        id: "task-call-1",
-        parentAgentId: "parent",
-        provider: "claude",
-        title: "Claude subagent",
-        description: null,
-        status: "running",
-        createdAt: "2026-03-08T10:01:00.000Z",
-        updatedAt: "2026-03-08T10:02:00.000Z",
-        toolCallId: "task-call-1",
-        cwd: null,
-      },
-      {
-        id: "provider-only",
-        parentAgentId: "parent",
-        provider: "codex",
-        title: "Codex child",
-        description: null,
-        status: "running",
-        createdAt: "2026-03-08T10:03:00.000Z",
-        updatedAt: "2026-03-08T10:04:00.000Z",
-        toolCallId: "provider-only-call",
-        cwd: null,
-      },
-      {
-        id: "provider-id-differs",
-        parentAgentId: "parent",
-        provider: "claude",
-        title: "Claude subagent",
-        description: null,
-        status: "completed",
-        createdAt: "2026-03-08T10:05:00.000Z",
-        updatedAt: "2026-03-08T10:06:00.000Z",
-        toolCallId: "task-call-2",
-        cwd: null,
-      },
-      {
-        id: "archived-provider-twin",
-        parentAgentId: "parent",
-        provider: "claude",
-        title: "Claude subagent",
-        description: null,
-        status: "completed",
-        createdAt: "2026-03-08T10:07:00.000Z",
-        updatedAt: "2026-03-08T10:08:00.000Z",
-        toolCallId: "task-call-archived",
-        cwd: null,
-      },
-    ]);
-
-    const shadowedIds = selectProviderSubagentIdsShadowedByObservedAgents(
-      useSessionStore.getState(),
-      { serverId: SERVER_ID, parentAgentId: "parent" },
-    );
-    const providerRows = selectProviderSubagentsForParent(
-      useProviderSubagentStore.getState(),
-      { serverId: SERVER_ID, parentAgentId: "parent" },
-      true,
-      false,
-      new Set(shadowedIds),
-    );
-
-    const observedRows = selectSubagentsForParent(
-      useSessionStore.getState(),
-      { serverId: SERVER_ID, parentAgentId: "parent" },
-      EMPTY_PENDING_ARCHIVE_IDS,
-    );
-
-    expect(shadowedIds).toEqual(["task-call-1", "task-call-2", "task-call-archived"]);
-    expect(providerRows.map((row) => row.id)).toEqual(["provider-only"]);
-    expect([...observedRows, ...providerRows].map((row) => row.id)).toEqual([
-      "parent::sub::task-call-1",
-      "parent::sub::task-call-2",
-      "provider-only",
-    ]);
-  });
-});
-
-describe("hasRunningObservedSubagent", () => {
-  function agentsOf(agents: Agent[]): ReadonlyMap<string, Agent> {
-    setAgents(agents);
-    const map = useSessionStore.getState().sessions[SERVER_ID]?.agents;
-    if (!map) {
-      throw new Error("session not initialized");
+describe("createSubagentsForParentSelector", () => {
+  class IterationCountingMap<K, V> extends Map<K, V> {
+    iterations = 0;
+    override values() {
+      this.iterations += 1;
+      return super.values();
     }
-    return map;
+    override entries() {
+      this.iterations += 1;
+      return super.entries();
+    }
+    override [Symbol.iterator]() {
+      this.iterations += 1;
+      return super[Symbol.iterator]();
+    }
   }
 
-  it("is true while an observed child of the parent is still running", () => {
-    const agents = agentsOf([
-      makeAgent({ id: "parent", status: "idle" }),
-      makeAgent({
-        id: "child",
+  const params = { serverId: SERVER_ID, parentAgentId: "parent" };
+
+  function streamTick(text: string): void {
+    useSessionStore.getState().setAgentStreamState(SERVER_ID, "parent", {
+      head: [
+        {
+          kind: "assistant_message",
+          id: "message-1",
+          text,
+          timestamp: new Date("2026-03-08T10:05:00.000Z"),
+        },
+      ],
+    });
+  }
+
+  it("returns the cached rows without walking agents when a stream tick leaves them unchanged", () => {
+    const agents = new IterationCountingMap<string, Agent>(
+      [
+        makeAgent({ id: "parent" }),
+        makeAgent({ id: "child", parentAgentId: "parent" }),
+        makeAgent({ id: "unrelated" }),
+      ].map((agent) => [agent.id, agent]),
+    );
+    useSessionStore.getState().initializeSession(SERVER_ID, null as unknown as DaemonClient);
+    useSessionStore.getState().setAgents(SERVER_ID, agents);
+    const select = createSubagentsForParentSelector(params, EMPTY_PENDING_ARCHIVE_IDS);
+    const before = select(useSessionStore.getState());
+    const iterationsAfterFirstSelect = agents.iterations;
+
+    for (let tick = 0; tick < 100; tick += 1) {
+      streamTick(`token ${tick}`);
+      expect(select(useSessionStore.getState())).toBe(before);
+    }
+
+    expect(useSessionStore.getState().sessions[SERVER_ID]?.agents).toBe(agents);
+    expect(agents.iterations).toBe(iterationsAfterFirstSelect);
+    expect(before.map((row) => row.id)).toEqual(["child"]);
+  });
+
+  it("recomputes when the agents map changes", () => {
+    setAgents([makeAgent({ id: "parent" }), makeAgent({ id: "child-a", parentAgentId: "parent" })]);
+    const select = createSubagentsForParentSelector(params, EMPTY_PENDING_ARCHIVE_IDS);
+    const before = select(useSessionStore.getState());
+
+    useSessionStore.getState().setAgents(SERVER_ID, (current) => {
+      const child = makeAgent({
+        id: "child-b",
         parentAgentId: "parent",
-        attend: "observed",
-        status: "running",
-      }),
-    ]);
+        createdAt: new Date("2026-03-08T10:01:00.000Z"),
+      });
+      return new Map(current).set(child.id, child);
+    });
+    const after = select(useSessionStore.getState());
 
-    expect(hasRunningObservedSubagent(agents, "parent")).toBe(true);
+    expect(after).not.toBe(before);
+    expect(after.map((row) => row.id)).toEqual(["child-a", "child-b"]);
   });
 
-  it("is false once every observed child has stopped running", () => {
-    const agents = agentsOf([
-      makeAgent({ id: "parent", status: "idle" }),
-      makeAgent({ id: "child", parentAgentId: "parent", attend: "observed", status: "idle" }),
+  it("keeps the previous rows when a changed agents map yields the same rows", () => {
+    setAgents([
+      makeAgent({ id: "parent" }),
+      makeAgent({ id: "child", parentAgentId: "parent" }),
+      makeAgent({ id: "unrelated" }),
     ]);
+    const select = createSubagentsForParentSelector(params, EMPTY_PENDING_ARCHIVE_IDS);
+    const before = select(useSessionStore.getState());
 
-    expect(hasRunningObservedSubagent(agents, "parent")).toBe(false);
+    useSessionStore.getState().setAgents(SERVER_ID, (current) => {
+      return new Map(current).set("unrelated", makeAgent({ id: "unrelated", status: "running" }));
+    });
+
+    expect(select(useSessionStore.getState())).toBe(before);
   });
 
-  it("ignores archived rows, attended children, and other parents' fan-outs", () => {
-    const agents = agentsOf([
-      makeAgent({ id: "parent", status: "idle" }),
-      makeAgent({
-        id: "archived",
-        parentAgentId: "parent",
-        attend: "observed",
-        status: "running",
-        archivedAt: AGENT_TIMESTAMP,
-      }),
-      // An attended child is its own chat with its own cues - the parent is not
-      // waiting on it.
-      makeAgent({
-        id: "attended",
-        parentAgentId: "parent",
-        attend: "attended",
-        status: "running",
-      }),
-      makeAgent({ id: "other-parent", status: "idle" }),
-      makeAgent({
-        id: "other-child",
-        parentAgentId: "other-parent",
-        attend: "observed",
-        status: "running",
-      }),
+  it("applies the pending archive ids it was created with", () => {
+    setAgents([
+      makeAgent({ id: "parent" }),
+      makeAgent({ id: "child-a", parentAgentId: "parent" }),
+      makeAgent({ id: "child-b", parentAgentId: "parent" }),
     ]);
 
-    expect(hasRunningObservedSubagent(agents, "parent")).toBe(false);
-  });
+    const rows = createSubagentsForParentSelector(
+      params,
+      new Set(["child-b"]),
+    )(useSessionStore.getState());
 
-  it("follows a nested observed fan-out", () => {
-    const agents = agentsOf([
-      makeAgent({ id: "parent", status: "idle" }),
-      makeAgent({ id: "child", parentAgentId: "parent", attend: "observed", status: "idle" }),
-      makeAgent({
-        id: "grandchild",
-        parentAgentId: "child",
-        attend: "observed",
-        status: "running",
+    expect(rows.map((row) => row.id)).toEqual(["child-a"]);
+  });
+  it("does no agent map walks for 100 stream commits with unchanged source maps", () => {
+    const agents = new IterationCountingMap<string, Agent>(
+      Array.from({ length: 200 }, (_, i) => {
+        const agent = makeAgent({
+          id: `agent-${i}`,
+          workspaceId: "workspace",
+          parentAgentId: i < 3 ? null : `agent-${i % 3}`,
+        });
+        return [agent.id, agent] as const;
       }),
-    ]);
-
-    expect(hasRunningObservedSubagent(agents, "parent")).toBe(true);
+    );
+    useSessionStore.getState().initializeSession(SERVER_ID, null as unknown as DaemonClient);
+    useSessionStore.getState().setAgents(SERVER_ID, agents);
+    const selectVisibility = createWorkspaceAgentVisibilitySelector({
+      serverId: SERVER_ID,
+      workspaceId: "workspace",
+    });
+    const selectChildren = Array.from({ length: 3 }, (_, i) =>
+      createSubagentsForParentSelector(
+        { serverId: SERVER_ID, parentAgentId: `agent-${i}` },
+        EMPTY_PENDING_ARCHIVE_IDS,
+      ),
+    );
+    const select = (state: ReturnType<typeof useSessionStore.getState>) => {
+      selectVisibility(state);
+      selectChildren.forEach((selector) => selector(state));
+    };
+    select(useSessionStore.getState());
+    const before = agents.iterations;
+    const unsubscribe = useSessionStore.subscribe(select);
+    try {
+      for (let tick = 0; tick < 100; tick++) {
+        useSessionStore.getState().setAgentStreamState(SERVER_ID, "agent-0", {
+          head: [
+            {
+              kind: "assistant_message",
+              id: "message",
+              text: `token ${tick}`,
+              timestamp: AGENT_TIMESTAMP,
+            },
+          ],
+        });
+      }
+      expect(useSessionStore.getState().sessions[SERVER_ID]?.agents).toBe(agents);
+      expect(agents.iterations - before).toBe(0);
+    } finally {
+      unsubscribe();
+      useSessionStore.getState().clearSession(SERVER_ID);
+    }
   });
-});
-
-it("honors normalized turn authority for observed fan-out waiting", () => {
-  setAgents([
-    makeAgent({ id: "parent" }),
-    makeAgent({
-      id: "child",
-      parentAgentId: "parent",
-      attend: "observed",
-      status: "running",
-      turn: { phase: "idle", cancellationRequestId: null },
-    }),
-  ]);
-  expect(
-    hasRunningObservedSubagent(useSessionStore.getState().sessions[SERVER_ID]!.agents, "parent"),
-  ).toBe(false);
-  setAgents([
-    makeAgent({ id: "parent" }),
-    makeAgent({
-      id: "child",
-      parentAgentId: "parent",
-      attend: "observed",
-      status: "idle",
-      turn: { phase: "open", turnId: "active", startedAt: null, cancellationRequestId: null },
-    }),
-  ]);
-  expect(
-    hasRunningObservedSubagent(useSessionStore.getState().sessions[SERVER_ID]!.agents, "parent"),
-  ).toBe(true);
 });

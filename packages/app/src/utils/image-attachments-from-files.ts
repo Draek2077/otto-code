@@ -10,7 +10,6 @@ export interface ClipboardItemLike {
 
 export interface ClipboardDataLike {
   items?: ArrayLike<ClipboardItemLike> | null;
-  files?: ArrayLike<File> | null;
 }
 
 export type ImageAttachmentFromFile = AttachmentMetadata;
@@ -23,31 +22,23 @@ export interface ClipboardImageFile {
 export function collectImageFilesFromClipboardData(
   clipboardData?: ClipboardDataLike | null,
 ): ClipboardImageFile[] {
-  const files: ClipboardImageFile[] = [];
-  for (const item of Array.from(clipboardData?.items ?? [])) {
-    if (item?.kind !== "file") continue;
-
-    const file = item.getAsFile?.();
-    if (!file) continue;
-
-    // Windows clipboard producers do not consistently populate the item's MIME
-    // type, even when the File is a valid image. The File is the payload we
-    // persist, so it is the authoritative fallback for both type and name.
-    const mimeType =
-      resolveRasterImageMimeType({ mimeType: item.type }) ??
-      resolveRasterImageMimeType({ mimeType: file.type, path: file.name });
-    if (!mimeType) continue;
-
-    files.push({ file, mimeType });
+  if (!clipboardData?.items) {
+    return [];
   }
 
-  // Some clipboard implementations expose image data only through files. Do
-  // not read both lists: Chromium normally exposes the same image in each.
-  if (files.length > 0) return files;
-
-  for (const file of Array.from(clipboardData?.files ?? [])) {
-    const mimeType = resolveRasterImageMimeType({ mimeType: file.type, path: file.name });
-    if (!mimeType) continue;
+  const files: ClipboardImageFile[] = [];
+  for (const item of Array.from(clipboardData.items)) {
+    if (item?.kind !== "file") {
+      continue;
+    }
+    const mimeType = resolveRasterImageMimeType({ mimeType: item.type });
+    if (!mimeType) {
+      continue;
+    }
+    const file = item.getAsFile?.();
+    if (!file) {
+      continue;
+    }
     files.push({ file, mimeType });
   }
 

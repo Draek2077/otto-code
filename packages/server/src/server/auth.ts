@@ -1,11 +1,13 @@
-import { compare, compareSync, hashSync } from "bcryptjs";
+import { compare, hashSync } from "bcryptjs";
 import { timingSafeEqual } from "node:crypto";
 import type { RequestHandler } from "express";
+import { matchesLocalCredential } from "./local-credential.js";
 
 export const DAEMON_PASSWORD_BCRYPT_COST = 12;
 
 export interface DaemonAuthConfig {
   password?: string;
+  localCredential?: () => string | null;
 }
 
 export interface BearerAuthRejectContext {
@@ -19,10 +21,6 @@ interface BearerValidationInput {
   token: string | null;
 }
 
-export function isBearerTokenValid(input: BearerValidationInput): boolean {
-  return isBearerTokenValidSync(input);
-}
-
 export async function isBearerTokenValidAsync(input: BearerValidationInput): Promise<boolean> {
   if (!input.password) {
     return true;
@@ -32,17 +30,6 @@ export async function isBearerTokenValidAsync(input: BearerValidationInput): Pro
   }
 
   return compare(input.token, input.password);
-}
-
-export function isBearerTokenValidSync(input: BearerValidationInput): boolean {
-  if (!input.password) {
-    return true;
-  }
-  if (input.token === null) {
-    return false;
-  }
-
-  return compareSync(input.token, input.password);
 }
 
 export function hashDaemonPassword(password: string): string {
@@ -68,7 +55,7 @@ export function extractWsBearerProtocol(value: string | undefined): string | nul
   for (const protocol of value.split(",")) {
     const trimmed = protocol.trim();
     const segments = trimmed.split(".");
-    if (segments[0] === "otto" && segments[1] === "bearer" && segments.length >= 3) {
+    if (segments[0] === "paseo" && segments[1] === "bearer" && segments.length >= 3) {
       return trimmed;
     }
   }
@@ -81,7 +68,7 @@ export function extractWsBearerToken(protocol: string | null): string | null {
     return null;
   }
   const segments = protocol.split(".");
-  if (segments[0] !== "otto" || segments[1] !== "bearer" || segments.length < 3) {
+  if (segments[0] !== "paseo" || segments[1] !== "bearer" || segments.length < 3) {
     return null;
   }
   return segments.slice(2).join(".");
@@ -101,7 +88,13 @@ export function createRequireBearerMiddleware(
     void (async () => {
       try {
         const token = extractHttpBearerToken(req.header("authorization"));
-        if (!(await isBearerTokenValidAsync({ password, token }))) {
+        const localCredential = req.path === "/api/status" ? auth?.localCredential?.() : null;
+        const isLocal =
+          localCredential !== null &&
+          localCredential !== undefined &&
+          token !== null &&
+          matchesLocalCredential(localCredential, token);
+        if (!isLocal && !(await isBearerTokenValidAsync({ password, token }))) {
           onReject?.({
             path: req.path,
             method: req.method,
@@ -119,11 +112,6 @@ export function createRequireBearerMiddleware(
   };
 }
 
-// These routes authenticate their own capabilities instead of requiring a second daemon bearer.
-// Downloads consume a single-use UUID token (60s TTL) issued over the authenticated socket;
-// browser/Electron anchor navigations cannot attach an Authorization header.
-// Agent MCP accepts the per-daemon-run capability injected only into local agent configs, or
-// a valid daemon bearer. It is never sent to remote clients. Health is the public liveness probe.
 const SELF_AUTHENTICATING_ROUTES = new Set(["/api/files/download", "/mcp/agents"]);
 
 function isBearerFreeRoute(path: string): boolean {

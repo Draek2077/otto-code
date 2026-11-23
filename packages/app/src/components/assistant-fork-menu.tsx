@@ -1,7 +1,7 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
-import { Split } from "@/components/icons/material-icons";
+import { Split } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   DropdownMenu,
@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { Theme } from "@/styles/theme";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 
 export type AssistantForkTarget = "tab" | "workspace";
 
@@ -70,7 +70,7 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
   );
 
   const forkIcon = useMemo(
-    () => <ThemedSplit size="chromeSm" uniProps={foregroundColorMapping} />,
+    () => <ThemedSplit size={ICON_SIZE.sm} uniProps={foregroundColorMapping} />,
     [],
   );
 
@@ -88,7 +88,7 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
             >
               {({ hovered, open }) => (
                 <ThemedSplit
-                  size="chromeXs"
+                  size={ICON_SIZE.sm}
                   uniProps={hovered || open ? foregroundColorMapping : foregroundMutedColorMapping}
                 />
               )}

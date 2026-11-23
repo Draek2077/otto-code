@@ -1,9 +1,10 @@
+// OTTO(identity): expectations follow the visible Otto command and documentation.
 import { strict as assert } from "node:assert";
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, it } from "vitest";
-import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
+import type { ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 import type { HubCredentialStore, StoredHubCredential } from "./credentials.js";
 import type { HubDaemonClient, HubStatus } from "./daemon-client.js";
 import type { HubHttpClient } from "./hub-client/index.js";
@@ -35,7 +36,7 @@ describe("Hub guided setup continuation", () => {
       {
         env: {},
         credentials,
-        flow: { authorize: async () => "otto_cli_prefix_durable-secret" },
+        flow: { authorize: async () => "paseo_cli_prefix_durable-secret" },
         isInteractive: () => true,
         continueGuidedSetup: (origin) => continueHubGuidedSetup(origin, environment),
         reporter: { progress() {} },
@@ -54,7 +55,7 @@ describe("Hub guided setup continuation", () => {
     assert.deepEqual(calls, [{ operation: "token", origin: "https://hub.test" }]);
     assert.equal(daemon.connections, 1);
     assert.deepEqual(daemon.snapshotCwds, []);
-    await assert.rejects(readFile(path.join(cwd, ".otto", "hub.yml")), { code: "ENOENT" });
+    await assert.rejects(readFile(path.join(cwd, ".paseo", "hub.yml")), { code: "ENOENT" });
   });
 
   it("prints exact actionable resume commands for login continuation declines", async () => {
@@ -106,7 +107,7 @@ describe("Hub guided setup continuation", () => {
       {
         env: {},
         credentials,
-        flow: { authorize: async () => "otto_cli_prefix_durable-secret" },
+        flow: { authorize: async () => "paseo_cli_prefix_durable-secret" },
         isInteractive: () => true,
         continueGuidedSetup: (origin) =>
           continueHubGuidedSetup(
@@ -133,8 +134,8 @@ describe("Hub guided setup continuation", () => {
 
   it("preserves an existing legacy bundle while adding the organization trigger", async () => {
     const cwd = await temporaryDirectory();
-    await mkdir(path.join(cwd, ".otto"));
-    await writeFile(path.join(cwd, ".otto", "hub.yml"), "legacy: bundle\n");
+    await mkdir(path.join(cwd, ".paseo"));
+    await writeFile(path.join(cwd, ".paseo", "hub.yml"), "legacy: bundle\n");
     const credentials = new MemoryCredentials();
     credentials.save({ origin: "https://hub.test", credential: "secret" });
     const prompts = new PromptAnswers([], ["codex", "gpt-5", "full-access"], ["U123"]);
@@ -145,9 +146,9 @@ describe("Hub guided setup continuation", () => {
       deploy: false,
     });
 
-    assert.equal(await readFile(path.join(cwd, ".otto", "hub.yml"), "utf8"), "legacy: bundle\n");
+    assert.equal(await readFile(path.join(cwd, ".paseo", "hub.yml"), "utf8"), "legacy: bundle\n");
     assert.match(
-      await readFile(path.join(cwd, ".otto", "triggers", "slack-help.yml"), "utf8"),
+      await readFile(path.join(cwd, ".paseo", "triggers", "slack-help.yml"), "utf8"),
       /name: slack-help/u,
     );
     assert.deepEqual(prompts.confirmations, []);
@@ -155,7 +156,7 @@ describe("Hub guided setup continuation", () => {
 
   it("asks before replacing only the selected trigger file", async () => {
     const cwd = await temporaryDirectory();
-    const triggerPath = path.join(cwd, ".otto", "triggers", "slack-help.yml");
+    const triggerPath = path.join(cwd, ".paseo", "triggers", "slack-help.yml");
     await mkdir(path.dirname(triggerPath), { recursive: true });
     await writeFile(triggerPath, "name: keep-me\n");
     const credentials = new MemoryCredentials();
@@ -169,12 +170,12 @@ describe("Hub guided setup continuation", () => {
         daemonId: "daemon-1",
         deploy: true,
       }),
-      /.otto\/triggers\/slack-help.yml left unchanged/u,
+      /.paseo\/triggers\/slack-help.yml left unchanged/u,
     );
 
     assert.equal(await readFile(triggerPath, "utf8"), "name: keep-me\n");
     assert.deepEqual(prompts.confirmations, [
-      "Replace the existing .otto/triggers/slack-help.yml?",
+      "Replace the existing .paseo/triggers/slack-help.yml?",
     ]);
     assert.deepEqual(
       calls.map(({ operation }) => operation),
@@ -185,12 +186,8 @@ describe("Hub guided setup continuation", () => {
   it("rejects a symlinked trigger directory without writing outside the project", async () => {
     const cwd = await temporaryDirectory();
     const outside = await temporaryDirectory();
-    await mkdir(path.join(cwd, ".otto"));
-    await symlink(
-      outside,
-      path.join(cwd, ".otto", "triggers"),
-      process.platform === "win32" ? "junction" : "dir",
-    );
+    await mkdir(path.join(cwd, ".paseo"));
+    await symlink(outside, path.join(cwd, ".paseo", "triggers"));
     const credentials = new MemoryCredentials();
     credentials.save({ origin: "https://hub.test", credential: "secret" });
     const prompts = new PromptAnswers([], ["codex", "gpt-5", "full-access"], ["U123"]);
@@ -236,7 +233,7 @@ describe("Hub guided setup continuation", () => {
       ["Sonnet (suggested)"],
       ["Auto"],
     ]);
-    const trigger = await readFile(path.join(cwd, ".otto", "triggers", "slack-help.yml"), "utf8");
+    const trigger = await readFile(path.join(cwd, ".paseo", "triggers", "slack-help.yml"), "utf8");
     assert.match(trigger, /provider: claude\n    model: sonnet\n    mode: auto/u);
     assert.deepEqual(
       calls.slice(-2).map(({ operation }) => operation),
@@ -270,7 +267,7 @@ describe("Hub guided setup continuation", () => {
     );
 
     assert.equal(daemon.snapshotCwds.length, 0);
-    await assert.rejects(readFile(path.join(cwd, ".otto", "triggers", "slack-help.yml")), {
+    await assert.rejects(readFile(path.join(cwd, ".paseo", "triggers", "slack-help.yml")), {
       code: "ENOENT",
     });
   });
@@ -382,7 +379,7 @@ function setupEnvironment(
     env: {},
     credentials,
     hub,
-    login: { authorize: async () => "otto_cli_prefix_durable-secret" },
+    login: { authorize: async () => "paseo_cli_prefix_durable-secret" },
     daemon: { connect: async () => daemon },
     reporter: { progress() {} },
     cwd: () => cwd,
@@ -540,7 +537,7 @@ function disconnectedStatus(): HubStatus {
 }
 
 async function temporaryDirectory(): Promise<string> {
-  const directory = await mkdtemp(path.join(tmpdir(), "otto-hub-init-flow-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "paseo-hub-init-flow-"));
   directories.push(directory);
   return directory;
 }

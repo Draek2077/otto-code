@@ -1,6 +1,7 @@
 import { Agent, ToolCallNode, NODE } from '@/lib/agent-types'
 import { COLORS } from '@/lib/colors'
 import { COST_DRAW, STATS_OVERLAY, MIN_VISIBLE_OPACITY } from '@/lib/canvas-constants'
+import { reportedCost } from '@/lib/reported-cost'
 // OTTO PATCH (OTTO-PATCHES.md): the top-right cost SUMMARY panel moved to the
 // DOM (../cost-panel.tsx). Only the on-node cost pills (drawCostLabels) remain
 // on the canvas, so drawCostSummaryPanel and its formatTokens/truncateText/
@@ -23,8 +24,7 @@ import { COST_DRAW, STATS_OVERLAY, MIN_VISIBLE_OPACITY } from '@/lib/canvas-cons
 /** The agent's real reported cost in USD, or null when nothing can be known.
  *  Never falls back to an estimate — a blank is the honest answer. */
 export function agentCost(agent: Pick<Agent, 'costUsd'>): number | null {
-  const cost = agent.costUsd
-  return typeof cost === 'number' && Number.isFinite(cost) && cost > 0 ? cost : null
+  return reportedCost(agent.costUsd)
 }
 
 /** Shared money formatting for every cost surface, so a pill and a panel can

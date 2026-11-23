@@ -1,8 +1,10 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): invoke Otto locally without downloading a CLI.
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 
 /**
- * Regression: `otto daemon stop` must stop a reachable daemon even when the
- * local pid file points at a dead supervisor owner.
+ * Regression: `paseo daemon stop` must leave a reachable daemon alone when the
+ * selected home points at a dead supervisor owner.
  */
 
 import assert from "node:assert";
@@ -11,16 +13,17 @@ import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { $ } from "./helpers/zx-shell.ts";
+import { $ } from "zx";
+import { connectToDaemon } from "../src/utils/client.js";
 import { getAvailablePort } from "./helpers/network.ts";
 
 $.verbose = false;
 
 const pollIntervalMs = 100;
 const testEnv = {
-  OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
-  OTTO_DICTATION_ENABLED: process.env.OTTO_DICTATION_ENABLED ?? "0",
-  OTTO_VOICE_MODE_ENABLED: process.env.OTTO_VOICE_MODE_ENABLED ?? "0",
+  PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
+  PASEO_DICTATION_ENABLED: process.env.PASEO_DICTATION_ENABLED ?? "0",
+  PASEO_VOICE_MODE_ENABLED: process.env.PASEO_VOICE_MODE_ENABLED ?? "0",
 };
 
 function sleep(ms: number): Promise<void> {
@@ -63,9 +66,9 @@ interface DaemonStatus {
   pid: number | null;
 }
 
-async function readDaemonStatus(ottoHome: string): Promise<DaemonStatus> {
+async function readDaemonStatus(paseoHome: string): Promise<DaemonStatus> {
   const result =
-    await $`OTTO_HOME=${ottoHome} OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD} OTTO_DICTATION_ENABLED=${testEnv.OTTO_DICTATION_ENABLED} OTTO_VOICE_MODE_ENABLED=${testEnv.OTTO_VOICE_MODE_ENABLED} npx otto daemon status --home ${ottoHome} --json`.nothrow();
+    await $`PASEO_HOME=${paseoHome} PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD} PASEO_DICTATION_ENABLED=${testEnv.PASEO_DICTATION_ENABLED} PASEO_VOICE_MODE_ENABLED=${testEnv.PASEO_VOICE_MODE_ENABLED} npx --no-install otto daemon status --home ${paseoHome} --json`.nothrow();
   if (result.exitCode !== 0) {
     return { localDaemon: null, connectedDaemon: null, pid: null };
   }
@@ -101,10 +104,10 @@ function findUnusedPid(): number {
 console.log("=== Daemon Stop (stale pid, reachable worker regression) ===\n");
 
 const port = await getAvailablePort();
-const ottoHome = await mkdtemp(join(tmpdir(), "otto-stop-stale-reachable-"));
+const paseoHome = await mkdtemp(join(tmpdir(), "paseo-stop-stale-reachable-"));
 const cliRoot = join(import.meta.dirname, "..");
 const host = `127.0.0.1:${port}`;
-const pidPath = join(ottoHome, "otto.pid");
+const pidPath = join(paseoHome, "otto.pid");
 const stalePid = findUnusedPid();
 
 let workerProcess: ChildProcess | null = null;
@@ -135,9 +138,9 @@ try {
       env: {
         ...process.env,
         ...testEnv,
-        OTTO_HOME: ottoHome,
-        OTTO_LISTEN: host,
-        OTTO_RELAY_ENABLED: "false",
+        PASEO_HOME: paseoHome,
+        PASEO_LISTEN: host,
+        PASEO_RELAY_ENABLED: "false",
         CI: "true",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -146,45 +149,37 @@ try {
 
   await waitFor(
     async () => {
-      const status = await readDaemonStatus(ottoHome);
-      return status.localDaemon === "stale_pid" && status.connectedDaemon === "reachable";
+      try {
+        const client = await connectToDaemon({ target: { kind: "endpoint", host }, timeout: 500 });
+        await client.close();
+        return true;
+      } catch {
+        return false;
+      }
     },
     120000,
-    "daemon did not enter stale_pid + reachable state in time",
+    "unowned worker did not become reachable in time",
   );
 
-  const statusBeforeStop = await readDaemonStatus(ottoHome);
-  assert.strictEqual(statusBeforeStop.pid, stalePid, "status should report the stale owner pid");
+  const statusBeforeStop = await readDaemonStatus(paseoHome);
+  assert.strictEqual(statusBeforeStop.pid, null, "status should not claim a dead owner is running");
   assert(workerProcess.pid && isProcessRunning(workerProcess.pid), "worker should be running");
   console.log(`✓ fixture has stale pid ${stalePid} and live worker ${workerProcess.pid}\n`);
 
-  console.log(
-    "Test 2: `otto daemon stop` should stop reachable worker instead of saying not_running",
-  );
+  console.log("Test 2: home-selected stop leaves the unowned reachable worker running");
   const stopResult =
-    await $`OTTO_HOME=${ottoHome} OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD} OTTO_DICTATION_ENABLED=${testEnv.OTTO_DICTATION_ENABLED} OTTO_VOICE_MODE_ENABLED=${testEnv.OTTO_VOICE_MODE_ENABLED} npx otto daemon stop --home ${ottoHome} --json`.nothrow();
+    await $`PASEO_HOME=${paseoHome} PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD} PASEO_DICTATION_ENABLED=${testEnv.PASEO_DICTATION_ENABLED} PASEO_VOICE_MODE_ENABLED=${testEnv.PASEO_VOICE_MODE_ENABLED} npx --no-install otto daemon stop --home ${paseoHome} --json`.nothrow();
   assert.strictEqual(stopResult.exitCode, 0, `stop should succeed: ${stopResult.stderr}`);
   const stopJson = JSON.parse(stopResult.stdout) as {
     action?: unknown;
     pid?: unknown;
     message?: unknown;
   };
-  assert.strictEqual(stopJson.action, "stopped", "stop should report stopped action");
-  assert.strictEqual(
-    stopJson.pid,
-    String(stalePid),
-    "stop should report the stale pid it recovered from",
-  );
-  assert.strictEqual(
-    stopJson.message,
-    "Daemon stopped gracefully",
-    "stop should route through lifecycle shutdown",
-  );
-
-  await waitFor(
-    () => !isProcessRunning(workerProcess?.pid ?? -1),
-    15000,
-    "worker remained running after stop",
+  assert.strictEqual(stopJson.action, "not_running");
+  assert.strictEqual(stopJson.pid, stalePid);
+  assert(
+    workerProcess.pid && isProcessRunning(workerProcess.pid),
+    "stop must not contact the stale endpoint",
   );
   assert.strictEqual(existsSync(pidPath), false, "stale pid file should be removed after stop");
   console.log("✓ stop recovered stale supervisor pid state\n");
@@ -200,8 +195,8 @@ try {
     });
   }
 
-  await $`OTTO_HOME=${ottoHome} OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD} OTTO_DICTATION_ENABLED=${testEnv.OTTO_DICTATION_ENABLED} OTTO_VOICE_MODE_ENABLED=${testEnv.OTTO_VOICE_MODE_ENABLED} npx otto daemon stop --home ${ottoHome} --force`.nothrow();
-  await rm(ottoHome, { recursive: true, force: true });
+  await $`PASEO_HOME=${paseoHome} PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD} PASEO_DICTATION_ENABLED=${testEnv.PASEO_DICTATION_ENABLED} PASEO_VOICE_MODE_ENABLED=${testEnv.PASEO_VOICE_MODE_ENABLED} npx --no-install otto daemon stop --home ${paseoHome} --force`.nothrow();
+  await rm(paseoHome, { recursive: true, force: true });
 }
 
 console.log("=== Stale reachable stop regression test passed ===");

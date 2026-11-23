@@ -1,4 +1,4 @@
-import type { JsonValue } from "@otto-code/protocol/agent-types";
+import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import { z } from "zod";
 
 export const PROVIDER_PROTOCOL_VERSION = 1 as const;
@@ -26,8 +26,15 @@ export const PROVIDER_CAPABILITIES = [
 export type ProviderCapability = (typeof PROVIDER_CAPABILITIES)[number];
 
 export interface ProviderRegistration {
+  /** OTTO(workflows): trusted harness contract. Plan offers reads only; providerOptions.ottoWorkflowWorkspaceAccess="none" withholds native tools. Neither may delegate native children. The daemon separately filters its MCP catalog. */
+  ottoWorkflowReadMode?: "plan";
+  /** Activate only while agents.providers contains this provider ID, independently of enabled. */
+  requiresConfiguration?: boolean;
   /** Equal keys share discovery within this provider. Include effective configuration and execution environment. */
   getCatalogCacheKey?(options: ProviderCatalogOptions): Promise<string | undefined>;
+  /** Default executable and arguments; the daemon resolves overrides before status/connect. */
+  command?: readonly [string, ...string[]];
+  status?(request: ProviderStatusRequest): Promise<ProviderStatus>;
   id: string;
   label: string;
   description?: string;
@@ -37,10 +44,34 @@ export interface ProviderRegistration {
 }
 
 export type ProviderCatalogOptions =
-  | { scope: "global"; force?: boolean }
-  | { scope: "workspace"; cwd: string; force?: boolean };
+  | { scope: "global"; force?: boolean; launch?: ProviderLaunch }
+  | { scope: "workspace"; cwd: string; force?: boolean; launch?: ProviderLaunch };
+
+export const ProviderLaunchSchema = z
+  .object({
+    /** Resolved executable path. */
+    command: z.string().min(1),
+    args: z.array(z.string()),
+    /** Complete daemon-owned environment, including overrides and parent-session stripping. */
+    env: z.record(z.string(), z.string()),
+  })
+  .strip();
+
+export type ProviderLaunch = z.infer<typeof ProviderLaunchSchema>;
+
+export interface ProviderStatusRequest {
+  launch?: ProviderLaunch;
+}
+
+export const ProviderStatusSchema = z.discriminatedUnion("available", [
+  z.object({ available: z.literal(true), diagnostic: z.string().optional() }).strip(),
+  z.object({ available: z.literal(false), diagnostic: z.string().min(1) }).strip(),
+]);
+
+export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 
 export interface ProviderConnectRequest {
+  launch?: ProviderLaunch;
   versions: readonly number[];
   capabilities: readonly string[];
 }
@@ -87,7 +118,7 @@ export interface ProviderSessionConfig {
   mode?: string;
   thinkingOption?: string;
   settings: Readonly<Record<string, JsonValue>>;
-  providerOptions?: Readonly<Record<string, JsonValue>>;
+  providerOptions?: Readonly<Record<string, unknown>>;
   title?: string;
   persist: boolean;
 }
@@ -111,7 +142,7 @@ export interface ProviderPrompt {
 
 interface ProviderForgeChangeRequestAttachment {
   type: "forge_change_request";
-  mimeType: "application/otto-forge-change-request";
+  mimeType: "application/paseo-forge-change-request";
   forge?: string;
   number: number;
   title: string;
@@ -124,7 +155,7 @@ interface ProviderForgeChangeRequestAttachment {
 
 interface ProviderForgeIssueAttachment {
   type: "forge_issue";
-  mimeType: "application/otto-forge-issue";
+  mimeType: "application/paseo-forge-issue";
   forge?: string;
   number: number;
   title: string;
@@ -172,7 +203,7 @@ interface ProviderTextAttachment {
 
 interface ProviderReviewAttachment {
   type: "review";
-  mimeType: "application/otto-review";
+  mimeType: "application/paseo-review";
   cwd: string;
   mode: "uncommitted" | "base";
   baseRef?: string | null;
@@ -531,7 +562,10 @@ export type ProviderEvent =
       type: "session.opened";
       requestId?: string;
       sessionId: string;
+      /** Direct parent in the provider session ID namespace. */
       parentSessionId?: string;
+      /** ID of the spawning tool call in the direct parent's timeline. */
+      toolCallId?: string;
       capabilities: readonly string[];
       restoration: "core" | "parent";
       persistence?: ProviderPersistence;
@@ -712,7 +746,7 @@ const sessionConfigSchema = z
     mode: z.string().optional(),
     thinkingOption: z.string().optional(),
     settings: jsonObjectSchema,
-    providerOptions: jsonObjectSchema.optional(),
+    providerOptions: z.record(z.string(), z.unknown()).optional(),
     title: z.string().optional(),
     persist: z.boolean(),
   })
@@ -742,7 +776,7 @@ const providerContentSchema: z.ZodType<ProviderContent> = z.union([
   z
     .object({
       type: z.literal("forge_change_request"),
-      mimeType: z.literal("application/otto-forge-change-request"),
+      mimeType: z.literal("application/paseo-forge-change-request"),
       forge: z.string().optional(),
       number: z.number().int().positive(),
       title: z.string(),
@@ -756,7 +790,7 @@ const providerContentSchema: z.ZodType<ProviderContent> = z.union([
   z
     .object({
       type: z.literal("forge_issue"),
-      mimeType: z.literal("application/otto-forge-issue"),
+      mimeType: z.literal("application/paseo-forge-issue"),
       forge: z.string().optional(),
       number: z.number().int().positive(),
       title: z.string(),
@@ -800,7 +834,7 @@ const providerContentSchema: z.ZodType<ProviderContent> = z.union([
   z
     .object({
       type: z.literal("review"),
-      mimeType: z.literal("application/otto-review"),
+      mimeType: z.literal("application/paseo-review"),
       cwd: z.string(),
       mode: z.enum(["uncommitted", "base"]),
       baseRef: z.string().nullable().optional(),
@@ -1278,6 +1312,7 @@ export const ProviderEventSchema: z.ZodType<ProviderEvent> = z.discriminatedUnio
       requestId: idSchema.optional(),
       sessionId: idSchema,
       parentSessionId: idSchema.optional(),
+      toolCallId: idSchema.optional(),
       capabilities: z.array(z.string()),
       restoration: z.enum(["core", "parent"]),
       persistence: persistenceSchema.optional(),

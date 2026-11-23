@@ -9,7 +9,10 @@ const MAX_TRANSIENT_DETACHED_PANES = 2;
 const SETTINGS_DESTINATIONS = [
   "General",
   "Appearance",
-  "Layout",
+  "Sidebar",
+  "Chat",
+  "Terminal",
+  "Browser",
   "Editor",
   "Shortcuts",
   "Integrations",
@@ -138,8 +141,8 @@ export async function runSettingsMemoryRegression(page) {
     await rotateSettings(page);
   }
   const detachedAfterStress = await collectDetachedSettingsPanes(session);
-  if (process.env.OTTO_DESKTOP_SETTINGS_HEAP_SNAPSHOT) {
-    await captureHeapSnapshot(session, process.env.OTTO_DESKTOP_SETTINGS_HEAP_SNAPSHOT);
+  if (process.env.PASEO_DESKTOP_SETTINGS_HEAP_SNAPSHOT) {
+    await captureHeapSnapshot(session, process.env.PASEO_DESKTOP_SETTINGS_HEAP_SNAPSHOT);
   }
 
   assert(

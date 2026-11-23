@@ -4,8 +4,8 @@ import {
   FileSubscribeResponseSchema,
   FileUnsubscribeRequestSchema,
   FileUpdateSchema,
-  FsFileWriteRequestSchema,
-  FsFileWriteResponseSchema,
+  FileWriteRequestSchema,
+  FileWriteResponseSchema,
   ServerInfoStatusPayloadSchema,
 } from "./messages.js";
 
@@ -66,7 +66,7 @@ describe("workspace file editing messages", () => {
 
   test("parses optimistic write requests and conflict responses", () => {
     expect(
-      FsFileWriteRequestSchema.parse({
+      FileWriteRequestSchema.parse({
         type: "fs.file.write.request",
         cwd: "/workspace",
         path: "file.ts",
@@ -76,7 +76,7 @@ describe("workspace file editing messages", () => {
       }).content,
     ).toBe("const value = 1;\n");
     expect(
-      FsFileWriteResponseSchema.parse({
+      FileWriteResponseSchema.parse({
         type: "fs.file.write.response",
         payload: {
           result: {

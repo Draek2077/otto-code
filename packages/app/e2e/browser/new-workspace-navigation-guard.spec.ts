@@ -1,20 +1,28 @@
+import { unassignedRoster } from "../support/helpers/otto-provider-roster"; // OTTO(profiles)
 import { test } from "../support/fixtures";
 import { verifyDelayedWorkspaceCreation } from "../support/helpers/new-workspace-navigation";
+
+// OTTO(profiles): this fixture verifies retention of the explicitly seeded provider defaults.
+test.use({ e2eDaemonConfig: { daemon: unassignedRoster } });
 
 test.describe("Delayed workspace creation", () => {
   test.describe.configure({ timeout: 120_000 });
 
-  for (const launch of ["chat", "terminal", "empty"] as const) {
-    test(`${launch}: keeps the workspace chosen during creation`, async ({ page }) => {
-      await verifyDelayedWorkspaceCreation(page, launch, "leave");
-    });
-    test(`worktree ${launch}: keeps the workspace chosen during creation`, async ({ page }) => {
-      await verifyDelayedWorkspaceCreation(page, launch, "leave", "worktree");
-    });
-    test(`${launch}: opens the created workspace when the user stays`, async ({ page }) => {
-      await verifyDelayedWorkspaceCreation(page, launch, "stay");
-    });
-  }
+  // Exercise each submit handler's navigation guard. Checkout isolation shares
+  // those handlers; ordinary successful launches live in the creation journeys.
+  test("chat worktree creation keeps the workspace chosen while it was pending", async ({
+    page,
+  }) => {
+    await verifyDelayedWorkspaceCreation(page, "chat", "leave", "worktree");
+  });
+
+  test("terminal creation keeps the workspace chosen while it was pending", async ({ page }) => {
+    await verifyDelayedWorkspaceCreation(page, "terminal", "leave");
+  });
+
+  test("empty creation keeps the workspace chosen while it was pending", async ({ page }) => {
+    await verifyDelayedWorkspaceCreation(page, "empty", "leave");
+  });
 
   test("preserves a newer draft opened while creation is pending", async ({ page }) => {
     await verifyDelayedWorkspaceCreation(page, "chat", "new-draft");

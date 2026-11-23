@@ -22,7 +22,7 @@ interface CreateAgentWorktreeTestOptions {
   branchName: string;
   baseBranch: string;
   worktreeSlug: string;
-  ottoHome?: string;
+  paseoHome?: string;
 }
 
 interface CreateAgentWorktreeTestResult {
@@ -58,7 +58,7 @@ async function createBootstrapWorktreeForTest(
       branchName: options.branchName,
     },
     runSetup: false,
-    ottoHome: options.ottoHome,
+    paseoHome: options.paseoHome,
   });
   return { worktree, shouldBootstrap: true };
 }
@@ -66,14 +66,14 @@ async function createBootstrapWorktreeForTest(
 describe("runAsyncWorktreeBootstrap", () => {
   let tempDir: string;
   let repoDir: string;
-  let ottoHome: string;
+  let paseoHome: string;
   let realTerminalManagers: TerminalManager[];
 
   beforeEach(() => {
     realTerminalManagers = [];
     tempDir = realpathSync(mkdtempSync(join(tmpdir(), "worktree-bootstrap-test-")));
     repoDir = join(tempDir, "repo");
-    ottoHome = join(tempDir, "otto-home");
+    paseoHome = join(tempDir, "paseo-home");
 
     mkdirSync(repoDir, { recursive: true });
     execFileSync("git", ["init", "-b", "main"], { cwd: repoDir, stdio: "pipe" });
@@ -94,14 +94,14 @@ describe("runAsyncWorktreeBootstrap", () => {
 
   it("does not fail setup when live timeline emission throws", async () => {
     writeFileSync(
-      join(repoDir, "otto.json"),
+      join(repoDir, "paseo.json"),
       JSON.stringify({
         worktree: {
           setup: ['echo "ok"'],
         },
       }),
     );
-    execFileSync("git", ["add", "otto.json"], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["add", "paseo.json"], { cwd: repoDir, stdio: "pipe" });
     execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add setup"], {
       cwd: repoDir,
       stdio: "pipe",
@@ -112,7 +112,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       branchName: "feature-live-failure",
       baseBranch: "main",
       worktreeSlug: "feature-live-failure",
-      ottoHome,
+      paseoHome,
     });
 
     const persisted: AgentTimelineItem[] = [];
@@ -134,7 +134,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     ).resolves.toBeUndefined();
 
     const persistedSetupItems = persisted.filter(
-      (item) => item.type === "tool_call" && item.name === "otto_worktree_setup",
+      (item) => item.type === "tool_call" && item.name === "paseo_worktree_setup",
     );
     expect(persistedSetupItems).toHaveLength(1);
     if (persistedSetupItems[0]?.type === "tool_call") {
@@ -146,14 +146,14 @@ describe("runAsyncWorktreeBootstrap", () => {
     const largeOutputCommand =
       "node -e \"process.stdout.write('prefix-'); process.stdout.write('x'.repeat(70000)); process.stdout.write('-suffix')\"";
     writeFileSync(
-      join(repoDir, "otto.json"),
+      join(repoDir, "paseo.json"),
       JSON.stringify({
         worktree: {
           setup: [largeOutputCommand],
         },
       }),
     );
-    execFileSync("git", ["add", "otto.json"], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["add", "paseo.json"], { cwd: repoDir, stdio: "pipe" });
     execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add large output setup"], {
       cwd: repoDir,
       stdio: "pipe",
@@ -164,7 +164,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       branchName: "feature-large-output",
       baseBranch: "main",
       worktreeSlug: "feature-large-output",
-      ottoHome,
+      paseoHome,
     });
 
     const persisted: AgentTimelineItem[] = [];
@@ -183,7 +183,7 @@ describe("runAsyncWorktreeBootstrap", () => {
 
     const persistedSetupItem = persisted.find(
       (item): item is Extract<AgentTimelineItem, { type: "tool_call" }> =>
-        item.type === "tool_call" && item.name === "otto_worktree_setup",
+        item.type === "tool_call" && item.name === "paseo_worktree_setup",
     );
     expect(persistedSetupItem).toBeDefined();
     expect(persistedSetupItem?.detail.type).toBe("worktree_setup");
@@ -204,7 +204,7 @@ describe("runAsyncWorktreeBootstrap", () => {
 
   it("waits for terminal output before sending bootstrap commands", async () => {
     writeFileSync(
-      join(repoDir, "otto.json"),
+      join(repoDir, "paseo.json"),
       JSON.stringify({
         worktree: {
           terminals: [
@@ -216,7 +216,7 @@ describe("runAsyncWorktreeBootstrap", () => {
         },
       }),
     );
-    execFileSync("git", ["add", "otto.json"], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["add", "paseo.json"], { cwd: repoDir, stdio: "pipe" });
     execFileSync(
       "git",
       ["-c", "commit.gpgsign=false", "commit", "-m", "add terminal bootstrap config"],
@@ -231,7 +231,7 @@ describe("runAsyncWorktreeBootstrap", () => {
       branchName: "feature-terminal-readiness",
       baseBranch: "main",
       worktreeSlug: "feature-terminal-readiness",
-      ottoHome,
+      paseoHome,
     });
 
     let readyAt = 0;
@@ -441,16 +441,16 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(createTerminalCalls[0]?.name).toBe("api");
     expect(terminalRecords[0]?.sentInputs).toEqual(["npm run api\r"]);
     expect(createTerminalCalls[0]?.env).not.toHaveProperty("PORT");
-    expect(createTerminalCalls[0]?.env?.OTTO_PORT).toEqual(expect.any(String));
+    expect(createTerminalCalls[0]?.env?.PASEO_PORT).toEqual(expect.any(String));
     expect(createTerminalCalls[0]?.env?.HOST).toBe("127.0.0.1");
-    expect(createTerminalCalls[0]?.env?.OTTO_URL).toBe(
-      "http://api--feature-socket-service--repo.localhost:6868",
+    expect(createTerminalCalls[0]?.env?.PASEO_URL).toBe(
+      "http://api--feature-socket-service--repo.localhost:6767",
     );
-    expect(createTerminalCalls[0]?.env?.OTTO_SERVICE_API_PORT).toBe(
-      createTerminalCalls[0]?.env?.OTTO_PORT,
+    expect(createTerminalCalls[0]?.env?.PASEO_SERVICE_API_PORT).toBe(
+      createTerminalCalls[0]?.env?.PASEO_PORT,
     );
-    expect(createTerminalCalls[0]?.env?.OTTO_SERVICE_API_URL).toBe(
-      "http://api--feature-socket-service--repo.localhost:6868",
+    expect(createTerminalCalls[0]?.env?.PASEO_SERVICE_API_URL).toBe(
+      "http://api--feature-socket-service--repo.localhost:6767",
     );
   }
 
@@ -470,11 +470,11 @@ describe("runAsyncWorktreeBootstrap", () => {
     if (plannedAppServerPort === undefined) {
       throw new Error("Expected app-server to be present in the service port plan");
     }
-    expect(createTerminalCalls[0]?.env?.OTTO_SERVICE_APP_SERVER_PORT).toBe(
+    expect(createTerminalCalls[0]?.env?.PASEO_SERVICE_APP_SERVER_PORT).toBe(
       String(plannedAppServerPort),
     );
-    expect(createTerminalCalls[0]?.env?.OTTO_SERVICE_APP_SERVER_URL).toBe(
-      "http://app-server--feature-socket-service--repo.localhost:6868",
+    expect(createTerminalCalls[0]?.env?.PASEO_SERVICE_APP_SERVER_URL).toBe(
+      "http://app-server--feature-socket-service--repo.localhost:6767",
     );
   }
 
@@ -490,20 +490,20 @@ describe("runAsyncWorktreeBootstrap", () => {
     });
   }
 
-  function commitOttoScripts(
+  function commitPaseoScripts(
     scripts: Record<string, { command: string; type?: "script" | "service" }>,
     message = "add script config",
   ): void {
-    writeFileSync(join(repoDir, "otto.json"), JSON.stringify({ scripts }));
-    execFileSync("git", ["add", "otto.json"], { cwd: repoDir, stdio: "pipe" });
+    writeFileSync(join(repoDir, "paseo.json"), JSON.stringify({ scripts }));
+    execFileSync("git", ["add", "paseo.json"], { cwd: repoDir, stdio: "pipe" });
     execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", message], {
       cwd: repoDir,
       stdio: "pipe",
     });
   }
 
-  it("spawns plain scripts in persistent shell terminals without service env injection or routes", async () => {
-    commitOttoScripts({
+  it("spawns plain scripts in persistent shell terminals without env injection or routes", async () => {
+    commitPaseoScripts({
       web: {
         command: "npm run dev",
       },
@@ -515,7 +515,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalRecords: StubTerminalRecord[] = [];
 
     const result = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-socket-service",
@@ -532,16 +532,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(createTerminalCalls[0]?.cwd).toBe(repoDir);
     expect(createTerminalCalls[0]?.name).toBe("web");
     expect(createTerminalCalls[0]?.title).toBe("web");
-    // No service wiring (no port, no proxy URL) - but the workspace's own
-    // location env is always stamped so the daemon's inherited values can't
-    // decide where the script runs.
-    expect(createTerminalCalls[0]?.env).toEqual({
-      OTTO_WORKTREE_PATH: repoDir,
-      OTTO_SOURCE_CHECKOUT_PATH: repoDir,
-      OTTO_ROOT_PATH: repoDir,
-      OTTO_BRANCH_NAME: "feature-socket-service",
-      PWD: repoDir,
-    });
+    expect(createTerminalCalls[0]?.env).toBeUndefined();
     expect(terminalRecords[0]?.sentInputs).toEqual(["npm run dev\r"]);
     expect(runtimeStore.get({ workspaceId: repoDir, scriptName: "web" })).toMatchObject({
       type: "script",
@@ -552,7 +543,7 @@ describe("runAsyncWorktreeBootstrap", () => {
   });
 
   it("records plain script exit codes from shell command completion without terminal exit", async () => {
-    commitOttoScripts(
+    commitPaseoScripts(
       {
         typecheck: {
           command: 'node -e "process.exit(7)"',
@@ -568,7 +559,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
 
     const result = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-exit",
@@ -591,7 +582,7 @@ describe("runAsyncWorktreeBootstrap", () => {
   });
 
   it("reuses a live terminal when rerunning after plain script completion", async () => {
-    commitOttoScripts(
+    commitPaseoScripts(
       {
         typecheck: {
           command: "npm run typecheck",
@@ -607,7 +598,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
 
     const firstResult = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-rerun",
@@ -627,7 +618,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     });
 
     const secondResult = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-rerun",
@@ -657,7 +648,7 @@ describe("runAsyncWorktreeBootstrap", () => {
   });
 
   it("tracks command completion when reusing a live terminal from a stopped plain script entry", async () => {
-    commitOttoScripts(
+    commitPaseoScripts(
       {
         typecheck: {
           command: "npm run typecheck",
@@ -686,7 +677,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     });
 
     const result = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-existing-terminal",
@@ -712,7 +703,7 @@ describe("runAsyncWorktreeBootstrap", () => {
   });
 
   it("uses terminal exit as a fallback before shell command completion", async () => {
-    commitOttoScripts(
+    commitPaseoScripts(
       {
         typecheck: {
           command: "npm run typecheck",
@@ -728,7 +719,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
 
     const result = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-terminal-exit",
@@ -750,7 +741,7 @@ describe("runAsyncWorktreeBootstrap", () => {
   });
 
   it("rejects duplicate plain script starts while running", async () => {
-    commitOttoScripts(
+    commitPaseoScripts(
       {
         typecheck: {
           command: 'node -e "setTimeout(() => {}, 30000)"',
@@ -765,7 +756,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls);
 
     await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-script-duplicate",
@@ -778,7 +769,7 @@ describe("runAsyncWorktreeBootstrap", () => {
 
     await expect(
       spawnWorkspaceScript({
-        workspaceDirectory: repoDir,
+        repoRoot: repoDir,
         workspaceId: repoDir,
         projectSlug: "repo",
         branchName: "feature-script-duplicate",
@@ -793,7 +784,7 @@ describe("runAsyncWorktreeBootstrap", () => {
   });
 
   it("spawns services with route registration and injected peer service env vars", async () => {
-    commitOttoScripts(
+    commitPaseoScripts(
       {
         api: {
           type: "service",
@@ -813,12 +804,12 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalRecords: StubTerminalRecord[] = [];
 
     const result = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-socket-service",
       scriptName: "api",
-      daemonPort: 6868,
+      daemonPort: 6767,
       serviceProxy: routeStore,
       runtimeStore,
       terminalManager: createStubTerminalManager(createTerminalCalls, terminalRecords),
@@ -846,8 +837,56 @@ describe("runAsyncWorktreeBootstrap", () => {
     });
   });
 
+  it("starts a service added to paseo.json without restarting the daemon", async () => {
+    const backend = {
+      type: "service" as const,
+      command: "uv run uvicorn app.main:app --reload --port $PASEO_PORT",
+    };
+    commitPaseoScripts({ "backend-dev": backend });
+
+    const serviceProxy = new ScriptRouteStore();
+    const runtimeStore = new WorkspaceScriptRuntimeStore();
+    const createTerminalCalls: CreateTerminalCall[] = [];
+    const terminalRecords: StubTerminalRecord[] = [];
+    const options = {
+      repoRoot: repoDir,
+      workspaceId: repoDir,
+      projectSlug: "repo",
+      branchName: "feature-added-service",
+      daemonPort: 6767,
+      serviceProxy,
+      runtimeStore,
+      terminalManager: createStubTerminalManager(createTerminalCalls, terminalRecords),
+    };
+    const backendResult = await spawnWorkspaceScript({ ...options, scriptName: "backend-dev" });
+
+    writeFileSync(
+      join(repoDir, "paseo.json"),
+      JSON.stringify({
+        scripts: {
+          "backend-dev": backend,
+          web: { type: "service", command: "pnpm run dev -- --port $PASEO_PORT" },
+        },
+      }),
+    );
+    const webResult = await spawnWorkspaceScript({ ...options, scriptName: "web" });
+
+    expect(webResult.port).toEqual(expect.any(Number));
+    expect(webResult.port).not.toBe(backendResult.port);
+    expect(terminalRecords[1]?.sentInputs).toEqual(["pnpm run dev -- --port $PASEO_PORT\r"]);
+    expect(createTerminalCalls[1]?.env?.PASEO_PORT).toBe(String(webResult.port));
+    expect(createTerminalCalls[1]?.env?.PASEO_SERVICE_BACKEND_DEV_PORT).toBe(
+      String(backendResult.port),
+    );
+    expect(serviceProxy.listRoutes()).toHaveLength(2);
+    expect(runtimeStore.get({ workspaceId: repoDir, scriptName: "backend-dev" })).toMatchObject({
+      lifecycle: "running",
+      terminalId: backendResult.terminalId,
+    });
+  });
+
   it("spawns services with public aliases and public service URLs", async () => {
-    commitOttoScripts(
+    commitPaseoScripts(
       {
         api: {
           type: "service",
@@ -867,12 +906,12 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalRecords: StubTerminalRecord[] = [];
 
     const result = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-public-service",
       scriptName: "api",
-      daemonPort: 6868,
+      daemonPort: 6767,
       serviceProxyPublicBaseUrl: "https://services.example.com",
       serviceProxy: routeStore,
       runtimeStore,
@@ -889,20 +928,20 @@ describe("runAsyncWorktreeBootstrap", () => {
       workspaceId: repoDir,
       scriptName: "api",
     });
-    expect(createTerminalCalls[0]?.env?.OTTO_URL).toBe(
+    expect(createTerminalCalls[0]?.env?.PASEO_URL).toBe(
       "https://api--feature-public-service--repo.services.example.com",
     );
-    expect(createTerminalCalls[0]?.env?.OTTO_SERVICE_API_URL).toBe(
+    expect(createTerminalCalls[0]?.env?.PASEO_SERVICE_API_URL).toBe(
       "https://api--feature-public-service--repo.services.example.com",
     );
-    expect(createTerminalCalls[0]?.env?.OTTO_SERVICE_APP_SERVER_URL).toBe(
+    expect(createTerminalCalls[0]?.env?.PASEO_SERVICE_APP_SERVER_URL).toBe(
       "https://app-server--feature-public-service--repo.services.example.com",
     );
   });
 
   it("refreshes a stopped service port on respawn and updates the route", async () => {
     writeFileSync(
-      join(repoDir, "otto.json"),
+      join(repoDir, "paseo.json"),
       JSON.stringify({
         scripts: {
           api: {
@@ -916,7 +955,7 @@ describe("runAsyncWorktreeBootstrap", () => {
         },
       }),
     );
-    execFileSync("git", ["add", "otto.json"], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["add", "paseo.json"], { cwd: repoDir, stdio: "pipe" });
     execFileSync(
       "git",
       ["-c", "commit.gpgsign=false", "commit", "-m", "add respawn service script config"],
@@ -933,24 +972,24 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
 
     const firstResult = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-respawn-service",
       scriptName: "api",
-      daemonPort: 6868,
+      daemonPort: 6767,
       serviceProxy: routeStore,
       runtimeStore,
       terminalManager,
     });
 
     const workerResult = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-respawn-service",
       scriptName: "worker",
-      daemonPort: 6868,
+      daemonPort: 6767,
       serviceProxy: routeStore,
       runtimeStore,
       terminalManager,
@@ -979,12 +1018,12 @@ describe("runAsyncWorktreeBootstrap", () => {
     expect(routeStore.getRouteEntry("api--feature-respawn-service--repo.localhost")).toBeNull();
 
     const secondResult = await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-respawn-service",
       scriptName: "api",
-      daemonPort: 6868,
+      daemonPort: 6767,
       serviceProxy: routeStore,
       runtimeStore,
       terminalManager,
@@ -997,7 +1036,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     }
     expect(secondPort).not.toBe(firstPort);
     expect(secondPort).toEqual(expect.any(Number));
-    expect(createTerminalCalls[2]?.env?.OTTO_SERVICE_WORKER_PORT).toBe(String(workerPort));
+    expect(createTerminalCalls[2]?.env?.PASEO_SERVICE_WORKER_PORT).toBe(String(workerPort));
     expect(routeStore.getRouteEntry("api--feature-respawn-service--repo.localhost")).toMatchObject({
       hostname: "api--feature-respawn-service--repo.localhost",
       port: secondPort,
@@ -1009,7 +1048,7 @@ describe("runAsyncWorktreeBootstrap", () => {
 
   it("removes the current service route on exit after a branch rename", async () => {
     writeFileSync(
-      join(repoDir, "otto.json"),
+      join(repoDir, "paseo.json"),
       JSON.stringify({
         scripts: {
           api: {
@@ -1019,7 +1058,7 @@ describe("runAsyncWorktreeBootstrap", () => {
         },
       }),
     );
-    execFileSync("git", ["add", "otto.json"], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["add", "paseo.json"], { cwd: repoDir, stdio: "pipe" });
     execFileSync(
       "git",
       ["-c", "commit.gpgsign=false", "commit", "-m", "add renamed service script config"],
@@ -1036,12 +1075,12 @@ describe("runAsyncWorktreeBootstrap", () => {
     const terminalManager = createStubTerminalManager(createTerminalCalls, terminalRecords);
 
     await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-before-rename",
       scriptName: "api",
-      daemonPort: 6868,
+      daemonPort: 6767,
       serviceProxy: routeStore,
       runtimeStore,
       terminalManager,
@@ -1071,7 +1110,7 @@ describe("runAsyncWorktreeBootstrap", () => {
 
   it("fails normalized service env name collisions before terminal creation", async () => {
     writeFileSync(
-      join(repoDir, "otto.json"),
+      join(repoDir, "paseo.json"),
       JSON.stringify({
         scripts: {
           "app-server": {
@@ -1085,7 +1124,7 @@ describe("runAsyncWorktreeBootstrap", () => {
         },
       }),
     );
-    execFileSync("git", ["add", "otto.json"], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["add", "paseo.json"], { cwd: repoDir, stdio: "pipe" });
     execFileSync(
       "git",
       ["-c", "commit.gpgsign=false", "commit", "-m", "add colliding service config"],
@@ -1101,12 +1140,12 @@ describe("runAsyncWorktreeBootstrap", () => {
 
     await expect(
       spawnWorkspaceScript({
-        workspaceDirectory: repoDir,
+        repoRoot: repoDir,
         workspaceId: repoDir,
         projectSlug: "repo",
         branchName: "feature-collision-service",
         scriptName: "app-server",
-        daemonPort: 6868,
+        daemonPort: 6767,
         serviceProxy: routeStore,
         runtimeStore,
         terminalManager: createStubTerminalManager(createTerminalCalls),
@@ -1120,7 +1159,7 @@ describe("runAsyncWorktreeBootstrap", () => {
     ).toBeNull();
 
     writeFileSync(
-      join(repoDir, "otto.json"),
+      join(repoDir, "paseo.json"),
       JSON.stringify({
         scripts: {
           "app-server": {
@@ -1136,12 +1175,12 @@ describe("runAsyncWorktreeBootstrap", () => {
     );
 
     await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-collision-service",
       scriptName: "app-server",
-      daemonPort: 6868,
+      daemonPort: 6767,
       serviceProxy: routeStore,
       runtimeStore,
       terminalManager: createStubTerminalManager(createTerminalCalls),
@@ -1157,13 +1196,13 @@ describe("runAsyncWorktreeBootstrap", () => {
 
     expect(Array.from(plan.keys())).toEqual(["app-server", "worker"]);
     expect(createTerminalCalls).toHaveLength(1);
-    expect(createTerminalCalls[0]?.env).toHaveProperty("OTTO_SERVICE_APP_SERVER_PORT");
-    expect(createTerminalCalls[0]?.env).toHaveProperty("OTTO_SERVICE_WORKER_PORT");
+    expect(createTerminalCalls[0]?.env).toHaveProperty("PASEO_SERVICE_APP_SERVER_PORT");
+    expect(createTerminalCalls[0]?.env).toHaveProperty("PASEO_SERVICE_WORKER_PORT");
   });
 
   it("binds services to the network when the daemon listens on a non-loopback host", async () => {
     writeFileSync(
-      join(repoDir, "otto.json"),
+      join(repoDir, "paseo.json"),
       JSON.stringify({
         scripts: {
           web: {
@@ -1173,7 +1212,7 @@ describe("runAsyncWorktreeBootstrap", () => {
         },
       }),
     );
-    execFileSync("git", ["add", "otto.json"], { cwd: repoDir, stdio: "pipe" });
+    execFileSync("git", ["add", "paseo.json"], { cwd: repoDir, stdio: "pipe" });
     execFileSync(
       "git",
       ["-c", "commit.gpgsign=false", "commit", "-m", "add remote service script config"],
@@ -1188,12 +1227,12 @@ describe("runAsyncWorktreeBootstrap", () => {
     const createTerminalCalls: CreateTerminalCall[] = [];
 
     await spawnWorkspaceScript({
-      workspaceDirectory: repoDir,
+      repoRoot: repoDir,
       workspaceId: repoDir,
       projectSlug: "repo",
       branchName: "feature-remote-service",
       scriptName: "web",
-      daemonPort: 6868,
+      daemonPort: 6767,
       daemonListenHost: "100.64.0.20",
       serviceProxy: routeStore,
       runtimeStore,
@@ -1202,8 +1241,8 @@ describe("runAsyncWorktreeBootstrap", () => {
 
     expect(createTerminalCalls).toHaveLength(1);
     expect(createTerminalCalls[0]?.env?.HOST).toBe("0.0.0.0");
-    expect(createTerminalCalls[0]?.env?.OTTO_URL).toBe(
-      "http://web--feature-remote-service--repo.localhost:6868",
+    expect(createTerminalCalls[0]?.env?.PASEO_URL).toBe(
+      "http://web--feature-remote-service--repo.localhost:6767",
     );
   });
 });

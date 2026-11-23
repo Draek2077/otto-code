@@ -1,209 +1,39 @@
-import type { ReactElement } from "react";
-import { describe, expect, it } from "vitest";
-import { ICON_SIZE } from "@/styles/theme";
-import { ACP_PROVIDER_CATALOG } from "@/data/acp-provider-catalog";
-import { getProviderIcon, getProviderIconSvg, PROVIDER_BRAIN_VIEW_BOX } from "./provider-icons";
-import { MATERIAL_SYMBOL_SVGS } from "@/assets/material-symbol-icons";
-
-/**
- * The provider-sized brain, pinned to the glyph's ink.
- *
- * `PROVIDER_BRAIN_VIEW_BOX` is a measurement, not a taste call: it is the
- * bounding box of the Material brain path, cropped so the mark fills its box the
- * way the Claude and Codex marks fill theirs. If Material ever ships a redrawn
- * brain, the measurement goes stale silently and the icon starts rendering
- * clipped or off-centre - so recompute it here instead of trusting the constant.
- */
-
-const ARG_COUNT: Record<string, number> = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4, T: 2, Z: 0 };
-
-/**
- * Bounding box of an SVG path, measured off its on-curve points AND its Bezier
- * control points. A control point can sit outside the curve it steers, so this
- * is an over-estimate rather than a tight fit - which is the safe direction: a
- * viewBox derived from it never clips the ink.
- */
-function pathBounds(d: string) {
-  const tokens = d.match(/[a-zA-Z]|-?\d*\.?\d+/g) ?? [];
-  let index = 0;
-  let command = "M";
-  let x = 0;
-  let y = 0;
-  let startX = 0;
-  let startY = 0;
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-
-  const mark = (px: number, py: number) => {
-    minX = Math.min(minX, px);
-    maxX = Math.max(maxX, px);
-    minY = Math.min(minY, py);
-    maxY = Math.max(maxY, py);
-  };
-
-  while (index < tokens.length) {
-    if (/[a-zA-Z]/.test(tokens[index])) {
-      command = tokens[index];
-      index += 1;
-    }
-    const absolute = command.toUpperCase();
-    const relative = command !== absolute;
-    const arity = ARG_COUNT[absolute];
-    // Arcs would need their own sweep maths; the brain path has none, and a new
-    // command showing up is exactly the kind of redraw this test exists to catch.
-    expect(arity, `unsupported path command "${command}"`).toBeDefined();
-    const args = tokens.slice(index, index + arity).map(Number);
-    index += arity;
-
-    if (absolute === "Z") {
-      x = startX;
-      y = startY;
-    } else if (absolute === "H") {
-      x = relative ? x + args[0] : args[0];
-    } else if (absolute === "V") {
-      y = relative ? y + args[0] : args[0];
-    } else {
-      for (let k = 0; k < args.length; k += 2) {
-        const px = relative ? x + args[k] : args[k];
-        const py = relative ? y + args[k + 1] : args[k + 1];
-        mark(px, py);
-        if (k + 2 >= args.length) {
-          x = px;
-          y = py;
-        }
-      }
-    }
-    mark(x, y);
-    if (absolute === "M") {
-      startX = x;
-      startY = y;
-    }
-  }
-
-  return { minX, minY, width: maxX - minX, height: maxY - minY };
-}
-
-function viewBoxOf(svg: string): string {
-  return /viewBox="([^"]*)"/.exec(svg)?.[1] ?? "";
-}
-
-function pathDataOf(svg: string): string {
-  return [...svg.matchAll(/ d="([^"]*)"/g)].map((match) => match[1]).join(" ");
-}
-
-describe("provider-sized brain icon", () => {
-  it("crops the viewBox to the glyph's measured ink", () => {
-    const { minX, minY, width, height } = pathBounds(pathDataOf(MATERIAL_SYMBOL_SVGS.Brain));
-    expect(`${minX} ${minY} ${width} ${height}`).toBe(PROVIDER_BRAIN_VIEW_BOX);
-  });
-
-  it("leaves room to grow - the glyph does not already fill its box", () => {
-    // The whole reason this variant exists. If a redraw makes the base glyph
-    // full-bleed, the crop becomes a no-op and should be deleted, not kept.
-    expect(viewBoxOf(MATERIAL_SYMBOL_SVGS.Brain)).toBe("0 -960 960 960");
-  });
-
-  it("changes nothing but the viewBox", () => {
-    const provider = getProviderIconSvg("otto-brain");
-    expect(viewBoxOf(provider)).toBe(PROVIDER_BRAIN_VIEW_BOX);
-    expect(pathDataOf(provider)).toBe(pathDataOf(MATERIAL_SYMBOL_SVGS.Brain));
-    expect(provider.replace(viewBoxOf(provider), viewBoxOf(MATERIAL_SYMBOL_SVGS.Brain))).toBe(
-      MATERIAL_SYMBOL_SVGS.Brain,
-    );
-  });
-
-  it("does not touch the shared Brain icon", () => {
-    // Scoped on purpose: the rail, the Brain screen and the state machine all
-    // draw the base glyph and stay optically aligned with the other Material
-    // Symbols around them.
-    expect(MATERIAL_SYMBOL_SVGS.Brain).not.toContain(PROVIDER_BRAIN_VIEW_BOX);
-  });
-});
-
-// The composer's model chip hands its leading icon a STRING size token
-// (`size="md"`), and every provider mark that flows through `getProviderIcon`
-// must accept one. A token that reaches the raw `<svg width=... height=...>`
-// attributes is an invalid size the browser silently drops - the SVG then
-// renders at its default (viewport) size, which is the giant brain mark the
-// chip showed. These tests render the component as a plain function, the same
-// way `icon-size.test.tsx` does, so they pin the wrapper contract without a DOM.
-
-function invoke(icon: ReturnType<typeof getProviderIcon>, props: { size?: number | string }) {
-  return (icon as unknown as (p: { size?: number | string }) => ReactElement)(props);
-}
-
-function sizePropOf(element: ReactElement): { size?: unknown; uniProps?: unknown } {
-  return element.props as { size?: unknown; uniProps?: unknown };
-}
-
-function resolvesToPixels(element: ReactElement, expected: number) {
-  const { size, uniProps } = sizePropOf(element);
-  if (uniProps) {
-    // Token path: the mapping must exist and resolve to a number for a real theme.
-    expect(typeof uniProps).toBe("function");
-    expect(
-      (uniProps as (t: { iconSize: Record<string, number> }) => { size: number })({
-        iconSize: ICON_SIZE,
-      }),
-    ).toEqual({
-      size: expected,
-    });
-  } else {
-    // Numeric path: a number goes straight to the SVG, unscaled.
-    expect(size).toBe(expected);
-  }
-}
-
-describe("provider icon size tokens", () => {
-  it("brain mark: a token resolves to pixels, never a string width", () => {
-    resolvesToPixels(invoke(getProviderIcon("otto-brain"), { size: "md" }), ICON_SIZE.md);
-    // And a number keeps its exact pixels, so the chip's neighboring
-    // numeric-sized call sites are untouched.
-    resolvesToPixels(invoke(getProviderIcon("otto-brain"), { size: 20 }), 20);
-  });
-
-  it("every catalog mark with its own SVG resolves tokens the same way", () => {
-    for (const entry of ACP_PROVIDER_CATALOG) {
-      if (!entry.iconSvg) continue;
-      const element = invoke(getProviderIcon(entry.id), { size: "md" });
-      const { size, uniProps } = sizePropOf(element);
-      if (uniProps !== undefined) {
-        expect(
-          (uniProps as (t: { iconSize: Record<string, number> }) => { size: number })({
-            iconSize: ICON_SIZE,
-          }),
-        ).toEqual({ size: ICON_SIZE.md });
-      } else {
-        // A numeric `size` on the element means it went straight to the SVG
-        // unwrapped - the exact defect the brain mark had.
-        expect(typeof size).toBe("number");
-      }
-    }
-  });
-});
-import { Bot } from "@/components/icons/material-icons";
+// @vitest-environment jsdom
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { Bot, PackagePlus } from "lucide-react-native";
 import { SvgXml } from "react-native-svg";
-import { replaceProviderSnapshotIcons } from "./provider-icon-name";
-import type { ProviderIconComponent } from "./provider-icons";
+import { afterEach, describe, expect, it } from "vitest";
+import { replaceProviderSnapshotIcons } from "@/data/provider-icons";
+import { useProviderIcon, useProviderIcons, type ProviderIconComponent } from "./provider-icons";
+
+afterEach(cleanup);
 
 function renderIcon(Component: ProviderIconComponent) {
   if (typeof Component !== "function") throw new Error("Expected a function component");
-  const wrapped = (Component as (props: { size: number; color: string }) => ReactElement)({
+  return (Component as (props: { size: number; color: string }) => unknown)({
     size: 18,
     color: "#123456",
   });
-  const Base = wrapped.type as (props: unknown) => ReactElement;
-  return Base(wrapped.props);
 }
 
-describe("getProviderIcon", () => {
+describe("useProviderIcon", () => {
+  it.each(["devin", "hermes", "kiro", "antigravity"])(
+    "#7087: %s has a provider mark before a host snapshot arrives",
+    (provider) => {
+      const Icon = renderHook(() => useProviderIcon(provider)).result.current;
+      expect(Icon).not.toBe(Bot);
+      expect(Icon).not.toBe(PackagePlus);
+      expect(typeof Icon).toBe("function");
+    },
+  );
+
   it("renders registered snapshot SVG metadata with the requested size and color", () => {
     const svg = '<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /></svg>';
     replaceProviderSnapshotIcons("server-1", [{ provider: "rendered-provider", iconSvg: svg }]);
 
-    const rendered = renderIcon(getProviderIcon("rendered-provider", "server-1"));
+    const rendered = renderIcon(
+      renderHook(() => useProviderIcon("rendered-provider", "server-1")).result.current,
+    );
 
     expect(rendered).toMatchObject({
       type: SvgXml,
@@ -214,28 +44,53 @@ describe("getProviderIcon", () => {
   it("uses the normal Bot fallback without snapshot SVG metadata", () => {
     replaceProviderSnapshotIcons("server-1", [{ provider: "plain-provider" }]);
 
-    expect(getProviderIcon("plain-provider", "server-1")).toBe(Bot);
+    expect(renderHook(() => useProviderIcon("plain-provider", "server-1")).result.current).toBe(
+      Bot,
+    );
   });
 });
 
-it("keeps plugin icon identity per host, updates on reload, and resolves mobile size tokens", () => {
-  const first = "<svg id='one' />";
-  const second = "<svg id='two' />";
-  replaceProviderSnapshotIcons("plugin-host-a", [{ provider: "plugin-agent", iconSvg: first }]);
-  replaceProviderSnapshotIcons("plugin-host-b", [{ provider: "plugin-agent", iconSvg: second }]);
-  const icon = getProviderIcon("plugin-agent", "plugin-host-a");
-  expect(getProviderIcon("plugin-agent", "plugin-host-a")).toBe(icon);
-  expect(getProviderIcon("plugin-agent", "plugin-host-b")).not.toBe(icon);
-  const themed = invoke(icon, { size: "md" });
-  const mapping = sizePropOf(themed).uniProps as (theme: { iconSize: Record<string, number> }) => {
-    size: number;
-  };
-  expect(mapping({ iconSize: { ...ICON_SIZE, md: 32 } })).toEqual({ size: 32 });
-  expect(getProviderIconSvg("plugin-agent", "plugin-host-a")).toBe(first);
-  replaceProviderSnapshotIcons("plugin-host-a", [{ provider: "plugin-agent", iconSvg: second }]);
-  expect(getProviderIcon("plugin-agent", "plugin-host-a")).not.toBe(icon);
-  expect(getProviderIconSvg("plugin-agent", "plugin-host-a")).toBe(second);
-  replaceProviderSnapshotIcons("plugin-host-a", []);
-  expect(getProviderIcon("plugin-agent", "plugin-host-a")).toBe(Bot);
-  expect(getProviderIconSvg("plugin-agent", "plugin-host-b")).toBe(second);
+it("updates a mounted consumer when the plugin snapshot arrives after mount", () => {
+  const serverId = "cold-reload-host";
+  const provider = "plugin-provider";
+  const svg = '<svg viewBox="0 0 24 24"><path d="M4 4h16v16H4z" /></svg>';
+  replaceProviderSnapshotIcons(serverId, []);
+  const { result, unmount } = renderHook(() => useProviderIcon(provider, serverId));
+  expect(result.current).toBe(Bot);
+  act(() => replaceProviderSnapshotIcons(serverId, [{ provider, iconSvg: svg }]));
+  expect(renderIcon(result.current)).toMatchObject({
+    type: SvgXml,
+    props: { xml: svg, width: 18, height: 18, color: "#123456" },
+  });
+  unmount();
+});
+
+it("keeps host SVGs isolated, updates replacements, and clears removed icons", () => {
+  const provider = "shared-plugin-provider";
+  const firstSvg = '<svg id="first" />';
+  const secondSvg = '<svg id="second" />';
+  replaceProviderSnapshotIcons("first-host", [{ provider, iconSvg: firstSvg }]);
+  replaceProviderSnapshotIcons("second-host", [{ provider, iconSvg: secondSvg }]);
+  const first = renderHook(() => useProviderIcon(provider, "first-host"));
+  const second = renderHook(() => useProviderIcon(provider, "second-host"));
+  const firstIcon = first.result.current;
+  expect(renderIcon(firstIcon)).toMatchObject({ props: { xml: firstSvg } });
+  expect(renderIcon(second.result.current)).toMatchObject({ props: { xml: secondSvg } });
+  act(() => replaceProviderSnapshotIcons("second-host", [{ provider, iconSvg: firstSvg }]));
+  expect(renderIcon(second.result.current)).toMatchObject({ props: { xml: firstSvg } });
+  expect(first.result.current).toBe(firstIcon);
+  act(() => replaceProviderSnapshotIcons("second-host", []));
+  expect(second.result.current).toBe(Bot);
+  expect(first.result.current).toBe(firstIcon);
+});
+
+it("updates collection consumers when their host snapshot arrives", () => {
+  const serverId = "collection-host";
+  const provider = "collection-plugin-provider";
+  const svg = '<svg id="collection" />';
+  replaceProviderSnapshotIcons(serverId, []);
+  const { result } = renderHook(() => useProviderIcons(serverId));
+  expect(result.current(provider)).toBe(Bot);
+  act(() => replaceProviderSnapshotIcons(serverId, [{ provider, iconSvg: svg }]));
+  expect(renderIcon(result.current(provider))).toMatchObject({ props: { xml: svg } });
 });

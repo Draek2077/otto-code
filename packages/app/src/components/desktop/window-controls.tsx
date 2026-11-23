@@ -12,8 +12,7 @@ import {
   getDesktopWindowControlsPresentation,
   type DesktopWindowControlsPresentation,
 } from "@/desktop/window-chrome-presentation";
-import { useCustomDesktopWindowControls } from "@/utils/window-chrome";
-import { isWeb } from "@/constants/platform";
+import { useCustomDesktopWindowControls } from "@/utils/desktop-window";
 import type { Theme } from "@/styles/theme";
 
 type WindowControlKind = "minimize" | "maximize" | "restore" | "close";
@@ -139,26 +138,12 @@ export function DesktopWindowControls() {
   const minimize = useCallback(() => void minimizeDesktopWindow(), []);
   const toggleMaximize = useCallback(() => void toggleDesktopMaximize(), []);
   const close = useCallback(() => void closeDesktopWindow(), []);
-  const presentation = mode ? getDesktopWindowControlsPresentation(mode) : null;
-  const controlContainerStyle = useMemo(
-    () =>
-      presentation ? [styles.controls, { height: presentation.controlHeight }] : styles.controls,
-    [presentation],
-  );
-  const carveOutElectronDragRegion = useCallback((element: unknown) => {
-    if (!isWeb || !(element instanceof HTMLElement)) return;
-    // Electron hit-tests drag rects ahead of DOM z-order. These controls are a
-    // sibling of the titlebar drag surface, so the scoped CSS backstop cannot
-    // reach them. React Native Web drops WebkitAppRegion from View styles, but
-    // its ref exposes the actual DOM element.
-    element.style.setProperty("-webkit-app-region", "no-drag");
-  }, []);
-  if (!visible || !presentation) return null;
+  if (!visible || !mode) return null;
+  const presentation = getDesktopWindowControlsPresentation(mode);
 
   return (
     <View
-      ref={carveOutElectronDragRegion}
-      style={controlContainerStyle}
+      style={[styles.controls, { height: presentation.controlHeight }]}
       testID="desktop-window-controls"
     >
       <WindowControl

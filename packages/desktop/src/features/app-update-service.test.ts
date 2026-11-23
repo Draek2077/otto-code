@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   createAppUpdateService,
@@ -6,7 +6,6 @@ import {
   type AppUpdateRuntime,
   type AppUpdateRuntimeConfiguration,
   type RuntimeUpdateInfo,
-  type RuntimeUpdateCheckResult,
 } from "./app-update-service";
 
 class FakeAppUpdateRuntime implements AppUpdateRuntime {
@@ -144,13 +143,7 @@ class FakeAppUpdateRuntime implements AppUpdateRuntime {
     }
   }
 
-  async quitAndInstall({
-    targetVersion,
-    isSilent,
-    isForceRunAfter,
-    onBeforeQuit,
-  }: AppUpdateInstallRequest): Promise<void> {
-    await onBeforeQuit?.();
+  quitAndInstall({ targetVersion, isSilent, isForceRunAfter }: AppUpdateInstallRequest): void {
     if (this.downloadedUpdate) {
       this.installedVersions.push(this.downloadedUpdate.version);
       this.installModes.push({ targetVersion, isSilent, isForceRunAfter });
@@ -216,73 +209,6 @@ describe("app update service", () => {
       date: "2026-04-28T00:00:00.000Z",
       errorMessage: null,
     });
-  });
-
-  // The client polls every 10s while an update is pending, and those polls are
-  // automatic - so a user who manually checked during a staged rollout used to
-  // watch the offer vanish seconds later, mid-download.
-  it("keeps a manually surfaced update when an automatic recheck is deferred by the rollout", async () => {
-    const { runtime, service } = createService();
-    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
-    const manual = await service.checkForAppUpdate({
-      currentVersion: "1.2.3",
-      releaseChannel: "stable",
-      intent: "manual",
-    });
-    expect(manual.hasUpdate).toBe(true);
-
-    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
-    const automatic = await service.checkForAppUpdate({
-      currentVersion: "1.2.3",
-      releaseChannel: "stable",
-      intent: "automatic",
-    });
-
-    expect(automatic.hasUpdate).toBe(true);
-    expect(automatic.latestVersion).toBe("1.2.4");
-  });
-
-  it("still installs an update that an automatic recheck deferred mid-download", async () => {
-    const { runtime, service } = createService();
-    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
-    const download = runtime.beginUpdateDownload(rolledOutUpdate);
-
-    const install = service.downloadAndInstallUpdate({
-      currentVersion: "1.2.3",
-      releaseChannel: "stable",
-    });
-
-    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
-    await service.checkForAppUpdate({
-      currentVersion: "1.2.3",
-      releaseChannel: "stable",
-      intent: "automatic",
-    });
-    download.resolve();
-
-    await expect(install).resolves.toMatchObject({ installed: true, version: "1.2.4" });
-    expect(runtime.installedVersions).toEqual(["1.2.4"]);
-  });
-
-  it("still clears a cached update once the app is genuinely up to date", async () => {
-    const { runtime, service } = createService();
-    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
-    await service.checkForAppUpdate({
-      currentVersion: "1.2.3",
-      releaseChannel: "stable",
-      intent: "manual",
-    });
-
-    // No manifest at all: the rollout never weighs in, so this is real absence.
-    runtime.nextCheck(null);
-    const result = await service.checkForAppUpdate({
-      currentVersion: "1.2.3",
-      releaseChannel: "stable",
-      intent: "automatic",
-    });
-
-    expect(result.hasUpdate).toBe(false);
-    expect(result.latestVersion).toBe("1.2.3");
   });
 
   it("keeps a manually admitted update after a rollout-gated automatic recheck", async () => {
@@ -570,43 +496,10 @@ describe("app update service", () => {
 
     expect(result.installed).toBe(true);
     expect(runtime.installedVersions).toEqual(["1.2.5"]);
-    // Silent even when restarting: the assisted NSIS installer only honors
-    // --force-run on a silent install, so a wizard here would strand the user
-    // on the finish page with the app already quit.
     expect(runtime.installModes).toEqual([
-      { targetVersion: "1.2.5", isSilent: true, isForceRunAfter: true },
+      { targetVersion: "1.2.5", isSilent: false, isForceRunAfter: true },
     ]);
   });
-
-  it.each([false, true])(
-    "returns installer failures whether already downloaded or not (downloaded=%s)",
-    async (alreadyDownloaded) => {
-      const { runtime, service } = createService({ bucket: async () => 0 });
-      runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
-      await service.checkForAppUpdate({
-        currentVersion: "1.2.3",
-        releaseChannel: "stable",
-        intent: "manual",
-      });
-      if (alreadyDownloaded) runtime.finishUpdateDownload(rolledOutUpdate);
-      runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
-      vi.spyOn(runtime, "quitAndInstall").mockImplementationOnce(() => {
-        throw new Error("Authorization was cancelled");
-      });
-
-      const result = await service.downloadAndInstallUpdate({
-        currentVersion: "1.2.3",
-        releaseChannel: "stable",
-      });
-
-      expect(result).toMatchObject({
-        installed: false,
-        outcome: "failed",
-        message: "Update failed: Authorization was cancelled",
-      });
-      expect(runtime.installedVersions).toEqual([]);
-    },
-  );
 
   it("waits for a stale active download before downloading and installing the rechecked version", async () => {
     const { runtime, service } = createService({ bucket: async () => 0 });
@@ -946,32 +839,6 @@ describe("app update service", () => {
       body: null,
       date: "2026-04-28T00:00:00.000Z",
       errorMessage: null,
-    });
-  });
-
-  it("keeps a downloaded update ready when a recheck reports it unavailable", async () => {
-    const { runtime, service } = createService();
-    runtime.nextCheck({ isUpdateAvailable: true, updateInfo: rolledOutUpdate });
-    await service.checkForAppUpdate({
-      currentVersion: "1.2.3",
-      releaseChannel: "stable",
-      intent: "manual",
-    });
-    runtime.finishUpdateDownload(rolledOutUpdate);
-
-    // electron-updater can report its now-downloaded release as unavailable on
-    // the next check. It is still an update for the running app.
-    runtime.nextCheck({ isUpdateAvailable: false, updateInfo: rolledOutUpdate });
-    const result = await service.checkForAppUpdate({
-      currentVersion: "1.2.3",
-      releaseChannel: "stable",
-      intent: "automatic",
-    });
-
-    expect(result).toMatchObject({
-      hasUpdate: true,
-      readyToInstall: true,
-      latestVersion: "1.2.4",
     });
   });
 });

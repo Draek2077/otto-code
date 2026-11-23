@@ -6,28 +6,22 @@ import {
   type BrowserAutomationCommandName,
   type BrowserAutomationExecuteRequest,
   type BrowserAutomationExecuteResponse,
-} from "@otto-code/protocol/browser-automation/rpc-schemas";
+} from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import { browserToolsFailure, type BrowserToolsResponsePayload } from "./errors.js";
-import { ChatBrowserTabLimit } from "./tab-limit.js";
 
 export interface BrowserHostClient {
+  defaultTimeoutMs?: number; // OTTO(browser-host): daemon-owned runtime startup can outlast a native tab request.
   id: string;
   hostKind: string;
   supportedCommands: readonly BrowserAutomationCommandName[];
-  /** The app shows tabs that live on the daemon host. Absent on older apps. */
-  showsHostedTabs?: boolean;
-  /** False while the host cannot serve tabs, such as a daemon with no browser installed. */
-  isAvailable?: () => Promise<boolean>;
-  /** A host that may cold-start a browser declares a longer default timeout. */
-  requestTimeoutMs?: number;
   sendBrowserAutomationRequest(request: BrowserAutomationExecuteRequest): void | Promise<void>;
 }
 
 export interface BrowserToolsExecuteInput {
+  ottoBrowserHostId?: string; // OTTO(browser-host): daemon-owned create destination, never a wire field.
+  ottoPreviewServerId?: string; // OTTO(preview): daemon-owned create authority, never accepted on the wire.
   command: BrowserAutomationCommand;
   agentId?: string;
-  /** Location for a new tab, or a host filter for list_tabs. Existing IDs retain affinity. */
-  tabHost?: "app" | "host";
   cwd?: string;
   workspaceId?: string;
   requestId?: string;
@@ -47,11 +41,13 @@ interface RegisteredBrowserHost {
   supportedCommands: ReadonlySet<BrowserAutomationCommandName>;
 }
 
-type BrowserHostSelection =
-  | { ok: true; value: RegisteredBrowserHost }
-  | { ok: false; payload: BrowserToolsResponsePayload };
-
 export interface BrowserToolsBrokerOptions {
+  ottoNewTabHostId?: () => string | undefined; // OTTO(browser-host): daemon composition selects hosted creates; existing IDs keep host affinity.
+  // OTTO(browser-admission): policy wraps the same broker; direct execution retains affinity and host ownership.
+  ottoAdmission?: (
+    input: BrowserToolsExecuteInput,
+    next: (input: BrowserToolsExecuteInput) => Promise<BrowserToolsResponsePayload>,
+  ) => Promise<BrowserToolsResponsePayload>;
   defaultTimeoutMs?: number;
   createRequestId?: () => string;
 }
@@ -59,7 +55,6 @@ export interface BrowserToolsBrokerOptions {
 const DEFAULT_BROWSER_TOOLS_TIMEOUT_MS = 15_000;
 
 export class BrowserToolsBroker {
-  private readonly chatTabLimit = new ChatBrowserTabLimit();
   private readonly defaultTimeoutMs: number;
   private readonly createRequestId: () => string;
   private readonly clients = new Map<string, RegisteredBrowserHost>();
@@ -67,12 +62,12 @@ export class BrowserToolsBroker {
   private readonly browserHostByBrowserId = new Map<string, string>();
   private readonly strandedBrowserHostByBrowserId = new Map<string, string>();
   private registrationSequence = 0;
-  private readonly preferredTabHostByAgent = new Map<
-    string,
-    { host: "app" | "host"; clientId?: string }
-  >();
+  private readonly ottoAdmission: BrowserToolsBrokerOptions["ottoAdmission"]; // OTTO(browser-admission)
+  private readonly ottoNewTabHostId: BrowserToolsBrokerOptions["ottoNewTabHostId"]; // OTTO(browser-host)
 
   public constructor(options: BrowserToolsBrokerOptions) {
+    this.ottoAdmission = options.ottoAdmission; // OTTO(browser-admission)
+    this.ottoNewTabHostId = options.ottoNewTabHostId; // OTTO(browser-host)
     this.defaultTimeoutMs = options.defaultTimeoutMs ?? DEFAULT_BROWSER_TOOLS_TIMEOUT_MS;
     this.createRequestId = options.createRequestId ?? (() => `browser_${randomUUID()}`);
   }
@@ -128,16 +123,16 @@ export class BrowserToolsBroker {
     return this.clients.size;
   }
 
-  /** The latest human prompt determines the default for that agent's next tabs. */
-  public setAgentTabHost(agentId: string, host: "app" | "host", clientId?: string): void {
-    this.preferredTabHostByAgent.delete(agentId);
-    this.preferredTabHostByAgent.set(agentId, { host, clientId });
-    if (this.preferredTabHostByAgent.size > 1_000) {
-      this.preferredTabHostByAgent.delete(this.preferredTabHostByAgent.keys().next().value!);
-    }
+  public async execute(input: BrowserToolsExecuteInput): Promise<BrowserToolsResponsePayload> {
+    // OTTO(browser-admission): Preview and ordinary creates share one admission queue, not separate tab stacks.
+    const request = { ...input, requestId: input.requestId ?? this.createRequestId() };
+    const next = (value: BrowserToolsExecuteInput) => this.executeDirect(value);
+    return this.ottoAdmission ? this.ottoAdmission(request, next) : next(request);
   }
 
-  public async execute(input: BrowserToolsExecuteInput): Promise<BrowserToolsResponsePayload> {
+  private async executeDirect(
+    input: BrowserToolsExecuteInput,
+  ): Promise<BrowserToolsResponsePayload> {
     const requestId = input.requestId ?? this.createRequestId();
 
     const request = BrowserAutomationExecuteRequestSchema.safeParse({
@@ -160,23 +155,15 @@ export class BrowserToolsBroker {
     if (request.data.command.command === "list_tabs") {
       return this.executeListTabs({
         request: request.data,
-        timeoutMs: input.timeoutMs,
-        tabHost: input.tabHost,
+        timeoutMs: input.timeoutMs ?? this.defaultTimeoutMs,
       });
     }
 
-    // Location is a creation-time choice. All later commands use the browserId
-    // affinity recorded from new_tab or list_tabs, even after another prompt
-    // changes this agent's default.
-    const selection =
-      request.data.command.command === "new_tab"
-        ? this.selectHostForNewTab(
-            requestId,
-            input.tabHost ?? this.preferredTabHostByAgent.get(input.agentId ?? "")?.host,
-            input.agentId,
-          )
-        : this.selectHostForCommand(request.data.command, requestId);
-    const host = selection;
+    const host = this.selectHostForCommand(
+      request.data.command,
+      requestId,
+      input.ottoBrowserHostId,
+    ); // OTTO(browser-host)
     if (!host.ok) {
       return host.payload;
     }
@@ -190,41 +177,17 @@ export class BrowserToolsBroker {
       return unsupported;
     }
 
-    if (
-      request.data.command.command === "new_tab" &&
-      request.data.agentId &&
-      request.data.workspaceId
-    ) {
-      return this.chatTabLimit.create({
-        agentId: request.data.agentId,
-        workspaceId: request.data.workspaceId,
-        requestId,
-        isPreview: Boolean(request.data.command.args.preview),
-        list: () =>
-          this.executeListTabs({
-            request: {
-              ...request.data,
-              requestId: `${requestId}:tab-limit`,
-              command: { command: "list_tabs", args: {} },
-            },
-            timeoutMs: input.timeoutMs,
-          }),
-        open: () =>
-          this.sendRequest({
-            host: host.value,
-            request: request.data,
-            timeoutMs: this.timeoutFor(host.value, input.timeoutMs),
-          }),
-      });
-    }
     return this.sendRequest({
       host: host.value,
       request: request.data,
-      timeoutMs: this.timeoutFor(host.value, input.timeoutMs),
+      timeoutMs: input.timeoutMs ?? host.value.client.defaultTimeoutMs ?? this.defaultTimeoutMs, // OTTO(browser-host)
     });
   }
 
-  public receiveResponse(response: BrowserAutomationExecuteResponse): boolean {
+  public receiveResponse(
+    response: BrowserAutomationExecuteResponse,
+    clientIds?: readonly string[],
+  ): boolean {
     const parsed = BrowserAutomationExecuteResponseSchema.safeParse(response);
     if (!parsed.success) {
       const requestId = getBrowserAutomationResponseRequestId(response);
@@ -233,7 +196,7 @@ export class BrowserToolsBroker {
       }
 
       const pending = this.pending.get(requestId);
-      if (!pending) {
+      if (!pending || (clientIds && !clientIds.includes(pending.clientId))) {
         return false;
       }
 
@@ -250,7 +213,7 @@ export class BrowserToolsBroker {
     }
 
     const pending = this.pending.get(parsed.data.payload.requestId);
-    if (!pending) {
+    if (!pending || (clientIds && !clientIds.includes(pending.clientId))) {
       return false;
     }
 
@@ -265,28 +228,9 @@ export class BrowserToolsBroker {
 
   private async executeListTabs(params: {
     request: BrowserAutomationExecuteRequest;
-    timeoutMs: number | undefined;
-    tabHost?: "app" | "host";
+    timeoutMs: number;
   }): Promise<BrowserToolsResponsePayload> {
-    const payload = await this.executeListTabsFromHosts(params);
-    return payload.ok && payload.result.command === "list_tabs"
-      ? {
-          ...payload,
-          result: { ...payload.result, tabs: this.chatTabLimit.annotate(payload.result.tabs) },
-        }
-      : payload;
-  }
-
-  private async executeListTabsFromHosts(params: {
-    request: BrowserAutomationExecuteRequest;
-    timeoutMs: number | undefined;
-    tabHost?: "app" | "host";
-  }): Promise<BrowserToolsResponsePayload> {
-    const hosts = Array.from(this.clients.values()).filter(
-      (entry) =>
-        !params.tabHost ||
-        (entry.client.hostKind === "daemon-hosted") === (params.tabHost === "host"),
-    );
+    const hosts = Array.from(this.clients.values());
     if (hosts.length === 0) {
       return this.noBrowserHostFailure(params.request.requestId);
     }
@@ -306,7 +250,7 @@ export class BrowserToolsBroker {
       return this.sendRequest({
         host: hosts[0],
         request: params.request,
-        timeoutMs: this.timeoutFor(hosts[0], params.timeoutMs),
+        timeoutMs: params.timeoutMs,
       });
     }
 
@@ -320,7 +264,7 @@ export class BrowserToolsBroker {
             requestId: `${params.request.requestId}:${host.client.id}`,
           },
           rememberAffinity: false,
-          timeoutMs: this.timeoutFor(host, params.timeoutMs),
+          timeoutMs: params.timeoutMs,
         }),
       })),
     );
@@ -346,51 +290,23 @@ export class BrowserToolsBroker {
     };
   }
 
-  /** Select the requesting client's browser unless the request asks for the host. */
-  private selectHostForNewTab(
-    requestId: string,
-    requestedHost?: "app" | "host",
-    agentId?: string,
-  ): BrowserHostSelection {
-    const hosts = [...this.clients.values()].toReversed();
-    const daemon = hosts.find((entry) => entry.client.hostKind === "daemon-hosted");
-    const apps = hosts.filter((entry) => entry.client.hostKind !== "daemon-hosted");
-    const preferredClientId = agentId
-      ? this.preferredTabHostByAgent.get(agentId)?.clientId
-      : undefined;
-    // Keep a desktop prompt on the exact connected app that sent it when
-    // multiple app browser hosts share this daemon.
-    const app = apps.find((entry) => entry.client.id === preferredClientId) ?? apps[0];
-    if (requestedHost !== "host" && app) return { ok: true, value: app };
-    if (requestedHost === "app")
-      return {
-        ok: false,
-        payload: browserToolsFailure({
-          requestId,
-          code: "browser_no_host",
-          message:
-            "No desktop app browser is connected. Use host: 'host' or connect the desktop app.",
-          retryable: true,
-        }),
-      };
-    // Let the daemon explain a missing browser installation to the agent.
-    return daemon
-      ? { ok: true, value: daemon }
-      : {
-          ok: false,
-          payload: browserToolsFailure({
-            requestId,
-            code: "browser_no_host",
-            message: "The host browser is unavailable. Use host: 'app' or enable the host browser.",
-            retryable: true,
-          }),
-        };
-  }
-
   private selectHostForCommand(
     command: BrowserAutomationCommand,
     requestId: string,
-  ): BrowserHostSelection {
+    createHostId?: string, // OTTO(browser-host)
+  ):
+    | { ok: true; value: RegisteredBrowserHost }
+    | { ok: false; payload: BrowserToolsResponsePayload } {
+    if (command.command === "new_tab") {
+      const preferred = createHostId ?? this.ottoNewTabHostId?.(); // OTTO(browser-host): keep explicit/default creation stable when a desktop reconnects.
+      const host = preferred
+        ? this.clients.get(preferred)
+        : this.selectMostRecentlyRegisteredHost();
+      return host
+        ? { ok: true, value: host }
+        : { ok: false, payload: this.noBrowserHostFailure(requestId) };
+    }
+
     const browserId = getBrowserIdForCommand(command);
     if (!browserId) {
       const host = this.selectMostRecentlyRegisteredHost();
@@ -444,10 +360,6 @@ export class BrowserToolsBroker {
         message: `Browser tab ${browserId} is not associated with a connected browser automation host. Call browser_list_tabs and use one of the returned browserId values.`,
       }),
     };
-  }
-
-  private timeoutFor(host: RegisteredBrowserHost, requested: number | undefined): number {
-    return requested ?? host.client.requestTimeoutMs ?? this.defaultTimeoutMs;
   }
 
   private selectMostRecentlyRegisteredHost(): RegisteredBrowserHost | null {

@@ -1,7 +1,9 @@
+import { pairCommand } from "./commands/daemon/pair.js";
 import { Command, Option } from "commander";
 import { createAgentCommand } from "./commands/agent/index.js";
 import { createDaemonCommand } from "./commands/daemon/index.js";
 import { createPermitCommand } from "./commands/permit/index.js";
+import { createUsageCommand } from "./commands/usage/index.js";
 import { createProviderCommand } from "./commands/provider/index.js";
 import { createPluginCommand } from "./commands/plugin/index.js";
 import { createProjectCommand } from "./commands/project/index.js";
@@ -11,18 +13,13 @@ import { createScriptCommand } from "./commands/script/index.js";
 import { createTerminalCommand } from "./commands/terminal/index.js";
 import { createWorktreeCommand } from "./commands/worktree/index.js";
 import { createWorkspaceCommand } from "./commands/workspace/index.js";
-import { createWorkflowCommand } from "./commands/workflow/index.js";
 import { createHeartbeatCommand } from "./commands/heartbeat/index.js";
-import { createArtifactCommand } from "./commands/artifact/index.js";
-import { createArchitecturalViewCommand } from "./commands/architectural-view/index.js";
-// DISABLED(hub): specifier redirected away from "./commands/hub/index.js".
-import { createHubCommand } from "./commands/hub-disabled.js";
+import { createHubCommand } from "./commands/hub/index.js";
 import { createHooksCommand } from "./commands/hooks.js";
-import { createBrainCommand } from "@otto-code/brain";
 import { startCommand as daemonStartCommand } from "./commands/daemon/start.js";
-import { runStatusCommand as runDaemonStatusCommand } from "./commands/daemon/status.js";
-import { runRestartCommand as runDaemonRestartCommand } from "./commands/daemon/restart.js";
-import { runDaemonReloadCommand } from "./commands/daemon/reload.js";
+import { daemonStatusCommand } from "./commands/daemon/status.js";
+import { daemonRestartCommand } from "./commands/daemon/restart.js";
+import { daemonReloadCommand } from "./commands/daemon/reload.js";
 import { addLsOptions, runLsCommand } from "./commands/agent/ls.js";
 import { addRunOptions, runRunCommand } from "./commands/agent/run.js";
 import { addLogsOptions, runLogsCommand } from "./commands/agent/logs.js";
@@ -40,25 +37,24 @@ import { onboardCommand } from "./commands/onboard.js";
 import {
   addDaemonHostOption,
   addJsonAndDaemonHostOptions,
-  addJsonOption,
   withGlobalOptions,
 } from "./utils/command-options.js";
 import { resolveCliVersion } from "./version.js";
+import { OTTO_CLI_COMMAND, OTTO_PRODUCT_NAME } from "@getpaseo/protocol/otto/identity";
+// OTTO(brain-cli): effects stay behind the selected daemon's existing plugin RPC channel.
+import { createOttoBrainCommand } from "./otto/brain/commands.js";
+import { createArtifactsCommand } from "./otto/artifacts/commands.js"; // OTTO(artifacts): explicit selected-daemon commands.
+import { createArchitecturalViewsCommand } from "./otto/architectural-views/commands.js"; // OTTO(architectural-views): same canonical host and renderer as UI/tools.
+import { createWorkflowCommand } from "./otto/workflows/commands.js"; // OTTO(workflows): same scoped daemon owner as app/MCP.
 
 const VERSION = resolveCliVersion();
-
-function resolveHostnamesOption(hostnames: unknown, allowedHosts: unknown): string | undefined {
-  if (typeof hostnames === "string") return hostnames;
-  if (typeof allowedHosts === "string") return allowedHosts;
-  return undefined;
-}
 
 export function createCli(): Command {
   const program = new Command();
 
   program
-    .name("otto")
-    .description("Otto CLI - control your AI coding agents from the command line")
+    .name(OTTO_CLI_COMMAND) // OTTO(identity)
+    .description(`${OTTO_PRODUCT_NAME} CLI - control your AI coding agents from the command line`)
     .version(VERSION, "-v, --version", "output the version number")
     // Global output options
     .option("-o, --format <format>", "output format: table, json, yaml", "table")
@@ -82,7 +78,8 @@ export function createCli(): Command {
   addJsonAndDaemonHostOptions(
     program
       .command("clone")
-      .description("Clone a GitHub repo and register it as a Otto workspace")
+      // OTTO(identity)
+      .description("Clone a GitHub repo and register it as an Otto workspace")
       .argument("<repo>", "GitHub repo in owner/repo format or a full git remote URL")
       .requiredOption("--dir <path>", "Parent directory to clone into (for example: ~/workspace)"),
   )
@@ -130,51 +127,10 @@ export function createCli(): Command {
   program.addCommand(daemonStartCommand());
   program.addCommand(createHooksCommand());
 
-  addJsonOption(
-    program
-      .command("status")
-      .description('Show local daemon status (alias for "otto daemon status")'),
-  )
-    .option("--home <path>", "Otto home directory (default: ~/.otto)")
-    .action(withOutput(runDaemonStatusCommand));
-
-  addJsonAndDaemonHostOptions(
-    program.command("reload").description('Reload daemon config (alias for "otto daemon reload")'),
-  ).action(withOutput(runDaemonReloadCommand));
-
-  addJsonOption(
-    program
-      .command("restart")
-      .description('Restart local daemon (alias for "otto daemon restart")'),
-  )
-    .option("--home <path>", "Otto home directory (default: ~/.otto)")
-    .option("--timeout <seconds>", "Wait timeout before force step (default: 15)")
-    .option("--force", "Send SIGKILL if graceful stop times out")
-    .option(
-      "--listen <listen>",
-      "Listen target for restarted daemon (host:port, port, or unix socket)",
-    )
-    .option("--port <port>", "Port for restarted daemon listen target")
-    .option("--relay", "Enable relay on restarted daemon")
-    .option("--no-relay", "Disable relay on restarted daemon")
-    .option("--no-mcp", "Disable Agent MCP on restarted daemon")
-    .option(
-      "--hostnames <hosts>",
-      'Daemon hostnames (comma-separated, e.g. "myhost,.example.com" or "true" for any)',
-    )
-    .addOption(new Option("--allowed-hosts <hosts>").hideHelp())
-    .action(
-      withOutput((...args) => {
-        const [options, command] = args.slice(-2) as [(typeof args)[number], Command];
-        return runDaemonRestartCommand(
-          {
-            ...options,
-            hostnames: resolveHostnamesOption(options.hostnames, options.allowedHosts),
-          },
-          command,
-        );
-      }),
-    );
+  program.addCommand(daemonStatusCommand());
+  program.addCommand(daemonRestartCommand());
+  program.addCommand(daemonReloadCommand());
+  program.addCommand(pairCommand());
 
   // Advanced agent commands (less common operations)
   program.addCommand(createAgentCommand());
@@ -194,15 +150,19 @@ export function createCli(): Command {
   // Schedule commands
   program.addCommand(createScheduleCommand());
   program.addCommand(createHeartbeatCommand());
-  program.addCommand(createArtifactCommand());
-  program.addCommand(createArchitecturalViewCommand());
 
   // Permission commands
   program.addCommand(createPermitCommand());
 
   // Provider commands
   program.addCommand(createProviderCommand());
+  program.addCommand(createUsageCommand());
   program.addCommand(createPluginCommand());
+  // OTTO(brain-cli)
+  program.addCommand(createOttoBrainCommand());
+  program.addCommand(createArtifactsCommand()); // OTTO(artifacts)
+  program.addCommand(createArchitecturalViewsCommand()); // OTTO(architectural-views)
+  program.addCommand(createWorkflowCommand()); // OTTO(workflows)
 
   // Speech model commands
   program.addCommand(createSpeechCommand());
@@ -210,15 +170,41 @@ export function createCli(): Command {
   // Workspace commands
   program.addCommand(createProjectCommand());
   program.addCommand(createWorkspaceCommand());
-
-  // Workflow commands
-  program.addCommand(createWorkflowCommand());
   // COMPAT(worktreeCli): legacy command alias added before workspace was the product unit.
   // Added in v0.2.0; remove after 2027-01-17.
   program.addCommand(createWorktreeCommand(), { hidden: true });
 
-  // Local AI (otto-brain)
-  program.addCommand(createBrainCommand());
+  // Stop root parsing at the command so `plugin update --version` belongs to update.
+  // Keep global options available after a command, as they were before positional parsing.
+  program.enablePositionalOptions();
+  for (const command of program.commands) {
+    for (const option of program.options) {
+      if (option.long === "--version") continue;
+      if (!command.options.some((local) => local.long === option.long)) command.addOption(option);
+      if (option.long === "--home" || option.long === "--host") continue;
+      command.on(`option:${option.name()}`, () => {
+        const key = option.attributeName();
+        program.setOptionValueWithSource(key, command.opts()[key], "cli");
+      });
+    }
+    if (command.name() !== "plugin")
+      command.version(VERSION, "-v, --version", "output the version number");
+  }
 
+  const enforceSelectorDuplicates = (command: Command) => {
+    for (const option of command.options) {
+      if (option.long !== "--home" && option.long !== "--host") continue;
+      option.argParser((value: string, previous: string | undefined) => {
+        if (previous !== undefined && previous !== value)
+          throw {
+            code: "TARGET_AMBIGUOUS",
+            message: `Conflicting duplicate ${option.long} selectors.`,
+          };
+        return value;
+      });
+    }
+    command.commands.forEach(enforceSelectorDuplicates);
+  };
+  enforceSelectorDuplicates(program);
   return program;
 }

@@ -2,7 +2,6 @@ import { useMemo } from "react";
 import { type StyleProp, Text, type TextStyle, View } from "react-native";
 import { ProjectIconImage } from "@/components/project-icon-image";
 import { deriveIdentityColorName, identityColor } from "@/styles/identity-colors";
-import { withIconSizeToken } from "@/components/icons/icon-size";
 
 const WHITE_TEXT = { color: "#ffffff" } as const;
 const FALLBACK_LAYOUT = { alignItems: "center", justifyContent: "center" } as const;
@@ -31,7 +30,7 @@ export function projectIconRadius(size: number): number {
  * place — pass a `size` and the shape follows.
  */
 
-function ProjectIconViewBase({
+export function ProjectIconView({
   iconDataUri,
   initial,
   projectViewKey,
@@ -72,5 +71,3 @@ function ProjectIconViewBase({
     fallback
   );
 }
-
-export const ProjectIconView = withIconSizeToken(ProjectIconViewBase, "ProjectIconView");

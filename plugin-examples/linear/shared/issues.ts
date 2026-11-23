@@ -1,4 +1,4 @@
-import { defineAttachmentSource, defineRpc } from "@otto-code/plugin";
+import { defineAttachmentSource, defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 
 const SearchPayloadSchema = z.object({

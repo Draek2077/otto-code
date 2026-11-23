@@ -5,6 +5,8 @@ nav: Claude Desktop
 order: 55
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Otto vs Claude Desktop
 
 Claude Desktop is Anthropic's desktop app for Claude. It includes Chat, Cowork, and Claude Code in one app. Claude Code runs in the desktop app on macOS and Windows.

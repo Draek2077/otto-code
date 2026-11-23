@@ -1,6 +1,6 @@
 import { mkdir, rmdir, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep, win32 } from "node:path";
-import type { ProjectCreateDirectoryErrorCode } from "@otto-code/protocol/messages";
+import type { ProjectCreateDirectoryErrorCode } from "@getpaseo/protocol/messages";
 import { expandTilde } from "../utils/path.js";
 import type { PersistedProjectRecord } from "./workspace-registry.js";
 

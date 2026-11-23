@@ -1,45 +1,39 @@
 import type { ComponentType } from "react";
 import {
   Bot,
+  Brain,
   ListTodo,
-  LocalPolice,
-  PrivacyTip,
-  Psychology,
   Settings2,
+  Shield,
   ShieldAlert,
   ShieldCheck,
+  ShieldEllipsis,
   ShieldOff,
-  ShieldPerson,
+  ShieldPlus,
   ShieldQuestionMark,
-  ShieldToggle,
   Zap,
-} from "@/components/icons/material-icons";
-import {
-  getModeVisuals,
-  type AgentProviderDefinition,
-} from "@otto-code/protocol/provider-manifest";
-import type { IconSizeProp } from "@/components/icons/icon-size";
+} from "lucide-react-native";
+import { getModeVisuals, type AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
 
 export interface AgentControlIconProps {
-  size?: IconSizeProp;
-  color?: string;
+  size: number;
+  color: string;
 }
 
 export type AgentControlIcon = ComponentType<AgentControlIconProps>;
 
-export const ThinkingIcon = Psychology;
+export const ThinkingIcon = Brain;
 export const PlanModeIcon = ListTodo;
 
 const MODE_ICONS: Record<string, AgentControlIcon> = {
   Bot,
-  LocalPolice,
-  PrivacyTip,
+  Shield,
   ShieldAlert,
   ShieldCheck,
+  ShieldEllipsis,
   ShieldOff,
-  ShieldPerson,
+  ShieldPlus,
   ShieldQuestionMark,
-  ShieldToggle,
 };
 
 const FEATURE_ICONS: Record<string, AgentControlIcon> = {
@@ -54,16 +48,16 @@ export function getAgentModeIcon(
   providerDefinitions: AgentProviderDefinition[],
 ): AgentControlIcon {
   const icon = getModeVisuals(provider, modeId, providerDefinitions)?.icon;
-  return (icon ? MODE_ICONS[icon] : undefined) ?? ShieldQuestionMark;
+  return (icon ? MODE_ICONS[icon] : undefined) ?? Bot;
 }
 
 export function getAgentModeOptionIcon(
   provider: string,
   modeId: string,
   providerDefinitions: AgentProviderDefinition[],
-): AgentControlIcon {
+): AgentControlIcon | undefined {
   const icon = getModeVisuals(provider, modeId, providerDefinitions)?.icon;
-  return (icon ? MODE_ICONS[icon] : undefined) ?? ShieldQuestionMark;
+  return icon ? MODE_ICONS[icon] : undefined;
 }
 
 export function getAgentFeatureIcon(icon?: string): AgentControlIcon {

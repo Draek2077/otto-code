@@ -1,11 +1,10 @@
-import type { SessionInboundMessage, SessionOutboundMessage } from "@otto-code/protocol/messages";
+import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@getpaseo/protocol/browser-automation/rpc-schemas";
+import type { SessionInboundMessage, SessionOutboundMessage } from "@getpaseo/protocol/messages";
 import { getDesktopHost, type DesktopHostBridge } from "@/desktop/host";
 import {
   ensureResidentBrowserWebview as ensureResidentBrowserWebviewDefault,
-  readResidentBrowserPresentation,
   removeResidentBrowserWebview,
   resizeResidentBrowserWebview,
-  withResidentBrowserAwake,
 } from "@/desktop/browser/resident-webviews";
 import {
   createFixedBrowserViewport,
@@ -13,20 +12,8 @@ import {
   getBrowserRecord,
   useBrowserStore,
 } from "@/desktop/browser/store";
-import {
-  collectAllPanes,
-  collectAllTabs,
-  findExistingSidePaneId,
-  useWorkspaceLayoutStore,
-} from "@/stores/workspace-layout-store";
-import { usePreviewRunningServersStore } from "@/stores/preview-running-servers-store";
+import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
-import { findSplitRightTarget } from "@/workspace-tabs/split-right-target";
-import {
-  isBrowserAutomationEditorFocused,
-  mountBrowserAutomationFocusGuard,
-  withBrowserAutomationFocus,
-} from "./focus-guard";
 
 type BrowserAutomationExecuteRequest = Extract<
   SessionOutboundMessage,
@@ -61,12 +48,6 @@ export function mountBrowserAutomationHandler(
   options: BrowserAutomationHandlerOptions,
 ): () => void {
   const getHost = options.getHost ?? getDesktopHost;
-  const subscribeToDesktopEvent = getHost()?.events?.on;
-  const releaseFocusGuard = mountBrowserAutomationFocusGuard(
-    subscribeToDesktopEvent
-      ? (handler) => Promise.resolve(subscribeToDesktopEvent("browser-user-activation", handler))
-      : undefined,
-  );
   const unsubscribe = options.client.on("browser.automation.execute.request", (request) => {
     void handleBrowserAutomationRequest({
       client: options.client,
@@ -85,18 +66,37 @@ export function mountBrowserAutomationHandler(
   });
   return () => {
     unsubscribe();
-    releaseFocusGuard();
   };
 }
 
 export function mountBrowserAutomationDaemonClientHandler(
-  client: unknown,
+  client: import("@getpaseo/client/internal/daemon-client").DaemonClient,
   options?: { serverId?: string },
 ): () => void {
-  return mountBrowserAutomationHandler({
-    client: client as BrowserAutomationClient,
+  const observation = client.registerBrowserHost({
+    hostKind: "desktop app",
+    supportedCommands: [...BROWSER_AUTOMATION_COMMAND_NAMES],
+  });
+  const unmount = mountBrowserAutomationHandler({
+    client: {
+      on: (_type, handler) =>
+        observation.subscribe({
+          snapshot: () => {},
+          update: (message) => {
+            if (message.type === "browser.automation.execute.request") handler(message);
+          },
+        }),
+      sendBrowserAutomationExecuteResponse: (response) =>
+        client.sendBrowserAutomationExecuteResponse(response),
+    },
     ...(options?.serverId ? { serverId: options.serverId } : {}),
   });
+  return () => {
+    unmount();
+    void observation
+      .release()
+      .catch((error) => console.warn("Failed to release browser host", error));
+  };
 }
 
 async function handleBrowserAutomationRequest(params: {
@@ -150,14 +150,6 @@ async function handleBrowserAutomationRequest(params: {
     return;
   }
 
-  if (request.command.command === "focus_tab") {
-    client.sendBrowserAutomationExecuteResponse({
-      type: "browser.automation.execute.response",
-      payload: focusBrowserTabForRequest({ request, serverId }),
-    });
-    return;
-  }
-
   if (request.command.command === "close_tab") {
     try {
       client.sendBrowserAutomationExecuteResponse({
@@ -190,36 +182,15 @@ async function handleBrowserAutomationRequest(params: {
   }
 
   try {
-    const targetBrowserId =
-      "browserId" in request.command.args && typeof request.command.args.browserId === "string"
-        ? request.command.args.browserId
-        : null;
-    // A parked tab is backgrounded after an idle grace. Wake it before main
-    // touches the guest so captures, input, and rAF-driven pages see a
-    // painting page, and keep it awake until this command settles.
-    const payload = targetBrowserId
-      ? await withResidentBrowserAwake(targetBrowserId, () =>
-          withBrowserAutomationFocus(targetBrowserId, () => executeAutomationCommand(request)),
-        )
-      : await executeAutomationCommand(request);
+    const payload = await executeAutomationCommand(request);
     client.sendBrowserAutomationExecuteResponse({
       type: "browser.automation.execute.response",
-      payload: withPresentedTabGeometry(
-        reconcileWorkspaceBrowserAvailability({
-          request,
-          serverId,
-          payload: normalizeBridgePayload(request.requestId, payload),
-        }),
-      ),
+      payload: normalizeBridgePayload(request.requestId, payload),
     });
   } catch (error) {
     client.sendBrowserAutomationExecuteResponse({
       type: "browser.automation.execute.response",
-      payload: reconcileWorkspaceBrowserAvailability({
-        request,
-        serverId,
-        payload: normalizeThrownBridgeError(request.requestId, error),
-      }),
+      payload: normalizeThrownBridgeError(request.requestId, error),
     });
   }
 }
@@ -279,52 +250,6 @@ function resizeBrowserTabForRequest(params: {
   };
 }
 
-function focusBrowserTabForRequest(params: {
-  request: BrowserAutomationExecuteRequest;
-  serverId?: string;
-}): BrowserAutomationResponsePayload {
-  const { request, serverId } = params;
-  const command = request.command as Extract<
-    BrowserAutomationExecuteRequest["command"],
-    { command: "focus_tab" }
-  >;
-  const browserId = command.args.browserId;
-  const workspaceId = request.workspaceId;
-  if (!serverId || !workspaceId) {
-    return browserAutomationFailure({
-      requestId: request.requestId,
-      code: "browser_unsupported",
-      message: "Cannot focus a browser tab without a workspace context.",
-    });
-  }
-  const workspaceTab = findWorkspaceBrowserTab({ serverId, workspaceId, browserId });
-  if (!workspaceTab || !getBrowserRecord(browserId)) {
-    return browserAutomationFailure({
-      requestId: request.requestId,
-      code: "browser_tab_not_found",
-      message: `No browser tab found for ID: ${browserId}`,
-    });
-  }
-
-  if (isBrowserAutomationEditorFocused()) {
-    // Layout focus can hide the editor entirely, beyond what the native guest
-    // focus guard can restore. Browser commands already work by browserId.
-    return browserAutomationFailure({
-      requestId: request.requestId,
-      code: "browser_unsupported",
-      message:
-        "The user is editing in Otto. Keep this tab in the background and continue browser actions using its browserId.",
-    });
-  }
-  useWorkspaceLayoutStore.getState().focusTab(workspaceTab.workspaceKey, workspaceTab.tabId);
-
-  return {
-    requestId: request.requestId,
-    ok: true,
-    result: { command: "focus_tab", browserId },
-  };
-}
-
 async function closeBrowserTabForRequest(params: {
   request: BrowserAutomationExecuteRequest;
   serverId?: string;
@@ -359,9 +284,6 @@ async function closeBrowserTabForRequest(params: {
   useBrowserStore.getState().removeBrowser(browserId);
   removeResidentBrowserWebview(browserId);
   await browserHost?.unregisterWorkspaceBrowser?.(browserId);
-  // No per-browser partition to clear: browsers now share one profile partition,
-  // and wiping it is a deliberate settings action (`clearProfile`), not a
-  // side effect of closing a tab.
 
   return {
     requestId: request.requestId,
@@ -396,11 +318,6 @@ function findWorkspaceBrowserTab(input: {
   return tab ? { workspaceKey, tabId: tab.tabId } : null;
 }
 
-/**
- * Pane to split right when opening a preview tab, or null if there's nothing
- * to split from (fresh/empty workspace layout - the tab can just take the
- * focused pane as-is).
- */
 async function openBrowserTabForRequest(params: {
   request: BrowserAutomationExecuteRequest;
   serverId?: string;
@@ -431,31 +348,7 @@ async function openBrowserTabForRequest(params: {
   }
 
   const url = command.args.url ?? "https://example.com";
-  // preview_start sends preview metadata so the tab is born as the server's
-  // designated preview tab (icon, lifecycle) - "ready" because the daemon only
-  // opens the tab once the dev server is already up.
-  const preview = command.args.preview;
-  const { browserId, url: normalizedUrl } = createWorkspaceBrowser({
-    initialUrl: url,
-    ...(preview
-      ? {
-          isPreview: true,
-          previewServerId: preview.serverId,
-          previewServerName: preview.serverName,
-          previewCwd: preview.cwd,
-          previewStatus: "ready" as const,
-        }
-      : {}),
-  });
-  if (request.agentId) {
-    useBrowserStore.getState().updateBrowser(browserId, { openedByAgentId: request.agentId });
-  }
-  if (preview) {
-    // Agent-driven preview_start reaches the toolbar through this renderer
-    // bridge. Mark it immediately rather than making the user wait for the
-    // toolbar's reconciliation poll to discover the server.
-    usePreviewRunningServersStore.getState().markRunning(serverId, preview.cwd, preview.serverId);
-  }
+  const { browserId, url: normalizedUrl } = createWorkspaceBrowser({ initialUrl: url });
   const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
   if (!workspaceKey) {
     return browserAutomationFailure({
@@ -464,37 +357,31 @@ async function openBrowserTabForRequest(params: {
       message: "Cannot create a browser tab without a workspace context.",
     });
   }
-
-  openBrowserWorkspaceTab({
+  useWorkspaceLayoutStore.getState().openTab({
     workspaceKey,
-    browserId,
-    agentId: request.agentId,
-    wantsSplitRight: command.args.layout === "split-right",
+    target: { kind: "browser", browserId },
+    intent: "background",
   });
 
-  // Registration happens when the webview actually attaches, in
-  // browser-webview-resident.ts, because the daemon binds by webContentsId and
-  // that id does not exist until attach.
-
   if (browserHost?.executeAutomationCommand) {
-    ensureResidentBrowserWebview({ browserId, workspaceId, serverId, url: normalizedUrl });
-    // Creation already succeeded. A registration failure must keep that identity:
-    // returning an error here makes preview_start lose its binding and reopen it.
-    try {
-      await waitForBrowserRegistration({
-        request,
-        browserId,
-        workspaceId,
-        executeAutomationCommand: browserHost.executeAutomationCommand,
-        ...(registrationWaitTimeoutMs !== undefined
-          ? { timeoutMs: registrationWaitTimeoutMs }
-          : {}),
-        ...(registrationPollIntervalMs !== undefined
-          ? { pollIntervalMs: registrationPollIntervalMs }
-          : {}),
+    ensureResidentBrowserWebview({ browserId, workspaceId, url: normalizedUrl });
+    const registered = await waitForBrowserRegistration({
+      request,
+      browserId,
+      workspaceId,
+      executeAutomationCommand: browserHost.executeAutomationCommand,
+      ...(registrationWaitTimeoutMs !== undefined ? { timeoutMs: registrationWaitTimeoutMs } : {}),
+      ...(registrationPollIntervalMs !== undefined
+        ? { pollIntervalMs: registrationPollIntervalMs }
+        : {}),
+    });
+    if (!registered) {
+      return browserAutomationFailure({
+        requestId: request.requestId,
+        code: "browser_timeout",
+        message: `Timed out waiting for browser tab ${browserId} to register with the browser automation host. Try browser_new_tab again.`,
+        retryable: true,
       });
-    } catch {
-      // Later tab-scoped commands report host/readiness failures with this ID.
     }
   }
 
@@ -503,81 +390,6 @@ async function openBrowserTabForRequest(params: {
     ok: true,
     result: { command: "new_tab", browserId, workspaceId, url: normalizedUrl },
   };
-}
-
-/** Open preview tabs in the remembered side pane instead of growing a split per tab. */
-function openBrowserWorkspaceTab(input: {
-  workspaceKey: string;
-  browserId: string;
-  agentId?: string;
-  wantsSplitRight: boolean;
-}): string | null {
-  const { workspaceKey, browserId, wantsSplitRight } = input;
-  // The user may be editing the right pane while the agent runs in the left.
-  // Placement follows the caller; keyboard focus is restored independently.
-  const sourcePaneId = findSplitRightTarget(workspaceKey, input.agentId);
-  const splitTarget = wantsSplitRight ? sourcePaneId : null;
-  const layoutStore = useWorkspaceLayoutStore.getState();
-  const originalFocusedPaneId = layoutStore.layoutByWorkspace[workspaceKey]?.focusedPaneId;
-  const rememberedSidePaneId = layoutStore.sidePaneIdByWorkspace[workspaceKey];
-  const currentLayout = layoutStore.layoutByWorkspace[workspaceKey];
-  const browserRecords = useBrowserStore.getState().browsersById;
-  const tabsById = new Map(
-    (currentLayout ? collectAllTabs(currentLayout.root) : []).map((tab) => [tab.tabId, tab]),
-  );
-  const existingPreviewPane = currentLayout
-    ? collectAllPanes(currentLayout.root).find(
-        (pane) =>
-          pane.id !== sourcePaneId &&
-          pane.tabIds.some((tabId) => {
-            const tab = tabsById.get(tabId);
-            return (
-              tab?.target.kind === "browser" &&
-              browserRecords[tab.target.browserId]?.isPreview === true
-            );
-          }),
-      )
-    : null;
-  const existingSidePaneId = currentLayout
-    ? findExistingSidePaneId({
-        layout: currentLayout,
-        explorerPaneId: layoutStore.explorerSidebarPaneIdByWorkspace[workspaceKey],
-        rememberedPaneId: rememberedSidePaneId ?? existingPreviewPane?.id,
-        sourcePaneId,
-      })
-    : null;
-  const sidePaneId =
-    existingSidePaneId ??
-    (wantsSplitRight && splitTarget ? layoutStore.ensureSidePane(workspaceKey) : null);
-  const newTabId = sidePaneId
-    ? layoutStore.openTab({
-        workspaceKey,
-        target: { kind: "browser", browserId },
-        intent: "background",
-        placement: { mode: "pane", paneId: sidePaneId },
-      })
-    : layoutStore.openTabInBackground(workspaceKey, {
-        kind: "browser",
-        browserId,
-      });
-
-  if (newTabId) {
-    if (splitTarget && !sidePaneId) {
-      // Preserve the old split-right behavior if the workspace cannot create
-      // or recover its remembered side pane.
-      layoutStore.splitPane(workspaceKey, {
-        tabId: newTabId,
-        targetPaneId: splitTarget,
-        position: "right",
-      });
-    }
-    // A background tab placed in another pane can still move pane focus.
-    // Return keyboard ownership to the pane the user was working in.
-    if (originalFocusedPaneId && (sidePaneId || splitTarget)) {
-      layoutStore.focusPane(workspaceKey, originalFocusedPaneId);
-    }
-  }
-  return newTabId;
 }
 
 async function waitForBrowserRegistration(params: {
@@ -601,12 +413,7 @@ async function waitForBrowserRegistration(params: {
       command: { command: "list_tabs", args: {} },
     });
     if (payload.ok && payload.result.command === "list_tabs") {
-      // Presence alone is no longer the signal: list_tabs now reports a tab from
-      // the moment it is registered, including while its webview is attaching.
-      // Wait for `ready`. An absent status means a pre-0.7.5 host, which only
-      // listed attached tabs, so presence there already meant ready.
-      const tab = payload.result.tabs.find((entry) => entry.browserId === params.browserId);
-      if (tab && (tab.status ?? "ready") === "ready") {
+      if (payload.result.tabs.some((tab) => tab.browserId === params.browserId)) {
         return true;
       }
     }
@@ -624,112 +431,6 @@ function normalizeBridgePayload(
   payload: BrowserAutomationResponsePayload,
 ): BrowserAutomationResponsePayload {
   return { ...payload, requestId } as BrowserAutomationResponsePayload;
-}
-
-/**
- * The main process reports guests but not their layout, so a listed tab says
- * nothing about the size of the pane it is presented in. Only this renderer
- * knows that, and the two numbers only mean something together: a fixed
- * viewport wider than its pane is cropped, so the page an agent screenshots is
- * not the page the user is looking at.
- */
-function withPresentedTabGeometry(
-  payload: BrowserAutomationResponsePayload,
-): BrowserAutomationResponsePayload {
-  if (!payload.ok || payload.result.command !== "list_tabs") {
-    return payload;
-  }
-  return {
-    ...payload,
-    result: {
-      ...payload.result,
-      tabs: payload.result.tabs.map((tab) => {
-        const presentation = readResidentBrowserPresentation(tab.browserId);
-        return presentation
-          ? {
-              ...tab,
-              viewportMode: presentation.mode,
-              viewportWidth: presentation.viewportWidth,
-              viewportHeight: presentation.viewportHeight,
-              paneWidth: presentation.paneWidth,
-              paneHeight: presentation.paneHeight,
-            }
-          : tab;
-      }),
-    },
-  };
-}
-
-/**
- * The renderer owns tab existence; the main process owns guest readiness.
- * Before did-attach-webview, the main registry has no entry at all. Report a
- * pending workspace tab instead of letting that gap masquerade as a closed tab.
- */
-function reconcileWorkspaceBrowserAvailability(input: {
-  request: BrowserAutomationExecuteRequest;
-  serverId?: string;
-  payload: BrowserAutomationResponsePayload;
-}): BrowserAutomationResponsePayload {
-  const { request, serverId, payload } = input;
-  const workspaceId = request.workspaceId;
-  const workspaceKey =
-    serverId && workspaceId ? buildWorkspaceTabPersistenceKey({ serverId, workspaceId }) : null;
-  const layout = workspaceKey
-    ? useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey]
-    : null;
-  if (!layout) return payload;
-  const nativeTabs = collectAllTabs(layout.root).flatMap((tab) => {
-    if (tab.target.kind !== "browser") return [];
-    const record = getBrowserRecord(tab.target.browserId);
-    return record?.renderMode === "native" ? [record] : [];
-  });
-  if (payload.ok && payload.result.command === "list_tabs") {
-    const known = new Set(payload.result.tabs.map((tab) => tab.browserId));
-    const recordsById = new Map(nativeTabs.map((tab) => [tab.browserId, tab]));
-    return {
-      ...payload,
-      result: {
-        ...payload.result,
-        tabs: [
-          ...payload.result.tabs.map((tab) => {
-            const record = recordsById.get(tab.browserId);
-            return record
-              ? { ...tab, openedByAgentId: record.openedByAgentId, isPreview: record.isPreview }
-              : tab;
-          }),
-          ...nativeTabs
-            .filter((tab) => !known.has(tab.browserId))
-            .map((tab) => ({
-              browserId: tab.browserId,
-              openedByAgentId: tab.openedByAgentId,
-              isPreview: tab.isPreview,
-              workspaceId,
-              url: tab.url,
-              title: tab.title,
-              status: "starting" as const,
-              isActive: false,
-              isLoading: tab.isLoading,
-            })),
-        ],
-      },
-    };
-  }
-  const requestedBrowserId =
-    "browserId" in request.command.args ? request.command.args.browserId : null;
-  if (
-    !payload.ok &&
-    payload.error.code === "browser_tab_not_found" &&
-    requestedBrowserId &&
-    nativeTabs.some((tab) => tab.browserId === requestedBrowserId)
-  ) {
-    return browserAutomationFailure({
-      requestId: request.requestId,
-      code: "browser_timeout",
-      retryable: true,
-      message: `Browser tab ${requestedBrowserId} still exists in this workspace but its guest is not attached. Reuse this browserId and retry; do not open a replacement tab.`,
-    });
-  }
-  return payload;
 }
 
 function normalizeThrownBridgeError(

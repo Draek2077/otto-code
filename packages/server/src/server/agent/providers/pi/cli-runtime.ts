@@ -1,3 +1,4 @@
+import { createExternalProcessEnv } from "../../../paseo-env.js";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import type { Logger } from "pino";
 
@@ -56,6 +57,7 @@ export class PiCliRuntime implements PiRuntime {
       runtimeSettings: this.options.runtimeSettings,
       session: input,
     });
+    launch.env = createExternalProcessEnv(globalThis.process.env, launch.env ?? {});
     const [command, ...args] = launch.argv;
     const processLaunch: JsonlRpcLaunch = {
       command,
@@ -76,7 +78,7 @@ export class PiCliRuntime implements PiRuntime {
       await process.close(input.signal.reason);
       input.signal.throwIfAborted();
     }
-    return new PiCliRuntimeSession(process, this.commandsRpcName);
+    return new PiCliRuntimeSession(process, this.commandsRpcName, launch.env);
   }
 }
 
@@ -86,6 +88,7 @@ class PiCliRuntimeSession implements PiRuntimeSession {
   constructor(
     private readonly process: JsonlRpcProcess,
     private readonly commandsRpcName: string,
+    private readonly launchEnvironment: Record<string, string>,
   ) {
     process.onMessage((message) => {
       this.emit(message as PiRuntimeEvent);
@@ -93,6 +96,10 @@ class PiCliRuntimeSession implements PiRuntimeSession {
     process.onExit(({ error }) => {
       this.emit({ type: "process_exit", error: error.message });
     });
+  }
+
+  get environment(): Record<string, string> {
+    return this.launchEnvironment;
   }
 
   onEvent(callback: (event: PiRuntimeEvent) => void): () => void {
@@ -133,7 +140,7 @@ class PiCliRuntimeSession implements PiRuntimeSession {
   }
 
   async clearQueue(): Promise<void> {
-    await this.request({ type: "clear_queue" });
+    await this.requestStopWork({ type: "clear_queue" });
   }
 
   async compact(customInstructions?: string): Promise<void> {
@@ -148,7 +155,7 @@ class PiCliRuntimeSession implements PiRuntimeSession {
   }
 
   async abort(): Promise<void> {
-    await this.request({ type: "abort" });
+    await this.requestStopWork({ type: "abort" });
   }
 
   async getState(): Promise<PiSessionState> {
@@ -176,7 +183,7 @@ class PiCliRuntimeSession implements PiRuntimeSession {
   }
 
   async getSessionStats(): Promise<PiSessionStats> {
-    // COMPAT(piGetStateFallback): added in v0.1.105 - older Oh My Pi binaries
+    // COMPAT(piGetStateFallback): added in v0.1.105 — older Oh My Pi binaries
     // lack the `get_session_stats` RPC command; fall back to extracting
     // context window usage from `get_state`. Remove after 2027-01-10 once the
     // supported Oh My Pi floor includes `get_session_stats`.
@@ -184,7 +191,7 @@ class PiCliRuntimeSession implements PiRuntimeSession {
     try {
       stats = (await this.request({ type: "get_session_stats" })) as PiSessionStats;
     } catch {
-      // get_session_stats not supported by this binary - will try get_state below
+      // get_session_stats not supported by this binary — will try get_state below
     }
     if (stats?.tokens == null && stats?.cost == null && stats?.contextUsage == null) {
       try {
@@ -201,7 +208,7 @@ class PiCliRuntimeSession implements PiRuntimeSession {
           };
         }
       } catch {
-        // get_state also failed - nothing we can do
+        // get_state also failed — nothing we can do
       }
     }
     return stats ?? {};
@@ -235,6 +242,10 @@ class PiCliRuntimeSession implements PiRuntimeSession {
 
   request(command: PiRpcCommand, timeoutMs?: number | null): Promise<unknown> {
     return this.process.request(command, timeoutMs);
+  }
+
+  private requestStopWork(command: PiRpcCommand): Promise<void> {
+    return this.process.requestStopWork(command);
   }
 
   private async waitForCompletion(command: PiRpcCommand): Promise<void> {

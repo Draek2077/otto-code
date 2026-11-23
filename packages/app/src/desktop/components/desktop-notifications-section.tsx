@@ -1,19 +1,22 @@
-import { SettingsTargetText } from "@/screens/settings-search/target";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
+import { withUnistyles } from "react-native-unistyles";
+import { RotateCw } from "lucide-react-native";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { DesktopPermissionRow } from "@/desktop/components/desktop-permission-row";
 import { useDesktopPermissions } from "@/desktop/permissions/use-desktop-permissions";
 import { useDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { settingsStyles } from "@/styles/settings";
 
-/**
- * Notification preferences only. The OS notification permission and the single
- * Refresh live one section up, with the other permissions.
- */
+const ThemedRotateCw = withUnistyles(RotateCw, (theme) => ({
+  size: theme.iconSize.md,
+  color: theme.colors.foregroundMuted,
+}));
+
 export function DesktopNotificationsSection() {
   const { t } = useTranslation();
   const { settings, isSaving, updateSettings } = useDesktopSettings();
@@ -23,8 +26,18 @@ export function DesktopNotificationsSection() {
     isRefreshing,
     requestingPermission,
     testNotificationState,
+    refreshPermissions,
+    requestPermission,
     sendTestNotification,
   } = useDesktopPermissions();
+
+  const handleRefreshPress = useCallback(() => {
+    void refreshPermissions();
+  }, [refreshPermissions]);
+
+  const handleRequestNotifications = useCallback(() => {
+    void requestPermission("notifications");
+  }, [requestPermission]);
 
   const handlePlaySoundChange = useCallback(
     (playSound: boolean) => {
@@ -41,6 +54,31 @@ export function DesktopNotificationsSection() {
 
   const isPermissionBusy = isRefreshing || requestingPermission !== null;
   const isSendingTestNotification = testNotificationState.status === "sending";
+  const refreshIcon = useMemo(() => <ThemedRotateCw />, []);
+  const refreshButton = useMemo(
+    () => (
+      <Button
+        variant="ghost"
+        size="sm"
+        leftIcon={refreshIcon}
+        onPress={handleRefreshPress}
+        disabled={isPermissionBusy}
+        accessibilityLabel={t("settings.notifications.refreshAccessibility")}
+      >
+        {isRefreshing ? t("settings.permissions.refreshing") : t("settings.permissions.refresh")}
+      </Button>
+    ),
+    [handleRefreshPress, isPermissionBusy, isRefreshing, refreshIcon, t],
+  );
+  const permissionLabels = useMemo(
+    () => ({
+      granted: t("settings.permissions.actions.granted"),
+      request: t("settings.permissions.actions.request"),
+      requesting: t("settings.permissions.actions.requesting"),
+    }),
+    [t],
+  );
+
   if (!isDesktopApp) {
     return null;
   }
@@ -48,16 +86,18 @@ export function DesktopNotificationsSection() {
   const notificationsGranted = snapshot?.notifications.state === "granted";
 
   return (
-    <SettingsSection title={t("settings.notifications.title")}>
+    <SettingsSection title={t("settings.notifications.title")} trailing={refreshButton}>
       <View style={settingsStyles.card}>
-        <View style={settingsStyles.row}>
+        <DesktopPermissionRow
+          title={t("settings.notifications.permission")}
+          status={snapshot?.notifications ?? null}
+          isRequesting={requestingPermission === "notifications"}
+          onRequest={handleRequestNotifications}
+          labels={permissionLabels}
+        />
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
-            <SettingsTargetText
-              settingId="app-permissions-notifications-notifications-play-sound"
-              style={settingsStyles.rowTitle}
-            >
-              {t("settings.notifications.playSound")}
-            </SettingsTargetText>
+            <Text style={settingsStyles.rowTitle}>{t("settings.notifications.playSound")}</Text>
             <Text style={settingsStyles.rowHint}>{t("settings.notifications.playSoundHint")}</Text>
           </View>
           <Switch
@@ -70,12 +110,7 @@ export function DesktopNotificationsSection() {
         </View>
         <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
           <View style={settingsStyles.rowContent}>
-            <SettingsTargetText
-              settingId="app-permissions-notifications-notifications-test-notification"
-              style={settingsStyles.rowTitle}
-            >
-              {t("settings.notifications.test")}
-            </SettingsTargetText>
+            <Text style={settingsStyles.rowTitle}>{t("settings.notifications.test")}</Text>
             <Text style={settingsStyles.rowHint}>
               {notificationsGranted
                 ? t("settings.notifications.testHint")
@@ -96,6 +131,7 @@ export function DesktopNotificationsSection() {
       </View>
       {testNotificationState.status === "success" ? (
         <Alert
+          size="sm"
           variant="success"
           title={t("settings.notifications.sentTitle")}
           description={t("settings.notifications.sentDescription")}
@@ -104,6 +140,7 @@ export function DesktopNotificationsSection() {
       ) : null}
       {testNotificationState.status === "error" ? (
         <Alert
+          size="sm"
           variant="error"
           title={t("settings.notifications.sendFailedTitle")}
           description={testNotificationState.message}

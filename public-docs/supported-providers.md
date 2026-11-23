@@ -6,6 +6,8 @@ order: 21
 category: Providers
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Supported providers
 
 For the concept and how Otto manages providers, see [Providers](/docs/providers). To add or configure your own, see [Custom providers](/docs/custom-providers).

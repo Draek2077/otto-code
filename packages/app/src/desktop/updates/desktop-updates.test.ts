@@ -1,3 +1,4 @@
+// OTTO(identity): assertions follow Otto identity values.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 async function loadModuleForPlatform(platform: "web" | "ios" | "android") {
@@ -50,10 +51,10 @@ describe("desktop-updates helpers", () => {
     const { parseLocalDaemonVersionResult } = await loadModuleForPlatform("web");
 
     expect(
-      parseLocalDaemonVersionResult({ version: null, error: "otto command not found in PATH" }),
+      parseLocalDaemonVersionResult({ version: null, error: "paseo command not found in PATH" }),
     ).toEqual({
       version: null,
-      error: "otto command not found in PATH",
+      error: "paseo command not found in PATH",
     });
   });
 
@@ -100,53 +101,22 @@ describe("desktop-updates helpers", () => {
       parseDesktopRuntimeInfo({
         appVersion: " 0.1.64 ",
         runningUnderARM64Translation: true,
-        softwareRendering: false,
-        softwareCompositing: true,
-        gpuCompositing: "disabled_software",
       }),
     ).toEqual({
       appVersion: "0.1.64",
       runningUnderARM64Translation: true,
-      softwareRendering: false,
-      softwareCompositing: true,
-      gpuCompositing: "disabled_software",
-    });
-    // A shell that predates softwareCompositing still composites in software
-    // whenever its own fallback is active.
-    expect(
-      parseDesktopRuntimeInfo({
-        appVersion: "0.1.64",
-        runningUnderARM64Translation: false,
-        softwareRendering: true,
-      }),
-    ).toMatchObject({ softwareRendering: true, softwareCompositing: true, gpuCompositing: null });
-    // A shell that predates softwareRendering reports false, not undefined.
-    expect(
-      parseDesktopRuntimeInfo({
-        appVersion: "0.1.64",
-        runningUnderARM64Translation: false,
-      }),
-    ).toEqual({
-      appVersion: "0.1.64",
-      runningUnderARM64Translation: false,
-      softwareRendering: false,
-      softwareCompositing: false,
-      gpuCompositing: null,
     });
     expect(parseDesktopRuntimeInfo(null)).toEqual({
       appVersion: null,
       runningUnderARM64Translation: false,
-      softwareRendering: false,
-      softwareCompositing: false,
-      gpuCompositing: null,
     });
   });
 
-  it("builds the direct Apple Silicon DMG URL from a version", async () => {
+  it("builds the always-available unsigned Apple Silicon DMG URL from a version", async () => {
     const { buildMacAppleSiliconDownloadUrl } = await loadModuleForPlatform("web");
 
     expect(buildMacAppleSiliconDownloadUrl("v0.1.64")).toBe(
-      "https://github.com/Draek2077/otto-code/releases/download/v0.1.64/Otto-0.1.64-arm64.dmg",
+      "https://github.com/Draek2077/otto-code/releases/download/v0.1.64/Otto-0.1.64-arm64-unsigned.dmg",
     );
     expect(buildMacAppleSiliconDownloadUrl(null)).toBeNull();
   });

@@ -1,13 +1,24 @@
 # syntax=docker/dockerfile:1
+# OTTO(identity): preserve Otto container paths, environment, and exposed port.
 
 ARG NODE_IMAGE=node:24-bookworm-slim
+# OTTO(editor): portable solution payload is compiled with pinned NuGet inputs.
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-bookworm-slim AS editor-dotnet-probe
+ENV DOTNET_CLI_TELEMETRY_OPTOUT=1 MSBUILDDISABLENODEREUSE=1 DOTNET_PROCESSOR_COUNT=2
+WORKDIR /src
+COPY packages/dotnet-probe/ ./
+RUN dotnet restore OttoDotnetProbe.csproj --locked-mode --disable-parallel --nologo && \
+    dotnet publish OttoDotnetProbe.csproj -c Release -o /payload --no-restore --nologo -m:1 -p:UseSharedCompilation=false
+
 FROM --platform=$BUILDPLATFORM ${NODE_IMAGE} AS source-pack
 
 ARG OTTO_VERSION
 
 ENV ONNXRUNTIME_NODE_INSTALL=skip
+ENV OTTO_DOTNET_PROBE_PAYLOAD=/tmp/otto-dotnet-probe
+COPY --from=editor-dotnet-probe /payload /tmp/otto-dotnet-probe
 
-WORKDIR /tmp/otto-src
+WORKDIR /tmp/paseo-src
 COPY . .
 
 RUN set -eux; \
@@ -17,16 +28,8 @@ RUN set -eux; \
     node -e 'const fs=require("node:fs"); const pkg=JSON.parse(fs.readFileSync("package.json","utf8")); delete pkg.scripts.prepare; fs.writeFileSync("package.json", `${JSON.stringify(pkg)}\n`);'; \
     npm ci
 
-RUN set -eux; \
-    mkdir -p /tmp/otto-packs; \
-    npm pack --workspace=@otto-code/highlight --pack-destination /tmp/otto-packs; \
-    npm pack --workspace=@otto-code/relay --pack-destination /tmp/otto-packs; \
-    npm pack --workspace=@otto-code/protocol --pack-destination /tmp/otto-packs; \
-    npm pack --workspace=@otto-code/client --pack-destination /tmp/otto-packs; \
-    npm pack --workspace=@otto-code/brain --pack-destination /tmp/otto-packs; \
-    npm pack --workspace=@otto-code/plugin --pack-destination /tmp/otto-packs; \
-    npm pack --workspace=@otto-code/server --pack-destination /tmp/otto-packs; \
-    npm pack --workspace=@otto-code/cli --pack-destination /tmp/otto-packs
+# OTTO(release): publish-time package identity applies to the image too.
+RUN node scripts/publish-release-packages.mjs --pack-only --out /tmp/paseo-packs
 
 FROM ${NODE_IMAGE}
 
@@ -36,6 +39,7 @@ ENV HOME=/home/otto \
     OTTO_WEB_UI_ENABLED=true \
     OTTO_LOG_FORMAT=json \
     OTTO_LOG_LEVEL=info \
+    OTTO_HOST_BROWSER_EXECUTABLE=/usr/bin/chromium \
     CLAUDE_CONFIG_DIR=/home/otto/.claude \
     CODEX_HOME=/home/otto/.codex \
     XDG_CONFIG_HOME=/home/otto/.config \
@@ -49,6 +53,9 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends \
       bash \
       ca-certificates \
+      chromium \
+      fonts-liberation \
+      fonts-noto-color-emoji \
       curl \
       git \
       gosu \
@@ -58,10 +65,10 @@ RUN set -eux; \
       tini; \
     rm -rf /var/lib/apt/lists/*
 
-COPY --from=source-pack /tmp/otto-packs /tmp/otto-packs
+COPY --from=source-pack /tmp/paseo-packs /tmp/paseo-packs
 RUN set -eux; \
-	npm install -g /tmp/otto-packs/*.tgz; \
-    rm -rf /tmp/otto-packs; \
+	npm install -g /tmp/paseo-packs/*.tgz; \
+    rm -rf /tmp/paseo-packs; \
     npm cache clean --force; \
     server_entry="$(npm root -g)/@otto-code/server/dist/scripts/supervisor-entrypoint.js"; \
     test -f "$server_entry"; \
@@ -92,7 +99,7 @@ RUN set -eux; \
       "$XDG_CACHE_HOME"; \
     chown -R otto:otto /home/otto /workspace
 
-COPY docker/base/rootfs/ /
+COPY docker/base/rootfs/usr/local/bin/paseo-docker-entrypoint /usr/local/bin/otto-docker-entrypoint
 RUN chmod +x /usr/local/bin/otto-docker-entrypoint
 
 WORKDIR /workspace

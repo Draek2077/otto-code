@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // Release gate. CI's typecheck job already does a clean install, builds every
-// published package, typechecks all workspaces, and dry-run packs the eight
-// @otto-code packages; npm Publish then rebuilds from the tag. Rebuilding all of
-// that locally before tagging only repeated CI. Instead, confirm CI's gate jobs
+// published package, typechecks all workspaces, and packs and renames the eight
+// @otto-code packages; CI's quality job checks formatting, lint, and the
+// lockfile; npm Publish then rebuilds from the tag. Rebuilding all of that
+// locally before tagging only repeated CI. Instead, confirm CI's gate jobs
 // passed on the code being released.
 //
 // "The code being released" is the newest commit in HEAD that changes anything
@@ -18,7 +19,8 @@ import { execFileSync } from "node:child_process";
 
 const REPO = "Draek2077/otto-code";
 const WORKFLOW = "CI";
-const GATE_JOBS = ["typecheck", "lint", "format"];
+// Paseo's CI runs format and lint inside `quality`.
+const GATE_JOBS = ["quality", "typecheck"];
 const POLL_MS = 20_000;
 const WAIT_LIMIT_MS = 25 * 60_000;
 

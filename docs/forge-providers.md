@@ -1,6 +1,6 @@
-# Adding a Git Forge to Otto
+# Adding a Git Forge to Paseo
 
-Otto's forge layer is a registry/manifest system. A forge is a runtime concern:
+Paseo's forge layer is a registry/manifest system. A forge is a runtime concern:
 shared protocol messages carry neutral/open facts, the server adapter owns
 behavior, and the app owns bundled presentation/runtime interpretation.
 
@@ -112,20 +112,10 @@ as the lookup itself. Otherwise a commit made on the same branch can inherit the
 previous commit's cached terminal status until the cache expires.
 
 Cloud hosts in the manifest are a bounded public-host list, not a self-host
-allowlist. Self-hosted detection is a trust gate: Otto only talks to a forge
-host that is either a known cloud host, explicitly configured through a verified
-saved connection, or one the CLI is already authenticated to. Adapter probes must not make anonymous HTTP requests to remote-derived
+allowlist. Self-hosted detection is a trust gate: Paseo only talks to a forge
+host that is either a known cloud host or one the CLI is already authenticated
+to. Adapter probes must not make anonymous HTTP requests to remote-derived
 hosts, and adapters must not route credentials to an unauthenticated host.
-
-Provider detection and account selection are separate. Otto wraps the registered
-adapters at bootstrap through `forgeOverrides`, choosing a reusable connection
-by project, provider and canonical API host. Project overrides take precedence
-over host defaults; an unavailable selected connection never falls back to a
-different account. Connection-specific adapters own their caches and polling.
-The resolver's optional `configuredForge` lookup makes saved custom servers
-immediately recognizable without changing the provider manifest. See
-[Git hosting providers](git-providers.md#account-selection) for storage, credential
-methods, lifecycle and settings behavior.
 
 ## App
 
@@ -149,7 +139,7 @@ Two registries live under `packages/app/src/git/forges/`:
 `CLIENT_FORGE_LOGIC_MODULES` (`index.ts`) drives URL grammar, merge-capability
 derivation, and native fallback checks; `CLIENT_FORGE_VIEW_MODULES` (`view.ts`)
 drives icon/color lookup and PR-pane contributions. Logic consumers must import
-the logic registry only - importing the view registry (or a `.view.tsx` module)
+the logic registry only — importing the view registry (or a `.view.tsx` module)
 from a logic path pulls react-native and breaks the Node-based e2e harness.
 
 Per-forge brand colors live on the module, not in `styles/theme.ts`. Use the
@@ -182,7 +172,7 @@ To add `acme`:
    mark.
 8. If the forge's CI/data model does not fit an existing required
    `ForgeService` field, widen the shared interface (plus the protocol schema
-   and its guards) instead of faking a value - e.g. Gitea Actions runs carry no
+   and its guards) instead of faking a value — e.g. Gitea Actions runs carry no
    check-run id, so `GetCheckDetailsOptions.checkRunId` became optional with
    `workflowRunId` as the alternative address. Expect this step to touch
    `forge-service.ts`, `messages.ts`, and the call-site guards of the other

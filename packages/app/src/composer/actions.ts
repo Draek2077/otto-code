@@ -1,5 +1,6 @@
-import type { ForgeSearchItem } from "@otto-code/protocol/messages";
-import type { ActiveTurnBehavior } from "@otto-code/protocol/messages";
+import type { SelectedFile } from "@/attachments/selected-file";
+import type { ForgeSearchItem } from "@getpaseo/protocol/messages";
+import type { ActiveTurnBehavior } from "@getpaseo/protocol/messages";
 import type {
   AttachmentMetadata,
   ComposerAttachment,
@@ -53,7 +54,7 @@ export interface ComposerSendClient {
       images: Array<{ data: string; mimeType: string }>;
       attachments: ReturnType<typeof splitComposerAttachmentsForSubmit>["attachments"];
     },
-  ) => Promise<unknown>;
+  ) => Promise<void>;
   uploadFile: (input: { fileName: string; mimeType: string; bytes: Uint8Array }) => Promise<{
     requestId: string;
     file: {
@@ -69,7 +70,7 @@ export interface ComposerSendClient {
 }
 
 export interface ComposerCancelClient {
-  cancelAgent: (agentId: string) => Promise<unknown> | void;
+  cancelAgent: (agentId: string) => Promise<void> | void;
 }
 
 export interface MessageSubmissionWriter {
@@ -123,11 +124,26 @@ export async function pickAndPersistImages(input: {
 
 export async function uploadFileAttachments(input: {
   client: ComposerSendClient;
-  files: Array<{ fileName: string; mimeType: string; bytes: Uint8Array }>;
+  files: SelectedFile[];
 }): Promise<Extract<ComposerAttachment, { kind: "file" }>[]> {
   const result: Extract<ComposerAttachment, { kind: "file" }>[] = [];
+  const prepared: Array<{ fileName: string; mimeType: string; bytes: Uint8Array }> = [];
 
   for (const file of input.files) {
+    const bytes = await file.readBytes();
+    if (bytes.byteLength > 50 * 1024 * 1024) {
+      throw new Error(
+        i18n.t("composer.errors.fileTooLarge", { size: "50MB", fileName: file.fileName }),
+      );
+    }
+    prepared.push({
+      fileName: file.fileName,
+      mimeType: file.mimeType,
+      bytes,
+    });
+  }
+
+  for (const file of prepared) {
     const response = await input.client.uploadFile(file);
     if (response.error || !response.file) {
       throw new Error(response.error ?? "Upload failed.");
@@ -162,7 +178,7 @@ export function cancelComposerAgent(input: CancelComposerAgentInput): Promise<vo
   if (!input.isAgentRunning || input.isCancellingAgent) return null;
   if (!input.isConnected || !input.client) return null;
   try {
-    return Promise.resolve(input.client.cancelAgent(input.agentId)).then(() => undefined);
+    return Promise.resolve(input.client.cancelAgent(input.agentId));
   } catch (error) {
     return Promise.reject(error);
   }
@@ -274,36 +290,6 @@ export function editQueuedComposerMessage(
   };
 }
 
-export interface MoveQueuedComposerMessageInput {
-  agentId: string;
-  messageId: string;
-  toIndex: number;
-  queue: QueueWriter;
-}
-
-/**
- * Re-order the client-held queue. Mirrors the daemon's
- * `reorderSteerQueueEntry` - same clamp, same "already gone or already there
- * ⇒ no-op" answer - so the composer's move control behaves the same whichever
- * queue is backing it.
- */
-export function moveQueuedComposerMessage(input: MoveQueuedComposerMessageInput): boolean {
-  const items = input.queue.read(input.agentId);
-  const fromIndex = items.findIndex((item) => item.id === input.messageId);
-  if (fromIndex === -1) return false;
-  const target = Math.min(Math.max(input.toIndex, 0), items.length - 1);
-  if (target === fromIndex) return false;
-  const reordered = [...items];
-  const [moved] = reordered.splice(fromIndex, 1);
-  reordered.splice(target, 0, moved!);
-  input.queue.write((prev) => {
-    const next = new Map(prev);
-    next.set(input.agentId, reordered);
-    return next;
-  });
-  return true;
-}
-
 export interface SendQueuedComposerMessageNowInput {
   agentId: string;
   messageId: string;
@@ -317,11 +303,6 @@ export type SendQueuedComposerMessageNowResult =
   | { status: "submitted" }
   | { status: "failed"; errorMessage: string };
 
-/**
- * Send one already-queued message immediately instead of waiting for the turn
- * to end. Removes it from the queue first so a slow submit cannot send twice,
- * and puts it back at the head if the submit throws.
- */
 export async function sendQueuedComposerMessageNow(
   input: SendQueuedComposerMessageNowInput,
 ): Promise<SendQueuedComposerMessageNowResult> {

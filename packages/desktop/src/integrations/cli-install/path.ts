@@ -1,16 +1,5 @@
-/**
- * What `~/.local/bin/otto` should point at. The answer is the bundled CLI
- * wrapper (`resources/bin/otto`) everywhere the bundle has a stable path on
- * disk: it runs the CLI on a plain Node host (`ELECTRON_RUN_AS_NODE=1`), which
- * is what long-running commands like `otto brain serve` need. Linking the GUI
- * executable instead only appears to work — short commands complete before
- * Electron quits, and anything holding an open handle is killed with it.
- *
- * The AppImage is the one exception, and only because it has no stable shim
- * path: `resources/` lives inside the ephemeral `/tmp/.mount_*` and disappears
- * when the app exits, so the link has to be the AppImage file itself, whose
- * CLI passthrough re-execs into that same wrapper.
- */
+import path from "node:path";
+
 export function resolveCliInstallSourcePath(input: {
   platform: NodeJS.Platform;
   isPackaged: boolean;
@@ -39,4 +28,20 @@ export function resolveCliInstallSourcePath(input: {
   }
 
   return input.executablePath;
+}
+
+export function resolveCliShimPath(input: {
+  platform: NodeJS.Platform;
+  isPackaged: boolean;
+  executablePath: string;
+  resolveWorkspaceCli: () => string;
+}): string {
+  if (!input.isPackaged) return input.resolveWorkspaceCli();
+
+  const filename = input.platform === "win32" ? "otto.cmd" : "otto"; // OTTO(identity)
+  if (input.platform === "darwin") {
+    const bundle = input.executablePath.replace(/\/Contents\/MacOS\/.+$/, "");
+    return path.join(bundle, "Contents", "Resources", "bin", filename);
+  }
+  return path.join(path.dirname(input.executablePath), "resources", "bin", filename);
 }

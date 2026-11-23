@@ -1,38 +1,22 @@
 import type { AgentSessionConfig, McpServerConfig } from "./agent-sdk-types.js";
-import { OTTO_READ_ONLY_TOOL_NAMES } from "./tools/otto-tool-permissions.js";
-import { isOttoToolAllowedForAccess, resolveWorkspaceAccess } from "./workspace-access.js";
+import { OTTO_MCP_SERVER_NAME } from "@getpaseo/protocol/otto/identity";
 
-const OTTO_MCP_SERVER_NAME = "otto";
-const OTTO_MCP_PATHNAME = "/mcp/agents";
+const PASEO_MCP_SERVER_NAME = OTTO_MCP_SERVER_NAME; // OTTO(identity)
+const PASEO_MCP_PATHNAME = "/mcp/agents";
 
-/** Exact grants for the daemon's internal connection, never an arbitrary MCP server. */
-export function internalOttoReadToolNames(config: AgentSessionConfig): readonly string[] {
-  const server = config.mcpServers?.[OTTO_MCP_SERVER_NAME];
-  if (!server || !isInternalOttoMcpServer(server)) return [];
-  const access = resolveWorkspaceAccess(config.workspaceAccess);
-  return OTTO_READ_ONLY_TOOL_NAMES.filter(
-    (tool) =>
-      isOttoToolAllowedForAccess(tool, access) &&
-      (!config.toolPolicy ||
-        config.toolPolicy.preapproved.some(
-          (grant) => grant.server === OTTO_MCP_SERVER_NAME && grant.tool === tool,
-        )),
-  );
-}
-
-export function stripInternalOttoMcpServer(config: AgentSessionConfig): AgentSessionConfig {
+export function stripInternalPaseoMcpServer(config: AgentSessionConfig): AgentSessionConfig {
   const mcpServers = config.mcpServers;
   if (!mcpServers) {
     return config;
   }
 
-  const ottoServer = mcpServers[OTTO_MCP_SERVER_NAME];
-  if (!ottoServer || !isInternalOttoMcpServer(ottoServer)) {
+  const paseoServer = mcpServers[PASEO_MCP_SERVER_NAME];
+  if (!paseoServer || !isInternalPaseoMcpServer(paseoServer)) {
     return config;
   }
 
   const nextMcpServers = { ...mcpServers };
-  delete nextMcpServers[OTTO_MCP_SERVER_NAME];
+  delete nextMcpServers[PASEO_MCP_SERVER_NAME];
 
   const next = { ...config };
   if (Object.keys(nextMcpServers).length > 0) {
@@ -43,7 +27,7 @@ export function stripInternalOttoMcpServer(config: AgentSessionConfig): AgentSes
   return next;
 }
 
-export function withRuntimeOttoMcpServer(params: {
+export function withRuntimePaseoMcpServer(params: {
   config: AgentSessionConfig;
   agentId: string;
   mcpBaseUrl: string | null;
@@ -54,15 +38,15 @@ export function withRuntimeOttoMcpServer(params: {
    */
   mcpAuthToken: string | null;
 }): AgentSessionConfig {
-  const storedConfig = stripInternalOttoMcpServer(params.config);
-  if (!params.mcpBaseUrl || storedConfig.mcpServers?.[OTTO_MCP_SERVER_NAME]) {
+  const storedConfig = stripInternalPaseoMcpServer(params.config);
+  if (!params.mcpBaseUrl || storedConfig.mcpServers?.[PASEO_MCP_SERVER_NAME]) {
     return storedConfig;
   }
 
   return {
     ...storedConfig,
     mcpServers: {
-      [OTTO_MCP_SERVER_NAME]: {
+      [PASEO_MCP_SERVER_NAME]: {
         type: "http",
         url: `${params.mcpBaseUrl}?callerAgentId=${params.agentId}`,
         ...(params.mcpAuthToken
@@ -74,13 +58,13 @@ export function withRuntimeOttoMcpServer(params: {
   };
 }
 
-export function isInternalOttoMcpServer(config: McpServerConfig): boolean {
+function isInternalPaseoMcpServer(config: McpServerConfig): boolean {
   if (config.type !== "http" && config.type !== "sse") {
     return false;
   }
 
   try {
-    return new URL(config.url).pathname === OTTO_MCP_PATHNAME;
+    return new URL(config.url).pathname === PASEO_MCP_PATHNAME;
   } catch {
     return false;
   }

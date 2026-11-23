@@ -9,8 +9,6 @@ const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;
 const APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS = 2_000;
 const APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS = 1_000;
 const STDERR_BUFFER_LIMIT = 8192;
-// Unparseable stdout lines can be whole thread payloads; log a bounded preview.
-const LOGGED_LINE_PREVIEW_LIMIT = 500;
 
 interface JsonRpcRequest {
   id: number;
@@ -169,14 +167,41 @@ function readProviderTurnId(params: unknown): string | undefined {
   return isRecord(turn) && typeof turn.id === "string" ? turn.id : undefined;
 }
 
-function describeLine(line: string): { lineLength: number; linePreview: string } {
-  return { lineLength: line.length, linePreview: line.slice(0, LOGGED_LINE_PREVIEW_LIMIT) };
+/**
+ * Splits stdout into lines on "\n" only. `node:readline` additionally treats U+2028 and U+2029
+ * as line terminators, but Codex emits those characters raw inside JSON strings, so readline
+ * would cut a single JSON-RPC message into pieces that fail to parse.
+ */
+function createNewlineLineReader(
+  input: NodeJS.ReadableStream,
+  onLine: (line: string) => void,
+): { close(): void } {
+  const decoder = new StringDecoder("utf8");
+  // Text after the last "\n", kept as parts and joined once its line ends, so a large line
+  // arriving in many chunks is scanned and copied once instead of once per chunk.
+  let unterminated: string[] = [];
+  const onData = (chunk: Buffer | string): void => {
+    const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
+    let lineStart = 0;
+    let index = text.indexOf("\n");
+    while (index !== -1) {
+      unterminated.push(text.slice(lineStart, index));
+      const line = unterminated.join("");
+      unterminated = [];
+      onLine(line.endsWith("\r") ? line.slice(0, -1) : line);
+      lineStart = index + 1;
+      index = text.indexOf("\n", lineStart);
+    }
+    if (lineStart < text.length) {
+      unterminated.push(text.slice(lineStart));
+    }
+  };
+  input.on("data", onData);
+  return { close: () => void input.off("data", onData) };
 }
 
 export class CodexAppServerClient {
-  private readonly stdoutDecoder = new StringDecoder("utf8");
-  private stdoutPartial = "";
-  private stdoutClosed = false;
+  private readonly stdoutLineReader: { close(): void };
   private readonly pending = new Map<number, PendingRequest>();
   private readonly requestHandlers = new Map<string, RequestHandler>();
   private notificationHandler: NotificationHandler | null = null;
@@ -190,18 +215,10 @@ export class CodexAppServerClient {
     private readonly logger: Logger,
     private readonly getTraceContext: () => CodexAppServerTraceContext = () => ({}),
   ) {
-    // JSON-RPC frames are newline-delimited. node:readline also breaks lines on
-    // U+2028/U+2029, which JSON carries unescaped inside strings, so it split
-    // (and dropped) any response quoting web text that contains them.
-    child.stdout.on("data", (chunk: Buffer) => {
-      this.acceptStdout(this.stdoutDecoder.write(chunk));
-    });
-    child.stdout.on("end", () => {
-      this.acceptStdout(this.stdoutDecoder.end());
-      if (this.stdoutPartial) {
-        this.emitStdoutLine(this.stdoutPartial);
-        this.stdoutPartial = "";
-      }
+    this.stdoutLineReader = createNewlineLineReader(child.stdout, (line) => {
+      void this.handleLine(line).catch((error) => {
+        this.logger.warn({ error, line }, "Failed to handle Codex app-server stdout line");
+      });
     });
 
     child.stderr.on("data", (chunk) => {
@@ -273,13 +290,8 @@ export class CodexAppServerClient {
 
   async dispose(): Promise<void> {
     this.disposed = true;
-    for (const pending of this.pending.values()) {
-      clearTimeout(pending.timer);
-      pending.reject(new Error("Codex app-server client is closed"));
-    }
-    this.pending.clear();
     this.unexpectedTerminationHandler = null;
-    this.stopReadingStdout();
+    this.stdoutLineReader.close();
     this.rejectPending(new Error("Codex app-server client is closed"));
     try {
       this.child.stdin.end();
@@ -306,7 +318,7 @@ export class CodexAppServerClient {
       return;
     }
     this.disposed = true;
-    this.stopReadingStdout();
+    this.stdoutLineReader.close();
     this.rejectPending(error);
     const handler = this.unexpectedTerminationHandler;
     this.unexpectedTerminationHandler = null;
@@ -339,52 +351,18 @@ export class CodexAppServerClient {
     }
   }
 
-  private acceptStdout(text: string): void {
-    if (this.stdoutClosed || !text) return;
-    let start = 0;
-    let newline = text.indexOf("\n");
-    while (newline !== -1) {
-      const line = this.stdoutPartial + text.slice(start, newline);
-      this.stdoutPartial = "";
-      this.emitStdoutLine(line);
-      if (this.stdoutClosed) return;
-      start = newline + 1;
-      newline = text.indexOf("\n", start);
-    }
-    this.stdoutPartial += text.slice(start);
-  }
-
-  private emitStdoutLine(rawLine: string): void {
-    if (this.stdoutClosed) return;
-    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
-    void this.handleLine(line).catch((error) => {
-      this.logger.warn(
-        { error, ...describeLine(line) },
-        "Failed to handle Codex app-server stdout line",
-      );
-    });
-  }
-
-  private stopReadingStdout(): void {
-    this.stdoutClosed = true;
-    this.stdoutPartial = "";
-  }
-
   private async handleLine(line: string): Promise<void> {
     if (!line.trim()) return;
     let raw: unknown;
     try {
       raw = JSON.parse(line);
     } catch (error) {
-      this.logger.warn(
-        { error, ...describeLine(line) },
-        "Ignoring non-JSON Codex app-server stdout line",
-      );
+      this.logger.warn({ error, line }, "Ignoring non-JSON Codex app-server stdout line");
       return;
     }
 
     if (!isRecord(raw)) {
-      this.logger.warn(describeLine(line), "Parsed JSON is not an object");
+      this.logger.warn({ line }, "Parsed JSON is not an object");
       return;
     }
 

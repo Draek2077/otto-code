@@ -1,12 +1,17 @@
 import type { ToolCallTimelineItem } from "./agent-types.js";
-import { getMcpToolLeafName, getOttoToolLeafName } from "./tool-name-normalization.js";
+import {
+  buildAgentMessageDisplay,
+  buildPaseoToolDisplay,
+} from "./paseo-tool-presentation/index.js";
 import { stripCwdPrefix } from "./path-utils.js";
 
 export type ToolCallDisplayInput = Pick<
   ToolCallTimelineItem,
-  "name" | "status" | "error" | "metadata" | "detail"
+  "name" | "status" | "error" | "metadata" | "detail" | "agentMessage"
 > & {
   cwd?: string;
+  /** Title of the agent a Paseo call targets, when the caller knows it. */
+  targetAgentTitle?: string;
 };
 
 export interface ToolCallDisplayModel {
@@ -28,76 +33,22 @@ function readString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
-// Curated display names - the registry of tools we explicitly "know about".
-// Keyed by the lowercased leaf name (transport namespace already stripped).
-//
-// Labels are sentence case, like all UI copy (docs/design.md, "Copy and voice").
-// Only tools whose bare id does NOT humanize cleanly on its own need an entry
-// here: lowercase compound names ("websearch") a splitter can't segment, or
-// ones we want to word deliberately. Well-formed snake_case ("suggest_task") and
-// camelCase ("WebSearch") names are handled by the algorithmic humanizer below
-// and do NOT need listing.
-//
-// Anything not here falls through to the humanizer and still renders readably -
-// so an unmapped tool shows up looking slightly generic (e.g. a stray provider
-// tool), which is the cue to add it here. Extend this map to teach Otto a tool.
-const KNOWN_TOOL_DISPLAY_NAMES: Record<string, string> = {
-  websearch: "Web search",
-  web_search: "Web search",
-  webfetch: "Web fetch",
-  web_fetch: "Web fetch",
-  todowrite: "Update todos",
-  todoread: "Read todos",
-  multiedit: "Multi edit",
-  notebookedit: "Edit notebook",
-  notebookread: "Read notebook",
-  bashoutput: "Bash output",
-  killshell: "Kill shell",
-  exitplanmode: "Exit plan mode",
-  applypatch: "Apply patch",
-  ls: "List files",
-};
+function humanizeToolName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) {
+    return name;
+  }
+  if (/[:./]/.test(trimmed) || trimmed.includes("__")) {
+    return trimmed;
+  }
 
-// Split camelCase / PascalCase and separator-delimited identifiers into words,
-// then sentence-case them: "WebSearch" -> "Web search", "suggest_task" ->
-// "Suggest task", "HTTPServer" -> "Http server".
-function sentenceCaseToolId(value: string): string {
-  return value
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+  return trimmed
     .replace(/[._-]+/g, " ")
     .split(" ")
     .filter((segment) => segment.length > 0)
     .join(" ")
     .toLowerCase()
     .replace(/^./, (character) => character.toUpperCase());
-}
-
-function humanizeToolName(name: string): string {
-  const trimmed = name.trim();
-  if (!trimmed) {
-    return name;
-  }
-  // Strip the transport namespace first ("mcp__otto__suggest_task" ->
-  // "suggest_task", "otto.list_chats" -> "list_chats") so both the known-tool
-  // lookup and the fallback operate on the bare tool id.
-  const leaf = getMcpToolLeafName(trimmed) ?? getOttoToolLeafName(trimmed);
-  if (leaf) {
-    return humanizeToolName(leaf);
-  }
-  return KNOWN_TOOL_DISPLAY_NAMES[trimmed.toLowerCase()] ?? sentenceCaseToolId(trimmed);
-}
-
-/**
- * Friendly display name for a bare tool identifier, used at every surface that
- * shows a tool/action name without a full timeline item to run through
- * {@link buildToolCallDisplayModel} (the visualizer's action labels, sub-agent
- * activity rows). Strips the MCP/Otto namespace, consults the known-tool
- * registry, then sentence-cases as a fallback - so "mcp__otto__suggest_task",
- * "otto.suggest_task", and a bare "suggest_task" all render as "Suggest task".
- */
-export function getToolDisplayName(name: string): string {
-  return humanizeToolName(name);
 }
 
 function formatErrorText(error: unknown): string | undefined {
@@ -199,6 +150,21 @@ function buildUnknownDetailOverride(input: ToolCallDisplayInput): DetailDisplay 
 }
 
 export function buildToolCallDisplayModel(input: ToolCallDisplayInput): ToolCallDisplayModel {
+  const errorText = input.status === "failed" ? formatErrorText(input.error) : undefined;
+  const paseoDisplay = input.agentMessage
+    ? buildAgentMessageDisplay(input.agentMessage)
+    : buildPaseoToolDisplay({
+        toolName: input.name,
+        detail: input.detail,
+        targetAgentTitle: input.targetAgentTitle,
+      });
+  if (paseoDisplay) {
+    return {
+      displayName: paseoDisplay.displayName,
+      ...(paseoDisplay.summary ? { summary: paseoDisplay.summary } : {}),
+      ...(errorText ? { errorText } : {}),
+    };
+  }
   const canonicalDisplay = buildCanonicalDetailDisplay(input);
   const unknownDetailOverride = buildUnknownDetailOverride(input);
   const displayName =
@@ -206,7 +172,6 @@ export function buildToolCallDisplayModel(input: ToolCallDisplayInput): ToolCall
     canonicalDisplay.displayName ??
     humanizeToolName(input.name);
   const summary = unknownDetailOverride.summary ?? canonicalDisplay.summary;
-  const errorText = input.status === "failed" ? formatErrorText(input.error) : undefined;
 
   return {
     displayName,

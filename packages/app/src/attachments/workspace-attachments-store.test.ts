@@ -16,7 +16,7 @@ function reviewAttachment(body: string): WorkspaceComposerAttachment {
     commentCount: 1,
     attachment: {
       type: "review",
-      mimeType: "application/otto-review",
+      mimeType: "application/paseo-review",
       cwd: "/repo",
       mode: "uncommitted",
       baseRef: null,
@@ -55,7 +55,7 @@ function contextAttachment(id: string): WorkspaceComposerAttachment {
     id,
     title: "Comment · octocat",
     text: "GitHub pull request comment\n\nLooks good.",
-    url: `https://github.com/otto-code-ai/otto-code/pull/42#${id}`,
+    url: `https://github.com/getpaseo/paseo/pull/42#${id}`,
   };
 }
 
@@ -74,19 +74,6 @@ function chatHistoryAttachment(id: string, text = "Previous chat."): WorkspaceCo
       serverId: "local",
       agentId: "agent-1",
     },
-  };
-}
-
-function meetingTranscriptAttachment(
-  id: string,
-  content = "Meeting transcript.",
-): WorkspaceComposerAttachment {
-  return {
-    kind: "meeting_transcript",
-    id,
-    title: "Meeting notes · August 13",
-    content,
-    occurredAt: "2026-08-13T12:00:00.000Z",
   };
 }
 
@@ -160,30 +147,6 @@ describe("workspace attachments store", () => {
     const replacement = chatHistoryAttachment("chat_history:draft-1", "Updated chat.");
 
     expect(appendWorkspaceAttachment([original], replacement)).toEqual([replacement]);
-  });
-
-  it("dedupes repeated meeting transcripts by id", () => {
-    const original = meetingTranscriptAttachment("meeting-1", "Original transcript.");
-    const replacement = meetingTranscriptAttachment("meeting-1", "Edited transcript.");
-
-    expect(appendWorkspaceAttachment([original], replacement)).toEqual([replacement]);
-  });
-
-  it("dedupes repeated file context attachments by path while keeping other files", () => {
-    const fileA: WorkspaceComposerAttachment = {
-      kind: "file_context",
-      id: "src/a.ts",
-      path: "src/a.ts",
-    };
-    const fileB: WorkspaceComposerAttachment = {
-      kind: "file_context",
-      id: "src/b.ts",
-      path: "src/b.ts",
-    };
-
-    const withBoth = appendWorkspaceAttachment([fileA], fileB);
-    expect(withBoth).toEqual([fileA, fileB]);
-    expect(appendWorkspaceAttachment(withBoth, { ...fileA })).toEqual([fileB, { ...fileA }]);
   });
 
   it("adds a workspace attachment against the current scope state", () => {

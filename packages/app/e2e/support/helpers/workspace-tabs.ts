@@ -89,7 +89,7 @@ async function openExplorerView(
 ): Promise<void> {
   const explorer = await ensureExplorerSidebar(page);
   const tab = explorer.getByTestId(view.tabTestId);
-  await tab.click();
+  await selectWorkspaceTab(tab);
   await expect(visibleTestId(page, view.contentTestId).first()).toBeVisible({
     timeout: view.timeout ?? 30_000,
   });
@@ -97,14 +97,13 @@ async function openExplorerView(
 
 export async function openChangesTreePanel(page: Page): Promise<void> {
   await openExplorerView(page, {
-    tabTestId: "explorer-sidebar-tab-changes_tree",
+    tabTestId: "workspace-tab-changes_tree",
     contentTestId: "changes-tree-panel",
   });
 }
 
 export async function openChangesPanel(page: Page, timeout = 30_000): Promise<void> {
   await openChangesTreePanel(page);
-  await showChangesFileTree(page);
   const changedFile = page
     .locator('[data-testid^="diff-tree-file-"][data-testid$="-toggle"]')
     .filter({ visible: true })
@@ -116,35 +115,11 @@ export async function openChangesPanel(page: Page, timeout = 30_000): Promise<vo
   });
 }
 
-/** Select the file-only presentation explicitly; fresh installs show inline diffs. */
-export async function showChangesFileTree(page: Page): Promise<void> {
-  const panel = visibleTestId(page, "changes-tree-panel").first();
-  await panel.getByTestId("changes-options-menu").click();
-  const inlineDiff = page.getByTestId("changes-toggle-inline-diff");
-  await expect(inlineDiff).toBeVisible();
-  if ((await inlineDiff.getAttribute("aria-checked")) === "true") {
-    await inlineDiff.click();
-  } else {
-    await page.keyboard.press("Escape");
-  }
-  await expect(panel.getByTestId("changes-file-tree")).toBeVisible();
-}
-
 export async function openFilesPanel(page: Page): Promise<void> {
   await openExplorerView(page, {
-    tabTestId: "explorer-sidebar-tab-files",
+    tabTestId: "workspace-tab-files",
     contentTestId: "file-explorer-tree-scroll",
   });
-}
-
-export async function openProjectSearchPanel(page: Page): Promise<void> {
-  const modifier = process.platform === "darwin" ? "Meta" : "Control";
-  await page.keyboard.press(`${modifier}+Shift+F`);
-  const explorer = explorerSidebar(page);
-  await expect(explorer.getByTestId("explorer-sidebar-tab-project_search")).toBeVisible({
-    timeout: 30_000,
-  });
-  await expect(explorer.getByTestId("project-search-input")).toBeVisible({ timeout: 30_000 });
 }
 
 export async function openPullRequestPanel(page: Page): Promise<void> {
@@ -154,22 +129,24 @@ export async function openPullRequestPanel(page: Page): Promise<void> {
     await expect(visibleTestId(page, "pr-pane").first()).toBeVisible({ timeout: 15_000 });
     return;
   }
-  const trigger = visibleTestId(page, "workspace-new-tab-menu-trigger").first();
+  const trigger = visibleTestId(page, "workspace-new-tab-button").first();
   await trigger.click();
   await visibleTestId(page, "workspace-new-tab-menu-pull-request").first().click();
   await expect(visibleTestId(page, "pr-pane").first()).toBeVisible({ timeout: 15_000 });
 }
 
 export async function waitForWorkspaceTabsVisible(page: Page): Promise<void> {
-  await expect(visibleWorkspaceTabStrip(page)).toBeVisible({ timeout: 30_000 });
-  await expect(visibleTestId(page, "workspace-new-tab-menu-trigger").first()).toBeVisible({
+  await expect(visibleTestId(page, "workspace-tabs-row").first()).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(visibleTestId(page, "workspace-new-tab-button").first()).toBeVisible({
     timeout: 30_000,
   });
 }
 
 /** Open the pane-local `+` menu and pick Agent. */
 export async function createAgentTabFromMenu(page: Page): Promise<void> {
-  const trigger = visibleTestId(page, "workspace-new-tab-menu-trigger").first();
+  const trigger = visibleTestId(page, "workspace-new-tab-button").first();
   await expect(trigger).toBeVisible({ timeout: 10_000 });
   await trigger.click();
   const item = visibleTestId(page, "workspace-new-tab-menu-agent").first();
@@ -266,30 +243,4 @@ export async function sampleWorkspaceTabIds(
     await page.waitForTimeout(intervalMs);
   }
   return snapshots;
-}
-
-/**
- * Splits the focused pane through the tab bar's more-actions catalog menu.
- * The inline split buttons only exist when their tool is pinned (and are
- * hover-revealed), so the always-present catalog row is the stable path.
- */
-export async function splitPaneFromCatalogMenu(
-  page: Page,
-  direction: "right" | "down",
-): Promise<void> {
-  const trigger = page
-    .getByTestId("workspace-new-tab-menu-trigger")
-    .filter({ visible: true })
-    .first();
-  await expect(trigger).toBeVisible({ timeout: 10_000 });
-  await trigger.click();
-  const item = page.getByTestId(`workspace-new-tab-menu-split-${direction}`);
-  await expect(item).toBeVisible({ timeout: 10_000 });
-  await item.click();
-}
-
-export function visibleWorkspaceTabStrip(page: Page) {
-  return visibleTestId(page, "workspace-tabs-row")
-    .or(visibleTestId(page, "workspace-tabs-rail"))
-    .first();
 }

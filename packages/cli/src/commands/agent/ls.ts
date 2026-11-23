@@ -1,12 +1,9 @@
 import type { Command } from "commander";
-import type { FetchAgentsResponseMessage } from "@otto-code/protocol/messages";
-import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
+import { connectToDaemon } from "../../utils/client.js";
 import type { CommandOptions, ListResult, OutputSchema, CommandError } from "../../output/index.js";
 import { collectMultiple } from "../../utils/command-options.js";
 import { isSameOrDescendantPath } from "../../utils/paths.js";
-import { parseListingId } from "../../utils/listing-ownership.js";
-
-type AgentDirectoryEntry = FetchAgentsResponseMessage["payload"]["entries"][number];
 
 type FetchAgentsOptions = NonNullable<
   Parameters<Awaited<ReturnType<typeof connectToDaemon>>["fetchAgents"]>[0]
@@ -15,16 +12,9 @@ type FetchAgentsOptions = NonNullable<
 export function addLsOptions(cmd: Command): Command {
   return cmd
     .description("List agents. By default excludes archived agents.")
-    .option("-a, --all", "Include archived agents")
+    .option("-a, --all", "Include archived and background agents")
     .option("-g, --global", "List agents across all directories")
-    .option(
-      "--project <project-id>",
-      "Filter by exact owning project ID (within the selected scope)",
-    )
-    .option(
-      "--workspace <workspace-id>",
-      "Filter by exact owning workspace ID (within the selected scope)",
-    )
+    .option("--background", "Include background workspace agents")
     .option(
       "--label <key=value>",
       "Filter by label (can be used multiple times)",
@@ -44,8 +34,6 @@ export interface AgentListItem {
   status: string;
   cwd: string;
   created: string;
-  projectId: string;
-  workspaceId: string | null;
 }
 
 /** Helper to get relative time string */
@@ -101,7 +89,7 @@ export const agentLsSchema: OutputSchema<AgentListItem> = {
 };
 
 /** Transform agent snapshot to AgentListItem */
-function toListItem({ agent, project }: AgentDirectoryEntry): AgentListItem {
+function toListItem(agent: AgentSnapshotPayload): AgentListItem {
   const model = normalizeModelId(agent.runtimeInfo?.model) ?? normalizeModelId(agent.model);
   return {
     id: agent.id,
@@ -112,35 +100,18 @@ function toListItem({ agent, project }: AgentDirectoryEntry): AgentListItem {
     status: agent.status,
     cwd: shortenPath(agent.cwd),
     created: relativeTime(agent.createdAt),
-    // The daemon resolves projectKey from the persisted workspace's projectId.
-    projectId: project.projectKey,
-    // Older snapshots can omit ownership. Never guess it from cwd.
-    workspaceId: agent.workspaceId ?? null,
   };
 }
 
 export type AgentLsResult = ListResult<AgentListItem>;
-
-function daemonConnectionFailure(host: string, cause: unknown): CommandError {
-  const reason = cause instanceof Error ? cause.message : String(cause);
-  const isSsh = host.trim().startsWith("ssh://");
-  return {
-    code: "DAEMON_NOT_RUNNING",
-    message: `Cannot reach the daemon at ${host}: ${reason}`,
-    details: isSsh
-      ? "Start the Otto daemon on the SSH host; SSH transport does not install or start it."
-      : [
-          "Start a local daemon with: otto daemon start",
-          "To use another daemon, pass --host <host:port> or set OTTO_HOST.",
-        ].join("\n"),
-  };
-}
 
 export interface AgentLsOptions extends CommandOptions {
   /** -a: Include archived agents */
   all?: boolean;
   /** -g: List agents across all directories */
   global?: boolean;
+  /** --background: Include background workspace agents */
+  background?: boolean;
   /** Filter by specific status */
   status?: string;
   /** Filter by specific cwd */
@@ -149,8 +120,6 @@ export interface AgentLsOptions extends CommandOptions {
   label?: string[];
   /** Filter by thinking option ID */
   thinking?: string;
-  project?: string;
-  workspace?: string;
 }
 
 function parseLabelFilters(labels: string[] | undefined): Record<string, string> {
@@ -167,23 +136,17 @@ function parseLabelFilters(labels: string[] | undefined): Record<string, string>
 }
 
 export function buildAgentLsFetchOptions(
-  options: Pick<AgentLsOptions, "all" | "global" | "label" | "thinking" | "project" | "workspace">,
+  options: Pick<AgentLsOptions, "all" | "global" | "background" | "label" | "thinking">,
 ): FetchAgentsOptions {
   const labelFilters = parseLabelFilters(options.label);
   const normalizedThinkingOptionId = options.thinking?.trim();
   const daemonFilter: NonNullable<FetchAgentsOptions["filter"]> = {};
-  const projectId = parseListingId(options.project, "--project");
-  const workspaceId = parseListingId(options.workspace, "--workspace");
-
-  if (projectId !== undefined) {
-    daemonFilter.projectKeys = [projectId];
-  }
-  if (workspaceId !== undefined) {
-    daemonFilter.workspaceId = workspaceId;
-  }
 
   if (options.all) {
     daemonFilter.includeArchived = true;
+  }
+  if (options.background || options.all) {
+    daemonFilter.includeBackground = true;
   }
   if (Object.keys(labelFilters).length > 0) {
     daemonFilter.labels = labelFilters;
@@ -193,7 +156,7 @@ export function buildAgentLsFetchOptions(
   }
 
   const fetchOptions: FetchAgentsOptions = {};
-  if (!options.global) {
+  if (!options.global && !options.all) {
     fetchOptions.scope = "active";
   }
   if (Object.keys(daemonFilter).length > 0) {
@@ -202,38 +165,37 @@ export function buildAgentLsFetchOptions(
   return fetchOptions;
 }
 
+interface AgentLsClient {
+  fetchAgents(options?: FetchAgentsOptions): Promise<{
+    entries: { agent: AgentSnapshotPayload }[];
+    pageInfo: { nextCursor: string | null };
+  }>;
+  close(): Promise<void>;
+}
+
 /**
  * Agent ls command semantics:
- * - `otto agent ls`    → active non-archived agents
- * - `otto agent ls -g` → global non-archived agents
- * - `otto agent ls -a` → active agents, including archived
- * - `otto agent ls -ag` → global agents, including archived
+ * - `paseo agent ls`    → active non-archived agents
+ * - `paseo agent ls -g` → global non-archived agents
+ * - `paseo agent ls -a` → all agents, including archived and background
+ * - `paseo agent ls -ag` → global agents, including archived
  */
 export async function runLsCommand(
   options: AgentLsOptions,
   _command: Command,
 ): Promise<AgentLsResult> {
-  const fetchOptions = buildAgentLsFetchOptions(options);
-  const host = getDaemonHost({ host: options.host });
+  return listAgents(options);
+}
 
-  let client;
-  try {
-    client = await connectToDaemon({ host: options.host });
-  } catch (err) {
-    throw daemonConnectionFailure(host, err);
-  }
+export async function listAgents(
+  options: AgentLsOptions,
+  connect: (
+    options: Parameters<typeof connectToDaemon>[0],
+  ) => Promise<AgentLsClient> = connectToDaemon,
+): Promise<AgentLsResult> {
+  const client = await connect({ target: options.daemonTarget });
 
   try {
-    // COMPAT(agentWorkspaceFilter): added in v0.9.34; remove gate after 2027-04-16 when floor >= v0.9.34.
-    if (
-      fetchOptions.filter?.workspaceId !== undefined &&
-      client.getLastServerInfoMessage()?.features?.agentWorkspaceFilter !== true
-    ) {
-      throw {
-        code: "DAEMON_UPDATE_REQUIRED",
-        message: "Update the host to filter chats by workspace ID.",
-      } satisfies CommandError;
-    }
     const normalizedThinkingOptionId = options.thinking?.trim();
     if (options.thinking !== undefined && !normalizedThinkingOptionId) {
       const error: CommandError = {
@@ -244,28 +206,39 @@ export async function runLsCommand(
     }
 
     const labelFilters = parseLabelFilters(options.label);
-    const fetchPayload = await client.fetchAgents(fetchOptions);
-    let entries = fetchPayload.entries;
+    const fetchOptions = buildAgentLsFetchOptions(options);
+    let agents: AgentSnapshotPayload[] = [];
+    let cursor: string | undefined;
+    // createdAt never changes, so agents cannot move past the cursor while the pages are read.
+    do {
+      const payload = await client.fetchAgents({
+        ...fetchOptions,
+        sort: [{ key: "created_at", direction: "desc" }],
+        page: { limit: 200, ...(cursor ? { cursor } : {}) },
+      });
+      agents.push(...payload.entries.map((entry) => entry.agent));
+      cursor = payload.pageInfo.nextCursor ?? undefined;
+    } while (cursor);
 
     // By default, exclude archived agents. `-a` includes them.
     if (!options.all) {
-      entries = entries.filter(({ agent }) => !agent.archivedAt);
+      agents = agents.filter((a) => !a.archivedAt);
     }
 
     // If explicit status filter is provided, apply it.
     if (options.status) {
-      entries = entries.filter(({ agent }) => agent.status === options.status);
+      agents = agents.filter((a) => a.status === options.status);
     }
 
     // Optional cwd filter.
     if (options.cwd) {
-      entries = entries.filter(({ agent }) => isSameOrDescendantPath(options.cwd!, agent.cwd));
+      agents = agents.filter((a) => isSameOrDescendantPath(options.cwd!, a.cwd));
     }
 
     // Apply label filtering only when explicitly requested.
     if (Object.keys(labelFilters).length > 0) {
-      entries = entries.filter(({ agent }) => {
-        const agentLabels = agent.labels;
+      agents = agents.filter((a) => {
+        const agentLabels = a.labels;
         for (const [key, value] of Object.entries(labelFilters)) {
           if (agentLabels[key] !== value) {
             return false;
@@ -279,7 +252,7 @@ export async function runLsCommand(
 
     // Sort agents: running first, then idle, then others; within each group, most recent first
     const statusOrder = { running: 0, idle: 1 } as Record<string, number>;
-    entries.sort(({ agent: a }, { agent: b }) => {
+    agents.sort((a, b) => {
       // Primary sort: by status
       const aOrder = statusOrder[a.status] ?? 999;
       const bOrder = statusOrder[b.status] ?? 999;
@@ -291,7 +264,7 @@ export async function runLsCommand(
       return bTime - aTime;
     });
 
-    const items = entries.map(toListItem);
+    const items = agents.map(toListItem);
 
     return {
       type: "list",
@@ -300,14 +273,6 @@ export async function runLsCommand(
     };
   } catch (err) {
     await client.close().catch(() => {});
-    if (
-      typeof err === "object" &&
-      err !== null &&
-      "code" in err &&
-      err.code === "DAEMON_UPDATE_REQUIRED"
-    ) {
-      throw err;
-    }
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
       code: "LIST_AGENTS_FAILED",

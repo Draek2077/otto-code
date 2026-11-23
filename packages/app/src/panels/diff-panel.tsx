@@ -1,3 +1,4 @@
+import { DiffPresentationControl, useHostDiffReview } from "@/otto/diff/preferences"; // OTTO(structural-diff)
 import { useCallback, useMemo, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -6,8 +7,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import invariant from "tiny-invariant";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useIsCompactFormFactor } from "@/constants/layout";
-import { resolveCompactFontSize } from "@/appearance/apply";
-import { PaneContentToolbar, ToolbarControls } from "@/components/ui/pane-content-toolbar";
+import { PaneContentToolbar } from "@/components/ui/pane-content-toolbar";
 import { isWeb } from "@/constants/platform";
 import { DiffDocument } from "@/git/diff-document";
 import { ChangesSurface, DiffLayoutToggle, resolveDiffLayout } from "@/git/diff-pane";
@@ -36,16 +36,10 @@ function useDiffPanelPreferences() {
     () => ({
       layout: effectiveLayout,
       wrapLines: preferences.wrapLines,
-      codeFontSize: resolveCompactFontSize(settings.codeFontSize, isCompact),
+      codeFontSize: settings.codeFontSize,
       monoFontFamily: settings.monoFontFamily,
     }),
-    [
-      effectiveLayout,
-      isCompact,
-      preferences.wrapLines,
-      settings.codeFontSize,
-      settings.monoFontFamily,
-    ],
+    [effectiveLayout, preferences.wrapLines, settings.codeFontSize, settings.monoFontFamily],
   );
   const toggleLayout = useCallback(() => {
     void updatePreferences({ layout: preferences.layout === "unified" ? "split" : "unified" });
@@ -93,7 +87,7 @@ function resolveChangesPresentation(
 
 function ChangesPanel() {
   const { t } = useTranslation();
-  const { serverId, workspaceId, paneId, tabId, target, openPreferredTarget, openTargetToSide } =
+  const { serverId, workspaceId, tabId, target, openPreferredTarget, openTargetToSide } =
     usePaneContext();
   const [changesState, setChangesState] = usePanelState(changesStateSchema, defaultChangesState);
   const { preferences } = useChangesPreferences();
@@ -107,8 +101,7 @@ function ChangesPanel() {
   const isTree = target.kind === "changes_tree";
 
   const handleOpenFile = useCallback(
-    (path: string) =>
-      openPreferredTarget({ kind: "file", path }, isTree ? "explorerChanges" : "diffFiles"),
+    (path: string) => openPreferredTarget({ kind: "file", path }, isTree ? "diffs" : "diffFiles"),
     [isTree, openPreferredTarget],
   );
 
@@ -116,7 +109,7 @@ function ChangesPanel() {
     (path: string) =>
       openPreferredTarget(
         { kind: "working_diff", focusPath: path, focusRequestId: Date.now() },
-        "explorerChanges",
+        "diffs",
       ),
     [openPreferredTarget],
   );
@@ -143,10 +136,8 @@ function ChangesPanel() {
           cwd={cwd}
           enabled={isActive}
           presentation={presentation}
-          modeScope={tabId}
           focusPath={target.kind === "working_diff" ? target.focusPath : undefined}
           focusRequestId={target.kind === "working_diff" ? target.focusRequestId : undefined}
-          defaultPaneId={paneId}
           onSelectDiffFile={isTree ? handleSelectDiffFile : undefined}
           onOpenFile={handleOpenFile}
           onOpenToSide={isTree && openTargetToSide ? handleOpenDiffToSide : undefined}
@@ -164,11 +155,13 @@ function CommitDiffPanel() {
   const { serverId, workspaceId, target } = usePaneContext();
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
   const panelPreferences = useDiffPanelPreferences();
+  const { reviewPresentation, includeStructuralSource } = useHostDiffReview(serverId);
   invariant(target.kind === "commit_diff", "CommitDiffPanel requires commit_diff target");
   const { files, isLoading, error, capabilityMissing } = useCommitDiffFiles({
     serverId,
     cwd: cwd ?? "",
     sha: target.sha,
+    includeStructuralSource,
     enabled: Boolean(cwd),
   });
   const mode = useMemo(() => ({ kind: "commit" as const }), []);
@@ -195,8 +188,8 @@ function CommitDiffPanel() {
     body = (
       <DiffDocument
         files={files}
+        reviewPresentation={reviewPresentation}
         displayPreferences={panelPreferences.displayPreferences}
-        presentation={panelPreferences.preferences.presentation}
         mode={mode}
       />
     );
@@ -204,16 +197,26 @@ function CommitDiffPanel() {
 
   return (
     <View style={styles.container} testID="commit-diff-panel">
-      {panelPreferences.canUseSplitLayout ? (
+      {/* OTTO(structural-diff): keep the picker available in the existing review toolbar. */}
+      {panelPreferences.canUseSplitLayout || files.length > 0 ? (
         <PaneContentToolbar style={styles.toolbar} testID="commit-diff-header">
-          <ToolbarControls style={styles.toolbarActions} testID="commit-diff-toolbar">
-            <DiffLayoutToggle
-              layout={panelPreferences.preferences.layout}
-              isMobile={panelPreferences.isCompact}
-              testID="commit-diff-toggle-layout"
-              onToggle={panelPreferences.toggleLayout}
-            />
-          </ToolbarControls>
+          <View style={styles.toolbarActions} testID="commit-diff-toolbar">
+            {files.length > 0 ? (
+              <DiffPresentationControl
+                inline
+                value={reviewPresentation.presentation}
+                onChange={reviewPresentation.select}
+              />
+            ) : null}
+            {panelPreferences.canUseSplitLayout ? (
+              <DiffLayoutToggle
+                layout={panelPreferences.preferences.layout}
+                isMobile={panelPreferences.isCompact}
+                testID="commit-diff-toggle-layout"
+                onToggle={panelPreferences.toggleLayout}
+              />
+            ) : null}
+          </View>
         </PaneContentToolbar>
       ) : null}
       <View style={styles.body}>{body}</View>
@@ -277,7 +280,10 @@ const styles = StyleSheet.create((theme) => ({
     paddingRight: theme.spacing[2],
   },
   toolbarActions: {
+    flexDirection: "row",
+    alignItems: "center",
     justifyContent: "flex-end",
+    gap: theme.spacing[1],
   },
   body: {
     flex: 1,

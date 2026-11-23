@@ -1,3 +1,4 @@
+import { SessionDelivery } from "./session/owned-subscriptions/index.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Server as HTTPServer } from "http";
 import type pino from "pino";
@@ -8,10 +9,7 @@ import type { DaemonConfigStore } from "./daemon-config-store.js";
 import type { ScheduleService } from "./schedule/service.js";
 import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { asInternals, createStub } from "./test-utils/class-mocks.js";
-import {
-  createDaemonConfigStoreStub,
-  createProviderSnapshotManagerStub,
-} from "./test-utils/session-stubs.js";
+import { createProviderSnapshotManagerStub } from "./test-utils/session-stubs.js";
 import type { PushNotificationSender, PushPayload } from "./push/index.js";
 import type { WorkspaceAutoName } from "./workspace-auto-name.js";
 
@@ -89,7 +87,6 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
   const agentManager = {
     subscribe: vi.fn(() => () => {}),
     setAgentAttentionCallback: vi.fn(),
-    setAgentActivelyWatchedProbe: vi.fn(),
     getAgent: vi.fn(() => ({ workspaceId: WORKSPACE_ID, pendingPermissions: new Map() })),
     getLastAssistantMessage: vi.fn(async () => null),
     getMetricsSnapshot: vi.fn(() => ({
@@ -103,7 +100,10 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
     })),
     ...agentManagerOverrides,
   };
-  const daemonConfigStore = createDaemonConfigStoreStub();
+  const daemonConfigStore = {
+    onApply: vi.fn(() => () => {}),
+    onChange: vi.fn(() => () => {}),
+  };
 
   const server = new VoiceAssistantWebSocketServer(
     createStub<HTTPServer>({}),
@@ -112,7 +112,7 @@ function createServer(agentManagerOverrides?: Record<string, unknown>) {
     createStub<AgentManager>(agentManager),
     createStub<AgentStorage>({}),
     createStub<DownloadTokenStore>({}),
-    "/tmp/otto-test",
+    "/tmp/paseo-test",
     createStub<DaemonConfigStore>(daemonConfigStore),
     null,
     { allowedOrigins: new Set() },
@@ -192,9 +192,15 @@ function connectClient(
   options: { subscribed?: boolean } = {},
 ) {
   const ws = createOpenSocket();
+  const delivery = new SessionDelivery(() => {});
+  delivery.attach(ws, false);
   asInternals<WebSocketServerInternals>(server).sessions.set(ws, {
     kind: "trusted",
-    session: createSessionWithActivity(activity, options.subscribed ?? true),
+    session: {
+      ...createSessionWithActivity(activity, options.subscribed ?? true),
+      delivery,
+      wantsSourceNotification: () => true,
+    },
     clientId: "client-test",
     appVersion: null,
     connectionLogger: createLogger(),

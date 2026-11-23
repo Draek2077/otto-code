@@ -8,7 +8,7 @@ let testDir = "";
 
 describe("tailFile", () => {
   beforeEach(() => {
-    testDir = mkdtempSync(path.join(tmpdir(), "otto-tail-file-"));
+    testDir = mkdtempSync(path.join(tmpdir(), "paseo-tail-file-"));
   });
 
   afterEach(() => {

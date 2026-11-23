@@ -11,19 +11,19 @@ import { defaultHostAppearance } from "@/hosts/appearance";
 function makeHost(): HostProfile {
   return {
     serverId: "srv-secret",
+    password: "tcp-password",
     label: "Secret host",
     appearance: defaultHostAppearance(),
     lifecycle: {},
-    preferredConnectionId: "direct:secret.example.test:6868",
+    preferredConnectionId: "direct:secret.example.test:6767",
     createdAt: "2026-06-25T00:00:00.000Z",
     updatedAt: "2026-06-25T00:00:00.000Z",
     connections: [
       {
-        id: "direct:secret.example.test:6868",
+        id: "direct:secret.example.test:6767",
         type: "directTcp",
-        endpoint: "secret.example.test:6868",
+        endpoint: "secret.example.test:6767",
         useTls: true,
-        password: "tcp-password",
       },
       {
         id: "relay:relay.secret.test:443",
@@ -33,21 +33,21 @@ function makeHost(): HostProfile {
         daemonPublicKeyB64: "daemon-public-key-secret",
       },
       {
-        id: "socket:/tmp/otto-secret.sock",
+        id: "socket:/tmp/paseo-secret.sock",
         type: "directSocket",
-        path: "/tmp/otto-secret.sock",
+        path: "/tmp/paseo-secret.sock",
       },
       {
-        id: "pipe:\\\\.\\pipe\\otto-secret",
+        id: "pipe:\\\\.\\pipe\\paseo-secret",
         type: "directPipe",
-        path: "\\\\.\\pipe\\otto-secret",
+        path: "\\\\.\\pipe\\paseo-secret",
       },
     ],
   };
 }
 
 describe("app diagnostics report", () => {
-  test("reports whether the connected daemon is managed by Otto Desktop", () => {
+  test("reports whether the connected daemon is managed by Paseo Desktop", () => {
     const report = formatServerInfoSection({
       status: "server_info",
       serverId: "srv-desktop-managed",
@@ -77,7 +77,7 @@ describe("app diagnostics report", () => {
       agentDirectoryError: null,
       hasEverLoadedAgentDirectory: true,
       probeByConnectionId: new Map([
-        ["direct:secret.example.test:6868", { status: "available", latencyMs: 42 }],
+        ["direct:secret.example.test:6767", { status: "available", latencyMs: 42 }],
         ["relay:relay.secret.test:443", { status: "available", latencyMs: 8 }],
       ]),
       clientGeneration: 1,
@@ -93,7 +93,7 @@ describe("app diagnostics report", () => {
     expect(report).not.toContain("secret.example.test");
     expect(report).not.toContain("relay.secret.test");
     expect(report).not.toContain("daemon-public-key-secret");
-    expect(report).not.toContain("/tmp/otto-secret.sock");
+    expect(report).not.toContain("/tmp/paseo-secret.sock");
     expect(report).not.toContain("tcp-password");
   });
 
@@ -102,13 +102,13 @@ describe("app diagnostics report", () => {
     const redacted = redactAppDiagnosticReport(
       [
         "Desktop app log tail",
-        "secret.example.test:6868",
+        "secret.example.test:6767",
         "relay.secret.test:443",
         "daemon-public-key-secret",
-        "/tmp/otto-secret.sock",
-        "\\\\.\\pipe\\otto-secret",
+        "/tmp/paseo-secret.sock",
+        "\\\\.\\pipe\\paseo-secret",
         "password=tcp-password",
-        "otto://pairing-secret",
+        "paseo://pairing-secret",
       ].join("\n"),
       [host],
     );
@@ -116,8 +116,8 @@ describe("app diagnostics report", () => {
     expect(redacted).not.toContain("secret.example.test");
     expect(redacted).not.toContain("relay.secret.test");
     expect(redacted).not.toContain("daemon-public-key-secret");
-    expect(redacted).not.toContain("/tmp/otto-secret.sock");
-    expect(redacted).not.toContain("\\\\.\\pipe\\otto-secret");
+    expect(redacted).not.toContain("/tmp/paseo-secret.sock");
+    expect(redacted).not.toContain("\\\\.\\pipe\\paseo-secret");
     expect(redacted).not.toContain("tcp-password");
     expect(redacted).not.toContain("pairing-secret");
   });

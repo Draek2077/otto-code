@@ -1,5 +1,5 @@
 import { ipcMain } from "electron";
-import { OttoBrowserWebviewRegistry } from "../browser-webviews/registry.js";
+import { PaseoBrowserWebviewRegistry } from "../browser-webviews/registry.js";
 import {
   type BrowserKeyboardPolicy,
   classifyBrowserReservedShortcut,
@@ -11,12 +11,12 @@ import {
 
 export type { BrowserKeyboardPolicy } from "./policy.js";
 
-const POLICY_INPUT_CHANNEL = "otto:browser:set-shortcut-policy";
-const POLICY_OUTPUT_CHANNEL = "otto:browser-keyboard-policy";
-const POLICY_REQUEST_CHANNEL = "otto:browser-keyboard-policy-request";
-const SHORTCUT_INPUT_CHANNEL = "otto:browser-shortcut-input";
-const SHORTCUT_OUTPUT_CHANNEL = "otto:event:browser-shortcut-input";
-const RESERVED_SHORTCUT_OUTPUT_CHANNEL = "otto:event:browser-shortcut";
+const POLICY_INPUT_CHANNEL = "paseo:browser:set-shortcut-policy";
+const POLICY_OUTPUT_CHANNEL = "paseo:browser-keyboard-policy";
+const POLICY_REQUEST_CHANNEL = "paseo:browser-keyboard-policy-request";
+const SHORTCUT_INPUT_CHANNEL = "paseo:browser-shortcut-input";
+const SHORTCUT_OUTPUT_CHANNEL = "paseo:event:browser-shortcut-input";
+const RESERVED_SHORTCUT_OUTPUT_CHANNEL = "paseo:event:browser-shortcut";
 
 interface BrowserKeyboardContentsIdentity {
   readonly id: number;
@@ -61,7 +61,7 @@ export class BrowserKeyboard {
   private readonly attachedGuestsByWebContentsId = new Map<number, BrowserKeyboardGuest>();
   private readonly policiesByHostWebContentsId = new Map<number, BrowserKeyboardPolicy>();
 
-  public constructor(private readonly browserRegistry: OttoBrowserWebviewRegistry) {}
+  public constructor(private readonly browserRegistry: PaseoBrowserWebviewRegistry) {}
 
   public registerIpc(): void {
     ipcMain.handle(POLICY_INPUT_CHANNEL, (event, rawPolicy: unknown) => {
@@ -203,8 +203,8 @@ export class BrowserKeyboard {
           guest.contents.reload();
         }
         return;
-      case "find":
       case "focus-url":
+      case "find-in-page": // OTTO(browser-actions): preserve owning-host routing and guest isolation.
         event.preventDefault();
         if (!guest.hostContents.isDestroyed()) {
           guest.hostContents.send(RESERVED_SHORTCUT_OUTPUT_CHANNEL, {

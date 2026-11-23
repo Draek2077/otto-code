@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { parseChangelog, type ChangelogRelease } from "./parse-changelog";
+import { OTTO_CHANGELOG_RAW_URL } from "@getpaseo/protocol/otto/identity";
 
-const CHANGELOG_URL = "https://raw.githubusercontent.com/Draek2077/otto-code/main/CHANGELOG.md";
+const CHANGELOG_URL = OTTO_CHANGELOG_RAW_URL; // OTTO(identity)
 
 export type ChangelogState =
   | { status: "loading" }

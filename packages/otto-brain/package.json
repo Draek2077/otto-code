@@ -1,0 +1,112 @@
+{
+  "name": "@getpaseo/brain",
+  "version": "0.9.35",
+  "description": "Otto Brain standalone runtime and host",
+  "license": "AGPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Draek2077/otto-code.git",
+    "directory": "packages/otto-brain"
+  },
+  "bin": {
+    "otto-brain": "bin/otto-brain"
+  },
+  "files": [
+    "bin",
+    "config/downloads.json",
+    "dist",
+    "!dist/**/*.map"
+  ],
+  "type": "module",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    "./cli-target": {
+      "types": "./dist/cli-target.d.ts",
+      "node": "./dist/cli-target.js",
+      "import": "./src/cli-target.ts",
+      "default": "./src/cli-target.ts"
+    },
+    "./tui": {
+      "types": "./dist/tui.d.ts",
+      "node": "./dist/tui.js",
+      "import": "./src/tui.ts",
+      "default": "./src/tui.ts"
+    },
+    ".": {
+      "types": "./dist/index.d.ts",
+      "node": "./dist/index.js",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "node": "./dist/cli.js",
+      "import": "./src/cli.ts",
+      "default": "./src/cli.ts"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "node": "./dist/config/index.js",
+      "import": "./src/config/index.ts",
+      "default": "./src/config/index.ts"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "node": "./dist/client.js",
+      "import": "./src/client.ts",
+      "default": "./src/client.ts"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "node": "./dist/host.js",
+      "import": "./src/host.ts",
+      "default": "./src/host.ts"
+    },
+    "./runtime": {
+      "types": "./dist/runtime/index.d.ts",
+      "node": "./dist/runtime/index.js",
+      "import": "./src/runtime/index.ts",
+      "default": "./src/runtime/index.ts"
+    },
+    "./operations": {
+      "types": "./dist/ops/index.d.ts",
+      "node": "./dist/ops/index.js",
+      "import": "./src/ops/index.ts",
+      "default": "./src/ops/index.ts"
+    },
+    "./models": {
+      "types": "./dist/models/index.d.ts",
+      "node": "./dist/models/index.js",
+      "import": "./src/models/index.ts",
+      "default": "./src/models/index.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "clean": "node ../../scripts/clean-package-dist.mjs",
+    "build": "tsc -p tsconfig.json --incremental false",
+    "build:clean": "npm run clean && npm run build",
+    "prepack": "npm run build:clean",
+    "typecheck": "tsgo --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@clack/prompts": "^1.0.0",
+    "chalk": "^4.1.2",
+    "commander": "^12.0.0",
+    "selfsigned": "^2.4.1",
+    "yaml": "^2.8.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.9.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
+  },
+  "engines": {
+    "node": ">=20.6.0"
+  }
+}

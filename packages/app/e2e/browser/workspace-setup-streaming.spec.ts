@@ -1,3 +1,4 @@
+// OTTO(identity): fixture paths and labels follow Otto's persisted identity.
 import { daemonTest, test, expect } from "../support/fixtures";
 import { createTempGitRepo } from "../support/helpers/workspace";
 import {
@@ -46,7 +47,7 @@ test.describe("Workspace setup streaming", () => {
   test("does not seed the setup tab while workspace setup is running", async ({ page }) => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-open-", {
-      ottoConfig: {
+      paseoConfig: {
         worktree: {
           setup: [
             "sh -c 'echo starting setup; for i in $(seq 1 30); do echo tick $i; sleep 1; done; echo setup complete'",
@@ -74,7 +75,7 @@ test.describe("Workspace setup streaming", () => {
   test("runs setup through the sidebar and leaves the workspace usable", async ({ page }) => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-ui-flow-", {
-      ottoConfig: {
+      paseoConfig: {
         worktree: {
           setup: [
             "sh -c 'echo starting setup; sleep 1; echo loading dependencies; sleep 1; echo setup complete'",
@@ -87,8 +88,7 @@ test.describe("Workspace setup streaming", () => {
     try {
       await seedProjectForWorkspaceSetup(client, repo.path);
 
-      // Wait for setup completion via daemon (setup snapshots are per-session,
-      // so the browser session won't receive progress events).
+      // The setup client owns progress before creating the workspace.
       const completed = waitForWorkspaceSetupProgress(
         client,
         (payload) =>
@@ -120,7 +120,7 @@ test.describe("Workspace setup streaming", () => {
   daemonTest("streams running and completed setup snapshots for a successful setup", async () => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-success-", {
-      ottoConfig: {
+      paseoConfig: {
         worktree: {
           setup: ["sh -c 'echo starting setup; sleep 2; echo setup complete'"],
         },
@@ -165,7 +165,7 @@ test.describe("Workspace setup streaming", () => {
   test("seeds a failed setup tab once in the main pane", async ({ page }) => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-failure-", {
-      ottoConfig: {
+      paseoConfig: {
         worktree: {
           setup: ["sh -c 'echo starting setup; sleep 2; echo setup failed 1>&2; exit 1'"],
         },
@@ -198,6 +198,41 @@ test.describe("Workspace setup streaming", () => {
       await leaveWorkspaceViaHistory(page);
       await navigateToWorkspaceViaSidebar(page, workspace.id);
       await expectSetupTabNotSeeded(page, workspace.id);
+    } finally {
+      await client.close();
+      await repo.cleanup();
+    }
+  });
+
+  test("keeps a workspace usable when its setup config cannot be parsed", async ({ page }) => {
+    const client = await connectWorkspaceSetupClient();
+    const repo = await createTempGitRepo("setup-invalid-config-", {
+      files: [{ path: "otto.json", content: "{ invalid json\n" }],
+    });
+
+    try {
+      await seedProjectForWorkspaceSetup(client, repo.path);
+      const failed = waitForWorkspaceSetupProgress(
+        client,
+        (payload) => payload.status === "failed",
+      );
+      const workspace = await createWorkspaceThroughDaemon(client, {
+        cwd: repo.path,
+        worktreeSlug: "workspace-setup-invalid-config",
+      });
+      const failedPayload = await failed;
+      expect(failedPayload.error).toContain("Failed to parse otto.json");
+      expect(failedPayload.detail.commands).toEqual([]);
+
+      await openHomeWithProject(page, repo.path);
+      await navigateToWorkspaceViaSidebar(page, workspace.id);
+      await expectFailedSetupTabSeededInMainPane(page, workspace.id);
+      await expect(page.getByText(/Failed to parse otto\.json at/)).toBeVisible();
+      await closeSetupTab(page, workspace.id);
+      await clickNewChat(page);
+      await expectComposerVisible(page);
+      await openFileExplorer(page);
+      await expectExplorerEntryVisible(page, "otto.json");
     } finally {
       await client.close();
       await repo.cleanup();
@@ -237,7 +272,7 @@ test.describe("Workspace setup streaming", () => {
     test.setTimeout(90_000);
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-svc-ui-", {
-      ottoConfig: {
+      paseoConfig: {
         worktree: {
           setup: ["sh -c 'echo bootstrapping; sleep 1; echo setup complete'"],
         },
@@ -286,7 +321,7 @@ test.describe("Workspace setup streaming", () => {
   daemonTest("launches workspace scripts through an explicit daemon request", async () => {
     const client = await connectWorkspaceSetupClient();
     const repo = await createTempGitRepo("setup-scripts-", {
-      ottoConfig: {
+      paseoConfig: {
         worktree: {
           setup: ["sh -c 'echo bootstrapping; sleep 1; echo setup complete'"],
         },
@@ -306,7 +341,7 @@ test.describe("Workspace setup streaming", () => {
           payload.status === "completed" && payload.detail.log.includes("setup complete"),
       );
 
-      const result = await client.createOttoWorktree({
+      const result = await client.createPaseoWorktree({
         cwd: repo.path,
         worktreeSlug: "workspace-setup-scripts",
       });

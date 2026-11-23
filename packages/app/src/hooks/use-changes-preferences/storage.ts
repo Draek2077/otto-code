@@ -1,67 +1,45 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { z } from "zod";
-import {
-  CHANGES_TOOLBAR_ITEM_IDS,
-  DEFAULT_PINNED_CHANGES_TOOLBAR_ITEMS,
-  type ChangesToolbarItemId,
-} from "@/git/changes-toolbar/items";
-import {
-  CONVENTIONAL_COMMIT_TYPES,
-  NO_COMMIT_TYPE,
-  type CommitTypeChoice,
-} from "@/git/conventional-commit";
 import { readValidatedJson, readValidatedString } from "@/storage/validated-storage";
 
-export const CHANGES_PREFERENCES_STORAGE_KEY = "@otto:changes-preferences";
+export const CHANGES_PREFERENCES_STORAGE_KEY = "@paseo:changes-preferences";
 export const LEGACY_WRAP_LINES_STORAGE_KEY = "diff-wrap-lines";
 export const CHANGES_PREFERENCES_QUERY_KEY = ["changes-preferences"];
 
-const COMMIT_TYPE_VALUES = [NO_COMMIT_TYPE, ...CONVENTIONAL_COMMIT_TYPES] as [
-  CommitTypeChoice,
-  ...CommitTypeChoice[],
-];
-
 const changesPreferencesSchema = z.strictObject({
+  // OTTO(structural-diff): accept the Otto 0.9 presentation in its original settings record.
   presentation: z.enum(["line", "structural"]).optional(),
+  // Preserve these legacy controls while the current UI owns their presentation separately.
+  pinnedToolbarItems: z.unknown().optional(),
+  commitType: z.unknown().optional(),
   layout: z.enum(["unified", "split"]).optional(),
   desktopTreeVisible: z.boolean().optional(),
   // Read the former overloaded preference once so existing installations keep their desktop tree.
   viewMode: z.enum(["flat", "tree"]).optional(),
   wrapLines: z.boolean().optional(),
   hideWhitespace: z.boolean().optional(),
-  pinnedToolbarItems: z.array(z.enum(CHANGES_TOOLBAR_ITEM_IDS)).optional(),
   inlineDiff: z.boolean().optional(),
   commitsCollapsed: z.boolean().optional(),
-  commitType: z.enum(COMMIT_TYPE_VALUES).optional(),
 });
 
 export interface ChangesPreferences {
-  /** Persisted default. Per-review selection remains local to its surface. */
-  presentation: "line" | "structural";
+  presentation: "line" | "structural"; // OTTO(structural-diff)
   layout: "unified" | "split";
   desktopTreeVisible: boolean;
   wrapLines: boolean;
   hideWhitespace: boolean;
-  pinnedToolbarItems: ChangesToolbarItemId[];
   inlineDiff: boolean;
   commitsCollapsed: boolean;
-  /**
-   * Conventional Commits type the commit form prefixes the message with
-   * (`fix: …`). "none" commits the message as-is.
-   */
-  commitType: CommitTypeChoice;
 }
 
 export const DEFAULT_CHANGES_PREFERENCES: ChangesPreferences = {
-  presentation: "line",
+  presentation: "line", // OTTO(structural-diff)
   layout: "unified",
   desktopTreeVisible: false,
   wrapLines: false,
   hideWhitespace: false,
-  pinnedToolbarItems: DEFAULT_PINNED_CHANGES_TOOLBAR_ITEMS,
-  inlineDiff: true,
+  inlineDiff: false,
   commitsCollapsed: true,
-  commitType: NO_COMMIT_TYPE,
 };
 
 export interface KeyValueStorage {

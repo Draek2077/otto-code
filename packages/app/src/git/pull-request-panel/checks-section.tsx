@@ -1,10 +1,11 @@
-import React, { useCallback, useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { Pressable, ScrollView, Text, View, type GestureResponderEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronDown, ChevronRight, MessageSquarePlus } from "@/components/icons/material-icons";
+import { useTranslation } from "react-i18next";
+import { ChevronDown, ChevronRight, MessageSquarePlus } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
 import { openExternalUrl } from "@/utils/open-external-url";
-import { withIconSizeToken } from "@/components/icons/icon-size";
+import { ICON_SIZE } from "@/styles/theme";
 import { classifyCheck, type CheckPresentation } from "@/git/check-presentation";
 import { CheckPresentationIcon } from "@/git/check-presentation.view";
 import { ChecksRing } from "./checks-ring";
@@ -13,8 +14,6 @@ import { canAddPullRequestCheckLogsToChat } from "./context-attachment";
 import type { PrPaneCheck } from "./data";
 import { foregroundMutedColorMapping, sectionKitStyles } from "./section-kit";
 import { useCheckGroupState } from "./check-group-state";
-
-const ThemedChecksRing = withIconSizeToken(ChecksRing, "ChecksRing");
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
 const ThemedChevronRight = withUnistyles(ChevronRight);
@@ -73,7 +72,8 @@ export function ChecksSection({
   loadingCheckKeys,
   onAddLogsToChat,
 }: ChecksSectionProps) {
-  const summary = useMemo(() => summarizeChecks(checks), [checks]);
+  const { t } = useTranslation();
+  const summary = useMemo(() => summarizeChecks(checks, t), [checks, t]);
   const { collapsedGroups, toggle: handleToggleGroup } = useCheckGroupState();
 
   return (
@@ -86,27 +86,28 @@ export function ChecksSection({
           summary.detail ? `${summary.headline}. ${summary.detail}` : summary.headline
         }
       >
-        <ThemedChecksRing summary={summary} size="lg" />
+        <ChecksRing summary={summary} size={ICON_SIZE.lg} />
         <View style={styles.headerText}>
           <Text style={styles.headline} numberOfLines={1}>
             {summary.headline}
           </Text>
           {summary.parts.length > 0 ? (
             <Text style={styles.detail} numberOfLines={1} testID="pr-pane-check-summary">
+              {summary.detailLead}
               {summary.parts.map((part, index) => (
                 <Text key={part.status}>
                   {index > 0 ? ", " : ""}
                   <Text testID={PART_TEST_ID[part.status]}>{part.text}</Text>
                 </Text>
               ))}
-              {` ${summary.countNoun}`}
+              {summary.detailTrail}
             </Text>
           ) : null}
         </View>
         {open ? (
-          <ThemedChevronDown size="sm" uniProps={foregroundMutedColorMapping} />
+          <ThemedChevronDown size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
         ) : (
-          <ThemedChevronRight size="sm" uniProps={foregroundMutedColorMapping} />
+          <ThemedChevronRight size={ICON_SIZE.sm} uniProps={foregroundMutedColorMapping} />
         )}
       </Pressable>
 
@@ -154,9 +155,9 @@ function CheckGroup({
       <Pressable onPress={handlePress} style={styles.groupHeader} accessibilityRole="button">
         <Text style={styles.groupLabel}>{group.label}</Text>
         {collapsed ? (
-          <ThemedChevronRight size="xs" uniProps={foregroundMutedColorMapping} />
+          <ThemedChevronRight size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
         ) : (
-          <ThemedChevronDown size="xs" uniProps={foregroundMutedColorMapping} />
+          <ThemedChevronDown size={ICON_SIZE.xs} uniProps={foregroundMutedColorMapping} />
         )}
       </Pressable>
       {collapsed
@@ -188,6 +189,7 @@ function CheckRow({
   isAddingLogsToChat: boolean;
   onAddLogsToChat: (check: PrPaneCheck) => void;
 }) {
+  const { t } = useTranslation();
   const handlePress = useCallback(() => {
     void openExternalUrl(check.url);
   }, [check.url]);
@@ -200,7 +202,7 @@ function CheckRow({
   );
   return (
     <Pressable onPress={handlePress} style={rowPressableStyle} testID="pr-pane-check-row">
-      <CheckPresentationIcon presentation={classifyCheck(check)} size="sm" />
+      <CheckPresentationIcon presentation={classifyCheck(check)} size={14} />
       <Text style={sectionKitStyles.checkName} numberOfLines={1}>
         {check.name}
       </Text>
@@ -219,7 +221,9 @@ function CheckRow({
             onPress={handleAddLogsToChat}
             style={styles.addButton}
           >
-            {isAddingLogsToChat ? "Adding..." : "Add to chat"}
+            {isAddingLogsToChat
+              ? t("workspace.git.pr.actions.addingToChat")
+              : t("workspace.git.pr.actions.addToChat")}
           </Button>
         ) : null}
         {check.timing && <Text style={sectionKitStyles.checkDuration}>{check.timing}</Text>}

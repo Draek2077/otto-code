@@ -1,26 +1,39 @@
 import { describe, expect, it } from "vitest";
 import { createCli } from "./cli.js";
 
-function commandHelp(
-  parent: { commands: Array<{ name(): string; helpInformation(): string }> },
-  name: string,
-) {
-  const command = parent.commands.find((candidate) => candidate.name() === name);
-  expect(command, `Expected ${name} command`).toBeDefined();
-  return command?.helpInformation() ?? "";
-}
-
 describe("canonical CLI surface", () => {
-  it("offers identical project and workspace listing filters on both chat listing forms", () => {
+  // OTTO(brain-cli): the root must recognize Brain before project-path classification.
+  it("registers Brain management with nested target and output selection", async () => {
     const cli = createCli();
-    const agent = cli.commands.find((command) => command.name() === "agent");
-    for (const command of [
-      cli.commands.find((candidate) => candidate.name() === "ls"),
-      agent?.commands.find((candidate) => candidate.name() === "ls"),
-    ]) {
-      expect(command?.helpInformation()).toContain("--project <project-id>");
-      expect(command?.helpInformation()).toContain("--workspace <workspace-id>");
-    }
+    const brain = cli.commands.find((command) => command.name() === "brain")!;
+    const model = brain.commands.find((command) => command.name() === "model")!;
+    const load = model.commands.find((command) => command.name() === "load")!;
+    let called = false;
+    load.action(() => {
+      called = true;
+    });
+    await cli.parseAsync(
+      ["--host", "selected:6788", "brain", "model", "load", "resident/model", "--json"],
+      { from: "user" },
+    );
+    expect(called).toBe(true);
+    expect(load.optsWithGlobals()).toMatchObject({ host: "selected:6788", json: true });
+    expect(cli.helpInformation()).toContain("brain");
+  });
+  it.each(["send", "agent send"])("%s accepts an explicit behavior override", async (path) => {
+    const cli = createCli();
+    const owner =
+      path === "send" ? cli : cli.commands.find((command) => command.name() === "agent")!;
+    const send = owner.commands.find((command) => command.name() === "send")!;
+    send.action(() => {});
+    await send.parseAsync(["target", "message", "--behavior", "interrupt"], { from: "user" });
+    expect(send.opts().behavior).toBe("interrupt");
+    await send.parseAsync(["target", "message", "--behavior", "steer"], { from: "user" });
+    expect(send.opts().behavior).toBe("steer");
+    send.exitOverride().configureOutput({ writeErr: () => {} });
+    await expect(
+      send.parseAsync(["target", "message", "--behavior", "queue"], { from: "user" }),
+    ).rejects.toThrow();
   });
 
   it("offers daemon host selection as a global option", () => {
@@ -67,10 +80,25 @@ describe("canonical CLI surface", () => {
     expect(help).toContain("--forge <forge>");
   });
 
-  it("uses background for execution and reserves detach for ownership", () => {
+  it("uses --no-wait for execution, --internal for visibility, and reserves detach for ownership", () => {
     const run = createCli().commands.find((command) => command.name() === "run");
-    expect(run?.helpInformation()).toContain("--background");
-    expect(run?.helpInformation()).not.toContain("--detach");
+    const help = run?.helpInformation();
+    expect(help).toContain("--no-wait");
+    expect(help).not.toContain("--background");
+    expect(help).not.toContain("--background");
+    expect(help).not.toContain("--detach");
+  });
+
+  it("hides internal agents and workspaces from listings unless --internal is passed", () => {
+    const cli = createCli();
+    const ls = cli.commands.find((command) => command.name() === "ls");
+    const workspace = cli.commands.find((command) => command.name() === "workspace");
+    const workspaceLs = workspace?.commands.find((command) => command.name() === "ls");
+    const workspaceCreate = workspace?.commands.find((command) => command.name() === "create");
+
+    expect(ls?.helpInformation()).toContain("--background");
+    expect(workspaceLs?.helpInformation()).toContain("--background");
+    expect(workspaceCreate?.helpInformation()).toContain("--background");
   });
 
   it("offers thinking configuration when running, updating, and scheduling agents", () => {
@@ -92,58 +120,6 @@ describe("canonical CLI surface", () => {
 
     expect(open?.helpInformation()).toContain("<agent-id>");
     expect(open?.helpInformation()).toContain("--server <server-id>");
-  });
-
-  it("exposes the Graph Workflow lifecycle without a file execution shortcut", () => {
-    const workflow = createCli().commands.find((command) => command.name() === "workflow");
-    const graph = workflow?.commands.find((command) => command.name() === "graph");
-    const validate = graph?.commands.find((command) => command.name() === "validate");
-    const run = graph?.commands.find((command) => command.name() === "run");
-
-    expect(graph?.helpInformation()).toContain("ls");
-    expect(graph?.helpInformation()).toContain("inspect");
-    expect(validate?.helpInformation()).toContain("<file>");
-    expect(run?.helpInformation()).toContain("--input <key=value>");
-    expect(run?.helpInformation()).not.toContain("--file");
-  });
-
-  it("exposes the durable Artifact library, data, storage, and recovery commands", () => {
-    const artifact = createCli().commands.find((command) => command.name() === "artifact");
-    expect(artifact, "Expected artifact command").toBeDefined();
-    if (!artifact) return;
-
-    expect(commandHelp(artifact, "create")).toContain("--project <root>");
-    expect(commandHelp(artifact, "create")).toContain("--description <text>");
-    expect(commandHelp(artifact, "ls")).toContain("--project <root>");
-    expect(commandHelp(artifact, "data")).toContain("<id>");
-    expect(commandHelp(artifact, "update-data")).toContain("--data <json>");
-    expect(commandHelp(artifact, "update-data")).toContain("without regenerating");
-    expect(commandHelp(artifact, "cancel")).toContain("<id>");
-    expect(commandHelp(artifact, "cancel")).toContain("last known good output");
-    expect(commandHelp(artifact, "regenerate")).toContain("<id>");
-    expect(commandHelp(artifact, "regenerate")).toContain("Explicitly regenerate");
-    expect(commandHelp(artifact, "move")).toContain("--to <location>");
-    expect(commandHelp(artifact, "move")).toContain("repository or host");
-    expect(commandHelp(artifact, "repair")).toContain("<id>");
-    expect(commandHelp(artifact, "repair")).toContain("last known good output");
-  });
-
-  it("exposes daemon-owned Architectural View delivery", () => {
-    const architecturalView = createCli().commands.find(
-      (command) => command.name() === "architectural-view",
-    );
-    expect(architecturalView, "Expected architectural-view command").toBeDefined();
-    if (!architecturalView) return;
-
-    const deliver = commandHelp(architecturalView, "deliver");
-    expect(deliver).toContain("--workspace <id>");
-    expect(deliver).toContain("--source <path>");
-    expect(deliver).toContain("--link <kind:id>");
-    const draft = commandHelp(architecturalView, "draft");
-    expect(draft).toContain("create");
-    expect(draft).toContain("update");
-    expect(draft).toContain("publish");
-    expect(draft).toContain("discard");
   });
 
   it("offers the complete local plugin lifecycle", () => {
@@ -168,4 +144,16 @@ describe("canonical CLI surface", () => {
       plugin?.commands.find((command) => command.name() === "install")?.helpInformation(),
     ).toContain("--id <id>");
   });
+});
+
+it("preserves omitted and explicit false workspace background intent", () => {
+  const readOptions = (args: string[]) => {
+    const workspace = createCli().commands.find((command) => command.name() === "workspace")!;
+    const create = workspace.commands.find((command) => command.name() === "create")!;
+    create.parseOptions(args);
+    return create.opts();
+  };
+  expect(readOptions([]).background).toBeUndefined();
+  expect(readOptions(["--background"]).background).toBe(true);
+  expect(readOptions(["--no-background"]).background).toBe(false);
 });

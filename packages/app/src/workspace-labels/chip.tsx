@@ -5,7 +5,7 @@ import {
   WORKSPACE_LABEL_COLORS,
   type WorkspaceLabelColor,
   type WorkspaceLabelDefinition,
-} from "@otto-code/protocol/workspace-labels";
+} from "@getpaseo/protocol/workspace-labels";
 import { identityForeground, identityTint } from "@/styles/identity-colors";
 import { SPACING } from "@/styles/theme";
 

@@ -22,8 +22,6 @@ const PRESENTATION_BY_MODE: Record<
   "custom-windows": {
     controlWidth: 46,
     railHeight: DESKTOP_WINDOW_CONTROLS_HEIGHT,
-    // The 46px title-bar rail includes the shared 1px separator below it.
-    // Controls occupy only the interactive 45px client area above that line.
     controlHeight: DESKTOP_WINDOW_CONTROLS_HEIGHT - 1,
     glyphSize: 16,
     glyphStrokeWidth: 1,

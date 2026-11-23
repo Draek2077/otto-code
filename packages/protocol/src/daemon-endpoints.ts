@@ -1,3 +1,5 @@
+import type { ConnectionOfferV2 } from "./connection-offer.js";
+
 export interface HostPortParts {
   host: string;
   port: number;
@@ -12,11 +14,60 @@ export interface ParsedConnectionUri extends ConnectionUriParts {
   password?: string;
 }
 
+export interface ParsedRelayConnectionUri {
+  offer: ConnectionOfferV2;
+  password?: string;
+}
+
+export function parseRelayConnectionUri(input: string): ParsedRelayConnectionUri {
+  const trimmed = input.trim();
+  const connectIndex = trimmed.indexOf("#connect=");
+  const uri =
+    connectIndex >= 0
+      ? decodeURIComponent(trimmed.slice(connectIndex + "#connect=".length))
+      : trimmed;
+  let url: URL;
+  try {
+    url = new URL(uri);
+  } catch {
+    throw new Error("Invalid relay connection URI");
+  }
+  if (url.protocol !== "relay:" || !url.hostname || !url.port || url.username || url.password) {
+    throw new Error("Invalid relay connection URI");
+  }
+  const serverId = decodeURIComponent(url.pathname.slice(1));
+  const key = url.searchParams.get("key");
+  if (!serverId || !key || serverId.includes("/")) {
+    throw new Error("Relay connection URI requires a server id and key");
+  }
+  const endpoint = normalizeHostPort(url.host);
+  const password = url.searchParams.get("password") || undefined;
+  return {
+    offer: {
+      v: 2,
+      serverId,
+      daemonPublicKeyB64: key,
+      relay: { endpoint, useTls: url.searchParams.get("ssl") === "true" },
+    },
+    ...(password ? { password } : {}),
+  };
+}
+
+export function serializeRelayConnectionUri(parts: ParsedRelayConnectionUri): string {
+  const url = new URL(
+    `relay://${parts.offer.relay.endpoint}/${encodeURIComponent(parts.offer.serverId)}`,
+  );
+  url.searchParams.set("key", parts.offer.daemonPublicKeyB64);
+  if (parts.offer.relay.useTls) url.searchParams.set("ssl", "true");
+  if (parts.password) url.searchParams.set("password", parts.password);
+  return url.toString();
+}
+
 export type RelayRole = "server" | "client";
 export type RelayProtocolVersion = "1" | "2";
 
 export const CURRENT_RELAY_PROTOCOL_VERSION: RelayProtocolVersion = "2";
-export const DEFAULT_RELAY_ENDPOINT = "relay.otto-code.me:443";
+export const DEFAULT_RELAY_ENDPOINT = "relay.paseo.sh:443";
 
 export function normalizeRelayProtocolVersion(
   value: unknown,
@@ -55,11 +106,11 @@ export function parseHostPort(input: string): HostPortParts {
     throw new Error("Host is required");
   }
 
-  // IPv6: [::1]:6868
+  // IPv6: [::1]:6767
   if (trimmed.startsWith("[")) {
     const match = trimmed.match(/^\[([^\]]+)\]:(\d{1,5})$/);
     if (!match) {
-      throw new Error("Invalid host:port (expected [::1]:6868)");
+      throw new Error("Invalid host:port (expected [::1]:6767)");
     }
     const host = match[1].trim();
     if (!host) throw new Error("Host is required");
@@ -69,7 +120,7 @@ export function parseHostPort(input: string): HostPortParts {
 
   const match = trimmed.match(/^(.+):(\d{1,5})$/);
   if (!match) {
-    throw new Error("Invalid host:port (expected localhost:6868)");
+    throw new Error("Invalid host:port (expected localhost:6767)");
   }
   const host = match[1].trim();
   if (!host) throw new Error("Host is required");
@@ -180,7 +231,7 @@ export function buildRelayWebSocketUrl(params: {
   role: RelayRole;
   /**
    * Per-connection routing identifier used by the daemon to open server data sockets.
-   * Clients should NOT provide this - the relay assigns a routing ID on connect.
+   * Clients should NOT provide this — the relay assigns a routing ID on connect.
    */
   connectionId?: string;
   version?: RelayProtocolVersion | 1 | 2;

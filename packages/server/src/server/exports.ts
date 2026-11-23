@@ -1,7 +1,7 @@
-// CLI exports for @otto-code/server
-export { createOttoDaemon, type OttoDaemon, type OttoDaemonConfig } from "./bootstrap.js";
+// CLI exports for @getpaseo/server
+export { createPaseoDaemon, type PaseoDaemon, type PaseoDaemonConfig } from "./bootstrap.js";
 export { loadConfig, type CliConfigOverrides } from "./config.js";
-export { resolveOttoHome } from "./otto-home.js";
+export { resolvePaseoHome } from "./paseo-home.js";
 export { getOrCreateServerId } from "./server-id.js";
 export { createRootLogger, type LogLevel, type LogFormat } from "./logger.js";
 export {
@@ -9,28 +9,28 @@ export {
   savePersistedConfig,
   type PersistedConfig,
 } from "./persisted-config.js";
-export { hashDaemonPassword, isBearerTokenValid } from "./auth.js";
+export { hashDaemonPassword, isBearerTokenValidAsync } from "./auth.js";
 export { generateLocalPairingOffer, type LocalPairingOffer } from "./pairing-offer.js";
 export {
   ConnectionOfferSchema,
   decodeOfferFragmentPayload,
   parseConnectionOfferFromUrl,
   type ConnectionOffer,
-} from "@otto-code/protocol/connection-offer";
-export { buildRelayWebSocketUrl } from "@otto-code/protocol/daemon-endpoints";
+} from "@getpaseo/protocol/connection-offer";
+export { buildRelayWebSocketUrl } from "@getpaseo/protocol/daemon-endpoints";
 export {
   buildDaemonWebSocketUrl,
   deriveLabelFromEndpoint,
   normalizeHostPort,
   parseConnectionUri,
   shouldUseTlsForDefaultHostedRelay,
-} from "@otto-code/protocol/daemon-endpoints";
-export { PARENT_AGENT_ID_LABEL } from "@otto-code/protocol/agent-labels";
+} from "@getpaseo/protocol/daemon-endpoints";
+export { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 export {
   DirectTcpHostConnectionSchema,
   type DirectTcpHostConnection,
   type NormalizedDirectTcpHostConnection,
-} from "@otto-code/protocol/host-connection-schema";
+} from "@getpaseo/protocol/host-connection-schema";
 export {
   ensureLocalSpeechModels,
   listLocalSpeechModels,
@@ -47,9 +47,10 @@ export {
   type SherpaLoaderEnvKey,
   type SherpaLoaderEnvResolution,
 } from "./speech/providers/local/sherpa/sherpa-runtime-env.js";
-export { loadSherpaOnnxNode } from "./speech/providers/local/sherpa/sherpa-onnx-node-loader.js";
 
 // Provider binary resolution
+// OTTO(wake-word): desktop keyword spotting reuses the existing native loader.
+export { loadSherpaOnnxNode } from "./speech/providers/local/sherpa/sherpa-onnx-node-loader.js";
 export {
   type ProviderOverride,
   type ProviderProfileModel,
@@ -62,7 +63,7 @@ export {
   AGENT_PROVIDER_DEFINITIONS,
   BUILTIN_PROVIDER_IDS,
   type AgentProviderDefinition,
-} from "@otto-code/protocol/provider-manifest";
+} from "@getpaseo/protocol/provider-manifest";
 
 // Agent SDK types for CLI commands
 export type {
@@ -96,4 +97,24 @@ export type {
   AgentSnapshotPayload,
   AgentStreamEventPayload,
   AgentStreamMessage,
-} from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/messages";
+
+export {
+  readDaemonInstance,
+  startDaemonInstance,
+  stopDaemonInstance,
+  waitForDaemonReady,
+  daemonLogPath,
+  daemonLaunchEnvironment,
+  isSameDaemonInstance,
+  DaemonInstanceError,
+  type DaemonInstance,
+} from "./daemon-instance.js";
+export {
+  readPersistedConfig,
+  getPersistedConfigValue,
+  editPersistedConfig,
+} from "./persisted-config.js";
+export { resolveConfigFromPersisted } from "./config.js";
+
+export { ensurePrivateDirectory } from "./private-files.js";

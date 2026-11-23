@@ -1,6 +1,6 @@
 # Expo Router
 
-Otto's mobile route tree is fragile because Expo Router and React Navigation do
+Paseo's mobile route tree is fragile because Expo Router and React Navigation do
 not fail loudly when a nested native route is mounted under the wrong layout. The
 usual symptom is a white or blank native screen with no JavaScript crash.
 
@@ -47,24 +47,16 @@ state.
 This split is deliberate. The host layout must mount first so native local
 dynamic params exist before any nested workspace leaf is selected.
 
-Desktop bootstrap keeps the splash visible while loading the setting that decides
-whether to start the built-in daemon. A ready host registry and an idle daemon
-start service do not mean that decision has settled. Release the gate after
-dispatching the start decision, including skip and error outcomes; an already
-online host can unblock navigation independently.
+## Error Recovery
+
+The root error boundary lives above `ExpoRoot` in `src/root-app.tsx`. Reload
+remounts the router at `/open-project`, preserving saved workspace layouts and
+the remembered selection. Do not move the boundary inside the root layout:
+catching a render error there unmounts the navigator, so the recovery button
+cannot reliably dispatch a navigation reset. Starting recovery at `/` would
+restore the same workspace and could repeat the crash.
 
 ## App-Wide Route Hops
-
-Settings section navigation carries the selected host in the `host` query
-parameter, including navigation from search results. App sections such as
-Integrations use that host for daemon-backed controls. Dropping the parameter
-can silently retarget skill installation to the local host when the new section
-mounts.
-
-In compact Settings, Back from a host or app section returns to the Settings
-list, including when the section was opened directly from a workspace. Dismiss
-to `/settings` instead of popping an arbitrary prior route. Back from that list
-returns to the remembered workspace.
 
 When app-wide routes such as `/new`, `/settings`, or `/sessions` navigate back
 into a host workspace, use `navigateToWorkspace()`. Do not make the caller
@@ -145,44 +137,13 @@ export` warnings and pollutes the route tree.
 Put shared route policy in `src/navigation`, `src/utils`, stores, or another
 non-route directory.
 
-## A New Top-Level Route Is Registered in TWO Places
+<!-- OTTO(typed-route-boundary): prevent monorepo watcher events from becoming routes on Windows. -->
 
-Dropping a file into `src/app` is not enough for a top-level screen. `_layout.tsx`
-gates two separate things, and missing either one fails quietly:
-
-1. **`RootStack`** - add a `<Stack.Screen name="your-route" />`. Most go inside
-   the `<Stack.Protected guard={storeReady}>` block.
-2. **`AppWithSidebar.shouldShowAppChrome`** - an explicit pathname allow-list
-   (`/open-project`, `/new`, `/new-project`, `/sessions`, …). It drives
-   `chromeEnabled`, which decides whether the **left sidebar renders at all** and
-   whether **keyboard shortcuts are live**.
-
-Miss #2 and the screen still mounts and works - it just has no sidebar and no
-shortcuts. On desktop that means a page the user **cannot navigate away from**,
-with a stranded sidebar-toggle button in the header that toggles nothing. It
-looks like a styling bug and is actually a routing one, so check the allow-list
-before you go hunting in the screen.
-
-The allow-list is a known wart (there is already a TODO on `chromeEnabled` about
-conflating workspace chrome with global concerns). Until it is split, adding a
-route means editing both places.
-
-## Scene Background Is the Navigation Theme, Not contentStyle
-
-Every stack scene wraps its content in `@react-navigation/elements`'
-`Background`, which paints `colors.background` from the **React Navigation
-theme** - a separate theming system from Unistyles. Without a provider that is
-the default light theme's near-white, and it is what flashes while a heavy
-screen (the workspace deck) cold-mounts on top of it.
-
-`RootStack` in `packages/app/src/app/_layout.tsx` therefore wraps the root
-`Stack` in a `ThemeProvider` whose `colors.background` is the Unistyles
-`surface0` (plus `card`/`text`/`border`/`primary`). The provider covers every
-nested navigator, including the host stack.
-
-Do not try to fix a white scene flash with `contentStyle` on a nested stack:
-`contentStyle` styles a `View` _inside_ the scene, and making it transparent
-just exposes the `Background` layer underneath. Fix the navigation theme.
+The Windows typed-route watcher normalizes separators before checking whether an
+event is inside the route root. Metro also watches sibling packages. The pinned
+`expo-router` patch prevents their file-add events from entering `.expo/types/router.d.ts`
+as `../` routes and normalizes add/delete keys to match initial enumeration.
+`otto/typed-route-policy.test.cjs` exercises Windows and POSIX handlers without Metro.
 
 ## Native Stack
 
@@ -217,7 +178,7 @@ Pure helper tests are useful but not enough. The failure mode here is native
 route-tree state, so a real regression should launch native with seeded persisted
 state:
 
-1. Seed `otto:last-workspace-route-selection` with a valid
+1. Seed `paseo:last-workspace-route-selection` with a valid
    `{ serverId, workspaceId }`.
 2. Launch the native app cold.
 3. Assert a real screen is visible, not the blank tree.
@@ -239,8 +200,6 @@ Before landing route changes:
 - [ ] Did a route return to a workspace? Use `navigateToWorkspace()` and pass a
       `target` when the action names a specific tab.
 - [ ] Did you add a route? Register it in the layout that directly owns it.
-- [ ] Did you add a **top-level** route? Also add it to `RootStack` AND to
-      `shouldShowAppChrome` - or it renders with no sidebar and no way out.
 - [ ] Did `useLocalSearchParams()` lose a required param? Fix the route tree.
 - [ ] Did native show a blank screen without a crash? Suspect route ownership
       before stores, themes, or rendering.

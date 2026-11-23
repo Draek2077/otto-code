@@ -1,4 +1,4 @@
-import type { CheckoutCommit } from "@otto-code/protocol/messages";
+import type { CheckoutCommit } from "@getpaseo/protocol/messages";
 import invariant from "tiny-invariant";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useFetchQuery } from "@/data/query";

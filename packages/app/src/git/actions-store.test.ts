@@ -1,15 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { queryClient as appQueryClient } from "@/data/query-client";
 import { useSessionStore } from "@/stores/session-store";
-import type { WorkspaceDescriptor } from "@/stores/session-store";
 import {
   __resetCheckoutGitActionsStoreForTests,
-  CheckoutGitRollbackFailedError,
-  isLocalWorktreeArchivePending,
   useCheckoutGitActionsStore,
 } from "@/git/actions-store";
-import { isWorkspaceArchivePending } from "@/contexts/session-workspace-upserts";
 
 vi.mock("@react-native-async-storage/async-storage", () => ({
   default: {
@@ -29,28 +25,9 @@ function createDeferred<T>() {
   return { promise, resolve, reject };
 }
 
-function workspace(input: Partial<WorkspaceDescriptor> & Pick<WorkspaceDescriptor, "id">) {
-  return {
-    id: input.id,
-    projectId: input.projectId ?? "project-1",
-    projectDisplayName: input.projectDisplayName ?? "Project",
-    projectRootPath: input.projectRootPath ?? "/tmp/repo",
-    workspaceDirectory: input.workspaceDirectory ?? "/tmp/repo/worktrees/feature",
-    projectKind: input.projectKind ?? "git",
-    workspaceKind: input.workspaceKind ?? "worktree",
-    name: input.name ?? input.id,
-    status: input.status ?? "done",
-    archivingAt: input.archivingAt ?? null,
-    statusEnteredAt: null,
-    diffStat: input.diffStat ?? null,
-    scripts: input.scripts ?? [],
-  } satisfies WorkspaceDescriptor;
-}
-
 describe("checkout-git-actions-store", () => {
   const serverId = "server-1";
   const cwd = "/tmp/repo/worktrees/feature";
-  const workspaceId = "ws-feature";
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -206,6 +183,31 @@ describe("checkout-git-actions-store", () => {
     ).toBe("idle");
   });
 
+  it("discards selected paths through the shared checkout action workflow", async () => {
+    const checkoutDiscardChanges = vi.fn(async () => ({ success: true, error: null }));
+    const client = { checkoutDiscardChanges };
+    useSessionStore.setState((state) => ({
+      ...state,
+      sessions: {
+        ...state.sessions,
+        [serverId]: { client } as unknown as (typeof state.sessions)[string],
+      },
+    }));
+
+    await useCheckoutGitActionsStore
+      .getState()
+      .discardChanges({ serverId, cwd, paths: ["renamed.ts", "original.ts"] });
+
+    expect(checkoutDiscardChanges).toHaveBeenCalledWith(cwd, {
+      paths: ["renamed.ts", "original.ts"],
+    });
+    expect(
+      useCheckoutGitActionsStore
+        .getState()
+        .getStatus({ serverId, cwd, actionId: "discard-changes" }),
+    ).toBe("success");
+  });
+
   for (const rpc of [
     {
       label: "forge",
@@ -274,142 +276,6 @@ describe("checkout-git-actions-store", () => {
     });
   }
 
-  it("rolls back the given paths when the daemon advertises rollback support", async () => {
-    const client = {
-      checkoutGitRollback: vi.fn(async () => ({
-        cwd,
-        success: true,
-        rolledBackPaths: ["a.txt", "b.txt"],
-        error: null,
-        requestId: "req-1",
-      })),
-    };
-    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
-    useSessionStore.getState().updateSessionServerInfo(serverId, {
-      serverId,
-      hostname: null,
-      version: null,
-      features: { checkoutGitRollback: true },
-    });
-
-    await useCheckoutGitActionsStore
-      .getState()
-      .rollbackPaths({ serverId, cwd, paths: ["a.txt", "b.txt"] });
-
-    expect(client.checkoutGitRollback).toHaveBeenCalledWith(cwd, { paths: ["a.txt", "b.txt"] });
-    expect(
-      useCheckoutGitActionsStore.getState().getStatus({ serverId, cwd, actionId: "rollback" }),
-    ).toBe("success");
-  });
-
-  it("surfaces a git_failed rollback error and stays idle", async () => {
-    const client = {
-      checkoutGitRollback: vi.fn(async () => ({
-        cwd,
-        success: false,
-        rolledBackPaths: [],
-        error: { kind: "git_failed", detail: "boom" },
-        requestId: "req-2",
-      })),
-    };
-    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
-    useSessionStore.getState().updateSessionServerInfo(serverId, {
-      serverId,
-      hostname: null,
-      version: null,
-      features: { checkoutGitRollback: true },
-    });
-
-    await expect(
-      useCheckoutGitActionsStore.getState().rollbackPaths({ serverId, cwd, paths: ["a.txt"] }),
-    ).rejects.toMatchObject({ rollbackError: { kind: "git_failed", detail: "boom" } });
-    expect(
-      useCheckoutGitActionsStore.getState().getStatus({ serverId, cwd, actionId: "rollback" }),
-    ).toBe("idle");
-  });
-
-  it("throws a typed agents_running rollback error the panel can confirm", async () => {
-    const client = {
-      checkoutGitRollback: vi.fn(async () => ({
-        cwd,
-        success: false,
-        rolledBackPaths: [],
-        error: {
-          kind: "agents_running",
-          agents: [{ id: "agent-1", title: "Coder" }],
-        },
-        requestId: "req-agents",
-      })),
-    };
-    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
-    useSessionStore.getState().updateSessionServerInfo(serverId, {
-      serverId,
-      hostname: null,
-      version: null,
-      features: { checkoutGitRollback: true },
-    });
-
-    await expect(
-      useCheckoutGitActionsStore.getState().rollbackPaths({ serverId, cwd, paths: ["a.txt"] }),
-    ).rejects.toBeInstanceOf(CheckoutGitRollbackFailedError);
-    expect(client.checkoutGitRollback).toHaveBeenCalledWith(cwd, { paths: ["a.txt"] });
-    expect(
-      useCheckoutGitActionsStore.getState().getStatus({ serverId, cwd, actionId: "rollback" }),
-    ).toBe("idle");
-  });
-
-  it("forwards allowWithRunningAgents to the rollback RPC on override", async () => {
-    const client = {
-      checkoutGitRollback: vi.fn(async () => ({
-        cwd,
-        success: true,
-        rolledBackPaths: ["a.txt"],
-        error: null,
-        requestId: "req-override",
-      })),
-    };
-    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
-    useSessionStore.getState().updateSessionServerInfo(serverId, {
-      serverId,
-      hostname: null,
-      version: null,
-      features: { checkoutGitRollback: true },
-    });
-
-    await useCheckoutGitActionsStore
-      .getState()
-      .rollbackPaths({ serverId, cwd, paths: ["a.txt"], allowWithRunningAgents: true });
-
-    expect(client.checkoutGitRollback).toHaveBeenCalledWith(cwd, {
-      paths: ["a.txt"],
-      allowWithRunningAgents: true,
-    });
-  });
-
-  it("does not call the rollback RPC when the daemon lacks the feature flag", async () => {
-    const client = {
-      checkoutGitRollback: vi.fn(async () => ({
-        cwd,
-        success: true,
-        rolledBackPaths: ["a.txt"],
-        error: null,
-        requestId: "req-3",
-      })),
-    };
-    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
-    useSessionStore.getState().updateSessionServerInfo(serverId, {
-      serverId,
-      hostname: null,
-      version: null,
-      features: {},
-    });
-
-    await expect(
-      useCheckoutGitActionsStore.getState().rollbackPaths({ serverId, cwd, paths: ["a.txt"] }),
-    ).rejects.toThrow("Update the host to roll back files from the changes panel.");
-    expect(client.checkoutGitRollback).not.toHaveBeenCalled();
-  });
-
   it("does not call PR auto-merge RPCs when the daemon lacks the feature flag", async () => {
     const client = {
       checkoutForgeSetAutoMerge: vi.fn(async () => ({
@@ -436,119 +302,5 @@ describe("checkout-git-actions-store", () => {
         .getState()
         .getStatus({ serverId, cwd, actionId: "enable-pr-auto-merge-merge" }),
     ).toBe("idle");
-  });
-
-  it("hides an archived worktree optimistically while the archive RPC is in flight", async () => {
-    const deferred = createDeferred<Record<string, never>>();
-    const client = {
-      archiveOttoWorktree: vi.fn(() => deferred.promise),
-    };
-    const featureWorkspace = workspace({
-      id: workspaceId,
-      name: "feature",
-      workspaceDirectory: cwd,
-    });
-    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
-    useSessionStore.getState().setWorkspaces(serverId, new Map([[workspaceId, featureWorkspace]]));
-    appQueryClient.setQueryData(
-      ["sidebarOttoWorktreeList", serverId, "/tmp"],
-      [{ worktreePath: cwd }, { worktreePath: "/tmp/other" }],
-    );
-
-    const archive = useCheckoutGitActionsStore
-      .getState()
-      .archiveWorktree({ serverId, cwd, worktreePath: cwd, workspaceId });
-
-    expect(useSessionStore.getState().sessions[serverId]?.workspaces.has(workspaceId)).toBe(false);
-    expect(useSessionStore.getState().sessions[serverId]?.workspaces.has(cwd)).toBe(false);
-    expect(appQueryClient.getQueryData(["sidebarOttoWorktreeList", serverId, "/tmp"])).toEqual([
-      { worktreePath: "/tmp/other" },
-    ]);
-    expect(isLocalWorktreeArchivePending({ serverId, cwd })).toBe(true);
-
-    deferred.resolve({});
-    await archive;
-
-    expect(
-      isWorkspaceArchivePending({
-        serverId,
-        workspaceId,
-      }),
-    ).toBe(true);
-    expect(
-      isWorkspaceArchivePending({
-        serverId,
-        workspaceId: cwd,
-      }),
-    ).toBe(false);
-  });
-
-  it("archives on the server even when its workspace cannot be resolved", async () => {
-    const client = {
-      archiveOttoWorktree: vi.fn(async () => ({})),
-    };
-    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
-
-    await useCheckoutGitActionsStore
-      .getState()
-      .archiveWorktree({ serverId, cwd, worktreePath: cwd });
-
-    // The server archive is keyed by worktreePath and must run regardless.
-    expect(client.archiveOttoWorktree).toHaveBeenCalledWith({ worktreePath: cwd });
-    // The optimistic client-side mark is never keyed by the path.
-    expect(isWorkspaceArchivePending({ serverId, workspaceId: cwd })).toBe(false);
-  });
-
-  it("restores an optimistically hidden worktree when archive fails", async () => {
-    const client = {
-      archiveOttoWorktree: vi.fn(async () => ({ error: { message: "archive failed" } })),
-    };
-    const featureWorkspace = workspace({
-      id: workspaceId,
-      name: "feature",
-      workspaceDirectory: cwd,
-    });
-    const listSnapshot = [{ worktreePath: cwd }, { worktreePath: "/tmp/other" }];
-    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
-    useSessionStore.getState().setWorkspaces(serverId, new Map([[workspaceId, featureWorkspace]]));
-    appQueryClient.setQueryData(["sidebarOttoWorktreeList", serverId, "/tmp"], listSnapshot);
-
-    await expect(
-      useCheckoutGitActionsStore
-        .getState()
-        .archiveWorktree({ serverId, cwd, worktreePath: cwd, workspaceId }),
-    ).rejects.toThrow("archive failed");
-
-    expect(useSessionStore.getState().sessions[serverId]?.workspaces.get(workspaceId)).toEqual(
-      featureWorkspace,
-    );
-    expect(appQueryClient.getQueryData(["sidebarOttoWorktreeList", serverId, "/tmp"])).toEqual(
-      listSnapshot,
-    );
-  });
-
-  it("reports local archive pending only while the archive action is in flight", async () => {
-    const deferred = createDeferred<Record<string, never>>();
-    const client = {
-      archiveOttoWorktree: vi.fn(() => deferred.promise),
-    };
-    const featureWorkspace = workspace({
-      id: workspaceId,
-      name: "feature",
-      workspaceDirectory: cwd,
-    });
-    useSessionStore.getState().initializeSession(serverId, client as unknown as DaemonClient);
-    useSessionStore.getState().setWorkspaces(serverId, new Map([[workspaceId, featureWorkspace]]));
-
-    const archive = useCheckoutGitActionsStore
-      .getState()
-      .archiveWorktree({ serverId, cwd, worktreePath: cwd });
-
-    expect(isLocalWorktreeArchivePending({ serverId, cwd })).toBe(true);
-
-    deferred.resolve({});
-    await archive;
-
-    expect(isLocalWorktreeArchivePending({ serverId, cwd })).toBe(false);
   });
 });

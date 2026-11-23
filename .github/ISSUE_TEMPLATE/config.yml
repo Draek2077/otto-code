@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
-  - name: Discussions
-    url: https://github.com/Draek2077/otto-code/discussions
-    about: Questions, ideas, or anything that's better as a conversation than a bug report.
+  - name: Product discussion on Discord
+    url: https://discord.gg/jz8T2uahpH
+    about: Product discussion, including feature requests
+  - name: Product discussion on GitHub
+    url: https://github.com/getpaseo/paseo/discussions
+    about: Product discussion, including feature requests

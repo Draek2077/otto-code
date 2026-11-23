@@ -1,9 +1,12 @@
+import { validateProviderOptions } from "../../provider-options.js";
+import {
+  workflowClaudeOptions,
+  type WorkflowLaunchPolicy,
+} from "../../../otto/workflows/provider-policy.js"; // OTTO(workflows): last-applied, owned-session tool ceiling.
 import type { ChildProcess } from "node:child_process";
-import { internalOttoReadToolNames } from "../../runtime-mcp-config.js";
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import { promises } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import {
   type AgentDefinition,
@@ -15,6 +18,7 @@ import {
   type Query,
   type SDKMessage,
   type SDKPartialAssistantMessage,
+  type SDKPromptSuggestionMessage, // OTTO(prompt-suggestions)
   type SDKResultMessage,
   type SDKSystemMessage,
   type SDKUserMessage,
@@ -32,38 +36,38 @@ import {
   readTaskNotificationToolUseIdFromHistoryRecord,
 } from "./task-notification-tool-call.js";
 import {
-  findClaudeModel,
+  getClaudeContextWindowMaxTokens,
   getClaudeModelsWithSettings,
   normalizeClaudeRuntimeModelId,
+  resolveConfiguredClaudeModel,
 } from "./models.js";
 import {
-  CLAUDE_THINKING_OFF_OPTION_ID,
-  parseClaudeCodeVersion,
+  CLAUDE_DISABLED_THINKING_OPTION_ID,
   CLAUDE_ULTRACODE_THINKING_OPTION_ID,
-  claudeManifestModelAutoModeSupport,
-  claudeManifestModelSupportsThinkingOff,
-  normalizeClaudeManifestModelId,
+  parseClaudeCodeVersion,
+  resolveClaudeDisabledThinkingForModel,
 } from "./model-manifest.js";
-import {
-  type WorkspaceAccess,
-  deniedToolsForAccess,
-  ottoToolsDeniedForAccess,
-  resolveWorkspaceAccess,
-} from "../../workspace-access.js";
 import { parsePartialJsonObject } from "./partial-json.js";
 import { ClaudeSidechainTracker } from "./sidechain-tracker.js";
+import { readClaudeSubagentHandback } from "./subagent-handback.js";
 import { ClaudeTaskState } from "./task-state.js";
 import {
   ClaudeTaskProtocolSource,
   type ClaudeHookObservationInput,
 } from "./subagents/live-source.js";
 import {
-  buildClaudeFeatures,
-  claudeModelSupportsFastMode,
-  readClaudeFastModeRuntimeStatus,
-  type ClaudeFastModeRuntimeStatus,
-} from "./feature-definitions.js";
-import { coerceToolResultContentToString } from "./tool-result-content.js";
+  observeReplaySubagents,
+  parseClaudeSubagentMeta,
+  type ClaudeReplayParentFacts,
+  type ClaudeSubagentMeta,
+} from "./subagents/replay-source.js";
+import { foldSubagentObservations, type SubagentObservation } from "./subagents/observation.js";
+import {
+  observeReplayWorkflows,
+  parseClaudeWorkflowRun,
+} from "./subagents/workflow-replay-source.js";
+import { readClaudeWorkflowResultFile } from "./subagents/workflow-output.js";
+import { buildClaudeFeatures, claudeModelSupportsFastMode } from "./feature-definitions.js";
 import {
   buildBinaryDiagnosticRows,
   buildCommandResolutionDiagnosticRows,
@@ -71,26 +75,28 @@ import {
   formatProviderDiagnosticError,
 } from "../diagnostic-utils.js";
 import { appendOrReplaceGrowingAssistantMessage, runProviderTurn } from "../provider-runner.js";
+import {
+  applyClaudeToolPolicy,
+  ClaudeProviderOptionsSchema,
+  type ClaudeProviderOptions,
+} from "./options.js";
 import { renderPromptAttachmentAsText } from "../../prompt-attachments.js";
+import { discoverClaudeModels } from "./model-discovery.js";
 import { claudeQuery, type ClaudeOptions, type ClaudeQueryFactory } from "./query.js";
-import { realClaudeRewindSdk, revertClaudeConversation, revertClaudeFiles } from "./rewind.js";
+import {
+  claudePromptSuggestionsEnabled,
+  toClaudePromptSuggestion,
+} from "../../../otto/prompt-suggestions.js"; // OTTO(prompt-suggestions)
+import { readOnlyClaudeOptions } from "../../../otto/context-management/native-generation-policy.js"; // OTTO(context-generation)
+import {
+  realClaudeRewindSdk,
+  revertClaudeConversation,
+  revertClaudeFiles,
+  type ClaudeRewindSdk,
+} from "./rewind.js";
 import { normalizeProviderReplayTimestamp } from "../../provider-history-timestamps.js";
-import { SubagentUsageAccumulator, grandTotalTokens } from "../../subagent-usage.js";
-
-import { claudeProjectDirSync } from "./project-dir.js";
-import { resolveClaudeSearchHistoryPath } from "./search-history-path.js";
-import { readClaudeModelUsageSlices, verifyClaudeTreePricing } from "./claude-pricing.js";
-import { readUsageTotals, toClaudeSubagentUsage } from "./claude-subagent-usage.js";
-import { WorkflowTranscriptWatcher } from "./workflow-transcript-watcher.js";
-import {
-  TaskTranscriptWatcher,
-  readClaudeSubagentAgentIdFromToolResult,
-} from "./task-transcript-watcher.js";
-import {
-  MODE_APPLIES_NEXT_TURN_NOTICE,
-  SETTING_APPLIES_NEXT_TURN_NOTICE,
-  THINKING_APPLIES_NEXT_TURN_NOTICE,
-} from "../../provider-notices.js";
+import { claudeConfigDir, claudeProjectDirSync, claudeTranscriptPathSync } from "./project-dir.js";
+import { THINKING_APPLIES_NEXT_TURN_NOTICE } from "../../provider-notices.js";
 import {
   isProviderImageMarkdown,
   materializeProviderImage,
@@ -100,27 +106,22 @@ import {
 
 import {
   getAgentStreamEventTurnId,
-  type AgentBareCompletionOptions,
-  type AgentBareCompletionResult,
   type AgentPermissionAction,
   type AgentCapabilityFlags,
   type AgentClient,
-  type AgentContextUsage,
-  type AgentBehaviorSettings,
   type AgentCreateSessionOptions,
   type AgentFeature,
   type AgentLaunchContext,
   type AgentMetadata,
   type AgentMode,
+  type AgentModelDefinition,
   type AgentPermissionRequest,
   type AgentPermissionRequestKind,
   type AgentPermissionResponse,
   type AgentPermissionUpdate,
   type AgentPersistenceHandle,
-  type AgentPersonalityUpdate,
   type AgentProviderNotice,
   type AgentPromptInput,
-  type AgentRateLimitInfo,
   type AgentRunOptions,
   type AgentRunResult,
   type AgentSession,
@@ -137,26 +138,14 @@ import {
   type ImportProviderSessionContext,
   type ImportProviderSessionInput,
   type ListImportableSessionsOptions,
-  type ResolveAgentDefaultModeInput,
   type McpServerConfig,
   type ProviderCatalog,
   type ProviderRefreshContext,
-  type ResolveAgentCreateConfigInput,
-  type ResolveAgentCreateConfigResult,
+  type ResolveAgentDefaultModeInput,
+  type ToolCallDetail,
 } from "../../agent-sdk-types.js";
+import { importSessionFromPersistence } from "../../provider-session-import.js";
 import { runProviderRefreshActivity } from "../../provider-refresh-deadline.js";
-import { applyClaudeToolPolicy, ClaudeProviderOptionsSchema } from "./options.js";
-import {
-  observeReplaySubagents,
-  parseClaudeSubagentMeta,
-  type ClaudeReplayParentFacts,
-  type ClaudeSubagentMeta,
-} from "./subagents/replay-source.js";
-import { resolveDefaultAgentCreateConfig } from "../../create-agent-mode.js";
-import {
-  collectImportedHistory,
-  importSessionFromPersistence,
-} from "../../provider-session-import.js";
 import {
   checkProviderLaunchAvailable,
   createProviderEnv,
@@ -169,12 +158,6 @@ import { withTimeout } from "../../../../utils/promise-timeout.js";
 import { terminateWithTreeKill } from "../../../../utils/tree-kill.js";
 import { execCommand } from "../../../../utils/spawn.js";
 import { composeSystemPromptParts } from "../../system-prompt.js";
-import { readClaudeWorkflowResultFile } from "./subagents/workflow-output.js";
-import {
-  observeReplayWorkflows,
-  parseClaudeWorkflowRun,
-} from "./subagents/workflow-replay-source.js";
-import { foldSubagentObservations, type SubagentObservation } from "./subagents/observation.js";
 
 const fsPromises = promises;
 const CLAUDE_SETTING_SOURCES: NonNullable<ClaudeOptions["settingSources"]> = [
@@ -196,7 +179,7 @@ export function normalizeClaudeAskUserQuestionRequestInput(
   }
 
   // Claude Code's AskUserQuestion schema says "Other" is host-provided, not a
-  // model-supplied option. Otto's shared question UI uses allowOther for that
+  // model-supplied option. Paseo's shared question UI uses allowOther for that
   // freeform answer path.
   return {
     ...input,
@@ -230,24 +213,26 @@ function stripClaudeAskUserQuestionUiMetadata(input: AgentMetadata): AgentMetada
   };
 }
 
-export function normalizeClaudeAskUserQuestionUpdatedInput(
+/**
+ * The answers this response will actually deliver, keyed by full question text,
+ * or null when there is no question list and answers map to work from.
+ *
+ * Shared by the normalizer and by the check that rejects an undeliverable
+ * answer, so the two can never disagree about what "deliverable" means.
+ */
+function resolveClaudeAskUserQuestionAnswers(
   updatedInput: AgentMetadata | undefined,
   fallbackInput: AgentMetadata | undefined,
-): AgentMetadata {
+): Record<string, string> | null {
   const fallback = isMetadata(fallbackInput) ? fallbackInput : {};
   const base = isMetadata(updatedInput) ? updatedInput : {};
-  // Otto's shared question UI serializes answers by question header, but Claude's
-  // AskUserQuestion tool expects answer keys to match the full question text. Merge
-  // the original request payload back in so provider callbacks that only return
-  // `{ answers }` still satisfy Claude's full tool input schema.
-  const merged = stripClaudeAskUserQuestionUiMetadata({ ...fallback, ...base });
   const questions =
     (Array.isArray(base.questions) ? base.questions : null) ??
     (Array.isArray(fallback.questions) ? fallback.questions : null);
   const answers = isMetadata(base.answers) ? base.answers : null;
 
   if (!questions || !answers) {
-    return merged;
+    return null;
   }
 
   const normalizedAnswers: Record<string, string> = {};
@@ -271,7 +256,23 @@ export function normalizeClaudeAskUserQuestionUpdatedInput(
     }
   }
 
-  if (Object.keys(normalizedAnswers).length === 0) {
+  return normalizedAnswers;
+}
+
+export function normalizeClaudeAskUserQuestionUpdatedInput(
+  updatedInput: AgentMetadata | undefined,
+  fallbackInput: AgentMetadata | undefined,
+): AgentMetadata {
+  const fallback = isMetadata(fallbackInput) ? fallbackInput : {};
+  const base = isMetadata(updatedInput) ? updatedInput : {};
+  // Paseo's shared question UI serializes answers by question header, but Claude's
+  // AskUserQuestion tool expects answer keys to match the full question text. Merge
+  // the original request payload back in so provider callbacks that only return
+  // `{ answers }` still satisfy Claude's full tool input schema.
+  const merged = stripClaudeAskUserQuestionUiMetadata({ ...fallback, ...base });
+  const normalizedAnswers = resolveClaudeAskUserQuestionAnswers(updatedInput, fallbackInput);
+
+  if (!normalizedAnswers || Object.keys(normalizedAnswers).length === 0) {
     return merged;
   }
 
@@ -279,6 +280,32 @@ export function normalizeClaudeAskUserQuestionUpdatedInput(
     ...merged,
     answers: normalizedAnswers,
   };
+}
+
+class ClaudeQuestionAnswerRequiredError extends Error {
+  readonly code = "question_answer_required" as const;
+
+  constructor(readonly requestId: string) {
+    super(
+      `Permission request '${requestId}' requires updatedInput.answers keyed by a ` +
+        `question's full text or header, with a non-empty string value. ` +
+        `The request is still pending; retry with that shape.`,
+    );
+    this.name = "ClaudeQuestionAnswerRequiredError";
+  }
+}
+
+function assertClaudeQuestionAnswerDeliverable(
+  request: AgentPermissionRequest,
+  response: AgentPermissionResponse,
+): void {
+  if (request.kind !== "question" || response.behavior !== "allow") {
+    return;
+  }
+  const answers = resolveClaudeAskUserQuestionAnswers(response.updatedInput, request.input);
+  if (!answers || Object.keys(answers).length === 0) {
+    throw new ClaudeQuestionAnswerRequiredError(request.id);
+  }
 }
 
 function isObjectRecord(value: unknown): value is Record<string, unknown> {
@@ -325,24 +352,18 @@ interface AsyncMessageInput<T> {
 interface ClaudeReplayOwnership {
   restoredIds: ReadonlySet<string>;
   toolOwners: ReadonlyMap<string, string>;
+  /** The parent's Task calls, keyed by tool-call id, so their cards replay labeled as they were live. */
+  subagentToolCalls: ReadonlyMap<string, ClaudeSubagentCardFacts>;
+}
+
+interface ClaudeSubagentCardFacts {
+  title?: string;
+  description?: string;
 }
 
 interface PersistedTimelineEntry {
-  /** Absent on rows that carry only a subagent upsert (announce/settle). */
-  item?: AgentTimelineItem;
+  item: AgentTimelineItem;
   timestamp?: string;
-  /**
-   * Tool-use id of the Task call this entry belongs to, when it came from a
-   * sidechain. Set means it belongs inside that subagent row rather than the
-   * parent transcript, and replay emits it as a provider_subagent event.
-   */
-  subagentToolUseId?: string;
-  /** Row announce/settle for `subagentToolUseId`, replayed as an upsert. */
-  subagentUpsert?: {
-    title: string;
-    description: string | null;
-    status: "running" | "completed" | "failed";
-  };
 }
 
 interface ClaudeRewindTurnAnchor {
@@ -365,17 +386,14 @@ const CLAUDE_CAPABILITIES: AgentCapabilityFlags = {
   supportsRewindConversation: true,
   supportsRewindFiles: true,
   supportsRewindBoth: true,
-  // The CLI's promptSuggestions option; see the "prompt_suggestion" case below.
-  supportsPromptSuggestions: true,
-  // Enforced in applyWorkspaceAccess: the level's denied tools are added to
-  // disallowedTools and stripped from allowedTools at every option build.
-  supportsWorkspaceAccess: true,
-  // "none" holds by the same mechanism: deniedToolsForAccess("none") covers
-  // the read tools and the shell as well.
-  supportsWorkspaceAccessNone: true,
 };
 
 const DEFAULT_MODES: AgentMode[] = [
+  {
+    id: "plan",
+    label: "Plan Mode",
+    description: "Analyze the codebase without executing tools or edits",
+  },
   {
     id: "default",
     label: "Always Ask",
@@ -387,35 +405,14 @@ const DEFAULT_MODES: AgentMode[] = [
     description: "Automatically approves edit-focused tools without prompting",
   },
   {
-    id: "plan",
-    label: "Plan Mode",
-    description: "Analyze the codebase without executing tools or edits",
-  },
-  {
     id: "auto",
     label: "Auto mode",
     description: "Uses a model classifier to review permission prompts automatically",
-    // The CLI also routes the turn to its own choice of model here, which is
-    // why an explicit model pick pulls the agent out of Auto (see
-    // resolveModelPickExitModeId) instead of being silently overridden.
-    selectsModel: true,
-  },
-  {
-    id: "dontAsk",
-    label: "Don't Ask",
-    // Guardrail-bearing description (same principle as preview tools): the mode
-    // never prompts, but anything not covered by a permission allow-rule is
-    // DENIED rather than run. This is the default unattended target - listed
-    // before bypassPermissions so resolveDefaultAgentCreateConfig picks it as
-    // the coercion target for schedules/loops/artifacts.
-    description: "Runs without prompting; actions not pre-approved are denied",
-    isUnattended: true,
   },
   {
     id: "bypassPermissions",
     label: "Bypass",
     description: "Skip all permission prompts (use with caution)",
-    isUnattended: true,
   },
 ];
 
@@ -446,23 +443,6 @@ const STEER_SUPERSEDED_PERMISSION_MESSAGE =
   "The user answered with a message instead of approving. Their message follows.";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-/**
- * True for the SDK errors raised when a control-plane call (interrupt/return)
- * is issued against a CLI process that has already exited or been aborted.
- * These are expected during session teardown, not real failures.
- */
-export function isExpectedTransportTeardownError(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-  const message = error.message;
-  return (
-    message.includes("is not ready for writing") ||
-    message.includes("Operation aborted") ||
-    message.includes("process aborted by user")
-  );
-}
-
 interface SlashCommandInvocation {
   commandName: string;
   args?: string;
@@ -476,7 +456,10 @@ function classifyClaudeSlashCommand(commandName: string): AgentSlashCommand["kin
   return CLAUDE_ROOT_ONLY_COMMANDS.has(commandName) ? "command" : "skill";
 }
 
-type ClaudeAgentConfig = AgentSessionConfig & { provider: "claude" };
+type ClaudeAgentConfig = Omit<AgentSessionConfig, "providerOptions"> & {
+  provider: "claude";
+  providerOptions: ClaudeProviderOptions;
+};
 
 export interface ClaudeContentChunk {
   type: string;
@@ -484,16 +467,19 @@ export interface ClaudeContentChunk {
 }
 
 interface ClaudeAgentClientOptions {
+  discoverModels?: typeof discoverClaudeModels;
   defaults?: { agents?: Record<string, AgentDefinition> };
   logger: Logger;
   runtimeSettings?: ProviderRuntimeSettings;
   queryFactory?: ClaudeQueryFactory;
   resolveBinary?: () => Promise<string>;
   resolveVersion?: (signal?: AbortSignal) => Promise<string>;
-  configDir?: string;
+  rewindSdk?: ClaudeRewindSdk;
 }
 
 interface ClaudeAgentSessionOptions {
+  ottoWorkflowPolicy?: WorkflowLaunchPolicy; // OTTO(workflows)
+  ottoReadOnlyGeneration?: true; // OTTO(context-generation)
   defaults?: { agents?: Record<string, AgentDefinition> };
   runtimeSettings?: ProviderRuntimeSettings;
   handle?: AgentPersistenceHandle;
@@ -503,17 +489,14 @@ interface ClaudeAgentSessionOptions {
   logger: Logger;
   queryFactory?: ClaudeQueryFactory;
   resolveBinary: () => Promise<string>;
-  // Resolved daemon-wide behavior toggles for this launch (undefined = old
-  // manager / not provided → treat as all-on). Claude consumes promptSuggestions
-  // and agentProgressSummaries; notifyOnFinishDefault is an Otto-tools concern.
-  agentBehaviors?: AgentBehaviorSettings;
+  rewindSdk?: ClaudeRewindSdk;
 }
 
 type ClaudeThinkingEffort = "low" | "medium" | "high" | "xhigh" | "max";
 type ClaudeThinkingOption =
   | ClaudeThinkingEffort
-  | typeof CLAUDE_ULTRACODE_THINKING_OPTION_ID
-  | typeof CLAUDE_THINKING_OFF_OPTION_ID;
+  | typeof CLAUDE_DISABLED_THINKING_OPTION_ID
+  | typeof CLAUDE_ULTRACODE_THINKING_OPTION_ID;
 
 function resolvePathEnvKey(): "Path" | "PATH" | null {
   if (process.env["Path"] !== undefined) return "Path";
@@ -525,6 +508,15 @@ function errorToMessageString(error: unknown): string {
   if (typeof error === "string") return error;
   if (error instanceof Error) return error.message;
   return "";
+}
+
+/**
+ * Claude opens every main-session turn with system/init and closes it with exactly one result:
+ * a prompt, a wake-up after background work, a slash command, an API error. Background subagents
+ * never emit either on the main stream.
+ */
+function isClaudeTurnInit(message: SDKMessage): boolean {
+  return message.type === "system" && message.subtype === "init";
 }
 
 function firstStringField(
@@ -562,87 +554,25 @@ function isClaudeThinkingEffort(value: string | null | undefined): value is Clau
 
 function isClaudeThinkingOption(value: string | null | undefined): value is ClaudeThinkingOption {
   return (
+    value === CLAUDE_DISABLED_THINKING_OPTION_ID ||
     value === CLAUDE_ULTRACODE_THINKING_OPTION_ID ||
-    value === CLAUDE_THINKING_OFF_OPTION_ID ||
     isClaudeThinkingEffort(value)
   );
 }
 
-/**
- * Off is the one thinking option that is not universally available: some models
- * reject `thinking: {type: "disabled"}` outright. Guarding here keeps the
- * rejection local and legible instead of surfacing as a CLI 400 mid-turn.
- */
-function assertThinkingOptionAvailable(
-  thinkingOptionId: string,
+function assertClaudeThinkingOptionSupported(
   modelId: string | null | undefined,
+  thinkingOptionId: string | null | undefined,
 ): void {
-  if (thinkingOptionId !== CLAUDE_THINKING_OFF_OPTION_ID) {
+  if (
+    thinkingOptionId !== CLAUDE_DISABLED_THINKING_OPTION_ID ||
+    resolveClaudeDisabledThinkingForModel(modelId).supported
+  ) {
     return;
   }
-  if (!claudeManifestModelSupportsThinkingOff(modelId)) {
-    throw new Error(
-      `Thinking option '${CLAUDE_THINKING_OFF_OPTION_ID}' is not available for model '${modelId}'`,
-    );
-  }
-}
-
-// Map a resolved thinkingOptionId onto a Claude `effort` for a bare completion.
-// Metadata generation wants no thinking by default (cheaper, faster); only a
-// personality-carried effort turns it on. Ultracode collapses to the highest
-// real effort tier since the bare path has no adaptive-thinking machinery.
-function resolveClaudeBareCompletionEffort(
-  thinkingOptionId: string | undefined,
-): ClaudeThinkingEffort | undefined {
-  if (!thinkingOptionId || thinkingOptionId === "default") {
-    return undefined;
-  }
-  if (thinkingOptionId === CLAUDE_ULTRACODE_THINKING_OPTION_ID) {
-    return "xhigh";
-  }
-  return isClaudeThinkingEffort(thinkingOptionId) ? thinkingOptionId : undefined;
-}
-
-/**
- * Map a bare-completion result message's usage into AgentUsage (WP-G). Standalone
- * from the session's `buildResultUsage` (which also drives the context-window
- * ring) - a bare completion has no session/ring, so this only carries the
- * billing slices the cost ledger needs: the three input categories, output, and
- * Claude's real `total_cost_usd`.
- */
-function buildBareCompletionUsage(message: SDKResultMessage): AgentUsage | undefined {
-  if (!message.usage) {
-    return undefined;
-  }
-  const usage: AgentUsage = {
-    inputTokens: message.usage.input_tokens,
-    cachedInputTokens: message.usage.cache_read_input_tokens,
-    cacheCreationInputTokens: message.usage.cache_creation_input_tokens,
-    outputTokens: message.usage.output_tokens,
-    totalCostUsd: message.total_cost_usd,
-  };
-  return usage;
-}
-
-// Concatenate the text blocks of an assistant SDK message. Used only as the
-// fallback when a bare completion's result message carries no `result` string.
-function extractClaudeAssistantMessageText(message: SDKMessage & { type: "assistant" }): string {
-  const container = toObjectRecord(message.message);
-  const content = container?.content;
-  if (typeof content === "string") {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return "";
-  }
-  let text = "";
-  for (const block of content) {
-    const record = toObjectRecord(block);
-    if (record?.type === "text" && typeof record.text === "string") {
-      text += record.text;
-    }
-  }
-  return text;
+  throw new Error(
+    `Thinking option '${thinkingOptionId}' is not available for model '${modelId ?? "default"}'`,
+  );
 }
 
 interface ClaudeOptionsLogSummary {
@@ -668,28 +598,9 @@ interface ClaudeOptionsLogSummary {
   fastMode: boolean | null;
 }
 
-/** Cap on the submitted-uuid set the interrupt receipt is reconciled against. */
-const SUBMITTED_USER_MESSAGE_ID_LIMIT = 64;
-
 const MAX_RECENT_STDERR_CHARS = 4000;
 const STDERR_FLUSH_WAIT_MS = 150;
 const STDERR_FLUSH_POLL_INTERVAL_MS = 10;
-
-// A streamed tool input arrives as dozens of small JSON deltas. Re-reading the
-// whole accumulated buffer per delta is quadratic, and every change we surface
-// pushes a running tool_call carrying the entire content-so-far, which the
-// timeline store then retains as its own row. Below the floor the per-delta cost
-// is noise, so only large inputs (streamed Write/Edit bodies) are rate-limited;
-// the tail is always flushed when the input block ends.
-const RUNNING_TOOL_INPUT_THROTTLE_FLOOR_CHARS = 4 * 1024;
-const RUNNING_TOOL_INPUT_EMIT_INTERVAL_MS = 500;
-const RUNNING_TOOL_INPUT_EMIT_GROWTH_CHARS = 4 * 1024;
-
-interface RunningToolInputEmitState {
-  lastEmitAt: number;
-  lastEmitLength: number;
-  pending: boolean;
-}
 
 function summarizeClaudeOptionsForLog(options: ClaudeOptions): ClaudeOptionsLogSummary {
   const systemPromptRaw = options.systemPrompt;
@@ -754,6 +665,94 @@ function mergeClaudeSettings(
   return { ...settings, ...updates };
 }
 
+function isToolResultTextBlock(value: unknown): value is { type: "text"; text: string } {
+  return (
+    !!value &&
+    typeof value === "object" &&
+    (value as { type?: unknown }).type === "text" &&
+    typeof (value as { text?: unknown }).text === "string"
+  );
+}
+
+function normalizeForDeterministicString(value: unknown, seen: WeakSet<object>): unknown {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+  if (typeof value === "bigint") {
+    return value.toString();
+  }
+  if (typeof value === "function") {
+    return "[function]";
+  }
+  if (typeof value === "symbol") {
+    return value.toString();
+  }
+  if (typeof value === "undefined") {
+    return "[undefined]";
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeForDeterministicString(entry, seen));
+  }
+  if (typeof value === "object") {
+    const objectValue = value;
+    if (seen.has(objectValue)) {
+      return "[circular]";
+    }
+    seen.add(objectValue);
+    const record = toObjectRecord(value);
+    if (!record) {
+      seen.delete(objectValue);
+      return "[invalid]";
+    }
+    const normalized: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) {
+      normalized[key] = normalizeForDeterministicString(record[key], seen);
+    }
+    seen.delete(objectValue);
+    return normalized;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  return "[unsupported]";
+}
+
+function deterministicStringify(value: unknown): string {
+  if (typeof value === "undefined") {
+    return "";
+  }
+  try {
+    const normalized = normalizeForDeterministicString(value, new WeakSet<object>());
+    if (typeof normalized === "string") {
+      return normalized;
+    }
+    return JSON.stringify(normalized);
+  } catch {
+    if (typeof value === "string") {
+      return value;
+    }
+    if (typeof value === "number" || typeof value === "boolean") {
+      return String(value);
+    }
+    return "[unserializable]";
+  }
+}
+
+function coerceToolResultContentToString(content: unknown): string {
+  if (typeof content === "string") {
+    return content;
+  }
+  if (Array.isArray(content) && content.every((block) => isToolResultTextBlock(block))) {
+    return content.map((block) => block.text).join("");
+  }
+  return deterministicStringify(content);
+}
+
 function toBase64ImageOutput(block: unknown): ProviderImageOutput | null {
   const record = toObjectRecord(block);
   if (!record || record.type !== "image") {
@@ -770,7 +769,7 @@ function toBase64ImageOutput(block: unknown): ProviderImageOutput | null {
 }
 
 // Claude returns images inside tool_result content as base64 Anthropic blocks. Left in place they
-// reach coerceToolResultContentToString, which JSON.stringifies the whole array - dumping base64
+// reach coerceToolResultContentToString, which JSON.stringifies the whole array — dumping base64
 // into the tool output. We pull those blocks out to render them as image markdown and leave a
 // "[image]" placeholder so image-only results still produce non-empty output.
 function splitClaudeToolResultImages(content: unknown): {
@@ -1004,7 +1003,7 @@ function isTruthyEnvValue(value: string | undefined): boolean {
   );
 }
 
-function detectNonAnthropicApiTransport(env: NodeJS.ProcessEnv): "Bedrock" | "Vertex" | null {
+function claudeAutoModeUnavailableOn(env: NodeJS.ProcessEnv): "Bedrock" | "Vertex" | null {
   if (isTruthyEnvValue(env.CLAUDE_CODE_USE_BEDROCK)) {
     return "Bedrock";
   }
@@ -1014,75 +1013,27 @@ function detectNonAnthropicApiTransport(env: NodeJS.ProcessEnv): "Bedrock" | "Ve
   return null;
 }
 
-type ClaudeAutoModeVerdict = { supported: true } | { supported: false; reason: string };
-
-/**
- * Whether the Auto permission mode (Claude's model-classifier approvals) can
- * run for the given model + auth path. Mirrors the Claude Code support matrix
- * (see ClaudeAutoModeSupport in model-manifest.ts); the CLI enforces the same
- * matrix itself with a mid-session error, so this gate exists to hide/refuse
- * Auto up front instead of surfacing a runtime toast. Unknown models fail open
- * to the legacy transport-only rule.
- */
-export function checkClaudeAutoModeSupport(
-  modelId: string | null | undefined,
-  env: NodeJS.ProcessEnv,
-): ClaudeAutoModeVerdict {
-  const support = claudeManifestModelAutoModeSupport(
-    normalizeClaudeRuntimeModelId(modelId) ?? modelId,
-  );
-  if (support === "none") {
-    return {
-      supported: false,
-      reason: `Claude Auto mode is not supported by model '${modelId}'. Select another permission mode or a newer model.`,
-    };
-  }
-  if (support === "all") {
-    return { supported: true };
-  }
-  // "anthropic-api" tier or unknown model: Bedrock/Vertex never qualify.
-  const transport = detectNonAnthropicApiTransport(env);
-  if (transport !== null) {
-    return {
-      supported: false,
-      reason: `Claude Auto mode requires the Anthropic API and is not supported when Claude Code uses ${transport}. Select another permission mode or unset the ${transport === "Bedrock" ? "CLAUDE_CODE_USE_BEDROCK" : "CLAUDE_CODE_USE_VERTEX"} environment variable.`,
-    };
-  }
-  // API-key presence is the best available signal for Anthropic API billing
-  // vs claude.ai subscription sign-in (OAuth leaves no env marker).
-  if (support === "anthropic-api" && !isTruthyEnvValue(env.ANTHROPIC_API_KEY)) {
-    return {
-      supported: false,
-      reason: `Claude Auto mode on model '${modelId}' requires Anthropic API-key authentication and is not available with claude.ai sign-in. Select another permission mode or a newer model.`,
-    };
-  }
-  return { supported: true };
-}
-
-function assertClaudeAutoModeEligible(
-  mode: PermissionMode,
-  modelId: string | null | undefined,
-  env: NodeJS.ProcessEnv,
-): void {
+function assertClaudeModeCanRun(mode: PermissionMode, env: NodeJS.ProcessEnv): void {
   if (mode !== "auto") {
     return;
   }
-  const verdict = checkClaudeAutoModeSupport(modelId, env);
-  if (!verdict.supported) {
-    throw new Error(verdict.reason);
+  const transport = claudeAutoModeUnavailableOn(env);
+  if (transport === null) {
+    return;
   }
+  throw new Error(
+    `Claude Auto mode requires the Anthropic API and is not supported when Claude Code uses ${transport}. Select another permission mode or unset the ${transport === "Bedrock" ? "CLAUDE_CODE_USE_BEDROCK" : "CLAUDE_CODE_USE_VERTEX"} environment variable.`,
+  );
 }
 
 function claudeModeCatalog(env: NodeJS.ProcessEnv): {
   modes: AgentMode[];
   defaultModeId: PermissionMode;
 } {
-  // Otto evaluates eligibility against the selected model at session creation.
-  // Some models support Auto on Bedrock/Vertex, so transport alone cannot hide it.
-  return {
-    modes: DEFAULT_MODES,
-    defaultModeId: detectNonAnthropicApiTransport(env) ? "default" : "auto",
-  };
+  if (claudeAutoModeUnavailableOn(env)) {
+    return { modes: DEFAULT_MODES.filter((mode) => mode.id !== "auto"), defaultModeId: "default" };
+  }
+  return { modes: DEFAULT_MODES, defaultModeId: "auto" };
 }
 
 function coerceSessionMetadata(metadata: AgentMetadata | undefined): Partial<AgentSessionConfig> {
@@ -1106,29 +1057,9 @@ function coerceSessionMetadata(metadata: AgentMetadata | undefined): Partial<Age
   if (typeof metadata.title === "string" || metadata.title === null) {
     result.title = metadata.title;
   }
-  if (typeof metadata.approvalPolicy === "string") {
-    result.approvalPolicy = metadata.approvalPolicy;
-  }
-  if (typeof metadata.sandboxMode === "string") {
-    result.sandboxMode = metadata.sandboxMode;
-  }
-  if (typeof metadata.networkAccess === "boolean") {
-    result.networkAccess = metadata.networkAccess;
-  }
-  if (typeof metadata.webSearch === "boolean") {
-    result.webSearch = metadata.webSearch;
-  }
-  if (isMetadata(metadata.extra)) {
-    const extra: AgentSessionConfig["extra"] = {};
-    if (isMetadata(metadata.extra.codex)) {
-      extra.codex = metadata.extra.codex;
-    }
-    if (isClaudeExtra(metadata.extra.claude)) {
-      extra.claude = metadata.extra.claude;
-    }
-    if (extra.codex || extra.claude) {
-      result.extra = extra;
-    }
+  const providerOptions = ClaudeProviderOptionsSchema.safeParse(metadata.providerOptions);
+  if (providerOptions.success) {
+    result.providerOptions = providerOptions.data;
   }
   if (typeof metadata.systemPrompt === "string") {
     result.systemPrompt = metadata.systemPrompt;
@@ -1173,10 +1104,6 @@ function isClaudeContentChunk(value: unknown): value is ClaudeContentChunk {
   return isMetadata(value) && typeof value.type === "string";
 }
 
-function isClaudeExtra(value: unknown): value is Partial<ClaudeOptions> {
-  return isMetadata(value);
-}
-
 function isPermissionUpdate(value: AgentPermissionUpdate): value is PermissionUpdate {
   if (!isMetadata(value)) {
     return false;
@@ -1191,16 +1118,6 @@ function isPermissionUpdate(value: AgentPermissionUpdate): value is PermissionUp
   return Array.isArray(rules) && typeof behavior === "string" && typeof destination === "string";
 }
 
-// Otto tools that only draw or withdraw a suggestion card - they have no side
-// effect until the user clicks Start on the card, so the real approval gate is
-// that Start button, not the act of suggesting. Auto-approved in every mode
-// (including Always-ask) so the model never has to ask permission to suggest.
-// The suggestion still appears in the transcript, so full visibility is kept.
-const AUTO_APPROVED_OTTO_TOOL_NAMES = new Set<string>([
-  "mcp__otto__suggest_task",
-  "mcp__otto__dismiss_task",
-]);
-
 function resolvePermissionKind(
   toolName: string,
   input: Record<string, unknown>,
@@ -1210,6 +1127,37 @@ function resolvePermissionKind(
     return "question";
   }
   return "tool";
+}
+
+// Notification previews fall back to serializing the raw request input when a
+// permission request carries no title. For AskUserQuestion that fallback is the
+// whole question object, so the notification reads as JSON. Summarize the first
+// question the same way the OMP and Pi providers do for their ask_user
+// permissions.
+function buildClaudeQuestionPermissionSummary(
+  toolName: string,
+  input: AgentMetadata,
+): { title?: string; description?: string } {
+  if (toolName !== "AskUserQuestion" || !Array.isArray(input.questions)) {
+    return {};
+  }
+
+  const question = input.questions.find(isMetadata);
+  const title = typeof question?.question === "string" ? question.question.trim() : "";
+  if (!title) {
+    return {};
+  }
+
+  const labels = Array.isArray(question?.options)
+    ? question.options
+        .map((option) => {
+          if (typeof option === "string") return option.trim();
+          return isMetadata(option) && typeof option.label === "string" ? option.label.trim() : "";
+        })
+        .filter((label) => label.length > 0)
+    : [];
+
+  return labels.length > 0 ? { title, description: labels.join(" / ") } : { title };
 }
 
 function getClaudeModeLabel(modeId: PermissionMode): string {
@@ -1624,6 +1572,7 @@ export function readEventIdentifiers(message: SDKMessage): EventIdentifiers {
 }
 
 export class ClaudeAgentClient implements AgentClient {
+  private readonly discoverModels: typeof discoverClaudeModels;
   readonly provider = "claude" as const;
   readonly capabilities = CLAUDE_CAPABILITIES;
 
@@ -1633,9 +1582,10 @@ export class ClaudeAgentClient implements AgentClient {
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly resolveBinary: () => Promise<string>;
   private readonly resolveVersion: (signal?: AbortSignal) => Promise<string>;
-  private readonly configDir?: string;
+  private readonly rewindSdk: ClaudeRewindSdk;
 
   constructor(options: ClaudeAgentClientOptions) {
+    this.discoverModels = options.discoverModels ?? discoverClaudeModels;
     this.defaults = options.defaults;
     this.logger = options.logger.child({ module: "agent", provider: "claude" });
     this.runtimeSettings = options.runtimeSettings;
@@ -1644,7 +1594,11 @@ export class ClaudeAgentClient implements AgentClient {
     this.resolveVersion =
       options.resolveVersion ??
       ((signal) => resolveClaudeCodeVersion(this.runtimeSettings, signal));
-    this.configDir = options.configDir;
+    this.rewindSdk = options.rewindSdk ?? realClaudeRewindSdk;
+  }
+
+  resolveConfiguredModel(model: AgentModelDefinition): AgentModelDefinition {
+    return resolveConfiguredClaudeModel(model);
   }
 
   async createSession(
@@ -1653,86 +1607,19 @@ export class ClaudeAgentClient implements AgentClient {
     options?: AgentCreateSessionOptions,
   ): Promise<AgentSession> {
     const claudeConfig = this.assertConfig(config);
-    // Fail the launch rather than silently downgrading: an explicit Off in the
-    // launch config is a stated intent, and starting a session that quietly
-    // thinks anyway is worse than telling the caller the pairing is invalid.
-    if (claudeConfig.thinkingOptionId) {
-      assertThinkingOptionAvailable(claudeConfig.thinkingOptionId, claudeConfig.model);
-    }
     return new ClaudeAgentSession(claudeConfig, {
       defaults: this.defaults,
       runtimeSettings: this.runtimeSettings,
       agentId: launchContext?.agentId,
       launchEnv: launchContext?.env,
       persistSession: options?.persistSession,
+      ottoReadOnlyGeneration: launchContext?.ottoReadOnlyGeneration, // OTTO(context-generation)
+      ottoWorkflowPolicy: launchContext?.ottoWorkflowPolicy, // OTTO(workflows)
       logger: this.logger,
       queryFactory: this.queryFactory,
       resolveBinary: this.resolveBinary,
-      agentBehaviors: launchContext?.agentBehaviors,
+      rewindSdk: this.rewindSdk,
     });
-  }
-
-  /**
-   * Tool-less one-shot completion for internal metadata generation (chat
-   * titles, branch names, commit/PR text, …). Runs a minimal `claudeQuery`
-   * with NO `claude_code` preset, NO CLAUDE.md (`settingSources: []`), NO tools
-   * (`allowedTools: []`), and NO MCP - everything the model needs is in the
-   * self-contained prompt. This is the whole cost win: a full spawn carries the
-   * preset + CLAUDE.md + the Otto tool catalog (15–25K input tokens) just to
-   * emit a few words; this path is a few hundred. Auth still flows through the
-   * Claude Code CLI (subscription/OAuth), so no separate API key is needed.
-   */
-  async generateBareCompletion(
-    options: AgentBareCompletionOptions,
-  ): Promise<AgentBareCompletionResult> {
-    const claudeBinary = await this.resolveBinary();
-    const env = createProviderEnv({
-      baseEnv: process.env,
-      runtimeSettings: this.runtimeSettings,
-    });
-    const effort = resolveClaudeBareCompletionEffort(options.thinkingOptionId);
-    const queryOptions: ClaudeOptions = {
-      cwd: options.cwd,
-      pathToClaudeCodeExecutable: claudeBinary,
-      settingSources: [],
-      allowedTools: [],
-      maxTurns: 1,
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      includePartialMessages: false,
-      persistSession: false,
-      env,
-      ...(options.systemPrompt ? { systemPrompt: options.systemPrompt } : {}),
-      ...(options.model ? { model: options.model } : {}),
-      ...(effort ? { effort } : {}),
-    };
-    const handle = claudeQuery(
-      { prompt: options.prompt, options: queryOptions },
-      { runtimeSettings: this.runtimeSettings, queryFactory: this.queryFactory },
-    );
-    let assistantText = "";
-    let resultText = "";
-    // Capture the result message's usage so the manager can attribute this
-    // generation's spend to the "generations" cost category (WP-G). Without it
-    // the bare-completion path bypasses the turn counter entirely and reads zero.
-    let usage: AgentUsage | undefined;
-    try {
-      for await (const message of handle) {
-        if (message.type === "assistant") {
-          assistantText += extractClaudeAssistantMessageText(message);
-        } else if (message.type === "result" && message.subtype === "success") {
-          resultText = typeof message.result === "string" ? message.result : "";
-          usage = buildBareCompletionUsage(message);
-        }
-      }
-    } finally {
-      try {
-        await handle.return?.(undefined);
-      } catch {
-        // Best-effort teardown of the underlying CLI process on early exit.
-      }
-    }
-    return { text: resultText.trim() || assistantText.trim(), ...(usage ? { usage } : {}) };
   }
 
   async resumeSession(
@@ -1760,26 +1647,8 @@ export class ClaudeAgentClient implements AgentClient {
       logger: this.logger,
       queryFactory: this.queryFactory,
       resolveBinary: this.resolveBinary,
-      agentBehaviors: launchContext?.agentBehaviors,
+      rewindSdk: this.rewindSdk,
     });
-  }
-
-  async readSearchHistory(handle: AgentPersistenceHandle, cwd: string) {
-    const { validateSearchHistoryJsonl } = await import("../../search-history-revision.js");
-    await validateSearchHistoryJsonl(resolveClaudeSearchHistoryPath(cwd, handle.sessionId));
-    // Construction only reads persisted history; no query or model request is started.
-    const session = await this.resumeSession(handle, { cwd });
-    try {
-      return (await collectImportedHistory(session.streamHistory())).timeline;
-    } finally {
-      await session.close();
-    }
-  }
-
-  async getSearchHistoryRevision(handle: AgentPersistenceHandle, cwd: string) {
-    const historyPath = resolveClaudeSearchHistoryPath(cwd, handle.sessionId);
-    const { searchHistoryFileRevision } = await import("../../search-history-revision.js");
-    return searchHistoryFileRevision(historyPath);
   }
 
   async getCatalogCacheKey(_options: FetchCatalogOptions): Promise<string> {
@@ -1800,29 +1669,54 @@ export class ClaudeAgentClient implements AgentClient {
     } catch (error) {
       this.logger.warn({ err: error }, "Failed to resolve Claude Code version for model catalog");
     }
+    const env = this.buildProviderEnv();
+    let discoveredModelIds = new Set<string>();
+    try {
+      const advertisedModels = await runProviderRefreshActivity(context, "models", () =>
+        this.discoverModels({
+          resolveBinary: this.resolveBinary,
+          runtimeSettings: this.runtimeSettings,
+          env,
+          signal: context?.signal,
+        }),
+      );
+      discoveredModelIds = new Set(
+        advertisedModels
+          .map((model) => normalizeClaudeRuntimeModelId(model.resolvedModel ?? model.value))
+          .filter((id): id is string => id !== null),
+      );
+    } catch (error) {
+      context?.signal.throwIfAborted();
+      this.logger.warn(
+        { err: error },
+        "Claude model discovery failed; omitting discovery-required models",
+      );
+    }
     const models = await runProviderRefreshActivity(context, "settings", () =>
-      getClaudeModelsWithSettings(this.logger, this.configDir, claudeCodeVersion),
+      getClaudeModelsWithSettings(
+        this.logger,
+        claudeConfigDir(env),
+        claudeCodeVersion,
+        discoveredModelIds,
+      ),
     );
+    const modeCatalog = claudeModeCatalog(env);
     return {
       models,
-      ...claudeModeCatalog(
-        createProviderEnv({ baseEnv: process.env, runtimeSettings: this.runtimeSettings }),
-      ),
+      ...modeCatalog,
     };
   }
 
-  resolveCreateConfig(input: ResolveAgentCreateConfigInput): ResolveAgentCreateConfigResult {
-    // Unattended Claude runs default to `dontAsk` (first isUnattended mode in
-    // DEFAULT_MODES). Upgrade that target to `auto` when the model + auth path
-    // supports the classifier: Auto then auto-approves safe actions (including
-    // safe Bash) and escalations are auto-denied by the unattended responder.
-    // process.env is the auth-path signal (ANTHROPIC_API_KEY / Bedrock / Vertex
-    // markers live there); the per-session buildOptions re-checks with the full
-    // SDK env, so a mismatch fails visibly rather than silently mis-running.
-    const preferredUnattendedModeId = checkClaudeAutoModeSupport(input.model, process.env).supported
-      ? "auto"
-      : undefined;
-    return resolveDefaultAgentCreateConfig({ ...input, preferredUnattendedModeId });
+  async resolveDefaultModeId({ env: launchEnv }: ResolveAgentDefaultModeInput): Promise<string> {
+    return claudeModeCatalog(this.buildProviderEnv(launchEnv)).defaultModeId;
+  }
+
+  private buildProviderEnv(launchEnv?: Record<string, string>): NodeJS.ProcessEnv {
+    return createProviderEnv({
+      baseEnv: process.env,
+      runtimeSettings: this.runtimeSettings,
+      overlays: [launchEnv],
+    });
   }
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
@@ -1836,23 +1730,18 @@ export class ClaudeAgentClient implements AgentClient {
   async listImportableSessions(
     options?: ListImportableSessionsOptions,
   ): Promise<ImportableProviderSession[]> {
-    const configDir = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), ".claude");
-    const projectsRoot = path.join(configDir, "projects");
-    if (!(await pathExists(projectsRoot))) {
+    const configDir = claudeConfigDir(this.buildProviderEnv());
+    const sessionsRoot = options?.cwd
+      ? claudeProjectDirSync(options.cwd, { configDir })
+      : path.join(configDir, "projects");
+    if (!(await pathExists(sessionsRoot))) {
       return [];
     }
     const limit = options?.limit ?? 20;
     const scanLimit = Math.min(options?.scanLimit ?? limit * 3, 500);
-    // A cwd hint maps straight onto Claude's per-project transcript directory,
-    // so scan only that one. Ranking every project and slicing afterwards lets a
-    // busier project crowd out the sessions actually being asked for, and would
-    // offer an unrelated repo's transcript for import.
-    const candidates = options?.cwd
-      ? await collectClaudeSessionsInProjects(
-          [claudeProjectDirSync(options.cwd, { configDir })],
-          scanLimit,
-        )
-      : await collectRecentClaudeSessions(projectsRoot, scanLimit);
+    const candidates = await collectRecentClaudeSessions(sessionsRoot, scanLimit, {
+      rootIsProjectDir: Boolean(options?.cwd),
+    });
     const parsed = await Promise.all(
       candidates.map((candidate) => parseClaudeSessionDescriptor(candidate.path, candidate.mtime)),
     );
@@ -1862,30 +1751,22 @@ export class ClaudeAgentClient implements AgentClient {
   }
 
   async importSession(input: ImportProviderSessionInput, context: ImportProviderSessionContext) {
+    // Carry a `/rename` onto the imported agent so the name chosen in the CLI
+    // survives the import. Only an explicit rename counts: agents are named
+    // after their first prompt line since #1563, so adopting the generated
+    // `ai-title` here would put that LLM summary back.
+    const renamedTitle = await readClaudeRenamedSessionTitle({
+      cwd: input.cwd,
+      sessionId: input.providerHandleId,
+      configDir: claudeConfigDir(this.buildProviderEnv(context.launchContext?.env)),
+    });
     return importSessionFromPersistence({
       provider: "claude",
       request: input,
       context,
       resumeSession: this.resumeSession.bind(this),
+      ...(renamedTitle ? { config: { title: renamedTitle } } : {}),
     });
-  }
-
-  /**
-   * Permission mode a new Claude session starts in. Auto (model-classifier
-   * approvals) cannot run on every model/transport pairing, so hand back the
-   * plain default wherever the classifier is unavailable rather than starting a
-   * session in a mode the CLI refuses mid-turn. Env precedence matches the
-   * launch path: process env is the base, runtime settings override it, and an
-   * explicit launch env wins - so a launch can both inherit and disable an
-   * ambient Bedrock/Vertex transport.
-   */
-  async resolveDefaultModeId(input: ResolveAgentDefaultModeInput): Promise<string> {
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      ...this.runtimeSettings?.env,
-      ...input.env,
-    };
-    return checkClaudeAutoModeSupport(input.config.model, env).supported ? "auto" : "default";
   }
 
   async isAvailable(): Promise<boolean> {
@@ -1928,38 +1809,16 @@ export class ClaudeAgentClient implements AgentClient {
     if (config.provider !== "claude") {
       throw new Error(`ClaudeAgentClient received config for provider '${config.provider}'`);
     }
-    return { ...config, provider: "claude" } as ClaudeAgentConfig;
+    const model = config.model?.trim();
+    const providerOptions =
+      validateProviderOptions("claude", ClaudeProviderOptionsSchema, config.providerOptions) ?? {};
+    return {
+      ...config,
+      provider: "claude",
+      model: model || undefined,
+      providerOptions,
+    };
   }
-}
-
-type ClaudeRateLimitInfo = Extract<SDKMessage, { type: "rate_limit_event" }>["rate_limit_info"];
-
-function mapClaudeRateLimitInfo(info: ClaudeRateLimitInfo): AgentRateLimitInfo {
-  let status: AgentRateLimitInfo["status"] = "allowed";
-  if (info.status === "rejected") {
-    status = "rejected";
-  } else if (info.status === "allowed_warning") {
-    status = "warning";
-  }
-  const mapped: AgentRateLimitInfo = { status };
-  // The rate_limit_event `utilization` is a 0-1 FRACTION (verified against a live
-  // event: 0.42 while the /usage dialog showed the weekly window at ~43%). Note
-  // this differs from the /usage structured API, whose utilization is documented
-  // 0-100 - the two SDK sources use different scales. Multiply to a percent.
-  if (typeof info.utilization === "number" && Number.isFinite(info.utilization)) {
-    mapped.utilizationPercent = Math.min(100, Math.max(0, Math.round(info.utilization * 100)));
-  }
-  if (info.rateLimitType) {
-    mapped.limitType = info.rateLimitType;
-  }
-  // SDK resetsAt is epoch seconds (verified against a live rate_limit_event).
-  if (typeof info.resetsAt === "number" && Number.isFinite(info.resetsAt)) {
-    mapped.resetsAt = new Date(info.resetsAt * 1000).toISOString();
-  }
-  if (typeof info.isUsingOverage === "boolean") {
-    mapped.isUsingOverage = info.isUsingOverage;
-  }
-  return mapped;
 }
 
 async function resolveClaudeBinary(runtimeSettings?: ProviderRuntimeSettings): Promise<string> {
@@ -1994,7 +1853,13 @@ export async function resolveClaudeCodeVersion(
     timeout: 5_000,
     signal,
   });
-  const version = parseClaudeCodeVersion(`${stdout}\n${stderr}`);
+  // A wrapper command (the `command` provider setting) prints its own version here
+  // instead of Claude Code's. Only trust output that identifies itself as Claude Code,
+  // so a wrapper's version can't mis-gate models behind a minimumClaudeCodeVersion.
+  const rawVersionOutput = `${stdout}\n${stderr}`;
+  const version = /\d+\.\d+\.\d+\s+\(Claude Code\)/i.test(rawVersionOutput)
+    ? parseClaudeCodeVersion(rawVersionOutput)
+    : null;
   if (!version) {
     throw new Error("Unable to parse Claude Code version from --version output");
   }
@@ -2038,56 +1903,77 @@ async function resolveClaudeAuth(
   }
 }
 
-function extractContextWindowSize(modelUsage: unknown): number | undefined {
+function extractContextWindowSize(
+  modelUsage: unknown,
+  modelId: string | null | undefined,
+): number | undefined {
   const usageRecord = toObjectRecord(modelUsage);
   if (!usageRecord) {
     return undefined;
   }
 
-  let maxContextWindow: number | undefined;
-  for (const value of Object.values(usageRecord)) {
-    const valueRecord = toObjectRecord(value);
-    if (!valueRecord) {
-      continue;
-    }
-    const contextWindow = valueRecord.contextWindow;
-    if (
-      typeof contextWindow !== "number" ||
-      !Number.isFinite(contextWindow) ||
-      contextWindow <= 0
-    ) {
-      continue;
-    }
-    maxContextWindow = Math.max(maxContextWindow ?? 0, contextWindow);
-  }
-
-  return maxContextWindow;
+  // modelUsage accumulates every model used in the session, including earlier turns
+  // and subagents. Only the active model describes this turn's context capacity.
+  const modelUsageEntry = modelId ? usageRecord[modelId] : undefined;
+  const contextWindow = toObjectRecord(modelUsageEntry)?.contextWindow;
+  return typeof contextWindow === "number" && Number.isFinite(contextWindow) && contextWindow > 0
+    ? contextWindow
+    : undefined;
 }
 
-function readStreamRequestInputTokens(event: Record<string, unknown>): number | undefined {
-  const messageUsage = toObjectRecord(toObjectRecord(event.message)?.usage);
-  if (!messageUsage) {
+interface StreamRequestInputUsage {
+  inputTokens: number;
+  cacheCreationInputTokens: number;
+  cacheReadInputTokens: number;
+}
+
+function readUsageCount(usage: Record<string, unknown>, key: string): number | undefined {
+  const value = usage[key];
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
     return undefined;
   }
-  const usage = messageUsage;
-  const inputTokens =
-    typeof usage.input_tokens === "number" && Number.isFinite(usage.input_tokens)
-      ? usage.input_tokens
-      : undefined;
-  const cacheCreationInputTokens =
-    typeof usage.cache_creation_input_tokens === "number" &&
-    Number.isFinite(usage.cache_creation_input_tokens)
-      ? usage.cache_creation_input_tokens
-      : 0;
-  const cacheReadInputTokens =
-    typeof usage.cache_read_input_tokens === "number" &&
-    Number.isFinite(usage.cache_read_input_tokens)
-      ? usage.cache_read_input_tokens
-      : 0;
-  if (typeof inputTokens !== "number" || inputTokens < 0) {
+  return value;
+}
+
+function readStreamRequestInputUsage(
+  event: Record<string, unknown>,
+): StreamRequestInputUsage | undefined {
+  const usage = toObjectRecord(toObjectRecord(event.message)?.usage);
+  if (!usage) {
     return undefined;
   }
-  return inputTokens + cacheCreationInputTokens + cacheReadInputTokens;
+  const inputTokens = readUsageCount(usage, "input_tokens");
+  if (inputTokens === undefined) {
+    return undefined;
+  }
+  return {
+    inputTokens,
+    cacheCreationInputTokens: readUsageCount(usage, "cache_creation_input_tokens") ?? 0,
+    cacheReadInputTokens: readUsageCount(usage, "cache_read_input_tokens") ?? 0,
+  };
+}
+
+/**
+ * The input counters on `message_delta.usage` are cumulative whole-request totals and are
+ * optional. Mirror the Anthropic SDK's MessageStream: a counter present on the delta replaces
+ * the `message_start` value, a missing counter keeps it. Translating gateways report
+ * `input_tokens: 0` on `message_start` and only know the real count by `message_delta`.
+ */
+function mergeStreamDeltaInputUsage(
+  current: StreamRequestInputUsage,
+  event: Record<string, unknown>,
+): StreamRequestInputUsage {
+  const usage = toObjectRecord(event.usage);
+  if (!usage) {
+    return current;
+  }
+  return {
+    inputTokens: readUsageCount(usage, "input_tokens") ?? current.inputTokens,
+    cacheCreationInputTokens:
+      readUsageCount(usage, "cache_creation_input_tokens") ?? current.cacheCreationInputTokens,
+    cacheReadInputTokens:
+      readUsageCount(usage, "cache_read_input_tokens") ?? current.cacheReadInputTokens,
+  };
 }
 
 function readStreamRequestOutputTokens(event: Record<string, unknown>): number | undefined {
@@ -2149,115 +2035,16 @@ function readLegacyResultUsageTokens(usage: unknown): number | undefined {
 }
 
 function isClaudeSubagentToolName(name: string | undefined): boolean {
-  return name === "Task" || name === "Agent";
-}
-
-// Claude's shell tool used with run_in_background: true reports its lifecycle
-// through the same task_started/task_progress/task_notification stream as
-// subagents. See .otto/knowledge/projects/observed-subagents.md's note
-// that Otto today ignores shell/monitor/workflow task events.
-//
-// The tool is named "Bash" on POSIX hosts and "PowerShell" on Windows ones, so
-// both names have to be recognized. Matching only "Bash" left every Windows
-// background shell task failing this test everywhere it is used: routing
-// survived on task_type ("local_bash") and the remembered task id, but the
-// interrupt teardown in flushPendingToolCalls has no such fallback, so an
-// in-flight background PowerShell row was never closed and stuck "running".
-function isClaudeBackgroundShellToolName(name: string | undefined): boolean {
-  return name === "Bash" || name === "PowerShell";
-}
-
-// Claude's Workflow tool (deterministic multi-agent orchestration -
-// agent()/parallel()/pipeline(), progress phases, task-completion notifications)
-// is a DIFFERENT spawn path than plain Task subagents, but it reports through the
-// same task_started/task_progress/task_notification stream. Unlike a Task
-// subagent it is backgrounded (its tool_result is an immediate "running" ack, real
-// completion arrives via task_notification), so it is settled like a background
-// shell task, not on tool_result. We surface the orchestration run as a read-only
-// observed subagent so it can be watched. See .otto/knowledge/projects/observed-subagents.md.
-function isClaudeWorkflowToolName(name: string | undefined): boolean {
-  return name === "Workflow";
-}
-
-// The SDK tags a workflow-orchestration task with task_type "local_workflow"
-// (the friendly BackgroundTaskSummary label is "workflow"). Only task_started
-// carries task_type/workflow_name; later task_progress/task_notification omit
-// them, so the classification is remembered via observedKeyByTaskId once the
-// run is announced.
-function isClaudeWorkflowTaskType(taskType: string | undefined): boolean {
-  return taskType === "local_workflow" || taskType === "workflow";
-}
-
-// An AI run that belongs in the observed-subagent track, by task_type. The CLI's
-// real discriminant values are local_bash / local_agent / remote_agent /
-// in_process_teammate / local_workflow / monitor_mcp / monitor_ws / mcp_task /
-// dream / auto_mode_scan - there is no "subagent". Otto excluded only that
-// never-emitted string, so every Agent/Task run (task_type "local_agent") also
-// matched isClaudeBackgroundTaskType and the background_tasks_changed level
-// signal - which the SDK documents as arriving BEFORE the task_started edge -
-// filed it as a background task too. The result was one sub-agent showing up
-// twice: once in each track, same title, seconds apart. "subagent" is kept as an
-// accepted alias so an older or renaming CLI still routes correctly.
-function isClaudeSubagentTaskType(taskType: string | undefined): boolean {
-  return (
-    taskType === "local_agent" ||
-    taskType === "remote_agent" ||
-    taskType === "in_process_teammate" ||
-    taskType === "subagent"
-  );
-}
-
-// Background-tasks track membership, decided by the SDK's task_type discriminant.
-// Sub-agents and workflows have their own richer observed-subagent rows, so the
-// background track takes everything else the CLI backgrounds - local_bash,
-// monitor_mcp/monitor_ws, mcp_task, dream, auto_mode_scan, and any future or
-// unknown background type. Returns false for an absent task_type (later
-// task_progress omits it); those events fall back to the remembered
-// classification, so this only decides first-sighting (task_started /
-// level-signal) routing.
-function isClaudeBackgroundTaskType(taskType: string | undefined): boolean {
-  if (!taskType) {
-    return false;
-  }
-  return !isClaudeSubagentTaskType(taskType) && !isClaudeWorkflowTaskType(taskType);
-}
-
-// Frozen row label for an observed workflow run. workflow_name is meta.name from
-// the script (e.g. "spec"); prefix it so the observed track reads it as a
-// workflow rather than a plain subagent. Fed through the subAgentType title
-// source, which deriveObservedSubagentTitle freezes at birth.
-function readClaudeWorkflowLabel(workflowName: unknown): string {
-  const name = readObservedSubagentText(workflowName);
-  return name ? `Workflow: ${name}` : "Workflow";
-}
-
-function readObservedSubagentText(value: unknown): string | undefined {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const normalized = value.trim().replace(/\s+/g, " ");
-  return normalized.length > 0 ? normalized : undefined;
-}
-
-function toProviderSubagentStatus(status: string): "running" | "completed" | "failed" | "canceled" {
-  if (status === "completed" || status === "idle") return "completed";
-  if (status === "failed" || status === "error") return "failed";
-  if (status === "stopped" || status === "killed" || status === "canceled" || status === "closed")
-    return "canceled";
-  return "running";
-}
-
-function toObservedSubagentStatus(
-  status: "running" | "completed" | "failed" | "canceled",
-): "running" | "idle" | "error" | "closed" {
-  if (status === "completed") return "idle";
-  if (status === "failed") return "error";
-  if (status === "canceled") return "closed";
-  return "running";
+  return name === "Task" || name === "Agent" || name === "Workflow";
 }
 
 function readClaudeParentToolUseId(message: SDKMessage): string | null {
   if (!("parent_tool_use_id" in message)) {
+    return null;
+  }
+  // Claude Code's liveness tick for a tool still running after 30 s names that tool as its
+  // parent, so a long main-thread call would otherwise read as a subagent.
+  if (message.type === "tool_progress" && message.heartbeat === true) {
     return null;
   }
   const parentToolUseId = (message as { parent_tool_use_id?: unknown }).parent_tool_use_id;
@@ -2266,52 +2053,27 @@ function readClaudeParentToolUseId(message: SDKMessage): string | null {
 
 class ClaudeContextUsageState {
   private contextWindowMaxTokens: number | undefined;
-  private streamRequestInputTokens: number | undefined;
+  private streamRequestInputUsage: StreamRequestInputUsage | undefined;
   private streamRequestOutputTokens: number | undefined;
   private compactedContextWindowUsedTokens: number | undefined;
   private completedResultTurns = 0;
-  // Watermark for de-cumulating `total_cost_usd`: the SDK reports it CUMULATIVE
-  // across all turns of one CLI process (proven 2026-07-19: 0.59 → 1.05 → 1.09
-  // over three turns), while the ledger books usage per turn - passing it
-  // through verbatim inflated a chat ~2.5×. Reset on process init.
-  private lastCumulativeCostUsd = 0;
 
   constructor(initialContextWindowMaxTokens?: number) {
     this.contextWindowMaxTokens = initialContextWindowMaxTokens;
   }
 
   beginTurn(): void {
-    this.streamRequestInputTokens = undefined;
+    this.streamRequestInputUsage = undefined;
     this.streamRequestOutputTokens = undefined;
     this.compactedContextWindowUsedTokens = undefined;
-  }
-
-  /** A new CLI process started (system init): its cumulative cost restarts at 0. */
-  beginProcess(): void {
-    this.lastCumulativeCostUsd = 0;
-  }
-
-  // The per-turn share of the process-cumulative `total_cost_usd`. A reported
-  // value below the watermark means the process restarted without an observed
-  // init - the report is that process's own spend, so take it whole.
-  private takeTurnCostUsd(cumulative: number | undefined): number | undefined {
-    if (typeof cumulative !== "number" || !Number.isFinite(cumulative) || cumulative < 0) {
-      return cumulative;
-    }
-    const turnCost =
-      cumulative >= this.lastCumulativeCostUsd
-        ? cumulative - this.lastCumulativeCostUsd
-        : cumulative;
-    this.lastCumulativeCostUsd = cumulative;
-    return turnCost;
   }
 
   setInitialContextWindowMaxTokens(contextWindowMaxTokens: number | undefined): void {
     this.contextWindowMaxTokens = contextWindowMaxTokens;
   }
 
-  recordModelUsage(modelUsage: unknown): number | undefined {
-    const contextWindowMaxTokens = extractContextWindowSize(modelUsage);
+  recordModelUsage(modelUsage: unknown, modelId: string | null | undefined): number | undefined {
+    const contextWindowMaxTokens = extractContextWindowSize(modelUsage, modelId);
     if (contextWindowMaxTokens !== undefined) {
       this.contextWindowMaxTokens = contextWindowMaxTokens;
     }
@@ -2325,11 +2087,11 @@ class ClaudeContextUsageState {
     }
     const eventType = readTrimmedString(streamEvent.type);
     if (eventType === "message_start") {
-      const inputTokens = readStreamRequestInputTokens(streamEvent);
-      if (typeof inputTokens !== "number") {
+      const inputUsage = readStreamRequestInputUsage(streamEvent);
+      if (!inputUsage) {
         return null;
       }
-      this.streamRequestInputTokens = inputTokens;
+      this.streamRequestInputUsage = inputUsage;
       this.streamRequestOutputTokens = 0;
     } else if (eventType === "message_delta") {
       const outputTokens = readStreamRequestOutputTokens(streamEvent);
@@ -2337,6 +2099,12 @@ class ClaudeContextUsageState {
         return null;
       }
       this.streamRequestOutputTokens = outputTokens;
+      if (this.streamRequestInputUsage) {
+        this.streamRequestInputUsage = mergeStreamDeltaInputUsage(
+          this.streamRequestInputUsage,
+          streamEvent,
+        );
+      }
     } else {
       return null;
     }
@@ -2348,7 +2116,10 @@ class ClaudeContextUsageState {
     return this.createUsageUpdatedEvent(usedTokens);
   }
 
-  buildResultUsage(message: SDKResultMessage, modelUsage: unknown): AgentUsage | undefined {
+  buildResultUsage(
+    message: SDKResultMessage,
+    modelId: string | null | undefined,
+  ): AgentUsage | undefined {
     try {
       if (!message.usage) {
         return undefined;
@@ -2356,14 +2127,12 @@ class ClaudeContextUsageState {
       const usage: AgentUsage = {
         inputTokens: message.usage.input_tokens,
         cachedInputTokens: message.usage.cache_read_input_tokens,
-        // Cache-write spend - billed at a premium and previously dropped here,
-        // making prompt-cache priming invisible to the cost ledger. (WP-D)
-        cacheCreationInputTokens: message.usage.cache_creation_input_tokens,
+        cacheCreationInputTokens: message.usage.cache_creation_input_tokens, // OTTO(activity)
         outputTokens: message.usage.output_tokens,
-        totalCostUsd: this.takeTurnCostUsd(message.total_cost_usd),
+        totalCostUsd: message.total_cost_usd,
       };
 
-      const modelContextWindowMaxTokens = this.recordModelUsage(modelUsage ?? message.modelUsage);
+      const modelContextWindowMaxTokens = this.recordModelUsage(message.modelUsage, modelId);
       if (this.contextWindowMaxTokens !== undefined) {
         usage.contextWindowMaxTokens = this.contextWindowMaxTokens;
       } else if (modelContextWindowMaxTokens !== undefined) {
@@ -2386,13 +2155,15 @@ class ClaudeContextUsageState {
   }
 
   private streamUsedTokens(): number | undefined {
-    if (
-      typeof this.streamRequestInputTokens !== "number" ||
-      typeof this.streamRequestOutputTokens !== "number"
-    ) {
+    const inputUsage = this.streamRequestInputUsage;
+    if (!inputUsage || typeof this.streamRequestOutputTokens !== "number") {
       return undefined;
     }
-    const usedTokens = this.streamRequestInputTokens + this.streamRequestOutputTokens;
+    const usedTokens =
+      inputUsage.inputTokens +
+      inputUsage.cacheCreationInputTokens +
+      inputUsage.cacheReadInputTokens +
+      this.streamRequestOutputTokens;
     return usedTokens > 0 ? usedTokens : undefined;
   }
 
@@ -2411,7 +2182,7 @@ class ClaudeContextUsageState {
   }
 
   buildCompactionUsageEvent(postTokens: number | undefined): AgentStreamEvent {
-    this.streamRequestInputTokens = undefined;
+    this.streamRequestInputUsage = undefined;
     this.streamRequestOutputTokens = undefined;
     this.compactedContextWindowUsedTokens = postTokens;
     const usage: AgentUsage = {};
@@ -2430,6 +2201,15 @@ class ClaudeContextUsageState {
 }
 
 class ClaudeAgentSession implements AgentSession {
+  // OTTO(observed-subagents): existing query only, never resume or interrupt the parent.
+  async ottoStopObservedSubagent(subagentId: string): Promise<void> {
+    const query = this.query;
+    const taskId = this.taskProtocolSource.runningTaskId(subagentId);
+    if (this.closed || !query || !taskId || typeof query.stopTask !== "function") {
+      throw new Error("This provider subagent is no longer stoppable.");
+    }
+    await query.stopTask(taskId);
+  }
   readonly provider = "claude" as const;
   readonly capabilities = CLAUDE_CAPABILITIES;
 
@@ -2439,33 +2219,37 @@ class ClaudeAgentSession implements AgentSession {
   private readonly defaults?: { agents?: Record<string, AgentDefinition> };
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly persistSession?: boolean;
+  private readonly ottoReadOnlyGeneration?: true; // OTTO(context-generation)
+  private readonly ottoWorkflowPolicy?: WorkflowLaunchPolicy; // OTTO(workflows)
   private readonly logger: Logger;
   private readonly queryFactory?: ClaudeQueryFactory;
   private readonly resolveBinary: () => Promise<string>;
-  // Resolved daemon-wide behavior toggles captured at launch. Absent = all-on.
-  private readonly agentBehaviors?: AgentBehaviorSettings;
   private query: Query | null = null;
+  private readonly harnessEnvironment: Record<string, string>;
+  private readonly usageSessionKey = randomUUID();
   private childProcess: ChildProcess | null = null;
   private input: AsyncMessageInput<SDKUserMessage> | null = null;
   /** The exact SDK query/input pair that owns the current foreground turn. */
   private activeForegroundQuery: Query | null = null;
   private activeForegroundInput: AsyncMessageInput<SDKUserMessage> | null = null;
   /**
-   * Steers pushed into the live SDK input that Claude may not have read yet. Interrupting the turn
-   * has to discard them, or the SDK dequeues one and resumes the turn we just stopped. SDK user
-   * UUIDs are provider-private; never let them escape the adapter boundary.
+   * Messages pushed into the live SDK input (steers, and a foreground turn's own prompt) whose
+   * command_lifecycle has not reached "started". Interrupting has to withdraw them, or the SDK
+   * dequeues one and resumes the turn we just stopped. SDK user UUIDs are provider-private; never
+   * let them escape the adapter boundary.
    */
-  private readonly queuedSteerUuids = new Set<string>();
+  private readonly unstartedMessageUuids = new Set<string>();
   /** Human steers whose text has not reached Claude yet and therefore supersede blocking cards. */
   private readonly permissionClearingSteerUuids = new Set<string>();
   private claudeSessionId: string | null;
   private persistence: AgentPersistenceHandle | null;
   private currentMode: PermissionMode;
   private planResumeMode: PermissionMode | null = null;
+  private availableModes: AgentMode[] = DEFAULT_MODES;
   private toolUseCache = new Map<string, ToolUseCacheEntry>();
   private toolUseIndexToId = new Map<number, string>();
   private toolUseInputBuffers = new Map<string, string>();
-  private toolUseInputEmitState = new Map<string, RunningToolInputEmitState>();
+  private subagentHandbackIds = new Set<string>();
   private pendingPermissions = new Map<string, PendingPermission>();
   private activeForegroundTurnId: string | null = null;
   private autonomousTurn: AutonomousTurnState | null = null;
@@ -2476,98 +2260,46 @@ class ClaudeAgentSession implements AgentSession {
     getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
     readWorkflowResult: readClaudeWorkflowResultFile,
   });
+  /**
+   * Subagent tool calls Claude has already answered while the child still runs, with the input
+   * they were launched with and the turn that answered them. A background child is answered at
+   * launch and streams its frames afterwards.
+   */
+  private readonly settledSubagentToolCalls = new Map<
+    string,
+    {
+      item: Extract<AgentTimelineItem, { type: "tool_call" }>;
+      input: AgentMetadata | null;
+      turnId: string | null;
+    }
+  >();
   private readonly sidechainTracker = new ClaudeSidechainTracker({
-    getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
+    getToolInput: (toolUseId) =>
+      this.toolUseCache.get(toolUseId)?.input ??
+      this.settledSubagentToolCalls.get(toolUseId)?.input ??
+      null,
     // Releases that predate the task protocol announce nothing, so the tracker keeps deriving
     // identity and status from frames for them. Detecting the capability beats comparing version
     // strings: it reacts to what this session actually does.
     isDescriptorOwnedElsewhere: () => this.taskProtocolSource.isActive,
+    // A background child streams its frames after Claude has already answered the call, so its
+    // card is rebuilt from the settled call: a running one would replace the settled, labeled card.
+    // Late card updates retain the turn that answered the call.
     needsSyntheticParentToolCard: (toolUseId) =>
+      (this.toolUseCache.has(toolUseId) || this.settledSubagentToolCalls.has(toolUseId)) &&
       this.taskProtocolSource.needsSyntheticParentToolCard(toolUseId),
+    getSettledParentToolCall: (toolUseId) => this.settledSubagentToolCalls.get(toolUseId)?.item,
   });
-  // Observed-subagent bookkeeping (.otto/knowledge/projects/observed-subagents.md). Keys are the
-  // parent Task tool_use ids seen live this session - history replay never
-  // announces, so stale tasks from persisted history cannot materialize rows.
-  private readonly announcedObservedSubagents = new Set<string>();
-  private readonly observedKeyByTaskId = new Map<string, string>();
-  // Nested fan-out: a subagent's own Task tool_use appears inside ITS
-  // sidechain - record child tool_use id -> spawning sidechain's key so the
-  // child's observed row parents to the spawning subagent, not the root agent
-  // (trees render as trees). See docs/agent-lifecycle.md.
-  private readonly observedParentKeyByToolUseId = new Map<string, string>();
-  // Real per-sub-agent token accounting for plain Task fan-out: the live
-  // sidechain assistant frames carry the full `message.usage` split + model
-  // (workflow runs get theirs from the on-disk watcher instead). Keyed by the
-  // observed row key (parent Task tool_use id) so each row is priced on its own
-  // usage, not a roll-up. See [[subagent-real-accounting]].
-  private readonly observedSubagentUsage = new Map<string, SubagentUsageAccumulator>();
-  // Keys whose row reached a terminal status (idle/error/closed) - the
-  // turn-end sweep settles anything still open, since a foreground Task
-  // cannot outlive the turn that spawned it (a lost/garbled task_notification
-  // otherwise left the row running forever).
-  private readonly settledObservedSubagents = new Map<string, "idle" | "error" | "closed">();
-  private readonly backgroundedProviderSubagents = new Set<string>();
-  // Workflow runs are backgrounded (they legitimately outlive the turn) -
-  // exempt from the turn-end sweep; they settle via their own task_notification.
-  private readonly workflowObservedKeys = new Set<string>();
-  // Observed keys whose Task/Agent tool_result has already come back. At that
-  // moment we cannot tell a final report from a launch ack, so nothing is
-  // concluded here - but a row that is STILL live afterwards (a later
-  // task_progress flips it back to "running") can only be a backgrounded run.
-  // That is the evidence isBackgroundedObservedRun reports to the client.
-  private readonly observedKeysWithToolResult = new Set<string>();
-  // Synthetic-event sources for Workflow (ultracode) runs: the live SDK stream
-  // carries no per-internal-agent identity, so a watcher tails each run's
-  // on-disk transcripts and re-emits observed-subagent events per internal
-  // agent, nested under the workflow row. See
-  // docs/subagent-accounting.md ("Workflow decomposition"). Keyed by the
-  // workflow observed key; claimedDirs is shared so two concurrent runs in one
-  // session never bind the same on-disk dir.
-  private readonly workflowWatchers = new Map<string, WorkflowTranscriptWatcher>();
-  private readonly workflowClaimedDirs = new Set<string>();
-  // Disk-backed usage source for plain Task/Agent sub-agents: tails each
-  // sub-agent's <sessionId>/subagents/agent-<id>.jsonl once its tool_result
-  // reveals the agentId. Authoritative over the live sidechain accumulator
-  // (real output counts; depth ≥ 2 sub-agents never stream at all). See
-  // task-transcript-watcher.ts.
-  private readonly taskTranscriptWatcher: TaskTranscriptWatcher;
-  // Workflow keys whose task_started arrived before claudeSessionId existed
-  // (the watcher needs the session id to resolve the on-disk dir). Drained by
-  // drainPendingWorkflowArms() at every point a session id gets assigned.
-  // Value = the SDK task_id used for on-disk identity confirmation.
-  private readonly pendingWorkflowArms = new Map<string, string | undefined>();
-  private pendingObservedEvents: AgentStreamEvent[] = [];
-  // Serialized last-emitted rate-limit payload; rate_limit_event fires per API
-  // request, so only meaningful changes are forwarded to clients.
-  private lastRateLimitEventKey: string | null = null;
-  // Task ids from the last system/background_tasks_changed level payload
-  // (REPLACE semantics). An id present in the previous payload but absent from
-  // the next has settled even if its task_notification edge was lost - the
-  // reconcile in appendBackgroundTasksChangedEvents is the safety net that
-  // guarantees stuck workflow/background rows eventually settle. Edge events
-  // still own row creation and rich terminal status.
-  private lastBackgroundTaskIds = new Set<string>();
-  // Background-shell-task bookkeeping, same shape as the observed-subagent
-  // maps above but for Bash run_in_background tasks (not AI subagents).
-  private readonly announcedBackgroundShellTasks = new Set<string>();
-  private readonly backgroundShellKeyByTaskId = new Map<string, string>();
   private persistedHistory: PersistedTimelineEntry[] = [];
-  private persistedProviderSubagentEvents: Array<
-    Extract<AgentStreamEvent, { type: "provider_subagent" }>
-  > = [];
+  private persistedProviderSubagentEvents: Extract<
+    AgentStreamEvent,
+    { type: "provider_subagent" }
+  >[] = [];
   private historyPending = false;
-  /** Open Task/Agent tool call while replaying history; see replayHistorySubagentRow. */
-  private historySidechainParent: {
-    toolUseId: string;
-    title: string;
-    description: string | null;
-  } | null = null;
   private turnState: TurnState = "idle";
   private nextTurnOrdinal = 1;
   private cancelCurrentTurn: (() => void) | null = null;
   private cachedRuntimeInfo: AgentRuntimeInfo | null = null;
-  /** Last fast mode status the CLI reported; surfaces on the Fast toggle. */
-  private fastModeRuntimeStatus: ClaudeFastModeRuntimeStatus | null = null;
   private lastOptionsModel: string | null = null;
   private lastRuntimeModel: string | null = null;
   private compacting = false;
@@ -2575,43 +2307,41 @@ class ClaudeAgentSession implements AgentSession {
   private queryPumpPromise: Promise<void> | null = null;
   private queryRestartNeeded = false;
   private pendingInterruptAbort = false;
+  /**
+   * Whether Claude's main session is inside one of its own turns: set by system/init and by a
+   * pushed message's command_lifecycle "started" (/compact works for seconds before its init),
+   * cleared by the turn's result or an idle session state. See observeMainTurnBracket.
+   */
+  private mainTurnInFlight = false;
   private foregroundHasVisibleActivity = false;
   private activeTurnHasAssistantText = false;
   private readonly contextUsage: ClaudeContextUsageState;
   private userMessageIds: string[] = [];
-  /**
-   * Uuids this session stamped onto prompts it pushed into the SDK input
-   * stream. Only used to reconcile the `interrupt_receipt_v1` receipt, whose
-   * `still_queued` list also carries ids the CLI enqueued itself; bounded
-   * because it only needs to cover messages recent enough to still be queued.
-   */
-  private readonly submittedUserMessageIds = new Set<string>();
   private readonly emittedUserMessageIds = new Set<string>();
   private readonly rewindTurnAnchors: ClaudeRewindTurnAnchor[] = [];
+  private readonly rewindSdk: ClaudeRewindSdk;
   private pendingFreshSessionId: string | null = null;
   private recentStderr = "";
   private closed = false;
 
   constructor(config: ClaudeAgentConfig, options: ClaudeAgentSessionOptions) {
     this.config = config;
+    assertClaudeThinkingOptionSupported(config.model, config.thinkingOptionId);
     this.launchEnv = options.launchEnv;
     this.agentId = options.agentId;
     this.defaults = options.defaults;
     this.runtimeSettings = options.runtimeSettings;
+    this.harnessEnvironment = this.buildSdkEnv();
     this.persistSession = options.persistSession;
+    this.ottoReadOnlyGeneration = options.ottoReadOnlyGeneration; // OTTO(context-generation)
+    this.ottoWorkflowPolicy = options.ottoWorkflowPolicy; // OTTO(workflows)
     this.logger = options.logger.child({ agentId: this.agentId });
     this.queryFactory = options.queryFactory;
     this.resolveBinary = options.resolveBinary;
-    this.agentBehaviors = options.agentBehaviors;
+    this.rewindSdk = options.rewindSdk ?? realClaudeRewindSdk;
     this.contextUsage = new ClaudeContextUsageState(
-      findClaudeModel(this.config.model)?.contextWindowMaxTokens,
+      getClaudeContextWindowMaxTokens(this.config.model),
     );
-    this.taskTranscriptWatcher = new TaskTranscriptWatcher({
-      cwd: this.config.cwd,
-      getSessionId: () => this.claudeSessionId,
-      emit: (event) => this.pushEvent(event),
-      logger: this.logger,
-    });
     const handle = options.handle;
 
     if (handle) {
@@ -2634,10 +2364,6 @@ class ClaudeAgentSession implements AgentSession {
       );
     }
 
-    // Note: an auto mode the model can't run is NOT coerced here - the
-    // buildOptions assert fails the first turn with the specific reason
-    // instead, keeping the mismatch visible (clients hide Auto up front via
-    // the catalog's supportsAutoMode stamp and getAvailableModes filtering).
     this.currentMode = isPermissionMode(config.modeId) ? config.modeId : "default";
     if (this.currentMode !== "plan") {
       this.planResumeMode = this.currentMode;
@@ -2652,26 +2378,7 @@ class ClaudeAgentSession implements AgentSession {
     return buildClaudeFeatures({
       modelId: this.config.model,
       fastModeEnabled: this.config.featureValues?.fast_mode === true,
-      fastModeStatus: this.fastModeRuntimeStatus,
     });
-  }
-
-  private recordFastModeRuntimeStatus(message: SDKMessage): void {
-    const status = readClaudeFastModeRuntimeStatus(toObjectRecord(message) ?? {});
-    if (!status) {
-      return;
-    }
-    const previous = this.fastModeRuntimeStatus;
-    if (previous?.state === status.state && previous?.disabledReason === status.disabledReason) {
-      return;
-    }
-    this.fastModeRuntimeStatus = status;
-    if (this.config.featureValues?.fast_mode === true && status.state !== "on") {
-      this.logger.info(
-        { state: status.state, disabledReason: status.disabledReason, model: this.config.model },
-        "Claude fast mode is enabled but the CLI reports it is not active",
-      );
-    }
   }
 
   async getRuntimeInfo(): Promise<AgentRuntimeInfo> {
@@ -2754,6 +2461,7 @@ class ClaudeAgentSession implements AgentSession {
     this.contextUsage.beginTurn();
     this.transitionTurnState("foreground", "foreground turn started");
     this.clearRecentStderr();
+    if (sdkUserMessageId) this.unstartedMessageUuids.add(sdkUserMessageId);
 
     let cancelIssued = false;
     const requestCancel = () => {
@@ -2764,22 +2472,32 @@ class ClaudeAgentSession implements AgentSession {
       if (this.cancelCurrentTurn === requestCancel) {
         this.cancelCurrentTurn = null;
       }
+      // Whether Claude has this message in hand. A late idle from the previous turn can clear
+      // mainTurnInFlight after Claude started it, so the message's own lifecycle counts too.
+      const claudeStartedTurn =
+        this.mainTurnInFlight ||
+        (sdkUserMessageId !== null && !this.unstartedMessageUuids.has(sdkUserMessageId));
       this.rejectAllPendingPermissions(new Error("Permission request canceled"));
       this.finishForegroundTurn({
         type: "turn_canceled",
         provider: "claude",
         reason: "Interrupted",
       });
-      void this.interruptActiveTurn().catch((error) => {
+      void this.interruptActiveTurn(claudeStartedTurn).catch((error) => {
         this.logger.warn({ err: error }, "Failed to interrupt during cancel");
       });
     };
     this.cancelCurrentTurn = requestCancel;
 
-    this.beginTurn();
+    this.notifySubscribers({ type: "turn_started", provider: "claude" });
 
     try {
       await this.ensureQuery();
+      if (cancelIssued) {
+        // Stopped while Claude was still starting up: withdrawn by never sending it.
+        if (sdkUserMessageId) this.unstartedMessageUuids.delete(sdkUserMessageId);
+        return { turnId };
+      }
       if (!this.input) {
         throw new Error("Claude session input stream not initialized");
       }
@@ -2793,6 +2511,7 @@ class ClaudeAgentSession implements AgentSession {
         }
       }, 0);
     } catch (error) {
+      if (sdkUserMessageId) this.unstartedMessageUuids.delete(sdkUserMessageId);
       this.finishForegroundTurn(
         this.buildTurnFailedEvent(error instanceof Error ? error.message : "Claude stream failed"),
       );
@@ -2841,7 +2560,7 @@ class ClaudeAgentSession implements AgentSession {
     clearPendingPermissions: boolean,
   ): void {
     const uuid = message.uuid;
-    if (uuid) this.queuedSteerUuids.add(uuid);
+    if (uuid) this.unstartedMessageUuids.add(uuid);
     if (uuid && clearPendingPermissions) {
       this.permissionClearingSteerUuids.add(uuid);
     }
@@ -2852,7 +2571,7 @@ class ClaudeAgentSession implements AgentSession {
       }
     } catch (error) {
       if (uuid) {
-        this.queuedSteerUuids.delete(uuid);
+        this.unstartedMessageUuids.delete(uuid);
         this.permissionClearingSteerUuids.delete(uuid);
       }
       throw error;
@@ -2880,47 +2599,6 @@ class ClaudeAgentSession implements AgentSession {
     await this.interruptActiveTurn();
   }
 
-  /**
-   * Stop a provider-managed subagent task (observed subagent) without touching
-   * the parent turn. An acknowledged stop settles both projections even if the
-   * provider's terminal notification never arrives.
-   */
-  async stopTask(taskId: string): Promise<void> {
-    const activeQuery = this.query;
-    if (!activeQuery) {
-      throw new Error("No active Claude session to stop the subagent task");
-    }
-    await activeQuery.stopTask(taskId);
-    const key = this.observedKeyByTaskId.get(taskId);
-    if (key) {
-      this.settledObservedSubagents.set(key, "closed");
-      this.taskTranscriptWatcher.markSettled(key, "closed");
-      this.disarmWorkflowWatcher(key, "closed");
-      this.dispatchEvents([
-        {
-          type: "provider_subagent",
-          provider: "claude",
-          event: { type: "upsert", id: key, status: "canceled" },
-        },
-        {
-          type: "observed_subagent_updated",
-          provider: "claude",
-          update: { key, status: "closed" },
-        },
-      ]);
-    }
-  }
-
-  async stopProviderSubagent(subagentId: string): Promise<void> {
-    for (const [taskId, key] of this.observedKeyByTaskId) {
-      if (key === subagentId || taskId === subagentId) {
-        await this.stopTask(taskId);
-        return;
-      }
-    }
-    throw new Error("Claude has not supplied a task id for this subagent");
-  }
-
   async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
     if (
       !this.historyPending ||
@@ -2929,46 +2607,11 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     const history = this.persistedHistory;
-    const providerSubagents = this.persistedProviderSubagentEvents;
+    const providerSubagentEvents = this.persistedProviderSubagentEvents;
     this.persistedHistory = [];
     this.persistedProviderSubagentEvents = [];
     this.historyPending = false;
-    for (const event of providerSubagents) yield event;
     for (const entry of history) {
-      // Sidechain items belong to a Task row, not the parent transcript. Routing
-      // them here mirrors the live path, so a resumed session shows the same
-      // sub-agent transcript it showed while running instead of an empty row.
-      if (entry.subagentToolUseId && entry.subagentUpsert) {
-        yield {
-          type: "provider_subagent",
-          provider: "claude",
-          event: {
-            type: "upsert",
-            id: entry.subagentToolUseId,
-            title: entry.subagentUpsert.title,
-            description: entry.subagentUpsert.description,
-            status: entry.subagentUpsert.status,
-            toolCallId: entry.subagentToolUseId,
-          },
-        };
-        continue;
-      }
-      if (entry.subagentToolUseId && entry.item) {
-        yield {
-          type: "provider_subagent",
-          provider: "claude",
-          event: {
-            type: "timeline",
-            id: entry.subagentToolUseId,
-            item: entry.item,
-            ...(entry.timestamp ? { timestamp: entry.timestamp } : {}),
-          },
-        };
-        continue;
-      }
-      if (!entry.item) {
-        continue;
-      }
       yield {
         type: "timeline",
         item: entry.item,
@@ -2976,49 +2619,18 @@ class ClaudeAgentSession implements AgentSession {
         timestamp: entry.timestamp,
       };
     }
+    yield* providerSubagentEvents;
   }
 
   async getAvailableModes(): Promise<AgentMode[]> {
-    // Computed per call so the list tracks the current model: Auto is hidden
-    // whenever the classifier can't run for this model + auth path (the CLI
-    // would reject it with "auto mode unavailable for this model").
-    const verdict = checkClaudeAutoModeSupport(
-      this.currentModelId(),
-      this.buildSdkEnv(this.config.extra?.claude),
-    );
-    if (verdict.supported) {
-      return DEFAULT_MODES;
-    }
-    return DEFAULT_MODES.filter((mode) => mode.id !== "auto");
-  }
-
-  /** Best-known current model: runtime-reported (init message) over configured. */
-  private currentModelId(): string | null {
-    return this.lastOptionsModel ?? this.config.model ?? null;
+    return this.availableModes;
   }
 
   async getCurrentMode(): Promise<string | null> {
     return this.currentMode ?? null;
   }
 
-  /**
-   * When a query restart is already pending, live SDK setters must not call
-   * ensureQuery(): with a turn active it would recycle the CLI mid-turn - the
-   * replaced query's pump deliberately skips failActiveTurns and no pump
-   * starts until the next startTurn, orphaning the foreground turn forever.
-   * The doomed query is rebuilt from config anyway, so staging the change in
-   * config and letting the pending lazy restart pick it up is both safe and
-   * cheaper (idle case: skips an eager teardown + respawn).
-   */
-  private mustStageSettingChange(): boolean {
-    return this.queryRestartNeeded;
-  }
-
-  private hasActiveTurn(): boolean {
-    return Boolean(this.activeForegroundTurnId || this.autonomousTurn);
-  }
-
-  async setMode(modeId: string): Promise<void | AgentProviderNotice> {
+  async setMode(modeId: string): Promise<void> {
     // Validate mode
     if (!VALID_CLAUDE_MODES.has(modeId)) {
       const validModesList = Array.from(VALID_CLAUDE_MODES).join(", ");
@@ -3028,16 +2640,16 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const normalized = isPermissionMode(modeId) ? modeId : "default";
-    assertClaudeAutoModeEligible(
-      normalized,
-      this.currentModelId(),
-      this.buildSdkEnv(this.config.extra?.claude),
-    );
+    assertClaudeModeCanRun(normalized, this.harnessEnvironment);
     const previousMode = this.currentMode;
-    const stagedOnly = this.mustStageSettingChange();
-    if (!stagedOnly) {
-      const activeQuery = await this.ensureQuery();
+    const previousQuery = this.query;
+    const activeQuery = await this.ensureQuery(normalized);
+    try {
       await activeQuery.setPermissionMode(normalized);
+    } catch (error) {
+      // The query was launched in the rejected mode; relaunch in the current mode next time.
+      if (activeQuery !== previousQuery) this.queryRestartNeeded = true;
+      throw error;
     }
     if (normalized === "plan") {
       if (previousMode !== "plan") {
@@ -3046,30 +2658,21 @@ class ClaudeAgentSession implements AgentSession {
     } else {
       this.planResumeMode = normalized;
     }
-    // The rebuilt query reads permissionMode from currentMode in buildOptions,
-    // so the staged value applies at the pending restart.
     this.currentMode = normalized;
-    if (stagedOnly && this.hasActiveTurn()) {
-      return MODE_APPLIES_NEXT_TURN_NOTICE;
-    }
   }
 
   async setModel(modelId: string | null): Promise<void> {
     const normalizedModelId =
-      typeof modelId === "string" && modelId.trim().length > 0 ? modelId : null;
-    if (!this.mustStageSettingChange()) {
-      const activeQuery = await this.ensureQuery();
-      await activeQuery.setModel(normalizedModelId ?? undefined);
-    }
-    // Staged case: buildOptions reads config.model when the pending restart
-    // rebuilds the query.
+      typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : null;
+    const activeQuery = await this.ensureQuery();
+    await activeQuery.setModel(normalizedModelId ?? undefined);
     this.config.model = normalizedModelId ?? undefined;
+    this.reconcileThinkingOptionForModel(normalizedModelId);
     if (!claudeModelSupportsFastMode(this.config.model) && this.config.featureValues?.fast_mode) {
-      await this.applyFastModeFeature(false);
+      await this.applyFastModeFeature(false, activeQuery);
     }
-    this.reconcileThinkingOptionForModel();
     this.contextUsage.setInitialContextWindowMaxTokens(
-      findClaudeModel(this.config.model)?.contextWindowMaxTokens,
+      getClaudeContextWindowMaxTokens(this.config.model),
     );
     this.lastOptionsModel = normalizedModelId ?? this.lastOptionsModel;
     this.lastRuntimeModel = null;
@@ -3078,26 +2681,24 @@ class ClaudeAgentSession implements AgentSession {
     this.persistence = null;
   }
 
-  /**
-   * Off is model-gated, so a model switch can strand it. Rather than fail the
-   * switch (the user asked for a model, not a thinking level), downgrade to the
-   * nearest honest setting: the lowest effort on a known model that simply
-   * cannot disable thinking, and the provider default when the new model is
-   * custom or unknown and we cannot vouch for either.
-   */
-  private reconcileThinkingOptionForModel(): void {
-    if (this.config.thinkingOptionId !== CLAUDE_THINKING_OFF_OPTION_ID) {
+  private reconcileThinkingOptionForModel(modelId: string | null): void {
+    const thinkingOptionId = this.config.thinkingOptionId;
+    if (thinkingOptionId !== CLAUDE_DISABLED_THINKING_OPTION_ID) {
       return;
     }
-    if (claudeManifestModelSupportsThinkingOff(this.config.model)) {
+
+    const resolution = resolveClaudeDisabledThinkingForModel(modelId);
+    if (resolution.supported) {
       return;
     }
-    this.config.thinkingOptionId = normalizeClaudeManifestModelId(this.config.model)
-      ? "low"
-      : undefined;
-    // Thinking rides in the query options, not the live setModel call, so the
-    // downgrade only takes effect once the query is rebuilt.
+
+    this.config.thinkingOptionId = resolution.fallbackThinkingOptionId;
     this.queryRestartNeeded = true;
+    this.pushEvent({
+      type: "thinking_option_changed",
+      provider: "claude",
+      thinkingOptionId: this.config.thinkingOptionId ?? null,
+    });
   }
 
   async setThinkingOption(thinkingOptionId: string | null): Promise<void | AgentProviderNotice> {
@@ -3109,7 +2710,7 @@ class ClaudeAgentSession implements AgentSession {
     if (!normalizedThinkingOptionId || normalizedThinkingOptionId === "default") {
       this.config.thinkingOptionId = undefined;
     } else if (isClaudeThinkingOption(normalizedThinkingOptionId)) {
-      assertThinkingOptionAvailable(normalizedThinkingOptionId, this.config.model);
+      assertClaudeThinkingOptionSupported(this.config.model, normalizedThinkingOptionId);
       this.config.thinkingOptionId = normalizedThinkingOptionId;
     } else {
       throw new Error(`Unknown thinking option: ${normalizedThinkingOptionId}`);
@@ -3117,18 +2718,6 @@ class ClaudeAgentSession implements AgentSession {
     this.queryRestartNeeded = true;
     if (this.activeForegroundTurnId || this.autonomousTurn) {
       return THINKING_APPLIES_NEXT_TURN_NOTICE;
-    }
-  }
-
-  async applyPersonality(update: AgentPersonalityUpdate): Promise<void | AgentProviderNotice> {
-    this.config.profileSnapshot = update.profileSnapshot;
-    this.config.systemPrompt = update.systemPrompt;
-    this.config.daemonAppendSystemPrompt = update.daemonAppendSystemPrompt;
-    // The system prompt is baked into the query options; recreate the query on
-    // the next turn (resuming the same session id) so the new prompt applies.
-    this.queryRestartNeeded = true;
-    if (this.activeForegroundTurnId || this.autonomousTurn) {
-      return SETTING_APPLIES_NEXT_TURN_NOTICE;
     }
   }
 
@@ -3145,25 +2734,6 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     await this.applyFastModeFeature(enabled);
-  }
-
-  async getContextUsage(): Promise<AgentContextUsage | null> {
-    // Passive read for the client's context popup: only report from an already
-    // live query. Spawning the CLI just to answer a popup would be wasteful.
-    const activeQuery = this.query;
-    if (!activeQuery) {
-      return null;
-    }
-    const breakdown = await activeQuery.getContextUsage();
-    return {
-      categories: breakdown.categories.map((category) => ({
-        name: category.name,
-        tokens: category.tokens,
-        ...(category.isDeferred ? { isDeferred: true } : {}),
-      })),
-      totalTokens: breakdown.totalTokens,
-      maxTokens: breakdown.maxTokens,
-    };
   }
 
   private async applyFastModeFeature(enabled: boolean, query?: Query): Promise<void> {
@@ -3183,9 +2753,8 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   /**
-   * A denied request is the only record the transcript gets. Plans especially:
-   * the pending card is the only place the plan text lives, so losing it means
-   * the user can no longer read what they just declined.
+   * Settle the original call immediately, before waiting for the SDK tool result.
+   * Plan resolution must use the native call ID so it cannot move past a follow-up.
    */
   private recordDeniedPermissionTimeline(
     request: AgentPermissionRequest,
@@ -3206,26 +2775,22 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     if (request.kind === "plan") {
-      let planText: string | null = null;
-      if (typeof request.metadata?.planText === "string") {
-        planText = request.metadata.planText;
-      } else if (typeof request.input?.plan === "string") {
-        planText = request.input.plan;
-      }
-      if (!planText) return;
-      this.pushToolCall({
-        type: "tool_call",
-        name: "plan_approval",
-        callId: request.id,
-        status: "completed",
-        error: null,
-        detail: { type: "plan", text: planText },
-        metadata: {
-          approved: false,
-          actionId: response.selectedActionId ?? "reject",
-        },
-      });
+      this.pushToolCall(
+        mapClaudeFailedToolCall({
+          name: "ExitPlanMode",
+          callId: this.planToolCallId(request),
+          input: request.input,
+          error: response.message ?? "Permission denied",
+          metadata: { actionId: response.selectedActionId ?? "reject" },
+        }),
+      );
     }
+  }
+
+  private planToolCallId(request: AgentPermissionRequest): string {
+    return typeof request.metadata?.toolUseId === "string"
+      ? request.metadata.toolUseId
+      : request.id;
   }
 
   private resolveDeniedPermission(
@@ -3264,6 +2829,12 @@ class ClaudeAgentSession implements AgentSession {
     if (!pending) {
       throw new Error(`No pending permission request with id '${requestId}'`);
     }
+
+    // Before the delete below, so a rejected answer leaves the request pending
+    // and answerable rather than consuming it for nothing. AgentManager only
+    // drops its own copy once this resolves, so both maps survive the throw.
+    assertClaudeQuestionAnswerDeliverable(pending.request, response);
+
     this.pendingPermissions.delete(requestId);
     pending.cleanup?.();
 
@@ -3278,8 +2849,8 @@ class ClaudeAgentSession implements AgentSession {
         await this.setMode(targetMode);
         this.pushToolCall(
           mapClaudeCompletedToolCall({
-            name: "plan_approval",
-            callId: pending.request.id,
+            name: "ExitPlanMode",
+            callId: this.planToolCallId(pending.request),
             input: pending.request.input ?? null,
             output: {
               approved: true,
@@ -3321,18 +2892,14 @@ class ClaudeAgentSession implements AgentSession {
     if (!this.claudeSessionId) {
       return null;
     }
+    const { providerOptions: _providerOptions, ...persistedConfig } = this.config;
     this.persistence = {
       provider: "claude",
       sessionId: this.claudeSessionId,
       nativeHandle: this.claudeSessionId,
-      metadata: { ...this.config },
+      metadata: { ...persistedConfig },
     };
     return this.persistence;
-  }
-
-  private isChildProcessAlive(): boolean {
-    const child = this.childProcess;
-    return child !== null && child.exitCode === null && child.signalCode === null;
   }
 
   async close(): Promise<void> {
@@ -3352,18 +2919,6 @@ class ClaudeAgentSession implements AgentSession {
     this.closed = true;
     this.rejectAllPendingPermissions(new Error("Claude session closed"));
     this.cancelCurrentTurn?.();
-    // Disarm workflow watchers BEFORE dropping subscribers: disarm emits the
-    // terminal 'closed' observed_subagent_updated events for still-running
-    // workflow children via pushEvent → notifySubscribers, which is a no-op
-    // against an empty subscriber set (the child rows would stay "running"
-    // forever after a mid-run close).
-    for (const watcher of this.workflowWatchers.values()) {
-      watcher.disarm("closed");
-    }
-    this.workflowWatchers.clear();
-    this.workflowClaimedDirs.clear();
-    this.pendingWorkflowArms.clear();
-    this.taskTranscriptWatcher.close();
     this.subscribers.clear();
     this.activeForegroundTurnId = null;
     this.activeForegroundQuery = null;
@@ -3372,26 +2927,11 @@ class ClaudeAgentSession implements AgentSession {
     this.cancelCurrentTurn = null;
     this.turnState = "idle";
     this.sidechainTracker.clear();
-    this.workflowObservedKeys.clear();
-    this.observedKeysWithToolResult.clear();
-    this.announcedObservedSubagents.clear();
-    this.observedKeyByTaskId.clear();
-    this.observedSubagentUsage.clear();
-    this.pendingObservedEvents = [];
-    this.announcedBackgroundShellTasks.clear();
-    this.backgroundShellKeyByTaskId.clear();
+    this.settledSubagentToolCalls.clear();
+    this.taskProtocolSource.reset();
     this.input?.end();
     this.query?.close?.();
-    // interrupt() issues a control-plane request that writes to the CLI's stdin.
-    // Only worth doing while the process is still running: one-shot internal
-    // agents (commit-message / PR / branch-name generators) have already exited
-    // by the time we close them, so the write hits a dead transport and throws
-    // "ProcessTransport is not ready for writing". An in-flight turn was already
-    // interrupted above via cancelCurrentTurn(). return() takes no such request
-    // (it just cancels the input reader), so it stays unconditional.
-    if (this.isChildProcessAlive()) {
-      await this.awaitWithTimeout(this.query?.interrupt?.(), "close query interrupt");
-    }
+    await this.awaitWithTimeout(this.query?.interrupt?.(), "close query interrupt");
     await this.awaitWithTimeout(this.query?.return?.(), "close query return");
     this.query = null;
     this.input = null;
@@ -3416,7 +2956,7 @@ class ClaudeAgentSession implements AgentSession {
       // (see `claude --help`), so the SDK's persistSession=false is silently dropped
       // in stream-json mode. Sweep the transcript ourselves so ephemeral runs
       // (metadata generator, branch-name generator) don't show up as resumable.
-      const historyPath = resolveClaudeSearchHistoryPath(this.config.cwd, this.claudeSessionId);
+      const historyPath = this.resolveHistoryPath(this.claudeSessionId);
       if (historyPath) {
         try {
           await promises.rm(historyPath, { force: true });
@@ -3453,14 +2993,6 @@ class ClaudeAgentSession implements AgentSession {
         });
       }
     }
-    if (!commandMap.has("init")) {
-      commandMap.set("init", {
-        name: "init",
-        description: "Initialize repository instructions in CLAUDE.md",
-        argumentHint: "",
-        kind: "command",
-      });
-    }
     if (!commandMap.has(REWIND_COMMAND_NAME)) {
       commandMap.set(REWIND_COMMAND_NAME, REWIND_COMMAND);
     }
@@ -3473,9 +3005,11 @@ class ClaudeAgentSession implements AgentSession {
       this.startFreshConversationSession();
       return;
     }
+    const currentSessionId = this.claudeSessionId;
     await revertClaudeConversation({
-      sdk: realClaudeRewindSdk,
-      sessionId: this.claudeSessionId,
+      sdk: this.rewindSdk,
+      sessionId: currentSessionId,
+      transcriptPath: currentSessionId ? this.resolveHistoryPath(currentSessionId) : null,
       messageId: target.messageId,
       resolveMessageId: (messageId) => this.resolveClaudeMessageId(messageId),
       setSessionId: (sessionId) => {
@@ -3648,7 +3182,7 @@ class ClaudeAgentSession implements AgentSession {
 
     for (let idx = this.persistedHistory.length - 1; idx >= 0; idx -= 1) {
       const entry = this.persistedHistory[idx];
-      if (entry?.item?.type === "user_message") {
+      if (entry?.item.type === "user_message") {
         pushUnique(entry.item.messageId);
       }
     }
@@ -3667,12 +3201,13 @@ class ClaudeAgentSession implements AgentSession {
     this.cachedRuntimeInfo = null;
     this.queryRestartNeeded = true;
     this.persistedHistory = [];
+    this.persistedProviderSubagentEvents = [];
     this.historyPending = false;
     this.userMessageIds = [];
     this.emittedUserMessageIds.clear();
     this.rewindTurnAnchors.length = 0;
+    this.taskState.reset();
     this.loadPersistedHistory(sessionId);
-    this.drainPendingWorkflowArms();
     if (oldSessionId && oldSessionId !== sessionId) {
       this.dispatchEvents([
         {
@@ -3697,11 +3232,12 @@ class ClaudeAgentSession implements AgentSession {
     this.cachedRuntimeInfo = null;
     this.queryRestartNeeded = true;
     this.persistedHistory = [];
+    this.persistedProviderSubagentEvents = [];
     this.historyPending = false;
     this.userMessageIds = [];
     this.emittedUserMessageIds.clear();
     this.rewindTurnAnchors.length = 0;
-    this.drainPendingWorkflowArms();
+    this.taskState.reset();
   }
 
   private rememberUserMessageId(messageId: string | null | undefined): void {
@@ -3713,22 +3249,6 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     this.userMessageIds.push(messageId);
-  }
-
-  /**
-   * A message can only appear in an interrupt receipt while it is still
-   * queued, so this set only has to cover the recent tail. Evicting oldest-first
-   * past the cap keeps it from growing across a long session.
-   */
-  private rememberSubmittedUserMessageId(messageId: string): void {
-    this.submittedUserMessageIds.add(messageId);
-    while (this.submittedUserMessageIds.size > SUBMITTED_USER_MESSAGE_ID_LIMIT) {
-      const oldest = this.submittedUserMessageIds.values().next();
-      if (oldest.done) {
-        break;
-      }
-      this.submittedUserMessageIds.delete(oldest.value);
-    }
   }
 
   private rememberEmittedUserMessageId(messageId: string | null | undefined): void {
@@ -3769,6 +3289,13 @@ class ClaudeAgentSession implements AgentSession {
     if (!messageId) {
       return;
     }
+    // Subagent frames ride the same stream as the conversation, but their uuids live on the
+    // subagent's sidechain, so forkSession cannot resolve one. Anchoring a turn on one leaves
+    // rewind throwing "Message <uuid> not found in session". The persisted history path already
+    // skips sidechain entries; the live stream has to skip them too.
+    if (readClaudeParentToolUseId(message)) {
+      return;
+    }
     if (
       message.type === "user" &&
       !isSyntheticUserEntry(message) &&
@@ -3804,35 +3331,28 @@ class ClaudeAgentSession implements AgentSession {
       throw new Error(`Claude rewind target ${messageId} is not in the tracked conversation`);
     }
 
-    if (index === 0) {
-      return { kind: "fresh-session" };
+    // A turn the model never answered — an instant gateway error, or an abort before the first
+    // token — leaves its anchor without an assistant id, and carries no conversation state worth
+    // preserving. Fork at the most recent turn before the target that did answer. Reading only
+    // the immediately preceding anchor let one such turn fail every later rewind in the
+    // conversation.
+    for (let previous = index - 1; previous >= 0; previous -= 1) {
+      const assistantMessageId = this.rewindTurnAnchors[previous]?.assistantMessageId;
+      if (assistantMessageId) {
+        return { kind: "fork", messageId: assistantMessageId };
+      }
     }
-
-    const previousTurn = this.rewindTurnAnchors[index - 1];
-    if (!previousTurn?.assistantMessageId) {
-      throw new Error(
-        `Claude rewind cannot preserve turn ${index} because its assistant response id was not observed`,
-      );
-    }
-    return { kind: "fork", messageId: previousTurn.assistantMessageId };
+    return { kind: "fresh-session" };
   }
 
-  private async ensureQuery(): Promise<Query> {
-    if (this.query && !this.queryRestartNeeded) {
+  private async ensureQuery(launchMode: PermissionMode = this.currentMode): Promise<Query> {
+    // Controls use the running turn's query. Pending launch settings take effect
+    // after that turn finishes, when its active query handle has been cleared.
+    if (this.query && (!this.queryRestartNeeded || this.activeForegroundQuery === this.query)) {
       return this.query;
     }
 
-    const restartNeeded = this.queryRestartNeeded;
-    if (restartNeeded) {
-      // A completed query clears itself from the pump. A setting change made
-      // just after completion can therefore leave a restart pending without a
-      // query to tear down. Consume that restart before creating the next
-      // query; otherwise the new pump sees the stale flag, tears down its own
-      // input, and the first send after the switch has nowhere to push.
-      this.queryRestartNeeded = false;
-    }
-
-    if (restartNeeded && this.query) {
+    if (this.queryRestartNeeded && this.query) {
       const oldQuery = this.query;
       const oldInput = this.input;
       // Null out query/input BEFORE awaiting the old iterator's return so the
@@ -3840,8 +3360,9 @@ class ClaudeAgentSession implements AgentSession {
       this.query = null;
       this.input = null;
       this.queryPumpPromise = null;
-      // This process is being retired deliberately. Detach it before ending
-      // input so its exit handler cannot report a crash between turns.
+      this.queryRestartNeeded = false;
+      // Ending the input retires the process on purpose. Detach first so its
+      // exit is not reported as a crash.
       const retiredChild = this.childProcess;
       this.childProcess = null;
       if (retiredChild) this.failRunningRuntimeTasks();
@@ -3870,15 +3391,18 @@ class ClaudeAgentSession implements AgentSession {
     this.persistence = null;
 
     const input = createAsyncMessageInput<SDKUserMessage>();
-    const options = await this.buildOptions();
+    const options = await this.buildOptions(launchMode);
     this.logger.debug({ options: summarizeClaudeOptionsForLog(options) }, "claude query");
     this.input = input;
+    // A fresh Claude process has no turn of its own in flight.
+    this.mainTurnInFlight = false;
     this.query = claudeQuery(
       { prompt: input.iterable, options },
       {
         runtimeSettings: this.runtimeSettings,
         launchEnv: this.launchEnv,
         queryFactory: this.queryFactory,
+        ottoReadOnlyGeneration: this.ottoReadOnlyGeneration, // OTTO(context-generation)
         onChildProcess: (child) => {
           this.childProcess = child;
           child.once("exit", (code, signal) => this.handleRuntimeExit(child, code, signal));
@@ -3938,18 +3462,7 @@ class ClaudeAgentSession implements AgentSession {
         "provider.claude.query_operation.settled",
       );
     } catch (error) {
-      // A query whose CLI process has already exited rejects control-plane calls
-      // with "ProcessTransport is not ready for writing" / "Operation aborted".
-      // That is expected during teardown (and covered by the liveness gate in
-      // close()); only a race can still reach here, so don't log it as a warning.
-      if (isExpectedTransportTeardownError(error)) {
-        this.logger.debug(
-          { err: error, label },
-          "Claude query operation skipped on closed transport",
-        );
-      } else {
-        this.logger.warn({ err: error, label }, "Claude query operation did not settle cleanly");
-      }
+      this.logger.warn({ err: error, label }, "Claude query operation did not settle cleanly");
     }
   }
 
@@ -3962,17 +3475,23 @@ class ClaudeAgentSession implements AgentSession {
       this.config.thinkingOptionId && this.config.thinkingOptionId !== "default"
         ? this.config.thinkingOptionId
         : undefined;
-    if (thinkingOptionId === CLAUDE_ULTRACODE_THINKING_OPTION_ID) {
-      return { thinking: { type: "adaptive" }, effort: "xhigh", ultracode: true };
-    }
-    // Off sends no effort at all. Effort is a thinking-depth dial, so pairing it
-    // with disabled thinking is contradictory, and on some models an effort
-    // above `high` alongside disabled thinking is rejected outright.
-    if (thinkingOptionId === CLAUDE_THINKING_OFF_OPTION_ID) {
+    assertClaudeThinkingOptionSupported(this.config.model, thinkingOptionId);
+    if (thinkingOptionId === CLAUDE_DISABLED_THINKING_OPTION_ID) {
       return { thinking: { type: "disabled" }, effort: undefined, ultracode: false };
     }
+    if (thinkingOptionId === CLAUDE_ULTRACODE_THINKING_OPTION_ID) {
+      return {
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: "xhigh",
+        ultracode: true,
+      };
+    }
     if (thinkingOptionId && isClaudeThinkingEffort(thinkingOptionId)) {
-      return { thinking: { type: "adaptive" }, effort: thinkingOptionId, ultracode: false };
+      return {
+        thinking: { type: "adaptive", display: "summarized" },
+        effort: thinkingOptionId,
+        ultracode: false,
+      };
     }
     return { thinking: undefined, effort: undefined, ultracode: false };
   }
@@ -3983,59 +3502,49 @@ class ClaudeAgentSession implements AgentSession {
     );
   }
 
-  // Whether to ask the Claude CLI to emit next-user-prompt suggestions after
-  // each turn. Two independent off paths: the daemon behavior toggle
-  // (agentBehaviors.promptSuggestions), and the CLI env kill-switch
-  // CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false (audit-verified). Default on.
-  private resolvePromptSuggestionsEnabled(): boolean {
-    if (this.agentBehaviors?.promptSuggestions === false) {
-      return false;
-    }
-    const envValue =
-      this.launchEnv?.["CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"] ??
-      process.env["CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"];
-    if (typeof envValue === "string" && envValue.trim().toLowerCase() === "false") {
-      return false;
-    }
-    return true;
+  usageSession() {
+    if (this.closed) return null;
+    return {
+      provider: "claude",
+      model: this.config.model,
+      env: this.harnessEnvironment,
+      sessionKey: this.usageSessionKey,
+    };
   }
 
-  // Periodic AI progress summaries for observed subagents. Default on; the
-  // daemon behavior toggle is the only off path. When off, observed-subagent
-  // rows keep free tool-level activity but lose the ~30s progress blurb.
-  private resolveAgentProgressSummariesEnabled(): boolean {
-    return this.agentBehaviors?.agentProgressSummaries !== false;
-  }
-
-  private buildSdkEnv(extraClaudeOptions: Partial<ClaudeOptions> | undefined): NodeJS.ProcessEnv {
+  private buildSdkEnv() {
     return createProviderEnv({
       baseEnv: process.env,
       runtimeSettings: this.runtimeSettings,
       overlays: [
-        extraClaudeOptions?.env,
-        {
-          // Increase MCP timeouts for long-running tool calls (10 minutes)
-          MCP_TIMEOUT: "600000",
-          MCP_TOOL_TIMEOUT: "600000",
-        },
         this.launchEnv,
+        // Makes the CLI announce session_state_changed, whose "idle" is the safety net that closes
+        // an autonomous turn (see consumeSessionSideband).
+        { CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
       ],
     });
   }
 
-  private async buildOptions(): Promise<ClaudeOptions> {
+  // OTTO(prompt-suggestions)
+  private shouldRequestPromptSuggestions(configured?: boolean): boolean {
+    return claudePromptSuggestionsEnabled({
+      configured,
+      environment: this.harnessEnvironment["CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION"],
+      ordinaryChat:
+        !this.ottoReadOnlyGeneration && !this.ottoWorkflowPolicy && this.persistSession !== false,
+    });
+  }
+
+  private async buildOptions(permissionMode: PermissionMode): Promise<ClaudeOptions> {
     const { thinking, effort, ultracode } = this.resolveThinkingConfig();
     const appendedSystemPrompt = this.buildAppendedSystemPrompt();
-    const extraClaudeOptions = {
-      ...this.config.extra?.claude,
-      ...applyClaudeToolPolicy(
-        ClaudeProviderOptionsSchema.parse(this.config.providerOptions ?? {}),
-        this.config.toolPolicy,
-      ),
-    };
-    const settingsOptions = this.buildSettingsOptions(extraClaudeOptions, { ultracode });
-    const sdkEnv = this.buildSdkEnv(extraClaudeOptions);
-    assertClaudeAutoModeEligible(this.currentMode, this.currentModelId(), sdkEnv);
+    const providerOptions = applyClaudeToolPolicy(
+      this.config.providerOptions,
+      this.config.toolPolicy,
+    );
+    const settingsOptions = this.buildSettingsOptions(providerOptions, { ultracode });
+    const sdkEnv = this.harnessEnvironment;
+    assertClaudeModeCanRun(permissionMode, sdkEnv);
 
     const claudeBinary = await this.resolveBinary();
     this.logger.debug(
@@ -4058,21 +3567,11 @@ class ClaudeAgentSession implements AgentSession {
     const base: ClaudeOptions = {
       cwd: this.config.cwd,
       includePartialMessages: true,
-      // Forward the full subagent conversation (not just tool_use/tool_result
-      // heartbeats) and periodic progress summaries so observed subagents can be
-      // promoted to first-class, separately-watchable track rows. See
-      // .otto/knowledge/projects/observed-subagents.md.
-      forwardSubagentText: true,
-      hooks: this.buildSubagentEffortHooks(),
-      // Periodic AI progress summaries for observed subagents. Gated by the
-      // daemon behavior toggle (default on); other providers ignore this.
-      agentProgressSummaries: this.resolveAgentProgressSummariesEnabled(),
-      // Predicted next-user-prompt suggestions, emitted after each turn's result.
-      // Nearly free (piggyback on the parent prompt cache); the app decides whether
-      // to render them as composer ghost text via the promptSuggestions setting.
-      // Generation is gated by the daemon behavior toggle (default on) and the
-      // CLAUDE_CODE_ENABLE_PROMPT_SUGGESTION=false CLI kill-switch.
-      promptSuggestions: this.resolvePromptSuggestionsEnabled(),
+      permissionMode,
+      // Dynamic mode switching can recreate the underlying Claude query. Keep the
+      // bypass launch capability available so later setPermissionMode("bypassPermissions")
+      // calls do not fail after a model/thinking/rewind-driven restart.
+      allowDangerouslySkipPermissions: true,
       agents: this.defaults?.agents,
       canUseTool: this.handlePermissionRequest,
       pathToClaudeCodeExecutable: claudeBinary,
@@ -4095,13 +3594,18 @@ class ClaudeAgentSession implements AgentSession {
       ...sessionBinding,
       ...(thinking ? { thinking } : {}),
       ...(effort ? { effort } : {}),
-      ...extraClaudeOptions,
+      ...providerOptions,
       ...settingsOptions,
+      // OTTO(prompt-suggestions): keep the 0.9 default for ordinary chats.
+      promptSuggestions: this.shouldRequestPromptSuggestions(providerOptions.promptSuggestions),
+      // Provider subagent panes render the child's nested transcript.
+      forwardSubagentText: true,
+      // Stop and replace abort only the main turn, like Esc in Claude Code, and background
+      // subagents keep running. Without this declaration an interrupt kills every one of them.
+      // Claude stops a helper itself with its TaskStop tool.
+      perTaskStopAffordance: true,
+      hooks: this.buildSubagentEffortHooks(),
       ...(this.persistSession === undefined ? {} : { persistSession: this.persistSession }),
-      // The selected mode must survive stale legacy SDK settings and query
-      // recreation. Keep bypass available for later setPermissionMode calls.
-      permissionMode: this.currentMode,
-      allowDangerouslySkipPermissions: true,
       env: sdkEnv,
     };
 
@@ -4122,119 +3626,27 @@ class ClaudeAgentSession implements AgentSession {
         ...this.runtimeSettings.disallowedTools,
       ];
     }
-    this.applyOttoReadAllowlist(base);
-    this.applyDontAskAllowlist(base);
-    this.applyWorkspaceAccess(base);
-    return base;
-  }
-
-  private applyOttoReadAllowlist(base: ClaudeOptions): void {
-    const reads = internalOttoReadToolNames(this.config).map((tool) => `mcp__otto__${tool}`);
-    if (reads.length > 0) {
-      base.allowedTools = [...new Set([...(base.allowedTools ?? []), ...reads])];
-    }
-  }
-
-  /**
-   * Impose the session's workspace access ceiling by denying the tools the
-   * level forbids (see agent/workspace-access.ts).
-   *
-   * Applied LAST, after the dontAsk allowlist, because a deny here must win: an
-   * allowlist grants Edit/Write for unattended coding work, and a node that
-   * declared "read" must not get them back that way. The SDK resolves
-   * disallowedTools over allowedTools, and this ordering keeps the intent
-   * legible to the next reader as well.
-   */
-  private applyWorkspaceAccess(base: ClaudeOptions): void {
-    const access = resolveWorkspaceAccess(this.config.workspaceAccess);
-    const denied = [...deniedToolsForAccess(access), ...this.deniedOttoToolNames(access)];
-    if (denied.length === 0) {
-      return;
-    }
-    base.disallowedTools = [...new Set([...(base.disallowedTools ?? []), ...denied])];
-    // A denial that only removed the tool would still leave the allowlist
-    // advertising it, so drop it from there too.
-    if (base.allowedTools?.length) {
-      const deniedSet = new Set(denied);
-      base.allowedTools = base.allowedTools.filter((tool) => !deniedSet.has(tool));
-    }
-  }
-
-  /**
-   * The Otto catalog names the level forbids, in the `mcp__<server>__<tool>`
-   * form Claude sees them under. The daemon's MCP server already withholds
-   * these at catalog registration keyed on this agent's stored config
-   * (otto-tools.ts); this second layer rides the session's own config so the
-   * ceiling holds even if that lookup ever misses. Covers every otto-ish
-   * server name, matching the `mcp__otto…` grants in applyDontAskAllowlist.
-   */
-  private deniedOttoToolNames(access: WorkspaceAccess): string[] {
-    const leaves = ottoToolsDeniedForAccess(access);
-    if (leaves.length === 0) {
-      return [];
-    }
-    const names: string[] = [];
-    for (const serverName of Object.keys(this.config.mcpServers ?? {})) {
-      if (serverName === "otto" || serverName.startsWith("otto_")) {
-        for (const leaf of leaves) {
-          names.push(`mcp__${serverName}__${leaf}`);
-        }
-      }
-    }
-    return names;
-  }
-
-  /**
-   * Under `dontAsk` the SDK denies anything not pre-approved, so merge a
-   * baseline allow list onto the options (no-op in every other mode). Merge,
-   * never clobber: config/settings may already carry an allowedTools list (user
-   * pre-approvals, runtime settings); dedup keeps the union stable.
-   *
-   * The baseline is the minimum that lets the two unattended workloads function
-   * without opening the dangerous surface:
-   *
-   *  - Otto MCP server tools (`mcp__otto…`): the Team Scheduler's entire job is
-   *    orchestration via Otto's MCP tools (create/list/prompt agents); denying
-   *    them makes scheduled orchestration inert. Whole-server grants so new
-   *    Otto tools don't need re-listing here.
-   *  - Edit / Write / MultiEdit / NotebookEdit: coding schedules must apply
-   *    workspace file changes.
-   *  - TodoWrite: harness-internal task tracking, no external effect.
-   *  - Task: spawning Claude's own subagents (fan-out) is in-model, not a shell.
-   *
-   * Deliberately EXCLUDED (stay denied under dontAsk):
-   *  - Bash: arbitrary shell is exactly the "rm -rf" surface the charter guards
-   *    against - an unattended run must not run unreviewed commands.
-   *  - WebFetch / WebSearch: unattended network egress is out of scope here.
-   *  - Read / Glob / Grep: intentionally omitted - the SDK auto-approves these
-   *    read-only tools in cwd already, so listing them would be redundant.
-   */
-  private applyDontAskAllowlist(base: ClaudeOptions): void {
-    if (this.currentMode !== "dontAsk") {
-      return;
-    }
-    const allow = ["Edit", "Write", "MultiEdit", "NotebookEdit", "TodoWrite", "Task"];
-    for (const serverName of Object.keys(this.config.mcpServers ?? {})) {
-      if (serverName === "otto" || serverName.startsWith("otto_")) {
-        // `mcp__<server>` grants every tool exposed by that MCP server.
-        allow.push(`mcp__${serverName}`);
-      }
-    }
-    base.allowedTools = Array.from(new Set([...(base.allowedTools ?? []), ...allow]));
+    return this.ottoReadOnlyGeneration
+      ? readOnlyClaudeOptions(base)
+      : workflowClaudeOptions(base, this.ottoWorkflowPolicy); // OTTO(context-generation) OTTO(workflows): both policies apply after ordinary options and remain separate.
   }
 
   private buildSettingsOptions(
-    extraClaudeOptions: Partial<ClaudeOptions> | undefined,
+    providerOptions: ClaudeProviderOptions,
     input: { ultracode: boolean },
   ): Pick<ClaudeOptions, "settings"> | Record<string, never> {
     const fastMode = this.resolveFastModeSetting();
-    if (fastMode === null && !input.ultracode) {
+    // Internal agents do daemon work such as naming a branch, so the user's and
+    // project's hooks must not run for them.
+    const disableAllHooks = this.config.internal === true;
+    if (fastMode === null && !input.ultracode && !disableAllHooks) {
       return {};
     }
     return {
-      settings: mergeClaudeSettings(extraClaudeOptions?.settings, {
+      settings: mergeClaudeSettings(providerOptions.settings, {
         ...(fastMode === null ? {} : { fastMode }),
         ...(input.ultracode ? { ultracode: true } : {}),
+        ...(disableAllHooks ? { disableAllHooks: true } : {}),
       }),
     };
   }
@@ -4268,9 +3680,19 @@ class ClaudeAgentSession implements AgentSession {
           };
         }
     > = [];
+    // Claude Code expands a slash command only when it is the last content block of the user
+    // message. buildAgentPrompt places the typed text ahead of images and rendered attachments,
+    // so a "/command" sent with a pasted link or a screenshot would otherwise reach the model as
+    // literal text instead of the command it names.
+    let typedSlashCommandIndex = -1;
     if (Array.isArray(prompt)) {
       for (const chunk of prompt) {
         if (chunk.type === "text") {
+          // Attachments rendered as text always carry a mimeType; the composer's typed text does
+          // not. Only the typed block can be a slash command the user meant to invoke.
+          if (!("mimeType" in chunk) && this.parseSlashCommandInput(chunk.text)) {
+            typedSlashCommandIndex = content.length;
+          }
           content.push({ type: "text", text: chunk.text });
         } else if (chunk.type === "image") {
           if (isImageMimeType(chunk.mimeType)) {
@@ -4290,10 +3712,13 @@ class ClaudeAgentSession implements AgentSession {
     } else {
       content.push({ type: "text", text: prompt });
     }
+    if (typedSlashCommandIndex >= 0 && typedSlashCommandIndex < content.length - 1) {
+      const [slashCommand] = content.splice(typedSlashCommandIndex, 1);
+      content.push(slashCommand);
+    }
 
     const messageId = randomUUID();
     this.rememberUserMessageId(messageId);
-    this.rememberSubmittedUserMessageId(messageId);
 
     return {
       type: "user",
@@ -4402,7 +3827,7 @@ class ClaudeAgentSession implements AgentSession {
     _turnId: string,
     invocation: SlashCommandInvocation,
   ): Promise<void> {
-    this.beginTurn();
+    this.notifySubscribers({ type: "turn_started", provider: "claude" });
     try {
       const rewindAttempt = await this.attemptRewind(invocation.args);
       if (!rewindAttempt.messageId || !rewindAttempt.result) {
@@ -4504,7 +3929,7 @@ class ClaudeAgentSession implements AgentSession {
     this.activeForegroundInput = this.input;
     this.activeTurnHasAssistantText = false;
     this.contextUsage.beginTurn();
-    this.beginTurn();
+    this.notifySubscribers({ type: "turn_started", provider: "claude" });
     this.syncTurnState("autonomous turn started");
   }
 
@@ -4533,15 +3958,19 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
-  // Background shells, monitors and workflows live inside the Claude process.
-  // If it exits between turns, the query pump is idle and cannot report either
-  // the crash or the work that died with it.
+  // Background Bash shells, Monitor watches and workflows live inside the Claude
+  // Code process, so they die with it. When the process exits mid-turn the query
+  // pump reports it, but when it exits between turns nothing observes the death:
+  // the agent stays "idle" and the wake-back that would have continued the work
+  // never arrives.
   private handleRuntimeExit(
     child: ChildProcess,
     code: number | null,
     signal: NodeJS.Signals | null,
   ): void {
-    if (this.closed || this.childProcess !== child) return;
+    if (this.closed || this.childProcess !== child) {
+      return;
+    }
     this.childProcess = null;
     this.logger.warn(
       { agentId: this.agentId, pid: child.pid, code, signal },
@@ -4549,9 +3978,13 @@ class ClaudeAgentSession implements AgentSession {
     );
     this.failRunningRuntimeTasks();
     if (this.activeForegroundTurnId || this.autonomousTurn) {
-      // The active pump will preserve the CLI's richer stderr-backed failure.
+      // The pump is about to throw. It waits for stderr to flush and reports the
+      // real cause; reporting here first would replace that with a bare exit code
+      // and detach this.query, which is how the pump recognizes its own stream.
       return;
     }
+    // Drop the dead handles so the next write spawns a fresh process instead of
+    // failing against a dead transport forever.
     this.query = null;
     this.input = null;
     this.dispatchEvents([
@@ -4562,36 +3995,11 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private failRunningRuntimeTasks(): void {
-    const events: AgentStreamEvent[] = [];
-    for (const watcher of this.workflowWatchers.values()) watcher.disarm("error");
-    this.workflowWatchers.clear();
-    this.pendingWorkflowArms.clear();
-
-    for (const key of this.announcedObservedSubagents) {
-      if (this.settledObservedSubagents.has(key)) continue;
-      this.settledObservedSubagents.set(key, "error");
-      this.taskTranscriptWatcher.markSettled(key, "error");
-      events.push(
-        {
-          type: "provider_subagent",
-          provider: "claude",
-          event: { type: "upsert", id: key, status: "failed" },
-        },
-        {
-          type: "observed_subagent_updated",
-          provider: "claude",
-          update: { key, status: "error", requiresAttention: true },
-        },
-      );
-    }
-    for (const key of this.announcedBackgroundShellTasks) {
-      events.push({
-        type: "background_shell_task_updated",
-        provider: "claude",
-        update: { key, status: "error", requiresAttention: true },
-      });
-    }
-    this.dispatchEvents(events);
+    this.dispatchEvents(
+      foldSubagentObservations(this.taskProtocolSource.failRunningTasks()).map(
+        (event): AgentStreamEvent => ({ type: "provider_subagent", provider: "claude", event }),
+      ),
+    );
   }
 
   private startQueryPump(): void {
@@ -4654,37 +4062,6 @@ class ClaudeAgentSession implements AgentSession {
         },
         "provider.claude.raw_event",
       );
-      // OTTO_DEBUG_WORKFLOW: standing env-gated diagnostic for Claude
-      // workflow / subagent routing. This is the single point upstream of
-      // routeSdkMessageFromPump that sees every raw SDK message before Otto
-      // reclassifies or drops it, so it dumps the per-message identity axes
-      // (task_id, tool_use_id, task_type, workflow_name, subagent_type,
-      // task_description, parent_tool_use_id, isSidechain) at info level.
-      // Off by default (zero cost); set OTTO_DEBUG_WORKFLOW=1 in the daemon
-      // env to enable. Primary use: decide whether a Workflow's internal
-      // agent() fan-out carries per-agent identity on the live stream (the
-      // "Path A" question) - group sidechain messages by parent_tool_use_id
-      // and see whether subagent_type/task_description vary per child. See
-      // docs/visualizer.md (Debugging) and docs/subagent-accounting.md.
-      if (process.env.OTTO_DEBUG_WORKFLOW) {
-        const raw = message as Record<string, unknown>;
-        this.logger.info(
-          {
-            agentId: this.agentId,
-            type: raw.type,
-            subtype: raw.subtype,
-            task_id: raw.task_id,
-            tool_use_id: raw.tool_use_id,
-            task_type: raw.task_type,
-            workflow_name: raw.workflow_name,
-            subagent_type: raw.subagent_type,
-            task_description: raw.task_description,
-            parent_tool_use_id: readClaudeParentToolUseId(message),
-            isSidechain: raw.isSidechain,
-          },
-          "OTTO_DEBUG_WORKFLOW",
-        );
-      }
     };
     const handlePumpedMessage = async (message: SDKMessage): Promise<boolean> => {
       logRawMessage(message);
@@ -4759,35 +4136,81 @@ class ClaudeAgentSession implements AgentSession {
     return false;
   }
 
-  private isAssistantishMessage(message: SDKMessage): boolean {
-    return (
-      message.type === "assistant" ||
-      message.type === "stream_event" ||
-      message.type === "tool_progress" ||
-      (message.type === "system" && message.subtype === "task_notification")
-    );
+  /**
+   * Claude's account of whether anything in the session is working, which is not the same as the
+   * main session working: Claude Code 2.1.280 stays "running" for as long as any background
+   * subagent is alive. So "running" never opens a turn.
+   *
+   * "idle" means nothing at all is running, so it closes an autonomous turn whatever opened it.
+   * It never closes a foreground turn: an idle can trail the previous turn and land just after a
+   * new send, and it must not end that send.
+   *
+   * Returns true when the frame was a state change, which is bookkeeping and never reaches the
+   * timeline.
+   */
+  private consumeSessionSideband(message: SDKMessage): boolean {
+    // OTTO(prompt-suggestions): the SDK emits this after the result.
+    if (message.type === "prompt_suggestion") {
+      this.consumePromptSuggestion(message);
+      return true;
+    }
+    if (message.type !== "system" || message.subtype !== "session_state_changed") {
+      return false;
+    }
+    if (message.state === "idle") {
+      this.mainTurnInFlight = false;
+      this.completeAutonomousTurn();
+    }
+    return true;
+  }
+
+  // OTTO(prompt-suggestions): discard predictions once a new turn owns the session.
+  private consumePromptSuggestion(message: SDKPromptSuggestionMessage): void {
+    if (this.activeForegroundTurnId || this.autonomousTurn || this.mainTurnInFlight) return;
+    if (!this.shouldRequestPromptSuggestions(this.config.providerOptions?.promptSuggestions))
+      return;
+    const event = toClaudePromptSuggestion(message.suggestion);
+    if (event) this.notifySubscribers(event);
+  }
+
+  /** Tracks mainTurnInFlight from Claude's own turn brackets (isClaudeTurnInit). */
+  private observeMainTurnBracket(message: SDKMessage): void {
+    if (message.type === "result") {
+      this.mainTurnInFlight = false;
+      return;
+    }
+    if (isClaudeTurnInit(message)) {
+      this.mainTurnInFlight = true;
+      // A new turn has begun, so the interrupted one is over. An interrupt that landed after its
+      // turn had already ended gets no result, and the leftover flag would swallow this turn's.
+      this.pendingInterruptAbort = false;
+      return;
+    }
+    if (readClaudeCommandLifecycle(message)?.state === "started") {
+      this.mainTurnInFlight = true;
+    }
   }
 
   /**
-   * Claude keeps talking about the request it was told to kill — the notification for the tool it
-   * just stopped, trailing assistant output. That is not new work, so it must not open a turn: the
-   * only message that would close that turn is the result shouldSuppressStaleResult drops, leaving
-   * the agent stuck reporting "running" forever.
+   * Only the main session's own turn start opens an autonomous turn. Everything a background
+   * subagent emits (its task frames, its own background jobs' notifications, rate limit events)
+   * arrives outside one, and no result would ever close a turn it opened.
    */
-  private shouldStartAutonomousTurn(message: SDKMessage): boolean {
-    if (this.activeForegroundTurnId || this.pendingInterruptAbort) {
-      return false;
-    }
-    return this.isAssistantishMessage(message);
+  private opensAutonomousTurn(message: SDKMessage): boolean {
+    return isClaudeTurnInit(message) && !this.activeForegroundTurnId;
   }
 
   private async routeSdkMessageFromPump(message: SDKMessage): Promise<void> {
+    if (this.consumeSessionSideband(message)) {
+      return;
+    }
+    this.observeMainTurnBracket(message);
     if (this.shouldSuppressStaleResult(message)) {
       return;
     }
 
     const isForeground = Boolean(this.activeForegroundTurnId);
-    if (this.shouldStartAutonomousTurn(message)) {
+    if (this.opensAutonomousTurn(message)) {
       this.startAutonomousTurn();
     }
     if (!isForeground && !this.autonomousTurn && message.type === "result") {
@@ -4892,16 +4315,17 @@ class ClaudeAgentSession implements AgentSession {
     );
 
     this.failActiveTurns(staleResumeError);
-    // The stale query is intentionally retired; detach before ending its input
-    // so the process exit is not surfaced as a second failure.
+    // Ending the input retires the process on purpose. Detach first so its exit
+    // is not reported as a crash.
     const retiredChild = this.childProcess;
     this.childProcess = null;
-    if (retiredChild) this.failRunningRuntimeTasks();
     this.input?.end();
     await this.awaitWithTimeout(
       activeQuery.return?.(),
       "query pump return on missing resumed conversation",
     );
+    // Tree-kill for the same reason the restart path does: MCP children of the
+    // retired claude process outlive it otherwise.
     if (retiredChild) {
       await terminateWithTreeKill(retiredChild, {
         gracefulTimeoutMs: 2_000,
@@ -4916,6 +4340,7 @@ class ClaudeAgentSession implements AgentSession {
     }
     this.persistence = null;
     this.persistedHistory = [];
+    this.persistedProviderSubagentEvents = [];
     this.historyPending = false;
     this.cachedRuntimeInfo = null;
     this.queryRestartNeeded = false;
@@ -4927,7 +4352,13 @@ class ClaudeAgentSession implements AgentSession {
     return true;
   }
 
-  private async interruptActiveTurn(): Promise<void> {
+  /**
+   * Interrupts Claude only when a turn of its main session is running. With nothing running there
+   * is nothing to stop but our own queued messages, so those are withdrawn instead: an interrupt
+   * would reach only background helpers (and kill them on a CLI that ignores
+   * perTaskStopAffordance), and no result would follow to consume pendingInterruptAbort.
+   */
+  private async interruptActiveTurn(claudeStartedTurn = this.mainTurnInFlight): Promise<void> {
     const queryToInterrupt = this.query;
     if (!queryToInterrupt || typeof queryToInterrupt.interrupt !== "function") {
       this.logger.trace(
@@ -4941,49 +4372,19 @@ class ClaudeAgentSession implements AgentSession {
       );
       return;
     }
-    this.pendingInterruptAbort = true;
-    await this.discardQueuedSteers(queryToInterrupt);
+    if (claudeStartedTurn) {
+      this.pendingInterruptAbort = true;
+      await this.withdrawUnstartedMessages(queryToInterrupt);
+    } else {
+      // Claude can dequeue a message for its next turn before announcing it started; withdrawing
+      // it is then a no-op, and only an interrupt stops it. Withdraw once: a prompt sent while
+      // this withdrawal was in flight belongs to the next turn.
+      if (await this.withdrawUnstartedMessages(queryToInterrupt)) return;
+      this.pendingInterruptAbort = true;
+    }
     try {
-      // interrupt_receipt_v1 CLIs resolve interrupt() with the uuids of queued
-      // async user messages that survive this interrupt and WILL still run.
-      // Reconcile it against what THIS session actually submitted: the receipt
-      // also lists ids the CLI enqueued itself (cron triggers, auto-resume
-      // continuations), and the SDK's own guidance is to ignore unknown uuids
-      // rather than treat them as an error. What survives the filter is the
-      // honest answer to "did our interrupt actually withdraw our message?".
-      //
-      // The reconcile is deliberately diagnostic, not corrective. Otto's steer
-      // queue is daemon-owned and sits above every adapter, so the daemon
-      // already decides what runs next for every provider - there is no
-      // provider-side queue for it to re-sync against. And the SDK exposes no
-      // `cancel_async_message` on Query, so a survivor cannot be withdrawn even
-      // if we wanted to. A non-empty list means an interrupt Otto reported as
-      // complete left one of Otto's own messages live in the CLI, which is a
-      // fault worth seeing in daemon.log rather than a state to repair.
-      const interruptAndReadReceipt = async (): Promise<void> => {
-        const receipt = await queryToInterrupt.interrupt();
-        if (!receipt) {
-          return;
-        }
-        const ours = receipt.still_queued.filter((uuid) => this.submittedUserMessageIds.has(uuid));
-        for (const uuid of ours) {
-          this.submittedUserMessageIds.delete(uuid);
-        }
-        if (ours.length > 0) {
-          this.logger.warn(
-            {
-              agentId: this.agentId,
-              provider: "claude",
-              sessionId: this.claudeSessionId,
-              survivingSubmitted: ours,
-              stillQueued: receipt.still_queued,
-            },
-            "provider.claude.interrupt.still_queued",
-          );
-        }
-      };
       await this.awaitWithTimeout(
-        interruptAndReadReceipt(),
+        queryToInterrupt.interrupt(),
         "interruptActiveTurn query.interrupt()",
       );
     } catch (error) {
@@ -4992,14 +4393,15 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   /**
-   * Interrupt means interrupt: a steer Claude never read dies with the turn instead of resuming it.
-   * A steer already dequeued cannot be recalled, and does not need to be — the interrupt kills it.
+   * Interrupt means interrupt: a message Claude never started dies with the turn instead of
+   * resuming it. One already dequeued cannot be recalled, and does not need to be, since the
+   * interrupt kills it. Returns whether Claude confirmed every message withdrawn.
    */
-  private async discardQueuedSteers(query: Query): Promise<void> {
-    const uuids = [...this.queuedSteerUuids];
-    this.queuedSteerUuids.clear();
+  private async withdrawUnstartedMessages(query: Query): Promise<boolean> {
+    const uuids = [...this.unstartedMessageUuids];
+    this.unstartedMessageUuids.clear();
     this.permissionClearingSteerUuids.clear();
-    if (uuids.length === 0) return;
+    if (uuids.length === 0) return true;
     // The SDK runtime supports this, but its public Query type has not caught up. Keep the
     // compatibility escape hatch inside the Claude adapter.
     const cancelAsyncMessage = (
@@ -5007,197 +4409,148 @@ class ClaudeAgentSession implements AgentSession {
         cancelAsyncMessage?: (uuid: string) => Promise<boolean>;
       }
     ).cancelAsyncMessage;
-    if (!cancelAsyncMessage) return;
+    if (!cancelAsyncMessage) return false;
+    let withdrewAll = true;
     for (const uuid of uuids) {
       try {
-        await cancelAsyncMessage.call(query, uuid);
+        if (!(await cancelAsyncMessage.call(query, uuid))) withdrewAll = false;
       } catch (error) {
-        this.logger.warn({ err: error }, "Failed to discard a queued Claude steer");
+        withdrewAll = false;
+        this.logger.warn({ err: error }, "Failed to withdraw a queued Claude message");
       }
     }
+    return withdrewAll;
+  }
+
+  private translateMessageToEvents(
+    message: SDKMessage,
+    options?: {
+      suppressAssistantText?: boolean;
+      suppressReasoning?: boolean;
+    },
+  ): AgentStreamEvent[] {
+    const parentToolUseId = readClaudeParentToolUseId(message);
+    if (parentToolUseId) {
+      return this.translateSidechainFrameToEvents(message, parentToolUseId);
+    }
+
+    const events: AgentStreamEvent[] = [];
+    this.appendTaskStateEvent(message, events);
+
+    // Subagent identity and lifecycle are announced by Claude Code's task protocol, so they are
+    // read rather than inferred from sidechain frames. `task_started` precedes the child's first
+    // frame, so the descriptor exists before any timeline item lands on it.
+    const subagentObservations = this.taskProtocolSource.observe(message);
+    for (const event of foldSubagentObservations(subagentObservations)) {
+      events.push({ type: "provider_subagent", provider: "claude", event });
+    }
+    this.releaseFinishedSubagentToolCalls(subagentObservations);
+    for (const observation of subagentObservations) {
+      if (observation.kind !== "declared") continue;
+      if (!this.taskProtocolSource.needsSyntheticParentToolCard(observation.id)) continue;
+      const card = this.buildSubagentToolCallCard(observation);
+      if (card) events.push(card);
+    }
+    if (message.type !== "system") {
+      const sessionCapture = this.captureSessionIdFromMessage(message);
+      if (sessionCapture.notice) {
+        events.push({
+          type: "timeline",
+          provider: "claude",
+          item: sessionCapture.notice,
+        });
+      }
+      if (sessionCapture.threadStartedSessionId) {
+        events.push({
+          type: "thread_started",
+          provider: "claude",
+          sessionId: sessionCapture.threadStartedSessionId,
+        });
+      }
+    }
+
+    this.forgetStartedMessage(message);
+
+    switch (message.type) {
+      case "system":
+        this.appendSystemMessageEvents(message, events);
+        break;
+      case "user":
+        this.appendUserMessageEvents(message, events);
+        this.appendSidechainResultEvents(message, events);
+        break;
+      case "assistant": {
+        const timelineItems = this.mapBlocksToTimeline(message.message.content, {
+          suppressAssistantText: options?.suppressAssistantText ?? false,
+          suppressReasoning: options?.suppressReasoning ?? false,
+        });
+        for (const item of timelineItems) {
+          events.push({ type: "timeline", item, provider: "claude" });
+        }
+        this.appendSidechainResultEvents(message, events);
+        break;
+      }
+      case "stream_event":
+        this.appendStreamEventEvents(message, events, options);
+        break;
+      case "result":
+        this.appendResultEvents(message, events);
+        break;
+      default:
+        break;
+    }
+
+    return events;
   }
 
   /**
-   * Route a sidechain (subagent) message into the observed subagent's own
-   * lifecycle + timeline events, alongside the parent Task row's summary log.
-   * Partial stream events are skipped: with forwardSubagentText enabled the
-   * complete assistant/user messages carry the full conversation, which is
-   * enough for the read-only pane. See .otto/knowledge/projects/observed-subagents.md.
+   * Once Claude has started a message, or cancelled it, there is nothing left to withdraw on
+   * interrupt.
    */
-  private appendObservedSubagentSidechainEvents(
+  private forgetStartedMessage(message: unknown): void {
+    const lifecycle = readClaudeCommandLifecycle(message);
+    if (!lifecycle || lifecycle.state === "queued") return;
+    this.unstartedMessageUuids.delete(lifecycle.commandUuid);
+    this.permissionClearingSteerUuids.delete(lifecycle.commandUuid);
+  }
+
+  private appendTaskStateEvent(message: SDKMessage, events: AgentStreamEvent[]): void {
+    const item = this.taskState.observe(message);
+    if (item) events.push({ type: "timeline", provider: "claude", item });
+  }
+
+  /**
+   * A frame from inside a subagent, routed to that child rather than the parent's transcript.
+   */
+  private translateSidechainFrameToEvents(
     message: SDKMessage,
     parentToolUseId: string,
-    events: AgentStreamEvent[],
-  ): void {
-    this.recordNestedSubagentSpawns(message, parentToolUseId);
-    if (!this.announcedObservedSubagents.has(parentToolUseId)) {
-      this.announcedObservedSubagents.add(parentToolUseId);
-      const taskInput = this.toolUseCache.get(parentToolUseId)?.input;
-      const subAgentType = readObservedSubagentText(taskInput?.subagent_type);
-      const description = readObservedSubagentText(taskInput?.description);
-      const parentKey = this.observedParentKeyByToolUseId.get(parentToolUseId);
-      events.push({
-        type: "observed_subagent_updated",
-        provider: "claude",
-        update: {
-          key: parentToolUseId,
-          status: "running",
-          ...(parentKey ? { parentKey } : {}),
-          ...(subAgentType ? { subAgentType } : {}),
-          ...(description ? { description } : {}),
-        },
-      });
+  ): AgentStreamEvent[] {
+    const canonicalSubagentId = this.taskProtocolSource.resolveSubagentId(parentToolUseId);
+    // Once a CLI announces its tasks it announces all of them, so a frame for one that was never
+    // declared is work the filter already rejected — a workflow child, ambient housekeeping, a
+    // grandchild announced in someone else's session. Attributing it anyway materializes exactly
+    // what the filter prevents: a nameless descriptor stuck running, plus a timeline no surface
+    // can open, both held for the session's lifetime.
+    if (this.taskProtocolSource.announcesTasks && !canonicalSubagentId) {
+      return [];
     }
-
-    this.appendObservedSubagentUsage(parentToolUseId, message, events);
-
-    let items: AgentTimelineItem[] = [];
-    if (message.type === "assistant") {
-      const content = message.message?.content;
-      if (typeof content === "string" || Array.isArray(content)) {
-        items = this.mapBlocksToTimeline(content);
-      }
-    } else if (message.type === "user") {
-      const content = message.message?.content;
-      if (typeof content === "string" || Array.isArray(content)) {
-        items = this.mapBlocksToTimeline(content, { textMessageType: "user_message" });
-      }
-    }
-    for (const item of items) {
-      events.push({
-        type: "observed_subagent_timeline",
-        provider: "claude",
-        key: parentToolUseId,
-        item,
-      });
-    }
-  }
-
-  /**
-   * Accumulate a plain Task sub-agent's REAL usage from its live sidechain
-   * assistant frames (each carries the full `message.usage` split + `message.model`,
-   * deduped by message.id), and emit the running split + model on the observed
-   * row. This is the non-workflow twin of the on-disk watcher: a Task fan-out has
-   * no per-agent SDK identity beyond the sidechain, but the sidechain frames carry
-   * everything, so no disk correlation is needed. cumulativeTokens is left to the
-   * task_progress/notification path (the SDK's authoritative per-task scalar);
-   * cross-checking the two is block 5. See [[subagent-real-accounting]].
-   */
-  private appendObservedSubagentUsage(
-    key: string,
-    message: SDKMessage,
-    events: AgentStreamEvent[],
-  ): void {
-    if (message.type !== "assistant") {
-      return;
-    }
-    // Once the on-disk transcript is bound, disk is authoritative: it is a
-    // strict superset of the live sidechain (which only ever carries the
-    // message_start usage snapshot, so its output counts run low). Mixing the
-    // two sources would let a smaller live total overwrite a disk total.
-    if (this.taskTranscriptWatcher.isBound(key)) {
-      return;
-    }
-    const betaMessage = message.message;
-    let accumulator = this.observedSubagentUsage.get(key);
-    if (!accumulator) {
-      accumulator = new SubagentUsageAccumulator();
-      this.observedSubagentUsage.set(key, accumulator);
-    }
-    const before = accumulator.isEmpty() ? -1 : grandTotalTokens(accumulator.totals());
-    accumulator.observe({
-      messageId: typeof betaMessage?.id === "string" ? betaMessage.id : undefined,
-      usage: readUsageTotals(betaMessage?.usage),
-      model: typeof betaMessage?.model === "string" ? betaMessage.model : undefined,
+    // The child's own frames are the only place its model appears; the task protocol does not
+    // announce it. Read per frame rather than snapshotting, since a provider can swap models
+    // mid-flight on overload or refusal fallback.
+    const runtimeEvents = foldSubagentObservations(
+      this.taskProtocolSource.observeSidechainFrame(
+        message,
+        canonicalSubagentId ?? parentToolUseId,
+      ),
+    ).map((event): AgentStreamEvent => ({ type: "provider_subagent", provider: "claude", event }));
+    const routedId = canonicalSubagentId ?? parentToolUseId;
+    const settled = this.settledSubagentToolCalls.get(routedId);
+    const sidechainEvents = this.sidechainTracker.handleMessage(message, routedId).map((event) => {
+      if (event.type === "timeline" && settled?.turnId) event.turnId = settled.turnId;
+      return event;
     });
-    const totals = accumulator.totals();
-    // Only surface when the real footprint actually grew - a repeated stream
-    // frame of the same message.id (or a model-only frame) changes nothing.
-    if (grandTotalTokens(totals) <= before) {
-      return;
-    }
-    const model = accumulator.model();
-    events.push({
-      type: "observed_subagent_updated",
-      provider: "claude",
-      update: {
-        key,
-        status: this.settledObservedSubagents.get(key) ?? "running",
-        usage: toClaudeSubagentUsage(totals, model),
-        usageRounds: accumulator.roundCount(),
-        ...(model ? { model } : {}),
-      },
-    });
-  }
-
-  /**
-   * A Task/Agent tool_use inside a sidechain means THAT subagent is spawning
-   * its own child - remember child tool_use id -> spawning key so the child's
-   * observed row (announced later by its task events or its own sidechain)
-   * parents to the spawning subagent. Recursion gives depth > 2 for free: the
-   * child's sidechain records its grandchildren the same way.
-   */
-  private recordNestedSubagentSpawns(message: SDKMessage, sidechainKey: string): void {
-    if (message.type !== "assistant") {
-      return;
-    }
-    const content = message.message?.content;
-    if (!Array.isArray(content)) {
-      return;
-    }
-    for (const block of content) {
-      if (
-        block &&
-        typeof block === "object" &&
-        (block as { type?: unknown }).type === "tool_use" &&
-        isClaudeSubagentToolName((block as { name?: string }).name) &&
-        typeof (block as { id?: unknown }).id === "string"
-      ) {
-        this.observedParentKeyByToolUseId.set((block as { id: string }).id, sidechainKey);
-      }
-    }
-  }
-
-  /**
-   * True when a message's `parent_tool_use_id` names an observable AI run
-   * (a Task/Agent sub-agent or a Workflow) rather than an ordinary tool.
-   *
-   * A non-null parent_tool_use_id is NOT by itself a sub-agent signal. Roughly
-   * 30s into ANY slow tool the CLI emits a heartbeat `tool_progress` whose
-   * tool_use_id is a synthetic "<id>-heartbeat-N" and whose parent_tool_use_id
-   * is the real tool's id:
-   *
-   *   {"type":"tool_progress","tool_use_id":"toolu_01EB…-heartbeat-0",
-   *    "parent_tool_use_id":"toolu_01EB…"}
-   *
-   * Treating that as a sidechain announced an observed sub-agent keyed by the
-   * shell tool, titled with its `description`. The row then had no timeline (a
-   * tool_progress is neither an assistant nor a user message) and no way to
-   * settle (every settle path is gated on a Task/Agent/Workflow tool name), so
-   * every Bash/PowerShell call that ran longer than the heartbeat left a
-   * permanently "running" row with an empty pane.
-   *
-   * An unknown parent stays accepted: a backgrounded Agent whose tool_result
-   * ack already evicted its cache entry still has to reach its observed row.
-   */
-  private readObservedSubagentSidechainParent(message: SDKMessage): string | null {
-    const parentToolUseId = readClaudeParentToolUseId(message);
-    if (!parentToolUseId) {
-      return null;
-    }
-    if (
-      this.announcedObservedSubagents.has(parentToolUseId) ||
-      this.workflowObservedKeys.has(parentToolUseId)
-    ) {
-      return parentToolUseId;
-    }
-    const cachedTool = this.toolUseCache.get(parentToolUseId);
-    if (!cachedTool) {
-      return parentToolUseId;
-    }
-    const isObservable =
-      isClaudeSubagentToolName(cachedTool.name) || isClaudeWorkflowToolName(cachedTool.name);
-    return isObservable ? parentToolUseId : null;
+    return [...runtimeEvents, ...sidechainEvents];
   }
 
   /**
@@ -5224,233 +4577,22 @@ class ClaudeAgentSession implements AgentSession {
     return {
       type: "timeline",
       provider: "claude",
-      item: {
-        ...toolCall,
-        detail: {
-          type: "sub_agent",
-          ...(declaration.title ? { subAgentType: declaration.title } : {}),
-          ...(declaration.description ? { description: declaration.description } : {}),
-          log: "",
-          actions: [],
-        },
-      },
+      item: { ...toolCall, detail: buildClaudeSubagentCardDetail(declaration) },
     };
   }
 
-  /**
-   * Effort is reachable only through hooks.
-   *
-   * It appears nowhere on the message stream — verified by scanning every message type at depth
-   * — and the level Otto requests is not necessarily the level that runs, because a model that
-   * does not support it is silently downgraded. A hook firing inside a subagent reports the
-   * active post-downgrade level alongside the subagent's `agent_id`.
-   *
-   * These are observation-only: they record what they see and always return an empty result, so
-   * they can never alter tool execution or turn control.
-   */
-  private buildSubagentEffortHooks(): NonNullable<ClaudeOptions["hooks"]> {
-    const observe = async (input: unknown): Promise<Record<string, never>> => {
-      try {
-        for (const event of foldSubagentObservations(
-          this.taskProtocolSource.observeHook(input as ClaudeHookObservationInput),
-        )) {
-          this.notifySubscribers({ type: "provider_subagent", provider: "claude", event });
-        }
-      } catch (error) {
-        this.logger.debug({ err: error }, "Failed to read subagent effort from hook");
-      }
-      return {};
-    };
-
-    // SubagentStart carries no effort (documented as absent for lifecycle hooks), so the value
-    // lands on the child's first tool use. SubagentStop covers a child that used no tools.
-    return {
-      PreToolUse: [{ hooks: [observe] }],
-      PostToolUse: [{ hooks: [observe] }],
-      SubagentStop: [{ hooks: [observe] }],
-    };
-  }
-
-  private translateMessageToEvents(
-    message: SDKMessage,
-    options?: {
-      suppressAssistantText?: boolean;
-      suppressReasoning?: boolean;
-    },
-  ): AgentStreamEvent[] {
-    const parentToolUseId = this.readObservedSubagentSidechainParent(message);
-    if (parentToolUseId) {
-      const canonicalId = this.taskProtocolSource.resolveSubagentId(parentToolUseId);
-      // Apply the declaration filter to BOTH projections. Otherwise an ignored
-      // frame still creates a nameless observed row with no stoppable task id.
-      if (this.taskProtocolSource.announcesTasks && !canonicalId) return [];
-      const observedKey = canonicalId ?? parentToolUseId;
-      const sidechainEvents = this.translateSidechainFrameToEvents(message, observedKey).filter(
-        (event) =>
-          !(
-            this.workflowObservedKeys.has(parentToolUseId) &&
-            event.type === "timeline" &&
-            event.item.type === "tool_call" &&
-            event.item.callId === parentToolUseId
-          ),
+  private appendSidechainResultEvents(message: SDKMessage, events: AgentStreamEvent[]): void {
+    const content = toObjectRecord(toObjectRecord(message)?.message)?.content;
+    if (!Array.isArray(content)) return;
+    for (const block of content) {
+      const chunk = toObjectRecord(block);
+      if (chunk?.type !== "tool_result" || typeof chunk.tool_use_id !== "string") continue;
+      events.push(
+        ...this.sidechainTracker.finish(chunk.tool_use_id, chunk.is_error ? "failed" : "completed"),
       );
-      this.appendObservedSubagentSidechainEvents(message, observedKey, sidechainEvents);
-      return sidechainEvents;
-    }
-
-    const events: AgentStreamEvent[] = [];
-    this.appendTaskStateEvent(message, events);
-
-    this.appendSubagentObservationEvents(message, events);
-    this.appendSessionCaptureEvents(message, events);
-
-    this.forgetReadSteer(message);
-
-    switch (message.type) {
-      case "system":
-        this.appendSystemMessageEvents(message, events);
-        break;
-      case "user":
-        this.appendUserMessageEvents(message, events);
-        break;
-      case "assistant": {
-        const timelineItems = this.mapBlocksToTimeline(message.message.content, {
-          suppressAssistantText: options?.suppressAssistantText ?? false,
-          suppressReasoning: options?.suppressReasoning ?? false,
-        });
-        for (const item of timelineItems) {
-          events.push({ type: "timeline", item, provider: "claude" });
-        }
-        break;
-      }
-      case "stream_event":
-        this.appendStreamEventEvents(message, events, options);
-        break;
-      case "result":
-        this.appendResultEvents(message, events);
-        break;
-      case "prompt_suggestion": {
-        const suggestion = message.suggestion.trim();
-        if (suggestion) {
-          events.push({ type: "prompt_suggestion", provider: "claude", suggestion });
-        }
-        break;
-      }
-      case "rate_limit_event": {
-        const info = mapClaudeRateLimitInfo(message.rate_limit_info);
-        const key = JSON.stringify(info);
-        if (key !== this.lastRateLimitEventKey) {
-          this.lastRateLimitEventKey = key;
-          events.push({ type: "rate_limit_updated", provider: "claude", info });
-        }
-        break;
-      }
-      default:
-        break;
-    }
-
-    // Task tool_result mapping (handleToolResult) can enqueue an observed
-    // subagent completion; flush it with the events that carried it.
-    if (this.pendingObservedEvents.length > 0) {
-      events.push(...this.pendingObservedEvents);
-      this.pendingObservedEvents = [];
-    }
-
-    return events;
-  }
-
-  /**
-   * Subagent identity and lifecycle are announced by Claude Code's task protocol, so they are
-   * read rather than inferred from sidechain frames. `task_started` precedes the child's first
-   * frame, so the descriptor exists before any timeline item lands on it.
-   */
-  private appendSubagentObservationEvents(message: SDKMessage, events: AgentStreamEvent[]): void {
-    const subagentObservations = this.taskProtocolSource.observe(message);
-    for (const event of foldSubagentObservations(subagentObservations)) {
-      events.push({ type: "provider_subagent", provider: "claude", event });
-    }
-    for (const observation of subagentObservations) {
-      if (observation.kind !== "declared") continue;
-      if (!this.taskProtocolSource.needsSyntheticParentToolCard(observation.id)) continue;
-      const card = this.buildSubagentToolCallCard(observation);
-      if (card) events.push(card);
     }
   }
 
-  /** A system frame carries no session id, so it is the one message shape skipped here. */
-  private appendSessionCaptureEvents(message: SDKMessage, events: AgentStreamEvent[]): void {
-    if (message.type === "system") return;
-    const sessionCapture = this.captureSessionIdFromMessage(message);
-    if (sessionCapture.notice) {
-      events.push({
-        type: "timeline",
-        provider: "claude",
-        item: sessionCapture.notice,
-      });
-    }
-    if (sessionCapture.threadStartedSessionId) {
-      events.push({
-        type: "thread_started",
-        provider: "claude",
-        sessionId: sessionCapture.threadStartedSessionId,
-      });
-    }
-  }
-
-  /** Once Claude has read a steer there is nothing left to discard on interrupt. */
-  private forgetReadSteer(message: unknown): void {
-    const lifecycle = readClaudeCommandLifecycle(message);
-    if (!lifecycle || lifecycle.state === "queued") return;
-    this.queuedSteerUuids.delete(lifecycle.commandUuid);
-    this.permissionClearingSteerUuids.delete(lifecycle.commandUuid);
-  }
-
-  private appendTaskStateEvent(message: SDKMessage, events: AgentStreamEvent[]): void {
-    const item = this.taskState.observe(message);
-    if (item) events.push({ type: "timeline", provider: "claude", item });
-  }
-
-  /**
-   * Resolve which subagent a sidechain frame belongs to, and turn the frame
-   * into that subagent's provider events. Identity comes from Claude Code's
-   * task protocol when the CLI announces one, and from the parent tool_use id
-   * when it does not.
-   */
-  private translateSidechainFrameToEvents(
-    message: SDKMessage,
-    parentToolUseId: string,
-  ): AgentStreamEvent[] {
-    const canonicalSubagentId = this.taskProtocolSource.resolveSubagentId(parentToolUseId);
-    // Once a CLI announces its tasks it announces all of them, so a frame for one that was never
-    // declared is work the filter already rejected — a workflow child, ambient housekeeping, a
-    // grandchild announced in someone else's session. Attributing it anyway materializes exactly
-    // what the filter prevents: a nameless descriptor stuck running, plus a timeline no surface
-    // can open, both held for the session's lifetime.
-    if (this.taskProtocolSource.announcesTasks && !canonicalSubagentId) {
-      return [];
-    }
-    // The child's own frames are the only place its model appears; the task protocol does not
-    // announce it. Read per frame rather than snapshotting, since a provider can swap models
-    // mid-flight on overload or refusal fallback.
-    const runtimeEvents = foldSubagentObservations(
-      this.taskProtocolSource.observeSidechainFrame(
-        message,
-        canonicalSubagentId ?? parentToolUseId,
-      ),
-    ).map((event): AgentStreamEvent => ({ type: "provider_subagent", provider: "claude", event }));
-    const routedId = canonicalSubagentId ?? parentToolUseId;
-    return [...runtimeEvents, ...this.sidechainTracker.handleMessage(message, routedId)];
-  }
-
-  /**
-   * Emit the canonical row for the prompt we just handed the SDK, and stamp the
-   * composer's id on it. Without that id the client can only reconcile its
-   * optimistic row against this one by comparing text, and this row's text is
-   * the MODEL-facing content: prompt attachments arrive here already flattened
-   * into extra text blocks by renderPromptAttachmentAsText. So any prompt with
-   * an attachment produced two bubbles - the composer's row with the pill, then
-   * this one with "Uploaded file: ..." appended.
-   */
   private emitSubmittedUserMessage(
     message: Extract<SDKMessage, { type: "user" }>,
     turnId: string,
@@ -5498,6 +4640,19 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     if (message.subtype === "status") {
+      // Claude Code reports a mode it switched to on its own, such as entering
+      // plan mode with the EnterPlanMode tool, through the status message.
+      if (
+        isPermissionMode(message.permissionMode) &&
+        this.observePermissionMode(message.permissionMode)
+      ) {
+        events.push({
+          type: "mode_changed",
+          provider: "claude",
+          currentModeId: this.currentMode,
+          availableModes: this.availableModes,
+        });
+      }
       const status = toObjectRecord(message)?.status;
       if (status === "compacting") {
         this.compacting = true;
@@ -5531,609 +4686,40 @@ class ClaudeAgentSession implements AgentSession {
       events.push(this.contextUsage.buildCompactionUsageEvent(compactMetadata?.postTokens));
       return;
     }
-    if (message.subtype === "background_tasks_changed") {
-      this.appendBackgroundTasksChangedEvents(message, events);
-      return;
-    }
     if (message.subtype === "task_notification") {
       this.appendTaskNotificationEvents(message, events);
       return;
     }
     if (message.subtype === "task_progress") {
-      this.appendTaskProgressEvents(message, events);
       return;
     }
-    if (message.subtype === "task_started") {
-      this.appendTaskStartedEvents(message, events);
-      return;
-    }
-    if (message.subtype === "task_updated") {
-      this.appendTaskUpdatedEvents(message, events);
-    }
   }
 
-  private appendTaskUpdatedEvents(
-    message: Extract<SDKMessage, { type: "system"; subtype: "task_updated" }>,
-    events: AgentStreamEvent[],
-  ): void {
-    const raw = toObjectRecord(message);
-    const taskId = readObservedSubagentText(raw?.task_id);
-    const patch = toObjectRecord(raw?.patch);
-    const status = readObservedSubagentText(patch?.status);
-    const key = taskId ? this.observedKeyByTaskId.get(taskId) : undefined;
-    if (key && patch?.is_backgrounded === true) {
-      this.backgroundedProviderSubagents.add(key);
-    }
-    if (!key || !status) return;
-    const providerStatus = toProviderSubagentStatus(status);
-    const observedStatus = toObservedSubagentStatus(providerStatus);
-    if (observedStatus !== "running") {
-      this.settledObservedSubagents.set(key, observedStatus);
-      this.taskTranscriptWatcher.markSettled(key, observedStatus);
-      this.disarmWorkflowWatcher(key, observedStatus);
-    } else {
-      this.settledObservedSubagents.delete(key);
-    }
-    events.push(
-      {
-        type: "provider_subagent",
-        provider: "claude",
-        event: { type: "upsert", id: key, status: providerStatus },
-      },
-      {
-        type: "observed_subagent_updated",
-        provider: "claude",
-        update: { key, status: observedStatus },
-      },
-    );
-  }
-
-  private appendTaskProgressEvents(
-    message: Extract<SDKMessage, { type: "system"; subtype: "task_progress" }>,
-    events: AgentStreamEvent[],
-  ): void {
-    if (this.isBackgroundShellTask(message.tool_use_id, message.task_id)) {
-      this.appendBackgroundShellTaskEvent(events, {
-        taskId: message.task_id,
-        toolUseId: message.tool_use_id,
-        description: message.summary ?? message.description,
-        status: "running",
-      });
-      return;
-    }
-    // task_progress omits task_type; workflow runs are recognized by their
-    // remembered observed key or the still-cached Workflow tool call (in
-    // appendObservedSubagentTaskEvent's gate). subagent_type is absent for a
-    // workflow, so the description carries the live phase summary and the
-    // frozen title stays whatever task_started set.
-    this.appendObservedSubagentTaskEvent(message, events, {
-      taskId: message.task_id,
-      toolUseId: message.tool_use_id,
-      subAgentType: message.subagent_type,
-      description: message.summary ?? message.description,
-      status: "running",
-      cumulativeTokens: message.usage?.total_tokens,
-      // The SDK reports both liveness signals per task, so Otto reads them
-      // instead of inferring: `tool_uses` is the authoritative invocation count
-      // and `last_tool_name` is what the subagent is running right now.
-      toolUseCount: message.usage?.tool_uses,
-      currentTool: message.last_tool_name,
-    });
-  }
-
-  // The provider payload has several independent classification signals.
-  // eslint-disable-next-line complexity
-  private appendTaskStartedEvents(
-    message: Extract<SDKMessage, { type: "system"; subtype: "task_started" }>,
-    events: AgentStreamEvent[],
-  ): void {
-    // A workflow orchestration run announces itself here with task_type
-    // "local_workflow" (+ workflow_name) or a cached Workflow tool call. Fold
-    // its name into the subAgentType title source so the observed row reads
-    // "Workflow: <name>"; the rest of the lifecycle flows through the shared
-    // observed-subagent path (keyed by the Workflow tool_use id, so its
-    // sidechain transcript lands on the same row).
-    const cachedTool = message.tool_use_id ? this.toolUseCache.get(message.tool_use_id) : undefined;
-    const isWorkflowStart =
-      isClaudeWorkflowTaskType(message.task_type) || isClaudeWorkflowToolName(cachedTool?.name);
-    const isSubagentStart =
-      isClaudeSubagentToolName(cachedTool?.name) ||
-      readObservedSubagentText(message.subagent_type) !== undefined ||
-      isClaudeSubagentTaskType(message.task_type);
-    // Route to the background-tasks track anything the CLI backgrounds that is
-    // not an observable AI run: an already-known background task, a Bash
-    // run_in_background, a monitor, or any other non-subagent, non-workflow
-    // task_type. This is where non-Bash background tasks used to be dropped.
-    const isBackgroundTaskStart =
-      !isWorkflowStart &&
-      !isSubagentStart &&
-      (this.isBackgroundShellTask(message.tool_use_id, message.task_id) ||
-        isClaudeBackgroundTaskType(message.task_type));
-    if (isBackgroundTaskStart) {
-      this.appendBackgroundShellTaskEvent(events, {
-        taskId: message.task_id,
-        toolUseId: message.tool_use_id,
-        description: message.description,
-        status: "running",
-      });
-      return;
-    }
-    if (isWorkflowStart && message.tool_use_id) {
-      this.workflowObservedKeys.add(message.tool_use_id);
-      this.armWorkflowWatcher(message.tool_use_id, message.task_id);
-    }
-    // A SendMessage to a child the parent already spawned arrives as a second
-    // task_started for the SAME task_id under a NEW tool_use id. That is the
-    // original child resuming, not a sibling: its row keeps the original key,
-    // and the new id must not announce a second card (the task protocol
-    // source aliases the new id back to the original for its sidechain).
-    const existingKey = this.observedKeyByTaskId.get(message.task_id);
-    const isResume = Boolean(
-      existingKey && message.tool_use_id && existingKey !== message.tool_use_id,
-    );
-    const rowKey = isResume ? existingKey : message.tool_use_id;
-    this.appendObservedSubagentTaskEvent(message, events, {
-      taskId: message.task_id,
-      toolUseId: rowKey,
-      subAgentType: isWorkflowStart
-        ? readClaudeWorkflowLabel(message.workflow_name)
-        : message.subagent_type,
-      description: message.description,
-      status: "running",
-      classifiedAsSubagent: isWorkflowStart || isSubagentStart,
-    });
-    const prompt = readObservedSubagentText(message.prompt);
-    const key = rowKey ?? this.observedKeyByTaskId.get(message.task_id);
-    if (prompt && key) {
-      events.push({
-        type: "provider_subagent",
-        provider: "claude",
-        event: {
-          type: "timeline",
-          id: key,
-          item: { type: "user_message", text: prompt },
-        },
-      });
-    }
-    if (isSubagentStart && !isWorkflowStart && !isResume && key) {
-      const card = mapClaudeRunningToolCall({
-        name: cachedTool?.name ?? "Task",
-        callId: key,
-        input: {
-          subagent_type: message.subagent_type,
-          description: message.description,
-          prompt: message.prompt,
-        },
-        output: null,
-      });
-      if (card) events.push({ type: "timeline", provider: "claude", item: card });
-    }
-  }
-
-  /**
-   * Arm a WorkflowTranscriptWatcher for a just-started Workflow run. It tails
-   * the run's on-disk transcripts and re-emits observed-subagent events per
-   * internal agent (nested under the workflow row via parentKey) - the live SDK
-   * stream carries none of that. Idempotent; without a session id (the watcher
-   * needs it to resolve the on-disk dir) the arm is buffered and drained when
-   * one is assigned.
-   */
-  private armWorkflowWatcher(workflowKey: string, taskId?: string): void {
-    if (this.workflowWatchers.has(workflowKey)) {
-      return;
-    }
-    if (!this.claudeSessionId) {
-      this.pendingWorkflowArms.set(workflowKey, taskId);
-      this.logger.debug(
-        { agentId: this.agentId, workflowKey },
-        "workflow watcher arm buffered - no session id yet",
-      );
-      return;
-    }
-    this.pendingWorkflowArms.delete(workflowKey);
-    const watcher = new WorkflowTranscriptWatcher({
-      workflowKey,
-      taskId,
-      sessionId: this.claudeSessionId,
-      cwd: this.config.cwd,
-      emit: (event) => this.pushEvent(event),
-      logger: this.logger,
-      claimedDirs: this.workflowClaimedDirs,
-    });
-    this.workflowWatchers.set(workflowKey, watcher);
-    watcher.arm();
-  }
-
-  /** Arm any workflow watchers buffered while claudeSessionId was unset. */
-  private drainPendingWorkflowArms(): void {
-    if (!this.claudeSessionId || this.pendingWorkflowArms.size === 0) {
-      return;
-    }
-    const pending = [...this.pendingWorkflowArms.entries()];
-    this.pendingWorkflowArms.clear();
-    for (const [workflowKey, taskId] of pending) {
-      this.armWorkflowWatcher(workflowKey, taskId);
-    }
-  }
-
-  /** Tear down a workflow watcher, settling any still-running child rows. */
-  private disarmWorkflowWatcher(
-    workflowKey: string | undefined,
-    status: "idle" | "error" | "closed",
-  ): void {
-    if (!workflowKey) {
-      return;
-    }
-    // A workflow that settles before a session id ever appears must not arm later.
-    this.pendingWorkflowArms.delete(workflowKey);
-    const watcher = this.workflowWatchers.get(workflowKey);
-    if (!watcher) {
-      return;
-    }
-    this.workflowWatchers.delete(workflowKey);
-    watcher.disarm(status);
-  }
-
-  /**
-   * True when a task_* system message belongs to a Bash run_in_background
-   * call rather than a Task-tool subagent. See
-   * isClaudeBackgroundShellToolName and .otto/knowledge/projects/observed-subagents.md's
-   * note that Otto previously ignored shell task events entirely.
-   */
-  /**
-   * Reconcile against the CLI's background-task level signal (REPLACE
-   * semantics - the payload is the full set of live background tasks, each with
-   * its task_type + description). Two jobs:
-   *
-   * 1. CREATE/refresh a background row for every background-type task in the set
-   *    (shell, monitor, …) that the observed-subagent path doesn't own - the
-   *    authoritative membership signal, so a task whose task_started edge was
-   *    lost or late still shows up. Subagents and workflows are skipped (they
-   *    keep their richer observed rows and settle via their own path).
-   * 2. SETTLE any known background/observed row whose task id vanished from the
-   *    set - the case where a lost or garbled task_notification otherwise left
-   *    it running forever (workflow rows are exempt from the turn-end sweep, so
-   *    they previously had no safety net).
-   *
-   * Foreground subagents never appear in the level set, so they are untouched.
-   * A later-arriving edge for the same transition still lands and refines the
-   * terminal status (idle → error/closed); edge and level converge on one row
-   * because the key is remembered by task id.
-   */
-  private appendBackgroundTasksChangedEvents(
-    message: Extract<SDKMessage, { type: "system"; subtype: "background_tasks_changed" }>,
-    events: AgentStreamEvent[],
-  ): void {
-    const liveTaskIds = new Set<string>();
-    for (const task of message.tasks) {
-      liveTaskIds.add(task.task_id);
-      // The level set is authoritative for background-task membership and now
-      // carries each task's type + description, so create/refresh a background
-      // row for any background-type task the edge stream hasn't already surfaced
-      // (a lost or late task_started otherwise left it invisible - the very gap
-      // that hid non-Bash background tasks). Subagents and workflows keep their
-      // observed rows; skip them here so they never double as background rows.
-      if (this.observedKeyByTaskId.has(task.task_id)) {
-        continue;
-      }
-      if (!isClaudeBackgroundTaskType(task.task_type)) {
-        continue;
-      }
-      this.appendBackgroundShellTaskEvent(events, {
-        taskId: task.task_id,
-        toolUseId: undefined,
-        description: task.description,
-        status: "running",
-      });
-    }
-    for (const taskId of this.lastBackgroundTaskIds) {
-      if (liveTaskIds.has(taskId)) {
-        continue;
-      }
-      if (this.backgroundShellKeyByTaskId.has(taskId)) {
-        this.appendBackgroundShellTaskEvent(events, {
-          taskId,
-          toolUseId: undefined,
-          status: "idle",
-        });
-        continue;
-      }
-      const key = this.observedKeyByTaskId.get(taskId);
-      if (key && !this.settledObservedSubagents.has(key)) {
-        this.settledObservedSubagents.set(key, "idle");
-        this.taskTranscriptWatcher.markSettled(key, "idle");
-        this.disarmWorkflowWatcher(key, "idle");
-        events.push({
-          type: "provider_subagent",
-          provider: "claude",
-          event: { type: "upsert", id: key, status: "completed" },
-        });
-        events.push({
-          type: "observed_subagent_updated",
-          provider: "claude",
-          update: {
-            key,
-            status: "idle",
-            ...(this.observedParentKeyByToolUseId.has(key)
-              ? { parentKey: this.observedParentKeyByToolUseId.get(key) }
-              : {}),
-          },
-        });
-      }
-    }
-    this.lastBackgroundTaskIds = liveTaskIds;
-  }
-
-  private isBackgroundShellTask(toolUseId: string | undefined, taskId: string): boolean {
-    const cachedTool = toolUseId ? this.toolUseCache.get(toolUseId) : undefined;
-    return (
-      isClaudeBackgroundShellToolName(cachedTool?.name) ||
-      this.backgroundShellKeyByTaskId.has(taskId)
-    );
-  }
-
-  /**
-   * Whether a task_* message describes an observable AI run rather than a
-   * shell/monitor background task. `classifiedAsSubagent` is the caller's own
-   * verdict (task_started reads task_type); the rest re-derive membership for
-   * the later edges, which carry neither task_type nor subagent_type.
-   */
-  private isObservableSubagentTask(input: {
-    taskId: string;
-    toolUseId: string | undefined;
-    subAgentType?: string | undefined;
-    classifiedAsSubagent?: boolean;
-  }): boolean {
-    if (input.classifiedAsSubagent === true) {
-      return true;
-    }
-    if (readObservedSubagentText(input.subAgentType) !== undefined) {
-      return true;
-    }
-    const cachedTool = input.toolUseId ? this.toolUseCache.get(input.toolUseId) : undefined;
-    // A Workflow orchestration run is observable too - recognize it directly by
-    // its cached tool so a task_progress/task_notification seen before (or
-    // without) task_started still routes to the observed row.
-    return (
-      isClaudeSubagentToolName(cachedTool?.name) ||
-      isClaudeWorkflowToolName(cachedTool?.name) ||
-      this.observedKeyByTaskId.has(input.taskId)
-    );
-  }
-
-  /**
-   * True when this observed run outlives an interrupt of the current turn: a
-   * Workflow (the CLI always backgrounds those), or a Task/Agent whose
-   * tool_result already came back while the run kept reporting. Mirrors the
-   * condition flushPendingToolCalls uses to decide which rows an interrupt
-   * actually takes down, so the client can stop warning about the rest.
-   * See docs/chat-lifecycle.md.
-   */
-  private isBackgroundedObservedRun(key: string): boolean {
-    return this.workflowObservedKeys.has(key) || this.observedKeysWithToolResult.has(key);
-  }
-
-  /**
-   * Map a task_* system message onto the observed subagent's lifecycle. Only
-   * subagent tasks qualify - shell/monitor/workflow background tasks are
-   * ignored. See .otto/knowledge/projects/observed-subagents.md.
-   */
-  // Builds the two provider-neutral projections from one provider lifecycle update.
-  // eslint-disable-next-line complexity
-  private appendObservedSubagentTaskEvent(
-    message: Extract<SDKMessage, { type: "system" }>,
-    events: AgentStreamEvent[],
-    input: {
-      taskId: string;
-      toolUseId: string | undefined;
-      subAgentType?: string | undefined;
-      description?: string | undefined;
-      status: "running" | "idle" | "error" | "closed";
-      requiresAttention?: boolean;
-      cumulativeTokens?: number | undefined;
-      toolUseCount?: number | undefined;
-      currentTool?: string | undefined;
-      /**
-       * Set by a caller that has already classified the task (e.g. task_started
-       * reading task_type "local_agent"). Without it the gate below re-derives
-       * membership from the tool cache alone, and a backgrounded Agent whose
-       * tool_result ack already evicted its cache entry would be dropped by both
-       * tracks instead of landing on this one.
-       */
-      classifiedAsSubagent?: boolean;
-    },
-  ): void {
-    void message;
-    if (!this.isObservableSubagentTask(input)) {
-      return;
-    }
-    const key =
-      this.observedKeyByTaskId.get(input.taskId) ?? input.toolUseId ?? `task:${input.taskId}`;
-    this.observedKeyByTaskId.set(input.taskId, key);
-    this.announcedObservedSubagents.add(key);
-    if (input.status !== "running") {
-      this.settledObservedSubagents.set(key, input.status);
-      this.taskTranscriptWatcher.markSettled(key, input.status);
-    } else {
-      this.settledObservedSubagents.delete(key);
-    }
-    const parentKey = this.observedParentKeyByToolUseId.get(key);
-    const cachedTool = this.toolUseCache.get(key);
-    const providerStatus = toProviderSubagentStatus(input.status);
-    const providerTitle = isClaudeWorkflowToolName(cachedTool?.name)
-      ? "Workflow"
-      : (readObservedSubagentText(input.subAgentType) ?? "Agent");
-    events.push({
-      type: "provider_subagent",
-      provider: "claude",
-      event: {
-        type: "upsert",
-        id: key,
-        title: providerTitle,
-        description: readObservedSubagentText(input.description) ?? null,
-        status: providerStatus,
-        toolCallId: key,
-      },
-    });
-    events.push({
-      type: "observed_subagent_updated",
-      provider: "claude",
-      update: {
-        key,
-        taskId: input.taskId,
-        status: input.status,
-        ...(parentKey ? { parentKey } : {}),
-        ...(this.isBackgroundedObservedRun(key) ? { backgrounded: true } : {}),
-        ...(input.requiresAttention !== undefined
-          ? { requiresAttention: input.requiresAttention }
-          : {}),
-        ...(readObservedSubagentText(input.subAgentType)
-          ? { subAgentType: readObservedSubagentText(input.subAgentType) }
-          : {}),
-        ...(readObservedSubagentText(input.description)
-          ? { description: readObservedSubagentText(input.description) }
-          : {}),
-        ...(typeof input.cumulativeTokens === "number" && Number.isFinite(input.cumulativeTokens)
-          ? { cumulativeTokens: input.cumulativeTokens }
-          : {}),
-        ...(typeof input.toolUseCount === "number" && Number.isFinite(input.toolUseCount)
-          ? { toolUseCount: input.toolUseCount }
-          : {}),
-        ...(readObservedSubagentText(input.currentTool)
-          ? { currentTool: readObservedSubagentText(input.currentTool) }
-          : {}),
-      },
-    });
-  }
-
-  /**
-   * Map a task_* system message onto a background shell task's lifecycle
-   * (Bash run_in_background). Sibling of appendObservedSubagentTaskEvent for
-   * the non-AI shell case - see .otto/knowledge/projects/observed-subagents.md's
-   * note that Otto previously ignored these entirely.
-   */
-  private appendBackgroundShellTaskEvent(
-    events: AgentStreamEvent[],
-    input: {
-      taskId: string;
-      toolUseId: string | undefined;
-      description?: string | undefined;
-      status: "running" | "idle" | "error" | "closed";
-      requiresAttention?: boolean;
-    },
-  ): void {
-    // Prefer a key already remembered for this task id so the edge stream
-    // (task_started/progress/notification, which carry a tool_use_id) and the
-    // level signal (background_tasks_changed, which does not) converge on ONE
-    // row. Whichever sighting lands first fixes the key; the rest reuse it.
-    const key =
-      this.backgroundShellKeyByTaskId.get(input.taskId) ??
-      input.toolUseId ??
-      `task:${input.taskId}`;
-    this.backgroundShellKeyByTaskId.set(input.taskId, key);
-    this.announcedBackgroundShellTasks.add(key);
-    const description = readObservedSubagentText(input.description);
-    events.push({
-      type: "background_shell_task_updated",
-      provider: "claude",
-      update: {
-        key,
-        taskId: input.taskId,
-        status: input.status,
-        ...(input.requiresAttention !== undefined
-          ? { requiresAttention: input.requiresAttention }
-          : {}),
-        // `description` on task_started/task_progress is the closest available
-        // field to the shell command text; verify with a live run before
-        // treating it as authoritative. See projects/ (Background Tasks plan).
-        ...(description ? { command: description, description } : {}),
-      },
-    });
-  }
-
-  // Routes terminal updates between shell tasks, subagents, and workflows.
-  // eslint-disable-next-line complexity
   private appendTaskNotificationEvents(
     message: Extract<SDKMessage, { type: "system"; subtype: "task_notification" }>,
     events: AgentStreamEvent[],
   ): void {
-    // Subagent task_notifications arrive without parent_tool_use_id but with
-    // tool_use_id pointing at the parent's subagent tool call. Keep them out of
-    // the parent timeline, but map them onto the observed subagent's lifecycle
-    // - this is where a failed/stopped subagent (e.g. usage exhaustion) becomes
-    // visible. See .otto/knowledge/projects/observed-subagents.md.
     const taskUseId = message.tool_use_id;
     const cachedTool = taskUseId ? this.toolUseCache.get(taskUseId) : undefined;
+    // The task protocol owns provider-subagent identity. Workflow launch results arrive before
+    // their terminal notification and clear toolUseCache, so the cache is only a fallback for
+    // older Claude streams which do not announce tasks.
     if (
-      isClaudeBackgroundShellToolName(cachedTool?.name) ||
-      this.backgroundShellKeyByTaskId.has(message.task_id)
+      this.taskProtocolSource.isDeclaredTask(message.task_id) ||
+      isClaudeSubagentToolName(cachedTool?.name)
     ) {
-      let status: "idle" | "error" | "closed" = "idle";
-      if (message.status === "failed") {
-        status = "error";
-      } else if (message.status === "stopped") {
-        status = "closed";
-      }
-      this.appendBackgroundShellTaskEvent(events, {
-        taskId: message.task_id,
-        toolUseId: taskUseId,
-        description: message.summary,
-        status,
-        requiresAttention: message.status === "failed",
-      });
-      // A shell a subagent launched also belongs on that child's timeline, the
-      // same place the queued user-envelope form of this notification lands.
-      this.appendOwnedTaskNotificationEvent(message, events);
       return;
     }
-    // A workflow run and a Task subagent settle the same way - the completion
-    // notification maps onto the observed row's terminal state (this is where a
-    // failed/stopped run finally becomes visible). Both go through the shared
-    // observed-subagent path; the gate below recognizes either a Task/Agent or a
-    // Workflow tool call, or any already-announced observed task.
-    if (
-      isClaudeSubagentToolName(cachedTool?.name) ||
-      isClaudeWorkflowToolName(cachedTool?.name) ||
-      this.observedKeyByTaskId.has(message.task_id)
-    ) {
-      let status: "idle" | "error" | "closed" = "idle";
-      if (message.status === "failed") {
-        status = "error";
-      } else if (message.status === "stopped") {
-        status = "closed";
-      }
-      this.appendObservedSubagentTaskEvent(message, events, {
-        taskId: message.task_id,
-        toolUseId: taskUseId,
-        description: message.summary,
-        status,
-        requiresAttention: message.status === "failed",
-        cumulativeTokens: message.usage?.total_tokens,
-        // The run's final tool count. No currentTool: the task has ended, and
-        // the projection drops it on a terminal row anyway.
-        toolUseCount: message.usage?.tool_uses,
-      });
-      const outputFile = readObservedSubagentText(toObjectRecord(message)?.output_file);
-      const workflowResult = outputFile ? readClaudeWorkflowResultFile(outputFile) : undefined;
-      const workflowKey = this.observedKeyByTaskId.get(message.task_id) ?? taskUseId;
-      if (workflowKey && workflowResult) {
-        events.push({
-          type: "provider_subagent",
-          provider: "claude",
-          event: {
-            type: "timeline",
-            id: workflowKey,
-            item: { type: "assistant_message", text: workflowResult },
-          },
-        });
-      }
-      // A workflow run settling here is also where its watcher tears down: do a
-      // final transcript tail + run-state reconcile and settle the child rows.
-      this.disarmWorkflowWatcher(workflowKey, status);
-      return;
-    }
-    if (this.appendOwnedTaskNotificationEvent(message, events)) return;
     const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
+    const ownerSubagentId = this.taskProtocolSource.resolveTaskOwner(message.task_id, taskUseId);
+    if (taskNotificationItem && ownerSubagentId) {
+      events.push({
+        type: "provider_subagent",
+        provider: "claude",
+        event: { type: "timeline", id: ownerSubagentId, item: taskNotificationItem },
+      });
+      return;
+    }
     if (taskNotificationItem) {
       events.push({
         type: "timeline",
@@ -6141,25 +4727,6 @@ class ClaudeAgentSession implements AgentSession {
         provider: "claude",
       });
     }
-  }
-
-  /** Route a subagent-owned task's notification onto that child's timeline. */
-  private appendOwnedTaskNotificationEvent(
-    message: Extract<SDKMessage, { type: "system"; subtype: "task_notification" }>,
-    events: AgentStreamEvent[],
-  ): boolean {
-    const taskNotificationItem = mapTaskNotificationSystemRecordToToolCall(message);
-    const ownerSubagentId = this.taskProtocolSource.resolveTaskOwner(
-      message.task_id,
-      message.tool_use_id,
-    );
-    if (!taskNotificationItem || !ownerSubagentId) return false;
-    events.push({
-      type: "provider_subagent",
-      provider: "claude",
-      event: { type: "timeline", id: ownerSubagentId, item: taskNotificationItem },
-    });
-    return true;
   }
 
   private appendUserMessageEvents(
@@ -6273,13 +4840,11 @@ class ClaudeAgentSession implements AgentSession {
     message: Extract<SDKMessage, { type: "result" }>,
     events: AgentStreamEvent[],
   ): void {
-    this.recordFastModeRuntimeStatus(message);
-    this.appendTurnEndObservedSubagentSweep(events);
-    this.verifySubagentPricing(message.modelUsage);
-    const usage = this.convertUsage(message, message.modelUsage);
+    const usage = this.convertUsage(message);
     if (message.subtype === "success") {
+      events.push(...this.sidechainTracker.finishAll("completed"));
       // Built-in slash commands (e.g. /voice, /usage, "Unknown command: …")
-      // run client-side in the Claude CLI with no model turn - output_tokens
+      // run client-side in the Claude CLI with no model turn — output_tokens
       // is 0 and the user-visible text is carried in `result`. Surface it only
       // when the turn has not already emitted assistant text so zero-token
       // accounting from provider gateways does not duplicate streamed output.
@@ -6303,70 +4868,8 @@ class ClaudeAgentSession implements AgentSession {
       "errors" in message && Array.isArray(message.errors) && message.errors.length > 0
         ? message.errors.join("\n")
         : "Claude run failed";
+    events.push(...this.sidechainTracker.finishAll("failed"));
     events.push(this.buildTurnFailedEvent(errorMessage));
-  }
-
-  /**
-   * Diagnostic self-check on the sub-agent price table: re-price the turn's
-   * whole-tree per-model token totals (the SDK's own `modelUsage`) and compare to
-   * the SDK's `costUSD`. Purely observational - the books stay balanced by the
-   * parent-residual rule regardless - but a mismatch means our list prices have
-   * drifted and per-sub-agent cost is skewed, so log it loudly. See
-   * [[subagent-real-accounting]] (block 5) and claude-pricing.ts.
-   */
-  private verifySubagentPricing(modelUsage: unknown): void {
-    const slices = readClaudeModelUsageSlices(modelUsage);
-    if (slices.length === 0) {
-      return;
-    }
-    const result = verifyClaudeTreePricing(slices);
-    if (result.mismatches.length === 0 && result.unpriced.length === 0) {
-      return;
-    }
-    this.logger.warn(
-      {
-        agentId: this.agentId,
-        ourUsd: result.ourUsd,
-        sdkUsd: result.sdkUsd,
-        mismatches: result.mismatches,
-        unpriced: result.unpriced,
-      },
-      "claude subagent price table drift vs modelUsage - per-subagent cost may be skewed",
-    );
-  }
-
-  /**
-   * A foreground Task cannot outlive the turn that spawned it, but its
-   * terminal signal can go missing (nested leaves settle inside their
-   * spawner's sidechain, never through the root's tool_result path, and a
-   * garbled/backgrounded finish can drop the task_notification) - leaving the
-   * row stuck "running" forever and its visualizer node never fading. When
-   * the turn ends, settle every announced-but-unsettled row to idle.
-   * Backgrounded Workflow runs legitimately span turns and are exempt.
-   */
-  private appendTurnEndObservedSubagentSweep(events: AgentStreamEvent[]): void {
-    for (const key of this.announcedObservedSubagents) {
-      if (
-        this.settledObservedSubagents.has(key) ||
-        this.backgroundedProviderSubagents.has(key) ||
-        this.isBackgroundedObservedRun(key)
-      ) {
-        continue;
-      }
-      this.settledObservedSubagents.set(key, "idle");
-      this.taskTranscriptWatcher.markSettled(key, "idle");
-      events.push({
-        type: "observed_subagent_updated",
-        provider: "claude",
-        update: {
-          key,
-          status: "idle",
-          ...(this.observedParentKeyByToolUseId.has(key)
-            ? { parentKey: this.observedParentKeyByToolUseId.get(key) }
-            : {}),
-        },
-      });
-    }
   }
 
   private createClaudeSessionChangedNotice(
@@ -6396,7 +4899,6 @@ class ClaudeAgentSession implements AgentSession {
       this.claudeSessionId = sessionId;
       this.pendingFreshSessionId = null;
       this.persistence = null;
-      this.drainPendingWorkflowArms();
       return { threadStartedSessionId: sessionId, notice: null };
     }
     if (this.claudeSessionId === sessionId) {
@@ -6405,7 +4907,7 @@ class ClaudeAgentSession implements AgentSession {
     }
     const oldSessionId = this.claudeSessionId;
     // Session ID changed mid-stream (e.g. a hook caused Claude to restart
-    // with a new session). Accept the new ID and continue - the turn should
+    // with a new session). Accept the new ID and continue — the turn should
     // not be failed just because the underlying subprocess cycled.
     this.logger.warn(
       { existingSessionId: this.claudeSessionId, newSessionId: sessionId },
@@ -6427,10 +4929,6 @@ class ClaudeAgentSession implements AgentSession {
     if (message.subtype !== "init") {
       return { threadStartedSessionId: null, notice: null };
     }
-    // Every init is a fresh CLI process, whose cumulative total_cost_usd
-    // restarts at 0 - reset the per-turn cost watermark with it.
-    this.contextUsage.beginProcess();
-    this.recordFastModeRuntimeStatus(message);
 
     const msgRecord = toObjectRecord(message) ?? {};
     const newSessionId = extractSessionIdRaw({
@@ -6449,7 +4947,6 @@ class ClaudeAgentSession implements AgentSession {
       this.claudeSessionId = newSessionId;
       this.pendingFreshSessionId = null;
       threadStartedSessionId = newSessionId;
-      this.drainPendingWorkflowArms();
       this.logger.debug({ sessionId: newSessionId }, "Claude session ID set for the first time");
     } else if (existingSessionId === newSessionId) {
       this.pendingFreshSessionId = null;
@@ -6466,12 +4963,16 @@ class ClaudeAgentSession implements AgentSession {
       threadStartedSessionId = newSessionId;
       notice = this.createClaudeSessionChangedNotice(existingSessionId, newSessionId);
     }
-    this.currentMode = message.permissionMode;
-    if (this.currentMode !== "plan") {
-      this.planResumeMode = this.currentMode;
-    }
+    this.availableModes = DEFAULT_MODES;
+    this.observePermissionMode(message.permissionMode);
     this.persistence = null;
     if (message.model) {
+      const runtimeContextWindowMaxTokens = getClaudeContextWindowMaxTokens(message.model);
+      // Seed usage before the first result, including settings-resolved aliases.
+      // A repeated init for the same model must retain the SDK's reported limit.
+      if (message.model !== this.lastRuntimeModel && runtimeContextWindowMaxTokens !== undefined) {
+        this.contextUsage.setInitialContextWindowMaxTokens(runtimeContextWindowMaxTokens);
+      }
       const normalizedRuntimeModel = normalizeClaudeRuntimeModelId(message.model);
       this.logger.debug(
         { runtimeModel: message.model, normalizedRuntimeModel },
@@ -6486,6 +4987,16 @@ class ClaudeAgentSession implements AgentSession {
       this.cachedRuntimeInfo = null;
     }
     return { threadStartedSessionId, notice };
+  }
+
+  /** Records a mode Claude Code reports, returning whether it differs from the current one. */
+  private observePermissionMode(mode: PermissionMode): boolean {
+    const changed = this.currentMode !== mode;
+    this.currentMode = mode;
+    if (mode !== "plan") {
+      this.planResumeMode = mode;
+    }
+    return changed;
   }
 
   private readMissingResumedConversationError(message: SDKMessage): string | null {
@@ -6511,8 +5022,8 @@ class ClaudeAgentSession implements AgentSession {
     return null;
   }
 
-  private convertUsage(message: SDKResultMessage, modelUsage?: unknown): AgentUsage | undefined {
-    return this.contextUsage.buildResultUsage(message, modelUsage);
+  private convertUsage(message: SDKResultMessage): AgentUsage | undefined {
+    return this.contextUsage.buildResultUsage(message, this.lastRuntimeModel ?? this.config.model);
   }
 
   private handlePermissionRequest: CanUseTool = async (
@@ -6520,10 +5031,6 @@ class ClaudeAgentSession implements AgentSession {
     input,
     options,
   ): Promise<PermissionResult> => {
-    // Suggestion tools never prompt - the Start button on the card is the gate.
-    if (AUTO_APPROVED_OTTO_TOOL_NAMES.has(toolName)) {
-      return { behavior: "allow", updatedInput: input };
-    }
     const requestId = `permission-${randomUUID()}`;
     const kind = resolvePermissionKind(toolName, input);
     const requestInput = normalizeClaudeAskUserQuestionRequestInput(toolName, input);
@@ -6549,6 +5056,7 @@ class ClaudeAgentSession implements AgentSession {
       provider: "claude",
       name: toolName,
       kind,
+      ...buildClaudeQuestionPermissionSummary(toolName, input),
       input: requestInput,
       detail: toolDetail,
       suggestions: options.suggestions?.map((suggestion) => ({
@@ -6629,63 +5137,19 @@ class ClaudeAgentSession implements AgentSession {
             output: null,
           }),
         );
-        // An interrupted turn takes its in-flight subagents (and workflow runs)
-        // down with it - settle their observed rows instead of leaving them
-        // "running". Only tasks still in the cache are in-flight; a backgrounded
-        // workflow whose tool_result already evicted it is left for its own
-        // task_notification, matching the background-shell semantics below.
-        if (
-          (isClaudeSubagentToolName(entry.name) || isClaudeWorkflowToolName(entry.name)) &&
-          this.announcedObservedSubagents.has(id)
-        ) {
-          this.settledObservedSubagents.set(id, "closed");
-          this.taskTranscriptWatcher.markSettled(id, "closed");
-          this.pushEvent({
-            type: "observed_subagent_updated",
-            provider: "claude",
-            update: { key: id, status: "closed" },
-          });
-          // Interrupted in-flight workflow → tear down its transcript watcher too.
-          if (isClaudeWorkflowToolName(entry.name)) {
-            this.disarmWorkflowWatcher(id, "closed");
-          }
-        }
-        // Same teardown for an in-flight background shell task - the process
-        // dies with the interrupted turn, so settle its row instead of
-        // leaving it stuck "running".
-        if (
-          isClaudeBackgroundShellToolName(entry.name) &&
-          this.announcedBackgroundShellTasks.has(id)
-        ) {
-          this.pushEvent({
-            type: "background_shell_task_updated",
-            provider: "claude",
-            update: { key: id, status: "closed" },
-          });
-        }
       }
-    }
-    for (const id of this.announcedObservedSubagents) {
-      if (this.settledObservedSubagents.has(id) || this.backgroundedProviderSubagents.has(id)) {
-        continue;
-      }
-      this.settledObservedSubagents.set(id, "closed");
-      this.taskTranscriptWatcher.markSettled(id, "closed");
-      this.pushEvent({
-        type: "provider_subagent",
-        provider: "claude",
-        event: { type: "upsert", id, status: "canceled" },
-      });
-      this.pushEvent({
-        type: "observed_subagent_updated",
-        provider: "claude",
-        update: { key: id, status: "closed" },
-      });
     }
     this.toolUseCache.clear();
-    this.toolUseInputEmitState.clear();
     this.sidechainTracker.clear();
-    this.observedSubagentUsage.clear();
+    // The task protocol's routing table is session-scoped, so it is deliberately NOT reset here:
+    // the turn ended, the session did not. Wiping it would strand every task id the session still
+    // holds — a backgrounded child that settles after the interrupt would find no descriptor to
+    // land on, and ownership would flip back to the legacy tracker mid-session.
+    for (const event of foldSubagentObservations(
+      this.taskProtocolSource.cancelRunningForegroundTasks(),
+    )) {
+      this.pushEvent({ type: "provider_subagent", provider: "claude", event });
+    }
   }
 
   private pushToolCall(
@@ -6706,8 +5170,43 @@ class ClaudeAgentSession implements AgentSession {
     this.notifySubscribers(event);
   }
 
+  /**
+   * Effort is reachable only through hooks.
+   *
+   * It appears nowhere on the message stream — verified by scanning every message type at depth
+   * — and the level Paseo requests is not necessarily the level that runs, because a model that
+   * does not support it is silently downgraded. A hook firing inside a subagent reports the
+   * active post-downgrade level alongside the subagent's `agent_id`.
+   *
+   * These are observation-only: they record what they see and always return an empty result, so
+   * they can never alter tool execution or turn control.
+   */
+  private buildSubagentEffortHooks(): NonNullable<ClaudeOptions["hooks"]> {
+    const observe = async (input: unknown): Promise<Record<string, never>> => {
+      try {
+        for (const event of foldSubagentObservations(
+          this.taskProtocolSource.observeHook(input as ClaudeHookObservationInput),
+        )) {
+          this.notifySubscribers({ type: "provider_subagent", provider: "claude", event });
+        }
+      } catch (error) {
+        this.logger.debug({ err: error }, "Failed to read subagent effort from hook");
+      }
+      return {};
+    };
+
+    // SubagentStart carries no effort (documented as absent for lifecycle hooks), so the value
+    // lands on the child's first tool use. SubagentStop covers a child that used no tools.
+    return {
+      PreToolUse: [{ hooks: [observe] }],
+      PostToolUse: [{ hooks: [observe] }],
+      SubagentStop: [{ hooks: [observe] }],
+    };
+  }
+
   private notifySubscribers(event: AgentStreamEvent): void {
-    const turnId = this.activeForegroundTurnId ?? this.autonomousTurn?.id;
+    const turnId =
+      getAgentStreamEventTurnId(event) ?? this.activeForegroundTurnId ?? this.autonomousTurn?.id;
     const tagged = turnId ? { ...event, turnId } : event;
     this.logger.trace(
       {
@@ -6726,17 +5225,6 @@ class ClaudeAgentSession implements AgentSession {
         this.logger.warn({ err: error }, "Subscriber callback threw");
       }
     }
-  }
-
-  // Every turn opens with this instead of a bare turn_started notify. Re-opening
-  // the rate-limit dedup window means the turn's first rate_limit_event always
-  // re-emits the current plan status, so a client that (re)connected mid-session
-  // - e.g. after an app refresh - gets resynced instead of staying blank because
-  // the daemon already delivered this exact payload to an earlier client. Dedup
-  // still collapses repeats WITHIN the turn (rate_limit_event fires per request).
-  private beginTurn(): void {
-    this.lastRateLimitEventKey = null;
-    this.notifySubscribers({ type: "turn_started", provider: "claude" });
   }
 
   private normalizePermissionUpdates(
@@ -6764,9 +5252,15 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private loadPersistedHistory(sessionId: string): void {
+    let historyPath: string | null = null;
     try {
-      const historyPath = resolveClaudeSearchHistoryPath(this.config.cwd, sessionId);
+      this.taskState.reset();
+      historyPath = this.resolveHistoryPath(sessionId);
       if (!historyPath || !fs.existsSync(historyPath)) {
+        this.logger.info(
+          { sessionId, cwd: this.config.cwd, historyPath },
+          "No Claude transcript to load history from",
+        );
         return;
       }
       const content = fs.readFileSync(historyPath, "utf8");
@@ -6775,8 +5269,11 @@ class ClaudeAgentSession implements AgentSession {
         readClaudeSidechainHistory(historyPath),
       );
       this.ingestPersistedHistory(content, replay);
-    } catch {
-      // ignore history load failures
+    } catch (error) {
+      this.logger.warn(
+        { err: error, sessionId, historyPath },
+        "Failed to load Claude history from transcript",
+      );
     }
   }
 
@@ -6806,6 +5303,7 @@ class ClaudeAgentSession implements AgentSession {
     const sidechainEntries = [parentContent, ...sidechains.contents]
       .flatMap(parseClaudeHistoryRecords)
       .filter((entry) => entry.isSidechain === true && typeof entry.agentId === "string");
+    const parentFacts = readClaudeReplayParentFacts(parentEntries);
 
     // Replay produces the same observations the live task protocol produces, then folds them
     // with the same function, so identity and status are derived once for both paths.
@@ -6816,7 +5314,7 @@ class ClaudeAgentSession implements AgentSession {
         entries,
         parentFacts: readClaudeReplayParentFacts(entries as ClaudeHistoryEntry[]),
       })),
-      parent: readClaudeReplayParentFacts(parentEntries),
+      parent: parentFacts,
       convertEntry: (entry) => this.convertHistoryEntry(entry as ClaudeHistoryEntry),
     });
     const observations = [
@@ -6845,6 +5343,7 @@ class ClaudeAgentSession implements AgentSession {
     const replay = {
       restoredIds: restoredProviderSubagentIds,
       toolOwners: subagentReplay.toolOwners,
+      subagentToolCalls: parentFacts.toolCalls,
     };
     if (observations.length === 0) return replay;
 
@@ -6891,8 +5390,6 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
 
-    this.replayHistorySubagentRow(entry, timeline, replay.restoredIds);
-
     const historyTimestamp = normalizeProviderReplayTimestamp(entry.timestamp);
     const notificationOwner = notificationToolUseId
       ? replay.toolOwners.get(notificationToolUseId)
@@ -6913,7 +5410,12 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     const taskSnapshot = this.taskState.observe(entry);
-    const items = [...(taskSnapshot ? [taskSnapshot] : []), ...this.convertHistoryEntry(entry)];
+    const items = [
+      ...(taskSnapshot ? [taskSnapshot] : []),
+      ...this.convertHistoryEntry(entry).map((item) =>
+        labelReplayedSubagentCard(item, replay.subagentToolCalls),
+      ),
+    ];
     const isVisibleUserEntry =
       entry.type === "user" &&
       typeof entry.uuid === "string" &&
@@ -6937,88 +5439,14 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
-  /**
-   * Rebuild subagent rows while replaying history. A persisted Task/Agent
-   * tool_use opens a row (and becomes the parent for the sidechain entries that
-   * follow it, which carry no parent pointer of their own); its tool_result
-   * closes the row. Replaying both ends means a resumed session shows the same
-   * settled Task rows it showed while running.
-   */
-  private replayHistorySubagentRow(
-    entry: ClaudeHistoryEntry,
-    timeline: PersistedTimelineEntry[],
-    restoredIds: ReadonlySet<string>,
-  ): void {
-    const message = toObjectRecord(entry.message);
-    const content = message?.content;
-    if (!Array.isArray(content)) {
-      return;
-    }
-    for (const block of content) {
-      const record = toObjectRecord(block);
-      if (!record) {
-        continue;
-      }
-      // A subagent restored from its sidechain already carries identity and
-      // terminal status from the replay source (which also reads the child's
-      // own end_turn). Re-announcing it here would reset it to running.
-      const blockId = record.type === "tool_result" ? record.tool_use_id : record.id;
-      if (typeof blockId === "string" && restoredIds.has(blockId)) {
-        continue;
-      }
-      if (this.openHistorySubagentRow(record, timeline)) {
-        continue;
-      }
-      this.closeHistorySubagentRow(record, timeline);
-    }
-  }
-
-  /** Replay a Task/Agent tool_use as a row announce. Returns whether it matched. */
-  private openHistorySubagentRow(
-    record: Record<string, unknown>,
-    timeline: PersistedTimelineEntry[],
-  ): boolean {
-    if (record.type !== "tool_use" || typeof record.id !== "string") {
-      return false;
-    }
-    if (!isClaudeSubagentToolName(typeof record.name === "string" ? record.name : undefined)) {
-      return false;
-    }
-    const input = toObjectRecord(record.input);
-    const title =
-      (typeof input?.name === "string" && input.name) ||
-      (typeof input?.subagent_type === "string" && input.subagent_type) ||
-      "Claude subagent";
-    const description = typeof input?.description === "string" ? input.description : null;
-    this.historySidechainParent = { toolUseId: record.id, title, description };
-    timeline.push({
-      subagentToolUseId: record.id,
-      subagentUpsert: { title, description, status: "running" },
+  private resolveHistoryPath(sessionId: string): string | null {
+    const cwd = this.config.cwd;
+    if (!cwd) return null;
+    return claudeTranscriptPathSync({
+      cwd,
+      sessionId,
+      configDir: claudeConfigDir(this.harnessEnvironment),
     });
-    return true;
-  }
-
-  /** Replay the matching tool_result as the row's terminal status. */
-  private closeHistorySubagentRow(
-    record: Record<string, unknown>,
-    timeline: PersistedTimelineEntry[],
-  ): void {
-    const openRow = this.historySidechainParent;
-    if (!openRow || record.type !== "tool_result") {
-      return;
-    }
-    if (record.tool_use_id !== openRow.toolUseId) {
-      return;
-    }
-    timeline.push({
-      subagentToolUseId: openRow.toolUseId,
-      subagentUpsert: {
-        title: openRow.title,
-        description: openRow.description,
-        status: record.is_error ? "failed" : "completed",
-      },
-    });
-    this.historySidechainParent = null;
   }
 
   private convertHistoryEntry(entry: ClaudeHistoryEntry): AgentTimelineItem[] {
@@ -7032,7 +5460,7 @@ class ClaudeAgentSession implements AgentSession {
   //   - "user_message": coalesces all text blocks into a single user_message
   //     (matches extractUserMessageText semantics: trim each block, join with "\n\n")
   //
-  // suppressAssistantText only applies when textMessageType is "assistant_message" - user text
+  // suppressAssistantText only applies when textMessageType is "assistant_message" — user text
   // must never be suppressed since the TimelineAssembler only handles assistant text.
   //
   // NOTE: convertClaudeHistoryEntry uses extractUserMessageText directly instead of this function
@@ -7065,10 +5493,10 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     const items: AgentTimelineItem[] = [];
-    // User SDK entries can arrive as multiple text blocks, but Otto treats them as one message.
+    // User SDK entries can arrive as multiple text blocks, but Paseo treats them as one message.
     const userTextParts: string[] = [];
     for (const block of content) {
-      if (!isClaudeContentChunk(block)) {
+      if (!isClaudeContentChunk(block) || this.mapSubagentHandbackBlock(block, items)) {
         continue;
       }
       this.mapBlockToTimeline(block, {
@@ -7156,6 +5584,24 @@ class ClaudeAgentSession implements AgentSession {
     }
   }
 
+  // A subagent's handback call is its final message, and the call's result is only an
+  // acknowledgement, so neither becomes a tool call.
+  private mapSubagentHandbackBlock(block: ClaudeContentChunk, items: AgentTimelineItem[]): boolean {
+    if (typeof block.tool_use_id === "string" && this.subagentHandbackIds.has(block.tool_use_id)) {
+      this.subagentHandbackIds.delete(block.tool_use_id);
+      return true;
+    }
+    const handback = readClaudeSubagentHandback(block);
+    if (!handback) {
+      return false;
+    }
+    this.subagentHandbackIds.add(handback.callId);
+    if (handback.report) {
+      items.push({ type: "assistant_message", text: handback.report });
+    }
+    return true;
+  }
+
   private handleToolUseStart(block: ClaudeContentChunk, items: AgentTimelineItem[]): void {
     const entry = this.upsertToolUseEntry(block);
     if (!entry) {
@@ -7192,31 +5638,22 @@ class ClaudeAgentSession implements AgentSession {
     const { images, text } = splitClaudeToolResultImages(block.content);
     const output = this.buildToolOutput(text, block, entry);
 
-    if (block.is_error) {
-      this.pushToolCall(
-        mapClaudeFailedToolCall({
+    const settledToolCall = block.is_error
+      ? mapClaudeFailedToolCall({
           name: toolName,
           callId,
           input: entry?.input ?? null,
           output: output ?? null,
           error: { ...block, content: text },
-        }),
-        items,
-      );
-    } else {
-      this.pushToolCall(
-        this.withSidechainActionsLog(
-          mapClaudeCompletedToolCall({
-            name: toolName,
-            callId,
-            input: entry?.input ?? null,
-            output: output ?? null,
-          }),
-          block.tool_use_id,
-        ),
-        items,
-      );
-    }
+        })
+      : mapClaudeCompletedToolCall({
+          name: toolName,
+          callId,
+          input: entry?.input ?? null,
+          output: output ?? null,
+        });
+    this.pushToolCall(settledToolCall, items);
+    this.rememberSettledSubagentToolCall(settledToolCall, entry);
 
     for (const image of images) {
       const imageItem = renderProviderImageOutputAsAssistantMarkdown(image, {
@@ -7228,124 +5665,31 @@ class ClaudeAgentSession implements AgentSession {
     }
 
     if (typeof block.tool_use_id === "string") {
-      this.settleToolResultSubagentState(toolName, block.tool_use_id, block);
+      this.toolUseCache.delete(block.tool_use_id);
     }
   }
 
-  /**
-   * Retire the per-tool-call state a tool_result closes out. The sidechain row is
-   * settled rather than merely dropped: the tracker emits a "running" upsert when
-   * the sidechain opens and the provider subagent panel renders from those
-   * upserts, so a bare delete strands the row as running forever. `finish` emits
-   * the terminal upsert and clears the same state `delete` would have, and is a
-   * no-op for tool ids that never opened a sidechain.
-   */
-  private settleToolResultSubagentState(
-    toolName: string,
-    toolUseId: string,
-    block: ClaudeContentChunk,
-  ): void {
-    const isError = Boolean(block.is_error);
-    this.bindTaskTranscriptFromToolResult(toolName, toolUseId, block.content);
-    this.enqueueObservedSubagentSettled(toolName, toolUseId, isError);
-    this.toolUseCache.delete(toolUseId);
-    this.pendingObservedEvents.push(
-      ...this.sidechainTracker.finish(toolUseId, isError ? "failed" : "completed"),
-    );
-  }
-
-  /**
-   * Every Task/Agent tool_result (sync completion or async launch ack, at any
-   * depth) carries "agentId: <id>" - the sub-agent's on-disk transcript name.
-   * Bind the observed row to that transcript so its usage comes from disk (the
-   * live sidechain lacks final output counts, and depth ≥ 2 sub-agents never
-   * stream at all). Timeline is emitted from disk only for nested keys, which
-   * have no live sidechain feed - depth-1 panes are already fed live.
-   */
-  private bindTaskTranscriptFromToolResult(
-    toolName: string,
-    toolUseId: string,
-    content: unknown,
-  ): void {
-    if (!isClaudeSubagentToolName(toolName)) {
-      return;
-    }
-    const agentId = readClaudeSubagentAgentIdFromToolResult(content);
-    if (!agentId) {
-      return;
-    }
-    this.taskTranscriptWatcher.bind({
-      key: toolUseId,
-      agentId,
-      emitTimeline: this.observedParentKeyByToolUseId.has(toolUseId),
-    });
-  }
-
-  /**
-   * The completed Task/Agent item maps its sub_agent log from the final
-   * report only; re-attach the sidechain's accumulated "[Tool] summary"
-   * action lines so the finished card keeps the activity history the running
-   * updates built up (report first - short consumers truncate from the head).
-   */
-  private withSidechainActionsLog(
+  private rememberSettledSubagentToolCall(
     item: Extract<AgentTimelineItem, { type: "tool_call" }> | null,
-    toolUseId: unknown,
-  ): Extract<AgentTimelineItem, { type: "tool_call" }> | null {
-    if (!item || item.detail.type !== "sub_agent" || typeof toolUseId !== "string") {
-      return item;
-    }
-    const actionsLog = this.sidechainTracker.getAccumulatedLog(toolUseId);
-    if (!actionsLog) {
-      return item;
-    }
-    return {
-      ...item,
-      detail: {
-        ...item.detail,
-        log: [item.detail.log, actionsLog].filter(Boolean).join("\n"),
-      },
-    };
+    entry: ToolUseCacheEntry | undefined,
+  ): void {
+    const subagentId = item ? this.taskProtocolSource.resolveSubagentId(item.callId) : undefined;
+    if (!item || !subagentId) return;
+    this.settledSubagentToolCalls.set(subagentId, {
+      item,
+      input: entry?.input ?? null,
+      turnId: this.activeForegroundTurnId ?? this.autonomousTurn?.id ?? null,
+    });
   }
 
-  /**
-   * Foreground Task settled: mark the observed subagent idle/error. Only keys
-   * announced live can enqueue - history replay stays inert. Queued instead of
-   * pushed because tool_result mapping runs inside item mapping, not event
-   * building; translateMessageToEvents drains the queue.
-   *
-   * Deliberately NOT mirrored for background shell tasks: a backgrounded Bash
-   * call's tool_result fires immediately with a "running in the background"
-   * ack, not real completion - treating that as "settled" would mark a still
-   * -running shell task idle. Real completion for those arrives via
-   * task_notification (see appendBackgroundShellTaskEvent).
-   */
-  private enqueueObservedSubagentSettled(
-    toolName: string,
-    toolUseId: string,
-    isError: boolean,
-  ): void {
-    if (!isClaudeSubagentToolName(toolName) || !this.announcedObservedSubagents.has(toolUseId)) {
-      return;
+  /** A finished child streams no more frames, so its settled call has nothing left to update. */
+  private releaseFinishedSubagentToolCalls(observations: SubagentObservation[]): void {
+    for (const observation of observations) {
+      if (observation.kind === "status" && observation.status !== "running") {
+        this.settledSubagentToolCalls.delete(observation.id);
+        this.sidechainTracker.delete(observation.id);
+      }
     }
-    // Remember the sighting before settling: if this result was only a launch
-    // ack, the run keeps going and a later task_progress reopens the row - at
-    // which point this is the proof that the row is backgrounded and an
-    // interrupt of the parent turn will not stop it.
-    this.observedKeysWithToolResult.add(toolUseId);
-    this.settledObservedSubagents.set(toolUseId, isError ? "error" : "idle");
-    this.taskTranscriptWatcher.markSettled(toolUseId, isError ? "error" : "idle");
-    this.pendingObservedEvents.push({
-      type: "observed_subagent_updated",
-      provider: "claude",
-      update: {
-        key: toolUseId,
-        status: isError ? "error" : "idle",
-        ...(this.observedParentKeyByToolUseId.has(toolUseId)
-          ? { parentKey: this.observedParentKeyByToolUseId.get(toolUseId) }
-          : {}),
-        ...(isError ? { requiresAttention: true } : {}),
-      },
-    });
   }
 
   private buildToolOutput(
@@ -7514,7 +5858,6 @@ class ClaudeAgentSession implements AgentSession {
       ) {
         this.toolUseIndexToId.set(event.index, block.id);
         this.toolUseInputBuffers.delete(block.id);
-        this.toolUseInputEmitState.delete(block.id);
       }
       return false;
     }
@@ -7530,7 +5873,6 @@ class ClaudeAgentSession implements AgentSession {
     if (event.type === "content_block_stop" && typeof event.index === "number") {
       const toolId = this.toolUseIndexToId.get(event.index);
       if (toolId) {
-        this.flushRunningToolInput(toolId);
         this.toolUseIndexToId.delete(event.index);
         this.toolUseInputBuffers.delete(toolId);
       }
@@ -7610,14 +5952,6 @@ class ClaudeAgentSession implements AgentSession {
     }
     const buffer = (this.toolUseInputBuffers.get(toolId) ?? "") + partialJson;
     this.toolUseInputBuffers.set(toolId, buffer);
-    if (!this.claimRunningToolInputRead(toolId, buffer.length)) {
-      return;
-    }
-    this.readRunningToolInput(toolId, buffer);
-  }
-
-  /** Re-reads one streamed tool input and pushes a running tool_call if it changed. */
-  private readRunningToolInput(toolId: string, buffer: string): void {
     const entry = this.toolUseCache.get(toolId);
     const parsed = parsePartialJsonObject(buffer);
     if (!entry || !parsed) {
@@ -7643,44 +5977,6 @@ class ClaudeAgentSession implements AgentSession {
         output: null,
       }),
     );
-  }
-
-  /**
-   * Rate-limits how often one streamed tool input is re-read: buffers under the
-   * floor pass straight through, larger ones at most once per interval or per
-   * growth step. Skipped deltas are marked pending so {@link flushRunningToolInput}
-   * still sends the tail.
-   */
-  private claimRunningToolInputRead(toolId: string, bufferLength: number): boolean {
-    if (bufferLength < RUNNING_TOOL_INPUT_THROTTLE_FLOOR_CHARS) {
-      return true;
-    }
-    const state = this.toolUseInputEmitState.get(toolId);
-    if (
-      state &&
-      Date.now() - state.lastEmitAt < RUNNING_TOOL_INPUT_EMIT_INTERVAL_MS &&
-      bufferLength - state.lastEmitLength < RUNNING_TOOL_INPUT_EMIT_GROWTH_CHARS
-    ) {
-      state.pending = true;
-      return false;
-    }
-    this.toolUseInputEmitState.set(toolId, {
-      lastEmitAt: Date.now(),
-      lastEmitLength: bufferLength,
-      pending: false,
-    });
-    return true;
-  }
-
-  /** Reads the buffer one last time when the input block ends, so no tail is dropped. */
-  private flushRunningToolInput(toolId: string): void {
-    const state = this.toolUseInputEmitState.get(toolId);
-    this.toolUseInputEmitState.delete(toolId);
-    const buffer = this.toolUseInputBuffers.get(toolId);
-    if (!state?.pending || buffer === undefined) {
-      return;
-    }
-    this.readRunningToolInput(toolId, buffer);
   }
 
   private normalizeToolInput(input: unknown): AgentMetadata | null {
@@ -7874,11 +6170,243 @@ function normalizeHistoryBlocks(content: unknown): ClaudeContentChunk[] | null {
   return null;
 }
 
+function parseClaudeHistoryRecords(content: string): ClaudeHistoryEntry[] {
+  const entries: ClaudeHistoryEntry[] = [];
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const entry = toObjectRecord(JSON.parse(trimmed));
+      if (entry) entries.push(entry);
+    } catch {
+      // Ignore individual corrupt history rows, matching the parent history replay behavior.
+    }
+  }
+  return entries;
+}
+
+/** The parent's card for a subagent, labeled with its type and task. */
+function buildClaudeSubagentCardDetail(
+  facts: ClaudeSubagentCardFacts,
+): Extract<ToolCallDetail, { type: "sub_agent" }> {
+  return {
+    type: "sub_agent",
+    ...(facts.title ? { subAgentType: facts.title } : {}),
+    ...(facts.description ? { description: facts.description } : {}),
+    log: "",
+    actions: [],
+  };
+}
+
+/**
+ * Live, a Task call's card is built from the task protocol's declaration. Replay has no task
+ * protocol, so the generic tool mapper leaves the card unlabeled; label it from the same facts.
+ */
+function labelReplayedSubagentCard(
+  item: AgentTimelineItem,
+  subagentToolCalls: ReadonlyMap<string, ClaudeSubagentCardFacts>,
+): AgentTimelineItem {
+  if (item.type !== "tool_call") return item;
+  const facts = subagentToolCalls.get(item.callId);
+  if (!facts) return item;
+  return { ...item, detail: buildClaudeSubagentCardDetail(facts) };
+}
+
+/**
+ * Collect what the parent transcript knows about its Task calls, in the shape the shared replay
+ * source consumes. The agentId scrape is kept only as a fallback for sessions recorded before
+ * Claude Code wrote the meta sidecar.
+ */
+function readClaudeReplayParentFacts(parentEntries: ClaudeHistoryEntry[]): ClaudeReplayParentFacts {
+  const toolCalls = new Map<string, { title?: string; description?: string }>();
+  for (const [id, call] of readClaudeHistoricalSubagentToolCalls(parentEntries)) {
+    toolCalls.set(id, {
+      ...((call.name ?? call.subagentType) ? { title: call.name ?? call.subagentType } : {}),
+      ...(call.description ? { description: call.description } : {}),
+    });
+  }
+
+  // Read outcomes straight off the tool_result blocks rather than reusing the agentId scrape,
+  // so a subagent linked through its meta sidecar still gets a status when the scrape missed it.
+  const outcomesByToolCallId = new Map<string, { failed: boolean }>();
+  for (const entry of parentEntries) {
+    const content = toObjectRecord(entry.message)?.content;
+    if (!Array.isArray(content)) continue;
+    for (const value of content) {
+      const block = toObjectRecord(value);
+      if (block?.type !== "tool_result" || typeof block.tool_use_id !== "string") continue;
+      if (!toolCalls.has(block.tool_use_id)) continue;
+      outcomesByToolCallId.set(block.tool_use_id, { failed: block.is_error === true });
+    }
+  }
+
+  return {
+    toolCalls,
+    linksByAgentId: readClaudeHistoricalSubagentToolResults(parentEntries),
+    outcomesByToolCallId,
+  };
+}
+
+interface ClaudeSidechainHistory {
+  contents: string[];
+  workflowContents: string[];
+  workflowSidechainContentsByRunId: Map<string, string[]>;
+  /** agentId -> sidecar metadata, when Claude Code wrote one next to the transcript. */
+  metaByAgentId: Map<string, ClaudeSubagentMeta>;
+}
+
+const CLAUDE_SUBAGENT_META_FILE = /^agent-(.+)\.meta\.json$/;
+
+function readClaudeSidechainHistory(historyPath: string): ClaudeSidechainHistory {
+  const sessionDirectory = path.join(
+    path.dirname(historyPath),
+    path.basename(historyPath, ".jsonl"),
+  );
+  const sidechainDirectory = path.join(sessionDirectory, "subagents");
+  const history: ClaudeSidechainHistory = {
+    contents: [],
+    workflowContents: [],
+    workflowSidechainContentsByRunId: new Map(),
+    metaByAgentId: new Map(),
+  };
+  const workflowDirectory = path.join(sessionDirectory, "workflows");
+  if (fs.existsSync(workflowDirectory)) {
+    for (const entry of fs.readdirSync(workflowDirectory, { withFileTypes: true })) {
+      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
+      try {
+        history.workflowContents.push(
+          fs.readFileSync(path.join(workflowDirectory, entry.name), "utf8"),
+        );
+      } catch {
+        // A partial or unreadable run summary must not fail the rest of history ingestion.
+      }
+    }
+  }
+  if (!fs.existsSync(sidechainDirectory)) return history;
+
+  const directories = [sidechainDirectory];
+  while (directories.length > 0) {
+    const directory = directories.pop();
+    if (!directory) continue;
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        directories.push(entryPath);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+      if (entry.name.endsWith(".jsonl")) {
+        recordClaudeSidechainContents(history, sidechainDirectory, entryPath);
+        continue;
+      }
+      // The sidecar carries the Task tool_use id, which is the same id the live stream keys on.
+      // Reading it is what lets replay and live agree instead of each deriving its own link.
+      const metaMatch = CLAUDE_SUBAGENT_META_FILE.exec(entry.name);
+      if (!metaMatch?.[1]) continue;
+      try {
+        const meta = parseClaudeSubagentMeta(fs.readFileSync(entryPath, "utf8"));
+        if (meta) history.metaByAgentId.set(metaMatch[1], meta);
+      } catch {
+        // Undocumented internals: a missing or unreadable sidecar must never fail ingestion.
+      }
+    }
+  }
+  return history;
+}
+
+function recordClaudeSidechainContents(
+  history: ClaudeSidechainHistory,
+  sidechainDirectory: string,
+  entryPath: string,
+): void {
+  const contents = fs.readFileSync(entryPath, "utf8");
+  const relativeParts = path.relative(sidechainDirectory, entryPath).split(path.sep);
+  const workflowRunId =
+    relativeParts[0] === "workflows" && relativeParts.length >= 3 ? relativeParts[1] : undefined;
+  if (!workflowRunId) {
+    history.contents.push(contents);
+    return;
+  }
+
+  const workflowContents = history.workflowSidechainContentsByRunId.get(workflowRunId) ?? [];
+  workflowContents.push(contents);
+  history.workflowSidechainContentsByRunId.set(workflowRunId, workflowContents);
+}
+
+interface ClaudeHistoricalSubagentToolCall {
+  name?: string;
+  subagentType?: string;
+  description?: string;
+}
+
+function readClaudeHistoricalSubagentToolCalls(
+  entries: ClaudeHistoryEntry[],
+): Map<string, ClaudeHistoricalSubagentToolCall> {
+  const toolCalls = new Map<string, ClaudeHistoricalSubagentToolCall>();
+  for (const entry of entries) {
+    const content = toObjectRecord(entry.message)?.content;
+    if (!Array.isArray(content)) continue;
+    for (const value of content) {
+      const block = toObjectRecord(value);
+      if (
+        block?.type !== "tool_use" ||
+        (block.name !== "Task" && block.name !== "Agent") ||
+        typeof block.id !== "string"
+      ) {
+        continue;
+      }
+      const input = toObjectRecord(block.input);
+      const name = readNonEmptyString(input?.name);
+      const subagentType = readNonEmptyString(input?.subagent_type);
+      const description = readNonEmptyString(input?.description);
+      toolCalls.set(block.id, {
+        ...(name ? { name } : {}),
+        ...(subagentType ? { subagentType } : {}),
+        ...(description ? { description } : {}),
+      });
+    }
+  }
+  return toolCalls;
+}
+
+function readClaudeHistoricalSubagentToolResults(
+  entries: ClaudeHistoryEntry[],
+): Map<string, { toolCallId: string; failed: boolean }> {
+  const results = new Map<string, { toolCallId: string; failed: boolean }>();
+  for (const entry of entries) {
+    const content = toObjectRecord(entry.message)?.content;
+    if (!Array.isArray(content)) continue;
+    for (const value of content) {
+      const block = toObjectRecord(value);
+      if (block?.type !== "tool_result" || typeof block.tool_use_id !== "string") continue;
+      const match = /agentId:\s*([\w-]+)/.exec(JSON.stringify(block.content));
+      if (!match?.[1]) continue;
+      results.set(match[1], { toolCallId: block.tool_use_id, failed: block.is_error === true });
+    }
+  }
+  return results;
+}
+
+function groupClaudeSidechainEntries(
+  entries: ClaudeHistoryEntry[],
+): Map<string, ClaudeHistoryEntry[]> {
+  const entriesByAgentId = new Map<string, ClaudeHistoryEntry[]>();
+  for (const entry of entries) {
+    if (typeof entry.agentId !== "string") continue;
+    const grouped = entriesByAgentId.get(entry.agentId) ?? [];
+    grouped.push(entry);
+    entriesByAgentId.set(entry.agentId, grouped);
+  }
+  return entriesByAgentId;
+}
+
 interface ClaudeHistoryEntry {
   type?: unknown;
   subtype?: unknown;
   isCompactSummary?: unknown;
   isSidechain?: unknown;
+  agentId?: unknown;
+  timestamp?: unknown;
   uuid?: unknown;
   message?: { content?: unknown; [key: string]: unknown };
   [key: string]: unknown;
@@ -8077,43 +6605,33 @@ async function pathExists(target: string): Promise<boolean> {
 async function collectRecentClaudeSessions(
   root: string,
   limit: number,
+  options?: { rootIsProjectDir?: boolean },
 ): Promise<ClaudeSessionCandidate[]> {
-  let projectDirs: string[];
+  let rootEntries: string[];
   try {
-    projectDirs = await fsPromises.readdir(root);
+    rootEntries = await fsPromises.readdir(root);
   } catch {
     return [];
   }
-  return collectClaudeSessionsInProjects(
-    projectDirs.map((dirName) => path.join(root, dirName)),
-    limit,
-  );
-}
-
-/**
- * Collect session candidates from an explicit set of Claude project directories,
- * newest first. Split out from the root scan so a cwd hint can target the single
- * project directory it maps to instead of ranking every project on disk.
- */
-async function collectClaudeSessionsInProjects(
-  projectPaths: string[],
-  limit: number,
-): Promise<ClaudeSessionCandidate[]> {
-  const projectFileLists = await Promise.all(
-    projectPaths.map(async (projectPath) => {
-      try {
-        const stats = await fsPromises.stat(projectPath);
-        if (!stats.isDirectory()) return { projectPath, files: [] as string[] };
-        const files = await fsPromises.readdir(projectPath);
-        return { projectPath, files };
-      } catch {
-        return { projectPath, files: [] as string[] };
-      }
-    }),
-  );
-  const fileEntries = projectFileLists.flatMap(({ projectPath, files }) =>
-    files.filter((f) => f.endsWith(".jsonl")).map((f) => path.join(projectPath, f)),
-  );
+  const fileEntries = options?.rootIsProjectDir
+    ? rootEntries.filter((file) => file.endsWith(".jsonl")).map((file) => path.join(root, file))
+    : (
+        await Promise.all(
+          rootEntries.map(async (dirName) => {
+            const projectPath = path.join(root, dirName);
+            try {
+              const stats = await fsPromises.stat(projectPath);
+              if (!stats.isDirectory()) return [] as string[];
+              const files = await fsPromises.readdir(projectPath);
+              return files
+                .filter((file) => file.endsWith(".jsonl"))
+                .map((file) => path.join(projectPath, file));
+            } catch {
+              return [] as string[];
+            }
+          }),
+        )
+      ).flat();
   const statResults = await Promise.all(
     fileEntries.map(async (fullPath) => {
       try {
@@ -8252,6 +6770,66 @@ function normalizeClaudeSessionTitle(title: string | null): string | null {
   return normalized ? normalized : null;
 }
 
+const CLAUDE_CUSTOM_TITLE_TYPE = "custom-title";
+
+/**
+ * The `custom-title` record is re-emitted every time the session is saved, so
+ * the current name is the last usable one in the file. Searching backwards finds it without
+ * walking the transcript, which matters because sessions reach tens of
+ * megabytes.
+ */
+function readLastClaudeCustomTitle(content: string): string | null {
+  const needle = `"${CLAUDE_CUSTOM_TITLE_TYPE}"`;
+  let at = content.lastIndexOf(needle);
+  while (at >= 0) {
+    const lineStart = content.lastIndexOf("\n", at) + 1;
+    const lineEnd = content.indexOf("\n", at);
+    const line = lineEnd === -1 ? content.slice(lineStart) : content.slice(lineStart, lineEnd);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line.trim());
+    } catch {
+      parsed = undefined;
+    }
+    const entry = toObjectRecord(parsed);
+    if (entry && !entry.isSidechain && entry.type === CLAUDE_CUSTOM_TITLE_TYPE) {
+      const title = normalizeClaudeSessionTitle(
+        typeof entry.customTitle === "string" ? entry.customTitle : null,
+      );
+      if (title) {
+        return title;
+      }
+    }
+    // The needle also matches a prompt that quotes it, and a record can carry no
+    // usable name, so keep looking backwards for one that does.
+    at = at <= 0 ? -1 : content.lastIndexOf(needle, at - 1);
+  }
+  return null;
+}
+
+function isErrnoException(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
+
+async function readClaudeRenamedSessionTitle(input: {
+  cwd: string;
+  sessionId: string;
+  configDir: string;
+}): Promise<string | null> {
+  let content: string;
+  try {
+    content = await fsPromises.readFile(claudeTranscriptPathSync(input), "utf8");
+  } catch (error) {
+    // A session with no transcript on disk has no rename to carry over. Every
+    // other read failure is a real fault and stays explicit.
+    if (isErrnoException(error) && error.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+  return readLastClaudeCustomTitle(content);
+}
+
 function normalizeImportablePromptPreview(text: string): string | null {
   const normalized = text.trim().replace(/\s+/g, " ");
   if (!normalized) return null;
@@ -8321,7 +6899,8 @@ function extractClaudeUserText(messageRaw: unknown): string | null {
 
 interface ClaudeCommandLifecycle {
   commandUuid: string;
-  state: "queued" | "started" | "completed";
+  /** "cancelled" is terminal too: API errors, interrupts and "now" pre-emption end a message. */
+  state: "queued" | "started" | "completed" | "cancelled";
 }
 
 /** Runtime-only Claude frames are validated here because the SDK's public union omits them. */
@@ -8330,7 +6909,7 @@ function readClaudeCommandLifecycle(message: unknown): ClaudeCommandLifecycle | 
   if (record?.type !== "command_lifecycle") return null;
   if (
     typeof record.command_uuid !== "string" ||
-    !["queued", "started", "completed"].includes(String(record.state))
+    !["queued", "started", "completed", "cancelled"].includes(String(record.state))
   ) {
     return null;
   }
@@ -8338,211 +6917,4 @@ function readClaudeCommandLifecycle(message: unknown): ClaudeCommandLifecycle | 
     commandUuid: record.command_uuid,
     state: record.state as ClaudeCommandLifecycle["state"],
   };
-}
-
-const CLAUDE_SUBAGENT_META_FILE = /^agent-(.+)\.meta\.json$/;
-
-function parseClaudeHistoryRecords(content: string): ClaudeHistoryEntry[] {
-  const entries: ClaudeHistoryEntry[] = [];
-  for (const line of content.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    try {
-      const entry = toObjectRecord(JSON.parse(trimmed));
-      if (entry) entries.push(entry);
-    } catch {
-      // Ignore individual corrupt history rows, matching the parent history replay behavior.
-    }
-  }
-  return entries;
-}
-
-/**
- * Collect what the parent transcript knows about its Task calls, in the shape the shared replay
- * source consumes. The agentId scrape is kept only as a fallback for sessions recorded before
- * Claude Code wrote the meta sidecar.
- */
-function readClaudeReplayParentFacts(parentEntries: ClaudeHistoryEntry[]): ClaudeReplayParentFacts {
-  const toolCalls = new Map<string, { title?: string; description?: string }>();
-  for (const [id, call] of readClaudeHistoricalSubagentToolCalls(parentEntries)) {
-    toolCalls.set(id, {
-      ...((call.name ?? call.subagentType) ? { title: call.name ?? call.subagentType } : {}),
-      ...(call.description ? { description: call.description } : {}),
-    });
-  }
-
-  // Read outcomes straight off the tool_result blocks rather than reusing the agentId scrape,
-  // so a subagent linked through its meta sidecar still gets a status when the scrape missed it.
-  const outcomesByToolCallId = new Map<string, { failed: boolean }>();
-  for (const entry of parentEntries) {
-    const content = toObjectRecord(entry.message)?.content;
-    if (!Array.isArray(content)) continue;
-    for (const value of content) {
-      const block = toObjectRecord(value);
-      if (block?.type !== "tool_result" || typeof block.tool_use_id !== "string") continue;
-      if (!toolCalls.has(block.tool_use_id)) continue;
-      outcomesByToolCallId.set(block.tool_use_id, { failed: block.is_error === true });
-    }
-  }
-
-  return {
-    toolCalls,
-    linksByAgentId: readClaudeHistoricalSubagentToolResults(parentEntries),
-    outcomesByToolCallId,
-  };
-}
-
-interface ClaudeSidechainHistory {
-  contents: string[];
-  workflowContents: string[];
-  workflowSidechainContentsByRunId: Map<string, string[]>;
-  /** agentId -> sidecar metadata, when Claude Code wrote one next to the transcript. */
-  metaByAgentId: Map<string, ClaudeSubagentMeta>;
-}
-
-function readClaudeSidechainHistory(historyPath: string): ClaudeSidechainHistory {
-  const sessionDirectory = path.join(
-    path.dirname(historyPath),
-    path.basename(historyPath, ".jsonl"),
-  );
-  const sidechainDirectory = path.join(sessionDirectory, "subagents");
-  const history: ClaudeSidechainHistory = {
-    contents: [],
-    workflowContents: [],
-    workflowSidechainContentsByRunId: new Map(),
-    metaByAgentId: new Map(),
-  };
-  const workflowDirectory = path.join(sessionDirectory, "workflows");
-  if (fs.existsSync(workflowDirectory)) {
-    for (const entry of fs.readdirSync(workflowDirectory, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith(".json")) continue;
-      try {
-        history.workflowContents.push(
-          fs.readFileSync(path.join(workflowDirectory, entry.name), "utf8"),
-        );
-      } catch {
-        // A partial or unreadable run summary must not fail the rest of history ingestion.
-      }
-    }
-  }
-  if (!fs.existsSync(sidechainDirectory)) return history;
-
-  const directories = [sidechainDirectory];
-  while (directories.length > 0) {
-    const directory = directories.pop();
-    if (!directory) continue;
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-      const entryPath = path.join(directory, entry.name);
-      if (entry.isDirectory()) {
-        directories.push(entryPath);
-        continue;
-      }
-      if (!entry.isFile()) continue;
-      if (entry.name.endsWith(".jsonl")) {
-        try {
-          recordClaudeSidechainContents(history, sidechainDirectory, entryPath);
-        } catch {
-          // Preserve the parent and other sidechains when one transcript is unreadable.
-        }
-        continue;
-      }
-      // The sidecar carries the Task tool_use id, which is the same id the live stream keys on.
-      // Reading it is what lets replay and live agree instead of each deriving its own link.
-      const metaMatch = CLAUDE_SUBAGENT_META_FILE.exec(entry.name);
-      if (!metaMatch?.[1]) continue;
-      try {
-        const meta = parseClaudeSubagentMeta(fs.readFileSync(entryPath, "utf8"));
-        if (meta) history.metaByAgentId.set(metaMatch[1], meta);
-      } catch {
-        // Undocumented internals: a missing or unreadable sidecar must never fail ingestion.
-      }
-    }
-  }
-  return history;
-}
-
-function recordClaudeSidechainContents(
-  history: ClaudeSidechainHistory,
-  sidechainDirectory: string,
-  entryPath: string,
-): void {
-  const contents = fs.readFileSync(entryPath, "utf8");
-  const relativeParts = path.relative(sidechainDirectory, entryPath).split(path.sep);
-  const workflowRunId =
-    relativeParts[0] === "workflows" && relativeParts.length >= 3 ? relativeParts[1] : undefined;
-  if (!workflowRunId) {
-    history.contents.push(contents);
-    return;
-  }
-
-  const workflowContents = history.workflowSidechainContentsByRunId.get(workflowRunId) ?? [];
-  workflowContents.push(contents);
-  history.workflowSidechainContentsByRunId.set(workflowRunId, workflowContents);
-}
-
-interface ClaudeHistoricalSubagentToolCall {
-  name?: string;
-  subagentType?: string;
-  description?: string;
-}
-
-function readClaudeHistoricalSubagentToolCalls(
-  entries: ClaudeHistoryEntry[],
-): Map<string, ClaudeHistoricalSubagentToolCall> {
-  const toolCalls = new Map<string, ClaudeHistoricalSubagentToolCall>();
-  for (const entry of entries) {
-    const content = toObjectRecord(entry.message)?.content;
-    if (!Array.isArray(content)) continue;
-    for (const value of content) {
-      const block = toObjectRecord(value);
-      if (
-        block?.type !== "tool_use" ||
-        (block.name !== "Task" && block.name !== "Agent") ||
-        typeof block.id !== "string"
-      ) {
-        continue;
-      }
-      const input = toObjectRecord(block.input);
-      const name = readNonEmptyString(input?.name);
-      const subagentType = readNonEmptyString(input?.subagent_type);
-      const description = readNonEmptyString(input?.description);
-      toolCalls.set(block.id, {
-        ...(name ? { name } : {}),
-        ...(subagentType ? { subagentType } : {}),
-        ...(description ? { description } : {}),
-      });
-    }
-  }
-  return toolCalls;
-}
-
-function readClaudeHistoricalSubagentToolResults(
-  entries: ClaudeHistoryEntry[],
-): Map<string, { toolCallId: string; failed: boolean }> {
-  const results = new Map<string, { toolCallId: string; failed: boolean }>();
-  for (const entry of entries) {
-    const content = toObjectRecord(entry.message)?.content;
-    if (!Array.isArray(content)) continue;
-    for (const value of content) {
-      const block = toObjectRecord(value);
-      if (block?.type !== "tool_result" || typeof block.tool_use_id !== "string") continue;
-      const match = /agentId:\s*([\w-]+)/.exec(JSON.stringify(block.content));
-      if (!match?.[1]) continue;
-      results.set(match[1], { toolCallId: block.tool_use_id, failed: block.is_error === true });
-    }
-  }
-  return results;
-}
-
-function groupClaudeSidechainEntries(
-  entries: ClaudeHistoryEntry[],
-): Map<string, ClaudeHistoryEntry[]> {
-  const entriesByAgentId = new Map<string, ClaudeHistoryEntry[]>();
-  for (const entry of entries) {
-    if (typeof entry.agentId !== "string") continue;
-    const grouped = entriesByAgentId.get(entry.agentId) ?? [];
-    grouped.push(entry);
-    entriesByAgentId.set(entry.agentId, grouped);
-  }
-  return entriesByAgentId;
 }

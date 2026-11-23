@@ -83,8 +83,8 @@ vi.mock("react-native", async (importOriginal) => {
   };
 });
 
-vi.mock("@/components/icons/material-icons", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/components/icons/material-icons")>();
+vi.mock("lucide-react-native", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("lucide-react-native")>();
   const icon = (name: string) => {
     const Icon = () => React.createElement("span", { "data-icon": name });
     Icon.displayName = name;
@@ -102,19 +102,6 @@ vi.mock("@/components/icons/material-icons", async (importOriginal) => {
 
 vi.mock("expo-router", () => ({
   router: { push },
-}));
-
-vi.mock("react-i18next", () => ({
-  useTranslation: () => ({
-    t: (key: string, values?: Record<string, string>) => {
-      if (key === "sidebar.project.empty.title") return "No projects yet";
-      if (key === "settings.projectList.hostLoadFailed") {
-        return `Couldn't load projects from host ${values?.hostName}: ${values?.message}`;
-      }
-      if (key === "settings.projectList.editProject") return `Edit ${values?.projectName}`;
-      return key;
-    },
-  }),
 }));
 
 vi.mock("@/components/ui/loading-spinner", () => ({
@@ -184,6 +171,7 @@ vi.mock("@/projects/icons", () => ({
   useProjectIcons: () => new Map(),
 }));
 
+import { i18n } from "@/i18n/i18next";
 import ProjectsScreen from "./projects-screen";
 
 function workspaceSummary(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
@@ -194,6 +182,7 @@ function workspaceSummary(overrides: Partial<WorkspaceSummary> = {}): WorkspaceS
     status: "done",
     currentBranch: "main",
     changeRequestNumber: null,
+    statusEnteredAt: null,
     ...overrides,
   };
 }
@@ -204,7 +193,6 @@ function hostEntry(overrides: Partial<ProjectHostEntry> = {}): ProjectHostEntry 
     projectId: "project-a",
     projectName: "Project",
     projectCustomName: null,
-    projectKanban: null,
     serverName: "alpha",
     isOnline: true,
     repoRoot: "/home/me/proj",
@@ -221,7 +209,6 @@ function project(overrides: Partial<ProjectSummary> = {}): ProjectSummary {
   const onlineHostCount = overrides.onlineHostCount ?? hosts.filter((h) => h.isOnline).length;
   return {
     viewKey: "remote:github.com/acme/app",
-    projectKey: "remote:github.com/acme/app",
     projectName: "acme/app",
     hosts,
     totalWorkspaceCount,
@@ -253,7 +240,8 @@ describe("ProjectsScreen", () => {
   let container: HTMLElement | null = null;
   let root: Root | null = null;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    await i18n.changeLanguage("en");
     vi.stubGlobal("React", React);
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     container = document.createElement("div");

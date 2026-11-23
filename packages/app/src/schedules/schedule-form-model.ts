@@ -1,9 +1,10 @@
 import type {
+  AgentMode,
   AgentModelDefinition,
   AgentProvider,
   ProviderSnapshotEntry,
-} from "@otto-code/protocol/agent-types";
-import type { ScheduleCadence, ScheduleSummary } from "@otto-code/protocol/schedule/types";
+} from "@getpaseo/protocol/agent-types";
+import type { ScheduleCadence, ScheduleSummary } from "@getpaseo/protocol/schedule/types";
 import type { FormPreferences } from "@/create-agent-preferences/preferences";
 import { formatThinkingOptionLabel } from "@/agent-controls/labels";
 import {
@@ -59,6 +60,7 @@ export interface ScheduleDisclosureState {
   showProjectField: boolean;
   showModelField: boolean;
   showThinkingField: boolean;
+  showModeField: boolean;
   showIsolationField: boolean;
   showArchiveOnFinishField: boolean;
 }
@@ -75,14 +77,13 @@ export interface ScheduleFormProjectOption {
   testID: string;
 }
 
-export type ScheduleFormTargetKind = "agent" | "new-agent" | "workflow";
+export type ScheduleFormTargetKind = "agent" | "new-agent";
 type CronCadence = Extract<ScheduleCadence, { type: "cron" }>;
 type ProviderResolutionStatus = "idle" | "pending" | "complete";
 
 export interface ScheduleFormState {
   mode: "create" | "edit";
   targetKind: ScheduleFormTargetKind;
-  selectedWorkflowDefinitionId: string;
   name: string;
   prompt: string;
   maxRuns: string;
@@ -93,22 +94,17 @@ export interface ScheduleFormState {
   selectedServerId: string | null;
   selectedProvider: AgentProvider | null;
   selectedModel: string;
-  /**
-   * Internal only - no mode field is rendered and modeId is never submitted:
-   * schedule runs are unattended, so a mode picker would be a trap (an
-   * attended mode fails the run at its first approval prompt). The value
-   * still rides along the shared provider-selection resolution so the user's
-   * per-provider mode preference (used by attended forms like the composer)
-   * is preserved rather than clobbered when this form persists preferences.
-   */
+  agentProfile?: string; // OTTO(schedule-profiles)
   selectedMode: string;
   selectedThinkingOptionId: string;
   workingDir: string;
   projectDisplay: ScheduleFormDisplay | null;
   selectedProjectOptionId: string;
   selectedModelDisplay: ScheduleFormDisplay | null;
+  selectedModeDisplay: ScheduleFormDisplay;
   selectedThinkingDisplay: ScheduleFormDisplay | null;
   modelSelectorProviders: ProviderSelectorProvider[];
+  modeOptions: AgentMode[];
   availableThinkingOptions: NonNullable<AgentModelDefinition["thinkingOptions"]>;
   archiveOnFinish: boolean;
   isolation: "local" | "worktree";
@@ -132,11 +128,10 @@ export interface ScheduleFormModel {
   applyPreferences: (preferences: FormPreferences | undefined) => void;
   applyProviderSnapshot: (serverId: string, snapshot: ScheduleFormProviderSnapshot) => void;
   setHost: (serverId: string | null) => void;
-  setTargetKind: (targetKind: ScheduleFormTargetKind) => void;
-  setWorkflowDefinition: (definitionId: string) => void;
   setProject: (optionId: string, display: ScheduleFormDisplay) => void;
-  setModel: (provider: AgentProvider, modelId: string) => void;
+  setModel: (provider: AgentProvider, modelId: string, agentProfile?: string) => void;
   setThinking: (thinkingOptionId: string) => void;
+  setSessionMode: (modeId: string) => void;
   setName: (value: string) => void;
   setPrompt: (value: string) => void;
   setMaxRuns: (value: string) => void;
@@ -158,6 +153,9 @@ function newAgentConfig(schedule: ScheduleFormSnapshot["schedule"]) {
   return null;
 }
 
+function scheduleBinding(config: ReturnType<typeof newAgentConfig>) {
+  return config?.agentProfile ?? config?.personality;
+}
 function buildProjectOptionTestId(optionId: string): string {
   const targetKey = optionId.slice(PROJECT_OPTION_PREFIX.length).replace(/^[^:]+:/, "");
   return `schedule-project-option-${targetKey}`;
@@ -243,6 +241,13 @@ function resolveSelectedEntry(
   return entries.find((entry) => entry.provider === provider) ?? null;
 }
 
+function resolveModeOptions(
+  entries: readonly ProviderSnapshotEntry[],
+  provider: AgentProvider | null,
+): AgentMode[] {
+  return resolveSelectedEntry(entries, provider)?.modes ?? [];
+}
+
 function resolveAvailableModels(
   entries: readonly ProviderSnapshotEntry[],
   provider: AgentProvider | null,
@@ -289,6 +294,17 @@ function resolveModelDisplay(input: {
     modelId,
   );
   return { label: model?.label ?? modelId };
+}
+
+function resolveModeDisplay(input: {
+  modeOptions: readonly AgentMode[];
+  modeId: string;
+}): ScheduleFormDisplay {
+  const modeId = input.modeId.trim();
+  if (!modeId) {
+    return { label: "Default mode" };
+  }
+  return { label: input.modeOptions.find((mode) => mode.id === modeId)?.label ?? modeId };
 }
 
 function resolveThinkingDisplay(input: {
@@ -365,9 +381,6 @@ function resolveTargetKind(snapshot: ScheduleFormSnapshot): ScheduleFormTargetKi
   if (snapshot.mode === "edit" && snapshot.schedule?.target.type === "agent") {
     return "agent";
   }
-  if (snapshot.mode === "edit" && snapshot.schedule?.target.type === "workflow") {
-    return "workflow";
-  }
   return "new-agent";
 }
 
@@ -376,12 +389,10 @@ function buildProviderSnapshotRequest(input: {
   selectedServerId: string | null;
   workingDir: string;
 }): ScheduleProviderSnapshotRequest | null {
-  if (input.targetKind !== "new-agent" || !input.selectedServerId) {
+  if (input.targetKind !== "new-agent" || !input.selectedServerId || !input.workingDir.trim()) {
     return null;
   }
-  // An empty cwd asks for the host-scoped ("home") snapshot: models load as
-  // soon as a host is known, before any project is picked.
-  return { serverId: input.selectedServerId, cwd: input.workingDir.trim() };
+  return { serverId: input.selectedServerId, cwd: input.workingDir };
 }
 
 function buildInitialProjectDisplay(input: {
@@ -404,6 +415,13 @@ function buildInitialModelDisplay(modelId: string): ScheduleFormDisplay | null {
     return null;
   }
   return { label: modelId };
+}
+
+function buildInitialModeDisplay(modeId: string): ScheduleFormDisplay {
+  if (!modeId) {
+    return { label: "Default mode" };
+  }
+  return { label: modeId };
 }
 
 function buildInitialThinkingDisplay(thinkingOptionId: string): ScheduleFormDisplay | null {
@@ -501,48 +519,36 @@ function resolveDisclosure(state: ScheduleFormState): ScheduleDisclosureState {
       showProjectField: false,
       showModelField: false,
       showThinkingField: false,
-      showIsolationField: false,
-      showArchiveOnFinishField: false,
-    };
-  }
-  if (state.targetKind === "workflow") {
-    return {
-      showProjectField: true,
-      showModelField: false,
-      showThinkingField: false,
+      showModeField: false,
       showIsolationField: false,
       showArchiveOnFinishField: false,
     };
   }
 
-  // Project and model are always offered - models come from the host (a
-  // project only re-scopes provider config), so neither field waits on the
-  // other. The remaining flags are capability gates, not disclosure steps:
-  // effort exists per model, worktrees per git project, archive-on-finish per
-  // host feature.
+  const hasProject = state.workingDir.trim().length > 0;
+  const hasSelectedProvider = Boolean(state.selectedProvider);
   const hasSelectedModel = Boolean(state.selectedProvider && state.selectedModel.trim());
+  const showProjectField = state.mode === "edit" || Boolean(state.selectedServerId);
+  const showModelField = hasProject;
   return {
-    showProjectField: true,
-    showModelField: true,
-    showThinkingField: hasSelectedModel && state.availableThinkingOptions.length > 0,
-    showIsolationField: state.canUseWorktreeIsolation,
-    showArchiveOnFinishField: selectedHostSupportsWorkspaceMultiplicity({
-      hosts: state.hosts,
-      selectedServerId: state.selectedServerId,
-    }),
+    showProjectField,
+    showModelField,
+    showThinkingField:
+      showModelField && hasSelectedModel && state.availableThinkingOptions.length > 0,
+    showModeField: showModelField && hasSelectedProvider && state.modeOptions.length > 0,
+    showIsolationField: hasProject && state.canUseWorktreeIsolation,
+    showArchiveOnFinishField:
+      hasProject &&
+      selectedHostSupportsWorkspaceMultiplicity({
+        hosts: state.hosts,
+        selectedServerId: state.selectedServerId,
+      }),
   };
 }
 
 function resolveCanSubmit(state: ScheduleFormState): boolean {
   if (state.targetKind === "agent") {
     return state.submitCadence !== undefined;
-  }
-  if (state.targetKind === "workflow") {
-    return (
-      state.selectedProjectOptionId.trim().length > 0 &&
-      state.workingDir.trim().length > 0 &&
-      state.selectedWorkflowDefinitionId.trim().length > 0
-    );
   }
   if (state.prompt.trim().length === 0) {
     return false;
@@ -568,6 +574,7 @@ function updateDerivedState(input: {
   targets: readonly ScheduleProjectTarget[];
   providerEntries: readonly ProviderSnapshotEntry[];
 }): ScheduleFormState {
+  const modeOptions = resolveModeOptions(input.providerEntries, input.state.selectedProvider);
   const availableThinkingOptions = resolveThinkingOptions(
     input.providerEntries,
     input.state.selectedProvider,
@@ -608,10 +615,12 @@ function updateDerivedState(input: {
       provider: input.state.selectedProvider,
       modelId: input.state.selectedModel,
     }),
+    selectedModeDisplay: resolveModeDisplay({ modeOptions, modeId: input.state.selectedMode }),
     selectedThinkingDisplay: resolveThinkingDisplay({
       options: availableThinkingOptions,
       thinkingOptionId: input.state.selectedThinkingOptionId,
     }),
+    modeOptions,
     availableThinkingOptions,
     canUseWorktreeIsolation,
     effectiveIsolation,
@@ -624,50 +633,31 @@ function updateDerivedState(input: {
   return { ...nextState, disclosure, canSubmit: resolveCanSubmit({ ...nextState, disclosure }) };
 }
 
-function resolveInitialTargetState(
-  snapshot: ScheduleFormSnapshot,
-  selectedServerId: string | null,
-) {
-  const config = newAgentConfig(snapshot.schedule);
-  const targetKind = resolveTargetKind(snapshot);
-  const workflowTarget =
-    snapshot.schedule?.target.type === "workflow" ? snapshot.schedule.target : undefined;
-  const workingDir = config?.cwd ?? workflowTarget?.projectRoot ?? "";
-  const initialModel = config?.model ?? "";
-  const initialMode = config?.modeId ?? "";
-  const initialThinking = config?.thinkingOptionId ?? "";
-  return {
-    config,
-    targetKind,
-    workflowTarget,
-    workingDir,
-    initialModel,
-    initialMode,
-    initialThinking,
-    providerSnapshotRequest: buildProviderSnapshotRequest({
-      targetKind,
-      selectedServerId,
-      workingDir,
-    }),
-  };
-}
-
 function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
   const selectedServerId = resolveInitialServerId(snapshot);
-  const initial = resolveInitialTargetState(snapshot, selectedServerId);
+  const config = newAgentConfig(snapshot.schedule);
+  const targetKind = resolveTargetKind(snapshot);
+  const workingDir = config?.cwd ?? "";
   const selectedProjectTarget = resolveProjectTarget({
     targets: snapshot.defaults.projectTargets,
     serverId: selectedServerId,
-    cwd: initial.workingDir,
+    cwd: workingDir,
+  });
+  const providerSnapshotRequest = buildProviderSnapshotRequest({
+    targetKind,
+    selectedServerId,
+    workingDir,
   });
   const initialCadence = normalizeScheduleFormCadence(
     snapshot.schedule?.cadence ?? DEFAULT_CADENCE,
     snapshot.defaults.timezone ?? DEFAULT_TIMEZONE,
   );
+  const initialModel = config?.model ?? "";
+  const initialMode = config?.modeId ?? "";
+  const initialThinking = config?.thinkingOptionId ?? "";
   const state: ScheduleFormState = {
     mode: snapshot.mode,
-    targetKind: initial.targetKind,
-    selectedWorkflowDefinitionId: initial.workflowTarget?.definitionId ?? "",
+    targetKind,
     name: snapshot.schedule?.name ?? "",
     prompt: snapshot.schedule?.prompt ?? "",
     maxRuns: formatInitialMaxRuns(snapshot.schedule),
@@ -676,36 +666,37 @@ function buildInitialState(snapshot: ScheduleFormSnapshot): ScheduleFormState {
     hosts: [...snapshot.hosts],
     projectOptions: buildProjectOptions(snapshot.defaults.projectTargets, selectedServerId),
     selectedServerId,
-    selectedProvider: initial.config?.provider ?? null,
-    selectedModel: initial.initialModel,
-    selectedMode: initial.initialMode,
-    selectedThinkingOptionId: initial.initialThinking,
-    workingDir: initial.workingDir,
+    selectedProvider: config?.provider ?? null,
+    selectedModel: initialModel,
+    agentProfile: scheduleBinding(config), // OTTO(schedule-profiles)
+    selectedMode: initialMode,
+    selectedThinkingOptionId: initialThinking,
+    workingDir,
     projectDisplay: buildInitialProjectDisplay({
-      config: initial.config,
+      config,
       targets: snapshot.defaults.projectTargets,
       selectedServerId,
     }),
     selectedProjectOptionId: resolveSelectedProjectOptionId(selectedProjectTarget),
-    selectedModelDisplay: buildInitialModelDisplay(initial.initialModel),
-    selectedThinkingDisplay: buildInitialThinkingDisplay(initial.initialThinking),
+    selectedModelDisplay: buildInitialModelDisplay(initialModel),
+    selectedModeDisplay: buildInitialModeDisplay(initialMode),
+    selectedThinkingDisplay: buildInitialThinkingDisplay(initialThinking),
     modelSelectorProviders: [],
+    modeOptions: [],
     availableThinkingOptions: [],
-    archiveOnFinish: initial.config?.archiveOnFinish ?? true,
-    isolation: resolveInitialIsolation({
-      config: initial.config,
-      preferences: snapshot.defaults.preferences,
-    }),
+    archiveOnFinish: config?.archiveOnFinish ?? true,
+    isolation: resolveInitialIsolation({ config, preferences: snapshot.defaults.preferences }),
     effectiveIsolation: "local",
     submitArchiveOnFinish: undefined,
     submitIsolation: undefined,
     canUseWorktreeIsolation: false,
-    providerResolutionByServerId: buildInitialProviderResolution(initial.providerSnapshotRequest),
-    providerSnapshotRequest: initial.providerSnapshotRequest,
+    providerResolutionByServerId: buildInitialProviderResolution(providerSnapshotRequest),
+    providerSnapshotRequest,
     disclosure: {
       showProjectField: false,
       showModelField: false,
       showThinkingField: false,
+      showModeField: false,
       showIsolationField: false,
       showArchiveOnFinishField: false,
     },
@@ -892,21 +883,21 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
   }
 
   function requestProviderSnapshot(serverId: string | null, cwd: string): void {
-    if (!serverId) {
+    const trimmedCwd = cwd.trim();
+    if (!serverId || !trimmedCwd) {
       publish({
         ...state,
         providerSnapshotRequest: null,
       });
       return;
     }
-    // Empty cwd = host-scoped ("home") snapshot; see buildProviderSnapshotRequest.
     publish({
       ...state,
       providerResolutionByServerId: {
         ...state.providerResolutionByServerId,
         [serverId]: "pending",
       },
-      providerSnapshotRequest: { serverId, cwd: cwd.trim() },
+      providerSnapshotRequest: { serverId, cwd: trimmedCwd },
     });
   }
 
@@ -916,11 +907,14 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       ...nextState,
       selectedProvider: null,
       selectedModel: "",
+      agentProfile: undefined, // OTTO(schedule-profiles)
       selectedMode: "",
       selectedThinkingOptionId: "",
       modelSelectorProviders: [],
+      modeOptions: [],
       availableThinkingOptions: [],
       selectedModelDisplay: null,
+      selectedModeDisplay: { label: "Default mode" },
       selectedThinkingDisplay: null,
       providerSnapshotRequest: null,
     };
@@ -1028,33 +1022,9 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
           workingDir: "",
           projectDisplay: null,
           selectedProjectOptionId: "",
-          selectedWorkflowDefinitionId: "",
           providerResolutionByServerId: {},
         }),
       );
-      if (serverId) {
-        requestProviderSnapshot(serverId, "");
-      }
-    },
-    setTargetKind(targetKind) {
-      if (closed || state.targetKind === targetKind || state.mode === "edit") {
-        return;
-      }
-      publish({
-        ...state,
-        targetKind,
-        selectedWorkflowDefinitionId:
-          targetKind === "workflow" ? state.selectedWorkflowDefinitionId : "",
-      });
-      if (targetKind === "new-agent" && state.selectedServerId) {
-        requestProviderSnapshot(state.selectedServerId, state.workingDir);
-      }
-    },
-    setWorkflowDefinition(definitionId) {
-      if (closed || state.targetKind !== "workflow") {
-        return;
-      }
-      publish({ ...state, selectedWorkflowDefinitionId: definitionId });
     },
     setProject(optionId, display) {
       if (closed) {
@@ -1064,8 +1034,8 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       if (!target) {
         return;
       }
-      const serverChanged = state.selectedServerId !== target.serverId;
-      const providerScopeChanged = serverChanged || state.workingDir !== target.cwd;
+      const providerScopeChanged =
+        state.selectedServerId !== target.serverId || state.workingDir !== target.cwd;
       if (!providerScopeChanged && state.selectedProjectOptionId === target.optionId) {
         return;
       }
@@ -1075,19 +1045,14 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
         workingDir: target.cwd,
         projectDisplay: display,
         selectedProjectOptionId: target.optionId,
-        selectedWorkflowDefinitionId: providerScopeChanged
-          ? ""
-          : state.selectedWorkflowDefinitionId,
       };
-      // A same-host project change keeps the user's provider/model choice -
-      // the re-scoped snapshot re-validates it on arrival. Only a host change
-      // resets the selection.
-      publish(serverChanged ? clearProviderSelection(nextState) : nextState);
-      if (providerScopeChanged) {
-        requestProviderSnapshot(target.serverId, target.cwd);
+      publish(providerScopeChanged ? clearProviderSelection(nextState) : nextState);
+      if (!providerScopeChanged) {
+        return;
       }
+      requestProviderSnapshot(target.serverId, target.cwd);
     },
-    setModel(provider, modelId) {
+    setModel(provider, modelId, agentProfile) {
       if (closed) {
         return;
       }
@@ -1113,6 +1078,7 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
         ...state,
         selectedProvider: provider,
         selectedModel,
+        agentProfile, // OTTO(schedule-profiles)
         selectedMode: pickModeForProvider({
           entries: providerEntries,
           provider,
@@ -1134,6 +1100,13 @@ export function openScheduleForm(snapshot: ScheduleFormSnapshot): ScheduleFormMo
       }
       userModified = { ...userModified, thinkingOptionId: true };
       publish({ ...state, selectedThinkingOptionId: thinkingOptionId });
+    },
+    setSessionMode(modeId) {
+      if (closed) {
+        return;
+      }
+      userModified = { ...userModified, modeId: true };
+      publish({ ...state, selectedMode: modeId });
     },
     setName(value) {
       publish({ ...state, name: value });

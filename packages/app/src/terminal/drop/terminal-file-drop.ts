@@ -1,3 +1,4 @@
+import { quoteTerminalPath } from "../../otto/terminal/drop"; // OTTO(terminal-paths)
 import type { DesktopHostBridge } from "@/desktop/host";
 
 function getLegacyFilePath(file: File): string | null {
@@ -65,7 +66,7 @@ export function extractTerminalDropPaths(
 }
 
 function escapeNonWindowsPath(path: string): string {
-  return `'${path.replace(/'/g, "'\"'\"'")}'`;
+  return quoteTerminalPath(path); // OTTO(terminal-paths): preserve filenames verbatim with shell quoting.
 }
 
 function escapeWindowsPath(path: string): string {

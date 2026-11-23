@@ -6,18 +6,15 @@ import type {
   ServerRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 
-import { addModelVisibleStructuredContent } from "./tools/otto-tool-serialization.js";
-import { createOttoToolCatalog, type OttoToolHostDependencies } from "./tools/otto-tools.js";
-import type { OttoToolResult } from "./tools/types.js";
-import { isOttoToolReadOnly } from "./tools/otto-tool-permissions.js";
+import { addModelVisibleStructuredContent } from "./tools/paseo-tool-serialization.js";
+import { createPaseoToolCatalog, type PaseoToolHostDependencies } from "./tools/paseo-tools.js";
+import type { PaseoToolResult } from "./tools/types.js";
 
-export type AgentMcpServerOptions = OttoToolHostDependencies;
+export type AgentMcpServerOptions = PaseoToolHostDependencies;
 
 type McpToolContext = RequestHandlerExtra<ServerRequest, ServerNotification>;
 
-// The model-visible text is capped and compacted inside
-// addModelVisibleStructuredContent; see otto-tool-serialization.ts.
-function toMcpToolResult(result: OttoToolResult): CallToolResult {
+function toMcpToolResult(result: PaseoToolResult): CallToolResult {
   const modelVisibleResult = addModelVisibleStructuredContent(result);
   return {
     content: modelVisibleResult.content as CallToolResult["content"],
@@ -32,7 +29,7 @@ function toMcpToolResult(result: OttoToolResult): CallToolResult {
 }
 
 export async function createAgentMcpServer(options: AgentMcpServerOptions): Promise<McpServer> {
-  const catalog = await createOttoToolCatalog(options);
+  const catalog = await createPaseoToolCatalog(options);
   const server = new McpServer({
     name: "agent-mcp",
     version: "2.0.0",
@@ -45,7 +42,7 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         title: tool.title,
         description: tool.description,
         inputSchema: tool.inputSchema,
-        annotations: { readOnlyHint: isOttoToolReadOnly(tool.name) },
+        annotations: tool.annotations, // OTTO(connectors): preserve read-only availability in native-provider plan mode.
       },
       async (args: unknown, context?: McpToolContext) =>
         toMcpToolResult(await catalog.executeTool(tool.name, args, { signal: context?.signal })),

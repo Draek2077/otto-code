@@ -1,13 +1,4 @@
-/**
- * @vitest-environment jsdom
- *
- * This file mounts real React roots with `react-dom/client`, so it needs actual DOM globals.
- * It previously ran in the project's default `node` environment and hand-installed `window`,
- * `document` and `navigator` one property at a time. That worked only for as long as nobody
- * added an import - each new transitive module reached for one more global (`matchMedia`,
- * `addEventListener`, `ShadowRoot`) and failed this file with an error naming code it does not
- * use. Declaring the environment gets all of them at once, and keeps getting them.
- */
+/** @vitest-environment jsdom */
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -139,24 +130,6 @@ let useAgentInputDraft: typeof import("./input-draft").useAgentInputDraft;
 type DraftRecordForTest = ReturnType<typeof useDraftStore.getState>["drafts"][string];
 
 beforeAll(async () => {
-  const storage = new Map<string, string>();
-
-  // The environment supplies the DOM (see the docblock). Only `localStorage` is replaced,
-  // because these tests assert against its contents, and it is installed before the dynamic
-  // import below so persisted-draft hydration reads the controlled map on first load.
-  Object.defineProperty(globalThis.window, "localStorage", {
-    value: {
-      clear: () => storage.clear(),
-      getItem: (key: string) => storage.get(key) ?? null,
-      setItem: (key: string, value: string) => {
-        storage.set(key, value);
-      },
-      removeItem: (key: string) => {
-        storage.delete(key);
-      },
-    },
-    configurable: true,
-  });
   Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
     value: true,
     configurable: true,
@@ -225,18 +198,23 @@ describe("useAgentInputDraft live contract", () => {
     });
 
     expect(getLatest().composerState?.agentControls.selectedProvider).toBe("codex");
-    expect(getLatest().composerState?.commandDraftConfig).toEqual({
-      provider: "codex",
-      cwd: "/repo",
-      modeId: "auto",
-      model: "gpt-5.4",
-      thinkingOptionId: "high",
+    expect(getLatest().composerState?.commandDraft).toEqual({
+      status: "ready",
+      config: {
+        provider: "codex",
+        cwd: "/repo",
+        modeId: "auto",
+        model: "gpt-5.4",
+        thinkingOptionId: "high",
+      },
     });
 
     const hydratedTextReplacement = getLatest().textReplacement;
+    // The editor applies a retained caret to the hydrated text, so hydration announces itself.
+    expect(hydratedTextReplacement.kind).toBe("hydrated");
 
     await act(async () => {
-      getLatest().setText("hello world");
+      getLatest().editText("hello world");
       getLatest().setAttachments([{ kind: "image", metadata: image }]);
     });
 
@@ -247,6 +225,7 @@ describe("useAgentInputDraft live contract", () => {
     });
 
     expect(getLatest().textReplacement).not.toBe(hydratedTextReplacement);
+    expect(getLatest().textReplacement.kind).toBe("replace");
     expect(getLatest().textReplacement.text).toBe("replacement text");
 
     await act(async () => {
@@ -266,7 +245,7 @@ describe("useAgentInputDraft live contract", () => {
       );
     });
 
-    expect(getLatest().text).toBe("hello world");
+    expect(getLatest().textSource.getSnapshot()).toBe("hello world");
     expect(getLatest().attachments).toEqual([{ kind: "image", metadata: image }]);
   });
 
@@ -324,7 +303,7 @@ describe("useAgentInputDraft live contract", () => {
       );
     });
 
-    expect(getLatest().text).toBe("legacy text");
+    expect(getLatest().textSource.getSnapshot()).toBe("legacy text");
     expect(getLatest().attachments).toEqual([{ kind: "image", metadata: image }]);
     expect(useDraftStore.getState().drafts["draft:legacy"]?.input).toEqual({
       text: "legacy text",
@@ -340,7 +319,7 @@ describe("useAgentInputDraft live contract", () => {
         kind: "issue",
         number: 42,
         title: "Unify attachments",
-        url: "https://github.com/otto/otto/issues/42",
+        url: "https://github.com/paseo/paseo/issues/42",
         state: "open",
         body: "body",
         labels: ["composer"],
@@ -390,7 +369,7 @@ describe("useAgentInputDraft live contract", () => {
       );
     });
 
-    expect(getLatest().text).toBe("new text");
+    expect(getLatest().textSource.getSnapshot()).toBe("new text");
     expect(getLatest().attachments).toEqual([githubIssue]);
 
     await act(async () => {
@@ -421,7 +400,9 @@ describe("useAgentInputDraft live contract", () => {
       return latest;
     }
 
+    let renders = 0;
     function Probe() {
+      renders += 1;
       latest = useAgentInputDraft({ draftKey: "draft:attachments" });
       return null;
     }
@@ -442,7 +423,7 @@ describe("useAgentInputDraft live contract", () => {
     });
 
     await act(async () => {
-      getLatest().setText("with attachment");
+      getLatest().editText("with attachment");
       getLatest().setAttachments([{ kind: "image", metadata: image }]);
     });
 
@@ -455,6 +436,22 @@ describe("useAgentInputDraft live contract", () => {
         attachments: [{ kind: "image", metadata: image }],
       });
     });
+    const settledRenders = renders;
+    const attached = getLatest().attachments;
+    const source = getLatest().textSource;
+    let textNotifications = 0;
+    const unsubscribe = source.subscribe(() => {
+      textNotifications += 1;
+    });
+    await act(async () => {
+      getLatest().editText("with attachment\n");
+      await expect.poll(source.getSnapshot).toBe("with attachment\n");
+    });
+    expect(renders).toBe(settledRenders);
+    expect(getLatest().attachments).toBe(attached);
+    expect(getLatest().textSource).toBe(source);
+    expect(textNotifications).toBe(1);
+    unsubscribe();
     await act(async () => {
       root.unmount();
     });
@@ -491,57 +488,6 @@ describe("useAgentInputDraft live contract", () => {
         createWorkspaceFileAttachment({ path: "src/app.ts" }),
       ],
     });
-  });
-
-  it("a programmatic rewrite wins over a pending typing checkpoint", async () => {
-    let latest: ReturnType<typeof useAgentInputDraft> | null = null;
-    function Probe() {
-      latest = useAgentInputDraft({ draftKey: "draft:rewrite-race" });
-      return null;
-    }
-    function current() {
-      if (!latest) throw new Error("Expected draft");
-      return latest;
-    }
-    const container = document.getElementById("root");
-    if (!container) throw new Error("Missing root");
-    const root = createTestRoot(container);
-    await act(async () => {
-      root.render(
-        <QueryClientProvider client={new QueryClient()}>
-          <Probe />
-        </QueryClientProvider>,
-      );
-    });
-    vi.useFakeTimers();
-    try {
-      await act(async () => {
-        current().editText("stale native typing");
-      });
-      await act(async () => {
-        current().replaceText("authoritative rewrite");
-      });
-      const replacement = current().textReplacement;
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-      });
-      expect(current().text).toBe("authoritative rewrite");
-      expect(current().textReplacement).toBe(replacement);
-      expect(replacement.text).toBe("authoritative rewrite");
-      expect(useDraftStore.getState().getDraftInput("draft:rewrite-race")?.text).toBe(
-        "authoritative rewrite",
-      );
-      await act(async () => {
-        current().clear("sent");
-      });
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(500);
-      });
-      expect(current().textReplacement.text).toBe("");
-      expect(useDraftStore.getState().getDraftInput("draft:rewrite-race")?.text ?? "").toBe("");
-    } finally {
-      vi.useRealTimers();
-    }
   });
 
   it("clear resets text and attachments", async () => {
@@ -582,18 +528,15 @@ describe("useAgentInputDraft live contract", () => {
     });
 
     await act(async () => {
-      getLatest().setText("queued message");
+      getLatest().editText("queued message");
       getLatest().setAttachments([{ kind: "image", metadata: image }]);
     });
-
-    const replacementKeyBeforeClear = getLatest().textReplacement.key;
 
     await act(async () => {
       getLatest().clear("sent");
     });
 
-    expect(getLatest().text).toBe("");
-    expect(getLatest().textReplacement.key).not.toBe(replacementKeyBeforeClear);
+    expect(getLatest().textSource.getSnapshot()).toBe("");
     expect(getLatest().attachments).toEqual([]);
     expect(useDraftStore.getState().drafts["draft:clear"]?.input).toEqual({
       text: "",
@@ -639,7 +582,7 @@ describe("useAgentInputDraft live contract", () => {
     });
 
     await act(async () => {
-      getLatest().setText("queued message");
+      getLatest().editText("queued message");
       getLatest().setAttachments([{ kind: "image", metadata: sentImage }]);
     });
 
@@ -647,7 +590,7 @@ describe("useAgentInputDraft live contract", () => {
       getLatest().clear("sent");
     });
 
-    expect(getLatest().text).toBe("");
+    expect(getLatest().textSource.getSnapshot()).toBe("");
     expect(getLatest().attachments).toEqual([]);
     expect(useDraftStore.getState().drafts["draft:lifecycle"]).toMatchObject({
       lifecycle: "sent",
@@ -655,7 +598,7 @@ describe("useAgentInputDraft live contract", () => {
     });
 
     await act(async () => {
-      getLatest().setText("draft again");
+      getLatest().editText("draft again");
     });
 
     await act(async () => {

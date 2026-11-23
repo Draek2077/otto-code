@@ -1,53 +1,28 @@
-/* oxlint-disable complexity -- this screen owns the cross-host search, archive, storage, and paginated empty-state matrix. */
-import { useMemo, useState, useCallback, useEffect, useRef, type ReactElement } from "react";
+import { useMemo, useState, useCallback, useEffect, type ReactElement } from "react";
 import { View, Text } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { router } from "expo-router";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronLeft, Trash2, Import } from "@/components/icons/material-icons";
+import { ChevronLeft, Import } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { MenuHeader } from "@/components/headers/menu-header";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { AgentList, AgentListColumnHeader } from "@/components/agent-list";
+import { AgentList } from "@/components/agent-list";
 import { SearchField } from "@/components/ui/search-field";
-import { SegmentedControl } from "@/components/ui/segmented-control";
-import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
-import { ProjectFilter, type ProjectFilterOption } from "@/components/project-filter";
 import { type AgentHistoryHostError, useAgentHistory } from "@/hooks/use-agent-history";
-import { useProjects } from "@/hooks/use-projects";
-import {
-  resolveInitialAggregateProjectScope,
-  usePreferredWorkspaceProjectScope,
-} from "@/hooks/use-preferred-workspace-project-scope";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
-import { useClearArchivedAgents } from "@/history/use-clear-archived-agents";
-import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
-import { useFetchQuery } from "@/data/query";
-import { formatFileSize } from "@/utils/format-file-size";
-import { useSessionStore } from "@/stores/session-store";
 import { useImportSession } from "@/hooks/use-import-session";
+import { useHosts } from "@/runtime/host-runtime";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
-import { artifactBelongsToWorkspace } from "@/artifacts/artifact-derivation";
-import { buildScheduleProjectTargets } from "@/schedules/schedule-project-targets";
+import { useHistoryToolbar } from "@/otto/history/history-toolbar"; // OTTO(history)
 
 /** Long enough that a typed word is one request, short enough to feel live. */
 const SEARCH_DEBOUNCE_MS = 200;
 
-type ArchiveFilter = "all" | "active" | "archived";
-
-const ThemedDestructiveTrash = withUnistyles(Trash2, (theme) => ({
-  color: theme.colors.destructive,
-  size: theme.iconSize.sm,
-}));
-
-const ThemedLoadingSpinner = withUnistyles(LoadingSpinner, (theme) => ({
-  color: theme.colors.foregroundMuted,
-}));
-
-const sessionsHostOptionTestID = (serverId: string) => `sessions-host-filter-item-${serverId}`;
+const HistorySpinner = withUnistyles(LoadingSpinner, (theme) => ({ color: theme.colors.accent })); // OTTO(history)
 
 /**
  * A host that failed while others answered. Without this the list silently
@@ -79,10 +54,10 @@ function resolveEmptyText(input: {
   t: TFunction;
   isSearching: boolean;
   isAllHosts: boolean;
-  hasProjectFilter: boolean;
+  isFiltered?: boolean; // OTTO(history)
 }): string {
   if (input.isSearching) return input.t("sessions.noMatches");
-  if (input.hasProjectFilter) return "No sessions for this project";
+  if (input.isFiltered) return "No sessions match these filters"; // OTTO(history)
   if (input.isAllHosts) return input.t("sessions.empty");
   return "No sessions for this host";
 }
@@ -101,14 +76,16 @@ function SessionsScreenContent() {
   const { t } = useTranslation();
   const importSession = useImportSession();
   const hosts = useHosts();
-  const { projects } = useProjects();
-  const preferredWorkspaceScope = usePreferredWorkspaceProjectScope();
   const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
-  const [projectFilter, setProjectFilter] = useState<string | undefined>(undefined);
-  const hasExplicitScopeSelection = useRef(false);
   const [searchInput, setSearchInput] = useState("");
   const search = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS).trim();
   const historyServerId = selectedHost === ALL_HOSTS_OPTION_ID ? null : selectedHost;
+  // OTTO(history): keep the existing History route and pager; scope them from the shared controls.
+  const { scope, toolbar } = useHistoryToolbar({
+    hosts,
+    selectedHost,
+    onSelectHost: setSelectedHost,
+  });
   const {
     agents,
     hasMore,
@@ -117,55 +94,15 @@ function SessionsScreenContent() {
     isError,
     isSearchSupported,
     isSearchTruncated,
-    searchMatchesByAgentKey,
     hostErrors,
     loadMore,
     refreshAll,
   } = useAgentHistory({
     serverId: historyServerId,
     search,
+    scope, // OTTO(history)
   });
   const isSearching = isSearchSupported && search.length > 0;
-  const historyStorage = useFetchQuery<{
-    totalBytes: number;
-    byHost: Array<{ serverId: string; totalBytes: number }>;
-  } | null>({
-    queryKey: [
-      "historyStorageUsage",
-      historyServerId,
-      hosts.map((host) => host.serverId).join(","),
-    ],
-    enabled: hosts.length > 0,
-    dataShape: "value",
-    staleTimeMs: 10_000,
-    queryFn: async () => {
-      const serverIds = historyServerId ? [historyServerId] : hosts.map((host) => host.serverId);
-      const payloads = await Promise.all(
-        serverIds.map(async (serverId) => {
-          const client = getHostRuntimeStore().getSnapshot(serverId)?.client;
-          if (
-            !client ||
-            useSessionStore.getState().sessions[serverId]?.serverInfo?.features?.historyStorage !==
-              true
-          ) {
-            return null;
-          }
-          return client.getHistoryStorageStats();
-        }),
-      );
-      const valid = payloads.flatMap((payload, index) =>
-        payload !== null && !payload.error
-          ? [{ serverId: serverIds[index], totalBytes: payload.totalBytes }]
-          : [],
-      );
-      return valid.length === 0
-        ? null
-        : {
-            totalBytes: valid.reduce((total, payload) => total + payload.totalBytes, 0),
-            byHost: valid,
-          };
-    },
-  });
 
   useEffect(() => {
     if (
@@ -177,124 +114,21 @@ function SessionsScreenContent() {
   }, [hosts, selectedHost]);
 
   const [isManualRefresh, setIsManualRefresh] = useState(false);
-  const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>("all");
-  const destructiveTrash = useMemo(() => <ThemedDestructiveTrash />, []);
-  const scheduleProjectTargets = useMemo(() => buildScheduleProjectTargets(projects), [projects]);
-
-  // Reuse the same project roots as Artifacts, Schedules, and Workflows. A
-  // project stays selectable even when it has no History rows, which makes the
-  // picker a dependable way to narrow the all-host view instead of a summary
-  // of whatever happens to be loaded.
-  const projectOptions = useMemo<ProjectFilterOption[]>(() => {
-    const byId = new Map<string, ProjectFilterOption>();
-    for (const target of scheduleProjectTargets) {
-      if (!byId.has(target.cwd)) {
-        byId.set(target.cwd, { id: target.cwd, label: target.projectName });
-      }
-    }
-    return Array.from(byId.values());
-  }, [scheduleProjectTargets]);
-
-  useEffect(() => {
-    const initialScope = resolveInitialAggregateProjectScope({
-      hasExplicitSelection: hasExplicitScopeSelection.current,
-      preferredScope: preferredWorkspaceScope,
-      availableHostIds: hosts.map((host) => host.serverId),
-      projectTargets: scheduleProjectTargets,
-    });
-    if (!initialScope) return;
-    setSelectedHost(initialScope.serverId);
-    setProjectFilter(initialScope.cwd);
-  }, [hosts, preferredWorkspaceScope, scheduleProjectTargets]);
-
-  const handleSelectHost = useCallback((serverId: string) => {
-    hasExplicitScopeSelection.current = true;
-    setSelectedHost(serverId);
-  }, []);
-  const handleProjectFilterChange = useCallback((cwd: string | undefined) => {
-    hasExplicitScopeSelection.current = true;
-    setProjectFilter(cwd);
-  }, []);
 
   const handleRefresh = useCallback(() => {
     setIsManualRefresh(true);
     void refreshAll().finally(() => setIsManualRefresh(false));
   }, [refreshAll]);
 
-  // `useAgentHistory` owns the order: recency at rest, relevance under a query.
-  // Local project/archive filters retain that order while narrowing the rows.
-  const filteredAgents = useMemo(
-    () =>
-      agents.filter(
-        (agent) =>
-          (projectFilter === undefined || artifactBelongsToWorkspace(agent.cwd, projectFilter)) &&
-          (archiveFilter === "all" ||
-            (archiveFilter === "archived" ? Boolean(agent.archivedAt) : !agent.archivedAt)),
-      ),
-    [agents, archiveFilter, projectFilter],
-  );
-  const emptyText = useMemo(() => {
-    if (isSearching) {
-      return resolveEmptyText({
-        t,
-        isSearching: true,
-        isAllHosts: false,
-        hasProjectFilter: projectFilter !== undefined,
-      });
-    }
-    if (archiveFilter === "archived") return t("sessions.emptyArchived");
-    if (archiveFilter === "active") return t("sessions.emptyActive");
-    return resolveEmptyText({
-      t,
-      isSearching: false,
-      isAllHosts: selectedHost === ALL_HOSTS_OPTION_ID,
-      hasProjectFilter: projectFilter !== undefined,
-    });
-  }, [archiveFilter, isSearching, projectFilter, selectedHost, t]);
-  const showHostFilter = hosts.length > 1;
-  const showHostColumn = selectedHost === ALL_HOSTS_OPTION_ID;
-  const showLoadError = isError && filteredAgents.length === 0;
-
-  const targetServerIds = useMemo(
-    () => (historyServerId ? [historyServerId] : hosts.map((host) => host.serverId)),
-    [historyServerId, hosts],
-  );
-  // COMPAT(historyDelete): added in v0.7.0, drop the gate when daemon floor >= v0.7.0.
-  const canClearArchived = useSessionStore((state) =>
-    targetServerIds.some(
-      (serverId) => state.sessions[serverId]?.serverInfo?.features?.historyDelete === true,
-    ),
-  );
-  const { clearArchived, isClearing } = useClearArchivedAgents();
-  const handleClearArchived = useCallback(() => {
-    void clearArchived({
-      serverIds: targetServerIds,
-      scope: historyServerId ? "oneHost" : "allHosts",
-    }).then((outcome) => {
-      if (outcome && outcome.deleted > 0) void refreshAll();
-      return outcome;
-    });
-  }, [clearArchived, historyServerId, refreshAll, targetServerIds]);
-  const archiveFilterOptions = useMemo(
-    () => [
-      { value: "all" as const, label: t("sessions.filters.all") },
-      { value: "active" as const, label: t("sessions.filters.active") },
-      { value: "archived" as const, label: t("sessions.filters.archived") },
-    ],
-    [t],
-  );
-  const hostOptionDescriptions = useMemo(() => {
-    if (!historyStorage.data) return undefined;
-    return {
-      [ALL_HOSTS_OPTION_ID]: formatFileSize({ size: historyStorage.data.totalBytes }),
-      ...Object.fromEntries(
-        historyStorage.data.byHost.map(({ serverId, totalBytes }) => [
-          serverId,
-          formatFileSize({ size: totalBytes }),
-        ]),
-      ),
-    };
-  }, [historyStorage.data]);
+  // Searching filters the chronological history without changing its date buckets.
+  const emptyText = resolveEmptyText({
+    t,
+    isSearching,
+    isAllHosts: selectedHost === ALL_HOSTS_OPTION_ID,
+    isFiltered: Boolean(scope), // OTTO(history)
+  });
+  const showFilterRow = toolbar !== null || isSearchSupported; // OTTO(history)
+  const showLoadError = isError && agents.length === 0;
 
   const handleBack = useCallback(() => {
     router.navigate(buildOpenProjectRoute());
@@ -303,8 +137,8 @@ function SessionsScreenContent() {
   const handleClearSearch = useCallback(() => setSearchInput(""), []);
 
   const listFooterComponent = useMemo(() => {
-    // A ranked result set has no next page — reaching a weaker match means
-    // narrowing the query, so the footer says that instead of offering a button.
+    // COMPAT(historyPagination): old daemons return a truncated relevance page.
+    // Added in v0.8.0; remove after 2027-03-16 once the daemon floor supports search pagination.
     if (isSearchTruncated) {
       return (
         <View style={styles.footer}>
@@ -327,50 +161,10 @@ function SessionsScreenContent() {
   return (
     <View style={styles.container}>
       <MenuHeader title={t("sessions.title")} />
-      <View style={styles.historyHeader}>
-        <View style={styles.controlsRow}>
-          <View style={styles.controlsFilters}>
-            {showHostFilter ? (
-              <HostFilter
-                hosts={hosts}
-                selectedHost={selectedHost}
-                onSelectHost={handleSelectHost}
-                optionDescriptions={hostOptionDescriptions}
-                triggerTestID="sessions-host-filter-trigger"
-                hostOptionTestID={sessionsHostOptionTestID}
-              />
-            ) : null}
-            <ProjectFilter
-              options={projectOptions}
-              value={projectFilter}
-              onChange={handleProjectFilterChange}
-            />
-            <SegmentedControl
-              options={archiveFilterOptions}
-              value={archiveFilter}
-              onValueChange={setArchiveFilter}
-              size="sm"
-              testID="sessions-archive-filter"
-            />
-          </View>
-          {canClearArchived ? (
-            <Button
-              variant="ghost"
-              size="sm"
-              leftIcon={destructiveTrash}
-              textStyle={styles.clearArchivedText}
-              onPress={handleClearArchived}
-              disabled={isClearing}
-              testID="sessions-clear-archived"
-            >
-              {isClearing
-                ? t("sessions.actions.clearingArchived")
-                : t("sessions.actions.clearArchived")}
-            </Button>
-          ) : null}
-        </View>
-        {isSearchSupported ? (
-          <View style={styles.searchRow}>
+      {showFilterRow ? (
+        <View style={styles.filterContainer}>
+          {toolbar}
+          {isSearchSupported ? (
             <SearchField
               value={searchInput}
               onChangeText={setSearchInput}
@@ -379,14 +173,13 @@ function SessionsScreenContent() {
               testID="sessions-search-input"
               clearTestID="sessions-search-clear"
             />
-          </View>
-        ) : null}
-        <AgentListColumnHeader showHostColumn={showHostColumn} />
-      </View>
+          ) : null}
+        </View>
+      ) : null}
       {hostErrors.length > 0 ? <SessionHostErrorsBanner errors={hostErrors} t={t} /> : null}
       {isInitialLoad ? (
         <View style={styles.loadingContainer}>
-          <ThemedLoadingSpinner size="large" />
+          <HistorySpinner size="large" />
         </View>
       ) : null}
       {!isInitialLoad && showLoadError ? (
@@ -397,40 +190,33 @@ function SessionsScreenContent() {
           </Button>
         </View>
       ) : null}
-      {!isInitialLoad && !showLoadError && filteredAgents.length === 0 ? (
+      {!isInitialLoad && !showLoadError && agents.length === 0 ? (
         <View style={styles.emptyContainer} testID="sessions-empty">
           <Text style={styles.emptyText}>{emptyText}</Text>
           {isSearching ? (
             <Button variant="ghost" onPress={handleClearSearch}>
               {t("sessions.actions.clearSearch")}
             </Button>
-          ) : null}
-          {!isSearching && hasMore ? (
-            <Button variant="ghost" onPress={loadMore} disabled={isLoadingMore}>
-              {isLoadingMore ? "Loading..." : t("sessions.actions.loadMore")}
-            </Button>
-          ) : null}
-          {!isSearching ? (
+          ) : (
             <Button variant="ghost" leftIcon={ChevronLeft} onPress={handleBack}>
               Back
             </Button>
-          ) : null}
+          )}
           <Button variant="ghost" leftIcon={Import} onPress={importSession.open}>
             {t("importSession.title")}
           </Button>
         </View>
       ) : null}
-      {!isInitialLoad && !showLoadError && filteredAgents.length > 0 ? (
+      {!isInitialLoad && !showLoadError && agents.length > 0 ? (
         <AgentList
-          agents={filteredAgents}
+          agents={agents}
           showCheckoutInfo={false}
           isRefreshing={isManualRefresh}
           onRefresh={handleRefresh}
           listFooterComponent={listFooterComponent}
           showAttentionIndicator={false}
-          showHostColumn={showHostColumn}
-          searchMatchesByAgentKey={isSearching ? searchMatchesByAgentKey : undefined}
-          flat={isSearching}
+          showHostColumn
+          search={isSearching ? search : undefined}
         />
       ) : null}
       {importSession.sheet}
@@ -443,46 +229,14 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     backgroundColor: theme.colors.surface0,
   },
-  // Navigation and filter controls lead the page; the destructive action stays
-  // in the opposite corner. Search is intentionally a second, dedicated row
-  // so it does not compete with scope selection.
-  controlsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    flexWrap: "wrap",
-    gap: theme.spacing[3],
+  filterContainer: {
+    // OTTO(history): scope and actions can wrap; search owns a full row.
+    gap: theme.spacing[2],
     paddingHorizontal: {
       xs: theme.spacing[3],
       md: theme.spacing[6],
     },
     paddingTop: theme.spacing[4],
-  },
-  historyHeader: {
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-  },
-  controlsFilters: {
-    flex: 1,
-    minWidth: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    flexWrap: "wrap",
-    gap: theme.spacing[3],
-  },
-  searchRow: {
-    flexDirection: "row",
-    paddingHorizontal: {
-      xs: theme.spacing[3],
-      md: theme.spacing[6],
-    },
-    paddingTop: theme.spacing[3],
-    // The header's bottom rule is drawn by `historyHeader`, so without this the
-    // search field sits flush on the line with nothing between them.
-    paddingBottom: theme.spacing[3],
-  },
-  clearArchivedText: {
-    color: theme.colors.destructive,
   },
   emptyContainer: {
     flex: 1,

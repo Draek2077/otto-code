@@ -1,0 +1,304 @@
+# Otto OpenAI-compatible provider
+
+The bundled `otto-openai-compatible-provider` plugin registers provider
+`openai-compatible` through Paseo 0.12's public provider API. Its connection UI and
+credential handlers live in `plugins/otto-openai-compatible-provider/`. The full
+agent/tool harness lives in `packages/plugin/src/otto/openai/`, exposed through
+the node-only `@getpaseo/plugin/server/otto-openai` SDK entry. The provider plugin
+re-exports that implementation, and Brain composes the same factory. Connection
+definitions have a separate client-safe `@getpaseo/plugin/otto/openai-settings`
+entry. The Otto-owned built-in list is the only
+integration with the daemon registry. Relay, Hub, client protocol, agent storage and
+chat rendering use the existing Paseo implementations.
+
+The plugin is displayed as **OpenAI Compatible Provider** and its provider as
+**OpenAI Compatible API**. Their stable IDs and existing saved configurations do not change.
+
+The settings screen uses Paseo's existing buttons, cards and collapsible rows. Two
+small tagged exports expose those controls to the plugin; provider-specific UI and
+state remain Otto-owned. Older clients without that UI bridge show an app-update
+message. A bundled plugin's client code is delivered by its daemon, so a source
+update needs the updated client and a refreshed dev daemon to load the new bundle.
+
+## Host configuration
+
+Open the **OpenAI Compatible API** provider and choose **Configure endpoint** to set up a
+fresh host. The setup card hides once the endpoint has discovered models. The action
+closes the model sheet and opens that host's connection settings on desktop and mobile.
+To manage existing connections, open
+**Settings > Host > Plugins > Configure Otto provider** for the target host. An
+Otto-owned entry exposes the bundled provider alongside Paseo's installed plugins. The
+command center also offers **OpenAI Compatible API settings** when a host workspace is
+active. A fresh setup opens **Add connection** with **API URL**, **API key** and
+one **Save connection** action. Include the API prefix in the URL, such as
+`http://localhost:1234/v1`. The key is optional for an unkeyed local server.
+Localhost refers to the daemon machine, including when the client is on a phone.
+Saved connections share a list with **Add connection**, **Edit** and **Remove**.
+**Advanced options** expands the optional name, model ID, environment-variable
+alternative, new-chat availability and host-wide tool-round/timeout defaults.
+Leaving Model ID empty discovers models through `GET models`.
+The endpoint must support streamed `POST chat/completions` and function tools.
+
+Connections expose their models together in the new-chat model picker. Model
+IDs are namespaced internally to distinguish identical IDs on different endpoints. A chat
+stays on its original endpoint; switching endpoints requires a new chat. Disabling a named
+endpoint preserves its settings and existing chats, while hiding it from new chats. An
+unavailable endpoint does not prevent other endpoints from working. Removing a connection
+requires confirmation, disconnects its active sessions, deletes its saved key and hides it
+from new chats. Chat history remains. Removed identities stay retired, so an old chat cannot
+silently attach to a new connection at the same URL or fall through to an environment key.
+
+For a keyed endpoint, save its API key in the host's private credential file, or set its
+secret in the daemon's environment and enter the variable's name (default `OPENAI_API_KEY`).
+A saved key takes precedence. The client never reads back saved keys. Keys remain outside
+ordinary plugin settings, agent persistence and logs. The credential file is private host
+storage with owner-only Unix permissions, not an OS keychain. Do not enter secrets in the URL
+or the environment-variable field. Endpoint URLs reject embedded credentials, query
+parameters and fragments. Requests do not follow redirects.
+
+Save captures the revision at the start of editing. A conflicting save preserves the
+draft and the newer host values. **Review latest** adopts untouched peer changes while
+retaining edited fields and the key draft for explicit review and retry. Invalid persisted
+settings are reported without a reset. New sessions use the current host configuration;
+already-open sessions retain their configuration. Model catalog cache keys include the
+endpoint and model configuration.
+
+The single Save action writes the connection and then its private key using separate
+revision checks. A failed key write keeps the key draft and explicitly reports that the
+connection was saved but its key was not. **Review latest** enables an explicit retry.
+A URL change requires a key for the new URL, or an empty key to remove the previous saved
+key for an unkeyed server. The daemon supplies the resolved
+host directory to this Otto built-in through a small tagged worker-initialization seam.
+That same host context supplies the daemon's reserved provider IDs. The plugin uses
+the public SDK and host values, avoiding private package imports from desktop resource
+directories or renamed npm installations.
+
+## Preserved Otto 0.9 configuration
+
+The provider reads `config.json` and the migration's `otto-config.json` sidecar on its
+own host. When new connection fields are absent, defaults come from the preserved
+`openai-compatible` endpoint. Explicit new values, including an empty URL, take precedence.
+The old key is read privately for the matching primary URL, after any managed key and
+before the daemon environment. It is never copied into plugin settings. Named legacy
+providers derived from `openai-compatible` retain their provider IDs and labels, and read
+their own preserved host configuration. Brain and providers derived from Brain stay inactive.
+
+The connection-issues section appears only for disabled providers, errors and historical options requiring
+review. Unported policies and custom tool environment entries are kept intact and prevent
+that legacy endpoint from running; they are never silently ignored. Paseo built-in identity
+collisions remain inactive. These adapters do not reinstate Brain, old provider policy UI or
+deferred feature tooling. Original configuration files are read without rewriting them.
+
+## Otto 0.9 conversation import
+
+The trusted built-in registration enables a narrow compatibility adapter for old
+OpenAI-compatible handles, including preserved provider aliases. Other plugins keep
+Paseo's normal handle decoder. Before importing, the provider verifies the original URL
+against `config.json.otto-0.9.bak` and the current endpoint. A changed or unverifiable URL,
+unsupported history shape or unknown version fails while retaining the original data.
+The full original handle is saved privately under `otto-openai-compatible/legacy-imports/`
+before conversion. Core agent IDs, labels, titles and unported record fields remain intact.
+
+Supported text, image attachments, tool results, summaries and injected instructions become
+the native host archive. Historical system and subtree instructions remain context without
+appearing as human chat turns. Old display-only reasoning remains visible without being
+echoed to the model. Tool images follow the complete tool-result group. Unanswered calls
+receive an explicit interrupted-result record and are never executed by import. Existing
+file effects remain untouched. The old `off` reasoning setting retains its original behavior
+of omitting the request parameter, including when the core retains the old feature field.
+
+Stable legacy message identities support conversation rewind. Original 0.9 message handles
+did not contain timestamps, so imported rows use a recorded import time. Context or transcript
+data already removed by the old provider cannot be recovered from its remaining handle;
+the adapter retains everything present in that handle and keeps its original copy.
+
+## Execution and ownership
+
+The daemon owns model requests, history, tools, permissions, cancellation and provider
+persistence. The shared client contribution uses Paseo's React Native settings controls
+and host frame, with no desktop-only API. Existing chat and permission surfaces render
+all messages and tool cards.
+
+Conversation archives live at `otto-openai-compatible/sessions/<id>.json` in the resolved
+host home. The opaque Paseo handle contains only a format and stable session ID, keeping
+large transcripts out of session identity and repeated metadata. Archive checkpoints use
+an atomic private-file replacement. Conflicting live writers fail visibly and require
+reopening the chat; a failed checkpoint stops further model requests and tool effects.
+An archive has a 128 MiB safety limit. A missing or invalid archive is reported without
+resetting the conversation. Back up this directory and its sibling `images/` together
+with the normal host data. Earlier inline checkpoints are retained under `sessions/imports/`.
+
+The initial mode is **Ask before tools**. Native tools read a bounded text file, atomically
+write UTF-8 content, or execute a bounded shell command using the session's host environment.
+In this mode every native tool requires approval. Shell commands have a deadline and use the plugin
+SDK's process termination helper; process-tree termination guarantees follow that helper's
+platform behavior. Denied tools produce feedback without execution. Cancellation aborts
+model requests and pending permission waits, and interrupts the active tool.
+
+The provider consumes daemon-injected stdio, Streamable HTTP and legacy SSE MCP servers. It preserves server
+instructions, tool descriptions and input schemas. Only an exact daemon-supplied server
+and tool preapproval bypasses the permission prompt in Ask before tools. Model-visible names are stable hashes;
+policy matching uses the original identities. MCP sessions close when the provider session
+closes. Stdio servers run in the session workspace with the session environment and
+their configured overrides. Cancellation notifies the MCP server and releases the request;
+shutdown closes stdin before bounded process termination. Legacy SSE uses the advertised
+message endpoint only on the configured origin, so authentication headers are not forwarded
+to another origin. Neither HTTP transport follows redirects.
+
+Tool results are capped at 16,000 characters with a truncation notice. Model output is
+bounded; a truncated or unfinished completion cannot execute partial tool calls. Tool
+rounds default to 24 and request deadlines to five minutes. The permission decision wait
+does not consume the model request deadline. Endpoint usage is reported when supplied,
+including usage received before a failed or canceled stream. Each request contributes its
+last reported cumulative usage once; missing usage is not invented.
+
+## Persistence and current limits
+
+New conversations persist opaque versioned provider data through Paseo's agent store.
+It contains model messages and timeline snapshots, not API keys or session environment.
+Recovery completes unanswered tool-call records with interruption feedback and never
+reexecutes them automatically. A different configured endpoint is refused when resuming
+saved history, preventing an accidental history transfer to another service.
+
+The provider supports named endpoints, host-owned credentials, text and image prompts,
+native file/shell tools, MCP over all three standard transports, streaming, approval,
+cancellation, live configuration, compaction, rewind and recovery. Supported Otto 0.9
+configuration and conversation imports follow the explicit boundaries above. Unported
+provider policies and feature tooling remain preserved for later review.
+
+The full OpenAI-compatible feature family remains in progress. Brain is a separate phase.
+
+## Session controls
+
+Paseo's existing session controls select models, reasoning effort, permission mode and an
+optional maximum response token count. Endpoint default sends no output cap or reasoning
+override. Explicit output limits can include reasoning tokens. Model discovery retains
+advertised context windows, supported reasoning efforts and output token parameter names.
+Unknown endpoints can reject an effort they do not support; selecting Endpoint default
+leaves the choice to that endpoint. A manually configured model ID does not require discovery.
+
+Ask before tools is the default. Accept file edits permits reads and writes inside the
+workspace, checking real filesystem paths; other actions still ask. Read only offers read
+tools and rejects write tools even if the model requests one. Don't ask permits workspace
+reads and exact host MCP grants, and denies actions that would ask. Bypass explicitly permits
+available tools without approval. These modes are application policies, not OS sandboxes.
+MCP read-only annotations control availability in Read only; they do not grant permission.
+
+Configuration changes made during a turn apply to the next turn. The admitted turn and its
+pending approvals retain their original settings. Desired settings persist through restart.
+Reasoning text and signed or encrypted reasoning details remain in model history across
+tool calls and recovery, with opaque chunks preserved in wire order. Each conversation also
+retains a stable prompt cache key. These fields travel only within the encrypted application
+channel and model requests, leaving Paseo relay identity unchanged.
+
+## Repository instructions
+
+The provider reads `AGENTS.md`, falling back to `CLAUDE.md` when absent, in the host's
+Otto home and from the nearest Git root through the session's working directory. Outside
+a Git repository, the working directory is the root. Real symlinks and the Windows
+checkout convention of an `AGENTS.md` file containing `CLAUDE.md` are supported. An empty
+`AGENTS.md` intentionally suppresses its directory's fallback.
+
+Literal local `@path.md` imports are loaded recursively. Markdown links and references
+inside code examples remain on demand. Imported files must resolve inside the workspace
+or Otto home. Instructions have a combined 128 KiB, 32-file and eight-level import budget;
+missing imports, unreadable files and exceeded budgets produce visible errors. Source
+files are never rewritten to recover from an error.
+
+The current files appear once in each model request, outside persisted conversation
+history, and their weight contributes to the compaction trigger. Native file tools load
+applicable deeper directory rules for the current turn. A native write waits if applicable
+instructions have not yet reached the model or changed since its request; the next request
+contains those rules before the model retries. Shell and MCP operations retain their
+existing permissions and instruct the model to inspect affected directory rules. This is
+instruction handling, not filesystem containment or a shell parser. The instruction source
+is provider-owned and reusable by the later Context Management phase; that phase's graph
+and UI are not restored here.
+
+## Context compaction
+
+`/compact [summary focus]` summarizes older model context while retaining the full transcript
+and recent context. Automatic compaction defaults to an estimated 80% of the model window;
+the session control offers 50%, 60%, 70%, 80%, 90% and Off. Off leaves the manual command
+available. A missing model window uses an 8192-token trigger estimate, which is never
+reported as measured usage or an advertised model limit. The trigger includes the system
+prompt and tool catalog. A single large prompt or tool group can still exceed an endpoint's
+window; compaction cannot split an unfinished tool exchange.
+
+The recent-context target is one quarter of the known window, capped at 20,000 estimated
+tokens. Boundaries retain complete tool-call/result groups, including during a long turn.
+Repeated compaction sends the previous summary and newly older context to the summarizer,
+avoiding repeated processing of the full archive. Summary calls carry no tools; old images
+remain references, with recorded findings preserved in the summary. Opaque reasoning
+signatures remain in the archive and recent context, without being copied into summary calls.
+
+A summary commits only after a completed, nonempty response that reduces context. Failure
+or cancellation preserves the previous context. Automatic failure shows a warning and
+suppresses repeated attempts until enough new context has accumulated; manual retry remains
+available. Summary usage contributes to the turn's endpoint-reported token counts. Both the
+summary and its archive boundary persist, so restarting does not restore the larger request
+prefix or delete transcript history.
+
+## Conversation rewind
+
+The existing Rewind action removes a selected human turn and all later conversation context.
+It does not undo file writes or other tool effects. The provider advertises conversation
+rewind only, with no file-undo capability. Unknown or stale rewind boundaries fail before
+changing context. If a summary includes removed context, it is discarded so later requests
+cannot recover those removed instructions from a summary. Rewound state persists through
+restart, and completed tools are never executed by the rewind operation.
+
+Paseo 0.12's plugin adapter caches earlier transcript events. A small `OTTO(provider-history)`
+hook delegates history replay for this provider's saved format to
+`packages/server/src/server/otto/plugin-provider-history.ts`. It uses the authoritative
+provider snapshots, preserving message timestamps and excluding removed rows or stale
+loading versions. Other provider formats retain upstream replay behavior. The compatibility
+marker records the upstream-removal review date.
+
+## Attachments
+
+PNG, JPEG, GIF and WebP inputs use Chat Completions image content. Select a model that
+supports images; a text-only endpoint can reject an image request. Images are stored
+atomically in the host's `otto-openai-compatible/images` directory and checked by their
+SHA-256 content hash when a request is built. Provider persistence contains hash references,
+so image bytes are not repeated in every agent snapshot. Retain that directory alongside
+the host's agent data when backing up or moving a host.
+
+Each prompt accepts at most 20 MiB of decoded image data and 1 MiB of text. Model requests
+accept at most 40 MiB of decoded image context. Invalid or changed attachments produce an
+error without sending a partial request. Text attachments retain their title, source and
+body; forge and review attachments retain their supplied context. Uploaded files are
+represented by host path, name, MIME type and size, so the agent inspects them through an
+approved host tool rather than reading arbitrary attachment paths during prompt conversion.
+MCP image results use the same host storage. All tool replies in a model round precede the
+corresponding image content. Pending image references persist with completed tool replies,
+so recovery retains captures without rerunning a completed tool.
+
+## Verification
+
+### Historical capability review
+
+| Otto 0.9 capability                                    | Current implementation or explicit boundary                                                                                                                                                          |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenAI-compatible endpoints and derived provider names | Named connection profiles plus preserved legacy aliases and endpoint-bound private credentials.                                                                                                      |
+| Native agent tools, permission modes and MCP           | Provider-owned file/shell tools, Paseo permission events and daemon-injected MCP over stdio, Streamable HTTP and SSE. Tools from deferred Otto features return with their owning feature.            |
+| Text, images and reasoning                             | Bounded host image storage, streaming text/reasoning and opaque signed reasoning replay. Unsupported model modalities remain endpoint errors.                                                        |
+| Model controls and output budgeting                    | Existing Paseo controls expose model, mode, reasoning and optional output limits. Endpoint default omits the output cap; paid endpoints need no special setup.                                       |
+| Repository instructions                                | One provider-owned fixed/scoped instruction source with explicit import and size limits. [Context](otto-context-management.md) supplies the separate graph, inspection and reviewed source controls. |
+| Context compaction and rewind                          | Bounded summary requests, full transcript archive and conversation rewind. File undo is not advertised.                                                                                              |
+| Saved settings and conversations                       | Original configuration remains read-only; supported complete 0.9 handles are backed up and imported into host archives. Unknown shapes fail without resetting data.                                  |
+| Historical custom policy and tool environment options  | Preserved with an explicit diagnostic; an affected legacy endpoint stays inactive until those policies have an accepted implementation.                                                              |
+| Brain, Workflows and feature-specific tools            | Their owning built-in contributions compose the restored capabilities. This provider does not implicitly enable them; broader agent profiles and teams remain outside its scope.                     |
+| Usage/performance presentation                         | Existing Paseo usage events receive endpoint-reported counts. The deferred Otto statistics UI is not restored.                                                                                       |
+
+Requests are not replayed automatically after partial output, tool effects or a billing
+error. Free-model acceptance establishes the tested endpoint behavior; it does not imply
+that every model supports every tool, reasoning control or image format.
+
+Targeted provider tests exercise fragmented SSE, approvals/denials/cancellation, recovery,
+failure boundaries, and exact MCP grants against local fixture endpoints. The daemon
+integration test in `packages/server/src/server/otto/openai-compatible.e2e.test.ts` exercises
+the compiled built-in contribution, host settings RPC, model catalog and ordinary chat.
+These deterministic endpoints establish integration behavior, not compatibility with every
+hosted model or a native-device UI acceptance test. CI and product builds remain required
+at each phase checkpoint; retain the exact commit and run links on the rebuild charter.

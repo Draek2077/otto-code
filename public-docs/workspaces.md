@@ -6,6 +6,8 @@ order: 10
 category: Workspaces
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Workspaces
 
 Otto is organized around workspaces, not chats.
@@ -36,6 +38,9 @@ Agents run inside a workspace as sessions. A workspace can have one agent sessio
 That matters because real development rarely fits into one long chat. You might ask one agent to implement a feature, open a terminal to run a service, start another agent to review the diff, and keep the browser open next to both. Those belong together because they are all part of the same task.
 
 In Otto, the workspace is the stable container. The sessions are what you run inside it.
+
+Use [Visualizer](/docs/visualizer) to follow those sessions in a graph, a floating
+picture in picture, or behind the conversation.
 
 ## Creating a workspace
 

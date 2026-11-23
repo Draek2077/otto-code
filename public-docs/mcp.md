@@ -6,6 +6,8 @@ order: 30
 category: Orchestration
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Otto MCP
 
 Otto can inject these MCP tools into every new agent it launches. Turn on **Inject Otto tools** in host settings, or set `daemon.mcp.injectIntoAgents` to `true`.

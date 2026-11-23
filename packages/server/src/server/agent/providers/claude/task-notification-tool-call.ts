@@ -141,22 +141,6 @@ function readTaskNotificationTagValue(input: ReadTaskNotificationTagInput): stri
   return toNonEmptyString(match[1]);
 }
 
-function readFirstTaskNotificationTag(
-  rawText: string | null,
-  ...tagNames: string[]
-): string | null {
-  if (!rawText) {
-    return null;
-  }
-  for (const tagName of tagNames) {
-    const value = readTaskNotificationTagValue({ text: rawText, tagName });
-    if (value) {
-      return value;
-    }
-  }
-  return null;
-}
-
 function parseTaskNotificationFromUserContent(
   input: MapTaskNotificationUserContentToToolCallInput,
 ): TaskNotificationEnvelope | null {
@@ -204,17 +188,26 @@ function parseTaskNotificationFromSystemRecord(record: unknown): TaskNotificatio
   return TaskNotificationEnvelopeSchema.parse({
     messageId: toNonEmptyString(systemRecord.uuid) ?? toNonEmptyString(systemRecord.message_id),
     taskId:
-      toNonEmptyString(systemRecord.task_id) ?? readFirstTaskNotificationTag(rawText, "task-id"),
+      toNonEmptyString(systemRecord.task_id) ??
+      (rawText ? readTaskNotificationTagValue({ text: rawText, tagName: "task-id" }) : null),
     toolUseId:
       toNonEmptyString(systemRecord.tool_use_id) ??
-      readFirstTaskNotificationTag(rawText, "tool-use-id", "tool_use_id"),
+      (rawText
+        ? (readTaskNotificationTagValue({ text: rawText, tagName: "tool-use-id" }) ??
+          readTaskNotificationTagValue({ text: rawText, tagName: "tool_use_id" }))
+        : null),
     status:
-      toNonEmptyString(systemRecord.status) ?? readFirstTaskNotificationTag(rawText, "status"),
+      toNonEmptyString(systemRecord.status) ??
+      (rawText ? readTaskNotificationTagValue({ text: rawText, tagName: "status" }) : null),
     summary:
-      toNonEmptyString(systemRecord.summary) ?? readFirstTaskNotificationTag(rawText, "summary"),
+      toNonEmptyString(systemRecord.summary) ??
+      (rawText ? readTaskNotificationTagValue({ text: rawText, tagName: "summary" }) : null),
     outputFile:
       toNonEmptyString(systemRecord.output_file) ??
-      readFirstTaskNotificationTag(rawText, "output-file", "output_file"),
+      (rawText
+        ? (readTaskNotificationTagValue({ text: rawText, tagName: "output-file" }) ??
+          readTaskNotificationTagValue({ text: rawText, tagName: "output_file" }))
+        : null),
     rawText,
   });
 }

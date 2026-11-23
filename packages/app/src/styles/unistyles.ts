@@ -1,29 +1,11 @@
 import { StyleSheet } from "react-native-unistyles";
 import { REGISTERED_THEMES } from "./theme";
 
-// Only the `light`/`dark` keys participate in mode switching. Every other
-// named variant (Meadow, Ember, Slate, ...) lives in `theme.ts` as plain
-// data, copied into these two keys at runtime by
-// `appearance/color-scheme.ts`. See that file for why:
-// Unistyles' adaptive-theme mechanism hardcodes switching between the
-// literal keys `light`/`dark` and cannot target an arbitrary named theme.
-// Seed content here is today's default pair (Daylight/Twilight).
-//
-// The third `black` key is never selected by mode switching or adaptive
-// themes - it exists solely for `ScopedTheme name="black"` around chat panes
-// when the "Black tab background" appearance setting is on. It mirrors the
-// user's dark-variant pick with pure-black chat surfaces and is repainted by
-// the same runtime patchers as the other two keys.
 StyleSheet.configure({
   themes: REGISTERED_THEMES,
   breakpoints: {
     xs: 0,
     sm: 576,
-    // 720, not Bootstrap's 768, so a half-screen window on a 14-inch Mac
-    // (1512 logical points, so 756 wide) stays in desktop mode instead of
-    // collapsing to the mobile sidebar. Upstream set this in #1983; the fork
-    // lost it in a merge, which took the whole half-screen desktop layout with
-    // it. See e2e/sidebar-workspace.spec.ts "Half-screen desktop layout".
     md: 720,
     lg: 992,
     xl: 1200,

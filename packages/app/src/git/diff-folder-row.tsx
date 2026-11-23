@@ -1,47 +1,38 @@
-import { useCallback, useMemo } from "react";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { useCallback, useMemo, useState } from "react";
 import { View, Text, type LayoutChangeEvent, type PressableStateCallbackType } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { DiffStat } from "@/components/diff-stat";
-import { Folder } from "@/components/icons/material-icons";
 import {
   TreeChevron,
-  TreeIndentGuides,
   treeRowPaddingLeft,
-  useTreeIconSize,
-  WORKSPACE_FILE_ROW_VERTICAL_PADDING,
+  workspaceTreeRowStyles,
   WORKSPACE_TREE_ICON_LABEL_GAP,
-  WORKSPACE_TREE_ICON_FRAME_SIZE,
+  WORKSPACE_TREE_ICON_SIZE,
 } from "@/components/tree-primitives";
-import type { Theme } from "@/styles/theme";
+import { type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
 import { isWeb } from "@/constants/platform";
 
-const mutedIconColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const ThemedFolder = withUnistyles(Folder);
-
 interface DiffFolderRowProps {
-  /** full uncompressed directory path - the collapse identity */
+  /** full uncompressed directory path — the collapse identity */
   dirPath: string;
   displayName: string;
   depth: number;
-  /** which indent rails keep running below this row - see tree-rail-mask.ts */
-  ancestorMask: number;
   collapsed: boolean;
-  isSelected?: boolean;
+  isSelected: boolean;
   additions: number;
   deletions: number;
   onToggle: (dirPath: string) => void;
-  onCollapse?: (dirPath: string) => void;
-  onSelect?: (dirPath: string) => void;
+  onCollapse: (dirPath: string) => void;
+  onSelect: (dirPath: string) => void;
   onHeightChange?: (height: number) => void;
   onCopyPath?: (path: string) => void;
   onCopyRelativePath?: (path: string) => void;
   onReveal?: (path: string) => void;
   revealTargetName?: string;
   onDuplicate?: (path: string) => void;
-  /** Discard every change under this folder. */
   onRevert?: (path: string) => void;
   testID?: string;
 }
@@ -50,16 +41,18 @@ function folderRowPressableStyle(
   { hovered, pressed }: PressableStateCallbackType & { hovered?: boolean },
   isSelected: boolean,
 ) {
-  return [styles.folderRow, (Boolean(hovered) || pressed || isSelected) && styles.folderRowActive];
+  return [
+    workspaceTreeRowStyles.row,
+    (Boolean(hovered) || pressed || isSelected) && workspaceTreeRowStyles.active,
+  ];
 }
 
 export function DiffFolderRow({
   dirPath,
   displayName,
   depth,
-  ancestorMask,
   collapsed,
-  isSelected = false,
+  isSelected,
   additions,
   deletions,
   onToggle,
@@ -74,10 +67,13 @@ export function DiffFolderRow({
   onRevert,
   testID,
 }: DiffFolderRowProps) {
-  const treeIconSize = useTreeIconSize();
   const handleSelect = useCallback(() => {
-    onSelect?.(dirPath);
+    onSelect(dirPath);
   }, [dirPath, onSelect]);
+  const [isHovered, setIsHovered] = useState(false);
+  const showNameHover = useCallback(() => setIsHovered(true), []);
+  const hideNameHover = useCallback(() => setIsHovered(false), []);
+
   const handlePress = useCallback(() => {
     const selection = isWeb ? window.getSelection() : null;
     if (selection && !selection.isCollapsed && selection.toString().length > 0) {
@@ -101,7 +97,7 @@ export function DiffFolderRow({
   );
 
   const handleCollapse = useCallback(() => {
-    onCollapse?.(dirPath);
+    onCollapse(dirPath);
   }, [dirPath, onCollapse]);
 
   const handleCopyPath = useCallback(() => {
@@ -125,7 +121,12 @@ export function DiffFolderRow({
   }, [dirPath, onRevert]);
 
   const leftStyle = useMemo(
-    () => [styles.left, inlineUnistylesStyle({ paddingLeft: treeRowPaddingLeft(depth) })],
+    () => [
+      styles.left,
+      inlineUnistylesStyle({
+        paddingLeft: treeRowPaddingLeft(depth),
+      }),
+    ],
     [depth],
   );
 
@@ -136,13 +137,14 @@ export function DiffFolderRow({
 
   return (
     <View style={styles.container} onLayout={handleLayout} testID={testID}>
-      <TreeIndentGuides depth={depth} ancestorMask={ancestorMask} />
       <ContextMenu>
         <ContextMenuTrigger
           onPress={handlePress}
           onLongPress={handleSelect}
           onContextMenu={handleSelect}
           style={pressableStyle}
+          onHoverIn={showNameHover}
+          onHoverOut={hideNameHover}
           accessibilityRole="button"
           accessibilityState={accessibilityState}
           aria-selected={isSelected}
@@ -152,25 +154,29 @@ export function DiffFolderRow({
             <View style={styles.chevronSlot}>
               <TreeChevron expanded={!collapsed} />
             </View>
-            <View style={styles.folderLabel}>
-              <ThemedFolder size={treeIconSize} uniProps={mutedIconColor} />
-              <Text style={styles.folderName} numberOfLines={1}>
-                {displayName}
-              </Text>
-            </View>
+            <Text
+              style={[
+                styles.folderName,
+                workspaceTreeRowStyles.name,
+                isHovered && workspaceTreeRowStyles.nameHovered,
+              ]}
+              numberOfLines={1}
+              testID={testID ? `${testID}-name` : undefined}
+            >
+              {displayName}
+            </Text>
           </View>
           <View style={styles.right}>
             <DiffStat
               additions={additions}
               deletions={deletions}
-              style={styles.stat}
               testID={testID ? `${testID}-stat` : undefined}
             />
           </View>
         </ContextMenuTrigger>
         <FileActionsContextMenuContent
           fileKind="directory"
-          onCollapseFolder={!collapsed && onCollapse ? handleCollapse : undefined}
+          onCollapseFolder={!collapsed ? handleCollapse : undefined}
           onCopyPath={onCopyPath ? handleCopyPath : undefined}
           onCopyRelativePath={onCopyRelativePath ? handleCopyRelativePath : undefined}
           onReveal={onReveal ? handleReveal : undefined}
@@ -188,21 +194,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
   container: {
     overflow: "hidden",
   },
-  folderRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    // Same trailing inset as a file row (diff-pane's fileHeader), so folder and
-    // file diff stats land on one right edge instead of two. The -1 is measured,
-    // not arbitrary: a folder row's stat still landed 1px inside the file rows'
-    // right edge at a matched 8px padding.
-    paddingRight: theme.spacing[2] - 1,
-    paddingVertical: WORKSPACE_FILE_ROW_VERTICAL_PADDING,
-    gap: theme.spacing[1],
-    minWidth: 0,
-  },
-  folderRowActive: {
-    backgroundColor: theme.colors.surfaceSidebarHover,
-  },
   left: {
     flexDirection: "row",
     alignItems: "center",
@@ -210,19 +201,9 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flex: 1,
     minWidth: 0,
   },
-  folderLabel: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1.5],
-    // Match the folder glyph to the icon column of a child file. The chevron
-    // already owns the preceding disclosure column.
-    marginLeft: -theme.spacing[1],
-    flex: 1,
-    minWidth: 0,
-  },
   chevronSlot: {
-    width: WORKSPACE_TREE_ICON_FRAME_SIZE,
-    height: WORKSPACE_TREE_ICON_FRAME_SIZE,
+    width: WORKSPACE_TREE_ICON_SIZE,
+    height: WORKSPACE_TREE_ICON_SIZE,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -232,18 +213,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
     flexShrink: 0,
     gap: theme.spacing[1],
   },
-  // The stat's own 20px height is sized for the sidebar rows it also serves.
-  // In a tree it must not be the tallest child, or these rows stand taller than
-  // the Files explorer's, whose tallest child is the icon frame.
-  stat: {
-    height: WORKSPACE_TREE_ICON_FRAME_SIZE,
-  },
   folderName: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
     flexShrink: 1,
-    marginLeft: 2,
     minWidth: 0,
     userSelect: "none",
   },

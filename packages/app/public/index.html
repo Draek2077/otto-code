@@ -4,8 +4,9 @@
     <meta charset="utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="robots" content="noindex,nofollow" />
-    <meta name="theme-color" content="#1e1e22" />
+    <meta name="theme-color" content="#181B1A" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
+    <!-- OTTO(identity): Otto product name. -->
     <meta name="apple-mobile-web-app-title" content="Otto" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta
@@ -36,7 +37,7 @@
       @media (prefers-color-scheme: dark) {
         html,
         body {
-          background-color: #000000;
+          background-color: #181b1a;
         }
       }
       /* These styles make the root element full-height */
@@ -51,85 +52,43 @@
       }
     </style>
     <style>
-      /* Scoped no-drag backstop for Electron titlebar strips.
-         Chromium computes -webkit-app-region rects from UNCLIPPED bounding
-         boxes of every annotated element in the document - overflow clipping
-         and z-order are ignored (electron/electron#7605). A global no-drag
-         rule therefore lets interactive chat content scrolled BEHIND the
-         titlebar punch invisible holes in the drag strip. Unannotated
-         elements never subtract from a drag region, so we only stamp no-drag
-         on interactive elements that live inside a titlebar strip: either a
-         container that itself is a drag region ([data-app-region-drag] on the
-         workspace header label) or a container that holds a drag overlay
-         (:has(> [data-app-region-drag]) - TitlebarDragRegion's parent).
-         Everything else in the app stays unannotated. */
-      :is([data-app-region-drag], :has(> [data-app-region-drag]))
-        :is(
-          button,
-          a,
-          input,
-          textarea,
-          select,
-          [role="button"],
-          [role="link"],
-          [role="textbox"],
-          [role="combobox"],
-          [role="tab"],
-          [role="switch"],
-          [role="checkbox"],
-          [role="slider"],
-          [role="menuitem"],
-          [tabindex],
-          [contenteditable="true"]
-        ) {
+      button,
+      a,
+      input,
+      textarea,
+      select,
+      [role="button"],
+      [role="link"],
+      [role="textbox"],
+      [role="combobox"],
+      [role="tab"],
+      [role="switch"],
+      [role="checkbox"],
+      [role="slider"],
+      [role="menuitem"],
+      [tabindex],
+      [contenteditable="true"] {
         -webkit-app-region: no-drag !important;
       }
 
-      /* Portaled overlays are the second place no-drag is required. Popup
-         menus, dialogs, and sheets render in react-native-web Modal layers
-         appended directly to <body> (plus the #overlay-root portal host) -
-         outside #root and outside any drag-region container, so the scoped
-         rule above never reaches them. Drag regions hit-test ahead of DOM
-         z-order, so without no-drag an open menu is click-dead wherever it
-         overlaps a titlebar strip or a pane tab-bar gutter (context menus
-         open at the cursor - inside that gutter). Unlike app content, these
-         layers exist only while an overlay is open, so they cannot punch
-         persistent holes in the drag strip. */
-      body
-        > :not(#root)
-        :is(
-          button,
-          a,
-          input,
-          textarea,
-          select,
-          [role="button"],
-          [role="link"],
-          [role="textbox"],
-          [role="combobox"],
-          [role="tab"],
-          [role="switch"],
-          [role="checkbox"],
-          [role="slider"],
-          [role="menuitem"],
-          [tabindex],
-          [contenteditable="true"]
-        ) {
-        -webkit-app-region: no-drag !important;
+      /* Electron does not clip app-region rectangles to scroll viewports.
+         Content-only viewports emit no window regions, including from their
+         controls. Visible controls here use normal DOM hit testing.
+         Use initial: Blink parses the explicit value none as no-drag. */
+      [data-window-content],
+      [data-window-content] * {
+        -webkit-app-region: initial !important;
       }
 
-      /* Suppress the browser's default focus outline - it appears on mouse
+      /* Suppress the browser's default focus outline — it appears on mouse
          clicks and looks out of place against our themed surfaces. Keep a
-         themed ring for keyboard users via :focus-visible. This is the
-         pre-mount shell ring; once React themes the app the live accent takes
-         over. The CSS variable follows the active Unistyles theme; the gold
-         fallback is only for the instant before that theme is available. */
+         themed ring for keyboard users via :focus-visible. */
       *:focus {
         outline: none;
       }
       *:focus-visible {
-        outline: 1px solid var(--colors-accent, #c69700);
-        outline-offset: -1px;
+        outline: 2px solid #20744a;
+        outline-offset: 2px;
       }
     </style>
   </head>

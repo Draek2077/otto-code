@@ -1,11 +1,5 @@
-import {
-  isOttoArchiveSnapshotPending,
-  preserveOttoPendingArchives,
-  releaseOttoAgentPresentation,
-  traceOttoAgentDirectoryDelta,
-} from "../otto-agent-projection";
 import equal from "fast-deep-equal";
-import type { FetchAgentsEntry } from "@otto-code/client/internal/daemon-client";
+import type { FetchAgentsEntry } from "@getpaseo/client/internal/daemon-client";
 import { useSessionStore, type Agent } from "@/stores/session-store";
 import { acceptAgentDirectoryUpdate } from "@/utils/agent-directory-update-policy";
 import { buildAgentDirectoryState, type AgentDirectoryDelta } from "@/utils/agent-directory-sync";
@@ -17,6 +11,15 @@ import { buildDraftStoreKey } from "@/stores/draft-keys";
 import { useDraftStore } from "@/stores/draft-store";
 import { getInitDeferred, getInitKey, rejectInitDeferred } from "@/utils/agent-initialization";
 import { reduceTurnLiveness, type TurnLivenessTransition } from "@/timeline/turn-liveness";
+
+function withoutAgent(agentId: string) {
+  return <T>(current: Map<string, T>): Map<string, T> => {
+    if (!current.has(agentId)) return current;
+    const next = new Map(current);
+    next.delete(agentId);
+    return next;
+  };
+}
 
 function mergeSnapshotTurn(previous: Agent | undefined, incoming: Agent): Agent {
   if (!previous) return incoming;
@@ -65,29 +68,18 @@ export class AgentStoreProjection {
     return accepted;
   }
 
-  applyDelta(delta: AgentDirectoryDelta) {
-    return traceOttoAgentDirectoryDelta(
-      this.serverId,
-      delta.kind === "remove" ? delta.agentId : delta.agent.id,
-      () => this.applyDeltaInternal(delta),
-    );
-  }
-
-  private applyDeltaInternal(delta: AgentDirectoryDelta): {
+  applyDelta(delta: AgentDirectoryDelta): {
     agentId: string;
     stoppedRunning: boolean;
     agent?: Agent;
   } {
     if (delta.kind === "remove") {
-      this.remove(delta.agentId);
+      this.removeFromDirectory(delta.agentId);
       return { agentId: delta.agentId, stoppedRunning: false };
     }
     const normalized = normalizeAgentSnapshot(delta.agent, this.serverId);
     const session = useSessionStore.getState().sessions[this.serverId];
     const previous = session?.agents.get(normalized.id) ?? session?.agentDetails.get(normalized.id);
-    if (isOttoArchiveSnapshotPending(this.serverId, normalized)) {
-      return { agentId: normalized.id, stoppedRunning: false, agent: previous };
-    }
     const legacyWorkspaceId =
       previous?.workspaceId ??
       Array.from(session?.workspaces.values() ?? []).find(
@@ -121,18 +113,12 @@ export class AgentStoreProjection {
     });
     const store = useSessionStore.getState();
     const current = store.sessions[this.serverId]?.agents ?? new Map<string, Agent>();
-    const suppressed = preserveOttoPendingArchives(
-      this.serverId,
-      current,
-      fetched,
-      pendingPermissions,
-    );
     const agents = new Map<string, Agent>();
     for (const [agentId, fetchedAgent] of fetched) {
       const existing = current.get(agentId);
       const merged = mergeSnapshotTurn(existing, fetchedAgent);
       agents.set(agentId, existing && equal(existing, merged) ? existing : merged);
-      if (fetchedAgent.archivedAt && !suppressed.has(agentId)) {
+      if (fetchedAgent.archivedAt) {
         clearArchiveAgentPending({ queryClient, serverId: this.serverId, agentId });
       }
     }
@@ -164,14 +150,9 @@ export class AgentStoreProjection {
     useSessionStore.getState().setPendingPermissions(this.serverId, pending);
   }
 
-  remove(agentId: string): void {
+  removeFromDirectory(agentId: string): void {
     const store = useSessionStore.getState();
-    const removeKey = <T>(current: Map<string, T>): Map<string, T> => {
-      if (!current.has(agentId)) return current;
-      const next = new Map(current);
-      next.delete(agentId);
-      return next;
-    };
+    const removeKey = withoutAgent(agentId);
     clearArchiveAgentPending({ queryClient, serverId: this.serverId, agentId });
     store.setAgents(this.serverId, removeKey);
     store.setAgentDetails(this.serverId, removeKey);
@@ -182,7 +163,6 @@ export class AgentStoreProjection {
       for (const [key, pending] of next) if (pending.agentId === agentId) next.delete(key);
       return next.size === current.size ? current : next;
     });
-    releaseOttoAgentPresentation(this.serverId, agentId);
     useSessionStore.setState((state) => {
       if (!state.agentLastActivity.has(agentId)) return state;
       const agentLastActivity = new Map(state.agentLastActivity);
@@ -196,6 +176,18 @@ export class AgentStoreProjection {
     if (getInitDeferred(initKey)) {
       rejectInitDeferred(initKey, new Error("Agent was removed during initialization"));
     }
+  }
+
+  remove(agentId: string): void {
+    this.removeFromDirectory(agentId);
+    // Only entity deletion destroys the transcript. A filtered active-list
+    // response can arrive after a fresh history response for an archived agent.
+    const store = useSessionStore.getState();
+    const removeKey = withoutAgent(agentId);
+    store.setAgentTimelineCursor(this.serverId, removeKey);
+    store.setAgentAuthoritativeHistoryApplied(this.serverId, agentId, false);
+    store.setAgentStreamTail(this.serverId, removeKey);
+    store.clearAgentStreamHead(this.serverId, agentId);
   }
 
   archive(agentId: string, archivedAt: string): Agent | null {

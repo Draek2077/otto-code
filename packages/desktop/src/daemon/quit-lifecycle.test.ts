@@ -1,18 +1,14 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { DEFAULT_DESKTOP_SETTINGS } from "../settings/desktop-settings";
 import {
   createQuitLifecycle,
-  isAppQuitting,
-  markAppQuitting,
   registerExternalQuitSignals,
   shouldStopDesktopManagedDaemonOnQuit,
   stopDesktopManagedDaemonOnQuitIfNeeded,
 } from "./quit-lifecycle";
 
-// Both fixtures state the flag outright rather than leaning on whatever
-// DEFAULT_DESKTOP_SETTINGS currently holds - these assert the function's logic,
-// and must not silently invert if the shipped default is ever flipped again.
+const SETTINGS_STOP_ON_QUIT = DEFAULT_DESKTOP_SETTINGS;
 const SETTINGS_KEEP_RUNNING = {
   ...DEFAULT_DESKTOP_SETTINGS,
   daemon: {
@@ -20,42 +16,20 @@ const SETTINGS_KEEP_RUNNING = {
     keepRunningAfterQuit: true,
   },
 };
-const SETTINGS_STOP_ON_QUIT = {
-  ...DEFAULT_DESKTOP_SETTINGS,
-  daemon: {
-    ...DEFAULT_DESKTOP_SETTINGS.daemon,
-    keepRunningAfterQuit: false,
-  },
-};
+
+function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function waitForQuitLifecycle(): Promise<void> {
+  return new Promise((resolve) => setImmediate(resolve));
+}
 
 describe("quit-lifecycle", () => {
-  it("keeps the app and transports alive while the Debian installer owns authorization", () => {
-    const app = { exit: vi.fn() };
-    const closeTransportSessions = vi.fn();
-    const preventDefault = vi.fn();
-    const stopDesktopManagedDaemonIfNeeded = vi.fn(async () => false);
-    const lifecycle = createQuitLifecycle({
-      ...NO_UPDATE,
-      app,
-      closeTransportSessions,
-      confirmQuitIfNeeded: vi.fn(async () => true),
-      stopDesktopManagedDaemonIfNeeded,
-      isUpdateInstalling: () => true,
-      onStopError: vi.fn(),
-    });
-    markAppQuitting();
-    lifecycle.handleBeforeQuit({ preventDefault });
-    expect(preventDefault).toHaveBeenCalledOnce();
-    expect(isAppQuitting()).toBe(false);
-    expect(closeTransportSessions).not.toHaveBeenCalled();
-    expect(stopDesktopManagedDaemonIfNeeded).not.toHaveBeenCalled();
-    expect(app.exit).not.toHaveBeenCalled();
-
-    lifecycle.handleBeforeQuitForUpdate();
-    lifecycle.handleBeforeQuit({ preventDefault });
-    expect(preventDefault).toHaveBeenCalledOnce();
-    expect(closeTransportSessions).toHaveBeenCalledOnce();
-  });
   it("turns external termination signals into one Electron quit", () => {
     const listeners = new Map<NodeJS.Signals, () => void>();
     const quits: string[] = [];
@@ -75,284 +49,244 @@ describe("quit-lifecycle", () => {
     expect(quits).toEqual(["quit"]);
   });
 
-  it("stops the daemon unless the user opted into keeping it running", () => {
+  it("stops by default and only keeps running when keepRunningAfterQuit is enabled", () => {
     expect(shouldStopDesktopManagedDaemonOnQuit(SETTINGS_STOP_ON_QUIT)).toBe(true);
     expect(shouldStopDesktopManagedDaemonOnQuit(SETTINGS_KEEP_RUNNING)).toBe(false);
   });
 
-  it("ships with the daemon stopping on quit", () => {
-    expect(shouldStopDesktopManagedDaemonOnQuit(DEFAULT_DESKTOP_SETTINGS)).toBe(true);
-  });
-
   it("short-circuits without inspecting the daemon when keep-running is on", async () => {
-    const isDesktopManagedDaemonRunning = vi.fn(() => true);
-    const stopDaemon = vi.fn(async () => undefined);
-    const showShutdownFeedback = vi.fn();
+    const events: string[] = [];
 
     const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: { get: async () => SETTINGS_KEEP_RUNNING },
-      isDesktopManagedDaemonRunning,
-      stopDaemon,
-      showShutdownFeedback,
+      isDesktopManagedDaemonRunning: () => {
+        events.push("inspect");
+        return true;
+      },
+      stopDaemon: async () => {
+        events.push("stop");
+      },
+      showShutdownFeedback: () => {
+        events.push("feedback");
+      },
     });
 
     expect(stopped).toBe(false);
-    expect(isDesktopManagedDaemonRunning).not.toHaveBeenCalled();
-    expect(stopDaemon).not.toHaveBeenCalled();
-    expect(showShutdownFeedback).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
   });
 
   it("does not stop a manually started daemon on quit", async () => {
-    const stopDaemon = vi.fn(async () => undefined);
-    const showShutdownFeedback = vi.fn();
+    const events: string[] = [];
 
     const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: { get: async () => SETTINGS_STOP_ON_QUIT },
       isDesktopManagedDaemonRunning: () => false,
-      stopDaemon,
-      showShutdownFeedback,
+      stopDaemon: async () => {
+        events.push("stop");
+      },
+      showShutdownFeedback: () => {
+        events.push("feedback");
+      },
     });
 
     expect(stopped).toBe(false);
-    expect(stopDaemon).not.toHaveBeenCalled();
-    expect(showShutdownFeedback).not.toHaveBeenCalled();
+    expect(events).toEqual([]);
   });
 
   it("shows feedback then stops a desktop-managed daemon", async () => {
-    const stopDaemon = vi.fn(async () => undefined);
-    const showShutdownFeedback = vi.fn();
+    const events: string[] = [];
 
     const stopped = await stopDesktopManagedDaemonOnQuitIfNeeded({
       settingsStore: { get: async () => SETTINGS_STOP_ON_QUIT },
       isDesktopManagedDaemonRunning: () => true,
-      stopDaemon,
-      showShutdownFeedback,
+      stopDaemon: async () => {
+        events.push("stop");
+      },
+      showShutdownFeedback: () => {
+        events.push("feedback");
+      },
     });
 
     expect(stopped).toBe(true);
-    expect(showShutdownFeedback).toHaveBeenCalledTimes(1);
-    expect(stopDaemon).toHaveBeenCalledTimes(1);
-    expect(showShutdownFeedback.mock.invocationCallOrder[0]).toBeLessThan(
-      stopDaemon.mock.invocationCallOrder[0],
-    );
+    expect(events).toEqual(["feedback", "stop"]);
   });
 
-  // No update pending: the common case, and the one the pre-update behaviour
-  // covered. Keeps these fixtures from having to spell it out each time.
-  const NO_UPDATE = {
-    installAppUpdateOnQuit: async () => false,
-    createUpdateDeadlineSignal: () => AbortSignal.timeout(1_000),
-    onUpdateError: () => undefined,
-  };
+  it("revalidates updates after daemon shutdown before exiting", async () => {
+    const stopDecision = deferred<boolean>();
+    const updateDecision = deferred<boolean>();
+    const events: string[] = [];
 
-  it("preventDefaults the first quit, runs the async stop decision, then exits hard", async () => {
-    let resolveStopDecision: (() => void) | null = null;
-    const app = { exit: vi.fn() };
-    const closeTransportSessions = vi.fn();
-    const onStopError = vi.fn();
-    const preventDefault = vi.fn();
-    const secondPreventDefault = vi.fn();
-
-    const { handleBeforeQuit } = createQuitLifecycle({
-      ...NO_UPDATE,
-      app,
-      closeTransportSessions,
-      confirmQuitIfNeeded: vi.fn(async () => true),
-      stopDesktopManagedDaemonIfNeeded: vi.fn(
-        () =>
-          new Promise<boolean>((resolve) => {
-            resolveStopDecision = () => resolve(false);
-          }),
-      ),
-      onStopError,
+    const quitLifecycle = createQuitLifecycle({
+      app: {
+        exit: (code) => {
+          events.push(`exit:${code}`);
+        },
+      },
+      closeTransportSessions: () => {
+        events.push("close-transports");
+      },
+      stopDesktopManagedDaemonIfNeeded: () => stopDecision.promise,
+      installAppUpdateOnQuit: () => updateDecision.promise,
+      createUpdateDeadlineSignal: () => new AbortController().signal,
+      onStopError: () => {
+        events.push("stop-error");
+      },
+      onUpdateError: () => {
+        events.push("update-error");
+      },
     });
 
-    handleBeforeQuit({ preventDefault });
+    quitLifecycle.handleBeforeQuit({
+      preventDefault: () => {
+        events.push("prevent-default");
+      },
+    });
 
-    expect(preventDefault).toHaveBeenCalledTimes(1);
-    expect(closeTransportSessions).toHaveBeenCalledTimes(1);
-    expect(app.exit).not.toHaveBeenCalled();
+    expect(events).toEqual(["close-transports", "prevent-default"]);
 
-    // Confirmation and host-local teardown resolve asynchronously, so the daemon
-    // stop decision is not invoked until their microtasks have completed.
-    await vi.waitFor(() => expect(resolveStopDecision).not.toBeNull());
+    events.push("daemon-stopped");
+    stopDecision.resolve(false);
+    await waitForQuitLifecycle();
 
-    resolveStopDecision?.();
-    await vi.waitFor(() => expect(app.exit).toHaveBeenCalledWith(0));
-    expect(onStopError).not.toHaveBeenCalled();
+    expect(events).toEqual(["close-transports", "prevent-default", "daemon-stopped"]);
 
-    handleBeforeQuit({ preventDefault: secondPreventDefault });
+    events.push("update-checked");
+    updateDecision.resolve(false);
+    await waitForQuitLifecycle();
 
-    expect(secondPreventDefault).not.toHaveBeenCalled();
-    expect(closeTransportSessions).toHaveBeenCalledTimes(2);
-    expect(app.exit).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([
+      "close-transports",
+      "prevent-default",
+      "daemon-stopped",
+      "update-checked",
+      "exit:0",
+    ]);
+
+    quitLifecycle.handleBeforeQuit({
+      preventDefault: () => {
+        events.push("second-prevent-default");
+      },
+    });
+
+    expect(events.at(-1)).toBe("close-transports");
+    expect(events).not.toContain("second-prevent-default");
   });
 
-  it("stops host-local features before stopping the daemon", async () => {
-    const app = { exit: vi.fn() };
-    const shutdownDesktopFeatures = vi.fn(async () => undefined);
-    const stopDesktopManagedDaemonIfNeeded = vi.fn(async () => false);
-    const { handleBeforeQuit } = createQuitLifecycle({
-      ...NO_UPDATE,
-      app,
-      closeTransportSessions: vi.fn(),
-      confirmQuitIfNeeded: vi.fn(async () => true),
-      shutdownDesktopFeatures,
-      stopDesktopManagedDaemonIfNeeded,
-      onStopError: vi.fn(),
+  it("lets the updater own process exit when a validated update is installing", async () => {
+    const exits: number[] = [];
+    const quitLifecycle = createQuitLifecycle({
+      app: { exit: (code) => exits.push(code) },
+      closeTransportSessions: () => {},
+      stopDesktopManagedDaemonIfNeeded: async () => false,
+      installAppUpdateOnQuit: async () => true,
+      createUpdateDeadlineSignal: () => new AbortController().signal,
+      onStopError: () => {},
+      onUpdateError: () => {},
     });
 
-    handleBeforeQuit({ preventDefault: vi.fn() });
+    quitLifecycle.handleBeforeQuit({ preventDefault: () => {} });
+    await waitForQuitLifecycle();
+    quitLifecycle.handleBeforeQuitForUpdate();
+    await waitForQuitLifecycle();
 
-    await vi.waitFor(() => expect(app.exit).toHaveBeenCalledWith(0));
-    expect(shutdownDesktopFeatures).toHaveBeenCalledTimes(1);
-    expect(stopDesktopManagedDaemonIfNeeded).toHaveBeenCalledTimes(1);
-    expect(shutdownDesktopFeatures.mock.invocationCallOrder[0]).toBeLessThan(
-      stopDesktopManagedDaemonIfNeeded.mock.invocationCallOrder[0],
-    );
+    expect(exits).toEqual([]);
   });
 
-  it("aborts the quit when the renderer confirmation is declined", async () => {
-    const app = { exit: vi.fn() };
-    const closeTransportSessions = vi.fn();
-    const onStopError = vi.fn();
-    const preventDefault = vi.fn();
-    const stopDesktopManagedDaemonIfNeeded = vi.fn(async () => false);
-
-    const { handleBeforeQuit } = createQuitLifecycle({
-      ...NO_UPDATE,
-      app,
-      closeTransportSessions,
-      confirmQuitIfNeeded: vi.fn(async () => false),
-      stopDesktopManagedDaemonIfNeeded,
-      onStopError,
+  it("recognizes a repeated quit as updater handoff", async () => {
+    const exits: number[] = [];
+    let preventedQuitCount = 0;
+    const quitLifecycle = createQuitLifecycle({
+      app: { exit: (code) => exits.push(code) },
+      closeTransportSessions: () => {},
+      stopDesktopManagedDaemonIfNeeded: async () => false,
+      installAppUpdateOnQuit: async () => true,
+      createUpdateDeadlineSignal: () => new AbortController().signal,
+      onStopError: () => {},
+      onUpdateError: () => {},
     });
 
-    handleBeforeQuit({ preventDefault });
-    expect(preventDefault).toHaveBeenCalledTimes(1);
+    quitLifecycle.handleBeforeQuit({ preventDefault: () => preventedQuitCount++ });
+    await waitForQuitLifecycle();
+    quitLifecycle.handleBeforeQuit({ preventDefault: () => preventedQuitCount++ });
+    await waitForQuitLifecycle();
 
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(stopDesktopManagedDaemonIfNeeded).not.toHaveBeenCalled();
-    expect(app.exit).not.toHaveBeenCalled();
-
-    // Cancelling resets the in-flight guard, so a later real quit attempt
-    // still goes through the full preventDefault -> confirm -> exit sequence.
-    const secondPreventDefault = vi.fn();
-    handleBeforeQuit({ preventDefault: secondPreventDefault });
-    expect(secondPreventDefault).toHaveBeenCalledTimes(1);
+    expect(preventedQuitCount).toBe(1);
+    expect(exits).toEqual([]);
   });
 
-  it("resets isAppQuitting when the renderer confirmation is declined", async () => {
-    // main.ts's separate 'before-quit' listener always calls this first, before
-    // the lifecycle's own listener runs in the same event cycle.
-    markAppQuitting();
-    expect(isAppQuitting()).toBe(true);
-
-    const { handleBeforeQuit } = createQuitLifecycle({
-      ...NO_UPDATE,
-      app: { exit: vi.fn() },
-      closeTransportSessions: vi.fn(),
-      confirmQuitIfNeeded: vi.fn(async () => false),
-      stopDesktopManagedDaemonIfNeeded: vi.fn(async () => false),
-      onStopError: vi.fn(),
+  it("exits when the updater does not take ownership before its deadline", async () => {
+    const revalidationDeadline = new AbortController();
+    const handoffDeadline = new AbortController();
+    let deadlineCount = 0;
+    const exits: number[] = [];
+    const quitLifecycle = createQuitLifecycle({
+      app: { exit: (code) => exits.push(code) },
+      closeTransportSessions: () => {},
+      stopDesktopManagedDaemonIfNeeded: async () => false,
+      installAppUpdateOnQuit: async () => true,
+      createUpdateDeadlineSignal: () =>
+        deadlineCount++ === 0 ? revalidationDeadline.signal : handoffDeadline.signal,
+      onStopError: () => {},
+      onUpdateError: () => {},
     });
 
-    handleBeforeQuit({ preventDefault: vi.fn() });
-    await Promise.resolve();
-    await Promise.resolve();
+    quitLifecycle.handleBeforeQuit({ preventDefault: () => {} });
+    await waitForQuitLifecycle();
+    handoffDeadline.abort();
+    await waitForQuitLifecycle();
 
-    // A declined quit must not permanently wedge isAppQuitting() true - that
-    // would disable close-to-tray (and the window-close quit confirmation) for
-    // every later close in the same session, quitting outright without asking.
-    expect(isAppQuitting()).toBe(false);
+    expect(exits).toEqual([0]);
   });
 
-  // autoInstallOnAppQuit is off, so an exit(0) here is a downloaded update that
-  // never installs. This is the regression the merge introduced.
-  it("hands the quit to the installer instead of exiting hard", async () => {
-    const app = { exit: vi.fn() };
-    const lifecycle = createQuitLifecycle({
-      app,
-      closeTransportSessions: vi.fn(),
-      confirmQuitIfNeeded: vi.fn(async () => true),
-      stopDesktopManagedDaemonIfNeeded: vi.fn(async () => false),
-      installAppUpdateOnQuit: vi.fn(async () => true),
-      createUpdateDeadlineSignal: () => AbortSignal.timeout(20),
-      onStopError: vi.fn(),
-      onUpdateError: vi.fn(),
+  it("does not intercept a quit started by a manual update", () => {
+    const events: string[] = [];
+    const quitLifecycle = createQuitLifecycle({
+      app: { exit: (code) => events.push(`exit:${code}`) },
+      closeTransportSessions: () => events.push("close-transports"),
+      stopDesktopManagedDaemonIfNeeded: async () => {
+        events.push("stop-daemon");
+        return false;
+      },
+      installAppUpdateOnQuit: async () => {
+        events.push("revalidate-update");
+        return false;
+      },
+      createUpdateDeadlineSignal: () => new AbortController().signal,
+      onStopError: () => events.push("stop-error"),
+      onUpdateError: () => events.push("update-error"),
     });
 
-    lifecycle.handleBeforeQuit({ preventDefault: vi.fn() });
-    lifecycle.handleBeforeQuitForUpdate();
+    quitLifecycle.handleBeforeQuitForUpdate();
+    quitLifecycle.handleBeforeQuit({
+      preventDefault: () => events.push("prevent-default"),
+    });
 
-    // Well past the deadline: the handoff has to suppress the hard exit
-    // permanently, not just until the timeout fires.
-    await new Promise((resolve) => setTimeout(resolve, 80));
-    expect(app.exit).not.toHaveBeenCalled();
+    expect(events).toEqual(["close-transports"]);
   });
 
-  it("does not stop the daemon before a Linux package updater takes over", async () => {
-    const app = { exit: vi.fn() };
-    const stopDesktopManagedDaemonIfNeeded = vi.fn(async () => true);
-    const lifecycle = createQuitLifecycle({
-      app,
-      closeTransportSessions: vi.fn(),
-      confirmQuitIfNeeded: vi.fn(async () => true),
-      stopDesktopManagedDaemonIfNeeded,
-      installAppUpdateOnQuit: vi.fn(async () => true),
-      createUpdateDeadlineSignal: () => AbortSignal.timeout(20),
-      deferDaemonStopUntilUpdateHandoff: true,
-      onStopError: vi.fn(),
-      onUpdateError: vi.fn(),
+  it("exits when update revalidation reaches its deadline", async () => {
+    const deadline = new AbortController();
+    const updateDecision = deferred<boolean>();
+    const exits: number[] = [];
+    const quitLifecycle = createQuitLifecycle({
+      app: { exit: (code) => exits.push(code) },
+      closeTransportSessions: () => {},
+      stopDesktopManagedDaemonIfNeeded: async () => false,
+      installAppUpdateOnQuit: () => updateDecision.promise,
+      createUpdateDeadlineSignal: () => deadline.signal,
+      onStopError: () => {},
+      onUpdateError: () => {},
     });
 
-    lifecycle.handleBeforeQuit({ preventDefault: vi.fn() });
-    lifecycle.handleBeforeQuitForUpdate();
+    quitLifecycle.handleBeforeQuit({ preventDefault: () => {} });
+    await waitForQuitLifecycle();
+    deadline.abort();
+    await waitForQuitLifecycle();
 
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    expect(stopDesktopManagedDaemonIfNeeded).not.toHaveBeenCalled();
-    expect(app.exit).not.toHaveBeenCalled();
-  });
+    expect(exits).toEqual([0]);
 
-  it("exits hard when the installer never takes over before the deadline", async () => {
-    const app = { exit: vi.fn() };
-    const { handleBeforeQuit } = createQuitLifecycle({
-      app,
-      closeTransportSessions: vi.fn(),
-      confirmQuitIfNeeded: vi.fn(async () => true),
-      stopDesktopManagedDaemonIfNeeded: vi.fn(async () => false),
-      installAppUpdateOnQuit: vi.fn(async () => true),
-      createUpdateDeadlineSignal: () => AbortSignal.timeout(20),
-      onStopError: vi.fn(),
-      onUpdateError: vi.fn(),
-    });
-
-    handleBeforeQuit({ preventDefault: vi.fn() });
-
-    await vi.waitFor(() => expect(app.exit).toHaveBeenCalledWith(0));
-  });
-
-  it("still exits hard when the update revalidation throws", async () => {
-    const app = { exit: vi.fn() };
-    const onUpdateError = vi.fn();
-    const { handleBeforeQuit } = createQuitLifecycle({
-      app,
-      closeTransportSessions: vi.fn(),
-      confirmQuitIfNeeded: vi.fn(async () => true),
-      stopDesktopManagedDaemonIfNeeded: vi.fn(async () => false),
-      installAppUpdateOnQuit: vi.fn(async () => {
-        throw new Error("manifest unreachable");
-      }),
-      createUpdateDeadlineSignal: () => AbortSignal.timeout(1_000),
-      onStopError: vi.fn(),
-      onUpdateError,
-    });
-
-    handleBeforeQuit({ preventDefault: vi.fn() });
-
-    await vi.waitFor(() => expect(app.exit).toHaveBeenCalledWith(0));
-    expect(onUpdateError).toHaveBeenCalledTimes(1);
+    updateDecision.resolve(true);
+    await waitForQuitLifecycle();
+    expect(exits).toEqual([0]);
   });
 });

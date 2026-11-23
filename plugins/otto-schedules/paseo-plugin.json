@@ -1,0 +1,5 @@
+{
+  "id": "otto-schedules",
+  "name": "Otto Schedules",
+  "requirements": { "paseo": ">=0.12.0" }
+}

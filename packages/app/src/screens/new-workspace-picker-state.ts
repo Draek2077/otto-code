@@ -95,27 +95,3 @@ export function clearPickerPrAttachmentForTargetChange(input: {
   }
   return input.attachments.filter((attachment) => !isPrAttachment(attachment));
 }
-
-/**
- * The PR attached to the draft that the picker is NOT currently checked out to,
- * which is what the "check this out instead?" hint offers. Skips PRs the user
- * already dismissed. Otto-only: upstream's picker has no such hint.
- */
-export function findCheckoutHintPrAttachment(input: {
-  attachments: ReadonlyArray<UserComposerAttachment>;
-  selectedItem: PickerItem | null;
-  dismissedPrNumbers: ReadonlySet<number>;
-}): Extract<UserComposerAttachment, { kind: "github_pr" }> | null {
-  const selectedPrNumber =
-    input.selectedItem?.kind === "github-pr" ? input.selectedItem.item.number : null;
-
-  for (const attachment of input.attachments) {
-    if (attachment.kind !== "github_pr") continue;
-    const prNumber = attachment.item.number;
-    if (prNumber === selectedPrNumber) continue;
-    if (input.dismissedPrNumbers.has(prNumber)) continue;
-    return attachment;
-  }
-
-  return null;
-}

@@ -1,3 +1,6 @@
+import type { DaemonTarget } from "../../utils/daemon-target.js";
+import { withGlobalOptions } from "../../utils/command-options.js";
+import type { CommandOptions } from "../../output/index.js";
 import {
   cancel,
   confirm,
@@ -49,6 +52,7 @@ const DAEMON_READY_POLL_MS = 250;
 const PROVIDER_READY_TIMEOUT_MS = 60_000;
 
 export interface HubGuidedSetupEnvironment {
+  daemonTarget: DaemonTarget;
   env: Readonly<Record<string, string | undefined>>;
   credentials: HubCredentialStore;
   hub: HubHttpClient;
@@ -80,22 +84,27 @@ function initErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function addHubInitCommand(parent: Command, environment: HubGuidedSetupEnvironment): void {
+export function addHubInitCommand(
+  parent: Command,
+  environment: Omit<HubGuidedSetupEnvironment, "daemonTarget">,
+): void {
   parent
     .command("init")
     .description("Create and optionally deploy a safe starter Hub trigger")
-    .action(async () => {
-      try {
-        await runHubInit(environment);
-      } catch (error) {
-        if (error instanceof HubInitCancelledError) {
-          cancel(error.message);
-          return;
+    .action(
+      withGlobalOptions(async (options: CommandOptions) => {
+        try {
+          await runHubInit({ ...environment, daemonTarget: options.daemonTarget });
+        } catch (error) {
+          if (error instanceof HubInitCancelledError) {
+            cancel(error.message);
+            return;
+          }
+          cancel(initErrorMessage(error));
+          process.exitCode = 1;
         }
-        cancel(initErrorMessage(error));
-        process.exitCode = 1;
-      }
-    });
+      }),
+    );
 }
 
 export async function runHubInit(environment: HubGuidedSetupEnvironment): Promise<void> {
@@ -107,7 +116,7 @@ export async function runHubGuidedSetup(
   state: HubGuidedSetupState = {},
 ): Promise<void> {
   requireInteractiveTerminal(environment);
-  intro("Set up Otto Hub");
+  intro("Set up Paseo Hub");
 
   const cwd = environment.cwd();
   const activeLogin = environment.credentials.active();
@@ -163,6 +172,7 @@ export async function runHubGuidedSetup(
     });
     log.success("Deployed");
   } else {
+    // OTTO(identity)
     reportMessage(environment, "Skipped deployment. Run `otto hub deploy` when ready.");
   }
 
@@ -175,8 +185,10 @@ export async function continueHubGuidedSetup(
   origin: string,
   environment: HubGuidedSetupEnvironment,
 ): Promise<void> {
-  const currentStatus = await withHubDaemon(environment.daemon, undefined, async (daemon) =>
-    daemon.getHubStatus().then((response) => response.status),
+  const currentStatus = await withHubDaemon(
+    environment.daemon,
+    environment.daemonTarget,
+    async (daemon) => daemon.getHubStatus().then((response) => response.status),
   );
   const current = resolveHubInitConnection(currentStatus, origin);
   if (current.kind === "connected") {
@@ -187,7 +199,7 @@ export async function continueHubGuidedSetup(
       }.`,
     );
   } else if (current.kind === "pending") {
-    await waitForDaemonReady(origin, environment.daemon);
+    await waitForDaemonReady(origin, environment);
   } else if (current.kind === "conflict") {
     reportMessage(
       environment,
@@ -209,6 +221,7 @@ export async function continueHubGuidedSetup(
     if (!grantExecution) {
       reportMessage(
         environment,
+        // OTTO(identity)
         "Daemon connected with no permissions.\n\nEnable Hub automations later:\n  otto hub permissions grant hub.execute",
       );
     }
@@ -233,7 +246,7 @@ async function ensureLogin(
     initialValue:
       activeOrigin === undefined || activeOrigin === DEFAULT_HUB_ORIGIN ? "hosted" : "custom",
     options: [
-      { value: "hosted", label: "hub.otto-code.me" },
+      { value: "hosted", label: "hub.paseo.sh" },
       { value: "custom", label: "Custom endpoint…" },
     ],
   });
@@ -244,7 +257,7 @@ async function ensureLogin(
           message: "Custom Hub URL",
           initialValue:
             activeOrigin === undefined || activeOrigin === DEFAULT_HUB_ORIGIN
-              ? environment.env.OTTO_HUB_URL
+              ? environment.env.PASEO_HUB_URL
               : activeOrigin,
           validate(value) {
             try {
@@ -273,7 +286,7 @@ async function ensureDaemonConnection(
   confirmed = false,
   permissions: readonly string[] = ["hub.execute"],
 ): Promise<string> {
-  const status = await withHubDaemon(environment.daemon, undefined, async (daemon) =>
+  const status = await withHubDaemon(environment.daemon, environment.daemonTarget, async (daemon) =>
     daemon.getHubStatus().then((response) => response.status),
   );
   const connection = resolveHubInitConnection(status, origin);
@@ -281,13 +294,14 @@ async function ensureDaemonConnection(
     if (permissions.includes("hub.execute") && !status.permissions.includes("hub.execute")) {
       throw new HubCommandError(
         "HUB_DAEMON_EXECUTION_NOT_ALLOWED",
+        // OTTO(identity)
         "This daemon is connected to Hub but cannot run Hub automations. Run `otto hub permissions grant hub.execute`, then run Hub init again.",
       );
     }
     return connection.daemonId;
   }
   if (connection.kind === "pending") {
-    return waitForDaemonReady(origin, environment.daemon);
+    return waitForDaemonReady(origin, environment);
   }
   if (connection.kind === "conflict") {
     throw new HubCommandError(
@@ -315,7 +329,7 @@ async function connectDaemon(
 ): Promise<string> {
   await runHubConnect(
     origin,
-    { permissions },
+    { permissions, daemonTarget: environment.daemonTarget },
     {
       env: environment.env,
       credentials: environment.credentials,
@@ -324,15 +338,15 @@ async function connectDaemon(
       reporter: environment.reporter,
     },
   );
-  return waitForDaemonReady(origin, environment.daemon);
+  return waitForDaemonReady(origin, environment);
 }
 
 async function waitForDaemonReady(
   origin: string,
-  connection: HubDaemonConnection,
+  environment: HubGuidedSetupEnvironment,
 ): Promise<string> {
   return withSpinner("Waiting for the daemon to connect", async (reporter) =>
-    withHubDaemon(connection, undefined, async (daemon) => {
+    withHubDaemon(environment.daemon, environment.daemonTarget, async (daemon) => {
       const deadline = Date.now() + DAEMON_READY_TIMEOUT_MS;
       while (true) {
         const status = (await daemon.getHubStatus()).status;
@@ -353,6 +367,7 @@ async function waitForDaemonReady(
         if (Date.now() >= deadline) {
           throw new HubCommandError(
             "HUB_DAEMON_CONNECTION_TIMEOUT",
+            // OTTO(identity)
             "The daemon did not connect within 60 seconds. Check `otto hub status`, then run Hub init again.",
           );
         }
@@ -372,6 +387,7 @@ async function resolveStarterTriggerConnections(
   const connections = availableStarterTriggerConnections(resources, repository);
   if (connections.length === 0) {
     throw new HubInitCancelledError(
+      // OTTO(identity)
       "No Hub app connection is ready for this trigger.\nConnect GitHub, Slack, or Discord in Hub → Apps, then run `otto hub init` again.",
     );
   }
@@ -382,6 +398,7 @@ function reportStarterTriggerConnections(
   environment: HubGuidedSetupEnvironment,
   connections: readonly HubStarterTriggerConnection[],
 ): void {
+  // OTTO(identity)
   const details = `${connections.map(({ label }) => label).join("\n")}\n\nOnly configured connections are shown. To add another, open Hub → Apps, then run \`otto hub init\` again.`;
   if (environment.prompts === undefined) {
     note(details, "Hub app connections ready for this trigger");
@@ -407,6 +424,7 @@ async function chooseStarterTriggerConnection(
   if (connection === undefined) {
     throw new HubCommandError(
       "HUB_PROVIDER_CONNECTION_INVALID",
+      // OTTO(identity)
       "The selected Hub app connection is no longer available. Run otto hub init again.",
     );
   }
@@ -425,6 +443,7 @@ async function chooseStarterAgentRuntime(
   if (runtime?.mode === undefined) {
     throw new HubCommandError(
       "HUB_AGENT_RUNTIME_SELECTION_INVALID",
+      // OTTO(identity)
       "The selected starter agent runtime is no longer available. Run otto hub init again.",
     );
   }
@@ -436,7 +455,7 @@ async function waitForStarterAgentProviders(
   cwd: string,
 ): Promise<readonly HubStarterAgentProvider[]> {
   return withSpinner("Discovering agent runtimes", async (reporter) =>
-    withHubDaemon(environment.daemon, undefined, async (daemon) => {
+    withHubDaemon(environment.daemon, environment.daemonTarget, async (daemon) => {
       const deadline = Date.now() + PROVIDER_READY_TIMEOUT_MS;
       while (true) {
         const snapshot = await daemon.getProvidersSnapshot({ cwd });
@@ -446,18 +465,21 @@ async function waitForStarterAgentProviders(
           if (providers.length > 0) return providers;
           throw new HubCommandError(
             "HUB_AGENT_RUNTIME_REQUIRED",
+            // OTTO(identity)
             "No agent runtime with an execution mode is available from this daemon. Configure one, then run otto hub init again.",
           );
         }
         if (state.kind === "unavailable") {
           throw new HubCommandError(
             "HUB_AGENT_RUNTIME_REQUIRED",
+            // OTTO(identity)
             "No usable agent runtime is available from this daemon. Configure an enabled provider with a selectable model, then run otto hub init again.",
           );
         }
         if (Date.now() >= deadline) {
           throw new HubCommandError(
             "HUB_AGENT_RUNTIME_TIMEOUT",
+            // OTTO(identity)
             "Agent runtime discovery did not finish within 60 seconds. Check the daemon's provider configuration, then run otto hub init again.",
           );
         }
@@ -524,6 +546,7 @@ async function chooseStarterAgentMode(
 function invalidStarterAgentSelection(): HubCommandError {
   return new HubCommandError(
     "HUB_AGENT_RUNTIME_SELECTION_INVALID",
+    // OTTO(identity)
     "The selected starter agent runtime is no longer available. Run otto hub init again.",
   );
 }
@@ -614,8 +637,8 @@ async function writeScaffold(
 
 async function prepareScaffoldDestination(cwd: string, triggerPath: string): Promise<boolean> {
   const root = path.resolve(cwd);
-  await requireSafeScaffoldDirectory(path.join(root, ".otto"), ".otto");
-  await requireSafeScaffoldDirectory(path.join(root, ".otto", "triggers"), ".otto/triggers");
+  await requireSafeScaffoldDirectory(path.join(root, ".paseo"), ".paseo");
+  await requireSafeScaffoldDirectory(path.join(root, ".paseo", "triggers"), ".paseo/triggers");
   const destination = path.join(root, triggerPath);
   try {
     const stats = await lstat(destination);
@@ -750,8 +773,11 @@ async function requiredSelect<T extends string>(
   return answer;
 }
 
-function requireInteractiveTerminal(environment: HubGuidedSetupEnvironment): void {
+function requireInteractiveTerminal(
+  environment: Omit<HubGuidedSetupEnvironment, "daemonTarget">,
+): void {
   if (!(environment.isInteractive?.() ?? (process.stdin.isTTY && process.stdout.isTTY))) {
+    // OTTO(identity)
     throw new HubCommandError("HUB_INIT_INTERACTIVE_REQUIRED", "otto hub init requires a TTY.");
   }
 }

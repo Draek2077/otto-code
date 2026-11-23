@@ -2,7 +2,7 @@ import {
   deriveAgentStateBucket,
   type AgentAttentionReason,
   type AgentStateBucketInput,
-} from "@otto-code/protocol/agent-state-bucket";
+} from "@getpaseo/protocol/agent-state-bucket";
 
 export type SidebarStateBucket = "needs_input" | "failed" | "running" | "attention" | "done";
 export type SidebarAttentionReason = AgentAttentionReason;
@@ -13,23 +13,6 @@ export function deriveSidebarStateBucket(input: AgentStateBucketInput): SidebarS
 
 export function isSidebarActiveAgent(input: AgentStateBucketInput): boolean {
   return deriveSidebarStateBucket(input) !== "done";
-}
-
-// A workspace row's centre dot tells the user what chat needs their attention.
-// Motion is an independent signal, so a completed chat notification remains green
-// while another chat runs around it. This differs intentionally from the workspace
-// aggregation order below, where a running workspace remains more prominent than
-// a notification on a collapsed project row.
-const WORKSPACE_STATUS_DOT_PRIORITY: readonly SidebarStateBucket[] = [
-  "needs_input",
-  "failed",
-  "attention",
-  "running",
-  "done",
-];
-
-export function getWorkspaceStatusDotPriority(bucket: SidebarStateBucket): number {
-  return WORKSPACE_STATUS_DOT_PRIORITY.indexOf(bucket);
 }
 
 // Most urgent first, for collapsing a project's workspaces into one badge. This is

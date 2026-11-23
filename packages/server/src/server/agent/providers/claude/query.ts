@@ -6,7 +6,7 @@ import {
   createProviderEnvSpec,
   type ProviderRuntimeSettings,
 } from "../../provider-launch-config.js";
-import { buildSelfNodeCommand } from "../../../otto-env.js";
+import { buildSelfNodeCommand } from "../../../paseo-env.js";
 import { spawnProcess } from "../../../../utils/spawn.js";
 
 // Keep the raw SDK query import in this module only. Claude process launch behavior
@@ -18,6 +18,7 @@ export type ClaudeQueryInput = Parameters<typeof query>[0] & { options: ClaudeOp
 export type ClaudeQueryFactory = (input: ClaudeQueryInput) => Query;
 
 export interface ClaudeQueryContext {
+  ottoReadOnlyGeneration?: true; // OTTO(context-generation): custom command arguments cannot override the isolated SDK policy.
   runtimeSettings?: ProviderRuntimeSettings;
   launchEnv?: Record<string, string>;
   queryFactory?: ClaudeQueryFactory;
@@ -63,8 +64,18 @@ function applyRuntimeSettingsToClaudeOptions(
     ...options,
     spawnClaudeCodeProcess: (spawnOptions) => {
       const resolved = resolveClaudeSpawnCommand(spawnOptions, runtimeSettings);
+      // OTTO(context-generation): preserve executable selection, reject appended CLI policy overrides.
+      if (
+        context.ottoReadOnlyGeneration &&
+        runtimeSettings?.command?.mode === "append" &&
+        runtimeSettings.command.args?.length
+      ) {
+        throw new Error(
+          "Context generation requires a Claude command without appended policy arguments.",
+        );
+      }
       // When the SDK passes a default JS runtime ("node"/"bun"), replace it with
-      // process.execPath - the actual node binary running the daemon. This avoids
+      // process.execPath — the actual node binary running the daemon. This avoids
       // PATH lookup failures in the managed runtime bundle.
       // When the SDK passes a native binary path (from pathToClaudeCodeExecutable)
       // or the user overrides the command via runtime settings, use that directly.

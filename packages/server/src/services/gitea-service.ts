@@ -1,10 +1,14 @@
 import { z } from "zod";
-import { CHECK_TRAIT_ACTION_REQUIRED, CHECK_TRAIT_WARNING } from "@otto-code/protocol/check-traits";
-import { mapGiteaCommitState } from "@otto-code/protocol/gitea-status";
+import { CHECK_TRAIT_ACTION_REQUIRED, CHECK_TRAIT_WARNING } from "@getpaseo/protocol/check-traits";
+import { mapGiteaCommitState } from "@getpaseo/protocol/gitea-status";
 import pLimit from "p-limit";
-import { parseGitHubRemoteIdentity, parseGitRemoteLocation } from "@otto-code/protocol/git-remote";
+import { parseGitHubRemoteIdentity, parseGitRemoteLocation } from "@getpaseo/protocol/git-remote";
 import { findExecutable } from "../executable-resolution/executable-resolution.js";
 import { runGitCommand } from "../utils/run-git-command.js";
+import {
+  buildForkLocalBranchName,
+  buildPullHeadCheckoutRefs,
+} from "../utils/change-request-checkout.js";
 import { execCommand } from "../utils/spawn.js";
 import {
   createCachedCliPathResolver,
@@ -23,7 +27,6 @@ import {
   createUnavailableSearchResult,
   normalizeForgeSearchKinds,
   parseOptionalTime,
-  sortPullRequestsLatestFirst,
 } from "./forge-service.js";
 import type {
   CheckDetails,
@@ -76,11 +79,13 @@ const CURRENT_PR_HEAD_SHA_CACHE_TTL_MS = 30_000;
 // the sweep to the 250 most recent Actions tasks.
 const GITEA_ACTION_PAGE_LIMIT = 50;
 const GITEA_ACTION_MAX_PAGES = 5;
+// PullRequestFlowAGit in forgejo models/issues/pull.go
+const GITEA_PULL_REQUEST_FLOW_AGIT = 1;
 
 /**
  * Fields requested from `tea pr list -o json`. tea's default field set omits the
  * ones the neutral mapping needs (url, mergeable, base, head, ci, body), so they
- * must be requested explicitly - otherwise tea silently emits the short default
+ * must be requested explicitly — otherwise tea silently emits the short default
  * set and the mapping loses data.
  */
 const PR_LIST_FIELDS =
@@ -226,8 +231,12 @@ const GiteaPullRequestRepoSchema = z
 
 const GiteaPullRequestApiSchema = z
   .object({
+    flow: z.number().optional(),
     head: z
-      .object({ repo: GiteaPullRequestRepoSchema.nullable().optional() })
+      .object({
+        ref: z.string().optional(),
+        repo: GiteaPullRequestRepoSchema.nullable().optional(),
+      })
       .passthrough()
       .optional(),
     base: z
@@ -681,7 +690,7 @@ function mapGiteaCiStatus(ci: string | undefined): PullRequestChecksStatus {
     case "error":
     // Gitea's "warning" is a terminal, NON-passing state: IsSuccess() is false,
     // it fails required-status checks, and Gitea itself blocks the merge on it.
-    // Our neutral enum has no yellow/neutral bucket, so surface it as failure -
+    // Our neutral enum has no yellow/neutral bucket, so surface it as failure —
     // never success (misleading green) or pending (never-resolving poll).
     case "warning":
       return "failure";
@@ -1079,7 +1088,7 @@ function toCurrentPullRequestStatus(item: GiteaPrListItem): CurrentPullRequestSt
     checksStatus: mapGiteaCiStatus(item.ci),
     reviewDecision: null,
     // The whole Gitea family (gitea, forgejo, codeberg) tags its facts with the
-    // family id "gitea" - they share one facts shape and one guard. This is the
+    // family id "gitea" — they share one facts shape and one guard. This is the
     // facts-family tag, distinct from the workspace's brand-specific forge id.
     forgeSpecific: { forge: "gitea", ...toGiteaStatusFacts(item) },
   };
@@ -1175,7 +1184,7 @@ function redactTeaArgs(args: string[]): string[] {
 }
 
 /**
- * Probe whether a host is a Gitea instance Otto can talk to. tea has no
+ * Probe whether a host is a Gitea instance Paseo can talk to. tea has no
  * per-repo auth check (it keeps per-instance logins), so a configured tea login
  * for the host is the signal: it means tea both recognizes the host as Gitea and
  * holds a usable token for it. Mirrors the role of `glab auth status` for GitLab.
@@ -1264,7 +1273,7 @@ function parseHttpStatus(headerDump: string): number | null {
  * `tea api -i` emits. Different tea builds print that line on stdout or stderr,
  * so both streams are parsed. When `-i` is unsupported no status line appears
  * (or the call errors) and the probe is inconclusive (null), leaving the Gitea
- * default in place - the branch is always non-fatal.
+ * default in place — the branch is always non-fatal.
  *
  * Not verified against a live self-hosted Forgejo instance; QA follow-up.
  */
@@ -1324,9 +1333,9 @@ const inFlightFamilyProbes = new Map<string, Promise<GiteaFamilySoftware | null>
 
 /**
  * Resolve which Gitea-family forge id a host maps to for the open registry:
- * null when there is no usable `tea` login (Otto cannot operate the host),
- * otherwise the detected software. Concurrent calls for the same host - the
- * gitea and forgejo registrations probing in parallel - share one probe so
+ * null when there is no usable `tea` login (Paseo cannot operate the host),
+ * otherwise the detected software. Concurrent calls for the same host — the
+ * gitea and forgejo registrations probing in parallel — share one probe so
  * detection runs once.
  */
 export function resolveGiteaFamilyForge(host: string): Promise<GiteaFamilySoftware | null> {
@@ -1436,17 +1445,30 @@ export function createGiteaService(options: CreateGiteaServiceOptions = {}): For
     return runJsonParse(args, runOptions, stdout, schema);
   }
 
+  function resolveHeadRefKind(
+    pr: z.infer<typeof GiteaPullRequestApiSchema>,
+    number: number,
+  ): "branch" | "pull-ref" {
+    // head.ref only becomes the branch name when the branch still exists,
+    // agit PRs and deleted branches keep the pull ref
+    const isPullRefOnly =
+      pr.flow === GITEA_PULL_REQUEST_FLOW_AGIT || pr.head?.ref === `refs/pull/${number}/head`;
+    return isPullRefOnly ? "pull-ref" : "branch";
+  }
+
   async function resolveForkCheckoutFacts(
     cwd: string,
     summary: PullRequestSummary,
   ): Promise<{
     isCrossRepository: boolean;
+    headRefKind: "branch" | "pull-ref";
     headOwnerLogin: string | null;
     headRepositorySshUrl: string | null;
     headRepositoryUrl: string | null;
   }> {
     const sameRepo = {
       isCrossRepository: false,
+      headRefKind: "branch" as const,
       headOwnerLogin: null,
       headRepositorySshUrl: null,
       headRepositoryUrl: null,
@@ -1465,14 +1487,17 @@ export function createGiteaService(options: CreateGiteaServiceOptions = {}): For
     );
     const headRepo = pr.head?.repo ?? null;
     const baseRepo = pr.base?.repo ?? null;
-    if (headRepo?.id == null || baseRepo?.id == null || headRepo.id === baseRepo.id) {
-      return sameRepo;
+    const headRefKind = resolveHeadRefKind(pr, summary.number);
+    if (baseRepo?.id == null || headRepo?.id === baseRepo.id) {
+      return { ...sameRepo, headRefKind };
     }
+    // headRepo is null when the fork was deleted
     return {
       isCrossRepository: true,
-      headOwnerLogin: headRepo.owner?.login ?? null,
-      headRepositorySshUrl: headRepo.ssh_url ?? null,
-      headRepositoryUrl: headRepo.html_url ?? null,
+      headRefKind,
+      headOwnerLogin: headRepo?.owner?.login ?? null,
+      headRepositorySshUrl: headRepo?.ssh_url ?? null,
+      headRepositoryUrl: headRepo?.html_url ?? null,
     };
   }
 
@@ -1811,7 +1836,7 @@ export function createGiteaService(options: CreateGiteaServiceOptions = {}): For
 
   // The tasks endpoint pages at a small server default (10 on gitea.com) and a
   // self-hosted cap can sit below our requested 50; it also cannot filter by ref
-  // or sha server-side. A short page therefore does NOT mean the last page -
+  // or sha server-side. A short page therefore does NOT mean the last page —
   // conflating the two drops the current PR's run on a capped instance. Page on
   // until total_count is exhausted, a page comes back empty, or the bounded
   // max-pages cap is hit. SHA matches need not be contiguous across pages.
@@ -1998,17 +2023,29 @@ export function createGiteaService(options: CreateGiteaServiceOptions = {}): For
       return summary.headRefName;
     },
 
+    defaultCheckoutRefs({ changeRequestNumber }) {
+      return buildPullHeadCheckoutRefs(changeRequestNumber);
+    },
+
+    buildPrLocalBranchName({ headRef, checkoutTarget }) {
+      return buildForkLocalBranchName({ headRef, ...checkoutTarget });
+    },
+
     async getPullRequestCheckoutTarget(
       input: GetPullRequestOptions,
     ): Promise<PullRequestCheckoutTarget> {
       const summary = await this.getPullRequest(input);
-      const checkoutRefs = [
-        { remoteName: "origin", remoteRef: `refs/pull/${summary.number}/head` },
-      ];
-      if (summary.headRefName) {
+      const fork = await resolveForkCheckoutFacts(input.cwd, summary);
+      const [originPullRef, upstreamPullRef] = buildPullHeadCheckoutRefs(summary.number);
+      const checkoutRefs = [originPullRef];
+      // for a fork PR a branch with that name on origin belongs to the base repo
+      const headBranchOnOrigin =
+        !fork.isCrossRepository && fork.headRefKind === "branch" && Boolean(summary.headRefName);
+      if (headBranchOnOrigin) {
         checkoutRefs.push({ remoteName: "origin", remoteRef: `refs/heads/${summary.headRefName}` });
       }
-      const fork = await resolveForkCheckoutFacts(input.cwd, summary);
+      // upstream can hold a different PR with the same number, so it goes last
+      checkoutRefs.push(upstreamPullRef);
       return {
         number: summary.number,
         baseRefName: summary.baseRefName,
@@ -2018,6 +2055,7 @@ export function createGiteaService(options: CreateGiteaServiceOptions = {}): For
         headRepositorySshUrl: fork.headRepositorySshUrl,
         headRepositoryUrl: fork.headRepositoryUrl,
         isCrossRepository: fork.isCrossRepository,
+        headRefKind: fork.headRefKind,
       };
     },
 
@@ -2027,7 +2065,7 @@ export function createGiteaService(options: CreateGiteaServiceOptions = {}): For
         state: "open",
         query: input.query,
         limit: input.limit,
-      }).then((items) => sortPullRequestsLatestFirst(items.map(toPullRequestSummary)));
+      }).then((items) => items.map(toPullRequestSummary));
     },
 
     listIssues(input: ListIssuesOptions): Promise<IssueSummary[]> {

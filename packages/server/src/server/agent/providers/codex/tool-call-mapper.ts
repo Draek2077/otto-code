@@ -7,8 +7,7 @@ import {
   truncateDiffText,
 } from "../tool-call-mapper-utils.js";
 import { deriveCodexToolDetail, normalizeCodexFilePath } from "./tool-call-detail-parser.js";
-import { isSpeakToolName } from "@otto-code/protocol/tool-name-normalization";
-import { normalizeCodexSubagentItem } from "./subagent-items.js";
+import { isSpeakToolName } from "@getpaseo/protocol/tool-name-normalization";
 
 interface CodexMapperOptions {
   cwd?: string | null;
@@ -246,7 +245,7 @@ function isWindowsShellCommand(command: string): boolean {
   return /(?:^|\\)(?:pwsh|powershell|cmd)(?:\.exe)?$/i.test(normalized);
 }
 
-function normalizeCommandExecutionCommand(value: unknown): string | undefined {
+export function normalizeCommandExecutionCommand(value: unknown): string | undefined {
   if (typeof value === "string") {
     const normalized = unwrapShellCommand(value);
     return normalized.length > 0 ? normalized : undefined;
@@ -946,25 +945,6 @@ function mapWebSearchItem(
 function mapCollabAgentToolCallItem(
   item: z.infer<typeof CodexCollabAgentToolCallItemSchema>,
 ): ToolCallTimelineItem {
-  if (item.tool !== "spawnAgent") {
-    // A successful wait/message can target an agent that is still running or
-    // failed. Its row reports the coordination operation, not child liveness.
-    const operations: Record<string, string> = {
-      wait: "Wait for agents",
-      sendInput: "Message agent",
-      closeAgent: "Interrupt agent",
-      resumeAgent: "Resume agent",
-    };
-    const operation =
-      operations[item.tool ?? ""] ?? `Agent coordination: ${item.tool ?? "unknown"}`;
-    return mapCodexCoordinationItem(
-      item.id,
-      operation,
-      item.receiverThreadIds?.join(", ") ?? "",
-      item,
-      normalizeToolCallStatus(item.status, item.error ?? null, null),
-    );
-  }
   const status = resolveCollabAgentStatus(item);
   const detail: ToolCallTimelineItem["detail"] = {
     type: "sub_agent",
@@ -998,17 +978,6 @@ function mapCollabAgentToolCallItem(
 function mapSubAgentActivityItem(
   item: z.infer<typeof CodexSubAgentActivityItemSchema>,
 ): ToolCallTimelineItem {
-  if (item.kind !== "started") {
-    // Paths identify coordination targets, including /root itself. They are not
-    // child declarations and must remain inspectable without claiming ownership.
-    return mapCodexCoordinationItem(
-      item.id,
-      item.kind === "interrupted" ? "Interrupt agent" : "Message agent",
-      item.agentPath === "/root" ? "Parent (/root)" : item.agentPath || item.agentThreadId,
-      item,
-      "completed",
-    );
-  }
   let nativeName = item.agentPath;
   if (nativeName === "/root") {
     nativeName = "";
@@ -1031,7 +1000,7 @@ function mapSubAgentActivityItem(
     type: "tool_call",
     callId: item.id,
     name: "Sub-agent",
-    status: "running",
+    status: item.kind === "interrupted" ? "canceled" : "running",
     error: null,
     detail: {
       type: "sub_agent",
@@ -1041,28 +1010,6 @@ function mapSubAgentActivityItem(
       actions: [],
     },
   };
-}
-
-function mapCodexCoordinationItem(
-  callId: string,
-  operation: string,
-  target: string,
-  rawItem: Record<string, unknown>,
-  status: ToolCallTimelineItem["status"],
-): ToolCallTimelineItem {
-  const base = {
-    type: "tool_call",
-    callId,
-    name: operation,
-    detail: {
-      type: "plain_text",
-      label: target ? `${operation}: ${target}` : operation,
-      text: JSON.stringify(rawItem, null, 2),
-    },
-  } as const;
-  return status === "failed"
-    ? { ...base, status, error: rawItem.error ?? { message: `${operation} failed` } }
-    : { ...base, status, error: null };
 }
 
 function mapThreadItemToNormalizedEnvelope(
@@ -1093,7 +1040,7 @@ export function mapCodexToolCallFromThreadItem(
   item: unknown,
   options?: CodexMapperOptions,
 ): ToolCallTimelineItem | null {
-  const parsed = CodexThreadItemSchema.safeParse(normalizeCodexSubagentItem(item));
+  const parsed = CodexThreadItemSchema.safeParse(item);
   if (!parsed.success) {
     return null;
   }

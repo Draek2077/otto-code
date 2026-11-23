@@ -61,7 +61,7 @@ function buildImportPersistenceHandle(
   };
 }
 
-export async function collectImportedHistory(events: AsyncGenerator<AgentStreamEvent>): Promise<{
+async function collectImportedHistory(events: AsyncGenerator<AgentStreamEvent>): Promise<{
   timeline: ImportedTimelineEntry[];
   providerSubagentEvents: Extract<AgentStreamEvent, { type: "provider_subagent" }>[];
 }> {

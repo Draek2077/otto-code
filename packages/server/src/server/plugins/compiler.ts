@@ -7,13 +7,10 @@ import {
   isPluginClientOnlySdkSpecifier,
   isPluginServerOnlySdkSpecifier,
   PLUGIN_SDK_SPECIFIERS,
-  resolvePluginSdkSpecifier,
-  isPluginSdkSpecifier,
-  isPluginHostSdkSpecifier,
-  type PluginSdkNamespace,
 } from "./plugin-sdk-specifiers.js";
 
 const nodeRequire = createRequire(import.meta.url);
+export const SERVER_HOST_MODULES = [...PLUGIN_SDK_SPECIFIERS, "zod"];
 const ESBUILD_BINARY_PATH = "ESBUILD_BINARY_PATH";
 
 // esbuild resolves its own platform binary via require.resolve() the first time its
@@ -169,15 +166,11 @@ function lexicalBoundaryError(
   }
 }
 
-function createRuntimeBoundaryPlugin(
-  target: PluginBuildTarget,
-  pluginDirectory: string,
-  onSdkImport: (specifier: string) => void,
-): Plugin {
+function createRuntimeBoundaryPlugin(target: PluginBuildTarget, pluginDirectory: string): Plugin {
   const boundaryResolution = {};
   const linkedDependencyRoots = new Set<string>();
   return {
-    name: `otto-plugin-${target}-runtime-boundary`,
+    name: `paseo-plugin-${target}-runtime-boundary`,
     setup(buildContext) {
       const checked = new Set<string>();
       const imports = createPluginImportReader(pluginDirectory);
@@ -243,7 +236,6 @@ function createRuntimeBoundaryPlugin(
         if (checked.has(key) || !/\.[cm]?[jt]sx?$/.test(file)) return null;
         checked.add(key);
         for (const { specifier, kind, typeOnly } of imports.read(file)) {
-          onSdkImport(specifier);
           const packageSpecifier =
             kind === "type-reference"
               ? `@types/${specifier.replace(/^@/, "").replace("/", "__")}`
@@ -253,6 +245,10 @@ function createRuntimeBoundaryPlugin(
             runtimeSpecifierError(packageSpecifier, owner, file) ??
             lexicalBoundaryError(specifier, path.dirname(file), pluginDirectory, owner);
           if (error) return error;
+          // Protocol types are shared host contracts, also exposed by the SDK's peer
+          // dependency during development. Erased imports need no plugin-local install;
+          // runtime imports still go through normal dependency resolution below.
+          if (typeOnly && specifier.startsWith("@getpaseo/protocol/")) continue;
           // Host modules have separately enforced SDK boundaries and need no local installation.
           if (
             (PLUGIN_SDK_SPECIFIERS as readonly string[]).includes(specifier) ||
@@ -323,13 +319,12 @@ function runtimeSpecifierError(
   importer: string,
 ): OnResolveResult | null {
   let kind: string | null = null;
-  if (isPluginHostSdkSpecifier(specifier)) kind = "host-private";
+  if (specifier === "@getpaseo/plugin/client/host") kind = "host-private";
   else if (
-    (isPluginSdkSpecifier(specifier) ||
+    (specifier === "@getpaseo/plugin" ||
+      specifier.startsWith("@getpaseo/plugin/") ||
       specifier === "@paseo/plugin" ||
-      specifier.startsWith("@paseo/plugin/") ||
-      specifier === "@otto/plugin" ||
-      specifier.startsWith("@otto/plugin/")) &&
+      specifier.startsWith("@paseo/plugin/")) &&
     !(PLUGIN_SDK_SPECIFIERS as readonly string[]).includes(specifier)
   )
     kind = "Unknown SDK";
@@ -393,15 +388,6 @@ async function compileTarget(entryPath: string, target: PluginBuildTarget): Prom
   // Use native canonical paths throughout: TypeScript expands Windows short names
   // when resolving type references, while the JS realpath implementation retains them.
   const pluginDirectory = realpathSync.native(path.dirname(entryPath));
-  const serverNamespaces = new Set<PluginSdkNamespace>();
-  const onSdkImport = (specifier: string) => {
-    const sdk = resolvePluginSdkSpecifier(specifier);
-    if (target !== "server" || sdk?.runtime !== "server") return;
-    serverNamespaces.add(sdk.namespace);
-    if (serverNamespaces.size > 1) {
-      throw new Error("A plugin server entry must use one SDK namespace for its provider contract");
-    }
-  };
   const result = await build({
     entryPoints: [realpathSync.native(entryPath)],
     bundle: true,
@@ -409,6 +395,10 @@ async function compileTarget(entryPath: string, target: PluginBuildTarget): Prom
     jsx: "automatic",
     platform: target === "server" ? "node" : "neutral",
     target: target === "server" ? "node20" : "es2020",
+    // The neutral platform reads no package.json entry fields, so packages without
+    // `exports` would not resolve. Read the same fields as esbuild's browser platform
+    // minus `browser`, since the bundle also runs in React Native.
+    mainFields: target === "client" ? ["module", "main"] : undefined,
     // Metro lowers async syntax before Hermes sees app code. Plugin client bundles bypass Metro,
     // so apply the same compatibility transform before the app evaluates them from source.
     supported: target === "client" ? { "async-await": false } : undefined,
@@ -422,8 +412,8 @@ async function compileTarget(entryPath: string, target: PluginBuildTarget): Prom
             "react-native",
             "zod",
           ]
-        : [...PLUGIN_SDK_SPECIFIERS, "zod"],
-    plugins: [createRuntimeBoundaryPlugin(target, pluginDirectory, onSdkImport)],
+        : SERVER_HOST_MODULES,
+    plugins: [createRuntimeBoundaryPlugin(target, pluginDirectory)],
     metafile: true,
     logLevel: "silent",
     treeShaking: true,
@@ -432,12 +422,7 @@ async function compileTarget(entryPath: string, target: PluginBuildTarget): Prom
   checkSharedDependencies(result.metafile.inputs, pluginDirectory);
   const output = result.outputFiles[0]?.text;
   if (!output) throw new Error(`Plugin ${target} compilation produced no output`);
-  const namespace = serverNamespaces.values().next().value ?? "otto";
-  const metadata =
-    target === "server"
-      ? `\nmodule.exports.__ottoPluginSdkNamespace = ${JSON.stringify(namespace)};`
-      : "";
-  return wrapCommonJsBundle(makeHermesInteropEager(output) + metadata);
+  return wrapCommonJsBundle(makeHermesInteropEager(output));
 }
 
 export async function compilePlugin(entryPaths: {

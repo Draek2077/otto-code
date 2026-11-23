@@ -1,7 +1,7 @@
 import net from "node:net";
 import { execCommand } from "../utils/spawn.js";
 import { findFreePort } from "./service-proxy.js";
-import type { OttoServicePortAllocation } from "@otto-code/protocol/otto-config-schema";
+import type { PaseoServicePortAllocation } from "@getpaseo/protocol/paseo-config-schema";
 
 const PORT_SCRIPT_TIMEOUT_MS = 10_000;
 const PORT_SCRIPT_MAX_OUTPUT_BYTES = 1024;
@@ -14,7 +14,7 @@ interface PortRange {
 }
 
 export interface AllocateWorkspaceServicePortOptions {
-  allocation: OttoServicePortAllocation | undefined;
+  allocation: PaseoServicePortAllocation | undefined;
   cwd: string;
   scriptName: string;
   workspaceId: string;
@@ -60,10 +60,10 @@ async function allocatePortFromScript(options: {
       {
         cwd: options.cwd,
         envOverlay: {
-          OTTO_SCRIPTNAME: options.scriptName,
-          OTTO_WORKSPACE_ID: options.workspaceId,
-          OTTO_BRANCH_NAME: options.branchName ?? "",
-          OTTO_WORKTREE_PATH: options.cwd,
+          PASEO_SCRIPTNAME: options.scriptName,
+          PASEO_WORKSPACE_ID: options.workspaceId,
+          PASEO_BRANCH_NAME: options.branchName ?? "",
+          PASEO_WORKTREE_PATH: options.cwd,
         },
         timeout: PORT_SCRIPT_TIMEOUT_MS,
         maxBuffer: PORT_SCRIPT_MAX_OUTPUT_BYTES,

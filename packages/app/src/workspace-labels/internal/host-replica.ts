@@ -1,7 +1,7 @@
-import type { WorkspaceLabelDefinition } from "@otto-code/protocol/workspace-labels";
-import { workspaceLabelKey } from "@otto-code/protocol/workspace-labels";
-import type { WorkspaceLabelListPayload } from "@otto-code/client/internal/daemon-client";
-import type { SessionOutboundMessage } from "@otto-code/protocol/messages";
+import type { WorkspaceLabelDefinition } from "@getpaseo/protocol/workspace-labels";
+import { workspaceLabelKey } from "@getpaseo/protocol/workspace-labels";
+import type { WorkspaceLabelListPayload } from "@getpaseo/client/internal/daemon-client";
+import type { SessionOutboundMessage } from "@getpaseo/protocol/messages";
 
 type WorkspaceLabelUpdate = Extract<SessionOutboundMessage, { type: "workspace.label.update" }>;
 

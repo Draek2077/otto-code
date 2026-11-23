@@ -6,6 +6,8 @@ order: 35
 category: Browser
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Browser automation
 
 Agents in Otto can drive real browser tabs, the same tabs you see in the Otto desktop app. An agent can open your dev server, read the page, click through a flow, fill a form, and take a screenshot, all without leaving your machine.

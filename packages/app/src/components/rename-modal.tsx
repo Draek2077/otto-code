@@ -20,7 +20,6 @@ export interface AdaptiveRenameModalProps {
   onClose: () => void;
   onSubmit: (value: string) => Promise<void> | void;
   validate?: (value: string) => string | null;
-  allowEmpty?: boolean;
   maxLength?: number;
   testID?: string;
 }
@@ -34,7 +33,6 @@ export function AdaptiveRenameModal({
   onClose,
   onSubmit,
   validate,
-  allowEmpty = false,
   maxLength,
   testID,
 }: AdaptiveRenameModalProps) {
@@ -69,10 +67,10 @@ export function AdaptiveRenameModal({
 
   const computeError = useCallback(
     (value: string): string | null => {
-      if (!allowEmpty && !value.trim()) return t("common.errors.nameRequired");
+      if (!value.trim()) return t("common.errors.nameRequired");
       return validate ? validate(value) : null;
     },
-    [allowEmpty, validate, t],
+    [validate, t],
   );
 
   const handleChange = useCallback((value: string) => {
@@ -118,49 +116,11 @@ export function AdaptiveRenameModal({
   const cancelTestID = testID ? `${testID}-cancel` : undefined;
   const sheetHeader = useMemo<SheetHeader>(() => ({ title }), [title]);
 
-  const footer = useMemo(
-    () => (
-      <View style={styles.footer}>
-        <Button
-          variant="secondary"
-          size="sm"
-          style={styles.footerButton}
-          onPress={handleCancel}
-          disabled={isPending}
-          testID={cancelTestID}
-        >
-          {t("common.actions.cancel")}
-        </Button>
-        <Button
-          variant="default"
-          size="sm"
-          style={styles.footerButton}
-          onPress={handleSubmitVoid}
-          disabled={submitDisabled}
-          testID={submitTestID}
-        >
-          {isPending ? t("renameModal.saving") : (submitLabel ?? t("renameModal.rename"))}
-        </Button>
-      </View>
-    ),
-    [
-      cancelTestID,
-      handleCancel,
-      handleSubmitVoid,
-      isPending,
-      submitDisabled,
-      submitLabel,
-      submitTestID,
-      t,
-    ],
-  );
-
   return (
     <AdaptiveModalSheet
       visible={visible}
       onClose={handleCancel}
       header={sheetHeader}
-      footer={footer}
       testID={testID}
     >
       <View style={styles.body}>
@@ -182,6 +142,28 @@ export function AdaptiveRenameModal({
             {error}
           </Text>
         ) : null}
+        <View style={styles.actions}>
+          <Button
+            variant="secondary"
+            size="sm"
+            style={styles.actionButton}
+            onPress={handleCancel}
+            disabled={isPending}
+            testID={cancelTestID}
+          >
+            {t("common.actions.cancel")}
+          </Button>
+          <Button
+            variant="default"
+            size="sm"
+            style={styles.actionButton}
+            onPress={handleSubmitVoid}
+            disabled={submitDisabled}
+            testID={submitTestID}
+          >
+            {isPending ? t("renameModal.saving") : (submitLabel ?? t("renameModal.rename"))}
+          </Button>
+        </View>
       </View>
     </AdaptiveModalSheet>
   );
@@ -206,13 +188,12 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.palette.red[300],
     fontSize: theme.fontSize.base,
   },
-  footer: {
-    flex: 1,
+  actions: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[3],
+    gap: theme.spacing[2],
   },
-  footerButton: {
+  actionButton: {
     flex: 1,
   },
 }));

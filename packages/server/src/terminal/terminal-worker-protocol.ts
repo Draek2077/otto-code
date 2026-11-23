@@ -5,11 +5,8 @@ import type {
   TerminalStateSnapshot,
   TerminalStateSnapshotOptions,
 } from "./terminal.js";
-import type { TerminalState } from "@otto-code/protocol/messages";
-import type {
-  TerminalActivity,
-  TerminalActivityState,
-} from "@otto-code/protocol/terminal-activity";
+import type { TerminalState } from "@getpaseo/protocol/messages";
+import type { TerminalActivity, TerminalActivityState } from "@getpaseo/protocol/terminal-activity";
 import type { CaptureTerminalLinesResult } from "./terminal-capture.js";
 
 export interface WorkerTerminalInfo {
@@ -18,14 +15,11 @@ export interface WorkerTerminalInfo {
   cwd: string;
   workspaceId?: string;
   title?: string;
-  titleMode?: "auto" | "default";
-  titleIncludePaths?: boolean;
   activity: TerminalActivity | null;
-  presentation?: "embedded";
-  presentationOwner?: string;
 }
 
 export interface WorkerCreateTerminalOptions {
+  ottoPreferences?: import("@getpaseo/plugin/otto/terminal").TerminalPreferences; // OTTO(terminal)
   id?: string;
   cwd: string;
   workspaceId?: string;
@@ -38,8 +32,6 @@ export interface WorkerCreateTerminalOptions {
   cols?: number;
   activityToken?: string;
   activityUrl?: string | null;
-  presentation?: "embedded";
-  presentationOwner?: string;
 }
 
 export interface WorkerKillAndWaitOptions {
@@ -58,17 +50,6 @@ export type TerminalWorkerRequest =
       requestId: string;
       cwd: string;
       env: Record<string, string>;
-    }
-  | {
-      type: "setTitle";
-      requestId: string;
-      terminalId: string;
-      title: string;
-    }
-  | {
-      type: "clearTitle";
-      requestId: string;
-      terminalId: string;
     }
   | {
       type: "setActivity";
@@ -141,6 +122,7 @@ export type TerminalWorkerEvent =
       type: "terminalMessage";
       terminalId: string;
       message: ServerMessage;
+      replayPreamble: string;
     }
   | {
       type: "terminalExit";

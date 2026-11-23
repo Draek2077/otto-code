@@ -1,12 +1,12 @@
 import { QueryClient } from "@tanstack/react-query";
-import { createOttoApi, type OttoApi } from "@otto-code/client";
-import { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import { createPaseoApi, type PaseoApi } from "@getpaseo/client";
+import { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import {
   defineRpc,
   type PluginAgentSnapshot,
   type PluginWorkspaceSnapshot,
-} from "@otto-code/plugin";
-import { type PluginCommandCenterItemContribution } from "@otto-code/plugin/client";
+} from "@getpaseo/plugin";
+import { type PluginCommandCenterItemContribution } from "@getpaseo/plugin/client";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import type { InstalledPlugin } from "../types";
@@ -60,11 +60,24 @@ function plugin(onAgentSelect: AgentCommandItem["onSelect"]): InstalledPlugin {
     id: "review",
     serverId: "host-1",
     clientBundle: "bundle",
+    lifetime: new AbortController(),
+    paseo: createPaseoApi(
+      new DaemonClient({
+        url: "ws://127.0.0.1:1",
+        clientId: "plugin-command-test",
+        clientType: "cli",
+      }),
+    ),
+    invoke: async (method: string, input: unknown) => {
+      expect(method).toBe("review.inspect");
+      return { value: inspect.input.parse(input).value + 1 };
+    },
     queryClient: new QueryClient(),
     cleanup: () => {},
     settingsScreens: [],
-    surfaces: [{ id: "main", Component: () => null }],
-    sidebarItems: [],
+    surfaces: [{ id: "main", title: "Main", Component: () => null }],
+    sidebarItems: { header: [], footer: [] },
+    legacySidebarItems: [],
     workspacePanels: [
       {
         id: "details",
@@ -120,28 +133,59 @@ function stateSource() {
   };
 }
 
-function createRuntime(pluginId: string) {
-  const client = new DaemonClient({
-    url: "ws://127.0.0.1:1",
-    clientId: "plugin-command-test",
-    clientType: "cli",
-  });
-  return {
-    otto: createOttoApi(client),
-    invoke: async (method: string, input: unknown) => {
-      expect(pluginId).toBe("review");
-      expect(method).toBe("review.inspect");
-      return { value: inspect.input.parse(input).value + 1 };
-    },
-  };
-}
-
 describe("plugin Command Center contributions", () => {
+  // OTTO(kanban): verify real workspace command context, not an unscoped project hint.
+  it("binds the Kanban workspace command to its actual installation host and project", async () => {
+    const installed = plugin(() => undefined);
+    installed.id = "otto-kanban";
+    installed.surfaces = [{ id: "board", title: "Kanban", Component: () => null }];
+    installed.commandCenterItems = [
+      {
+        id: "board",
+        title: "Open project Kanban",
+        icon: "Kanban",
+        context: "workspace",
+        onSelect: ({ workspace: selected, openScreen }) => {
+          openScreen({ screenId: "board", params: { workspaceId: selected.id } });
+        },
+      },
+    ];
+    const opened: unknown[] = [];
+    const actions = buildPluginCommandCenterContributions({
+      plugins: [installed],
+      state: stateSource(),
+      workspaceId: workspace.id,
+      agentId: null,
+      navigation: {
+        openSettings() {},
+        openWorkspacePanel() {},
+        openAgentPanel() {},
+        openSurface(pluginId, screenId, params) {
+          opened.push({ pluginId, screenId, params });
+        },
+      },
+      reportError(error) {
+        throw error;
+      },
+    });
+    expect(actions).toHaveLength(1);
+    await actions[0]!.run();
+    expect(opened).toEqual([
+      {
+        pluginId: "otto-kanban",
+        screenId: "board",
+        params: {
+          workspaceId: "workspace-1",
+          projectHostId: "host-1",
+          projectId: "project-1",
+        },
+      },
+    ]);
+  });
   it("shows only contributions whose synchronous context exists", () => {
     const installed = plugin(() => undefined);
     const common = {
       plugins: [installed],
-      runtime: createRuntime,
       state: stateSource(),
       navigation: {
         openSettings() {},
@@ -178,20 +222,17 @@ describe("plugin Command Center contributions", () => {
   it("supplies the direct API, typed RPC, snapshots, and narrow navigation", async () => {
     const opened: string[] = [];
     let rpcValue = 0;
-    let receivedOtto: OttoApi | null = null;
+    let receivedPaseo: PaseoApi | null = null;
     const installed = plugin(async (context) => {
       expect(context.workspace).toBe(workspace);
       expect(context.agent).toBe(agent);
-      receivedOtto = context.otto;
-      expect(Reflect.get(context, "paseo")).toBe(context.otto);
+      receivedPaseo = context.paseo;
       rpcValue = (await context.rpc(inspect, { value: 4 })).value;
       context.openSurface("main");
       context.openPanel("details", { location: "explorer" });
     });
-    const runtime = createRuntime("review");
     const actions = buildPluginCommandCenterContributions({
       plugins: [installed],
-      runtime: () => runtime,
       state: stateSource(),
       workspaceId: workspace.id,
       agentId: agent.id,
@@ -215,7 +256,8 @@ describe("plugin Command Center contributions", () => {
     await actions.find((action) => action.id === "review:agent")?.run();
 
     expect(rpcValue).toBe(5);
-    expect(receivedOtto).toBe(runtime.otto);
+    // Commands use the plugin's one client.
+    expect(receivedPaseo).toBe(installed.paseo);
     expect(opened).toEqual(["review/surface/main", "review/agent/details/agent-1/explorer"]);
   });
 
@@ -223,7 +265,6 @@ describe("plugin Command Center contributions", () => {
     expect(
       buildPluginCommandCenterContributions({
         plugins: [],
-        runtime: createRuntime,
         state: stateSource(),
         workspaceId: workspace.id,
         agentId: agent.id,

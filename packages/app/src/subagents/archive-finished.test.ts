@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createArchiveFinishedSubagents, type ManagedSubagentSnapshot } from "./archive-finished";
-import type { OttoSubagentRow, ProviderSubagentRow } from "./select";
+import type { PaseoSubagentRow, ProviderSubagentRow } from "./select";
 
-function otto(id: string, status: OttoSubagentRow["status"] = "idle"): OttoSubagentRow {
+function paseo(id: string, status: PaseoSubagentRow["status"] = "idle"): PaseoSubagentRow {
   return {
-    kind: "otto",
+    kind: "paseo",
     id,
     provider: "codex",
     title: id,
@@ -17,7 +17,6 @@ function otto(id: string, status: OttoSubagentRow["status"] = "idle"): OttoSubag
         : { phase: "idle", cancellationRequestId: null },
     requiresAttention: false,
     createdAt: new Date(),
-    updatedAt: new Date(),
   };
 }
 
@@ -64,24 +63,7 @@ function deferred<T>() {
 }
 
 describe("createArchiveFinishedSubagents", () => {
-  it("retains a failed provider archive for retry instead of reporting a local dismissal", async () => {
-    let attempts = 0;
-    const archive = createArchiveFinishedSubagents([provider("child")], {
-      parentAgentId: "parent",
-      getManagedSubagent: () => undefined,
-      archiveManagedSubagent: async () => undefined,
-      archiveProviderSubagent: async () => {
-        if (++attempts === 1) throw new Error("host unavailable");
-      },
-    });
-    const failed = await archive.archiveFinished();
-    expect(failed.archivedProviderIds).toEqual([]);
-    expect(failed.failures).toHaveLength(1);
-    expect(archive.getState().status.kind).toBe("failed");
-    const retried = await archive.archiveFinished();
-    expect(retried.archivedProviderIds).toEqual(["child"]);
-  });
-  it("archives provider rows before sequential managed archives and reports combined progress", async () => {
+  it("dismisses provider rows before sequential managed archives and reports combined progress", async () => {
     const first = deferred<void>();
     const second = deferred<void>();
     const current = new Map([
@@ -91,7 +73,7 @@ describe("createArchiveFinishedSubagents", () => {
     ]);
     const events: string[] = [];
     const archive = createArchiveFinishedSubagents(
-      [provider("native"), otto("first"), otto("second", "error"), otto("resumed")],
+      [provider("native"), paseo("first"), paseo("second", "error"), paseo("resumed")],
       {
         parentAgentId: "parent",
         getManagedSubagent: (id) => current.get(id),
@@ -99,9 +81,7 @@ describe("createArchiveFinishedSubagents", () => {
           events.push(`archive:${id}`);
           return id === "first" ? first.promise : second.promise;
         },
-        archiveProviderSubagent: async (id) => {
-          events.push(`dismiss:${id}`);
-        },
+        dismissProviderSubagents: (ids) => events.push(`dismiss:${ids.join(",")}`),
       },
     );
     const progress: string[] = [];
@@ -113,7 +93,6 @@ describe("createArchiveFinishedSubagents", () => {
     });
 
     const operation = archive.archiveFinished();
-    await Promise.resolve();
     expect(archive.getState()).toEqual({
       eligibleCount: 4,
       status: { kind: "archiving", completedCount: 1, totalCount: 4 },
@@ -130,9 +109,9 @@ describe("createArchiveFinishedSubagents", () => {
 
     second.resolve();
     await expect(operation).resolves.toEqual({
-      archivedOttoIds: ["first", "second"],
-      archivedProviderIds: ["native"],
-      skippedOttoIds: ["resumed"],
+      archivedPaseoIds: ["first", "second"],
+      dismissedProviderIds: ["native"],
+      skippedPaseoIds: ["resumed"],
       failures: [],
     });
     expect(progress).toEqual(["0/4", "1/4", "2/4", "3/4", "4/4"]);
@@ -149,7 +128,7 @@ describe("createArchiveFinishedSubagents", () => {
     ]);
     const responses = [first.promise, second.promise, retry.promise];
     const calls: string[] = [];
-    const archive = createArchiveFinishedSubagents([otto("first"), otto("second")], {
+    const archive = createArchiveFinishedSubagents([paseo("first"), paseo("second")], {
       parentAgentId: "parent",
       getManagedSubagent: (id) => current.get(id),
       archiveManagedSubagent: (id) => {
@@ -158,20 +137,20 @@ describe("createArchiveFinishedSubagents", () => {
         if (!response) throw new Error("Unexpected archive");
         return response;
       },
-      archiveProviderSubagent: async () => undefined,
+      dismissProviderSubagents: () => undefined,
     });
 
     const firstAttempt = archive.archiveFinished();
-    archive.setRows([otto("second")]);
+    archive.setRows([paseo("second")]);
     const firstError = new Error("first failed");
     first.reject(firstError);
     await Promise.resolve();
     second.resolve();
     archive.setRows([]);
     await expect(firstAttempt).resolves.toEqual({
-      archivedOttoIds: ["second"],
-      archivedProviderIds: [],
-      skippedOttoIds: [],
+      archivedPaseoIds: ["second"],
+      dismissedProviderIds: [],
+      skippedPaseoIds: [],
       failures: [{ id: "first", error: firstError }],
     });
 
@@ -179,7 +158,7 @@ describe("createArchiveFinishedSubagents", () => {
       eligibleCount: 0,
       status: { kind: "failed", failedCount: 1, totalCount: 1 },
     });
-    archive.setRows([otto("first")]);
+    archive.setRows([paseo("first")]);
 
     expect(archive.getState()).toEqual({
       eligibleCount: 1,
@@ -187,7 +166,7 @@ describe("createArchiveFinishedSubagents", () => {
     });
     expect(calls).toEqual(["first", "second"]);
 
-    archive.setRows([otto("first", "error")]);
+    archive.setRows([paseo("first", "error")]);
     expect(archive.getState()).toEqual({
       eligibleCount: 1,
       status: { kind: "failed", failedCount: 1, totalCount: 1 },
@@ -202,9 +181,9 @@ describe("createArchiveFinishedSubagents", () => {
     const retryError = new Error("retry failed");
     retry.reject(retryError);
     await expect(retryAttempt).resolves.toEqual({
-      archivedOttoIds: [],
-      archivedProviderIds: [],
-      skippedOttoIds: [],
+      archivedPaseoIds: [],
+      dismissedProviderIds: [],
+      skippedPaseoIds: [],
       failures: [{ id: "first", error: retryError }],
     });
 
@@ -212,7 +191,7 @@ describe("createArchiveFinishedSubagents", () => {
       eligibleCount: 1,
       status: { kind: "failed", failedCount: 1, totalCount: 1 },
     });
-    archive.setRows([otto("first"), otto("later")]);
+    archive.setRows([paseo("first"), paseo("later")]);
     expect(archive.getState()).toEqual({ eligibleCount: 2, status: { kind: "idle" } });
   });
 
@@ -223,78 +202,78 @@ describe("createArchiveFinishedSubagents", () => {
       ["first", managed("first")],
       ["second", managed("second")],
     ]);
-    const archive = createArchiveFinishedSubagents([otto("first"), otto("second")], {
+    const archive = createArchiveFinishedSubagents([paseo("first"), paseo("second")], {
       parentAgentId: "parent",
       getManagedSubagent: (id) => current.get(id),
       archiveManagedSubagent: async (id) => {
         throw id === "first" ? firstError : secondError;
       },
-      archiveProviderSubagent: async () => undefined,
+      dismissProviderSubagents: () => undefined,
     });
 
     const operation = archive.archiveFinished();
     archive.setRows([]);
     await operation;
-    archive.setRows([otto("first"), otto("second")]);
+    archive.setRows([paseo("first"), paseo("second")]);
 
-    archive.setRows([otto("second", "error"), otto("first", "error")]);
+    archive.setRows([paseo("second", "error"), paseo("first", "error")]);
     expect(archive.getState()).toEqual({
       eligibleCount: 2,
       status: { kind: "failed", failedCount: 2, totalCount: 2 },
     });
 
-    archive.setRows([otto("second", "error")]);
+    archive.setRows([paseo("second", "error")]);
     expect(archive.getState()).toEqual({ eligibleCount: 1, status: { kind: "idle" } });
   });
 
   it("clears retry state when the authoritative failed child is running", async () => {
     const current = new Map([["failed", managed("failed")]]);
-    const archive = createArchiveFinishedSubagents([otto("failed")], {
+    const archive = createArchiveFinishedSubagents([paseo("failed")], {
       parentAgentId: "parent",
       getManagedSubagent: (id) => current.get(id),
       archiveManagedSubagent: async () => {
         current.set("failed", managed("failed", "running"));
         throw new Error("archive failed");
       },
-      archiveProviderSubagent: async () => undefined,
+      dismissProviderSubagents: () => undefined,
     });
 
     const operation = archive.archiveFinished();
     archive.setRows([]);
     await operation;
-    archive.setRows([otto("failed", "running")]);
+    archive.setRows([paseo("failed", "running")]);
 
     expect(archive.getState()).toEqual({ eligibleCount: 0, status: { kind: "idle" } });
     await expect(archive.archiveFinished()).resolves.toEqual({
-      archivedOttoIds: [],
-      archivedProviderIds: [],
-      skippedOttoIds: [],
+      archivedPaseoIds: [],
+      dismissedProviderIds: [],
+      skippedPaseoIds: [],
       failures: [],
     });
   });
 
   it("clears retry state when the authoritative failed child is initializing", async () => {
     const current = new Map([["failed", managed("failed")]]);
-    const archive = createArchiveFinishedSubagents([otto("failed")], {
+    const archive = createArchiveFinishedSubagents([paseo("failed")], {
       parentAgentId: "parent",
       getManagedSubagent: (id) => current.get(id),
       archiveManagedSubagent: async () => {
         current.set("failed", managed("failed", "initializing"));
         throw new Error("archive failed");
       },
-      archiveProviderSubagent: async () => undefined,
+      dismissProviderSubagents: () => undefined,
     });
 
     const operation = archive.archiveFinished();
     archive.setRows([]);
     await operation;
-    archive.setRows([otto("failed", "initializing")]);
+    archive.setRows([paseo("failed", "initializing")]);
 
     expect(archive.getState()).toEqual({ eligibleCount: 0, status: { kind: "idle" } });
     await expect(archive.archiveFinished()).resolves.toEqual({
-      archivedOttoIds: [],
-      archivedProviderIds: [],
-      skippedOttoIds: [],
+      archivedPaseoIds: [],
+      dismissedProviderIds: [],
+      skippedPaseoIds: [],
       failures: [],
     });
   });
@@ -316,20 +295,20 @@ describe("createArchiveFinishedSubagents", () => {
     async (_label, updateSnapshot) => {
       const error = new Error("archive failed");
       const current = new Map([["failed", managed("failed")]]);
-      const archive = createArchiveFinishedSubagents([otto("failed")], {
+      const archive = createArchiveFinishedSubagents([paseo("failed")], {
         parentAgentId: "parent",
         getManagedSubagent: (id) => current.get(id),
         archiveManagedSubagent: async () => {
           updateSnapshot(current);
           throw error;
         },
-        archiveProviderSubagent: async () => undefined,
+        dismissProviderSubagents: () => undefined,
       });
 
       await expect(archive.archiveFinished()).resolves.toEqual({
-        archivedOttoIds: [],
-        archivedProviderIds: [],
-        skippedOttoIds: [],
+        archivedPaseoIds: [],
+        dismissedProviderIds: [],
+        skippedPaseoIds: [],
         failures: [{ id: "failed", error }],
       });
       expect(archive.getState()).toEqual({ eligibleCount: 1, status: { kind: "idle" } });
@@ -344,7 +323,7 @@ describe("createArchiveFinishedSubagents", () => {
       ["second", managed("second")],
     ]);
     const calls: string[] = [];
-    const archive = createArchiveFinishedSubagents([otto("first"), otto("second")], {
+    const archive = createArchiveFinishedSubagents([paseo("first"), paseo("second")], {
       parentAgentId: "parent",
       getManagedSubagent: (id) => current.get(id),
       archiveManagedSubagent: async (id) => {
@@ -355,30 +334,30 @@ describe("createArchiveFinishedSubagents", () => {
           throw secondError;
         }
       },
-      archiveProviderSubagent: async () => undefined,
+      dismissProviderSubagents: () => undefined,
     });
 
     const operation = archive.archiveFinished();
     archive.setRows([]);
     await expect(operation).resolves.toEqual({
-      archivedOttoIds: [],
-      archivedProviderIds: [],
-      skippedOttoIds: [],
+      archivedPaseoIds: [],
+      dismissedProviderIds: [],
+      skippedPaseoIds: [],
       failures: [
         { id: "first", error: firstError },
         { id: "second", error: secondError },
       ],
     });
-    archive.setRows([otto("first"), otto("second", "running")]);
+    archive.setRows([paseo("first"), paseo("second", "running")]);
 
     expect(archive.getState()).toEqual({
       eligibleCount: 1,
       status: { kind: "failed", failedCount: 1, totalCount: 1 },
     });
     await expect(archive.archiveFinished()).resolves.toEqual({
-      archivedOttoIds: ["first"],
-      archivedProviderIds: [],
-      skippedOttoIds: [],
+      archivedPaseoIds: ["first"],
+      dismissedProviderIds: [],
+      skippedPaseoIds: [],
       failures: [],
     });
     expect(calls).toEqual(["first", "second", "first"]);
@@ -386,13 +365,13 @@ describe("createArchiveFinishedSubagents", () => {
 
   it("rechecks each managed child and skips resumed, missing, archived, reparented, running, and initializing rows", async () => {
     const rows = [
-      otto("first"),
-      otto("resumed"),
-      otto("missing"),
-      otto("archived"),
-      otto("reparented"),
-      otto("running"),
-      otto("initializing"),
+      paseo("first"),
+      paseo("resumed"),
+      paseo("missing"),
+      paseo("archived"),
+      paseo("reparented"),
+      paseo("running"),
+      paseo("initializing"),
     ];
     const current = new Map<string, ManagedSubagentSnapshot>([
       ["first", managed("first")],
@@ -410,13 +389,13 @@ describe("createArchiveFinishedSubagents", () => {
         archived.push(id);
         current.set("resumed", managed("resumed", "running"));
       },
-      archiveProviderSubagent: async () => undefined,
+      dismissProviderSubagents: () => undefined,
     });
 
     await expect(archive.archiveFinished()).resolves.toEqual({
-      archivedOttoIds: ["first"],
-      archivedProviderIds: [],
-      skippedOttoIds: ["resumed", "missing", "archived", "reparented", "running", "initializing"],
+      archivedPaseoIds: ["first"],
+      dismissedProviderIds: [],
+      skippedPaseoIds: ["resumed", "missing", "archived", "reparented", "running", "initializing"],
       failures: [],
     });
 
@@ -424,7 +403,7 @@ describe("createArchiveFinishedSubagents", () => {
     expect(archive.getState()).toEqual({ eligibleCount: 7, status: { kind: "idle" } });
   });
 
-  it("archives finished provider rows without removing their descriptors", async () => {
+  it("dismisses finished provider rows locally without removing their descriptors", async () => {
     const finished = provider("finished");
     const running = provider("running", "running");
     const descriptors = new Map([
@@ -436,15 +415,13 @@ describe("createArchiveFinishedSubagents", () => {
       parentAgentId: "parent",
       getManagedSubagent: () => undefined,
       archiveManagedSubagent: async () => undefined,
-      archiveProviderSubagent: async (id) => {
-        dismissed.push([id]);
-      },
+      dismissProviderSubagents: (ids) => dismissed.push(ids),
     });
 
     await expect(archive.archiveFinished()).resolves.toEqual({
-      archivedOttoIds: [],
-      archivedProviderIds: ["finished"],
-      skippedOttoIds: [],
+      archivedPaseoIds: [],
+      dismissedProviderIds: ["finished"],
+      skippedPaseoIds: [],
       failures: [],
     });
 

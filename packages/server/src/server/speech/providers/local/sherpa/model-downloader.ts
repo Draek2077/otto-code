@@ -1,23 +1,19 @@
-import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream, existsSync } from "node:fs";
+import { createWriteStream } from "node:fs";
 import { mkdir, rename, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type pino from "pino";
 
-import {
-  getSherpaOnnxModelSpec,
-  type SherpaOnnxModelId,
-  type SherpaOnnxModelSpec,
-} from "./model-catalog.js";
+import { getSherpaOnnxModelSpec, type SherpaOnnxModelId } from "./model-catalog.js";
 import { spawnProcess } from "../../../../../utils/spawn.js";
+// OTTO(speech-models): keep Windows GNU tar from interpreting drives as hosts.
+import { speechArchiveCommand } from "../../../../otto/speech/archive.js";
 
 export interface EnsureSherpaOnnxModelOptions {
   modelsDir: string;
   modelId: SherpaOnnxModelId;
   logger: pino.Logger;
-  /** Aborts the download, the write, and the extraction. */
   signal?: AbortSignal;
 }
 
@@ -76,21 +72,6 @@ async function downloadToFile(options: DownloadToFileOptions): Promise<void> {
   }
 }
 
-// A bare `tar` on Windows can resolve to Git's MSYS GNU tar (when Git's
-// usr\bin precedes System32 on PATH), which parses `C:\...` as a remote
-// `host:file` spec and dies with "Cannot connect to C: resolve failed"
-// (exit 128). The system bsdtar handles Windows paths and .tar.bz2 natively.
-export function resolveTarBinary(): string {
-  if (process.platform === "win32") {
-    const systemRoot = process.env["SystemRoot"] ?? "C:\\Windows";
-    const systemTar = path.join(systemRoot, "System32", "tar.exe");
-    if (existsSync(systemTar)) {
-      return systemTar;
-    }
-  }
-  return "tar";
-}
-
 async function extractTarArchive(
   archivePath: string,
   destDir: string,
@@ -99,23 +80,51 @@ async function extractTarArchive(
   await mkdir(destDir, { recursive: true });
 
   await new Promise<void>((resolve, reject) => {
-    const child = spawnProcess(resolveTarBinary(), ["xf", archivePath, "-C", destDir], {
-      stdio: ["ignore", "ignore", "pipe"],
+    const command = speechArchiveCommand(archivePath, destDir); // OTTO(speech-models)
+    const child = spawnProcess("tar", command.args, {
+      cwd: command.cwd, // OTTO(speech-models)
+      shell: false, // OTTO(speech-models): tar is a native executable; paths are argv, not shell code.
+      stdio: "inherit",
       signal,
-    });
-    let stderr = "";
-    child.stderr?.on("data", (chunk: Buffer) => {
-      stderr += chunk.toString();
     });
     child.on("error", reject);
     child.on("exit", (code) => {
       if (code === 0) resolve();
-      else {
-        const detail = stderr.trim().slice(0, 500);
-        reject(new Error(`tar exited with code ${code}${detail ? `: ${detail}` : ""}`));
-      }
+      else reject(new Error(`tar exited with code ${code}`));
     });
   });
+}
+
+interface SherpaOnnxModelPaths {
+  modelDir: string;
+  archivePath: string;
+  extractionDir: string;
+}
+
+function getSherpaOnnxModelPaths(
+  modelsDir: string,
+  modelId: SherpaOnnxModelId,
+): SherpaOnnxModelPaths {
+  const spec = getSherpaOnnxModelSpec(modelId);
+  const downloadsDir = path.join(modelsDir, ".downloads");
+  return {
+    modelDir: path.join(modelsDir, spec.extractedDir),
+    archivePath: path.join(downloadsDir, path.basename(new URL(spec.archiveUrl).pathname)),
+    extractionDir: path.join(downloadsDir, `${spec.extractedDir}.extracting`),
+  };
+}
+
+// The archive is removed only as its model moves into place, so a model whose archive is
+// still in .downloads did not finish installing and may hold truncated files.
+export async function isSherpaOnnxModelInstalled(
+  modelsDir: string,
+  modelId: SherpaOnnxModelId,
+): Promise<boolean> {
+  const spec = getSherpaOnnxModelSpec(modelId);
+  const { modelDir, archivePath } = getSherpaOnnxModelPaths(modelsDir, modelId);
+  return (
+    !(await isNonEmptyFile(archivePath)) && (await hasRequiredFiles(modelDir, spec.requiredFiles))
+  );
 }
 
 async function isNonEmptyFile(filePath: string): Promise<boolean> {
@@ -125,39 +134,6 @@ async function isNonEmptyFile(filePath: string): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-async function computeFileSha256(filePath: string): Promise<string> {
-  const hash = createHash("sha256");
-  await pipeline(createReadStream(filePath), hash);
-  return hash.digest("hex");
-}
-
-// Refuse to extract an archive whose bytes don't match the pinned digest - the
-// guard against a compromised release asset or a MITM'd download. Throws on
-// mismatch (the caller deletes the bad archive); warns loudly when no digest is
-// pinned yet rather than silently trusting the download.
-async function verifyArchiveIntegrity(params: {
-  spec: SherpaOnnxModelSpec;
-  archivePath: string;
-  logger: pino.Logger;
-}): Promise<void> {
-  const { spec, archivePath, logger } = params;
-  if (!spec.sha256) {
-    logger.warn(
-      { modelId: spec.id },
-      "No pinned sha256 for this model; extracting without archive integrity verification",
-    );
-    return;
-  }
-  const actual = await computeFileSha256(archivePath);
-  if (actual.toLowerCase() !== spec.sha256.toLowerCase()) {
-    throw new Error(
-      `Model archive ${path.basename(archivePath)} failed integrity verification ` +
-        `(expected sha256 ${spec.sha256.toLowerCase()}, got ${actual}).`,
-    );
-  }
-  logger.info({ modelId: spec.id }, "Model archive integrity verified");
 }
 
 export async function ensureSherpaOnnxModel(
@@ -171,18 +147,17 @@ export async function ensureSherpaOnnxModel(
   });
 
   const spec = getSherpaOnnxModelSpec(options.modelId);
-  const modelDir = path.join(options.modelsDir, spec.extractedDir);
-  if (await hasRequiredFiles(modelDir, spec.requiredFiles)) {
+  const { modelDir, archivePath, extractionDir } = getSherpaOnnxModelPaths(
+    options.modelsDir,
+    options.modelId,
+  );
+  if (await isSherpaOnnxModelInstalled(options.modelsDir, options.modelId)) {
     return modelDir;
   }
 
   logger.info({ modelsDir: options.modelsDir }, "Starting model download");
 
   try {
-    const downloadsDir = path.join(options.modelsDir, ".downloads");
-    const archiveFilename = path.basename(new URL(spec.archiveUrl).pathname);
-    const archivePath = path.join(downloadsDir, archiveFilename);
-
     if (!(await isNonEmptyFile(archivePath))) {
       await downloadToFile({
         url: spec.archiveUrl,
@@ -191,18 +166,20 @@ export async function ensureSherpaOnnxModel(
       });
     }
 
+    logger.info(
+      {
+        modelId: options.modelId,
+        archivePath,
+        modelDir,
+      },
+      "Extracting model archive",
+    );
+    // Extract beside the archive and move into place once complete, so an interrupted
+    // extraction never leaves partial files at modelDir.
+    await rm(extractionDir, { recursive: true, force: true });
     try {
-      await verifyArchiveIntegrity({ spec, archivePath, logger });
-
-      logger.info(
-        {
-          modelId: options.modelId,
-          archivePath,
-          modelDir,
-        },
-        "Extracting model archive",
-      );
-      await extractTarArchive(archivePath, options.modelsDir, options.signal);
+      await extractTarArchive(archivePath, extractionDir, options.signal);
+      const extractedModelDir = path.join(extractionDir, spec.extractedDir);
 
       logger.info(
         {
@@ -211,30 +188,26 @@ export async function ensureSherpaOnnxModel(
         },
         "Verifying downloaded model files",
       );
-      if (!(await hasRequiredFiles(modelDir, spec.requiredFiles))) {
+      if (!(await hasRequiredFiles(extractedModelDir, spec.requiredFiles))) {
         throw new Error(
-          `Downloaded and extracted ${archiveFilename}, but required files are still missing in ${modelDir}.`,
+          `Downloaded and extracted ${path.basename(archivePath)}, but required files are missing.`,
         );
       }
-    } catch (error) {
-      // A corrupt, tampered, or incompletely-extracted archive must not wedge the
-      // model forever. Drop it so the next attempt re-downloads a fresh copy
-      // instead of re-verifying/re-extracting the same bad file.
-      await rm(archivePath, { force: true }).catch(() => undefined);
-      throw error;
-    }
 
-    logger.info(
-      {
-        modelId: options.modelId,
-        archivePath,
-      },
-      "Finalizing model artifacts",
-    );
-    try {
-      await rm(archivePath, { force: true });
-    } catch {
-      // ignore
+      logger.info(
+        {
+          modelId: options.modelId,
+          archivePath,
+        },
+        "Finalizing model artifacts",
+      );
+      // A retained archive marks the model as not installed, so remove it before the model
+      // is moved into place. If removal fails, nothing at modelDir looks installed.
+      await rm(modelDir, { recursive: true, force: true });
+      await rm(archivePath, { force: true, maxRetries: 3 });
+      await rename(extractedModelDir, modelDir);
+    } finally {
+      await rm(extractionDir, { recursive: true, force: true });
     }
 
     logger.info({ modelDir }, "Model download completed");

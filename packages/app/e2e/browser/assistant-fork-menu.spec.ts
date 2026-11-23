@@ -2,8 +2,9 @@ import { expect, test as base } from "../support/fixtures";
 import { awaitAssistantMessage } from "../support/helpers/agent-stream";
 import {
   expectChatHistoryAttachment,
-  expectInFlightForkUnavailable,
+  expectInFlightForkAvailable,
   expectLiveAssistantText,
+  forkInFlightTurnToNewTab,
   forkMostRecentAssistantTurnToNewTab,
   forkMostRecentAssistantTurnToNewWorkspace,
   observeForkAttachment,
@@ -17,12 +18,8 @@ import {
   type MockAgentWorkspace,
 } from "../support/helpers/mock-agent";
 import { getServerId } from "../support/helpers/server-id";
-import { seedAppSettings, seedSavedSettingsHosts } from "../support/helpers/settings";
-import {
-  openExistingWorkspaceFromOccupiedSteer,
-  submitNewWorkspaceEmpty,
-} from "../support/helpers/new-workspace";
-import { visibleWorkspaceTabStrip } from "../support/helpers/workspace-tabs";
+import { seedSavedSettingsHosts } from "../support/helpers/settings";
+import { submitNewWorkspaceEmpty } from "../support/helpers/new-workspace";
 
 const test = base.extend<{
   seedForkWorkspace: (options: MockAgentOptions) => Promise<MockAgentWorkspace>;
@@ -40,16 +37,6 @@ const test = base.extend<{
 
 test.describe("Assistant fork menu", () => {
   test.describe.configure({ timeout: 180_000 });
-
-  // The assistant turn footer that hosts the fork trigger is hidden-until-hover
-  // by default (`hideChatMessageDetails` defaults to true), which on desktop web
-  // renders it with opacity 0 / pointer-events none - the trigger is present and
-  // passes toBeVisible(), but every click is intercepted by the element behind
-  // it, so the whole fork flow stalls until the test times out. Pin the setting
-  // off so the footer is always visible for these tests.
-  test.beforeEach(async ({ page }) => {
-    await seedAppSettings(page, { hideChatMessageDetails: false });
-  });
 
   test("forks a failed assistant turn that has no provider message id", async ({
     page,
@@ -72,38 +59,35 @@ test.describe("Assistant fork menu", () => {
     await expectChatHistoryAttachment(page);
   });
 
-  test("offers Fork after the assistant turn completes and keeps the running row status-only", async ({
+  test("forks a streaming assistant turn without interrupting it", async ({
     page,
     seedForkWorkspace,
   }) => {
     const visibleBeforeFork = "where the auto-scroll logic actually lives";
+    const visibleAfterFork = "the first useful step is to read the relevant files";
     const sourceAgentTitle = "Assistant fork in flight";
     const forkAttachment = observeForkAttachment(page);
 
     const session = await seedForkWorkspace({
       repoPrefix: "assistant-fork-in-flight-",
       title: sourceAgentTitle,
-      model: "ten-second-stream",
+      model: "thirty-minute-stream",
     });
 
     await openAgentRoute(page, session);
     await expectComposerVisible(page);
     await submitMessage(page, "Walk me through the scroll anchor behavior.");
 
-    await expectInFlightForkUnavailable(page);
+    await expectInFlightForkAvailable(page);
     await expectLiveAssistantText(page, visibleBeforeFork);
 
-    await session.client.waitForFinish(session.agentId, 30_000);
-    await expect(page.getByTestId("turn-working-indicator")).toHaveCount(0);
-    await forkMostRecentAssistantTurnToNewTab(page);
+    await forkInFlightTurnToNewTab(page);
     await expectChatHistoryAttachment(page);
     expect(await forkAttachment.waitForText()).toContain(visibleBeforeFork);
+    await expect(page.getByRole("button", { name: "Menu backdrop", exact: true })).toHaveCount(0);
 
     await page.getByRole("button", { name: sourceAgentTitle }).click();
-    await expect(
-      page.getByTestId("assistant-message").filter({ hasText: visibleBeforeFork }).first(),
-    ).toBeVisible();
-    await expect(page.getByTestId("turn-working-indicator")).toHaveCount(0);
+    await expectLiveAssistantText(page, visibleAfterFork);
   });
 
   test("focuses a forked assistant turn in a new workspace draft tab", async ({
@@ -131,7 +115,8 @@ test.describe("Assistant fork menu", () => {
 
     await forkMostRecentAssistantTurnToNewTab(page);
 
-    const selectedTab = visibleWorkspaceTabStrip(page)
+    const selectedTab = page
+      .getByTestId("workspace-tabs-row")
       .getByRole("button")
       .and(page.locator('[aria-selected="true"]'));
     await expect(selectedTab).toHaveAttribute("data-testid", /^workspace-tab-draft_/, {
@@ -230,11 +215,6 @@ test.describe("Assistant fork menu", () => {
     await expectChatHistoryAttachment(page);
 
     await submitNewWorkspaceEmpty(page);
-    // The fork's project is the seeded temp repo, whose directory already backs
-    // the seeded workspace, so the daemon refuses a second one there and the app
-    // steers instead of failing. What this test pins is that the attachment
-    // survives to the new agent's user message, not which branch created it.
-    await openExistingWorkspaceFromOccupiedSteer(page);
 
     const userMessage = page.getByTestId("user-message").filter({ hasText: "Chat history" }).last();
     await expect(userMessage).toBeVisible({ timeout: 30_000 });

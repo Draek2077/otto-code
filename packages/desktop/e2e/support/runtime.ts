@@ -1,4 +1,7 @@
+// OTTO(identity): fixtures use Otto's daemon lock filename.
 import { readFileSync } from "node:fs";
+// OTTO(identity): renderer ownership fixtures read the real Otto daemon lock.
+import { OTTO_DAEMON_PID_FILENAME } from "@getpaseo/protocol/otto/identity";
 import { appendFile } from "node:fs/promises";
 import { expect, type Page } from "@playwright/test";
 import { openSettings } from "../../../app/e2e/support/helpers/app";
@@ -29,28 +32,28 @@ export interface RealDaemonState {
 
 /**
  * Reads live state from the running E2E test daemon: version from the HTTP
- * status endpoint, PID from the otto.pid lock file, log path from the
- * E2E_OTTO_HOME directory. Call this in Node test code (not in the browser).
+ * status endpoint, PID from the Otto lock file, log path from the
+ * E2E_PASEO_HOME directory. Call this in Node test code (not in the browser).
  */
 export async function loadRealDaemonState(): Promise<RealDaemonState> {
   const port = getE2EDaemonPort();
-  const ottoHome = process.env.E2E_OTTO_HOME;
-  if (!ottoHome) throw new Error("E2E_OTTO_HOME not set - the worker fixture must run first");
+  const paseoHome = process.env.E2E_PASEO_HOME;
+  if (!paseoHome) throw new Error("E2E_PASEO_HOME not set — the worker fixture must run first");
 
   const resp = await fetch(`http://127.0.0.1:${port}/api/status`);
   const data: DaemonApiStatus = await resp.json();
 
   let pid: number | null = null;
   try {
-    const raw = readFileSync(`${ottoHome}/otto.pid`, "utf8");
+    const raw = readFileSync(`${paseoHome}/${OTTO_DAEMON_PID_FILENAME}`, "utf8");
     const pidContent: PidFileContent = JSON.parse(raw);
     pid = pidContent.pid ?? null;
   } catch (err) {
     // PID file may not be present yet on a very fresh daemon start
-    console.warn("[desktop-updates] otto.pid not found:", err);
+    console.warn(`[desktop-updates] ${OTTO_DAEMON_PID_FILENAME} not found:`, err);
   }
 
-  return { version: data.version, pid, logPath: `${ottoHome}/daemon.log` };
+  return { version: data.version, pid, logPath: `${paseoHome}/daemon.log` };
 }
 
 export interface DesktopRuntimeConfig {
@@ -62,11 +65,14 @@ export interface DesktopRuntimeConfig {
   slowInstall?: boolean;
   /** Initial PID reported by desktop_daemon_status. Defaults to null. */
   daemonPid?: number | null;
+  daemonHome?: string;
+  /** Current-session ownership, independent of the legacy management flag. */
+  ownedByDesktop?: boolean;
   daemonVersion?: string | null;
   daemonLogPath?: string;
   /** Initial manageBuiltInDaemon setting. Defaults to false. */
   manageBuiltInDaemon?: boolean;
-  /** Daemon listen address reported by desktop_daemon_status. Defaults to 127.0.0.1:6868. */
+  /** Daemon listen address reported by desktop_daemon_status. Defaults to 127.0.0.1:6767. */
   daemonListen?: string;
   /** Keep start_desktop_daemon pending to hold the desktop startup blocker open. */
   hangDaemonStart?: boolean;
@@ -113,7 +119,7 @@ declare global {
 }
 
 /**
- * Injects window.ottoDesktop before app load so all Electron-gated code
+ * Injects window.paseoDesktop before app load so all Electron-gated code
  * activates. The update-check IPC is mocked at the boundary so the real
  * auto-updater never fires. Daemon start/stop commands are stateful: the mock
  * tracks running state and assigns a fresh PID on each start, letting tests
@@ -139,7 +145,7 @@ export async function installDesktopRuntime(
     let manageDaemon = cfg.manageBuiltInDaemon ?? false;
     let daemonRunning = true;
     let currentPid: number | null = cfg.daemonPid ?? null;
-    let startCount = 0;
+    let ownedByDesktop = cfg.ownedByDesktop ?? false;
     let manualUpdateAdmitted = false;
     window.__desktopDaemonStartRequested = false;
 
@@ -147,10 +153,12 @@ export async function installDesktopRuntime(
       return {
         serverId: cfg.serverId,
         status: daemonRunning ? "running" : "stopped",
-        listen: cfg.daemonListen ?? "127.0.0.1:6868",
+        listen: cfg.daemonListen ?? "127.0.0.1:6767",
         hostname: null,
         pid: currentPid,
-        home: "",
+        home: cfg.daemonHome ?? "",
+        startedAt: currentPid === null ? null : "2026-09-01T00:00:00.000Z",
+        ownedByDesktop,
         version: cfg.daemonVersion ?? null,
         desktopManaged: manageDaemon,
         error: null,
@@ -162,11 +170,11 @@ export async function installDesktopRuntime(
       if (cfg.hangDaemonStart) {
         return new Promise(() => undefined);
       }
-      startCount += 1;
+      if (!daemonRunning) {
+        currentPid = (cfg.daemonPid ?? 10000) + 1000;
+        ownedByDesktop = true;
+      }
       daemonRunning = true;
-      // First start (bootstrap) returns the configured PID; subsequent starts
-      // (after a stop) get a fresh PID so tests can observe the change.
-      currentPid = (cfg.daemonPid ?? 10000) + (startCount - 1) * 1000;
       return buildDaemonStatus();
     }
 
@@ -230,7 +238,6 @@ export async function installDesktopRuntime(
           }
           return {
             installed: true,
-            outcome: "installed",
             version: cfg.latestVersion ?? "1.2.3",
             message: "App update installed. Restart required.",
           };
@@ -269,6 +276,7 @@ export async function installDesktopRuntime(
         }
 
         if (command === "stop_desktop_daemon") {
+          ownedByDesktop = false;
           daemonRunning = false;
           currentPid = null;
           return buildDaemonStatus();
@@ -307,7 +315,7 @@ export async function installDesktopRuntime(
     }
 
     window.__capturedDialogOpenCalls = [];
-    (window as unknown as { ottoDesktop: unknown }).ottoDesktop = desktopBridge;
+    (window as unknown as { paseoDesktop: unknown }).paseoDesktop = desktopBridge;
   }, config);
 }
 
@@ -384,45 +392,37 @@ export async function expectInstallInProgress(page: Page): Promise<void> {
 }
 
 /**
- * Clicks the daemon management switch and waits for the in-app confirm dialog
- * (ConfirmDialogHost) to open. Callers assert copy with
- * expectDaemonManagementConfirmDialog and settle it with confirmConfirmDialog
- * or cancelConfirmDialog.
+ * Clicks the daemon management switch and waits for dialog.ask to fire in the
+ * mock, then returns the captured call args (message + title). The mock auto-
+ * dismisses via confirmShouldAccept=false so callers can assert copy without
+ * worrying about state changes.
  */
-export async function openDaemonManagementConfirmDialog(page: Page): Promise<void> {
+export async function interceptDaemonManagementConfirmDialog(
+  page: Page,
+): Promise<ConfirmDialogCall> {
   await page.getByRole("switch", { name: "Manage built-in daemon" }).click();
-  await expect(page.getByTestId("confirm-dialog")).toBeVisible({ timeout: 5_000 });
+  await page.waitForFunction(() => !!window.__capturedDialogCall, { timeout: 5_000 });
+  return page.evaluate(() => window.__capturedDialogCall!);
 }
 
-export async function confirmConfirmDialog(page: Page): Promise<void> {
-  await page.getByTestId("confirm-dialog-confirm").click();
-  await expect(page.getByTestId("confirm-dialog")).toBeHidden({ timeout: 5_000 });
+export async function interceptDaemonStopConfirmDialog(page: Page): Promise<ConfirmDialogCall> {
+  await page.getByRole("button", { name: "Stop daemon", exact: true }).click();
+  await page.waitForFunction(() => !!window.__capturedDialogCall);
+  return page.evaluate(() => window.__capturedDialogCall!);
 }
 
-export async function cancelConfirmDialog(page: Page): Promise<void> {
-  await page.getByTestId("confirm-dialog-cancel").click();
-  await expect(page.getByTestId("confirm-dialog")).toBeHidden({ timeout: 5_000 });
-}
-
-/**
- * Flips the daemon management switch. Disabling goes through the in-app
- * confirm dialog, which this helper accepts; enabling has no dialog.
- */
 export async function toggleDaemonManagement(
   page: Page,
-  action: "enable" | "disable",
+  _action: "enable" | "disable",
 ): Promise<void> {
   await page.getByRole("switch", { name: "Manage built-in daemon" }).click();
-  if (action === "disable") {
-    await expect(page.getByTestId("confirm-dialog")).toBeVisible({ timeout: 5_000 });
-    await confirmConfirmDialog(page);
-  }
 }
 
-export async function expectDaemonManagementConfirmDialog(page: Page): Promise<void> {
-  const dialog = page.getByTestId("confirm-dialog");
-  await expect(dialog).toContainText("Pause built-in daemon");
-  await expect(dialog).toContainText("stop the built-in daemon immediately");
+export function expectDaemonManagementConfirmDialog(args: ConfirmDialogCall): void {
+  expect(args.title).toBe("Pause built-in daemon");
+  expect(args.message).toBe(
+    "This will stop the built-in daemon immediately. Running agents and terminals connected to the built-in daemon will be stopped.",
+  );
 }
 
 export async function expectDaemonManagementEnabled(page: Page): Promise<void> {
@@ -435,10 +435,10 @@ export async function expectDaemonManagementDisabled(page: Page): Promise<void> 
 
 /**
  * Asserts the daemon status card shows the given PID. Pass null to assert
- * the cleared state (shown as "PID -" when the daemon is stopped).
+ * the cleared state (shown as "PID —" when the daemon is stopped).
  */
 export async function expectDaemonStatusPid(page: Page, pid: number | null): Promise<void> {
-  const expected = pid !== null ? `PID ${pid}` : "PID -";
+  const expected = pid !== null ? `PID ${pid}` : "PID —";
   await expect(
     page.getByTestId("host-page-daemon-lifecycle-card").getByText(expected),
   ).toBeVisible();

@@ -15,7 +15,7 @@ import {
 describe("checkout PR schemas", () => {
   test("defaults missing forge identity for old daemon payloads", () => {
     const parsed = CheckoutPrStatusSchema.parse({
-      url: "https://github.com/Draek2077/otto-code/pull/42",
+      url: "https://github.com/getpaseo/paseo/pull/42",
       title: "Ship it",
       state: "open",
       baseRefName: "main",
@@ -38,8 +38,8 @@ describe("checkout PR schemas", () => {
     ];
     const payload = {
       forge: "github",
-      projectPath: "Draek2077/otto-code",
-      url: "https://github.com/Draek2077/otto-code/pull/42",
+      projectPath: "getpaseo/paseo",
+      url: "https://github.com/getpaseo/paseo/pull/42",
       title: "Ship it",
       state: "open",
       baseRefName: "main",
@@ -56,7 +56,7 @@ describe("checkout PR schemas", () => {
   test("accepts unknown future forge identities", () => {
     const parsed = CheckoutPrStatusSchema.parse({
       forge: "someforge",
-      url: "https://someforge.example/Draek2077/otto-code/pulls/42",
+      url: "https://someforge.example/getpaseo/paseo/pulls/42",
       title: "Ship it",
       state: "open",
       baseRefName: "main",
@@ -71,7 +71,7 @@ describe("checkout PR schemas", () => {
     expect(
       CheckoutPrStatusSchema.parse({
         number: 42,
-        url: "https://github.com/otto-code-ai/otto-code/pull/42",
+        url: "https://github.com/getpaseo/paseo/pull/42",
         title: "Ship it",
         state: "open",
         baseRefName: "main",
@@ -87,7 +87,7 @@ describe("checkout PR schemas", () => {
   test("keeps missing provider-specific GitHub PR facts absent for old daemons", () => {
     const parsed = CheckoutPrStatusSchema.parse({
       number: 42,
-      url: "https://github.com/otto-code-ai/otto-code/pull/42",
+      url: "https://github.com/getpaseo/paseo/pull/42",
       title: "Ship it",
       state: "open",
       baseRefName: "main",
@@ -103,7 +103,7 @@ describe("checkout PR schemas", () => {
     expect(
       CheckoutPrStatusSchema.parse({
         number: 993,
-        url: "https://github.com/otto-code-ai/otto-code/pull/993",
+        url: "https://github.com/getpaseo/paseo/pull/993",
         title: "Block direct merge while checks run",
         state: "open",
         baseRefName: "main",
@@ -148,7 +148,7 @@ describe("checkout PR schemas", () => {
   test("keeps forgeSpecific absent for old daemons that only send github facts", () => {
     const parsed = CheckoutPrStatusSchema.parse({
       number: 42,
-      url: "https://github.com/Draek2077/otto-code/pull/42",
+      url: "https://github.com/getpaseo/paseo/pull/42",
       title: "Ship it",
       state: "open",
       baseRefName: "main",
@@ -173,7 +173,7 @@ describe("checkout PR schemas", () => {
   test("preserves a github forgeSpecific envelope", () => {
     const parsed = CheckoutPrStatusSchema.parse({
       number: 7,
-      url: "https://github.com/Draek2077/otto-code/pull/7",
+      url: "https://github.com/getpaseo/paseo/pull/7",
       title: "Ship it",
       state: "open",
       baseRefName: "main",
@@ -391,7 +391,7 @@ describe("checkout PR schemas", () => {
     expect(
       CheckoutPrStatusSchema.parse({
         number: 993,
-        url: "https://github.com/otto-code-ai/otto-code/pull/993",
+        url: "https://github.com/getpaseo/paseo/pull/993",
         title: "Expose failed check logs",
         state: "open",
         baseRefName: "main",
@@ -401,7 +401,7 @@ describe("checkout PR schemas", () => {
           {
             name: "server tests",
             status: "failure",
-            url: "https://github.com/otto-code-ai/otto-code/actions/runs/456/job/789",
+            url: "https://github.com/getpaseo/paseo/actions/runs/456/job/789",
             checkRunId: 12345,
             workflowRunId: 456,
           },
@@ -416,7 +416,7 @@ describe("checkout PR schemas", () => {
       {
         name: "server tests",
         status: "failure",
-        url: "https://github.com/otto-code-ai/otto-code/actions/runs/456/job/789",
+        url: "https://github.com/getpaseo/paseo/actions/runs/456/job/789",
         checkRunId: 12345,
         workflowRunId: 456,
       },
@@ -517,8 +517,8 @@ describe("checkout PR schemas", () => {
       CheckoutGithubGetCheckDetailsRequestSchema.parse({
         type: "checkout.github.get_check_details.request",
         cwd: "/tmp/repo",
-        repoOwner: "otto-code-ai",
-        repoName: "otto",
+        repoOwner: "getpaseo",
+        repoName: "paseo",
         checkRunId: 12345,
         workflowRunId: 456,
         requestId: "request-check-details",
@@ -526,8 +526,8 @@ describe("checkout PR schemas", () => {
     ).toEqual({
       type: "checkout.github.get_check_details.request",
       cwd: "/tmp/repo",
-      repoOwner: "otto-code-ai",
-      repoName: "otto",
+      repoOwner: "getpaseo",
+      repoName: "paseo",
       checkRunId: 12345,
       workflowRunId: 456,
       requestId: "request-check-details",
@@ -545,7 +545,7 @@ describe("checkout PR schemas", () => {
             name: "server tests",
             status: "completed",
             conclusion: "failure",
-            url: "https://github.com/otto-code-ai/otto-code/actions/runs/456/job/789",
+            url: "https://github.com/getpaseo/paseo/actions/runs/456/job/789",
             output: {
               title: "Tests failed",
               summary: "1 failure",
@@ -566,7 +566,7 @@ describe("checkout PR schemas", () => {
                 name: "test",
                 status: "completed",
                 conclusion: "failure",
-                url: "https://github.com/otto-code-ai/otto-code/actions/runs/456/job/789",
+                url: "https://github.com/getpaseo/paseo/actions/runs/456/job/789",
                 logTail: "last line",
                 logTruncated: false,
               },
@@ -706,8 +706,8 @@ describe("checkout PR schemas", () => {
     const request = {
       type: "checkout.github.get_check_details.request",
       cwd: "/tmp/repo",
-      repoOwner: "otto-code-ai",
-      repoName: "otto",
+      repoOwner: "getpaseo",
+      repoName: "paseo",
       checkRunId: 12345,
       requestId: "request-check-details",
     };
@@ -812,3 +812,14 @@ describe("checkout PR schemas", () => {
     });
   });
 });
+
+test.each([undefined, false, true])(
+  "accepts optional Hoplite capability (%s)",
+  (hopliteProvider) => {
+    const features = hopliteProvider === undefined ? {} : { hopliteProvider };
+    expect(
+      ServerInfoStatusPayloadSchema.parse({ status: "server_info", serverId: "test", features })
+        .features,
+    ).toEqual(features);
+  },
+);

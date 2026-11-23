@@ -39,12 +39,12 @@ describe("buildStringCommandShellInvocation", () => {
   it.skipIf(process.platform === "win32" || !hasBashOnPath())(
     "preserves the supplied PATH when login profiles rewrite it",
     () => {
-      const home = mkdtempSync(join(tmpdir(), "otto-shell-home-"));
+      const home = mkdtempSync(join(tmpdir(), "paseo-shell-home-"));
       tempDirs.push(home);
       const binDir = join(home, "bin");
       mkdirSync(binDir);
 
-      const shimPath = join(binDir, "otto-shim");
+      const shimPath = join(binDir, "paseo-shim");
       writeFileSync(shimPath, "#!/bin/sh\nprintf 'shim:%s\\n' \"$1\"\n");
       chmodSync(shimPath, 0o755);
       writeFileSync(join(home, ".bash_profile"), "export PATH=/usr/bin:/bin\n");
@@ -52,7 +52,7 @@ describe("buildStringCommandShellInvocation", () => {
       writeFileSync(bashEnvPath, "export PATH=/usr/bin:/bin\n");
 
       const invocation = buildStringCommandShellInvocation({
-        command: "command -v otto-shim >/dev/null && otto-shim ok",
+        command: "command -v paseo-shim >/dev/null && paseo-shim ok",
       });
       const env: NodeJS.ProcessEnv = {
         ...process.env,

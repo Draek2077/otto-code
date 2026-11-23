@@ -6,20 +6,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StreamViewportHandle } from "../strategy";
 import { useChatOutline } from "./use-chat-outline";
 
-interface RefreshMessage {
-  type: "agent_stream";
-  payload: {
-    agentId: string;
-    event: { type: "timeline"; item: { type: "user_message" } };
-  };
-}
-
 const runtime = vi.hoisted(() => ({
   listAgentTimelinePrompts: vi.fn(),
   fetchAgentTimeline: vi.fn(),
-  on: vi.fn<(event: string, listener: (message: RefreshMessage) => void) => () => void>(
-    () => () => undefined,
-  ),
+  subscribeAgentTimeline: vi.fn(() => {
+    throw new Error("The outline must reuse the viewed timeline");
+  }),
 }));
 
 vi.mock("@/constants/platform", () => ({ isWeb: true }));
@@ -42,83 +34,32 @@ describe("useChatOutline", () => {
   beforeEach(() => {
     runtime.listAgentTimelinePrompts.mockReset();
     runtime.fetchAgentTimeline.mockReset();
-    runtime.on.mockClear();
+    runtime.subscribeAgentTimeline.mockClear();
   });
 
-  it("uses the initial timeline prompt index without a second request", () => {
-    // Stable like the store's value: a fresh literal per render re-runs the
-    // index effect forever.
-    const initialPromptIndex = {
-      epoch: "epoch-1",
-      prompts: [
-        { seq: 1, timestamp: "2026-05-02T00:00:00.000Z", preview: "First prompt" },
-        { seq: 3, timestamp: "2026-05-02T00:00:02.000Z", preview: "Second prompt" },
-      ],
-    };
+  it("waits for a served timeline before requesting its prompt index", async () => {
+    runtime.listAgentTimelinePrompts.mockResolvedValue({ epoch: "epoch-1", prompts: [] });
     const viewportRef = createRef<StreamViewportHandle>();
-    const { result } = renderHook(() =>
-      useChatOutline({
-        agentId: "agent-1",
-        serverId: "server-1",
-        timelineEpoch: "epoch-1",
-        tail: [],
-        head: [],
-        enabled: true,
-        viewportRef,
-        onJumpError: vi.fn(),
-        initialPromptIndex,
-      }),
-    );
-
-    expect(result.current.hasPromptIndex).toBe(true);
-    expect(result.current.prompts).toEqual([
-      expect.objectContaining({ seq: 1, preview: "First prompt" }),
-      expect.objectContaining({ seq: 3, preview: "Second prompt" }),
-    ]);
-    expect(runtime.listAgentTimelinePrompts).not.toHaveBeenCalled();
-  });
-
-  it("loads the prompt index from the legacy RPC after hydration", async () => {
-    runtime.listAgentTimelinePrompts.mockResolvedValue({
-      epoch: "epoch-1",
-      prompts: [
-        { seq: 1, timestamp: new Date(1).toISOString(), preview: "First prompt" },
-        { seq: 2, timestamp: new Date(2).toISOString(), preview: "Second prompt" },
-      ],
-    });
-    const viewportRef = createRef<StreamViewportHandle>();
-    const { result } = renderHook(() =>
-      useChatOutline({
-        agentId: "agent-1",
-        serverId: "server-1",
-        timelineEpoch: "epoch-1",
-        tail: [],
-        head: [],
-        enabled: true,
-        viewportRef,
-        onJumpError: vi.fn(),
-      }),
-    );
-
-    await waitFor(() => expect(result.current.prompts).toHaveLength(2));
-  });
-
-  it("waits for initial timeline hydration before falling back to the legacy index RPC", () => {
-    const viewportRef = createRef<StreamViewportHandle>();
-    renderHook(() =>
-      useChatOutline({
-        agentId: "agent-1",
-        serverId: "server-1",
-        timelineEpoch: null,
-        tail: [],
-        head: [],
-        enabled: true,
-        viewportRef,
-        onJumpError: vi.fn(),
-      }),
+    const { rerender } = renderHook(
+      ({ agentId, timelineEpoch }) =>
+        useChatOutline({
+          agentId,
+          serverId: "server-1",
+          timelineEpoch,
+          tail: [],
+          head: [],
+          enabled: true,
+          viewportRef,
+          onJumpError: vi.fn(),
+        }),
+      { initialProps: { agentId: "draft_msg_1", timelineEpoch: null as string | null } },
     );
 
     expect(runtime.listAgentTimelinePrompts).not.toHaveBeenCalled();
+
+    rerender({ agentId: "agent-1", timelineEpoch: "epoch-1" });
+    await waitFor(() => expect(runtime.listAgentTimelinePrompts).toHaveBeenCalledTimes(1));
+    expect(runtime.listAgentTimelinePrompts).toHaveBeenCalledWith("agent-1");
   });
 
   it("drops a late prompt index after the authoritative timeline epoch changes", async () => {
@@ -164,7 +105,7 @@ describe("useChatOutline", () => {
     expect(result.current.prompts[0]?.seq).toBe(2);
   });
 
-  it("keeps the newest prompt index response within one epoch", async () => {
+  it("refreshes from viewed user messages without another stream and keeps the newest index", async () => {
     const older = deferred<{
       epoch: string;
       prompts: Array<{ seq: number; timestamp: string; preview: string }>;
@@ -178,36 +119,31 @@ describe("useChatOutline", () => {
       .mockReturnValueOnce(older.promise)
       .mockReturnValueOnce(newer.promise);
     const viewportRef = createRef<StreamViewportHandle>();
-    const { result } = renderHook(() =>
-      useChatOutline({
-        agentId: "agent-1",
-        serverId: "server-1",
-        timelineEpoch: "epoch-1",
-        tail: [],
-        head: [],
-        enabled: true,
-        viewportRef,
-        onJumpError: vi.fn(),
-      }),
+    const { result, rerender } = renderHook(
+      ({ tail }) =>
+        useChatOutline({
+          agentId: "agent-1",
+          serverId: "server-1",
+          timelineEpoch: "epoch-1",
+          tail,
+          head: [],
+          enabled: true,
+          viewportRef,
+          onJumpError: vi.fn(),
+        }),
+      { initialProps: { tail: [] as import("@/types/stream").StreamItem[] } },
     );
     await waitFor(() => expect(runtime.listAgentTimelinePrompts).toHaveBeenCalledTimes(1));
-    const refresh = runtime.on.mock.calls[0]?.[1];
-    await act(async () => {
-      refresh?.({
-        type: "agent_stream",
-        payload: {
-          agentId: "agent-1",
-          event: { type: "timeline", item: { type: "user_message" } },
-        },
-      });
-      refresh?.({
-        type: "agent_stream",
-        payload: {
-          agentId: "agent-1",
-          event: { type: "timeline", item: { type: "user_message" } },
-        },
-      });
+    const loadedPrompt = (seq: number): import("@/types/stream").StreamItem => ({
+      id: `prompt-${seq}`,
+      kind: "user_message",
+      text: "live prompt",
+      timestamp: new Date(seq),
+      timelineCursor: { epoch: "epoch-1", seq },
     });
+    rerender({ tail: [loadedPrompt(2)] });
+    await waitFor(() => expect(runtime.listAgentTimelinePrompts).toHaveBeenCalledTimes(2));
+    rerender({ tail: [loadedPrompt(2), loadedPrompt(3)] });
     await waitFor(() => expect(runtime.listAgentTimelinePrompts).toHaveBeenCalledTimes(3));
     await act(async () =>
       newer.resolve({
@@ -223,6 +159,74 @@ describe("useChatOutline", () => {
     );
 
     expect(result.current.prompts.map((prompt) => prompt.seq)).toEqual([3]);
+    expect(runtime.subscribeAgentTimeline).not.toHaveBeenCalled();
+  });
+
+  it("refreshes after reconnect catch-up and visibility changes without reacting to assistant chunks", async () => {
+    runtime.listAgentTimelinePrompts.mockResolvedValue({
+      epoch: "epoch-1",
+      prompts: [{ seq: 1, timestamp: new Date(1).toISOString(), preview: "Unloaded prompt" }],
+    });
+    const viewportRef = createRef<StreamViewportHandle>();
+    const { result, rerender } = renderHook(
+      ({ enabled, head, timelineEpoch }) =>
+        useChatOutline({
+          agentId: "agent-1",
+          serverId: "server-1",
+          tail: [],
+          head,
+          timelineEpoch,
+          enabled,
+          viewportRef,
+          mountedHistoryMessageIds: new Set(),
+          onJumpError: vi.fn(),
+        }),
+      {
+        initialProps: {
+          enabled: true,
+          head: [] as import("@/types/stream").StreamItem[],
+          timelineEpoch: "epoch-1",
+        },
+      },
+    );
+    await waitFor(() => expect(result.current.prompts[0]?.preview).toBe("Unloaded prompt"));
+    rerender({
+      enabled: true,
+      head: [
+        {
+          id: "assistant",
+          kind: "assistant_message",
+          text: "chunk",
+          timestamp: new Date(),
+          timelineCursor: { epoch: "epoch-1", seq: 2 },
+        },
+      ],
+      timelineEpoch: "epoch-1",
+    });
+    expect(runtime.listAgentTimelinePrompts).toHaveBeenCalledTimes(1);
+    rerender({ enabled: false, head: [], timelineEpoch: "epoch-1" });
+    expect(result.current.prompts).toEqual([]);
+    // The viewed model publishes the catch-up from the reconnected transport.
+    runtime.listAgentTimelinePrompts.mockResolvedValue({
+      epoch: "epoch-2",
+      prompts: [{ seq: 1, timestamp: new Date(2).toISOString(), preview: "Replaced conversation" }],
+    });
+    rerender({
+      enabled: true,
+      head: [
+        {
+          id: "reconnected-user",
+          kind: "user_message",
+          text: "Replaced conversation",
+          timestamp: new Date(2),
+          timelineCursor: { epoch: "epoch-2", seq: 1 },
+        },
+      ],
+      timelineEpoch: "epoch-2",
+    });
+    await waitFor(() => expect(result.current.prompts[0]?.preview).toBe("Replaced conversation"));
+    expect(runtime.listAgentTimelinePrompts).toHaveBeenCalledTimes(2);
+    expect(runtime.subscribeAgentTimeline).not.toHaveBeenCalled();
   });
 
   it("reports a failed unloaded prompt jump", async () => {
@@ -257,7 +261,7 @@ describe("useChatOutline", () => {
       prompts: [{ seq: 1, timestamp: new Date(1).toISOString(), preview: "prompt" }],
     });
     const scrollToMessage = vi.fn();
-    const revealLoadedItem = vi.fn(() => true);
+    const revealLoadedMessage = vi.fn(() => true);
     const viewport: StreamViewportHandle = {
       scrollToBottom: vi.fn(),
       prepareForViewportChange: vi.fn(),
@@ -274,7 +278,7 @@ describe("useChatOutline", () => {
       },
     ];
     const { result, rerender } = renderHook(
-      ({ visibleItemIds }) =>
+      ({ mountedHistoryMessageIds }) =>
         useChatOutline({
           agentId: "agent-1",
           serverId: "server-1",
@@ -284,18 +288,18 @@ describe("useChatOutline", () => {
           enabled: true,
           viewportRef,
           onJumpError: vi.fn(),
-          visibleItemIds,
-          revealLoadedItem,
+          mountedHistoryMessageIds,
+          revealLoadedMessage,
         }),
-      { initialProps: { visibleItemIds: new Set<string>() } },
+      { initialProps: { mountedHistoryMessageIds: new Set<string>() } },
     );
 
     await waitFor(() => expect(result.current.prompts).toHaveLength(1));
     await act(async () => result.current.jumpToPrompt(1));
-    expect(revealLoadedItem).toHaveBeenCalledWith("older-prompt");
+    expect(revealLoadedMessage).toHaveBeenCalledWith("older-prompt");
     expect(scrollToMessage).not.toHaveBeenCalled();
 
-    rerender({ visibleItemIds: new Set(["older-prompt"]) });
+    rerender({ mountedHistoryMessageIds: new Set(["older-prompt"]) });
     await waitFor(() => expect(scrollToMessage).toHaveBeenCalledWith("older-prompt"));
   });
 
@@ -307,7 +311,7 @@ describe("useChatOutline", () => {
     const fetch = deferred<void>();
     runtime.fetchAgentTimeline.mockReturnValue(fetch.promise);
     const scrollToMessage = vi.fn();
-    const revealLoadedItem = vi.fn(() => true);
+    const revealLoadedMessage = vi.fn(() => true);
     const viewportRef = {
       current: {
         scrollToBottom: vi.fn(),
@@ -323,7 +327,7 @@ describe("useChatOutline", () => {
       timelineCursor: { epoch: "epoch-1", seq: 1 },
     };
     const { result, rerender } = renderHook(
-      ({ tail, visibleItemIds }) =>
+      ({ tail, mountedHistoryMessageIds }) =>
         useChatOutline({
           agentId: "agent-1",
           serverId: "server-1",
@@ -333,13 +337,13 @@ describe("useChatOutline", () => {
           enabled: true,
           viewportRef,
           onJumpError: vi.fn(),
-          visibleItemIds,
-          revealLoadedItem,
+          mountedHistoryMessageIds,
+          revealLoadedMessage,
         }),
       {
         initialProps: {
           tail: [] as (typeof fetchedPrompt)[],
-          visibleItemIds: new Set<string>(),
+          mountedHistoryMessageIds: new Set<string>(),
         },
       },
     );
@@ -348,11 +352,11 @@ describe("useChatOutline", () => {
     act(() => result.current.jumpToPrompt(1));
     await waitFor(() => expect(runtime.fetchAgentTimeline).toHaveBeenCalledOnce());
 
-    rerender({ tail: [fetchedPrompt], visibleItemIds: new Set<string>() });
-    await waitFor(() => expect(revealLoadedItem).toHaveBeenCalledWith(fetchedPrompt.id));
+    rerender({ tail: [fetchedPrompt], mountedHistoryMessageIds: new Set<string>() });
+    await waitFor(() => expect(revealLoadedMessage).toHaveBeenCalledWith(fetchedPrompt.id));
     expect(scrollToMessage).not.toHaveBeenCalled();
 
-    rerender({ tail: [fetchedPrompt], visibleItemIds: new Set([fetchedPrompt.id]) });
+    rerender({ tail: [fetchedPrompt], mountedHistoryMessageIds: new Set([fetchedPrompt.id]) });
     await waitFor(() => expect(scrollToMessage).toHaveBeenCalledOnce());
     expect(scrollToMessage).toHaveBeenCalledWith(fetchedPrompt.id);
     await act(async () => fetch.resolve());
@@ -376,8 +380,8 @@ describe("useChatOutline", () => {
       timestamp: new Date(2),
       timelineCursor: { epoch: "epoch-1", seq: 2 },
     };
-    const revealLoadedItem = vi.fn();
-    revealLoadedItem.mockReturnValue(false);
+    const revealLoadedMessage = vi.fn();
+    revealLoadedMessage.mockReturnValue(false);
     const { result } = renderHook(() =>
       useChatOutline({
         agentId: "agent-1",
@@ -388,8 +392,8 @@ describe("useChatOutline", () => {
         enabled: true,
         viewportRef: { current: viewport },
         onJumpError: vi.fn(),
-        visibleItemIds: new Set([livePrompt.id]),
-        revealLoadedItem,
+        mountedHistoryMessageIds: new Set<string>(),
+        revealLoadedMessage,
       }),
     );
 

@@ -89,7 +89,7 @@ export function validateOpenAiCredentialRequirements(params: {
         },
         missingOpenAiCredentialsFor,
       },
-      "Invalid speech configuration: OpenAI provider selected but credentials are missing - speech features will be unavailable",
+      "Invalid speech configuration: OpenAI provider selected but credentials are missing — speech features will be unavailable",
     );
   }
 }
@@ -103,7 +103,9 @@ function createOpenAiStt(
   return new OpenAISTT({ apiKey, ...sttConfig }, logger);
 }
 
-function createOpenAiTts(
+export function createOpenAiTts(
+  // OTTO(profile-voice): host-owned credential and endpoint.
+
   apiKey: string,
   openaiConfig: OpenAiSpeechProviderConfig | undefined,
   logger: Logger,

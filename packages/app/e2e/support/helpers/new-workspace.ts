@@ -1,31 +1,30 @@
 import { expect, type BrowserContext, type Page } from "@playwright/test";
-import type { CreateAgentRequestMessage } from "@otto-code/protocol/messages";
-import type { DaemonClient as InternalDaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { CreateAgentRequestMessage, SessionInboundMessage } from "@getpaseo/protocol/messages";
+import type { DaemonClient as InternalDaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { decodeWorkspaceIdFromPathSegment } from "@/utils/host-routes";
-import { connectDaemonClient } from "./daemon-client-loader";
+import { connectDaemonClient, loadProtocolSchemas } from "./daemon-client-loader";
 import { daemonWsRoutePattern } from "./daemon-port";
 import { projectEquivalenceViewKey } from "./project-view-key";
 import { expectWorkspaceHeader } from "./workspace-ui";
 import { withProjectOwnership } from "./project-ownership";
-import { openCommandCenter } from "./command-center";
 
 type NewWorkspaceDaemonClient = Pick<
   InternalDaemonClient,
-  | "addProject"
-  | "archiveOttoWorktree"
+  | "archivePaseoWorktree"
   | "archiveWorkspace"
   | "checkoutRefresh"
   | "close"
   | "connect"
-  | "createOttoWorktree"
+  | "createPaseoWorktree"
   | "createWorkspace"
   | "fetchAgents"
   | "fetchWorkspaces"
-  | "getOttoWorktreeList"
+  | "getPaseoWorktreeList"
   | "getDaemonConfig"
-  | "enablePlugin"
-  | "disablePlugin"
   | "installDirectoryPlugin"
+  | "installPluginSource"
+  | "disablePlugin"
+  | "enablePlugin"
   | "inspectWorkspaceRecovery"
   | "listProjects"
   | "listTerminals"
@@ -138,58 +137,12 @@ export async function openProjectViaDaemon(
   return openedProjectFromWorkspace(client, workspace);
 }
 
-export interface RegisteredProject {
-  /** Host-local identity. What `removeProject` and other daemon calls take. */
-  projectId: string;
-  /** Opaque cross-host grouping key. What the composer's picker renders. */
-  projectKey: string;
-  projectDisplayName: string;
-}
-
-/**
- * Register a directory as a project WITHOUT creating a workspace for it (the
- * `emptyProjects` case). `openProjectViaDaemon` also backs the directory with a
- * "main" workspace, which makes the new-workspace composer refuse to create a
- * second workspace on it ("This directory already backs the workspace …") - use
- * this when the spec needs a composer-selectable, workspace-free target.
- *
- * The two ids are not interchangeable and `project.add` only answers with the
- * host-local one. The picker's option testID is keyed by the grouping key
- * (`new-workspace-project-picker-option-${project.projectKey}` in
- * new-workspace-screen.tsx), so returning `projectId` under the name
- * `projectKey` made `selectNewWorkspaceProject` wait 30s for an option that
- * could never match. Resolve the real key the way `openProjectViaDaemon` does.
- */
-export async function addProjectViaDaemon(
-  client: NewWorkspaceDaemonClient,
-  repoPath: string,
-): Promise<RegisteredProject> {
-  const payload = await client.addProject(repoPath);
-  if (payload.error) {
-    throw new Error(payload.error);
-  }
-  if (!payload.project) {
-    throw new Error("project.add returned no project.");
-  }
-  const projectId = payload.project.projectId;
-  const listed = await client.listProjects();
-  const descriptor = listed.projects.find((candidate) => candidate.projectId === projectId);
-  if (!descriptor?.projectKey) {
-    throw new Error(`Project ${projectId} has no project key`);
-  }
-  return {
-    projectId,
-    projectKey: descriptor.projectKey,
-    projectDisplayName: payload.project.projectDisplayName,
-  };
-}
-
 export async function archiveWorkspaceFromDaemon(
   client: NewWorkspaceDaemonClient,
   workspaceDirectory: string,
   options?: { scope?: "workspace" | "worktree" },
 ): Promise<void> {
-  const payload = await client.archiveOttoWorktree({
+  const payload = await client.archivePaseoWorktree({
     worktreePath: workspaceDirectory,
     ...(options?.scope !== undefined ? { scope: options.scope } : {}),
   });
@@ -218,7 +171,7 @@ export async function createWorktreeViaDaemon(
   client: NewWorkspaceDaemonClient,
   input: { cwd: string; slug: string },
 ): Promise<OpenedProject> {
-  const payload = await client.createOttoWorktree({
+  const payload = await client.createPaseoWorktree({
     cwd: input.cwd,
     worktreeSlug: input.slug,
   });
@@ -245,8 +198,8 @@ export async function openNewWorkspaceComposer(
 }
 
 export async function openGlobalNewWorkspaceComposer(page: Page): Promise<void> {
-  const panel = await openCommandCenter(page);
-  await panel.getByText("New workspace", { exact: true }).click();
+  // The shell keeps a hidden copy of the other layout's sidebar mounted.
+  await page.locator('[data-testid="sidebar-global-new-workspace"]:visible').first().click();
 
   await expect(page).toHaveURL(/\/new(?:\?.*)?$/, {
     timeout: 30_000,
@@ -412,22 +365,6 @@ export async function submitNewWorkspaceEmpty(page: Page): Promise<void> {
     .getByRole("button", { name: "Create" });
   await expect(createButton).toBeVisible({ timeout: 30_000 });
   await createButton.click();
-}
-
-/**
- * Answer the occupied-directory steer with "open the workspace that is already
- * there". One directory backs one live workspace, so a spec that seeds a
- * workspace on a temp repo and then submits a New Workspace draft against that
- * same project always lands on this dialog. Both of its branches carry the
- * submission through; opening the existing workspace is the cheap one, where
- * "create a worktree" shells out to `git worktree add` for no gain to a spec
- * that is not about isolation.
- */
-export async function openExistingWorkspaceFromOccupiedSteer(page: Page): Promise<void> {
-  const openIt = page.getByTestId("confirm-dialog-confirm");
-  await expect(openIt).toBeVisible({ timeout: 30_000 });
-  await openIt.click();
-  await expect(openIt).toHaveCount(0, { timeout: 30_000 });
 }
 
 export async function openStartingRefPicker(page: Page): Promise<void> {
@@ -600,187 +537,76 @@ function parseWebSocketJson(message: WebSocketMessage): unknown {
   }
 }
 
-function getSessionMessage(message: WebSocketMessage): Record<string, unknown> | null {
-  const envelope = parseWebSocketJson(message);
-  if (!envelope || typeof envelope !== "object") {
-    return null;
-  }
-  const maybeEnvelope = envelope as { type?: unknown; message?: unknown };
-  if (maybeEnvelope.type !== "session" || !maybeEnvelope.message) {
-    return null;
-  }
-  if (typeof maybeEnvelope.message !== "object") {
-    return null;
-  }
-  return maybeEnvelope.message as Record<string, unknown>;
-}
-
-function getStringField(input: Record<string, unknown>, key: string): string | null {
-  const value = input[key];
-  return typeof value === "string" ? value : null;
+export async function loadSessionMessageReaders() {
+  // Use the same ESM module instance as the dynamically loaded daemon client.
+  const { WSInboundMessageSchema, WSOutboundMessageSchema } = await loadProtocolSchemas();
+  return {
+    client(message: WebSocketMessage) {
+      const parsed = WSInboundMessageSchema.safeParse(parseWebSocketJson(message));
+      return parsed.success && parsed.data.type === "session" ? parsed.data.message : null;
+    },
+    server(message: WebSocketMessage) {
+      const parsed = WSOutboundMessageSchema.safeParse(parseWebSocketJson(message));
+      return parsed.success && parsed.data.type === "session" ? parsed.data.message : null;
+    },
+  };
 }
 
 export interface AgentCreatedDelayControl {
   release(): void;
-  waitForCreateRequest(timeoutMs?: number): Promise<void>;
-  waitForDelayedCreatedStatus(timeoutMs?: number): Promise<void>;
-}
-
-/**
- * Ceiling for either gate below. Both wait on a WebSocket message that the app
- * only sends when everything upstream of it succeeded, so a gate that never
- * opens is the normal shape of a break here - and an unbounded wait spends the
- * whole test timeout to report nothing at all. Bounded well under a spec's
- * timeout, the failure arrives with the daemon's own error text attached, which
- * is almost always the answer: when workspace creation is refused, no create
- * request ever follows.
- */
-const AGENT_CREATED_GATE_TIMEOUT_MS = 30_000;
-
-/** Enough daemon errors to spot the pattern, few enough to stay readable. */
-const MAX_RECORDED_GATE_ERRORS = 5;
-
-/** Guards the request-type list against an unbounded chatty session. */
-const MAX_RECORDED_REQUEST_TYPES = 40;
-
-/**
- * The error a daemon message carries, if any. Deliberately shape-driven rather
- * than keyed to specific message types: `rpc_error`, the `*.response` payloads
- * and the `agent_create_failed` status all report through a payload `error`,
- * and a gate diagnosis wants whichever one arrived.
- */
-function errorText(error: unknown): string | null {
-  if (typeof error === "string") {
-    return error;
-  }
-  if (error && typeof error === "object") {
-    return getStringField(error as Record<string, unknown>, "message");
-  }
-  return null;
-}
-
-function extractDaemonError(sessionMessage: Record<string, unknown>): string | null {
-  const payload = sessionMessage.payload;
-  if (!payload || typeof payload !== "object") {
-    return null;
-  }
-  const record = payload as Record<string, unknown>;
-  const text = errorText(record.error);
-  if (!text) {
-    return null;
-  }
-  const type = getStringField(sessionMessage, "type") ?? "unknown";
-  const status = getStringField(record, "status");
-  return `${type}${status ? ` (${status})` : ""}: ${text}`;
-}
-
-async function waitForGate(
-  gate: Promise<void>,
-  input: { label: string; timeoutMs: number; describeState: () => string },
-): Promise<void> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const expiry = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      reject(
-        new Error(
-          `Timed out after ${input.timeoutMs}ms waiting for ${input.label}.\n${input.describeState()}`,
-        ),
-      );
-    }, input.timeoutMs);
-  });
-  try {
-    await Promise.race([gate, expiry]);
-  } finally {
-    clearTimeout(timer);
-  }
+  waitForCreateRequest(): Promise<void>;
+  waitForDelayedCreatedStatus(): Promise<void>;
+  expectSingleWorkspaceIntent(): void;
 }
 
 export async function delayBrowserAgentCreatedStatus(
   page: Page,
 ): Promise<AgentCreatedDelayControl> {
+  const frames = await loadSessionMessageReaders();
   const daemonPortPattern = daemonWsRoutePattern();
   const createRequestIds = new Set<string>();
+  const creationRequests: SessionInboundMessage[] = [];
   const delayedForwards: Array<() => void> = [];
-  const requestTypes = new Set<string>();
-  const daemonErrors: string[] = [];
   let releaseRequested = false;
   let resolveCreateRequest: (() => void) | null = null;
   let resolveDelayedCreatedStatus: (() => void) | null = null;
-  let failGates: ((error: Error) => void) | null = null;
   const createRequestSeen = new Promise<void>((resolve) => {
     resolveCreateRequest = resolve;
   });
   const delayedCreatedStatusSeen = new Promise<void>((resolve) => {
     resolveDelayedCreatedStatus = resolve;
   });
-  // Raced by both gates so a refused creation fails them at once instead of
-  // waiting out the ceiling. Pre-caught: nothing consumes it when the spec has
-  // already moved past the gate, and an unobserved rejection would take the
-  // whole run down.
-  const gateFailed = new Promise<never>((_, reject) => {
-    failGates = reject;
-  });
-  gateFailed.catch(() => {});
-
-  const describeState = () => {
-    const requests = requestTypes.size > 0 ? [...requestTypes].join(", ") : "(none)";
-    const errors =
-      daemonErrors.length > 0
-        ? daemonErrors.map((error) => `  - ${error}`).join("\n")
-        : "  (none - the daemon reported no error, so look upstream in the app)";
-    return `Requests the app sent: ${requests}\nErrors the daemon returned:\n${errors}`;
-  };
 
   await page.routeWebSocket(daemonPortPattern, (ws) => {
     const server = ws.connectToServer();
 
     ws.onMessage((message) => {
-      const sessionMessage = getSessionMessage(message);
-      const type = sessionMessage ? getStringField(sessionMessage, "type") : null;
-      if (type && requestTypes.size < MAX_RECORDED_REQUEST_TYPES) {
-        requestTypes.add(type);
-      }
-      if (sessionMessage?.type === "create_agent_request") {
-        const requestId = getStringField(sessionMessage, "requestId");
-        if (requestId) {
-          createRequestIds.add(requestId);
-          resolveCreateRequest?.();
-        }
+      const sessionMessage = frames.client(message);
+      if (sessionMessage?.type === "send_agent_message_request")
+        creationRequests.push(sessionMessage);
+      if (
+        sessionMessage?.type === "create_agent_request" ||
+        sessionMessage?.type === "agent.create.request" ||
+        sessionMessage?.type === "workspace.create.request"
+      ) {
+        creationRequests.push(sessionMessage);
+        createRequestIds.add(sessionMessage.requestId);
+        resolveCreateRequest?.();
       }
       server.send(message);
     });
 
     server.onMessage((message) => {
-      const sessionMessage = getSessionMessage(message);
-      if (sessionMessage) {
-        const daemonError = extractDaemonError(sessionMessage);
-        if (daemonError && daemonErrors.length < MAX_RECORDED_GATE_ERRORS) {
-          daemonErrors.push(daemonError);
-        }
-      }
-      const payload =
-        sessionMessage?.type === "status" && typeof sessionMessage.payload === "object"
-          ? (sessionMessage.payload as Record<string, unknown>)
-          : null;
-      const requestId = payload ? getStringField(payload, "requestId") : null;
-
+      const sessionMessage = frames.server(message);
+      const isCreated =
+        (sessionMessage?.type === "status" && sessionMessage.payload.status === "agent_created") ||
+        sessionMessage?.type === "agent.create.response" ||
+        sessionMessage?.type === "workspace.create.response";
       if (
-        payload?.status === "agent_create_failed" &&
-        requestId &&
-        createRequestIds.has(requestId)
+        isCreated &&
+        typeof sessionMessage.payload.requestId === "string" &&
+        createRequestIds.has(sessionMessage.payload.requestId)
       ) {
-        failGates?.(
-          new Error(
-            `The daemon refused to create the agent: ${
-              getStringField(payload, "error") ?? "no error text"
-            }`,
-          ),
-        );
-        ws.send(message);
-        return;
-      }
-
-      if (payload?.status === "agent_created" && requestId && createRequestIds.has(requestId)) {
         resolveDelayedCreatedStatus?.();
         if (releaseRequested) {
           ws.send(message);
@@ -801,36 +627,41 @@ export async function delayBrowserAgentCreatedStatus(
         forward();
       }
     },
-    waitForCreateRequest: (timeoutMs = AGENT_CREATED_GATE_TIMEOUT_MS) =>
-      waitForGate(Promise.race([createRequestSeen, gateFailed]), {
-        label: "the app to send create_agent_request",
-        timeoutMs,
-        describeState,
-      }),
-    waitForDelayedCreatedStatus: (timeoutMs = AGENT_CREATED_GATE_TIMEOUT_MS) =>
-      waitForGate(Promise.race([delayedCreatedStatusSeen, gateFailed]), {
-        label: "the daemon to answer with the agent_created status",
-        timeoutMs,
-        describeState,
-      }),
+
+    expectSingleWorkspaceIntent() {
+      expect(creationRequests).toHaveLength(1);
+      expect(creationRequests[0]).toMatchObject({
+        type: "workspace.create.request",
+        agent: { initialPrompt: expect.any(String) },
+      });
+    },
+    waitForCreateRequest: () => createRequestSeen,
+    waitForDelayedCreatedStatus: () => delayedCreatedStatusSeen,
   };
 }
 
+type AgentCreationIntent = Pick<
+  CreateAgentRequestMessage,
+  "config" | "initialPrompt" | "attachments"
+>;
+
 export interface WorkspaceCreatedDelayControl {
-  agentRequests: readonly CreateAgentRequestMessage[];
+  agentRequests: readonly AgentCreationIntent[];
   release(): void;
   waitForCreateRequest(): Promise<void>;
 }
 
 /**
- * Holds `workspace.create.response` so a test can act as the user does while the daemon is still
+ * Holds workspace readiness events and responses so a test can act while the daemon is still
  * running `git worktree add` — most importantly, navigate somewhere else.
  */
 export async function delayBrowserWorkspaceCreatedResponse(
   page: Page,
 ): Promise<WorkspaceCreatedDelayControl> {
+  const frames = await loadSessionMessageReaders();
   const daemonPortPattern = daemonWsRoutePattern();
-  const agentRequests: CreateAgentRequestMessage[] = [];
+  const agentRequests: AgentCreationIntent[] = [];
+  const creationKeys = new Set<string>();
   const createRequestIds = new Set<string>();
   const delayedForwards: Array<() => void> = [];
   let releaseRequested = false;
@@ -843,29 +674,25 @@ export async function delayBrowserWorkspaceCreatedResponse(
     const server = ws.connectToServer();
 
     ws.onMessage((message) => {
-      const sessionMessage = getSessionMessage(message);
-      if (sessionMessage?.type === "create_agent_request")
-        agentRequests.push(sessionMessage as CreateAgentRequestMessage);
+      const sessionMessage = frames.client(message);
+      if (sessionMessage?.type === "create_agent_request") agentRequests.push(sessionMessage);
       if (sessionMessage?.type === "workspace.create.request") {
-        const requestId = getStringField(sessionMessage, "requestId");
-        if (requestId) {
-          createRequestIds.add(requestId);
-          resolveCreateRequest?.();
-        }
+        createRequestIds.add(sessionMessage.requestId);
+        if (sessionMessage.idempotencyKey) creationKeys.add(sessionMessage.idempotencyKey);
+        if (sessionMessage.agent) agentRequests.push(sessionMessage.agent);
+        resolveCreateRequest?.();
       }
       server.send(message);
     });
 
     server.onMessage((message) => {
-      const sessionMessage = getSessionMessage(message);
-      const payload =
-        sessionMessage?.type === "workspace.create.response" &&
-        typeof sessionMessage.payload === "object"
-          ? (sessionMessage.payload as Record<string, unknown>)
-          : null;
-      const requestId = payload ? getStringField(payload, "requestId") : null;
-
-      if (requestId && createRequestIds.has(requestId) && !releaseRequested) {
+      const sessionMessage = frames.server(message);
+      const isCreation =
+        (sessionMessage?.type === "workspace.create.response" &&
+          createRequestIds.has(sessionMessage.payload.requestId)) ||
+        (sessionMessage?.type === "workspace.create.update" &&
+          creationKeys.has(sessionMessage.payload.idempotencyKey));
+      if (isCreation && !releaseRequested) {
         delayedForwards.push(() => ws.send(message));
         return;
       }

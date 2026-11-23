@@ -6,6 +6,8 @@ order: 2
 category: Getting started
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Why Otto?
 
 Otto is a self-hostable, fully featured agentic coding assistant. It runs the agent CLIs you already use, on the hardware you already have, and gives you a UI, CLI, and API to drive them from anywhere, inside a familiar environment that never boxes you in.

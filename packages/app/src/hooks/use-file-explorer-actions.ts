@@ -6,17 +6,9 @@ import {
   type ExplorerDirectory,
 } from "@/stores/session-store";
 import { explorerFileFromReadResult } from "@/file-explorer/read-result";
-import {
-  buildWorkspaceExplorerStateKey,
-  normalizeWorkspaceValue,
-  type FileExplorerWorkspaceScope,
-} from "@/file-explorer/state-key";
-
-export {
-  buildWorkspaceExplorerStateKey,
-  type FileExplorerWorkspaceScope,
-} from "@/file-explorer/state-key";
-import { explorerParentPath } from "@/utils/explorer-paths";
+import { usePanelStore } from "@/stores/panel-store";
+import { revealExplorerDirectory } from "@/file-explorer/tree";
+import { parentExplorerPath } from "@/utils/explorer-paths";
 
 function createExplorerState(): AgentFileExplorerState {
   return {
@@ -39,6 +31,31 @@ function pushHistory(history: string[], path: string): string[] {
     return normalizedHistory;
   }
   return [...normalizedHistory, path];
+}
+
+export interface FileExplorerWorkspaceScope {
+  workspaceId?: string | null;
+  workspaceRoot?: string | null;
+}
+
+function normalizeWorkspaceValue(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+export function buildWorkspaceExplorerStateKey(scope: FileExplorerWorkspaceScope): string | null {
+  const normalizedWorkspaceId = normalizeWorkspaceValue(scope.workspaceId);
+  if (normalizedWorkspaceId) {
+    return `workspace:${normalizedWorkspaceId}`;
+  }
+  const normalizedWorkspaceRoot = normalizeWorkspaceValue(scope.workspaceRoot);
+  if (!normalizedWorkspaceRoot) {
+    return null;
+  }
+  return `root:${normalizedWorkspaceRoot}`;
 }
 
 export function useFileExplorerActions(params: { serverId: string } & FileExplorerWorkspaceScope) {
@@ -77,18 +94,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
   const requestDirectoryListing = useCallback(
     async (
       path: string,
-      options?: {
-        recordHistory?: boolean;
-        setCurrentPath?: boolean;
-        /**
-         * Background listings (restoring persisted expansion, refreshing an
-         * already-open subtree) pass `false`: a subtree the user is not looking
-         * at must not replace the whole tree with an error banner. They report
-         * failure through the return value instead, and the caller decides
-         * whether to forget the path.
-         */
-        surfaceErrors?: boolean;
-      },
+      options?: { recordHistory?: boolean; setCurrentPath?: boolean },
     ): Promise<ExplorerDirectory | null> => {
       if (!workspaceStateKey) {
         return null;
@@ -96,7 +102,6 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
       const normalizedPath = path && path.length > 0 ? path : ".";
       const shouldSetCurrentPath = options?.setCurrentPath ?? true;
       const shouldRecordHistory = options?.recordHistory ?? shouldSetCurrentPath;
-      const shouldSurfaceErrors = options?.surfaceErrors ?? true;
 
       updateExplorerState((state) => ({
         ...state,
@@ -114,17 +119,21 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
           : {}),
       }));
 
-      // Neither of these is a failure, so neither writes `lastError`. The pane mounts
-      // before the workspace root and the session client have resolved, so the first
-      // request of every visit lands here and the effect re-fires a tick later with
-      // both in hand. Recording an error meant the Files tab painted a red banner for
-      // a frame on every single visit. The genuinely-unavailable cases already have
-      // their own surfaces: the pane renders "unavailable" from `hasWorkspaceScope`,
-      // and a dropped host is shown by the connection status, not by the explorer.
-      if (!normalizedWorkspaceRoot || !client) {
+      if (!normalizedWorkspaceRoot) {
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
+          lastError: t("workspace.fileExplorer.states.unavailable"),
+          pendingRequest: null,
+        }));
+        return null;
+      }
+
+      if (!client) {
+        updateExplorerState((state) => ({
+          ...state,
+          isLoading: false,
+          lastError: t("workspace.terminal.hostDisconnected"),
           pendingRequest: null,
         }));
         return null;
@@ -153,20 +162,37 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
-          ...(shouldSurfaceErrors
-            ? {
-                lastError:
-                  error instanceof Error
-                    ? error.message
-                    : t("workspace.fileExplorer.errors.failedToListDirectory"),
-              }
-            : {}),
+          lastError:
+            error instanceof Error
+              ? error.message
+              : t("workspace.fileExplorer.errors.failedToListDirectory"),
           pendingRequest: null,
         }));
         return null;
       }
     },
     [client, normalizedWorkspaceRoot, t, updateExplorerState, workspaceStateKey],
+  );
+
+  const revealDirectory = useCallback(
+    async (directoryPath: string) => {
+      if (!workspaceStateKey) return;
+      await revealExplorerDirectory({
+        directoryPath,
+        requestDirectoryListing,
+        showHiddenFiles: () => {
+          const panel = usePanelStore.getState();
+          if (!panel.explorerShowHiddenFiles) panel.toggleExplorerShowHiddenFiles();
+        },
+        expandPaths: (paths) =>
+          usePanelStore
+            .getState()
+            .setExpandedPathsForWorkspace(workspaceStateKey, (current) =>
+              Array.from(new Set([...current, ...paths])),
+            ),
+      });
+    },
+    [requestDirectoryListing, workspaceStateKey],
   );
 
   const requestFilePreview = useCallback(
@@ -182,11 +208,21 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         pendingRequest: { path: normalizedPath, mode: "file" },
       }));
 
-      // Same not-ready-yet reasoning as requestDirectoryListing above: no error.
-      if (!normalizedWorkspaceRoot || !client) {
+      if (!normalizedWorkspaceRoot) {
         updateExplorerState((state) => ({
           ...state,
           isLoading: false,
+          lastError: t("workspace.fileExplorer.states.unavailable"),
+          pendingRequest: null,
+        }));
+        return;
+      }
+
+      if (!client) {
+        updateExplorerState((state) => ({
+          ...state,
+          isLoading: false,
+          lastError: t("workspace.terminal.hostDisconnected"),
           pendingRequest: null,
         }));
         return;
@@ -240,6 +276,21 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
     [client, normalizedWorkspaceRoot, t],
   );
 
+  const requestFileBytes = useCallback(
+    async (path: string, maxBytes: number) => {
+      if (!normalizedWorkspaceRoot) {
+        throw new Error(t("workspace.fileExplorer.states.unavailable"));
+      }
+      if (!client) {
+        throw new Error(t("workspace.terminal.hostDisconnected"));
+      }
+      // No request timeout: a large file over a slow relay legitimately takes longer than the
+      // 60 s default, and a dead connection still rejects on disconnect.
+      return client.readFile(normalizedWorkspaceRoot, path, undefined, maxBytes, 0);
+    },
+    [client, normalizedWorkspaceRoot, t],
+  );
+
   const createEntry = useCallback(
     async (input: { parentPath: string; name: string; kind: "file" | "directory" }) => {
       if (!client || !normalizedWorkspaceRoot) {
@@ -270,7 +321,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
         ...input,
       });
       if (payload.success) {
-        await requestDirectoryListing(explorerParentPath(input.path), {
+        await requestDirectoryListing(parentExplorerPath(input.path), {
           recordHistory: false,
           setCurrentPath: false,
         });
@@ -287,7 +338,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
       }
       const payload = await client.duplicateFileEntry({ cwd: normalizedWorkspaceRoot, path });
       if (payload.success) {
-        await requestDirectoryListing(explorerParentPath(path), {
+        await requestDirectoryListing(parentExplorerPath(path), {
           recordHistory: false,
           setCurrentPath: false,
         });
@@ -304,7 +355,7 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
       }
       const payload = await client.deleteFileEntry({ cwd: normalizedWorkspaceRoot, path });
       if (payload.success) {
-        await requestDirectoryListing(explorerParentPath(path), {
+        await requestDirectoryListing(parentExplorerPath(path), {
           recordHistory: false,
           setCurrentPath: false,
         });
@@ -326,9 +377,11 @@ export function useFileExplorerActions(params: { serverId: string } & FileExplor
 
   return {
     workspaceStateKey,
+    revealDirectory,
     requestDirectoryListing,
     requestFilePreview,
     requestFileDownloadToken,
+    requestFileBytes,
     createEntry,
     renameEntry,
     duplicateEntry,

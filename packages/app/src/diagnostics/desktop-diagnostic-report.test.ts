@@ -6,23 +6,26 @@ import {
 
 function makeSources(): DesktopDiagnosticSources {
   return {
+    getSandboxDiagnostics: async () => ({ enabled: true, reason: "user namespaces available" }),
     getStatus: async () => ({
       serverId: "server-1",
       status: "running",
-      listen: "127.0.0.1:6868",
+      listen: "127.0.0.1:6767",
       hostname: "host",
       pid: 4242,
-      home: "/otto/home",
+      home: "/paseo/home",
       version: "1.2.3",
       desktopManaged: true,
+      ownedByDesktop: true,
+      startedAt: "2026-01-01T00:00:00.000Z",
       error: null,
     }),
     getDaemonLogs: async () => ({
-      logPath: "/otto/home/daemon.log",
+      logPath: "/paseo/home/daemon.log",
       contents: "daemon line one\ndaemon line two",
     }),
     getAppLogs: async () => ({
-      logPath: "/logs/Otto/main.log",
+      logPath: "/logs/Paseo/main.log",
       contents: "[login-shell-env] start\n[login-shell-env] failed",
     }),
     getUpdaterDiagnostics: async () => ({
@@ -110,8 +113,8 @@ describe("desktop diagnostic report", () => {
     const report = result.sections.join("\n\n");
 
     expect(result.status).toBe("done");
-    expect(report).toContain("  Log path: /otto/home/daemon.log");
-    expect(report).toContain("  App log path: /logs/Otto/main.log");
+    expect(report).toContain("  Log path: /paseo/home/daemon.log");
+    expect(report).toContain("  App log path: /logs/Paseo/main.log");
     expect(report).toContain("Desktop daemon log tail\n  daemon line one\n  daemon line two");
     expect(report).toContain(
       "Desktop app log tail\n  [login-shell-env] start\n  [login-shell-env] failed",
@@ -144,4 +147,21 @@ describe("desktop diagnostic report", () => {
     expect(report).toContain("Desktop daemon log tail\n  daemon line one\n  daemon line two");
     expect(report).toContain("Desktop app log tail\n  Error: app log unavailable");
   });
+});
+
+test("reports sandbox degradation and its reason even if daemon diagnostics fail", async () => {
+  const result = await collectDesktopDiagnosticSections({
+    ...makeSources(),
+    getStatus: async () => {
+      throw new Error("daemon unavailable");
+    },
+    getSandboxDiagnostics: async () => ({
+      enabled: false,
+      reason: "user namespaces unavailable; no usable SUID helper",
+    }),
+  });
+  expect(result.sections.join("\n")).toContain(
+    "Chromium sandbox\n  State: Disabled\n  Reason: user namespaces unavailable; no usable SUID helper",
+  );
+  expect(result.status).toBe("failed");
 });

@@ -1,7 +1,7 @@
 import type {
   CheckoutPrStatusResponse,
   PullRequestTimelineResponse,
-} from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/messages";
 import { type Forge, getForgePresentation } from "@/git/forge";
 import type { PresentableCheck } from "@/git/check-presentation";
 import { parseClientForgeFacts } from "@/git/forges";
@@ -57,22 +57,8 @@ export interface PrPaneActivity {
   avatarUrl?: string | null;
   reviewState?: ReviewState;
   body: string;
-  createdAt?: number;
   age: string;
   url: string;
-  reactions?: Array<{
-    content:
-      | "THUMBS_UP"
-      | "THUMBS_DOWN"
-      | "LAUGH"
-      | "HOORAY"
-      | "CONFUSED"
-      | "HEART"
-      | "ROCKET"
-      | "EYES";
-    count: number;
-    viewerHasReacted: boolean;
-  }>;
   /** For inline review comments: the review this comment was submitted with. */
   reviewId?: string;
   /**
@@ -117,7 +103,6 @@ export interface PrPaneData {
    */
   forgeSpecific?: ForgeSpecificStatusFacts;
   activity: PrPaneActivity[];
-  commentReactionsSupported: boolean;
 }
 
 type CheckoutPrStatus = CheckoutPrStatusResponse["payload"]["status"];
@@ -161,8 +146,6 @@ export function mapPrPaneData(
     activity: timelineMatchesStatus
       ? timeline.items.flatMap((item) => mapActivity(item, nowMs, forge))
       : [],
-    commentReactionsSupported:
-      timelineMatchesStatus && timeline?.commentReactionsSupported === true,
   };
 }
 
@@ -281,14 +264,12 @@ function mapActivity(item: PullRequestTimelineItem, nowMs: number, forge: Forge)
         avatarColor: deriveAvatarColor(item.author),
         avatarUrl: item.avatarUrl,
         body: item.body,
-        createdAt: item.createdAt,
         age: formatAge(item.createdAt, nowMs),
         url: item.url,
-        ...(item.reactions ? { reactions: item.reactions } : {}),
-        ...(item.reviewId ? { reviewId: item.reviewId } : {}),
-        ...(item.threadId ? { threadId: item.threadId } : {}),
-        ...(item.threadIsResolved !== undefined ? { threadIsResolved: item.threadIsResolved } : {}),
-        ...(item.location ? { location: item.location } : {}),
+        reviewId: item.reviewId,
+        threadId: item.threadId,
+        threadIsResolved: item.threadIsResolved,
+        location: item.location,
       },
     ];
   }
@@ -308,7 +289,6 @@ function mapActivity(item: PullRequestTimelineItem, nowMs: number, forge: Forge)
       avatarUrl: item.avatarUrl,
       reviewState: item.reviewState,
       body: item.body,
-      createdAt: item.createdAt,
       age: formatAge(item.createdAt, nowMs),
       url: item.url,
     },
@@ -338,16 +318,18 @@ function parsePullRequestNumber(url: string): number | null {
   }
 }
 
-export function getStateLabel(state: PrState): string {
-  if (state === "draft") return "Draft";
-  if (state === "merged") return "Merged";
-  if (state === "closed") return "Closed";
-  return "Open";
+export function getStateLabelKey(state: PrState) {
+  if (state === "draft") return "workspace.git.pr.states.draft";
+  if (state === "merged") return "workspace.git.pr.states.merged";
+  if (state === "closed") return "workspace.git.pr.states.closed";
+  return "workspace.git.pr.states.open";
 }
 
-export function getActivityVerb(item: Pick<PrPaneActivity, "kind" | "reviewState">): string {
-  if (item.kind === "comment") return "Commented";
-  if (item.reviewState === "approved") return "Approved";
-  if (item.reviewState === "changes_requested") return "Requested changes";
-  return "Reviewed";
+export function getActivityVerbKey(item: Pick<PrPaneActivity, "kind" | "reviewState">) {
+  if (item.kind === "comment") return "workspace.git.pr.activity.commented";
+  if (item.reviewState === "approved") return "workspace.git.pr.activity.approved";
+  if (item.reviewState === "changes_requested") {
+    return "workspace.git.pr.activity.requestedChanges";
+  }
+  return "workspace.git.pr.activity.reviewed";
 }

@@ -1,14 +1,6 @@
-import { execFile, spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
-import { promisify } from "node:util";
-
-import { createExternalCommandProcessEnv, type ProcessEnvRecord } from "../server/otto-env.js";
-import {
-  planWindowsCommandScriptInvocation,
-  quoteWindowsArgument,
-  quoteWindowsCommand,
-} from "./windows-command.js";
-
-const execFileAsync = promisify(execFile);
+import type { ChildProcess, SpawnOptions } from "node:child_process";
+import { spawnProcess as spawnCli, execCommand as execCli } from "@getpaseo/plugin/server";
+import { createExternalCommandProcessEnv, type ProcessEnvRecord } from "../server/paseo-env.js";
 
 interface ExternalEnvOptions {
   baseEnv?: ProcessEnvRecord;
@@ -34,36 +26,6 @@ interface ExecCommandResult {
   stderr: string;
 }
 
-interface ResolvedCommandLaunch {
-  command: string;
-  args: string[];
-  shell: boolean | string;
-  windowsVerbatimArguments?: true;
-}
-
-function resolveCommandLaunch(
-  command: string,
-  args: string[],
-  requestedShell: boolean | string | undefined,
-  env: NodeJS.ProcessEnv,
-): ResolvedCommandLaunch {
-  const commandScript = planWindowsCommandScriptInvocation(command, args, env);
-  if (commandScript) {
-    return { ...commandScript, shell: false };
-  }
-
-  const shell = requestedShell ?? false;
-  if (process.platform === "win32" && shell !== false) {
-    return {
-      command: quoteWindowsCommand(command),
-      args: args.map(quoteWindowsArgument),
-      shell,
-    };
-  }
-
-  return { command, args, shell };
-}
-
 export function spawnProcess(
   command: string,
   args: string[],
@@ -79,16 +41,11 @@ export function spawnProcess(
           resolvedBaseEnv,
           ...(envOverlay ? [envOverlay] : []),
         );
-  const launch = resolveCommandLaunch(command, args, spawnOptions.shell, childEnv);
 
-  return spawn(launch.command, launch.args, {
+  return spawnCli(command, args, {
     ...spawnOptions,
     env: childEnv,
-    shell: launch.shell,
-    ...(launch.windowsVerbatimArguments
-      ? { windowsVerbatimArguments: launch.windowsVerbatimArguments }
-      : {}),
-    windowsHide: true,
+    signal: options?.signal,
   });
 }
 
@@ -107,19 +64,15 @@ export async function execCommand(
           resolvedBaseEnv,
           ...(envOverlay ? [envOverlay] : []),
         );
-  const launch = resolveCommandLaunch(command, args, options?.shell, childEnv);
 
-  return execFileAsync(launch.command, launch.args, {
+  return execCli(command, args, {
     cwd: options?.cwd,
     env: childEnv,
+    shell: options?.shell,
     encoding: options?.encoding ?? "utf8",
+    signal: options?.signal,
     killSignal: options?.killSignal,
     timeout: options?.timeout,
     maxBuffer: options?.maxBuffer,
-    shell: launch.shell,
-    ...(launch.windowsVerbatimArguments
-      ? { windowsVerbatimArguments: launch.windowsVerbatimArguments }
-      : {}),
-    windowsHide: true,
   }) as Promise<ExecCommandResult>;
 }

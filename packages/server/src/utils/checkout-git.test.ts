@@ -8,24 +8,26 @@ import {
   readFileSync,
   realpathSync,
   mkdirSync,
+  statSync,
 } from "fs";
 import { join } from "path";
 import { win32 } from "node:path";
 import { tmpdir } from "os";
+import pino from "pino";
+import { base64EncryptedWireByteLength } from "@getpaseo/relay";
 import {
   __resetCheckoutShortstatCacheForTests,
   __resetPullRequestStatusCacheForTests,
   __setPullRequestStatusCacheTtlForTests,
   commitAll,
-  commitPaths,
   discardChanges,
-  InvalidCommitPathError,
+  CHECKOUT_DIFF_MAX_STRUCTURED_BYTES,
+  createPullRequest,
   getCachedCheckoutShortstat,
   getCheckoutSnapshotFacts,
   getCurrentBranch,
   getCheckoutDiff,
   getCheckoutShortstat,
-  getCheckoutUncommittedShortstat,
   getPullRequestStatus,
   getCheckoutStatus,
   checkoutResolvedBranch,
@@ -41,18 +43,19 @@ import {
   resolveRepositoryDefaultBranch,
   parseWorktreeList,
   renameCurrentBranch,
-  rollbackPaths,
-  isOttoWorktreePath,
+  isPaseoWorktreePath,
   isDescendantPath,
   warmCheckoutShortstatInBackground,
 } from "./checkout-git.js";
 import { startGitCommandMetrics, stopGitCommandMetrics } from "./run-git-command.js";
+import { createForgeResolver } from "../services/forge-resolver.js";
+import { GitHubCommandError, GitHubCliMissingError } from "../services/github-service.js";
+import type { CurrentPullRequestStatus, ForgeService } from "../services/forge-service.js";
 import {
-  GitHubCommandError,
-  GitHubCliMissingError,
-  type CurrentPullRequestStatus,
-  type GitHubService,
-} from "../services/github-service.js";
+  TeaAuthenticationError,
+  TeaCliMissingError,
+  TeaCommandError,
+} from "../services/gitea-service.js";
 import {
   createWorktree as createWorktreePrimitive,
   type CreateWorktreeOptions,
@@ -65,7 +68,7 @@ interface LegacyCreateWorktreeTestOptions {
   baseBranch: string;
   worktreeSlug: string;
   runSetup?: boolean;
-  ottoHome?: string;
+  paseoHome?: string;
 }
 
 function createLegacyWorktreeForTest(
@@ -84,13 +87,13 @@ function createLegacyWorktreeForTest(
       branchName: options.branchName,
     },
     runSetup: options.runSetup ?? true,
-    ottoHome: options.ottoHome,
+    paseoHome: options.paseoHome,
   });
 }
 import {
-  getOttoWorktreeMetadataPath,
-  readOttoWorktreeMetadata,
-  writeOttoWorktreeMetadata,
+  getPaseoWorktreeMetadataPath,
+  readPaseoWorktreeMetadata,
+  writePaseoWorktreeMetadata,
 } from "./worktree-metadata.js";
 
 function initRepo(): { tempDir: string; repoDir: string } {
@@ -117,7 +120,7 @@ function sleep(ms: number): Promise<void> {
 function createGitHubServiceForStatus(
   status: CurrentPullRequestStatus | null,
   options?: { onStatus?: () => void },
-): GitHubService {
+): ForgeService {
   return {
     listPullRequests: async () => [],
     listIssues: async () => [],
@@ -125,7 +128,7 @@ function createGitHubServiceForStatus(
     getPullRequest: async () => ({
       number: 1,
       title: "PR",
-      url: "https://github.com/otto-code-ai/otto-code/pull/1",
+      url: "https://github.com/getpaseo/paseo/pull/1",
       state: "OPEN",
       body: null,
       baseRefName: "main",
@@ -133,12 +136,21 @@ function createGitHubServiceForStatus(
       labels: [],
     }),
     getPullRequestHeadRef: async () => "feature",
+    getPullRequestCheckoutTarget: async ({ number }) => ({
+      number,
+      baseRefName: "main",
+      headRefName: "feature",
+      headOwnerLogin: null,
+      headRepositorySshUrl: null,
+      headRepositoryUrl: null,
+      isCrossRepository: false,
+    }),
     getCurrentPullRequestStatus: async () => {
       options?.onStatus?.();
       return status;
     },
     createPullRequest: async () => ({
-      url: "https://github.com/otto-code-ai/otto-code/pull/1",
+      url: "https://github.com/getpaseo/paseo/pull/1",
       number: 1,
     }),
     mergePullRequest: async () => ({ success: true }),
@@ -149,7 +161,7 @@ function createGitHubServiceForStatus(
 
 function createPullRequestStatus(overrides?: Partial<CurrentPullRequestStatus>) {
   return {
-    url: "https://github.com/otto-code-ai/otto-code/pull/123",
+    url: "https://github.com/getpaseo/paseo/pull/123",
     title: "Ship feature",
     state: "open",
     baseRefName: "main",
@@ -164,6 +176,7 @@ function createPullRequestStatus(overrides?: Partial<CurrentPullRequestStatus>) 
 
 interface RequestedPullRequestTarget {
   headRef: string;
+  headSha?: string;
   headRepositoryOwner?: string;
 }
 
@@ -174,7 +187,7 @@ interface RecordingPullRequestTargetsOptions {
 
 function createGitHubServiceRecordingPullRequestTargets(
   options: RecordingPullRequestTargetsOptions,
-): GitHubService {
+): ForgeService {
   const github = createGitHubServiceForStatus(null);
   github.getCurrentPullRequestStatus = async (request) => {
     options.requestedTargets.push({
@@ -192,9 +205,9 @@ function createGitHubServiceRecordingPullRequestTargets(
 
 async function readPullRequestLookupTargetFromFacts(
   repoDir: string,
-  ottoHome: string,
+  paseoHome: string,
 ): Promise<RequestedPullRequestTarget | null> {
-  const facts = await getCheckoutSnapshotFacts(repoDir, { ottoHome });
+  const facts = await getCheckoutSnapshotFacts(repoDir, { paseoHome });
   if (!facts.isGit) {
     throw new Error("Expected git checkout facts");
   }
@@ -233,13 +246,13 @@ function commitFile(cwd: string, path: string, content: string, message: string)
 describe("checkout git utilities", () => {
   let tempDir: string;
   let repoDir: string;
-  let ottoHome: string;
+  let paseoHome: string;
 
   beforeEach(() => {
     const setup = initRepo();
     tempDir = setup.tempDir;
     repoDir = setup.repoDir;
-    ottoHome = join(tempDir, "otto-home");
+    paseoHome = join(tempDir, "paseo-home");
     __resetCheckoutShortstatCacheForTests();
     __resetPullRequestStatusCacheForTests();
   });
@@ -259,33 +272,120 @@ describe("checkout git utilities", () => {
     );
   });
 
-  it("reports a non-git directory as a non-git checkout", async () => {
-    const nonGitDir = join(tempDir, "facts-not-git");
+  it("creates a pull request via the given adapter without resolving a repo slug in the shell", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    let adapterReached = false;
+    const adapter = createGitHubServiceForStatus(null);
+    adapter.createPullRequest = async () => {
+      adapterReached = true;
+      return { url: "https://gitlab.com/group/proj/-/merge_requests/7", number: 7 };
+    };
+
+    const result = await createPullRequest(
+      repoDir,
+      { title: "Add thing", body: "desc", base: "main" },
+      adapter,
+    );
+
+    expect(adapterReached).toBe(true);
+    expect(result).toEqual({
+      url: "https://gitlab.com/group/proj/-/merge_requests/7",
+      number: 7,
+    });
+  });
+
+  it("resolves a gitlab remote through the resolver and creates via the gitlab adapter", async () => {
+    // origin is a real local bare repo so the push succeeds; the resolver reads a
+    // gitlab remote URL (injected) so it selects the gitlab adapter from the host.
+    setupRemoteTrackingMain(repoDir, tempDir);
+    let adapterReached = false;
+    const adapter = createGitHubServiceForStatus(null);
+    adapter.createPullRequest = async () => {
+      adapterReached = true;
+      return { url: "https://gitlab.com/group/proj/-/merge_requests/9", number: 9 };
+    };
+
+    const resolver = createForgeResolver({
+      resolveRemoteUrl: async () => "git@gitlab.com:group/proj.git",
+      createService: (forge) => (forge === "gitlab" ? adapter : null),
+    });
+    const resolution = await resolver.resolve(repoDir);
+    expect(resolution).toMatchObject({ forge: "gitlab", host: "gitlab.com" });
+    expect(resolution?.service).toBe(adapter);
+
+    const result = await createPullRequest(
+      repoDir,
+      { title: "Add thing", body: "desc", base: "main" },
+      resolution?.service,
+    );
+
+    expect(adapterReached).toBe(true);
+    expect(result).toEqual({
+      url: "https://gitlab.com/group/proj/-/merge_requests/9",
+      number: 9,
+    });
+  });
+
+  it("reports an ordinary directory as non-git without warning", async () => {
+    const nonGitDir = join(tempDir, "not-git-status");
     mkdirSync(nonGitDir, { recursive: true });
+    const records: unknown[] = [];
+    const logger = pino(
+      { level: "warn" },
+      {
+        write(line: string) {
+          records.push(JSON.parse(line));
+        },
+      },
+    );
 
-    await expect(getCheckoutSnapshotFacts(nonGitDir, { ottoHome })).resolves.toEqual({
-      isGit: false,
-    });
+    await expect(getCheckoutStatus(nonGitDir, { logger })).resolves.toEqual({ isGit: false });
+    expect(records).toEqual([]);
   });
 
-  it("reports a directory that no longer exists as a non-git checkout", async () => {
-    const goneDir = join(tempDir, "facts-deleted");
-
-    await expect(getCheckoutSnapshotFacts(goneDir, { ottoHome })).resolves.toEqual({
-      isGit: false,
-    });
+  it.runIf(
+    process.platform !== "win32" &&
+      existsSync("/dev/shm") &&
+      statSync("/dev").dev !== statSync("/dev/shm").dev,
+  )("does not warn for a non-git directory at a filesystem boundary", async () => {
+    const nonGitDir = realpathSync.native(mkdtempSync("/dev/shm/checkout-git-boundary-test-"));
+    const records: unknown[] = [];
+    const logger = pino(
+      { level: "warn" },
+      {
+        write(line: string) {
+          records.push(JSON.parse(line));
+        },
+      },
+    );
+    try {
+      await expect(getCheckoutStatus(nonGitDir, { logger })).resolves.toEqual({ isGit: false });
+      expect(records).toEqual([]);
+    } finally {
+      rmSync(nonGitDir, { recursive: true, force: true });
+    }
   });
 
-  it("throws rather than claiming non-git when the measurement itself fails", async () => {
-    // A corrupt gitfile makes `rev-parse` fail with something other than "not a
-    // git repository", standing in for the transient failures (command timeout,
-    // spawn failure) that must not retract the workspace's git identity: the
-    // client hangs the entire Git and PR control cluster off `isGit`.
-    const brokenRepo = join(tempDir, "facts-broken-gitfile");
-    mkdirSync(brokenRepo, { recursive: true });
-    writeFileSync(join(brokenRepo, ".git"), "garbage");
+  it("warns when git discovery fails unexpectedly", async () => {
+    const missingDir = join(tempDir, "missing-git-cwd");
+    const records: unknown[] = [];
+    const logger = pino(
+      { level: "warn" },
+      {
+        write(line: string) {
+          records.push(JSON.parse(line));
+        },
+      },
+    );
 
-    await expect(getCheckoutSnapshotFacts(brokenRepo, { ottoHome })).rejects.toThrow();
+    await expect(getCheckoutStatus(missingDir, { logger })).resolves.toEqual({ isGit: false });
+    expect(records).toEqual([
+      expect.objectContaining({
+        level: 40,
+        cwd: missingDir,
+        msg: "Git worktree discovery failed; treating directory as non-Git",
+      }),
+    ]);
   });
 
   it("returns null for getCurrentBranch in a repo with no commits", async () => {
@@ -423,6 +523,7 @@ describe("checkout git utilities", () => {
 
   it("honors commit signing configuration", async () => {
     execFileSync("git", ["config", "commit.gpgsign", "true"], { cwd: repoDir });
+    execFileSync("git", ["config", "gpg.format", "openpgp"], { cwd: repoDir });
     execFileSync("git", ["config", "gpg.program", process.execPath], { cwd: repoDir });
     writeFileSync(join(repoDir, "file.txt"), "signed\n");
 
@@ -438,15 +539,134 @@ describe("checkout git utilities", () => {
     });
 
     expect(diff.structured).toContainEqual(
-      expect.objectContaining({ path: "renamed.txt", oldPath: "file.txt" }),
+      expect.objectContaining({
+        path: "renamed.txt",
+        oldPath: "file.txt",
+        additions: 0,
+        deletions: 0,
+        hunks: [],
+      }),
     );
+  });
+
+  it.each([
+    { mode: "uncommitted", oldPath: "to-rename.txt", path: "renamed.txt" },
+    { mode: "base", oldPath: "to-rename.txt", path: "renamed.txt" },
+    { mode: "uncommitted", oldPath: "old [file].txt", path: "new [file].txt" },
+  ] as const)(
+    "shows only the edited line of a rename ($mode, $path)",
+    async ({ mode, oldPath, path }) => {
+      const original = Array.from({ length: 12 }, (_, index) => `line ${index + 1}`);
+      commitFile(repoDir, oldPath, original.join("\n") + "\n", "file to rename");
+      if (mode === "base") {
+        execFileSync("git", ["checkout", "-b", "feature/rename"], { cwd: repoDir });
+      }
+      execFileSync("git", ["mv", oldPath, path], { cwd: repoDir });
+      const edited = [...original];
+      edited[5] = "edited line 6";
+      writeFileSync(join(repoDir, path), edited.join("\n") + "\n");
+      execFileSync("git", ["add", path], { cwd: repoDir });
+
+      expect(
+        execFileSync("git", ["diff", "--name-status", "HEAD"], { cwd: repoDir }).toString(),
+      ).toMatch(/R\d+\t/);
+      if (mode === "base") {
+        execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "rename and edit"], {
+          cwd: repoDir,
+        });
+      }
+
+      const diff = await getCheckoutDiff(repoDir, {
+        mode,
+        ...(mode === "base" ? { baseRef: "main" } : {}),
+        includeStructured: true,
+      });
+
+      expect(diff.structured).toEqual([
+        expect.objectContaining({
+          path,
+          oldPath,
+          isNew: false,
+          isDeleted: false,
+          additions: 1,
+          deletions: 1,
+          status: "ok",
+        }),
+      ]);
+      expect(diff.diff).toContain(`rename from ${oldPath}`);
+      expect(diff.diff).toContain(`rename to ${path}`);
+      expect(diff.diff).toContain("-line 6\n+edited line 6");
+      expect(diff.diff).not.toContain("new file mode");
+    },
+  );
+
+  it("includes a changed copy source only once in the diff", async () => {
+    const original =
+      Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
+    commitFile(repoDir, "source.txt", original, "copy source");
+    execFileSync("git", ["config", "diff.renames", "copies"], { cwd: repoDir });
+    writeFileSync(join(repoDir, "copy.txt"), original);
+    writeFileSync(join(repoDir, "source.txt"), original.replace("line 6", "edited line 6"));
+    execFileSync("git", ["add", "copy.txt", "source.txt"], { cwd: repoDir });
+    expect(
+      execFileSync("git", ["diff", "--name-status", "HEAD"], { cwd: repoDir }).toString(),
+    ).toContain("C100\tsource.txt\tcopy.txt");
+
+    const diff = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+    expect(diff.structured).toEqual([
+      expect.objectContaining({
+        path: "copy.txt",
+        oldPath: "source.txt",
+        additions: 0,
+        deletions: 0,
+      }),
+      expect.objectContaining({ path: "source.txt", additions: 1, deletions: 1 }),
+    ]);
+    expect(diff.diff.match(/^diff --git a\/source.txt b\/source.txt$/gm)).toHaveLength(1);
+    expect(diff.diff).toContain("copy from source.txt");
+    expect(diff.diff).toContain("copy to copy.txt");
+  });
+
+  it("keeps a small copy patch when its edited source exceeds the patch limit", async () => {
+    const original =
+      Array.from({ length: 12 }, (_, index) => `line ${index + 1}`).join("\n") + "\n";
+    commitFile(repoDir, "source.txt", original, "copy source");
+    execFileSync("git", ["config", "diff.renames", "copies"], { cwd: repoDir });
+    writeFileSync(join(repoDir, "copy.txt"), original);
+    writeFileSync(join(repoDir, "source.txt"), original + "added source line\n".repeat(80_000));
+    execFileSync("git", ["add", "copy.txt", "source.txt"], { cwd: repoDir });
+    expect(
+      execFileSync("git", ["diff", "--name-status", "HEAD"], { cwd: repoDir }).toString(),
+    ).toContain("C100\tsource.txt\tcopy.txt");
+
+    const diff = await getCheckoutDiff(repoDir, {
+      mode: "uncommitted",
+      includeStructured: true,
+    });
+    expect(diff.structured).toEqual([
+      expect.objectContaining({
+        path: "copy.txt",
+        oldPath: "source.txt",
+        additions: 0,
+        deletions: 0,
+        hunks: [],
+        status: "ok",
+      }),
+      expect.objectContaining({ path: "source.txt", status: "too_large", hunks: [] }),
+    ]);
+    expect(diff.diff).toContain("copy from source.txt");
+    expect(diff.diff).toContain("copy to copy.txt");
+    expect(diff.diff).not.toContain("+added source line");
   });
 
   it("reads the origin URL once when collecting facts for an origin-tracking branch", async () => {
     setupRemoteTrackingMain(repoDir, tempDir);
 
     startGitCommandMetrics();
-    const facts = await getCheckoutSnapshotFacts(repoDir, { ottoHome });
+    const facts = await getCheckoutSnapshotFacts(repoDir, { paseoHome });
     const metrics = stopGitCommandMetrics();
     const originUrlCommands = metrics.commands.filter(
       (command) => command.args.join(" ") === "config --get remote.origin.url",
@@ -468,7 +688,7 @@ describe("checkout git utilities", () => {
     execFileSync("git", ["config", "branch.main.merge", "refs/heads/main"], { cwd: repoDir });
 
     startGitCommandMetrics();
-    const facts = await getCheckoutSnapshotFacts(repoDir, { ottoHome });
+    const facts = await getCheckoutSnapshotFacts(repoDir, { paseoHome });
     const metrics = stopGitCommandMetrics();
     const commands = metrics.commands.map((command) => command.args.join(" "));
 
@@ -488,30 +708,30 @@ describe("checkout git utilities", () => {
     writeFileSync(join(repoDir, "feature.txt"), "feature\nchanged\n");
     const github = createGitHubServiceForStatus(createPullRequestStatus());
 
-    const facts = await getCheckoutSnapshotFacts(repoDir, { ottoHome });
-    const status = await getCheckoutStatus(repoDir, { ottoHome, facts });
-    const shortstat = await getCheckoutShortstat(repoDir, { ottoHome, facts }, { force: true });
+    const facts = await getCheckoutSnapshotFacts(repoDir, { paseoHome });
+    const status = await getCheckoutStatus(repoDir, { paseoHome, facts });
+    const shortstat = await getCheckoutShortstat(repoDir, { paseoHome, facts }, { force: true });
     const prStatus = await getPullRequestStatus(
       repoDir,
       github,
       { force: true, reason: "snapshot-equivalence" },
-      { ottoHome, facts },
+      { paseoHome, facts },
     );
 
     __resetCheckoutShortstatCacheForTests();
     __resetPullRequestStatusCacheForTests();
     startGitCommandMetrics();
-    const statusWithFacts = await getCheckoutStatus(repoDir, { ottoHome, facts });
+    const statusWithFacts = await getCheckoutStatus(repoDir, { paseoHome, facts });
     const shortstatWithFacts = await getCheckoutShortstat(
       repoDir,
-      { ottoHome, facts },
+      { paseoHome, facts },
       { force: true },
     );
     const prStatusWithFacts = await getPullRequestStatus(
       repoDir,
       github,
       { force: true, reason: "snapshot-equivalence-with-facts" },
-      { ottoHome, facts },
+      { paseoHome, facts },
     );
     const metrics = stopGitCommandMetrics();
     const commands = metrics.commands.map((command) => command.args.join(" "));
@@ -583,23 +803,6 @@ const x = 1;
 
     expect(addedLine?.tokens).toEqual([{ text: "new comment line", style: "comment" }]);
     expect(removedLine?.tokens).toEqual([{ text: "old comment line", style: "comment" }]);
-    expect(file?.beforeSource).toBe(originalContent);
-    expect(file?.afterSource).toBe(updatedContent);
-  });
-
-  it("preserves the source path for a structured staged rename", async () => {
-    execFileSync("git", ["mv", "file.txt", "renamed.txt"], { cwd: repoDir });
-
-    const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
-
-    expect(diff.structured).toEqual([
-      expect.objectContaining({
-        path: "renamed.txt",
-        oldPath: "file.txt",
-        isNew: false,
-        isDeleted: false,
-      }),
-    ]);
   });
 
   it("preserves no-prefix structured paths that start with a or b", async () => {
@@ -631,7 +834,7 @@ const x = 1;
     }
     expect(status.currentBranch).toBe("main");
     expect(realpathSync.native(status.repoRoot)).toBe(realpathSync.native(repoDir));
-    expect(status.isOttoOwnedWorktree).toBe(false);
+    expect(status.isPaseoOwnedWorktree).toBe(false);
     expect(status.mainRepoRoot ?? null).toBeNull();
   });
 
@@ -673,19 +876,112 @@ const x = 1;
     expect(behindStatus.aheadOfOrigin).toBe(0);
     expect(behindStatus.behindOfOrigin).toBe(1);
 
-    writeFileSync(join(repoDir, "local.txt"), "local\n");
-    execFileSync("git", ["add", "local.txt"], { cwd: repoDir });
-    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "local update"], {
-      cwd: repoDir,
-    });
+    commitFile(repoDir, "local-1.txt", "local 1\n", "local update 1");
+    commitFile(repoDir, "local-2.txt", "local 2\n", "local update 2");
+    commitFile(repoDir, "local-3.txt", "local 3\n", "local update 3");
+    commitFile(cloneDir, "remote-2.txt", "remote 2\n", "remote update 2");
+    execFileSync("git", ["push"], { cwd: cloneDir });
+    execFileSync("git", ["fetch", "origin"], { cwd: repoDir });
 
-    const divergedStatus = await getCheckoutStatus(repoDir);
+    startGitCommandMetrics();
+    const facts = await getCheckoutSnapshotFacts(repoDir);
+    const divergedStatus = await getCheckoutStatus(repoDir, { facts });
+    const metrics = stopGitCommandMetrics();
+    const upstreamCountCommands = metrics.commands.filter(
+      (command) =>
+        command.args[0] === "for-each-ref" && command.args.join(" ").includes("%(upstream)"),
+    );
+
     expect(divergedStatus.isGit).toBe(true);
     if (!divergedStatus.isGit) {
       return;
     }
-    expect(divergedStatus.aheadOfOrigin).toBe(1);
-    expect(divergedStatus.behindOfOrigin).toBe(1);
+    expect(divergedStatus.upstreamRef).toBe("refs/remotes/origin/main");
+    expect(divergedStatus.aheadOfOrigin).toBe(3);
+    expect(divergedStatus.behindOfOrigin).toBe(2);
+    expect(upstreamCountCommands).toHaveLength(1);
+    expect(upstreamCountCommands[0]?.args).toEqual([
+      "for-each-ref",
+      "--format=%(upstream)%00%(upstream:track,nobracket)",
+      "refs/heads/main",
+    ]);
+  });
+
+  it("reports the fork remote, not origin, when the branch tracks a second remote", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    const forkDir = join(tempDir, "fork.git");
+    execFileSync("git", ["init", "--bare", "-b", "main", forkDir]);
+    execFileSync("git", ["remote", "add", "upstream", forkDir], { cwd: repoDir });
+    execFileSync("git", ["push", "-u", "upstream", "main"], { cwd: repoDir });
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.upstreamRef).toBe("refs/remotes/upstream/main");
+  });
+
+  it("reports the upstream branch name when it differs from the local branch name", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    commitFile(repoDir, "feature.txt", "feature\n", "feature commit");
+    execFileSync("git", ["push", "-u", "origin", "HEAD:other-name"], { cwd: repoDir });
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.upstreamRef).toBe("refs/remotes/origin/other-name");
+  });
+
+  it("reports the upstream when the repo's only remote is not origin", async () => {
+    const forkDir = join(tempDir, "fork.git");
+    execFileSync("git", ["init", "--bare", "-b", "main", forkDir]);
+    execFileSync("git", ["remote", "add", "upstream", forkDir], { cwd: repoDir });
+    execFileSync("git", ["push", "-u", "upstream", "main"], { cwd: repoDir });
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.upstreamRef).toBe("refs/remotes/upstream/main");
+    expect(status.aheadOfOrigin).toBe(0);
+  });
+
+  // A legal local branch named "origin/main" shadows the short form "origin/main" in git's
+  // ref resolution. The counts and the reported ref have to describe the same commit.
+  it("is not fooled by a local branch named like the remote-tracking ref", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    commitFile(repoDir, "shadow.txt", "shadow\n", "shadow commit");
+    // Pointed at HEAD, so comparing against the shadow reports 0 ahead while the real
+    // remote-tracking ref reports 1.
+    execFileSync("git", ["branch", "origin/main", "main"], { cwd: repoDir });
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.upstreamRef).toBe("refs/remotes/origin/main");
+    expect(status.aheadOfOrigin).toBe(1);
+    expect(status.behindOfOrigin).toBe(0);
+  });
+
+  it("reports no upstream ref for a branch that was never pushed", async () => {
+    setupRemoteTrackingMain(repoDir, tempDir);
+    execFileSync("git", ["checkout", "-b", "local-only"], { cwd: repoDir });
+    commitFile(repoDir, "local-only.txt", "local\n", "local commit");
+
+    const status = await getCheckoutStatus(repoDir);
+    expect(status.isGit).toBe(true);
+    if (!status.isGit) {
+      return;
+    }
+    expect(status.upstreamRef).toBeNull();
+    expect(status.aheadOfOrigin).toBeNull();
   });
 
   it("reports a PR worktree as not ahead when its branch is pushed to the configured PR remote", async () => {
@@ -696,15 +992,15 @@ const x = 1;
       cwd: repoDir,
     });
     commitFile(repoDir, "feature.txt", "feature\n", "feature commit");
-    execFileSync("git", ["remote", "add", "otto-pr-1285", prRemoteDir], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "paseo-pr-1285", prRemoteDir], { cwd: repoDir });
     execFileSync(
       "git",
-      ["push", "otto-pr-1285", "HEAD:refs/heads/open-button-targets-active-file"],
+      ["push", "paseo-pr-1285", "HEAD:refs/heads/open-button-targets-active-file"],
       { cwd: repoDir },
     );
     execFileSync(
       "git",
-      ["config", "branch.aaronzhongg/open-button-targets-active-file.remote", "otto-pr-1285"],
+      ["config", "branch.aaronzhongg/open-button-targets-active-file.remote", "paseo-pr-1285"],
       {
         cwd: repoDir,
       },
@@ -737,15 +1033,15 @@ const x = 1;
       cwd: repoDir,
     });
     commitFile(repoDir, "feature.txt", "feature\n", "feature commit");
-    execFileSync("git", ["remote", "add", "otto-pr-1285", prRemoteDir], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "paseo-pr-1285", prRemoteDir], { cwd: repoDir });
     execFileSync(
       "git",
-      ["push", "otto-pr-1285", "HEAD:refs/heads/open-button-targets-active-file"],
+      ["push", "paseo-pr-1285", "HEAD:refs/heads/open-button-targets-active-file"],
       { cwd: repoDir },
     );
     execFileSync(
       "git",
-      ["config", "branch.aaronzhongg/open-button-targets-active-file.remote", "otto-pr-1285"],
+      ["config", "branch.aaronzhongg/open-button-targets-active-file.remote", "paseo-pr-1285"],
       { cwd: repoDir },
     );
     execFileSync(
@@ -763,7 +1059,7 @@ const x = 1;
     execFileSync("git", ["config", "user.name", "Test"], { cwd: prCloneDir });
     commitFile(prCloneDir, "remote.txt", "remote\n", "remote update");
     execFileSync("git", ["push"], { cwd: prCloneDir });
-    execFileSync("git", ["fetch", "otto-pr-1285"], { cwd: repoDir });
+    execFileSync("git", ["fetch", "paseo-pr-1285"], { cwd: repoDir });
 
     const status = await getCheckoutStatus(repoDir);
 
@@ -788,9 +1084,10 @@ const x = 1;
       return;
     }
     expect(status.aheadOfOrigin).toBeNull();
+    expect(status.behindOfOrigin).toBeNull();
   });
 
-  it("does not report full history as unpushed for fresh no-track Otto worktrees", async () => {
+  it("does not report full history as unpushed for fresh no-track Paseo worktrees", async () => {
     setupRemoteTrackingMain(repoDir, tempDir);
     commitFile(repoDir, "second.txt", "second\n", "second commit");
     execFileSync("git", ["push"], { cwd: repoDir });
@@ -800,38 +1097,39 @@ const x = 1;
       cwd: repoDir,
       baseBranch: "main",
       worktreeSlug: "fresh-feature",
-      ottoHome,
+      paseoHome,
     });
 
-    const status = await getCheckoutStatus(worktree.worktreePath, { ottoHome });
+    const status = await getCheckoutStatus(worktree.worktreePath, { paseoHome });
     expect(status).toMatchObject({
       isGit: true,
-      isOttoOwnedWorktree: true,
-      baseRef: "refs/heads/main",
+      isPaseoOwnedWorktree: true,
+      baseRef: "main",
       aheadBehind: { ahead: 0, behind: 0 },
       aheadOfOrigin: null,
     });
   });
 
   it("does not report local-only no-track worktree commits as ahead of origin", async () => {
-    setupRemoteTrackingMain(repoDir, tempDir);
-    commitFile(repoDir, "second.txt", "second\n", "second commit");
-    execFileSync("git", ["push"], { cwd: repoDir });
+    // This case needs a remote base ref, not a second clone or extra base history.
+    execFileSync("git", ["remote", "add", "origin", repoDir], { cwd: repoDir });
+    execFileSync("git", ["fetch", "origin", "main:refs/remotes/origin/main"], { cwd: repoDir });
 
     const worktree = await createLegacyWorktreeForTest({
       branchName: "fresh-feature",
       cwd: repoDir,
       baseBranch: "main",
       worktreeSlug: "fresh-feature",
-      ottoHome,
+      paseoHome,
     });
     commitFile(worktree.worktreePath, "feature.txt", "feature\n", "feature commit");
 
-    const status = await getCheckoutStatus(worktree.worktreePath, { ottoHome });
+    const status = await getCheckoutStatus(worktree.worktreePath, { paseoHome });
     expect(status).toMatchObject({
       isGit: true,
-      isOttoOwnedWorktree: true,
-      baseRef: "refs/heads/main",
+      hasRemote: true,
+      isPaseoOwnedWorktree: true,
+      baseRef: "main",
       aheadBehind: { ahead: 1, behind: 0 },
       aheadOfOrigin: null,
     });
@@ -1026,21 +1324,6 @@ const x = 1;
     expect(shortstat).toEqual({ additions: 2, deletions: 1 });
   });
 
-  it("keeps the uncommitted shortstat empty after a branch change is committed", async () => {
-    setupRemoteTrackingMain(repoDir, tempDir);
-    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    commitFile(repoDir, "feature.txt", "feature\n", "feature change");
-
-    expect(await getCheckoutShortstat(repoDir)).toEqual({ additions: 1, deletions: 0 });
-    expect(await getCheckoutUncommittedShortstat(repoDir)).toBeNull();
-
-    writeFileSync(join(repoDir, "feature.txt"), "feature\nnext\n");
-    expect(await getCheckoutUncommittedShortstat(repoDir, undefined, { force: true })).toEqual({
-      additions: 1,
-      deletions: 0,
-    });
-  });
-
   it("uses the freshest comparison base for status and shortstat when local main is stale", async () => {
     const remoteDir = join(tempDir, "remote.git");
     const cloneDir = join(tempDir, "clone");
@@ -1222,12 +1505,17 @@ const x = 1;
 
     warmCheckoutShortstatInBackground(repoDir);
 
-    // This joins the already-started background load instead of racing a short
-    // wall-clock poll. It proves the cache is populated while ensuring teardown
-    // never removes the fixture directory under an in-flight Git subprocess.
-    // A repo with no origin/main computes to null, but null is still cached.
-    await expect(getCheckoutShortstat(repoDir)).resolves.toBeNull();
-    expect(getCachedCheckoutShortstat(repoDir)).toBeNull();
+    // A repo with no origin/main computes to null, but null should still be cached.
+    for (let attempts = 0; attempts < 20; attempts += 1) {
+      const cached = getCachedCheckoutShortstat(repoDir);
+      if (cached !== undefined) {
+        expect(cached).toBeNull();
+        return;
+      }
+      await sleep(25);
+    }
+
+    throw new Error("shortstat background warm did not populate cache in time");
   });
 
   it("commits messages with quotes safely", async () => {
@@ -1276,69 +1564,17 @@ const x = 1;
     );
   });
 
-  it("degrades a render-hostile tracked file to too_large without highlighting it", async () => {
-    writeFileSync(join(repoDir, "generated.ts"), "export const baseline = 0;\n");
-    execFileSync("git", ["add", "generated.ts"], { cwd: repoDir });
-    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add generated"], {
-      cwd: repoDir,
-    });
-
-    const lines = Array.from(
-      { length: 20_001 },
-      (_, index) => `export const generated_${index} = ${index};`,
+  it("keeps the structured diff cap below the relay frame limit", () => {
+    const relayFrameBytes = 32 * 1024 * 1024;
+    const frameEnvelopeHeadroomBytes = 1024 * 1024;
+    const diffWireBytes = base64EncryptedWireByteLength(CHECKOUT_DIFF_MAX_STRUCTURED_BYTES);
+    const maximumFrameWireBytes = base64EncryptedWireByteLength(
+      CHECKOUT_DIFF_MAX_STRUCTURED_BYTES + frameEnvelopeHeadroomBytes,
     );
-    writeFileSync(join(repoDir, "generated.ts"), `${lines.join("\n")}\n`);
 
-    const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
-
-    expect(diff.diffTooLarge).not.toBe(true);
-    expect(
-      diff.structured?.map((file) => ({
-        path: file.path,
-        status: file.status,
-        hunks: file.hunks.length,
-      })),
-    ).toEqual([{ path: "generated.ts", status: "too_large", hunks: 0 }]);
-    expect(diff.diff).toContain("# generated.ts: diff too large omitted");
-  });
-
-  it("ships committed branch files that fit when the whole branch exceeds the render budget", async () => {
-    // A long-lived branch diffed in Committed mode: no single file is too large, but
-    // together they exceed the render-line budget. The view must list files, not blank.
-    // Short plain-text lines keep every file far below the per-file byte ceilings, so the
-    // render-line budget is the only thing that can decide which files degrade.
-    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    const fileNames = ["a.txt", "b.txt", "c.txt", "d.txt", "e.txt"];
-    for (const fileName of fileNames) {
-      const lines = Array.from({ length: 6_000 }, (_, index) => String(index));
-      writeFileSync(join(repoDir, fileName), `${lines.join("\n")}\n`);
-    }
-    execFileSync("git", ["add", ...fileNames], { cwd: repoDir });
-    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "feature work"], {
-      cwd: repoDir,
-    });
-
-    const diff = await getCheckoutDiff(repoDir, {
-      mode: "base",
-      baseRef: "main",
-      includeStructured: true,
-    });
-
-    expect(diff.diffTooLarge).not.toBe(true);
-    expect(diff.structured?.map((file) => ({ path: file.path, status: file.status }))).toEqual([
-      { path: "a.txt", status: "ok" },
-      { path: "b.txt", status: "ok" },
-      { path: "c.txt", status: "ok" },
-      { path: "d.txt", status: "too_large" },
-      { path: "e.txt", status: "too_large" },
-    ]);
-    let renderLines = 0;
-    for (const file of diff.structured ?? []) {
-      for (const hunk of file.hunks) {
-        renderLines += hunk.lines.length;
-      }
-    }
-    expect(renderLines).toBeLessThanOrEqual(20_000);
+    expect(CHECKOUT_DIFF_MAX_STRUCTURED_BYTES).toBe(24_117_208);
+    expect(diffWireBytes).toBeLessThan(relayFrameBytes);
+    expect(maximumFrameWireBytes).toBe(relayFrameBytes);
   });
 
   it("marks tracked generated one-line diffs as too_large by content size", async () => {
@@ -1376,12 +1612,7 @@ const x = 1;
     startGitCommandMetrics();
     const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
     const metrics = stopGitCommandMetrics();
-    // The pinned `--no-ext-diff`/`--no-textconv` flags ride on every patch read;
-    // drop them so these assertions stay about the diff each command asked for.
-    const isNotPinnedDiffFlag = (arg: string) => arg !== "--no-ext-diff" && arg !== "--no-textconv";
-    const commands = metrics.commands.map((command) =>
-      command.args.filter(isNotPinnedDiffFlag).join(" "),
-    );
+    const commands = metrics.commands.map((command) => command.args.join(" "));
 
     expect(
       diff.structured?.map((file) => ({
@@ -1396,65 +1627,13 @@ const x = 1;
     expect(diff.diff).toContain("# generated.js: diff too large omitted");
     expect(diff.diff).toContain(`-export const value = "old";`);
     expect(diff.diff).toContain(`+export const value = "new";`);
-    expect(commands).toContain("diff --numstat HEAD");
-    expect(commands).toContain("diff HEAD -- generated.js");
-    expect(commands).toContain("diff HEAD -- small.ts");
-    expect(metrics.maxConcurrent).toBeLessThanOrEqual(8);
-  });
-
-  it("drops whole-file sources for small edits to near-256KB tracked files, without failing the snapshot", async () => {
-    // Reproduces a 2026-09-13 capture: 11 tracked files of 181-268 KB, each edited by
-    // 1-2 lines, pushed one checkout_diff_update to 8.37 MB because every file's
-    // full before/after source was attached alongside its (tiny) hunk. A genuinely
-    // oversized file is mixed in to prove per-file degradation, not a global bail-out.
-    const lineCount = 3500;
-    const baseLines = Array.from(
-      { length: lineCount },
-      (_, i) => `export const filler_${i} = "padding_padding_padding_padding";`,
+    expect(commands).toContain(
+      "diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ -z --numstat HEAD",
     );
-    const fileNames = Array.from({ length: 11 }, (_, i) => `resource-${i}.ts`);
-    for (const fileName of fileNames) {
-      writeFileSync(join(repoDir, fileName), `${baseLines.join("\n")}\n`);
-    }
-    writeFileSync(join(repoDir, "huge.txt"), `${"x".repeat(2_100_000)}\n`);
-    execFileSync("git", ["add", ...fileNames, "huge.txt"], { cwd: repoDir });
-    execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add fixture files"], {
-      cwd: repoDir,
-    });
-
-    for (const fileName of fileNames) {
-      const editedLines = [...baseLines];
-      editedLines[10] = `export const filler_10 = "edited_padding_value";`;
-      editedLines[11] = `export const filler_11 = "edited_padding_value";`;
-      writeFileSync(join(repoDir, fileName), `${editedLines.join("\n")}\n`);
-    }
-    writeFileSync(join(repoDir, "huge.txt"), `${"y".repeat(2_100_000)}\n`);
-
-    const diff = await getCheckoutDiff(repoDir, { mode: "uncommitted", includeStructured: true });
-
-    expect(diff.diffTooLarge).not.toBe(true);
-    const structured = diff.structured ?? [];
-    expect(structured.length).toBeGreaterThan(0);
-
-    const totalStructuredBytes = Buffer.byteLength(JSON.stringify(structured), "utf8");
-    // Production measured 8.37MB for this shape with sources attached; well under
-    // 1MB proves the per-file source budget dropped them.
-    expect(totalStructuredBytes).toBeLessThan(1024 * 1024);
-
-    for (const fileName of fileNames) {
-      const entry = structured.find((file) => file.path === fileName);
-      expect(entry).toBeTruthy();
-      expect(entry?.status).toBe("ok");
-      expect(entry?.hunks.length).toBeGreaterThan(0);
-      expect(entry?.beforeSource).toBeUndefined();
-      expect(entry?.afterSource).toBeUndefined();
-    }
-
-    const hugeEntry = structured.find((file) => file.path === "huge.txt");
-    expect(hugeEntry).toBeTruthy();
-    expect(hugeEntry?.status).toBe("too_large");
-    expect(hugeEntry?.hunks).toEqual([]);
-    expect(diff.diff).toContain("# huge.txt: diff too large omitted");
+    expect(commands).toContain(
+      "diff --no-ext-diff --no-color --src-prefix=a/ --dst-prefix=b/ HEAD -- :(literal)generated.js :(literal)small.ts",
+    );
+    expect(metrics.maxConcurrent).toBeLessThanOrEqual(8);
   });
 
   it("marks tracked files omitted by the total diff budget as too_large", async () => {
@@ -1542,31 +1721,51 @@ const x = 1;
     expect(diff.diff).toContain("# untracked-large.txt: diff too large omitted");
   });
 
-  it("handles status/diff/commit in a .otto worktree", async () => {
+  it("resolves the Git common directory once when reading Paseo worktree facts", async () => {
+    const result = await createLegacyWorktreeForTest({
+      branchName: "main",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "common-dir",
+      paseoHome,
+    });
+
+    startGitCommandMetrics();
+    const facts = await getCheckoutSnapshotFacts(result.worktreePath, { paseoHome });
+    const metrics = stopGitCommandMetrics();
+    const commonDirCommands = metrics.commands.filter(
+      (command) => command.args.join(" ") === "rev-parse --git-common-dir",
+    );
+
+    expect(facts.isGit).toBe(true);
+    expect(commonDirCommands).toHaveLength(1);
+  });
+
+  it("handles status/diff/commit in a .paseo worktree", async () => {
     const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
       worktreeSlug: "alpha",
-      ottoHome,
+      paseoHome,
     });
 
     writeFileSync(join(result.worktreePath, "file.txt"), "worktree change\n");
 
-    const status = await getCheckoutStatus(result.worktreePath, { ottoHome });
+    const status = await getCheckoutStatus(result.worktreePath, { paseoHome });
     expect(status.isGit).toBe(true);
     expect(realpathSync.native(status.repoRoot)).toBe(realpathSync.native(result.worktreePath));
     expect(status.isDirty).toBe(true);
-    expect(status.isOttoOwnedWorktree).toBe(true);
+    expect(status.isPaseoOwnedWorktree).toBe(true);
     expect(realpathSync.native(status.mainRepoRoot ?? "")).toBe(realpathSync.native(repoDir));
 
-    const diff = await getCheckoutDiff(result.worktreePath, { mode: "uncommitted" }, { ottoHome });
+    const diff = await getCheckoutDiff(result.worktreePath, { mode: "uncommitted" }, { paseoHome });
     expect(diff.diff).toContain("-hello");
     expect(diff.diff).toContain("+worktree change");
 
     await commitAll(result.worktreePath, "worktree update");
 
-    const cleanStatus = await getCheckoutStatus(result.worktreePath, { ottoHome });
+    const cleanStatus = await getCheckoutStatus(result.worktreePath, { paseoHome });
     expect(cleanStatus.isDirty).toBe(false);
     const message = execFileSync("git", ["log", "-1", "--pretty=%B"], {
       cwd: result.worktreePath,
@@ -1576,22 +1775,22 @@ const x = 1;
     expect(message).toBe("worktree update");
   });
 
-  it("returns checkout root metadata for .otto worktrees", async () => {
+  it("returns checkout root metadata for .paseo worktrees", async () => {
     const result = await createLegacyWorktreeForTest({
       branchName: "main",
       cwd: repoDir,
       baseBranch: "main",
       worktreeSlug: "lite-alpha",
-      ottoHome,
+      paseoHome,
     });
 
-    const status = await getCheckoutStatus(result.worktreePath, { ottoHome });
+    const status = await getCheckoutStatus(result.worktreePath, { paseoHome });
     expect(status.isGit).toBe(true);
     if (!status.isGit) {
       return;
     }
     expect(realpathSync.native(status.repoRoot)).toBe(realpathSync.native(result.worktreePath));
-    expect(status.isOttoOwnedWorktree).toBe(true);
+    expect(status.isPaseoOwnedWorktree).toBe(true);
     expect(realpathSync.native(status.mainRepoRoot ?? "")).toBe(realpathSync.native(repoDir));
   });
 
@@ -1609,12 +1808,12 @@ const x = 1;
       cwd: mainCheckoutDir,
       baseBranch: "main",
       worktreeSlug: "feature-worktree",
-      ottoHome,
+      paseoHome,
     });
 
-    const status = await getCheckoutStatus(worktree.worktreePath, { ottoHome });
+    const status = await getCheckoutStatus(worktree.worktreePath, { paseoHome });
     expect(status.isGit).toBe(true);
-    expect(status.isOttoOwnedWorktree).toBe(true);
+    expect(status.isPaseoOwnedWorktree).toBe(true);
     expect(realpathSync.native(status.mainRepoRoot ?? "")).toBe(
       realpathSync.native(mainCheckoutDir),
     );
@@ -1626,10 +1825,10 @@ const x = 1;
       cwd: repoDir,
     });
 
-    const status = await getCheckoutStatus(worktreeDir, { ottoHome });
+    const status = await getCheckoutStatus(worktreeDir, { paseoHome });
     expect(status.isGit).toBe(true);
     expect(realpathSync.native(status.repoRoot)).toBe(realpathSync.native(worktreeDir));
-    expect(status.isOttoOwnedWorktree).toBe(false);
+    expect(status.isPaseoOwnedWorktree).toBe(false);
     expect(realpathSync.native(status.mainRepoRoot ?? "")).toBe(realpathSync.native(repoDir));
     expect(status.currentBranch).toBe("feature/plain");
   });
@@ -1640,7 +1839,7 @@ const x = 1;
       cwd: repoDir,
       baseBranch: "main",
       worktreeSlug: "merge",
-      ottoHome,
+      paseoHome,
     });
 
     writeFileSync(join(worktree.worktreePath, "merge.txt"), "feature\n");
@@ -1653,7 +1852,7 @@ const x = 1;
       .toString()
       .trim();
 
-    await mergeToBase(worktree.worktreePath, { baseRef: "main" }, { ottoHome });
+    await mergeToBase(worktree.worktreePath, { baseRef: "main" }, { paseoHome });
 
     const baseContainsFeature = execFileSync(
       "git",
@@ -1665,7 +1864,7 @@ const x = 1;
     );
     expect(baseContainsFeature).toBeDefined();
 
-    const statusAfterMerge = await getCheckoutStatus(worktree.worktreePath, { ottoHome });
+    const statusAfterMerge = await getCheckoutStatus(worktree.worktreePath, { paseoHome });
     expect(statusAfterMerge.isGit).toBe(true);
     if (statusAfterMerge.isGit) {
       expect(statusAfterMerge.aheadBehind?.ahead ?? 0).toBe(0);
@@ -1696,7 +1895,7 @@ const x = 1;
       cwd: repoDir,
       baseBranch: "develop",
       worktreeSlug: "feature-worktree",
-      ottoHome,
+      paseoHome,
     });
 
     writeFileSync(join(featureWorktree.worktreePath, "feature.txt"), "feature\n");
@@ -1705,7 +1904,7 @@ const x = 1;
       cwd: featureWorktree.worktreePath,
     });
 
-    const mutatedCwd = await mergeToBase(featureWorktree.worktreePath, {}, { ottoHome });
+    const mutatedCwd = await mergeToBase(featureWorktree.worktreePath, {}, { paseoHome });
 
     expect(realpathSync.native(mutatedCwd)).toBe(realpathSync.native(baseWorktreePath));
     expect(mutatedCwd).not.toBe(featureWorktree.worktreePath);
@@ -1969,10 +2168,10 @@ const x = 1;
     execFileSync("git", ["clone", "--bare", repoDir, originDir]);
     execFileSync("git", ["clone", "--bare", repoDir, prRemoteDir]);
     execFileSync("git", ["remote", "add", "origin", originDir], { cwd: repoDir });
-    execFileSync("git", ["remote", "add", "otto-pr-526", prRemoteDir], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "paseo-pr-526", prRemoteDir], { cwd: repoDir });
     execFileSync("git", ["checkout", "-b", "therainisme/main"], { cwd: repoDir });
-    execFileSync("git", ["fetch", "otto-pr-526", "main"], { cwd: repoDir });
-    execFileSync("git", ["config", "branch.therainisme/main.remote", "otto-pr-526"], {
+    execFileSync("git", ["fetch", "paseo-pr-526", "main"], { cwd: repoDir });
+    execFileSync("git", ["config", "branch.therainisme/main.remote", "paseo-pr-526"], {
       cwd: repoDir,
     });
     execFileSync("git", ["config", "branch.therainisme/main.merge", "refs/heads/main"], {
@@ -2005,7 +2204,7 @@ const x = 1;
       .toString()
       .trim();
     expect(prRemoteMain).toBe(localHead);
-    expect(upstream).toBe("otto-pr-526/main");
+    expect(upstream).toBe("paseo-pr-526/main");
   });
 
   it("pushes the current branch to its configured push remote", async () => {
@@ -2014,12 +2213,12 @@ const x = 1;
     execFileSync("git", ["clone", "--bare", repoDir, originDir]);
     execFileSync("git", ["clone", "--bare", repoDir, prRemoteDir]);
     execFileSync("git", ["remote", "add", "origin", originDir], { cwd: repoDir });
-    execFileSync("git", ["remote", "add", "otto-pr-526", prRemoteDir], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "paseo-pr-526", prRemoteDir], { cwd: repoDir });
     execFileSync("git", ["checkout", "-b", "therainisme/main"], { cwd: repoDir });
-    execFileSync("git", ["config", "branch.therainisme/main.pushRemote", "otto-pr-526"], {
+    execFileSync("git", ["config", "branch.therainisme/main.pushRemote", "paseo-pr-526"], {
       cwd: repoDir,
     });
-    execFileSync("git", ["config", "remote.otto-pr-526.push", "HEAD:refs/heads/main"], {
+    execFileSync("git", ["config", "remote.paseo-pr-526.push", "HEAD:refs/heads/main"], {
       cwd: repoDir,
     });
     writeFileSync(join(repoDir, "fork-pr.txt"), "fork pr edit\n");
@@ -2049,7 +2248,7 @@ const x = 1;
     );
     const trackedPrRemoteHead = execFileSync(
       "git",
-      ["rev-parse", "refs/remotes/otto-pr-526/main"],
+      ["rev-parse", "refs/remotes/paseo-pr-526/main"],
       {
         cwd: repoDir,
       },
@@ -2059,7 +2258,7 @@ const x = 1;
     const afterPushStatus = await getCheckoutStatus(repoDir);
     expect(upstreamBeforePush).toBeNull();
     expect(prRemoteMain).toBe(localHead);
-    expect(getBranchUpstream(repoDir)).toBe("otto-pr-526/main");
+    expect(getBranchUpstream(repoDir)).toBe("paseo-pr-526/main");
     expect(trackedPrRemoteHead).toBe(localHead);
     expect(afterPushStatus).toMatchObject({ aheadOfOrigin: 0, behindOfOrigin: 0 });
     expect(originBranch.status).toBe(1);
@@ -2071,11 +2270,11 @@ const x = 1;
     execFileSync("git", ["remote", "add", "origin", originDir], { cwd: repoDir });
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
     execFileSync("git", ["push", "-u", "origin", "feature"], { cwd: repoDir });
-    execFileSync("git", ["remote", "add", "otto-pr-1790", originDir], { cwd: repoDir });
-    execFileSync("git", ["config", "branch.feature.pushRemote", "otto-pr-1790"], {
+    execFileSync("git", ["remote", "add", "paseo-pr-1790", originDir], { cwd: repoDir });
+    execFileSync("git", ["config", "branch.feature.pushRemote", "paseo-pr-1790"], {
       cwd: repoDir,
     });
-    execFileSync("git", ["config", "remote.otto-pr-1790.push", "HEAD:refs/heads/feature"], {
+    execFileSync("git", ["config", "remote.paseo-pr-1790.push", "HEAD:refs/heads/feature"], {
       cwd: repoDir,
     });
     writeFileSync(join(repoDir, "feature.txt"), "feature edit\n");
@@ -2198,6 +2397,8 @@ const x = 1;
     expect(branches.find((branch) => branch.name === "feature/shared")).toMatchObject({
       hasLocal: true,
       hasRemote: true,
+      localAhead: 0,
+      localBehind: 0,
     });
     await expect(listBranchSuggestions(repoDir, { query: "origin/main" })).resolves.toEqual([
       expect.objectContaining({ name: "main", hasLocal: true, hasRemote: true }),
@@ -2233,6 +2434,8 @@ const x = 1;
     expect(branches.find((branch) => branch.name === "main")).toMatchObject({
       hasLocal: true,
       hasRemote: true,
+      localAhead: 1,
+      localBehind: 1,
     });
   });
 
@@ -2425,13 +2628,9 @@ const x = 1;
   });
 
   it("disables GitHub features when gh is unavailable", async () => {
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     const github = createGitHubServiceForStatus(null);
     github.getCurrentPullRequestStatus = async () => {
@@ -2444,13 +2643,9 @@ const x = 1;
 
   it("returns merged PR status when no open PR exists for the current branch", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     const status = await getPullRequestStatus(
       repoDir,
@@ -2472,13 +2667,9 @@ const x = 1;
 
   it("propagates S1 PR metadata and check display fields through checkout PR status", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     const status = await getPullRequestStatus(
       repoDir,
@@ -2490,7 +2681,7 @@ const x = 1;
             {
               name: "server-tests",
               status: "success",
-              url: "https://github.com/otto-code-ai/otto-code/actions/runs/123",
+              url: "https://github.com/getpaseo/paseo/actions/runs/123",
               workflow: "Server CI",
               duration: "2m 14s",
             },
@@ -2500,11 +2691,11 @@ const x = 1;
     );
 
     expect(status).toEqual({
-      authState: "authenticated",
       githubFeaturesEnabled: true,
+      authState: "authenticated",
       status: {
         number: 123,
-        url: "https://github.com/otto-code-ai/otto-code/pull/123",
+        url: "https://github.com/getpaseo/paseo/pull/123",
         title: "Ship feature",
         state: "open",
         baseRefName: "main",
@@ -2515,7 +2706,7 @@ const x = 1;
           {
             name: "server-tests",
             status: "success",
-            url: "https://github.com/otto-code-ai/otto-code/actions/runs/123",
+            url: "https://github.com/getpaseo/paseo/actions/runs/123",
             workflow: "Server CI",
             duration: "2m 14s",
           },
@@ -2528,13 +2719,9 @@ const x = 1;
 
   it("uses an origin tracked head when the local branch name differs", async () => {
     execFileSync("git", ["checkout", "-b", "tender-parrot"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
     execFileSync("git", ["config", "branch.tender-parrot.remote", "origin"], { cwd: repoDir });
     execFileSync(
       "git",
@@ -2542,7 +2729,7 @@ const x = 1;
       { cwd: repoDir },
     );
 
-    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
 
     expect(lookupTarget).toMatchObject({ headRef: "refactor/workspace-scripts" });
     expect(lookupTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
@@ -2550,19 +2737,15 @@ const x = 1;
 
   it("keeps the local branch lookup when origin tracking uses the same head name", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
     execFileSync("git", ["config", "branch.feature.remote", "origin"], { cwd: repoDir });
     execFileSync("git", ["config", "branch.feature.merge", "refs/heads/feature"], {
       cwd: repoDir,
     });
 
-    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
 
     expect(lookupTarget).toMatchObject({ headRef: "feature" });
     expect(lookupTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
@@ -2584,12 +2767,12 @@ const x = 1;
       execFileSync("git", ["config", "branch.new-change.merge", "refs/heads/new-change"], {
         cwd: repoDir,
       });
-      const workspaceDir = join(ottoHome, "worktrees", "repo", "pr-worktree");
-      mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+      const workspaceDir = join(paseoHome, "worktrees", "repo", "pr-worktree");
+      mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
       execFileSync("git", ["worktree", "add", workspaceDir, "contributor/old-change"], {
         cwd: repoDir,
       });
-      writeOttoWorktreeMetadata(workspaceDir, {
+      writePaseoWorktreeMetadata(workspaceDir, {
         baseRefName: "main",
         changeRequestLookupTarget: {
           headRef: "old-change",
@@ -2601,7 +2784,7 @@ const x = 1;
 
       execFileSync("git", ["checkout", "new-change"], { cwd: workspaceDir });
       const requestedTargets: RequestedPullRequestTarget[] = [];
-      const facts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+      const facts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
       const result = await getPullRequestStatus(
         workspaceDir,
         createGitHubServiceRecordingPullRequestTargets({
@@ -2609,7 +2792,7 @@ const x = 1;
           statusOverrides: { state, isMerged },
         }),
         { force: true, reason: "current-checkout-pr" },
-        { ottoHome, facts },
+        { paseoHome, facts },
       );
 
       expect(requestedTargets).toEqual([expect.objectContaining({ headRef: "new-change" })]);
@@ -2626,10 +2809,10 @@ const x = 1;
       cwd: repoDir,
     });
     execFileSync("git", ["branch", "placeholder"], { cwd: repoDir });
-    const workspaceDir = join(ottoHome, "worktrees", "repo", "renamed-by-agent");
-    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "renamed-by-agent");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
     execFileSync("git", ["worktree", "add", workspaceDir, "placeholder"], { cwd: repoDir });
-    writeOttoWorktreeMetadata(workspaceDir, {
+    writePaseoWorktreeMetadata(workspaceDir, {
       baseRefName: "main",
       changeRequestLookupTarget: {
         headRef: "placeholder",
@@ -2639,12 +2822,12 @@ const x = 1;
 
     execFileSync("git", ["branch", "-m", "agent-chosen-name"], { cwd: workspaceDir });
     const requestedTargets: RequestedPullRequestTarget[] = [];
-    const facts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+    const facts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
     const result = await getPullRequestStatus(
       workspaceDir,
       createGitHubServiceRecordingPullRequestTargets({ requestedTargets }),
       { force: true, reason: "agent-renamed-branch-pr" },
-      { ottoHome, facts },
+      { paseoHome, facts },
     );
 
     expect(requestedTargets).toEqual([expect.objectContaining({ headRef: "agent-chosen-name" })]);
@@ -2663,10 +2846,10 @@ const x = 1;
     execFileSync("git", ["remote", "add", "fork", "https://github.com/other/repo.git"], {
       cwd: repoDir,
     });
-    const workspaceDir = join(ottoHome, "worktrees", "repo", "pinned-worktree");
-    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "pinned-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
     execFileSync("git", ["worktree", "add", workspaceDir, "feature/pinned"], { cwd: repoDir });
-    writeOttoWorktreeMetadata(workspaceDir, {
+    writePaseoWorktreeMetadata(workspaceDir, {
       baseRefName: "main",
       changeRequestLookupTarget: {
         headRef: "feature/pinned",
@@ -2680,115 +2863,32 @@ const x = 1;
       cwd: repoDir,
     });
 
-    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome)).toMatchObject({
+    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, paseoHome)).toMatchObject({
       headRef: "feature/pinned",
     });
   });
 
   it("uses the checked-out branch when a managed worktree has no metadata", async () => {
     execFileSync("git", ["branch", "feature/unpinned"], { cwd: repoDir });
-    const workspaceDir = join(ottoHome, "worktrees", "repo", "unpinned-worktree");
-    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "unpinned-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
     execFileSync("git", ["worktree", "add", workspaceDir, "feature/unpinned"], {
       cwd: repoDir,
     });
 
-    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome)).toMatchObject({
+    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, paseoHome)).toMatchObject({
       headRef: "feature/unpinned",
-    });
-  });
-
-  it("reconciles a PR worktree lookup from current branch tracking", async () => {
-    execFileSync("git", ["remote", "add", "origin", "https://github.com/acme/repo.git"], {
-      cwd: repoDir,
-    });
-    execFileSync("git", ["branch", "contributor/old-change"], { cwd: repoDir });
-    execFileSync("git", ["branch", "new-change"], { cwd: repoDir });
-    execFileSync("git", ["config", "branch.new-change.remote", "origin"], { cwd: repoDir });
-    execFileSync("git", ["config", "branch.new-change.merge", "refs/heads/new-change"], {
-      cwd: repoDir,
-    });
-    const workspaceDir = join(ottoHome, "worktrees", "repo", "pr-worktree");
-    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
-    execFileSync("git", ["worktree", "add", workspaceDir, "contributor/old-change"], {
-      cwd: repoDir,
-    });
-    const staleLookupTarget = {
-      headRef: "old-change",
-      headRepositoryOwner: "contributor",
-      changeRequestNumber: 41,
-    };
-    writeOttoWorktreeMetadata(workspaceDir, {
-      baseRefName: "main",
-      changeRequestLookupTarget: {
-        ...staleLookupTarget,
-        localBranchName: "contributor/old-change",
-      },
-    });
-
-    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome)).toMatchObject({
-      headRef: "old-change",
-      headRepositoryOwner: "contributor",
-    });
-
-    execFileSync("git", ["checkout", "new-change"], { cwd: workspaceDir });
-    startGitCommandMetrics();
-    const switchedTarget = await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome);
-    const commands = stopGitCommandMetrics().commands.map((command) => command.args[0]);
-
-    expect(switchedTarget).toMatchObject({ headRef: "new-change" });
-    expect(switchedTarget).not.toHaveProperty("headRepositoryOwner");
-    expect(commands).not.toContain("fetch");
-
-    writeOttoWorktreeMetadata(workspaceDir, {
-      baseRefName: "main",
-      changeRequestLookupTarget: {
-        ...staleLookupTarget,
-        localBranchName: "new-change",
-      },
-    });
-    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome)).toMatchObject({
-      headRef: "old-change",
-      headRepositoryOwner: "contributor",
-    });
-
-    execFileSync(
-      "git",
-      ["remote", "add", "enterprise-fork", "git@github.acme.internal:contributor/repo.git"],
-      {
-        cwd: repoDir,
-      },
-    );
-    execFileSync("git", ["config", "branch.new-change.remote", "enterprise-fork"], {
-      cwd: repoDir,
-    });
-    execFileSync("git", ["config", "branch.new-change.merge", "refs/heads/old-change"], {
-      cwd: repoDir,
-    });
-    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome)).toMatchObject({
-      headRef: "old-change",
-      headRepositoryOwner: "contributor",
-    });
-
-    execFileSync("git", ["branch", "local-upstream"], { cwd: repoDir });
-    execFileSync("git", ["config", "branch.new-change.remote", "."], { cwd: repoDir });
-    execFileSync("git", ["config", "branch.new-change.merge", "refs/heads/local-upstream"], {
-      cwd: repoDir,
-    });
-    expect(await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome)).toMatchObject({
-      headRef: "old-change",
-      headRepositoryOwner: "contributor",
     });
   });
 
   it("uses the checked-out branch instead of ambiguous legacy PR metadata", async () => {
     execFileSync("git", ["branch", "contributor/old-change-1"], { cwd: repoDir });
-    const workspaceDir = join(ottoHome, "worktrees", "repo", "legacy-pr-worktree");
-    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "legacy-pr-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
     execFileSync("git", ["worktree", "add", workspaceDir, "contributor/old-change-1"], {
       cwd: repoDir,
     });
-    writeOttoWorktreeMetadata(workspaceDir, {
+    writePaseoWorktreeMetadata(workspaceDir, {
       baseRefName: "main",
       changeRequestLookupTarget: {
         headRef: "old-change",
@@ -2797,7 +2897,7 @@ const x = 1;
       },
     });
 
-    const lookupTarget = await readPullRequestLookupTargetFromFacts(workspaceDir, ottoHome);
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(workspaceDir, paseoHome);
 
     expect(lookupTarget).toMatchObject({ headRef: "contributor/old-change-1" });
   });
@@ -2805,12 +2905,12 @@ const x = 1;
   it("does not apply a legacy fork hint to an ownerless branch with the same head", async () => {
     execFileSync("git", ["branch", "contributor/old-change"], { cwd: repoDir });
     execFileSync("git", ["branch", "old-change"], { cwd: repoDir });
-    const workspaceDir = join(ottoHome, "worktrees", "repo", "legacy-fork-worktree");
-    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "legacy-fork-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
     execFileSync("git", ["worktree", "add", workspaceDir, "contributor/old-change"], {
       cwd: repoDir,
     });
-    writeOttoWorktreeMetadata(workspaceDir, {
+    writePaseoWorktreeMetadata(workspaceDir, {
       baseRefName: "main",
       changeRequestLookupTarget: {
         headRef: "old-change",
@@ -2821,12 +2921,12 @@ const x = 1;
     const requestedTargets: RequestedPullRequestTarget[] = [];
     const forge = createGitHubServiceRecordingPullRequestTargets({ requestedTargets });
 
-    const forkFacts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+    const forkFacts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
     await getPullRequestStatus(
       workspaceDir,
       forge,
       { force: true, reason: "legacy-fork-branch" },
-      { ottoHome, facts: forkFacts },
+      { paseoHome, facts: forkFacts },
     );
     expect(requestedTargets.at(-1)).toMatchObject({
       headRef: "old-change",
@@ -2834,12 +2934,12 @@ const x = 1;
     });
 
     execFileSync("git", ["checkout", "old-change"], { cwd: workspaceDir });
-    const ownerlessFacts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+    const ownerlessFacts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
     await getPullRequestStatus(
       workspaceDir,
       forge,
       { force: true, reason: "ownerless-same-head" },
-      { ottoHome, facts: ownerlessFacts },
+      { paseoHome, facts: ownerlessFacts },
     );
 
     expect(requestedTargets).toEqual([
@@ -2870,12 +2970,12 @@ const x = 1;
     execFileSync("git", ["config", "branch.mixedowner/old-change.merge", "refs/heads/old-change"], {
       cwd: repoDir,
     });
-    const workspaceDir = join(ottoHome, "worktrees", "repo", "legacy-enterprise-worktree");
-    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "legacy-enterprise-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
     execFileSync("git", ["worktree", "add", workspaceDir, "mixedowner/old-change"], {
       cwd: repoDir,
     });
-    writeOttoWorktreeMetadata(workspaceDir, {
+    writePaseoWorktreeMetadata(workspaceDir, {
       baseRefName: "main",
       changeRequestLookupTarget: {
         headRef: "old-change",
@@ -2886,12 +2986,12 @@ const x = 1;
     const requestedTargets: RequestedPullRequestTarget[] = [];
     const forge = createGitHubServiceRecordingPullRequestTargets({ requestedTargets });
 
-    const facts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+    const facts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
     await getPullRequestStatus(
       workspaceDir,
       forge,
       { force: true, reason: "legacy-enterprise-owner" },
-      { ottoHome, facts },
+      { paseoHome, facts },
     );
 
     expect(requestedTargets).toEqual([
@@ -2906,12 +3006,12 @@ const x = 1;
     execFileSync("git", ["config", "branch.mixedowner/old-change.remote", "replacement-fork"], {
       cwd: repoDir,
     });
-    const repointedFacts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+    const repointedFacts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
     await getPullRequestStatus(
       workspaceDir,
       forge,
       { force: true, reason: "repointed-enterprise-owner" },
-      { ottoHome, facts: repointedFacts },
+      { paseoHome, facts: repointedFacts },
     );
 
     expect(requestedTargets.at(-1)).toMatchObject({
@@ -2922,12 +3022,12 @@ const x = 1;
 
   it("keeps a ref-only change request across rename and follows a later branch switch", async () => {
     execFileSync("git", ["branch", "feature/gitlab-mr"], { cwd: repoDir });
-    const workspaceDir = join(ottoHome, "worktrees", "repo", "gitlab-mr-worktree");
-    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "gitlab-mr-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
     execFileSync("git", ["worktree", "add", workspaceDir, "feature/gitlab-mr"], {
       cwd: repoDir,
     });
-    writeOttoWorktreeMetadata(workspaceDir, {
+    writePaseoWorktreeMetadata(workspaceDir, {
       baseRefName: "main",
       changeRequestLookupTarget: {
         headRef: "feature/gitlab-mr",
@@ -2941,27 +3041,27 @@ const x = 1;
     const forge = createGitHubServiceRecordingPullRequestTargets({ requestedTargets });
 
     await renameCurrentBranch(workspaceCwd, "feature/renamed");
-    expect(readOttoWorktreeMetadata(workspaceDir)?.changeRequestLookupTarget).toMatchObject({
+    expect(readPaseoWorktreeMetadata(workspaceDir)?.changeRequestLookupTarget).toMatchObject({
       localBranchName: "feature/renamed",
     });
-    const renamedFacts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+    const renamedFacts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
     const renamedStatus = await getPullRequestStatus(
       workspaceDir,
       forge,
       { force: true, reason: "renamed-change-request" },
-      { ottoHome, facts: renamedFacts },
+      { paseoHome, facts: renamedFacts },
     );
 
     expect(requestedTargets).toEqual([expect.objectContaining({ headRef: "feature/gitlab-mr" })]);
     expect(renamedStatus.status?.headRefName).toBe("feature/gitlab-mr");
 
     execFileSync("git", ["checkout", "-b", "other-branch"], { cwd: workspaceDir });
-    const switchedFacts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+    const switchedFacts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
     await getPullRequestStatus(
       workspaceDir,
       forge,
       { force: true, reason: "switched-after-rename" },
-      { ottoHome, facts: switchedFacts },
+      { paseoHome, facts: switchedFacts },
     );
 
     expect(requestedTargets).toEqual([
@@ -2972,12 +3072,12 @@ const x = 1;
 
   it("moves a managed branch identity pin when its branch is renamed", async () => {
     execFileSync("git", ["branch", "feature/placeholder"], { cwd: repoDir });
-    const workspaceDir = join(ottoHome, "worktrees", "repo", "renamed-worktree");
-    mkdirSync(join(ottoHome, "worktrees", "repo"), { recursive: true });
+    const workspaceDir = join(paseoHome, "worktrees", "repo", "renamed-worktree");
+    mkdirSync(join(paseoHome, "worktrees", "repo"), { recursive: true });
     execFileSync("git", ["worktree", "add", workspaceDir, "feature/placeholder"], {
       cwd: repoDir,
     });
-    writeOttoWorktreeMetadata(workspaceDir, {
+    writePaseoWorktreeMetadata(workspaceDir, {
       baseRefName: "main",
       changeRequestLookupTarget: {
         headRef: "feature/placeholder",
@@ -2987,28 +3087,28 @@ const x = 1;
 
     await renameCurrentBranch(workspaceDir, "feature/generated");
 
-    expect(readOttoWorktreeMetadata(workspaceDir)?.changeRequestLookupTarget).toEqual({
+    expect(readPaseoWorktreeMetadata(workspaceDir)?.changeRequestLookupTarget).toEqual({
       headRef: "feature/generated",
       localBranchName: "feature/generated",
     });
-    const facts = await getCheckoutSnapshotFacts(workspaceDir, { ottoHome });
+    const facts = await getCheckoutSnapshotFacts(workspaceDir, { paseoHome });
     expect(facts.isGit && facts.pullRequestLookupTarget).toMatchObject({
       headRef: "feature/generated",
     });
   });
 
   it("keeps fork identity when the local and tracked branch names match", async () => {
-    execFileSync("git", ["remote", "add", "origin", "https://github.com/Draek2077/otto-code.git"], {
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
       cwd: repoDir,
     });
-    execFileSync("git", ["remote", "add", "contributor", "git@github.com:contributor/otto.git"], {
+    execFileSync("git", ["remote", "add", "contributor", "git@github.com:contributor/paseo.git"], {
       cwd: repoDir,
     });
     execFileSync("git", ["checkout", "-b", "topic"], { cwd: repoDir });
     execFileSync("git", ["config", "branch.topic.remote", "contributor"], { cwd: repoDir });
     execFileSync("git", ["config", "branch.topic.merge", "refs/heads/topic"], { cwd: repoDir });
 
-    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
 
     expect(lookupTarget).toMatchObject({
       headRef: "topic",
@@ -3016,18 +3116,44 @@ const x = 1;
     });
   });
 
-  it("does not attach an owner when the tracked remote is the same GitHub repository", async () => {
-    execFileSync("git", ["checkout", "-b", "local-feature"], { cwd: repoDir });
-    execFileSync("git", ["remote", "add", "origin", "git@github.com:otto-code-ai/otto-code.git"], {
+  it.each([
+    "git@github.com:contributor/paseo.git",
+    "https://github.com/contributor/paseo.git",
+    "ssh://git@github.com/contributor/paseo.git",
+  ])("preserves fork PR identity with branch.remote=%s", async (branchRemote) => {
+    execFileSync("git", ["remote", "add", "origin", "git@github.com:getpaseo/paseo.git"], {
       cwd: repoDir,
     });
-    execFileSync(
-      "git",
-      ["remote", "add", "upstream", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["checkout", "-b", "topic"], { cwd: repoDir });
+    execFileSync("git", ["config", "branch.topic.remote", branchRemote], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "branch.topic.pushRemote", branchRemote], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "branch.topic.merge", "refs/heads/topic"], {
+      cwd: repoDir,
+    });
+    const headSha = execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoDir,
+      encoding: "utf8",
+    }).trim();
+
+    expect(await readPullRequestLookupTargetFromFacts(repoDir, paseoHome)).toEqual({
+      headRef: "topic",
+      headRepositoryOwner: "contributor",
+      headSha,
+    });
+  });
+
+  it("does not attach an owner when the tracked remote is the same GitHub repository", async () => {
+    execFileSync("git", ["checkout", "-b", "local-feature"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "git@github.com:getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["remote", "add", "upstream", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
     execFileSync("git", ["config", "branch.local-feature.remote", "upstream"], {
       cwd: repoDir,
     });
@@ -3037,7 +3163,7 @@ const x = 1;
       { cwd: repoDir },
     );
 
-    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
 
     expect(lookupTarget).toMatchObject({ headRef: "refactor/workspace-scripts" });
     expect(lookupTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
@@ -3046,48 +3172,45 @@ const x = 1;
   it("keeps the fork owner when same-repo comparison is indeterminate", async () => {
     execFileSync("git", ["checkout", "-b", "chethanuk/main"], { cwd: repoDir });
     execFileSync("git", ["remote", "add", "origin", "not-a-github-remote"], { cwd: repoDir });
-    execFileSync("git", ["remote", "add", "otto-pr-345", "git@github.com:chethanuk/otto.git"], {
+    execFileSync("git", ["remote", "add", "paseo-pr-345", "git@github.com:chethanuk/paseo.git"], {
       cwd: repoDir,
     });
-    execFileSync("git", ["config", "branch.chethanuk/main.remote", "otto-pr-345"], {
+    execFileSync("git", ["config", "branch.chethanuk/main.remote", "paseo-pr-345"], {
       cwd: repoDir,
     });
     execFileSync("git", ["config", "branch.chethanuk/main.merge", "refs/heads/main"], {
       cwd: repoDir,
     });
 
-    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
 
     expect(lookupTarget).toMatchObject({ headRef: "main", headRepositoryOwner: "chethanuk" });
+    expect(lookupTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it("uses the configured push remote for fork PR lookup when upstream is absent", async () => {
     execFileSync("git", ["checkout", "-b", "chethanuk/main"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
-    execFileSync("git", ["remote", "add", "otto-pr-345", "git@github.com:chethanuk/otto.git"], {
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
       cwd: repoDir,
     });
-    execFileSync("git", ["config", "branch.chethanuk/main.pushRemote", "otto-pr-345"], {
+    execFileSync("git", ["remote", "add", "paseo-pr-345", "git@github.com:chethanuk/paseo.git"], {
       cwd: repoDir,
     });
-    execFileSync("git", ["config", "remote.otto-pr-345.push", "HEAD:refs/heads/main"], {
+    execFileSync("git", ["config", "branch.chethanuk/main.pushRemote", "paseo-pr-345"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "remote.paseo-pr-345.push", "HEAD:refs/heads/main"], {
       cwd: repoDir,
     });
     const requestedTargets: RequestedPullRequestTarget[] = [];
     const github = createGitHubServiceRecordingPullRequestTargets({ requestedTargets });
 
-    const factsTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
+    const factsTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
     await getPullRequestStatus(
       repoDir,
       github,
       { force: true, reason: "push-remote-pr-lookup" },
-      { ottoHome },
+      { paseoHome },
     );
 
     expect(getBranchUpstream(repoDir)).toBeNull();
@@ -3100,35 +3223,28 @@ const x = 1;
 
   it("keeps the local branch lookup when same-repo tracking points at the base branch", async () => {
     execFileSync("git", ["checkout", "-b", "tender-parrot"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
     execFileSync("git", ["config", "branch.tender-parrot.remote", "origin"], { cwd: repoDir });
     execFileSync("git", ["config", "branch.tender-parrot.merge", "refs/heads/main"], {
       cwd: repoDir,
     });
 
-    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
 
     expect(lookupTarget).toMatchObject({ headRef: "tender-parrot" });
+    expect(lookupTarget?.headSha).toMatch(/^[0-9a-f]{40}$/);
   });
 
   it("keeps the local branch lookup when a fork tracks the upstream base branch", async () => {
     execFileSync("git", ["checkout", "-b", "local-feature"], { cwd: repoDir });
-    execFileSync("git", ["remote", "add", "origin", "git@github.com:contributor/otto.git"], {
+    execFileSync("git", ["remote", "add", "origin", "git@github.com:contributor/paseo.git"], {
       cwd: repoDir,
     });
-    execFileSync(
-      "git",
-      ["remote", "add", "upstream", "https://github.com/Draek2077/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "upstream", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
     execFileSync("git", ["config", "branch.local-feature.remote", "upstream"], {
       cwd: repoDir,
     });
@@ -3136,7 +3252,7 @@ const x = 1;
       cwd: repoDir,
     });
 
-    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
 
     expect(lookupTarget).toMatchObject({ headRef: "local-feature" });
     expect(lookupTarget).not.toHaveProperty("headRepositoryOwner");
@@ -3159,7 +3275,7 @@ const x = 1;
       cwd: repoDir,
     });
 
-    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
+    const lookupTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
 
     expect(lookupTarget).toMatchObject({ headRef: "local-feature" });
     expect(lookupTarget).not.toHaveProperty("headRepositoryOwner");
@@ -3167,20 +3283,16 @@ const x = 1;
 
   it("derives the same origin tracked head for on-demand PR status reads", async () => {
     execFileSync("git", ["checkout", "-b", "tender-parrot"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
     execFileSync("git", ["config", "branch.tender-parrot.remote", "origin"], { cwd: repoDir });
     execFileSync(
       "git",
       ["config", "branch.tender-parrot.merge", "refs/heads/refactor/workspace-scripts"],
       { cwd: repoDir },
     );
-    const factsTarget = await readPullRequestLookupTargetFromFacts(repoDir, ottoHome);
+    const factsTarget = await readPullRequestLookupTargetFromFacts(repoDir, paseoHome);
     const requestedTargets: RequestedPullRequestTarget[] = [];
     const github = createGitHubServiceRecordingPullRequestTargets({ requestedTargets });
 
@@ -3188,7 +3300,7 @@ const x = 1;
       repoDir,
       github,
       { force: true, reason: "tracked-head-parity" },
-      { ottoHome },
+      { paseoHome },
     );
 
     expect(requestedTargets).toEqual([factsTarget]);
@@ -3196,17 +3308,13 @@ const x = 1;
 
   it("uses the tracked fork branch for PR worktree status lookup", async () => {
     execFileSync("git", ["checkout", "-b", "chethanuk/main"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
-    execFileSync("git", ["remote", "add", "otto-pr-345", "git@github.com:chethanuk/otto.git"], {
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
       cwd: repoDir,
     });
-    execFileSync("git", ["config", "branch.chethanuk/main.remote", "otto-pr-345"], {
+    execFileSync("git", ["remote", "add", "paseo-pr-345", "git@github.com:chethanuk/paseo.git"], {
+      cwd: repoDir,
+    });
+    execFileSync("git", ["config", "branch.chethanuk/main.remote", "paseo-pr-345"], {
       cwd: repoDir,
     });
     execFileSync("git", ["config", "branch.chethanuk/main.merge", "refs/heads/main"], {
@@ -3218,7 +3326,7 @@ const x = 1;
       requestedTargets,
       statusOverrides: {
         number: 345,
-        url: "https://github.com/otto-code-ai/otto-code/pull/345",
+        url: "https://github.com/getpaseo/paseo/pull/345",
       },
     });
 
@@ -3233,19 +3341,15 @@ const x = 1;
 
   it("returns closed-unmerged PR status without marking it as merged", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     const status = await getPullRequestStatus(
       repoDir,
       createGitHubServiceForStatus(
         createPullRequestStatus({
-          url: "https://github.com/otto-code-ai/otto-code/pull/999",
+          url: "https://github.com/getpaseo/paseo/pull/999",
           title: "Closed without merge",
           state: "closed",
         }),
@@ -3262,13 +3366,9 @@ const x = 1;
 
   it("caches PR status results for duplicate lookups", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     let callCount = 0;
     const github = createGitHubServiceForStatus(createPullRequestStatus(), {
@@ -3283,15 +3383,38 @@ const x = 1;
     expect(callCount).toBe(1);
   });
 
+  it("does not reuse a PR status cache entry after HEAD changes on the same branch", async () => {
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
+
+    const requestedShas: string[] = [];
+    const github = createGitHubServiceForStatus(null);
+    github.getCurrentPullRequestStatus = async (options) => {
+      if (options.headSha) requestedShas.push(options.headSha);
+      return createPullRequestStatus({
+        url: `https://github.com/getpaseo/paseo/pull/${requestedShas.length}`,
+      });
+    };
+
+    const first = await getPullRequestStatus(repoDir, github);
+    writeFileSync(join(repoDir, "next.txt"), "next\n");
+    execFileSync("git", ["add", "next.txt"], { cwd: repoDir });
+    execFileSync("git", ["commit", "-m", "next commit"], { cwd: repoDir });
+    const second = await getPullRequestStatus(repoDir, github);
+
+    expect(first.status?.url).toContain("/pull/1");
+    expect(second.status?.url).toContain("/pull/2");
+    expect(requestedShas).toHaveLength(2);
+    expect(requestedShas[0]).not.toBe(requestedShas[1]);
+  });
+
   it("passes forced PR status reads through to the GitHub service", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     const requested: Array<{ force?: boolean; reason?: string }> = [];
     const github = createGitHubServiceForStatus(null);
@@ -3313,13 +3436,9 @@ const x = 1;
 
   it("expires cached PR status after the TTL", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     __setPullRequestStatusCacheTtlForTests(50);
     try {
@@ -3332,7 +3451,7 @@ const x = 1;
       github.getCurrentPullRequestStatus = async () => {
         callCount += 1;
         return createPullRequestStatus({
-          url: `https://github.com/otto-code-ai/otto-code/pull/${callCount}`,
+          url: `https://github.com/getpaseo/paseo/pull/${callCount}`,
         });
       };
       const first = await getPullRequestStatus(repoDir, github);
@@ -3348,13 +3467,9 @@ const x = 1;
 
   it("keeps stale PR status when a refresh hits a transient GitHub error", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     __setPullRequestStatusCacheTtlForTests(50);
     try {
@@ -3364,7 +3479,7 @@ const x = 1;
         callCount += 1;
         if (callCount === 1) {
           return createPullRequestStatus({
-            url: "https://github.com/otto-code-ai/otto-code/pull/123",
+            url: "https://github.com/getpaseo/paseo/pull/123",
           });
         }
         throw new GitHubCommandError({
@@ -3388,20 +3503,51 @@ const x = 1;
     }
   });
 
+  it("keeps stale PR status when a Gitea-family refresh hits a transient command error", async () => {
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "https://gitea.example.com/acme/repo.git"], {
+      cwd: repoDir,
+    });
+
+    __setPullRequestStatusCacheTtlForTests(50);
+    try {
+      let callCount = 0;
+      const service = createGitHubServiceForStatus(null);
+      service.getCurrentPullRequestStatus = async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          return createPullRequestStatus({ url: "https://gitea.example.com/acme/repo/pulls/7" });
+        }
+        throw new TeaCommandError({
+          args: ["pr", "list"],
+          cwd: repoDir,
+          exitCode: 1,
+          stderr: "request timed out",
+        });
+      };
+
+      const fresh = await getPullRequestStatus(repoDir, service);
+      await sleep(80);
+      const stale = await getPullRequestStatus(repoDir, service);
+
+      expect(stale).toEqual(fresh);
+      expect(stale.status?.url).toContain("/pulls/7");
+      expect(callCount).toBe(2);
+    } finally {
+      __resetPullRequestStatusCacheForTests();
+    }
+  });
+
   it("does not use stale PR status fallback for forced GitHub errors", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     const github = createGitHubServiceForStatus(null);
     github.getCurrentPullRequestStatus = async () =>
       createPullRequestStatus({
-        url: "https://github.com/otto-code-ai/otto-code/pull/123",
+        url: "https://github.com/getpaseo/paseo/pull/123",
       });
 
     const fresh = await getPullRequestStatus(repoDir, github);
@@ -3427,13 +3573,9 @@ const x = 1;
 
   it("clears stale PR status after a successful no-PR refresh", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     __setPullRequestStatusCacheTtlForTests(50);
     try {
@@ -3443,7 +3585,7 @@ const x = 1;
         callCount += 1;
         if (callCount === 1) {
           return createPullRequestStatus({
-            url: "https://github.com/otto-code-ai/otto-code/pull/123",
+            url: "https://github.com/getpaseo/paseo/pull/123",
           });
         }
         return null;
@@ -3455,8 +3597,8 @@ const x = 1;
 
       expect(fresh.status?.url).toContain("/pull/123");
       expect(cleared).toEqual({
-        authState: "authenticated",
         githubFeaturesEnabled: true,
+        authState: "authenticated",
         status: null,
       });
       expect(callCount).toBe(2);
@@ -3465,15 +3607,47 @@ const x = 1;
     }
   });
 
+  it("maps missing Gitea CLI PR status lookups to cli_missing auth state", async () => {
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "https://gitea.example.com/acme/repo.git"], {
+      cwd: repoDir,
+    });
+
+    const service = createGitHubServiceForStatus(null);
+    service.getCurrentPullRequestStatus = async () => {
+      throw new TeaCliMissingError();
+    };
+
+    await expect(getPullRequestStatus(repoDir, service)).resolves.toEqual({
+      status: null,
+      authState: "cli_missing",
+      githubFeaturesEnabled: false,
+    });
+  });
+
+  it("maps Gitea authentication PR status failures to unauthenticated auth state", async () => {
+    execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
+    execFileSync("git", ["remote", "add", "origin", "https://gitea.example.com/acme/repo.git"], {
+      cwd: repoDir,
+    });
+
+    const service = createGitHubServiceForStatus(null);
+    service.getCurrentPullRequestStatus = async () => {
+      throw new TeaAuthenticationError({ stderr: "401 unauthorized" });
+    };
+
+    await expect(getPullRequestStatus(repoDir, service)).resolves.toEqual({
+      status: null,
+      authState: "unauthenticated",
+      githubFeaturesEnabled: false,
+    });
+  });
+
   it("dedupes concurrent PR status lookups for the same cwd", async () => {
     execFileSync("git", ["checkout", "-b", "feature"], { cwd: repoDir });
-    execFileSync(
-      "git",
-      ["remote", "add", "origin", "https://github.com/otto-code-ai/otto-code.git"],
-      {
-        cwd: repoDir,
-      },
-    );
+    execFileSync("git", ["remote", "add", "origin", "https://github.com/getpaseo/paseo.git"], {
+      cwd: repoDir,
+    });
 
     let callCount = 0;
     const github = createGitHubServiceForStatus(createPullRequestStatus(), {
@@ -3526,6 +3700,7 @@ const x = 1;
       cwd: repoDir,
     });
     execFileSync("git", ["config", "commit.gpgsign", "true"], { cwd: repoDir });
+    execFileSync("git", ["config", "gpg.format", "openpgp"], { cwd: repoDir });
     execFileSync("git", ["config", "gpg.program", process.execPath], { cwd: repoDir });
 
     await expect(mergeToBase(repoDir, { baseRef: "main", mode: "squash" })).rejects.toThrow(
@@ -3533,7 +3708,7 @@ const x = 1;
     );
   });
 
-  it("uses stored baseRefName for Otto worktrees (no heuristics)", async () => {
+  it("uses stored baseRefName for Paseo worktrees (no heuristics)", async () => {
     // Create a non-default base branch with a unique commit.
     execFileSync("git", ["checkout", "-b", "develop"], { cwd: repoDir });
     writeFileSync(join(repoDir, "file.txt"), "develop\n");
@@ -3549,7 +3724,7 @@ const x = 1;
       cwd: repoDir,
       baseBranch: "develop",
       worktreeSlug: "feature",
-      ottoHome,
+      paseoHome,
     });
 
     writeFileSync(join(worktree.worktreePath, "feature.txt"), "feature\n");
@@ -3558,23 +3733,37 @@ const x = 1;
       cwd: worktree.worktreePath,
     });
 
-    const status = await getCheckoutStatus(worktree.worktreePath, { ottoHome });
+    const status = await getCheckoutStatus(worktree.worktreePath, { paseoHome });
     expect(status.isGit).toBe(true);
-    expect(status.baseRef).toBe("refs/heads/develop");
+    expect(status.baseRef).toBe("develop");
     expect(status.aheadBehind?.ahead).toBe(1);
 
-    const baseDiff = await getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { ottoHome });
+    const baseDiff = await getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { paseoHome });
     expect(baseDiff.diff).toContain("feature.txt");
     expect(baseDiff.diff).not.toContain("file.txt");
   });
 
-  it("excludes dirty working tree changes from Otto worktree base diffs", async () => {
+  it("names both refs when a requested base ref does not match the stored one", async () => {
+    const worktree = await createLegacyWorktreeForTest({
+      branchName: "mismatch-feature",
+      cwd: repoDir,
+      baseBranch: "main",
+      worktreeSlug: "mismatch-feature",
+      paseoHome,
+    });
+
+    await expect(
+      getCheckoutDiff(worktree.worktreePath, { mode: "base", baseRef: "other" }, { paseoHome }),
+    ).rejects.toThrow("Base ref mismatch: stored refs/heads/main, requested other");
+  });
+
+  it("excludes dirty working tree changes from Paseo worktree base diffs", async () => {
     const worktree = await createLegacyWorktreeForTest({
       branchName: "feature",
       cwd: repoDir,
       baseBranch: "main",
       worktreeSlug: "dirty-feature",
-      ottoHome,
+      paseoHome,
     });
 
     writeFileSync(join(worktree.worktreePath, "feature.txt"), "feature\n");
@@ -3589,7 +3778,7 @@ const x = 1;
     const baseDiff = await getCheckoutDiff(
       worktree.worktreePath,
       { mode: "base", includeStructured: true },
-      { ottoHome },
+      { paseoHome },
     );
 
     expect(baseDiff.diff).toContain("feature.txt");
@@ -3627,13 +3816,13 @@ const x = 1;
     });
     execFileSync("git", ["checkout", "main"], { cwd: repoDir });
 
-    // Create a Otto worktree configured to use develop as base.
+    // Create a Paseo worktree configured to use develop as base.
     const worktree = await createLegacyWorktreeForTest({
       branchName: "feature",
       cwd: repoDir,
       baseBranch: "develop",
       worktreeSlug: "merge-to-develop",
-      ottoHome,
+      paseoHome,
     });
 
     writeFileSync(join(worktree.worktreePath, "feature.txt"), "feature\n");
@@ -3646,7 +3835,7 @@ const x = 1;
       .trim();
 
     // No baseRef passed: should merge into the configured base (develop), not default/main.
-    await mergeToBase(worktree.worktreePath, {}, { ottoHome });
+    await mergeToBase(worktree.worktreePath, {}, { paseoHome });
 
     execFileSync("git", ["merge-base", "--is-ancestor", featureCommit, "develop"], {
       cwd: repoDir,
@@ -3666,7 +3855,7 @@ const x = 1;
       cwd: repoDir,
       baseBranch: "main",
       worktreeSlug: "missing-metadata",
-      ottoHome,
+      paseoHome,
     });
 
     writeFileSync(join(worktree.worktreePath, "feature.txt"), "feature\n");
@@ -3675,33 +3864,33 @@ const x = 1;
       cwd: worktree.worktreePath,
     });
 
-    const metadataPath = getOttoWorktreeMetadataPath(worktree.worktreePath);
+    const metadataPath = getPaseoWorktreeMetadataPath(worktree.worktreePath);
     rmSync(metadataPath, { force: true });
 
-    const baseDiff = await getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { ottoHome });
+    const baseDiff = await getCheckoutDiff(worktree.worktreePath, { mode: "base" }, { paseoHome });
     expect(baseDiff.diff).toContain("feature.txt");
 
-    const shortstat = await getCheckoutShortstat(worktree.worktreePath, { ottoHome });
+    const shortstat = await getCheckoutShortstat(worktree.worktreePath, { paseoHome });
     expect(shortstat).toEqual({ additions: 1, deletions: 0 });
   });
 
-  it("falls back to plain git checkout status when Otto worktree metadata is missing", async () => {
+  it("falls back to plain git checkout status when Paseo worktree metadata is missing", async () => {
     const worktree = await createLegacyWorktreeForTest({
       branchName: "feature",
       cwd: repoDir,
       baseBranch: "main",
       worktreeSlug: "missing-metadata-status-fallback",
-      ottoHome,
+      paseoHome,
     });
 
-    const metadataPath = getOttoWorktreeMetadataPath(worktree.worktreePath);
+    const metadataPath = getPaseoWorktreeMetadataPath(worktree.worktreePath);
     rmSync(metadataPath, { force: true });
 
-    const status = await getCheckoutStatus(worktree.worktreePath, { ottoHome });
+    const status = await getCheckoutStatus(worktree.worktreePath, { paseoHome });
     expect(status.isGit).toBe(true);
     expect(status.currentBranch).toBe("feature");
     expect(realpathSync.native(status.repoRoot)).toBe(realpathSync.native(worktree.worktreePath));
-    expect(status.isOttoOwnedWorktree).toBe(true);
+    expect(status.isPaseoOwnedWorktree).toBe(true);
     expect(realpathSync.native(status.mainRepoRoot ?? "")).toBe(realpathSync.native(repoDir));
     expect(status.baseRef).toBe("main");
   });
@@ -3712,7 +3901,7 @@ const x = 1;
         "worktree /home/user/repo",
         "branch refs/heads/main",
         "",
-        "worktree /home/user/.otto/worktrees/feature",
+        "worktree /home/user/.paseo/worktrees/feature",
         "branch refs/heads/feature",
         "",
       ].join("\n");
@@ -3721,7 +3910,7 @@ const x = 1;
       expect(entries).toHaveLength(2);
       expect(entries[0]).toEqual({ path: "/home/user/repo", branchRef: "refs/heads/main" });
       expect(entries[1]).toEqual({
-        path: "/home/user/.otto/worktrees/feature",
+        path: "/home/user/.paseo/worktrees/feature",
         branchRef: "refs/heads/feature",
       });
     });
@@ -3734,32 +3923,32 @@ const x = 1;
     });
   });
 
-  describe("isOttoWorktreePath", () => {
-    it("matches Unix .otto/worktrees/ paths", () => {
-      expect(isOttoWorktreePath("/home/user/.otto/worktrees/feature")).toBe(true);
+  describe("isPaseoWorktreePath", () => {
+    it("matches Unix .paseo/worktrees/ paths", () => {
+      expect(isPaseoWorktreePath("/home/user/.paseo/worktrees/feature")).toBe(true);
     });
 
-    it("matches Windows .otto\\worktrees\\ paths", () => {
-      expect(isOttoWorktreePath("C:\\Users\\dev\\.otto\\worktrees\\feature")).toBe(true);
+    it("matches Windows .paseo\\worktrees\\ paths", () => {
+      expect(isPaseoWorktreePath("C:\\Users\\dev\\.paseo\\worktrees\\feature")).toBe(true);
     });
 
-    it("matches worktrees under a custom OTTO_HOME", () => {
-      const customOttoHome = process.platform === "win32" ? "C:\\otto" : "/var/lib/otto";
+    it("matches worktrees under a custom PASEO_HOME", () => {
+      const customPaseoHome = process.platform === "win32" ? "C:\\paseo" : "/var/lib/paseo";
       const worktreePath =
         process.platform === "win32"
-          ? win32.join(customOttoHome, "worktrees", "project", "feature")
-          : `${customOttoHome}/worktrees/project/feature`;
+          ? win32.join(customPaseoHome, "worktrees", "project", "feature")
+          : `${customPaseoHome}/worktrees/project/feature`;
 
       expect(
-        isOttoWorktreePath(worktreePath, {
-          ottoHome: customOttoHome,
+        isPaseoWorktreePath(worktreePath, {
+          paseoHome: customPaseoHome,
         }),
       ).toBe(true);
     });
 
-    it("rejects paths without .otto/worktrees segment", () => {
-      expect(isOttoWorktreePath("/home/user/repo")).toBe(false);
-      expect(isOttoWorktreePath("C:\\Users\\dev\\repo")).toBe(false);
+    it("rejects paths without .paseo/worktrees segment", () => {
+      expect(isPaseoWorktreePath("/home/user/repo")).toBe(false);
+      expect(isPaseoWorktreePath("C:\\Users\\dev\\repo")).toBe(false);
     });
   });
 
@@ -3786,258 +3975,6 @@ const x = 1;
 
     it("is case insensitive on Windows paths", () => {
       expect(isDescendantPath("c:\\repo\\child", "C:\\repo")).toBe(true);
-    });
-  });
-
-  describe("commitPaths", () => {
-    function disableSigning(cwd: string): void {
-      execFileSync("git", ["config", "commit.gpgsign", "false"], { cwd });
-    }
-
-    function headSha(cwd: string): string {
-      return execFileSync("git", ["rev-parse", "HEAD"], { cwd }).toString().trim();
-    }
-
-    function committedFiles(cwd: string): string[] {
-      return execFileSync("git", ["show", "--name-only", "--pretty=format:"], { cwd })
-        .toString()
-        .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
-    }
-
-    it("commits only the selected paths and leaves other staged changes staged", async () => {
-      disableSigning(repoDir);
-      writeFileSync(join(repoDir, "file.txt"), "changed\n");
-      writeFileSync(join(repoDir, "selected-new.txt"), "new\n");
-      writeFileSync(join(repoDir, "unselected.txt"), "staged but not selected\n");
-      execFileSync("git", ["add", "unselected.txt"], { cwd: repoDir });
-
-      const result = await commitPaths(repoDir, {
-        message: "commit selection",
-        paths: ["file.txt", "selected-new.txt"],
-      });
-
-      expect(result).toEqual({ kind: "committed", sha: headSha(repoDir) });
-      expect(committedFiles(repoDir).sort()).toEqual(["file.txt", "selected-new.txt"]);
-      const stillStaged = execFileSync("git", ["diff", "--cached", "--name-only"], { cwd: repoDir })
-        .toString()
-        .trim();
-      expect(stillStaged).toBe("unselected.txt");
-    });
-
-    it("commits a deleted file", async () => {
-      disableSigning(repoDir);
-      rmSync(join(repoDir, "file.txt"));
-
-      const result = await commitPaths(repoDir, {
-        message: "remove file",
-        paths: ["file.txt"],
-      });
-
-      expect(result).toEqual({ kind: "committed", sha: headSha(repoDir) });
-      expect(committedFiles(repoDir)).toEqual(["file.txt"]);
-      const status = execFileSync("git", ["status", "--porcelain"], { cwd: repoDir })
-        .toString()
-        .trim();
-      expect(status).toBe("");
-    });
-
-    it("returns nothing_to_commit when the selected paths have no changes", async () => {
-      disableSigning(repoDir);
-
-      const result = await commitPaths(repoDir, {
-        message: "no changes",
-        paths: ["file.txt"],
-      });
-
-      expect(result).toEqual({ kind: "nothing_to_commit" });
-    });
-
-    it("returns nothing_to_commit for an empty selection without running git", async () => {
-      const result = await commitPaths(repoDir, { message: "empty", paths: [] });
-      expect(result).toEqual({ kind: "nothing_to_commit" });
-    });
-
-    it("rejects absolute and repo-escaping paths", async () => {
-      await expect(
-        commitPaths(repoDir, { message: "bad", paths: ["/etc/passwd"] }),
-      ).rejects.toBeInstanceOf(InvalidCommitPathError);
-      await expect(
-        commitPaths(repoDir, { message: "bad", paths: ["../outside.txt"] }),
-      ).rejects.toBeInstanceOf(InvalidCommitPathError);
-      await expect(
-        commitPaths(repoDir, { message: "bad", paths: ["C:\\windows\\system32"] }),
-      ).rejects.toBeInstanceOf(InvalidCommitPathError);
-    });
-
-    it("returns identity_missing when user.name and user.email are not configured", async () => {
-      const bareIdentityRepo = join(tempDir, "no-identity-repo");
-      mkdirSync(bareIdentityRepo, { recursive: true });
-      execFileSync("git", ["init", "-b", "main"], { cwd: bareIdentityRepo });
-      writeFileSync(join(bareIdentityRepo, "a.txt"), "a\n");
-
-      const savedGlobal = process.env.GIT_CONFIG_GLOBAL;
-      const savedNoSystem = process.env.GIT_CONFIG_NOSYSTEM;
-      process.env.GIT_CONFIG_GLOBAL = join(tempDir, "nonexistent-gitconfig");
-      process.env.GIT_CONFIG_NOSYSTEM = "1";
-      try {
-        const result = await commitPaths(bareIdentityRepo, {
-          message: "who am I",
-          paths: ["a.txt"],
-        });
-        expect(result).toEqual({
-          kind: "identity_missing",
-          missingName: true,
-          missingEmail: true,
-        });
-      } finally {
-        if (savedGlobal === undefined) {
-          delete process.env.GIT_CONFIG_GLOBAL;
-        } else {
-          process.env.GIT_CONFIG_GLOBAL = savedGlobal;
-        }
-        if (savedNoSystem === undefined) {
-          delete process.env.GIT_CONFIG_NOSYSTEM;
-        } else {
-          process.env.GIT_CONFIG_NOSYSTEM = savedNoSystem;
-        }
-      }
-    });
-
-    it("returns hook_failed with the hook output when pre-commit fails", async () => {
-      disableSigning(repoDir);
-      const hooksDir = join(repoDir, ".git", "hooks");
-      mkdirSync(hooksDir, { recursive: true });
-      const hookPath = join(hooksDir, "pre-commit");
-      writeFileSync(hookPath, "#!/bin/sh\necho 'lint failed: fix your code' >&2\nexit 1\n", {
-        mode: 0o755,
-      });
-      writeFileSync(join(repoDir, "file.txt"), "changed\n");
-      const before = headSha(repoDir);
-
-      const result = await commitPaths(repoDir, {
-        message: "should be blocked",
-        paths: ["file.txt"],
-      });
-
-      expect(result.kind).toBe("hook_failed");
-      if (result.kind === "hook_failed") {
-        expect(result.output).toContain("lint failed: fix your code");
-        expect(result.exitCode).toBe(1);
-      }
-      expect(headSha(repoDir)).toBe(before);
-    });
-
-    it("returns signing_failed when the configured signing program cannot run", async () => {
-      execFileSync("git", ["config", "commit.gpgsign", "true"], { cwd: repoDir });
-      execFileSync("git", ["config", "gpg.program", join(tempDir, "missing-gpg")], {
-        cwd: repoDir,
-      });
-      writeFileSync(join(repoDir, "file.txt"), "changed\n");
-
-      const result = await commitPaths(repoDir, {
-        message: "should not sign",
-        paths: ["file.txt"],
-      });
-
-      expect(result.kind).toBe("signing_failed");
-    });
-  });
-
-  describe("rollbackPaths", () => {
-    function porcelainStatus(cwd: string): string {
-      return execFileSync("git", ["status", "--porcelain"], { cwd }).toString().trim();
-    }
-
-    // Normalize CRLF so assertions hold on Windows checkouts (git autocrlf).
-    function readText(cwd: string, path: string): string {
-      return readFileSync(join(cwd, path), "utf8").replace(/\r\n/g, "\n");
-    }
-
-    it("restores a modified tracked file to its HEAD contents", async () => {
-      writeFileSync(join(repoDir, "file.txt"), "changed\n");
-
-      const result = await rollbackPaths(repoDir, { paths: ["file.txt"] });
-
-      expect(result).toEqual({ kind: "rolled_back", paths: ["file.txt"] });
-      expect(readText(repoDir, "file.txt")).toBe("hello\n");
-      expect(porcelainStatus(repoDir)).toBe("");
-    });
-
-    it("discards staged modifications to a tracked file", async () => {
-      writeFileSync(join(repoDir, "file.txt"), "staged change\n");
-      execFileSync("git", ["add", "file.txt"], { cwd: repoDir });
-
-      const result = await rollbackPaths(repoDir, { paths: ["file.txt"] });
-
-      expect(result.kind).toBe("rolled_back");
-      expect(readText(repoDir, "file.txt")).toBe("hello\n");
-      expect(porcelainStatus(repoDir)).toBe("");
-    });
-
-    it("restores a deleted tracked file", async () => {
-      rmSync(join(repoDir, "file.txt"));
-
-      const result = await rollbackPaths(repoDir, { paths: ["file.txt"] });
-
-      expect(result.kind).toBe("rolled_back");
-      expect(existsSync(join(repoDir, "file.txt"))).toBe(true);
-      expect(porcelainStatus(repoDir)).toBe("");
-    });
-
-    it("removes an untracked new file", async () => {
-      writeFileSync(join(repoDir, "untracked.txt"), "new\n");
-
-      const result = await rollbackPaths(repoDir, { paths: ["untracked.txt"] });
-
-      expect(result.kind).toBe("rolled_back");
-      expect(existsSync(join(repoDir, "untracked.txt"))).toBe(false);
-      expect(porcelainStatus(repoDir)).toBe("");
-    });
-
-    it("unstages and removes a newly added (staged) file", async () => {
-      writeFileSync(join(repoDir, "added.txt"), "new\n");
-      execFileSync("git", ["add", "added.txt"], { cwd: repoDir });
-
-      const result = await rollbackPaths(repoDir, { paths: ["added.txt"] });
-
-      expect(result.kind).toBe("rolled_back");
-      expect(existsSync(join(repoDir, "added.txt"))).toBe(false);
-      expect(porcelainStatus(repoDir)).toBe("");
-    });
-
-    it("rolls back a mixed set of paths and leaves unlisted changes untouched", async () => {
-      writeFileSync(join(repoDir, "file.txt"), "changed\n");
-      writeFileSync(join(repoDir, "untracked.txt"), "new\n");
-      writeFileSync(join(repoDir, "other.txt"), "left alone\n");
-
-      const result = await rollbackPaths(repoDir, {
-        paths: ["file.txt", "untracked.txt"],
-      });
-
-      expect(result).toEqual({
-        kind: "rolled_back",
-        paths: ["file.txt", "untracked.txt"],
-      });
-      expect(readText(repoDir, "file.txt")).toBe("hello\n");
-      expect(existsSync(join(repoDir, "untracked.txt"))).toBe(false);
-      // The unlisted untracked file is preserved.
-      expect(porcelainStatus(repoDir)).toBe("?? other.txt");
-    });
-
-    it("returns nothing_to_rollback for an empty selection without running git", async () => {
-      const result = await rollbackPaths(repoDir, { paths: [] });
-      expect(result).toEqual({ kind: "nothing_to_rollback" });
-    });
-
-    it("rejects absolute and repo-escaping paths", async () => {
-      await expect(rollbackPaths(repoDir, { paths: ["/etc/passwd"] })).rejects.toBeInstanceOf(
-        InvalidCommitPathError,
-      );
-      await expect(rollbackPaths(repoDir, { paths: ["../outside.txt"] })).rejects.toBeInstanceOf(
-        InvalidCommitPathError,
-      );
     });
   });
 });

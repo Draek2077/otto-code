@@ -1,4 +1,5 @@
 #!/usr/bin/env npx tsx
+// OTTO(identity): invoke Otto locally without downloading a CLI.
 
 /**
  * Phase 7: Logs Command Tests
@@ -18,7 +19,8 @@
  */
 
 import assert from "node:assert";
-import { $ } from "./helpers/zx-shell.ts";
+import { getAvailablePort } from "./helpers/network.ts";
+import { $ } from "zx";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -27,15 +29,15 @@ $.verbose = false;
 
 console.log("=== Logs Command Tests ===\n");
 
-// Get random port that's definitely not in use (never 6868)
-const port = 10000 + Math.floor(Math.random() * 50000);
-const ottoHome = await mkdtemp(join(tmpdir(), "otto-test-home-"));
+// Allocate an unused endpoint for connection-error and argument-validation checks.
+const port = await getAvailablePort();
+const paseoHome = await mkdtemp(join(tmpdir(), "paseo-test-home-"));
 
 try {
   // Test 1: logs --help shows options
   {
     console.log("Test 1: logs --help shows options");
-    const result = await $`npx otto logs --help`.nothrow();
+    const result = await $`npx --no-install otto logs --help`.nothrow();
     assert.strictEqual(result.exitCode, 0, "logs --help should exit 0");
     assert(
       result.stdout.includes("-f") || result.stdout.includes("--follow"),
@@ -51,7 +53,7 @@ try {
   {
     console.log("Test 2: logs requires ID argument");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto logs`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} logs`.nothrow();
     assert.notStrictEqual(result.exitCode, 0, "should fail without id");
     const output = result.stdout + result.stderr;
     const hasError =
@@ -67,7 +69,7 @@ try {
   {
     console.log("Test 3: logs handles daemon not running");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto logs abc123`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} logs abc123`.nothrow();
     // Should fail because daemon not running
     assert.notStrictEqual(result.exitCode, 0, "should fail when daemon not running");
     const output = result.stdout + result.stderr;
@@ -84,7 +86,7 @@ try {
     console.log("Test 4: logs -f (follow) flag is accepted");
     // Use timeout to avoid hanging on follow mode
     const result =
-      await $`timeout 1 bash -c 'OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto logs -f abc123' || true`.nothrow();
+      await $`timeout 1 bash -c 'PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} logs -f abc123' || true`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept -f flag");
     assert(!output.includes("error: option"), "should not have option parsing error");
@@ -95,7 +97,7 @@ try {
   {
     console.log("Test 5: logs --follow flag is accepted");
     const result =
-      await $`timeout 1 bash -c 'OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto logs --follow abc123' || true`.nothrow();
+      await $`timeout 1 bash -c 'PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} logs --follow abc123' || true`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept --follow flag");
     assert(!output.includes("error: option"), "should not have option parsing error");
@@ -106,7 +108,7 @@ try {
   {
     console.log("Test 6: logs --tail flag is accepted");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto logs --tail 50 abc123`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} logs --tail 50 abc123`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept --tail flag");
     assert(!output.includes("error: option"), "should not have option parsing error");
@@ -117,27 +119,27 @@ try {
   {
     console.log("Test 7: logs with ID and --host flag is accepted");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto logs abc123 --host localhost:${port}`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} logs abc123 --host localhost:${port}`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept --host flag");
     assert(!output.includes("error: option"), "should not have option parsing error");
     console.log("✓ logs with ID and --host flag is accepted\n");
   }
 
-  // Test 8: otto --help shows logs command
+  // Test 8: paseo --help shows logs command
   {
-    console.log("Test 8: otto --help shows logs command");
-    const result = await $`npx otto --help`.nothrow();
-    assert.strictEqual(result.exitCode, 0, "otto --help should exit 0");
+    console.log("Test 8: paseo --help shows logs command");
+    const result = await $`npx --no-install otto --help`.nothrow();
+    assert.strictEqual(result.exitCode, 0, "paseo --help should exit 0");
     assert(result.stdout.includes("logs"), "help should mention logs command");
-    console.log("✓ otto --help shows logs command\n");
+    console.log("✓ paseo --help shows logs command\n");
   }
 
   // Test 9: -q (quiet) flag is accepted with logs
   {
     console.log("Test 9: -q (quiet) flag is accepted with logs");
     const result =
-      await $`OTTO_HOST=localhost:${port} OTTO_HOME=${ottoHome} npx otto -q logs abc123`.nothrow();
+      await $`PASEO_HOME=${paseoHome} npx --no-install otto --host localhost:${port} -q logs abc123`.nothrow();
     const output = result.stdout + result.stderr;
     assert(!output.includes("unknown option"), "should accept -q flag");
     assert(!output.includes("error: option"), "should not have option parsing error");
@@ -145,7 +147,7 @@ try {
   }
 } finally {
   // Clean up temp directory
-  await rm(ottoHome, { recursive: true, force: true });
+  await rm(paseoHome, { recursive: true, force: true });
 }
 
 console.log("=== All logs tests passed ===");

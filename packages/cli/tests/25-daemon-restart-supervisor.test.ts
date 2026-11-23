@@ -6,21 +6,26 @@
  */
 
 import assert from "node:assert";
-import { spawn, spawnSync, type ChildProcess } from "node:child_process";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { spawn, type ChildProcess } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { $ } from "./helpers/zx-shell.ts";
-import { tryConnectToDaemon } from "../src/utils/client.ts";
+import { WebSocket } from "ws";
+import {
+  DaemonClient,
+  DaemonConnectionError,
+  type WebSocketLike,
+} from "@getpaseo/client/internal/daemon-client";
+import { readDaemonInstance, isSameDaemonInstance } from "@getpaseo/server/daemon-control";
+import { runLocalPaseo } from "./helpers/local-cli.ts";
 import { getAvailablePort } from "./helpers/network.ts";
 
-$.verbose = false;
-
 const pollIntervalMs = 100;
+const daemonReadyTimeoutMs = 120_000;
 const testEnv = {
-  OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
-  OTTO_DICTATION_ENABLED: process.env.OTTO_DICTATION_ENABLED ?? "0",
-  OTTO_VOICE_MODE_ENABLED: process.env.OTTO_VOICE_MODE_ENABLED ?? "0",
+  PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
+  PASEO_DICTATION_ENABLED: process.env.PASEO_DICTATION_ENABLED ?? "0",
+  PASEO_VOICE_MODE_ENABLED: process.env.PASEO_VOICE_MODE_ENABLED ?? "0",
 };
 
 function sleep(ms: number): Promise<void> {
@@ -40,62 +45,8 @@ function isProcessRunning(pid: number): boolean {
   }
 }
 
-function readWorkerPid(supervisorPid: number): number | null {
-  if (!Number.isInteger(supervisorPid) || supervisorPid <= 0) {
-    return null;
-  }
-
-  const result = spawnSync("ps", ["ax", "-o", "pid=,ppid="], { encoding: "utf8" });
-  if (result.status !== 0 || result.error) {
-    return null;
-  }
-
-  for (const line of result.stdout.split("\n")) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      continue;
-    }
-    const [pidToken, ppidToken] = trimmed.split(/\s+/);
-    const pid = Number.parseInt(pidToken ?? "", 10);
-    const ppid = Number.parseInt(ppidToken ?? "", 10);
-    if (!Number.isInteger(pid) || !Number.isInteger(ppid)) {
-      continue;
-    }
-    if (ppid === supervisorPid && pid > 0) {
-      return pid;
-    }
-  }
-
-  return null;
-}
-
-interface DaemonStatus {
-  localDaemon: string | null;
-  pid: number | null;
-}
-
-async function readDaemonStatus(ottoHome: string): Promise<DaemonStatus> {
-  const result =
-    await $`OTTO_HOME=${ottoHome} OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD} OTTO_DICTATION_ENABLED=${testEnv.OTTO_DICTATION_ENABLED} OTTO_VOICE_MODE_ENABLED=${testEnv.OTTO_VOICE_MODE_ENABLED} npx otto daemon status --home ${ottoHome} --json`.nothrow();
-  if (result.exitCode !== 0) {
-    return { localDaemon: null, pid: null };
-  }
-
-  try {
-    const parsed = JSON.parse(result.stdout) as { localDaemon?: unknown; pid?: unknown };
-    const localDaemon = typeof parsed.localDaemon === "string" ? parsed.localDaemon : null;
-    const pid =
-      typeof parsed.pid === "number" && Number.isInteger(parsed.pid) && parsed.pid > 0
-        ? parsed.pid
-        : null;
-    return { localDaemon, pid };
-  } catch {
-    return { localDaemon: null, pid: null };
-  }
-}
-
-async function readCapturedSupervisorLogs(ottoHome: string, recentLogs: string): Promise<string> {
-  const durableLogs = await readFile(join(ottoHome, "daemon.log"), "utf8").catch(() => "");
+async function readCapturedSupervisorLogs(paseoHome: string, recentLogs: string): Promise<string> {
+  const durableLogs = await readFile(join(paseoHome, "daemon.log"), "utf8").catch(() => "");
   return `${recentLogs}\n${durableLogs}`;
 }
 
@@ -118,25 +69,38 @@ async function waitFor(
 
 console.log("=== Daemon Restart (supervisor regression) ===\n");
 
-// This regression reads the supervised worker's PID via POSIX `ps ax -o
-// ppid=` and relies on SIGTERM delivery to the worker. Neither exists on
-// Windows (no `ps`, and process.kill maps signals to TerminateProcess), so the
-// test's premise does not hold there. Skip rather than fail on the platform.
-if (process.platform === "win32") {
-  console.log("Skipping restart supervisor regression on Windows (POSIX ps/SIGTERM required)");
-  process.exit(0);
-}
-
 const port = await getAvailablePort();
-const ottoHome = await mkdtemp(join(tmpdir(), "otto-restart-supervisor-"));
+const paseoHome = await mkdtemp(join(tmpdir(), "paseo-restart-supervisor-"));
 const cliRoot = join(import.meta.dirname, "..");
 const host = `127.0.0.1:${port}`;
 
 let supervisorProcess: ChildProcess | null = null;
 let recentSupervisorLogs = "";
+let client: DaemonClient | undefined;
+const availabilityLog = join(paseoHome, "availability.log");
 
 try {
-  console.log("Test 1: start supervisor-entrypoint in dev mode with isolated OTTO_HOME");
+  if (process.platform !== "win32") {
+    const provider = join(paseoHome, "slow-provider");
+    await writeFile(
+      provider,
+      `#!${process.execPath}
+import('node:fs').then(({appendFileSync}) => {
+  appendFileSync(${JSON.stringify(availabilityLog)}, JSON.stringify(process.argv.slice(2)) + "\\n");
+  setTimeout(() => console.log('provider 1.0.0'), 1800);
+});
+`,
+      { mode: 0o700 },
+    );
+    await writeFile(
+      join(paseoHome, "config.json"),
+      JSON.stringify({
+        version: 1,
+        agents: { providers: { claude: { command: { mode: "replace", argv: [provider] } } } },
+      }),
+    );
+  }
+  console.log("Test 1: start supervisor-entrypoint in dev mode with isolated PASEO_HOME");
 
   supervisorProcess = spawn(
     process.execPath,
@@ -144,11 +108,15 @@ try {
     {
       cwd: cliRoot,
       env: {
-        ...process.env,
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_")),
+        ),
+        HOME: paseoHome,
+        USERPROFILE: paseoHome,
         ...testEnv,
-        OTTO_HOME: ottoHome,
-        OTTO_LISTEN: host,
-        OTTO_RELAY_ENABLED: "false",
+        PASEO_HOME: paseoHome,
+        PASEO_LISTEN: host,
+        PASEO_RELAY_ENABLED: "false",
         CI: "true",
       },
       stdio: ["ignore", "pipe", "pipe"],
@@ -162,81 +130,92 @@ try {
     recentSupervisorLogs = (recentSupervisorLogs + chunk.toString()).slice(-8000);
   });
 
+  let supervisor = await readDaemonInstance(paseoHome);
   await waitFor(
     async () => {
-      const status = await readDaemonStatus(ottoHome);
-      return (
-        status.localDaemon === "running" && status.pid !== null && isProcessRunning(status.pid)
-      );
+      supervisor = await readDaemonInstance(paseoHome);
+      return supervisor?.pid === supervisorProcess?.pid && Boolean(supervisor?.listen);
     },
-    120000,
-    "daemon did not become running in time",
+    daemonReadyTimeoutMs,
+    "daemon did not publish its bound endpoint in time",
   );
-
-  const statusBeforeRestart = await readDaemonStatus(ottoHome);
-  const supervisorPid = statusBeforeRestart.pid;
-  assert.strictEqual(
-    statusBeforeRestart.localDaemon,
-    "running",
-    "daemon should be running before restart",
-  );
-  assert(supervisorPid !== null, "supervisor pid should exist once daemon starts");
+  assert(supervisor?.listen, "owned supervisor should publish its bound endpoint");
+  const supervisorPid = supervisor.pid;
+  assert.strictEqual(supervisorPid, supervisorProcess.pid, "PID lock should identify this launch");
   assert(isProcessRunning(supervisorPid), "supervisor process should be running");
-  const workerPidBeforeRestart = readWorkerPid(supervisorPid);
-  assert(workerPidBeforeRestart !== null, "supervisor should have a worker process before restart");
+
+  client = new DaemonClient({
+    url: `ws://${supervisor.listen}/ws`,
+    clientId: "supervisor-restart-test",
+    connectTimeoutMs: 5000,
+    webSocketFactory: (url) => new WebSocket(url) as unknown as WebSocketLike,
+  });
+  await client.connect();
+  // The app reads worker identity through the full RPC, not the bounded CLI observation.
+  const statusBeforeRestart = await client.getDaemonStatus();
+  const workerPidBeforeRestart = statusBeforeRestart.pid;
   assert(
     isProcessRunning(workerPidBeforeRestart),
     "worker process should be running before restart",
   );
+  if (process.platform !== "win32") {
+    assert.match(
+      await readFile(availabilityLog, "utf8"),
+      /\["--version"\]/,
+      "the configured slow provider was actually probed",
+    );
+  }
   console.log(
     `✓ daemon running with supervisor ${supervisorPid} and worker ${workerPidBeforeRestart}\n`,
   );
 
   console.log("Test 2: app-style restart request should restart worker and keep daemon healthy");
-  const client = await tryConnectToDaemon({ host, timeout: 5000 });
-  assert(client, "daemon client should connect");
-  try {
-    const restartAck = await client.restartServer("settings_update");
-    assert.strictEqual(
-      restartAck.status,
-      "restart_requested",
-      "restart request should be acknowledged",
-    );
-  } finally {
-    await client?.close().catch(() => undefined);
-  }
-
-  await waitFor(
-    () => {
-      const workerPid = readWorkerPid(supervisorPid);
-      return (
-        workerPid !== null && workerPid !== workerPidBeforeRestart && isProcessRunning(workerPid)
-      );
-    },
-    20000,
-    "worker pid did not change after restart request",
+  const restartAck = await client.restartServer("settings_update");
+  assert.strictEqual(
+    restartAck.status,
+    "restart_requested",
+    "restart request should be acknowledged",
   );
 
-  const workerPidAfterRestart = readWorkerPid(supervisorPid);
-  assert(workerPidAfterRestart !== null, "worker process should exist after restart");
+  // A restart includes worker startup and client reconnection, as initial readiness does.
+  const deadline = Date.now() + daemonReadyTimeoutMs;
+  let statusAfterRestart = statusBeforeRestart;
+  await waitFor(
+    async () => {
+      try {
+        const observed = await client!.getDaemonStatus({
+          timeout: Math.max(1, deadline - Date.now()),
+        });
+        if (observed.pid === workerPidBeforeRestart || !isProcessRunning(observed.pid))
+          return false;
+        statusAfterRestart = observed;
+        return true;
+      } catch (error) {
+        if (error instanceof DaemonConnectionError) return false;
+        throw error;
+      }
+    },
+    daemonReadyTimeoutMs,
+    "worker pid did not change after restart request",
+  );
   assert.notStrictEqual(
-    workerPidAfterRestart,
+    statusAfterRestart.pid,
     workerPidBeforeRestart,
     "worker pid should change after restart",
   );
-
-  const statusAfterRestart = await readDaemonStatus(ottoHome);
+  assert(isProcessRunning(statusAfterRestart.pid), "replacement worker should remain running");
+  const current = await readDaemonInstance(paseoHome);
+  assert(current?.listen, "daemon should remain bound after restart");
   assert.strictEqual(
-    statusAfterRestart.localDaemon,
-    "running",
-    "daemon should stay running after restart",
-  );
-  assert.strictEqual(
-    statusAfterRestart.pid,
+    current.pid,
     supervisorPid,
     "supervisor pid should remain stable across restart",
   );
-  const capturedSupervisorLogs = await readCapturedSupervisorLogs(ottoHome, recentSupervisorLogs);
+  assert(
+    isSameDaemonInstance(supervisor, current),
+    "supervisor start time should remain stable across restart",
+  );
+  const capturedSupervisorLogs = await readCapturedSupervisorLogs(paseoHome, recentSupervisorLogs);
   assert(
     capturedSupervisorLogs.includes('"msg":"Worker requested restart"') &&
       capturedSupervisorLogs.includes('"reason":"settings_update"'),
@@ -252,6 +231,7 @@ try {
   );
   console.log("✓ app-style restart keeps daemon healthy and restarts worker\n");
 } finally {
+  await client?.close();
   if (supervisorProcess?.pid && isProcessRunning(supervisorProcess.pid)) {
     supervisorProcess.kill("SIGTERM");
     await waitFor(
@@ -263,8 +243,8 @@ try {
     });
   }
 
-  await $`OTTO_HOME=${ottoHome} OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD=${testEnv.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD} OTTO_DICTATION_ENABLED=${testEnv.OTTO_DICTATION_ENABLED} OTTO_VOICE_MODE_ENABLED=${testEnv.OTTO_VOICE_MODE_ENABLED} npx otto daemon stop --home ${ottoHome} --force`.nothrow();
-  await rm(ottoHome, { recursive: true, force: true });
+  await runLocalPaseo(["daemon", "stop", "--home", paseoHome, "--force"]);
+  await rm(paseoHome, { recursive: true, force: true });
 }
 
 if (recentSupervisorLogs.trim().length === 0) {

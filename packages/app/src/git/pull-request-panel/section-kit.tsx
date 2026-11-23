@@ -8,7 +8,7 @@ import {
   getCheckPresentationTone,
   type CheckPresentationTone,
 } from "@/git/check-presentation.view";
-import { ChevronDown, ChevronRight } from "@/components/icons/material-icons";
+import { ChevronDown, ChevronRight } from "lucide-react-native";
 import type { Theme } from "@/styles/theme";
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
@@ -46,9 +46,9 @@ export function Section({
         onPress={onToggle}
       >
         {open ? (
-          <ThemedChevronDown size="sm" uniProps={foregroundMutedColorMapping} />
+          <ThemedChevronDown size={14} uniProps={foregroundMutedColorMapping} />
         ) : (
-          <ThemedChevronRight size="sm" uniProps={foregroundMutedColorMapping} />
+          <ThemedChevronRight size={14} uniProps={foregroundMutedColorMapping} />
         )}
         <Text style={sectionKitStyles.sectionTitle}>{title}</Text>
         <View style={sectionKitStyles.summaryWrap}>{summary}</View>
@@ -99,7 +99,7 @@ export function CheckPresentationSummaryPill({
   if (count === 0) return null;
   return (
     <View style={sectionKitStyles.summaryPill} testID={testID}>
-      <CheckPresentationIcon presentation={presentation} size="xs" />
+      <CheckPresentationIcon presentation={presentation} size={12} />
       <Text style={summaryPillTextStyle(getCheckPresentationTone(presentation))}>{count}</Text>
     </View>
   );

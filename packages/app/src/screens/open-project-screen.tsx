@@ -1,23 +1,14 @@
-import {
-  useCallback,
-  useMemo,
-  useEffect,
-  useRef,
-  useState,
-  type ComponentType,
-  type Ref,
-} from "react";
+import { useHosts, useHostRuntimeLastError } from "@/runtime/host-runtime";
+import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, Pressable, ScrollView } from "react-native";
-import { useTutorialAnchor } from "@/tutorial/use-tutorial-anchor";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useRouter } from "expo-router";
-import { FolderOpen, Inbox, Plug, Smartphone } from "@/components/icons/material-icons";
-import { OttoLogoWink } from "@/components/icons/otto-logo";
+import { FolderOpen, Inbox, Plug, Smartphone } from "lucide-react-native";
+import { PaseoLogo } from "@/components/icons/paseo-logo";
 import { CommunityLinks } from "@/components/community-links";
-import { ShortcutDiscoveryHint } from "@/components/shortcut-discovery-overlay";
 import { MenuHeader } from "@/components/headers/menu-header";
-import { useOpenProjectPicker } from "@/hooks/use-open-project-picker";
+import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import { useImportSession } from "@/hooks/use-import-session";
 import { useHostChooser } from "@/hosts/host-chooser";
 import { usePanelStore } from "@/stores/panel-store";
@@ -27,45 +18,24 @@ import {
   HEADER_INNER_HEIGHT_MOBILE,
   HEADER_TOP_PADDING_MOBILE,
 } from "@/constants/layout";
-import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { PairDeviceModal } from "@/desktop/components/pair-device-modal";
 import { buildSettingsHostSectionRoute } from "@/utils/host-routes";
-import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
-import { isWeb } from "@/constants/platform";
-import type { KeyboardActionId } from "@/keyboard/actions";
-import type { IconSizeProp } from "@/components/icons/icon-size";
 
-interface HomeQuote {
-  text: string;
-  attribution: string;
-}
-
-// Picked once per app launch and reused for every render/remount of this screen in the same run.
-let sessionQuoteIndex: number | undefined;
-
-function getSessionQuoteIndex(count: number): number {
-  if (sessionQuoteIndex === undefined || sessionQuoteIndex >= count) {
-    sessionQuoteIndex = Math.floor(Math.random() * count);
-  }
-  return sessionQuoteIndex;
-}
+const WINDOW_CONTENT_DATASET = { "window-content": "" };
 
 export function OpenProjectScreen() {
   const { t } = useTranslation();
+  const hosts = useHosts();
   const router = useRouter();
   const openDesktopAgentList = usePanelStore((s) => s.openDesktopAgentList);
-  const openProjectPicker = useOpenProjectPicker();
+  const openProjectPicker = useOpenAddProject();
   const importSession = useImportSession();
   const chooseHost = useHostChooser();
   const localServerId = useLocalDaemonServerId();
   const [isPairDeviceOpen, setIsPairDeviceOpen] = useState(false);
 
-  const quotes = t("openProject.quotes", { returnObjects: true }) as HomeQuote[];
-  const quote = quotes[getSessionQuoteIndex(quotes.length)];
-
   const isCompactLayout = useIsCompactFormFactor();
-  const addProjectAnchorRef = useTutorialAnchor("add-project");
 
   useEffect(() => {
     if (!isCompactLayout) {
@@ -73,13 +43,12 @@ export function OpenProjectScreen() {
     }
   }, [isCompactLayout, openDesktopAgentList]);
 
+  const handleOpenPicker = useCallback(() => {
+    void openProjectPicker();
+  }, [openProjectPicker]);
+
   const handleOpenPairDevice = useCallback(() => setIsPairDeviceOpen(true), []);
   const handleClosePairDevice = useCallback(() => setIsPairDeviceOpen(false), []);
-
-  // Web gets the themed overlay scrollbar (auto-hiding, no gutter) at every
-  // width; native keeps its own indicator, which already auto-hides.
-  const scrollRef = useRef<ScrollView>(null);
-  const webScrollbar = useWebScrollViewScrollbar(scrollRef, { enabled: isWeb });
 
   const handleOpenProviders = useCallback(() => {
     chooseHost({
@@ -93,70 +62,56 @@ export function OpenProjectScreen() {
   return (
     <View style={styles.container}>
       <MenuHeader borderless />
-      {/* Wrapped so the overlay scrollbar can position against the scroll region. */}
-      <View style={styles.scrollWrap}>
-        <ScrollView
-          ref={scrollRef}
-          style={styles.scroll}
-          contentContainerStyle={styles.scrollContent}
-          onLayout={webScrollbar.onLayout}
-          onScroll={webScrollbar.onScroll}
-          onContentSizeChange={webScrollbar.onContentSizeChange}
-          scrollEventThrottle={16}
-          showsVerticalScrollIndicator={!isWeb}
-        >
-          <View style={styles.content}>
-            <TitlebarDragRegion />
-            <View style={styles.logo}>
-              <OttoLogoWink size={104} />
-            </View>
-            <View style={styles.quote}>
-              <Text style={styles.quoteText}>
-                “{quote.text}” {quote.attribution}
-              </Text>
-            </View>
-            <View style={styles.tiles}>
-              <HomeTile
-                icon={FolderOpen}
-                title={t("openProject.tiles.addProject.title")}
-                description={t("openProject.tiles.addProject.description")}
-                onPress={openProjectPicker}
-                testID="open-project-submit"
-                anchorRef={addProjectAnchorRef}
-                shortcutDiscoveryAction="agent.new"
-                accent
-              />
-              <HomeTile
-                icon={Inbox}
-                title={t("openProject.tiles.importSession.title")}
-                description={t("openProject.tiles.importSession.description")}
-                onPress={importSession.open}
-                testID="open-project-import-session"
-              />
-              <HomeTile
-                icon={Plug}
-                title={t("openProject.tiles.setupProviders.title")}
-                description={t("openProject.tiles.setupProviders.description")}
-                onPress={handleOpenProviders}
-                testID="open-project-setup-providers"
-              />
-              {localServerId ? (
-                <HomeTile
-                  icon={Smartphone}
-                  title={t("openProject.tiles.pairDevice.title")}
-                  description={t("openProject.tiles.pairDevice.description")}
-                  onPress={handleOpenPairDevice}
-                  testID="open-project-pair-device"
-                />
-              ) : null}
-            </View>
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        dataSet={WINDOW_CONTENT_DATASET}
+      >
+        <View style={styles.content}>
+          <View style={styles.logo}>
+            <PaseoLogo size={52} />
           </View>
-          <View style={styles.communityRow}>
-            <CommunityLinks />
+          {hosts.map((host) => (
+            <HostError key={host.serverId} serverId={host.serverId} label={host.label} />
+          ))}
+          <View style={styles.tiles}>
+            <HomeTile
+              icon={FolderOpen}
+              title={t("openProject.tiles.addProject.title")}
+              description={t("openProject.tiles.addProject.description")}
+              onPress={handleOpenPicker}
+              testID="open-project-submit"
+              accent
+            />
+            <HomeTile
+              icon={Inbox}
+              title={t("openProject.tiles.importSession.title")}
+              description={t("openProject.tiles.importSession.description")}
+              onPress={importSession.open}
+              testID="open-project-import-session"
+            />
+            <HomeTile
+              icon={Plug}
+              title={t("openProject.tiles.setupProviders.title")}
+              description={t("openProject.tiles.setupProviders.description")}
+              onPress={handleOpenProviders}
+              testID="open-project-setup-providers"
+            />
+            {localServerId ? (
+              <HomeTile
+                icon={Smartphone}
+                title={t("openProject.tiles.pairDevice.title")}
+                description={t("openProject.tiles.pairDevice.description")}
+                onPress={handleOpenPairDevice}
+                testID="open-project-pair-device"
+              />
+            ) : null}
           </View>
-        </ScrollView>
-        {webScrollbar.overlay}
-      </View>
+        </View>
+        <View style={styles.communityRow}>
+          <CommunityLinks />
+        </View>
+      </ScrollView>
       <PairDeviceModal
         serverId={localServerId ?? ""}
         visible={isPairDeviceOpen}
@@ -168,38 +123,32 @@ export function OpenProjectScreen() {
   );
 }
 
+function HostError({ serverId, label }: { serverId: string; label: string }) {
+  const error = useHostRuntimeLastError(serverId);
+  return error ? (
+    <Text accessibilityRole="alert" style={styles.hostError}>
+      {label}: {error}
+    </Text>
+  ) : null;
+}
+
 interface HomeTileProps {
-  icon: ComponentType<{ size?: IconSizeProp; color?: string }>;
+  icon: ComponentType<{ size: number; color: string }>;
   title: string;
   description: string;
   onPress: () => void;
   testID?: string;
-  anchorRef?: Ref<View>;
-  /** Registered action revealed directly on this home-screen tile. */
-  shortcutDiscoveryAction?: KeyboardActionId;
   accent?: boolean;
 }
 
-function HomeTile({
-  icon: Icon,
-  title,
-  description,
-  onPress,
-  testID,
-  anchorRef,
-  shortcutDiscoveryAction,
-  accent,
-}: HomeTileProps) {
-  const ThemedIcon = useMemo(
-    () =>
-      withUnistyles(Icon, (theme) => ({
-        color: accent ? theme.colors.accent : theme.colors.foregroundMuted,
-      })),
-    [Icon, accent],
-  );
+function HomeTile({ icon: Icon, title, description, onPress, testID, accent }: HomeTileProps) {
+  // useUnistyles is acceptable here: leaf component, off the hot path (home screen renders once).
+  const { theme } = useUnistyles();
   const [hovered, setHovered] = useState(false);
   const handleHoverIn = useCallback(() => setHovered(true), []);
   const handleHoverOut = useCallback(() => setHovered(false), []);
+
+  const iconColor = accent ? theme.colors.accent : theme.colors.foregroundMuted;
 
   const pressableStyle = useCallback(
     ({ pressed }: { pressed: boolean }) => [
@@ -212,24 +161,17 @@ function HomeTile({
 
   return (
     <Pressable
-      ref={anchorRef}
       onPress={onPress}
       onHoverIn={handleHoverIn}
       onHoverOut={handleHoverOut}
       testID={testID}
       style={pressableStyle}
     >
-      <ThemedIcon size="lg" />
+      <Icon size={20} color={iconColor} />
       <View style={styles.tileText}>
         <Text style={styles.tileTitle}>{title}</Text>
         <Text style={styles.tileDescription}>{description}</Text>
       </View>
-      {shortcutDiscoveryAction ? (
-        <ShortcutDiscoveryHint
-          action={shortcutDiscoveryAction}
-          style={styles.shortcutDiscoveryHint}
-        />
-      ) : null}
     </Pressable>
   );
 }
@@ -240,11 +182,6 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface0,
     userSelect: "none",
   },
-  scrollWrap: {
-    flex: 1,
-    minHeight: 0,
-    position: "relative",
-  },
   scroll: {
     flex: 1,
   },
@@ -254,36 +191,24 @@ const styles = StyleSheet.create((theme) => ({
   content: {
     position: "relative",
     flexGrow: 1,
+    flexShrink: 0,
     justifyContent: { xs: "flex-start", md: "center" },
     alignItems: "center",
     gap: 0,
     padding: theme.spacing[6],
-    // Compact: the logo is the first thing under the header, so it sits flush -
-    // any breathing room comes from the logo art's own internal margin.
-    paddingTop: { xs: 0, md: theme.spacing[6] },
-    // The header sits above this centering region, so reserve the same height
-    // at the bottom - otherwise the block centers in the below-header space
-    // and reads as sitting too low on the page.
-    paddingBottom: { xs: theme.spacing[4], md: theme.spacing[4] + HEADER_INNER_HEIGHT },
+    paddingTop: { xs: theme.spacing[12], md: theme.spacing[6] },
   },
   logo: {
-    marginBottom: theme.spacing[4],
+    marginBottom: theme.spacing[8],
   },
-  quote: {
-    alignItems: "center",
-    maxWidth: 380,
-    marginBottom: theme.spacing[3],
-    paddingHorizontal: theme.spacing[4],
-  },
-  quoteText: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontStyle: "italic",
+  hostError: {
+    color: theme.colors.destructive,
+    fontSize: theme.fontSize.base,
+    maxWidth: 452,
     textAlign: "center",
-    lineHeight: 20,
   },
   tiles: {
-    marginTop: { xs: theme.spacing[4], md: theme.spacing[6] },
+    marginTop: { xs: theme.spacing[6], md: theme.spacing[12] },
     width: "100%",
     maxWidth: 452,
     flexDirection: "row",
@@ -292,7 +217,6 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
   },
   tile: {
-    position: "relative",
     width: { xs: "100%", md: 220 },
     minHeight: { xs: 0, md: 132 },
     padding: theme.spacing[4],
@@ -301,17 +225,6 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.xl,
     gap: theme.spacing[3],
-    // Native-safe shadow: a CSS `boxShadow` string here would be shipped to the
-    // native `boxShadow` prop (an array) as a raw string and throw on every
-    // re-layout (e.g. rotation). The theme token composes the same look on web
-    // via unistyles and uses elevation on Android.
-    ...theme.shadow.sm,
-  },
-  shortcutDiscoveryHint: {
-    position: "absolute",
-    top: theme.spacing[2],
-    right: theme.spacing[2],
-    zIndex: 1,
   },
   tileHovered: {
     backgroundColor: theme.colors.surface2,
@@ -334,14 +247,14 @@ const styles = StyleSheet.create((theme) => ({
     lineHeight: 18,
   },
   communityRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 0,
-    paddingTop: theme.spacing[2],
+    flexShrink: 0,
     paddingBottom: {
       xs: HEADER_INNER_HEIGHT_MOBILE + HEADER_TOP_PADDING_MOBILE + theme.spacing[2],
       md: HEADER_INNER_HEIGHT + theme.spacing[2],
     },
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 0,
   },
 }));

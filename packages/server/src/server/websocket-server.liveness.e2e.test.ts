@@ -1,15 +1,10 @@
 import { expect, test } from "vitest";
 import { WebSocket, type RawData } from "ws";
-import { createTestOttoDaemon, type TestOttoDaemon } from "./test-utils/index.js";
-import { MAX_PHYSICAL_SOCKET_BUFFERED_BYTES } from "./websocket/physical-socket.js";
+import { createTestPaseoDaemon, type TestPaseoDaemon } from "./test-utils/index.js";
 import { WSOutboundMessageSchema, type WSOutboundMessage } from "./messages.js";
 
 const LARGE_REQUEST_BYTES = 512 * 1024;
-// Derived, never hardcoded: this burst only proves anything if it overruns the
-// daemon's buffered-byte bound, and that bound has already moved once (8 MiB ->
-// 64 MiB) and left a fixed count silently asserting nothing. The slack absorbs
-// the pong envelope and whatever the stale socket drains before it is paused.
-const BURST_MESSAGE_COUNT = Math.ceil(MAX_PHYSICAL_SOCKET_BUFFERED_BYTES / LARGE_REQUEST_BYTES) + 8;
+const BURST_MESSAGE_COUNT = 32;
 const TEST_TIMEOUT_MS = 30_000;
 
 interface SocketClose {
@@ -21,12 +16,12 @@ class ResumedPhysicalSocketSession {
   private replacement: WebSocket | null = null;
 
   private constructor(
-    private readonly daemon: TestOttoDaemon,
+    private readonly daemon: TestPaseoDaemon,
     private readonly original: WebSocket,
   ) {}
 
   static async launch(): Promise<ResumedPhysicalSocketSession> {
-    const daemon = await createTestOttoDaemon();
+    const daemon = await createTestPaseoDaemon();
     const original = await connectSocket(daemon.port, "stale-physical-socket");
     return new ResumedPhysicalSocketSession(daemon, original);
   }

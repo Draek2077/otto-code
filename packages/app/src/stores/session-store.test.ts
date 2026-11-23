@@ -1,20 +1,17 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
-import type { WorkspaceDescriptorPayload } from "@otto-code/protocol/messages";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import type { WorkspaceDescriptorPayload } from "@getpaseo/protocol/messages";
 
 import {
-  normalizeProjectDescriptor,
   normalizeWorkspaceDescriptor,
   selectAgentTurnPresentation,
   selectAgentTimelineState,
   useSessionStore,
   type Agent,
-  type AgentFileExplorerState,
   type WorkspaceDescriptor,
 } from "./session-store";
 import type { StreamItem } from "../types/stream";
-import { normalizeAgentSnapshot, projectAgentSnapshot } from "@/utils/agent-snapshots";
 import { reduceTurnLiveness, type TurnLivenessTransition } from "@/timeline/turn-liveness";
 
 function createTestAgent(agentId: string): Agent {
@@ -62,38 +59,6 @@ function applyTestTurn(
     return next;
   });
 }
-
-import { buildWorkspaceExplorerStateKey } from "@/file-explorer/state-key";
-
-function explorerState(): AgentFileExplorerState {
-  return {
-    directories: new Map(),
-    files: new Map(),
-    isLoading: false,
-    lastError: null,
-    pendingRequest: null,
-    currentPath: ".",
-    history: ["."],
-    lastVisitedPath: ".",
-    selectedEntryPath: null,
-  };
-}
-
-describe("normalizeProjectDescriptor", () => {
-  it("retains the custom icon revision for empty projects", () => {
-    const project = normalizeProjectDescriptor({
-      projectId: "project-1",
-      projectKey: "remote:github.com/acme/app",
-      projectDisplayName: "acme/app",
-      projectCustomName: null,
-      projectCustomIconRevision: "icon-rev-4",
-      projectRootPath: "/repo",
-      projectKind: "git",
-    });
-
-    expect(project.projectCustomIconRevision).toBe("icon-rev-4");
-  });
-});
 
 function createWorkspace(
   input: Partial<WorkspaceDescriptor> & Pick<WorkspaceDescriptor, "id">,
@@ -325,37 +290,6 @@ describe("agent timeline state", () => {
       cancellationRequestId: null,
     });
   });
-
-  it("presents a legacy running snapshot through the canonical normalization boundary", () => {
-    initializeTestSession();
-    const store = useSessionStore.getState();
-    const startedAt = new Date("2026-08-21T12:00:00.000Z");
-    const snapshot = {
-      ...projectAgentSnapshot(createTestAgent("agent-1")),
-      activeTurn: undefined,
-      status: "running" as const,
-      lastUserMessageAt: startedAt.toISOString(),
-    };
-    store.setAgents(
-      "test-server",
-      new Map([["agent-1", normalizeAgentSnapshot(snapshot, "test-server")]]),
-    );
-
-    expect(selectAgentTurnPresentation(store.getSession("test-server"), "agent-1")).toMatchObject({
-      isActive: true,
-      startedAt,
-    });
-    store.setAgents(
-      "test-server",
-      new Map([
-        ["agent-1", normalizeAgentSnapshot({ ...snapshot, activeTurn: null }, "test-server")],
-      ]),
-    );
-    expect(selectAgentTurnPresentation(store.getSession("test-server"), "agent-1")).toMatchObject({
-      isActive: false,
-      startedAt: null,
-    });
-  });
 });
 
 describe("message submission ordering", () => {
@@ -516,37 +450,14 @@ describe("message submission ordering", () => {
 });
 
 describe("normalizeWorkspaceDescriptor", () => {
-  it("retains project icon and worktree identity metadata", () => {
-    const workspace = normalizeWorkspaceDescriptor({
-      id: "1",
-      projectId: "project-1",
-      projectDisplayName: "Project 1",
-      projectCustomIconRevision: "icon-rev-2",
-      projectRootPath: "/repo",
-      workspaceDirectory: "/repo/.worktrees/topic",
-      projectKind: "git",
-      workspaceKind: "worktree",
-      worktreeSlug: "topic",
-      name: "topic",
-      status: "done",
-      statusEnteredAt: null,
-      archivingAt: null,
-      activityAt: null,
-      scripts: [],
-    });
-
-    expect(workspace.projectCustomIconRevision).toBe("icon-rev-2");
-    expect(workspace.worktreeSlug).toBe("topic");
-  });
-
   it("normalizes workspace scripts and invalid activity timestamps", () => {
     const scripts = [
       {
         scriptName: "web",
         type: "service" as const,
-        hostname: "web.otto.localhost",
+        hostname: "web.paseo.localhost",
         port: 3000,
-        proxyUrl: "http://web.otto.localhost:6868",
+        proxyUrl: "http://web.paseo.localhost:6767",
         lifecycle: "running" as const,
         health: "healthy" as const,
         exitCode: null,
@@ -574,9 +485,9 @@ describe("normalizeWorkspaceDescriptor", () => {
       {
         scriptName: "web",
         type: "service",
-        hostname: "web.otto.localhost",
+        hostname: "web.paseo.localhost",
         port: 3000,
-        proxyUrl: "http://web.otto.localhost:6868",
+        proxyUrl: "http://web.paseo.localhost:6767",
         lifecycle: "running",
         health: "healthy",
         exitCode: null,
@@ -729,7 +640,7 @@ describe("normalizeWorkspaceDescriptor", () => {
           currentBranch: "main",
           remoteUrl: "https://github.com/acme/app.git",
           worktreeRoot: "/repo/app",
-          isOttoOwnedWorktree: false,
+          isPaseoOwnedWorktree: false,
           mainRepoRoot: null,
         },
       },
@@ -744,7 +655,7 @@ describe("normalizeWorkspaceDescriptor", () => {
         currentBranch: "main",
         remoteUrl: "https://github.com/acme/app.git",
         worktreeRoot: "/repo/app",
-        isOttoOwnedWorktree: false,
+        isPaseoOwnedWorktree: false,
         mainRepoRoot: null,
       },
     });
@@ -767,9 +678,9 @@ describe("mergeWorkspaces", () => {
           {
             scriptName: "web",
             type: "service",
-            hostname: "web.otto.localhost",
+            hostname: "web.paseo.localhost",
             port: 3000,
-            proxyUrl: "http://web.otto.localhost:6868",
+            proxyUrl: "http://web.paseo.localhost:6767",
             lifecycle: "running",
             health: "healthy",
             exitCode: null,
@@ -783,9 +694,9 @@ describe("mergeWorkspaces", () => {
       {
         scriptName: "web",
         type: "service",
-        hostname: "web.otto.localhost",
+        hostname: "web.paseo.localhost",
         port: 3000,
-        proxyUrl: "http://web.otto.localhost:6868",
+        proxyUrl: "http://web.paseo.localhost:6767",
         lifecycle: "running",
         health: "healthy",
         exitCode: null,
@@ -887,102 +798,5 @@ describe("removeWorkspace", () => {
     expect(after.sessions).toBe(before.sessions);
     expect(after.session).toBe(before.session);
     expect(after.workspaces).toBe(before.workspaces);
-  });
-
-  // The explorer keeps one ExplorerDirectory per directory ever listed, which is
-  // the heaviest per-workspace map in the session - it must not outlive the
-  // workspace it describes, under either spelling of its key.
-  it("drops the removed workspace's file explorer listings", () => {
-    const store = useSessionStore.getState();
-    initializeTestSession();
-    const workspace = createWorkspace({ id: "/repo/main", workspaceDirectory: "/repo/main" });
-    store.setWorkspaces("test-server", new Map([[workspace.id, workspace]]));
-    store.setFileExplorer(
-      "test-server",
-      new Map([
-        [buildWorkspaceExplorerStateKey({ workspaceId: workspace.id }) ?? "", explorerState()],
-        [buildWorkspaceExplorerStateKey({ workspaceRoot: "/repo/main" }) ?? "", explorerState()],
-        [buildWorkspaceExplorerStateKey({ workspaceId: "/repo/other" }) ?? "", explorerState()],
-      ]),
-    );
-
-    store.removeWorkspace("test-server", workspace.id);
-
-    const { session } = getTestSessionReferences();
-    expect([...session.fileExplorer.keys()]).toEqual(["workspace:/repo/other"]);
-  });
-});
-describe("prompt suggestions", () => {
-  function readSuggestion(agentId: string): string | undefined {
-    return useSessionStore.getState().sessions["test-server"]?.agentPromptSuggestions.get(agentId);
-  }
-
-  it("stores, trims, and clears a per-agent suggestion", () => {
-    initializeTestSession();
-    const { setAgentPromptSuggestion } = useSessionStore.getState();
-
-    setAgentPromptSuggestion("test-server", "agent-1", "  Run the tests  ");
-    expect(readSuggestion("agent-1")).toBe("Run the tests");
-
-    // A blank/whitespace value clears the suggestion (drops the map entry).
-    setAgentPromptSuggestion("test-server", "agent-1", "   ");
-    expect(readSuggestion("agent-1")).toBeUndefined();
-
-    setAgentPromptSuggestion("test-server", "agent-1", "Ship it");
-    setAgentPromptSuggestion("test-server", "agent-1", null);
-    expect(readSuggestion("agent-1")).toBeUndefined();
-  });
-
-  it("keeps suggestions isolated per agent", () => {
-    initializeTestSession();
-    const { setAgentPromptSuggestion } = useSessionStore.getState();
-    setAgentPromptSuggestion("test-server", "agent-1", "one");
-    setAgentPromptSuggestion("test-server", "agent-2", "two");
-    expect(readSuggestion("agent-1")).toBe("one");
-    expect(readSuggestion("agent-2")).toBe("two");
-  });
-});
-
-describe("sent-prompt history", () => {
-  function readHistory(agentId: string): string[] | undefined {
-    return useSessionStore.getState().sessions["test-server"]?.sentPromptHistory.get(agentId);
-  }
-
-  it("appends sent prompts oldest→newest and clones an edited recall as the newest", () => {
-    initializeTestSession();
-    const { appendSentPrompt } = useSessionStore.getState();
-
-    appendSentPrompt("test-server", "agent-1", "first");
-    appendSentPrompt("test-server", "agent-1", "second");
-    // Editing a recalled "first" and sending it clones a fresh top entry rather
-    // than mutating the original.
-    appendSentPrompt("test-server", "agent-1", "first edited");
-
-    expect(readHistory("agent-1")).toEqual(["first", "second", "first edited"]);
-  });
-
-  it("trims entries and skips an immediate duplicate of the newest", () => {
-    initializeTestSession();
-    const { appendSentPrompt } = useSessionStore.getState();
-
-    appendSentPrompt("test-server", "agent-1", "  same  ");
-    appendSentPrompt("test-server", "agent-1", "same");
-    appendSentPrompt("test-server", "agent-1", "   ");
-
-    expect(readHistory("agent-1")).toEqual(["same"]);
-  });
-
-  it("caps the stack at the newest 100 entries", () => {
-    initializeTestSession();
-    const { appendSentPrompt } = useSessionStore.getState();
-
-    for (let i = 0; i < 105; i++) {
-      appendSentPrompt("test-server", "agent-1", `msg-${i}`);
-    }
-
-    const history = readHistory("agent-1");
-    expect(history).toHaveLength(100);
-    expect(history?.[0]).toBe("msg-5");
-    expect(history?.[99]).toBe("msg-104");
   });
 });

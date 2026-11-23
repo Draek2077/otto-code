@@ -1,11 +1,11 @@
-import type { AgentModelDefinition, ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
-import { normalizeAgentModelDefinition } from "@otto-code/protocol/agent-types";
-import { expandProviderSnapshot } from "@otto-code/protocol/provider-snapshot-codec";
+import type { AgentModelDefinition, ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
+import { normalizeAgentModelDefinition } from "@getpaseo/protocol/agent-types";
+import { expandProviderSnapshot } from "@getpaseo/protocol/provider-snapshot-codec";
 import type {
   GetProvidersSnapshotResponseMessage,
   ListProviderModelsResponseMessage,
   SessionOutboundMessage,
-} from "@otto-code/protocol/messages";
+} from "@getpaseo/protocol/messages";
 
 type ListProviderModelsPayload = ListProviderModelsResponseMessage["payload"];
 type GetProvidersSnapshotPayload = GetProvidersSnapshotResponseMessage["payload"];
@@ -14,7 +14,7 @@ type ProvidersSnapshotUpdatePayload = Extract<
   { type: "providers_snapshot_update" }
 >["payload"];
 
-// COMPAT(model-normalize): daemon normalizes at source (provider-registry) - shim covers older daemons; drop when floor >= v0.1.104
+// COMPAT(model-normalize): daemon normalizes at source (provider-registry) — shim covers older daemons; drop when floor >= v0.1.104
 function normalizeAgentModels(
   models: AgentModelDefinition[] | undefined,
 ): AgentModelDefinition[] | undefined {

@@ -1,7 +1,24 @@
 import { useCallback, useMemo, useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import {
+  withOttoBitbucketPrContext,
+  OttoBitbucketThreadAction,
+} from "@/otto/bitbucket/thread-actions"; // OTTO(bitbucket): isolated optional discussion controls.
 import { Image, Pressable, ScrollView, Text, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import {
+  CircleCheck,
+  CircleX,
+  Copy,
+  ExternalLink,
+  GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
+  MessageSquare,
+  MessageSquarePlus,
+  MoreHorizontal,
+  RotateCw,
+} from "lucide-react-native";
 import type { PressableStateCallbackType } from "react-native";
 import { useTranslation } from "react-i18next";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -23,26 +40,13 @@ import { useWorkspaceAttachmentsStore } from "@/attachments/workspace-attachment
 import { useToast } from "@/contexts/toast-context";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import { isNative } from "@/constants/platform";
-import { useIsCompactFormFactor, WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import {
+  PaneContentToolbar,
+  paneContentToolbarIconSize,
+  paneContentToolbarIconButtonStyle,
+} from "@/components/ui/pane-content-toolbar";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
-import { COMPACT_CONTROL_HEIGHT } from "@/components/ui/control-geometry";
-import {
-  ArrowDownUp,
-  CircleCheck,
-  CircleX,
-  Copy,
-  ExternalLink,
-  MessageSquare,
-  MessageSquarePlus,
-  MoreHorizontal,
-  RotateCw,
-} from "@/components/icons/material-icons";
-import {
-  GitMerge,
-  GitPullRequest,
-  GitPullRequestClosed,
-  GitPullRequestDraft,
-} from "@/components/icons/lucide";
 import { getForgePresentation } from "@/git/forge";
 import { CLIENT_FORGE_VIEW_MODULES } from "@/git/forges/view";
 import type { PaneNativeContribution } from "@/git/client-forge-module";
@@ -53,7 +57,6 @@ import {
   getActivityState,
   getCollapsedEntryIds,
   getVisibleEntries,
-  selectBulkAttachTargets,
 } from "./activity-state";
 import { formatPullRequestThreadPath } from "./activity-location";
 import {
@@ -64,18 +67,16 @@ import {
   canAddPullRequestActivityToChat,
 } from "./context-attachment";
 import { ChecksSection, getCheckIdentity } from "./checks-section";
-import { getActivityVerb, getStateLabel } from "./data";
+import { getActivityVerbKey, getStateLabelKey } from "./data";
 import type { PrPaneActivity, PrPaneCheck, PrPaneData, PrState } from "./data";
 import type { ForgeSpecificStatusFacts } from "@/git/merge-capability";
 import { CheckPresentationIcon } from "@/git/check-presentation.view";
 import {
   buildPrTimeline,
-  type PrTimelineDisplayOrder,
   type PrReviewEntry,
   type PrThreadEntry,
   type PrTimelineEntry,
 } from "./timeline";
-import { prPaneTimelineQueryKey } from "./query-keys";
 import {
   Section,
   SummaryPill,
@@ -89,7 +90,6 @@ const ThemedCircleCheck = withUnistyles(CircleCheck);
 const ThemedCircleX = withUnistyles(CircleX);
 const ThemedCopy = withUnistyles(Copy);
 const ThemedExternalLink = withUnistyles(ExternalLink);
-const ThemedArrowDownUp = withUnistyles(ArrowDownUp);
 const ThemedGitMerge = withUnistyles(GitMerge);
 const ThemedGitPullRequest = withUnistyles(GitPullRequest);
 const ThemedGitPullRequestClosed = withUnistyles(GitPullRequestClosed);
@@ -130,15 +130,15 @@ const PR_STATE_PRESENTATION: Record<PrState, PrStatePresentation> = {
 };
 
 const SUMMARY_COMMENT_ICON = (
-  <ThemedMessageSquare size="xs" uniProps={foregroundMutedColorMapping} />
+  <ThemedMessageSquare size={11} uniProps={foregroundMutedColorMapping} />
 );
-const SUMMARY_APPROVAL_ICON = <CheckPresentationIcon presentation="success" size="xs" />;
-const SUMMARY_CHANGES_REQUESTED_ICON = <CheckPresentationIcon presentation="failure" size="xs" />;
+const SUMMARY_APPROVAL_ICON = <CheckPresentationIcon presentation="success" size={12} />;
+const SUMMARY_CHANGES_REQUESTED_ICON = <CheckPresentationIcon presentation="failure" size={12} />;
 const ADD_TO_CHAT_MENU_ICON = (
-  <ThemedMessageSquarePlus size="sm" uniProps={foregroundMutedColorMapping} />
+  <ThemedMessageSquarePlus size={14} uniProps={foregroundMutedColorMapping} />
 );
-const COPY_MENU_ICON = <ThemedCopy size="sm" uniProps={foregroundMutedColorMapping} />;
-const OPEN_MENU_ICON = <ThemedExternalLink size="sm" uniProps={foregroundMutedColorMapping} />;
+const COPY_MENU_ICON = <ThemedCopy size={14} uniProps={foregroundMutedColorMapping} />;
+const OPEN_MENU_ICON = <ThemedExternalLink size={14} uniProps={foregroundMutedColorMapping} />;
 
 function handleMarkdownLinkPress(url: string): boolean {
   void openExternalUrl(url);
@@ -155,17 +155,17 @@ function kebabTriggerStyle({
   return [styles.kebabButton, hovered && styles.kebabButtonHovered];
 }
 
-function refreshButtonStyle({
-  hovered = false,
-  pressed = false,
-}: PressableStateCallbackType & { hovered?: boolean }) {
-  return [styles.refreshButton, (hovered || pressed) && styles.refreshButtonHovered];
+function refreshButtonStyle(
+  { hovered, pressed }: PressableStateCallbackType & { hovered?: boolean },
+  isCompact: boolean,
+) {
+  return paneContentToolbarIconButtonStyle({ hovered, pressed }, false, isCompact);
 }
 
 function renderKebabTriggerIcon({ hovered }: { hovered?: boolean }) {
   return (
     <ThemedMoreHorizontal
-      size="sm"
+      size={14}
       uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
     />
   );
@@ -203,9 +203,13 @@ export function PullRequestPane({
   workspaceAttachmentScopeKey?: string;
 }) {
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
+  const toolbarRefreshButtonStyle = useCallback(
+    (state: PressableStateCallbackType) => refreshButtonStyle(state, isCompact),
+    [isCompact],
+  );
   const toast = useToast();
   const daemonClient = useHostRuntimeClient(serverId);
-  const queryClient = useQueryClient();
   // COMPAT(githubCheckDetailsRpc): recognize the legacy capability on daemons
   // predating checkout.forge.get_check_details.*. Remove after 2027-01-17 once
   // the supported daemon floor is >= v0.2.0.
@@ -218,16 +222,11 @@ export function PullRequestPane({
   const forgeProvidersEnabled = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.forgeProviders === true,
   );
-  const canManageReviewThreads = useSessionStore(
-    (state) => state.sessions[serverId]?.serverInfo?.features?.forgeReviewThreads === true,
-  );
   const addWorkspaceAttachment = useWorkspaceAttachmentsStore(
     (state) => state.addWorkspaceAttachment,
   );
   const [checksOpen, setChecksOpen] = useState(true);
   const [activityOpen, setActivityOpen] = useState(true);
-  const [activityDisplayOrder, setActivityDisplayOrder] =
-    useState<PrTimelineDisplayOrder>("newest");
   const [activityState, setActivityState] = useState(getActivityState);
   const [loadingCheckKeys, setLoadingCheckKeys] = useState<ReadonlySet<string>>(() => new Set());
 
@@ -272,10 +271,7 @@ export function PullRequestPane({
       item.kind === "comment" || (item.kind === "review" && item.reviewState === "commented"),
   ).length;
 
-  const timelineEntries = useMemo(
-    () => buildPrTimeline(data.activity, activityDisplayOrder),
-    [activityDisplayOrder, data.activity],
-  );
+  const timelineEntries = useMemo(() => buildPrTimeline(data.activity), [data.activity]);
   const visibleEntries = useMemo(
     () =>
       getVisibleEntries(activityState, {
@@ -354,59 +350,22 @@ export function PullRequestPane({
     ],
   );
 
-  const invalidateTimeline = useCallback(
-    async () =>
-      queryClient.invalidateQueries({
-        queryKey: prPaneTimelineQueryKey({ serverId, cwd, prNumber: data.number }),
-      }),
-    [cwd, data.number, queryClient, serverId],
-  );
-
-  const handleSetThreadResolved = useCallback(
-    async (thread: PrThreadEntry, resolved: boolean) => {
-      if (!daemonClient || !canManageReviewThreads) return;
-      const response = await daemonClient.setHostingPullRequestThreadResolved({
-        cwd,
-        prNumber: data.number,
-        threadId: thread.id.replace(/^thread:/u, ""),
-        resolved,
-      });
-      if (!response.success) throw new Error(response.error ?? "Unable to update thread");
-      await invalidateTimeline();
-    },
-    [canManageReviewThreads, cwd, daemonClient, data.number, invalidateTimeline],
-  );
-
-  const handleSetReaction = useCallback(
-    async (
-      activity: PrPaneActivity,
-      content: NonNullable<PrPaneActivity["reactions"]>[number]["content"],
-      reacted: boolean,
-    ) => {
-      if (!daemonClient || !canManageReviewThreads) return;
-      const response = await daemonClient.setHostingPullRequestCommentReaction({
-        cwd,
-        prNumber: data.number,
-        commentId: activity.id,
-        content,
-        reacted,
-      });
-      if (!response.success) throw new Error(response.error ?? "Unable to update reaction");
-      await invalidateTimeline();
-    },
-    [canManageReviewThreads, cwd, daemonClient, data.number, invalidateTimeline],
-  );
-
-  // Which entries a bulk attach picks - resolved and outdated excluded - is
-  // decided in `selectBulkAttachTargets`, next to the collapse rules that use
-  // the same test. This only dispatches.
   const handleAddAllToChat = useCallback(() => {
-    const targets = selectBulkAttachTargets(visibleEntries);
-    for (const activity of targets.activities) {
-      handleAddActivityToChat(activity);
-    }
-    for (const thread of targets.threads) {
-      handleAddThreadToChat(thread);
+    for (const { entry } of visibleEntries) {
+      if (entry.kind === "single") {
+        handleAddActivityToChat(entry.activity);
+        continue;
+      }
+      if (entry.kind === "review") {
+        handleAddActivityToChat(entry.review);
+      }
+      const threads = entry.kind === "thread" ? [entry] : entry.threads;
+      for (const thread of threads) {
+        if (thread.isResolved === true) {
+          continue;
+        }
+        handleAddThreadToChat(thread);
+      }
     }
   }, [handleAddActivityToChat, handleAddThreadToChat, visibleEntries]);
 
@@ -442,26 +401,13 @@ export function PullRequestPane({
               workflowRunId: ref.workflowRunId,
               changeRequestNumber: data.number,
             };
-            // COMPAT(githubCheckDetailsRpc): added in v0.1.106, remove after 2026-12-28 once
-            // all supported clients use checkout.forge.get_check_details.*.
-            // The legacy RPC needs a concrete check-run id and knows nothing
-            // about change-request numbers; the forge one takes both optionally.
-            const legacyCheckRunId = request.checkRunId;
-            let payload = null;
-            if (canFetchForgeCheckDetails) {
-              payload = await daemonClient.checkoutForgeGetCheckDetails(request);
-            } else if (legacyCheckRunId !== undefined) {
-              payload = await daemonClient.checkoutGithubGetCheckDetails({
-                cwd: request.cwd,
-                repoOwner: request.repoOwner,
-                repoName: request.repoName,
-                checkRunId: legacyCheckRunId,
-                ...(request.workflowRunId !== undefined
-                  ? { workflowRunId: request.workflowRunId }
-                  : {}),
-              });
-            }
-            details = payload?.success ? payload.details : null;
+            // COMPAT(githubCheckDetailsRpc): use the legacy GitHub RPC with
+            // daemons predating checkout.forge.get_check_details.*. Remove after
+            // 2027-01-17 once the supported daemon floor is >= v0.2.0.
+            const payload = canFetchForgeCheckDetails
+              ? await daemonClient.checkoutForgeGetCheckDetails(request)
+              : await daemonClient.checkoutGithubGetCheckDetails(request);
+            details = payload.success ? payload.details : null;
           } catch {
             details = null;
           }
@@ -535,10 +481,11 @@ export function PullRequestPane({
       })
     : null;
 
-  return (
+  return withOttoBitbucketPrContext(
+    { serverId, cwd, number: data.number, forge: data.forge },
     <View style={styles.root} testID="pr-pane">
       <ScrollView style={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.toolbar} testID="pr-pane-toolbar">
+        <PaneContentToolbar style={styles.toolbar} testID="pr-pane-toolbar">
           <View style={styles.toolbarActions}>
             <Button
               variant="ghost"
@@ -560,21 +507,27 @@ export function PullRequestPane({
                   : t("workspace.git.diff.refreshState", { brand: forgePresentation.brandLabel })
               }
               testID="pr-pane-refresh"
-              style={refreshButtonStyle}
+              style={toolbarRefreshButtonStyle}
               hitSlop={8}
               onPress={handleRefresh}
               disabled={isRefreshing}
             >
               <View style={styles.refreshIcon}>
                 {isRefreshing ? (
-                  <ThemedLoadingSpinner size="sm" uniProps={foregroundMutedColorMapping} />
+                  <ThemedLoadingSpinner
+                    size={paneContentToolbarIconSize(isCompact)}
+                    uniProps={foregroundMutedColorMapping}
+                  />
                 ) : (
-                  <ThemedRotateCw size="sm" uniProps={foregroundMutedColorMapping} />
+                  <ThemedRotateCw
+                    size={paneContentToolbarIconSize(isCompact)}
+                    uniProps={foregroundMutedColorMapping}
+                  />
                 )}
               </View>
             </Pressable>
           ) : null}
-        </View>
+        </PaneContentToolbar>
 
         <Pressable onPress={handleOpenPrUrl} style={styles.header}>
           {({ hovered }) => (
@@ -588,9 +541,9 @@ export function PullRequestPane({
                 </Text>
               </Text>
               <View style={styles.metaLine}>
-                <StateIcon size="sm" uniProps={statePresentation.iconColor} />
+                <StateIcon size={14} uniProps={statePresentation.iconColor} />
                 <Text style={stateLabelStyle(data.state)} testID="pr-pane-state">
-                  {getStateLabel(data.state)}
+                  {t(getStateLabelKey(data.state))}
                 </Text>
                 {nativeHeaderMeta}
                 {repoIdentity ? (
@@ -599,7 +552,7 @@ export function PullRequestPane({
                   </Text>
                 ) : null}
                 <View style={hovered ? styles.headerLinkIcon : styles.headerLinkIconHidden}>
-                  <ThemedExternalLink size="xs" uniProps={foregroundMutedColorMapping} />
+                  <ThemedExternalLink size={12} uniProps={foregroundMutedColorMapping} />
                 </View>
               </View>
             </>
@@ -620,7 +573,7 @@ export function PullRequestPane({
         <View style={styles.divider} />
 
         <Section
-          title="Activity"
+          title={t("workspace.git.pr.sections.activity")}
           open={activityOpen}
           onToggle={handleToggleActivity}
           summary={
@@ -637,10 +590,6 @@ export function PullRequestPane({
         >
           {timelineEntries.length > 0 && attachEnabled && visibleEntries.length > 0 ? (
             <View style={styles.activityToolbar}>
-              <ActivityOrderMenu
-                displayOrder={activityDisplayOrder}
-                onDisplayOrderChange={setActivityDisplayOrder}
-              />
               <Button
                 variant="ghost"
                 size="xs"
@@ -648,13 +597,13 @@ export function PullRequestPane({
                 onPress={handleAddAllToChat}
                 disabled={activityLoading}
               >
-                Add all to chat
+                {t("workspace.git.pr.actions.addAllToChat")}
               </Button>
             </View>
           ) : null}
           {activityLoading ? <PrActivitySkeleton /> : null}
           {!activityLoading && visibleEntries.length === 0 ? (
-            <Text style={sectionKitStyles.emptyText}>No activity yet</Text>
+            <Text style={sectionKitStyles.emptyText}>{t("workspace.git.pr.empty.noActivity")}</Text>
           ) : null}
           {!activityLoading
             ? visibleEntries.map(({ entry, collapsed }) => (
@@ -667,18 +616,14 @@ export function PullRequestPane({
                   brandLabel={forgePresentation.brandLabel}
                   onAddToChat={handleAddActivityToChat}
                   onAddThreadToChat={handleAddThreadToChat}
-                  canManageReviewThreads={canManageReviewThreads}
-                  canReactToComments={data.commentReactionsSupported}
-                  onSetThreadResolved={handleSetThreadResolved}
-                  onSetReaction={handleSetReaction}
                   onToggleCollapsed={handleToggleEntryCollapsed}
                 />
               ))
             : null}
         </Section>
       </ScrollView>
-    </View>
-  );
+    </View>,
+  ); // OTTO(bitbucket): preserve the canonical PR pane and refresh owner.
 }
 
 function stateLabelStyle(state: PrState) {
@@ -688,64 +633,11 @@ function stateLabelStyle(state: PrState) {
   return styles.stateLabelClosed;
 }
 
-function ActivityOrderMenu({
-  displayOrder,
-  onDisplayOrderChange,
-}: {
-  displayOrder: PrTimelineDisplayOrder;
-  onDisplayOrderChange: (order: PrTimelineDisplayOrder) => void;
-}) {
-  const handleNewestFirst = useCallback(
-    () => onDisplayOrderChange("newest"),
-    [onDisplayOrderChange],
-  );
-  const handleOldestFirst = useCallback(
-    () => onDisplayOrderChange("oldest"),
-    [onDisplayOrderChange],
-  );
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        accessibilityLabel={`Activity order: ${displayOrder === "newest" ? "newest first" : "oldest first"}`}
-        style={activityOrderTriggerStyle}
-        testID="pr-pane-activity-order"
-      >
-        {({ hovered, open }) => (
-          <ThemedArrowDownUp
-            size="xs"
-            uniProps={hovered || open ? foregroundColorMapping : foregroundMutedColorMapping}
-          />
-        )}
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" width={180}>
-        <DropdownMenuItem onSelect={handleNewestFirst}>Newest first</DropdownMenuItem>
-        <DropdownMenuItem onSelect={handleOldestFirst}>Oldest first</DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function activityOrderTriggerStyle({
-  hovered = false,
-  open = false,
-}: PressableStateCallbackType & { hovered?: boolean; open?: boolean }) {
-  return [styles.activityOrderTrigger, (hovered || open) && styles.activityOrderTriggerActive];
-}
-
 interface TimelineEntryCallbacks {
   attachEnabled: boolean;
   brandLabel: string;
-  canManageReviewThreads: boolean;
-  canReactToComments: boolean;
   onAddToChat: (activity: PrPaneActivity) => void;
   onAddThreadToChat: (thread: PrThreadEntry) => void;
-  onSetThreadResolved: (thread: PrThreadEntry, resolved: boolean) => Promise<void>;
-  onSetReaction: (
-    activity: PrPaneActivity,
-    content: NonNullable<PrPaneActivity["reactions"]>[number]["content"],
-    reacted: boolean,
-  ) => Promise<void>;
   onToggleCollapsed: (entryId: string, collapsed: boolean) => void;
 }
 
@@ -792,8 +684,6 @@ function ActivityKebab({
   brandLabel,
   onMenuOpenChange,
   onAddToChat,
-  onSetReaction,
-  canReactToComments = false,
 }: {
   activity: PrPaneActivity;
   visible: boolean;
@@ -801,8 +691,6 @@ function ActivityKebab({
   brandLabel: string;
   onMenuOpenChange: (open: boolean) => void;
   onAddToChat: (activity: PrPaneActivity) => void;
-  onSetReaction?: TimelineEntryCallbacks["onSetReaction"];
-  canReactToComments?: boolean;
 }) {
   const { t } = useTranslation();
   const handleAddToChat = useCallback(() => onAddToChat(activity), [activity, onAddToChat]);
@@ -812,17 +700,6 @@ function ActivityKebab({
   const handleOpen = useCallback(() => {
     void openExternalUrl(activity.url);
   }, [activity.url]);
-  const handleReaction = useCallback(
-    (content: NonNullable<PrPaneActivity["reactions"]>[number]["content"]) => {
-      const existing = activity.reactions?.find((reaction) => reaction.content === content);
-      void onSetReaction?.(activity, content, !(existing?.viewerHasReacted ?? false));
-    },
-    [activity, onSetReaction],
-  );
-  const handleThumbsUpReaction = useCallback(() => handleReaction("THUMBS_UP"), [handleReaction]);
-  const handleHeartReaction = useCallback(() => handleReaction("HEART"), [handleReaction]);
-  const handleLaughReaction = useCallback(() => handleReaction("LAUGH"), [handleReaction]);
-  const handleEyesReaction = useCallback(() => handleReaction("EYES"), [handleReaction]);
 
   return (
     <View style={kebabSlotStyle(visible)} pointerEvents={visible ? "auto" : "none"}>
@@ -830,28 +707,20 @@ function ActivityKebab({
         <DropdownMenuTrigger
           hitSlop={8}
           style={kebabTriggerStyle}
-          accessibilityLabel="Comment actions"
+          accessibilityLabel={t("workspace.git.pr.accessibility.commentActions")}
         >
           {renderKebabTriggerIcon}
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" width={200}>
           {attachEnabled && canAddPullRequestActivityToChat(activity) ? (
             <DropdownMenuItem leading={ADD_TO_CHAT_MENU_ICON} onSelect={handleAddToChat}>
-              Add to chat
+              {t("workspace.git.pr.actions.addToChat")}
             </DropdownMenuItem>
           ) : null}
           {activity.body.trim() !== "" ? (
             <DropdownMenuItem leading={COPY_MENU_ICON} onSelect={handleCopy}>
               Copy
             </DropdownMenuItem>
-          ) : null}
-          {onSetReaction && canReactToComments && activity.kind === "comment" ? (
-            <>
-              <DropdownMenuItem onSelect={handleThumbsUpReaction}>👍 Thumbs up</DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleHeartReaction}>❤ Heart</DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleLaughReaction}>😄 Laugh</DropdownMenuItem>
-              <DropdownMenuItem onSelect={handleEyesReaction}>👀 Eyes</DropdownMenuItem>
-            </>
           ) : null}
           <DropdownMenuItem leading={OPEN_MENU_ICON} onSelect={handleOpen}>
             {t("workspace.git.pr.actions.openOn", { brand: brandLabel })}
@@ -896,11 +765,12 @@ function ActivityAvatar({ activity, size }: { activity: PrPaneActivity; size: nu
 }
 
 function ActivityVerb({ activity }: { activity: PrPaneActivity }) {
-  const verb = getActivityVerb(activity).toLowerCase();
+  const { t } = useTranslation();
+  const verb = t(getActivityVerbKey(activity)).toLowerCase();
   if (activity.kind === "review" && activity.reviewState === "approved") {
     return (
       <View style={styles.verbGroup}>
-        <ThemedCircleCheck size="xs" uniProps={successColorMapping} />
+        <ThemedCircleCheck size={12} uniProps={successColorMapping} />
         <Text style={styles.verbSuccess}>{verb}</Text>
       </View>
     );
@@ -908,7 +778,7 @@ function ActivityVerb({ activity }: { activity: PrPaneActivity }) {
   if (activity.kind === "review" && activity.reviewState === "changes_requested") {
     return (
       <View style={styles.verbGroup}>
-        <ThemedCircleX size="xs" uniProps={dangerColorMapping} />
+        <ThemedCircleX size={12} uniProps={dangerColorMapping} />
         <Text style={styles.verbDanger}>{verb}</Text>
       </View>
     );
@@ -946,13 +816,12 @@ function SingleActivityCard({
   attachEnabled,
   brandLabel,
   onAddToChat,
-  onSetReaction,
-  canReactToComments,
   onToggleCollapsed,
 }: TimelineEntryCallbacks & {
   entry: Extract<PrTimelineEntry, { kind: "single" }>;
   collapsed: boolean;
 }) {
+  const { t } = useTranslation();
   const { activity } = entry;
   const { actionsVisible, handlePointerEnter, handlePointerLeave, setMenuOpen } =
     useRevealOnHover();
@@ -983,8 +852,6 @@ function SingleActivityCard({
               brandLabel={brandLabel}
               onMenuOpenChange={setMenuOpen}
               onAddToChat={onAddToChat}
-              onSetReaction={onSetReaction}
-              canReactToComments={canReactToComments}
             />
           </ActivityHeader>
         </Pressable>
@@ -1008,8 +875,6 @@ function SingleActivityCard({
             brandLabel={brandLabel}
             onMenuOpenChange={setMenuOpen}
             onAddToChat={onAddToChat}
-            onSetReaction={onSetReaction}
-            canReactToComments={canReactToComments}
           />
         </ActivityHeader>
       </Pressable>
@@ -1018,7 +883,6 @@ function SingleActivityCard({
           <View style={styles.cardBody}>
             <MarkdownRenderer text={activity.body} compact onLinkPress={handleMarkdownLinkPress} />
           </View>
-          <ReactionBar activity={activity} />
           {attachEnabled && canAddPullRequestActivityToChat(activity) ? (
             <View style={styles.cardFooter}>
               <Button
@@ -1027,7 +891,7 @@ function SingleActivityCard({
                 leftIcon={MessageSquarePlus}
                 onPress={handleAddToChat}
               >
-                Add to chat
+                {t("workspace.git.pr.actions.addToChat")}
               </Button>
             </View>
           ) : null}
@@ -1044,10 +908,6 @@ function ThreadCard({
   brandLabel,
   onAddToChat,
   onAddThreadToChat,
-  canManageReviewThreads,
-  onSetThreadResolved,
-  onSetReaction,
-  canReactToComments,
   onToggleCollapsed,
 }: TimelineEntryCallbacks & {
   entry: PrThreadEntry;
@@ -1062,10 +922,6 @@ function ThreadCard({
         brandLabel={brandLabel}
         onAddToChat={onAddToChat}
         onAddThreadToChat={onAddThreadToChat}
-        canManageReviewThreads={canManageReviewThreads}
-        onSetThreadResolved={onSetThreadResolved}
-        onSetReaction={onSetReaction}
-        canReactToComments={canReactToComments}
         onToggleCollapsed={onToggleCollapsed}
       />
     </View>
@@ -1080,16 +936,13 @@ function ReviewCard({
   brandLabel,
   onAddToChat,
   onAddThreadToChat,
-  canManageReviewThreads,
-  onSetThreadResolved,
-  onSetReaction,
-  canReactToComments,
   onToggleCollapsed,
 }: TimelineEntryCallbacks & {
   entry: PrReviewEntry;
   collapsed: boolean;
   collapsedEntryIds: ReadonlySet<string>;
 }) {
+  const { t } = useTranslation();
   const { review, threads } = entry;
   const { actionsVisible, handlePointerEnter, handlePointerLeave, setMenuOpen } =
     useRevealOnHover();
@@ -1116,12 +969,12 @@ function ReviewCard({
               onPress={handleAddToChat}
               style={styles.checkAddButton}
             >
-              Add to chat
+              {t("workspace.git.pr.actions.addToChat")}
             </Button>
           ) : null}
           {collapsed ? (
             <View style={styles.threadCount}>
-              <ThemedMessageSquare size="xs" uniProps={foregroundMutedColorMapping} />
+              <ThemedMessageSquare size={11} uniProps={foregroundMutedColorMapping} />
               <Text style={styles.ageText}>{threads.length}</Text>
             </View>
           ) : null}
@@ -1150,7 +1003,7 @@ function ReviewCard({
                 leftIcon={MessageSquarePlus}
                 onPress={handleAddToChat}
               >
-                Add to chat
+                {t("workspace.git.pr.actions.addToChat")}
               </Button>
             </View>
           ) : null}
@@ -1165,10 +1018,6 @@ function ReviewCard({
                     brandLabel={brandLabel}
                     onAddToChat={onAddToChat}
                     onAddThreadToChat={onAddThreadToChat}
-                    canManageReviewThreads={canManageReviewThreads}
-                    onSetThreadResolved={onSetThreadResolved}
-                    onSetReaction={onSetReaction}
-                    canReactToComments={canReactToComments}
                     onToggleCollapsed={onToggleCollapsed}
                   />
                 </View>
@@ -1188,10 +1037,6 @@ function ThreadBlock({
   brandLabel,
   onAddToChat,
   onAddThreadToChat,
-  canManageReviewThreads,
-  onSetThreadResolved,
-  onSetReaction,
-  canReactToComments,
   onToggleCollapsed,
 }: {
   thread: PrThreadEntry;
@@ -1200,10 +1045,6 @@ function ThreadBlock({
   brandLabel: string;
   onAddToChat: (activity: PrPaneActivity) => void;
   onAddThreadToChat: (thread: PrThreadEntry) => void;
-  canManageReviewThreads: boolean;
-  onSetThreadResolved: TimelineEntryCallbacks["onSetThreadResolved"];
-  onSetReaction: TimelineEntryCallbacks["onSetReaction"];
-  canReactToComments: boolean;
   onToggleCollapsed: (entryId: string, collapsed: boolean) => void;
 }) {
   const { t } = useTranslation();
@@ -1221,19 +1062,6 @@ function ThreadBlock({
   }, [thread.comments]);
 
   const [root, ...replies] = thread.comments;
-  const [isUpdatingResolution, setIsUpdatingResolution] = useState(false);
-  const toast = useToast();
-  const handleSetResolved = useCallback(async () => {
-    if (thread.isResolved === undefined || isUpdatingResolution) return;
-    setIsUpdatingResolution(true);
-    try {
-      await onSetThreadResolved(thread, !thread.isResolved);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Unable to update thread");
-    } finally {
-      setIsUpdatingResolution(false);
-    }
-  }, [isUpdatingResolution, onSetThreadResolved, thread, toast]);
 
   return (
     <View onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
@@ -1243,12 +1071,16 @@ function ThreadBlock({
             ? formatPullRequestThreadPath(thread.location)
             : t("workspace.git.pr.thread.discussion")}
         </Text>
-        {thread.isResolved ? <StatusBadge label="Resolved" variant="success" /> : null}
-        {thread.location?.isOutdated ? <StatusBadge label="Outdated" /> : null}
+        {thread.isResolved ? (
+          <StatusBadge label={t("workspace.git.pr.thread.resolved")} variant="success" />
+        ) : null}
+        {thread.location?.isOutdated ? (
+          <StatusBadge label={t("workspace.git.pr.thread.outdated")} />
+        ) : null}
         <View style={styles.headerTrailing}>
           {collapsed ? (
             <View style={styles.threadCount}>
-              <ThemedMessageSquare size="xs" uniProps={foregroundMutedColorMapping} />
+              <ThemedMessageSquare size={11} uniProps={foregroundMutedColorMapping} />
               <Text style={styles.ageText}>{thread.comments.length}</Text>
             </View>
           ) : null}
@@ -1260,16 +1092,11 @@ function ThreadBlock({
               <DropdownMenuTrigger
                 hitSlop={8}
                 style={kebabTriggerStyle}
-                accessibilityLabel="Thread actions"
+                accessibilityLabel={t("workspace.git.pr.accessibility.threadActions")}
               >
                 {renderKebabTriggerIcon}
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" width={200}>
-                {canManageReviewThreads && thread.isResolved !== undefined ? (
-                  <DropdownMenuItem onSelect={handleSetResolved} disabled={isUpdatingResolution}>
-                    {thread.isResolved ? "Reopen thread" : "Resolve thread"}
-                  </DropdownMenuItem>
-                ) : null}
                 <DropdownMenuItem leading={OPEN_MENU_ICON} onSelect={handleOpenThread}>
                   {t("workspace.git.pr.actions.openOn", { brand: brandLabel })}
                 </DropdownMenuItem>
@@ -1285,9 +1112,8 @@ function ThreadBlock({
             attachEnabled={attachEnabled}
             brandLabel={brandLabel}
             onAddToChat={onAddToChat}
-            onSetReaction={onSetReaction}
-            canReact={canReactToComments}
           />
+          <OttoBitbucketThreadAction thread={thread} /> {/* OTTO(bitbucket) */}
           {replies.length > 0 ? (
             <View style={styles.replyRail}>
               {replies.map((reply) => (
@@ -1297,8 +1123,6 @@ function ThreadBlock({
                     attachEnabled={attachEnabled}
                     brandLabel={brandLabel}
                     onAddToChat={onAddToChat}
-                    onSetReaction={onSetReaction}
-                    canReact={canReactToComments}
                     contentStyle={styles.replyThreadComment}
                   />
                 </View>
@@ -1313,7 +1137,7 @@ function ThreadBlock({
                 leftIcon={MessageSquarePlus}
                 onPress={handleAddThreadToChat}
               >
-                Add to chat
+                {t("workspace.git.pr.actions.addToChat")}
               </Button>
             </View>
           ) : null}
@@ -1336,16 +1160,12 @@ function ThreadComment({
   attachEnabled,
   brandLabel,
   onAddToChat,
-  onSetReaction,
-  canReact,
   contentStyle,
 }: {
   comment: PrPaneActivity;
   attachEnabled: boolean;
   brandLabel: string;
   onAddToChat: (activity: PrPaneActivity) => void;
-  onSetReaction: TimelineEntryCallbacks["onSetReaction"];
-  canReact: boolean;
   contentStyle?: ViewStyle;
 }) {
   const { actionsVisible, handlePointerEnter, handlePointerLeave, setMenuOpen } =
@@ -1365,8 +1185,6 @@ function ThreadComment({
             brandLabel={brandLabel}
             onMenuOpenChange={setMenuOpen}
             onAddToChat={onAddToChat}
-            onSetReaction={onSetReaction}
-            canReactToComments={canReact}
           />
         </ActivityHeader>
       </View>
@@ -1375,33 +1193,6 @@ function ThreadComment({
           <MarkdownRenderer text={comment.body} compact onLinkPress={handleMarkdownLinkPress} />
         </View>
       ) : null}
-      <ReactionBar activity={comment} />
-    </View>
-  );
-}
-
-const REACTION_LABELS: Record<NonNullable<PrPaneActivity["reactions"]>[number]["content"], string> =
-  {
-    THUMBS_UP: "👍",
-    THUMBS_DOWN: "👎",
-    LAUGH: "😄",
-    HOORAY: "🎉",
-    CONFUSED: "😕",
-    HEART: "❤",
-    ROCKET: "🚀",
-    EYES: "👀",
-  };
-
-function ReactionBar({ activity }: { activity: PrPaneActivity }) {
-  const reactions = activity.reactions?.filter((reaction) => reaction.count > 0) ?? [];
-  if (reactions.length === 0) return null;
-  return (
-    <View style={styles.reactionBar}>
-      {reactions.map((reaction) => (
-        <Text key={reaction.content} style={styles.reactionLabel}>
-          {REACTION_LABELS[reaction.content]} {reaction.count}
-        </Text>
-      ))}
     </View>
   );
 }
@@ -1410,7 +1201,7 @@ const styles = StyleSheet.create((theme) => ({
   root: {
     flex: 1,
     minHeight: 0,
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.surfaceSidebar,
   },
   scroll: {
     flex: 1,
@@ -1444,27 +1235,27 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 16,
   },
   stateLabelOpen: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.statusSuccess,
   },
   stateLabelDraft: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foregroundMuted,
   },
   stateLabelMerged: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.statusMerged,
   },
   stateLabelClosed: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.statusDanger,
   },
   repoRef: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
     flexShrink: 1,
     marginLeft: theme.spacing[1],
@@ -1481,15 +1272,10 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.border,
   },
   toolbar: {
-    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
-    paddingTop: theme.spacing[2],
     paddingRight: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
     paddingLeft: theme.spacing[3],
   },
   toolbarActions: {
@@ -1505,17 +1291,6 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[1],
     borderRadius: theme.borderRadius.base,
   },
-  refreshButton: {
-    marginLeft: "auto",
-    width: 22,
-    height: 22,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  refreshButtonHovered: {
-    backgroundColor: theme.colors.surface2,
-  },
   refreshIcon: {
     width: ICON_SIZE.md,
     height: ICON_SIZE.md,
@@ -1528,20 +1303,9 @@ const styles = StyleSheet.create((theme) => ({
   activityToolbar: {
     flexDirection: "row",
     alignItems: "center",
-    minHeight: COMPACT_CONTROL_HEIGHT,
-    gap: theme.spacing[1],
+    minHeight: 28,
     paddingRight: theme.spacing[3],
     paddingBottom: theme.spacing[2],
-  },
-  activityOrderTrigger: {
-    width: COMPACT_CONTROL_HEIGHT,
-    height: COMPACT_CONTROL_HEIGHT,
-    borderRadius: theme.borderRadius.md,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  activityOrderTriggerActive: {
-    backgroundColor: theme.colors.surfaceHover,
   },
   toolbarTrailing: {
     marginLeft: "auto",
@@ -1552,7 +1316,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   filterHiddenCount: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   eventRow: {
@@ -1565,7 +1329,7 @@ const styles = StyleSheet.create((theme) => ({
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.lg,
-    backgroundColor: theme.colors.surfaceSidebarPanel,
+    backgroundColor: theme.colors.surfaceSidebar,
     overflow: "hidden",
   },
   entryHeaderPressable: {
@@ -1583,7 +1347,7 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[2],
   },
   authorText: {
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     fontWeight: theme.fontWeight.normal,
     color: theme.colors.foreground,
     flexShrink: 1,
@@ -1594,19 +1358,19 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[1],
   },
   verbMuted: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   verbSuccess: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.statusSuccess,
   },
   verbDanger: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.statusDanger,
   },
   ageText: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   kebabSlot: {
@@ -1660,7 +1424,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.surface1,
   },
   threadPath: {
-    fontSize: theme.fontSize.xs,
+    fontSize: theme.fontSize.sm,
     fontFamily: theme.fontFamily.mono,
     color: theme.colors.foreground,
     flexShrink: 1,
@@ -1687,17 +1451,6 @@ const styles = StyleSheet.create((theme) => ({
   threadCommentBody: {
     paddingHorizontal: theme.spacing[3],
     paddingTop: theme.spacing[2],
-  },
-  reactionBar: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: theme.spacing[1],
-    paddingHorizontal: theme.spacing[3],
-    paddingBottom: theme.spacing[2],
-  },
-  reactionLabel: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.xs,
   },
   replyRail: {
     marginHorizontal: theme.spacing[3],

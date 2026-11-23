@@ -7,10 +7,10 @@ it("keeps React out of the plugin host's runtime dependency graph", async () => 
     build({
       entryPoints: [
         fileURLToPath(new URL("./plugin-process.ts", import.meta.url)),
-        "@otto-code/plugin",
-        "@otto-code/plugin/server",
-        "@otto-code/plugin/server/provider",
-        "@otto-code/plugin/server/acp",
+        "@getpaseo/plugin",
+        "@getpaseo/plugin/server",
+        "@getpaseo/plugin/server/provider",
+        "@getpaseo/plugin/server/acp",
       ],
       outdir: "unused",
       conditions: ["source"],
@@ -36,4 +36,15 @@ it("keeps React out of the plugin host's runtime dependency graph", async () => 
       ],
     }),
   ).resolves.toMatchObject({ errors: [] });
+});
+
+it("exposes CLI probes through the plugin host's server SDK", async () => {
+  const { evaluateBundle } = await import("./bundle-evaluator.js");
+  const setup = evaluateBundle(`(require) => ({ default: async () => {
+    const { execCommand } = require("@getpaseo/plugin/server");
+    const { stdout } = await execCommand(${JSON.stringify(process.execPath)}, ["-e", "process.stdout.write('plugin CLI ready')"]);
+    if (stdout !== "plugin CLI ready") throw new Error("CLI output was lost");
+  } })`);
+  // This contribution uses no server context APIs; it exercises the host's real SDK binding.
+  await expect(setup(undefined as never)).resolves.toBeUndefined();
 });

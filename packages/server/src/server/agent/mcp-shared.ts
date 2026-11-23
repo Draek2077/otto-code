@@ -7,7 +7,7 @@ import { curateAgentActivity } from "./activity-curator.js";
 import { selectItemsByProjectedLimit } from "./timeline-projection.js";
 import type { AgentStorage } from "./agent-storage.js";
 import { serializeAgentSnapshot } from "../messages.js";
-import { StoredScheduleSchema } from "@otto-code/protocol/schedule/types";
+import { StoredScheduleSchema } from "@getpaseo/protocol/schedule/types";
 import type { AgentProvider } from "./agent-sdk-types.js";
 
 export const AgentProviderEnum = z.string();
@@ -21,10 +21,6 @@ export const ProviderModeSchema = z
     description: z.string().nullish(),
     icon: z.string().nullish(),
     colorTier: z.string().nullish(),
-    // True for bypass/no-approval modes. Declared (not just passthrough) so
-    // calling agents can see which modes are valid for unattended work such
-    // as create_artifact's modeId.
-    isUnattended: z.boolean().nullish(),
   })
   .passthrough();
 
@@ -90,6 +86,11 @@ export function resolveRequiredProviderModel(
   };
 }
 
+export interface AgentWaitWithTimeoutResult extends WaitForAgentResult {
+  /** The wait gave up while the agent was still working. */
+  timedOut: boolean;
+}
+
 /**
  * Wraps agentManager.waitForAgentEvent with a self-imposed timeout.
  * Returns a friendly message when timeout occurs, rather than letting
@@ -102,7 +103,7 @@ export async function waitForAgentWithTimeout(
     signal?: AbortSignal;
     waitForActive?: boolean;
   },
-): Promise<WaitForAgentResult> {
+): Promise<AgentWaitWithTimeoutResult> {
   const timeoutController = new AbortController();
   const combinedController = new AbortController();
 
@@ -137,7 +138,7 @@ export async function waitForAgentWithTimeout(
       signal: combinedController.signal,
       waitForActive: options?.waitForActive,
     });
-    return result;
+    return { ...result, timedOut: false };
   } catch (error) {
     if (error instanceof Error && error.message === "wait timeout") {
       const snapshot = agentManager.getAgent(agentId);
@@ -149,11 +150,12 @@ export async function waitForAgentWithTimeout(
       });
       const recentActivity = curateAgentActivity(recent.items);
       const waitedSeconds = Math.round(AGENT_WAIT_TIMEOUT_MS / 1000);
-      const message = `Awaiting the chat timed out after ${waitedSeconds}s. This does not mean the chat failed - it is still active. Call get_chat_status to check on it, or continue with other work if you will receive a finish notification.\n\nRecent activity:\n${recentActivity}`;
+      const message = `Awaiting the agent timed out after ${waitedSeconds}s. This does not mean the agent failed - it is still running. Call get_agent_status to check on it, or continue with other work if you will receive a finish notification.\n\nRecent activity:\n${recentActivity}`;
       return {
         status: snapshot?.lifecycle ?? "idle",
         permission: null,
         lastMessage: message,
+        timedOut: true,
       };
     }
     throw error;

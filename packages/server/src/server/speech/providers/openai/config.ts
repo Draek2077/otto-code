@@ -12,22 +12,6 @@ export interface OpenAiSpeechProviderConfig {
   tts?: Partial<TTSConfig> & { apiKey?: string };
 }
 
-const OpenAiTtsVoiceSchema = z.enum([
-  "alloy",
-  "ash",
-  "ballad",
-  "coral",
-  "echo",
-  "fable",
-  "nova",
-  "onyx",
-  "sage",
-  "shimmer",
-  "verse",
-]);
-
-const OpenAiTtsModelSchema = z.enum(["tts-1", "tts-1-hd", "gpt-4o-mini-tts"]);
-
 const NumberLikeSchema = z.union([z.number(), z.string().trim().min(1)]);
 
 const OptionalFiniteNumberSchema = NumberLikeSchema.pipe(
@@ -40,7 +24,7 @@ const OptionalTrimmedStringSchema = z
   .optional()
   .transform((value) => (value && value.length > 0 ? value : undefined));
 
-// Endpoint credentials only - plain trimmed strings, so this never throws on a
+// Endpoint credentials only — plain trimmed strings, so this never throws on a
 // malformed value. The STT/TTS option groups parse separately and only for the
 // endpoint that is actually configured, so a stale env var for an unused endpoint
 // (e.g. a leftover TTS_VOICE in an STT-only setup) can't break the other one.
@@ -56,14 +40,13 @@ const OpenAiSttOptionsSchema = z.object({
   sttModel: OptionalTrimmedStringSchema,
 });
 
+// Voice and model are free-form so a self-hosted server can use its own ids; the
+// OpenAI catalog is only the default. Both are sent as written, because the
+// server owns those ids and their case (rosters use ids like kokoro-v1:Q8_0).
 const OpenAiTtsOptionsSchema = z.object({
-  ttsVoice: z.string().trim().toLowerCase().pipe(OpenAiTtsVoiceSchema).default("alloy"),
-  ttsModel: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .pipe(OpenAiTtsModelSchema)
-    .default(DEFAULT_OPENAI_TTS_MODEL),
+  ttsVoice: z.string().trim().default("alloy"),
+  ttsModel: z.string().trim().default(DEFAULT_OPENAI_TTS_MODEL),
+  ttsSpeed: NumberLikeSchema.pipe(z.coerce.number<string | number>().min(0.25).max(4)).optional(), // OTTO(speech)
 });
 
 function isOpenAiProviderActive(provider: { enabled?: boolean; provider: string }): boolean {
@@ -118,6 +101,11 @@ function buildOpenAiTtsInput(params: {
 }): Record<string, unknown> {
   const { env, persisted, providers } = params;
   return {
+    // OTTO(speech): keep the existing host selection and environment precedence.
+    ttsSpeed: firstDefined<string | number>([
+      env.TTS_SPEED,
+      pickIfOpenAi(providers.voiceTts, persisted.features?.voiceMode?.tts?.speed),
+    ]),
     ttsVoice: firstDefined<string>([
       env.TTS_VOICE,
       pickIfOpenAi(providers.voiceTts, persisted.features?.voiceMode?.tts?.voice),
@@ -213,6 +201,7 @@ function buildTtsConfig(
     ...(baseUrl ? { baseUrl } : {}),
     voice: options.ttsVoice,
     model: options.ttsModel,
+    ...(options.ttsSpeed !== undefined ? { speed: options.ttsSpeed } : {}), // OTTO(speech)
     responseFormat: "pcm",
   };
 }

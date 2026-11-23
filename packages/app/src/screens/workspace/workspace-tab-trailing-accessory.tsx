@@ -8,11 +8,10 @@ import {
   Copy,
   CopyX,
   Ellipsis,
-  FolderOpen,
   Pencil,
   RotateCw,
   X,
-} from "@/components/icons/material-icons";
+} from "lucide-react-native";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -30,17 +29,9 @@ const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
 const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
 const ThemedCopyX = withUnistyles(CopyX);
 const ThemedPencil = withUnistyles(Pencil);
-const ThemedFolderOpen = withUnistyles(FolderOpen);
 const ThemedX = withUnistyles(X);
 
-const mutedSmMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-  size: theme.iconSize.sm,
-});
-const mutedMdMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-  size: theme.iconSize.md,
-});
+const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 function mobileTabMenuTriggerStyle({ open, pressed }: { open?: boolean; pressed?: boolean }) {
   return [
@@ -57,21 +48,19 @@ function MobileTabDropdownMenuItem({
   const leading = useMemo(() => {
     switch (entry.icon) {
       case "copy":
-        return <ThemedCopy uniProps={mutedMdMapping} />;
+        return <ThemedCopy size={16} uniProps={mutedColorMapping} />;
       case "rotate-cw":
-        return <ThemedRotateCw uniProps={mutedMdMapping} />;
+        return <ThemedRotateCw size={16} uniProps={mutedColorMapping} />;
       case "arrow-left-to-line":
-        return <ThemedArrowLeftToLine uniProps={mutedMdMapping} />;
+        return <ThemedArrowLeftToLine size={16} uniProps={mutedColorMapping} />;
       case "arrow-right-to-line":
-        return <ThemedArrowRightToLine uniProps={mutedMdMapping} />;
+        return <ThemedArrowRightToLine size={16} uniProps={mutedColorMapping} />;
       case "copy-x":
-        return <ThemedCopyX uniProps={mutedMdMapping} />;
+        return <ThemedCopyX size={16} uniProps={mutedColorMapping} />;
       case "pencil":
-        return <ThemedPencil uniProps={mutedMdMapping} />;
-      case "folder-open":
-        return <ThemedFolderOpen uniProps={mutedMdMapping} />;
+        return <ThemedPencil size={16} uniProps={mutedColorMapping} />;
       case "x":
-        return <ThemedX uniProps={mutedMdMapping} />;
+        return <ThemedX size={16} uniProps={mutedColorMapping} />;
       default:
         return undefined;
     }
@@ -114,7 +103,7 @@ export function MobileTabTrailingAccessory({
         hitSlop={8}
         style={mobileTabMenuTriggerStyle}
       >
-        <ThemedEllipsis uniProps={mutedSmMapping} />
+        <ThemedEllipsis size={14} uniProps={mutedColorMapping} />
       </DropdownMenuTrigger>
       <DropdownMenuContent
         side="bottom"

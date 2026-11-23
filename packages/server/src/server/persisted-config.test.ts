@@ -1,4 +1,14 @@
-import { chmodSync, mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
@@ -6,15 +16,16 @@ import { describe, expect, test } from "vitest";
 import {
   loadPersistedConfig,
   PersistedConfigSchema,
+  readPersistedConfig,
   savePersistedConfig,
 } from "./persisted-config.js";
-import { PRIVATE_FILE_MODE } from "./private-files.js";
+import { PRIVATE_DIRECTORY_MODE, PRIVATE_FILE_MODE } from "./private-files.js";
 
 const MODE_MASK = 0o777;
 const PERMISSIVE_FILE_MODE = 0o644;
 
 function createTempHome(): string {
-  return mkdtempSync(path.join(tmpdir(), "otto-config-"));
+  return mkdtempSync(path.join(tmpdir(), "paseo-config-"));
 }
 
 function modeOf(filePath: string): number {
@@ -119,11 +130,11 @@ describe("PersistedConfigSchema worktrees config", () => {
   test("accepts optional worktree root", () => {
     const parsed = PersistedConfigSchema.parse({
       worktrees: {
-        root: "/mnt/fast/otto-worktrees",
+        root: "/mnt/fast/paseo-worktrees",
       },
     });
 
-    expect(parsed.worktrees?.root).toBe("/mnt/fast/otto-worktrees");
+    expect(parsed.worktrees?.root).toBe("/mnt/fast/paseo-worktrees");
   });
 
   test("accepts service port allocation", () => {
@@ -412,19 +423,23 @@ describe("provider overrides (new format)", () => {
     expect(parsed.agents?.providers?.claude?.order).toBe(1);
   });
 
-  test("new provider without extends → error", () => {
-    const result = PersistedConfigSchema.safeParse({
-      agents: {
-        providers: {
-          zai: {
-            label: "ZAI",
-          },
-        },
-      },
+  test("accepts a plugin override before plugin registration", () => {
+    const override = { enabled: false, command: ["/opt/agent"], env: { LOGIN: "yes" } };
+    const parsed = PersistedConfigSchema.parse({
+      agents: { providers: { "plugin-agent": override } },
     });
-
-    expect(result.success).toBe(false);
+    expect(parsed.agents?.providers?.["plugin-agent"]).toEqual(override);
   });
+
+  test.each(["plugin.agent", "plugin_agent"])(
+    "keeps %s outside the config provider ID alphabet",
+    (id) => {
+      expect(
+        PersistedConfigSchema.safeParse({ agents: { providers: { [id]: { enabled: false } } } })
+          .success,
+      ).toBe(false);
+    },
+  );
 
   test("new provider without label → error", () => {
     const result = PersistedConfigSchema.safeParse({
@@ -659,6 +674,19 @@ describe("PersistedConfigSchema voice mode config", () => {
     expect(parsed.features?.dictation?.stt?.language).toBe("fr");
     expect(parsed.features?.voiceMode?.stt?.language).toBe("de");
   });
+
+  test("accepts a voice and model from a self-hosted OpenAI-compatible server", () => {
+    const parsed = PersistedConfigSchema.parse({
+      features: {
+        voiceMode: {
+          tts: { provider: "openai", model: "kokoro-v1:Q8_0", voice: "aiden" },
+        },
+      },
+    });
+
+    expect(parsed.features?.voiceMode?.tts?.model).toBe("kokoro-v1:Q8_0");
+    expect(parsed.features?.voiceMode?.tts?.voice).toBe("aiden");
+  });
 });
 
 describe("loadPersistedConfig", () => {
@@ -680,10 +708,10 @@ describe("loadPersistedConfig", () => {
         configPath,
         `${JSON.stringify(
           {
-            $schema: "https://otto-code.ai/schemas/otto.config.v1.json",
+            $schema: "https://paseo.sh/schemas/paseo.config.v1.json",
             version: 1,
             daemon: {
-              listen: "127.0.0.1:6868",
+              listen: "127.0.0.1:6767",
               hostnames: ["localhost", ".localhost"],
               mcp: { enabled: true },
             },
@@ -695,7 +723,7 @@ describe("loadPersistedConfig", () => {
 
       const config = loadPersistedConfig(home);
 
-      expect(config.daemon?.listen).toBe("127.0.0.1:6868");
+      expect(config.daemon?.listen).toBe("127.0.0.1:6767");
       expect(config.daemon?.hostnames).toEqual(["localhost", ".localhost"]);
       expect(config.daemon?.mcp?.enabled).toBe(true);
     } finally {
@@ -736,6 +764,62 @@ describe("loadPersistedConfig", () => {
   });
 });
 
+describe("config.json saved with a UTF-8 byte order mark", () => {
+  // Windows Notepad writes this shape: a BOM, then CRLF line endings.
+  const notepadConfig =
+    '﻿{\r\n  "version": 1,\r\n  "daemon": { "listen": "127.0.0.1:6767" }\r\n}\r\n';
+
+  test("loadPersistedConfig reads it", () => {
+    const home = createTempHome();
+    try {
+      writeFileSync(path.join(home, "config.json"), notepadConfig);
+
+      expect(loadPersistedConfig(home).daemon?.listen).toBe("127.0.0.1:6767");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("readPersistedConfig reads it", () => {
+    const home = createTempHome();
+    try {
+      writeFileSync(path.join(home, "config.json"), notepadConfig);
+
+      expect(readPersistedConfig(home).daemon?.listen).toBe("127.0.0.1:6767");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("readPersistedConfig with an unreadable config.json", () => {
+  test("names the file when it is not valid JSON", () => {
+    const home = createTempHome();
+    const configPath = path.join(home, "config.json");
+    try {
+      writeFileSync(configPath, '{"version":1,');
+
+      expect(() => readPersistedConfig(home)).toThrow(`[Config] Invalid JSON in ${configPath}: `);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test("names the file and the field when it does not match the schema", () => {
+    const home = createTempHome();
+    const configPath = path.join(home, "config.json");
+    try {
+      writeFileSync(configPath, '{"daemon":{"listen":5}}');
+
+      expect(() => readPersistedConfig(home)).toThrow(
+        `[Config] Invalid config in ${configPath}:\n  - daemon.listen: `,
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});
+
 describe.skipIf(process.platform === "win32")("persisted config file permissions", () => {
   test("initializes config.json with private permissions", () => {
     const home = createTempHome();
@@ -764,7 +848,8 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
   });
 
   test("saves config.json with private permissions", () => {
-    const home = createTempHome();
+    const parent = createTempHome();
+    const home = path.join(parent, "home");
     try {
       savePersistedConfig(home, {
         providers: {
@@ -774,9 +859,42 @@ describe.skipIf(process.platform === "win32")("persisted config file permissions
         },
       });
 
+      expect(modeOf(home)).toBe(PRIVATE_DIRECTORY_MODE);
       expect(modeOf(path.join(home, "config.json"))).toBe(PRIVATE_FILE_MODE);
     } finally {
-      rmSync(home, { recursive: true, force: true });
+      rmSync(parent, { recursive: true, force: true });
     }
   });
 });
+
+describe.skipIf(process.platform === "win32")(
+  "config.json symlinked from another directory",
+  () => {
+    test("saving writes through the symlink and leaves it in place", () => {
+      const parent = createTempHome();
+      const home = path.join(parent, "home");
+      const dotfiles = path.join(parent, "dotfiles");
+      const linkedConfigPath = path.join(dotfiles, "config.json");
+      const configPath = path.join(home, "config.json");
+      try {
+        mkdirSync(home);
+        mkdirSync(dotfiles, { mode: 0o755 });
+        chmodSync(dotfiles, 0o755);
+        writeFileSync(linkedConfigPath, '{ "version": 1 }\n');
+        symlinkSync(linkedConfigPath, configPath);
+
+        savePersistedConfig(home, { version: 1, daemon: { relay: { enabled: false } } });
+
+        expect(lstatSync(configPath).isSymbolicLink()).toBe(true);
+        expect(JSON.parse(readFileSync(linkedConfigPath, "utf8"))).toEqual({
+          version: 1,
+          daemon: { relay: { enabled: false } },
+        });
+        expect(modeOf(dotfiles)).toBe(0o755);
+        expect(modeOf(linkedConfigPath)).toBe(PRIVATE_FILE_MODE);
+      } finally {
+        rmSync(parent, { recursive: true, force: true });
+      }
+    });
+  },
+);

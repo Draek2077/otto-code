@@ -1,4 +1,4 @@
-import type { TerminalCell } from "@otto-code/protocol/messages";
+import type { TerminalCell } from "@getpaseo/protocol/messages";
 import { describe, expect, test } from "vitest";
 
 import { createTerminalCellStyleResolver, DEFAULT_TERMINAL_THEME } from "./colors";
@@ -116,19 +116,5 @@ describe("terminal row model", () => {
       ["   Claude Code", "text"],
     ]);
     expect(row.runs.map((run) => run.text).join("")).toBe(mascot);
-  });
-
-  test("uses Otto's symbol face for Nerd Font private-use cells only", () => {
-    const resolver = createTerminalCellStyleResolver(DEFAULT_TERMINAL_THEME);
-    const [row] = buildRows({
-      grid: [[cell("A"), cell("\uf120"), cell("B")]],
-      resolver,
-    });
-
-    expect(row.runs.map((run) => [run.text, run.renderKind])).toEqual([
-      ["A", "text"],
-      ["\uf120", "symbol-font"],
-      ["B", "text"],
-    ]);
   });
 });

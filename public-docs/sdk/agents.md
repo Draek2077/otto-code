@@ -6,6 +6,8 @@ order: 52
 category: TypeScript SDK
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Agents with the SDK
 
 An agent handle keeps a stable agent ID and exposes the turn lifecycle without exposing daemon RPCs.

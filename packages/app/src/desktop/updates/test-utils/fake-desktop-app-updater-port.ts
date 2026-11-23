@@ -51,7 +51,6 @@ function buildInstallResult(
 ): DesktopAppUpdateInstallResult {
   return {
     installed: false,
-    outcome: overrides.installed === true ? "installed" : "deferred",
     version: null,
     message: "Update completed.",
     ...overrides,

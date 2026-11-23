@@ -69,68 +69,11 @@ function questionEvent(questionOverrides: Record<string, unknown> = {}): unknown
 }
 
 describe("OpenCode auto_accept feature", () => {
-  test("an explicit tool policy cannot silently disagree with Auto Accept or be bypassed by a toggle", async () => {
-    const { runtime } = mockOpenCodeClient();
-    const client = new OpenCodeAgentClient(createTestLogger(), undefined, {
-      serverManager: runtime,
-      createClient: runtime.createClient,
-    });
-    const session = await client.createSession({
-      provider: "opencode",
-      cwd: "/tmp/project",
-      featureValues: { auto_accept: true },
-      toolPolicy: { preapproved: [] },
-    });
-    try {
-      expect(session.features).toEqual([
-        expect.objectContaining({ id: "auto_accept", value: false }),
-      ]);
-      await expect(session.setFeature!("auto_accept", true)).rejects.toThrow(
-        "explicit tool policy",
-      );
-      expect(session.features).toEqual([
-        expect.objectContaining({ id: "auto_accept", value: false }),
-      ]);
-    } finally {
-      await session.close();
-    }
-  });
-
-  test("preapproves internal Otto reads without enabling auto accept for mutations", async () => {
-    const { openCodeClient, runtime } = mockOpenCodeClient();
-    const client = new OpenCodeAgentClient(createTestLogger(), undefined, {
-      serverManager: runtime,
-      createClient: runtime.createClient,
-    });
-    const session = await client.createSession({
-      provider: "opencode",
-      cwd: "/tmp/project",
-      mcpServers: { otto: { type: "http", url: "http://127.0.0.1:6788/mcp/agents" } },
-    });
-    try {
-      await session.run("list workspaces");
-      const sent = openCodeClient.calls.sessionPromptAsync[0];
-      expect(sent.permission).toContainEqual({
-        permission: "otto_list_workspaces",
-        pattern: "*",
-        action: "allow",
-      });
-      expect(sent.permission).not.toContainEqual(
-        expect.objectContaining({ permission: "otto_archive_workspace" }),
-      );
-      expect(session.features).toEqual([
-        expect.objectContaining({ id: "auto_accept", value: false }),
-      ]);
-    } finally {
-      await session.close();
-    }
-  });
-
   test("lists discovered OpenCode modes without injecting defaults", async () => {
     const { runtime } = mockOpenCodeClient({
       agents: [
         { name: "build", mode: "primary", hidden: false, description: "Build agent" },
-        { name: "otto-custom", mode: "primary", hidden: false, description: "Custom agent" },
+        { name: "paseo-custom", mode: "primary", hidden: false, description: "Custom agent" },
       ],
     });
 
@@ -144,7 +87,7 @@ describe("OpenCode auto_accept feature", () => {
       force: false,
     });
 
-    expect(modes.map((mode) => mode.id)).toEqual(["build", "otto-custom"]);
+    expect(modes.map((mode) => mode.id)).toEqual(["build", "paseo-custom"]);
   });
 
   test("returns no modes when discovery finds none, rather than fabricating defaults", async () => {
@@ -242,7 +185,7 @@ describe("OpenCode auto_accept feature", () => {
     const client = new OpenCodeAgentClient(createTestLogger());
 
     // Unattendedness is carried by auto_accept, not by a specific agent. The
-    // mode stays unset so OpenCode picks its own default agent - `build` may
+    // mode stays unset so OpenCode picks its own default agent — `build` may
     // not exist in the user's OpenCode config.
     expect(
       client.resolveCreateConfig({
@@ -291,17 +234,17 @@ describe("OpenCode auto_accept feature", () => {
         featureValues: undefined,
         parent: {
           provider: "opencode",
-          modeId: "otto-custom",
+          modeId: "paseo-custom",
           isUnattended: true,
         },
         unattended: true,
         availableModes: [
           { id: "build", label: "Build" },
           { id: "plan", label: "Plan" },
-          { id: "otto-custom", label: "Otto Custom" },
+          { id: "paseo-custom", label: "Paseo Custom" },
         ],
       }),
-    ).toEqual({ modeId: "otto-custom", featureValues: { auto_accept: true } });
+    ).toEqual({ modeId: "paseo-custom", featureValues: { auto_accept: true } });
   });
 
   test("inherits auto accept from an OpenCode parent when the child chooses a mode", () => {

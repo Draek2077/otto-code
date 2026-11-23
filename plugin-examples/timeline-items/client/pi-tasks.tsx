@@ -1,4 +1,4 @@
-import type { PluginTimelineItemProps } from "@otto-code/plugin/client";
+import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { useMemo } from "react";
 import { Text, View } from "react-native";
 import type { z } from "zod";

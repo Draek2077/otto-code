@@ -20,10 +20,7 @@ export function createDiffPalette(theme: Theme): DiffPalette {
     statusSuccess: theme.colors.statusSuccess,
     statusDanger: theme.colors.statusDanger,
     statusWarning: theme.colors.statusWarning,
-    // The theme's map is a closed set of highlight styles intersected with the
-    // diff backgrounds, so it has no index signature; the palette reads it by
-    // token name. Spreading gives the open map that lookup needs.
-    syntax: { ...theme.colors.syntax },
+    syntax: theme.colors.syntax,
   };
 }
 

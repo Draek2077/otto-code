@@ -1,7 +1,6 @@
 # Build output
 dist/
 release/
-release-*/
 
 # Dependencies
 node_modules/
@@ -9,8 +8,5 @@ node_modules/
 # TypeScript
 *.tsbuildinfo
 
-# Isolated dev environment (OTTO_HOME + Electron userData) created by scripts/dev.sh
+# Isolated dev environment (PASEO_HOME + Electron userData) created by scripts/dev.sh
 .dev/
-
-# Local Python venv for the Zoom Recorder helper build (scripts/before-pack.js)
-.venv-zoom-recorder/

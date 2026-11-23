@@ -10,7 +10,6 @@ import {
   useIsLastWorkspaceSelectionHydrated,
   useLastWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
-import { useAppSettings } from "@/hooks/use-settings";
 
 export default function HostIndexRoute() {
   const serverId = useHostRouteServerId();
@@ -20,7 +19,6 @@ export default function HostIndexRoute() {
     workspaceSelection?.serverId === serverId ? workspaceSelection.workspaceId : null;
   const hasHydratedWorkspaces = useHasHydratedWorkspaces(serverId);
   const workspaceSelectionExists = useWorkspaceExists(serverId, workspaceSelectionWorkspaceId);
-  const { settings } = useAppSettings();
 
   if (!serverId || !isWorkspaceSelectionLoaded) {
     return <StartupSplashScreen />;
@@ -35,7 +33,6 @@ export default function HostIndexRoute() {
           hasHydratedWorkspaces,
           workspaceExists: workspaceSelectionExists,
         }),
-        appStartScreen: settings.appStartScreen,
       })}
     />
   );

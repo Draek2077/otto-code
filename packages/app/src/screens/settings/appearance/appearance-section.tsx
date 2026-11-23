@@ -1,118 +1,74 @@
-import {
-  SettingsTargetText,
-  SettingsTargetScope,
-  SettingsTargetLabel,
-} from "@/screens/settings-search/target";
-import { SidebarNavSection } from "./sidebar-nav-section";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { Text, TextInput, View, type PressableStateCallbackType } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ChevronDown, Monitor, Moon, Sun } from "@/components/icons/material-icons";
-import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
-import { Button } from "@/components/ui/button";
-import { UiStateGallery } from "@/components/ui-state-gallery";
-import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
+import { Monitor, Moon, Sun } from "lucide-react-native";
+import {
+  SYNTAX_THEME_OPTIONS,
+  type SyntaxThemeId,
+  type SyntaxThemeOption,
+} from "@getpaseo/highlight";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { SettingsSection } from "@/screens/settings/settings-section";
+import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
+import { SettingsSection } from "@/components/settings/headings/settings-section";
+import { useContributedThemes } from "@/appearance/provider";
+import { Button } from "@/components/ui/button";
+import {
+  EditingTextInput as TextInput,
+  type EditingTextInputHandle,
+} from "@/components/ui/text-input";
 import {
   MAX_CODE_FONT_SIZE,
   MAX_CONTENT_FONT_SIZE,
-  MAX_TERMINAL_FONT_SIZE,
-  MAX_UI_FONT_SIZE,
+  MAX_UI_BASE_FONT_SIZE,
   MIN_CODE_FONT_SIZE,
   MIN_CONTENT_FONT_SIZE,
-  MIN_TERMINAL_FONT_SIZE,
-  MIN_UI_FONT_SIZE,
+  MIN_UI_BASE_FONT_SIZE,
   parseClampedFontSize,
+  parseContentMaxWidth,
+  resolveContentMaxWidth,
   sanitizeFontFamily,
   useAppSettings,
   type AppSettings,
+  DEFAULT_THEME_PREFERENCE,
 } from "@/hooks/use-settings";
-import { useContributedThemes } from "@/appearance/provider";
-import type { PluginThemeOption } from "@/plugins/themes";
-import { useColorScheme } from "@/hooks/use-color-scheme";
 import {
-  DEFAULT_FONT_CONTRAST,
   DEFAULT_MONO_FONT_STACK,
   DEFAULT_UI_FONT_STACK,
+  ICON_SIZE,
+  PLUGIN_THEME_PREFERENCE,
+  THEME_OPTIONS,
   THEME_SWATCHES,
-  type DarkThemeName,
-  type LightThemeName,
   type Theme,
-  type ThemeVariantName,
 } from "@/styles/theme";
-import { getIsElectron, isDev, isNative } from "@/constants/platform";
-import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
+import { isNative } from "@/constants/platform";
+import type { PluginThemeOption } from "@/plugins/themes";
 import { settingsStyles } from "@/styles/settings";
-import { TEXT_EFFECT_THEME_IDS, type TextEffectThemeId } from "@/styles/text-effects";
+import { AppearancePreview } from "./appearance-preview";
 
 // ---------------------------------------------------------------------------
-// Theme-reactive leaf icons (withUnistyles + uniProps color mapping - no
-// useUnistyles). `size` is folded into the mapping (not a static prop) so it
-// repaints from the live, compact-doubled `theme.iconSize` the same way `color`
-// already does.
+// Theme-reactive leaf icons (withUnistyles + uniProps color mapping — no
+// useUnistyles). Icon sizes read the static ICON_SIZE token; the appearance
+// feature does not scale icons.
 // ---------------------------------------------------------------------------
 
-const ThemedChevronDown = withUnistyles(ChevronDown);
+const ThemedSun = withUnistyles(Sun);
+const ThemedMoon = withUnistyles(Moon);
+const ThemedMonitor = withUnistyles(Monitor);
 
-const mutedColorMapping = (theme: Theme) => ({
-  color: theme.colors.foregroundMuted,
-  size: theme.iconSize.sm,
-});
+const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
-function getThemeLabel(t: TFunction, value: ThemeVariantName): string {
-  const labelKeys: Record<ThemeVariantName, string> = {
-    dark: "settings.appearance.theme.options.dark",
-    daylight: "settings.appearance.theme.options.daylight",
-    evergreen: "settings.appearance.theme.options.evergreen",
-    zinc: "settings.appearance.theme.options.zinc",
-    midnight: "settings.appearance.theme.options.midnight",
-    claude: "settings.appearance.theme.options.claude",
-    ghostty: "settings.appearance.theme.options.ghostty",
-    cyberpunk: "settings.appearance.theme.options.cyberpunk",
-    pastel: "settings.appearance.theme.options.pastel",
-    meadow: "settings.appearance.theme.options.meadow",
-    terracotta: "settings.appearance.theme.options.terracotta",
-    horizon: "settings.appearance.theme.options.horizon",
-    powder: "settings.appearance.theme.options.powder",
-    ivory: "settings.appearance.theme.options.ivory",
-    obsidian: "settings.appearance.theme.options.obsidian",
-  };
-  return t(labelKeys[value]);
+type BuiltInThemePreference = Exclude<AppSettings["theme"], typeof PLUGIN_THEME_PREFERENCE>;
+
+function getThemeLabel(t: TFunction, value: BuiltInThemePreference): string {
+  return t(`settings.appearance.theme.options.${value}`);
 }
-
-// Each list leads with the spectrum's neutral default (Daylight/Twilight),
-// followed by its tinted variants, and ends with the monochrome pair
-// (Ivory/Obsidian) - those carry no hue at all, so they sit apart from the
-// tinted run rather than inside it. Only one list is ever shown at a time,
-// scoped to the current mode (see `AppearanceSection`'s `effectiveSpectrum`).
-const LIGHT_THEMES: readonly LightThemeName[] = [
-  "daylight",
-  "meadow",
-  "terracotta",
-  "horizon",
-  "powder",
-  "pastel",
-  "ivory",
-];
-const DARK_THEMES: readonly DarkThemeName[] = [
-  "dark",
-  "evergreen",
-  "zinc",
-  "midnight",
-  "claude",
-  "ghostty",
-  "cyberpunk",
-  "obsidian",
-];
 
 // Platform default stacks can be the bare native tokens ("normal"/"monospace");
 // those read as a bug, so show a human label in the placeholder instead.
@@ -122,71 +78,34 @@ function resolveDefaultStackPlaceholder(t: TFunction, stack: string): string {
   return BARE_DEFAULT_STACKS.has(stack) ? t("settings.appearance.fonts.systemDefault") : stack;
 }
 
-function dropdownTriggerStyle({ pressed }: PressableStateCallbackType) {
-  return [styles.trigger, pressed ? styles.triggerPressed : null];
-}
-
-// Responsive rows whose trailing control is wide (segmented control, text
-// input, slider). They stack the control below the label on compact widths.
-function responsiveRowStyle(withBorder: boolean) {
-  return withBorder
-    ? [settingsStyles.rowResponsive, settingsStyles.rowBorder]
-    : settingsStyles.rowResponsive;
+// Local size string (digits only) -> preview override number. Empty/invalid
+// yields undefined so the preview falls back to the committed theme value.
+function sizeDraftToOverride(value: string): number | undefined {
+  if (value.length === 0) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 // ---------------------------------------------------------------------------
-// Mode picker (Light / Dark / System)
+// Theme picker
 // ---------------------------------------------------------------------------
 
-interface ModeRowProps {
-  value: AppSettings["colorSchemeMode"];
-  onChange: (mode: AppSettings["colorSchemeMode"]) => void;
+interface ThemeLeadingProps {
+  themeValue: BuiltInThemePreference;
 }
 
-function ModeRow({ value, onChange }: ModeRowProps) {
-  const { t } = useTranslation();
-  const options = useMemo<SegmentedControlOption<AppSettings["colorSchemeMode"]>[]>(
-    () => [
-      {
-        value: "light",
-        label: t("settings.appearance.theme.modes.light"),
-        icon: ({ color, size }) => <Sun color={color} size={size} />,
-      },
-      {
-        value: "dark",
-        label: t("settings.appearance.theme.modes.dark"),
-        icon: ({ color, size }) => <Moon color={color} size={size} />,
-      },
-      {
-        value: "system",
-        label: t("settings.appearance.theme.modes.system"),
-        icon: ({ color, size }) => <Monitor color={color} size={size} />,
-      },
-    ],
-    [t],
-  );
-  return (
-    <View style={settingsStyles.rowResponsive}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText settingId="app-appearance-theme-mode" style={settingsStyles.rowTitle}>
-          {t("settings.appearance.theme.mode")}
-        </SettingsTargetText>
-      </View>
-      <SegmentedControl
-        size="sm"
-        value={value}
-        onValueChange={onChange}
-        options={options}
-        testID="settings-color-scheme-mode"
-      />
-    </View>
-  );
+function ThemeLeading({ themeValue }: ThemeLeadingProps) {
+  switch (themeValue) {
+    case "light":
+      return <ThemedSun size={ICON_SIZE.md} uniProps={mutedColorMapping} />;
+    case "dark":
+      return <ThemedMoon size={ICON_SIZE.md} uniProps={mutedColorMapping} />;
+    case "auto":
+      return <ThemedMonitor size={ICON_SIZE.md} uniProps={mutedColorMapping} />;
+    default:
+      return <ThemeSwatch color={THEME_SWATCHES[themeValue]} />;
+  }
 }
-
-// ---------------------------------------------------------------------------
-// Theme variant picker - scoped to whichever spectrum is currently effective
-// (see `AppearanceSection`'s `effectiveSpectrum`); never shows both lists.
-// ---------------------------------------------------------------------------
 
 interface ThemeSwatchProps {
   color: string;
@@ -198,9 +117,9 @@ function ThemeSwatch({ color }: ThemeSwatchProps) {
 }
 
 interface ThemeMenuItemProps {
-  themeValue: ThemeVariantName;
+  themeValue: BuiltInThemePreference;
   selected: boolean;
-  onChange: (theme: ThemeVariantName) => void;
+  onChange: (theme: BuiltInThemePreference) => void;
 }
 
 function ThemeMenuItem({ themeValue, selected, onChange }: ThemeMenuItemProps) {
@@ -208,7 +127,7 @@ function ThemeMenuItem({ themeValue, selected, onChange }: ThemeMenuItemProps) {
   const handleSelect = useCallback(() => {
     onChange(themeValue);
   }, [onChange, themeValue]);
-  const leading = useMemo(() => <ThemeSwatch color={THEME_SWATCHES[themeValue]} />, [themeValue]);
+  const leading = useMemo(() => <ThemeLeading themeValue={themeValue} />, [themeValue]);
   return (
     <DropdownMenuItem selected={selected} onSelect={handleSelect} leading={leading}>
       {getThemeLabel(t, themeValue)}
@@ -216,105 +135,96 @@ function ThemeMenuItem({ themeValue, selected, onChange }: ThemeMenuItemProps) {
   );
 }
 
-interface ThemeRowProps {
-  list: readonly ThemeVariantName[];
-  value: ThemeVariantName;
-  onChange: (theme: ThemeVariantName) => void;
-}
-
-function ThemeRow({ list, value, onChange }: ThemeRowProps) {
-  const { t } = useTranslation();
-  const selectedLabel = getThemeLabel(t, value);
-  return (
-    <View style={styles.rowWithBorder}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText settingId="app-appearance-theme-theme" style={settingsStyles.rowTitle}>
-          {t("settings.appearance.theme.title")}
-        </SettingsTargetText>
-      </View>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          style={dropdownTriggerStyle}
-          accessibilityLabel={t("settings.appearance.theme.accessibilityLabel", {
-            value: selectedLabel,
-          })}
-        >
-          <ThemeSwatch color={THEME_SWATCHES[value]} />
-          <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown uniProps={mutedColorMapping} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="bottom" align="end" width={200}>
-          {list.map((themeValue) => (
-            <ThemeMenuItem
-              key={themeValue}
-              themeValue={themeValue}
-              selected={value === themeValue}
-              onChange={onChange}
-            />
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </View>
-  );
-}
-
-function PluginThemeRow({
-  options,
-  selected,
-  onSelect,
-}: {
-  options: PluginThemeOption[];
-  selected: PluginThemeOption | null;
-  onSelect: (option: PluginThemeOption) => void;
-}) {
-  if (options.length === 0) return null;
-  return (
-    <View style={styles.rowWithBorder}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="app-appearance-theme-plugin-theme"
-          style={settingsStyles.rowTitle}
-        >
-          Plugin theme
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>Provided by an installed plugin</Text>
-      </View>
-      <DropdownMenu>
-        <DropdownMenuTrigger style={dropdownTriggerStyle} accessibilityLabel="Plugin theme">
-          {selected ? <ThemeSwatch color={selected.swatch} /> : null}
-          <Text style={styles.triggerText}>{selected?.name ?? "Built-in"}</Text>
-          <ThemedChevronDown uniProps={mutedColorMapping} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="bottom" align="end" width={200}>
-          {options.map((option) => (
-            <PluginThemeMenuItem
-              key={option.id}
-              option={option}
-              selected={selected?.id === option.id}
-              onSelect={onSelect}
-            />
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </View>
-  );
-}
-
-function PluginThemeMenuItem({
-  option,
-  selected,
-  onSelect,
-}: {
+interface PluginThemeMenuItemProps {
   option: PluginThemeOption;
   selected: boolean;
   onSelect: (option: PluginThemeOption) => void;
-}) {
-  const handleSelect = useCallback(() => onSelect(option), [onSelect, option]);
+}
+
+function PluginThemeMenuItem({ option, selected, onSelect }: PluginThemeMenuItemProps) {
+  const handleSelect = useCallback(() => {
+    onSelect(option);
+  }, [onSelect, option]);
   const leading = useMemo(() => <ThemeSwatch color={option.swatch} />, [option.swatch]);
   return (
     <DropdownMenuItem selected={selected} onSelect={handleSelect} leading={leading}>
       {option.name}
     </DropdownMenuItem>
+  );
+}
+
+interface ThemeRowProps {
+  value: AppSettings["theme"];
+  pluginThemes: PluginThemeOption[];
+  selectedPluginTheme: PluginThemeOption | null;
+  onChange: (theme: BuiltInThemePreference) => void;
+  onSelectPluginTheme: (option: PluginThemeOption) => void;
+}
+
+function ThemeRow({
+  value,
+  pluginThemes,
+  selectedPluginTheme,
+  onChange,
+  onSelectPluginTheme,
+}: ThemeRowProps) {
+  const { t } = useTranslation();
+  // A selected contribution that is no longer installed shows the fallback the app renders.
+  const builtInValue = value === PLUGIN_THEME_PREFERENCE ? DEFAULT_THEME_PREFERENCE : value;
+  const selectedLabel = selectedPluginTheme
+    ? selectedPluginTheme.name
+    : getThemeLabel(t, builtInValue);
+  const leading = useMemo(
+    () =>
+      selectedPluginTheme ? (
+        <ThemeSwatch color={selectedPluginTheme.swatch} />
+      ) : (
+        <ThemeLeading themeValue={builtInValue} />
+      ),
+    [builtInValue, selectedPluginTheme],
+  );
+  return (
+    <View style={settingsStyles.row}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.appearance.theme.title")}</Text>
+      </View>
+      <DropdownMenu>
+        <DropdownTrigger
+          accessibilityLabel={t("settings.appearance.theme.accessibilityLabel", {
+            value: selectedLabel,
+          })}
+          leading={leading}
+        >
+          {selectedLabel}
+        </DropdownTrigger>
+        <DropdownMenuContent side="bottom" align="end" width={200} scrollable>
+          {THEME_OPTIONS.map((option, index) => {
+            const previousOption = THEME_OPTIONS[index - 1];
+            return (
+              <Fragment key={option.name}>
+                {previousOption && previousOption.group !== option.group ? (
+                  <DropdownMenuSeparator />
+                ) : null}
+                <ThemeMenuItem
+                  themeValue={option.name}
+                  selected={selectedPluginTheme === null && builtInValue === option.name}
+                  onChange={onChange}
+                />
+              </Fragment>
+            );
+          })}
+          {pluginThemes.length > 0 ? <DropdownMenuSeparator /> : null}
+          {pluginThemes.map((option) => (
+            <PluginThemeMenuItem
+              key={option.id}
+              option={option}
+              selected={selectedPluginTheme?.id === option.id}
+              onSelect={onSelectPluginTheme}
+            />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </View>
   );
 }
 
@@ -331,7 +241,7 @@ interface FontFamilyRowProps {
   draft: string;
   withBorder: boolean;
   onChangeDraft: (value: string) => void;
-  onCommit: (value: string) => void;
+  onCommit: (value: string) => string;
 }
 
 function FontFamilyRow({
@@ -345,25 +255,29 @@ function FontFamilyRow({
   onChangeDraft,
   onCommit,
 }: FontFamilyRowProps) {
+  const inputRef = useRef<EditingTextInputHandle>(null);
   const handleCommit = useCallback(() => {
-    onCommit(draft);
+    const committed = onCommit(draft);
+    inputRef.current?.replaceText(committed);
   }, [draft, onCommit]);
 
   // Resync from the committed value when it changes elsewhere.
   useEffect(() => {
     onChangeDraft(value);
+    inputRef.current?.replaceText(value);
     // Only resync on external value changes, not on local keystrokes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
   return (
-    <View style={responsiveRowStyle(withBorder)}>
+    <View style={withBorder ? styles.rowWithBorder : settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
+        <Text style={settingsStyles.rowTitle}>{title}</Text>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
       <TextInput
-        value={draft}
+        ref={inputRef}
+        initialValue={draft}
         onChangeText={onChangeDraft}
         onBlur={handleCommit}
         onSubmitEditing={handleCommit}
@@ -381,468 +295,178 @@ function FontFamilyRow({
 
 interface FontSizeRowProps {
   title: string;
+  hint: string;
   accessibilityLabel: string;
-  min: number;
-  max: number;
-  draft: number;
+  draft: string;
   withBorder?: boolean;
-  onChangeDraft: (value: number) => void;
-  onCommit: (value: number) => void;
+  onChangeDraft: (value: string) => void;
+  onCommit: () => void;
 }
 
 function FontSizeRow({
   title,
+  hint,
   accessibilityLabel,
-  min,
-  max,
   draft,
   withBorder = true,
   onChangeDraft,
   onCommit,
 }: FontSizeRowProps) {
   return (
-    <View style={responsiveRowStyle(withBorder)}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
-      </View>
-      <View style={styles.sizeField}>
-        <Slider
-          min={min}
-          max={max}
-          value={draft}
-          onValueChange={onChangeDraft}
-          onSlidingComplete={onCommit}
-          accessibilityLabel={accessibilityLabel}
-        />
-        <Text style={styles.sizeValue}>{draft}px</Text>
-      </View>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Font contrast - how hard the reading ink sits against the background.
-// Stored as 0..1 but driven as whole percent: the Slider steps in absolute
-// units, and stepping a float by 0.05 accumulates the usual binary drift
-// (0.30000000000000004) straight into persisted settings.
-// ---------------------------------------------------------------------------
-
-const FONT_CONTRAST_STEP_PERCENT = 5;
-
-function toContrastPercent(contrast: number): number {
-  return Math.round(contrast * 100);
-}
-
-interface FontContrastRowProps {
-  draftPercent: number;
-  onChangeDraft: (percent: number) => void;
-  onCommit: (percent: number) => void;
-}
-
-function FontContrastRow({ draftPercent, onChangeDraft, onCommit }: FontContrastRowProps) {
-  const isDefault = draftPercent === toContrastPercent(DEFAULT_FONT_CONTRAST);
-  return (
-    <View style={responsiveRowStyle(true)}>
-      <View style={settingsStyles.rowContent}>
-        {/* i18n: English-only pending a translation pass (font contrast). */}
-        <SettingsTargetText
-          settingId="app-appearance-fonts-contrast"
-          style={settingsStyles.rowTitle}
-        >
-          Contrast
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          {`How hard text sits against the background. ${DEFAULT_FONT_CONTRAST.toFixed(2)} is the theme as designed.`}
-        </Text>
-      </View>
-      <View style={styles.contrastField}>
-        <Slider
-          min={0}
-          max={100}
-          step={FONT_CONTRAST_STEP_PERCENT}
-          value={draftPercent}
-          onValueChange={onChangeDraft}
-          onSlidingComplete={onCommit}
-          accessibilityLabel="Font contrast"
-          testID="settings-font-contrast-slider"
-        />
-        <Text style={isDefault ? styles.sizeValueDefault : styles.sizeValue}>
-          {(draftPercent / 100).toFixed(2)}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Chat width picker (Default / Wide / Full)
-// ---------------------------------------------------------------------------
-
-interface ChatWidthRowProps {
-  value: AppSettings["chatWidth"];
-  onChange: (chatWidth: AppSettings["chatWidth"]) => void;
-}
-
-function ChatWidthRow({ value, onChange }: ChatWidthRowProps) {
-  const { t } = useTranslation();
-  const options = useMemo<SegmentedControlOption<AppSettings["chatWidth"]>[]>(
-    () => [
-      { value: "default", label: t("settings.appearance.layout.chatWidth.options.default") },
-      { value: "wide", label: t("settings.appearance.layout.chatWidth.options.wide") },
-      { value: "full", label: t("settings.appearance.layout.chatWidth.options.full") },
-    ],
-    [t],
-  );
-  return (
-    <View style={responsiveRowStyle(true)}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="app-appearance-layout-chat-width"
-          style={settingsStyles.rowTitle}
-        >
-          {t("settings.appearance.layout.chatWidth.title")}
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>{t("settings.appearance.layout.chatWidth.hint")}</Text>
-      </View>
-      <SegmentedControl
-        size="sm"
-        value={value}
-        onValueChange={onChange}
-        options={options}
-        testID="settings-chat-width"
-      />
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Default tab orientation (Horizontal / Vertical) - same SegmentedControl
-// shape as ChatWidthRow above, but raw English strings rather than t() calls:
-// this repo does i18n last, matching the "Team switcher in title bar" row
-// precedent below rather than threading a new key through every locale file.
-// ---------------------------------------------------------------------------
-
-interface TabOrientationRowProps {
-  value: AppSettings["defaultTabOrientation"];
-  onChange: (value: AppSettings["defaultTabOrientation"]) => void;
-}
-
-function TabOrientationRow({ value, onChange }: TabOrientationRowProps) {
-  const options = useMemo<SegmentedControlOption<AppSettings["defaultTabOrientation"]>[]>(
-    () => [
-      { value: "horizontal", label: "Horizontal" },
-      { value: "vertical", label: "Vertical" },
-    ],
-    [],
-  );
-  return (
-    <View style={responsiveRowStyle(true)}>
-      <View style={settingsStyles.rowContent}>
-        {/* i18n: English-only pending a translation pass (Vertical tabs). */}
-        <SettingsTargetText
-          settingId="app-appearance-layout-default-tab-orientation"
-          style={settingsStyles.rowTitle}
-        >
-          Default tab orientation
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          Tab-strip layout for new panes: a horizontal row at the top, or a vertical rail on the
-          left. Any pane can override it.
-        </Text>
-      </View>
-      <SegmentedControl
-        size="sm"
-        value={value}
-        onValueChange={onChange}
-        options={options}
-        testID="settings-default-tab-orientation"
-      />
-    </View>
-  );
-}
-
-interface WorkspaceChangeIndicatorRowProps {
-  value: AppSettings["workspaceChangeIndicator"];
-  onChange: (value: AppSettings["workspaceChangeIndicator"]) => void;
-}
-
-function WorkspaceChangeIndicatorRow({ value, onChange }: WorkspaceChangeIndicatorRowProps) {
-  const options = useMemo<SegmentedControlOption<AppSettings["workspaceChangeIndicator"]>[]>(
-    () => [
-      { value: "uncommitted", label: "Uncommitted" },
-      { value: "branch", label: "Branch" },
-      { value: "hidden", label: "Hidden" },
-    ],
-    [],
-  );
-  return (
-    <View style={responsiveRowStyle(true)}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="app-appearance-layout-workspace-branch-changes-indicator"
-          style={settingsStyles.rowTitle}
-        >
-          Workspace branch changes indicator
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          Uncommitted clears when you commit. Branch compares your branch with its selected base.
-        </Text>
-      </View>
-      <SegmentedControl
-        size="sm"
-        value={value}
-        onValueChange={onChange}
-        options={options}
-        testID="settings-workspace-change-indicator"
-      />
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Message timestamp display (Clock time / Time ago)
-// ---------------------------------------------------------------------------
-
-interface MessageTimestampRowProps {
-  value: AppSettings["chatTimestampDisplay"];
-  onChange: (value: AppSettings["chatTimestampDisplay"]) => void;
-}
-
-function MessageTimestampRow({ value, onChange }: MessageTimestampRowProps) {
-  const { t } = useTranslation();
-  const options = useMemo<SegmentedControlOption<AppSettings["chatTimestampDisplay"]>[]>(
-    () => [
-      {
-        value: "absolute",
-        label: t("settings.appearance.agents.messageTimestamp.options.absolute"),
-      },
-      {
-        value: "relative",
-        label: t("settings.appearance.agents.messageTimestamp.options.relative"),
-      },
-    ],
-    [t],
-  );
-  return (
-    <View style={responsiveRowStyle(true)}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="app-chat-presentation-time-format"
-          style={settingsStyles.rowTitle}
-        >
-          {t("settings.appearance.agents.messageTimestamp.title")}
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          {t("settings.appearance.agents.messageTimestamp.hint")}
-        </Text>
-      </View>
-      <SegmentedControl
-        size="sm"
-        value={value}
-        onValueChange={onChange}
-        options={options}
-        testID="settings-chat-timestamp-display"
-      />
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Text effects picker - theme for the "working" text sweep on activity labels
-// (see styles/text-effects.ts). Commits immediately, like other pickers.
-// ---------------------------------------------------------------------------
-
-function getTextEffectLabel(t: TFunction, value: TextEffectThemeId): string {
-  const labelKeys: Record<TextEffectThemeId, string> = {
-    professional: "settings.appearance.agents.textEffects.options.professional",
-    active: "settings.appearance.agents.textEffects.options.active",
-    spectrum: "settings.appearance.agents.textEffects.options.spectrum",
-    vivid: "settings.appearance.agents.textEffects.options.vivid",
-    nightRider: "settings.appearance.agents.textEffects.options.nightRider",
-    wave: "settings.appearance.agents.textEffects.options.wave",
-    flames: "settings.appearance.agents.textEffects.options.flames",
-    matrix: "settings.appearance.agents.textEffects.options.matrix",
-  };
-  return t(labelKeys[value]);
-}
-
-interface TextEffectMenuItemProps {
-  themeId: TextEffectThemeId;
-  selected: boolean;
-  onChange: (themeId: TextEffectThemeId) => void;
-}
-
-function TextEffectMenuItem({ themeId, selected, onChange }: TextEffectMenuItemProps) {
-  const { t } = useTranslation();
-  const handleSelect = useCallback(() => {
-    onChange(themeId);
-  }, [onChange, themeId]);
-  return (
-    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
-      {getTextEffectLabel(t, themeId)}
-    </DropdownMenuItem>
-  );
-}
-
-interface TextEffectsRowProps {
-  value: TextEffectThemeId;
-  onChange: (themeId: TextEffectThemeId) => void;
-}
-
-function TextEffectsRow({ value, onChange }: TextEffectsRowProps) {
-  const { t } = useTranslation();
-  const selectedLabel = getTextEffectLabel(t, value);
-  return (
-    <View style={styles.rowWithBorder}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="app-chat-presentation-text-effects"
-          style={settingsStyles.rowTitle}
-        >
-          {t("settings.appearance.agents.textEffects.title")}
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          {t("settings.appearance.agents.textEffects.hint")}
-        </Text>
-      </View>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          style={dropdownTriggerStyle}
-          accessibilityLabel={t("settings.appearance.agents.textEffects.accessibilityLabel", {
-            value: selectedLabel,
-          })}
-          testID="settings-text-effects-trigger"
-        >
-          <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown uniProps={mutedColorMapping} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="bottom" align="end" width={200}>
-          {TEXT_EFFECT_THEME_IDS.map((themeId) => (
-            <TextEffectMenuItem
-              key={themeId}
-              themeId={themeId}
-              selected={value === themeId}
-              onChange={onChange}
-            />
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </View>
-  );
-}
-
-const TOOL_CALL_DETAIL_LEVELS: readonly AppSettings["toolCallDetailLevel"][] = [
-  "detailed",
-  "overview",
-];
-
-function getToolCallDetailLevelLabel(
-  t: TFunction,
-  value: AppSettings["toolCallDetailLevel"],
-): string {
-  return t(`settings.general.toolCallDetail.options.${value}`);
-}
-
-interface ToolCallDetailMenuItemProps {
-  value: AppSettings["toolCallDetailLevel"];
-  selected: boolean;
-  onChange: (value: AppSettings["toolCallDetailLevel"]) => void;
-}
-
-function ToolCallDetailMenuItem({ value, selected, onChange }: ToolCallDetailMenuItemProps) {
-  const { t } = useTranslation();
-  const handleSelect = useCallback(() => {
-    onChange(value);
-  }, [onChange, value]);
-  return (
-    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
-      {getToolCallDetailLevelLabel(t, value)}
-    </DropdownMenuItem>
-  );
-}
-
-interface ToolCallDetailRowProps {
-  value: AppSettings["toolCallDetailLevel"];
-  onChange: (value: AppSettings["toolCallDetailLevel"]) => void;
-}
-
-function ToolCallDetailRow({ value, onChange }: ToolCallDetailRowProps) {
-  const { t } = useTranslation();
-  const selectedLabel = getToolCallDetailLevelLabel(t, value);
-  return (
-    <View style={styles.rowWithBorder}>
-      <View style={settingsStyles.rowContent}>
-        <SettingsTargetText
-          settingId="app-chat-presentation-tool-call-display"
-          style={settingsStyles.rowTitle}
-        >
-          {t("settings.general.toolCallDetail.label")}
-        </SettingsTargetText>
-        <Text style={settingsStyles.rowHint}>
-          {t("settings.general.toolCallDetail.description")}
-        </Text>
-      </View>
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          style={dropdownTriggerStyle}
-          accessibilityLabel={t("settings.general.toolCallDetail.accessibilityLabel", {
-            value: selectedLabel,
-          })}
-          testID="settings-tool-call-detail-trigger"
-        >
-          <Text style={styles.triggerText}>{selectedLabel}</Text>
-          <ThemedChevronDown uniProps={mutedColorMapping} />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent side="bottom" align="end" width={200}>
-          {TOOL_CALL_DETAIL_LEVELS.map((option) => (
-            <ToolCallDetailMenuItem
-              key={option}
-              value={option}
-              selected={value === option}
-              onChange={onChange}
-            />
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </View>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Layout: compact sidebar top spacing + workspace tools placement (booleans)
-// ---------------------------------------------------------------------------
-
-interface LayoutToggleRowProps {
-  title: string;
-  hint: string;
-  accessibilityLabel: string;
-  value: boolean;
-  withBorder: boolean;
-  onValueChange: (value: boolean) => void;
-  testID?: string;
-}
-
-function LayoutToggleRow({
-  title,
-  hint,
-  accessibilityLabel,
-  value,
-  withBorder,
-  onValueChange,
-  testID,
-}: LayoutToggleRowProps) {
-  return (
     <View style={withBorder ? styles.rowWithBorder : settingsStyles.row}>
       <View style={settingsStyles.rowContent}>
-        <SettingsTargetLabel style={settingsStyles.rowTitle}>{title}</SettingsTargetLabel>
+        <Text style={settingsStyles.rowTitle}>{title}</Text>
         <Text style={settingsStyles.rowHint}>{hint}</Text>
       </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        accessibilityLabel={accessibilityLabel}
-        testID={testID}
-      />
+      <View style={styles.sizeField}>
+        <TextInput
+          initialValue={draft}
+          onChangeText={onChangeDraft}
+          onBlur={onCommit}
+          onSubmitEditing={onCommit}
+          keyboardType="number-pad"
+          inputMode="numeric"
+          selectTextOnFocus
+          style={styles.sizeInput}
+          accessibilityLabel={accessibilityLabel}
+        />
+        <Text style={styles.unit}>px</Text>
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Content width: numeric field (commit on blur/submit) + reset to the default
+// ---------------------------------------------------------------------------
+
+interface ContentWidthRowProps {
+  value: AppSettings["contentMaxWidth"];
+  onChange: (value: AppSettings["contentMaxWidth"]) => void;
+}
+
+function ContentWidthRow({ value, onChange }: ContentWidthRowProps) {
+  const { t } = useTranslation();
+  const width = resolveContentMaxWidth({ contentMaxWidth: value });
+  // The field is uncontrolled, so a saved or reset width is written into it directly.
+  const input = useRef<EditingTextInputHandle>(null);
+
+  useEffect(() => {
+    input.current?.replaceText(String(width));
+  }, [width]);
+
+  const commit = useCallback(() => {
+    const next = parseContentMaxWidth(input.current?.getText()) ?? width;
+    input.current?.replaceText(String(next));
+    // Typing the width already in effect keeps following the default.
+    if (next !== width) {
+      onChange(next);
+    }
+  }, [onChange, width]);
+
+  const reset = useCallback(() => {
+    onChange(null);
+  }, [onChange]);
+
+  return (
+    <View style={settingsStyles.row}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>{t("settings.appearance.layout.contentWidth")}</Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.appearance.layout.contentWidthHint")}
+        </Text>
+      </View>
+      <View style={styles.sizeField}>
+        {value === null ? null : (
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={reset}
+            accessibilityLabel={t("settings.appearance.layout.resetAccessibility")}
+          >
+            {t("settings.appearance.layout.reset")}
+          </Button>
+        )}
+        <TextInput
+          ref={input}
+          initialValue={String(width)}
+          onBlur={commit}
+          onSubmitEditing={commit}
+          keyboardType="number-pad"
+          inputMode="numeric"
+          selectTextOnFocus
+          style={styles.widthInput}
+          accessibilityLabel={t("settings.appearance.layout.contentWidthAccessibility")}
+        />
+        <Text style={styles.unit}>px</Text>
+      </View>
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Syntax highlight theme picker (commits immediately)
+// ---------------------------------------------------------------------------
+
+function syntaxLabelForId(id: SyntaxThemeId): string {
+  const option = SYNTAX_THEME_OPTIONS.find((entry) => entry.id === id);
+  return option ? option.label : id;
+}
+
+interface SyntaxMenuItemProps {
+  option: SyntaxThemeOption;
+  selected: boolean;
+  onChange: (id: SyntaxThemeId) => void;
+}
+
+function SyntaxMenuItem({ option, selected, onChange }: SyntaxMenuItemProps) {
+  const handleSelect = useCallback(() => {
+    onChange(option.id);
+  }, [onChange, option.id]);
+  return (
+    <DropdownMenuItem selected={selected} onSelect={handleSelect}>
+      {option.label}
+    </DropdownMenuItem>
+  );
+}
+
+interface SyntaxRowProps {
+  value: SyntaxThemeId;
+  onChange: (id: SyntaxThemeId) => void;
+}
+
+function SyntaxRow({ value, onChange }: SyntaxRowProps) {
+  const { t } = useTranslation();
+  const selectedLabel = syntaxLabelForId(value);
+  return (
+    <View style={settingsStyles.row}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>
+          {t("settings.appearance.syntax.highlightTheme")}
+        </Text>
+        <Text style={settingsStyles.rowHint}>
+          {t("settings.appearance.syntax.highlightThemeHint")}
+        </Text>
+      </View>
+      <DropdownMenu>
+        <DropdownTrigger
+          accessibilityLabel={t("settings.appearance.syntax.highlightThemeAccessibility", {
+            value: selectedLabel,
+          })}
+        >
+          {selectedLabel}
+        </DropdownTrigger>
+        <DropdownMenuContent side="bottom" align="end" width={200}>
+          {SYNTAX_THEME_OPTIONS.map((option) => (
+            <SyntaxMenuItem
+              key={option.id}
+              option={option}
+              selected={value === option.id}
+              onChange={onChange}
+            />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </View>
   );
 }
@@ -850,219 +474,6 @@ function LayoutToggleRow({
 // ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
-
-export function ChatAppearanceSection() {
-  const { t } = useTranslation();
-  const { settings, updateSettings } = useAppSettings();
-  const updateBoolean = useCallback(
-    (key: keyof AppSettings, value: boolean) => void updateSettings({ [key]: value }),
-    [updateSettings],
-  );
-  const handleBlackTabBackgroundChange = useCallback(
-    (value: boolean) => updateBoolean("blackTabBackground", value),
-    [updateBoolean],
-  );
-  const handleGroupConsecutiveActionsChange = useCallback(
-    (value: boolean) => updateBoolean("groupConsecutiveActions", value),
-    [updateBoolean],
-  );
-  const handleChatOutlineEnabledChange = useCallback(
-    (value: boolean) => updateBoolean("chatOutlineEnabled", value),
-    [updateBoolean],
-  );
-  const handleWrapToolCallTextChange = useCallback(
-    (value: boolean) => updateBoolean("wrapToolCallText", value),
-    [updateBoolean],
-  );
-  const handleChatMetricsBarChange = useCallback(
-    (value: boolean) => updateBoolean("chatMetricsBar", value),
-    [updateBoolean],
-  );
-  const handleAutoExpandReasoningChange = useCallback(
-    (value: boolean) => updateBoolean("autoExpandReasoning", value),
-    [updateBoolean],
-  );
-  const handleHideChatMessageDetailsChange = useCallback(
-    (value: boolean) => updateBoolean("hideChatMessageDetails", value),
-    [updateBoolean],
-  );
-  const handleChatBubbleGradientChange = useCallback(
-    (value: boolean) => updateBoolean("chatBubbleGradient", value),
-    [updateBoolean],
-  );
-  const handleWrapCodeLinesChange = useCallback(
-    (value: boolean) => updateBoolean("wrapCodeLines", value),
-    [updateBoolean],
-  );
-  const handleToolCallDetailLevelChange = useCallback(
-    (toolCallDetailLevel: AppSettings["toolCallDetailLevel"]) =>
-      void updateSettings({ toolCallDetailLevel }),
-    [updateSettings],
-  );
-  const handleChatTimestampDisplayChange = useCallback(
-    (chatTimestampDisplay: AppSettings["chatTimestampDisplay"]) =>
-      void updateSettings({ chatTimestampDisplay }),
-    [updateSettings],
-  );
-  const handleTextEffectThemeChange = useCallback(
-    (textEffectTheme: TextEffectThemeId) => void updateSettings({ textEffectTheme }),
-    [updateSettings],
-  );
-  const handleSubagentTrackPresentationChange = useCallback(
-    (subagentTrackPresentation: AppSettings["subagentTrackPresentation"]) =>
-      void updateSettings({ subagentTrackPresentation }),
-    [updateSettings],
-  );
-
-  return (
-    <SettingsSection title="Presentation">
-      <View style={settingsStyles.card}>
-        <View style={settingsStyles.rowResponsive}>
-          <View style={settingsStyles.rowContent}>
-            <SettingsTargetText
-              settingId="app-chat-presentation-sub-agent-presentation"
-              style={settingsStyles.rowTitle}
-            >
-              Sub-agent presentation
-            </SettingsTargetText>
-            <Text style={settingsStyles.rowHint}>
-              Choose Otto&apos;s detailed panels or Paseo&apos;s compact composer pills. This
-              changes only how the same running sub-agents are shown.
-            </Text>
-          </View>
-          <SegmentedControl
-            size="sm"
-            value={settings.subagentTrackPresentation}
-            onValueChange={handleSubagentTrackPresentationChange}
-            options={[
-              { value: "panels", label: "Panels" },
-              { value: "pills", label: "Pills" },
-            ]}
-            testID="settings-subagent-track-presentation"
-          />
-        </View>
-        <SettingsTargetScope settingIds={["app-chat-presentation-black-agent-chat-background"]}>
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.blackChatBackground.title")}
-            hint={t("settings.appearance.agents.blackChatBackground.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.blackChatBackground.accessibilityLabel",
-            )}
-            value={settings.blackTabBackground}
-            withBorder={false}
-            onValueChange={handleBlackTabBackgroundChange}
-            testID="settings-black-tab-background-switch"
-          />
-        </SettingsTargetScope>
-        <SettingsTargetScope
-          settingIds={["app-chat-presentation-group-consecutive-actions-together"]}
-        >
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.groupConsecutiveActions.title")}
-            hint={t("settings.appearance.agents.groupConsecutiveActions.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.groupConsecutiveActions.accessibilityLabel",
-            )}
-            value={settings.groupConsecutiveActions}
-            withBorder
-            onValueChange={handleGroupConsecutiveActionsChange}
-            testID="settings-group-consecutive-actions-switch"
-          />
-        </SettingsTargetScope>
-        <LayoutToggleRow
-          title={t("settings.appearance.agents.chatOutline.title")}
-          hint={t("settings.appearance.agents.chatOutline.hint")}
-          accessibilityLabel={t("settings.appearance.agents.chatOutline.accessibilityLabel")}
-          value={settings.chatOutlineEnabled}
-          withBorder
-          onValueChange={handleChatOutlineEnabledChange}
-          testID="settings-chat-outline-switch"
-        />
-        <ToolCallDetailRow
-          value={settings.toolCallDetailLevel}
-          onChange={handleToolCallDetailLevelChange}
-        />
-        <SettingsTargetScope settingIds={["app-chat-presentation-wrap-tool-call-text"]}>
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.wrapToolCallText.title")}
-            hint={t("settings.appearance.agents.wrapToolCallText.hint")}
-            accessibilityLabel={t("settings.appearance.agents.wrapToolCallText.accessibilityLabel")}
-            value={settings.wrapToolCallText}
-            withBorder
-            onValueChange={handleWrapToolCallTextChange}
-            testID="settings-wrap-tool-call-text-switch"
-          />
-        </SettingsTargetScope>
-        <SettingsTargetScope settingIds={["app-chat-presentation-show-chat-metrics"]}>
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.chatMetricsBar.title")}
-            hint={t("settings.appearance.agents.chatMetricsBar.hint")}
-            accessibilityLabel={t("settings.appearance.agents.chatMetricsBar.accessibilityLabel")}
-            value={settings.chatMetricsBar}
-            withBorder
-            onValueChange={handleChatMetricsBarChange}
-            testID="settings-chat-metrics-bar-switch"
-          />
-        </SettingsTargetScope>
-        <SettingsTargetScope settingIds={["app-chat-presentation-always-expand-reasoning"]}>
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.autoExpandReasoning.title")}
-            hint={t("settings.appearance.agents.autoExpandReasoning.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.autoExpandReasoning.accessibilityLabel",
-            )}
-            value={settings.autoExpandReasoning}
-            withBorder
-            onValueChange={handleAutoExpandReasoningChange}
-            testID="settings-auto-expand-reasoning-switch"
-          />
-        </SettingsTargetScope>
-        <SettingsTargetScope
-          settingIds={["app-chat-presentation-hide-message-details-until-hover"]}
-        >
-          <LayoutToggleRow
-            title={t("settings.appearance.agents.hideMessageDetails.title")}
-            hint={t("settings.appearance.agents.hideMessageDetails.hint")}
-            accessibilityLabel={t(
-              "settings.appearance.agents.hideMessageDetails.accessibilityLabel",
-            )}
-            value={settings.hideChatMessageDetails}
-            withBorder
-            onValueChange={handleHideChatMessageDetailsChange}
-            testID="settings-hide-message-details-switch"
-          />
-        </SettingsTargetScope>
-        <MessageTimestampRow
-          value={settings.chatTimestampDisplay}
-          onChange={handleChatTimestampDisplayChange}
-        />
-        <SettingsTargetScope settingIds={["app-chat-presentation-gradient"]}>
-          <LayoutToggleRow
-            title="Gradient"
-            hint="Paint a soft diagonal gradient into the top corner of each chat message bubble. Turn off for flat bubbles."
-            accessibilityLabel="Gradient"
-            value={settings.chatBubbleGradient}
-            withBorder
-            onValueChange={handleChatBubbleGradientChange}
-            testID="settings-chat-bubble-gradient-switch"
-          />
-        </SettingsTargetScope>
-        <SettingsTargetScope settingIds={["app-chat-presentation-wrap-long-lines"]}>
-          <LayoutToggleRow
-            title="Wrap long lines"
-            hint="Wrap long lines in tool output, commands, and diffs instead of scrolling horizontally."
-            accessibilityLabel="Wrap long lines"
-            value={settings.wrapCodeLines}
-            withBorder
-            onValueChange={handleWrapCodeLinesChange}
-            testID="settings-wrap-code-lines-switch"
-          />
-        </SettingsTargetScope>
-        <TextEffectsRow value={settings.textEffectTheme} onChange={handleTextEffectThemeChange} />
-      </View>
-    </SettingsSection>
-  );
-}
 
 export function AppearanceSection() {
   const { t } = useTranslation();
@@ -1072,143 +483,51 @@ export function AppearanceSection() {
     selected: selectedPluginTheme,
     select: selectPluginTheme,
   } = useContributedThemes();
-  const showFontFamilyRows = !isNative;
-  const showLayoutSection = !isNative;
-  const isDeveloperMode = useIsDeveloperMode();
-  const showUiGallery = isDev && isDeveloperMode;
+  const showInterfaceFontFamilyRow = !isNative;
   const uiFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_UI_FONT_STACK);
   const monoFontPlaceholder = resolveDefaultStackPlaceholder(t, DEFAULT_MONO_FONT_STACK);
 
   const [uiFontDraft, setUiFontDraft] = useState(settings.uiFontFamily);
   const [monoFontDraft, setMonoFontDraft] = useState(settings.monoFontFamily);
-  const [uiSizeDraft, setUiSizeDraft] = useState(settings.uiFontSize);
-  const [contentSizeDraft, setContentSizeDraft] = useState(settings.contentFontSize);
-  const [codeSizeDraft, setCodeSizeDraft] = useState(settings.codeFontSize);
-  const [terminalSizeDraft, setTerminalSizeDraft] = useState(settings.terminalFontSize);
-  const [contrastDraft, setContrastDraft] = useState(() =>
-    toContrastPercent(settings.fontContrast),
-  );
-  const [uiGalleryVisible, setUiGalleryVisible] = useState(false);
-
-  const handleOpenUiGallery = useCallback(() => setUiGalleryVisible(true), []);
-  const handleCloseUiGallery = useCallback(() => setUiGalleryVisible(false), []);
+  const [uiBaseSizeDraft, setUiBaseSizeDraft] = useState(String(settings.uiBaseFontSize));
+  const [contentSizeDraft, setContentSizeDraft] = useState(String(settings.contentFontSize));
+  const [codeSizeDraft, setCodeSizeDraft] = useState(String(settings.codeFontSize));
 
   // Resync numeric drafts when the committed value changes elsewhere.
   useEffect(() => {
-    setUiSizeDraft(settings.uiFontSize);
-  }, [settings.uiFontSize]);
+    setUiBaseSizeDraft(String(settings.uiBaseFontSize));
+  }, [settings.uiBaseFontSize]);
   useEffect(() => {
-    setContentSizeDraft(settings.contentFontSize);
+    setContentSizeDraft(String(settings.contentFontSize));
   }, [settings.contentFontSize]);
   useEffect(() => {
-    setCodeSizeDraft(settings.codeFontSize);
+    setCodeSizeDraft(String(settings.codeFontSize));
   }, [settings.codeFontSize]);
-  useEffect(() => {
-    setTerminalSizeDraft(settings.terminalFontSize);
-  }, [settings.terminalFontSize]);
-  useEffect(() => {
-    setContrastDraft(toContrastPercent(settings.fontContrast));
-  }, [settings.fontContrast]);
 
-  // When mode is System, the variant list is scoped to whichever spectrum the
-  // OS is CURRENTLY reporting (not a fixed neutral pair) - this re-renders
-  // live if the OS scheme flips while the settings screen is open.
-  const osColorScheme = useColorScheme();
-  let effectiveSpectrum: "light" | "dark";
-  if (settings.colorSchemeMode === "system") {
-    effectiveSpectrum = osColorScheme === "dark" ? "dark" : "light";
-  } else {
-    effectiveSpectrum = settings.colorSchemeMode;
-  }
-  const scopedThemeList = effectiveSpectrum === "light" ? LIGHT_THEMES : DARK_THEMES;
-  const scopedThemeValue = effectiveSpectrum === "light" ? settings.lightTheme : settings.darkTheme;
-
-  const handleModeChange = useCallback(
-    (colorSchemeMode: AppSettings["colorSchemeMode"]) => {
-      void updateSettings({
-        colorSchemeMode,
-        theme: colorSchemeMode === "system" ? "auto" : colorSchemeMode,
-      });
+  const handleThemeChange = useCallback(
+    (theme: BuiltInThemePreference) => {
+      void updateSettings({ theme });
     },
     [updateSettings],
   );
 
-  // Only ever updates the spectrum currently shown - never colorSchemeMode -
-  // so switching modes back and forth never resets a per-spectrum pick.
-  const handleThemeVariantChange = useCallback(
-    (variant: ThemeVariantName) => {
-      if (effectiveSpectrum === "light") {
-        void updateSettings({ lightTheme: variant as LightThemeName, theme: "light" });
-      } else {
-        void updateSettings({ darkTheme: variant as DarkThemeName, theme: "dark" });
-      }
+  const handlePluginThemeChange = useCallback(
+    (option: PluginThemeOption) => {
+      selectPluginTheme(option);
     },
-    [effectiveSpectrum, updateSettings],
+    [selectPluginTheme],
   );
 
-  const handleAnimationsEnabledChange = useCallback(
-    (animationsEnabled: boolean) => {
-      void updateSettings({ animationsEnabled });
+  const handleContentMaxWidthChange = useCallback(
+    (contentMaxWidth: AppSettings["contentMaxWidth"]) => {
+      void updateSettings({ contentMaxWidth });
     },
     [updateSettings],
   );
 
-  const handleCompactSidebarTopSpacingChange = useCallback(
-    (compactSidebarTopSpacing: boolean) => {
-      void updateSettings({ compactSidebarTopSpacing });
-    },
-    [updateSettings],
-  );
-
-  const handleSidebarEdgeRevealChange = useCallback(
-    (sidebarEdgeReveal: boolean) => {
-      void updateSettings({ sidebarEdgeReveal });
-    },
-    [updateSettings],
-  );
-
-  const handleWorkspaceToolsPlacementChange = useCallback(
-    (showInWorkspaceList: boolean) => {
-      void updateSettings({
-        workspaceToolsPlacement: showInWorkspaceList ? "workspaceList" : "header",
-      });
-    },
-    [updateSettings],
-  );
-
-  const handleWorkspaceChangeIndicatorChange = useCallback(
-    (workspaceChangeIndicator: AppSettings["workspaceChangeIndicator"]) => {
-      void updateSettings({ workspaceChangeIndicator });
-    },
-    [updateSettings],
-  );
-
-  const handleTeamSwitcherPlacementChange = useCallback(
-    (showInTitlebar: boolean) => {
-      void updateSettings({
-        teamSwitcherPlacement: showInTitlebar ? "titlebar" : "sidebar",
-      });
-    },
-    [updateSettings],
-  );
-
-  const handleChatWidthChange = useCallback(
-    (chatWidth: AppSettings["chatWidth"]) => {
-      void updateSettings({ chatWidth });
-    },
-    [updateSettings],
-  );
-
-  const handleDefaultTabOrientationChange = useCallback(
-    (defaultTabOrientation: AppSettings["defaultTabOrientation"]) => {
-      void updateSettings({ defaultTabOrientation });
-    },
-    [updateSettings],
-  );
-
-  const handleHideTabToolbarOptionsChange = useCallback(
-    (hideTabToolbarOptions: boolean) => {
-      void updateSettings({ hideTabToolbarOptions });
+  const handleSyntaxThemeChange = useCallback(
+    (syntaxTheme: SyntaxThemeId) => {
+      void updateSettings({ syntaxTheme });
     },
     [updateSettings],
   );
@@ -1218,12 +537,13 @@ export function AppearanceSection() {
       const sanitized = sanitizeFontFamily(value);
       if (sanitized === null) {
         setUiFontDraft(settings.uiFontFamily);
-        return;
+        return settings.uiFontFamily;
       }
       setUiFontDraft(sanitized);
       if (sanitized !== settings.uiFontFamily) {
         void updateSettings({ uiFontFamily: sanitized });
       }
+      return sanitized;
     },
     [settings.uiFontFamily, updateSettings],
   );
@@ -1233,311 +553,157 @@ export function AppearanceSection() {
       const sanitized = sanitizeFontFamily(value);
       if (sanitized === null) {
         setMonoFontDraft(settings.monoFontFamily);
-        return;
+        return settings.monoFontFamily;
       }
       setMonoFontDraft(sanitized);
       if (sanitized !== settings.monoFontFamily) {
         void updateSettings({ monoFontFamily: sanitized });
       }
+      return sanitized;
     },
     [settings.monoFontFamily, updateSettings],
   );
 
-  const commitUiSize = useCallback(
-    (value: number) => {
-      const next = parseClampedFontSize(value, {
-        min: MIN_UI_FONT_SIZE,
-        max: MAX_UI_FONT_SIZE,
-      });
-      if (next !== null && next !== settings.uiFontSize) {
-        void updateSettings({ uiFontSize: next });
-      }
-    },
-    [settings.uiFontSize, updateSettings],
-  );
+  const handleUiBaseSizeChange = useCallback((value: string) => {
+    setUiBaseSizeDraft(value.replace(/[^\d]/g, ""));
+  }, []);
 
-  const commitCodeSize = useCallback(
-    (value: number) => {
-      const next = parseClampedFontSize(value, {
-        min: MIN_CODE_FONT_SIZE,
-        max: MAX_CODE_FONT_SIZE,
-      });
-      if (next !== null && next !== settings.codeFontSize) {
-        void updateSettings({ codeFontSize: next });
-      }
-    },
-    [settings.codeFontSize, updateSettings],
-  );
+  const handleCodeSizeChange = useCallback((value: string) => {
+    setCodeSizeDraft(value.replace(/[^\d]/g, ""));
+  }, []);
 
-  const commitContentSize = useCallback(
-    (value: number) => {
-      const next = parseClampedFontSize(value, {
-        min: MIN_CONTENT_FONT_SIZE,
-        max: MAX_CONTENT_FONT_SIZE,
-      });
-      if (next !== null && next !== settings.contentFontSize) {
-        void updateSettings({ contentFontSize: next });
-      }
-    },
-    [settings.contentFontSize, updateSettings],
-  );
+  const handleContentSizeChange = useCallback((value: string) => {
+    setContentSizeDraft(value.replace(/[^\d]/g, ""));
+  }, []);
 
-  const commitTerminalSize = useCallback(
-    (value: number) => {
-      const next = parseClampedFontSize(value, {
-        min: MIN_TERMINAL_FONT_SIZE,
-        max: MAX_TERMINAL_FONT_SIZE,
-      });
-      if (next !== null && next !== settings.terminalFontSize) {
-        void updateSettings({ terminalFontSize: next });
-      }
-    },
-    [settings.terminalFontSize, updateSettings],
-  );
+  const commitUiBaseSize = useCallback(() => {
+    const parsed = parseClampedFontSize(uiBaseSizeDraft, {
+      min: MIN_UI_BASE_FONT_SIZE,
+      max: MAX_UI_BASE_FONT_SIZE,
+    });
+    const next = parsed ?? settings.uiBaseFontSize;
+    setUiBaseSizeDraft(String(next));
+    if (next !== settings.uiBaseFontSize) {
+      void updateSettings({ uiBaseFontSize: next });
+    }
+  }, [settings.uiBaseFontSize, uiBaseSizeDraft, updateSettings]);
 
-  const commitContrast = useCallback(
-    (percent: number) => {
-      const next = Math.min(1, Math.max(0, percent / 100));
-      if (next !== settings.fontContrast) {
-        void updateSettings({ fontContrast: next });
-      }
-    },
-    [settings.fontContrast, updateSettings],
+  const commitCodeSize = useCallback(() => {
+    const parsed = parseClampedFontSize(codeSizeDraft, {
+      min: MIN_CODE_FONT_SIZE,
+      max: MAX_CODE_FONT_SIZE,
+    });
+    const next = parsed ?? settings.codeFontSize;
+    setCodeSizeDraft(String(next));
+    if (next !== settings.codeFontSize) {
+      void updateSettings({ codeFontSize: next });
+    }
+  }, [codeSizeDraft, settings.codeFontSize, updateSettings]);
+
+  const commitContentSize = useCallback(() => {
+    const parsed = parseClampedFontSize(contentSizeDraft, {
+      min: MIN_CONTENT_FONT_SIZE,
+      max: MAX_CONTENT_FONT_SIZE,
+    });
+    const next = parsed ?? settings.contentFontSize;
+    setContentSizeDraft(String(next));
+    if (next !== settings.contentFontSize) {
+      void updateSettings({ contentFontSize: next });
+    }
+  }, [contentSizeDraft, settings.contentFontSize, updateSettings]);
+
+  // Live-while-typing: the in-progress drafts drive the preview without
+  // committing to the global theme. Empty/invalid fields fall back to the
+  // theme value inside the preview.
+  const previewOverrides = useMemo(
+    () => ({
+      contentFontSize: sizeDraftToOverride(contentSizeDraft),
+      monoFontFamily: monoFontDraft,
+      codeFontSize: sizeDraftToOverride(codeSizeDraft),
+    }),
+    [codeSizeDraft, contentSizeDraft, monoFontDraft],
   );
 
   return (
     <View>
       <SettingsSection title={t("settings.appearance.theme.title")}>
         <View style={settingsStyles.card}>
-          <ModeRow value={settings.colorSchemeMode} onChange={handleModeChange} />
           <ThemeRow
-            list={scopedThemeList}
-            value={scopedThemeValue}
-            onChange={handleThemeVariantChange}
+            value={settings.theme}
+            pluginThemes={pluginThemes}
+            selectedPluginTheme={selectedPluginTheme}
+            onChange={handleThemeChange}
+            onSelectPluginTheme={handlePluginThemeChange}
           />
-          <PluginThemeRow
-            options={pluginThemes}
-            selected={selectedPluginTheme}
-            onSelect={selectPluginTheme}
-          />
-          {showUiGallery ? (
-            <View style={styles.rowWithBorder}>
-              <View style={settingsStyles.rowContent}>
-                <SettingsTargetText
-                  settingId="app-appearance-theme-ui-gallery"
-                  style={settingsStyles.rowTitle}
-                >
-                  UI Gallery
-                </SettingsTargetText>
-                <Text style={settingsStyles.rowHint}>
-                  Audit production controls in every enforced state and theme.
-                </Text>
-              </View>
-              <Button
-                variant="outline"
-                size="sm"
-                onPress={handleOpenUiGallery}
-                testID="settings-open-ui-state-gallery"
-              >
-                Open gallery
-              </Button>
-            </View>
-          ) : null}
         </View>
       </SettingsSection>
-      {showUiGallery ? (
-        <UiStateGallery visible={uiGalleryVisible} onClose={handleCloseUiGallery} />
-      ) : null}
-      {/* i18n: English-only pending a translation pass (Animations). Kept as its
-          own section (not the desktop-only Layout section) because it also gates
-          native page-transition fades. */}
-      <SettingsSection title="Animations">
-        <View style={settingsStyles.card}>
-          <SettingsTargetScope settingIds={["app-appearance-animations-animate-transitions"]}>
-            <LayoutToggleRow
-              title="Animate transitions"
-              hint="Cross-fade between pages and slide the sidebars open instead of switching instantly."
-              accessibilityLabel="Animate transitions"
-              value={settings.animationsEnabled}
-              withBorder={false}
-              onValueChange={handleAnimationsEnabledChange}
-              testID="settings-animations-enabled-switch"
-            />
-          </SettingsTargetScope>
-        </View>
-      </SettingsSection>
-      {showLayoutSection ? (
-        <SettingsSection title={t("settings.appearance.layout.title")}>
-          <View style={settingsStyles.card}>
-            <SettingsTargetScope settingIds={["app-appearance-layout-reduce-space-above-sidebar"]}>
-              <LayoutToggleRow
-                title={t("settings.appearance.layout.compactSidebarTopSpacing.title")}
-                hint={t("settings.appearance.layout.compactSidebarTopSpacing.hint")}
-                accessibilityLabel={t(
-                  "settings.appearance.layout.compactSidebarTopSpacing.accessibilityLabel",
-                )}
-                value={settings.compactSidebarTopSpacing}
-                withBorder={false}
-                onValueChange={handleCompactSidebarTopSpacingChange}
-                testID="settings-compact-sidebar-top-spacing-switch"
-              />
-            </SettingsTargetScope>
-            {/* i18n: English-only pending a translation pass (sidebar edge reveal).
-                Desktop only: a browser tab has no maximized window edge to rest on. */}
-            {getIsElectron() ? (
-              <SettingsTargetScope
-                settingIds={["app-appearance-layout-reveal-sidebars-at-screen-edges"]}
-              >
-                <LayoutToggleRow
-                  title="Reveal sidebars at screen edges"
-                  hint="When the window is maximized or fullscreen, rest the pointer on the left or right edge to bring in a hidden sidebar. It goes away when the pointer leaves it."
-                  accessibilityLabel="Reveal sidebars at screen edges"
-                  value={settings.sidebarEdgeReveal}
-                  withBorder
-                  onValueChange={handleSidebarEdgeRevealChange}
-                  testID="settings-sidebar-edge-reveal-switch"
-                />
-              </SettingsTargetScope>
-            ) : null}
-            <SettingsTargetScope
-              settingIds={["app-appearance-layout-show-workspace-tools-in-workspace-list"]}
-            >
-              <LayoutToggleRow
-                title={t("settings.appearance.layout.workspaceToolsInList.title")}
-                hint={t("settings.appearance.layout.workspaceToolsInList.hint")}
-                accessibilityLabel={t(
-                  "settings.appearance.layout.workspaceToolsInList.accessibilityLabel",
-                )}
-                value={settings.workspaceToolsPlacement === "workspaceList"}
-                withBorder
-                onValueChange={handleWorkspaceToolsPlacementChange}
-                testID="settings-workspace-tools-placement-switch"
-              />
-            </SettingsTargetScope>
-            {isDeveloperMode ? (
-              <WorkspaceChangeIndicatorRow
-                value={settings.workspaceChangeIndicator}
-                onChange={handleWorkspaceChangeIndicatorChange}
-              />
-            ) : null}
-            {/* i18n: English-only pending a translation pass (Agent Teams). */}
-            <SettingsTargetScope settingIds={["app-appearance-layout-team-switcher-in-title-bar"]}>
-              <LayoutToggleRow
-                title="Team switcher in title bar"
-                hint="Move the Active Team switcher from the sidebar menu into the workspace title bar, ahead of the other tools."
-                accessibilityLabel="Team switcher in title bar"
-                value={settings.teamSwitcherPlacement === "titlebar"}
-                withBorder
-                onValueChange={handleTeamSwitcherPlacementChange}
-                testID="settings-team-switcher-placement-switch"
-              />
-            </SettingsTargetScope>
-            <ChatWidthRow value={settings.chatWidth} onChange={handleChatWidthChange} />
-            <TabOrientationRow
-              value={settings.defaultTabOrientation}
-              onChange={handleDefaultTabOrientationChange}
-            />
-            <SettingsTargetScope settingIds={["app-appearance-layout-hide-tab-toolbar-options"]}>
-              <LayoutToggleRow
-                title={t("settings.appearance.layout.hideTabToolbarOptions.title")}
-                hint={t("settings.appearance.layout.hideTabToolbarOptions.hint")}
-                accessibilityLabel={t(
-                  "settings.appearance.layout.hideTabToolbarOptions.accessibilityLabel",
-                )}
-                value={settings.hideTabToolbarOptions}
-                withBorder
-                onValueChange={handleHideTabToolbarOptionsChange}
-                testID="settings-hide-tab-toolbar-options-switch"
-              />
-            </SettingsTargetScope>
-          </View>
-        </SettingsSection>
-      ) : null}
-      {/* Visualizer settings moved to their own top-level section
-          (visualizer-section.tsx) - the rows kept their i18n keys. */}
-      <SidebarNavSection />
       <SettingsSection title={t("settings.appearance.fonts.title")}>
         <View style={settingsStyles.card}>
-          {showFontFamilyRows ? (
-            <SettingsTargetScope settingIds={["app-appearance-fonts-interface-font"]}>
-              <FontFamilyRow
-                title={t("settings.appearance.fonts.interfaceFont")}
-                hint={t("settings.appearance.fonts.interfaceFontHint")}
-                accessibilityLabel={t("settings.appearance.fonts.interfaceFontAccessibility")}
-                placeholder={uiFontPlaceholder}
-                value={settings.uiFontFamily}
-                draft={uiFontDraft}
-                withBorder={false}
-                onChangeDraft={setUiFontDraft}
-                onCommit={commitUiFontFamily}
-              />
-            </SettingsTargetScope>
+          {showInterfaceFontFamilyRow ? (
+            <FontFamilyRow
+              title={t("settings.appearance.fonts.interfaceFont")}
+              hint={t("settings.appearance.fonts.interfaceFontHint")}
+              accessibilityLabel={t("settings.appearance.fonts.interfaceFontAccessibility")}
+              placeholder={uiFontPlaceholder}
+              value={settings.uiFontFamily}
+              draft={uiFontDraft}
+              withBorder={false}
+              onChangeDraft={setUiFontDraft}
+              onCommit={commitUiFontFamily}
+            />
           ) : null}
-          <SettingsTargetScope settingIds={["app-appearance-fonts-interface-size"]}>
-            <FontSizeRow
-              title={t("settings.appearance.fonts.interfaceSize")}
-              accessibilityLabel={t("settings.appearance.fonts.interfaceSizeAccessibility")}
-              min={MIN_UI_FONT_SIZE}
-              max={MAX_UI_FONT_SIZE}
-              draft={uiSizeDraft}
-              withBorder={showFontFamilyRows}
-              onChangeDraft={setUiSizeDraft}
-              onCommit={commitUiSize}
-            />
-          </SettingsTargetScope>
-          <SettingsTargetScope settingIds={["app-appearance-fonts-content-size"]}>
-            <FontSizeRow
-              title="Content size"
-              accessibilityLabel="Content size"
-              min={MIN_CONTENT_FONT_SIZE}
-              max={MAX_CONTENT_FONT_SIZE}
-              draft={contentSizeDraft}
-              onChangeDraft={setContentSizeDraft}
-              onCommit={commitContentSize}
-            />
-          </SettingsTargetScope>
-          {showFontFamilyRows ? (
-            <SettingsTargetScope settingIds={["app-appearance-fonts-code-font"]}>
-              <FontFamilyRow
-                title={t("settings.appearance.fonts.codeFont")}
-                hint={t("settings.appearance.fonts.codeFontHint")}
-                accessibilityLabel={t("settings.appearance.fonts.codeFontAccessibility")}
-                placeholder={monoFontPlaceholder}
-                value={settings.monoFontFamily}
-                draft={monoFontDraft}
-                withBorder
-                onChangeDraft={setMonoFontDraft}
-                onCommit={commitMonoFontFamily}
-              />
-            </SettingsTargetScope>
-          ) : null}
-          <SettingsTargetScope settingIds={["app-appearance-fonts-code-size"]}>
-            <FontSizeRow
-              title={t("settings.appearance.fonts.codeSize")}
-              accessibilityLabel={t("settings.appearance.fonts.codeSizeAccessibility")}
-              min={MIN_CODE_FONT_SIZE}
-              max={MAX_CODE_FONT_SIZE}
-              draft={codeSizeDraft}
-              onChangeDraft={setCodeSizeDraft}
-              onCommit={commitCodeSize}
-            />
-          </SettingsTargetScope>
-          <SettingsTargetScope settingIds={["app-appearance-fonts-terminal-size"]}>
-            <FontSizeRow
-              title={t("settings.appearance.fonts.terminalSize")}
-              accessibilityLabel={t("settings.appearance.fonts.terminalSizeAccessibility")}
-              min={MIN_TERMINAL_FONT_SIZE}
-              max={MAX_TERMINAL_FONT_SIZE}
-              draft={terminalSizeDraft}
-              onChangeDraft={setTerminalSizeDraft}
-              onCommit={commitTerminalSize}
-            />
-          </SettingsTargetScope>
-          <FontContrastRow
-            draftPercent={contrastDraft}
-            onChangeDraft={setContrastDraft}
-            onCommit={commitContrast}
+          <FontSizeRow
+            title={t("settings.appearance.fonts.interfaceSize")}
+            hint={t("settings.appearance.fonts.interfaceSizeHint")}
+            accessibilityLabel={t("settings.appearance.fonts.interfaceSizeAccessibility")}
+            draft={uiBaseSizeDraft}
+            withBorder={showInterfaceFontFamilyRow}
+            onChangeDraft={handleUiBaseSizeChange}
+            onCommit={commitUiBaseSize}
           />
+          <FontSizeRow
+            title={t("settings.appearance.fonts.contentSize")}
+            hint={t("settings.appearance.fonts.contentSizeHint")}
+            accessibilityLabel={t("settings.appearance.fonts.contentSizeAccessibility")}
+            draft={contentSizeDraft}
+            onChangeDraft={handleContentSizeChange}
+            onCommit={commitContentSize}
+          />
+          <FontFamilyRow
+            title={t("settings.appearance.fonts.codeFont")}
+            hint={t("settings.appearance.fonts.codeFontHint")}
+            accessibilityLabel={t("settings.appearance.fonts.codeFontAccessibility")}
+            placeholder={monoFontPlaceholder}
+            value={settings.monoFontFamily}
+            draft={monoFontDraft}
+            withBorder
+            onChangeDraft={setMonoFontDraft}
+            onCommit={commitMonoFontFamily}
+          />
+          <FontSizeRow
+            title={t("settings.appearance.fonts.codeSize")}
+            hint={t("settings.appearance.fonts.codeSizeHint")}
+            accessibilityLabel={t("settings.appearance.fonts.codeSizeAccessibility")}
+            draft={codeSizeDraft}
+            onChangeDraft={handleCodeSizeChange}
+            onCommit={commitCodeSize}
+          />
+        </View>
+      </SettingsSection>
+      <SettingsSection title={t("settings.appearance.layout.title")}>
+        <View style={settingsStyles.card}>
+          <ContentWidthRow
+            value={settings.contentMaxWidth}
+            onChange={handleContentMaxWidthChange}
+          />
+        </View>
+      </SettingsSection>
+      <SettingsSection title={t("settings.appearance.syntax.title")}>
+        <View style={settingsStyles.card}>
+          <SyntaxRow value={settings.syntaxTheme} onChange={handleSyntaxThemeChange} />
+        </View>
+        <View style={styles.preview}>
+          <AppearancePreview overrides={previewOverrides} />
         </View>
       </SettingsSection>
     </View>
@@ -1557,36 +723,16 @@ const styles = StyleSheet.create((theme) => ({
     borderTopWidth: theme.borderWidth[1],
     borderTopColor: theme.colors.border,
   },
-  trigger: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-    paddingVertical: theme.spacing[1],
-    paddingHorizontal: theme.spacing[2],
-    borderRadius: theme.borderRadius.md,
-    borderWidth: theme.borderWidth[1],
-    borderColor: theme.colors.border,
-  },
-  triggerPressed: {
-    opacity: 0.85,
-  },
-  triggerText: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-  },
   swatch: {
-    width: theme.iconSize.md,
-    height: theme.iconSize.md,
-    borderRadius: theme.iconSize.md / 2,
+    width: ICON_SIZE.md,
+    height: ICON_SIZE.md,
+    borderRadius: ICON_SIZE.md / 2,
     borderWidth: theme.borderWidth[1],
     borderColor: theme.colors.border,
   },
   fontFamilyInput: {
     flexGrow: 1,
     flexShrink: 1,
-    // When stacked the row centers the input; give it a definite width so it
-    // fills up to its cap (rather than shrinking to content) before centering.
-    width: { xs: "100%", sm: "auto" },
     maxWidth: 280,
     minHeight: 36,
     paddingVertical: theme.spacing[2],
@@ -1596,62 +742,16 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface2,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
+    fontSize: theme.fontSize.base,
     textAlign: "left",
   },
   sizeField: {
     flexDirection: "row",
     alignItems: "center",
-    gap: theme.spacing[3],
-    // `flexBasis: "auto"` (not `flex: 1`) so the field keeps its height when the
-    // row stacks in a column; a 0 basis would collapse it and overlap the label.
-    flexGrow: 1,
-    flexShrink: 1,
-    flexBasis: "auto",
-    // Definite width so the centered slider fills up to its cap when stacked.
-    width: { xs: "100%", sm: "auto" },
-    maxWidth: 220,
-    // No left inset when the slider drops below its label when stacked.
-    marginLeft: { xs: 0, sm: theme.spacing[4] },
+    gap: theme.spacing[2],
   },
-  // Same shape as `sizeField`, but it does NOT grow or shrink. `sizeField` sits
-  // in a row whose label is a bare title, so letting it flex is harmless; this
-  // row carries a wrapping hint, and a growing/shrinking control loses that
-  // negotiation - the label's max-content width wins the free space and the
-  // slider gets squeezed past its 120px minimum, straight out of the row. A
-  // definite width at `sm`+ takes the control out of the competition entirely;
-  // when the row stacks it goes full-width and the row centers it.
-  contrastField: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: { xs: "center", sm: "flex-end" },
-    gap: theme.spacing[3],
-    flexGrow: 0,
-    flexShrink: 0,
-    width: { xs: "100%", sm: 220 },
-    marginLeft: { xs: 0, sm: theme.spacing[4] },
-  },
-  sizeValue: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    minWidth: 36,
-    textAlign: "right",
-  },
-  // Same slot, accented while the value is parked on the theme's own tuning -
-  // the one position on this slider worth being able to find by eye.
-  sizeValueDefault: {
-    color: theme.colors.accent,
-    fontSize: theme.fontSize.sm,
-    minWidth: 36,
-    textAlign: "right",
-  },
-  placeholderColor: {
-    color: theme.colors.foregroundMuted,
-  },
-  // A 3-digit column number, so this stays narrow instead of stretching like
-  // the font-family fields.
-  rulerColumnInput: {
-    width: 72,
+  sizeInput: {
+    width: 64,
     minHeight: 36,
     paddingVertical: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
@@ -1660,7 +760,27 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     backgroundColor: theme.colors.surface2,
     color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    textAlign: "center",
+    fontSize: theme.fontSize.base,
+    textAlign: "right",
+  },
+  widthInput: {
+    width: 80,
+    minHeight: 36,
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[3],
+    borderRadius: theme.borderRadius.md,
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    backgroundColor: theme.colors.surface2,
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    textAlign: "right",
+  },
+  unit: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.base,
+  },
+  placeholderColor: {
+    color: theme.colors.foregroundMuted,
   },
 }));

@@ -5,6 +5,8 @@ nav: OpenCode Desktop
 order: 56
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Otto vs OpenCode Desktop
 
 OpenCode Desktop is the desktop app for OpenCode. It is available in beta for macOS, Windows, and Linux.

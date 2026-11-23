@@ -8,10 +8,10 @@ describe("starter trigger connections", () => {
         {
           github: [
             {
-              slug: "github-Draek2077",
-              accountLogin: "Draek2077",
+              slug: "github-getpaseo",
+              accountLogin: "getpaseo",
               accountType: "Organization",
-              repositories: ["Draek2077/otto-code"],
+              repositories: ["getpaseo/paseo"],
             },
           ],
           slack: [{ slug: "paseo", teamName: "Paseo" }],
@@ -19,14 +19,14 @@ describe("starter trigger connections", () => {
           daemons: [],
           linear: [],
         },
-        "Draek2077/otto-code",
+        "getpaseo/paseo",
       ),
     ).toEqual([
       {
-        id: "github:Draek2077/otto-code",
-        label: "GitHub — Draek2077/otto-code",
+        id: "github:getpaseo/paseo",
+        label: "GitHub — getpaseo/paseo",
         provider: "github",
-        filters: { connection: "github-Draek2077", repo: "Draek2077/otto-code" },
+        filters: { connection: "github-getpaseo", repo: "getpaseo/paseo" },
       },
       {
         id: "slack:paseo",
@@ -49,10 +49,10 @@ describe("starter trigger connections", () => {
         {
           github: [
             {
-              slug: "github-Draek2077",
-              accountLogin: "Draek2077",
+              slug: "github-getpaseo",
+              accountLogin: "getpaseo",
               accountType: "Organization",
-              repositories: ["Draek2077/hub"],
+              repositories: ["getpaseo/hub"],
             },
           ],
           slack: [],
@@ -60,7 +60,7 @@ describe("starter trigger connections", () => {
           daemons: [],
           linear: [],
         },
-        "Draek2077/otto-code",
+        "getpaseo/paseo",
       ),
     ).toEqual([]);
   });

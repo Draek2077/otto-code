@@ -1,3 +1,4 @@
+# OTTO(release): retain Otto release identities and deployment ownership.
 name: Desktop Release
 
 on:
@@ -51,6 +52,8 @@ permissions:
   contents: read
 
 env:
+  # OTTO(build): Paseo 0.12's generated validators exceed Node's default worker heap.
+  NODE_OPTIONS: --max-old-space-size=4096
   SOURCE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag || github.ref_name }}
   CHECKOUT_REF: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.checkout_ref || github.ref_name) || github.ref_name }}
   SHOULD_PUBLISH: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false' }}
@@ -58,6 +61,13 @@ env:
   DESKTOP_PACKAGE_PATH: "packages/desktop"
 
 jobs:
+  # OTTO(release): the reusable check is available on this branch before main knows it.
+  verify-installed-linux:
+    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.publish == 'false' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux') }}
+    uses: ./.github/workflows/desktop-packages.yml
+    with:
+      checkout_ref: ${{ github.event.inputs.checkout_ref || github.sha }}
+
   create-release:
     if: ${{ (github.event_name == 'push' && !startsWith(github.ref_name, 'desktop-macos-v') && !startsWith(github.ref_name, 'desktop-linux-v') && !startsWith(github.ref_name, 'desktop-windows-v')) || (github.event_name == 'workflow_dispatch' && github.event.inputs.platform == 'all' && github.event.inputs.publish != 'false') }}
     # THIS job is the only creator of a release for a `v*` or `desktop-v*` tag.
@@ -126,7 +136,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-15
             electron_arch: arm64
           - runner: macos-15-intel
             electron_arch: x64
@@ -171,6 +181,8 @@ jobs:
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build desktop release
         shell: bash
         env:
@@ -182,9 +194,9 @@ jobs:
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
-          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
-          OTTO_DESKTOP_SMOKE: "1"
-          OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
+          PASEO_DESKTOP_SMOKE: "1"
+          PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |
           set -euo pipefail
           build_args=(-- --publish never --mac --${{ matrix.electron_arch }})
@@ -227,6 +239,16 @@ jobs:
           path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-mac.yml
           retention-days: 1
 
+      # OTTO(artifacts): a failed packaged renderer must retain its real frame diagnostics.
+      - name: Upload desktop smoke evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-smoke-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}
+          path: ${{ runner.temp }}/desktop-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
   build-macos-unsigned:
     needs: [create-release]
     # Unsigned macOS builds are direct-download artifacts only. They
@@ -237,7 +259,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: macos-14
+          - runner: macos-15
             electron_arch: arm64
           - runner: macos-15-intel
             electron_arch: x64
@@ -282,15 +304,17 @@ jobs:
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build unsigned desktop package
         shell: bash
         env:
           EP_GH_IGNORE_TIME: true
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
           OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
-          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
-          OTTO_DESKTOP_SMOKE: "1"
-          OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
+          PASEO_DESKTOP_SMOKE: "1"
+          PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |
           set -euo pipefail
           build_args=(-- --publish never --mac --${{ matrix.electron_arch }})
@@ -334,6 +358,16 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # OTTO(artifacts): retain unsigned package runtime proof on success and failure.
+      - name: Upload desktop smoke evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-smoke-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}
+          path: ${{ runner.temp }}/desktop-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
   publish-linux:
     needs: [create-release]
     if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'linux')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-linux-v')))) }}
@@ -362,16 +396,7 @@ jobs:
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
 
-      - name: Setup Python for Zoom Recorder
-        uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: packages/desktop/resources/zoom-recorder/requirements-build.txt
-
-      - name: Install Zoom Recorder build dependencies
-        run: python -m pip install -r packages/desktop/resources/zoom-recorder/requirements-build.txt
-
+      - uses: ./.github/actions/otto-zoom-recorder # OTTO(zoom-recorder)
       - name: Set desktop package version from tag
         shell: bash
         run: |
@@ -391,18 +416,17 @@ jobs:
       - name: Install Linux smoke display
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build desktop release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
           OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
-          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
-          OTTO_DESKTOP_SMOKE: "1"
-          OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
-          # Use the system Python installed above; this skips the before-pack
-          # hook's venv provisioning (which would install the deps a second time).
-          OTTO_ZOOM_RECORDER_PYTHON: python
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
+          PASEO_DESKTOP_SMOKE: "1"
+          PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |
           set -euo pipefail
           build_args=(-- --publish never --linux --x64)
@@ -445,6 +469,16 @@ jobs:
           path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}-linux.yml
           retention-days: 1
 
+      # OTTO(artifacts): retain Linux runtime proof even when the build hook fails.
+      - name: Upload desktop smoke evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-smoke-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}
+          path: ${{ runner.temp }}/desktop-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
   publish-windows:
     needs: [create-release]
     if: ${{ always() && (needs.create-release.result == 'success' || needs.create-release.result == 'skipped') && ((github.event_name == 'workflow_dispatch' && (github.event.inputs.platform == 'all' || github.event.inputs.platform == 'windows')) || (github.event_name == 'push' && (startsWith(github.ref_name, 'v') || startsWith(github.ref_name, 'desktop-v') || startsWith(github.ref_name, 'desktop-windows-v')))) }}
@@ -473,16 +507,7 @@ jobs:
       - name: Install JS dependencies
         run: node scripts/npm-retry.mjs ci
 
-      - name: Setup Python for Zoom Recorder
-        uses: actions/setup-python@v7.0.0
-        with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: packages/desktop/resources/zoom-recorder/requirements-build.txt
-
-      - name: Install Zoom Recorder build dependencies
-        run: python -m pip install -r packages/desktop/resources/zoom-recorder/requirements-build.txt
-
+      - uses: ./.github/actions/otto-zoom-recorder # OTTO(zoom-recorder)
       - name: Set desktop package version from tag
         shell: bash
         run: |
@@ -499,18 +524,17 @@ jobs:
           fs.writeFileSync(packageJsonPath, `${JSON.stringify(packageJson, null, 2)}\n`);
           NODE
 
+      # OTTO(editor): every server/desktop artifact includes the portable solution payload.
+      - uses: ./.github/actions/otto-editor-dotnet
       - name: Build desktop release
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           EP_GH_IGNORE_TIME: true
           OTTO_GOOGLE_OAUTH_CLIENT_JSON: ${{ secrets.OTTO_GOOGLE_OAUTH_CLIENT_JSON }}
-          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: ${{ env.SHOULD_PUBLISH == 'true' && '1' || '0' }}
-          OTTO_DESKTOP_SMOKE: "1"
-          OTTO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
-          # Use the system Python installed above; this skips the before-pack
-          # hook's venv provisioning (which would install the deps a second time).
-          OTTO_ZOOM_RECORDER_PYTHON: python
+          OTTO_REQUIRE_GOOGLE_OAUTH_CLIENT: "1"
+          PASEO_DESKTOP_SMOKE: "1"
+          PASEO_DESKTOP_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/desktop-smoke
         run: |
           set -euo pipefail
           build_args=(-- --publish never --win --x64 --arm64)
@@ -553,8 +577,18 @@ jobs:
           path: ${{ env.DESKTOP_PACKAGE_PATH }}/release/${{ env.RELEASE_CHANNEL }}.yml
           retention-days: 1
 
+      # OTTO(artifacts): retain Windows runtime proof even when the build hook fails.
+      - name: Upload desktop smoke evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: desktop-smoke-${{ runner.os }}-${{ runner.arch }}-${{ github.job }}
+          path: ${{ runner.temp }}/desktop-smoke
+          if-no-files-found: ignore
+          retention-days: 7
+
   finalize-rollout:
-    needs: [apple-signing-gate, publish-macos, publish-linux, publish-windows]
+    needs: [apple-signing-gate, publish-macos, build-macos-unsigned, publish-linux, publish-windows]
     if: ${{ always() && (github.event_name != 'workflow_dispatch' || github.event.inputs.publish != 'false') }}
     permissions:
       contents: write
@@ -616,6 +650,10 @@ jobs:
           set -euo pipefail
           if [[ "${{ needs.apple-signing-gate.result }}" != "success" ]]; then
             echo "::error::Apple signing configuration could not be determined; the release remains a draft"
+            exit 1
+          fi
+          if [[ "${{ needs.build-macos-unsigned.result }}" == "failure" || "${{ needs.build-macos-unsigned.result }}" == "cancelled" ]]; then
+            echo "::error::Unsigned macOS artifacts failed; the release remains a draft"
             exit 1
           fi
           # Single-platform retries skip the Linux/Windows artifact downloads.

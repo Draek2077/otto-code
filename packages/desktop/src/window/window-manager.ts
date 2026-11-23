@@ -1,46 +1,21 @@
 import {
   app,
   BrowserWindow,
+  Menu,
   type MenuItemConstructorOptions,
   type WebContents,
   clipboard,
   ipcMain,
   nativeTheme,
-  screen,
   shell,
 } from "electron";
+
+import type { WindowState, WindowStateStore } from "../settings/window-state.js";
 import type { DesktopWindowChromeMode } from "./chrome.js";
 
-import {
-  setupTrustedMainWindowNavigation,
-  type TrustedOttoOriginPolicy,
-} from "../trusted-main-window.js";
-
-import type {
-  WindowControlsOverlayColors,
-  WindowState,
-  WindowStateStore,
-} from "../settings/window-state.js";
-import { setTrayAttention } from "../features/tray.js";
-
 const WINDOW_STATE_SAVE_DEBOUNCE_MS = 400;
-
-// Deferred window reveal. Main shows a window when its renderer signals the first
-// durable screen is ready (`otto:window:signalReady`) rather than on raw first
-// paint, so slow software rendering can't expose the boot transient (Workspaces →
-// splash → Workspaces). Keyed by webContents id so the one global IPC handler can
-// find the right window's reveal callback. createWindow (main.ts) registers a
-// callback here and also arms a fallback timer, so a renderer that never signals
-// still reveals. See docs/desktop-linux.md.
-const pendingWindowReveals = new Map<number, () => void>();
-
-export function registerPendingWindowReveal(webContentsId: number, reveal: () => void): void {
-  pendingWindowReveals.set(webContentsId, reveal);
-}
-
-export function clearPendingWindowReveal(webContentsId: number): void {
-  pendingWindowReveals.delete(webContentsId);
-}
+const MAC_TRAFFIC_LIGHT_POSITION = { x: 16, y: 14 } as const;
+const MAX_TRAFFIC_LIGHT_OFFSET_Y = 10;
 
 export function readBadgeCount(input: unknown): number {
   if (typeof input !== "number" || !Number.isSafeInteger(input) || input < 0) {
@@ -53,19 +28,7 @@ export function readBadgeCount(input: unknown): number {
 export type WindowTheme = "light" | "dark";
 export interface WindowChromeUpdate {
   backgroundColor?: string;
-  foregroundColor?: string;
-}
-
-export interface WindowControlsOverlayUpdate {
-  height?: number;
-  backgroundColor?: string;
-  foregroundColor?: string;
-}
-
-export interface WindowControlsOverlayState {
-  height: number;
-  backgroundColor?: string;
-  foregroundColor?: string;
+  trafficLightOffsetY?: number;
 }
 
 export function readWindowTheme(input: unknown): WindowTheme | null {
@@ -81,52 +44,7 @@ export function resolveSystemWindowTheme(): WindowTheme {
 }
 
 export function getWindowBackgroundColor(theme: WindowTheme): string {
-  // This paints before the renderer has loaded a theme, so it should look
-  // like a normal OS window in that theme rather than the app's own dark
-  // theme surface color (#1e2221) or a stark black/white. On Windows, match
-  // the native Fluent dark/light app-chrome background so the transition
-  // into the loaded UI doesn't read as an off color.
-  if (process.platform === "win32") {
-    return theme === "dark" ? "#202020" : "#f3f3f3";
-  }
-  return theme === "dark" ? "#000000" : "#ffffff";
-}
-
-export function createWindowControlsOverlayState(theme: WindowTheme): WindowControlsOverlayState {
-  const overlay = getTitleBarOverlayOptions(theme);
-  return {
-    height: overlay.height ?? 29,
-    backgroundColor: overlay.color,
-    foregroundColor: overlay.symbolColor,
-  };
-}
-
-export function getTitleBarOverlayOptions(theme: WindowTheme): Electron.TitleBarOverlayOptions {
-  if (theme === "dark") {
-    return { color: "#1e2221", symbolColor: "#e4e4e7", height: 29 };
-  }
-
-  return { color: "#ffffff", symbolColor: "#09090b", height: 29 };
-}
-
-/**
- * The overlay options to construct the window with. Prefers the colors persisted
- * from the last session (the ones the renderer settled on for the restored
- * sidebar/theme) over the static theme default, so the native caption strip is
- * born the right color instead of flashing from the default to the real one once
- * React mounts. Falls back per-color to the theme default so a partial or absent
- * persisted value is still safe.
- */
-export function resolveInitialTitleBarOverlayOptions(
-  theme: WindowTheme,
-  restored: WindowControlsOverlayColors | null | undefined,
-): Electron.TitleBarOverlayOptions {
-  const base = getTitleBarOverlayOptions(theme);
-  return {
-    color: restored?.backgroundColor ?? base.color,
-    symbolColor: restored?.foregroundColor ?? base.symbolColor,
-    height: base.height,
-  };
+  return theme === "dark" ? "#181B1A" : "#ffffff";
 }
 
 export function getMainWindowChromeOptions(input: {
@@ -139,7 +57,7 @@ export function getMainWindowChromeOptions(input: {
     return {
       titleBarStyle: "hidden",
       titleBarOverlay: true,
-      trafficLightPosition: { x: 16, y: 14 },
+      trafficLightPosition: MAC_TRAFFIC_LIGHT_POSITION,
     };
   }
 
@@ -186,117 +104,57 @@ function readOverlayColor(input: unknown): string | null {
   return input;
 }
 
-function readFiniteOverlayHeight(input: unknown): number | null {
+function readTrafficLightOffsetY(input: unknown): number | null {
   if (typeof input !== "number" || !Number.isFinite(input)) {
     return null;
   }
 
-  const rounded = Math.round(input);
-  return rounded >= 1 ? rounded : null;
+  return Math.abs(input) <= MAX_TRAFFIC_LIGHT_OFFSET_Y ? input : null;
 }
 
-export function readWindowControlsOverlayUpdate(
-  input: unknown,
-): WindowControlsOverlayUpdate | null {
+export function readWindowChromeUpdate(input: unknown): WindowChromeUpdate | null {
   if (!input || typeof input !== "object") {
     return null;
   }
 
   const candidate = input as Record<string, unknown>;
-  const height = readFiniteOverlayHeight(candidate.height);
   const backgroundColor = readOverlayColor(candidate.backgroundColor);
-  const foregroundColor = readOverlayColor(candidate.foregroundColor);
+  const trafficLightOffsetY = readTrafficLightOffsetY(candidate.trafficLightOffsetY);
 
-  if (height === null && backgroundColor === null && foregroundColor === null) {
+  if (backgroundColor === null && trafficLightOffsetY === null) {
     return null;
   }
 
   return {
-    ...(height !== null ? { height } : {}),
     ...(backgroundColor !== null ? { backgroundColor } : {}),
-    ...(foregroundColor !== null ? { foregroundColor } : {}),
+    ...(trafficLightOffsetY !== null ? { trafficLightOffsetY } : {}),
   };
 }
 
-export function resolveRuntimeTitleBarOverlayOptions(
-  state: WindowControlsOverlayState,
-): Electron.TitleBarOverlayOptions {
-  return {
-    color: state.backgroundColor?.trim() === "" ? undefined : state.backgroundColor,
-    symbolColor: state.foregroundColor?.trim() === "" ? undefined : state.foregroundColor,
-    height: Math.max(0, state.height - 1),
-  };
-}
-
-export function applyWindowControlsOverlayUpdate(input: {
-  win: Pick<BrowserWindow, "setTitleBarOverlay">;
-  current: WindowControlsOverlayState;
-  update: WindowControlsOverlayUpdate;
-}): WindowControlsOverlayState {
-  const next: WindowControlsOverlayState = {
-    height: input.update.height ?? input.current.height,
-    backgroundColor: input.update.backgroundColor ?? input.current.backgroundColor,
-    foregroundColor: input.update.foregroundColor ?? input.current.foregroundColor,
-  };
-
-  input.win.setTitleBarOverlay(resolveRuntimeTitleBarOverlayOptions(next));
-  return next;
-}
-
-// Tracks the last overlay state applied per window so the state-persistence
-// path can snapshot the current caption-strip colors on close/quit.
-const overlayStateByWindow = new WeakMap<BrowserWindow, WindowControlsOverlayState>();
-
-/**
- * The overlay colors currently applied to `win`, in the persisted shape, or null
- * when the renderer hasn't pushed any yet this session. Used to seed the next
- * launch's initial `titleBarOverlay`.
- */
-export function getWindowControlsOverlayColors(
-  win: BrowserWindow,
-): WindowControlsOverlayColors | null {
-  const state = overlayStateByWindow.get(win);
-  if (!state) {
-    return null;
-  }
-  const colors: WindowControlsOverlayColors = {};
-  if (state.backgroundColor !== undefined) {
-    colors.backgroundColor = state.backgroundColor;
-  }
-  if (state.foregroundColor !== undefined) {
-    colors.foregroundColor = state.foregroundColor;
-  }
-  if (colors.backgroundColor === undefined && colors.foregroundColor === undefined) {
-    return null;
-  }
-  return colors;
-}
-
-export function registerWindowManager(options?: {
-  isTrustedSender?: (sender: Electron.WebContents) => boolean;
+export function applyMacWindowControlsUpdate(input: {
+  win: Pick<BrowserWindow, "setWindowButtonPosition">;
+  update: WindowChromeUpdate;
 }): void {
-  const requireTrustedSender = (sender: Electron.WebContents): void => {
-    if (!options?.isTrustedSender?.(sender)) {
-      throw new Error("Rejected IPC from an untrusted renderer.");
-    }
-  };
-  ipcMain.handle("otto:window:signalReady", (event) => {
-    requireTrustedSender(event.sender);
-    pendingWindowReveals.get(event.sender.id)?.();
-  });
+  if (input.update.trafficLightOffsetY === undefined) {
+    return;
+  }
 
-  ipcMain.handle("otto:window:minimize", (event) => {
-    requireTrustedSender(event.sender);
+  input.win.setWindowButtonPosition({
+    x: MAC_TRAFFIC_LIGHT_POSITION.x,
+    y: MAC_TRAFFIC_LIGHT_POSITION.y + input.update.trafficLightOffsetY,
+  });
+}
+
+export function registerWindowManager(input: { mode: DesktopWindowChromeMode }): void {
+  ipcMain.handle("paseo:window:minimize", (event) => {
     BrowserWindow.fromWebContents(event.sender)?.minimize();
   });
 
-  ipcMain.handle("otto:window:close", (event) => {
-    requireTrustedSender(event.sender);
+  ipcMain.handle("paseo:window:close", (event) => {
     BrowserWindow.fromWebContents(event.sender)?.close();
   });
 
-  ipcMain.handle("otto:window:toggleMaximize", (event) => {
-    requireTrustedSender(event.sender);
+  ipcMain.handle("paseo:window:toggleMaximize", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return;
     if (win.isMaximized()) {
@@ -306,25 +164,21 @@ export function registerWindowManager(options?: {
     }
   });
 
-  ipcMain.handle("otto:window:isFullscreen", (event) => {
-    requireTrustedSender(event.sender);
+  ipcMain.handle("paseo:window:isFullscreen", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     return win?.isFullScreen() ?? false;
   });
 
-  ipcMain.handle("otto:window:isMaximized", (event) => {
-    requireTrustedSender(event.sender);
+  ipcMain.handle("paseo:window:isMaximized", (event) => {
     return BrowserWindow.fromWebContents(event.sender)?.isMaximized() ?? false;
   });
 
-  ipcMain.handle("otto:window:setFullscreen", (event, fullscreen: unknown) => {
-    requireTrustedSender(event.sender);
+  ipcMain.handle("paseo:window:setFullscreen", (event, fullscreen: unknown) => {
     if (typeof fullscreen !== "boolean") return;
     BrowserWindow.fromWebContents(event.sender)?.setFullScreen(fullscreen);
   });
 
-  ipcMain.handle("otto:window:setBadgeCount", (event, count?: unknown) => {
-    requireTrustedSender(event.sender);
+  ipcMain.handle("paseo:window:setBadgeCount", (_event, count?: unknown) => {
     if (process.platform === "darwin" || process.platform === "linux") {
       const badgeCount = readBadgeCount(count);
       try {
@@ -339,13 +193,7 @@ export function registerWindowManager(options?: {
     }
   });
 
-  ipcMain.handle("otto:window:setTrayAttention", (event, active?: unknown) => {
-    requireTrustedSender(event.sender);
-    setTrayAttention(active === true);
-  });
-
-  ipcMain.handle("otto:window:updateChrome", (event, update?: unknown) => {
-    requireTrustedSender(event.sender);
+  ipcMain.handle("paseo:window:updateChrome", (event, update?: unknown) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) {
       return;
@@ -360,8 +208,8 @@ export function registerWindowManager(options?: {
       win.setBackgroundColor(nextUpdate.backgroundColor);
     }
 
-    if (process.platform === "darwin") {
-      return;
+    if (input.mode === "native-mac") {
+      applyMacWindowControlsUpdate({ win, update: nextUpdate });
     }
   });
 }
@@ -370,118 +218,16 @@ export function setupWindowResizeEvents(win: BrowserWindow): void {
   // A resize/fullscreen event can fire while the window is tearing down; sending
   // to a destroyed webContents throws. Guard so multi-window close doesn't surface
   // "Object has been destroyed" exceptions.
-  // `reason` separates the two very different callers. A manual drag fires
-  // continuously and the renderer's web layout systems already see a real
-  // resize for it, so it must stay cheap: no synthetic reflow, no round-trip
-  // back here. The transitions below are the ones that need the extra nudge.
-  const notifyResized = (reason: "resize" | "transition") => () => {
+  const notifyResized = () => {
     if (win.isDestroyed() || win.webContents.isDestroyed()) {
       return;
     }
-    win.webContents.send("otto:window:resized", { reason });
-  };
-  const notifyTransition = notifyResized("transition");
-
-  win.on("resize", notifyResized("resize"));
-  win.on("enter-full-screen", notifyTransition);
-  win.on("leave-full-screen", notifyTransition);
-  // Maximize/unmaximize doesn't reliably deliver a settled `geometrychange` to
-  // the renderer's window-controls overlay: it can fire while innerWidth still
-  // reflects the previous size, leaving the header's right-pinned controls
-  // padded off a stale width until the next manual resize. Emit an explicit
-  // resized signal on these transitions so the renderer recomputes overlay
-  // insets once the new size has settled.
-  win.on("maximize", notifyTransition);
-  win.on("unmaximize", notifyTransition);
-}
-
-// Pixels under -webkit-app-region: drag (the titlebar strips and pane tab-bar
-// gutters) hit-test as the native window caption on Windows, so the renderer
-// never receives pointer events over them - see docs/hover.md "Electron drag
-// regions are hover dead zones". hookWindowMessage(WM_NCMOUSEMOVE) does NOT
-// work as an escape hatch: Chromium consumes non-client mouse messages before
-// Electron's message hooks see them (verified empirically - the hook never
-// fired while the cursor crossed a drag region). Polling the global cursor is
-// the mechanism that works regardless of how a pixel hit-tests.
-const CURSOR_HOVER_POLL_INTERVAL_MS = 50;
-
-/**
- * Forward the cursor position to the renderer while it is inside the focused
- * window, so the app can implement hover affordances over drag-region pixels
- * (e.g. revealing the tab-bar tools when the pointer crosses the gutter).
- * Windows-only: macOS delivers DOM hover over drag regions natively.
- *
- * Coordinates are DIP relative to the window's content area - the same space
- * as renderer CSS pixels while zoomFactor is 1. Sends `nc-mouse-move` on
- * movement (deduped while the cursor rests) and `nc-mouse-leave` when the
- * cursor exits the window or the window loses focus.
- */
-export function setupCursorHoverForwarding(win: BrowserWindow): void {
-  if (process.platform !== "win32") {
-    return;
-  }
-
-  let timer: NodeJS.Timeout | null = null;
-  let lastX = -1;
-  let lastY = -1;
-  let wasInside = false;
-
-  const sendLeaveIfNeeded = () => {
-    if (!wasInside) {
-      return;
-    }
-    wasInside = false;
-    if (!win.isDestroyed() && !win.webContents.isDestroyed()) {
-      win.webContents.send("otto:event:nc-mouse-leave", {});
-    }
+    win.webContents.send("paseo:window:resized", {});
   };
 
-  const tick = () => {
-    if (win.isDestroyed() || win.webContents.isDestroyed()) {
-      return;
-    }
-    const cursor = screen.getCursorScreenPoint();
-    const bounds = win.getContentBounds();
-    const inside =
-      cursor.x >= bounds.x &&
-      cursor.x < bounds.x + bounds.width &&
-      cursor.y >= bounds.y &&
-      cursor.y < bounds.y + bounds.height;
-    if (!inside) {
-      sendLeaveIfNeeded();
-      return;
-    }
-    if (wasInside && cursor.x === lastX && cursor.y === lastY) {
-      return;
-    }
-    wasInside = true;
-    lastX = cursor.x;
-    lastY = cursor.y;
-    win.webContents.send("otto:event:nc-mouse-move", {
-      x: cursor.x - bounds.x,
-      y: cursor.y - bounds.y,
-    });
-  };
-
-  const start = () => {
-    if (timer === null) {
-      timer = setInterval(tick, CURSOR_HOVER_POLL_INTERVAL_MS);
-    }
-  };
-  const stop = () => {
-    if (timer !== null) {
-      clearInterval(timer);
-      timer = null;
-    }
-    sendLeaveIfNeeded();
-  };
-
-  win.on("focus", start);
-  win.on("blur", stop);
-  win.on("closed", stop);
-  if (win.isFocused()) {
-    start();
-  }
+  win.on("resize", notifyResized);
+  win.on("enter-full-screen", notifyResized);
+  win.on("leave-full-screen", notifyResized);
 }
 
 /**
@@ -510,14 +256,12 @@ export function setupWindowStatePersistence(win: BrowserWindow, store: WindowSta
       return;
     }
     const bounds = win.getNormalBounds();
-    const overlay = getWindowControlsOverlayColors(win);
     latestState = {
       x: bounds.x,
       y: bounds.y,
       width: bounds.width,
       height: bounds.height,
       isMaximized: win.isMaximized(),
-      ...(overlay ? { overlay } : {}),
     };
   }
 
@@ -643,20 +387,23 @@ export function buildStandardContextMenuItems(
   return items;
 }
 
+export function setupDefaultContextMenu(win: BrowserWindow): void {
+  win.webContents.on("context-menu", (_event, params) => {
+    const menu = Menu.buildFromTemplate(buildStandardContextMenuItems(win.webContents, params));
+    menu.popup({ window: win });
+  });
+}
+
 /**
  * Prevent Electron from navigating to files dragged onto the window.
  * The renderer handles drag-drop via standard HTML5 APIs instead.
  */
-export function setupDragDropPrevention(win: BrowserWindow, policy: TrustedOttoOriginPolicy): void {
-  setupTrustedMainWindowNavigation(win, policy);
-}
-
-// COMPAT(windowChrome): upstream renamed this read when it moved to its chrome
-// mode. Otto keeps the sized overlay, so their name resolves to ours minus the
-// height. Drop when Otto adopts upstream window chrome wholesale.
-export function readWindowChromeUpdate(input: unknown): WindowChromeUpdate | null {
-  const update = readWindowControlsOverlayUpdate(input);
-  if (!update) return null;
-  const { height: _height, ...rest } = update;
-  return Object.keys(rest).length > 0 ? rest : null;
+export function setupDragDropPrevention(win: BrowserWindow): void {
+  win.webContents.on("will-navigate", (event, url) => {
+    // Allow normal navigation (e.g. dev server hot-reload) but block file:// URLs
+    // that result from dropping files onto the window.
+    if (url.startsWith("file://")) {
+      event.preventDefault();
+    }
+  });
 }

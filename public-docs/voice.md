@@ -6,6 +6,8 @@ order: 41
 category: Configuration
 ---
 
+<!-- OTTO(website): retain Otto public site and manual content. -->
+
 # Voice
 
 Otto has first-class voice support for dictation and voice mode conversations with your coding environment.

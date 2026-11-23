@@ -16,12 +16,12 @@ import {
   type UserModifiedFields,
 } from "./resolve-agent-form";
 import { buildProviderDefinitions } from "@/utils/provider-definitions";
-import type { AgentProviderDefinition } from "@otto-code/protocol/provider-manifest";
+import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
 import type {
   AgentModelDefinition,
   AgentProvider,
   ProviderSnapshotEntry,
-} from "@otto-code/protocol/agent-types";
+} from "@getpaseo/protocol/agent-types";
 
 const TEST_CODEX_DEFINITION: AgentProviderDefinition = {
   id: "codex",
@@ -47,6 +47,14 @@ const TEST_CLAUDE_DEFINITION: AgentProviderDefinition = {
   ],
 };
 
+const TEST_PI_DEFINITION: AgentProviderDefinition = {
+  id: "pi",
+  label: "Pi",
+  description: "Pi test provider",
+  defaultModeId: null,
+  modes: [],
+};
+
 const CODEX_MODELS: AgentModelDefinition[] = [
   {
     provider: "codex",
@@ -61,13 +69,6 @@ const CODEX_MODELS: AgentModelDefinition[] = [
   },
 ];
 
-const TEST_PI_DEFINITION: AgentProviderDefinition = {
-  id: "pi",
-  label: "Pi",
-  description: "Pi test provider",
-  defaultModeId: null,
-  modes: [],
-};
 const ALIASED_CODEX_MODELS: AgentModelDefinition[] = [
   { ...CODEX_MODELS[0], aliases: ["gpt-5.3-codex-legacy"] },
 ];
@@ -130,6 +131,79 @@ describe("resolveDefaultModel", () => {
   });
 });
 
+describe("model aliases", () => {
+  it("canonicalizes a retired preferred model and restores thinking from its alias key", () => {
+    const resolved = resolveFormState(
+      undefined,
+      {
+        provider: "codex",
+        providerPreferences: {
+          codex: {
+            model: "gpt-5.3-codex-legacy",
+            thinkingByModel: { "gpt-5.3-codex-legacy": "low" },
+          },
+        },
+      },
+      ALIASED_CODEX_MODELS,
+      INITIAL_USER_MODIFIED,
+      makeState().form,
+      codexProviderMap,
+    );
+
+    expect(resolved.model).toBe("gpt-5.3-codex");
+    expect(resolved.thinkingOptionId).toBe("low");
+  });
+
+  it("prefers thinking stored under the canonical model id over an alias", () => {
+    const resolved = resolveFormState(
+      undefined,
+      {
+        provider: "codex",
+        providerPreferences: {
+          codex: {
+            model: "gpt-5.3-codex-legacy",
+            thinkingByModel: {
+              "gpt-5.3-codex": "xhigh",
+              "gpt-5.3-codex-legacy": "low",
+            },
+          },
+        },
+      },
+      ALIASED_CODEX_MODELS,
+      INITIAL_USER_MODIFIED,
+      makeState().form,
+      codexProviderMap,
+    );
+
+    expect(resolved.model).toBe("gpt-5.3-codex");
+    expect(resolved.thinkingOptionId).toBe("xhigh");
+  });
+
+  it("prefers an exact configured model id over another model's alias", () => {
+    const configuredAlias: AgentModelDefinition = {
+      provider: "codex",
+      id: "gpt-5.3-codex-legacy",
+      label: "Gateway legacy model",
+      defaultThinkingOptionId: "medium",
+      thinkingOptions: [{ id: "medium", label: "medium", isDefault: true }],
+    };
+    const resolved = resolveFormState(
+      undefined,
+      {
+        provider: "codex",
+        providerPreferences: { codex: { model: configuredAlias.id } },
+      },
+      [...ALIASED_CODEX_MODELS, configuredAlias],
+      INITIAL_USER_MODIFIED,
+      makeState().form,
+      codexProviderMap,
+    );
+
+    expect(resolved.model).toBe("gpt-5.3-codex-legacy");
+    expect(resolved.thinkingOptionId).toBe("medium");
+  });
+});
+
 describe("resolveThinkingOptionId", () => {
   it("returns empty string when model has no thinking options", () => {
     const modelsWithoutThinking: AgentModelDefinition[] = [
@@ -185,71 +259,6 @@ describe("resolveThinkingOptionId", () => {
       }),
     ).toBe("low");
   });
-
-  it("does not implicitly select Claude ultracode", () => {
-    const models: AgentModelDefinition[] = [
-      {
-        provider: "claude",
-        id: "claude-fable-5",
-        label: "Fable 5",
-        isDefault: true,
-        defaultThinkingOptionId: "ultracode",
-        thinkingOptions: [
-          { id: "high", label: "High" },
-          { id: "ultracode", label: "Ultracode", isDefault: true },
-        ],
-      },
-    ];
-
-    expect(
-      resolveThinkingOptionId({
-        availableModels: models,
-        modelId: "claude-fable-5",
-        requestedThinkingOptionId: "",
-      }),
-    ).toBe("high");
-    expect(
-      resolveThinkingOptionId({
-        availableModels: models,
-        modelId: "claude-fable-5",
-        requestedThinkingOptionId: "ultracode",
-      }),
-    ).toBe("ultracode");
-  });
-
-  it("maps a remembered canonical effort onto a different model's options", () => {
-    const models: AgentModelDefinition[] = [
-      {
-        provider: "otto-brain",
-        id: "gpt-oss-20b",
-        label: "GPT-OSS 20B",
-        thinkingOptions: [
-          { id: "off", label: "Off" },
-          { id: "low", label: "Low" },
-          { id: "medium", label: "Medium" },
-          { id: "high", label: "High" },
-        ],
-        defaultThinkingOptionId: "medium",
-      },
-      {
-        provider: "otto-brain",
-        id: "local-toggle",
-        label: "Local Toggle",
-        thinkingOptions: [
-          { id: "off", label: "Off" },
-          { id: "on", label: "On" },
-        ],
-        defaultThinkingOptionId: "on",
-      },
-    ];
-    expect(
-      resolveThinkingOptionId({
-        availableModels: models,
-        modelId: "local-toggle",
-        requestedThinkingOptionId: "medium",
-      }),
-    ).toBe("on");
-  });
 });
 
 describe("mergeSelectedComposerPreferences", () => {
@@ -279,7 +288,6 @@ describe("mergeSelectedComposerPreferences", () => {
             },
             claude: { model: "claude-sonnet-4-6" },
           },
-          favoriteModels: [{ provider: "codex", modelId: "gpt-5.4-mini" }],
         },
         provider: "codex",
         updates: { model: "gpt-5.4" },
@@ -295,7 +303,6 @@ describe("mergeSelectedComposerPreferences", () => {
         },
         claude: { model: "claude-sonnet-4-6" },
       },
-      favoriteModels: [{ provider: "codex", modelId: "gpt-5.4-mini" }],
     });
   });
 
@@ -396,28 +403,11 @@ describe("resolveFormState", () => {
     expect(resolved.thinkingOptionId).toBe("");
   });
 
-  it("falls back to the provider's default model on fresh drafts without preferences", () => {
-    // Tier 4 of the picker ladder. This used to resolve to "" and let the
-    // trigger label paint the default in anyway, so the form held a different
-    // model than the one on screen.
+  it("does not auto-select a model on fresh drafts without preferences", () => {
     const resolved = resolveFormState(
       undefined,
       { provider: "codex" },
       CODEX_MODELS,
-      INITIAL_USER_MODIFIED,
-      makeState({ provider: "codex" }).form,
-
-      codexProviderMap,
-    );
-
-    expect(resolved.model).toBe("gpt-5.3-codex");
-  });
-
-  it("resolves to no model when the provider offers none (tier 5)", () => {
-    const resolved = resolveFormState(
-      undefined,
-      { provider: "codex" },
-      [],
       INITIAL_USER_MODIFIED,
       makeState({ provider: "codex" }).form,
 
@@ -871,37 +861,6 @@ describe("resolveAgentForm", () => {
       expect(next.resolution.status).toBe("pending");
     });
 
-    it("keeps personality values when a directory refresh changes catalog readiness only", () => {
-      const inputs = {
-        type: "INPUTS_CHANGED" as const,
-        serverId: "host-1",
-        isVisible: true,
-        isCreateFlow: true,
-        isPreferencesLoading: false,
-        hasSnapshot: true,
-        initialValues: undefined,
-        preferences: {
-          provider: "codex",
-          providerPreferences: { codex: { model: "gpt-5.3-codex" } },
-        },
-        providerModelsByProvider: makeProviderModelsByProvider([["codex", CODEX_MODELS]]),
-        allowedProviderMap: codexProviderMap,
-      };
-      const opened = resolveAgentForm(makeState(), inputs);
-      const applied = resolveAgentForm(opened, {
-        type: "SET_PROVIDER_AND_MODEL_FROM_USER",
-        provider: "codex",
-        modelId: "gpt-5.3-codex-mini",
-        providerDef: undefined,
-        providerModels: CODEX_MODELS,
-      });
-      const loading = resolveAgentForm(applied, { ...inputs, hasSnapshot: false });
-      const refreshed = resolveAgentForm(loading, { ...inputs, initialValues: {} });
-      expect(refreshed.form.provider).toBe("codex");
-      expect(refreshed.form.model).toBe("gpt-5.3-codex-mini");
-      expect(refreshed.userModified).toEqual(applied.userModified);
-    });
-
     it("completes a pending open resolution when snapshot models arrive late", () => {
       const state = resolveAgentForm(makeState(), {
         type: "REQUEST_RESOLUTION",
@@ -994,6 +953,7 @@ describe("resolveAgentForm", () => {
         type: "SET_MODEL_FROM_USER",
         modelId: "gpt-5.4-codex",
         availableModels: alternateModels,
+        providerPrefs: undefined,
       });
       const next = resolveAgentForm(userChanged, {
         type: "COMPLETE_RESOLUTION",
@@ -1022,39 +982,6 @@ describe("resolveAgentForm", () => {
       });
 
       expect(next.form.provider).toBe("codex");
-    });
-  });
-
-  describe("SET_PROVIDER_FROM_USER", () => {
-    it("switches provider, picks preferred model and mode, marks provider modified", () => {
-      const state = makeState();
-      const next = resolveAgentForm(state, {
-        type: "SET_PROVIDER_FROM_USER",
-        provider: "codex",
-        providerModels: CODEX_MODELS,
-        providerDef: TEST_CODEX_DEFINITION,
-        providerPrefs: { model: "gpt-5.3-codex", mode: "full-access" },
-      });
-
-      expect(next.form.provider).toBe("codex");
-      expect(next.form.model).toBe("gpt-5.3-codex");
-      expect(next.form.modeId).toBe("full-access");
-      expect(next.userModified.provider).toBe(true);
-      expect(next.userModified.model).toBe(false);
-    });
-
-    it("falls back to provider defaults when no prefs", () => {
-      const state = makeState();
-      const next = resolveAgentForm(state, {
-        type: "SET_PROVIDER_FROM_USER",
-        provider: "codex",
-        providerModels: CODEX_MODELS,
-        providerDef: TEST_CODEX_DEFINITION,
-        providerPrefs: undefined,
-      });
-
-      expect(next.form.modeId).toBe("auto");
-      expect(next.form.model).toBe("gpt-5.3-codex");
     });
   });
 
@@ -1112,9 +1039,10 @@ describe("resolveAgentForm", () => {
         modelId: "gpt-5.3-codex",
         providerDef: TEST_CODEX_DEFINITION,
         providerModels: CODEX_MODELS,
+        providerPrefs: { thinkingByModel: { "gpt-5.3-codex": "low" } },
       });
 
-      expect(next.form.thinkingOptionId).toBe("xhigh");
+      expect(next.form.thinkingOptionId).toBe("low");
     });
   });
 
@@ -1128,6 +1056,42 @@ describe("resolveAgentForm", () => {
     });
   });
 
+  describe("APPLY_PROFILE_FROM_USER", () => {
+    it("drops a stale saved mode for a modeless profile provider", () => {
+      const next = resolveAgentForm(makeState({ provider: "codex", modeId: "full-access" }), {
+        type: "APPLY_PROFILE_FROM_USER",
+        provider: "pi",
+        modelId: "anthropic/sonnet",
+        modeId: "",
+        thinkingOptionId: "",
+        providerDef: TEST_PI_DEFINITION,
+        providerModels: [{ provider: "pi", id: "anthropic/sonnet", label: "Sonnet" }],
+        providerPrefs: { mode: "full-access" },
+      });
+
+      expect(next.form).toMatchObject({
+        provider: "pi",
+        model: "anthropic/sonnet",
+        modeId: "",
+      });
+    });
+
+    it("restores thinking for the selected model when the profile omits it", () => {
+      const next = resolveAgentForm(makeState(), {
+        type: "APPLY_PROFILE_FROM_USER",
+        provider: "codex",
+        modelId: "gpt-5.3-codex",
+        modeId: "full-access",
+        thinkingOptionId: "",
+        providerDef: TEST_CODEX_DEFINITION,
+        providerModels: CODEX_MODELS,
+        providerPrefs: { thinkingByModel: { "gpt-5.3-codex": "low" } },
+      });
+
+      expect(next.form.thinkingOptionId).toBe("low");
+    });
+  });
+
   describe("SET_MODEL_FROM_USER", () => {
     it("updates model and resets thinking to model default when thinking is not user-modified", () => {
       const state = makeState({ provider: "codex", model: "", thinkingOptionId: "" });
@@ -1135,6 +1099,7 @@ describe("resolveAgentForm", () => {
         type: "SET_MODEL_FROM_USER",
         modelId: "gpt-5.3-codex",
         availableModels: CODEX_MODELS,
+        providerPrefs: undefined,
       });
 
       expect(next.form.model).toBe("gpt-5.3-codex");
@@ -1151,45 +1116,10 @@ describe("resolveAgentForm", () => {
         type: "SET_MODEL_FROM_USER",
         modelId: "gpt-5.3-codex",
         availableModels: CODEX_MODELS,
+        providerPrefs: { thinkingByModel: { "gpt-5.3-codex": "xhigh" } },
       });
 
       expect(next.form.thinkingOptionId).toBe("low");
-    });
-
-    it("restores the remembered effort for the newly selected model", () => {
-      const state = makeState({ provider: "otto-brain", model: "local-toggle" });
-      const models: AgentModelDefinition[] = [
-        {
-          provider: "otto-brain",
-          id: "gpt-oss-20b",
-          label: "GPT-OSS 20B",
-          thinkingOptions: [
-            { id: "off", label: "Off" },
-            { id: "low", label: "Low" },
-            { id: "medium", label: "Medium" },
-            { id: "high", label: "High" },
-          ],
-          defaultThinkingOptionId: "medium",
-        },
-        {
-          provider: "otto-brain",
-          id: "local-toggle",
-          label: "Local Toggle",
-          thinkingOptions: [
-            { id: "off", label: "Off" },
-            { id: "on", label: "On" },
-          ],
-          defaultThinkingOptionId: "on",
-        },
-      ];
-      const next = resolveAgentForm(state, {
-        type: "SET_MODEL_FROM_USER",
-        modelId: "gpt-oss-20b",
-        availableModels: models,
-        providerPrefs: { thinkingByModel: { "gpt-oss-20b": "high" } },
-      });
-
-      expect(next.form.thinkingOptionId).toBe("high");
     });
 
     it("falls back to provider default model when modelId is blank", () => {
@@ -1198,47 +1128,36 @@ describe("resolveAgentForm", () => {
         type: "SET_MODEL_FROM_USER",
         modelId: "  ",
         availableModels: CODEX_MODELS,
+        providerPrefs: undefined,
       });
 
       expect(next.form.model).toBe("gpt-5.3-codex");
     });
 
-    it("drops a selected auto mode when the new model cannot run it", () => {
-      const claudeModels: AgentModelDefinition[] = [
-        { provider: "claude", id: "claude-opus-4-8", label: "Opus 4.8", isDefault: true },
+    it("restores the target model's saved thinking option", () => {
+      const models = [
+        ...CODEX_MODELS,
         {
-          provider: "claude",
-          id: "claude-haiku-4-5",
-          label: "Haiku 4.5",
-          supportsAutoMode: false,
+          provider: "codex" as const,
+          id: "gpt-other",
+          label: "Other",
+          defaultThinkingOptionId: "xhigh",
+          thinkingOptions: CODEX_MODELS[0].thinkingOptions,
         },
       ];
-      const state = makeState({ provider: "claude", model: "claude-opus-4-8", modeId: "auto" });
+      const state = makeState({
+        provider: "codex",
+        model: "gpt-other",
+        thinkingOptionId: "xhigh",
+      });
       const next = resolveAgentForm(state, {
         type: "SET_MODEL_FROM_USER",
-        modelId: "claude-haiku-4-5",
-        availableModels: claudeModels,
+        modelId: "gpt-5.3-codex",
+        availableModels: models,
+        providerPrefs: { thinkingByModel: { "gpt-5.3-codex": "low" } },
       });
 
-      expect(next.form.model).toBe("claude-haiku-4-5");
-      // Not the provider default - Auto's closest safe analog is the
-      // guardrailed no-prompt mode. See coerceModeForModel.
-      expect(next.form.modeId).toBe("dontAsk");
-    });
-
-    it("keeps a selected auto mode when the new model supports it", () => {
-      const claudeModels: AgentModelDefinition[] = [
-        { provider: "claude", id: "claude-opus-4-8", label: "Opus 4.8", isDefault: true },
-        { provider: "claude", id: "claude-sonnet-5", label: "Sonnet 5" },
-      ];
-      const state = makeState({ provider: "claude", model: "claude-opus-4-8", modeId: "auto" });
-      const next = resolveAgentForm(state, {
-        type: "SET_MODEL_FROM_USER",
-        modelId: "claude-sonnet-5",
-        availableModels: claudeModels,
-      });
-
-      expect(next.form.modeId).toBe("auto");
+      expect(next.form.thinkingOptionId).toBe("low");
     });
   });
 
@@ -1349,135 +1268,4 @@ it("owns input readiness, reopening and user edits in the reducer", () => {
   expect(state.resolution.status).toBe("pending");
   state = resolveAgentForm(state, { ...inputs, isPreferencesLoading: false, hasSnapshot: true });
   expect(state.form).toMatchObject({ provider: "codex", model: "astra" });
-});
-
-it("canonicalizes a retired preferred model and restores thinking from its alias key", () => {
-  const resolved = resolveFormState(
-    undefined,
-    {
-      provider: "codex",
-      providerPreferences: {
-        codex: {
-          model: "gpt-5.3-codex-legacy",
-          thinkingByModel: { "gpt-5.3-codex-legacy": "low" },
-        },
-      },
-    },
-    ALIASED_CODEX_MODELS,
-    INITIAL_USER_MODIFIED,
-    makeState().form,
-    codexProviderMap,
-  );
-
-  expect(resolved.model).toBe("gpt-5.3-codex");
-  expect(resolved.thinkingOptionId).toBe("low");
-});
-
-it("prefers thinking stored under the canonical model id over an alias", () => {
-  const resolved = resolveFormState(
-    undefined,
-    {
-      provider: "codex",
-      providerPreferences: {
-        codex: {
-          model: "gpt-5.3-codex-legacy",
-          thinkingByModel: {
-            "gpt-5.3-codex": "xhigh",
-            "gpt-5.3-codex-legacy": "low",
-          },
-        },
-      },
-    },
-    ALIASED_CODEX_MODELS,
-    INITIAL_USER_MODIFIED,
-    makeState().form,
-    codexProviderMap,
-  );
-
-  expect(resolved.model).toBe("gpt-5.3-codex");
-  expect(resolved.thinkingOptionId).toBe("xhigh");
-});
-
-it("prefers an exact configured model id over another model's alias", () => {
-  const configuredAlias: AgentModelDefinition = {
-    provider: "codex",
-    id: "gpt-5.3-codex-legacy",
-    label: "Gateway legacy model",
-    defaultThinkingOptionId: "medium",
-    thinkingOptions: [{ id: "medium", label: "medium", isDefault: true }],
-  };
-  const resolved = resolveFormState(
-    undefined,
-    {
-      provider: "codex",
-      providerPreferences: { codex: { model: configuredAlias.id } },
-    },
-    [...ALIASED_CODEX_MODELS, configuredAlias],
-    INITIAL_USER_MODIFIED,
-    makeState().form,
-    codexProviderMap,
-  );
-
-  expect(resolved.model).toBe("gpt-5.3-codex-legacy");
-  expect(resolved.thinkingOptionId).toBe("medium");
-});
-
-it("drops a stale saved mode for a modeless profile provider", () => {
-  const next = resolveAgentForm(makeState({ provider: "codex", modeId: "full-access" }), {
-    type: "APPLY_PROFILE_FROM_USER",
-    provider: "pi",
-    modelId: "anthropic/sonnet",
-    modeId: "",
-    thinkingOptionId: "",
-    providerDef: TEST_PI_DEFINITION,
-    providerModels: [{ provider: "pi", id: "anthropic/sonnet", label: "Sonnet" }],
-    providerPrefs: { mode: "full-access" },
-  });
-
-  expect(next.form).toMatchObject({
-    provider: "pi",
-    model: "anthropic/sonnet",
-    modeId: "",
-  });
-});
-
-it("restores thinking for the selected model when the profile omits it", () => {
-  const next = resolveAgentForm(makeState(), {
-    type: "APPLY_PROFILE_FROM_USER",
-    provider: "codex",
-    modelId: "gpt-5.3-codex",
-    modeId: "full-access",
-    thinkingOptionId: "",
-    providerDef: TEST_CODEX_DEFINITION,
-    providerModels: CODEX_MODELS,
-    providerPrefs: { thinkingByModel: { "gpt-5.3-codex": "low" } },
-  });
-
-  expect(next.form.thinkingOptionId).toBe("low");
-});
-
-it("restores the target model's saved thinking option", () => {
-  const models = [
-    ...CODEX_MODELS,
-    {
-      provider: "codex" as const,
-      id: "gpt-other",
-      label: "Other",
-      defaultThinkingOptionId: "xhigh",
-      thinkingOptions: CODEX_MODELS[0].thinkingOptions,
-    },
-  ];
-  const state = makeState({
-    provider: "codex",
-    model: "gpt-other",
-    thinkingOptionId: "xhigh",
-  });
-  const next = resolveAgentForm(state, {
-    type: "SET_MODEL_FROM_USER",
-    modelId: "gpt-5.3-codex",
-    availableModels: models,
-    providerPrefs: { thinkingByModel: { "gpt-5.3-codex": "low" } },
-  });
-
-  expect(next.form.thinkingOptionId).toBe("low");
 });

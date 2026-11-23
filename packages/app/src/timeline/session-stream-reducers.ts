@@ -1,6 +1,5 @@
-import type { AgentTimelineItem } from "@otto-code/protocol/agent-types";
-import type { AgentStreamEventPayload } from "@otto-code/protocol/messages";
-import { traceCaptureSync } from "@/diagnostics/resource-report/capture-operations";
+import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
+import type { AgentStreamEventPayload } from "@getpaseo/protocol/messages";
 import { selectAgentTimelineState, useSessionStore } from "@/stores/session-store";
 import type { AssistantMessageItem, StreamItem, TodoEntry } from "@/types/stream";
 import type { TurnLivenessTransition } from "@/timeline/turn-liveness";
@@ -423,13 +422,7 @@ function mergeTimelineWindow(args: {
     return cursor?.epoch !== payload.epoch || cursor.seq < startSeq || cursor.seq > endSeq;
   });
   const retainedHead = projected.head;
-  const reservedItemIds = new Set(
-    [...retainedTail, ...retainedHead].flatMap((item) =>
-      item.kind === "assistant_message" && item.blockGroupId
-        ? [item.id, item.blockGroupId]
-        : [item.id],
-    ),
-  );
+  const reservedItemIds = new Set([...retainedTail, ...retainedHead].map((item) => item.id));
   const hydrated = hydrateStreamState(
     toHydratedEvents(timelineUnits.filter((unit) => !projected.reconciledUnits.has(unit))),
     {
@@ -818,57 +811,49 @@ function reconcileOverlappingProjectedAssistant(params: {
   };
 
   const headMatch = findMatch(params.head);
-  const tailMatch = headMatch ? null : findMatch(params.tail);
+  const tailMatch = findMatch(params.tail);
   const match = headMatch ?? tailMatch;
   if (!match) {
     return { tail: params.tail, head: params.head, reconciled: false };
   }
 
-  const blockGroupId = match.current.blockGroupId;
   const messageId = projectedMessageId ?? match.current.messageId;
   const replacement: AssistantMessageItem = {
     kind: "assistant_message",
-    id: blockGroupId ?? match.current.id,
+    id: match.current.id,
     ...(messageId !== undefined ? { messageId } : {}),
     text: projectedText,
     timestamp: unit.timestamp,
     timelineCursor: { epoch: params.epoch, seq: unit.seqEnd },
   };
-  const belongsToBlockGroup = (item: StreamItem) =>
-    blockGroupId !== undefined &&
-    item.kind === "assistant_message" &&
-    item.blockGroupId === blockGroupId;
-  const removeBlockGroup = (items: StreamItem[]) =>
-    blockGroupId !== undefined ? items.filter((item) => !belongsToBlockGroup(item)) : items;
   const replaceMatch = (items: StreamItem[], index: number) => {
-    if (!blockGroupId) {
-      const next = [...items];
-      next[index] = replacement;
-      return next;
-    }
-    const next: StreamItem[] = [];
-    let inserted = false;
-    for (const item of items) {
-      if (!belongsToBlockGroup(item)) {
-        next.push(item);
-      } else if (!inserted) {
-        next.push(replacement);
-        inserted = true;
-      }
-    }
+    const next = [...items];
+    next[index] = replacement;
     return next;
   };
 
   if (headMatch) {
+    const tailCursor = tailMatch?.current.timelineCursor;
+    const replacesCachedPrefix =
+      tailMatch !== null &&
+      tailCursor?.epoch === params.epoch &&
+      unit.sourceSeqRanges.some(
+        (range) => range.startSeq <= tailCursor.seq && tailCursor.seq <= range.endSeq,
+      );
     return {
-      tail: removeBlockGroup(params.tail),
+      // Live chunks can arrive before catch-up while their cached prefix is still painted.
+      // The projected reply owns both copies; keeping the prefix would duplicate it and
+      // cause completion to discard the updated head as an already-committed item.
+      tail: replacesCachedPrefix
+        ? [...params.tail.slice(0, tailMatch.index), ...params.tail.slice(tailMatch.index + 1)]
+        : params.tail,
       head: replaceMatch(params.head, headMatch.index),
       reconciled: true,
     };
   }
   return {
     tail: replaceMatch(params.tail, match.index),
-    head: removeBlockGroup(params.head),
+    head: params.head,
     reconciled: true,
   };
 }
@@ -878,12 +863,6 @@ function reconcileOverlappingProjectedReasoning(params: {
   head: StreamItem[];
   unit: TimelineUnit;
   currentEndSeq: number;
-  /**
-   * Ids of thoughts already rewritten by an earlier row in this same pass,
-   * shared across the whole unit loop. A second canonical row for one thought
-   * replaces it instead of being appended as a duplicate.
-   */
-  claimedThoughtIds?: Set<string>;
 }): { tail: StreamItem[]; head: StreamItem[]; reconciled: boolean } {
   const { unit } = params;
   if (
@@ -898,24 +877,11 @@ function reconcileOverlappingProjectedReasoning(params: {
 
   const projectedText = unit.event.item.text;
   const replaceIn = (items: StreamItem[]): StreamItem[] | null => {
-    // A thought this same pass already rewrote is still THIS row's thought,
-    // even though the rewrite means `startsWith` no longer holds. Canonical
-    // pages can carry several rows for one thought, and a later row need not
-    // extend the earlier one. Without this, the row falls through to the
-    // forward path, which appends it as a delta and duplicates the text
-    // ("Hello world" then "world tail" rendered as "Hello worldworld tail").
-    const claimedIndex = items.findLastIndex(
-      (item) => item.kind === "thought" && params.claimedThoughtIds?.has(item.id) === true,
+    const index = items.findLastIndex(
+      (item) => item.kind === "thought" && projectedText.startsWith(item.text),
     );
-    const index =
-      claimedIndex >= 0
-        ? claimedIndex
-        : items.findLastIndex(
-            (item) => item.kind === "thought" && projectedText.startsWith(item.text),
-          );
     const current = items[index];
     if (!current || current.kind !== "thought") return null;
-    params.claimedThoughtIds?.add(current.id);
     const next = [...items];
     next[index] = {
       ...current,
@@ -946,9 +912,6 @@ function reconcileOverlappingProjectedStreamItems(params: {
   const reconciledUnits = new Set<TimelineUnit>();
   if (params.currentEndSeq === undefined) return { tail, head, reconciledUnits };
 
-  // Thoughts this pass has already rewritten, so a later row for the same one
-  // replaces it rather than appending a duplicate. See the reasoning reconcile.
-  const claimedThoughtIds = new Set<string>();
   for (const unit of params.units) {
     let reconciled = reconcileOverlappingProjectedAssistant({
       tail,
@@ -963,7 +926,6 @@ function reconcileOverlappingProjectedStreamItems(params: {
         head,
         unit,
         currentEndSeq: params.currentEndSeq,
-        claimedThoughtIds,
       });
     }
     tail = reconciled.tail;
@@ -1186,13 +1148,7 @@ function applyAcceptedTimelinePage(input: {
     })),
     {
       source: "canonical",
-      reservedItemIds: new Set(
-        currentTail.flatMap((item) =>
-          item.kind === "assistant_message" && item.blockGroupId
-            ? [item.id, item.blockGroupId]
-            : [item.id],
-        ),
-      ),
+      reservedItemIds: new Set(currentTail.map((item) => item.id)),
     },
   );
   return {
@@ -1793,21 +1749,15 @@ export function createAgentStreamReducerQueue(
       cancelScheduledFlush();
     }
 
-    traceCaptureSync(
-      "stream.reduce-and-commit",
-      () => {
-        const result = processAgentStreamEvents({
-          events,
-          ...input.getSnapshot(agentId),
-        });
+    const result = processAgentStreamEvents({
+      events,
+      ...input.getSnapshot(agentId),
+    });
 
-        input.commit(agentId, result, events);
-        if (result.sideEffects.length > 0) {
-          input.handleSideEffects(agentId, result.sideEffects);
-        }
-      },
-      { agentId, items: events.length },
-    );
+    input.commit(agentId, result, events);
+    if (result.sideEffects.length > 0) {
+      input.handleSideEffects(agentId, result.sideEffects);
+    }
   };
 
   const flush = () => {

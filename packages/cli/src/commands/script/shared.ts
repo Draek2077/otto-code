@@ -1,5 +1,6 @@
+import type { DaemonTarget } from "../../utils/daemon-target.js";
 import { resolve } from "node:path";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
 import type { CommandError, CommandOptions } from "../../output/index.js";
 
@@ -9,10 +10,10 @@ export interface WorkspaceScriptCommandOptions extends CommandOptions {
   workspace?: string;
 }
 
-export async function connectWorkspaceScriptClient(host?: string): Promise<DaemonClient> {
-  const daemonHost = getDaemonHost({ host });
+export async function connectWorkspaceScriptClient(target: DaemonTarget): Promise<DaemonClient> {
+  const daemonHost = getDaemonHost({ target });
   try {
-    const client = await connectToDaemon({ host });
+    const client = await connectToDaemon({ target });
     // COMPAT(workspaceScriptManagement): added in v0.1.105, remove gate after 2027-01-10.
     if (!client.getLastServerInfoMessage()?.features?.workspaceScriptManagement) {
       await client.close().catch(() => {});
@@ -30,6 +31,7 @@ export async function connectWorkspaceScriptClient(host?: string): Promise<Daemo
     throw {
       code: "DAEMON_NOT_RUNNING",
       message: `Cannot connect to daemon at ${daemonHost}: ${message}`,
+      // OTTO(identity)
       details: "Start the daemon with: otto daemon start",
     } satisfies CommandError;
   }
@@ -60,6 +62,7 @@ export async function resolveWorkspaceScriptWorkspaceId(
   }
   throw {
     code: "WORKSPACE_NOT_FOUND",
+    // OTTO(identity)
     message: `No Otto workspace found for ${cwd}`,
     details: "Open the directory in Otto first, or pass --workspace <workspace-id>.",
   } satisfies CommandError;

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+// OTTO(release): retain Otto's lockfile completion for the Nix hash pipeline.
 // Workaround for https://github.com/npm/cli/issues/4460
 //
 // npm silently omits `resolved` and `integrity` fields from some

@@ -8,10 +8,6 @@ export interface ScheduleProjectTarget {
   serverId: string;
   serverName: string;
   projectViewKey: string;
-  /** Opaque project id on this host; use for host-local workspace matching. */
-  projectId: string;
-  /** Shared repository identity; distinct from the grouped view key and host-local project id. */
-  projectKey: string;
   projectName: string;
   cwd: string;
   isGit: boolean;
@@ -41,8 +37,6 @@ export function buildScheduleProjectTargets(
         serverId: host.serverId,
         serverName: host.serverName,
         projectViewKey: project.viewKey,
-        projectId: host.projectId,
-        projectKey: project.projectKey,
         projectName: host.projectName,
         cwd,
         isGit: Boolean(host.gitRuntime),

@@ -6,13 +6,13 @@ import { fileURLToPath } from "node:url";
 import { Terminal as HeadlessTerminal, type IBufferCell, type IBufferLine } from "@xterm/headless";
 import { expect, test } from "vitest";
 
-import type { TerminalCell, TerminalState } from "@otto-code/protocol/messages";
-import { renderTerminalSnapshotToAnsi } from "@otto-code/protocol/terminal-snapshot";
-import type { TerminalStreamEvent } from "@otto-code/client/internal/terminal-stream-router";
+import type { TerminalCell, TerminalState } from "@getpaseo/protocol/messages";
+import { renderTerminalSnapshotToAnsi } from "@getpaseo/protocol/terminal-snapshot";
+import type { TerminalStreamEvent } from "@getpaseo/client/internal/daemon-client";
 import { DaemonClient } from "../test-utils/daemon-client.js";
-import { createTestOttoDaemon } from "../test-utils/otto-daemon.js";
+import { createTestPaseoDaemon } from "../test-utils/paseo-daemon.js";
 
-const BYTE_DONE_MARKER = "__OTTO_BYTE_PACKAGE_LOCK_DONE__";
+const BYTE_DONE_MARKER = "__PASEO_BYTE_PACKAGE_LOCK_DONE__";
 const BYTE_TEST_SIZE = { rows: 24, cols: 100 };
 
 interface PackageLockTerminalCwd {
@@ -25,7 +25,7 @@ interface CreatedTerminal {
 }
 
 test("byte-stream headless terminal matches daemon state after high-output attach and restore", async () => {
-  const daemon = await createTestOttoDaemon();
+  const daemon = await createTestPaseoDaemon();
   const client = new DaemonClient({
     url: `ws://127.0.0.1:${daemon.port}/ws`,
     appVersion: "0.1.96",
@@ -48,7 +48,7 @@ test("byte-stream headless terminal matches daemon state after high-output attac
     });
     const initialSnapshot = waitForTerminalStreamEvent(client, terminal.id, "snapshot");
 
-    await subscribeTerminal(client, terminal.id);
+    const liveSubscription = await subscribeTerminal(client, terminal.id);
     await initialSnapshot;
     client.sendTerminalInput(terminal.id, { type: "resize", ...BYTE_TEST_SIZE });
     liveHeadless.resize(BYTE_TEST_SIZE);
@@ -70,7 +70,7 @@ test("byte-stream headless terminal matches daemon state after high-output attac
     expect(liveHeadless.cursor()).toEqual(daemonSnapshot.cursor);
     expect(liveHeadless.visibleLines()).toEqual(capturedViewport.lines);
 
-    client.unsubscribeTerminal(terminal.id);
+    await liveSubscription.release();
     stopLive();
 
     const restoreHeadless = new ClientHeadlessTerminal(BYTE_TEST_SIZE);
@@ -179,11 +179,12 @@ async function subscribeTerminal(
   client: DaemonClient,
   terminalId: string,
   options?: Parameters<DaemonClient["subscribeTerminal"]>[1],
-): Promise<void> {
+) {
   const response = await client.subscribeTerminal(terminalId, options);
   if (response.error) {
     throw new Error(response.error);
   }
+  return response.subscription;
 }
 
 async function readTerminalSnapshot(input: {
@@ -218,7 +219,7 @@ function waitForTerminalStreamEvent<TType extends TerminalStreamEvent["type"]>(
 }
 
 async function createPackageLockTerminalCwd(): Promise<PackageLockTerminalCwd> {
-  const cwd = await mkdtemp(path.join(tmpdir(), "otto-byte-package-lock-"));
+  const cwd = await mkdtemp(path.join(tmpdir(), "paseo-byte-package-lock-"));
   return {
     path: cwd,
     gatePath: path.join(cwd, "start-package-lock-output"),

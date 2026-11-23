@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
+import type { AgentModelDefinition } from "@getpaseo/protocol/agent-types";
 import {
   resolveProviderDiscoveredModels,
   type ProviderDiscoveredModelsCache,
@@ -57,17 +57,6 @@ describe("resolveProviderDiscoveredModels", () => {
 
     expect(result.models).toEqual([piModel]);
     expect(result.cache?.models).toEqual([piModel]);
-  });
-
-  it("keeps hidden models in Settings so they can be shown again", () => {
-    const hiddenModel: AgentModelDefinition = {
-      ...grokModel,
-      isVisible: false,
-    };
-
-    const result = resolveModels({ provider: "grok", currentModels: [hiddenModel] });
-
-    expect(result.models).toEqual([hiddenModel]);
   });
 
   it("does not show one provider's cached models while another provider loads", () => {

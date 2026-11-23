@@ -1,4 +1,4 @@
-import type { ProviderSnapshotEntry } from "@otto-code/protocol/agent-types";
+import type { ProviderSnapshotEntry } from "@getpaseo/protocol/agent-types";
 
 export interface HubStarterAgentRuntime {
   provider: string;

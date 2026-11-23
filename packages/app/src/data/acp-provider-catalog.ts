@@ -1,12 +1,5 @@
 import { ACP_PROVIDER_ICON_SVGS } from "@/assets/acp-provider-icons";
 
-export interface AcpProviderCatalogModel {
-  id: string;
-  label: string;
-  description?: string;
-  isDefault?: boolean;
-}
-
 export interface AcpProviderCatalogEntry {
   id: string;
   title: string;
@@ -14,26 +7,10 @@ export interface AcpProviderCatalogEntry {
   version: string;
   iconSvg: string | null;
   installLink: string;
-  /**
-   * Provider type the installed config entry extends. Most catalog entries
-   * are ACP agents ("acp"). "openai-compatible" entries are served natively
-   * by the daemon against an OpenAI-compatible HTTP endpoint (LM Studio,
-   * Ollama, vLLM, ...) - no external binary. A built-in provider id (e.g.
-   * "codex") runs that agent binary against a custom endpoint.
-   */
-  extends: "acp" | "codex" | "openai-compatible";
-  /** Featured entries are pinned to the top of the Add provider list. */
-  featured: boolean;
-  /** Spawn command for ACP entries. Non-ACP presets use the base provider's binary. */
-  command?: readonly [string, ...string[]];
+  command: readonly [string, ...string[]];
+  bundledProvider?: boolean;
   env?: Readonly<Record<string, string>>;
   params?: Readonly<Record<string, unknown>>;
-  /**
-   * Static model list for presets whose base provider cannot discover models
-   * from the endpoint (Codex-based presets). Users edit these in config.json
-   * to match the models their endpoint actually serves.
-   */
-  models?: readonly AcpProviderCatalogModel[];
 }
 
 const CATALOG_DATA = [
@@ -51,7 +28,7 @@ const CATALOG_DATA = [
     id: "amp-acp",
     title: "Amp",
     description: "ACP wrapper for Amp - the frontier coding agent",
-    version: "0.10.0",
+    version: "0.7.0",
     iconId: "amp-acp",
     installLink: "https://github.com/tao12345666333/amp-acp",
     command: ["amp-acp"],
@@ -61,10 +38,10 @@ const CATALOG_DATA = [
     title: "Auggie CLI",
     description:
       "Augment Code's powerful software agent, backed by industry-leading context engine",
-    version: "0.36.0",
+    version: "0.33.0",
     iconId: "auggie",
     installLink: "https://www.augmentcode.com/",
-    command: ["npx", "-y", "@augmentcode/auggie@0.36.0", "--acp"],
+    command: ["npx", "-y", "@augmentcode/auggie@0.33.0", "--acp"],
     env: {
       AUGMENT_DISABLE_AUTO_UPDATE: "1",
     },
@@ -83,19 +60,19 @@ const CATALOG_DATA = [
     title: "Cline",
     description:
       "Autonomous coding agent CLI - capable of creating/editing files, running commands, using the browser, and more",
-    version: "3.0.72",
+    version: "3.0.46",
     iconId: "cline",
     installLink: "https://cline.bot/cli",
-    command: ["npx", "-y", "cline@3.0.72", "--acp"],
+    command: ["npx", "-y", "cline@3.0.46", "--acp"],
   },
   {
     id: "codebuddy-code",
     title: "Codebuddy Code",
     description: "Tencent Cloud's official intelligent coding tool",
-    version: "2.168.2",
+    version: "manual",
     iconId: "codebuddy-code",
     installLink: "https://www.codebuddy.cn/cli/",
-    command: ["npx", "-y", "@tencent-ai/codebuddy-code@2.168.2", "--acp"],
+    command: ["codebuddy", "--acp"],
   },
   {
     id: "codewhale",
@@ -119,7 +96,7 @@ const CATALOG_DATA = [
     id: "corust-agent",
     title: "Corust Agent",
     description: "Co-building with a seasoned Rust partner.",
-    version: "0.6.0",
+    version: "0.5.1",
     iconId: "corust-agent",
     installLink: "https://github.com/Corust-ai/corust-agent-release/releases",
     command: ["corust-agent-acp"],
@@ -128,7 +105,7 @@ const CATALOG_DATA = [
     id: "crow-cli",
     title: "crow-cli",
     description: "Minimal ACP Native Coding Agent",
-    version: "0.1.24",
+    version: "0.1.23",
     iconId: "crow-cli",
     installLink: "https://crow-ai.dev/",
     command: ["crow-cli", "acp"],
@@ -137,7 +114,7 @@ const CATALOG_DATA = [
     id: "cursor",
     title: "Cursor",
     description: "Cursor's coding agent",
-    version: "2026.10.14",
+    version: "2026.03.30",
     iconId: "cursor",
     installLink: "https://docs.cursor.com/en/cli/overview",
     command: ["cursor-agent", "acp"],
@@ -146,17 +123,17 @@ const CATALOG_DATA = [
     id: "deepagents",
     title: "DeepAgents",
     description: "Batteries-included AI coding and general purpose agent powered by LangChain.",
-    version: "0.1.36",
+    version: "0.1.20",
     iconId: "deepagents",
     installLink: "https://docs.langchain.com/oss/javascript/deepagents/overview",
-    command: ["npx", "-y", "deepagents-acp@0.1.36"],
+    command: ["npx", "-y", "deepagents-acp@0.1.20"],
   },
   {
     id: "devin",
     title: "Devin CLI",
     description: "Cognition's Devin for Terminal via Agent Client Protocol",
     version: "manual",
-    iconId: null,
+    iconId: "devin",
     installLink: "https://cli.devin.ai/docs",
     command: ["devin", "acp"],
   },
@@ -164,29 +141,29 @@ const CATALOG_DATA = [
     id: "dimcode",
     title: "DimCode",
     description: "A coding agent that puts leading models at your command.",
-    version: "0.5.19",
+    version: "0.2.36",
     iconId: "dimcode",
     installLink: "https://dimcode.dev/docs/acp.html",
-    command: ["npx", "-y", "dimcode@0.5.19", "acp"],
+    command: ["npx", "-y", "dimcode@0.2.36", "acp"],
   },
   {
     id: "dirac",
     title: "Dirac",
     description:
       "Reduces API costs by more than 50%, produces better and faster work. Uses Hash anchored parallel edits, AST manipulation and a whole lot of neat optimizations. Fully Open Source.",
-    version: "0.5.21",
+    version: "0.4.22",
     iconId: "dirac",
     installLink: "https://dirac.run",
-    command: ["npx", "-y", "dirac-cli@0.5.21", "--acp"],
+    command: ["npx", "-y", "dirac-cli@0.4.22", "--acp"],
   },
   {
     id: "factory-droid",
     title: "Factory Droid",
     description: "Factory Droid - AI coding agent powered by Factory AI",
-    version: "0.243.0",
+    version: "0.179.0",
     iconId: "factory-droid",
     installLink: "https://factory.ai/product/cli",
-    command: ["npx", "-y", "droid@0.243.0", "exec", "--output-format", "acp-daemon"],
+    command: ["npx", "-y", "droid@0.179.0", "exec", "--output-format", "acp-daemon"],
     env: {
       DROID_DISABLE_AUTO_UPDATE: "true",
       FACTORY_DROID_AUTO_UPDATE_ENABLED: "false",
@@ -197,19 +174,19 @@ const CATALOG_DATA = [
     id: "fast-agent",
     title: "fast-agent",
     description: "Code and build agents with comprehensive multi-provider support",
-    version: "0.10.45",
+    version: "0.9.22",
     iconId: "fast-agent",
     installLink: "https://fast-agent.ai/acp/",
-    command: ["uvx", "--from", "fast-agent-acp==0.10.45", "fast-agent-acp", "-x"],
+    command: ["uvx", "--from", "fast-agent-acp==0.9.22", "fast-agent-acp", "-x"],
   },
   {
     id: "gemini",
     title: "Gemini CLI",
     description: "Google's official CLI for Gemini",
-    version: "0.64.0",
+    version: "0.52.0",
     iconId: "gemini",
     installLink: "https://geminicli.com",
-    command: ["npx", "-y", "@google/gemini-cli@0.64.0", "--acp"],
+    command: ["npx", "-y", "@google/gemini-cli@0.52.0", "--acp"],
   },
   {
     id: "gjc",
@@ -229,16 +206,16 @@ const CATALOG_DATA = [
     title: "GLM Agent",
     description:
       "ACP agent powered by Zhipu AI's GLM Coding Plan models (glm-5.1, glm-5-turbo, glm-4.7, glm-4.5-air). Supports streaming, tool calls, mid-session model switching, image input via Z.AI Coding Plan Vision MCP, and session load/fork/resume with on-disk persistence.",
-    version: "1.15.0",
+    version: "1.3.0",
     iconId: "glm-acp-agent",
     installLink: "https://github.com/stefandevo/glm-acp-agent",
-    command: ["npx", "-y", "glm-acp-agent@1.15.0"],
+    command: ["npx", "-y", "glm-acp-agent@1.3.0"],
   },
   {
     id: "goose",
     title: "goose",
     description: "A local, extensible, open source AI agent that automates engineering tasks",
-    version: "1.55.0",
+    version: "1.33.1",
     iconId: "goose",
     installLink: "https://block.github.io/goose/",
     command: ["goose", "acp"],
@@ -248,34 +225,35 @@ const CATALOG_DATA = [
     title: "Grok",
     description:
       "xAI's Grok Build agentic coding CLI with plan mode and parallel subagents. Requires a SuperGrok or X Premium+ subscription.",
-    version: "1.0.62",
+    version: "0.2.11",
     iconId: "grok",
     installLink: "https://docs.x.ai/build/overview",
-    command: ["npx", "-y", "@xai-official/grok@1.0.62", "agent", "stdio"],
-  },
-  {
-    id: "harn",
-    title: "Harn",
-    description: "Runs .harn agent pipelines as a native ACP coding agent",
-    version: "0.10.167",
-    iconId: "harn",
-    installLink: "https://harnlang.com",
-    command: ["harn", "serve", "acp"],
+    command: ["grok", "agent", "stdio"],
   },
   {
     id: "hermes",
     title: "Hermes",
     description: "Nous Research self-improving AI agent",
     version: "manual",
-    iconId: null,
+    iconId: "hermes",
     installLink: "https://hermes-agent.nousresearch.com/docs/user-guide/features/acp",
     command: ["hermes", "acp"],
+  },
+  {
+    id: "hoplite",
+    bundledProvider: true,
+    title: "Hoplite",
+    description: "Cloud coding agent through the local hoplite acp bridge",
+    version: "manual",
+    iconId: "hoplite",
+    installLink: "https://hoplite.sh/docs/cli#install",
+    command: ["hoplite", "acp"],
   },
   {
     id: "junie",
     title: "Junie",
     description: "AI Coding Agent by JetBrains",
-    version: "3659.7.0",
+    version: "1468.30.0",
     iconId: "junie",
     installLink: "https://junie.jetbrains.com/docs/junie-cli-acp.html",
     command: ["junie", "--acp", "true"],
@@ -284,7 +262,7 @@ const CATALOG_DATA = [
     id: "kilo",
     title: "Kilo",
     description: "The open source coding agent",
-    version: "7.8.12",
+    version: "7.2.40",
     iconId: "kilo",
     installLink: "https://kilo.ai/docs/code-with-ai/platforms/cli",
     command: ["kilo", "acp"],
@@ -294,24 +272,15 @@ const CATALOG_DATA = [
     title: "Kiro CLI",
     description: "Amazon's AI coding agent with native ACP support",
     version: "manual",
-    iconId: null,
+    iconId: "kiro",
     installLink: "https://kiro.dev/docs/cli/acp/",
     command: ["kiro-cli", "acp"],
-  },
-  {
-    id: "kimchi",
-    title: "Kimchi",
-    description: "Coding agent powered by multi-model orchestration",
-    version: "1.16.0",
-    iconId: "kimchi",
-    installLink: "https://kimchi.dev",
-    command: ["kimchi", "--mode", "acp"],
   },
   {
     id: "kimi",
     title: "Kimi Code CLI",
     description: "Moonshot AI's open-source terminal coding agent",
-    version: "1.52.0",
+    version: "0.11.0",
     iconId: "kimi",
     installLink: "https://github.com/MoonshotAI/kimi-code",
     command: ["kimi", "acp"],
@@ -320,26 +289,26 @@ const CATALOG_DATA = [
     id: "minimax-code",
     title: "MiniMax Code",
     description: "MiniMax's coding agent for the terminal",
-    version: "0.6.12",
+    version: "0.1.2",
     iconId: "minimax-code",
     installLink: "https://agent.minimax.io",
-    command: ["npx", "-y", "@minimax-ai/code@0.6.12", "acp"],
+    command: ["npx", "-y", "@minimax-ai/code@0.1.2", "acp"],
   },
   {
     id: "minion-code",
     title: "Minion Code",
     description:
       "An enhanced AI code assistant built on the Minion framework with rich development tools",
-    version: "0.1.45",
+    version: "0.1.44",
     iconId: "minion-code",
     installLink: "https://github.com/femto/minion-code",
-    command: ["uvx", "--from", "minion-code==0.1.45", "minion-code", "acp"],
+    command: ["uvx", "--from", "minion-code==0.1.44", "minion-code", "acp"],
   },
   {
     id: "mistral-vibe",
     title: "Mistral Vibe",
     description: "Mistral's open-source coding assistant",
-    version: "2.26.1",
+    version: "2.9.3",
     iconId: "mistral-vibe",
     installLink: "https://github.com/mistralai/mistral-vibe",
     command: ["vibe-acp"],
@@ -348,33 +317,16 @@ const CATALOG_DATA = [
     id: "nova",
     title: "Nova",
     description: "Nova by Compass AI - a fully-fledged software engineer at your command",
-    version: "1.1.54",
+    version: "1.1.29",
     iconId: "nova",
     installLink: "https://www.compassap.ai/portfolio/nova.html",
-    command: ["npx", "-y", "@compass-ai/nova@1.1.54", "acp"],
-  },
-  // Otto Brain is NOT listed here. It is a built-in provider whose endpoint and
-  // credential come from the brain settings (Settings → Host → Otto Brain), so
-  // there is nothing to add and nothing to configure per-provider.
-  {
-    id: "openai-compatible",
-    title: "OpenAI Compatible",
-    description:
-      "Connect any OpenAI-compatible server (LM Studio, Ollama, vLLM, llama.cpp, a hosted gateway, ...) as a coding agent with file and shell tools. Defaults to LM Studio's local port; edit the URL for anything else. Models are discovered automatically from the running server; configure the URL and optional API key in the provider settings.",
-    version: "manual",
-    iconId: null,
-    installLink: "https://lmstudio.ai/docs/app/api",
-    extends: "openai-compatible",
-    featured: true,
-    env: {
-      OPENAI_BASE_URL: "http://localhost:1234/v1",
-    },
+    command: ["npx", "-y", "@compass-ai/nova@1.1.29", "acp"],
   },
   {
     id: "poolside",
     title: "Poolside",
     description: "Poolside's coding agent",
-    version: "1.0.16",
+    version: "1.0.0",
     iconId: "poolside",
     installLink: "https://docs.poolside.ai/cli/pool",
     command: ["pool", "acp"],
@@ -383,26 +335,26 @@ const CATALOG_DATA = [
     id: "qoder",
     title: "Qoder CLI",
     description: "AI coding assistant with agentic capabilities",
-    version: "1.1.73",
+    version: "1.1.4",
     iconId: "qoder",
     installLink: "https://qoder.com",
-    command: ["npx", "-y", "@qoder-ai/qodercli@1.1.73", "--acp"],
+    command: ["npx", "-y", "@qoder-ai/qodercli@1.1.4", "--acp"],
   },
   {
     id: "qwen-code",
     title: "Qwen Code",
     description: "Alibaba's Qwen coding assistant",
-    version: "0.25.2",
+    version: "0.20.1",
     iconId: "qwen-code",
     installLink: "https://qwenlm.github.io/qwen-code-docs/en/users/overview",
-    command: ["npx", "-y", "@qwen-code/qwen-code@0.25.2", "--acp", "--experimental-skills"],
+    command: ["npx", "-y", "@qwen-code/qwen-code@0.20.1", "--acp", "--experimental-skills"],
   },
   {
     id: "sigit",
     title: "siGit Code",
     description:
       "Local-first coding agent. Runs entirely on your machine with optional on-device LLM inference via Onde.",
-    version: "1.7.0",
+    version: "1.0.3",
     iconId: "sigit",
     installLink: "https://github.com/getsigit/sigit",
     command: ["sigit"],
@@ -411,7 +363,7 @@ const CATALOG_DATA = [
     id: "stakpak",
     title: "Stakpak",
     description: "Open-source DevOps agent in Rust with enterprise-grade security",
-    version: "0.3.88",
+    version: "0.3.80",
     iconId: "stakpak",
     installLink: "https://stakpak.dev/",
     command: ["stakpak", "acp"],
@@ -441,36 +393,15 @@ const CATALOG_DATA = [
   },
 ] as const;
 
-function resolveCatalogIconSvg(entry: (typeof CATALOG_DATA)[number]): string | null {
-  // An entry may carry its own inline SVG instead of an ACP icon id. No entry
-  // does today, so the literal type of CATALOG_DATA has no such member and the
-  // read needs a widening cast; the branch stays because the field is part of
-  // the catalog shape, not a one-off.
-  const inlineSvg = (entry as { iconSvg?: string }).iconSvg;
-  if (inlineSvg) {
-    return inlineSvg;
-  }
-  if (entry.iconId) {
-    return ACP_PROVIDER_ICON_SVGS[entry.iconId] ?? null;
-  }
-  return null;
-}
-
-const catalogEntries: AcpProviderCatalogEntry[] = CATALOG_DATA.map((entry) => ({
+export const ACP_PROVIDER_CATALOG: AcpProviderCatalogEntry[] = CATALOG_DATA.map((entry) => ({
   id: entry.id,
   title: entry.title,
   description: entry.description,
   version: entry.version,
   installLink: entry.installLink,
-  extends: "extends" in entry ? entry.extends : "acp",
-  featured: "featured" in entry ? entry.featured : false,
-  command: "command" in entry ? entry.command : undefined,
+  command: entry.command,
+  bundledProvider: "bundledProvider" in entry ? entry.bundledProvider : undefined,
   env: "env" in entry ? entry.env : undefined,
   params: "params" in entry ? entry.params : undefined,
-  iconSvg: resolveCatalogIconSvg(entry),
+  iconSvg: entry.iconId ? (ACP_PROVIDER_ICON_SVGS[entry.iconId] ?? null) : null,
 }));
-
-export const ACP_PROVIDER_CATALOG: AcpProviderCatalogEntry[] = [
-  ...catalogEntries.filter((entry) => entry.featured),
-  ...catalogEntries.filter((entry) => !entry.featured),
-];

@@ -1,4 +1,4 @@
-import type { AgentModelDefinition } from "@otto-code/protocol/agent-types";
+import type { AgentModelDefinition } from "@getpaseo/protocol/agent-types";
 
 export function findModelByReference(
   models: AgentModelDefinition[] | null,
@@ -17,7 +17,5 @@ export function findModelByReference(
 export function filterSelectableModels(
   models: AgentModelDefinition[] | null,
 ): AgentModelDefinition[] | null {
-  return (
-    models?.filter((model) => model.isSelectable !== false && model.isVisible !== false) ?? null
-  );
+  return models?.filter((model) => model.isSelectable !== false) ?? null;
 }

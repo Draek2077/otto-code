@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -23,6 +23,13 @@ async function runSupervisorFixture(options: {
   workerSource: string;
   restartOnCrash?: boolean;
   timeoutMs?: number;
+  /** POSIX RLIMIT_FSIZE for the supervisor, in 512-byte blocks: writes past it fail like a full disk. */
+  fileSizeLimitBlocks?: number;
+  /** Occupy the log path with a directory so the supervisor cannot open daemon.log. */
+  blockLogPath?: boolean;
+  /** Close the reading end of the supervisor's stdout and stderr as soon as it starts. */
+  closeOutput?: boolean;
+  env?: NodeJS.ProcessEnv;
 }): Promise<{
   code: number | null;
   signal: NodeJS.Signals | null;
@@ -31,12 +38,18 @@ async function runSupervisorFixture(options: {
   stdout: string;
   stderr: string;
 }> {
-  const tempDir = await mkdtemp(path.join(tmpdir(), "otto-supervisor-log-"));
+  const tempDir = await mkdtemp(path.join(tmpdir(), "paseo-supervisor-log-"));
   const logPath = path.join(tempDir, "daemon.log");
   const workerPath = path.join(tempDir, "worker.mjs");
   const runnerPath = path.join(tempDir, "runner.mjs");
 
-  await writeFile(workerPath, options.workerSource);
+  if (options.blockLogPath) {
+    await mkdir(logPath);
+  }
+  await writeFile(
+    workerPath,
+    `process.send?.({ type: "paseo:ready", listen: "fixture", serverId: "srv_fixture" });\n${options.workerSource}`,
+  );
   await writeFile(
     runnerPath,
     `
@@ -59,11 +72,29 @@ async function runSupervisorFixture(options: {
   );
 
   const startedAt = Date.now();
-  const child = spawn(process.execPath, ["--import", "tsx", runnerPath], {
+  const runnerArgs = [process.execPath, "--import", "tsx", runnerPath];
+  const [command, ...args] =
+    options.fileSizeLimitBlocks === undefined
+      ? runnerArgs
+      : [
+          "/bin/sh",
+          "-c",
+          `ulimit -f ${options.fileSizeLimitBlocks} && exec "$@"`,
+          "sh",
+          ...runnerArgs,
+        ];
+  const child = spawn(command, args, {
     cwd: repoRoot,
-    env: { ...process.env },
+    // A Node color-conflict warning can hit closed stderr before runSupervisor installs
+    // its pipe-error handlers. This fixture exercises the supervisor's own output.
+    env: { ...process.env, ...options.env, NO_COLOR: undefined, FORCE_COLOR: undefined },
     stdio: ["ignore", "pipe", "pipe"],
   });
+
+  if (options.closeOutput) {
+    child.stdout.destroy();
+    child.stderr.destroy();
+  }
 
   let stdout = "";
   let stderr = "";
@@ -95,25 +126,34 @@ async function runSupervisorFixture(options: {
     });
   });
 
-  const log = await readFile(logPath, "utf8");
+  const log = await readLogIfWritten(logPath);
   return { code, signal, elapsedMs: Date.now() - startedAt, log, stdout, stderr };
+}
+
+async function readLogIfWritten(logPath: string): Promise<string> {
+  try {
+    return await readFile(logPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+    throw error;
+  }
 }
 
 describe("supervisor durable logging", () => {
   test("resolves rotation defaults", () => {
-    const ottoHome = path.join(path.sep, "tmp", "otto-home");
-    const logFile = resolveSupervisorLogFile(ottoHome, {}, {});
+    const paseoHome = path.join(path.sep, "tmp", "paseo-home");
+    const logFile = resolveSupervisorLogFile(paseoHome, {}, {});
 
     expect(logFile).toEqual({
-      path: path.join(ottoHome, "daemon.log"),
+      path: path.join(paseoHome, "daemon.log"),
       rotate: { maxSize: "10m", maxFiles: 3 },
     });
   });
 
   test("lets persisted rotation override env rotation defaults", () => {
-    const ottoHome = path.join(path.sep, "tmp", "otto-home");
+    const paseoHome = path.join(path.sep, "tmp", "paseo-home");
     const logFile = resolveSupervisorLogFile(
-      ottoHome,
+      paseoHome,
       {
         log: {
           file: {
@@ -123,30 +163,30 @@ describe("supervisor durable logging", () => {
         },
       },
       {
-        OTTO_LOG_ROTATE_SIZE: "200m",
-        OTTO_LOG_ROTATE_COUNT: "12",
+        PASEO_LOG_ROTATE_SIZE: "200m",
+        PASEO_LOG_ROTATE_COUNT: "12",
       },
     );
 
     expect(logFile).toEqual({
-      path: path.resolve(ottoHome, "logs", "daemon.log"),
+      path: path.resolve(paseoHome, "logs", "daemon.log"),
       rotate: { maxSize: "25m", maxFiles: 4 },
     });
   });
 
   test("uses env rotation when persisted rotation is absent", () => {
-    const ottoHome = path.join(path.sep, "tmp", "otto-home");
+    const paseoHome = path.join(path.sep, "tmp", "paseo-home");
     const logFile = resolveSupervisorLogFile(
-      ottoHome,
+      paseoHome,
       {},
       {
-        OTTO_LOG_ROTATE_SIZE: "50m",
-        OTTO_LOG_ROTATE_COUNT: "8",
+        PASEO_LOG_ROTATE_SIZE: "50m",
+        PASEO_LOG_ROTATE_COUNT: "8",
       },
     );
 
     expect(logFile).toEqual({
-      path: path.join(ottoHome, "daemon.log"),
+      path: path.join(paseoHome, "daemon.log"),
       rotate: { maxSize: "50m", maxFiles: 8 },
     });
   });
@@ -168,6 +208,37 @@ describe("supervisor durable logging", () => {
     expect(result.stderr).toContain('"worker-json-stderr"');
   });
 
+  test.each([
+    { colors: "inherited", env: {} },
+    { colors: "conflicting", env: { NO_COLOR: "1", FORCE_COLOR: "1" } },
+  ])(
+    "keeps supervising the worker when nobody reads its stdout or stderr with $colors colors",
+    async ({ env }) => {
+      const result = await runSupervisorFixture({
+        closeOutput: true,
+        env,
+        workerSource: `
+        process.on("message", (message) => {
+          if (message?.type === "paseo:graceful-shutdown") process.exit(0);
+        });
+        process.stdout.write("first stdout line\\n");
+        process.stderr.write("first stderr line\\n");
+        setTimeout(() => {
+          process.stdout.write("later stdout line\\n");
+          process.send?.({ type: "paseo:shutdown", reason: "closed_output_probe" });
+        }, 500);
+        setInterval(() => {}, 1000);
+      `,
+      });
+
+      expect(result.code).toBe(0);
+      expect(result.signal).toBeNull();
+      expect(result.log).toContain("first stderr line\n");
+      expect(result.log).toContain("later stdout line\n");
+      expect(result.log).toContain('"reason":"closed_output_probe"');
+    },
+  );
+
   test("preserves raw non-JSON stdout and stderr lines", async () => {
     const result = await runSupervisorFixture({
       workerSource: `
@@ -185,9 +256,9 @@ describe("supervisor durable logging", () => {
     const result = await runSupervisorFixture({
       workerSource: `
         process.on("message", (message) => {
-          if (message?.type === "otto:graceful-shutdown") process.exit(0);
+          if (message?.type === "paseo:graceful-shutdown") process.exit(0);
         });
-        process.send?.({ type: "otto:shutdown", reason: "client_shutdown_rpc" });
+        process.send?.({ type: "paseo:shutdown", reason: "client_shutdown_rpc" });
         setInterval(() => {}, 1000);
       `,
     });
@@ -214,7 +285,7 @@ describe("supervisor durable logging", () => {
         process.stdout.write(\`DESCENDANT_PID=\${descendant.pid}\\n\`);
 
         process.on("message", (message) => {
-          if (message?.type !== "otto:graceful-shutdown") return;
+          if (message?.type !== "paseo:graceful-shutdown") return;
           descendant.once("exit", () => {
             process.stdout.write("GRACEFUL_CLEANUP_RAN\\n");
             process.exit(0);
@@ -222,7 +293,7 @@ describe("supervisor durable logging", () => {
           descendant.kill("SIGTERM");
         });
 
-        process.send?.({ type: "otto:shutdown", reason: "descendant_cleanup_probe" });
+        process.send?.({ type: "paseo:shutdown", reason: "descendant_cleanup_probe" });
         setInterval(() => {}, 1000);
       `,
     });
@@ -249,17 +320,17 @@ describe("supervisor durable logging", () => {
         import { existsSync, writeFileSync } from "node:fs";
 
         process.on("message", (message) => {
-          if (message?.type === "otto:graceful-shutdown") process.exit(0);
+          if (message?.type === "paseo:graceful-shutdown") process.exit(0);
         });
         const marker = process.argv[1] + ".started";
         if (!existsSync(marker)) {
           writeFileSync(marker, "started");
           setTimeout(() => {
-            process.send?.({ type: "otto:shutdown", reason: "silent_worker_test_complete" });
+            process.send?.({ type: "paseo:shutdown", reason: "silent_worker_test_complete" });
           }, 16_000);
           setInterval(() => {}, 1_000);
         } else {
-          process.send?.({ type: "otto:shutdown", reason: "unexpected_silent_worker_restart" });
+          process.send?.({ type: "paseo:shutdown", reason: "unexpected_silent_worker_restart" });
           setInterval(() => {}, 1_000);
         }
       `,
@@ -276,7 +347,7 @@ describe("supervisor durable logging", () => {
     const result = await runSupervisorFixture({
       timeoutMs: 15_000,
       workerSource: `
-          process.send?.({ type: "otto:shutdown", reason: "stalled_worker_shutdown" });
+          process.send?.({ type: "paseo:shutdown", reason: "stalled_worker_shutdown" });
           setInterval(() => {}, 1_000);
         `,
     });
@@ -293,13 +364,13 @@ describe("supervisor durable logging", () => {
     "restarts after worker exit while a descendant retains the worker stdio",
     async () => {
       const result = await runSupervisorFixture({
-        timeoutMs: 15_000,
+        timeoutMs: 7_000,
         workerSource: `
           import { spawn } from "node:child_process";
           import { existsSync, writeFileSync } from "node:fs";
 
           process.on("message", (message) => {
-            if (message?.type === "otto:graceful-shutdown") process.exit(0);
+            if (message?.type === "paseo:graceful-shutdown") process.exit(0);
           });
           const marker = process.argv[1] + ".started";
           if (!existsSync(marker)) {
@@ -310,10 +381,10 @@ describe("supervisor durable logging", () => {
               { detached: true, stdio: ["ignore", "inherit", "inherit"] },
             );
             descendant.unref();
-            process.send?.({ type: "otto:restart", reason: "stdio_descendant" });
+            process.send?.({ type: "paseo:restart", reason: "stdio_descendant" });
             setInterval(() => {}, 1000);
           } else {
-            process.send?.({ type: "otto:shutdown", reason: "stdio_restart_complete" });
+            process.send?.({ type: "paseo:shutdown", reason: "stdio_restart_complete" });
             setInterval(() => {}, 1000);
           }
         `,
@@ -325,7 +396,7 @@ describe("supervisor durable logging", () => {
       expect(result.log).toContain('"reason":"stdio_descendant"');
       expect(result.log).toContain("Restarting worker");
     },
-    20_000,
+    7_000,
   );
 
   // POSIX-only: Windows reports the worker self-kill as an exit code, not SIGKILL.
@@ -345,4 +416,55 @@ describe("supervisor durable logging", () => {
       expect(result.log).toContain("Supervisor exiting");
     },
   );
+
+  // POSIX-only: RLIMIT_FSIZE is how the test makes daemon.log writes fail.
+  test.skipIf(isPlatform("win32"))(
+    "keeps supervising the worker when daemon.log can no longer be written",
+    async () => {
+      const result = await runSupervisorFixture({
+        fileSizeLimitBlocks: 128,
+        workerSource: `
+          process.on("message", (message) => {
+            if (message?.type === "paseo:graceful-shutdown") process.exit(0);
+          });
+          const line = '{"level":30,"msg":"' + "x".repeat(1000) + '"}\\n';
+          for (let i = 0; i < 200; i += 1) process.stdout.write(line);
+          setTimeout(() => {
+            process.send?.({ type: "paseo:shutdown", reason: "log_write_failure_probe" });
+          }, 1000);
+          setInterval(() => {}, 1000);
+        `,
+      });
+
+      expect(result.stderr).not.toContain("Unhandled 'error' event");
+      expect(result.code).toBe(0);
+      expect(result.signal).toBeNull();
+    },
+  );
+
+  test("resumes writing daemon.log once the log path is writable again", async () => {
+    const result = await runSupervisorFixture({
+      blockLogPath: true,
+      workerSource: `
+        import { rmdirSync } from "node:fs";
+
+        process.on("message", (message) => {
+          if (message?.type === "paseo:graceful-shutdown") process.exit(0);
+        });
+        process.stdout.write("line while daemon.log is blocked\\n");
+        setTimeout(() => {
+          rmdirSync(process.argv[1].replace(/worker\\.mjs$/, "daemon.log"));
+          process.stdout.write("line after daemon.log is writable\\n");
+          setTimeout(() => {
+            process.send?.({ type: "paseo:shutdown", reason: "log_recovery_probe" });
+          }, 200);
+        }, 500);
+        setInterval(() => {}, 1000);
+      `,
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.log).toContain("line after daemon.log is writable\n");
+    expect(result.log).toContain('"reason":"log_recovery_probe"');
+  });
 });

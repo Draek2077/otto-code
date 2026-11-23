@@ -1,0 +1,5 @@
+{
+  "id": "otto-openai-compatible-provider",
+  "name": "OpenAI Compatible Provider",
+  "requirements": { "paseo": ">=0.12.0" }
+}

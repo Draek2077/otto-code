@@ -1,7 +1,7 @@
-import type { OttoTerminal } from "@otto-code/client";
+import type { PaseoTerminal } from "@getpaseo/client";
 import type { OutputSchema } from "../../output/index.js";
 
-export type TerminalRow = OttoTerminal;
+export type TerminalRow = PaseoTerminal;
 
 export interface TerminalKillRow {
   terminalId: string;

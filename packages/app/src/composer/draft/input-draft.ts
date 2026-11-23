@@ -2,8 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { UserComposerAttachment } from "@/attachments/types";
 import type { TextReplacement } from "@/composer/types";
 import type { DraftAgentControlsProps } from "@/composer/agent-controls";
-
-import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
+import type { DraftCommandTarget } from "@/hooks/use-agent-commands-query";
 import {
   useAgentFormState,
   type CreateAgentInitialValues,
@@ -17,117 +16,50 @@ import {
   type DraftKeyInput,
 } from "@/composer/draft/input-draft-core";
 import {
-  buildDraftCommandConfig,
+  buildDraftCommandTarget,
+  resolveEffectiveComposerModeId,
   resolveEffectiveComposerModelId,
   resolveEffectiveComposerThinkingOptionId,
   type ProviderSelectionState,
 } from "@/provider-selection/provider-selection";
-import type { PersonalityFormValues } from "@/provider-selection/personality-form";
 import { useDraftStore } from "@/stores/draft-store";
-import { toDraftInputIfReady } from "@/stores/draft-store/state";
-import {
-  useFormRolePersonality,
-  type RolePersonality,
-} from "@/provider-selection/role-model-personality";
+import { AfterPaintPublication } from "@/composer/after-paint-publication";
+import { useShallow } from "zustand/shallow";
+import type { ComposerTextSource } from "@/composer/text-source";
+import { isWeb } from "@/constants/platform";
+import type { ChatProfileBinding } from "@/otto/chat/identity/profile-binding"; // OTTO(chat-profile): draft handoffs keep explicit Profile identity.
 
 type AttachmentUpdater =
   | UserComposerAttachment[]
   | ((prev: UserComposerAttachment[]) => UserComposerAttachment[]);
 
 interface AgentInputDraftComposerOptions {
+  initialChatProfile?: { provider: string; binding: ChatProfileBinding } | null;
   initialServerId: string | null;
   initialValues?: CreateAgentInitialValues;
   initialFeatureValues?: Record<string, unknown>;
   isVisible?: boolean;
   lockedWorkingDir?: string;
-  /** Personality identity inherited from a fork / "new tab from this agent". */
-  initialPersonalityId?: string | null;
 }
-
-// The synthetic "Team's Chatter" picker entry - the composer's binding of the
-// shared team-role picker pattern (mirrors the artifact sheet's "Team's
-// Artificer"). New chat runs immediately, so there is no persisted sentinel;
-// selecting it resolves the active team's Chatter NOW and applies its values.
-// Its id never leaves the draft form.
-const TEAM_CHATTER_ENTRY_ID = "__team-chatter__";
 
 interface UseAgentInputDraftInput {
   draftKey: DraftKeyInput;
   composer?: AgentInputDraftComposerOptions;
 }
 
-/**
- * New-chat (Chatter) Personality picker. Applies a Personality's
- * provider/model/mode/effort/features to the draft form; mode matters here
- * because chat is attended, unlike artifacts and schedules.
- */
-function useChatterPersonalitySelection(input: {
-  formState: UseAgentFormStateResult;
-  onApply: (values: PersonalityFormValues) => void;
-  initialPersonalityId: string | null;
-}): RolePersonality {
-  const { formState } = input;
-  const currentSelection = useMemo(
-    () => ({
-      provider: formState.selectedProvider,
-      model: formState.selectedModel,
-      modeId: formState.selectedMode,
-      thinkingOptionId: formState.selectedThinkingOptionId,
-    }),
-    [
-      formState.selectedProvider,
-      formState.selectedModel,
-      formState.selectedMode,
-      formState.selectedThinkingOptionId,
-    ],
-  );
-  return useFormRolePersonality({
-    serverId: formState.selectedServerId,
-    role: "chatter",
-    entries: formState.allProviderEntries ?? [],
-    onApply: input.onApply,
-    currentSelection,
-    team: {
-      entryId: TEAM_CHATTER_ENTRY_ID,
-      label: "Team's Chatter",
-      roleLabel: "Chatter",
-    },
-    // The chat composer runs the full ladder like every other apply-now
-    // surface: team's Chatter, else the remembered Chatter, else the first
-    // available one. Seeing a bare model here means you have no Chatter at all.
-    autoSelectDefault: "always",
-    initialPersonalityId: input.initialPersonalityId,
-  });
-}
-
-type DraftAgentControlsWithProfileCompatibility = DraftAgentControlsProps & {
-  /**
-   * The draft's bound identity, which creation sends as `personality`. Since the
-   * two stored-template systems converged this is a real roster binding, not a
-   * bridge: the id names an entry in `daemon.agentProfiles` and the daemon
-   * resolves it at spawn.
-   */
-  personality: RolePersonality | null;
-};
-
 type DraftComposerState = UseAgentFormStateResult & {
   workingDir: string;
+  effectiveModeId: string;
   effectiveModelId: string;
   effectiveThinkingOptionId: string;
   featureValues: Record<string, unknown> | undefined;
-  agentControls: DraftAgentControlsWithProfileCompatibility;
-  commandDraftConfig: DraftCommandConfig | undefined;
+  agentControls: DraftAgentControlsProps;
+  commandDraft: DraftCommandTarget;
 };
 
 export interface AgentInputDraft {
-  text: string;
-  setText: (text: string) => void;
-  /** Ordinary typing: debounced, never remounts the input. */
+  textSource: ComposerTextSource;
   editText: (text: string) => void;
-  /**
-   * A programmatic rewrite (dictation refine, a template applied to the draft).
-   * Writes through immediately and publishes {@link textReplacement}.
-   */
   replaceText: (text: string) => void;
   textReplacement: TextReplacement;
   attachments: UserComposerAttachment[];
@@ -144,8 +76,8 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
   const formState = useAgentFormState({
     workingDir,
     serverId: composerOptions?.initialServerId ?? null,
-    initialAgentProfileId: composerOptions?.initialPersonalityId,
     initialValues: composerOptions?.initialValues,
+    initialChatProfile: composerOptions?.initialChatProfile,
     isVisible: composerOptions?.isVisible ?? false,
     isCreateFlow: true,
   });
@@ -157,81 +89,53 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       }),
     [formState.selectedServerId, input.draftKey],
   );
-  const draftRecord = useDraftStore((state) => state.drafts[draftKey]);
-  const draft = useMemo(() => toDraftInputIfReady(draftRecord), [draftRecord]);
+  const attachments = useDraftStore(
+    useShallow((state) =>
+      state.drafts[draftKey]?.lifecycle === "active"
+        ? (state.drafts[draftKey].input.attachments ?? [])
+        : [],
+    ),
+  );
+  const textSource = useMemo<ComposerTextSource>(
+    () => ({
+      getSnapshot: () => {
+        const record = useDraftStore.getState().drafts[draftKey];
+        return record?.lifecycle === "active" ? record.input.text : "";
+      },
+      subscribe: (listener) =>
+        useDraftStore.subscribe((state, previous) => {
+          if (
+            state.drafts[draftKey]?.input.text !== previous.drafts[draftKey]?.input.text ||
+            state.drafts[draftKey]?.lifecycle !== previous.drafts[draftKey]?.lifecycle
+          )
+            listener();
+        }),
+    }),
+    [draftKey],
+  );
   const attachmentFocusRequestId = useDraftStore(
     (state) => state.attachmentFocusRequestByDraftKey[draftKey] ?? 0,
   );
   const [hydratedDraftKey, setHydratedDraftKey] = useState<string | null>(null);
-  // Text is intentionally local while typing. Updating the draft store for
-  // every keypress makes the entire composer tree (and, for an active agent,
-  // its parent panel) participate in the input's urgent render path. Drafts
-  // remain durable through the checkpoint below and are flushed on teardown.
-  const [text, setTextState] = useState("");
-  const textRef = useRef("");
-  const textEditedRef = useRef(false);
-  const textPersistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const attachments = draft?.attachments ?? [];
   const isHydrated = hydratedDraftKey === draftKey;
   const textReplacementRevisionRef = useRef(0);
   const [textReplacement, setTextReplacement] = useState<TextReplacement>(() => ({
+    kind: "initial",
     key: `${draftKey}:0`,
-    text,
+    text: textSource.getSnapshot(),
   }));
 
   const publishTextReplacement = useCallback(
-    (nextText: string) => {
+    (kind: "hydrated" | "replace", nextText: string) => {
       textReplacementRevisionRef.current += 1;
       setTextReplacement({
+        kind,
         key: `${draftKey}:${textReplacementRevisionRef.current}`,
         text: nextText,
       });
     },
     [draftKey],
   );
-
-  const flushText = useCallback(
-    (nextText: string) => {
-      if (textPersistTimerRef.current !== null) {
-        clearTimeout(textPersistTimerRef.current);
-        textPersistTimerRef.current = null;
-      }
-      const store = useDraftStore.getState();
-      const current = store.getDraftInput(draftKey) ?? { text: "", attachments: [] };
-      const next = { ...current, text: nextText };
-      if (!hasDraftContent(next)) {
-        store.clearDraftInput({ draftKey, lifecycle: "abandoned" });
-        return;
-      }
-      store.saveDraftInput({ draftKey, draft: next });
-    },
-    [draftKey],
-  );
-
-  // Hydration is asynchronous. Adopt the hydrated value unless the user has
-  // already started editing, in which case their live text is authoritative.
-  useEffect(() => {
-    if (hydratedDraftKey !== draftKey || textEditedRef.current) {
-      return;
-    }
-    const hydratedText = draft?.text ?? "";
-    textRef.current = hydratedText;
-    setTextState(hydratedText);
-  }, [draft?.text, draftKey, hydratedDraftKey]);
-
-  useEffect(() => {
-    textEditedRef.current = false;
-    textRef.current = "";
-    setTextState("");
-  }, [draftKey]);
-
-  useEffect(() => {
-    return () => {
-      if (textEditedRef.current) {
-        flushText(textRef.current);
-      }
-    };
-  }, [flushText]);
 
   const saveDraft = useCallback(
     (
@@ -241,10 +145,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       },
     ) => {
       const store = useDraftStore.getState();
-      const current = {
-        ...(store.getDraftInput(draftKey) ?? { text: "", attachments: [] }),
-        text: textRef.current,
-      };
+      const current = store.getDraftInput(draftKey) ?? { text: "", attachments: [] };
       const next = update(current);
       if (!hasDraftContent(next)) {
         store.clearDraftInput({ draftKey, lifecycle: "abandoned" });
@@ -255,37 +156,32 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     [draftKey],
   );
 
-  const setText = useCallback(
+  const textPublication = useMemo(
+    () =>
+      new AfterPaintPublication<string>((nextText) => {
+        useDraftStore.getState().editDraftText({ draftKey, text: nextText });
+      }),
+    [draftKey],
+  );
+
+  const editText = useCallback(
     (nextText: string) => {
-      textEditedRef.current = true;
-      textRef.current = nextText;
-      setTextState(nextText);
-      if (textPersistTimerRef.current !== null) {
-        clearTimeout(textPersistTimerRef.current);
+      if (isWeb) {
+        textPublication.stage(nextText);
+      } else {
+        useDraftStore.getState().editDraftText({ draftKey, text: nextText });
       }
-      textPersistTimerRef.current = setTimeout(() => {
-        textPersistTimerRef.current = null;
-        flushText(nextText);
-      }, 200);
     },
-    [flushText],
+    [draftKey, textPublication],
   );
 
   const replaceText = useCallback(
     (nextText: string) => {
-      textEditedRef.current = true;
-      textRef.current = nextText;
-      setTextState(nextText);
-      // A replacement is authoritative: drop the debounce a keystroke may have
-      // left pending so it cannot overwrite the new text a moment later.
-      if (textPersistTimerRef.current !== null) {
-        clearTimeout(textPersistTimerRef.current);
-        textPersistTimerRef.current = null;
-      }
-      flushText(nextText);
-      publishTextReplacement(nextText);
+      textPublication.cancel();
+      useDraftStore.getState().editDraftText({ draftKey, text: nextText });
+      publishTextReplacement("replace", nextText);
     },
-    [flushText, publishTextReplacement],
+    [draftKey, publishTextReplacement, textPublication],
   );
 
   const setAttachments = useCallback(
@@ -300,28 +196,43 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
 
   const clear = useCallback(
     (lifecycle: "sent" | "abandoned") => {
-      if (textPersistTimerRef.current !== null) {
-        clearTimeout(textPersistTimerRef.current);
-        textPersistTimerRef.current = null;
-      }
-      textEditedRef.current = false;
-      textRef.current = "";
-      setTextState("");
-      publishTextReplacement("");
+      textPublication.cancel();
       useDraftStore.getState().clearDraftInput({ draftKey, lifecycle });
     },
-    [draftKey, publishTextReplacement],
+    [draftKey, textPublication],
   );
+
+  useEffect(() => {
+    const flushWhenHidden = () => {
+      if (document.visibilityState === "hidden") textPublication.flush();
+    };
+    const flush = () => textPublication.flush();
+    const canListenForPageHide =
+      isWeb && typeof window !== "undefined" && typeof window.addEventListener === "function";
+    if (isWeb && typeof document !== "undefined") {
+      document.addEventListener("visibilitychange", flushWhenHidden);
+    }
+    if (canListenForPageHide) {
+      window.addEventListener("pagehide", flush);
+    }
+    return () => {
+      if (isWeb && typeof document !== "undefined") {
+        document.removeEventListener("visibilitychange", flushWhenHidden);
+      }
+      if (canListenForPageHide) {
+        window.removeEventListener("pagehide", flush);
+      }
+      textPublication.flush();
+    };
+  }, [textPublication]);
 
   useEffect(() => {
     let cancelled = false;
     void (async () => {
       await useDraftStore.getState().hydrateDraftInput({ draftKey });
       if (!cancelled) {
-        if (!textEditedRef.current) {
-          const hydratedText = useDraftStore.getState().getDraftInput(draftKey)?.text ?? "";
-          publishTextReplacement(hydratedText);
-        }
+        const hydratedText = useDraftStore.getState().getDraftInput(draftKey)?.text ?? "";
+        publishTextReplacement("hydrated", hydratedText);
         setHydratedDraftKey(draftKey);
       }
     })();
@@ -350,6 +261,11 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     ],
   );
 
+  const effectiveModeId = useMemo(
+    () => resolveEffectiveComposerModeId(providerSelection, formState.isModelLoading),
+    [formState.isModelLoading, providerSelection],
+  );
+
   const effectiveModelId = useMemo(
     () => resolveEffectiveComposerModelId(providerSelection),
     [providerSelection],
@@ -375,31 +291,24 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     initialFeatureValues: composerOptions?.initialFeatureValues,
   });
 
-  // Applying a Personality is one form transition: its provider/model/mode/
-  // effort through the form's own personality path (which deliberately skips
-  // the last-used-model preference), plus the provider feature toggles it pins.
-  const { applyPersonalityValues } = formState;
-  const applyChatterPersonality = useCallback(
-    (values: PersonalityFormValues) => {
-      applyPersonalityValues(values);
-      applyProfileFeatureValues(values.featureValues ?? {});
+  const applyDraftAgentProfile = useCallback(
+    (profile: Parameters<typeof formState.applyProfileFromUser>[0]) => {
+      formState.applyProfileFromUser(profile);
+      applyProfileFeatureValues(profile.featureValues);
     },
-    [applyPersonalityValues, applyProfileFeatureValues],
+    [applyProfileFeatureValues, formState],
   );
 
-  const commandDraftConfig = useMemo(
+  const commandDraft = useMemo(
     () =>
-      composerOptions
-        ? buildDraftCommandConfig({
-            selection: providerSelection,
-            cwd: workingDir,
-            effectiveModelId,
-            effectiveThinkingOptionId,
-            featureValues: draftFeatureValues,
-          })
-        : undefined,
+      buildDraftCommandTarget({
+        selection: providerSelection,
+        cwd: workingDir,
+        effectiveModelId,
+        effectiveThinkingOptionId,
+        featureValues: draftFeatureValues,
+      }),
     [
-      composerOptions,
       effectiveModelId,
       effectiveThinkingOptionId,
       draftFeatureValues,
@@ -407,12 +316,6 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
       workingDir,
     ],
   );
-
-  const profileSelection = useChatterPersonalitySelection({
-    formState,
-    onApply: applyChatterPersonality,
-    initialPersonalityId: composerOptions?.initialPersonalityId ?? null,
-  });
 
   const composerState = useMemo<DraftComposerState | null>(() => {
     if (!composerOptions) {
@@ -422,36 +325,35 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
     return {
       ...formState,
       workingDir,
+      effectiveModeId,
       effectiveModelId,
       effectiveThinkingOptionId,
       featureValues: draftFeatureValues,
-      agentControls: {
-        ...buildDraftAgentControls({
-          formState,
-          features: draftFeatures,
-          onSetFeature: setDraftFeatureValue,
-        }),
-        personality: profileSelection,
-      },
-      commandDraftConfig,
+      agentControls: buildDraftAgentControls({
+        formState,
+        features: draftFeatures,
+        onSetFeature: setDraftFeatureValue,
+        onApplyAgentProfile: applyDraftAgentProfile,
+      }),
+      commandDraft,
     };
   }, [
-    commandDraftConfig,
+    commandDraft,
     composerOptions,
+    effectiveModeId,
     effectiveModelId,
     effectiveThinkingOptionId,
     draftFeatures,
     draftFeatureValues,
+    applyDraftAgentProfile,
     formState,
-    profileSelection,
     setDraftFeatureValue,
     workingDir,
   ]);
 
   return {
-    text,
-    setText,
-    editText: setText,
+    textSource,
+    editText,
     replaceText,
     textReplacement,
     attachments,
@@ -465,9 +367,9 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
 
 export const __private__ = {
   resolveDraftKey,
+  resolveEffectiveComposerModeId,
   resolveEffectiveComposerModelId,
   resolveEffectiveComposerThinkingOptionId,
-  buildDraftCommandConfig,
-  buildDraftComposerCommandConfig: buildDraftCommandConfig,
+  buildDraftCommandTarget,
   buildDraftAgentControls,
 };

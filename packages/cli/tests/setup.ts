@@ -1,25 +1,34 @@
 /**
- * Test setup utilities for Otto CLI E2E tests
+ * Test setup utilities for Paseo CLI E2E tests
  *
  * Critical rules from design doc:
- * 1. Port: Random port via 10000 + Math.floor(Math.random() * 50000) - NEVER 6868
+ * 1. Port: Random port via 10000 + Math.floor(Math.random() * 50000) - NEVER 6767
  * 2. Protocol: WebSocket ONLY - daemon has no HTTP endpoints
- * 3. Temp dirs: Create temp directories for OTTO_HOME and agent --cwd
+ * 3. Temp dirs: Create temp directories for PASEO_HOME and agent --cwd
  * 4. Model: Always --provider claude with haiku model for agent tests
  * 5. Cleanup: Kill daemon and remove temp dirs after each test
  */
 
-import { ProcessPromise, sleep } from "zx";
-import { $ } from "./helpers/zx-shell.ts";
+import { $, ProcessPromise, sleep } from "zx";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 
 const TEST_ENV_DEFAULTS = {
-  OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
-  OTTO_DICTATION_ENABLED: process.env.OTTO_DICTATION_ENABLED ?? "0",
-  OTTO_VOICE_MODE_ENABLED: process.env.OTTO_VOICE_MODE_ENABLED ?? "0",
+  PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD: process.env.PASEO_LOCAL_SPEECH_AUTO_DOWNLOAD ?? "0",
+  PASEO_DICTATION_ENABLED: process.env.PASEO_DICTATION_ENABLED ?? "0",
+  PASEO_VOICE_MODE_ENABLED: process.env.PASEO_VOICE_MODE_ENABLED ?? "0",
 };
+
+function testEnvironment(paseoHome: string): NodeJS.ProcessEnv {
+  return {
+    ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("PASEO_"))),
+    ...TEST_ENV_DEFAULTS,
+    PASEO_HOME: paseoHome,
+    HOME: paseoHome,
+    USERPROFILE: paseoHome,
+  };
+}
 
 function killPidTree(pid: number, signal: NodeJS.Signals): void {
   if (!Number.isInteger(pid) || pid <= 0) {
@@ -49,23 +58,23 @@ function killPidTree(pid: number, signal: NodeJS.Signals): void {
 }
 
 export interface TestContext {
-  /** Random port for test daemon (never 6868) */
+  /** Random port for test daemon (never 6767) */
   port: number;
-  /** Temp directory for OTTO_HOME */
-  ottoHome: string;
+  /** Temp directory for PASEO_HOME */
+  paseoHome: string;
   /** Temp directory for agent working directory */
   workDir: string;
   /** Running daemon process */
   daemon: ProcessPromise | null;
-  /** Run a otto CLI command against the test daemon */
-  otto: (args: string[]) => ProcessPromise;
+  /** Run a paseo CLI command against the test daemon */
+  paseo: (args: string[]) => ProcessPromise;
   /** Clean up all resources */
   cleanup: () => Promise<void>;
 }
 
 /**
  * Generate a random port for test daemon
- * NEVER uses 6868 (user's running daemon)
+ * NEVER uses 6767 (user's running daemon)
  */
 export function getRandomPort(): number {
   return 10000 + Math.floor(Math.random() * 50000);
@@ -74,29 +83,35 @@ export function getRandomPort(): number {
 /**
  * Create isolated temp directories for testing
  */
-export async function createTempDirs(): Promise<{ ottoHome: string; workDir: string }> {
-  const ottoHome = await mkdtemp(join(tmpdir(), "otto-test-home-"));
-  const workDir = await mkdtemp(join(tmpdir(), "otto-test-work-"));
-  return { ottoHome, workDir };
+export async function createTempDirs(): Promise<{ paseoHome: string; workDir: string }> {
+  const paseoHome = await mkdtemp(join(tmpdir(), "paseo-test-home-"));
+  const workDir = await mkdtemp(join(tmpdir(), "paseo-test-work-"));
+  return { paseoHome, workDir };
 }
 
 /**
  * Wait for daemon to be ready by testing WebSocket connection
- * Uses `otto agent ls` which connects via WebSocket
+ * Uses `paseo agent ls` which connects via WebSocket
  */
-async function probeDaemon(port: number): Promise<boolean> {
+async function probeDaemon(port: number, paseoHome: string): Promise<boolean> {
   try {
-    const result = await $`OTTO_HOST=localhost:${port} otto agent ls`.nothrow();
+    const result = await $({
+      env: testEnvironment(paseoHome),
+    })`paseo agent ls --host localhost:${port}`.nothrow();
     return result.exitCode === 0;
   } catch {
     return false;
   }
 }
 
-export async function waitForDaemon(port: number, timeout = 30000): Promise<void> {
+export async function waitForDaemon(
+  port: number,
+  paseoHome: string,
+  timeout = 30000,
+): Promise<void> {
   const deadline = Date.now() + timeout;
   async function poll(): Promise<void> {
-    if (await probeDaemon(port)) return;
+    if (await probeDaemon(port, paseoHome)) return;
     if (Date.now() >= deadline) {
       throw new Error(`Daemon failed to start on port ${port} within ${timeout}ms`);
     }
@@ -109,10 +124,16 @@ export async function waitForDaemon(port: number, timeout = 30000): Promise<void
 /**
  * Start an isolated test daemon
  */
-export async function startDaemon(port: number, ottoHome: string): Promise<ProcessPromise> {
+export async function startDaemon(port: number, paseoHome: string): Promise<ProcessPromise> {
   $.verbose = false;
-  const daemon =
-    $`OTTO_HOME=${ottoHome} OTTO_LISTEN=127.0.0.1:${port} OTTO_RELAY_ENABLED=false OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD=${TEST_ENV_DEFAULTS.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD} OTTO_DICTATION_ENABLED=${TEST_ENV_DEFAULTS.OTTO_DICTATION_ENABLED} OTTO_VOICE_MODE_ENABLED=${TEST_ENV_DEFAULTS.OTTO_VOICE_MODE_ENABLED} CI=true otto daemon start --foreground`.nothrow();
+  const daemon = $({
+    env: {
+      ...testEnvironment(paseoHome),
+      PASEO_LISTEN: `127.0.0.1:${port}`,
+      PASEO_RELAY_ENABLED: "false",
+      CI: "true",
+    },
+  })`paseo daemon run`.nothrow();
   return daemon;
 }
 
@@ -121,12 +142,12 @@ export async function startDaemon(port: number, ottoHome: string): Promise<Proce
  */
 export async function createTestContext(): Promise<TestContext> {
   const port = getRandomPort();
-  const { ottoHome, workDir } = await createTempDirs();
+  const { paseoHome, workDir } = await createTempDirs();
 
   // Helper to run CLI commands against test daemon
-  const otto = (args: string[]): ProcessPromise => {
+  const paseo = (args: string[]): ProcessPromise => {
     $.verbose = false;
-    return $`OTTO_HOST=localhost:${port} OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD=${TEST_ENV_DEFAULTS.OTTO_LOCAL_SPEECH_AUTO_DOWNLOAD} OTTO_DICTATION_ENABLED=${TEST_ENV_DEFAULTS.OTTO_DICTATION_ENABLED} OTTO_VOICE_MODE_ENABLED=${TEST_ENV_DEFAULTS.OTTO_VOICE_MODE_ENABLED} otto ${args}`.nothrow();
+    return $({ env: testEnvironment(paseoHome) })`paseo --home ${paseoHome} ${args}`.nothrow();
   };
 
   // Cleanup function
@@ -140,16 +161,16 @@ export async function createTestContext(): Promise<TestContext> {
         ctx.daemon.kill();
       }
     }
-    await rm(ottoHome, { recursive: true, force: true });
+    await rm(paseoHome, { recursive: true, force: true });
     await rm(workDir, { recursive: true, force: true });
   };
 
   const ctx: TestContext = {
     port,
-    ottoHome,
+    paseoHome,
     workDir,
     daemon: null,
-    otto,
+    paseo,
     cleanup,
   };
 
@@ -162,8 +183,8 @@ export async function createTestContext(): Promise<TestContext> {
  */
 export async function createTestContextWithDaemon(): Promise<TestContext> {
   const ctx = await createTestContext();
-  ctx.daemon = await startDaemon(ctx.port, ctx.ottoHome);
-  await waitForDaemon(ctx.port);
+  ctx.daemon = await startDaemon(ctx.port, ctx.paseoHome);
+  await waitForDaemon(ctx.port, ctx.paseoHome);
   return ctx;
 }
 

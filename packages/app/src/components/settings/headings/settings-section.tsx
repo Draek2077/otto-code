@@ -1,11 +1,10 @@
-import { useMemo, type ReactNode, type ComponentType } from "react";
-import { Text, View, type TextProps, type StyleProp, type ViewStyle } from "react-native";
+import { useMemo, type ReactNode } from "react";
+import { Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { SettingsInfoTip } from "./settings-info-tip";
 import { settingsStyles } from "@/styles/settings";
 
-export interface SettingsSectionProps {
-  Label?: ComponentType<TextProps>;
+interface SettingsSectionProps {
   title: string;
   /**
    * What this section is for. Renders as an info tooltip on the header; a
@@ -30,7 +29,6 @@ export interface SettingsSectionProps {
  */
 export function SettingsSection({
   title,
-  Label = Text,
   info,
   trailing,
   testID,
@@ -46,7 +44,7 @@ export function SettingsSection({
     <View style={sectionStyle} testID={testID}>
       <View style={styles.header}>
         <View style={styles.titleRow}>
-          <Label style={settingsStyles.sectionHeaderTitle}>{title}</Label>
+          <Text style={settingsStyles.sectionHeaderTitle}>{title}</Text>
           {info ? (
             <SettingsInfoTip
               title={title}

@@ -17,7 +17,7 @@ const FILE_NAME = "needle-layout-stability-command-center.tsx";
 const FILE_DIRECTORY =
   "packages/app/src/command-center/features/workspace-file-search/layout-stability";
 
-function ottoSizedFiles(): Array<{ path: string; content: string }> {
+function paseoSizedFiles(): Array<{ path: string; content: string }> {
   const files = Array.from({ length: 120 }, (_, index) => ({
     path: `packages/app/src/features/feature-${String(index).padStart(3, "0")}/index.ts`,
     content: `export const feature${index} = ${index};\n`,
@@ -48,14 +48,14 @@ test("workspace file search stays geometrically stable through delayed loading a
   test.setTimeout(120_000);
   const seeded = await seedWorkspace({
     repoPrefix: "command-center-file-search-",
-    title: "Otto-shaped file search",
-    repo: { files: ottoSizedFiles() },
+    title: "Paseo-shaped file search",
+    repo: { files: paseoSizedFiles() },
   });
 
   try {
     await delayDirectorySuggestionResponses(page, 800);
     await gotoWorkspace(page, seeded.workspaceId);
-    await page.keyboard.press("Meta+K");
+    await page.keyboard.press("Meta+P");
 
     const panel = page.getByTestId("command-center-panel");
     await expect(panel).toBeVisible({ timeout: 30_000 });
@@ -95,7 +95,7 @@ test("dropping the files scope leaves the search row the same height", async ({ 
 
   try {
     await gotoWorkspace(page, seeded.workspaceId);
-    await page.keyboard.press("Meta+K");
+    await page.keyboard.press("Meta+P");
 
     const panel = page.getByTestId("command-center-panel");
     await expect(panel).toBeVisible({ timeout: 30_000 });

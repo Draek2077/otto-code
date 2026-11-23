@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { CheckoutCommitFile, ParsedDiffFile } from "@otto-code/protocol/messages";
+import type { CheckoutCommitFile, ParsedDiffFile } from "@getpaseo/protocol/messages";
 import { resolveCommitDiffFiles } from "./use-diff-files";
 
 function createCommitFile(

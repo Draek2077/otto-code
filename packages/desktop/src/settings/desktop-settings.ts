@@ -15,23 +15,12 @@ export interface DesktopSettings {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
   };
-  tray: {
-    showIcon: boolean;
-    minimizeOnClose: boolean;
-    startMinimized: boolean;
-  };
-  quit: {
-    warnBeforeQuit: boolean;
-    onlyWarnForActiveAgents: boolean;
-  };
 }
 
 interface DesktopSettingsPatch {
   releaseChannel?: AppReleaseChannel;
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
-  tray?: Partial<DesktopSettings["tray"]>;
-  quit?: Partial<DesktopSettings["quit"]>;
 }
 
 export interface DesktopSettingsStore {
@@ -47,25 +36,7 @@ export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   },
   daemon: {
     manageBuiltInDaemon: true,
-    // Off by default: quitting an app is expected to stop what it started, and
-    // leaving a background server running is the kind of thing a user should opt
-    // into rather than discover. Turning it on keeps agents running and the
-    // phone/relay connection alive after the window closes.
-    //
-    // NOTE: this default only reaches fresh installs. The store persists the
-    // whole settings object, so every existing install already has `true` on
-    // disk - including users who never touched the toggle - and keeps the old
-    // behavior until they flip it themselves.
     keepRunningAfterQuit: false,
-  },
-  tray: {
-    showIcon: true,
-    minimizeOnClose: true,
-    startMinimized: false,
-  },
-  quit: {
-    warnBeforeQuit: false,
-    onlyWarnForActiveAgents: false,
   },
 };
 
@@ -86,31 +57,11 @@ const DaemonSchema = z
   })
   .catch(() => ({ ...DEFAULT_DESKTOP_SETTINGS.daemon }));
 
-// Otto-owned settings stay explicit in the public projection; unknown future
-// fields survive on disk through the upstream loose storage schemas.
-const TraySchema = z
-  .looseObject({
-    showIcon: z.boolean().catch(DEFAULT_DESKTOP_SETTINGS.tray.showIcon),
-    minimizeOnClose: z.boolean().catch(DEFAULT_DESKTOP_SETTINGS.tray.minimizeOnClose),
-    startMinimized: z.boolean().catch(DEFAULT_DESKTOP_SETTINGS.tray.startMinimized),
-  })
-  .catch(() => ({ ...DEFAULT_DESKTOP_SETTINGS.tray }));
-const QuitSchema = z
-  .looseObject({
-    warnBeforeQuit: z.boolean().catch(DEFAULT_DESKTOP_SETTINGS.quit.warnBeforeQuit),
-    onlyWarnForActiveAgents: z
-      .boolean()
-      .catch(DEFAULT_DESKTOP_SETTINGS.quit.onlyWarnForActiveAgents),
-  })
-  .catch(() => ({ ...DEFAULT_DESKTOP_SETTINGS.quit }));
-
 const DesktopSettingsSchema = z
   .looseObject({
     releaseChannel: ReleaseChannelSchema.catch(DEFAULT_DESKTOP_SETTINGS.releaseChannel),
     notifications: NotificationsSchema,
     daemon: DaemonSchema,
-    tray: TraySchema,
-    quit: QuitSchema,
   })
   .catch(() => buildDefaultSettings());
 
@@ -157,8 +108,6 @@ function buildDefaultSettings(): StoredDesktopSettings {
     releaseChannel: DEFAULT_DESKTOP_SETTINGS.releaseChannel,
     notifications: { ...DEFAULT_DESKTOP_SETTINGS.notifications },
     daemon: { ...DEFAULT_DESKTOP_SETTINGS.daemon },
-    tray: { ...DEFAULT_DESKTOP_SETTINGS.tray },
-    quit: { ...DEFAULT_DESKTOP_SETTINGS.quit },
   };
 }
 
@@ -168,8 +117,6 @@ function buildDefaultDocument(): PersistedDesktopSettingsDocument {
     settings: buildDefaultSettings(),
     migrations: {
       legacyRendererSettingsImported: false,
-      // A fresh document already starts at the new default, so the one-shot
-      // reset has nothing left to do.
       daemonStopOnQuitDefaultApplied: true,
     },
   };
@@ -182,15 +129,6 @@ function toDesktopSettings(stored: StoredDesktopSettings): DesktopSettings {
     daemon: {
       manageBuiltInDaemon: stored.daemon.manageBuiltInDaemon,
       keepRunningAfterQuit: stored.daemon.keepRunningAfterQuit,
-    },
-    tray: {
-      showIcon: stored.tray.showIcon,
-      minimizeOnClose: stored.tray.minimizeOnClose,
-      startMinimized: stored.tray.startMinimized,
-    },
-    quit: {
-      warnBeforeQuit: stored.quit.warnBeforeQuit,
-      onlyWarnForActiveAgents: stored.quit.onlyWarnForActiveAgents,
     },
   };
 }
@@ -228,40 +166,6 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
     }
   }
 
-  if (isRecord(input.tray)) {
-    const trayPatch: Partial<DesktopSettings["tray"]> = {};
-    const showIcon = coerceBoolean(input.tray.showIcon);
-    if (showIcon !== null) {
-      trayPatch.showIcon = showIcon;
-    }
-    const minimizeOnClose = coerceBoolean(input.tray.minimizeOnClose);
-    if (minimizeOnClose !== null) {
-      trayPatch.minimizeOnClose = minimizeOnClose;
-    }
-    const startMinimized = coerceBoolean(input.tray.startMinimized);
-    if (startMinimized !== null) {
-      trayPatch.startMinimized = startMinimized;
-    }
-    if (Object.keys(trayPatch).length > 0) {
-      patch.tray = trayPatch;
-    }
-  }
-
-  if (isRecord(input.quit)) {
-    const quitPatch: Partial<DesktopSettings["quit"]> = {};
-    const warnBeforeQuit = coerceBoolean(input.quit.warnBeforeQuit);
-    if (warnBeforeQuit !== null) {
-      quitPatch.warnBeforeQuit = warnBeforeQuit;
-    }
-    const onlyWarnForActiveAgents = coerceBoolean(input.quit.onlyWarnForActiveAgents);
-    if (onlyWarnForActiveAgents !== null) {
-      quitPatch.onlyWarnForActiveAgents = onlyWarnForActiveAgents;
-    }
-    if (Object.keys(quitPatch).length > 0) {
-      patch.quit = quitPatch;
-    }
-  }
-
   return patch;
 }
 
@@ -295,8 +199,6 @@ function mergeDesktopSettings(
     releaseChannel: patch.releaseChannel ?? current.releaseChannel,
     notifications: { ...current.notifications, ...patch.notifications },
     daemon: { ...current.daemon, ...patch.daemon },
-    tray: { ...current.tray, ...patch.tray },
-    quit: { ...current.quit, ...patch.quit },
   };
 }
 

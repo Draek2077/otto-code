@@ -1,4 +1,3 @@
-import { isProjectOffline } from "./project-availability.js";
 import { resolve } from "node:path";
 import type pino from "pino";
 import type {
@@ -11,56 +10,16 @@ import {
   deriveAgentStateBucket,
   getWorkspaceStateBucketPriority,
   type WorkspaceStateBucket,
-} from "@otto-code/protocol/agent-state-bucket";
-import { getParentAgentIdFromLabels } from "@otto-code/protocol/agent-labels";
+} from "@getpaseo/protocol/agent-state-bucket";
+import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import { SortablePager } from "./pagination/sortable-pager.js";
 import type { PersistedProjectRecord, PersistedWorkspaceRecord } from "./workspace-registry.js";
 import { resolveProjectDisplayName } from "./workspace-registry.js";
 import {
   deriveTerminalActivityStatusBucket,
   type TerminalActivity,
-} from "@otto-code/protocol/terminal-activity";
+} from "@getpaseo/protocol/terminal-activity";
 import type { ProviderSubagentDescriptor } from "./agent/provider-subagents/store.js";
-
-/**
- * Rebuild cost for the workspace descriptor map, aggregated process-wide and
- * drained by the daemon's 30 s `ws_runtime_metrics` window. `buildDescriptorMap`
- * runs once per connected session per agent lifecycle event, so calls/window and
- * ms/call are what say whether the scoped fetch and the emit coalescing are
- * actually holding - see the 2026-08-02 static code audit finding (F5) in Otto
- * Knowledge.
- */
-export interface WorkspaceDescriptorMetricsSnapshot {
-  calls: number;
-  scopedCalls: number;
-  totalMs: number;
-  maxMs: number;
-  recordsScanned: number;
-}
-
-let descriptorMapMetrics: WorkspaceDescriptorMetricsSnapshot = emptyDescriptorMapMetrics();
-
-function emptyDescriptorMapMetrics(): WorkspaceDescriptorMetricsSnapshot {
-  return { calls: 0, scopedCalls: 0, totalMs: 0, maxMs: 0, recordsScanned: 0 };
-}
-
-function beginDescriptorMapTiming(): (result: { scoped: boolean; recordsScanned: number }) => void {
-  const startedAt = performance.now();
-  return ({ scoped, recordsScanned }) => {
-    const elapsedMs = performance.now() - startedAt;
-    descriptorMapMetrics.calls += 1;
-    if (scoped) descriptorMapMetrics.scopedCalls += 1;
-    descriptorMapMetrics.totalMs += elapsedMs;
-    descriptorMapMetrics.maxMs = Math.max(descriptorMapMetrics.maxMs, elapsedMs);
-    descriptorMapMetrics.recordsScanned += recordsScanned;
-  };
-}
-
-export function snapshotWorkspaceDescriptorMetrics(): WorkspaceDescriptorMetricsSnapshot {
-  const snapshot = descriptorMapMetrics;
-  descriptorMapMetrics = emptyDescriptorMapMetrics();
-  return { ...snapshot, totalMs: Math.round(snapshot.totalMs), maxMs: Math.round(snapshot.maxMs) };
-}
 
 const FETCH_WORKSPACES_SORT_KEYS = [
   "status_priority",
@@ -117,16 +76,7 @@ export interface WorkspaceDirectoryDeps {
   workspaceRegistry: {
     list(): Promise<PersistedWorkspaceRecord[]>;
   };
-  /**
-   * All visible, non-archived agents, or - when `scope` is given - only those
-   * owned by `scope.workspaceIds` plus those named by `scope.agentIds`. The
-   * scoped form exists so a per-workspace descriptor rebuild does not project
-   * every live and persisted agent in the home; see `listAgentPayloadsForScope`.
-   */
-  listAgentPayloads(scope?: {
-    workspaceIds?: ReadonlySet<string>;
-    agentIds?: ReadonlySet<string>;
-  }): Promise<AgentSnapshotPayload[]>;
+  listAgentPayloads(): Promise<AgentSnapshotPayload[]>;
   listProviderSubagentActivity(): Promise<ProviderSubagentWorkspaceActivity[]>;
   listTerminalActivityContributions(): Promise<
     Array<{ cwd: string; workspaceId?: string; activity: TerminalActivity | null }>
@@ -137,12 +87,6 @@ export interface WorkspaceDirectoryDeps {
     projectRecord?: PersistedProjectRecord | null;
     includeGitData: boolean;
   }): Promise<WorkspaceDescriptorPayload>;
-  /**
-   * Wall clock used to stamp `statusEnteredAt` when no contributor supplies a
-   * timestamp. Injectable so tests that compare two builds of the same input
-   * cannot disagree by the millisecond that elapsed between them.
-   */
-  now?(): Date;
 }
 
 export function summarizeFetchWorkspacesEntries(entries: Iterable<FetchWorkspacesResponseEntry>): {
@@ -209,12 +153,24 @@ export function workspaceIdsForProjects(
   return Array.from(workspaceIds);
 }
 
+function activeWorkspaceRecords(
+  workspaces: PersistedWorkspaceRecord[],
+  projects: PersistedProjectRecord[],
+): PersistedWorkspaceRecord[] {
+  const archivedProjects = new Set(
+    projects.filter((project) => project.archivedAt).map((project) => project.projectId),
+  );
+  return workspaces.filter(
+    (workspace) => !workspace.archivedAt && !archivedProjects.has(workspace.projectId),
+  );
+}
+
 export class WorkspaceDirectory {
   private readonly archivingByWorkspaceId = new Map<string, string>();
   /**
    * Per-workspace last-seen winning bucket + entered-at. Persists across
    * `buildDescriptorMap` calls inside the daemon process; reset on cold start.
-   * Server-internal; never crosses the wire.
+   * Server-private; never crosses the wire.
    */
   private readonly bucketHistoryByWorkspaceId = new Map<string, WorkspaceBucketHistoryEntry>();
 
@@ -256,50 +212,10 @@ export class WorkspaceDirectory {
     }
   }
 
-  /**
-   * The agent set a descriptor rebuild needs, fetched at the narrowest scope
-   * that still produces identical descriptors.
-   *
-   * Only an agent whose own `workspaceId` is in scope can contribute status to
-   * an in-scope descriptor: `resolveWorkspaceRootAgent` walks up only while the
-   * parent shares the child's workspace, so the resolved root always carries the
-   * child's own workspaceId. The parents themselves are still needed as *lookup
-   * targets*, though - the walk distinguishes "parent lives in another
-   * workspace" (child is a root, and contributes) from "parent is gone" (child
-   * contributes nothing) purely by whether the id resolves. So fetch the
-   * in-scope agents, then backfill only the parent ids that fetch did not
-   * already cover.
-   */
-  private async listAgentPayloadsForScope(
-    workspaceIds: ReadonlySet<string> | null,
-  ): Promise<AgentSnapshotPayload[]> {
-    if (!workspaceIds) {
-      return this.deps.listAgentPayloads();
-    }
-
-    const scoped = await this.deps.listAgentPayloads({ workspaceIds });
-    const scopedIds = new Set(scoped.map((agent) => agent.id));
-    const missingParentIds = new Set<string>();
-    for (const agent of scoped) {
-      const parentAgentId = getParentAgentIdFromLabels(agent.labels);
-      if (parentAgentId && !scopedIds.has(parentAgentId)) {
-        missingParentIds.add(parentAgentId);
-      }
-    }
-    if (missingParentIds.size === 0) {
-      return scoped;
-    }
-
-    const parents = await this.deps.listAgentPayloads({ agentIds: missingParentIds });
-    return [...scoped, ...parents.filter((agent) => !scopedIds.has(agent.id))];
-  }
-
   async buildDescriptorMap(options: {
     includeGitData: boolean;
     workspaceIds?: Iterable<string>;
   }): Promise<Map<string, WorkspaceDescriptorPayload>> {
-    const scopedWorkspaceIds = options.workspaceIds ? new Set(options.workspaceIds) : null;
-    const finishTiming = beginDescriptorMapTiming();
     const [
       agents,
       providerSubagentActivity,
@@ -307,7 +223,7 @@ export class WorkspaceDirectory {
       persistedProjects,
       terminalContributions,
     ] = await Promise.all([
-      this.listAgentPayloadsForScope(scopedWorkspaceIds),
+      this.deps.listAgentPayloads(),
       this.deps.listProviderSubagentActivity(),
       this.deps.workspaceRegistry.list(),
       this.deps.projectRegistry.list(),
@@ -319,22 +235,12 @@ export class WorkspaceDirectory {
         .filter((project) => !project.archivedAt)
         .map((project) => [project.projectId, project] as const),
     );
-    const archivedProjectIds = new Set(
-      persistedProjects.filter((project) => project.archivedAt).map((project) => project.projectId),
-    );
-    // Hidden workspaces are withheld from every descriptor the daemon emits or
-    // lists: excluding them here feeds BOTH hydration (listDescriptors) and live
-    // emission (buildDescriptorMap for specific ids). A hidden workspace resolves
-    // to no descriptor, so the emission chokepoint emits a REMOVE; flipping
-    // `hidden` back to false makes it resolve again and emit an UPSERT.
-    const activeRecords = persistedWorkspaces.filter(
-      (workspace) =>
-        !workspace.archivedAt && !workspace.hidden && !archivedProjectIds.has(workspace.projectId),
-    );
+    const activeRecords = activeWorkspaceRecords(persistedWorkspaces, persistedProjects);
     const descriptorsByWorkspaceId = new Map<string, WorkspaceDescriptorPayload>();
+    const workspaceIds = options.workspaceIds ? new Set(options.workspaceIds) : null;
     const activeWorkspaceIds = new Set(activeRecords.map((workspace) => workspace.workspaceId));
     const includedWorkspaces = activeRecords.filter(
-      (workspace) => !scopedWorkspaceIds || scopedWorkspaceIds.has(workspace.workspaceId),
+      (workspace) => !workspaceIds || workspaceIds.has(workspace.workspaceId),
     );
     const activeRecordsByWorkspaceId = new Map(
       activeRecords.map((workspace) => [workspace.workspaceId, workspace] as const),
@@ -383,7 +289,7 @@ export class WorkspaceDirectory {
 
     // Resolve the workspace-level `statusEnteredAt` (see aggregate semantics
     // on `resolveStatusEnteredAt`).
-    const nowIso = (this.deps.now?.() ?? new Date()).toISOString();
+    const nowIso = new Date().toISOString();
     for (const [workspaceId, descriptor] of descriptorsByWorkspaceId) {
       const contributingAgents = contributingAgentsByWorkspaceId.get(workspaceId) ?? [];
       const activityEntries = activityEntriesByWorkspaceId.get(workspaceId) ?? [];
@@ -404,10 +310,6 @@ export class WorkspaceDirectory {
       }
     }
 
-    finishTiming({
-      scoped: scopedWorkspaceIds !== null,
-      recordsScanned: agents.length + persistedWorkspaces.length + terminalContributions.length,
-    });
     return descriptorsByWorkspaceId;
   }
 
@@ -634,7 +536,7 @@ export class WorkspaceDirectory {
         return derived === winningBucket;
       })
       .map((agent) => {
-        // Prefer attentionTimestamp when the agent has attention set - this is
+        // Prefer attentionTimestamp when the agent has attention set — this is
         // the most accurate "entered current status" signal.
         if (agent.attentionTimestamp) {
           return agent.attentionTimestamp;
@@ -655,20 +557,20 @@ export class WorkspaceDirectory {
   // Project parents that have no active workspaces. The wire field is the
   // sidebar projection bucket for projects whose workspace list is currently
   // empty; it is not a separate domain record.
-  async listEmptyProjects(): Promise<WorkspaceProjectDescriptor[]> {
+  async listEmptyProjects(options?: {
+    includeBackground?: boolean;
+  }): Promise<WorkspaceProjectDescriptor[]> {
     const [persistedWorkspaces, persistedProjects] = await Promise.all([
       this.deps.workspaceRegistry.list(),
       this.deps.projectRegistry.list(),
     ]);
-    // Hidden workspaces intentionally still count as "occupying" their project
-    // here (only `!archivedAt` is checked, not `!hidden`). A project whose only
-    // workspace is a hidden schedule run must NOT surface as an empty-project
-    // ghost row - counting the hidden workspace keeps the project out of the
-    // empty list, so it renders nowhere at all (no workspace rows, no ghost)
-    // until the run reveals its workspace.
+    // A project whose only workspaces are hidden reads as empty to that caller.
     const projectIdsWithActiveWorkspaces = new Set(
       persistedWorkspaces
-        .filter((workspace) => !workspace.archivedAt)
+        .filter(
+          (workspace) =>
+            !workspace.archivedAt && (options?.includeBackground === true || !workspace.background),
+        )
         .map((workspace) => workspace.projectId),
     );
     return persistedProjects
@@ -681,12 +583,27 @@ export class WorkspaceDirectory {
         projectDisplayName: resolveProjectDisplayName(project),
         projectCustomName: project.customName ?? null,
         projectCustomIconRevision: project.customIconRevision ?? null,
-        projectOffline: isProjectOffline(project),
         projectRootPath: project.rootPath,
         projectKind: project.kind,
       }));
   }
 
+  async listObservationTargets(): Promise<
+    Pick<WorkspaceDescriptorPayload, "id" | "workspaceDirectory" | "workspaceKind">[]
+  > {
+    const [workspaces, projects] = await Promise.all([
+      this.deps.workspaceRegistry.list(),
+      this.deps.projectRegistry.list(),
+    ]);
+    return activeWorkspaceRecords(workspaces, projects).map((workspace) => ({
+      id: workspace.workspaceId,
+      workspaceDirectory: workspace.cwd,
+      workspaceKind: workspace.kind,
+    }));
+  }
+
+  // Every active workspace, background ones included. Callers that answer a
+  // listing go through matchesFilter so background workspaces stay opt-in.
   async listDescriptors(): Promise<WorkspaceDescriptorPayload[]> {
     return Array.from(
       (
@@ -702,6 +619,13 @@ export class WorkspaceDirectory {
     filter: FetchWorkspacesRequestFilter | undefined;
   }): boolean {
     const { workspace, filter } = input;
+    if (
+      workspace.background &&
+      filter?.includeBackground !== true &&
+      filter?.query !== workspace.id
+    ) {
+      return false;
+    }
     if (!filter) {
       return true;
     }
@@ -757,7 +681,7 @@ export class WorkspaceDirectory {
     const projectIdFilter = filter?.projectId?.trim();
     const emptyProjects = cursorToken
       ? []
-      : (await this.listEmptyProjects()).filter(
+      : (await this.listEmptyProjects({ includeBackground: filter?.includeBackground })).filter(
           (project) => !projectIdFilter || project.projectId === projectIdFilter,
         );
 

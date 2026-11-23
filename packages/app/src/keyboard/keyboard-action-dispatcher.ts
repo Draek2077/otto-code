@@ -1,13 +1,12 @@
-import { getIsDeveloperModeSnapshot } from "@/hooks/use-interface-mode";
-
-export type KeyboardActionScope = "global" | "message-input" | "sidebar" | "workspace";
+import type { EditorKeyAction } from "@/otto/editor/shortcuts/contracts"; // OTTO(editor)
+export type KeyboardActionScope = "global" | "message-input" | "sidebar" | "workspace" | "editor"; // OTTO(editor)
 
 export type WorkspacePanelTarget = "changes" | "files" | "pull-request";
 export type WorkspacePanelPlacement = "supporting" | "side-pane" | "focused-pane";
 
 export type KeyboardActionId =
+  | "editor.execute" // OTTO(editor)
   | "agent.interrupt"
-  | "chat.find"
   | "message-input.focus"
   | "message-input.send"
   | "message-input.dictation-toggle"
@@ -49,12 +48,8 @@ export type KeyboardActionId =
   | "workspace.terminal.new"
   | "workspace.browser.new"
   | "sidebar.toggle.right"
-  | "sidebar.open.files"
-  | "sidebar.open.search"
-  | "sidebar.open.changes"
   | "sidebar.toggle.both"
   | "workspace.new"
-  | "workspace.tab.new"
   | "workspace.project.pick"
   | "worktree.new"
   | "workspace.archive"
@@ -64,8 +59,8 @@ export type KeyboardActionId =
   | "workspace.setup.show";
 
 export type KeyboardActionDefinition =
+  | { id: "editor.execute"; scope: "editor"; command: EditorKeyAction } // OTTO(editor)
   | { id: "agent.interrupt"; scope: KeyboardActionScope }
-  | { id: "chat.find"; scope: KeyboardActionScope }
   | { id: "message-input.focus"; scope: KeyboardActionScope }
   | { id: "message-input.send"; scope: KeyboardActionScope }
   | { id: "message-input.dictation-toggle"; scope: KeyboardActionScope }
@@ -112,28 +107,14 @@ export type KeyboardActionDefinition =
   | { id: "workspace.terminal.new"; scope: KeyboardActionScope }
   | { id: "workspace.browser.new"; scope: KeyboardActionScope }
   | { id: "sidebar.toggle.right"; scope: KeyboardActionScope }
-  | { id: "sidebar.open.files"; scope: KeyboardActionScope }
-  | { id: "sidebar.open.search"; scope: KeyboardActionScope }
-  | { id: "sidebar.open.changes"; scope: KeyboardActionScope }
   | { id: "sidebar.toggle.both"; scope: KeyboardActionScope }
   | { id: "workspace.new"; scope: KeyboardActionScope }
-  | { id: "workspace.tab.new"; scope: KeyboardActionScope }
   | { id: "workspace.project.pick"; scope: KeyboardActionScope }
   | { id: "worktree.new"; scope: KeyboardActionScope }
   | { id: "workspace.archive"; scope: KeyboardActionScope }
   | { id: "workspace.pin"; scope: KeyboardActionScope }
   | { id: "workspace.rename"; scope: KeyboardActionScope }
   | { id: "workspace.setup.show"; scope: KeyboardActionScope };
-
-// New terminals and the Git explorer remain Developer entry points. Opening
-// files, viewing script output and arranging panes work in either interface mode.
-//
-// Files and Otto's workspace Search remain available in User mode; Git surfaces
-// remain gated so a stray shortcut cannot resurrect a hidden tab.
-const DEVELOPER_ONLY_ACTIONS: ReadonlySet<KeyboardActionId> = new Set([
-  "sidebar.open.changes",
-  "workspace.terminal.new",
-]);
 
 export interface KeyboardActionHandler {
   handlerId: string;
@@ -170,9 +151,6 @@ export function createKeyboardActionDispatcher() {
     },
 
     dispatch(action: KeyboardActionDefinition): boolean {
-      if (DEVELOPER_ONLY_ACTIONS.has(action.id) && !getIsDeveloperModeSnapshot()) {
-        return false;
-      }
       const candidates = Array.from(handlers.values())
         .filter((handler) => handler.actions.includes(action.id))
         .filter((handler) => handler.enabled)
@@ -194,5 +172,3 @@ export function createKeyboardActionDispatcher() {
     },
   };
 }
-
-export const keyboardActionDispatcher = createKeyboardActionDispatcher();

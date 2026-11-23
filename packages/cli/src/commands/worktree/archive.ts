@@ -1,7 +1,8 @@
 import path from "path";
 import type { Command } from "commander";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+import { resolveRepositoryDirectory } from "./repository-directory.js";
 import type {
   CommandOptions,
   SingleResult,
@@ -31,6 +32,7 @@ export const archiveSchema: OutputSchema<WorktreeArchiveResult> = {
 
 export interface WorktreeArchiveOptions extends CommandOptions {
   host?: string;
+  cwd?: string;
 }
 
 export type WorktreeArchiveCommandResult = SingleResult<WorktreeArchiveResult>;
@@ -48,13 +50,15 @@ export async function runArchiveCommandWithDeps(
   options: WorktreeArchiveOptions,
   deps: { connectToDaemon: typeof connectToDaemon },
 ): Promise<WorktreeArchiveCommandResult> {
-  const host = getDaemonHost({ host: options.host });
+  const host = getDaemonHost({ target: options.daemonTarget });
+  const cwd = resolveRepositoryDirectory(options);
 
   // Validate arguments
   if (!nameArg || nameArg.trim().length === 0) {
     const error: CommandError = {
       code: "MISSING_WORKTREE_NAME",
       message: "Worktree name is required",
+      // OTTO(identity)
       details: "Usage: otto worktree archive <name>",
     };
     throw error;
@@ -62,12 +66,14 @@ export async function runArchiveCommandWithDeps(
 
   let client: DaemonClient;
   try {
-    client = await deps.connectToDaemon({ host: options.host });
+    client = await deps.connectToDaemon({ target: options.daemonTarget });
   } catch (err) {
+    if (err && typeof err === "object" && "code" in err) throw err;
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
       code: "DAEMON_NOT_RUNNING",
       message: `Cannot connect to daemon at ${host}: ${message}`,
+      // OTTO(identity)
       details: "Start the daemon with: otto daemon start",
     };
     throw error;
@@ -75,7 +81,7 @@ export async function runArchiveCommandWithDeps(
 
   try {
     // Get the list of worktrees first to resolve the name
-    const listResponse = await client.getOttoWorktreeList({});
+    const listResponse = await client.getPaseoWorktreeList({ cwd });
 
     if (listResponse.error) {
       const error: CommandError = {
@@ -95,14 +101,15 @@ export async function runArchiveCommandWithDeps(
       const error: CommandError = {
         code: "WORKTREE_NOT_FOUND",
         message: `Worktree not found: ${nameArg}`,
+        // OTTO(identity)
         details: 'Use "otto worktree ls" to list available worktrees',
       };
       throw error;
     }
 
     // Archive the worktree. scope:"worktree" archives every active workspace on
-    // the directory and then removes the directory (Otto-owned gated).
-    const response = await client.archiveOttoWorktree({
+    // the directory and then removes the directory (Paseo-owned gated).
+    const response = await client.archivePaseoWorktree({
       worktreePath: worktree.worktreePath,
       scope: "worktree",
     });

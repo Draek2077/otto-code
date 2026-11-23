@@ -1,17 +1,17 @@
 import { useCallback, type ReactNode } from "react";
 import { PluginClientStateProvider, usePluginClientStateSource } from "./client-state.js";
-import { OttoApiProvider, useOttoContextValue } from "./otto-context.js";
+import { PaseoApiProvider, usePaseoContextValue } from "./paseo-context.js";
 import { PluginRpcProvider, usePluginRpcContextValue } from "./rpc-context.js";
 
 export type PluginRuntimeContextBridge = (children: ReactNode) => ReactNode;
 
 /** Rebuilds plugin runtime contexts inside React Native portal hosts. */
 export function usePluginRuntimeContextBridge(): PluginRuntimeContextBridge {
-  const otto = useOttoContextValue();
+  const paseo = usePaseoContextValue();
   const rpc = usePluginRpcContextValue();
   const state = usePluginClientStateSource();
 
-  if (!otto || !rpc) {
+  if (!paseo || !rpc) {
     throw new Error("Plugin UI must run inside a contributed plugin surface");
   }
 
@@ -23,11 +23,11 @@ export function usePluginRuntimeContextBridge(): PluginRuntimeContextBridge {
         children
       );
       return (
-        <OttoApiProvider otto={otto}>
+        <PaseoApiProvider paseo={paseo}>
           <PluginRpcProvider invoke={rpc.invoke}>{content}</PluginRpcProvider>
-        </OttoApiProvider>
+        </PaseoApiProvider>
       );
     },
-    [otto, rpc, state],
+    [paseo, rpc, state],
   );
 }

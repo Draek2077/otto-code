@@ -98,18 +98,18 @@ describe("shared messages stream parsing", () => {
             item: {
               type: "tool_call",
               callId: "setup-1",
-              name: "otto_worktree_setup",
+              name: "paseo_worktree_setup",
               status: "completed",
               detail: {
                 type: "worktree_setup",
-                worktreePath: "/repo/.otto/worktrees/feature",
+                worktreePath: "/repo/.paseo/worktrees/feature",
                 branchName: "feature",
                 log: "setup complete",
                 commands: [
                   {
                     index: 1,
                     command: "npm install",
-                    cwd: "/repo/.otto/worktrees/feature",
+                    cwd: "/repo/.paseo/worktrees/feature",
                     status: "completed",
                     exitCode: 0,
                     durationMs: 100,
@@ -367,100 +367,13 @@ describe("shared messages stream parsing", () => {
     const responseParsed = SessionOutboundMessageSchema.safeParse({
       type: "directory_suggestions_response",
       payload: {
-        directories: ["/Users/test/projects/otto"],
-        entries: [{ path: "/Users/test/projects/otto", kind: "directory" }],
+        directories: ["/Users/test/projects/paseo"],
+        entries: [{ path: "/Users/test/projects/paseo", kind: "directory" }],
         error: null,
         requestId: "req-dir-1",
       },
     });
     expect(responseParsed.success).toBe(true);
-  });
-
-  it("parses the additive project Artifact storage request and response", () => {
-    const requestParsed = SessionInboundMessageSchema.safeParse({
-      type: "project.artifact.store.set.request",
-      projectId: "project-artifacts-1",
-      location: "host",
-      requestId: "artifact-store-1",
-    });
-    expect(requestParsed.success).toBe(true);
-
-    const responseParsed = SessionOutboundMessageSchema.safeParse({
-      type: "project.artifact.store.set.response",
-      payload: {
-        requestId: "artifact-store-1",
-        projectId: "project-artifacts-1",
-        accepted: true,
-        error: null,
-      },
-    });
-    expect(responseParsed.success).toBe(true);
-  });
-
-  it("parses the additive Artifact repair request and response", () => {
-    expect(
-      SessionInboundMessageSchema.safeParse({
-        type: "artifact.repair.request",
-        artifactId: "artifact-repair-1",
-        requestId: "artifact-repair-request-1",
-      }).success,
-    ).toBe(true);
-    expect(
-      SessionOutboundMessageSchema.safeParse({
-        type: "artifact.repair.response",
-        payload: {
-          artifact: {
-            id: "artifact-repair-1",
-            name: "Repaired artifact",
-            description: "test",
-            projectId: "/project",
-            filePath: "/project/.otto/artifacts/artifact-repair-1.html",
-            kind: "html",
-            starred: false,
-            status: "ready",
-            createdAt: "2026-08-29T00:00:00.000Z",
-            updatedAt: "2026-08-29T00:00:00.000Z",
-            generationAgentId: null,
-            generationProvider: "mock",
-            generationModel: null,
-            source: { kind: "chat", agentId: "chat-source-1" },
-            repairAvailable: false,
-            errorMessage: null,
-          },
-          success: true,
-          requestId: "artifact-repair-request-1",
-        },
-      }).success,
-    ).toBe(true);
-  });
-
-  it("parses additive Artifact data read and update messages", () => {
-    expect(
-      SessionInboundMessageSchema.safeParse({
-        type: "artifact.data.get.request",
-        artifactId: "artifact-data-1",
-        requestId: "artifact-data-get-1",
-      }).success,
-    ).toBe(true);
-    expect(
-      SessionInboundMessageSchema.safeParse({
-        type: "artifact.data.update.request",
-        artifactId: "artifact-data-1",
-        data: { count: 2 },
-        requestId: "artifact-data-update-1",
-      }).success,
-    ).toBe(true);
-  });
-
-  it("parses an additive Artifact store move request", () => {
-    expect(
-      SessionInboundMessageSchema.safeParse({
-        type: "artifact.store.move.request",
-        artifactId: "artifact-move-1",
-        destination: "host",
-        requestId: "artifact-move-1",
-      }).success,
-    ).toBe(true);
   });
 
   it("rejects websocket envelope for removed agent_stream_snapshot message type", () => {

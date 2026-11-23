@@ -30,29 +30,6 @@ test("selects only the active agent tab in every visible pane", () => {
   ).toEqual(["agent-a", "agent-b"]);
 });
 
-test("keeps an authoring chat subscribed while its temporary Architectural View tab promotes", () => {
-  const layout: WorkspaceLayout = {
-    focusedPaneId: "main",
-    root: { kind: "pane", pane: { id: "main", tabIds: ["authoring"], focusedTabId: "authoring" } },
-  };
-  const tabs: WorkspaceTab[] = [
-    {
-      tabId: "authoring",
-      target: {
-        kind: "architecturalViewDraft",
-        viewId: "architecture",
-        draftId: "architecture-draft",
-        authoringChatId: "authoring-agent",
-      },
-      createdAt: 1,
-    },
-  ];
-
-  expect(
-    selectVisibleAgentIds({ layout, tabs, routeFocused: true, focusedPaneOnly: false }),
-  ).toEqual(["authoring-agent"]);
-});
-
 test("route blur publishes no viewed agents", () => {
   const layout: WorkspaceLayout = {
     focusedPaneId: "main",
@@ -132,4 +109,26 @@ test("pane retargeting replaces the viewed agent and duplicate panes collapse to
       focusedPaneOnly: false,
     }),
   }).toEqual({ duplicate: ["agent-a"], retargeted: ["agent-a", "agent-b"] });
+});
+
+test("the agent shown in the workspace sheet is viewed alongside the pane under it", () => {
+  const layout: WorkspaceLayout = {
+    focusedPaneId: "main",
+    root: { kind: "pane", pane: { id: "main", tabIds: ["a"], focusedTabId: "a" } },
+  };
+  const tabs: WorkspaceTab[] = [
+    { tabId: "a", target: { kind: "agent", agentId: "agent-a" }, createdAt: 1 },
+  ];
+  const sheetTab: WorkspaceTab = {
+    tabId: "sheet",
+    target: { kind: "agent", agentId: "agent-child" },
+    createdAt: 2,
+  };
+
+  expect(
+    selectVisibleAgentIds({ layout, tabs, sheetTab, routeFocused: true, focusedPaneOnly: true }),
+  ).toEqual(["agent-a", "agent-child"]);
+  expect(
+    selectVisibleAgentIds({ layout, tabs, sheetTab, routeFocused: false, focusedPaneOnly: true }),
+  ).toEqual([]);
 });

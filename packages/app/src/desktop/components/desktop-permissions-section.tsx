@@ -1,10 +1,9 @@
-import { SettingsButton } from "@/screens/settings-search/controls";
-import { SettingsTargetScope } from "@/screens/settings-search/target";
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { RotateCw } from "@/components/icons/material-icons";
 import { View } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
+import { RotateCw } from "lucide-react-native";
+import { Button } from "@/components/ui/button";
 import { DesktopPermissionRow } from "@/desktop/components/desktop-permission-row";
 import { useDesktopPermissions } from "@/desktop/permissions/use-desktop-permissions";
 import { settingsStyles } from "@/styles/settings";
@@ -15,11 +14,6 @@ const ThemedRotateCw = withUnistyles(RotateCw, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 
-/**
- * Every OS permission Otto asks for, in one card. The permission snapshot is
- * read in a single call, so this section owns the only Refresh on the page -
- * the Notifications section below holds preferences, not permissions.
- */
 export function DesktopPermissionsSection() {
   const { t } = useTranslation();
   const {
@@ -39,18 +33,13 @@ export function DesktopPermissionsSection() {
     void requestPermission("microphone");
   }, [requestPermission]);
 
-  const handleRequestNotifications = useCallback(() => {
-    void requestPermission("notifications");
-  }, [requestPermission]);
-
   const isBusy = isRefreshing || requestingPermission !== null;
 
   const refreshIcon = useMemo(() => <ThemedRotateCw />, []);
 
   const refreshButton = useMemo(
     () => (
-      <SettingsButton
-        settingIds={["app-permissions-notifications-permissions-refresh-permissions"]}
+      <Button
         variant="ghost"
         size="sm"
         leftIcon={refreshIcon}
@@ -59,7 +48,7 @@ export function DesktopPermissionsSection() {
         accessibilityLabel={t("settings.permissions.refreshAccessibility")}
       >
         {isRefreshing ? t("settings.permissions.refreshing") : t("settings.permissions.refresh")}
-      </SettingsButton>
+      </Button>
     ),
     [refreshIcon, handleRefreshPress, isBusy, isRefreshing, t],
   );
@@ -80,25 +69,13 @@ export function DesktopPermissionsSection() {
   return (
     <SettingsSection title={t("settings.permissions.title")} trailing={refreshButton}>
       <View style={settingsStyles.card}>
-        <SettingsTargetScope settingIds={["app-permissions-notifications-permissions-microphone"]}>
-          <DesktopPermissionRow
-            title={t("settings.permissions.microphone")}
-            status={snapshot?.microphone ?? null}
-            isRequesting={requestingPermission === "microphone"}
-            onRequest={handleRequestMicrophone}
-            labels={permissionLabels}
-          />
-        </SettingsTargetScope>
-        <SettingsTargetScope settingIds={["app-permissions-permissions-notification-permission"]}>
-          <DesktopPermissionRow
-            title={t("settings.notifications.permission")}
-            status={snapshot?.notifications ?? null}
-            isRequesting={requestingPermission === "notifications"}
-            onRequest={handleRequestNotifications}
-            labels={permissionLabels}
-            showBorder
-          />
-        </SettingsTargetScope>
+        <DesktopPermissionRow
+          title={t("settings.permissions.microphone")}
+          status={snapshot?.microphone ?? null}
+          isRequesting={requestingPermission === "microphone"}
+          onRequest={handleRequestMicrophone}
+          labels={permissionLabels}
+        />
       </View>
     </SettingsSection>
   );

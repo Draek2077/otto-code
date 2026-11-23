@@ -1,8 +1,9 @@
+# OTTO(identity): retain Paseo's packaging architecture with Otto app and launcher names.
 {
   lib,
   stdenv,
   buildNpmPackage,
-  nodejs_24,
+  nodejs_22,
   python3,
   makeWrapper,
   autoPatchelfHook,
@@ -10,15 +11,18 @@
   makeDesktopItem,
   electron,
   libuv,
+  chromium, # OTTO(browser-host): the private Linux daemon inherits the immutable runtime path.
   buildVersion,
-  # Reuse the daemon's prebuilt npm-deps FOD. Same lockfile, same content -
+  # Reuse the daemon's prebuilt npm-deps FOD. Same lockfile, same content —
   # without this, the desktop drv produces a separately-named store path
   # (`otto-desktop-<v>-npm-deps`) and refetches the entire registry. Override
-  # the upstream hash via `otto.override { npmDepsHash = "..."; }`.
-  otto,
+  # the upstream hash via `paseo.override { npmDepsHash = "..."; }`.
+  paseo,
 }:
 buildNpmPackage {
   pname = "otto-desktop";
+  # OTTO(editor): reuse the daemon's immutable, portable sidecar payload.
+  OTTO_DOTNET_PROBE_PAYLOAD = "${paseo.editorDotnetProbe}/lib/otto-dotnet-probe";
   version = (builtins.fromJSON (builtins.readFile ../package.json)).version;
 
   src = lib.cleanSourceWith {
@@ -52,13 +56,15 @@ buildNpmPackage {
       && !(lib.hasSuffix ".e2e.test.ts" baseName)
       && baseName != "node_modules"
       && baseName != ".git"
+      && baseName != ".paseo"
       && baseName != ".otto"
+      && baseName != ".tmp"
       && baseName != ".DS_Store"
       && baseName != "release";
   };
 
-  nodejs = nodejs_24;
-  inherit (otto) npmDeps;
+  nodejs = nodejs_22;
+  inherit (paseo) npmDeps;
 
   # Prevent onnxruntime-node's install script from running during automatic
   # npm rebuild. We manually rebuild only node-pty in buildPhase.
@@ -86,6 +92,12 @@ buildNpmPackage {
     # Expo's web build pulls in some pre-bundled assets; ensure it doesn't try
     # to phone home during the build.
     CI = "1";
+    # Metro's worker runs out of heap transforming the generated
+    # ws-outbound.aot.js validator (about 12 MB). Node's default heap limit is
+    # 2 GB on machines with less than 15 GB of memory, such as GitHub's 7 GB
+    # macOS runners, and 4 GB above that. 4096 MB is that 4 GB ceiling, so this
+    # only raises the limit on smaller builders, like desktop-release.yml does.
+    NODE_OPTIONS = "--max-old-space-size=4096";
   };
 
   buildPhase = ''
@@ -98,13 +110,13 @@ buildNpmPackage {
     npm run build:server
 
     # App workspace deps not covered by build:server
-    npm run build --workspace=@otto-code/expo-two-way-audio
+    npm run build --workspace=@getpaseo/expo-two-way-audio
 
     # Expo web export for the Electron renderer
-    ( cd packages/app && OTTO_WEB_PLATFORM=electron npx expo export --platform web )
+    ( cd packages/app && PASEO_WEB_PLATFORM=electron npx expo export --platform web )
 
     # Desktop main process
-    npm run build:main --workspace=@otto-code/desktop
+    npm run build:main --workspace=@getpaseo/desktop
 
     ${lib.optionalString stdenv.hostPlatform.isDarwin ''
       # Let electron-builder create the native bundle layout (including helper
@@ -149,7 +161,7 @@ buildNpmPackage {
       # complete monorepo used to ship every build-time dependency (including
       # Electron, Expo tooling, and cross-platform builder binaries), making the
       # desktop output larger than 2 GiB.
-      OTTO_TRACE_DESKTOP=1 node scripts/trace-daemon.mjs > desktop-files.txt
+      PASEO_TRACE_DESKTOP=1 node scripts/trace-daemon.mjs > desktop-files.txt
 
       while IFS= read -r path; do
         [ -z "$path" ] && continue
@@ -157,16 +169,16 @@ buildNpmPackage {
         cp -a "$path" "$out/share/otto-desktop/$path"
       done < desktop-files.txt
 
+      # Shell hooks invoke the retained CLI bin directly, without a system Node.
+      patchShebangs --build "$out/share/otto-desktop"
+
       # Keep the same unpackaged monorepo layout expected by main.js.
       cp package.json $out/share/otto-desktop/
       mkdir -p $out/share/otto-desktop/packages/app
       cp -a packages/app/dist $out/share/otto-desktop/packages/app/
-
-      # Wake-word models are data, so the runtime trace never reaches them.
+      # OTTO(wake-word): preserve the shared offline model in the immutable store.
       mkdir -p $out/share/otto-desktop/packages/expo-two-way-audio/models
       cp -a packages/expo-two-way-audio/models/wake-word $out/share/otto-desktop/packages/expo-two-way-audio/models/
-      install -Dm644 vendor/agent-flow/LICENSE \
-        $out/share/otto-desktop/packages/expo-two-way-audio/models/wake-word/LICENSE-APACHE-2.0.txt
 
       for runtime_path in \
         packages/desktop/dist/main.js \
@@ -204,7 +216,8 @@ buildNpmPackage {
         --add-flags "--class=otto-desktop" \
         --set EXPO_DEV_URL "otto://app/" \
         --set CHROME_DESKTOP "otto-desktop.desktop" \
-        --set OTTO_WAKE_WORD_MODEL_DIR "$out/share/otto-desktop/packages/expo-two-way-audio/models/wake-word"
+        --set OTTO_WAKE_WORD_MODEL_DIR "$out/share/otto-desktop/packages/expo-two-way-audio/models/wake-word" \
+        --set-default OTTO_HOST_BROWSER_EXECUTABLE ${lib.getExe chromium}
 
       copyDesktopItems
     ''}

@@ -1,4 +1,4 @@
-import type { CheckoutPrStatusResponse } from "@otto-code/protocol/messages";
+import type { CheckoutPrStatusResponse } from "@getpaseo/protocol/messages";
 
 type PullRequestStatus = CheckoutPrStatusResponse["payload"]["status"];
 

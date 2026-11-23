@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { ExternalLink, Gift } from "@/components/icons/material-icons";
+import { ExternalLink, Gift } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 
@@ -9,9 +9,12 @@ import { MarkdownRenderer } from "@/components/markdown/renderer";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { iconButtonChromeStyle } from "@/components/ui/icon-button-chrome";
+import {
+  iconButtonChromeGlyphSize,
+  iconButtonChromeStyle,
+} from "@/components/ui/icon-button-chrome";
 import { StatusBadge } from "@/components/ui/status-badge";
-import { type Theme } from "@/styles/theme";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { resolveAppVersion } from "@/utils/app-version";
 import { openExternalUrl } from "@/utils/open-external-url";
 import { useChangelog, type ChangelogState } from "./changelog-source";
@@ -21,14 +24,15 @@ import {
   type ChangelogRelease,
   type ChangelogSection,
 } from "./parse-changelog";
+import { OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
-const WEBSITE_CHANGELOG_URL = "https://otto-code.me/changelog";
+const WEBSITE_CHANGELOG_URL = `${OTTO_WEBSITE_URL}/changelog`; // OTTO(identity)
 
 const ThemedGift = withUnistyles(Gift);
 const ThemedExternalLink = withUnistyles(ExternalLink);
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-const sheetLeadingIcon = <ThemedGift size="md" uniProps={mutedColorMapping} />;
+const sheetLeadingIcon = <ThemedGift size={ICON_SIZE.md} uniProps={mutedColorMapping} />;
 const websiteButtonStyle = (state: PressableStateCallbackType & { hovered?: boolean }) =>
   iconButtonChromeStyle({ size: "large", state });
 
@@ -59,7 +63,10 @@ export function ChangelogSheet({ visible, onClose }: ChangelogSheetProps) {
           accessibilityLabel={t("changelog.openWebsite")}
           testID="changelog-open-website"
         >
-          <ThemedExternalLink size="md" uniProps={mutedColorMapping} />
+          <ThemedExternalLink
+            size={iconButtonChromeGlyphSize("large")}
+            uniProps={mutedColorMapping}
+          />
         </Pressable>
       ),
     }),
@@ -106,6 +113,7 @@ function ChangelogBody({ state, shownReleases, onShowMore, onRetry }: ChangelogB
     return (
       <View style={styles.centered}>
         <Alert
+          size="md"
           variant="error"
           title={t("changelog.error.title")}
           description={t("changelog.error.description")}

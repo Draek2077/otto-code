@@ -13,7 +13,7 @@ import {
   workspaceLabelKey,
   type WorkspaceLabelColor,
   type WorkspaceLabelDefinition,
-} from "@otto-code/protocol/workspace-labels";
+} from "@getpaseo/protocol/workspace-labels";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { Button } from "@/components/ui/button";
@@ -174,9 +174,6 @@ export function WorkspaceLabelManagerModal({
       onClose={onClose}
       header={header}
       footer={footer}
-      // Bound the compact scroller to the live snap height, so the edit view's footer stays on
-      // screen instead of being pushed past the bottom of the sheet.
-      sizeContentToCurrentSnapPoint
       testID="workspace-label-manager"
     >
       {draft && editing ? (

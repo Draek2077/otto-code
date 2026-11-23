@@ -9,7 +9,6 @@ import {
 } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { useSessionStore } from "@/stores/session-store";
-import { forgetChatFollowPromptSuggestions } from "@/composer/follow-suggestion/setting";
 import { agentHistoryQueryKey, allAgentHistoryQueryRootKey } from "./agent-history-query-key";
 
 export const ARCHIVE_AGENT_PENDING_QUERY_KEY = ["archive-agent-pending"] as const;
@@ -417,9 +416,6 @@ export function useArchiveAgent() {
         agentId: input.agentId,
         archivedAt: result.archivedAt,
       });
-      // A chat keeps its Autonomous mode until it is archived. Only on success:
-      // a failed archive restores the chat, and it should keep its state too.
-      void forgetChatFollowPromptSuggestions(input).catch(() => undefined);
     },
     onError: (_error, input, context) => {
       if (!context) {

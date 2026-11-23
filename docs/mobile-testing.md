@@ -7,7 +7,7 @@ Agent Device `.ad` scripts are the primary mobile E2E format. An agent discovers
 Record a flow while driving the app normally:
 
 ```bash
-agent-device open me.ottocode.mobile.debug \
+agent-device open sh.paseo.debug \
   --platform ios \
   --session terminal-author \
   --save-script ./packages/app/e2e/mobile/agent-device/terminal.ios.ad
@@ -47,6 +47,53 @@ focused input identity and IME hide/show events. It saves screenshots and logs u
 `.dev/agent-device-artifacts/terminal-keyboard-android`. Set `PASEO_TERMINAL_KEYBOARD_APP_ID=sh.paseo`
 to test an installed production build. It never submits a chat message.
 
+`npm run test:e2e:composer-keyboard:android` preserves the chat control and
+keyboard regression flow, then runs the same growth, retained-height, bounds, and
+hold-to-delete and background-tap dismissal scenario on chat, a workspace draft
+tab, and New workspace. It checks empty-content taps and header taps at the cap
+without changing the input height. Each
+host also opens command/file autocomplete, the model selector, the attachment
+menu, and the forge picker from both keyboard states. It then submits a long
+fixture from each host and checks native stream displacement twice: after the
+response settles, and after returning to the bottom and letting the scrollbar
+fade. The image comparison excludes the scrollbar; keyboard dismissal alone
+does not prove that native scrolling receives touches.
+Artifacts are grouped by host under
+`.dev/agent-device-artifacts/composer-keyboard-android`. Configure its daemon,
+Metro, and device through the `PASEO_COMPOSER_KEYBOARD_*` variables in
+`packages/app/e2e/mobile/composer-keyboard/android.sh`. Use a software keyboard;
+the headless input helper cannot verify the
+[visible composer constraints](floating-panels.md#gotcha-3--keyboard-layout-and-portal-anchors).
+
+The Android sidebar scroll-retention flow requires a connected host with enough
+workspaces to overflow the compact sidebar. Pass `TOP_WORKSPACE` and
+`SCROLLED_WORKSPACE` as the `serverId:workspaceId` suffixes of their sidebar row
+IDs. Choose one row near the top and one initially below the viewport. Replace
+the quoted example values below with those IDs. Start in a workspace with the
+sidebar closed and keep the list stable during the run. The same flow checks
+reopening by swipe and button:
+
+```bash
+agent-device replay packages/app/e2e/mobile/agent-device/native-sidebar-scroll-retention.android.yaml \
+  --maestro --platform android --serial emulator-5556 --metro-port 8099 \
+  --env TOP_WORKSPACE='server-id:top-workspace-id' \
+  --env SCROLLED_WORKSPACE='server-id:scrolled-workspace-id'
+```
+
+Pass this checkout's Metro port so the debug app uses the intended bundle.
+For iOS, compare the scrolled row's screen bounds and screenshots across reopening.
+Agent Device's iOS visibility lookup includes offscreen scroll descendants, so
+its `assertNotVisible` cannot establish the starting scroll position for this flow.
+
+On a Play-image emulator, disable Gmail and Calendar first. Their welcome
+screens launch on their own, take input focus, and the run fails with
+`IME did not become visible` while the app still looks focused:
+
+```bash
+adb shell pm disable-user --user 0 com.google.android.gm
+adb shell pm disable-user --user 0 com.google.android.calendar
+```
+
 When replay diverges, read its ranked selector suggestions. Edit the script deliberately and rerun it from the beginning. `--update` is retained for compatibility but no longer rewrites scripts.
 
 ## Maestro compatibility
@@ -65,7 +112,7 @@ maestro test packages/app/maestro/my-flow.yaml
 
 ### Screenshots
 
-`takeScreenshot` writes to the **current working directory** - there's no way to configure the output path in the YAML. To keep screenshots out of the checkout, `cd` into a temp directory and use an absolute path for the flow:
+`takeScreenshot` writes to the **current working directory** — there's no way to configure the output path in the YAML. To keep screenshots out of the checkout, `cd` into a temp directory and use an absolute path for the flow:
 
 ```bash
 FLOW="$(pwd)/packages/app/maestro/my-flow.yaml"
@@ -77,7 +124,7 @@ cd /tmp/maestro-out && maestro test "$FLOW"
 
 ### Element targeting
 
-Use `testID` or `nativeID` on components, then target with `id:` in flows. Prefer this over text matching - text breaks on copy changes.
+Use `testID` or `nativeID` on components, then target with `id:` in flows. Prefer this over text matching — text breaks on copy changes.
 
 ```tsx
 // Component
@@ -111,7 +158,7 @@ This is how `flows/dev-client.yaml` handles Expo dev client screens that only ap
 
 ### Don't use launchApp against a running dev app
 
-`launchApp` kills and restarts the app, disrupting Expo dev client state and host connections. For flows that test against an already-running dev app, **omit launchApp entirely** - just interact with whatever is on screen.
+`launchApp` kills and restarts the app, disrupting Expo dev client state and host connections. For flows that test against an already-running dev app, **omit launchApp entirely** — just interact with whatever is on screen.
 
 Use `launchApp` only in flows that need a clean start (e.g., onboarding tests).
 
@@ -127,7 +174,7 @@ Use `start`/`end` with percentage coordinates for precise control:
     duration: 300
 ```
 
-`direction: RIGHT` is simpler but less precise - use it for generic swipes, use coordinates when the start position matters (edge gestures, avoiding specific UI regions).
+`direction: RIGHT` is simpler but less precise — use it for generic swipes, use coordinates when the start position matters (edge gestures, avoiding specific UI regions).
 
 ### Assertions
 
@@ -145,15 +192,15 @@ For async elements, use `extendedWaitUntil`:
 
 Two reusable flows handle Expo dev client screens after launch:
 
-- `flows/launch.yaml` - handles dev launcher, dismisses dev menu, asserts "Welcome to Otto"
-- `flows/dev-client.yaml` - same but without asserting a particular app route
+- `flows/launch.yaml` — handles dev launcher, dismisses dev menu, asserts "Welcome to Paseo"
+- `flows/dev-client.yaml` — same but without asserting a particular app route
 
 ### Reach the composer
 
-`flows/land-in-chat.yaml` is the canonical "get into a chat" primitive. It `clearState`s, runs `launch.yaml`, taps the welcome screen's direct-connection option, types `127.0.0.1:6788` (the repo dev daemon - **not** the installed app's `6868`), submits, and waits for `message-input-root`. Compose any composer-level fixture on top of it:
+`flows/land-in-chat.yaml` is the canonical "get into a chat" primitive. It `clearState`s, runs `launch.yaml`, taps the welcome screen's direct-connection option, types `127.0.0.1:6767`, submits, and waits for `message-input-root`. Compose any composer-level fixture on top of it:
 
 ```yaml
-appId: me.ottocode.mobile
+appId: sh.paseo
 ---
 - runFlow: flows/land-in-chat.yaml
 # ...your scenario here, starting from a ready composer
@@ -161,7 +208,7 @@ appId: me.ottocode.mobile
 
 See `image-picker-repro.yaml` for an example.
 
-**Prefer direct connection over relay pairing for local E2E.** Relay needs a 400+ character pairing URL typed into an input; direct needs `127.0.0.1:6788`. The dev daemon listens on 6788 and the simulator can reach it directly.
+**Prefer direct connection over relay pairing for local E2E.** Relay needs a 400+ character pairing URL typed into an input; direct needs `127.0.0.1:6767`. The daemon listens on 6767 and the simulator can reach it directly.
 
 ### New Workspace Creation
 
@@ -188,11 +235,11 @@ New workspace scenarios should compose the reusable subflows in `packages/app/ma
 - `new-workspace-select-codex-gpt54.yaml`
 - `new-workspace-submit-and-assert-created.yaml`
 
-The workspace-create shell scripts render those subflows into a temp directory before running Maestro, which keeps nested `runFlow` paths and `${OTTO_MAESTRO_*}` placeholders working together.
+The workspace-create shell scripts render those subflows into a temp directory before running Maestro, which keeps nested `runFlow` paths and `${PASEO_MAESTRO_*}` placeholders working together.
 
 ### Inputs that Maestro types into
 
-Maestro `inputText` fires one character at a time. React Native's **controlled** `TextInput` re-renders per keystroke; if a controlled input's state update lags or re-mounts mid-type, characters are dropped silently - the final value on screen is a truncated/scrambled version of what was "typed."
+Maestro `inputText` fires one character at a time. React Native's **controlled** `TextInput` re-renders per keystroke; if a controlled input's state update lags or re-mounts mid-type, characters are dropped silently — the final value on screen is a truncated/scrambled version of what was "typed."
 
 For inputs that E2E flows type into (host endpoint, pairing URL, etc.), use an **uncontrolled ref-backed input**: `defaultValue` + `onChangeText` writes into a `useRef`, reads via the ref on submit. No per-keystroke re-render, no dropped characters.
 
@@ -204,11 +251,11 @@ On iOS, when a dropdown menu (`DropdownMenu` / RN `Modal`) item needs to launch 
 
 `DropdownMenu` handles this by deferring the selected item's `onSelect` until `Modal.onDismiss` fires (UIKit-level dismissal complete), then adds a small extra buffer before invoking it. See `components/ui/dropdown-menu.tsx`'s `selectItem` / `flushPendingSelect`.
 
-When building a new component that composes a dropdown with a native presenter, reuse this dropdown - do not invent a new timing shim.
+When building a new component that composes a dropdown with a native presenter, reuse this dropdown — do not invent a new timing shim.
 
 ## Self-verification loops
 
-Maestro can only interact with the app UI - it can't toggle iOS appearance, change locale, or simulate network conditions. For bugs that depend on system-level state, wrap Maestro in a bash script that handles the system changes between Maestro runs.
+Maestro can only interact with the app UI — it can't toggle iOS appearance, change locale, or simulate network conditions. For bugs that depend on system-level state, wrap Maestro in a bash script that handles the system changes between Maestro runs.
 
 This pattern also lets agents self-verify fixes without manual user testing.
 
@@ -253,16 +300,33 @@ done
 
 ### Android audio focus interruptions
 
-Voice mode uses the custom `expo-two-way-audio` Android module, so incoming calls and other system audio owners must be tested with emulator/system commands, not a JS-only test. To verify that voice resume handles denied audio focus without crashing:
+Use native instrumentation for audio interruptions. JS-only tests cannot prove Android focus,
+input silencing, or route recovery. The module's `android/src/androidTest` suite runs through
+Gradle's `connectedDebugAndroidTest` task and uses real `AudioManager` and `AudioRecord` instances.
+Run the microphone-privacy cases on Android 12 or newer.
+
+Verify these distinct outcomes:
+
+- Dictation continues when another media owner takes permanent, temporary, or ducking focus.
+- Disabling microphone access pauses audio delivery without discarding the dictation. Enabling
+  access resumes it. Starting dictation while access is disabled waits for the same recovery.
+- Returning from music controls resumes dictation without pausing music again. Cancelling a
+  backgrounded recording must prevent the lifecycle callback from restarting it.
+- Two-way voice still stops coherently on focus loss. Keep the incoming-call check below: it
+  exercises denied focus during lifecycle resume, beyond an ordinary media takeover.
 
 ```bash
-adb shell am start -n me.ottocode.mobile/.MainActivity
-# Start voice mode in an existing composer, then background Otto with Home.
+# Start voice mode in an existing composer, then background Paseo.
 adb emu gsm call 5551234
-# Foreground Otto while the call is still ringing.
+# Foreground Paseo while the call is still ringing, then end the simulated call.
+adb emu gsm cancel 5551234
 ```
 
-Expected result: Otto does not throw `RuntimeException: Audio focus request failed`; native audio reports an interruption and voice mode stops or pauses coherently.
+Expected result: no `RuntimeException: Audio focus request failed`, and voice mode stops or pauses
+coherently. Repeat with dictation: it must retain captured audio and recover microphone access.
+Use browser/device automation to operate the app; the commands above only control emulator telephony.
+
+This fix requires a rebuilt native app. An OTA update on an older binary retains legacy capture.
 
 ### Releasing the audio session when idle
 
@@ -334,7 +398,7 @@ const { theme } = useUnistyles();
 />;
 ```
 
-Regular `View` components can safely use Unistyles dynamic styles - the conflict is specific to `Animated.View`.
+Regular `View` components can safely use Unistyles dynamic styles — the conflict is specific to `Animated.View`.
 
 ## Native Chat Stream Layout
 
@@ -378,8 +442,8 @@ APP_VARIANT=development npx expo run:ios --device
 ```
 
 `APP_VARIANT=development` is required. The `ios` npm script does not set it, and `app.config.js` defaults
-to `production`, so a bare `npm run ios` builds `me.ottocode.mobile` and collides with the App Store install instead
-of the `me.ottocode.mobile.debug` dev client. Ignore prebuild's `--non-interactive is not supported` warning; use
+to `production` — so a bare `npm run ios` builds `sh.paseo` and collides with the App Store install instead
+of the `sh.paseo.debug` dev client. Ignore prebuild's `--non-interactive is not supported` warning; use
 `CI=1` if you need non-interactive.
 
 ### Signing needs a working Apple ID token in Xcode
@@ -458,70 +522,6 @@ This is **not** a build defect. Confirm with a control: launch `com.apple.Prefer
 watch it exit identically. Headless install and launch prove the binary is valid and that startup reaches
 RN init; anything about on-screen behavior needs a human holding the phone.
 
-## Android emulator
-
-Setup, the `npm run android:emu` lane, `adb reverse`, and what does and does not hot-reload are all
-in [android.md](android.md). This section is only about driving the emulator for a test.
-
-### Driving and observing with adb alone
-
-`adb` needs no extra tooling and works natively on Windows, which makes it the fastest way to get a
-reproduction, a log and a screenshot. Everything here assumes `npm run android:emu -- start` has
-already booted a device and applied the port reverses.
-
-```bash
-# Evidence
-npm run android:emu -- shot                 # PNG into .tmp/
-npm run android:emu -- logs --crash         # scan the buffer for crash signatures
-npm run android:emu -- logs                 # live tail, filtered to the app
-
-# App lifecycle
-adb shell am start -n me.ottocode.mobile.debug/.MainActivity
-adb shell am force-stop me.ottocode.mobile.debug
-adb shell pm clear me.ottocode.mobile.debug   # wipe app state, including the setup wizard
-
-# Input
-adb shell input tap <x> <y>
-adb shell input swipe <x1> <y1> <x2> <y2> <ms>
-adb shell input text "hello"
-adb shell input keyevent KEYCODE_BACK
-
-# What is actually on screen right now
-adb shell dumpsys window | grep mCurrentFocus
-```
-
-To find coordinates for a tap, take a screenshot and read them off it. Remember that a screenshot is
-in device pixels, so a coordinate measured on a scaled-down copy has to be scaled back up.
-
-> **`pm clear` is the Android equivalent of a fresh install.** It is the only reliable way to get
-> back to the first-run wizard, because the app's settings live in AsyncStorage on device. The
-> `localStorage` trick used to skip the wizard on the web lane does **not** apply here.
-
-### Crash signatures worth grepping for
-
-`logs --crash` fails only on genuine process death: `FATAL EXCEPTION`, `ANR in `, and the two Fabric
-view-parent strings (`failed to insert view`, `specified child already has a parent`) that the
-workspace-creation harness watches for. Ordinary `ReactNativeJS` error lines are reported but do not
-fail, because the app logs handled errors at that level constantly and a check that cries wolf stops
-being read.
-
-Do not add `--------- beginning of crash` to a crash pattern. logcat prints it as a buffer section
-divider on any device that has ever crashed, so it matches when nothing is wrong.
-
-### Maestro on Windows
-
-Maestro is a JVM CLI that expects a POSIX environment; the flows in `packages/app/maestro/` and the
-shell harnesses around them are written for macOS and Linux. On Windows, run them from **WSL**:
-install Maestro inside the distro, and point it at the Windows emulator over adb. The emulator
-itself stays on the Windows side; only the test runner moves.
-
-The flows themselves are platform-neutral and correct to run once Maestro is available.
-
-> **Package ids drifted once and silenced every flow.** `packages/app/maestro/` targeted
-> `ai.ottocode` long after `app.config.js` moved to `me.ottocode.mobile`, so flows failed to find an
-> app that was installed and working. When `APP_VARIANT` or a package id changes, grep the whole
-> repo for the old id, not just `packages/app/src`.
-
 ## iOS Simulator
 
 ```bash
@@ -534,4 +534,4 @@ xcrun simctl ui booted appearance dark     # set dark
 xcrun simctl ui booted appearance light    # set light
 ```
 
-Expo dev server logs are in the tmux pane running `npm run dev`. Daemon logs are at `$OTTO_HOME/daemon.log` (see [development.md](development.md)).
+Expo dev server logs are in the tmux pane running `npm run dev`. Daemon logs are at `$PASEO_HOME/daemon.log` (see [development.md](development.md)).

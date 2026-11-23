@@ -1,33 +1,16 @@
-import { stat } from "node:fs/promises";
-import { join } from "node:path";
 import type { Logger } from "pino";
 
-import type { OttoOpenAIConfig, OttoSpeechConfig } from "../bootstrap.js";
+import type { PaseoOpenAIConfig, PaseoSpeechConfig } from "../bootstrap.js";
 import type { LocalSpeechModelId } from "./providers/local/config.js";
-import {
-  ensureLocalSpeechModels,
-  getLocalSpeechModelDir,
-  listLocalSpeechModels,
-} from "./providers/local/models.js";
+import { ensureLocalSpeechModels, listMissingLocalSpeechModels } from "./providers/local/models.js";
 import { initializeLocalSpeechServices } from "./providers/local/runtime.js";
 import {
+  createOpenAiTts, // OTTO(profile-voice)
   getOpenAiSpeechAvailability,
   initializeOpenAiSpeechServices,
   validateOpenAiCredentialRequirements,
 } from "./providers/openai/runtime.js";
-import type {
-  SpeechToTextProvider,
-  SpeechVoiceOverride,
-  TextToSpeechProvider,
-} from "./speech-provider.js";
-
-// Upper bound on preview text so a runaway prompt can't tie up the TTS engine.
-// Voice previews are a single short sentence; real playback splits at ~260.
-const TTS_PREVIEW_MAX_CHARS = 400;
-import {
-  buildSpeechSettingsOptions,
-  type SpeechSettingsOptions,
-} from "./speech-settings-options.js";
+import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech-provider.js";
 import type { RequestedSpeechProviders } from "./speech-types.js";
 import type { TurnDetectionProvider } from "./turn-detection-provider.js";
 
@@ -66,7 +49,7 @@ export interface SpeechReadinessSnapshot {
 }
 
 function resolveRequestedSpeechProviders(
-  speechConfig: OttoSpeechConfig | null,
+  speechConfig: PaseoSpeechConfig | null,
 ): RequestedSpeechProviders {
   const defaults: RequestedSpeechProviders = {
     dictationStt: { provider: "local", explicit: false, enabled: true },
@@ -86,48 +69,6 @@ function resolveRequestedSpeechProviders(
     voiceStt: fromConfig.voiceStt ?? defaults.voiceStt,
     voiceTts: fromConfig.voiceTts ?? defaults.voiceTts,
   };
-}
-
-async function hasRequiredLocalModelFile(filePath: string): Promise<boolean> {
-  try {
-    const fileStat = await stat(filePath);
-    if (fileStat.isDirectory()) {
-      return true;
-    }
-    return fileStat.isFile() && fileStat.size > 0;
-  } catch {
-    return false;
-  }
-}
-
-async function findMissingRequiredLocalModels(params: {
-  modelsDir: string | null;
-  requiredModelIds: LocalSpeechModelId[];
-}): Promise<LocalSpeechModelId[]> {
-  const { modelsDir, requiredModelIds } = params;
-  if (!modelsDir || requiredModelIds.length === 0) {
-    return [];
-  }
-
-  const specsById = new Map(listLocalSpeechModels().map((model) => [model.id, model]));
-  const missing = new Set<LocalSpeechModelId>();
-
-  const checks = await Promise.all(
-    requiredModelIds.map(async (modelId) => {
-      const spec = specsById.get(modelId);
-      if (!spec) return { modelId, missing: true };
-      const modelDir = getLocalSpeechModelDir(modelsDir, modelId);
-      const filePresence = await Promise.all(
-        spec.requiredFiles.map((relPath) => hasRequiredLocalModelFile(join(modelDir, relPath))),
-      );
-      return { modelId, missing: !filePresence.every((present) => present) };
-    }),
-  );
-  for (const check of checks) {
-    if (check.missing) missing.add(check.modelId);
-  }
-
-  return Array.from(missing);
 }
 
 function joinModelIds(modelIds: LocalSpeechModelId[]): string {
@@ -352,34 +293,15 @@ function resolveEffectiveProviderIds(params: {
   };
 }
 
-export interface SpeechServiceConfigUpdate {
-  openaiConfig?: OttoOpenAIConfig;
-  speechConfig?: OttoSpeechConfig;
-}
-
 export interface SpeechService {
   resolveStt: () => SpeechToTextProvider | null;
   resolveSttLanguage: () => string;
-  resolveTts: () => TextToSpeechProvider | null;
+  resolveTts: (provider?: "local" | "openai") => TextToSpeechProvider | null; // OTTO(profile-voice)
   resolveTurnDetection: () => TurnDetectionProvider | null;
   resolveDictationStt: () => SpeechToTextProvider | null;
   resolveDictationSttLanguage: () => string;
   getReadiness: () => SpeechReadinessSnapshot;
   onReadinessChange: (listener: (snapshot: SpeechReadinessSnapshot) => void) => () => void;
-  getSettingsOptions: () => SpeechSettingsOptions;
-  /**
-   * One-shot synthesis for the voice-preview button. Runs the host's active TTS
-   * provider on `text` with the (soft) voice override, drains the stream, and
-   * returns base64 audio plus its media format. Returns null when no TTS
-   * provider is configured or the provider yields no audio; the caller surfaces
-   * that as a preview error rather than throwing.
-   */
-  synthesizePreview: (params: {
-    text: string;
-    voice?: SpeechVoiceOverride;
-  }) => Promise<{ audio: string; format: string } | null>;
-  /** Apply a new resolved config without restarting the daemon. No-op when unchanged. */
-  reconfigure: (next: SpeechServiceConfigUpdate) => Promise<void>;
   start: () => void;
   stop: () => Promise<void>;
   ready: Promise<void>;
@@ -387,13 +309,14 @@ export interface SpeechService {
 
 export function createSpeechService(params: {
   logger: Logger;
-  openaiConfig?: OttoOpenAIConfig;
-  speechConfig?: OttoSpeechConfig;
+  openaiConfig?: PaseoOpenAIConfig;
+  speechConfig?: PaseoSpeechConfig;
 }): SpeechService {
   const logger = params.logger.child({ module: "speech-runtime" });
-  let speechConfig = params.speechConfig ?? null;
-  let openaiConfig = params.openaiConfig;
-  let providers = resolveRequestedSpeechProviders(speechConfig);
+  const speechConfig = params.speechConfig ?? null;
+  const openaiConfig = params.openaiConfig;
+  const providers = resolveRequestedSpeechProviders(speechConfig);
+  const requestedProviders = describeRequestedProviders(providers);
 
   validateOpenAiCredentialRequirements({
     providers,
@@ -403,7 +326,7 @@ export function createSpeechService(params: {
 
   logger.info(
     {
-      requestedProviders: describeRequestedProviders(providers),
+      requestedProviders,
       availability: {
         openai: getOpenAiSpeechAvailability(openaiConfig),
       },
@@ -523,10 +446,12 @@ export function createSpeechService(params: {
   };
 
   const refreshMissingLocalModels = async (): Promise<void> => {
-    missingLocalModelIds = await findMissingRequiredLocalModels({
-      modelsDir: localModelConfig?.modelsDir ?? null,
-      requiredModelIds: localModelConfig?.defaultModelIds ?? [],
-    });
+    missingLocalModelIds = localModelConfig
+      ? await listMissingLocalSpeechModels({
+          modelsDir: localModelConfig.modelsDir,
+          modelIds: localModelConfig.defaultModelIds,
+        })
+      : [];
   };
 
   const reconcileServices = async (): Promise<void> => {
@@ -578,7 +503,7 @@ export function createSpeechService(params: {
     if (unavailableFeatures.length > 0) {
       logger.warn(
         {
-          requestedProviders: describeRequestedProviders(providers),
+          requestedProviders,
           effectiveProviders,
           unavailableFeatures,
           missingLocalModelIds,
@@ -588,7 +513,7 @@ export function createSpeechService(params: {
     } else {
       logger.info(
         {
-          requestedProviders: describeRequestedProviders(providers),
+          requestedProviders,
           effectiveProviders,
         },
         "Speech provider reconciliation completed",
@@ -747,73 +672,23 @@ export function createSpeechService(params: {
     backgroundDownloadPromise = null;
   };
 
-  const configFingerprint = (
-    speech: OttoSpeechConfig | null,
-    openai: OttoOpenAIConfig | undefined,
-  ): string => JSON.stringify({ speech, openai: openai ?? null });
-  let lastConfigFingerprint = configFingerprint(speechConfig, openaiConfig);
-
-  const reconfigure = async (next: SpeechServiceConfigUpdate): Promise<void> => {
-    if (stopped) {
-      return;
-    }
-    const nextSpeechConfig = next.speechConfig ?? null;
-    const nextFingerprint = configFingerprint(nextSpeechConfig, next.openaiConfig);
-    if (nextFingerprint === lastConfigFingerprint) {
-      return;
-    }
-    lastConfigFingerprint = nextFingerprint;
-    speechConfig = nextSpeechConfig;
-    openaiConfig = next.openaiConfig;
-    providers = resolveRequestedSpeechProviders(speechConfig);
-
-    validateOpenAiCredentialRequirements({ providers, openaiConfig, logger });
-    logger.info(
-      { requestedProviders: describeRequestedProviders(providers) },
-      "Speech configuration changed; reconciling providers",
-    );
-
-    // Drain a reconcile that started before the config swap so the follow-up
-    // pass below is guaranteed to see the new config. A reconcile that starts
-    // after the swap already reads the new closure state.
-    const inFlightBeforeSwap = reconcileInFlight;
-    if (inFlightBeforeSwap) {
-      await inFlightBeforeSwap.catch(() => undefined);
-    }
-    await runReconcile();
-    if (missingLocalModelIds.length > 0) {
-      startBackgroundDownload();
-    }
-    scheduleMonitor();
-  };
-
   return {
     resolveTurnDetection: () => turnDetectionService,
     resolveStt: () => sttService,
     resolveSttLanguage: () => speechConfig?.sttLanguages?.voice ?? "en",
-    resolveTts: () => ttsService,
+    resolveTts: (provider) => {
+      // OTTO(profile-voice): choose for this utterance without rebuilding the configured runtime.
+      if (provider === "local") return localVoiceTtsProvider;
+      if (provider === "openai")
+        return openaiConfig?.tts?.apiKey
+          ? createOpenAiTts(openaiConfig.tts.apiKey, openaiConfig, logger)
+          : null;
+      return ttsService;
+    },
     resolveDictationStt: () => dictationSttService,
     resolveDictationSttLanguage: () => speechConfig?.sttLanguages?.dictation ?? "en",
     getReadiness: () => lastPublishedReadinessSnapshot ?? computeReadinessSnapshot(),
     onReadinessChange: subscribeSpeechReadiness,
-    getSettingsOptions: () =>
-      buildSpeechSettingsOptions({
-        openaiAvailability: getOpenAiSpeechAvailability(openaiConfig),
-      }),
-    synthesizePreview: async ({ text, voice }) => {
-      const provider = ttsService;
-      if (!provider) return null;
-      const trimmed = text.trim().slice(0, TTS_PREVIEW_MAX_CHARS);
-      if (trimmed.length === 0) return null;
-      const { stream, format } = await provider.synthesizeSpeech(trimmed, voice);
-      const buffers: Buffer[] = [];
-      for await (const chunk of stream) {
-        buffers.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      }
-      if (buffers.length === 0) return null;
-      return { audio: Buffer.concat(buffers).toString("base64"), format };
-    },
-    reconfigure,
     start,
     stop,
     ready,

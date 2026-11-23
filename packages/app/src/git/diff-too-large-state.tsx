@@ -1,8 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
-import { FileWarning } from "@/components/icons/material-icons";
+import { FileWarning } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { Theme } from "@/styles/theme";
+import { ICON_SIZE, type Theme } from "@/styles/theme";
 
 const ThemedFileWarning = withUnistyles(FileWarning);
 const foregroundMutedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -12,7 +12,7 @@ export function DiffTooLargeState() {
 
   return (
     <View style={styles.container} testID="diff-too-large">
-      <ThemedFileWarning size="lg" uniProps={foregroundMutedIconColorMapping} />
+      <ThemedFileWarning size={ICON_SIZE.lg} uniProps={foregroundMutedIconColorMapping} />
       <View style={styles.copy}>
         <Text style={styles.title}>{t("workspace.git.diff.previewTooLargeTitle")}</Text>
         <Text style={styles.description}>{t("workspace.git.diff.previewTooLargeDescription")}</Text>

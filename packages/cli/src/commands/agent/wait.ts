@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+import { connectToDaemon } from "../../utils/client.js";
 import type {
   CommandOptions,
   SingleResult,
@@ -8,8 +8,6 @@ import type {
 } from "../../output/index.js";
 import { fetchAgentTimelineItems, formatAgentActivityTranscript } from "./logs.js";
 import { parseDuration } from "../../utils/duration.js";
-import { streamWaitSchema, validateStreamOptions } from "../../output/agent-stream.js";
-import { toCommandError } from "../../output/render.js";
 
 /** Result type for agent wait command */
 export interface AgentWaitResult {
@@ -29,7 +27,6 @@ export const agentWaitSchema: OutputSchema<AgentWaitResult> = {
 };
 
 export interface AgentWaitOptions extends CommandOptions {
-  streamJson?: boolean;
   timeout?: string;
   host?: string;
 }
@@ -75,6 +72,7 @@ function parseWaitTimeout(timeout: string | undefined): {
       timeoutLabel: `${timeoutSeconds} second${timeoutSeconds === 1 ? "" : "s"}`,
     };
   } catch (err) {
+    if (err && typeof err === "object" && "code" in err) throw err;
     const message = err instanceof Error ? err.message : String(err);
     throw {
       code: "INVALID_TIMEOUT",
@@ -97,6 +95,7 @@ function buildWaitResult(args: {
   const { state, resolvedAgentId, recentActivity, timeoutLabel } = args;
 
   if (state.status === "timeout") {
+    // OTTO(identity)
     const timeoutMessage = timeoutLabel
       ? `Agent did not finish within ${timeoutLabel}. Run \`otto wait ${resolvedAgentId}\` again to keep waiting.`
       : `Agent wait timed out. Run \`otto wait ${resolvedAgentId}\` again to keep waiting.`;
@@ -137,43 +136,7 @@ export function addWaitOptions(cmd: Command): Command {
   return cmd
     .description("Wait for an agent to become idle")
     .argument("<id>", "Agent ID (or prefix)")
-    .option(
-      "--stream-json",
-      "Emit a terminal NDJSON record for this existing chat; never creates one",
-    )
     .option("--timeout <seconds>", "Maximum wait time (default: no limit)");
-}
-
-async function streamExistingWait(
-  client: Awaited<ReturnType<typeof connectToDaemon>>,
-  requestedId: string,
-  timeoutMs: number,
-): Promise<SingleResult<AgentWaitResult>> {
-  let agentId: string | undefined;
-  try {
-    const existing = await client.fetchAgent(requestedId);
-    if (!existing)
-      throw {
-        code: "AGENT_NOT_FOUND",
-        message: `Agent not found: ${requestedId}`,
-      } satisfies CommandError;
-    agentId = existing.agent.id;
-    const state = await client.waitForFinish(agentId, timeoutMs);
-    return {
-      type: "single",
-      data: buildWaitResult({
-        state,
-        resolvedAgentId: agentId,
-        recentActivity: null,
-        timeoutLabel: null,
-      }),
-      schema: streamWaitSchema(agentWaitSchema, agentId, state),
-    };
-  } catch (error) {
-    throw { ...toCommandError(error), ...(agentId ? { agentId } : {}) } satisfies CommandError;
-  } finally {
-    await client.close().catch(() => {});
-  }
 }
 
 export async function runWaitCommand(
@@ -181,34 +144,20 @@ export async function runWaitCommand(
   options: AgentWaitOptions,
   _command: Command,
 ): Promise<SingleResult<AgentWaitResult>> {
-  const host = getDaemonHost({ host: options.host });
-
   if (!agentIdArg || agentIdArg.trim().length === 0) {
     throw {
       code: "MISSING_AGENT_ID",
       message: "Agent ID is required",
+      // OTTO(identity)
       details: "Usage: otto agent wait <id>",
     } satisfies CommandError;
   }
 
   const { timeoutMs, timeoutLabel } = parseWaitTimeout(options.timeout);
-  validateStreamOptions(options);
 
-  let client;
-  try {
-    client = await connectToDaemon({ host: options.host });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const error: CommandError = {
-      code: "DAEMON_NOT_RUNNING",
-      message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: "Start the daemon with: otto daemon start",
-    };
-    throw error;
-  }
+  const client = await connectToDaemon({ target: options.daemonTarget });
 
   try {
-    if (options.streamJson) return await streamExistingWait(client, agentIdArg, timeoutMs);
     try {
       const state = await client.waitForFinish(agentIdArg, timeoutMs);
       const resolvedAgentId = state.final?.id ?? agentIdArg;

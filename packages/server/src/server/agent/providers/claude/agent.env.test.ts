@@ -31,14 +31,16 @@ function createQueryMock(events: unknown[]): Query {
 describe("Claude SDK env", () => {
   test("forwards launch-context env through Claude process env", async () => {
     let capturedEnv: Record<string, string | undefined> | undefined;
+    let capturedPerTaskStopAffordance: boolean | undefined;
     const launchContext: AgentLaunchContext = {
       env: {
-        OTTO_AGENT_ID: "00000000-0000-4000-8000-000000000201",
-        OTTO_TEST_FLAG: "launch-value",
+        PASEO_AGENT_ID: "00000000-0000-4000-8000-000000000201",
+        PASEO_TEST_FLAG: "launch-value",
       },
     };
     const queryFactory = vi.fn(({ options }: ClaudeQueryInput) => {
       capturedEnv = options.env;
+      capturedPerTaskStopAffordance = options.perTaskStopAffordance;
       return createQueryMock([
         {
           type: "system",
@@ -86,12 +88,18 @@ describe("Claude SDK env", () => {
     try {
       const result = await session.run("env check");
       expect(result.sessionId).toBe("managed-agent-env-session");
-      expect(capturedEnv?.OTTO_AGENT_ID).toBe(launchContext.env?.OTTO_AGENT_ID);
-      expect(capturedEnv?.OTTO_TEST_FLAG).toBe(launchContext.env?.OTTO_TEST_FLAG);
-      expect(capturedEnv?.MCP_TIMEOUT).toBe("600000");
-      expect(capturedEnv?.MCP_TOOL_TIMEOUT).toBe("600000");
+      expect(capturedEnv?.PASEO_AGENT_ID).toBe(launchContext.env?.PASEO_AGENT_ID);
+      expect(capturedEnv?.PASEO_TEST_FLAG).toBe(launchContext.env?.PASEO_TEST_FLAG);
+      expect(capturedEnv?.MCP_TIMEOUT).toBe("claude-startup-timeout");
+      expect(capturedEnv?.MCP_TOOL_TIMEOUT).toBe("claude-tool-timeout");
+      expect(session.usageSession?.()?.env).toBe(capturedEnv);
+      // Paseo reads session_state_changed to know when an autonomous turn is over.
+      expect(capturedEnv?.CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS).toBe("1");
+      // Without it, Stop and replace kill every background subagent along with the turn.
+      expect(capturedPerTaskStopAffordance).toBe(true);
     } finally {
       await session.close();
+      expect(session.usageSession?.()).toBeNull();
     }
   });
 
@@ -99,8 +107,8 @@ describe("Claude SDK env", () => {
     let capturedEnv: Record<string, string | undefined> | undefined;
     const launchContext: AgentLaunchContext = {
       env: {
-        OTTO_AGENT_ID: "00000000-0000-4000-8000-000000000202",
-        OTTO_TEST_FLAG: "resume-launch-value",
+        PASEO_AGENT_ID: "00000000-0000-4000-8000-000000000202",
+        PASEO_TEST_FLAG: "resume-launch-value",
       },
     };
     const queryFactory = vi.fn(({ options }: ClaudeQueryInput) => {
@@ -150,12 +158,19 @@ describe("Claude SDK env", () => {
     );
 
     try {
+      const descriptor = session.usageSession?.();
+      expect(descriptor?.env.PASEO_TEST_FLAG).toBe("resume-launch-value");
+      expect(descriptor?.sessionKey).toEqual(expect.any(String));
+      expect(queryFactory).not.toHaveBeenCalled();
       const result = await session.run("resume env check");
+      expect(session.usageSession?.()?.sessionKey).toBe(descriptor?.sessionKey);
+      expect(capturedEnv).toBe(descriptor?.env);
       expect(result.sessionId).toBe("persisted-session");
-      expect(capturedEnv?.OTTO_AGENT_ID).toBe(launchContext.env?.OTTO_AGENT_ID);
-      expect(capturedEnv?.OTTO_TEST_FLAG).toBe(launchContext.env?.OTTO_TEST_FLAG);
+      expect(capturedEnv?.PASEO_AGENT_ID).toBe(launchContext.env?.PASEO_AGENT_ID);
+      expect(capturedEnv?.PASEO_TEST_FLAG).toBe(launchContext.env?.PASEO_TEST_FLAG);
     } finally {
       await session.close();
+      expect(session.usageSession?.()).toBeNull();
     }
   });
 });

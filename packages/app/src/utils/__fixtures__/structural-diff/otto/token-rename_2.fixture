@@ -1,3 +1,0 @@
-export function colorFor(palette: Palette) {
-  return palette.blue;
-}

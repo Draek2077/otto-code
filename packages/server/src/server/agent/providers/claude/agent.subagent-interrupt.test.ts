@@ -78,7 +78,7 @@ describe("subagent lifecycle across an interrupt", () => {
     queryFactory.mockReset();
   });
 
-  async function startInterruptibleTurn() {
+  async function startInterruptibleTurn(taskStarted: Record<string, unknown> = {}) {
     const channel = buildOpenQueryMock();
     queryFactory.mockImplementation(() => channel.query);
     const session = await new ClaudeAgentClient({
@@ -107,22 +107,17 @@ describe("subagent lifecycle across an interrupt", () => {
       task_type: "local_agent",
       subagent_type: "general-purpose",
       description: "Reply with banana",
+      ...taskStarted,
     });
     await vi.waitFor(() => expect(subagentEvents.length).toBeGreaterThan(0));
 
     return { channel, session, subagentEvents };
   }
 
-  // Otto re-upserts a running child on every task_updated (title and
-  // description refreshes ride the same upsert), so consecutive repeats of one
-  // status are one lifecycle state here, not a transition.
   function statuses(events: ProviderSubagentInputEvent[], id: string): string[] {
-    const transitions: string[] = [];
-    for (const event of events) {
-      if (event.type !== "upsert" || event.id !== id || !event.status) continue;
-      if (transitions.at(-1) !== event.status) transitions.push(event.status);
-    }
-    return transitions;
+    return events.flatMap((event) =>
+      event.type === "upsert" && event.id === id && event.status ? [event.status] : [],
+    );
   }
 
   test("a backgrounded child settles after the turn that spawned it is canceled", async () => {
@@ -171,6 +166,31 @@ describe("subagent lifecycle across an interrupt", () => {
     expect(statuses(subagentEvents, SUBAGENT_ID)).toEqual(["running", "completed"]);
     // The sibling stayed in the foreground, so it died with the turn.
     expect(statuses(subagentEvents, SECOND_SUBAGENT_ID)).toEqual(["running", "canceled"]);
+
+    await session.close();
+  });
+
+  test("a child spawned in the background is not canceled with the turn that spawned it", async () => {
+    // Claude announces a background spawn on task_started itself and sends no task_updated patch.
+    const { channel, session, subagentEvents } = await startInterruptibleTurn({
+      is_backgrounded: true,
+    });
+
+    await session.interrupt();
+    channel.push({
+      type: "system",
+      subtype: "task_notification",
+      task_id: TASK_ID,
+      tool_use_id: SUBAGENT_ID,
+      status: "completed",
+    });
+
+    await vi.waitFor(() =>
+      expect(subagentEvents).toContainEqual(
+        expect.objectContaining({ id: SUBAGENT_ID, status: "completed" }),
+      ),
+    );
+    expect(statuses(subagentEvents, SUBAGENT_ID)).toEqual(["running", "completed"]);
 
     await session.close();
   });

@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import type { MutableDaemonConfigPatch } from "@otto-code/protocol/messages";
+import type { MutableDaemonConfigPatch } from "@getpaseo/protocol/messages";
 import { ACP_PROVIDER_CATALOG, type AcpProviderCatalogEntry } from "@/data/acp-provider-catalog";
 
 export type AcpProviderCatalogItem = AcpProviderCatalogEntry;
@@ -10,20 +10,22 @@ export function getAcpProviderCatalog(): AcpProviderCatalogItem[] {
 
 export function buildAcpProviderConfigPatch(
   entry: AcpProviderCatalogItem,
+  supportsHopliteProvider = false,
 ): MutableDaemonConfigPatch {
-  if (entry.extends === "acp" && !entry.command) {
-    throw new Error(`Catalog entry '${entry.id}' extends "acp" but declares no command`);
+  if (entry.bundledProvider) {
+    // COMPAT(hopliteProvider): added after v0.11.2, remove after 2027-04-15 once host floor includes the bundled adapter.
+    if (!supportsHopliteProvider) throw new Error("Update the host to add Hoplite.");
+    return { providers: { [entry.id]: { enabled: true } } };
   }
   return {
     providers: {
       [entry.id]: {
-        extends: entry.extends,
+        extends: "acp",
         label: entry.title,
         description: entry.description,
-        ...(entry.command ? { command: [...entry.command] } : {}),
+        command: [...entry.command],
         env: entry.env ? { ...entry.env } : {},
         ...(entry.params ? { params: { ...entry.params } } : {}),
-        ...(entry.models ? { models: entry.models.map((model) => ({ ...model })) } : {}),
       },
     },
   };

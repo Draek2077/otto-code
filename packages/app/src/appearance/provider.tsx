@@ -3,22 +3,25 @@ import {
   type ReactNode,
   useCallback,
   useContext,
-  useLayoutEffect,
+  useEffect,
   useMemo,
+  useState,
 } from "react";
 import { UnistylesRuntime } from "react-native-unistyles";
-import { useColorScheme } from "@/hooks/use-color-scheme";
-import { useAppSettings } from "@/hooks/use-settings";
-import { useIsCompactFormFactor } from "@/constants/layout";
+import {
+  DEFAULT_THEME_PREFERENCE,
+  resolveContentMaxWidth,
+  useAppSettings,
+  type AppSettings,
+} from "@/hooks/use-settings";
 import {
   rememberPluginThemeHost,
   usePluginThemeCatalog,
   type PluginThemeOption,
 } from "@/plugins/themes";
-import { syncBlackChatScopeVars } from "@/styles/black-chat-scope";
-import { PLUGIN_THEME_PREFERENCE } from "@/styles/theme";
+import { PLUGIN_THEME_NAMES, PLUGIN_THEME_PREFERENCE, THEME_TO_UNISTYLES } from "@/styles/theme";
 import { applyAppearance } from "./apply";
-import { applyColorScheme } from "./color-scheme";
+import { AppearanceSystemBars } from "./system-bars";
 
 interface ContributedThemes {
   options: PluginThemeOption[];
@@ -26,87 +29,89 @@ interface ContributedThemes {
   select: (option: PluginThemeOption) => void;
 }
 
+interface ApplyThemeInput {
+  preference: AppSettings["theme"];
+  contributedTheme: PluginThemeOption | null;
+}
+
 const ContributedThemesContext = createContext<ContributedThemes | null>(null);
 
-/** Paseo's single application-level appearance lifecycle, extended by Otto data. */
+function applyTheme({ preference, contributedTheme }: ApplyThemeInput): void {
+  if (contributedTheme) {
+    const themeName = PLUGIN_THEME_NAMES[contributedTheme.theme.colorScheme];
+    UnistylesRuntime.updateTheme(themeName, () => contributedTheme.theme);
+    UnistylesRuntime.setAdaptiveThemes(false);
+    UnistylesRuntime.setTheme(themeName);
+    return;
+  }
+
+  const builtInPreference =
+    preference === PLUGIN_THEME_PREFERENCE ? DEFAULT_THEME_PREFERENCE : preference;
+  if (builtInPreference === "auto") {
+    UnistylesRuntime.setAdaptiveThemes(true);
+    return;
+  }
+
+  UnistylesRuntime.setAdaptiveThemes(false);
+  UnistylesRuntime.setTheme(THEME_TO_UNISTYLES[builtInPreference]);
+}
+
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const { settings, updateSettings, isLoading } = useAppSettings();
-  const isCompact = useIsCompactFormFactor();
+  const [hasAppliedAppearance, setHasAppliedAppearance] = useState(false);
   const options = usePluginThemeCatalog();
-  const osColorScheme = useColorScheme();
-  const selected = useMemo(
-    () =>
-      settings.theme === PLUGIN_THEME_PREFERENCE
-        ? (options.find((option) => option.id === settings.pluginThemeId) ?? null)
-        : null,
-    [options, settings.pluginThemeId, settings.theme],
-  );
+  const selected = useMemo(() => {
+    if (settings.theme !== PLUGIN_THEME_PREFERENCE) return null;
+    return options.find((option) => option.id === settings.pluginThemeId) ?? null;
+  }, [options, settings.pluginThemeId, settings.theme]);
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (isLoading) return;
-    // Always repair Otto's adaptive mirrors before selecting the effective key.
-    applyColorScheme({
-      colorSchemeMode: settings.colorSchemeMode,
-      lightTheme: settings.lightTheme,
-      darkTheme: settings.darkTheme,
-      systemColorScheme: osColorScheme,
-      fontContrast: settings.fontContrast,
-    });
-    if (selected) {
-      const name = selected.theme.colorScheme === "light" ? "pluginLight" : "pluginDark";
-      if (selected.theme.colorScheme === "light") {
-        UnistylesRuntime.updateTheme("pluginLight", () => selected.theme);
-      } else {
-        UnistylesRuntime.updateTheme("pluginDark", () => selected.theme);
-      }
-      // The black chat scope keeps its independently complete Otto semantic
-      // palette. Plugin contributions only promise Paseo's public roles, so
-      // making their sparse colors own the scope would silently degrade Otto
-      // status, terminal, usage, and code tokens.
-      UnistylesRuntime.setAdaptiveThemes(false);
-      UnistylesRuntime.setTheme(name);
-    }
-    // A plugin palette replacement discards font/syntax overrides. Keep the
-    // stable ordering in this single lifecycle for selection and live reload.
+    applyTheme({ preference: settings.theme, contributedTheme: selected });
     applyAppearance({
       uiFontFamily: settings.uiFontFamily,
       monoFontFamily: settings.monoFontFamily,
-      uiFontSize: settings.uiFontSize,
+      uiBaseFontSize: settings.uiBaseFontSize,
       contentFontSize: settings.contentFontSize,
       codeFontSize: settings.codeFontSize,
+      contentMaxWidth: resolveContentMaxWidth({ contentMaxWidth: settings.contentMaxWidth }),
       syntaxTheme: settings.syntaxTheme,
-      chatWidth: settings.chatWidth,
-      isCompact,
     });
-    syncBlackChatScopeVars();
+    setHasAppliedAppearance(true);
   }, [
     isLoading,
-    osColorScheme,
     selected,
-    settings.colorSchemeMode,
-    settings.darkTheme,
-    settings.fontContrast,
-    settings.lightTheme,
-    settings.codeFontSize,
-    settings.chatWidth,
-    settings.contentFontSize,
-    settings.monoFontFamily,
-    settings.syntaxTheme,
+    settings.theme,
     settings.uiFontFamily,
-    settings.uiFontSize,
-    isCompact,
+    settings.monoFontFamily,
+    settings.uiBaseFontSize,
+    settings.contentFontSize,
+    settings.codeFontSize,
+    settings.contentMaxWidth,
+    settings.syntaxTheme,
   ]);
 
   const select = useCallback(
     (option: PluginThemeOption) => {
       rememberPluginThemeHost(option);
-      void updateSettings({ theme: PLUGIN_THEME_PREFERENCE, pluginThemeId: option.id });
+      void updateSettings({
+        theme: PLUGIN_THEME_PREFERENCE,
+        pluginThemeId: option.id,
+      });
     },
     [updateSettings],
   );
   const value = useMemo(() => ({ options, selected, select }), [options, selected, select]);
+
+  // The first settings load changes appearance keys. Mount screens only after applying it
+  // so startup does not destroy and recreate an already-visible workspace.
+  if (!hasAppliedAppearance) return null;
+
   return (
-    <ContributedThemesContext.Provider value={value}>{children}</ContributedThemesContext.Provider>
+    <ContributedThemesContext.Provider value={value}>
+      <AppearanceSystemBars />
+      {children}
+    </ContributedThemesContext.Provider>
   );
 }
 

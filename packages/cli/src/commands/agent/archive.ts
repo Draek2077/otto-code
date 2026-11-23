@@ -1,6 +1,5 @@
 import { Command } from "commander";
-import type { DaemonClient } from "@otto-code/client/internal/daemon-client";
-import { connectToDaemon, getDaemonHost, resolveAgentId } from "../../utils/client.js";
+import { connectToDaemon, resolveAgentId } from "../../utils/client.js";
 import type {
   CommandOptions,
   SingleResult,
@@ -44,30 +43,18 @@ export async function runArchiveCommand(
   options: AgentArchiveOptions,
   _command: Command,
 ): Promise<AgentArchiveCommandResult> {
-  const host = getDaemonHost({ host: options.host });
-
   // Validate arguments
   if (!agentIdArg || agentIdArg.trim().length === 0) {
     const error: CommandError = {
       code: "MISSING_AGENT_ID",
       message: "Agent ID is required",
+      // OTTO(identity)
       details: "Usage: otto agent archive <id-or-name>",
     };
     throw error;
   }
 
-  let client: DaemonClient;
-  try {
-    client = await connectToDaemon({ host: options.host });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const error: CommandError = {
-      code: "DAEMON_NOT_RUNNING",
-      message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: "Start the daemon with: otto daemon start",
-    };
-    throw error;
-  }
+  const client = await connectToDaemon({ target: options.daemonTarget });
 
   try {
     const agentsPayload = await client.fetchAgents({ filter: { includeArchived: true } });
@@ -77,6 +64,7 @@ export async function runArchiveCommand(
       const error: CommandError = {
         code: "AGENT_NOT_FOUND",
         message: `Agent not found: ${agentIdArg}`,
+        // OTTO(identity)
         details: 'Use "otto ls" to list available agents',
       };
       throw error;
@@ -102,6 +90,7 @@ export async function runArchiveCommand(
         code: "AGENT_RUNNING",
         message: `Agent ${agentId.slice(0, 7)} is currently running`,
         details:
+          // OTTO(identity)
           "Use --force to archive a running agent (it will interrupt the active run), or stop it first with: otto agent stop. Use otto agent delete to hard-delete it.",
       };
       throw error;

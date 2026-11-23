@@ -2,12 +2,11 @@ import { Fragment, useCallback, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type GestureResponderEvent } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { ExternalLink, Globe } from "@/components/icons/material-icons";
-import { Folder, GitBranch } from "lucide-react-native";
+import { ExternalLink, Folder, GitBranch, Globe } from "lucide-react-native";
 import {
   workspaceLabelKey,
   type WorkspaceLabelDefinition,
-} from "@otto-code/protocol/workspace-labels";
+} from "@getpaseo/protocol/workspace-labels";
 import type { HostBadgeModel } from "@/hosts/appearance";
 import { HostBadge, HOST_BADGE_ICON_SIZE } from "@/hosts/host-badge";
 import { WorkspaceLabelChip, WORKSPACE_LABEL_CHIP_INSET } from "@/workspace-labels/chip";
@@ -21,7 +20,6 @@ import { CheckIndicator } from "./check-indicator";
 import type { CheckSummary, CheckSummaryState } from "./check-summary";
 import { selectMetaRowItems, type MetaRowItem } from "./meta-items";
 import { workspaceServiceLabelKey, type WorkspaceServiceSummary } from "./service-summary";
-import { useIsDeveloperMode } from "@/hooks/use-interface-mode";
 
 export {
   selectWorkspaceServiceSummary,
@@ -78,12 +76,11 @@ export function WorkspaceMetaRow({
   labels?: readonly WorkspaceLabelDefinition[];
 }) {
   const { rowItems, checksDisplay } = useSidebarMetaPreferences();
-  const isDeveloperMode = useIsDeveloperMode();
   const items = selectMetaRowItems({
-    currentBranch: isDeveloperMode ? currentBranch : null,
+    currentBranch,
     projectName,
     hasHostBadge: hostBadge !== null,
-    prHint: isDeveloperMode ? prHint : null,
+    prHint,
     serviceSummary,
     labels,
     visible: rowItems,

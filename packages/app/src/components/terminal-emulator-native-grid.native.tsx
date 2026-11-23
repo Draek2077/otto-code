@@ -13,12 +13,12 @@ import {
   type ViewStyle,
 } from "react-native";
 import type { ITheme } from "@xterm/xterm";
-import type { TerminalState } from "@otto-code/protocol/messages";
+import type { TerminalState } from "@getpaseo/protocol/messages";
 import {
   TerminalInputModeTracker,
   terminalInputModeStatesEqual,
   type TerminalInputModeState,
-} from "@otto-code/protocol/terminal-input-mode";
+} from "@getpaseo/protocol/terminal-input-mode";
 import type { TerminalEmulatorHandle, TerminalEmulatorProps } from "./terminal-emulator-contract";
 import {
   createNativeHeadlessTerminal,
@@ -868,7 +868,9 @@ function NativeTerminalEmulator({
             panState.movedBeyondTapTolerance = true;
           }
           if (selectionPress?.status === "selecting") {
-            updateSelectionAtPoint(resolvePanResponderPoint(selectionPress, event, gesture));
+            if (panState.movedBeyondTapTolerance) {
+              updateSelectionAtPoint(resolvePanResponderPoint(selectionPress, event, gesture));
+            }
             return;
           }
 
@@ -915,7 +917,10 @@ function NativeTerminalEmulator({
         onPanResponderRelease: (event, gesture) => {
           clearSelectionLongPressTimeout();
           const selectionPress = selectionPressRef.current;
-          if (selectionPress?.status === "selecting") {
+          if (
+            selectionPress?.status === "selecting" &&
+            panStateRef.current.movedBeyondTapTolerance
+          ) {
             updateSelectionAtPoint(resolvePanResponderPoint(selectionPress, event, gesture));
           }
           selectionPressRef.current = null;

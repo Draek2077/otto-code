@@ -1,43 +1,18 @@
 import type { StreamItem } from "@/types/stream";
 import { SPACING } from "@/styles/theme";
 
-export function isSameAssistantBlockGroup(params: {
-  item: StreamItem | null | undefined;
-  other: StreamItem | null | undefined;
-}): boolean {
-  return (
-    params.item?.kind === "assistant_message" &&
-    params.other?.kind === "assistant_message" &&
-    params.item.blockGroupId !== undefined &&
-    params.item.blockGroupId === params.other.blockGroupId
-  );
-}
-
-export function getAssistantBlockSpacing(params: {
+export function getAssistantMessageSpacing(params: {
   item: StreamItem;
-  aboveItem: StreamItem | null | undefined;
-  belowItem: StreamItem | null | undefined;
-}): "default" | "compactTop" | "compactBottom" | "compactBoth" {
-  if (params.item.kind !== "assistant_message") {
-    return "default";
-  }
-  const compactTop = isSameAssistantBlockGroup({ item: params.item, other: params.aboveItem });
-  // Only another segment of the same reply shares this bubble's lower edge.
-  // A turn footer follows the bubble; it must not square off the final outer
-  // corners just to sit nearby.
-  const compactBottom = isSameAssistantBlockGroup({ item: params.item, other: params.belowItem });
-  if (compactTop && compactBottom) return "compactBoth";
-  if (compactTop) return "compactTop";
-  if (compactBottom) return "compactBottom";
-  return "default";
+  hasFooterBelow?: boolean;
+}): "default" | "compactBottom" {
+  return params.item.kind === "assistant_message" && params.hasFooterBelow
+    ? "compactBottom"
+    : "default";
 }
 
 const isUserMessageItem = (item?: StreamItem | null) => item?.kind === "user_message";
 const isToolSequenceItem = (item?: StreamItem | null) =>
-  item?.kind === "tool_call" ||
-  item?.kind === "thought" ||
-  item?.kind === "todo_list" ||
-  item?.kind === "action_group";
+  item?.kind === "tool_call" || item?.kind === "thought" || item?.kind === "todo_list";
 
 export function getGapBetweenStreamItems(
   item: StreamItem | null,
@@ -60,16 +35,10 @@ export function getGapBetweenStreamItems(
     return SPACING[4];
   }
   if (item.kind === "assistant_message" && isToolSequenceItem(belowItem)) {
-    return 0;
+    return SPACING[1];
   }
   if (isToolSequenceItem(item) && belowItem.kind === "assistant_message") {
-    return 0;
-  }
-  if (isSameAssistantBlockGroup({ item, other: belowItem })) {
-    // Same-reply segments butt together so the assistant bubble background is
-    // continuous across promoted blocks; AssistantMessage paints the former
-    // SPACING[3] gap inside the bubble (bubbleCompactBottom paddingBottom).
-    return 0;
+    return SPACING[1];
   }
   return SPACING[4];
 }

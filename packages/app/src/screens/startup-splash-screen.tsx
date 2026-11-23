@@ -1,27 +1,27 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ScrollView, StyleSheet as RNStyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ScrollView, Text, View } from "react-native";
 import Animated, {
   cancelAnimation,
   Easing,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
-  withSequence,
   withTiming,
 } from "react-native-reanimated";
+import MaskedView from "@react-native-masked-view/masked-view";
+import Svg, { Defs, LinearGradient as SvgLinearGradient, Rect, Stop } from "react-native-svg";
 import * as Clipboard from "expo-clipboard";
 import { useTranslation } from "react-i18next";
-import { openLink } from "@/utils/open-link";
-import { BookOpen, Copy, RotateCw, TriangleAlert } from "@/components/icons/material-icons";
+import { openExternalUrl } from "@/utils/open-external-url";
+import { BookOpen, Copy, RotateCw, TriangleAlert } from "lucide-react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { OttoLogo, OttoLogoRobot, OttoLogoWordmark } from "@/components/icons/otto-logo";
+import { PaseoLogo } from "@/components/icons/paseo-logo";
 import { Button } from "@/components/ui/button";
 import { getDesktopDaemonLogs, type DesktopDaemonLogs } from "@/desktop/daemon/desktop-daemon";
 import { TitlebarDragRegion } from "@/components/desktop/titlebar-drag-region";
-import { isWeb } from "@/constants/platform";
-import { useIsCompactFormFactor } from "@/constants/layout";
-import { useWebScrollViewScrollbar } from "@/components/use-web-scrollbar";
+import { isNative, isWeb } from "@/constants/platform";
 import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
+import { OTTO_ISSUES_NEW_URL, OTTO_WEBSITE_URL } from "@getpaseo/protocol/otto/identity";
 
 interface StartupSplashScreenProps {
   bootstrapState?: {
@@ -30,68 +30,154 @@ interface StartupSplashScreenProps {
   };
 }
 
-const GITHUB_ISSUE_URL = "https://github.com/Draek2077/otto-code/issues/new";
-const DOCS_URL = "https://otto-code.me/docs";
+const GITHUB_ISSUE_URL = OTTO_ISSUES_NEW_URL; // OTTO(identity)
+const DOCS_URL = `${OTTO_WEBSITE_URL}/docs`; // OTTO(identity)
 
 const LOGO_SIZE = 96;
-const PULSE_HALF_MS = 1400;
+const SHIMMER_PEAK_WIDTH = 120;
+const SHIMMER_DURATION_MS = 1800;
 
 function openGithubIssue(): void {
-  void openLink(GITHUB_ISSUE_URL);
+  void openExternalUrl(GITHUB_ISSUE_URL);
 }
 
 function openDocs(): void {
-  void openLink(DOCS_URL);
+  void openExternalUrl(DOCS_URL);
 }
 
-// Plain RN styles: reanimated and unistyles must not share the Animated.View's node
-// (see docs/unistyles.md, "Reanimated Animated.View + Dynamic Styles Crashes").
-const pulseStyles = RNStyleSheet.create({
-  robotLayer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-});
+const WEB_SPLASH_SHIMMER_KEYFRAME_ID = "paseo-splash-shimmer-keyframes";
+const WEB_SPLASH_SHIMMER_ANIMATION_NAME = "paseo-splash-shimmer";
 
-// The robot layer breathes in and out of the wordmark: OTTO stays solid while the
-// face hardware fades - the letterforms are the loading pulse.
-function LogoPulse() {
-  const robotOpacity = useSharedValue(1);
+const WEB_SPLASH_SHIMMER_KEYFRAME_CSS = `
+  @keyframes ${WEB_SPLASH_SHIMMER_ANIMATION_NAME} {
+    0% {
+      background-position: -${LOGO_SIZE + SHIMMER_PEAK_WIDTH}px 0;
+    }
+    100% {
+      background-position: ${LOGO_SIZE + SHIMMER_PEAK_WIDTH}px 0;
+    }
+  }
+`;
+
+let webSplashShimmerRegistered = false;
+
+function ensureWebSplashShimmerKeyframes() {
+  if (isNative) {
+    return;
+  }
+  if (webSplashShimmerRegistered) {
+    return;
+  }
+  const existing = document.getElementById(WEB_SPLASH_SHIMMER_KEYFRAME_ID);
+  if (existing) {
+    webSplashShimmerRegistered = true;
+    return;
+  }
+  const styleElement = document.createElement("style");
+  styleElement.id = WEB_SPLASH_SHIMMER_KEYFRAME_ID;
+  styleElement.textContent = WEB_SPLASH_SHIMMER_KEYFRAME_CSS;
+  document.head.appendChild(styleElement);
+  webSplashShimmerRegistered = true;
+}
+
+function LogoShimmer() {
+  const { theme } = useUnistyles();
+
+  if (isWeb) {
+    return <WebLogoShimmer color={theme.colors.foreground} />;
+  }
+
+  return <NativeLogoShimmer color={theme.colors.foreground} />;
+}
+
+function WebLogoShimmer({ color }: { color: string }) {
+  useEffect(() => {
+    ensureWebSplashShimmerKeyframes();
+  }, []);
+
+  const shimmerStyle = useMemo(
+    () => ({
+      width: LOGO_SIZE,
+      height: LOGO_SIZE,
+      // OTTO(identity): mask is Otto's face mark (branding/otto-icon.svg).
+      WebkitMaskImage: `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${LOGO_SIZE}' height='${LOGO_SIZE}' viewBox='0 0 512 512' fill='none'><g stroke='black' stroke-width='28'><circle cx='114.72778' cy='280' r='70'/><circle cx='397.27271' cy='280' r='70'/><line x1='155.08434' y1='162' x2='251.08434' y2='162'/><line x1='216' y1='162' x2='216' y2='364'/><line x1='260.91559' y1='162' x2='356.91559' y2='162'/><line x1='296' y1='162' x2='296' y2='364'/></g><circle cx='114.72778' cy='280' r='22' fill='black'/><circle cx='397.27271' cy='280' r='22' fill='black'/></svg>`)}")`,
+      WebkitMaskSize: "contain",
+      WebkitMaskRepeat: "no-repeat",
+      WebkitMaskPosition: "center",
+      background: `linear-gradient(90deg, ${color} 0%, ${color}88 40%, ${color}FF 50%, ${color}88 60%, ${color} 100%)`,
+      backgroundSize: `${LOGO_SIZE + SHIMMER_PEAK_WIDTH * 2}px ${LOGO_SIZE}px`,
+      animationName: WEB_SPLASH_SHIMMER_ANIMATION_NAME,
+      animationDuration: `${SHIMMER_DURATION_MS}ms`,
+      animationTimingFunction: "linear",
+      animationIterationCount: "infinite",
+    }),
+    [color],
+  );
+
+  return <View style={shimmerStyle as never} />;
+}
+
+function NativeLogoShimmer({ color }: { color: string }) {
+  const shimmerTranslateX = useSharedValue(-SHIMMER_PEAK_WIDTH);
 
   useEffect(() => {
-    robotOpacity.value = 1;
-    robotOpacity.value = withRepeat(
-      withSequence(
-        withTiming(0, { duration: PULSE_HALF_MS, easing: Easing.inOut(Easing.quad) }),
-        withTiming(1, { duration: PULSE_HALF_MS, easing: Easing.inOut(Easing.quad) }),
-      ),
+    shimmerTranslateX.value = -SHIMMER_PEAK_WIDTH;
+    shimmerTranslateX.value = withRepeat(
+      withTiming(LOGO_SIZE + SHIMMER_PEAK_WIDTH, {
+        duration: SHIMMER_DURATION_MS,
+        easing: Easing.linear,
+      }),
       -1,
       false,
     );
     return () => {
-      cancelAnimation(robotOpacity);
+      cancelAnimation(shimmerTranslateX);
     };
-  }, [robotOpacity]);
+  }, [shimmerTranslateX]);
 
-  const robotAnimatedStyle = useAnimatedStyle(() => ({
-    opacity: robotOpacity.value,
+  const peakStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: shimmerTranslateX.value }],
   }));
 
-  const robotLayerStyle = useMemo(
-    () => [pulseStyles.robotLayer, robotAnimatedStyle],
-    [robotAnimatedStyle],
+  const trackStyle = useMemo(
+    () => [styles.nativeShimmerTrack, { width: LOGO_SIZE, height: LOGO_SIZE }],
+    [],
+  );
+
+  const peakCombinedStyle = useMemo(
+    () => [styles.nativeShimmerPeak, peakStyle, { width: SHIMMER_PEAK_WIDTH, height: LOGO_SIZE }],
+    [peakStyle],
+  );
+
+  const maskElement = useMemo(
+    () => (
+      <View style={styles.shimmerMask}>
+        <PaseoLogo size={LOGO_SIZE} color="#000000" />
+      </View>
+    ),
+    [],
   );
 
   return (
-    <View style={styles.logoStack}>
-      <OttoLogoWordmark size={LOGO_SIZE} />
-      <Animated.View style={robotLayerStyle}>
-        <OttoLogoRobot size={LOGO_SIZE} />
-      </Animated.View>
-    </View>
+    <MaskedView style={trackStyle} maskElement={maskElement}>
+      <View style={trackStyle}>
+        <View style={styles.nativeShimmerBase}>
+          <PaseoLogo size={LOGO_SIZE} color={color} />
+        </View>
+        <Animated.View style={peakCombinedStyle}>
+          <Svg width="100%" height="100%" preserveAspectRatio="none">
+            <Defs>
+              <SvgLinearGradient id="splashShimmer" x1="0" y1="0" x2="1" y2="0">
+                <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0" />
+                <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.4" />
+                <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+              </SvgLinearGradient>
+            </Defs>
+            <Rect x="0" y="0" width="100%" height="100%" fill="url(#splashShimmer)" />
+          </Svg>
+        </Animated.View>
+      </View>
+    </MaskedView>
   );
 }
 
@@ -189,25 +275,32 @@ const styles = StyleSheet.create((theme) => ({
     gap: theme.spacing[3],
     flexWrap: "wrap",
   },
-  logoStack: {
+  shimmerMask: {
     width: LOGO_SIZE,
     height: LOGO_SIZE,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  nativeShimmerTrack: {
+    overflow: "hidden",
+  },
+  nativeShimmerBase: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  nativeShimmerPeak: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
   },
 }));
 
 export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps) {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
-  const isCompact = useIsCompactFormFactor();
-  const showDesktopWebScrollbar = isWeb && !isCompact;
-  const errorScrollRef = useRef<ScrollView>(null);
-  const errorScrollbar = useWebScrollViewScrollbar(errorScrollRef, {
-    enabled: showDesktopWebScrollbar,
-  });
-  const logsScrollRef = useRef<ScrollView>(null);
-  const logsScrollbar = useWebScrollViewScrollbar(logsScrollRef, {
-    enabled: showDesktopWebScrollbar,
-  });
   const [daemonLogs, setDaemonLogs] = useState<DesktopDaemonLogs | null>(null);
   const [logsError, setLogsError] = useState<string | null>(null);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
@@ -274,19 +367,19 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
   }, [daemonLogs?.logPath, daemonLogs?.contents, logsText]);
 
   const copyIcon = useMemo(
-    () => <Copy size="md" color={theme.colors.foreground} />,
+    () => <Copy size={16} color={theme.colors.foreground} />,
     [theme.colors.foreground],
   );
   const warningIcon = useMemo(
-    () => <TriangleAlert size="md" color={theme.colors.foreground} />,
+    () => <TriangleAlert size={16} color={theme.colors.foreground} />,
     [theme.colors.foreground],
   );
   const bookIcon = useMemo(
-    () => <BookOpen size="md" color={theme.colors.foreground} />,
+    () => <BookOpen size={16} color={theme.colors.foreground} />,
     [theme.colors.foreground],
   );
   const retryIcon = useMemo(
-    () => <RotateCw size="md" color={theme.colors.palette.white} />,
+    () => <RotateCw size={16} color={theme.colors.palette.white} />,
     [theme.colors.palette.white],
   );
 
@@ -294,7 +387,7 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
     return (
       <View testID="startup-splash" style={styles.container}>
         <TitlebarDragRegion />
-        <LogoPulse />
+        <LogoShimmer />
       </View>
     );
   }
@@ -303,18 +396,13 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
     <View style={styles.errorScreen}>
       <TitlebarDragRegion />
       <ScrollView
-        ref={errorScrollRef}
         style={styles.errorScrollView}
         contentContainerStyle={styles.errorScrollContent}
-        onLayout={errorScrollbar.onLayout}
-        onScroll={errorScrollbar.onScroll}
-        onContentSizeChange={errorScrollbar.onContentSizeChange}
-        scrollEventThrottle={16}
-        showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+        showsVerticalScrollIndicator
       >
         <View style={styles.errorContent}>
           <View style={styles.errorHeader}>
-            <OttoLogo size={64} />
+            <PaseoLogo size={64} />
             <Text style={styles.title}>{t("startup.errorTitle")}</Text>
           </View>
 
@@ -328,20 +416,14 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
 
           <View style={styles.logsContainer}>
             <ScrollView
-              ref={logsScrollRef}
               style={styles.logsScroll}
               contentContainerStyle={styles.logsContent}
-              onLayout={logsScrollbar.onLayout}
-              onScroll={logsScrollbar.onScroll}
-              onContentSizeChange={logsScrollbar.onContentSizeChange}
-              scrollEventThrottle={16}
-              showsVerticalScrollIndicator={!showDesktopWebScrollbar}
+              showsVerticalScrollIndicator
             >
               <Text dataSet={CODE_SURFACE_DATASET} selectable style={styles.logsText}>
                 {logsText}
               </Text>
             </ScrollView>
-            {logsScrollbar.overlay}
           </View>
 
           <View style={styles.actionRow}>
@@ -360,7 +442,6 @@ export function StartupSplashScreen({ bootstrapState }: StartupSplashScreenProps
           </View>
         </View>
       </ScrollView>
-      {errorScrollbar.overlay}
     </View>
   );
 }

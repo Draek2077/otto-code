@@ -1,4 +1,4 @@
-import MarkdownIt, { type MarkdownIt as MarkdownParser } from "markdown-it";
+import MarkdownIt from "markdown-it";
 
 /**
  * The one place that decides how the app parses markdown.
@@ -14,6 +14,6 @@ import MarkdownIt, { type MarkdownIt as MarkdownParser } from "markdown-it";
  * disagree today: chat and the default renderer linkify bare URLs, plan cards
  * never have. Unifying that is a product decision on its own.
  */
-export function createMarkdownParser({ linkify }: { linkify: boolean }): MarkdownParser {
+export function createMarkdownParser({ linkify }: { linkify: boolean }): MarkdownIt {
   return new MarkdownIt({ html: false, linkify });
 }

@@ -1,7 +1,11 @@
 import { Command, Option } from "commander";
-import { getStructuredAgentResponse, StructuredAgentResponseError } from "@otto-code/server";
-import type { AgentSnapshotPayload } from "@otto-code/protocol/messages";
-import { connectToDaemon, getDaemonHost } from "../../utils/client.js";
+import {
+  getStructuredAgentResponse,
+  StructuredAgentResponseError,
+} from "@getpaseo/server/agent-response";
+import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
+import { resolveCallerAgentId } from "../../utils/caller-agent.js";
+import { connectToDaemon } from "../../utils/client.js";
 import type {
   CommandOptions,
   SingleResult,
@@ -13,19 +17,8 @@ import { resolve } from "node:path";
 import { lookup } from "mime-types";
 import { parseDuration } from "../../utils/duration.js";
 import { collectMultiple } from "../../utils/command-options.js";
-import {
-  assertNoConflictingModelInputs,
-  resolveProviderAndModel,
-  type ResolvedProviderModel,
-} from "../../utils/provider-model.js";
+import { resolveProviderAndModel } from "../../utils/provider-model.js";
 import { buildWorkspaceSource } from "../workspace/create.js";
-import {
-  streamWaitSchema,
-  toCreatedRecord,
-  validateStreamOptions,
-  writeJsonRecord,
-} from "../../output/agent-stream.js";
-import { toCommandError } from "../../output/render.js";
 
 export { resolveProviderAndModel } from "../../utils/provider-model.js";
 
@@ -34,14 +27,13 @@ export function addRunOptions(cmd: Command): Command {
     cmd
       .description("Create and start an agent with a task")
       .argument("<prompt>", "The task/prompt for the agent")
-      .option("-d, --background", "Run in background")
-      .option(
-        "--stream-json",
-        "Stream a creation receipt before waiting, then a terminal NDJSON record",
-      )
+      .option("--no-wait", "Return immediately without waiting for completion")
+      // COMPAT(backgroundRunFlag): --background was the documented spelling of
+      // --no-wait. Added in v0.2.0; remove after 2027-04-01.
+      .addOption(new Option("-d, --background", "Legacy alias for --no-wait").hideHelp())
       // COMPAT(detachRunFlag): --detach used to mean background execution, not
       // ownership transfer. Added in v0.2.0; remove after 2027-01-17.
-      .addOption(new Option("--detach", "Legacy alias for --background").hideHelp())
+      .addOption(new Option("--detach", "Legacy alias for --no-wait").hideHelp())
       .option("--title <title>", "Assign a title to the agent")
       .addOption(new Option("--name <name>", "Hidden alias for --title").hideHelp())
       .option(
@@ -54,12 +46,6 @@ export function addRunOptions(cmd: Command): Command {
       )
       .option("--thinking <id>", "Thinking option ID to use for this run")
       .option("--mode <mode>", "Provider-specific mode (e.g., plan, default, bypass)")
-      // Otto-only: personalities are a fork feature, so this option has no
-      // upstream counterpart. See docs/agent-profiles.md.
-      .option(
-        "--personality <name>",
-        "Spawn as a host personality (name or id): applies its provider/model/mode and identity/prompt. Explicit --provider/--model/--mode override.",
-      )
       .option("--new-workspace <local|worktree>", "Create a separate local or worktree workspace")
       .addOption(new Option("--worktree <name>", "Legacy workspace isolation alias").hideHelp())
       .option(
@@ -109,7 +95,7 @@ export function addRunOptions(cmd: Command): Command {
 /** Result type for agent run command */
 export interface AgentRunResult {
   agentId: string;
-  status: "created" | "running" | "completed" | "idle" | "timeout" | "permission" | "error";
+  status: "created" | "running" | "completed" | "timeout" | "permission" | "error";
   provider: string;
   cwd: string;
   title: string | null;
@@ -128,7 +114,7 @@ export const agentRunSchema: OutputSchema<AgentRunResult> = {
 };
 
 export interface AgentRunOptions extends CommandOptions {
-  streamJson?: boolean;
+  wait?: boolean;
   background?: boolean;
   detach?: boolean;
   title?: string;
@@ -137,7 +123,6 @@ export interface AgentRunOptions extends CommandOptions {
   model?: string;
   thinking?: string;
   mode?: string;
-  personality?: string;
   newWorkspace?: string;
   worktree?: string;
   worktreeMode?: string;
@@ -163,6 +148,7 @@ function resolveNewWorkspaceKind(options: AgentRunOptions): string | undefined {
 function buildRunWorkspaceSource(options: AgentRunOptions, cwd: string) {
   const newWorkspace = resolveNewWorkspaceKind(options) ?? "local";
   return buildWorkspaceSource({
+    daemonTarget: options.daemonTarget,
     isolation: newWorkspace,
     path: cwd,
     mode: options.worktreeMode,
@@ -204,6 +190,7 @@ function loadOutputSchema(value: string): Record<string, unknown> {
     try {
       source = readFileSync(resolve(trimmed), "utf8");
     } catch (err) {
+      if (err && typeof err === "object" && "code" in err) throw err;
       const message = err instanceof Error ? err.message : String(err);
       const error: CommandError = {
         code: "INVALID_OUTPUT_SCHEMA",
@@ -218,6 +205,7 @@ function loadOutputSchema(value: string): Record<string, unknown> {
   try {
     parsed = JSON.parse(source);
   } catch (err) {
+    if (err && typeof err === "object" && "code" in err) throw err;
     const message = err instanceof Error ? err.message : String(err);
     const error: CommandError = {
       code: "INVALID_OUTPUT_SCHEMA",
@@ -283,72 +271,6 @@ async function fetchStructuredOutput(
 }
 
 type ConnectedDaemonClient = Awaited<ReturnType<typeof connectToDaemon>>;
-
-interface ResolvedRunPersonality {
-  id: string;
-  provider: string;
-  model: string;
-  modeId?: string;
-}
-
-// Resolve --personality (name or id) against the host roster. Returns the
-// personality's brain (provider/model/mode) to seed the run config and its id so
-// the daemon overlays the personality's identity + system prompt (e.g. the
-// orchestrator directive). Explicit --provider/--model/--mode still override.
-async function resolveRunPersonality(
-  client: ConnectedDaemonClient,
-  nameOrId: string | undefined,
-): Promise<ResolvedRunPersonality | undefined> {
-  if (!nameOrId) {
-    return undefined;
-  }
-  const query = nameOrId.trim();
-  const { config } = await client.getDaemonConfig();
-  const roster = config.agentPersonalities?.personalities ?? [];
-  const match =
-    roster.find((p) => p.id === query) ??
-    roster.find((p) => p.name.toLowerCase() === query.toLowerCase());
-  if (!match) {
-    const available = roster.map((p) => p.name).join(", ") || "none configured";
-    throw {
-      code: "PERSONALITY_NOT_FOUND",
-      message: `No personality matches "${query}"`,
-      details: `Available personalities: ${available}`,
-    } satisfies CommandError;
-  }
-  return {
-    id: match.id,
-    provider: match.provider,
-    model: match.model,
-    ...(match.modeId ? { modeId: match.modeId } : {}),
-  };
-}
-
-interface ResolvedRunBrain {
-  providerModel: ResolvedProviderModel;
-  modeId: string | undefined;
-  personalityId: string | undefined;
-}
-
-// Resolve the agent's brain for a run: a --personality (if any) seeds
-// provider/model/mode + identity; explicit --provider/--model/--mode override.
-// Without a personality, provider stays required (resolveProviderAndModel throws).
-async function resolveRunBrain(
-  client: ConnectedDaemonClient,
-  options: AgentRunOptions,
-): Promise<ResolvedRunBrain> {
-  const personality = await resolveRunPersonality(client, options.personality);
-  const providerModel = resolveProviderAndModel({
-    provider: options.provider,
-    model: options.model,
-    ...(personality ? { defaultProvider: `${personality.provider}/${personality.model}` } : {}),
-  });
-  return {
-    providerModel,
-    modeId: options.mode ?? personality?.modeId,
-    personalityId: personality?.id,
-  };
-}
 
 export interface StructuredResponseTimelineClient {
   fetchAgentTimeline: ConnectedDaemonClient["fetchAgentTimeline"];
@@ -428,6 +350,7 @@ function validateRunWorkspaceOptions(options: AgentRunOptions): void {
     throw {
       code: "INVALID_OPTIONS",
       message: "Worktree options require --new-workspace worktree",
+      // OTTO(identity)
       details: "Usage: otto run --new-workspace worktree [worktree options] <prompt>",
     } satisfies CommandError;
   }
@@ -462,44 +385,35 @@ function validateRunWorkspaceOptions(options: AgentRunOptions): void {
   }
 }
 
-export function validateRunOptions(
-  prompt: string,
-  options: AgentRunOptions,
-  outputSchema: unknown,
-): void {
-  // Before anything opens a socket: a contradictory command line should say so, not report that
-  // the daemon is unreachable. Full provider/model resolution still happens after connecting,
-  // because it needs the host.
-  assertNoConflictingModelInputs(options.provider, options.model);
-
+function validateRunOptions(prompt: string, options: AgentRunOptions, outputSchema: unknown): void {
   if (!prompt || prompt.trim().length === 0) {
     throw {
       code: "MISSING_PROMPT",
       message: "A prompt is required",
+      // OTTO(identity)
       details: "Usage: otto agent run [options] <prompt>",
     } satisfies CommandError;
   }
 
-  validateRunWorkspaceOptions(options);
-  validateStreamOptions(options);
-  if (options.streamJson && (runsInBackground(options) || options.outputSchema !== undefined)) {
-    throw {
-      code: "INVALID_OPTIONS",
-      message: "--stream-json requires foreground run without --output-schema",
-    } satisfies CommandError;
+  if (options.background) {
+    console.error("Warning: --background (-d) is deprecated. Use --no-wait instead.");
   }
 
-  if (outputSchema && runsInBackground(options)) {
+  validateRunWorkspaceOptions(options);
+
+  if (outputSchema && !waitsForFinish(options)) {
     throw {
       code: "INVALID_OPTIONS",
-      message: "--output-schema cannot be used with --background",
+      message: "--output-schema cannot be used with --no-wait",
       details: "Structured output requires waiting for the agent to finish",
     } satisfies CommandError;
   }
 }
 
-function runsInBackground(options: Pick<AgentRunOptions, "background" | "detach">): boolean {
-  return Boolean(options.background || options.detach);
+export function waitsForFinish(
+  options: Pick<AgentRunOptions, "wait" | "background" | "detach">,
+): boolean {
+  return options.wait !== false && !options.background && !options.detach;
 }
 
 function parseWaitTimeoutOption(waitTimeout: string | undefined): number {
@@ -511,6 +425,7 @@ function parseWaitTimeoutOption(waitTimeout: string | undefined): number {
     }
     return ms;
   } catch (err) {
+    if (err && typeof err === "object" && "code" in err) throw err;
     const message = err instanceof Error ? err.message : String(err);
     throw {
       code: "INVALID_TIMEOUT",
@@ -537,6 +452,7 @@ function loadRunImages(
         mimeType,
       };
     } catch (err) {
+      if (err && typeof err === "object" && "code" in err) throw err;
       const message = err instanceof Error ? err.message : String(err);
       throw new Error(`Failed to read image ${imagePath}: ${message}`, { cause: err });
     }
@@ -587,22 +503,6 @@ function parseKeyValueFlags(
   return labels;
 }
 
-async function connectToDaemonOrThrow(
-  hostOption: string | undefined,
-  host: string,
-): Promise<ConnectedDaemonClient> {
-  try {
-    return await connectToDaemon({ host: hostOption });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    throw {
-      code: "DAEMON_NOT_RUNNING",
-      message: `Cannot connect to daemon at ${host}: ${message}`,
-      details: "Start the daemon with: otto daemon start",
-    } satisfies CommandError;
-  }
-}
-
 // A workspace is the explicit home of a run: it owns the directory the agent
 // runs in. The CLI resolves one before creating any agent, so no run leans on
 // createAgent's legacy cwd->workspace fallback.
@@ -637,16 +537,17 @@ export async function resolveExistingRunWorkspace(
   } satisfies CommandError;
 }
 
-// Workspace policy for `otto run`. Precedence:
+// Workspace policy for `paseo run`. Precedence:
 //   1. --workspace <id>            -> run in that existing workspace
-//   2. $OTTO_AGENT_ID             -> daemon resolves the caller's workspace
-//   3. $OTTO_WORKSPACE_ID         -> exported by workspace terminals
+//   2. caller agent                -> daemon resolves the caller's workspace
+//   3. $PASEO_WORKSPACE_ID         -> exported by workspace terminals
 //   4. --new-workspace <kind>      -> mint a new workspace explicitly
 //   5. bare run                    -> mint a new local-backed workspace for cwd
 async function resolveRunWorkspace(
   client: ConnectedDaemonClient,
   options: AgentRunOptions,
   cwd: string,
+  callerAgentId: string | undefined,
 ): Promise<RunWorkspace> {
   const newWorkspace = resolveNewWorkspaceKind(options);
   const explicit = newWorkspace ? undefined : options.workspace?.trim();
@@ -655,11 +556,11 @@ async function resolveRunWorkspace(
     return resolveExistingRunWorkspace(client, explicit);
   }
 
-  if (!newWorkspace && resolveRunCallerAgentId()) {
+  if (!newWorkspace && callerAgentId) {
     return { cwd };
   }
 
-  const ambientWorkspaceId = newWorkspace ? undefined : process.env.OTTO_WORKSPACE_ID?.trim();
+  const ambientWorkspaceId = newWorkspace ? undefined : process.env.PASEO_WORKSPACE_ID?.trim();
   if (ambientWorkspaceId) {
     console.error(`Using workspace ${ambientWorkspaceId}`);
     return resolveExistingRunWorkspace(client, ambientWorkspaceId);
@@ -668,7 +569,10 @@ async function resolveRunWorkspace(
   // TODO: thread the run `prompt` as firstAgentContext so workspace-level
   // title/branch generation picks up the task description (U8/U6 deferred).
   const source = buildRunWorkspaceSource(options, cwd);
-  const result = await client.createWorkspace({ source });
+  const result = await client.createWorkspace({
+    source,
+    ...(callerAgentId ? { callerAgentId } : {}),
+  });
 
   if (!result.workspace) {
     throw {
@@ -682,37 +586,9 @@ async function resolveRunWorkspace(
   console.error(`Created workspace ${result.workspace.id} - ${label}`);
   if (result.setupSkippedReason) console.error(result.setupSkippedReason);
   console.error(
-    "Tip: pass --workspace <id> (or set OTTO_WORKSPACE_ID) to run in an existing workspace.",
+    "Tip: pass --workspace <id> (or set PASEO_WORKSPACE_ID) to run in an existing workspace.",
   );
   return { id: result.workspace.id, cwd: result.workspace.workspaceDirectory ?? cwd };
-}
-
-async function finishRun(
-  client: ConnectedDaemonClient,
-  agent: AgentSnapshotPayload,
-  options: AgentRunOptions,
-  waitTimeoutMs: number,
-): Promise<SingleResult<AgentRunResult>> {
-  if (options.streamJson) await writeJsonRecord(toCreatedRecord(agent));
-  if (runsInBackground(options)) {
-    await client.close();
-    return { type: "single", data: toRunResult(agent), schema: agentRunSchema };
-  }
-  const state = await client.waitForFinish(agent.id, waitTimeoutMs);
-  await client.close();
-  const finalAgent = state.final ?? agent;
-  if (options.streamJson) {
-    return {
-      type: "single",
-      data: toRunResult(finalAgent, state.status),
-      schema: streamWaitSchema(agentRunSchema, agent.id, state),
-    };
-  }
-  return {
-    type: "single",
-    data: toRunResult(finalAgent, state.status === "idle" ? "completed" : state.status),
-    schema: agentRunSchema,
-  };
 }
 
 export async function runRunCommand(
@@ -720,26 +596,17 @@ export async function runRunCommand(
   options: AgentRunOptions,
   _command: Command,
 ): Promise<SingleResult<AgentRunResult>> {
-  const host = getDaemonHost({ host: options.host });
   const outputSchema = options.outputSchema ? loadOutputSchema(options.outputSchema) : undefined;
 
   validateRunOptions(prompt, options, outputSchema);
   const waitTimeoutMs = parseWaitTimeoutOption(options.waitTimeout);
 
+  const resolvedProviderModel = resolveProviderAndModel(options);
   const resolvedTitle = options.title ?? options.name;
 
-  const client = await connectToDaemonOrThrow(options.host, host);
-  let createdAgentId: string | undefined;
+  const client = await connectToDaemon({ target: options.daemonTarget });
 
   try {
-    // --personality reads the host roster, so the brain can only be resolved
-    // once a client exists. validateRunOptions has already rejected a
-    // contradictory --provider/--model pair without needing one.
-    const {
-      providerModel: resolvedProviderModel,
-      modeId: resolvedMode,
-      personalityId,
-    } = await resolveRunBrain(client, options);
     // Resolve working directory
     const cwd = options.cwd ?? process.cwd();
     const thinkingOptionId = options.thinking?.trim();
@@ -748,6 +615,7 @@ export async function runRunCommand(
         code: "INVALID_THINKING_OPTION",
         message: "--thinking cannot be empty",
         details:
+          // OTTO(identity)
           'Provide a thinking option ID. Use "otto provider models <provider> --thinking" to list valid IDs.',
       };
       throw error;
@@ -759,9 +627,9 @@ export async function runRunCommand(
     const env = parseRunEnv(options.env);
     const requestEnv = Object.keys(env).length > 0 ? env : undefined;
 
-    const workspace = await resolveRunWorkspace(client, options, cwd);
+    const callerAgentId = await resolveCallerAgentId(client);
+    const workspace = await resolveRunWorkspace(client, options, cwd, callerAgentId);
     const workspaceId = workspace.id;
-    const callerAgentId = resolveRunCallerAgentId();
     const runCwd = workspace.cwd;
 
     if (outputSchema) {
@@ -775,10 +643,9 @@ export async function runRunCommand(
             workspaceId,
             callerAgentId,
             title: resolvedTitle,
-            modeId: resolvedMode,
+            modeId: options.mode,
             model: resolvedProviderModel.model,
             thinkingOptionId,
-            personality: personalityId,
             initialPrompt: structuredPrompt,
             outputSchema,
             images,
@@ -847,23 +714,39 @@ export async function runRunCommand(
       workspaceId,
       callerAgentId,
       title: resolvedTitle,
-      modeId: resolvedMode,
+      modeId: options.mode,
       model: resolvedProviderModel.model,
       thinkingOptionId,
-      personality: personalityId,
       initialPrompt: prompt,
       images,
       env: requestEnv,
       labels: Object.keys(labels).length > 0 ? labels : undefined,
     });
-    createdAgentId = agent.id;
-    return await finishRun(client, agent, options, waitTimeoutMs);
+
+    // Default run behavior is foreground: wait for completion unless --no-wait is set.
+    if (waitsForFinish(options)) {
+      const state = await client.waitForFinish(agent.id, waitTimeoutMs);
+      await client.close();
+
+      const finalAgent = state.final ?? agent;
+      const status: AgentRunResult["status"] = state.status === "idle" ? "completed" : state.status;
+
+      return {
+        type: "single",
+        data: toRunResult(finalAgent, status),
+        schema: agentRunSchema,
+      };
+    }
+
+    await client.close();
+
+    return {
+      type: "single",
+      data: toRunResult(agent),
+      schema: agentRunSchema,
+    };
   } catch (err) {
     await client.close().catch(() => {});
-    if (options.streamJson && createdAgentId) {
-      const error = toCommandError(err);
-      throw { ...error, code: "AGENT_WAIT_FAILED", agentId: createdAgentId } satisfies CommandError;
-    }
 
     if (err && typeof err === "object" && "code" in err) {
       throw err;
@@ -876,10 +759,4 @@ export async function runRunCommand(
     };
     throw error;
   }
-}
-
-export function resolveRunCallerAgentId(
-  env: { OTTO_AGENT_ID?: string } = process.env,
-): string | undefined {
-  return env.OTTO_AGENT_ID?.trim() || undefined;
 }

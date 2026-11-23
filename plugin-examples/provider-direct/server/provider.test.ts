@@ -1,4 +1,4 @@
-import type { ProviderEvent } from "@otto-code/plugin/server/provider";
+import type { ProviderEvent } from "@getpaseo/plugin/server/provider";
 import { describe, expect, it } from "vitest";
 import { createDirectExampleProvider } from "./provider.js";
 
@@ -141,36 +141,6 @@ describe("direct provider example", () => {
         item: expect.objectContaining({ type: "plugin", kind: "provider-result" }),
       }),
     );
-    const childEvents = events.filter(
-      (event) => "sessionId" in event && event.sessionId === child?.sessionId,
-    );
-    const childStarted = childEvents.find(
-      (event): event is Extract<ProviderEvent, { type: "session.turn" }> =>
-        event.type === "session.turn" && event.state === "started",
-    );
-    expect(childStarted?.turnId).toMatch(/^[0-9a-f-]{36}$/u);
-    // Readiness and custom row text do not settle the child. Its result must
-    // be bounded by a matching turn lifecycle so active accounting can finish.
-    expect(childEvents).toEqual([
-      expect.objectContaining({ type: "session.opened", parentSessionId: "session-complete" }),
-      {
-        type: "session.turn",
-        sessionId: child?.sessionId,
-        turnId: childStarted?.turnId,
-        state: "started",
-      },
-      expect.objectContaining({
-        type: "timeline.item",
-        item: expect.objectContaining({ type: "plugin", kind: "provider-result" }),
-      }),
-      {
-        type: "session.turn",
-        sessionId: child?.sessionId,
-        turnId: childStarted?.turnId,
-        state: "completed",
-      },
-      { type: "session.ready", sessionId: child?.sessionId },
-    ]);
     expect(events).toContainEqual(expect.objectContaining({ type: "session.persistence" }));
     await connection.close();
   });
