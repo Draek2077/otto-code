@@ -6,10 +6,10 @@ import { buildSettingsSectionRoute } from "../../src/utils/host-routes";
 import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 
-test("Settings compares both renderers independently of the saved diff default", async ({
+test("Settings preview follows the saved diff default and can compare without changing it", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
+  await page.setViewportSize({ width: 1200, height: 844 });
   await page.goto(buildSettingsSectionRoute("editor"));
   const saved = page.getByTestId("otto-diff-presentation");
   await expect(saved).toContainText("Line");
@@ -17,13 +17,52 @@ test("Settings compares both renderers independently of the saved diff default",
   const preview = page.getByTestId("diff-preview");
   const oldDiff = preview.getByTestId("diff-preview-line");
   const newDiff = preview.getByTestId("diff-preview-structural");
+  const before = preview.getByText("return palette.red;", { exact: false }).last();
+  const after = preview.getByText("return palette.blue;", { exact: false }).last();
+
+  await expect(oldDiff).toHaveAttribute("aria-selected", "true");
+  await expectPreviewAlignment(before, after, "stacked");
+
+  await selectStructural(page, saved);
   await expect(newDiff).toHaveAttribute("aria-selected", "true");
-  await expect(preview.getByText("return palette.blue;", { exact: false }).last()).toBeVisible();
+  await expectPreviewAlignment(before, after, "paired");
+
   await oldDiff.click();
   await expect(oldDiff).toHaveAttribute("aria-selected", "true");
-  await expect(preview.getByText("return palette.blue;", { exact: false }).last()).toBeVisible();
+  await expectPreviewAlignment(before, after, "stacked");
+  await expect(saved).toContainText("Structural");
+
+  await saved.click();
+  await page.getByText("Line", { exact: true }).last().click();
   await expect(saved).toContainText("Line");
+  await newDiff.click();
+  await expectPreviewAlignment(before, after, "paired");
+  await expect(saved).toContainText("Line");
+
+  // The next saved-default change replaces the temporary comparison selection.
+  await selectStructural(page, saved);
+  await saved.click();
+  await page.getByText("Line", { exact: true }).last().click();
+  await expect(oldDiff).toHaveAttribute("aria-selected", "true");
+  await expectPreviewAlignment(before, after, "stacked");
 });
+
+async function expectPreviewAlignment(
+  before: Locator,
+  after: Locator,
+  layout: "stacked" | "paired",
+) {
+  await expect(before).toBeVisible();
+  await expect(after).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [left, right] = await Promise.all([before.boundingBox(), after.boundingBox()]);
+      if (!left || !right) return null;
+      if (right.x > left.x && Math.abs(right.y - left.y) < 1) return "paired";
+      return right.y > left.y ? "stacked" : null;
+    })
+    .toBe(layout);
+}
 
 async function selectStructural(page: Page, picker: Locator) {
   await picker.click();

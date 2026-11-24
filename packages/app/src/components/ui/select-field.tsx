@@ -69,6 +69,7 @@ export interface SelectFieldProps<TValue> {
   triggerTestID?: string;
   // OTTO(schedules): forward the existing popup direction for long forms; defaults stay unchanged.
   desktopPlacement?: ComboboxDesktopPlacement;
+  desktopMatchTrigger?: boolean; // OTTO(agent-teams): keep the sidebar popup within its trigger.
 }
 
 export interface SelectFieldTriggerProps {
@@ -200,6 +201,7 @@ export function SelectField<TValue>({
   testID,
   triggerTestID,
   desktopPlacement,
+  desktopMatchTrigger, // OTTO(agent-teams)
 }: SelectFieldProps<TValue>): ReactElement {
   const anchorRef = useRef<View>(null);
   const [open, setOpen] = useState(false);
@@ -335,6 +337,8 @@ export function SelectField<TValue>({
         anchorRef={anchorRef}
         renderOption={renderComboboxOption}
         desktopPlacement={desktopPlacement}
+        desktopLockWidth={desktopMatchTrigger} // OTTO(agent-teams)
+        desktopCollisionPadding={desktopMatchTrigger ? 0 : undefined} // OTTO(agent-teams)
       />
     </>
   );

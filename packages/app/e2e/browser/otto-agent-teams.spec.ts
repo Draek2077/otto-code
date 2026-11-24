@@ -13,7 +13,7 @@ import { expectComposerVisible } from "../support/helpers/composer";
 import { openMobileAgentSidebar, closeMobileAgentSidebar } from "../support/helpers/sidebar";
 import type { MutableDaemonConfig, MutableDaemonConfigPatch } from "@getpaseo/protocol/messages";
 
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 async function openPicker(page: Page, width: number) {
   if (width >= 720) return openModelPicker(page);
   await page.getByTestId("combined-model-selector").filter({ visible: true }).first().click();
@@ -27,6 +27,39 @@ function scopedRow(page: Page, width: number, name: string) {
     .locator('[data-testid^="model-profile-row-"]')
     .filter({ hasText: name });
 }
+
+async function expectSidebarTeamInsets(page: Page, picker: Locator) {
+  const shortcuts = page.getByTestId("sidebar-shortcuts").filter({ visible: true }).first();
+  const schedules = shortcuts.getByTestId("sidebar-schedules");
+  await expect
+    .poll(async () => {
+      const [group, row, trigger] = await Promise.all([
+        shortcuts.boundingBox(),
+        schedules.boundingBox(),
+        picker.boundingBox(),
+      ]);
+      if (!group || !row || !trigger) return null;
+      const rowInset = row.x - group.x;
+      const pickerRightInset = group.x + group.width - trigger.x - trigger.width;
+      return (
+        rowInset > 0 && Math.abs(trigger.x - row.x) < 1 && Math.abs(pickerRightInset - rowInset) < 1
+      );
+    })
+    .toBe(true);
+}
+
+async function expectTeamPopupToMatchTrigger(page: Page, picker: Locator) {
+  const popup = page.getByTestId("combobox-desktop-container").filter({ visible: true });
+  await expect(popup).toBeVisible();
+  await expect
+    .poll(async () => {
+      const [trigger, menu] = await Promise.all([picker.boundingBox(), popup.boundingBox()]);
+      if (!trigger || !menu) return null;
+      return Math.abs(trigger.x - menu.x) < 1 && Math.abs(trigger.width - menu.width) < 1;
+    })
+    .toBe(true);
+}
+
 interface RosterClient {
   fetchAgent(input: { agentId: string }): Promise<{
     agent: { labels: Record<string, string>; model: string | null; provider: string };
@@ -59,6 +92,7 @@ for (const width of [1280, 390]) {
     };
     const second = { ...profile, id: "chatter-b", name: "Birch" };
     const writer = { ...profile, id: "writer", name: "Writer only", roles: ["writer"] };
+    const secondTeamName = "Team B with a longer name for the sidebar dropdown";
     try {
       await client.patchDaemonConfig({
         agentProfiles: [profile, second, writer],
@@ -66,7 +100,7 @@ for (const width of [1280, 390]) {
           activeTeamId: "a",
           teams: [
             { id: "a", name: "Team A", memberIds: [profile.id, writer.id] },
-            { id: "b", name: "Team B", memberIds: [second.id] },
+            { id: "b", name: secondTeamName, memberIds: [second.id] },
           ],
         },
       });
@@ -94,8 +128,15 @@ for (const width of [1280, 390]) {
         )
         .toContain(profile.name);
       if (width < 720) await openMobileAgentSidebar(page);
-      await page.getByTestId("active-team-switcher").filter({ visible: true }).first().click();
-      await page.getByText("Team B", { exact: true }).filter({ visible: true }).last().click();
+      const teamPicker = page.getByTestId("active-team-switcher").filter({ visible: true }).first();
+      await expectSidebarTeamInsets(page, teamPicker);
+      await teamPicker.click();
+      if (width >= 720) await expectTeamPopupToMatchTrigger(page, teamPicker);
+      await page
+        .getByText(secondTeamName, { exact: true })
+        .filter({ visible: true })
+        .last()
+        .click();
       await expect
         .poll(async () => (await client.getDaemonConfig()).config.agentTeams?.activeTeamId)
         .toBe("b");

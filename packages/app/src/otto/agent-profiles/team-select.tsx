@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { Users } from "lucide-react-native";
-import { withUnistyles } from "react-native-unistyles";
+import { View } from "react-native";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { SelectField } from "@/components/ui/select-field";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
@@ -109,6 +110,7 @@ export function TeamSelection({
     <SelectField
       field={false}
       size="sm"
+      desktopMatchTrigger={!projectDefault}
       triggerLeading={icon}
       label={projectDefault ? "Default team" : "Active team"}
       value={id}
@@ -120,5 +122,15 @@ export function TeamSelection({
       testID={projectDefault ? "project-default-team" : "active-team-switcher"}
     />
   );
-  return projectDefault ? <SettingsSection title="Default team">{field}</SettingsSection> : field;
+  return projectDefault ? (
+    <SettingsSection title="Default team">{field}</SettingsSection>
+  ) : (
+    <View style={styles.sidebarField}>{field}</View>
+  );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  sidebarField: {
+    paddingHorizontal: theme.spacing[2],
+  },
+}));
