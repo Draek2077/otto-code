@@ -3,15 +3,14 @@ id: "vim-neovim-developer-workflows"
 kind: "project"
 title: "Vim and Neovim developer workflows"
 status: "confirmed"
-tags: ["developer-experience", "editor", "terminal", "neovim", "vim", "tmux", "diffs"]
+tags: ["developer-experience","editor","terminal","neovim","vim","tmux","diffs"]
 delivery_status: "partial"
 progress_completed: 4
 progress_total: 5
 progress_unit: "phases"
 created_at: "2026-08-12T22:38:12.272Z"
-updated_at: "2026-08-13T08:33:27.050Z"
+updated_at: "2026-11-05T03:24:12.843Z"
 ---
-
 # Vim and Neovim developer workflows
 
 <!-- compiled_truth -->
@@ -153,3 +152,13 @@ The terminal-backed editor is the supported Neovim path. It preserves the user's
   kind: "note"
   summary: "Security and reliability audit remediation completed on 2026-08-13: hardened file argv handling, recoverable/deduplicated external-editor ownership, destructive-close warnings, stable active-session configuration, correct two-key leader/Escape behavior, truthful live alternate-screen probing, native gating, and explicit older-host update messaging. Focused tests, server build, repository typecheck, and targeted lint pass. The final real-host acceptance/release phase remains."
   affects: ["vim-neovim-developer-workflows"]
+- time: "2026-11-02T17:26:48.507Z"
+  kind: "evidence"
+  summary: "2026-11-02 Otto 0.10 terminal checkpoint on clean Paseo 0.12, source 1a01abb75c2bdf6a662f1e10b19801154c917449. Earlier delivered-editor statements and 4/5 progress on this charter describe the historical 0.9 implementation; they do not establish that those editor integrations exist in 0.10.\n\nThe selected terminal-only restoration now uses Paseo's existing terminal stack and Settings controls, with Otto-owned title/path/default-shell preferences, pinned nondestructive settings, explicit tool/PTY diagnostics, licensed symbol-font fallback, directory activation into Explorer, literal POSIX drops and legacy shell environment continuity. Full CI passed (41482172313), all 66 Otto app journeys passed (41482177891), and both wide/compact real-daemon terminal journeys passed (41482178308). Final Android APK/AAB, Docker, Windows/Linux/Intel macOS desktop jobs and Nix Linux passed. Final unsigned Apple Silicon desktop and Nix macOS proofs remain OPEN: GitHub could not allocate ARM runners on original and retry attempts, with zero build steps executed. No local runtime launches or installed-data writes.\n\nTool discovery is not proof of user-configured Vim/Neovim/tmux behavior; diagnostics explicitly leave unobserved client/input/clipboard/reconnect facts unknown. The terminal-backed file editor and Otto Vim leader mappings remain deferred File Editor scope, and the direct-Neovim-embedding no-go remains intact. No full charter completion, native/device verification or ARM build success is claimed."
+  source: "https://github.com/Draek2077/otto-code/commit/1a01abb75c2bdf6a662f1e10b19801154c917449"
+  affects: ["otto-0-10-clean-paseo-rebuild"]
+- time: "2026-11-05T03:24:12.843Z"
+  kind: "evidence"
+  summary: "Otto 0.10 restoration verified at pushed 1b4c76aa615e20e91f09985c8f0ac7343178c41c: actual file-owned Vim, Neovim and Custom PTY app journeys opened the requested file (including spaces), saved real bytes, required confirmation to leave, returned to Otto and observed disk state. All five focused restoration journeys plus 36 existing Paseo checks passed in run 41956402746; full CI run 41958046132 is green. Device Editor preference/legacy settings, original immediate Vim toggle, per-editor rebindable Space-leader mappings, capability gate, PTY ownership and close/recovery behavior are integrated. No nvim embedding, global tool/user configuration changes or local app launches occurred. This proves restored implementation and isolated CI workflows; the charter's personal-configuration/all-host acceptance matrix is not claimed complete, so its partial 4/5 delivery remains unchanged."
+  source: "https://github.com/Draek2077/otto-code/actions/runs/41956402746"
+  affects: ["file-editor","vim-neovim"]

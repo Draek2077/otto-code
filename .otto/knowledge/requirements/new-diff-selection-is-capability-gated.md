@@ -5,7 +5,7 @@ title: "New diff selection is capability-gated"
 status: "confirmed"
 tags: ["diff","review","structural-diff","capabilities"]
 created_at: "2026-08-13T04:37:59.092Z"
-updated_at: "2026-08-24T14:37:35.511Z"
+updated_at: "2026-11-24T16:33:16.206Z"
 ---
 # New diff selection is capability-gated
 
@@ -28,3 +28,7 @@ The Settings diff demo is intentionally self-contained: its Old diff/New diff se
   kind: "decision"
   summary: "User clarified that the Settings diff demo must compare old and new rendering independently of the persisted Line/Structural preference."
   source: "User request and verified implementation, 2026-08-24"
+- time: "2026-11-24T16:33:16.206Z"
+  kind: "evidence"
+  summary: "Otto 0.10 local fix verified 2026-11-24 after the user reported changing the saved default had no visible effect in the Settings preview. The preview opens with the saved Line or Structural mode and follows live default changes. Its preview-only renderer control still compares the same sample without saving the choice. Changing the default discards the comparison override and preserves the selected sample. The focused browser case reproduced the old default mismatch and passed after the fix, measuring stacked Line rows and side-by-side Structural rows on the actual sample."
+  source: "packages/app/e2e/browser/otto-structural-diff.spec.ts"

@@ -5,7 +5,7 @@ title: "Brain rail button shows the state sentence for every state, including id
 status: "confirmed"
 tags: ["brain","rail-button","wording","tooltip"]
 created_at: "2026-08-17T03:49:39.027Z"
-updated_at: "2026-08-22T23:10:17.284Z"
+updated_at: "2026-10-24T13:19:23.713Z"
 ---
 # Brain rail button shows the state sentence for every state, including idle
 
@@ -25,4 +25,9 @@ The Brain rail button (sidebar footer, settings footer, workspace title bar) alw
   kind: "evidence"
   summary: "The Brain rail now uses the host-level `daemon.brain.enabled` setting as a shared visibility gate. When the setting is explicitly false, the sidebar footer Brain button and workspace title-bar Brain button are omitted; unresolved settings remain visible during initial loading. Added `shouldShowBrainRail` coverage in `packages/app/src/components/brain/brain-state.test.ts`; focused Brain-state tests (42 passed), targeted lint, formatting, and app typecheck passed."
   source: "Implementation verification, 2026-08-22"
+  affects: ["brain-rail-button-shows-the-state-sentence-for-every-state-including-idle"]
+- time: "2026-10-24T13:19:23.713Z"
+  kind: "evidence"
+  summary: "Philippe clarified on 2026-10-24 that Brain belongs in the existing bottom icon row beside Usage, with its state sentence in the tooltip and accessible name, without a separate footer panel or permanent adjacent label. Implemented in integration commit 83eb17172175ef339031a90ed74c71a79fcd4b65: Otto-owned footer placement reuses the registered plugin item and its host/navigation/lifecycle; footer rows exclude that icon so it is rendered once. Existing animated artwork/state derivation remain unchanged. Normal format/lint and all-workspace commit typechecks passed. Otto App Acceptance run 40096963475 passed 12/12 journeys, including wide/compact same-line placement beside Usage, absent separate panel/visible label, desktop exact-state tooltip, navigation and five tabs. Downloaded and visually inspected brain-navigation-tooltip.png: bottom icon row and 'Brain - off' tooltip match the request. Full CI was still running when this evidence was recorded. This verifies the placement correction, not complete Brain/native/product acceptance."
+  source: "User clarification and exact-source app acceptance: https://github.com/Draek2077/otto-code/actions/runs/40096963475"
   affects: ["brain-rail-button-shows-the-state-sentence-for-every-state-including-idle"]

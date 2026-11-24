@@ -2,20 +2,52 @@
 id: "workflows"
 kind: "project"
 title: "Workflows"
-status: "confirmed"
+status: "proposed"
 tags: ["workflows","ai-orchestration","graph-execution","v0.9"]
-delivery_status: "in_build"
-progress_completed: 0
+delivery_status: "complete"
+progress_completed: 7
 progress_total: 7
-progress_unit: "0.9 delivery inventory items"
+progress_unit: "0.10 restoration acceptance groups"
 created_at: "2026-08-27T00:35:25.828Z"
-updated_at: "2026-09-02T14:08:29.279Z"
+updated_at: "2026-11-05T20:13:37.130Z"
 ---
 # Workflows
 
 <!-- compiled_truth -->
 
 # Workflows
+
+## Otto 0.10 restoration (active 2026-11-05)
+
+Philippe explicitly selected the whole Workflow feature for restoration on the clean Paseo 0.12 base. The integration checkout is `C:/Users/phili/Projects/otto-code/.claude/worktrees/otto-0.10`, branch `otto-0.10/phase-0`, starting at `1b4c76aa615e20e91f09985c8f0ac7343178c41c`. The frozen implementation below is product/reference evidence, not availability in this new tree. AI and Graph Workflows, project-owned definitions/templates/runs, execution, control/recovery, truthful visualization, authoring, CLI/MCP and independent storage remain the complete selected scope. A pure engine or registered screen is not completion.
+
+### Foundation-preservation contract
+
+- Paseo remains the owner of ordinary agents, native sessions, turn queues, transcript persistence, provider configuration, permissions and project/workspace identity. No replacement chat manager, timer-driven chat supervisor, workflow data in ordinary transcript stores, or implicit resumption of existing user chats.
+- Workflow engines/services/storage, provider/agent adapters, subscriptions, UI, settings and tests live in Otto-owned files. Every necessary base edit is minimal and tagged `OTTO(workflows)`, with seam registry verification. Reuse public plugin contributions and existing runtime owners where their contracts fit.
+- A Workflow starts only after an explicit UI/CLI/MCP action. Persist its launch identity/snapshot before its first owned turn; retain dedicated conductor/worker ownership, count/admission limits, permission posture and exact selected models. Normal chats are unaffected when no Workflow is active. Planning survives ordinary turn settlement and clarifying questions; archive/delete/cancel/restart are distinct lifecycle events.
+- Cancellation stops owned work and revokes late results without stopping unrelated chats. Reject nested or escalated authority; preserve the existing no-shared-checkout write fan-out/replacement/retry guard. New attempt worktree isolation remains a separate unimplemented charter; this restoration does not activate it.
+- Use event-owned bounded observation; no idle model calls, unbounded retained runs/transcripts, full-library refresh per streamed token or duplicate summary turns. Regression tests must cover ordinary-chat lifecycle/permission/queue behavior beside Workflow activity, cleanup and restart outcomes.
+- Rebuild model/role selection against current Paseo and explicit per-run seats; do not silently revive deferred teams or agent-profile products. Where a declared authority cannot be enforced, report a capability error rather than rely on prompt instructions.
+- Keep installed Otto, its home/6868 and user configuration untouched; no local app/model/daemon launches for this work. Isolated fixtures and CI own runtime/browser acceptance. Repository dependencies are permitted. No new worktrees or delegated agents.
+
+The seven retained delivery groups below are the restoration acceptance inventory. Current 0.10 progress is 7/7: the integrated restoration, full regression/Workflow acceptance and every required product-build gate are verified at the same source commit. Full required CI, existing Paseo chat/session regression journeys, Desktop/Mobile controls, all product builds and indexed `docs/` contracts are required before closing the feature. Context generation-isolation research, other feature ports and public release/main landing remain separate.
+
+## Verified Otto 0.10 implementation (2026-11-05)
+
+The integrated implementation is committed at `ca4b50b6d0a7ed6b0d857a1375534cacc4f8d854` on `otto-0.10/phase-0`. This section is current 0.10 truth; the separately headed 0.9 material below remains historical.
+
+- **Library, authoring and templates:** the bundled Workflows contribution is reachable from main navigation, workspace panels and Command Center. Wide layouts retain a library/editor split; compact layouts provide scoped detail navigation. AI definitions, Graphs and templates have revisioned saves, retained dirty drafts, explicit conflict/reload handling and origin disclosure. The original web Drawflow designer is recovered with its license; native clients have actual SVG topology and complete node/edge/input editing controls. Safe data templates and explicitly trusted, bounded EJS execution remain distinct.
+- **AI lifecycle:** a dedicated conductor and durable Planning record exist before the first owned turn. Clarification and ordinary turn settlement do not fail Planning. A private typed plan is confirmed before admission unless autopilot was explicitly selected. The daemon owns caps, workers, human gates and terminal results; it does not infer a declared Graph from AI prose.
+- **Graph lifecycle and visualization:** immutable launch snapshots drive real nodes, conditions, pass/fail routing, checks, gates, judged loops, bounded candidates and outputs. The run screen renders actual graph topology/phase state and opens the actual owned chats. Failure, skipped work, rejected gates, cancellation and recovery stay inspectable.
+- **Ownership and performance:** feature behavior lives under Otto-owned SDK/server/app/CLI modules; necessary base seams are tagged `OTTO(workflows)`. Paseo still owns agents, native sessions, queues, provider configuration, permissions and transcripts. Server-owned reservations and one-use turn authority fence Workflow members. Ordinary configurations/subtrees are preserved; a real ordinary chat completed while a Workflow waited at a gate. Observation is bounded and demand-owned, with no idle transcript subscriptions or replacement chat manager. Shared-checkout write fan-out, replacement and retry remain refused.
+- **Provider and automation integration:** explicit current-provider model/mode/reasoning seats pass through existing runtime owners. Read/none access is admitted only where an enforceable adapter exists; unsupported authority reports a capability error. Worker interactive permissions are denied through the existing responder without silently enabling bypass modes. This is not native startup-hook isolation. UI, `otto workflow` commands and caller-bound MCP tools use the same services. CLI `follow` uses versioned long polling and Ctrl+C closes observation only. The internal saved-Graph Schedule adapter uses the same reviewed launch/cancel boundary; broader Schedule restoration remains F16.
+- **Storage and sharing:** independent host/project storage, evidence-bound legacy discovery, atomic CAS writes, bounded history, last-good recovery, immutable result blobs, exact export/import review and verified copy/move receipts are implemented. Receipts include performing-daemon identity, time and content proof; they do not claim an authenticated human author. Unknown outcomes are inspected/reconciled rather than replayed. Restarts revoke old execution without touching unrelated chats. Artifact provenance resolves the actual owned Workflow run.
+- **Verified gates:** [full CI 42093960321](https://github.com/Draek2077/otto-code/actions/runs/42093960321) passed all 21 jobs, including all browser shards, app/CLI/server/desktop tests, strict fixtures, packaging and normal quality checks. [Full Otto app acceptance 42093839046](https://github.com/Draek2077/otto-code/actions/runs/42093839046) passed 75 journeys; [focused Workflow acceptance 42093842292](https://github.com/Draek2077/otto-code/actions/runs/42093842292) passed all four wide/compact authoring, Graph/ordinary-chat/Artifact and AI Planning/confirmation/rejection journeys. [Editor-runtime acceptance 42093838858](https://github.com/Draek2077/otto-code/actions/runs/42093838858), [Nix 42093848511](https://github.com/Draek2077/otto-code/actions/runs/42093848511) and [Docker 42093867045](https://github.com/Draek2077/otto-code/actions/runs/42093867045) passed. Nix's evaluated lockfile exactly matches the committed lockfile. Targeted Workflow fixtures, normal formatting/lint/typechecks, normal commit hooks and seam checks passed.
+
+**Final product gate passed:** [Desktop 42093854628](https://github.com/Draek2077/otto-code/actions/runs/42093854628) completed successfully for Windows, Linux, unsigned Intel Mac and unsigned Apple Silicon Mac, including installed-package smoke checks. [Android 42093860938](https://github.com/Draek2077/otto-code/actions/runs/42093860938) completed successfully with signed APK and AAB verification/artifacts. Together with the linked Nix, Docker, full CI and both acceptance runs, all required automated gates passed on exactly `ca4b50b6d0a7ed6b0d857a1375534cacc4f8d854`. Publishing was disabled; the existing iOS signing gate remains. All seven accepted restoration groups are complete. This closes the selected Workflow restoration, not the broader Otto 0.10 release or F16 Schedule extensions.
+
+**Proof limits:** controlled browser/runtime proof uses an isolated loopback OpenAI-compatible fixture and daemon, not paid external model requests or every personal native-provider setup. Physical mobile/device interaction and individual provider/account review remain separate from automated code/build proof. No installed Otto, user settings, main landing, release publishing, new attempt-isolation work, unrelated chat/agent customization or parked Context investigation was activated. Current software contracts and the provider/control matrix are indexed in `docs/otto-workflows.md` and `docs/testing.md`.
 
 ## Outcome
 
@@ -94,7 +126,7 @@ messages. It must identify unavailable operations rather than promising them. Co
 an executable proof mapped to each capability, including the principal AI and Graph success paths
 and their important failure/recovery paths.
 
-## Verified current baseline
+## Frozen Otto 0.9 baseline
 
 - The daemon still retains its typed `Run` records, atomic `$OTTO_HOME/runs` persistence, daemon-global Graph/template libraries, state broadcasts, cancellation, gate responses, orphan recovery, phase caps, and graph-run engine as legacy paths. The first project-owned storage foundation now exists: `CategoryStorageResolver` and `WorkflowStoreRegistry` resolve an independent Workflow repository/host location, project-scoped layout, provenance, worktree root, and legacy discovery. Confirmed Graph import writes a verified copy to the selected `definitions/` directory. The host/project settings UI, project-scoped run/template writers, aggregation, explicit move receipts, and remote-host disclosure remain unimplemented.
 - `workflows.start` is the canonical Workflow-launch RPC and accepts open wire strings for a `flavor`; a client selects it when the additive `server_info.features.workflowStartRpc` capability is present. The dated `runs.start` request/response pair remains accepted only for separately shipped older peers through 2027-02-28. The optional `server_info.features.orchestrationGraphs` capability gates Graph-specific RPCs and UI, including the released New Workflow entry.
@@ -700,3 +732,24 @@ editor before execution.
 - time: "2026-09-02T14:08:29.279Z"
   kind: "note"
   summary: "The user explicitly requested released Workflow availability; the implemented capability-bound change and focused production-build regression test verify the updated truth. New status: confirmed."
+- time: "2026-11-05T14:40:11.747Z"
+  kind: "decision"
+  summary: "Philippe selected full Workflows restoration and strengthened the prime directive: preserve Paseo 0.12's agent/chat/session foundation, performance and bug surface; keep Otto behavior isolated and base edits tagged. Record the complete existing scope, ordinary-chat regression/lifetime constraints and actual clean starting SHA before integration. No completion or review confirmation is claimed. Status returned to proposed for review."
+  source: "User instruction 2026-11-05; current source 1b4c76aa615e20e91f09985c8f0ac7343178c41c; frozen otto-0.9-final Workflow source/docs comparison."
+  affects: ["workflows","agent-sessions","paseo-boundary","performance"]
+- time: "2026-11-05T20:02:56.067Z"
+  kind: "decision"
+  summary: "Reconcile verified complete implementation and exact-source green CI/75 app journeys/four Workflow journeys, while retaining the final Desktop/Android build gate and explicit runtime proof limits."
+  source: "Otto 0.10 Workflow restoration at ca4b50b6d; linked GitHub Actions evidence"
+- time: "2026-11-05T20:03:11.523Z"
+  kind: "note"
+  summary: "Six implementation acceptance groups are integrated and verified on ca4b50b6d: full CI21/21, full Otto app75/75, focused Workflow4/4, editor-runtime/Nix/Docker green. The seventh proof/release group remains open for final Desktop and Android APK/AAB builds; no full delivery or native-account acceptance claim yet."
+  affects: ["workflows"]
+- time: "2026-11-05T20:13:34.542Z"
+  kind: "decision"
+  summary: "Close the last automated acceptance gate after Desktop and signed Android APK/AAB verification both passed at ca4b50b6d; retain exact scope, native/account proof limits, existing iOS gate and all deferred work."
+  source: "GitHub Actions42093854628/42093860938 and all eight successful exact-source verification runs"
+- time: "2026-11-05T20:13:37.130Z"
+  kind: "note"
+  summary: "All accepted Workflow restoration groups and required automated gates pass on ca4b50b6d: full CI21/21, full app75/75, focused Workflow4/4, editor-runtime, Windows/Linux/unsigned Intel+Apple Silicon Mac, signed Android APK+AAB, Nix and Docker. Normal hooks passed, source is pushed and clean. No publishing/main/installed-app action, no completion of broader Schedules/Visualizer/Architecture ports, and no claim of personal native-provider or physical-device acceptance."
+  affects: ["workflows"]

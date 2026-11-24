@@ -2,11 +2,11 @@
 id: "e2e-qa-coverage"
 kind: "project"
 title: "E2e Qa Coverage"
-status: "confirmed"
+status: "proposed"
 tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "partial"
 created_at: "2026-08-08T06:17:54.313Z"
-updated_at: "2026-08-30T01:06:15.983Z"
+updated_at: "2026-11-12T19:43:15.697Z"
 ---
 # E2e Qa Coverage
 
@@ -26,6 +26,16 @@ missing is (1) a feature-complete map of what those specs cover, (2) coverage fo
 newer subsystems (personalities, teams, visualizer, permission modes, openai-compat native
 tooling, artifacts, preview), and (3) a cheap way to run _live agent-loop_ journeys without
 burning paid API credits.
+
+## Otto 0.10 review and testing baseline
+
+The active reconstruction is `otto-0.10/phase-0` in the existing `.claude/worktrees/otto-0.10` checkout. Application source `e9cc4d3ed3f7bb9cd88e751dad2f147947561f14` passed full CI 43266928686 (21/21), full Otto App Acceptance 43266923452 (46+44=90), Editor Runtime Acceptance 43266923668 and dedicated Git journeys 43266935022. The four-guide cleanup `21a7510c26ad3e0194d89efb659f18f28b3a5586` changes no runtime code and passes normal format, full-source lint, all-workspace typechecks and seam checks. Existing product-build proofs retain their explicit source-equivalence and iOS boundaries.
+
+The master `otto-0-10-clean-paseo-rebuild` is the single current feature/progress and controlled-testing plan. Its RT1-RT6 sequence covers candidate identity, Philippe’s UI review, data/lifecycle continuity, functional pilots, native/account gates and performance/regression. The older 0.9 matrices, model/provider examples and local-AI build-order sections below are historical coverage targets, not evidence that those tests or features are implemented in 0.10.
+
+Philippe explicitly owns the upcoming UI review. Functional green cases and saved screenshots do not mean that a screen has an acceptable layout. The basic audit reviewed 14 saved captures across nine surface families and identified Knowledge context loss, Context overlap/compact scrolling, and Workflows/Artifacts/Kanban grouping/scroll-cost concerns. The finding `otto-0-10-testing-readiness-and-ui-structure-review` records method and limits. Future accepted fixes need geometry/scroll/usable-content evidence at relevant wide, narrow and compact sizes, not only label/click assertions. No UI rewrite or removal of compact back controls is selected by this review.
+
+Current native Brain/model/GPU/Remote trust, private provider history, live forge/Connector permissions, physical speech/browser/device and personal terminal/editor configuration gates remain explicit. Long-session CPU/RSS and hidden-view demand have not been measured in this review. The separate Context isolation investigation stays parked. No local app/model/daemon or vendor operation was launched, and installed Otto is preserved.
 
 ## The three tiers
 
@@ -841,3 +851,18 @@ The coverage matrix records only executable coverage. The runtime support matrix
   summary: "Workflow browser evidence remains partial. Exact command attempted: `npm --workspace=@otto-code/app run test:e2e -- e2e/browser/runs-screen.spec.ts`. First isolated Chromium execution: 3/4 passed (persisted Graph card/Visualizer, Graph restart failure, pending AI restart failure); the fourth exposed an obsolete provider-failure expectation after AI declared plans began pausing for daemon-owned start confirmation. After the test was corrected to approve that confirmation, the required exact rerun timed out in Metro warmup before Playwright began. `graph-workflow-authoring.spec.ts` has not been rerun for Fable 5. `npm run e2e:coverage` is intentionally not counted as browser execution proof."
   source: "Focused isolated Chromium verification, 2026-08-29"
   affects: ["workflows"]
+- time: "2026-11-05T20:03:14.253Z"
+  kind: "evidence"
+  summary: "Verified Workflow restoration coverage at ca4b50b6d on otto-0.10/phase-0. Full CI https://github.com/Draek2077/otto-code/actions/runs/42093960321 passed all21 jobs. Full Otto app acceptance https://github.com/Draek2077/otto-code/actions/runs/42093839046 passed75 journeys. Focused browser acceptance https://github.com/Draek2077/otto-code/actions/runs/42093842292 passed4/4: wide/compact original Graph authoring with retained CAS conflict/reload; real Graph workers/gates plus ordinary-chat coexistence and Artifact provenance; AI clarification remains Planning, private plan declaration, explicit start confirmation, worker execution and human gate rejection. Controlled runtime uses an isolated loopback OpenAI-compatible endpoint and daemon, no external model/account credentials. New exact Workflow files have targeted fixtures for engines/caps, ownership/lifecycle/permission ceilings, ordinary-runtime identity, atomic storage/legacy/recovery, templates/query trust, import/transfer receipts, UI forms and CLI parsing/following. Normal hooks and all workspace types pass; docs/testing.md indexes the journey. Editor-runtime42093838858, Nix42093848511 and Docker42093867045 pass. Desktop42093854628 and Android APK/AAB42093860938 remain pending; no physical-native/all-provider/live-vendor acceptance or full release claim."
+  source: "Otto 0.10 Workflows, exact source ca4b50b6d0a7ed6b0d857a1375534cacc4f8d854"
+  affects: ["workflows","otto-0-10-clean-paseo-rebuild"]
+- time: "2026-11-05T20:14:14.064Z"
+  kind: "evidence"
+  summary: "Final automated release/build gate passed without source changes: Desktop https://github.com/Draek2077/otto-code/actions/runs/42093854628 successfully built Windows/Linux/unsigned Intel Mac/unsigned Apple Silicon Mac and passed package smoke checks. Android https://github.com/Draek2077/otto-code/actions/runs/42093860938 successfully assembled, signed and verified both APK and AAB; artifacts otto-android-apk and otto-android-aab were retained. These use the same ca4b50b6d as full CI21/21, full app75/75, focused Workflows4/4, editor-runtime, Nix and Docker already recorded above. Nix evaluated lockfile exactly matches the committed lockfile (SHA2567B4E9CE1813907F5C21EEB44697C51F9BDF0F2317A8BDBFEAE1E2E98F6EFDCEE). Publishing was disabled; installed Otto and the existing iOS signing gate remain unchanged. F15 accepted restoration is complete7/7. This does not confirm Knowledge review status, close broader Otto reconstruction/other feature charters, or claim personal provider-account/physical-device acceptance."
+  source: "Final Workflow restoration build gate at ca4b50b6d0a7ed6b0d857a1375534cacc4f8d854"
+  affects: ["workflows","otto-0-10-clean-paseo-rebuild"]
+- time: "2026-11-12T19:43:15.697Z"
+  kind: "decision"
+  summary: "Philippe requested a basic Otto 0.10 overview, cleanup and a plan for real testing, then clarified that he will own the UI review. Reconcile verified integration/automation with pending UI/native/account acceptance, retain all selected and deferred scope, label historical counters/inventories correctly, and document the RT1-RT6 controlled-testing sequence without UI code changes or new features. Status returned to proposed for review."
+  source: "https://github.com/Draek2077/otto-code/commit/21a7510c26ad3e0194d89efb659f18f28b3a5586"
+  affects: ["otto-0-10-testing-readiness-and-ui-structure-review"]

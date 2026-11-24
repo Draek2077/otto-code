@@ -2,14 +2,14 @@
 id: "schedules"
 kind: "project"
 title: "Schedules"
-status: "confirmed"
+status: "proposed"
 tags: ["schedules","automation","workflows","artifacts","v0.9"]
-delivery_status: "in_build"
-progress_completed: 0
+delivery_status: "complete"
+progress_completed: 8
 progress_total: 8
-progress_unit: "0.9 delivery slices"
+progress_unit: "restoration checkpoints"
 created_at: "2026-08-27T00:35:27.555Z"
-updated_at: "2026-08-30T02:36:02.387Z"
+updated_at: "2026-11-09T02:52:36.236Z"
 ---
 # Schedules
 
@@ -17,204 +17,102 @@ updated_at: "2026-08-30T02:36:02.387Z"
 
 # Schedules
 
-## Outcome
+## Delivered Otto 0.10 contract
 
-Schedules run durable Otto work safely and explainably. Built-in targets are a single existing agent, a newly created agent, a saved AI or Graph Workflow, and a design-preserving artifact update. The 0.9 product contract names the three user-facing categories as **one agent**, **saved Workflow**, and **artifact update**; the existing new-agent scheduler remains a compatible execution form of the agent category.
+Schedules execute existing agents, new agents, saved AI Workflows, saved Graph Workflows and design-preserving Artifact data updates. Paseo's original ScheduleService remains the sole clock, claim, overlap, capacity, history, restart and settlement owner. Otto-owned ports compose target resolution and project storage before that clock starts. The original native runner and ordinary chat ownership remain intact.
 
-## 0.9 storage ownership and resolution
+The implementation lives in the Otto-owned server, plugin SDK, built-in plugin, app and CLI Schedule directories. Modified Paseo seams carry OTTO(schedules) markers. Software contracts are specified in docs/otto-schedules.md, indexed in docs/README.md; continuity and controlled acceptance are documented in docs/otto-continuity.md and docs/testing.md.
 
-Schedules are an independent durable category. They share the project-storage settings/resolver platform and its UX pattern with Knowledge, Artifacts and Workflows, but **they do not inherit Project Knowledge’s location and no category’s selection changes another category’s selection**.
+### Confirmed execution policy
 
-- **Host Settings:** supplies the global default for **Schedules** alone: repository or host-local.
-- **Project Settings:** supplies an independent Schedules override for that project. The project override wins; otherwise the Schedules host default applies.
-- **Repository location:** `<projectRoot>/.otto/schedules/`. Worktrees resolve to their owning project root, so a repository schedule collection is project-scoped rather than worktree- or user-scoped.
-- **Host-local location:** `$OTTO_HOME/project-schedules/<stable-project-key>/` on the selected daemon host. It is durable only for that project on that host; it is never a user-global bucket and does not imply cross-host synchronization.
-- Every schedule and run carries an origin store key/location as optional additive metadata. The resolver/registry uses that origin for existing records and the selected Schedules location only for new records.
-- Changing either setting selects the destination for newly created schedules only. It never silently moves, deletes, hides, merges, or retargets existing schedule records. Existing schedules remain discoverable, inspectable and executable from their origin store.
-- Copy or move between stores is an explicit user operation. Copy creates a distinct schedule and retains the source. Move first pauses and validates the source schedule, records an auditable migration receipt in both stores, retains a recoverable source record, and resumes only after the destination is durably committed. Active runs are never moved.
-- The UI identifies repository versus host-local storage and the owning daemon host. A remote client is told plainly that host-local schedules execute and remain on the selected host; unavailable-host state offers reconnect/select-host guidance rather than an implicit local copy.
+- Scheduled AI and Graph Workflows wait at their ordinary human approval gates. Scheduling never approves a gate; saved autopilot and authority require explicit review.
+- Failed attempts wait for the next cadence. There are no automatic execution retries between fires, even for proven pre-effect failures. Uncertain outcomes pause for explicit inspection.
+- Missing targets, changed authority, invalid canonical bindings and unsupported retained policies pause for deliberate repair. No fallback prompt, different target, provider or host is selected.
+- Cancellation addresses the exact Schedule/run pair. Capacity and per-Schedule ownership remain held until the underlying target owner settles. An unconfirmed cancellation is an unknown outcome, not proof of cancellation.
+- A durable claim whose settlement could not be published fences subsequent automatic and manual attempts. Restart preserves its audit and pauses for inspection rather than replaying effects.
 
-### Storage compatibility, platform and proof
+## Storage, continuity and explicit transfer
 
-- **Verified current implementation:** the scheduler constructs one `ScheduleStore` at `$OTTO_HOME/schedules`. It is host-global and is not resolved per project, so it remains a legacy source to read. Existing records are neither moved nor deleted by this charter.
-- **Desired 0.9 contract:** a shared project-storage resolver/registry chooses the Schedules store independently, carries origin metadata, aggregates legacy/discovered stores without duplicate execution, and exposes one centralized `server_info.features.*` capability gate for storage-settings UI. Old hosts retain legacy scheduling; new clients show one upgrade boundary for location controls, with no simulated fallback.
-- The shared platform owns stable project-key derivation, worktree-to-project-root resolution, safe path construction, selected-host identity, store discovery, origin metadata, explicit migration receipts and the central settings/capability pattern. Schedules owns schedule/run serialization, execution ownership, duplicate-run prevention across all discovered stores, and Schedule-specific migration/recovery UI.
-- A storage resolver failure, unreadable repository path, unavailable daemon host, duplicate legacy/origin identity, or incomplete explicit migration is a named, durable schedule error. It preserves the source record, suppresses duplicate firing, and presents recovery rather than falling back to another category’s store or a different host.
-- Required proof: two-project and worktree isolation; independent per-category defaults/overrides; repository and host-local placement; legacy `$OTTO_HOME/schedules` discovery; no silent mutation on settings changes; explicit copy/move recovery and audit; unavailable remote-host disclosure; old-client/new-daemon and new-client/old-daemon parsing; capability-upgrade UI; and a run-once/restart check proving a schedule fires exactly once across source, destination and legacy stores.
+Schedules have an independent host default and per-project override. They never inherit Knowledge, Artifact or Workflow location.
 
-## Verified current baseline
+- Repository: canonical project root/.otto/schedules/.
+- Host-local: selected daemon OTTO_HOME/project-schedules/persisted-directory-identity/.
+- Legacy host-global: OTTO_HOME/schedules/, discovered and controlled in place.
 
-- Durable schedule JSON records already persist cadence, target, status, max/expiry, bounded run history, executor metadata and output/error fields.
-- The persisted target schema is an additive discriminated union of `agent`, `new-agent`, and `workflow`; the create RPC also accepts legacy `self` and normalizes it to `agent`. The implemented `workflow` target currently names one saved **Graph** definition by `definitionId` and `projectRoot`; it does not yet schedule AI Workflow definitions.
-- The daemon validates five-field cron cadence and optional IANA time zones, computes/recomputes next fire times, supports create/list/inspect/logs/pause/resume/run-now/update/delete, serializes per-schedule writes, caps global concurrent runs at five, and prevents a schedule from overlapping itself.
-- Existing-agent runs fail closed when busy; target deletion/archival completes the schedule. New-agent runs create a hidden workspace, recover a daemon-interrupted run as failed, and either archive or reveal the workspace according to the stored policy.
-- Runs retry when the existing retry path permits it, retain at most 50 finished records unless a configured max-run count requires more, and preserve a transcript deep link through `agentId` for agent-backed runs.
-- The app provides an agent/new-agent form, cadence editor, multi-host/project/model/profile/worktree controls, cards, pause/resume/run-now/delete, last-run transcript access, and client-side missing-existing-agent indication.
-- A capability-gated saved Graph Workflow target now resolves only the selected project's `WorkflowStoreRegistry` `definitions/` store, requires full provenance equality, and enters the ordinary Graph Workflow launcher with schedule source metadata. It records immutable target and definition fingerprint/run linkage, while missing, mismatched, or unavailable targets pause for repair. The target has focused protocol, adapter, service, form-state, and durable-source proof. It does not yet support saved AI Workflows, editing/re-targeting an existing saved-Workflow schedule, artifact updates, or the independent Schedules-store migration.
+The canonical project metadata owner persists scheduleLocation and scheduleDirectoryName with revision checks. Worktrees resolve to their owning project. Settings changes select only new-record placement; existing records retain their exact origin and remain discoverable. Host-local data belongs to the selected daemon, never the browser filesystem.
 
-## 0.9 target and version contract
+Discovery and mutations recheck canonical bindings, actual bytes and duplicate identities. Invalid files are preserved with diagnostics. Atomic-replacement read conflicts are temporary observations; a scan cannot publish a partial missing-record index or overwrite a newer owned publication. Exact detail/history inspection shares the existing per-ID write queue. External editors remain outside that cooperating queue; the final compare/rename race is a documented filesystem boundary.
 
-Every persisted target is a tagged discriminated union. The tag is the sole dispatch boundary; target-specific configuration must not be inferred from prompt text.
+Copy settings creates a distinct paused identity with empty history and preserves source bytes. Move retains identity and verified full history, pauses the destination and retires the fenced source into recovery only after verification. Digest-bound receipts, exact source backups and stable operation IDs make uncertain transfer inspection/reconciliation explicit. Active runs cannot move or delete. Lock recovery requires inspected revisions and explicit confirmation that owning-host writers stopped. No inspection replays a transfer.
 
-- **Agent:** retain current existing-agent and new-agent compatibility, including profile/team run-time resolution and current busy fail-fast semantics until a dedicated policy decision changes it.
-- **Workflow:** persist a stable saved Workflow identity and its declared execution kind (AI or Graph), never a reconstructed prompt or a transient run id. Resolve the saved Workflow at fire time so a deliberate save affects later fires. Each run must stamp the exact resolved definition revision or immutable content fingerprint, title and kind into durable history before dispatch.
-- **Artifact update:** persist a stable artifact identity plus a structured update instruction/data payload. At fire time resolve the current artifact, then invoke only the design-preserving update path. A run must stamp the artifact identity and resolved design/data revision or fingerprint before mutation. Regeneration from prose is explicitly forbidden.
-- A deleted, inaccessible, incompatible, or revision-unresolvable Workflow/artifact is a named permanent target failure: the schedule pauses for repair rather than silently selecting another target, reconstructing a prompt, or consuming retries indefinitely. Repair chooses a valid target deliberately and retains the failed audit record.
+Unknown persisted fields and prior settings survive supported rewrites. Legacy flat Workflow references and unsupported profile/provider authority records remain byte-preserved, dormant and diagnosable; they are not silently converted or stripped. Restoring deferred profile/team ownership is outside this Schedule extension.
 
-Neither saved Workflow definitions nor artifact metadata currently supply an immutable execution revision. Their owning initiatives must expose a stable revision/fingerprint read at schedule execution; Schedules owns recording the resolved snapshot, not inventing a second source of target truth.
+## Target resolution and execution
 
-## End-to-end delivery inventory
+Every claim records its requested target, resolves through the canonical owning service immediately before effects, and durably stamps resolved identity, content revision/fingerprint, authority, executor and result link.
 
-### 1. Data, storage, migration
+- Existing/new agents use Paseo's provider and workspace owners. Atomic idle admission cannot steer a manual turn that wins a race. Legacy projectless native records remain controllable without an implicit project transfer.
+- Saved AI/Graph Workflows use their saved-definition review/start and lifecycle owners, explicit workspace and model seats. Content updates can affect later fires; topology, permissions, seats, caps, unknown authority or executable-template changes require review. AI Planning and human gates remain active until actual settlement.
+- Artifact updates resolve exact project/workspace and origin. Literal or explicitly selected provider/model instruction updates change only the validated otto-artifact-data JSON span. Every other presentation byte is preserved. Generation runs a fresh nonpersistent JSON-only completion, attaches no Otto tool catalog and denies surfaced permissions; it never falls back to HTML regeneration. Existing native-provider startup customization semantics remain unchanged. The separately deferred Context isolation investigation is not claimed complete.
 
-- Extend the durable schedule target union and create/update RPC inputs additively with `workflow` and `artifact-update` branches. Preserve all existing `agent`, `new-agent`, and create-only `self` records and requests.
-- Add typed run-target audit data: requested target, resolved target identity/title/kind, resolution revision/fingerprint, execution adapter, deep-link reference, and target-specific failure code/message. Keep new leaves optional for old run records.
-- Update name-plus-target idempotency identity, mutation serialization, pruning and summary projection for every tag.
-- Write an explicit persisted-record migration/read-normalization only when required by a concrete legacy shape. No destructive bulk rewrite; unknown or deleted targets remain inspectable user data.
+One Schedule cannot overlap itself and total admission remains bounded at five. Delayed or non-cooperative cleanup retains those bounded reservations and fences late starts. Shutdown revokes admission and waits without depending on a provider returning promptly.
 
-### 2. Daemon services and execution adapters
+## App, settings, CLI and MCP
 
-- Introduce a target resolver boundary that turns the persisted target into a validated, version-stamped executable target immediately before each run.
-- Keep one scheduler lifecycle for claiming, run record creation, overlap limit, retry, cancellation, completion, recovery, pruning and notifications. Target adapters may not implement their own clocks or run histories.
-- Implement adapters for existing/new agent, saved AI Workflow, saved Graph Workflow and artifact data/update. Workflow execution must go through the saved Workflow service/engine; artifact update must go through the artifact data/update service.
-- Define per-target cancellation propagation and startup-recovery behavior. A canceled schedule run must settle once, preserve its target audit, and never leave a hidden workspace/run/artifact operation orphaned.
-- Preserve existing scheduler compatibility: existing-agent busy remains explicit and non-interrupting; new-agent profile/team/worktree semantics remain unchanged.
+Schedules remains in main navigation. Upgraded hosts show a wide inventory/detail layout and compact adaptive selection, with host/project scope, target picker, native cadence controls, IANA zone and three daemon-computed next fires. Human approval, target review and unattended authority are distinct controls. Native targets reuse Paseo controls. AI/Graph and Artifact choices come from their existing libraries.
 
-### 3. Editor UX and cadence/policy
+Create, edit, pause, resume, Run once, cancel, delete, inspect, repair, Copy or move, storage controls and result links use the same daemon owners. Run once acknowledges admission without waiting for a human gate. Host Settings and Project Settings expose independent Schedule revision domains; the page Storage action shows both without moving records.
 
-- Add a target picker that clearly distinguishes Agent, saved Workflow and Artifact update, then shows only the target’s valid controls and a read-only resolved-target summary.
-- Show name, selected target, host/project boundary, cadence, IANA time zone and a deterministic next-run preview before save. Invalid cron, unavailable host/target, unsupported target kind, and unsafe unattended posture block submission with actionable copy.
-- Surface the unattended policy per target. Agent policy reuses the established provider/permission posture; Workflow and artifact-update adapters require an explicit policy review and must not silently bypass gates, spend/cap limits, or provider authorization.
-- Editing an existing schedule preserves its stored target/config unless the user intentionally changes it. Target repair is a dedicated flow, not an accidental default selection.
+Forms keep local drafts and origin revisions, serialize writes, retain failed/conflicted edits and never automatically resend or adopt peer revisions. Unconfirmed writes require exact operation inspection and explicit confirmed reload. Expanded transport/audit payloads keep ordinary actions reachable. Hidden views release read demand; accepted work stays daemon-owned.
 
-### 4. Protocol and capability compatibility
+One canonical query observer owns scoped, bounded changes. Read-only typed busy observations can retry at most twice through the existing query cache. This never retries execution, mutation or watches. Scope changes reset cursors, and lower authoritative counters after daemon restart are accepted.
 
-- Keep all wire additions optional/additive and use `z.discriminatedUnion("type", ...)` for all shared-tag target shapes. Wire schemas remain structural; normalization/resolution happens daemon-side.
-- Add a centralized `server_info.features.scheduleTargets` capability for the new target editor and mutation RPC shape, with the required dated `COMPAT(scheduleTargets)` cleanup marker. Old clients ignore fields; new clients on old daemons retain legacy agent scheduling and show the upgrade boundary for Workflow/artifact targets. No degraded fallback or prompt reconstruction.
-- New target-specific RPCs, if needed beyond extending existing schedule operations, use dotted request/response namespaces. Existing schedule RPC names remain compatible.
+The original native CLI remains available. Otto schedule targets operations provides progressive schema discovery and exact JSON inputs, requiring --approved for writes, one request and validated replies. Provider-neutral schedule_catalog and schedule_operation MCP tools reuse canonical host/project and provider approval, with bounded output and progressive discovery. Workflow-owned members cannot schedule recursively. These surfaces own no credentials, alternate provider, clock or executor.
 
-### 5. History, deep links, errors and recovery
+## History, time and protocol
 
-- Schedule detail/history shows cadence/time zone, requested and resolved target, resolution snapshot, last/next execution, executor, outcome, retry/cancel/overlap disposition and a deep link to the agent, Workflow run, or artifact update result when available.
-- Classify durable outcomes: succeeded, failed, skipped/busy, canceled, retrying, target-gone, target-version-unresolvable, authorization/policy blocked and daemon-recovery interrupted. Do not conflate a skipped overlap with a failed execution.
-- Target deletion, target-kind mismatch, disabled/unsupported Workflow, artifact absence, version mismatch and permission denial lead to named repair guidance. Retain the original schedule and audit trail.
+Full immutable history is retained beside bounded recent primary records. Paging defaults to 25 and accepts 1 through 50. Content-addressed index nodes and bounded immutable result parts preserve lifetime max-run counts and older audit/results. Corrupt/missing history excludes the record without rewriting data. Moves verify referenced history; copies intentionally start empty.
 
-### 6. Dependencies and boundaries
+History identifies requested/resolved target, content and authority revisions, cadence, executor, outcome, cancellation/recovery disposition and exact chat/Workflow/Artifact result link. Malformed or cross-host links never guess another collection. Explicit deletion retains a recovery record; a missing target does not erase evidence.
 
-- The shared project-storage settings/resolver platform must provide independent category defaults/overrides, project identity/root resolution, host selection, origin metadata, legacy discovery, explicit migration receipts and the centralized storage capability gate. It must not derive Schedules location from Project Knowledge.
-- [[workflows]] must provide saved AI and Graph Workflow lookup, executable saved-definition resolution, revision/fingerprint exposure, lifecycle deep links and cancellation semantics.
-- [[artifacts]] must provide stable metadata lookup, revision/fingerprint exposure and a design-preserving scheduled data/update entrypoint with result/deep-link semantics.
-- Provider authorization remains daemon-owned; Schedules neither stores credentials nor adds auth checks to tests.
-- Workflow and artifact adapters must meet provider-neutral capability parity; provider-specific native behavior is not a separate schedule target.
-- Keep the existing per-host scheduler store and run history. Cross-host remote dispatch, arbitrary webhooks, arbitrary shell commands, calendar UI and a general job-DAG engine are explicit non-goals for this charter.
+Five-field cron uses the existing implementation: default UTC or explicit IANA zone, skipped nonexistent spring-forward minutes and two matching repeated fall-back minutes. Existing interval/expiry/max-run behavior remains owned by the same scheduler.
 
-## Completion model
+The original closed transport target/status unions remain unchanged. Extended DTOs and authenticated dotted RPCs live in the Otto SDK/built-in route. The single optional server_info.features.scheduleTargets capability selects the new editor; old hosts retain native scheduling. New extended targets never degrade into legacy prompts. The dated COMPAT gate records v0.10 and removal target 2027-05-08. Both version directions retain structural parsing.
 
-### When the **plan** is complete
+## Acceptance and eight delivery checkpoints
 
-The plan is complete only when every entry in the delivery inventory has one of these forms: a verified implementation/proof obligation, an explicit non-goal, or a named dependency with its required contract and owning initiative. A plan is incomplete if it still relies on implied target semantics, undocumented recovery behavior, a generic “provider handles it” assumption, or an untestable user claim.
+Each of the five execution forms requires: schema/create/persistence; immediate canonical resolution with revision audit; execution through the owner; overlap/capacity/cancellation/restart/no-retry semantics; negative/repair paths; visible user controls; compatibility; and controlled daemon/engine evidence. Artifact proof additionally compares all presentation bytes outside the allowed JSON span.
 
-The plan is currently complete enough to guide the first 0.9 implementation slice, but it is not decision-complete. The unresolved decisions below must be settled before the affected adapter or editor work starts. They are deliberate gates, not permission to invent behavior during implementation.
+1. Independent storage, canonical project/worktree resolution, legacy discovery and duplicate exclusion.
+2. Discriminated internal target/audit schemas, unknown-field retention and unchanged legacy transport.
+3. Canonical target resolution, content/authority fingerprints and permanent repair outcomes.
+4. Saved AI/Graph execution, approval, Planning, cancellation and ordinary result links.
+5. Literal/instruction Artifact data updates with preserved design and exact result provenance.
+6. App editor, host/project settings, capability gate, local-draft safety, cadence and approval UX.
+7. Full history, transfer receipts, lock/unknown-outcome recovery, retained legacy diagnostics and progressive CLI/MCP.
+8. Required normal hooks, focused tests, real controlled browser journeys, broad CI and affected product builds.
 
-### When the **feature** is complete
+Cross-host dispatch, arbitrary webhooks/shell commands, calendar UI and a second DAG/job engine remain non-goals. Provider authorization stays with the owning daemon services. This charter does not claim all Otto restoration initiatives complete.
 
-The feature is complete only when all of the following are proved for every shipped target tag:
+## Verified delivery evidence
 
-1. **Target contract:** the schema is additive, discriminated, backward-compatible, and has a stable identity plus a requested and resolved audit representation.
-2. **Resolution:** the target resolves immediately before dispatch to an executable saved definition/artifact state with a durable revision or fingerprint; unresolved targets pause for deliberate repair.
-3. **Execution:** the appropriate owning service executes the target without prompt reconstruction, hidden fallback, or scheduler-owned credentials.
-4. **Lifecycle:** schedule overlap, global capacity, retry, cancellation, terminal settlement, daemon restart and deletion are each defined and tested for the target.
-5. **Policy:** unattended behavior, provider authorization, permission posture, cost/cap limits and project/host boundaries are visible and enforced before execution.
-6. **User control:** the editor creates and edits only valid target configurations; it previews the cadence/time zone and provides pause, resume, run once, inspect, delete and repair flows.
-7. **Audit and recovery:** history records requested/resolved target, revision, executor, outcome/disposition, error code and deep link; target disappearance never erases evidence or silently retargets.
-8. **Compatibility:** old clients and daemons retain legacy agent scheduling; new Workflow/artifact capability is centrally gated with no degraded fallback.
-9. **Documentation:** the end-user manual describes only proved capability, exact cadence/DST and unattended behavior, failure/recovery behavior and present limitations; operator/API references match the same contract.
-10. **Proof:** target-specific protocol, unit, T1 UI and controlled T2 daemon/live-provider evidence is green, including migration and negative paths.
+- Final integration source: f61be0d302dc4cb8465bcbd138ebf79817e4cf83 on otto-0.10/phase-0. All normal commit hooks passed, including all-workspace typechecking; working tree clean.
+- [Main CI](https://github.com/Draek2077/otto-code/actions/runs/42549959048): all 21 jobs passed, including Linux/Windows server suites, macOS file observation, CLI, app, desktop and eight broad Playwright shards. The formerly failing native Schedule shard passed 115 cases with its existing one skip.
+- [Full Otto app acceptance](https://github.com/Draek2077/otto-code/actions/runs/42549956593): 42 + 39 = 81 cases passed on final source. This includes six Schedule target journeys, CAS draft recovery, native legacy controls, approval/Planning/cancellation and design-preserving Artifact updates. Final wide/compact screenshots were inspected; no busy-error banner remained.
+- [Dedicated Schedule matrix](https://github.com/Draek2077/otto-code/actions/runs/42548171306): 14/14 passed at e046dd8f7d8ef57a3e2c89c9f06eb3bc5d666f1b (six extended journeys plus eight original native UI capability-floor cases). Subsequent f61 changes only Preview recovery/tests/docs; Schedule source is unchanged. The eight native cases also passed in final-source broad CI.
+- [Preview acceptance](https://github.com/Draek2077/otto-code/actions/runs/42549963995): 2/2 real wide/compact journeys passed after a measured initial-navigation recovery fix. The exact Preview host fixture passed 13/13, targeted format/lint/server typecheck and strict test-file typecheck. Healthy routes/process ownership are unchanged.
+- [Editor runtime acceptance](https://github.com/Draek2077/otto-code/actions/runs/42549956678): passed on final source.
+- [Desktop builds and installed smoke](https://github.com/Draek2077/otto-code/actions/runs/42549969915): Windows, Linux, unsigned macOS ARM64/x64 and restricted-user-namespace installed Linux acceptance passed. Apple signing gate passed; release/publish jobs skipped.
+- [Docker](https://github.com/Draek2077/otto-code/actions/runs/42549973830): both architectures and installed Host Browser acceptance passed, publication disabled.
+- [Nix](https://github.com/Draek2077/otto-code/actions/runs/42549978763): Linux daemon/desktop and Darwin desktop passed. Linux attempt one failed on external cache.nixos.org HTTP 416 after an interrupted download; same-source failed-job retry passed. No Nix source/policy change.
+- [Android APK/AAB](https://github.com/Draek2077/otto-code/actions/runs/42541877585): passed at d4e12e4ce693a433bf7c5553f502fcf2f4514d45. Subsequent differences are server-only registry/Preview recovery and test/CI/docs files; affected Android runtime app/SDK/protocol/dependency inputs are unchanged. This is retained matching-input proof, not a claim the APK was rebuilt at f61.
+- Focused Schedule owner, registry/history, target, transfer/recovery, form, observation, SDK/CLI/MCP and compatibility fixtures passed during implementation and in final CI. Local unchanged green tests were not rerun. Documentation and coverage entries describe the implemented behavior.
 
-Completion is therefore not “all three target cards render.” It is the conjunction of these ten gates for agent, saved AI Workflow, saved Graph Workflow and artifact-update execution.
+## Proof boundaries
 
-### Open product decisions that block affected work
+Local applications, models and daemons remained stopped; installed Otto was not changed. Controlled process/browser/provider fixtures and packaged smoke ran in GitHub CI. Provider-neutral owner integration is exercised with isolated loopback provider/real daemon paths, not paid vendor credentials or every native CLI against an external service. Browser compatibility-floor fixtures remove only the optional Schedule extension capability from real server_info frames; they are explicit synthetic old-contract tests, not proof an old binary ran.
 
-- **Unattended policy:** decide the user-visible permission, provider authorization, spend/cap and side-effect posture for Workflow and artifact-update runs. New-agent safe-unattended behavior is the existing reference, not an automatic inheritance.
-- **Retry semantics:** define eligible failure codes, retry count/backoff, whether retries preserve the same resolved target snapshot, and when a failed target must instead pause for repair. Target-gone, version-unresolvable and authorization/policy failures never retry indefinitely.
-- **Cancellation semantics:** define cancel authority, adapter propagation, timeout/escalation, terminal audit disposition and cleanup guarantees for an agent, Workflow and artifact operation. Deleting a schedule must not be treated as implicit successful cancellation.
-- **Run disposition presentation:** retain the closed legacy wire status values for compatibility, while selecting optional durable disposition/error-code fields and clear UI terminology for busy, capacity-delayed, skipped, retrying, canceled and daemon-interrupted runs.
-- **Target edit/version semantics:** confirm that deliberate future saves affect future Workflow/artifact fires, while each already claimed run retains the revision it resolved. Repair must always be an explicit user selection.
-- **Time semantics:** preserve the verified five-field cron rule: nonexistent spring-forward local times do not fire, and repeated fall-back matching local minutes fire twice. Decide the precise next-run preview copy and document it.
-- **Scope and remote-host recovery:** define user-visible handling for unavailable host, missing remote working directory, disabled provider and expired authorization. Each must name a repair action rather than silently redirecting work.
-- **Retention and deep-link durability:** define history retention, result retention and what remains inspectable after the target, workspace or schedule is deleted.
-
-## Documentation-readiness contract
-
-The existing public Schedules pages may describe the shipped agent-scheduling subset only: new agents, existing agents/self-heartbeats, cadence, controls and agent transcript history. They must not imply Workflow or artifact-update targets exist before their corresponding execution and proof gates pass.
-
-Before a 0.9 end-user guide can claim the complete feature, it must answer, in product language:
-
-- Which target is being scheduled, whether it is fresh or continuous work, and what state/version will execute.
-- How interval and cron cadence work, including IANA time zone, first-run behavior, spring-forward skip and fall-back duplicate-fire behavior.
-- What unattended work may do, which provider/host/project it uses, and how users resolve authorization or policy blocking.
-- What happens when the target is busy, unavailable, deleted, incompatible, over capacity, retried, canceled or interrupted by daemon restart.
-- Where users inspect durable history, output and target-specific deep links, and how they repair rather than recreate a broken schedule.
-- Current exclusions: no arbitrary webhook/shell/calendar/DAG automation and no silent fallback between targets.
-
-An honest guide is a release gate, not post-release polish.
-
-## Verification and evidence strategy
-
-### Baseline assertion audit
-
-Before extending the scheduler, convert every statement in **Verified current baseline** into a deterministic proof case and classify it **proved**, **disproved**, or **not yet covered**. Source inspection is supporting evidence, not proof.
-
-- Use persisted legacy record and wire fixtures to prove old-client/new-daemon and new-client/old-daemon parsing, including legacy create-only `self` normalization and optional new run-audit leaves.
-- Use a fake clock and deterministic store/service tests for interval first-fire behavior, five-field cron, default UTC, IANA time zones, next-fire recomputation, expiration and max-runs.
-- Prove the declared DST contract with exact spring-forward nonexistent-time and fall-back repeated-minute cases.
-- Prove per-schedule overlap prevention, global five-run capacity behavior, existing-agent busy non-interruption, new-agent safe-unattended hidden-workspace lifecycle, restart recovery, bounded history/pruning and transcript deep links.
-- Use controlled-daemon UI tests to prove every existing app action and indication that is claimed: create/edit, cadence controls, pause/resume/run once/delete, history and missing-target indication.
-
-Any discrepancy changes either the product contract or the baseline statement before new target work proceeds.
-
-### Per-target acceptance matrix
-
-Every executable target tag—existing agent, new agent, saved AI Workflow, saved Graph Workflow and artifact update—must pass the same matrix. A card rendering, a resolver returning an id, or a happy-path adapter invocation is not sufficient.
-
-1. **Create and persist:** valid editor/API/CLI creation persists the requested target without losing legacy compatibility.
-2. **Resolve and stamp:** a due fire resolves immediately before dispatch and durable history records requested target, resolved identity/title/kind, executable revision/fingerprint, executor and deep-link reference.
-3. **Execute:** the adapter uses its owning service/engine and produces the expected result without prompt reconstruction, unauthorized credential handling or hidden target fallback.
-4. **Lifecycle:** prove overlap, capacity, retry eligibility/exhaustion, cancellation, terminal settlement and daemon-restart behavior through deterministic tests.
-5. **Negative and repair:** prove busy, missing/deleted/incompatible target, unresolvable version, provider/auth/policy block and unavailable host/project behavior. Each retains audit evidence and exposes its named repair path.
-6. **User journey:** prove target selection, target-specific controls, cadence/time-zone preview, unattended posture, history/outcome copy, deep links and repair flows in controlled-daemon Playwright coverage.
-7. **Compatibility:** prove the central capability gate with old daemon/new client and old client/new daemon fixtures; Workflow/artifact support never degrades into a legacy prompt path.
-8. **Live controlled evidence:** run the target through a controlled daemon and real supported provider/engine after deterministic proofs pass.
-
-Artifact update has an additional non-negotiable proof: compare its preserved design structure before and after execution and show that the scheduled operation changed only the allowed data/update surface, never regenerated the artifact from prose.
-
-### Release evidence bundle
-
-Release proof is complete only when the charter links or records:
-
-- Targeted protocol, persistence, resolver, scheduler and adapter test results.
-- T1 controlled-daemon/Playwright evidence for every user journey and negative repair path.
-- T2 controlled daemon/live-provider or live-engine evidence for each executable target.
-- Cron/DST, overlap/capacity, retry, cancellation, restart recovery and deleted-target repair traces.
-- Revision/fingerprint and deep-link evidence for a successful and a failed run of each target.
-- A documentation claim review mapping each user-facing promise to a passing scenario. Unproved claims are removed or labeled as unavailable before publication.
-
-A target may be marked delivered only when its complete matrix and documentation mapping are proved; delivery progress must not advance for schema-only or UI-only partial work.
-
-## Delivery slices and proof
-
-1. **Storage resolution foundation:** shared project-storage resolver/registry integration; independent Schedules host default and project override; repository/host-local origin metadata; legacy global-store discovery; no-duplicate execution and compatibility proof.
-2. **Target contract foundation:** additive discriminated target and run-audit schemas, storage identity and compatibility tests. No public creation of a target until its resolver/adapter exists.
-3. **Resolution boundary:** shared target resolver, owning-service revision/fingerprint contract and permanent deleted/unresolvable target outcomes.
-4. **Workflow adapter:** saved AI and Graph Workflow execution, cancellation/retry/overlap/recovery semantics, run deep links and daemon/protocol proof.
-5. **Artifact-update adapter:** design-preserving update execution, revision audit, cancellation/recovery and artifact result deep links.
-6. **Target-aware editor:** target picker/forms, independent storage location controls/disclosure, cadence/time-zone preview, unattended posture, capability upgrade state and repair UX.
-7. **History and recovery journey:** durable target audit, storage origin/migration evidence, failure explanations, target-repair flow and accessible deep links across every target.
-8. **Release proof:** target-specific unit, protocol compatibility, T1 UI and T2 controlled daemon/live-provider evidence, including storage placement/migration, cron/DST time-zone cases, overlap, retry, cancel, restart recovery and deleted target repair.
-
-## Acceptance
-
-A user can create, edit, inspect, pause, resume, run and recover agent, saved AI Workflow, saved Graph Workflow and artifact-update schedules. Every run makes its requested and resolved target, target version, cadence/time zone, unattended posture, last/next execution, result and deep link unambiguous. Artifact-update schedules preserve the existing artifact design. Existing scheduler behavior remains compatible and no target silently falls back to a prompt, another target, or an unauthorized execution mode.
+Android and iOS have distinct proof boundaries: Android APK/AAB build evidence is retained for identical affected runtime inputs; iOS retains its existing credential/signing gate. No release, publish, tag, deployment or installed-app replacement occurred. User review/testing follows this completed phase.
 
 ## Timeline
 
@@ -307,3 +205,32 @@ A user can create, edit, inspect, pause, resume, run and recover agent, saved AI
 - time: "2026-08-30T02:36:02.387Z"
   kind: "evidence"
   summary: "2026-08-29: Reconciled Workflow storage lifecycle evidence. Schedule targets continue to resolve saved Graphs by project scope and recorded provenance rather than a daemon path or legacy fallback. The focused schedule target tests remain green alongside the new verified-transfer storage service; no Schedule delivery status changed."
+- time: "2026-11-08T13:28:14.110Z"
+  kind: "note"
+  summary: "Philippe selected the Schedule extensions restoration after the verified Workflow/Artifact ports. Current 0.10 inspection confirms only Paseo agent/new-agent execution is wired; historical 0.9 target/storage evidence is not current-product proof. Initial additive Otto contracts, legacy wire projections/queued mutation guards and injected single-scheduler lifecycle ports pass server typecheck plus 3 lifecycle, 5 boundary and 9 continuity fixtures. Full target adapters, category storage, reachable UI, CLI/MCP, CI/build and controlled product acceptance remain open. No app/daemon/model launches or installed-data writes."
+  affects: ["schedules"]
+- time: "2026-11-08T14:19:27.292Z"
+  kind: "evidence"
+  summary: "Backend restoration checkpoint committed and pushed to otto-0.10/phase-0 as 65a7061b7b8d0c3b50a22a212b7f23da8b5757cb. Normal pre-commit format/lint and ALL-workspace typecheck passed; separate strict Schedule, Workflow, Artifact and SDK fixture checks passed. Serial focused evidence accounts for 170 passing cases across 15 files plus 2 existing Windows platform skips in the core Schedule service file (71 passed, 2 skipped). Scope: separate Otto target/origin/audit schemas; unchanged legacy wire union with explicit projections and queued mutation guards; independent Schedule defaults/overrides/pinned host directories, bounded discovery, duplicate suppression, CAS writes and recoverable deletion; target-bound single-scheduler admission/claim/settlement ports; revocable bounded extended runtime; JSON-only Artifact data updates preserving design/CAS/provenance; saved AI/Graph Workflow prepare/start/cancel integration, authority fingerprint, and true Planning/gate settlement with demand-owned waits. No app/daemon/browser/native model launches or installed-home writes. Seam audit passes and upstream relay-facing files are unchanged. CI 42489158287, Otto App Acceptance 42489158218 and Editor Runtime Acceptance 42489158185 are RUNNING for this exact SHA, not yet green proof. Extended targets are NOT wired/advertised in bootstrap or reachable in the app; own RPC, CLI/MCP, editor/settings, migration/repair journeys, full product builds and controlled acceptance remain open. Delivery stays 0/8. The open unattended-approval and retry product choices remain pending; policy callbacks are explicit required owning ports, not silently chosen defaults."
+  source: "65a7061b7b8d0c3b50a22a212b7f23da8b5757cb"
+- time: "2026-11-08T14:52:55.456Z"
+  kind: "evidence"
+  summary: "Follow-up Schedule foundation changes are committed and pushed through 89c41becdc7faf8ba1ddc666b5939019f46f579a on otto-0.10/phase-0. Actual first CI failures in 65a7061b7 were corrected: SDK boundary export classification, native MCP queued-guard expectations, and a cross-platform directory-collision fixture. Their targeted fixtures pass (SDK 83; selected MCP 16; registry now15), with normal hooks clean. A measured nested-field regression was fixed by reusing the existing disk-only continuity merge; deliberate known-field removal and target-kind replacement remain explicit. Direct Artifact data-update source inspection now validates the claimed run's target and resolved artifact, owning host/project/location without requiring a chat or reinterpreting an edited current target. Changed Artifact service file32/32 passes; production plus strict Artifact fixture typechecks pass. Normal full-repo format, targeted lint, normal all-workspace precommit typecheck and seam audit pass; upstream relay boundary unchanged. Current exact-source CI42491841859 is QUEUED, App Acceptance42491841272 and Editor Runtime Acceptance42491841300 are RUNNING; these are not green evidence. Earlier superseded runs were canceled, not successes. No new product builds, local app/daemon/browser/model launches or installed-home writes. Extended Schedule adapters still are NOT composed/advertised/reachable in the app. Full UI/RPC/CLI/MCP/storage transfer/acceptance/build work and the unanswered unattended-approval/retry product choices remain open; delivery stays0/8. This evidence does not claim Schedule feature completion."
+  source: "89c41becdc7faf8ba1ddc666b5939019f46f579a"
+- time: "2026-11-08T19:07:31.444Z"
+  kind: "decision"
+  summary: "Philippe explicitly chose waiting for human Workflow approval and waiting until the next scheduled time after failure, twice in this conversation. Reconcile only these policy decisions; preserve the full feature scope and current 0/8 delivery boundary. Status returned to proposed for review."
+  source: "User decisions in the current Schedule extensions conversation, 2026-11-08."
+- time: "2026-11-09T02:51:00.855Z"
+  kind: "decision"
+  summary: "Reconcile the completed Otto 0.10 Schedule restoration against final-source CI, real controlled app journeys, required product builds and the user's confirmed human-approval/no-execution-retry policy. Replace stale 0.9 baseline/planning claims while retaining all eight acceptance checkpoints, compatibility, deferred legacy authority and proof boundaries. No review confirmation or release is claimed."
+- time: "2026-11-09T02:51:17.839Z"
+  kind: "note"
+  summary: "All eight Schedule restoration checkpoints are complete: independent storage, schemas/audit, canonical resolution, AI/Graph ownership and approval, Artifact data-only updates, visible UI/settings/capability, history/recovery/CLI/MCP, and final-source CI/build acceptance. Main CI 21/21 jobs, full app 81 cases, dedicated Schedule matrix 14 cases, Preview 2 cases, desktop/Docker/Nix and retained unchanged-input Android builds passed. Preserve proposed review status and documented iOS/vendor/legacy-policy limits; this completes Schedules, not every Otto initiative."
+  affects: ["schedules"]
+- time: "2026-11-09T02:51:34.597Z"
+  kind: "evidence"
+  summary: "Completed Schedule integration at f61be0d302dc4cb8465bcbd138ebf79817e4cf83, otto-0.10/phase-0. Normal hooks include all-workspace typecheck; clean source was pushed. Final main CI: https://github.com/Draek2077/otto-code/actions/runs/42549959048 (21 successful jobs); app: https://github.com/Draek2077/otto-code/actions/runs/42549956593 (42+39=81 cases); editor: https://github.com/Draek2077/otto-code/actions/runs/42549956678 ; Preview: https://github.com/Draek2077/otto-code/actions/runs/42549963995 (2 cases). Final app screenshots inspected wide and compact. Schedule matrix: https://github.com/Draek2077/otto-code/actions/runs/42548171306 (14 cases at e046, unchanged Schedule source); native compatibility cases also passed final CI shard 6 (115 passed, existing one skip).\n\nFinal affected builds: desktop https://github.com/Draek2077/otto-code/actions/runs/42549969915 (Windows/Linux/unsigned MacARM64+x64/installed Linux smoke), Docker https://github.com/Draek2077/otto-code/actions/runs/42549973830 (both architectures and Host Browser), Nix https://github.com/Draek2077/otto-code/actions/runs/42549978763 (Linux daemon/desktop and Darwin desktop). Nix Linux first failed an external cache download HTTP416; same-source failed-job retry passed. Android APK/AAB https://github.com/Draek2077/otto-code/actions/runs/42541877585 is d4 source; later differences are server-only and tests/CI/docs, leaving Android runtime inputs unchanged. iOS retains agreed signing gate. No publishing/release/installation/local runtime launches.\n\nMeasured CI issues were corrected without weakening product behavior: CLI CRUD fixture cadence moved away from an active boundary; original native UI assertions retained behind a synthetic optional-capability floor instead of disabling built-ins or skipping tests. Independent Preview failure retained HTTP200+ready-server evidence while Chromium showed ERR_CONNECTION_REFUSED; source confirmed initial navigation before listening plus reuse of the failed tab. f61 explicitly retries that observed error page in the same designated tab only, preserving healthy navigation/process ownership and surfacing failed recovery without automatic loops. Targeted Preview host tests13/13 and strict fixture typecheck passed; no stale failed-run proof is reported as green.\n\nBoth confirmed policies hold: ordinary Workflow human gates wait and failed Schedule attempts wait next cadence, with unknown effects paused for inspection. All eight checkpoints reconciled complete while review stays proposed. Deferred profile/team legacy authority remains intact/dormant; Context startup-hook isolation and other Otto projects are not claimed complete."
+- time: "2026-11-09T02:52:36.236Z"
+  kind: "evidence"
+  summary: "Closure validation: the global Knowledge link linter reports six references from Artifacts/E2E pages to Schedules, Workflows, Kanban and the historical release charter. None originate from the reconciled Schedules statement. Review remains proposed as required; no unrelated page, confirmation status or archive was changed to suppress those diagnostics. These are Knowledge catalog cross-reference diagnostics, separate from the successful product CI/build gates."

@@ -5,7 +5,7 @@ title: "Sidebar Active Team switcher is centered"
 status: "confirmed"
 tags: ["ui","sidebar","agent-teams","layout"]
 created_at: "2026-08-21T15:31:32.496Z"
-updated_at: "2026-08-22T18:23:37.173Z"
+updated_at: "2026-11-24T16:33:19.734Z"
 ---
 # Sidebar Active Team switcher is centered
 
@@ -33,3 +33,7 @@ When the Active Team switcher is placed in the left sidebar, its full-width trig
   kind: "decision"
   summary: "User requirement, 2026-08-22: restore left alignment for the Team picker in both compact and wide sidebar layouts."
   source: "User requirement, 2026-08-22"
+- time: "2026-11-24T16:33:19.734Z"
+  kind: "evidence"
+  summary: "User asked for symmetric sidebar padding on 2026-11-24. The local Otto 0.10 fix gives the Team trigger the sidebar's existing shortcut row insets and anchors the desktop popup at the trigger's width. Real browser fixtures at 1280 and 390 pixels verified the matching insets, and the desktop fixture verified the popup width with a long Team name. Both still switched the active Team and preserved the open chat's Profile."
+  source: "packages/app/e2e/browser/otto-agent-teams.spec.ts"

@@ -3,15 +3,14 @@ id: "structural-diff-review-experience"
 kind: "project"
 title: "Structural diff review experience"
 status: "confirmed"
-tags: ["developer-experience", "diffs", "refactor", "code-review", "difftastic"]
+tags: ["developer-experience","diffs","refactor","code-review","difftastic"]
 delivery_status: "partial"
 progress_completed: 2
 progress_total: 6
 progress_unit: "delivery slices"
 created_at: "2026-08-13T00:07:23.667Z"
-updated_at: "2026-08-13T06:59:37.644Z"
+updated_at: "2026-11-20T19:14:05.454Z"
 ---
-
 # Structural diff review experience
 
 <!-- compiled_truth -->
@@ -307,3 +306,13 @@ The full Changes viewer is the current quality benchmark. Refactor/Refine must b
   summary: "Verified 2026-08-13: Refine proposals now retain their pinned base and generated proposal snapshots and pass a canonical DiffDocument into the shared viewer, enabling real parser-safe Structural review rather than hunk reconstruction. Changes and File History explicitly preserve their established legacy Line bodies whenever Structural is unavailable, avoiding a visually different generic fallback. App lint/typecheck pass; fast structural corpus remains 89 green. Refine set test passed; existing refine-hunks trailing-newline property failed independently and was not changed as part of diff work."
   source: "implementation"
   affects: ["refine-structural-review","fallback-parity"]
+- time: "2026-11-20T18:19:39.626Z"
+  kind: "evidence"
+  summary: "On the Otto 0.10 phase branch at `9a427240eec061f07871698dd0797a1625bdda7e`, commit review, working Changes, File History, Refine, and edit cards use the shared structural planner. The full review surfaces retain Paseo's review coordinates and viewport. The original 0.9 default presentation survives upgrade in the Changes preference record. Local browser checks covered the commit switch, formatting-only working review on real Git contents, File History with blame, and reviewed Refine write. A source replay of the eight retained Difftastic pairs matched all eight actual 0.9.35 row-count outputs (paired changes, shared code rows, additions, removals). The checked-in 0.9.35 assertions for contiguous and nested JavaScript differ from the historical runtime itself. A local Node planner-only measurement over 16 distinct snapshots at 7,921 candidate pairs measured 18.53 ms median and 66.98 ms maximum, including the cold sample. Unit cases enforce source, text-work, candidate, and cache bounds. Native runtime and accessibility acceptance, formal heap thresholds, and direct Difftastic quality comparison remain open."
+  source: "Otto 0.10 phase branch and local verification"
+  affects: ["structural-diff-difftastic-level-release-gate"]
+- time: "2026-11-20T19:14:05.454Z"
+  kind: "evidence"
+  summary: "`50c15c33dc58ff20f535713cc30724a91680196d` places Line/Structural in the existing Changes, commit, and File History toolbars. The prior viewport regression passed its unchanged Windows browser test. Compact commit review preserves the presentation switch. Settings restores the eleven original sample pairs with an independently controlled Old diff/New diff preview. Rendered browser cases cover Changes using actual Git snapshots, File History plus blame, Refine with selected writes, and captured before/after tool edits. The eight pinned corpus tests assert the row counts replayed from v0.9.35 as well as both source sequences.\n\nA checksum-verified portable [Difftastic 0.72.0](https://github.com/Wilfred/difftastic/releases/tag/0.72.0) was run against the eight pairs, eleven Settings samples, YAML, syntax errors, an unknown type, and an oversized diff. A separate pair of actual PNGs was classified as Binary by Difftastic and by Git. In the formatting sample Difftastic reported unchanged; Otto labeled the formatting and retained its source rows. The old reorder example emitted move blocks. Difftastic used text for parse, unsupported-type, and graph-limit cases; Otto reported those as explicit reasons to use Line. A Node-only run over 64 distinct near-limit documents (7,921 pairs each) measured 9.21 ms warm median and 23.4 ms maximum. Post-GC heap samples every eight documents stayed between 16.736 and 16.809 MiB for this process and fixture mix. CLI timings include process startup; the two implementations were not speed-ranked. Native selection and accessibility, and a full reviewer-quality comparison across surfaces, are still open."
+  source: "Otto 0.10 phase commit 50c15c33d and local reference benchmark"
+  affects: ["structural-diff-difftastic-level-release-gate"]

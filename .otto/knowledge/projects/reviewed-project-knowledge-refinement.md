@@ -9,7 +9,7 @@ progress_completed: 4
 progress_total: 5
 progress_unit: "milestones"
 created_at: "2026-08-26T23:59:34.477Z"
-updated_at: "2026-08-27T02:57:43.222Z"
+updated_at: "2026-10-25T23:59:36.659Z"
 ---
 # Reviewed Project Knowledge refinement
 
@@ -17,75 +17,42 @@ updated_at: "2026-08-27T02:57:43.222Z"
 
 # Reviewed Project Knowledge refinement
 
-## Outcome
+## Outcome and final product direction
 
-A person can review an atomic Project Knowledge record as rendered Markdown, select text, attach one or more in-memory **Replace** or **Refine** annotations, and open a dedicated Refine job tab. The job produces a whole-document proposal and a base-pinned, per-hunk diff. Nothing changes until the person accepts selected hunks.
+Review remains inside the Project Knowledge article. The final user direction in this page's historical timeline supersedes the earlier proposal for a generic Refine job tab. A person selects rendered article text, adds in-memory **Replace** or **Refine** annotations, generates a proposal, and keeps or drops individual hunks against the original saved base. Nothing is written until an explicit, reason-bearing human application.
 
-Applying the accepted result updates only the record's current understanding through a daemon-owned conditional transaction. When the record was confirmed, that same transaction returns it to proposed and records the refinement in the append-only timeline. The updated record is therefore no longer injected into normal future agent context until a human explicitly confirms it again.
+The mutable target is only a record's current-understanding body or one of the six root bodies. Record metadata, title, evidence, history and review controls remain outside generation authority. Applying changed confirmed truth atomically returns it to Draft through the canonical daemon operation. It stays out of normal confirmed Knowledge discovery until a human confirms it again. Roots retain their existing lifecycle and repository history; no record status or invented author identity is added.
 
-## Scope
+## Otto 0.10 implementation
 
-- Atomic Project Knowledge records across Knowledge, Projects, and References.
-- The mutable target is the record's compiled truth/current-understanding body only.
-- Evidence, metadata, timeline, title, and status controls remain outside the AI rewrite blast radius.
-- Review annotations are session-local to the active Project Knowledge article. They are discarded after entering Refine, on explicit discard, or after an acknowledged leave-with-discard confirmation.
-- The Project Knowledge tab and the Refine tab coexist. Applying a result refreshes the still-open Knowledge tab.
-- The six Project Knowledge root pages are included. They use the same review and Refine experience, but apply their result as a conditional daemon-owned root-body update. Root pages retain their existing updated timestamp and, when the store is repository-owned, repository Git history; v1 does not invent a per-edit timeline or author record where Otto has no reliable identity source. They do not gain a new proposed/confirmed lifecycle.
+The reviewed restoration is integrated on `otto-0.10/phase-0`, not left in a child workspace. The article owns Review mode, source-backed rendered selection, editable annotations and model choice through the existing combined provider/model selector. Web annotations use quiet semantic highlights and markers with a trigger-anchored editor; compact/native presentations use existing sheets and source-block markers. Exact native text selection is accepted only when its source quote is uniquely resolvable. Ambiguous or transformed text is refused instead of guessing an edit location.
 
-## Interaction design
+An installation-owned review registry retains local article-scoped drafts across route departure and return. It is bounded to sixteen reviews and is neither a canonical data cache nor durable review-comment storage. Explicit discard removes a review. Leaving the route never applies it. Hide/unmount invalidates late generation, confirmation and write acknowledgments; an unknown write outcome requires reopening saved truth before another application.
 
-1. **Start review.** The Project Knowledge document toolbar enters Review mode. A compact review strip identifies the active article, shows annotation count, and exposes its one accent action, **Refine with AI**.
-2. **Annotate rendered text.** Selecting readable text reveals a trigger-anchored choice with two explicit modes:
-   - **Replace**: the user supplies the exact replacement. It is a direct, protected correction; the model must not rewrite it.
-   - **Refine**: the user supplies an instruction describing how the selected wording or claim should improve.
-3. **Make intent legible.** Replace and Refine annotations use distinct, theme-aware semantic highlight tints and matching slim edge markers. They are quiet in the reading state, clear when selected, and editable or removable from their anchored popup. Destructive red is reserved for discarding/deleting, never for an annotation kind.
-4. **Review the proposal.** Refine opens a job tab titled for the article review. The existing Refine hunk review is reused: the diff remains against the original base on every regeneration, comments drive the prompt, and acceptance remains explicit.
-5. **Apply safely.** A record application checks the record's pinned update timestamp, changes only the statement, appends a concise review provenance entry, and demotes confirmed to proposed. A root application conditionally replaces only the root body. Root pages have no review-status transition; their durable history is repository Git when the store is repository-owned. A stale target is not overwritten. The Knowledge tab refreshes and clearly states when a refined record requires human confirmation before future agents reuse it.
+**Replace** is the exact user correction, including an explicit empty replacement for deletion. **Refine** is an instruction for its selected source range. Both kinds can be added, edited and removed without leaving the article. Annotation kind is labeled as well as tinted. Overlapping, stale or ambiguous ranges cannot generate a proposal.
 
-## Data and safety model
+The daemon's additive capability and dotted `knowledge.project.refinement.propose.request` boundary validate the canonical project binding, pinned target digest, working article and exact source scopes. The provider-neutral structured-generation service uses the chosen provider/model first and the host's normal fallback order, without persisting an internal chat. Only Refine scopes and short surrounding context enter generation. Direct replacements are protected and excluded from model authority; unknown, duplicate or missing returned scope IDs are rejected. No generation step writes Knowledge.
 
-Each in-memory annotation holds its kind, selected prior text, a small surrounding quote for unambiguous matching, and its replacement or instruction. It deliberately does not persist DOM ranges or source offsets. A direct replacement is resolved and protected before generation; an ambiguous or unavailable quote blocks generation and asks the reviewer to widen or revise the selection.
+The complete proposed body is shown as a diff against the original saved base. Per-hunk keep/drop decisions control the result; **Refine kept result** starts another annotation round using the kept working body while retaining that original diff base. Line/word diff work is bounded. Oversized matrices or long individual lines become one explicit whole-article decision rather than truncating content or pretending to provide fine-grained hunks. CRLF and trailing-newline behavior are preserved.
 
-The Refine prompt is composed on the daemon. It receives the article statement and review directives as data, treats the article as untrusted content, must return only the requested document, and may not invent new record fields or rewrite protected direct replacements. Current truth, evidence, metadata, and history are separately framed read-only context when useful.
+**Apply kept changes** requires a reason and human confirmation, then calls the existing conditional record/root write. Peer changes reject application. Metadata, evidence, unknown fields and earlier provenance survive. A changed confirmed record is demoted and the canonical article refreshes; roots remain roots. No model or MCP tool automatically confirms a conclusion. There is no generic file-accept path for this origin.
 
-No raw file write may update Project Knowledge. The Refine session's normal file accept path is not used for this origin.
+## Verification
 
-## Architecture
+Implementation commits `0c98560ef`, `6e3fad26c` and `edbd2cb49` have focused backend, actual host, app-model/diff/source-owner and additive-capability evidence: 60 cases, strict fixture declarations, owning builds/typechecks and normal hooks. A real React-compiler transform exposed an incorrectly memoized external-store lookup; the selected review model is now the actual useSyncExternalStore snapshot.
 
-- Introduce a generic, pure review-directive model in the Refine domain so future surfaces, including Context Management, can reuse its prompt and selection semantics without inheriting Project Knowledge UI.
-- Add a capability-gated Project Knowledge refinement entry point and a new dotted request/response pair for atomic application. Do not create a fallback on older hosts.
-- The daemon owns conditional mutation, record status demotion, and root-body writes. The client owns ephemeral annotation state and tab navigation.
-- Existing Refine owns proposal generation, regeneration, hunk grouping, per-hunk keep/drop decisions, and the no-write-before-accept invariant.
-- The Project Knowledge panel owns document rendering, Review mode, annotation interaction, and reloading after application.
+At exact `edbd2cb497bd940556d9c249c59f98759cec1439`, [all 21 CI jobs passed](https://github.com/Draek2077/otto-code/actions/runs/40244667189), [all 38 app journeys passed](https://github.com/Draek2077/otto-code/actions/runs/40244666232), and [all sixteen Knowledge journeys passed](https://github.com/Draek2077/otto-code/actions/runs/40244669923). The new wide and compact rendered journeys exercise actual DOM selection, note editing, proposal generation for direct replacements, no write before application, hunk dropping, declined/accepted confirmation, shared MCP parity, preserved metadata/history, Draft demotion, and stale root blocking after an external edit. Downloaded screenshots were inspected for article gutters, constrained wide layout, theme tints and visible diff controls.
 
-## Delivery sequence
+These are real browser/isolated-daemon and injected provider-boundary proofs. They do not establish a live model response, native selection/animation/device acceptance, every theme, or current-source product builds. Newer unrelated Kanban/helper revisions require their own CI evidence. The final acceptance checkpoint remains open; the feature is not marked complete by these results.
 
-1. Establish the types, review-session reducer, quote-resolution helpers, direct-replacement protection, and focused tests.
-2. Build the Project Knowledge Review mode and its polished rendered-document annotation affordances.
-3. Extend the Refine job origin and prompt pipeline for Knowledge review directives, preserving the normal Refine tab's established diff experience.
-4. Add the capability-gated daemon application RPCs, atomic record confirmed-to-proposed transition, conditional root-body write, provenance text, stale-write behavior, and client refresh.
-5. Verify interaction, accessibility, compact layouts, theme states, stale/error states, and documentation.
+## Retained acceptance and limits
 
-## Acceptance criteria
-
-- A reviewer can add, edit, and remove both annotation kinds without leaving the rendered article.
-- Replace and Refine are visibly distinct in all supported themes and remain legible without relying on color alone.
-- Replace text reaches the final proposal unchanged; Refine instructions affect the relevant text without widening the editable target beyond the statement.
-- The reviewer sees and controls every hunk before application; closing the Refine tab changes nothing.
-- Applying a refinement to a confirmed record atomically updates it, writes timeline provenance, and sets it to proposed.
-- Applying a stale proposal never overwrites newer Knowledge.
-- A proposed refined record is excluded from normal future Knowledge injection until a human explicitly confirms it.
-- Root-page refinements change only the body; their updated timestamp and repository Git history remain the v1 audit trail. They do not present a record-status control.
-- The originating Project Knowledge tab refreshes after a successful application and shows the resulting proposed status for records or updated state for roots.
-- Focused unit, browser, daemon/protocol, and relevant E2E coverage pass; targeted lint and typecheck pass.
-
-## Deferred
-
-- Durable review-comment threads.
-- Review annotations that survive leaving an article.
-- Cross-article / multi-record refinement working sets.
-- Multi-person pending revision promotion.
-- Context Management review annotations. Its future reuse is enabled by the shared directive model, not included in this delivery.
+- The reviewer sees and controls every hunk; generation, route departure and discard never change saved truth.
+- Direct corrections stay exact and model edits stay within approved prose scopes.
+- Confirmed records become Draft on changed application and require explicit human reconfirmation.
+- Stale targets never overwrite newer Knowledge; roots gain neither a status control nor invented author/timeline semantics.
+- Desktop and compact UI, keyboard/accessibility, supported themes, native behavior and exact-source CI/build evidence remain part of final product acceptance.
+- Durable comment threads, multi-article working sets, multi-person pending promotion and F05 Context Management are deferred. This implementation does not restore those separate features.
 
 ## Timeline
 
@@ -123,3 +90,7 @@ No raw file write may update Project Knowledge. The Refine session's normal file
   kind: "note"
   summary: "Dedicated reviewed-Knowledge refinement, source-anchored annotation UI, two-pass proposal/apply flow, and Markdown authoring are implemented and pass focused verification. The final rendered interaction pass remains pending because this session has no in-app browser available."
   affects: ["reviewed-project-knowledge-refinement"]
+- time: "2026-10-25T23:59:36.659Z"
+  kind: "decision"
+  summary: "Reconcile the authorized Otto 0.10 restoration with verified implementation and rendered acceptance on edbd2cb49. Preserve the user's final dedicated Knowledge direction from the existing timeline; retain native/live-model/final-product gates and do not confirm or mark the feature complete."
+  source: "Commits 0c98560ef, 6e3fad26c, edbd2cb49; GitHub Actions 40244667189, 40244666232, 40244669923; existing user-directed dedicated Knowledge timeline."

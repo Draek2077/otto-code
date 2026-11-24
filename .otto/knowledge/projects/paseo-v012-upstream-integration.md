@@ -9,7 +9,7 @@ progress_completed: 0
 progress_total: 2
 progress_unit: "merge steps"
 created_at: "2026-10-19T19:13:43.404Z"
-updated_at: "2026-10-20T13:25:42.129Z"
+updated_at: "2026-11-19T14:12:08.942Z"
 ---
 # Paseo v0.12 upstream integration
 
@@ -18,6 +18,10 @@ updated_at: "2026-10-20T13:25:42.129Z"
 # Paseo v0.12 upstream integration
 
 Bring Otto from its Paseo v0.8.0 base (b8e24677e, merged 2026-09-13) up to Paseo v0.12.x, following docs/upstream-merges.md: merge by SHA at stable tags, in an isolated branch, adopting the new upstream owner where it supplies a behavior and keeping Otto features through narrow Otto-owned seams ([[upstream-mergeability-through-otto-owned-seams]]).
+
+## Where the current port is tracked
+
+The two-step merge proposal below records the original approach. The integration branch instead starts from the clean Paseo v0.12.0 tree at `cafe4b01c8522ff39560241c5deb01427dc8dc5b`. The current source audit, remaining scope decisions, upgrade/device acceptance, and main-landing gates are tracked in [[otto-0-10-clean-paseo-rebuild]]. The original merge-step count does not measure that work.
 
 ## Why now
 
@@ -69,3 +73,7 @@ Rationale: a single jump resolves 915 contested files once and two steps resolve
   kind: "reversal"
   summary: "Superseded on 2026-10-20 by the decision to rebuild Otto 0.10.0 on a clean Paseo base ([[otto-0-10-rebuilds-on-clean-paseo]], project [[otto-0-10-clean-paseo-rebuild]]). The rival-feature audit and hazard analysis on this page remain useful input to the Phase 1 feature manifest."
   affects: ["paseo-v012-upstream-integration"]
+- time: "2026-11-19T14:12:08.942Z"
+  kind: "decision"
+  summary: "Point the historical two-step upstream proposal to the existing clean-Paseo rebuild plan that now owns parity and main landing."
+  source: "Verified Git commit ancestry for upstream cafe4b01c, origin/main 95a19522a and candidate c25203ce"
