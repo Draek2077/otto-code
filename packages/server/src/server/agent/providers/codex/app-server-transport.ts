@@ -9,8 +9,8 @@ const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;
 const APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS = 2_000;
 const APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS = 1_000;
 const STDERR_BUFFER_LIMIT = 8192;
-// V8 cannot build strings much past 2^29 characters, and appending past that throws an uncaught
-// RangeError inside the stdout "data" handler, killing the daemon worker. A resumed thread with
+// OTTO(codex-history): V8 cannot build strings much past 2^29 characters. Doing so throws an
+// uncaught RangeError in the stdout "data" handler, killing the daemon worker. A resumed thread with
 // weeks of history can exceed it in a single JSON-RPC line, so stop well short of the limit.
 const DEFAULT_MAX_STDOUT_LINE_LENGTH = 256 * 1024 * 1024;
 const LOGGED_LINE_PREVIEW_LENGTH = 500;

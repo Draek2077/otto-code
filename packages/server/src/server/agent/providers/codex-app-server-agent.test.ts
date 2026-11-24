@@ -5471,6 +5471,7 @@ describe("Codex app-server provider", () => {
     ]);
   });
 
+  // OTTO(codex-history): cover bounded restoration through the production session.
   test("loads only the latest page of a paginated Codex thread's history", async () => {
     const session = createSession();
     const requests: Array<{ method: string; params: unknown }> = [];

@@ -2149,8 +2149,8 @@ async function loadCodexThreadHistoryTimeline(params: {
   return { timeline, subAgentRoutes };
 }
 
-// Restored history covers only the latest turns. A long-running thread can hold hundreds of
-// turns and hundreds of megabytes of tool output, which must not be loaded to continue the chat.
+// OTTO(codex-history): restore only the latest turns. A long-running thread can hold hundreds of
+// turns and megabytes of tool output that aren't needed to continue the chat.
 const CODEX_HISTORY_TURN_LIMIT = 20;
 
 async function readCodexThread(
@@ -4097,8 +4097,8 @@ export class CodexAppServerAgentSession implements AgentSession {
 
   private async ensureThreadLoaded(): Promise<void> {
     if (!this.client || !this.currentThreadId) return;
-    // Only the resolved sandbox is read from the response; history is loaded separately, a page
-    // at a time. Without this Codex returns the whole thread as one message.
+    // OTTO(codex-history): only the resolved sandbox is read here. History is loaded separately,
+    // a page at a time. Without this Codex returns the whole thread as one message.
     const params: Record<string, unknown> = { threadId: this.currentThreadId, excludeTurns: true };
     const developerInstructions = composeSystemPromptParts(
       this.config.systemPrompt,

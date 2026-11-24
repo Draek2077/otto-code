@@ -60,6 +60,7 @@ describe("Codex app-server transport", () => {
     child.stdin.end();
   });
 
+  // OTTO(codex-history): keep oversized Codex responses from bringing down the daemon.
   test("closes the app-server instead of crashing when a line exceeds the size limit", async () => {
     const child = createCodexAppServerChildProcess();
     const client = new CodexAppServerClient(child, createTestLogger(), () => ({}), {
