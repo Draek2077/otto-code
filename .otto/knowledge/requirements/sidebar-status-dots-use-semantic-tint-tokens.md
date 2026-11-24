@@ -2,20 +2,22 @@
 id: "sidebar-status-dots-use-semantic-tint-tokens"
 kind: "requirement"
 title: "Sidebar status dots use semantic tint tokens"
-status: "confirmed"
+status: "proposed"
 tags: ["ui","sidebar","workspace","theme","status","tints"]
 created_at: "2026-08-21T23:33:21.535Z"
-updated_at: "2026-08-25T16:31:10.882Z"
+updated_at: "2026-11-17T23:42:28.416Z"
 ---
 # Sidebar status dots use semantic tint tokens
 
 <!-- compiled_truth -->
 
-Workspace sidebar and workspace-row status indicators use the shared semantic theme tokens for their status colors: success/green uses `theme.colors.statusSuccess`, failure/red uses `theme.colors.statusDanger`, needs-input/amber uses `theme.colors.statusWarning`, and running uses `theme.colors.statusInfo`. They must not read a separate dot-only palette.
+Workspace sidebar and workspace-row status indicators use the shared semantic theme family: success/green uses `theme.colors.statusSuccess`, failure/red uses `theme.colors.statusDanger`, and needs-input/amber uses `theme.colors.statusWarning`. Running activity is blue. Otto 0.9 uses `theme.colors.statusInfo`; the clean Paseo 0.12 base has no such token, so Otto 0.10 projects the released light/dark blue in its owned chat-identity palette without changing the base theme. Do not introduce separate warning, failure or success dot palettes.
 
 Workspace status is dual-state. The centered dot represents the workspace’s highest-priority status, while a spinner independently represents whether any root chat in that workspace is active. A needs-input or failed dot therefore remains visible inside the spinner when another chat is running; activity must not replace or downgrade the status signal.
 
 A green completed-result dot is unread attention, not workspace navigation state. Opening or returning to its workspace, including restoring app visibility, must never clear it. It remains until the user deliberately activates the agent tab that produced it, or otherwise explicitly engages that chat.
+
+Workspace activity rings stay blue and have a visible center dot. Chat-tab and in-chat working spinners instead use the explicitly assigned Agent Profile/Personality's saved two glow colors; unassigned chats use Otto's default theme pair. A shared provider or model never implies an assigned Profile. Status glyph colors retain their semantic meaning independently of the working spinner pair. Loading, indexing or stale aggregate running status alone must never animate workspace chat activity.
 
 ## Timeline
 
@@ -50,3 +52,7 @@ A green completed-result dot is unread attention, not workspace navigation state
   kind: "decision"
   summary: "User clarified that a workspace result must remain visible until its producing chat tab is deliberately activated; verified implementation now distinguishes workspace-route focus from an actual agent-tab activation."
   source: "User direction and focused app verification, 2026-08-25"
+- time: "2026-11-17T23:42:28.416Z"
+  kind: "decision"
+  summary: "Philippe explicitly clarified the workspace spinner's visible center and blue ring, versus assigned Profile colors in chat tabs/chat. Reconcile the selected clean-base theme projection while preserving dual-state and unread ownership rules. Status returned to proposed for review."
+  source: "Philippe's current instructions and verified Otto 0.10 source/typecheck/focused unit tests; native/browser visual acceptance remains pending."

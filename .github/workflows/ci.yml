@@ -361,7 +361,9 @@ jobs:
     name: server-tests (macos-15, file observation)
     needs: changes
     if: ${{ !cancelled() && (needs.changes.outputs.full != 'false' || needs.changes.outputs.server != 'false') }}
-    runs-on: macos-15
+    # OTTO(test-allocation): run the Darwin watcher contract on the Intel macOS
+    # image so it can check the filesystem independently of the Apple Silicon queue.
+    runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
 

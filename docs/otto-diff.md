@@ -3,9 +3,9 @@
 Settings → Editor → Diffs stores the default presentation on this device. Existing Otto 0.9
 choices carry over with the Changes preferences. Reviewers can select
 **Line** or **Structural** in the toolbar for the current Changes, commit review, or File History.
-Refine and edit cards offer the same presentation control when they have a diff. Expand
-**Diff preview** in Editor settings to compare both renderers on the same sample. Preview controls
-leave the saved default intact.
+Refine and edit cards offer the same presentation control when they have a diff. **Diff preview**
+in Editor settings shows the saved default and updates when you change it. Use **Preview renderer**
+to compare the other renderer on the same sample without changing the default.
 
 Line keeps the checkout's exact change rows and the configured unified or split layout. Structural
 aligns related source on two sides. It uses bounded projections of complete syntax trees and

@@ -4,12 +4,9 @@ kind: "project"
 title: "Kanban"
 status: "proposed"
 tags: ["kanban","github-projects","jira","project-settings","v0.9"]
-delivery_status: "in_build"
-progress_completed: 2
-progress_total: 5
-progress_unit: "0.9 delivery slices"
+delivery_status: "partial"
 created_at: "2026-08-27T00:35:28.410Z"
-updated_at: "2026-09-28T01:56:54.267Z"
+updated_at: "2026-11-05T14:23:16.488Z"
 ---
 # Kanban
 
@@ -20,6 +17,27 @@ updated_at: "2026-09-28T01:56:54.267Z"
 ## Outcome
 
 Each Otto project operates one configured GitHub Projects or Jira board for practical daily coordination. The goal is not full tracker parity. It is the minimum real card work needed to move work forward.
+
+## Otto 0.10 F18 rebuild
+
+The child implementation at `297dc04e` has been consumed and expanded in the integration checkout `C:/Users/phili/Projects/otto-code/.claude/worktrees/otto-0.10`, branch `otto-0.10/phase-0`. Its uncommitted library handoff is historical provenance, not the present product boundary. Canonical contracts/library are in `packages/plugin/src/otto/kanban/`, daemon composition in `packages/server/src/server/otto/kanban/`, and the built-in client in `plugins/otto-kanban/`. `docs/otto-kanban.md` describes current behavior.
+
+### Integrated implementation and verified proof
+
+- The top-left navigation entry and project-settings contribution are registered. The host/project selection, explicit board target, error/empty/read views and Paseo page gutters are integrated. Dirty action/settings drafts preserve their originating revisions across navigation.
+- GitHub Projects v2 reads and create/link/move/supported-edit/detach operations use the daemon's existing official CLI policy. Prior wide/compact synthetic-provider browser journeys cover the rendered action loop; they are not real GitHub mutation acceptance.
+- Jira uses the shared daemon-owned Atlassian account and OS-keyring dependency, never a Kanban credential store. Reads, field metadata/edits and native workflow transitions are integrated.
+- Commit `a02be92b79f8bb696cbe9b245ba8f3ccb024cb25` adds Link backlog issue via the official enhanced backlog read and Move issues to board action. Only an existing exact same-site board-backlog issue is eligible; the board filter is never changed. Same-host/project/account checks precede writes, placement is read back, and partial/unknown outcomes require reconciliation. Eighteen link cases, six owning-host cases and eight editing cases passed for that change.
+- Commit `7d007bba7` adds Create card with explicit board-associated Jira project and non-subtask issue-type selection, complete bounded create metadata, a captured metadata digest rechecked before effects, ADF description, provider-owned defaults, read-back and verified backlog-to-board placement. Unsupported additional required fields are explained and no issue is created; arbitrary create custom fields and subtasks are not promised. Forty-two focused backend/form/structural cases, strict fixture typechecks, normal formatting/lint and normal workspace hooks passed. This proves source/contract behavior, not real Jira or device acceptance.
+- Durable operation admission, settings/board/card revisions, permission metadata and uncertain-outcome blocking remain shared across provider actions. No provider write has been issued against a real board during this integration.
+
+### Remaining full-feature gates (reconciled 2026-11-05)
+
+Current verification source is 1b4c76aa615e20e91f09985c8f0ac7343178c41c on otto-0.10/phase-0. Full CI 41958046132 passed every job; Otto App Acceptance 41956398828 passed all 71 journeys. Windows/Linux, unsigned Intel/Apple Silicon Mac, Android APK+AAB, Nix and Docker builds passed at c0130fdbe5c75271e98f3556af4084a5cea96c0c; final successors change only tests/docs, with identical production/packaging inputs. These are CI/fixture and packaging results, not live vendor permissions, real model/GPU or physical-device acceptance. No installed Otto change or release occurred.
+
+Kanban has integrated navigation/settings, GitHub/Jira reads/actions and shared agent tools. Current wide/compact app journeys prove configured GitHub reads/actions and reconciliation through a controlled official-CLI fixture, not real tracker mutations. The old report that Brain's failing model-load case prevents reaching Kanban is historical; the final 71-journey run completed successfully.
+
+Jira browser/daemon action acceptance, controlled official-provider read-back and remediation, real GitHub/Jira credentials/board permissions and physical/native interaction still require evidence. Preserve the entire completion ledger and exact provider semantics; registration, synthetic GitHub success and green builds do not complete full F18. The earlier 0/5 child checkpoint counter is not a current implementation percentage and is removed rather than replaced with an invented completion claim. Review is requested; no new provider writes or implementation start is authorized by this reconciliation. Wider Atlassian/Bitbucket scope retains daemon-owned shared authorization.
 
 ## Product contract
 
@@ -33,7 +51,7 @@ A project-configured GitHub Projects or Jira board supports:
 
 A field appears only when the selected provider and board can actually read or write it. Otto does not invent cross-provider parity, obscure a provider failure, or add a separate Kanban credential store.
 
-## Verified current baseline
+## Frozen 0.9 source baseline
 
 ### Code and focused verification
 
@@ -173,7 +191,7 @@ The release question is not “does a board render?” It is “can an end user 
 
 A row may be marked complete only with linked evidence naming the relevant fixtures/tests and provider proof. “Implemented” is not a substitute for a satisfied row. The charter remains in build while any required row is open; it is not a candidate for `complete` on aggregate progress alone.
 
-## Delivery sequence
+## Historical 0.9 delivery sequence
 
 1. **Authoritative target resolution** — **completed and unit-verified.** GitHub target identity is preserved, explicit targets flow through the provider boundary, and GitHub/Jira return only the configured board.
 2. **Complete bounded reads** — implemented and focused-test verified for GitHub and Jira, with explicit overflow errors; live board acceptance remains open.
@@ -246,3 +264,41 @@ The feature is complete only when the Completion ledger is entirely satisfied wi
   summary: "Replace the invalid provider-read baseline and stale gap list with the focused evidence from the Kanban tool, UI, Jira field, documentation, and GraphQL validation work. Preserve the open end-to-end and provider-proof gates. Status returned to proposed for review."
   source: "User withdrawal of the prior baseline claim and focused Kanban verification, 2026-09-27"
   affects: ["kanban","e2e-qa-coverage"]
+- time: "2026-10-23T19:35:55.640Z"
+  kind: "decision"
+  summary: "User directed a new clean-Paseo F18 implementation and asked to preserve full behavior and exact required shared seams on its feature charter. Reconcile current 0.10 ownership/proof boundary while explicitly retaining 0.9 implementation and evidence as historical reference; no completion or review confirmation."
+  source: "2026-10-23 F18 handoff and parent boundary directions; supplied branch 297dc04e; authorized three-file 48-case fixture pass followed by unverified review additi"
+  affects: ["otto-0-10-clean-paseo-rebuild","kanban-is-reached-via-host-project-pickers-the-board-target-is-configured-per","github-atlassian-jira-token-scopes-required-for-the-kanban-providers"]
+- time: "2026-10-23T19:36:12.970Z"
+  kind: "note"
+  summary: "Start the new 0.10 proof-gated checklist at 0/5. Historical 0.9 2/5 delivery evidence remains in the charter/timeline and does not transfer to clean Paseo. F18-01 source is prepared, with the initial 48 fixture cases passing; review additions and required formatting/typecheck/hooks/exact-source CI are still unverified. Full F18 is incomplete."
+  affects: ["kanban"]
+- time: "2026-10-23T19:45:24.628Z"
+  kind: "evidence"
+  summary: "Parent verification of the isolated Otto 0.10 F18 draft: normal npm-script formatting and own-root lint passed (11 TS files, zero warnings/errors); a noEmit strict isolated TypeScript config with read-only existing declarations passed; the final three fixture files pass 26 project-config + 9 read-service + 16 GitHub-reader cases (51 total), sequential one worker. New refactored GitHub board pagination/limits are included in this final local proof. Source remains uncommitted on otto-0.10/kanban at base297dc04e. This is library/adapter fixture evidence only: no registered UI, shared host/project/forge contract, live vendor acceptance, full workspace hook/typecheck, exact-source CI/build or merge is claimed. No installs, credential changes, vendor writes, app/model launches or installed Otto changes occurred."
+  source: "Parent local checks in C:\\Users\\phili\\.otto\\worktrees\\0pkiflkb\\otto-010-kanban, 2026-10-23; prepared .tmp/kanban-tsconfig.json and existing fixture config."
+- time: "2026-10-23T21:03:44.741Z"
+  kind: "evidence"
+  summary: "After the full F18 goal resumed, prepared additional unregistered source-only plugin UI and typed RPC/contribution factories under plugins/otto-kanban/client/, shared/rpc.ts and server/contribution.ts. The existing 13-path library checkpoint and parent-reported 51 passing cases remain unchanged. New source covers host-bound project selection (using the existing PluginSurfaceScreen HostFilter), loading/error/unconfigured board states, wide/compact board controls, project-target Save with expectedRevision, failed-save draft retention, project-picker locking during settings, and retaining same-host project data during background refresh. New project-selection, target-form and RPC-boundary fixtures are authored but NOT RUN; UI/static checks, rendered/native behavior, integration and exact-source CI remain unverified. server/mutation-port.proposed.ts is a type-only proposal with expected settings/board/card revisions and reconciliation-required outcomes; no vendor writes were implemented. Required shared project metadata and forge-auth bridges, registry/protocol/SDK integration remain parent-owned and unimplemented here. Current SDK also lacks a typed active/last workspace hint, canonical project-settings section navigation, and an unsaved-draft leave guard for the outer host filter/close path; proposed API names must be reviewed rather than importing private app code. Explicit source-only/no-new-validation-until-grant instructions remain in force; the requested bounded validation window is unanswered. The same authorization/integration hold was revalidated over three consecutive no-progress goal turns. All changes remain uncommitted on otto-0.10/kanban at 297dc04e; no installation, hook bypass, runtime/vendor launch, shared-core edit or completion claim occurred."
+  source: "F18 full-goal continuation and source-only handoff; local source/charter readback at base 297dc04e, 2026-10-23"
+- time: "2026-10-24T12:37:14.125Z"
+  kind: "evidence"
+  summary: "Reviewed daemon prerequisite committed at 15bd299e6 and included in pushed 537ba64a9, whose 21 CI jobs passed: OttoProjectMetadata reads preserved raw project fields and updates only owned Kanban/Knowledge fields under the SAME FileBackedProjectRegistry mutation queue. Record revision checked under queue; corruption, duplicate IDs, archive/delete and unknown fields preserved. Eleven isolated filesystem fixtures, targeted lint/format, production server strict check, strict fixture check and normal hooks passed. Raw records remain daemon-internal; this is not a new wire schema or reachable UI. External editors do not share this queue. No checkpoint completion or full feature claim. Kanban canonical host-library relocation is separately committed locally at 2576e29a3; its focused RPC/host-client boundary checks and owning builds/typechecks pass, remote CI pending."
+  source: "Otto integration commit 15bd299e6"
+- time: "2026-10-24T15:03:37.983Z"
+  kind: "evidence"
+  summary: "Verified integration checkpoint, not full F18 completion: Kanban is registered in the top sidebar and its target form is reachable in canonical Project Settings. At 102b2d62a06ee80e9ad1b4f90cd25d6baf4cf812, Otto App Acceptance run 40102211852 passed wide/compact configured-board reads, paginated fields/cards, actual external opening, scope-error display and explicit refresh recovery through the real isolated daemon and local-fixture gh adapter. Screenshots were inspected. Navigation/configuration/conflict journeys also passed. Commit 59ad3f80dcad7ccde2fbc6fb59b94de2bed48e74 corrected the older sidebar preference assertion to retain Kanban; full CI run 40102895927 and Otto App Acceptance 40102895995 both succeeded. These are synthetic tracker/browser proofs, not native/device or live vendor acceptance. GitHub action integration is now being implemented and is not covered by these green SHAs; Jira, MCP restoration, remaining acceptance and all-product exact-source builds remain open. Full charter/checkpoint totals are unchanged."
+  source: "GitHub Actions / otto-0.10/phase-0"
+- time: "2026-10-25T22:11:23.781Z"
+  kind: "decision"
+  summary: "Reconcile the authorized sequential F18 integration and newly verified official Jira link/create implementation while retaining the full completion ledger and real-provider/browser/exact-source build limits. The obsolete child-only boundary is now historical; full feature completion is not asserted."
+  source: "docs/otto-kanban.md; commits a02be92b79f8bb696cbe9b245ba8f3ccb024cb25, 7d007bba7; focused fixture logs and normal commit hooks."
+- time: "2026-11-05T14:22:44.101Z"
+  kind: "decision"
+  summary: "Philippe requested accurate checklist reconciliation and review. Replace stale child-only/pending/failed-run claims with current integrated behavior and final green CI, preserving unproved native/provider/vendor/product acceptance gates and parked research. No feature or review confirmation is granted."
+  source: "https://github.com/Draek2077/otto-code/actions/runs/41958046132"
+  affects: ["otto-0-10","restoration-checklist","review"]
+- time: "2026-11-05T14:23:16.488Z"
+  kind: "note"
+  summary: "The implementation has been integrated and has current full CI/app/build proof, so the historical child-handoff zero-percent counter is misleading. Remove that obsolete metric without inventing completed release slices. Keep partial delivery and every remaining native/provider/product acceptance requirement open, as requested during Philippe's checklist review."
+  affects: ["kanban"]

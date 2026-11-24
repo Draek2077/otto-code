@@ -124,6 +124,7 @@ export interface ComboboxProps {
   desktopMinWidth?: number;
   /** Keep the desktop popover at its opening width as its content changes. */
   desktopLockWidth?: boolean;
+  desktopCollisionPadding?: number; // OTTO(agent-teams): let an inset sidebar menu align with its anchor.
   /** Fixed height for the desktop popover (overrides default 400px max). */
   desktopFixedHeight?: number;
   /** Content rendered above the scroll area on desktop (sticky header). */
@@ -1296,6 +1297,7 @@ export function Combobox({
   desktopPreventInitialFlash = true,
   desktopMinWidth,
   desktopLockWidth,
+  desktopCollisionPadding, // OTTO(agent-teams)
   desktopFixedHeight,
   stickyHeader,
   footer,
@@ -1350,7 +1352,11 @@ export function Combobox({
 
   useResetSearchOnOpen(isOpen, setSearchQueryWithCallback, bumpSearchResetKey);
 
-  const collisionPadding = useMemo(computeCollisionPadding, []);
+  // OTTO(agent-teams): use the standard viewport guard unless the surface owns its insets.
+  const collisionPadding = useMemo(
+    () => desktopCollisionPadding ?? computeCollisionPadding(),
+    [desktopCollisionPadding],
+  );
 
   const middleware = useMemo(
     () =>

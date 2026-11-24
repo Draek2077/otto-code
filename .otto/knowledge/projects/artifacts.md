@@ -2,14 +2,11 @@
 id: "artifacts"
 kind: "project"
 title: "Artifacts"
-status: "confirmed"
+status: "proposed"
 tags: ["artifacts","storage","generation","v0.9"]
 delivery_status: "partial"
-progress_completed: 0
-progress_total: 5
-progress_unit: "0.9 delivery slices"
 created_at: "2026-08-27T00:35:26.705Z"
-updated_at: "2026-09-13T04:48:02.492Z"
+updated_at: "2026-11-12T19:43:45.345Z"
 ---
 # Artifacts
 
@@ -17,11 +14,21 @@ updated_at: "2026-09-13T04:48:02.492Z"
 
 # Artifacts
 
+## Otto 0.10 current position
+
+The Artifacts implementation is integrated in the reconstruction branch. Current behavior is specified by `docs/otto-artifacts.md`: canonical project/repository-or-host storage, retained legacy data, bounded generation/cancel/recovery, revisioned metadata and data-only edits, isolated preview/export, settings, CLI/MCP and exact Workflow/Schedule provenance. The app library and workspace surface are registered; this is not an unimplemented 0/5 feature.
+
+Application source `e9cc4d3ed3f7bb9cd88e751dad2f147947561f14` passed full CI 43266928686 (21/21), app acceptance 43266923452 (90/90, including Artifacts and source/run journeys) and editor/runtime acceptance. Product build proofs and source equivalence remain on `otto-0-10-clean-paseo-rebuild`. The current four-guide cleanup at `21a7510c26ad3e0194d89efb659f18f28b3a5586` is documentation-only.
+
+Implementation, automated verification and product acceptance are separate. Philippe has not accepted the adapted UI and will review its layout, duplicate presentation, grouping and scroll cost himself. Native/device rendering/security, intended live provider/model behavior and real private-data workflows retain their acceptance limits. The source/capture review notes the compact list-plus-detail stack and action/technical-metadata density; it does not authorize deleting capabilities or a redesign.
+
+The previous 0/5 metric measured historical 0.9 delivery slices and is removed rather than presented as 0.10 implementation progress. Delivery remains partial until the accepted product/environment gates close. The 0.9 inventory below is retained as historical scope and proof, not a claim that its old watcher, capability or pending Workflow descriptions are the current 0.10 architecture. Use the current software guide and the master’s testing transition for execution.
+
 ## Outcome
 
 Artifacts are durable AI-created project deliverables. They have no fixed product taxonomy: their content defines them. Each artifact belongs to one project and has its **own Artifacts storage choice**. A host-wide Artifacts default applies unless that project explicitly overrides it; this is independent of the Knowledge, Schedules, and Workflows choices. Repository artifacts live under `<projectRoot>/.otto/artifacts`; host-local artifacts live in that project’s stable, daemon-host-local `OTTO_HOME/project-artifacts/<project-key>/` directory. The host-local form is durable for the owner’s project on that host, not a user-global bucket and not shared across hosts.
 
-## Verified baseline
+## Historical 0.9 verified baseline
 
 - The daemon has a file-backed HTML artifact store, background generation, a generation watcher, status, cancellation, regeneration, retained generation transcripts, bounded run history, and metadata editing.
 - The app has an aggregate library with project filtering, cards, creation/editing, preview, status/error display, cancellation, regeneration, deletion, and a read-only generation-chat entry point when the host supports retained transcripts.
@@ -29,7 +36,7 @@ Artifacts are durable AI-created project deliverables. They have no fixed produc
 - The `otto-artifact-data` JSON block is the explicit data-update seam. `update_artifact_data` replaces only that block and never rewrites the HTML, CSS, or JavaScript; artifacts without the block require regeneration.
 - Existing targeted T1 proof covers store run-history compatibility and id traversal rejection, data-block byte preservation, CSP canonicalization, app-side project derivation, and independent repository/host resolver-registry-store-service behavior.
 
-## Adversarial gap review
+## Historical 0.9 adversarial gap review
 
 Artifacts now has an independent persisted host default and per-project repository/host override, surfaced through capability-gated Host and Project Settings. Its resolver uses only the Artifacts fields, an existing repository store, and the Artifacts default; it does not consult the Knowledge, Schedules, or Workflows selection. The daemon dual-reads both project locations and the legacy host-global bucket while directing new writes to the selected location, so no setting change silently moves, hides, or creates a store. Explicit settled-only moves, Legacy location handling, library storage disclosure, and the host-path documentation are shipped with deterministic proof. Worktree-root coverage, project-setting session/app coverage, and controlled create/reopen proof remain open.
 
@@ -589,3 +596,22 @@ Artifacts can move from `in_build` to `complete` only after every ledger row has
   kind: "evidence"
   summary: "Workspace discovery now has a verified implementation in the working tree: Add artifact persists project-validated artifactIds on the daemon workspace record, and sequenced workspace updates/reconnect snapshots carry that membership to peer clients. Clients discover new members in background tabs; separate local discovery receipts preserve dismissal across reload, so shared membership does not share focus or force closed tabs back open. Client artifact lifecycle mutations broadcast to peer sessions. The additive artifactWorkspaceDiscovery capability gates attachment; pre-existing local tabs require Add artifact again to establish membership. Verified with artifact-service-session.e2e.test.ts (two daemon clients, project/workspace isolation, concurrent/idempotent attachment, deletion and reconnect), focused protocol/app/session tests, and artifact-workspace-discovery.spec.ts (two independent browser sessions, failed-add feedback, peer rendering, local dismissal after reload). docs/data-model.md records the contract. This is local implementation proof, not a released build or a live relay session; cross-host sharing and the remaining Artifacts charter gaps are unchanged."
   source: "Local source and isolated regression tests, 2026-09-12"
+- time: "2026-10-30T03:29:18.479Z"
+  kind: "evidence"
+  summary: "Verified 2026-10-30: the 0.10 core Artifacts port is committed and pushed on otto-0.10/phase-0 at 0ee4dfc5bd2d4ea5acf449fdb6e76aacff83c9c7. The installed Otto was not changed and no release was published.\n\nThe implemented builtin contribution is reachable in top-left navigation, the workspace context menu, host/plugin settings and Project Settings, with a shared daemon-owned library/service, provider-neutral agent tools and CLI. Wide layout uses list/detail with bounded gutters; compact layout stays on one surface. Create, preview, metadata/star, JSON-only data edits, regeneration, repair, explicit same-project location move, cancellation, delete, export, source-chat navigation and retained per-surface drafts are wired. Repository/host storage and defaults are independent of Knowledge; project-bound dual reads preserve legacy discovery without silent migration. Corrupt content is preserved for explicit repair. Per-entry changing/unreadable discovery records produce diagnostics without hiding other records. The service bounds combined admitted/unresolved/active generations and retains admission through provider startup. Browser preview uses trusted-parent navigation containment as evaluated in [[reference-content-security-policy-level-3]].\n\nProof on that exact SHA: full CI succeeded (21 jobs): https://github.com/Draek2077/otto-code/actions/runs/40992730393 . Full Otto browser acceptance succeeded (55 tests, no test retries): https://github.com/Draek2077/otto-code/actions/runs/40992157611 . Targeted Artifacts wide/compact journeys succeeded (2 tests): https://github.com/Draek2077/otto-code/actions/runs/40992158932 . These exercise the real isolated daemon/app, deterministic provider fixture, compiled CLI round trip and hostile-but-interactive browser preview, including zero navigation-trap requests. They are not live external-model tests. Normal local format/lint/hooks and workspace typechecks passed; strict server fixture declarations and focused lifecycle, provider-adapter, content, CLI and draft-isolation regressions passed. No full local suite ran.\n\nExact-source build-only delivery checks all succeeded: Windows/Linux desktop and unsigned macOS x64+arm64 https://github.com/Draek2077/otto-code/actions/runs/40992733554 ; Android APK and AAB https://github.com/Draek2077/otto-code/actions/runs/40992736671 ; Docker https://github.com/Draek2077/otto-code/actions/runs/40992739380 ; Linux/Darwin Nix https://github.com/Draek2077/otto-code/actions/runs/40992741883 . Retained desktop and Android outputs were verified nonempty, nonexpired and bound to this SHA. Actual installed Linux packaged-renderer smoke confirms Artifacts and Context navigation entries. iOS retains its existing credential/signing gate. Checkout-local Brain/client/highlight/plugin/server/CLI declarations and binaries were rebuilt serially so dev uses the current daemon code, without launching development apps, models or daemons.\n\nLimits: this is verified current core-port delivery, not completion of every historical 0.9 charter gate. Workflow/Schedule authoritative provenance and deep-link integration, device/native and packaged Electron Artifact-frame runtime security acceptance, and live external-provider coverage remain separate acceptance work. Existing historical delivery status partial and 0/5 metric are retained rather than inventing completion or resetting the charter. Current behavior and boundaries are documented in docs/otto-artifacts.md, docs/testing.md and public-docs/artifacts.md."
+  source: "Otto 0.10/Paseo 0.12 restoration; verified source 0ee4dfc5bd2d4ea5acf449fdb6e76aacff83c9c7"
+  affects: ["e2e-qa-coverage"]
+- time: "2026-10-30T21:06:12.719Z"
+  kind: "evidence"
+  summary: "Verified 2026-10-30: CI exposed two real Artifact filesystem/lifecycle boundaries and read-only packaged-preview probe races during the combined restoration. Otto-owned atomic-replace.ts now limits Windows EPERM replacement recovery to three extra rename attempts (10/25/50ms), re-reading staged complete bytes and unchanged destination bytes before each retry. Changed, missing or unreadable files stop recovery with the original error; other errors/platforms do not retry or perform those extra reads. The target is never unlinked and permissions are not changed. Native lock/AV cause remains unexplained; do not call it diagnosed. Eight focused regressions and the native Windows publication/concurrency case passed.\n\nArtifactDaemonService tracks admitted filesystem publications and close() waits for their final last-good snapshot and lock cleanup. Close refuses later commits and does not wait on an unresolved provider operation. A deterministic paused-final-snapshot case proves that close remains pending until publication cleanup settles; the full changed service file passed 25/25. This fixes the observed CI ENOTEMPTY fixture teardown without deletion retries.\n\nThe packaged renderer probe evicts detached CDP sessions, tolerates only exact vanished-session/vanished-target errors during discovery, and bounds initial identity reads before returning to the existing observation deadline. Selected frame actions/assertions retain normal timeout/error behavior and are never replayed by discovery recovery. Nine pure protocol probe fixtures passed, including pre-attachment target disappearance, detached sessions, identity timeouts and non-replayed selected assertion timeouts. This is test-observer repair, not a weakened preview security assertion.\n\nFinal exact-source CI passed all 21 jobs, including Windows/Linux server and desktop coverage: https://github.com/Draek2077/otto-code/actions/runs/41125365446 (c3b5bfc3ec345b9f476c243ce7999c34c12a5012). Real app acceptance passed on unchanged production code https://github.com/Draek2077/otto-code/actions/runs/41118047627 . Windows/Linux and unsigned macOS x64/arm64 packaging passed https://github.com/Draek2077/otto-code/actions/runs/41120159195 (42392eb1c0302e0b0522d763fb26fe8e873678c9; final HEAD only adds the generated Nix dependency hash). This includes real packaged/installed Artifact-frame interaction and Linux deb/RPM/portable sandbox checks. docs/otto-artifacts.md and docs/testing.md document the current contracts. No local app/daemon/model was launched, installed user data touched, release published, or full local suite run. Physical Android/iOS Artifact rendering and live external-model/provider coverage are not inferred from these results; broader historical charter gaps remain unchanged."
+  source: "Artifact regression recovery during final Connector/Bitbucket verification; final c3b5bfc3ec345b9f476c243ce7999c34c12a5012"
+  affects: ["e2e-qa-coverage"]
+- time: "2026-11-12T19:43:07.209Z"
+  kind: "decision"
+  summary: "Philippe requested a basic Otto 0.10 overview, cleanup and a plan for real testing, then clarified that he will own the UI review. Reconcile verified integration/automation with pending UI/native/account acceptance, retain all selected and deferred scope, label historical counters/inventories correctly, and document the RT1-RT6 controlled-testing sequence without UI code changes or new features. Status returned to proposed for review."
+  source: "https://github.com/Draek2077/otto-code/commit/21a7510c26ad3e0194d89efb659f18f28b3a5586"
+  affects: ["otto-0-10-testing-readiness-and-ui-structure-review"]
+- time: "2026-11-12T19:43:45.345Z"
+  kind: "note"
+  summary: "Remove the obsolete 0/5 historical 0.9 delivery-slice metric from the current 0.10 display. The implementation and automated journeys are integrated; product/UI and native/provider acceptance remain open. Do not fabricate a replacement implementation percentage or mark complete."
+  affects: ["artifacts"]

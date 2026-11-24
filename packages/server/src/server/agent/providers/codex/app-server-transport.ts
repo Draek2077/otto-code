@@ -9,6 +9,11 @@ const DEFAULT_TIMEOUT_MS = 14 * 24 * 60 * 60 * 1000;
 const APP_SERVER_GRACEFUL_SHUTDOWN_TIMEOUT_MS = 2_000;
 const APP_SERVER_FORCE_SHUTDOWN_TIMEOUT_MS = 1_000;
 const STDERR_BUFFER_LIMIT = 8192;
+// OTTO(codex-history): V8 cannot build strings much past 2^29 characters. Doing so throws an
+// uncaught RangeError in the stdout "data" handler, killing the daemon worker. A resumed thread with
+// weeks of history can exceed it in a single JSON-RPC line, so stop well short of the limit.
+const DEFAULT_MAX_STDOUT_LINE_LENGTH = 256 * 1024 * 1024;
+const LOGGED_LINE_PREVIEW_LENGTH = 500;
 
 interface JsonRpcRequest {
   id: number;
@@ -167,33 +172,60 @@ function readProviderTurnId(params: unknown): string | undefined {
   return isRecord(turn) && typeof turn.id === "string" ? turn.id : undefined;
 }
 
+/** Logs a line by length and preview, since a full line can be hundreds of megabytes. */
+function describeLine(line: string): { lineLength: number; linePreview: string } {
+  return { lineLength: line.length, linePreview: line.slice(0, LOGGED_LINE_PREVIEW_LENGTH) };
+}
+
 /**
  * Splits stdout into lines on "\n" only. `node:readline` additionally treats U+2028 and U+2029
  * as line terminators, but Codex emits those characters raw inside JSON strings, so readline
  * would cut a single JSON-RPC message into pieces that fail to parse.
+ *
+ * A line longer than `maxLineLength` is discarded instead of buffered; `onOversizedLine` is
+ * called once when it crosses the limit.
  */
 function createNewlineLineReader(
   input: NodeJS.ReadableStream,
   onLine: (line: string) => void,
+  maxLineLength: number,
+  onOversizedLine: (lineLength: number) => void,
 ): { close(): void } {
   const decoder = new StringDecoder("utf8");
   // Text after the last "\n", kept as parts and joined once its line ends, so a large line
   // arriving in many chunks is scanned and copied once instead of once per chunk.
   let unterminated: string[] = [];
+  let unterminatedLength = 0;
+  let discarding = false;
+  const append = (part: string): void => {
+    if (discarding) return;
+    unterminatedLength += part.length;
+    if (unterminatedLength > maxLineLength) {
+      unterminated = [];
+      discarding = true;
+      onOversizedLine(unterminatedLength);
+      return;
+    }
+    unterminated.push(part);
+  };
   const onData = (chunk: Buffer | string): void => {
     const text = typeof chunk === "string" ? chunk : decoder.write(chunk);
     let lineStart = 0;
     let index = text.indexOf("\n");
     while (index !== -1) {
-      unterminated.push(text.slice(lineStart, index));
-      const line = unterminated.join("");
+      append(text.slice(lineStart, index));
+      if (!discarding) {
+        const line = unterminated.join("");
+        onLine(line.endsWith("\r") ? line.slice(0, -1) : line);
+      }
       unterminated = [];
-      onLine(line.endsWith("\r") ? line.slice(0, -1) : line);
+      unterminatedLength = 0;
+      discarding = false;
       lineStart = index + 1;
       index = text.indexOf("\n", lineStart);
     }
     if (lineStart < text.length) {
-      unterminated.push(text.slice(lineStart));
+      append(text.slice(lineStart));
     }
   };
   input.on("data", onData);
@@ -214,12 +246,22 @@ export class CodexAppServerClient {
     private readonly child: ChildProcessWithoutNullStreams,
     private readonly logger: Logger,
     private readonly getTraceContext: () => CodexAppServerTraceContext = () => ({}),
+    options: { maxStdoutLineLength?: number } = {},
   ) {
-    this.stdoutLineReader = createNewlineLineReader(child.stdout, (line) => {
-      void this.handleLine(line).catch((error) => {
-        this.logger.warn({ error, line }, "Failed to handle Codex app-server stdout line");
-      });
-    });
+    const maxStdoutLineLength = options.maxStdoutLineLength ?? DEFAULT_MAX_STDOUT_LINE_LENGTH;
+    this.stdoutLineReader = createNewlineLineReader(
+      child.stdout,
+      (line) => {
+        void this.handleLine(line).catch((error) => {
+          this.logger.warn(
+            { error, ...describeLine(line) },
+            "Failed to handle Codex app-server stdout line",
+          );
+        });
+      },
+      maxStdoutLineLength,
+      (lineLength) => this.handleOversizedStdoutLine(lineLength, maxStdoutLineLength),
+    );
 
     child.stderr.on("data", (chunk) => {
       this.stderrBuffer += chunk.toString();
@@ -332,6 +374,27 @@ export class CodexAppServerClient {
     }
   }
 
+  /**
+   * The message cannot be read, so whichever request it answered would never settle. Treat the
+   * app-server as failed: reject everything pending and stop the process, leaving the daemon up.
+   */
+  private handleOversizedStdoutLine(lineLength: number, maxStdoutLineLength: number): void {
+    const traceContext = this.getTraceContext();
+    this.logger.error(
+      { agentId: traceContext.agentId, lineLength, maxStdoutLineLength },
+      "Codex app-server stdout line exceeded the size limit; closing the app-server",
+    );
+    this.handleUnexpectedTermination(
+      new Error(
+        `Codex app-server sent a message larger than ${maxStdoutLineLength} characters ` +
+          "(the thread history is likely too large to resume)",
+      ),
+    );
+    void this.dispose().catch((error) => {
+      this.logger.warn({ error }, "Failed to stop Codex app-server after an oversized message");
+    });
+  }
+
   private rejectPending(error: Error): void {
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timer);
@@ -357,12 +420,15 @@ export class CodexAppServerClient {
     try {
       raw = JSON.parse(line);
     } catch (error) {
-      this.logger.warn({ error, line }, "Ignoring non-JSON Codex app-server stdout line");
+      this.logger.warn(
+        { error, ...describeLine(line) },
+        "Ignoring non-JSON Codex app-server stdout line",
+      );
       return;
     }
 
     if (!isRecord(raw)) {
-      this.logger.warn({ line }, "Parsed JSON is not an object");
+      this.logger.warn(describeLine(line), "Parsed JSON is not an object");
       return;
     }
 

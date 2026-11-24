@@ -3,8 +3,13 @@ import { DiffViewer } from "@/components/diff-viewer";
 import { SettingsCard, SettingsCollapsibleRow, SettingsRow } from "@/components/settings";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { SelectField } from "@/components/ui/select-field";
+import { useChangesPreferences } from "@/hooks/use-changes-preferences";
 import { buildLineDiff } from "@/utils/tool-call-parsers";
-import { getStructuralDiffDemoScenario, STRUCTURAL_DIFF_DEMO_SCENARIOS } from "./preview-scenarios";
+import {
+  getStructuralDiffDemoScenario,
+  STRUCTURAL_DIFF_DEMO_SCENARIOS,
+  type StructuralDiffDemoScenario,
+} from "./preview-scenarios";
 import type { DiffPresentation } from "./structural";
 
 const presentations: SegmentedControlOption<DiffPresentation>[] = [
@@ -18,15 +23,43 @@ const sampleOptions = STRUCTURAL_DIFF_DEMO_SCENARIOS.map(({ id, label }) => ({
   label,
 }));
 
-function Preview() {
-  const [presentation, setPresentation] = useState<DiffPresentation>("structural");
-  const [scenario, setScenario] = useState("small-edit");
-  const sample = getStructuralDiffDemoScenario(scenario);
+function PreviewRenderer({
+  sample,
+  savedPresentation,
+}: {
+  sample: StructuralDiffDemoScenario;
+  savedPresentation: DiffPresentation;
+}) {
+  const [presentation, setPresentation] = useState(savedPresentation);
   const lines = useMemo(() => buildLineDiff(sample.before, sample.after), [sample]);
   const source = useMemo(
     () => ({ filePath: sample.filePath, beforeSource: sample.before, afterSource: sample.after }),
     [sample],
   );
+  return (
+    <>
+      <SettingsRow label="Preview renderer">
+        <SegmentedControl
+          options={presentations}
+          value={presentation}
+          onValueChange={setPresentation}
+          size="sm"
+        />
+      </SettingsRow>
+      <DiffViewer
+        diffLines={lines}
+        structuralSource={source}
+        previewPresentation={presentation}
+        maxHeight={300}
+      />
+    </>
+  );
+}
+
+function Preview() {
+  const { preferences } = useChangesPreferences();
+  const [scenario, setScenario] = useState("small-edit");
+  const sample = getStructuralDiffDemoScenario(scenario);
   return (
     <>
       <SettingsRow label={sample.title} hint={sample.description}>
@@ -43,19 +76,11 @@ function Preview() {
           size="sm"
         />
       </SettingsRow>
-      <SettingsRow label="Preview renderer">
-        <SegmentedControl
-          options={presentations}
-          value={presentation}
-          onValueChange={setPresentation}
-          size="sm"
-        />
-      </SettingsRow>
-      <DiffViewer
-        diffLines={lines}
-        structuralSource={source}
-        previewPresentation={presentation}
-        maxHeight={300}
+      {/* A new default replaces the temporary comparison but keeps the selected sample. */}
+      <PreviewRenderer
+        key={preferences.presentation}
+        sample={sample}
+        savedPresentation={preferences.presentation}
       />
     </>
   );

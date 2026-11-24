@@ -1844,7 +1844,7 @@ describe("Codex app-server provider", () => {
       purpose: "history",
     });
 
-    expect(threadRequests).toEqual(["thread/read"]);
+    expect(threadRequests).toEqual(["thread/read", "thread/read"]);
     await session.close();
     appServer.assertNoErrors();
   });
@@ -1883,6 +1883,7 @@ describe("Codex app-server provider", () => {
       "thread/resume",
       "thread/unarchive",
       "thread/resume",
+      "thread/read",
       "thread/read",
     ]);
     await session.close();
@@ -4592,6 +4593,7 @@ describe("Codex app-server provider", () => {
     }
 
     expect(requests.map((request) => [request.method, request.params])).toEqual([
+      ["thread/read", { threadId: "test-thread", includeTurns: false }],
       ["thread/read", { threadId: "test-thread", includeTurns: true }],
     ]);
     expect(history).toEqual([
@@ -5462,8 +5464,65 @@ describe("Codex app-server provider", () => {
     expect(session.currentThreadId).toBe("archived-thread-id");
     expect(requests).toEqual([
       { method: "thread/loaded/list", params: {} },
-      { method: "thread/resume", params: { threadId: "archived-thread-id" } },
+      {
+        method: "thread/resume",
+        params: { threadId: "archived-thread-id", excludeTurns: true },
+      },
     ]);
+  });
+
+  // OTTO(codex-history): cover bounded restoration through the production session.
+  test("loads only the latest page of a paginated Codex thread's history", async () => {
+    const session = createSession();
+    const requests: Array<{ method: string; params: unknown }> = [];
+    const message = (id: string, text: string) => ({
+      type: "agentMessage",
+      id,
+      text,
+      timestamp: "2026-05-01T10:00:00.000Z",
+    });
+    session.client = {
+      request: vi.fn(async (method: string, params: unknown) => {
+        requests.push({ method, params });
+        if (method === "thread/read") {
+          return { thread: { id: "test-thread", historyMode: "paginated", turns: [] } };
+        }
+        if (method === "thread/turns/list") {
+          // Newest first, as Codex returns a descending page.
+          return {
+            data: [
+              { id: "turn-2", items: [message("message-2", "Second.")] },
+              { id: "turn-1", items: [message("message-1", "First.")] },
+            ],
+            nextCursor: "older",
+            backwardsCursor: null,
+          };
+        }
+        return {};
+      }),
+    };
+
+    await asInternals(session).loadPersistedHistory(session.client);
+
+    const history: AgentStreamEvent[] = [];
+    for await (const event of session.streamHistory()) {
+      history.push(event);
+    }
+
+    expect(requests.map((request) => [request.method, request.params])).toEqual([
+      ["thread/read", { threadId: "test-thread", includeTurns: false }],
+      [
+        "thread/turns/list",
+        { threadId: "test-thread", limit: 20, sortDirection: "desc", itemsView: "full" },
+      ],
+    ]);
+    expect(
+      history.flatMap((event) =>
+        event.type === "timeline" && event.item.type === "assistant_message"
+          ? [event.item.text]
+          : [],
+      ),
+    ).toEqual(["First.", "Second."]);
   });
 
   test("appends blank-line spacing to /goal status messages", async () => {

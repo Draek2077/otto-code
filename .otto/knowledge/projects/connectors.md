@@ -2,20 +2,25 @@
 id: "connectors"
 kind: "project"
 title: "Connectors"
-status: "confirmed"
+status: "proposed"
 tags: ["project-charter","legacy-projects-migration"]
 delivery_status: "partial"
-progress_completed: 0
-progress_total: 5
-progress_unit: "0.9 delivery slices"
 created_at: "2026-08-08T06:17:20.615Z"
-updated_at: "2026-09-14T22:10:09.237Z"
+updated_at: "2026-11-12T19:43:12.343Z"
 ---
 # Connectors
 
 <!-- compiled_truth -->
 
-# Connectors — 0.9 delivery charter
+# Connectors
+
+## Otto 0.10 current position
+
+The reconstructed Connector service and Settings are integrated. `docs/otto-connectors.md` owns current behavior. The current catalog retains 30 shipped entries, including the three Google services, guided/custom setup, tool enumeration and selection, shared provider routing, daemon-owned OAuth/Google/hosted authorization, compatible OS-vault identities and retained keys, grants, client IDs/callbacks/hosted bindings. The current roster was compared with released `v0.9.35`; the older 28-row/Figma snapshot below is historical, not today's roster.
+
+Application source `e9cc4d3ed3f7bb9cd88e751dad2f147947561f14` passed CI 43266928686 (21/21) and app acceptance 43266923452 (90/90). Connector journeys exercise all 30 entries, a real loopback MCP server, isolated CI keyring persistence, tool selection, stale drafts/reload, disable and removal in wide/compact layouts. That does not establish access or distribution approval for all vendors.
+
+Delivery remains partial for per-vendor/account and native/device acceptance and Philippe’s own UI review. Preserve all existing third-party keys, account grants, IDs, publisher registrations/callbacks and hosting identities; this review rotates or deploys none. The 0.9 matrix remains a retained requirement/reference inventory. Do not report missing provider routing or a 28-entry catalog as current implementation facts.
 
 ## Outcome
 
@@ -332,3 +337,21 @@ The feature is complete only when every roster id has passing T1 coverage, a pas
   summary: "The user registered `https://auth.otto-code.me/v1/callback` in the existing Box OAuth application, then authorized adding the existing confidential-client ID and secret to the production `otto-auth` Worker as `BOX_CLIENT_ID` and `BOX_CLIENT_SECRET` secrets. Cloudflare binding enumeration confirmed both Box bindings and the existing HubSpot bindings without revealing values. A production `POST /v1/grants` for `vendorId: box` returned 201; its possession-proof-authorized revoke returned 200. No Box authorization page opened, no user token was issued, and no tool call, refresh, installed-app flow, or unrelated-account distribution was verified."
   source: "2026-09-14 production auth-service configuration and safe grant check"
   affects: ["integration-authorization-is-daemon-owned-and-reusable"]
+- time: "2026-10-30T15:35:57.862Z"
+  kind: "evidence"
+  summary: "Philippe requires the full Connector and MCP catalog feature set from frozen Otto 0.9 to be integrated into Otto 0.10, including setup, daemon-owned authorization/secrets, verification and tool discovery, enable/per-tool controls, provider routing, invocation and recovery. A catalog-only screen is not completion. Source inspection of otto-0.9-final (95a19522a191394a874320041eaf05f6c5f3c682) found 27 explicit catalog entries plus the three Google service entries, 30 total; historical smaller catalog counts are not the restoration roster. Retain vendor-specific setup and external approval limitations rather than inventing working integrations. Complete the active Bitbucket work and this full Connector/MCP restoration, then require green CI for the final exact source and pause for Philippe's review before beginning another feature. This records scope and sequencing only; Connector implementation or acceptance in the 0.10 branch is not claimed."
+  source: "Philippe, Otto 0.10 restoration scope and review checkpoint, 2026-10-30"
+- time: "2026-10-30T21:05:47.170Z"
+  kind: "evidence"
+  summary: "Verified Otto 0.10 restoration checkpoint, 2026-10-30. The combined implementation is committed and pushed on otto-0.10/phase-0 at c3b5bfc3ec345b9f476c243ce7999c34c12a5012; the implementation worktree is clean.\n\nThe frozen restoration roster is all 30 entries from otto-0.9-final (95a19522a191394a874320041eaf05f6c5f3c682), including the three native Google services. The host-owned service, public typed plugin bridge and builtin Settings contribution integrate catalog/custom setup, write-only secrets, connect/enumerate verification, persisted actual tools, enable/per-tool controls, supported-provider routing and invocation, OAuth and recovery. Native Google uses the original API scopes and shared provider-neutral tool route. The runtime uses the existing SDK MCP client, bounded shared clients/catalogs, admission checks and demand-owned cleanup. docs/otto-connectors.md is the indexed software contract.\n\nPhilippe explicitly requires retaining the third-party registrations, IDs, keys, grants, callbacks and access work already established. Compatibility readers retain the original OS-vault service/account/chunk identities, original Google/hosted authorization tuples and saved endpoints; original files and unknown fields are not automatically migrated or erased. Existing Google publisher CI registration, Slack/Dropbox public registrations and callbacks, Box/HubSpot production auth origin and Worker/account/domain/durable-object/binding identities are retained. The existing auth-service source/config was restored; this work neither deployed it nor rotated/revoked/re-authorized live accounts. A read-only production health request returned 200. No installed Otto settings or credentials were changed and no local app, daemon, browser or model was launched.\n\nExact final-commit CI passed all 21 jobs: https://github.com/Draek2077/otto-code/actions/runs/41125365446 . Real app acceptance passed, including wide/compact registered Connector Settings, all 30 catalog rows, search/clear, setup validation, actual isolated MCP discovery, native synthetic vault, per-tool controls, stale-save/draft retention and explicit reload: https://github.com/Draek2077/otto-code/actions/runs/41118047627 (6d43cfb8699f9bc15f4575cf364188b72745e135). App/client production source is unchanged between that SHA and final HEAD; the differences are two desktop test-probe files and the generated Nix dependency hash.\n\nBuild-only verification passed: Windows/Linux desktop plus unsigned macOS x64/arm64 and installed Linux sandbox/Artifact-frame checks https://github.com/Draek2077/otto-code/actions/runs/41120159195 ; Docker amd64/arm64 plus installed non-root Host Browser https://github.com/Draek2077/otto-code/actions/runs/41123130273 ; Linux/macOS Nix https://github.com/Draek2077/otto-code/actions/runs/41123135940 . These ran on 42392eb1c0302e0b0522d763fb26fe8e873678c9; the only later source difference is nix/npm-deps.hash, which exactly matches the Nix run's evaluated dependency artifact. Signed Android APK/AAB passed https://github.com/Draek2077/otto-code/actions/runs/41108599386 on ad7bbb0cfac719eb9860f87790a6989fab29df18; Android client/plugin/protocol source is unchanged since. Auth-service unit/type/dry-build and offline synthetic Box/HubSpot lifecycle passed https://github.com/Draek2077/otto-code/actions/runs/41108591422 on the same unchanged auth-service source. Existing iOS/signing gates remain. No release, image, app-store submission or service deployment was published.\n\nNormal formatting/lint, fixture declarations and workspace typechecks/hooks passed; final root lint reported zero warnings/errors on 5,854 files with one thread. Focused authorization/store/runtime/provider/setup/OAuth/native Google/schema/redaction/UI fixtures passed, followed by full CI and actual isolated app/native packaging evidence. No full local test suite ran.\n\nThis is implemented and automatically verified restoration, not proof of every vendor's live account permission, publisher approval or physical mobile-device journey. The historical broader Connector charter remains partial pending those externally gated/user acceptance outcomes. Pause for Philippe's review before starting another feature."
+  source: "Philippe's preservation requirement; final source c3b5bfc3ec345b9f476c243ce7999c34c12a5012 and linked GitHub Actions"
+  affects: ["integration-authorization-is-daemon-owned-and-reusable","e2e-qa-coverage"]
+- time: "2026-10-30T21:05:49.133Z"
+  kind: "note"
+  summary: "The full frozen 30-entry Otto 0.9 roster is implemented and integrated in Otto 0.10; exact final-source CI, real wide/compact app acceptance, all product build checks and offline auth-service lifecycle checks are green. Remove the obsolete historical zero-percent metric rather than inventing a denominator for the broader 0.9 charter. Live vendor/account approval and Philippe's hands-on acceptance remain distinct, unclaimed gates. Implementation is frozen for the requested review pause; no next feature starts."
+  affects: ["connectors"]
+- time: "2026-11-12T19:43:12.343Z"
+  kind: "decision"
+  summary: "Philippe requested a basic Otto 0.10 overview, cleanup and a plan for real testing, then clarified that he will own the UI review. Reconcile verified integration/automation with pending UI/native/account acceptance, retain all selected and deferred scope, label historical counters/inventories correctly, and document the RT1-RT6 controlled-testing sequence without UI code changes or new features. Status returned to proposed for review."
+  source: "https://github.com/Draek2077/otto-code/commit/21a7510c26ad3e0194d89efb659f18f28b3a5586"
+  affects: ["otto-0-10-testing-readiness-and-ui-structure-review"]

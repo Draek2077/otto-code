@@ -11,6 +11,8 @@ pre-commit:
         # lefthook batches arguments; an all-ignored vendor batch exits 2.
         - "vendor/agent-flow/**"
         - "packages/app/src/otto/visualizer/visualizer-bundle.gen.ts"
+        # OTTO(knowledge): generated records are excluded by the formatter.
+        - ".otto/**"
       run: npm run format:check:files -- --threads=1 {staged_files}
     - name: lint
       glob: "*.{js,jsx,ts,tsx}"

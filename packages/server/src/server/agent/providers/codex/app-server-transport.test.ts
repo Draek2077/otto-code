@@ -60,6 +60,45 @@ describe("Codex app-server transport", () => {
     child.stdin.end();
   });
 
+  // OTTO(codex-history): keep oversized Codex responses from bringing down the daemon.
+  test("closes the app-server instead of crashing when a line exceeds the size limit", async () => {
+    const child = createCodexAppServerChildProcess();
+    const client = new CodexAppServerClient(child, createTestLogger(), () => ({}), {
+      maxStdoutLineLength: 1024,
+    });
+    const onTermination = vi.fn();
+    client.setUnexpectedTerminationHandler(onTermination);
+
+    const request = client.request("thread/resume", {});
+    // A resumed thread too large to hold as one string, arriving across several chunks.
+    const text = "x".repeat(4096);
+    const bytes = Buffer.from(`{"id":1,"result":{"text":"${text}"}}\n`, "utf8");
+    for (let offset = 0; offset < bytes.length; offset += 512) {
+      child.stdout.write(bytes.subarray(offset, offset + 512));
+    }
+
+    await expect(request).rejects.toThrow("larger than 1024 characters");
+    expect(onTermination).toHaveBeenCalledTimes(1);
+    await expect(client.request("model/list", {})).rejects.toThrow(
+      "Codex app-server client is closed",
+    );
+  });
+
+  test("reads lines under the size limit normally", async () => {
+    const child = createCodexAppServerChildProcess();
+    const client = new CodexAppServerClient(child, createTestLogger(), () => ({}), {
+      maxStdoutLineLength: 1024,
+    });
+
+    const request = client.request("model/list", {});
+    child.stdout.write('{"id":1,"result":{"data":[]}}\n');
+
+    await expect(request).resolves.toEqual({ data: [] });
+    child.stdout.end();
+    child.stderr.end();
+    child.stdin.end();
+  });
+
   test("dispose rejects pending requests instead of leaving them hanging", async () => {
     const child = createCodexAppServerChildProcess();
     const client = new CodexAppServerClient(child, createTestLogger());
